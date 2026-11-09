@@ -42,4 +42,5 @@ private:
     struct Remote { uint8_t kind = 0, index = 0; int8_t delta = 0; }; // kind 0 button (index | 0x80 Shift), 1 wheel, 2 pad, 3 pot (delta: 0..127)
     MidiQueue<16, Remote> presses;
     bool power_known = false;
+    unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)
 };

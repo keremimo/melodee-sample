@@ -37,6 +37,7 @@ void ProjectStore::duplicate(const std::string& path) { push(new Request {Reques
 void ProjectStore::remove(const std::string& path) { push(new Request {Request::Kind::Remove, path, {}}); }
 void ProjectStore::new_folder() { push(new Request {Request::Kind::NewFolder, {}, {}}); }
 void ProjectStore::open_at_start(const std::string& path) { push(new Request {Request::Kind::OpenAtStart, path, {}}); }
+void ProjectStore::save_settings(const std::string& text) { push(new Request {Request::Kind::Settings, text, {}}); }
 
 std::unique_ptr<LoadedProject> ProjectStore::take_loaded() {
     LoadedProject* l = nullptr;
@@ -83,10 +84,18 @@ void ProjectStore::service(Hardware& hardware) {
             // Nothing is created on the card until something is saved there.
             // What to open at start lives next to the projects.
             start.clear();
+            settings.clear();
             if (!root.empty()) {
-                std::ifstream settings(fs::path(root).parent_path() / "settings");
+                std::ifstream file(fs::path(root).parent_path() / "settings");
                 std::string line;
-                while (std::getline(settings, line)) if (line.rfind("start=", 0) == 0) start = line.substr(6);
+                while (std::getline(file, line)) {
+                    if (line.rfind("start=", 0) == 0) start = line.substr(6);
+                    else if (!line.empty()) settings += line + '\n';
+                }
+            }
+            {
+                std::lock_guard<std::mutex> guard(lock);
+                known.settings = settings; known.settings_read = !root.empty();
             }
             scan();
             if (!started && !start.empty() && fs::exists(start, error)) {
@@ -148,16 +157,26 @@ void ProjectStore::run(Request& r) {
             if (!fs::exists(dir + "/Folder " + std::to_string(n), error)) { fs::create_directory(dir + "/Folder " + std::to_string(n), error); break; }
         break;
     }
-    case Request::Kind::OpenAtStart: {
+    case Request::Kind::OpenAtStart:
         start = start == r.path ? std::string() : r.path; // again on the same project: no longer
-        fs::create_directories(fs::path(root).parent_path(), error);
-        std::ofstream settings(fs::path(root).parent_path() / "settings", std::ios::trunc);
-        if (!start.empty()) settings << "start=" << start << '\n';
+        write_settings(error);
         break;
-    }
+    case Request::Kind::Settings:
+        settings = r.path;
+        write_settings(error);
+        break;
     }
     if (error) publish_message(error.message());
     scan();
+}
+
+void ProjectStore::write_settings(std::error_code& error) {
+    fs::create_directories(fs::path(root).parent_path(), error);
+    std::ofstream file(fs::path(root).parent_path() / "settings", std::ios::trunc);
+    if (!start.empty()) file << "start=" << start << '\n';
+    file << settings;
+    std::lock_guard<std::mutex> guard(lock);
+    known.settings = settings;
 }
 
 // The folder in view: its folders first, then its projects, newest first.

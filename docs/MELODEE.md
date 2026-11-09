@@ -272,6 +272,18 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   apart). Pressure is depth. K1 punch of the last pad hit, K2 rate, K3
   depth. Punch settings and the pads' punches are saved with the project.
   Not recorded into the Song yet.
+- **Settings (B2 on Project):** Melodee's own, kept in the `settings` file
+  next to the projects (with the project to open at start): palette (NIGHT,
+  the one there is), pad response (soft, medium, hard, fixed velocity), pad
+  lights (track colours, white, off), knob pickup (off: values jump to the
+  pot), screen brightness (20–100 %; the backlight is left as the stock
+  app had it until this asks for less, and the runtime puts it back on
+  leaving). Wheel moves, Push opens a value, wheel changes it, Push keeps
+  it; Minus / Plus change it at once. Nothing is written until a value
+  changes. **About (B3):** engines, effects, punches, limits, JUCE version,
+  font and licence. Audio out and MIDI in from the board's first guess are
+  left out: Melodee has no MIDI input path yet and the outputs follow the
+  jacks.
 - **Host:** sixteen track slots, level / pan / mute / solo, a pattern mirror,
   a sample-accurate step clock with swing, chance, accent and tie, meters
   and a soft-clipped master after main volume. The send is stored, not heard
@@ -295,11 +307,11 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, record, project, filesheet, tempo, arp, chord,
-  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, shift and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, settings, about, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: typed names (markers, projects), Settings and About, Seq
+Not yet: typed names (markers, projects), Seq
 Record writing launches and punches into the song, pad effects (PadFX
 chains), time-stretch, favourites.
 

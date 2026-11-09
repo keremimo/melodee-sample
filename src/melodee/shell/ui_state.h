@@ -4,6 +4,7 @@
 #include "melodee/model/limits.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/chop.h"
+#include "melodee/shell/settings.h"
 #include <array>
 #include <cstdint>
 
@@ -12,7 +13,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -81,6 +82,9 @@ struct UiState {
     int8_t punch_held = -1, punch_locked = -1; // Punch: the punch a pad holds, the one Shift + pad locked on
     int8_t pad_punch_held = -1;               // Pad Punch: the kit pad held, punching
     uint8_t pad_punch_pressure = 0;           // and how hard, 0..127
+    Settings settings;                        // Melodee's own, from the card
+    uint8_t settings_cursor = 1;
+    bool settings_editing = false;            // Push opened the value under the cursor
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

@@ -19,6 +19,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/settings.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -776,9 +777,32 @@ void punches() {
         CHECK(p2.punch == 15 && p2.punch_rate == 1 && p2.punch_depth == 33);
     }
 }
+void settings() {
+    // Settings survive their text, ignore what they do not know and keep values in range.
+    Settings a;
+    a.pad_response = 2; a.pad_lights = 1; a.pickup = false; a.screen = 60;
+    Settings b;
+    b.read("start=/x\n" + a.text() + "colour=pink\nscreen=900\n");
+    CHECK(b.pad_response == 2 && b.pad_lights == 1 && !b.pickup && b.screen == 100);
+    b.read(a.text());
+    CHECK(b.screen == 60);
+    // Pad response: soft lifts a light hit, hard lowers it, fixed is always 100, medium leaves it.
+    Settings soft, medium, hard, fixed;
+    soft.pad_response = 0; hard.pad_response = 2; fixed.pad_response = 3;
+    CHECK(soft.velocity(40) > 40 && hard.velocity(40) < 40 && medium.velocity(40) == 40 && fixed.velocity(7) == 100);
+    CHECK(soft.velocity(127) == 127 && hard.velocity(127) == 127 && hard.velocity(1) >= 1);
+    // Rows step and wrap; the screen stays between 20 and 100.
+    Settings c;
+    c.step(Settings::Screen, 1); CHECK(c.screen == 100);
+    for (int n = 0; n < 20; ++n) c.step(Settings::Screen, -1);
+    CHECK(c.screen == 20);
+    c.step(Settings::PadLights, -1); CHECK(c.pad_lights == 2);
+    c.step(Settings::Palette, 1); CHECK(c.value_text(Settings::Palette) == "NIGHT");
+}
 } // namespace
 
 int main() {
+    settings();
     punches();
     more_engines();
     drums();

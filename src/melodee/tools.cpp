@@ -299,6 +299,8 @@ const Preview previews[] {
          s.history_at = 40;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_cursor = 0; }},
+    {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},
     {"punch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Punch; s.ui.track = 2; s.playing = true; s.project.punch_target = 1;
          s.ui.punch_held = 4; s.ui.punch_locked = 8; s.ui.turning = 1; s.ui.turned_at = s.now;

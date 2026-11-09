@@ -123,6 +123,13 @@ void MelodeeApp::service(Hardware& hardware) {
     uint64_t presses = hardware.power.presses();
     if (power_known && presses > power_presses && !hardware.power.pressed()) shell.power_pressed();
     if (!hardware.power.pressed()) { power_presses = presses; power_known = true; }
+    // Settings' Screen row: the backlight, as a share of its range.
+    unsigned screen = shell.screen();
+    if (screen && screen != screen_applied) {
+        auto backlight = hardware.platform.backlight();
+        if (backlight.maximum > 0) hardware.platform.brightness(unsigned(std::max(1L, backlight.maximum * long(screen) / 100)));
+        screen_applied = screen;
+    }
 }
 
 std::string MelodeeApp::status() const {

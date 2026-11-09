@@ -371,6 +371,11 @@ void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {
     if (!down && ui.pad_punch_held == int(kit)) { send({Type::PunchOff, ui.track, 0, uint16_t((kit + 1) << 8)}); ui.pad_punch_held = -1; }
 }
 
+void Context::change_setting(unsigned row, int way) {
+    ui.settings.step(row, way);
+    if (store) store->save_settings(ui.settings.text());
+}
+
 void Context::punch_release() {
     if (ui.punch_held >= 0) { send({Type::PunchOff, 254}); ui.punch_held = -1; }
     if (ui.pad_punch_held >= 0) { send({Type::PunchOff, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8)}); ui.pad_punch_held = -1; }

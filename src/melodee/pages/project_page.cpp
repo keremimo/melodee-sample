@@ -240,7 +240,8 @@ void soft(Context& c, int key) {
         if (key == 2) act(c);
         return;
     }
-    (void)key; // Settings and About come with their own boards
+    if (key == 1) c.open(PageId::SettingsPage);
+    if (key == 2) c.open(PageId::About);
 }
 } // namespace
 

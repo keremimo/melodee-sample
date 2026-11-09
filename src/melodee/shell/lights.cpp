@@ -9,6 +9,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/ui/tokens.h"
 #include "surface/led_colours.h"
+#include <algorithm>
 #include <cstdio>
 
 namespace melodee {
@@ -63,6 +64,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save) leave.store(true);
     }
+    // Melodee's settings, once the card's file has been read.
+    if (store_ && !settings_loaded && store_->generation() != settings_seen) {
+        settings_seen = store_->generation();
+        ProjectStore::View v;
+        store_->view(v);
+        if (v.settings_read) { ui_.settings.read(v.settings); settings_loaded = true; }
+    }
+    // The backlight stays as the stock app left it until Screen asks for less (and then follows it).
+    if (ui_.settings.screen != 100 || screen_wanted.load(std::memory_order_relaxed)) screen_wanted.store(ui_.settings.screen, std::memory_order_relaxed);
     // The Project page's row count, for K2's range.
     if (store_ && ui_.page == PageId::Project && store_->generation() != store_seen) {
         store_seen = store_->generation();
@@ -143,6 +153,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             colour = track_light(ui.track, note.root ? 0.9f : 0.22f);
         }
         if (held && ui.page != PageId::Steps && !ui.pad_bank && !ui.mute) colour = led_colour::white(1);
+        if (ui.settings.pad_lights == 1) { // white, as bright as the colour was
+            float full = std::max<float>(led_colour::white(1).r, 1);
+            colour = led_colour::white(std::max({colour.r, colour.g, colour.b}) / full);
+        }
+        if (ui.settings.pad_lights == 2) colour = {};
         lights.pad(pad, colour);
     }
     lights.fader(track.used() ? track_light(ui.track, 0.8f) : Rgb {});

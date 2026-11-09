@@ -222,6 +222,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         pot.engaged = false; pot.bound = 0;
         return;
     }
+    if (!ui_.settings.pickup) pot.engaged = true; // pickup off: the value jumps to the pot
     if (!pot.engaged) {
         int target = int(b.fraction() * 127 + 0.5f);
         bool crossed = before >= 0 && ((before <= target && position >= target) || (before >= target && position <= target));
@@ -250,6 +251,7 @@ void Shell::wheel(int delta) {
 }
 
 void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
+    if (down) velocity = ui_.settings.velocity(velocity); // the pad response
     if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
     if (down && !ui_.exit_open) {
         if (ui_.pad_bank) { pad_bank_used = true; context_.select_track(pad); return; } // Pad Bank + pad: pick that track

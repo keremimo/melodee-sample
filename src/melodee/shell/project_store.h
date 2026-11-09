@@ -44,6 +44,7 @@ public:
     void remove(const std::string& path);
     void new_folder();
     void open_at_start(const std::string& path);
+    void save_settings(const std::string& text); // Melodee's settings (shell/settings.h), kept with the start project
     std::unique_ptr<LoadedProject> take_loaded(); // a loaded project, if one is waiting
     // A free name in the folder in view: "Project 3", or "<base> copy".
     std::string free_path(const std::string& base) const;
@@ -58,6 +59,8 @@ public:
         uint64_t free_bytes = 0;
         unsigned saves = 0;              // finished saves, so a leave can wait for one
         std::string message;             // the last thing that went wrong, if anything
+        std::string settings;            // the settings file's lines but the start one
+        bool settings_read = false;      // the card's settings file has been read (or found missing)
     };
     void view(View& out) const;
     unsigned generation() const { return changes.load(std::memory_order_acquire); }
@@ -65,7 +68,7 @@ public:
 
 private:
     struct Request {
-        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart } kind;
+        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Settings } kind;
         std::string path;
         std::vector<uint8_t> bytes;
     };
@@ -76,7 +79,8 @@ private:
 
     MidiQueue<32, Request*> requests;           // MIDI thread produces
     MidiQueue<4, LoadedProject*> loaded;        // service thread produces
-    std::string root, folder, start;            // service thread
+    std::string root, folder, start, settings;  // service thread
+    void write_settings(std::error_code& error);
     bool started = false;
     unsigned ticks = 0;
     mutable std::mutex lock;

@@ -31,6 +31,7 @@ public:
     void surface(const SurfaceEvent& event, uint32_t now_ms);
     void lights(SurfaceLights& lights, uint32_t now_ms);
     float volume() const { return main_volume.load(std::memory_order_relaxed); }
+    unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
 
     // Service thread: Power was pressed. MIDI thread acts on it in lights().
     void power_pressed() { power.fetch_add(1, std::memory_order_relaxed); }
@@ -65,6 +66,7 @@ private:
     Context context_;
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
     std::atomic<float> main_volume {0.7f};
+    std::atomic<unsigned> screen_wanted {0}; // 0 until the settings say; then 20..100 %
     std::atomic<unsigned> power {0};
     unsigned power_seen = 0;
     std::atomic<bool> leave {false};
@@ -74,7 +76,8 @@ private:
     uint32_t tap_down = 0, repeat_down = 0;
     bool tap_held = false, repeat_turned_on = false;
     ProjectStore* store_ = nullptr;
-    unsigned store_seen = ~0u;
+    unsigned store_seen = ~0u, settings_seen = ~0u;
+    bool settings_loaded = false;
     int leave_after_save = -1; // the saves count to wait for before leaving
     std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}, tempo_now {0}; // copies for summary()
 };
