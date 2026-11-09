@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // KEYS (B2, or 16 Levels): what the pads play, drawn as they sit with the
 // roots filled. K1 root, K2 scale, K3 layout; Minus / Plus the octave.
+#include "melodee/engine/kit909.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -24,6 +25,13 @@ void draw(Paint& p, const Snapshot& s) {
     for (unsigned pad = 0; pad < 16; ++pad) {
         unsigned row = 3 - pad / 4, column = pad % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
+        if (track.engine == EngineKind::Kit909) { // the pads are the drums
+            bool held = s.ui.held_pads & (1u << pad), drum = pad < kit909::Drums;
+            p.fill(x, y, w, ch, held ? c : drum ? colour::surf : colour::quiet, 4);
+            p.text(juce::String(pad + 1), x + 4, y + 3, w - 8, 8, plain(held ? colour::bg : colour::dim, 6, Weight::SemiBold));
+            if (drum) p.text(kit909::drum_name(pad), x + 4, y + ch - 16, w - 8, 13, p.fit(kit909::drum_name(pad), plain(held ? colour::bg : colour::text, 9, Weight::Medium), w - 8, 6));
+            continue;
+        }
         auto note = pad_note(s.project, track, pad);
         lowest = std::min(lowest, note.key); highest = std::max(highest, note.key);
         bool held = s.ui.held_pads & (1u << pad);
@@ -37,6 +45,12 @@ void draw(Paint& p, const Snapshot& s) {
     }
 
     float x = zone::pad + grid_w + 10, y = zone::picture_y + 4.5f, iw = zone::width - zone::pad - x;
+    if (track.engine == EngineKind::Kit909) {
+        p.text("PADS PLAY", x, y, iw, 10, caps_text(colour::mid));
+        p.text("Drums", x, y + 11, iw, 29, plain(colour::text, 26, Weight::SemiBold));
+        p.text("eleven on pads 1 to 11", x, y + 41, iw, 12, plain(colour::sec, 10));
+        return;
+    }
     p.text("PADS PLAY", x, y, iw, 10, caps_text(colour::mid));
     juce::String title = track.layout == PadLayout::Chromatic ? juce::String(note_letter(s.project.root)) + " Chromatic"
         : track.layout == PadLayout::Levels ? juce::String(note_name(track.last_note)) + " Levels"

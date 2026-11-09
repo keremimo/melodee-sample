@@ -231,6 +231,14 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   poly mod, glide, unison, drift), eight voices a track, ten Edit pages and
   thirteen factory sounds made for it. FM6, CZ, SID, the 909 kit and the
   sampler are named in the model but not written yet.
+- **909:** a drum kit written here in the shape of the classic machine:
+  kick and toms as sines with a falling pitch, snare and clap as tone and
+  filtered noise, rim from two resonators, hats and cymbals from six
+  detuned square waves through high passes; the closed hat chokes the open
+  one. Pads 1–11 play kick, snare, clap, rim, three toms, closed and open
+  hat, crash and ride. Six Edit pages (kick, snare and clap, toms, hats,
+  cymbals, levels with drive), five kits. Stage's track 6 starts as a 909
+  with a beat.
 - **Host:** sixteen track slots, level / pan / mute / solo, a pattern mirror,
   a sample-accurate step clock with swing, chance, accent and tie, meters
   and a soft-clipped master after main volume. The send is stored, not heard

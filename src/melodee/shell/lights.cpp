@@ -127,6 +127,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         } else if (track.engine == EngineKind::Sampler) {
             unsigned kit = track.bank % sampler_banks * 16 + pad;
             colour = track.pads[kit].used() ? track_light(ui.track, kit == track.last_pad ? 1.0f : 0.3f) : Rgb {};
+        } else if (track.engine == EngineKind::Kit909) {
+            colour = pad < 11 ? track_light(ui.track, pad == unsigned(track.last_note - 36) ? 0.9f : 0.3f) : Rgb {};
         } else if (track.used()) {
             auto note = pad_note(project, track, pad);
             colour = track_light(ui.track, note.root ? 0.9f : 0.22f);

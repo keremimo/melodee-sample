@@ -325,6 +325,7 @@ void starting_project(Project& project, PatternBank& patterns) {
     load_sound(project.tracks[2], EngineKind::Prophet, 6);  // GLASS PLUCK
     load_sound(project.tracks[3], EngineKind::Prophet, 3);  // SYNC LEAD
     load_sound(project.tracks[4], EngineKind::Sampler, 0); // an empty kit: Sample Select fills its pads
+    load_sound(project.tracks[5], EngineKind::Kit909, 0);  // drums, with a beat
     project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
     project.tracks[2].octave = 4; project.tracks[3].octave = 4;
     patterns = PatternBank {};
@@ -338,6 +339,11 @@ void starting_project(Project& project, PatternBank& patterns) {
         step.notes[0] = {n.key, n.velocity};
         step.length = n.length;
     }
+    // Track 6: kick on the beat, snare on two and four, closed hats on the off-beats.
+    auto& beat = patterns.at[5][0];
+    for (unsigned st = 0; st < 16; st += 4) beat.steps[st].notes[0] = {36, 120};
+    for (unsigned st : {4u, 12u}) beat.steps[st].notes[1] = {37, 110};
+    for (unsigned st = 2; st < 16; st += 4) beat.steps[st].notes[0] = {43, 90};
 }
 
 } // namespace melodee

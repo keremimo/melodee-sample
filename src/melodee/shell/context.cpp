@@ -141,6 +141,13 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         return;
     }
     if (!t.used()) return;
+    if (t.engine == EngineKind::Kit909) { // the pads are the drums
+        if (pad >= 11) return;
+        pad_keys[pad][0] = int16_t(36 + pad);
+        t.last_note = uint8_t(36 + pad);
+        key(pad_keys[pad][0], velocity, true);
+        return;
+    }
     int v = t.layout == PadLayout::Levels ? level_velocity(pad) : velocity;
     if (ui.page == PageId::Sounds) v = ui.audition_velocity;
     std::array<int, notes_per_step> keys {};
