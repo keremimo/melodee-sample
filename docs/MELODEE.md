@@ -178,6 +178,22 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   (24-bit) on the card and it lands on the first empty pad. The input is
   routed only while the page is open or a take runs. Samples' RECORDED shows
   those files.
+- **Projects** (Shift + Sample): files (`.mldp`) in `Melodee/Projects` on
+  the card, in folders (`$MELODEE_PROJECTS` on a host). The format is
+  tagged sections, so older files stay readable and only what differs from
+  empty is written. The page lists New project, the open project while it
+  has no file, folders (Push goes in, Shift + Push comes out) and projects
+  with their tracks and tempo; K2 jumps, K3 sorts (newest, name). Push on a
+  project opens its sheet: Save, Save as new, Duplicate, New folder here,
+  Open at start, Delete (asks once more); on another project Load heads it.
+  Rename and Move to folder are dim until there is a page to type on (open
+  question 9). New names are Project n, copies "<name> copy", folders
+  Folder n. The service thread does every file operation (writing beside
+  the file, then renaming it into place); a load swaps the model on the MIDI
+  thread and gives the audio thread a whole copy to switch to at once,
+  then the project's samples load again. Nothing is created on the card
+  until something is saved. LEAVE on the Exit sheet saves first (a new file
+  if the project has none). Open at start is kept in `Melodee/settings`.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -211,14 +227,13 @@ through Steps, Roll and Motion; B1–B3 pick them too.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
-  levels, record, shift and exit at 1× and 2× (the 2× ones line up
+  levels, record, project, filesheet, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: saving (the Exit sheet says so), typed marker names, Seq
+Not yet: typed names (markers, projects), Settings and About, Seq
 Record writing launches into the song, six of the effects, pad effects,
-punch, the sampler's other six pages, projects on the SD
-card, Tempo / Chord / Arp / Capture, favourites.
+punch, the sampler's other six pages, Tempo / Chord / Arp / Capture, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds
