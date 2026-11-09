@@ -28,6 +28,7 @@ struct PadSound {
     bool reverse = false;
     uint8_t group = 0;            // mute group 1..8, 0 none: pads in a group cut each other
     uint8_t attack = 0, decay = 100, sustain = 100, release = 20; // 0..100
+    uint16_t own_tempo = 0;       // tenths of a BPM the region was played at, for Follow; 0 unknown
     bool used() const { return sample != no_sample; }
 };
 

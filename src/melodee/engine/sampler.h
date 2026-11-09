@@ -15,7 +15,14 @@
 // table belongs to the engine host.
 namespace melodee {
 
-namespace sampler { enum Param : int8_t { Tune, Filter, Resonance, Decay, Level, Count }; }
+namespace sampler {
+enum Param : int8_t {
+    Tune, Filter, Resonance, Decay, Level,      // the kit
+    FilterType, Follow,                         // Filter, Follow pages
+    Cloud, Position, Size, Density, Scan, Spread, // Cloud: pads as clouds of grains
+    Count
+};
+}
 
 class SamplerEngine final : public Engine {
 public:
@@ -41,6 +48,8 @@ public:
     bool stereo() const override { return true; }
     void render_stereo(float* left, float* right, unsigned frames) override;
     bool sounding() const override;
+    // The project's tempo, for Follow (tenths of a BPM).
+    void set_tempo(unsigned tenths) { tempo = tenths; }
 
 private:
     struct Voice {
@@ -49,7 +58,8 @@ private:
         uint16_t slot = no_sample;
         double position = 0, step = 1;
         uint32_t start = 0, end = 0;
-        bool reverse = false, held = false, gate = false, choked = false;
+        bool reverse = false, held = false, gate = false, choked = false, cloud = false;
+        double next_grain = 0, scan = 0; // Cloud: samples to the next grain; how far the place has moved
         uint8_t group = 0;
         float gain = 0, left = 0.7071f, right = 0.7071f, fade = 1;
         uint32_t age = 0;
@@ -59,6 +69,16 @@ private:
     void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0);
     Voice& free_voice();
 
+    struct Grain {
+        const SampleData* sample = nullptr;
+        double position = 0, step = 1;
+        uint32_t age = 0, length = 0;
+        float gain = 0, left = 0.7071f, right = 0.7071f;
+    };
+    void spawn(Voice& v);
+    std::array<Grain, 48> grains {};
+    unsigned tempo = 1200;
+    uint32_t seed = 99;
     const Table* samples = nullptr;
     std::array<PadSound, sampler_pads> pads {};
     std::array<Voice, max_voices> voices {};

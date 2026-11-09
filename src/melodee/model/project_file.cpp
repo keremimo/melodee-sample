@@ -108,7 +108,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             if (!pad.used()) continue;
             w.u8(n); w.u16(pad.sample); w.u32(pad.start); w.u32(pad.end); w.i16(pad.pitch); w.i16(pad.fine); w.u8(pad.level);
             w.i16(pad.pan); w.u8(unsigned(pad.play)); w.u8(pad.reverse); w.u8(pad.group);
-            w.u8(pad.attack); w.u8(pad.decay); w.u8(pad.sustain); w.u8(pad.release);
+            w.u8(pad.attack); w.u8(pad.decay); w.u8(pad.sustain); w.u8(pad.release); w.u16(pad.own_tempo);
         }
         w.end(at);
         for (unsigned p = 0; p < pattern_count; ++p) {
@@ -205,6 +205,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 pad.level = uint8_t(std::min(127u, r.u8())); pad.pan = int8_t(std::clamp(r.i16(), -50, 50));
                 pad.play = PadPlay(r.u8() & 1); pad.reverse = r.u8() != 0; pad.group = uint8_t(r.u8() % 9);
                 pad.attack = uint8_t(r.u8()); pad.decay = uint8_t(r.u8()); pad.sustain = uint8_t(r.u8()); pad.release = uint8_t(r.u8());
+                pad.own_tempo = uint16_t(r.u16());
                 if (pad.sample >= sample_slots) pad.sample = no_sample;
             }
         } else if (name == "PATT") {

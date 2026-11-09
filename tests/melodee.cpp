@@ -423,6 +423,44 @@ void sampler_kit() {
     engine.sample_gone(3); // a sample about to be replaced: everything playing it stops
     CHECK(!engine.sounding());
 
+    // Cloud: a held pad becomes grains, and sounds while held.
+    {
+        SamplerEngine cloud;
+        cloud.set_samples(&table);
+        PadSound pad; pad.sample = 3; pad.play = PadPlay::Gate;
+        cloud.set_pad(2, pad);
+        cloud.set_param(sampler::Cloud, 1); cloud.set_param(sampler::Density, 60);
+        cloud.note_on(int(sampler_first_note) + 2, 120);
+        std::vector<float> l(128, 0), r(128, 0);
+        float peak = 0;
+        for (unsigned b = 0; b < 60; ++b) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            cloud.render_stereo(l.data(), r.data(), 128);
+            for (auto v : l) { CHECK(std::isfinite(v)); peak = std::max(peak, std::fabs(v)); }
+        }
+        CHECK(peak > 0.005f);
+        cloud.note_off(int(sampler_first_note) + 2);
+        for (unsigned b = 0; b < 400; ++b) cloud.render_stereo(l.data(), r.data(), 128);
+        CHECK(!cloud.sounding());
+    }
+    // Follow: a pad played at 120 BPM in a 60 BPM project lasts twice as long.
+    {
+        auto length = [&](bool follow) {
+            SamplerEngine e;
+            e.set_samples(&table);
+            PadSound pad; pad.sample = 3; pad.end = 4410; pad.own_tempo = 1200;
+            e.set_pad(0, pad);
+            e.set_tempo(600);
+            e.set_param(sampler::Follow, follow);
+            e.note_on(int(sampler_first_note), 100);
+            std::vector<float> l(128, 0), r(128, 0);
+            unsigned blocks = 0;
+            while (e.sounding() && blocks < 1000) { e.render_stereo(l.data(), r.data(), 128); ++blocks; }
+            return blocks;
+        };
+        unsigned plain = length(false), followed = length(true);
+        CHECK(followed > plain * 18 / 10 && followed < plain * 22 / 10);
+    }
     // The host takes a sample from the service side and gives the old one back.
     EngineHost host;
     SampleData other;

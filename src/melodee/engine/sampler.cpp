@@ -19,7 +19,7 @@ void SamplerEngine::set_param(int id, int value) {
     p[size_t(id)] = std::clamp<int>(value, info.min, info.max);
     // The kit filter: a low pass that is out of the way when fully open.
     float hz = 20.0f * std::exp2(p[Filter] / 100.0f * 9.97f);
-    filtered = p[Filter] < 99;
+    filtered = p[Filter] < 99 || p[FilterType] != 0;
     g = std::tan(dsp::pi * std::min(hz, dsp::sample_rate * 0.45f) / dsp::sample_rate);
     k = 2 - 1.9f * p[Resonance] / 100.0f;
 }
@@ -46,6 +46,8 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     v.reverse = sound.reverse;
     v.position = v.reverse ? v.end - 1 : v.start;
     v.step = std::exp2((sound.pitch + semitones + sound.fine / 100.0 + p[Tune]) / 12.0);
+    if (p[Follow] && sound.own_tempo) v.step *= double(tempo) / sound.own_tempo; // Follow: the project's tempo, by speed
+    v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
     v.held = true; v.gate = sound.play == PadPlay::Gate; v.group = sound.group;
     v.age = ++clock;
     float level = sound.level / 100.0f * p[Level] / 100.0f, velocity_gain = 0.25f + 0.75f * velocity / 127.0f;
@@ -84,6 +86,8 @@ void SamplerEngine::audition(uint16_t sample, uint32_t from, uint32_t to, int ve
 
 void SamplerEngine::sample_gone(uint16_t slot) {
     for (auto& v : voices) if (v.slot == slot) v = Voice {};
+    if (samples && slot < sample_slots)
+        for (auto& g : grains) if (g.sample == (*samples)[slot]) g.sample = nullptr;
 }
 
 void SamplerEngine::all_notes_off() {
@@ -91,10 +95,12 @@ void SamplerEngine::all_notes_off() {
 }
 void SamplerEngine::silence() {
     for (auto& v : voices) v = Voice {};
+    for (auto& g : grains) g.sample = nullptr;
     s1[0] = s1[1] = s2[0] = s2[1] = 0;
 }
 bool SamplerEngine::sounding() const {
     for (auto& v : voices) if (v.pad >= 0) return true;
+    for (auto& g : grains) if (g.sample) return true;
     return false;
 }
 
@@ -108,9 +114,47 @@ void SamplerEngine::render(float* out, unsigned frames) {
     }
 }
 
+// One grain of a cloud: a short windowed piece from round the voice's place.
+void SamplerEngine::spawn(Voice& v) {
+    Grain* g = nullptr;
+    for (auto& grain : grains) if (!grain.sample) { g = &grain; break; }
+    if (!g) return;
+    seed = seed * 1664525u + 1013904223u;
+    float random = int32_t(seed) / 2147483648.0f;
+    double span = v.end - v.start;
+    double at = v.start + span * (p[Position] / 100.0) + v.scan + random * span * 0.05;
+    at = std::fmod(std::fmod(at - v.start, span) + span, span) + v.start;
+    seed = seed * 1664525u + 1013904223u;
+    float detune = int32_t(seed) / 2147483648.0f * p[Spread] / 100.0f; // up to a semitone either way per 100 cents
+    *g = Grain {v.sample, at, v.step * std::exp2(detune / 12.0), 0,
+                uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate), v.gain * v.env.level, v.left, v.right};
+}
+
 void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
+    // Clouds: their voices only place grains; the grains play.
     for (auto& v : voices) {
-        if (v.pad < 0) continue;
+        if (v.pad < 0 || !v.cloud) continue;
+        for (unsigned f = 0; f < frames; ++f) v.env.next(v.shape);
+        if (!v.env.active() || (v.choked && (v.fade -= 0.25f) <= 0)) { v.pad = -1; continue; }
+        v.scan += (p[Scan] - 50) / 50.0 * v.step * frames; // forwards or backwards at up to its own speed
+        v.next_grain -= frames;
+        double every = dsp::sample_rate / std::max(1, int(1 + p[Density] * 0.99));
+        while (v.next_grain <= 0) { spawn(v); v.next_grain += every; }
+    }
+    for (auto& g : grains) {
+        if (!g.sample) continue;
+        const float* l = g.sample->left.data();
+        const float* r = g.sample->right.data();
+        for (unsigned f = 0; f < frames && g.age < g.length; ++f, ++g.age) {
+            unsigned i = unsigned(g.position) % g.sample->frames;
+            float w = std::sin(dsp::pi * float(g.age) / float(g.length)) * g.gain * 0.5f; // a smooth window
+            left[f] += l[i] * w * g.left; right[f] += r[i] * w * g.right;
+            g.position += g.step;
+        }
+        if (g.age >= g.length) g.sample = nullptr;
+    }
+    for (auto& v : voices) {
+        if (v.pad < 0 || v.cloud) continue;
         const float* l = v.sample->left.data();
         const float* r = v.sample->right.data();
         for (unsigned f = 0; f < frames; ++f) {
@@ -135,7 +179,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             float hp = (x - (k + g) * s1[side] - s2[side]) / (1 + g * (g + k));
             float bp = g * hp + s1[side], lp = g * bp + s2[side];
             s1[side] = g * hp + bp; s2[side] = g * bp + lp;
-            io[side][f] = lp;
+            io[side][f] = p[FilterType] == 1 ? bp : p[FilterType] == 2 ? hp : lp;
         }
 }
 

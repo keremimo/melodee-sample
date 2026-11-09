@@ -42,6 +42,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
     motion = project.motion;
     song = project.song;
     tempo = project.tempo; swing = project.swing;
+    for (auto& s : slots) s.sampler.set_tempo(tempo);
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& track = project.tracks[t];
         auto& slot = slots[t];
@@ -204,7 +205,10 @@ void EngineHost::apply(const Command& c) {
             for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
         }
         break;
-    case Type::Tempo: tempo = uint16_t(std::clamp<int>(c.value, 300, 3000)); break;
+    case Type::Tempo:
+        tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
+        for (auto& s : slots) s.sampler.set_tempo(tempo);
+        break;
     case Type::Swing: swing = uint8_t(std::clamp<int>(c.value, 50, 75)); break;
     }
 }
