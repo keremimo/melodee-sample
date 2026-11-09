@@ -65,8 +65,22 @@ service are unchanged.
 
 ## Status
 
-Milestones 1–5 exist: the app starts into Stage, and Stage, Keys, Mix,
-Sounds, Edit and Steps work with the Shift layer and the Exit sheet.
+Milestones 1–5 exist, and the sequence group is complete: the app starts
+into Stage, and Stage, Keys, Mix, Sounds, Edit, Steps, Roll (with its note
+sheet) and Motion work with the Shift layer and the Exit sheet. SEQ steps
+through Steps, Roll and Motion; B1–B3 pick them too.
+
+- **Roll:** one bar of twelve semitones, the view an octave and a bit above
+  the pads' lowest note; the wheel moves the shared step cursor, pads write
+  up to four notes on it (or play in live with Seq Record), Minus / Plus move
+  the octave and the view. Push on a note opens the note sheet: accent,
+  slide, tie, copy half a bar on, delete.
+- **Motion:** Seq Record + a pot on any page writes an event at the playing
+  step (256 for the project, `model/limits.h`). The audio thread plays them
+  step by step, each lane starting the pattern at the track's own value, and
+  gives the track its own values back on Stop. Erase + pot on Motion clears
+  that lane. The lanes are the parameters holding motion, then the
+  favourites.
 
 - **Engine:** PROPHET, a two-oscillator polysynth written here (saw and
   pulse with hard sync, saw/triangle/pulse B with low-frequency mode,
@@ -91,11 +105,11 @@ Sounds, Edit and Steps work with the Shift layer and the Exit sheet.
   spaces as dashes: `play`, `seq`, `wheel-push`, `top-right`), for checks
   without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
-  sounds, edit, mix, steps, shift and exit at 1× and 2× (the 2× ones line up
+  sounds, edit, mix, steps, roll, notesheet, motion, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: saving (the Exit sheet says so), Roll, Motion, the page map, the
+Not yet: saving (the Exit sheet says so), the page map, the
 mod matrix, Patterns / Song / Length, effects and buses, punch, the sampler
 and chop, projects on the SD card, Tempo / Chord / Arp / Capture, poly
 aftertouch, favourites.
