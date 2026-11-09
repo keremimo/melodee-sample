@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#pragma once
+#include "melodee/pages/page.h"
+
+// Each page file defines one of these; pages.cpp maps PageId to them.
+namespace melodee {
+extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, steps_page;
+}

@@ -1,0 +1,258 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+// EDIT (Push on a track): one engine page at a time, with its curve as the
+// picture. B1 and B3 name the neighbouring pages and go there; the wheel
+// moves between rows of three; K1-K3 edit the row in view.
+#include "melodee/engine/dsp.h"
+#include "melodee/engine/prophet_params.h"
+#include "melodee/pages/common.h"
+#include "melodee/pages/pages.h"
+#include "melodee/ui/widgets.h"
+#include <cmath>
+#include <complex>
+
+namespace melodee {
+namespace {
+using namespace ui;
+
+// The picture's box at device size: 308 x 105 below the title.
+constexpr float px = zone::pad, py = zone::picture_y + 27, pw = zone::width - 2 * zone::pad, ph = 105;
+
+const EditPage& current_page(const Snapshot& s, unsigned& index) {
+    const auto& info = engine_info(s.track().engine);
+    index = s.ui.edit_page[s.ui.track] % info.page_count;
+    return info.pages[index];
+}
+
+juce::String page_name(const char* title) { return juce::String(title).toUpperCase(); }
+
+// Which knob shade a parameter wears: its card's when on the row in view.
+juce::Colour shade_of(const Snapshot& s, const EditPage& page, int id) {
+    const auto& row = page.rows[s.ui.edit_row[s.ui.track] % std::max(page.row_count(), 1u)];
+    for (unsigned n = 0; n < 3; ++n) if (row[n] == id) return knob_shade(s.ui.track, n);
+    return colour::mid;
+}
+
+void axis(Paint& p, const juce::String& left, const juce::String& middle, const juce::String& right) {
+    auto style = caps_text(colour::dim, 7);
+    float y = py + ph + 2;
+    p.text(left, px, y, 100, 9, style);
+    p.text(middle, px + pw / 2 - 50, y, 100, 9, style, juce::Justification::centred);
+    p.text(right, px + pw - 100, y, 100, 9, style, juce::Justification::centredRight);
+}
+
+juce::String hertz(float hz) {
+    if (hz >= 1000) return juce::String(hz / 1000, hz >= 10000 ? 0 : 1) + " kHz";
+    return juce::String(int(hz + 0.5f)) + " Hz";
+}
+
+void filter_picture(Paint& p, const Snapshot& s, const EditPage& page) {
+    using namespace prophet;
+    const auto& v = s.track().params;
+    auto c = colour_of(s);
+    float cutoff = 20.0f * std::exp2(v[Cutoff] / 100.0f * 9.97f), k = 3.95f * v[Resonance] / 100.0f;
+    auto response = [&](float hz, float fc) {
+        std::complex<float> sn(0, hz / fc), one(1, 0);
+        auto stage = one / (one + sn);
+        auto h = stage * stage * stage * stage;
+        return std::abs(h / (one + k * h));
+    };
+    auto x_of = [&](float hz) { return px + pw * std::log2(hz / 20.0f) / std::log2(1000.0f); };
+    auto y_of = [&](float gain) {
+        float db = 20 * std::log10(std::max(gain, 1e-4f));
+        return py + ph - 4 - std::clamp((db + 36) / 54, 0.0f, 1.0f) * (ph - 12);
+    };
+    juce::Path line, area;
+    float peak_x = 0, peak_y = py + ph;
+    for (int n = 0; n <= 154; ++n) {
+        float hz = 20.0f * std::pow(1000.0f, n / 154.0f);
+        float x = x_of(hz), y = y_of(response(hz, cutoff));
+        if (n == 0) { line.startNewSubPath(x, y); area.startNewSubPath(x, py + ph); }
+        line.lineTo(x, y); area.lineTo(x, y);
+        if (y < peak_y) { peak_y = y; peak_x = x; }
+    }
+    area.lineTo(px + pw, py + ph); area.closeSubPath();
+    p.fill(px, py + ph - 1, pw, 1, colour::line);
+    p.g.setColour(c.withAlpha(0.14f)); p.g.fillPath(area);
+    // Where the envelope takes the cutoff, dotted in ENV AMT's shade.
+    float opened = cutoff * std::exp2(v[EnvAmount] / 100.0f * 7.0f);
+    if (v[EnvAmount] > 0) {
+        juce::Path env;
+        for (int n = 0; n <= 60; ++n) {
+            float hz = 20.0f * std::pow(1000.0f, n / 60.0f);
+            float x = x_of(hz), y = y_of(response(hz, std::min(opened, 20000.0f)));
+            if (n == 0) env.startNewSubPath(x, y); else env.lineTo(x, y);
+        }
+        juce::Path dotted;
+        const float dashes[] {1, 3};
+        juce::PathStrokeType(1).createDashedStroke(dotted, env, dashes, 2);
+        p.g.setColour(shade_of(s, page, EnvAmount)); p.g.fillPath(dotted);
+    }
+    p.g.setColour(c); p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    float cx = x_of(std::clamp(cutoff, 20.0f, 20000.0f));
+    juce::Path mark, dashed;
+    mark.startNewSubPath(cx, py + 8); mark.lineTo(cx, py + ph);
+    const float dash[] {1.5f, 3};
+    juce::PathStrokeType(1).createDashedStroke(dashed, mark, dash, 2);
+    p.g.setColour(shade_of(s, page, Cutoff)); p.g.fillPath(dashed);
+    if (v[Resonance] > 5) p.circle(peak_x, peak_y, 3.5f, shade_of(s, page, Resonance));
+    axis(p, "20 Hz", hertz(cutoff), "20 kHz");
+}
+
+void envelope_picture(Paint& p, const Snapshot& s, const EditPage& page) {
+    // The row ids of an envelope page: attack, decay, sustain on row 1, release first on row 2.
+    int a = page.rows[0][0], d = page.rows[0][1], su = page.rows[0][2], r = page.rows[1][0];
+    const auto& v = s.track().params;
+    float ta = time_seconds(v[size_t(a)]), td = time_seconds(v[size_t(d)]), tr = time_seconds(v[size_t(r)]);
+    float level = v[size_t(su)] / 100.0f, hold = 0.25f;
+    // Times on a square-root scale so short and long stages both show.
+    float wa = std::sqrt(ta), wd = std::sqrt(td), wr = std::sqrt(tr), total = wa + wd + wr + hold;
+    float scale = (pw - 4) / total, top = py + 6, bottom = py + ph - 1;
+    auto y_of = [&](float l) { return bottom - l * (bottom - top); };
+    float x0 = px + 2, x1 = x0 + wa * scale, x2 = x1 + wd * scale, x3 = x2 + hold * scale, x4 = x3 + wr * scale;
+    juce::Path area;
+    area.startNewSubPath(x0, bottom); area.lineTo(x1, y_of(1)); area.lineTo(x2, y_of(level));
+    area.lineTo(x3, y_of(level)); area.lineTo(x4, bottom); area.closeSubPath();
+    p.fill(px, bottom, pw, 1, colour::line);
+    p.g.setColour(colour_of(s).withAlpha(0.14f)); p.g.fillPath(area);
+    auto segment = [&](float ax, float ay, float bx, float by, juce::Colour c) {
+        p.g.setColour(c);
+        p.g.drawLine(ax, ay, bx, by, 2);
+    };
+    segment(x0, bottom, x1, y_of(1), shade_of(s, page, a));
+    segment(x1, y_of(1), x2, y_of(level), shade_of(s, page, d));
+    segment(x2, y_of(level), x3, y_of(level), shade_of(s, page, su));
+    segment(x3, y_of(level), x4, bottom, shade_of(s, page, r));
+    auto shown = [&](int id) { auto t = show(engine_info(s.track().engine).params[id], v[size_t(id)]); return t.value + " " + t.unit; };
+    axis(p, shown(a), shown(d), shown(r));
+}
+
+void wave_picture(Paint& p, const Snapshot& s, bool b) {
+    using namespace prophet;
+    const auto& v = s.track().params;
+    float saw = v[b ? SawB : SawA], pulse = v[b ? PulseB : PulseA], tri = b ? v[TriB] : 0;
+    float width = v[b ? PwB : PwA] / 100.0f;
+    juce::Path line;
+    float mid = py + ph / 2, amp = ph / 2 - 8;
+    for (int n = 0; n <= 300; ++n) {
+        float phase = std::fmod(n / 150.0f, 1.0f);
+        float y = saw * (2 * phase - 1) + pulse * (phase < width ? 1 : -1) + tri * (1 - 4 * std::fabs(phase - 0.5f));
+        float sum = saw + pulse + tri;
+        if (sum > 0) y /= sum;
+        float x = px + pw * n / 300.0f;
+        if (n == 0) line.startNewSubPath(x, mid - y * amp); else line.lineTo(x, mid - y * amp);
+    }
+    p.fill(px, mid, pw, 1, colour::line);
+    if (saw + pulse + tri == 0) { axis(p, "", "silent", ""); return; }
+    p.g.setColour(colour_of(s));
+    p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
+    auto f = show(engine_info(s.track().engine).params[b ? FreqB : FreqA], v[b ? FreqB : FreqA]);
+    axis(p, "", f.value + " " + f.unit, "");
+}
+
+void lfo_picture(Paint& p, const Snapshot& s) {
+    using namespace prophet;
+    const auto& v = s.track().params;
+    juce::Path line;
+    float mid = py + ph / 2, amp = ph / 2 - 8;
+    for (int n = 0; n <= 300; ++n) {
+        float phase = std::fmod(n / 100.0f, 1.0f), y;
+        switch (v[LfoShape]) {
+        case 1: y = 2 * phase - 1; break;
+        case 2: y = phase < 0.5f ? 1 : -1; break;
+        case 3: y = std::sin(float(int(n / 25) * 12.9898f)) ; break;
+        default: y = 1 - 4 * std::fabs(phase - 0.5f);
+        }
+        float x = px + pw * n / 300.0f;
+        if (n == 0) line.startNewSubPath(x, mid - y * amp); else line.lineTo(x, mid - y * amp);
+    }
+    p.fill(px, mid, pw, 1, colour::line);
+    p.g.setColour(colour_of(s));
+    p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
+    auto r = show(engine_info(s.track().engine).params[LfoRate], v[LfoRate]);
+    axis(p, "", r.value + " " + r.unit, "");
+}
+
+// Every parameter of the page as a labelled gauge: the default picture.
+void bars_picture(Paint& p, const Snapshot& s, const EditPage& page) {
+    const auto& info = engine_info(s.track().engine);
+    const auto& v = s.track().params;
+    unsigned rows = std::max(page.row_count(), 1u);
+    float row_h = std::min(34.0f, (ph + 10) / rows), cw = (pw - 16) / 3;
+    for (unsigned r = 0; r < rows; ++r)
+        for (unsigned n = 0; n < 3; ++n) {
+            int id = page.rows[r][n];
+            if (id < 0) continue;
+            const auto& param = info.params[id];
+            float x = px + n * (cw + 8), y = py + r * row_h;
+            auto shown = show(param, v[size_t(id)]);
+            p.text(param.label, x, y, cw, 10, caps_text(shade_of(s, page, id)));
+            p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x, y + 10, cw, 13, plain(colour::sec, 11, Weight::Medium));
+            gauge(p, x, y + 25, cw, gauge_of(param, v[size_t(id)]), shade_of(s, page, id));
+        }
+}
+
+void mixer_picture(Paint& p, const Snapshot& s, const EditPage& page) { bars_picture(p, s, page); }
+
+void draw(Paint& p, const Snapshot& s) {
+    const auto& info = engine_info(s.track().engine);
+    auto c = colour_of(s);
+    Header h = header_of(s);
+    h.right.push_back(tag_of(s, s.ui.track));
+    if (!info.page_count) {
+        frame(p, s, {{"", "", ""}, -1, c}, h);
+        p.text("Nothing to edit yet", zone::pad, zone::picture_y, zone::width - 12, 40, plain(colour::dim, 11, Weight::Medium),
+               juce::Justification::centred);
+        return;
+    }
+    unsigned index = 0;
+    const auto& page = current_page(s, index);
+    unsigned count = info.page_count;
+    const auto& before = info.pages[(index + count - 1) % count];
+    const auto& after = info.pages[(index + 1) % count];
+    SoftKeys keys {{juce::String::fromUTF8("\xe2\x80\xb9 ") + page_name(before.title),
+                    "PAGE " + juce::String(index + 1) + " / " + juce::String(count),
+                    page_name(after.title) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c};
+    frame(p, s, keys, h);
+
+    float top = zone::picture_y;
+    p.text(page.title, px, top, pw - 90, 22, plain(colour::text, type::title, Weight::SemiBold));
+    unsigned rows = page.row_count();
+    if (rows > 1) {
+        unsigned row = s.ui.edit_row[s.ui.track] % rows;
+        float dots = page_dots(p, px + pw, top + 11, int(rows), int(row), c, true);
+        juce::String label = "ROW " + juce::String(row + 1) + " / " + juce::String(rows);
+        p.text(label, px, top, pw - dots - 6, 22, caps_text(colour::mid), juce::Justification::centredRight);
+    }
+    switch (page.picture) {
+    case Picture::Filter: filter_picture(p, s, page); break;
+    case Picture::Envelope: envelope_picture(p, s, page); break;
+    case Picture::Wave: wave_picture(p, s, false); break;
+    case Picture::WaveB: wave_picture(p, s, true); break;
+    case Picture::Lfo: lfo_picture(p, s); break;
+    case Picture::Mixer: mixer_picture(p, s, page); break;
+    case Picture::Bars: bars_picture(p, s, page); break;
+    }
+}
+
+unsigned page_count(Context& c) { return std::max(engine_info(c.track().engine).page_count, 1u); }
+
+void soft(Context& c, int key) {
+    if (key == 1) return; // the page map comes with its own board (SoundMap)
+    unsigned count = page_count(c), t = c.ui.track;
+    c.ui.edit_page[t] = uint8_t((c.ui.edit_page[t] + (key == 0 ? count - 1 : 1)) % count);
+    c.ui.edit_row[t] = 0;
+}
+
+void wheel(Context& c, int delta) {
+    const auto& info = engine_info(c.track().engine);
+    if (!info.page_count) return;
+    unsigned t = c.ui.track;
+    unsigned rows = std::max(info.pages[c.ui.edit_page[t] % info.page_count].row_count(), 1u);
+    c.ui.edit_row[t] = uint8_t(std::clamp<int>(c.ui.edit_row[t] + delta, 0, int(rows) - 1));
+}
+} // namespace
+
+const PageSpec edit_page {draw, play_pad, wheel, no_push, soft, octave};
+
+} // namespace melodee
