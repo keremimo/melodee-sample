@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#pragma once
+#include "melodee/model/project.h"
+#include <array>
+#include <cstdint>
+#include <string>
+
+// Scales, note names and what each pad plays in each layout.
+namespace melodee {
+
+struct Scale { const char* name; uint16_t mask; }; // bit n: n semitones above the root
+inline const std::array<Scale, 12>& scales() {
+    static const std::array<Scale, 12> list {{
+        {"Major", 0xAB5}, {"Minor", 0x5AD}, {"Dorian", 0x6AD}, {"Phrygian", 0x5AB}, {"Lydian", 0xAD5},
+        {"Mixolydian", 0x6B5}, {"Locrian", 0x56B}, {"Harm minor", 0x9AD}, {"Mel minor", 0xAAD},
+        {"Major pent", 0x295}, {"Minor pent", 0x4A9}, {"Blues", 0x4E9},
+    }};
+    return list;
+}
+inline const char* note_letter(unsigned pitch_class) {
+    static const char* names[] {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    return names[pitch_class % 12];
+}
+// C4 is MIDI 60, so D2 is 38.
+inline std::string note_name(int key) { return std::string(note_letter(unsigned(key) % 12)) + std::to_string(key / 12 - 1); }
+
+inline const char* layout_name(PadLayout layout) {
+    static const char* names[] {"Scale", "Chromatic", "Chords", "16 Levels"};
+    return names[unsigned(layout) % unsigned(PadLayout::Count)];
+}
+
+// The scale's semitone offsets above the root, in order.
+inline unsigned scale_degrees(unsigned scale, std::array<uint8_t, 12>& out) {
+    unsigned n = 0, mask = scales()[scale % scales().size()].mask;
+    for (unsigned s = 0; s < 12; ++s) if (mask & (1u << s)) out[n++] = uint8_t(s);
+    return n;
+}
+
+// The key pad 0..15 (pad 1 bottom left) plays on a track, and whether it is
+// a root. 16 Levels plays the track's last note on every pad.
+struct PadNote { int key; bool root; };
+inline PadNote pad_note(const Project& project, const Track& track, unsigned pad) {
+    int base = 12 * (track.octave + 1) + project.root;
+    switch (track.layout) {
+    case PadLayout::Chromatic: return {base + int(pad), pad % 12 == 0};
+    case PadLayout::Levels: return {track.last_note, false};
+    case PadLayout::Scale:
+    case PadLayout::Chords:
+    default: {
+        std::array<uint8_t, 12> degrees {};
+        unsigned count = scale_degrees(project.scale, degrees);
+        return {base + 12 * int(pad / count) + degrees[pad % count], pad % count == 0};
+    }
+    }
+}
+// A pad's velocity in the 16 Levels layout: soft at pad 1, loud at pad 16.
+inline uint8_t level_velocity(unsigned pad) { return uint8_t(8 + pad * 119 / 15); }
+
+} // namespace melodee
