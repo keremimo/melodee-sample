@@ -74,17 +74,26 @@ void Shell::button(Button b, bool pressed) {
     if (ui.exit_open) {
         // Only the soft keys answer: B1 stays, B3 leaves.
         if (b == Button::TopLeft) ui.exit_open = false;
-        if (b == Button::TopRight) {
+        if (b == Button::TopRight && leave_after_save < 0) {
             context_.send({Command::Type::Stop});
             context_.send({Command::Type::AllNotesOff, 255});
-            leave.store(true);
+            // The project goes to the card first (a new file if it has none); then away.
+            ProjectStore::View v;
+            if (store_) store_->view(v);
+            if (!v.root.empty()) { leave_after_save = int(store_->saves()) + 1; context_.save_project(); }
+            else leave.store(true);
         }
         return;
     }
     const auto& page = page_spec(ui.page);
     switch (b) {
     case Button::Sample:
-        if (ui.shift) break; // Project and Settings come with their own boards
+        if (ui.shift) { // the projects on the card
+            context_.open(PageId::Project);
+            if (store_) store_->list(context_.project_folder);
+            ui.project_rows = 64; // until the list arrives
+            break;
+        }
         if (play_group(ui.page)) {
             PageId keys = context_.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
             context_.open(ui.page == PageId::Stage ? keys : (ui.page == PageId::Keys || ui.page == PageId::Pads) ? PageId::Mix : PageId::Stage);
@@ -141,6 +150,14 @@ void Shell::button(Button b, bool pressed) {
     case Button::TopRight: page.soft(context_, 2); break;
     case Button::WheelPush:
         if (ui.shift && ui.page == PageId::Song && !ui.sheet_open) song_marker(context_);
+        else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && !context_.project_folder.empty()) {
+            // up a folder
+            auto& f = context_.project_folder;
+            auto cut = f.find_last_of('/');
+            f = cut == std::string::npos ? std::string() : f.substr(0, cut);
+            ui.project_cursor = 0;
+            if (store_) store_->list(f);
+        }
         else if (ui.shift) context_.back();
         else page.push(context_);
         break;
@@ -241,6 +258,8 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         out.take.state = uint8_t(r.state()); out.take.frames = r.frames(); out.take.length = r.length(); out.take.level = r.level();
         for (unsigned c = 0; c < out.take.peaks.size(); ++c) out.take.peaks[c] = r.peak(c);
     }
+    out.project_path = context_.project_path; out.project_folder = context_.project_folder; out.dirty = context_.dirty;
+    if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
     if (library_) {
         const auto& t = project_->tracks[ui_.track];
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
@@ -269,12 +288,12 @@ std::string Shell::summary() const {
     uint32_t pt = page_track.load(std::memory_order_relaxed);
     return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
-           " melodee_pad_frames=" + std::to_string(pad_frames.load());
+           " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load());
 }
 
 void starting_project(Project& project, PatternBank& patterns) {
     project = Project {};
-    std::snprintf(project.name, sizeof(project.name), "New project");
+    std::snprintf(project.name, sizeof(project.name), "Untitled");
     project.tempo = 1200;
     load_sound(project.tracks[0], EngineKind::Prophet, 1);  // FUNK BASS II
     load_sound(project.tracks[1], EngineKind::Prophet, 5);  // SOFT PAD

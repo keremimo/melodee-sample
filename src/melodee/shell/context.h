@@ -19,6 +19,7 @@ namespace melodee {
 
 class EngineHost;
 class SampleLibrary;
+class ProjectStore;
 
 class Context {
 public:
@@ -63,6 +64,17 @@ public:
     void set_division(Division division);
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
+    // Projects on the card
+    ProjectStore* store = nullptr;
+    std::string project_path;         // the file this project came from or went to; empty when new
+    std::string project_folder;       // the Project page's folder, relative to the root
+    bool dirty = false;               // changed since it was saved or loaded
+    void save_project_to(const std::string& path);
+    void save_project();              // to its file, or a new one
+    void new_project();
+    // Switches the whole app to `project`: the audio thread gets a copy, samples reload.
+    void switch_to(const Project& project, const PatternBank& patterns, const std::string& path);
+    unsigned samples_to_load = sample_slots; // next sample slot to (re)load after a switch
     PadSound& pad() { return track().pads[track().last_pad % sampler_pads]; }
     void send_pad(unsigned track, unsigned pad);
     int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load

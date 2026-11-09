@@ -12,7 +12,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     // Second jobs, as on the Shift board; the ones not built yet stay listed
     // so the layer reads the same as it will.
     static const char* const jobs[][2] {
-        {"SAMPLE", "Project, settings"}, {"PAD BANK", "Previous pad bank"}, {"SAMPLE SELECT", "Save sound"},
+        {"SAMPLE", "Projects"}, {"PAD BANK", "Previous pad bank"}, {"SAMPLE SELECT", "Save sound"},
         {"MUTE", "+ pad: solo track"}, {"ERASE", "Clear pattern"}, {"LOOP", "Double length"}, {"SEQ", "Quantise take"},
         {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"SEQ RECORD", "Undo last take"},
         {"SAMPLE RECORD", "Capture last bars"}, {"TAP TEMPO", "Metronome"}, {"\xe2\x88\x92 / +", "Transpose pads"}, {"PUSH", "Back"},
@@ -50,7 +50,11 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
     header(p, h);
     for (unsigned n = 0; n < 4; ++n)
         p.fill(zone::pad, zone::picture_y + 1.5f + n * 37, zone::width - 2 * zone::pad, 34, colour::quiet.interpolatedWith(colour::bg, 0.5f), 4);
-    sheet(p, {"Leave Melodee?", "Notes stop and the MPC app starts again. This project is not saved yet.", true});
+    juce::String body = s.projects.root.empty()
+        ? juce::String("Notes stop and the MPC app starts again. There is no card to save this project on.")
+        : juce::String(s.project_path.empty() ? "It is saved as a new project." : (juce::String(s.project.name) + " is saved."))
+              + " Notes stop and the MPC app starts again.";
+    sheet(p, {"Leave Melodee?", body, true});
 }
 
 } // namespace melodee

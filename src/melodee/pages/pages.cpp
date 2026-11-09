@@ -26,6 +26,7 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Chop: return chop_page;
     case PageId::Levels: return levels_page;
     case PageId::Record: return record_page;
+    case PageId::Project: return project_page;
     case PageId::Stage:
     default: return stage_page;
     }

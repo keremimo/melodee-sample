@@ -4,14 +4,62 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/scales.h"
+#include "melodee/model/project_file.h"
+#include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/shell.h"
+#include <filesystem>
 #include <cstring>
 #include <algorithm>
 
 namespace melodee {
 using Type = Command::Type;
 
-void Context::send(const Command& command) { host.send(command); }
+void Context::send(const Command& command) {
+    // Anything but playing changes the project.
+    switch (command.type) {
+    case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Pressure:
+    case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
+    case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: break;
+    default: dirty = true;
+    }
+    host.send(command);
+}
+
+void Context::save_project_to(const std::string& path) {
+    if (!store || path.empty()) return;
+    auto name = std::filesystem::path(path).stem().string();
+    std::snprintf(project.name, sizeof(project.name), "%s", name.c_str());
+    store->save(path, melodee::save_project(project, patterns));
+    project_path = path;
+    dirty = false;
+}
+
+void Context::save_project() { save_project_to(project_path.empty() && store ? store->free_path("") : project_path); }
+
+void Context::new_project() {
+    auto fresh = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    starting_project(*fresh, *bank);
+    switch_to(*fresh, *bank, {});
+}
+
+void Context::switch_to(const Project& next, const PatternBank& bank, const std::string& path) {
+    send({Type::AllNotesOff, 255});
+    project = next;
+    patterns = bank;
+    auto keep = ui.pots;
+    ui = UiState {};
+    ui.pots = keep;
+    for (auto& pot : ui.pots) pot.bound = 0; // pick the new values up again
+    auto* pack = new ProjectPack {project, patterns};
+    Command c {Type::Reload};
+    c.pack = pack;
+    if (!host.send(c)) delete pack;
+    project_path = path;
+    dirty = false;
+    samples_to_load = 0; // every sample slot again, a few each tick
+}
 
 void Context::open(PageId page) {
     ui.sheet_open = false;
@@ -210,6 +258,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode)] = value; rechop(); break;
     case Kind::ChopStart: ui.slices.start[size_t(b.id) % max_slices] = uint32_t(uint64_t(value) * 44100 / 1000); break;
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
+    case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
+    case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
     case Kind::RecThreshold: ui.rec_threshold = int8_t(value); break;
     case Kind::RecBars: ui.rec_bars = uint8_t(value); break;
     case Kind::RecGain: ui.rec_gain = int8_t(value); send({Type::RecordGain, 0, 0, 0, int16_t(value)}); break;

@@ -45,6 +45,7 @@ struct MenuSheet {
     std::array<MenuRow, 8> rows {};
     unsigned count = 0, current = 0;
     juce::Colour accent = colour::text;
+    juce::Colour detail_colour = colour::mid;
 };
 void menu_sheet(Paint& p, const MenuSheet& sheet);
 

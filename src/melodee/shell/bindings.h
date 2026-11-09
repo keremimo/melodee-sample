@@ -23,7 +23,8 @@ struct Binding {
         PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
         ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds
         FileJump,                          // Samples
-        RecThreshold, RecBars, RecGain     // Record
+        RecThreshold, RecBars, RecGain,    // Record
+        ProjectJump, ProjectSort           // Project
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter

@@ -4,6 +4,7 @@
 // 5 ms; the runtime sends only what changed). Colours come from the track
 // palette; button light values from surface/leds.h.
 #include "melodee/engine/engine_host.h"
+#include "melodee/model/project_file.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/shell.h"
 #include "melodee/ui/tokens.h"
@@ -48,6 +49,34 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
     }
+    // Projects: a finished pack to free, a loaded project to switch to, a save to leave after.
+    {
+        const ProjectPack* done = nullptr;
+        while (host.take_done_pack(done)) delete done;
+    }
+    if (store_) {
+        if (auto loaded = store_->take_loaded()) {
+            auto project = std::make_unique<Project>();
+            auto bank = std::make_unique<PatternBank>();
+            if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank).empty())
+                context_.switch_to(*project, *bank, loaded->path);
+        }
+        if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save) leave.store(true);
+    }
+    // The Project page's row count, for K2's range.
+    if (store_ && ui_.page == PageId::Project && store_->generation() != store_seen) {
+        store_seen = store_->generation();
+        ProjectStore::View v;
+        store_->view(v);
+        ui_.project_rows = uint16_t(v.entries.size() + (context_.project_path.empty() ? 2 : 1));
+    }
+    // After a switch, every sample slot loads again (or empties), a few each pass.
+    while (library_ && context_.samples_to_load < sample_slots) {
+        const auto& ref = project_->samples[context_.samples_to_load];
+        bool real = ref.used() && ref.path[0] == '/';
+        if (!library_->load(context_.samples_to_load, real ? ref.path : "")) break;
+        ++context_.samples_to_load;
+    }
     // Record listens to the mic or the line inputs while its page is open or a take runs.
     if (library_) {
         bool busy = host.recorder().state() != TakeRecorder::State::Idle;
@@ -61,6 +90,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const auto& t = project_->tracks[ui_.track];
         const auto& pad = t.pads[t.last_pad % sampler_pads];
         page_track.store(uint32_t(ui_.page) | uint32_t(ui_.track) << 8, std::memory_order_relaxed);
+        tempo_now.store(project_->tempo, std::memory_order_relaxed);
         pad_sample.store(pad.sample, std::memory_order_relaxed);
         pad_frames.store(pad.used() ? project_->samples[pad.sample % sample_slots].frames : 0, std::memory_order_relaxed);
     }

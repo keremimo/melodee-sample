@@ -11,7 +11,7 @@
 //                                    notesheet motion patterns song songzoom
 //                                    clipsheet length rack sends bus fxpick
 //                                    pads samples trim chop levels record
-//                                    shift exit
+//                                    project filesheet shift exit
 //   --melodee-sound FILE.wav         plays the starting project for two bars and
 //                                    checks it sounds and stays inside full scale
 // Returns the exit code, or nothing when argv names neither.

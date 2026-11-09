@@ -14,6 +14,7 @@
 MelodeeApp::MelodeeApp()
     : shell(host), library(host), frame(std::make_unique<melodee::Snapshot>()) {
     shell.set_library(&library);
+    shell.set_store(&store);
     host.load(shell.project(), shell.patterns());
 }
 
@@ -96,6 +97,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
 
 void MelodeeApp::service(Hardware& hardware) {
     library.service(hardware);
+    store.service(hardware);
     // A short press of Power opens the Exit sheet.
     uint64_t presses = hardware.power.presses();
     if (power_known && presses > power_presses && !hardware.power.pressed()) shell.power_pressed();

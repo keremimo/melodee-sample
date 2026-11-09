@@ -1,0 +1,249 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+// PROJECT (Shift + Sample): projects are files on the SD card, as many as it
+// holds, in folders. The wheel moves; Push on New project starts one, Push
+// on a folder goes in (Shift + Push comes back out), Push on a project
+// opens its sheet: on the open one Save, Save as new, Duplicate, New folder
+// here, Open at start, Delete; on any other Load heads the list. Delete asks
+// once more. Rename and Move to folder wait for a page to type on (open
+// question 9). The amber dot marks unsaved changes.
+#include "melodee/pages/common.h"
+#include "melodee/pages/pages.h"
+#include "melodee/shell/project_store.h"
+#include "melodee/ui/widgets.h"
+#include <cstdio>
+
+namespace melodee {
+namespace {
+using namespace ui;
+constexpr unsigned visible = 7;
+const juce::Colour amber = colour::amber;
+
+enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete };
+
+// The sheet's rows for an entry: the open project's, or another's with Load first.
+unsigned actions(bool open, std::array<Action, 8>& out) {
+    if (open) { out = {Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete}; return 8; }
+    out = {Load, Duplicate, Rename, MoveTo, NewFolder, OpenAtStart, Delete, Delete};
+    return 7;
+}
+const char* action_name(Action a) {
+    static const char* names[] {"Load", "Save", "Save as new", "Rename", "Duplicate", "Move to folder", "New folder here", "Open at start", "Delete"};
+    return names[a];
+}
+
+// The rows: New project, the open project when it has no file yet, then the folder's entries.
+bool unsaved_row(const std::string& path) { return path.empty(); }
+unsigned first_entry(const std::string& path) { return unsaved_row(path) ? 2 : 1; }
+const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const std::string& path) {
+    unsigned first = first_entry(path);
+    return row >= first && row - first < v.entries.size() ? &v.entries[row - first] : nullptr;
+}
+bool on_unsaved(unsigned row, const std::string& path) { return unsaved_row(path) && row == 1; }
+
+void folder_icon(Paint& p, float x, float cy) {
+    juce::Path icon;
+    icon.addRoundedRectangle(x, cy - 4, 12, 9, 1.5f);
+    icon.addRoundedRectangle(x, cy - 5.5f, 5, 3, 1);
+    p.g.setColour(colour::mid); p.g.fillPath(icon);
+}
+
+juce::String free_text(uint64_t bytes) {
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.1f GB FREE", bytes / 1e9);
+    return text;
+}
+
+// Folders first, then projects newest first or by name, as K3 says.
+void sort_view(ProjectStore::View& v, unsigned by_name) {
+    std::stable_sort(v.entries.begin(), v.entries.end(), [&](const ProjectEntry& a, const ProjectEntry& b) {
+        if (a.kind != b.kind) return a.kind == ProjectEntry::Kind::Folder;
+        if (by_name || a.kind == ProjectEntry::Kind::Folder) return a.name < b.name;
+        return a.modified > b.modified;
+    });
+}
+void draw(Paint& p, const Snapshot& s) {
+    auto v = s.projects;
+    sort_view(v, s.ui.project_sort);
+    Header h = header_of(s);
+    juce::String where = v.root.empty() ? juce::String("NO CARD") : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder).toUpperCase());
+    h.left.push_back(pill(where));
+    if (v.free_bytes) h.right.push_back(pill(free_text(v.free_bytes)));
+    bool sheet = s.ui.sheet_open;
+    if (sheet) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    else frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 0, colour::text}, h);
+
+    unsigned count = unsigned(v.entries.size()) + first_entry(s.project_path), cursor = std::min<unsigned>(s.ui.project_cursor, count - 1);
+    unsigned first = cursor < 3 ? 0 : std::min(cursor - 3, count > visible ? count - visible : 0);
+    float x = zone::pad, w = zone::width - 2 * zone::pad;
+    for (unsigned row = 0; row < visible && first + row < count; ++row) {
+        unsigned n = first + row;
+        float y = zone::picture_y + 0.5f + row * (list_row_h + list_row_gap);
+        const auto* e = entry_at(v, n, s.project_path);
+        bool current = n == cursor, open = e && e->kind == ProjectEntry::Kind::Project && e->path == s.project_path;
+        if (current) {
+            p.fill(x, y, w, list_row_h, colour::raised, 4);
+            p.g.saveState(); p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(list_row_h)));
+            p.fill(x, y, 8, list_row_h, colour::text, 4); p.g.restoreState();
+        }
+        float tx = x + 27, cy = y + list_row_h / 2;
+        if (on_unsaved(n, s.project_path)) { // the open project, not on the card yet
+            auto chip_style = caps_text(colour::bg, 7);
+            float cw = p.width("OPEN", chip_style) + 8, right = x + w - 7 - cw;
+            p.fill(right, cy - 5.5f, cw, 11, colour::text, 3);
+            p.text("OPEN", right, cy - 5.5f, cw, 11, chip_style, juce::Justification::centred);
+            auto style = caps_text(amber, 7);
+            float uw = p.width("NOT SAVED", style);
+            p.text("NOT SAVED", right - uw - 6, y, uw + 1, list_row_h, style);
+            p.circle(right - uw - 11, cy, 2, amber);
+            p.text(s.project.name, tx, y, right - uw - 20 - tx, list_row_h, plain(colour::text, 12, Weight::Medium));
+            continue;
+        }
+        if (!e) { // New project
+            p.fill(x + 11, cy - 0.75f, 9, 1.5f, colour::mid); p.fill(x + 14.75f, cy - 4.5f, 1.5f, 9, colour::mid);
+            p.text("New project", tx, y, w - 40, list_row_h, plain(colour::mid, 12, Weight::Medium));
+            continue;
+        }
+        juce::String meta;
+        if (e->kind == ProjectEntry::Kind::Folder) {
+            folder_icon(p, x + 10, cy);
+            meta = juce::String(e->projects) + (e->projects == 1 ? " PROJECT" : " PROJECTS");
+        } else {
+            meta = juce::String(e->tracks) + (e->tracks == 1 ? " TRACK" : " TRACKS") + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(e->tempo / 10) + " BPM";
+        }
+        auto meta_style = caps_text(open ? colour::text : colour::mid, 7);
+        float mw = p.width(meta, meta_style);
+        float right = x + w - 7 - mw;
+        p.text(meta, right, y, mw + 1, list_row_h, meta_style);
+        if (open) {
+            auto chip_style = caps_text(colour::bg, 7);
+            float cw = p.width("OPEN", chip_style) + 8;
+            right -= cw + 6;
+            p.fill(right, cy - 5.5f, cw, 11, colour::text, 3);
+            p.text("OPEN", right, cy - 5.5f, cw, 11, chip_style, juce::Justification::centred);
+            if (s.dirty) {
+                auto style = caps_text(amber, 7);
+                float uw = p.width("UNSAVED", style);
+                right -= uw + 6;
+                p.text("UNSAVED", right, y, uw + 1, list_row_h, style);
+                right -= 7;
+                p.circle(right + 2, cy, 2, amber);
+            }
+        }
+        p.text(e->name, tx, y, right - tx - 4, list_row_h, p.fit(e->name, plain(open ? colour::text : colour::sec, 12, Weight::Medium), right - tx - 4, 8));
+    }
+    if (!v.message.empty() && !sheet)
+        p.text(v.message, x, zone::picture_y + 132, w, 12, caps_text(colour::rec, 7), juce::Justification::centredRight);
+
+    if (sheet) {
+        const auto* e = entry_at(v, cursor, s.project_path);
+        bool unsaved = on_unsaved(cursor, s.project_path);
+        if (!unsaved && (!e || e->kind != ProjectEntry::Kind::Project)) return;
+        bool open = unsaved || e->path == s.project_path;
+        juce::String title = unsaved ? juce::String(s.project.name) : juce::String(e->name);
+        std::array<Action, 8> list {};
+        unsigned n = actions(open, list);
+        MenuSheet m;
+        m.title = title; m.accent = colour::text;
+        if (unsaved) { m.detail = "NOT SAVED"; m.detail_colour = amber; }
+        else if (open && s.dirty) { m.detail = "UNSAVED CHANGES"; m.detail_colour = amber; }
+        for (unsigned k = 0; k < n; ++k) {
+            bool off = list[k] == Rename || list[k] == MoveTo;
+            juce::String name = action_name(list[k]);
+            if (list[k] == Delete && s.ui.delete_armed && k == s.ui.sheet_row) name = "Delete: press again";
+            if (list[k] == OpenAtStart && !unsaved && v.start == e->path) name = "Opens at start";
+            if (unsaved && (list[k] == Duplicate || list[k] == OpenAtStart || list[k] == Delete)) off = true; // no file yet
+            m.rows[k] = {name, "", false, list[k] == Delete, off};
+        }
+        m.count = n; m.current = s.ui.sheet_row % n;
+        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
+        p.dim_zone(zone::knobs_y, zone::knobs_h);
+        wide_sheet(p, m, open ? "OPEN" : "PROJECT", colour::text);
+    }
+}
+
+ProjectStore::View view_of(Context& c) {
+    ProjectStore::View v;
+    if (c.store) c.store->view(v);
+    sort_view(v, c.ui.project_sort);
+    c.ui.project_rows = uint16_t(v.entries.size() + first_entry(c.project_path));
+    return v;
+}
+
+void act(Context& c) {
+    auto v = view_of(c);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+    bool unsaved = on_unsaved(c.ui.project_cursor, c.project_path);
+    if ((!e && !unsaved) || !c.store) return;
+    bool open = unsaved || e->path == c.project_path;
+    std::array<Action, 8> list {};
+    unsigned n = actions(open, list);
+    auto action = list[c.ui.sheet_row % n];
+    if (action != Delete) c.ui.delete_armed = false;
+    if (unsaved && (action == Duplicate || action == OpenAtStart || action == Delete)) return;
+    switch (action) {
+    case Load: c.store->load(e->path); break;
+    case Save: c.save_project_to(unsaved ? c.store->free_path("") : e->path); break;
+    case SaveAsNew: c.save_project_to(c.store->free_path(std::string(c.project.name))); break;
+    case Duplicate: c.store->duplicate(e->path); break;
+    case NewFolder: c.store->new_folder(); break;
+    case OpenAtStart: c.store->open_at_start(e->path); break;
+    case Delete:
+        if (!c.ui.delete_armed) { c.ui.delete_armed = true; return; } // asks once more
+        c.store->remove(e->path);
+        if (open) c.project_path.clear(); // still open, but no longer on the card
+        c.ui.delete_armed = false;
+        break;
+    case Rename: case MoveTo: return; // need a page to type on
+    }
+    c.ui.sheet_open = false;
+    c.store->list(c.project_folder);
+}
+
+void wheel(Context& c, int delta) {
+    if (c.ui.sheet_open) {
+        auto v = view_of(c);
+        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+        std::array<Action, 8> list {};
+        unsigned n = actions(on_unsaved(c.ui.project_cursor, c.project_path) || (e && e->path == c.project_path), list);
+        c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(n) - 1));
+        c.ui.delete_armed = false;
+        return;
+    }
+    auto v = view_of(c);
+    c.ui.project_cursor = uint16_t(std::clamp<int>(c.ui.project_cursor + delta, 0, int(v.entries.size() + first_entry(c.project_path)) - 1));
+}
+
+void push(Context& c) {
+    if (c.ui.sheet_open) { act(c); return; }
+    auto v = view_of(c);
+    if (on_unsaved(c.ui.project_cursor, c.project_path)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false; return; }
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+    if (!e) { // New project: the open one is saved first if it has a file
+        if (c.dirty && !c.project_path.empty()) c.save_project();
+        c.new_project();
+        c.open(PageId::Stage);
+        return;
+    }
+    if (e->kind == ProjectEntry::Kind::Folder) {
+        c.project_folder = c.project_folder.empty() ? e->name : c.project_folder + "/" + e->name;
+        c.ui.project_cursor = 0;
+        if (c.store) c.store->list(c.project_folder);
+        return;
+    }
+    c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false;
+}
+
+void soft(Context& c, int key) {
+    if (c.ui.sheet_open) {
+        if (key == 0) { c.ui.sheet_open = false; c.ui.delete_armed = false; }
+        if (key == 2) act(c);
+        return;
+    }
+    (void)key; // Settings and About come with their own boards
+}
+} // namespace
+
+const PageSpec project_page {draw, play_pad, wheel, push, soft, [](Context&, int) {}};
+
+} // namespace melodee

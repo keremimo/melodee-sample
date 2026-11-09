@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/engine_host.h"
+#include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
@@ -33,6 +34,7 @@ private:
     melodee::EngineHost host;
     melodee::Shell shell;
     melodee::SampleLibrary library; // service thread: files on the card
+    melodee::ProjectStore store;    // service thread: projects on the card
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread

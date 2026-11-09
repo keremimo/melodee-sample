@@ -121,6 +121,14 @@ void SampleLibrary::save_take() {
 }
 
 void SampleLibrary::read(const Request& request) {
+    if (!request.path[0]) { // an empty slot in the project now: nothing plays from it
+        if (host.offer_sample(request.slot, nullptr)) {
+            std::lock_guard<std::mutex> guard(lock);
+            known.slots[request.slot] = LoadedSample {};
+            changes.fetch_add(1, std::memory_order_release);
+        }
+        return;
+    }
     auto data = std::make_unique<SampleData>();
     auto error = read_wav(request.path, *data);
     LoadedSample loaded;

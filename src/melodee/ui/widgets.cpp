@@ -106,7 +106,7 @@ void wide_sheet(Paint& p, const MenuSheet& m, const juce::String& chip_text, juc
     p.fill(x + 13, y + 10, cw, 12.5f, chip_colour, 3);
     p.text(chip_text, x + 13, y + 10, cw, 12.5f, chip, juce::Justification::centred);
     float tw = p.text(m.title, x + 13 + cw + 5, y + 8, 80, 16, plain(colour::text, 11, Weight::SemiBold));
-    p.text(m.detail, x + 13 + cw + 5 + tw + 6, y + 8, w, 16, caps_text(colour::mid, 7));
+    p.text(m.detail, x + 13 + cw + 5 + tw + 6, y + 8, w, 16, caps_text(m.detail_colour, 7));
     float column = (w - 14) / 2, row_h = 25;
     for (unsigned n = 0; n < m.count; ++n) {
         const auto& r = m.rows[n];

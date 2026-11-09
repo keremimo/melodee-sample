@@ -130,6 +130,10 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::FileJump:
             c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
             break;
+        case Kind::ProjectJump:
+            c.label = "JUMP"; c.value = juce::String(b.value + 1); c.unit = "/ " + juce::String(b.max + 1);
+            break;
+        case Kind::ProjectSort: c.label = "SORT"; c.value = b.value ? "Name" : "Newest"; break;
         case Kind::RecThreshold:
             c.label = "START AT";
             if (b.value <= -60) c.value = "Now";

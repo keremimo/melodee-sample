@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/project.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/snapshot.h"
 #include "melodee/shell/ui_state.h"
@@ -48,6 +49,7 @@ public:
     Context& context() { return context_; }
     // The app's sample library (service thread); the shell follows its changes.
     void set_library(SampleLibrary* library) { library_ = library; context_.library = library; }
+    void set_store(ProjectStore* store) { store_ = store; context_.store = store; }
 
 private:
     void button(SurfaceButton button, bool pressed);
@@ -69,7 +71,10 @@ private:
     SampleLibrary* library_ = nullptr;
     unsigned library_seen = ~0u;
     bool pad_bank_used = false;
-    std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}; // copies for summary()
+    ProjectStore* store_ = nullptr;
+    unsigned store_seen = ~0u;
+    int leave_after_save = -1; // the saves count to wait for before leaving
+    std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}, tempo_now {0}; // copies for summary()
 };
 
 // The project Melodee starts with: four tracks with sounds and a bass line.
