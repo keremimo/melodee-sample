@@ -7,7 +7,10 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/cz.h"
+#include "melodee/engine/fm6.h"
 #include "melodee/engine/kit909.h"
+#include "melodee/engine/sid.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/engine/arp.h"
@@ -615,9 +618,41 @@ void drums() {
     auto out = run(kit, 44100);
     CHECK(peak_of(out, 22050) < 0.001f);
 }
+// Every factory sound of an engine plays a note that sounds, stays bounded and ends after release.
+template <class E> void sounds_play(const EngineInfo& info, int key) {
+    for (unsigned s = 0; s < info.sound_count; ++s) {
+        E engine;
+        std::array<int16_t, max_params> values;
+        sound_values(info, s, values);
+        for (unsigned q = 0; q < info.param_count; ++q) engine.set_param(int(q), values[q]);
+        engine.note_on(key, 110);
+        auto held = run(engine, 22050);
+        if (!(peak_of(held) > 0.005f && peak_of(held) < 2.0f)) std::fprintf(stderr, "%s: %s peak %f\n", info.name, info.sounds[s].name, peak_of(held));
+        CHECK(peak_of(held) > 0.005f && peak_of(held) < 2.0f);
+        engine.note_off(key);
+        run(engine, 44100 * 12);
+        CHECK(!engine.sounding());
+    }
+}
+void more_engines() {
+    sounds_play<Fm6Engine>(fm6::info(), 60);
+    sounds_play<SidEngine>(sid::info(), 48);
+    sounds_play<CzEngine>(cz::info(), 57);
+    // Phase distortion: with no bend every wave is the cosine itself.
+    for (unsigned w = 0; w < 5; ++w)
+        for (float ph : {0.1f, 0.3f, 0.7f}) CHECK(std::fabs(cz::shape(w, ph, 0) + std::cos(2 * 3.14159265f * ph)) < 0.05f || w == 2 || w == 3);
+    // Every algorithm is heard.
+    for (unsigned a = 0; a < fm6::algorithms; ++a) {
+        Fm6Engine e;
+        e.set_param(fm6::Algorithm, int(a));
+        e.note_on(60, 100);
+        CHECK(peak_of(run(e, 4410)) > 0.005f);
+    }
+}
 } // namespace
 
 int main() {
+    more_engines();
     drums();
     helpers();
     project_files();

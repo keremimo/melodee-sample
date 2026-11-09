@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/engine/sid.h"
+#include <algorithm>
+#include <cmath>
+
+namespace melodee {
+namespace sid {
+namespace {
+const char* const waves[] {"Triangle", "Saw", "Pulse", "Noise"};
+const char* const models[] {"8580", "6581"};
+const char* const modes[] {"Low pass", "Band pass", "High pass", "Off"};
+constexpr ParamInfo P(const char* label, int min, int max, int initial, Format format = Format::Percent, const char* const* choices = nullptr) {
+    return {label, int16_t(min), int16_t(max), int16_t(initial), format, choices};
+}
+const ParamInfo params[Count] {
+    P("WAVE", 0, 3, 2, Format::Choice, waves), P("PULSE W", 5, 95, 30), P("DETUNE", -24, 24, 0, Format::Semitones),
+    P("RING", 0, 1, 0, Format::Switch), P("SYNC", 0, 1, 0, Format::Switch), P("MODEL", 0, 1, 0, Format::Choice, models),
+    P("PWM", 0, 100, 20), P("PWM RATE", 0, 100, 35, Format::Rate), P("CRUSH", 0, 100, 0),
+    P("CUTOFF", 0, 100, 48), P("RESO", 0, 100, 55), P("MODE", 0, 3, 0, Format::Choice, modes), P("ENV > FILT", 0, 100, 40),
+    P("KEY TRACK", 0, 100, 50),
+    P("ATTACK", 0, 100, 0, Format::Time), P("DECAY", 0, 100, 45, Format::Time), P("SUSTAIN", 0, 100, 60), P("RELEASE", 0, 100, 30, Format::Time),
+};
+constexpr int8_t _ = -1;
+const EditPage pages[] {
+    {"Oscillator", "OSC", Picture::Bars, {{{Wave, PulseWidth, Detune}, {Ring, Sync, Model}, {_, _, _}}}},
+    {"Pulse and grit", "PWM", Picture::Bars, {{{PwmDepth, PwmRate, Crush}, {_, _, _}, {_, _, _}}}},
+    {"Filter", "FILTER", Picture::Bars, {{{Cutoff, Resonance, Mode}, {EnvAmount, KeyTrack, _}, {_, _, _}}}},
+    {"Envelope", "ENVELOPE", Picture::Bars, {{{Attack, Decay, Sustain}, {Release, _, _}, {_, _, _}}}},
+};
+const Sound sounds[] {
+    {"INIT VOICE", {{{-1, 0}}}},
+    {"RUBBER BASS", {{{Wave, 2}, {PulseWidth, 30}, {Cutoff, 35}, {Resonance, 65}, {EnvAmount, 60}, {Decay, 40}, {Sustain, 30}, {Model, 1}, {-1, 0}}}},
+    {"CHIP LEAD", {{{Wave, 2}, {PulseWidth, 50}, {PwmDepth, 45}, {Cutoff, 80}, {Resonance, 20}, {Sustain, 85}, {-1, 0}}}},
+    {"ARP PLUCK", {{{Wave, 1}, {Cutoff, 40}, {EnvAmount, 70}, {Decay, 30}, {Sustain, 0}, {Release, 20}, {-1, 0}}}},
+    {"PWM PAD", {{{Wave, 2}, {PwmDepth, 70}, {PwmRate, 25}, {Attack, 60}, {Release, 65}, {Sustain, 90}, {Cutoff, 60}, {-1, 0}}}},
+    {"SYNC SCREAM", {{{Wave, 1}, {Sync, 1}, {Detune, 12}, {Cutoff, 75}, {Resonance, 40}, {Sustain, 90}, {Model, 1}, {-1, 0}}}},
+    {"RING BELL", {{{Wave, 0}, {Ring, 1}, {Detune, 7}, {Mode, 3}, {Decay, 70}, {Sustain, 0}, {Release, 60}, {-1, 0}}}},
+    {"NOISE HIT", {{{Wave, 3}, {Mode, 2}, {Cutoff, 60}, {Decay, 25}, {Sustain, 0}, {Release, 15}, {-1, 0}}}},
+    {"LO-FI KEYS", {{{Wave, 0}, {Crush, 70}, {Cutoff, 70}, {Decay, 55}, {Sustain, 40}, {-1, 0}}}},
+};
+} // namespace
+
+const EngineInfo& info() {
+    static const EngineInfo engine {EngineKind::Sid, "SID", true, params, Count, pages, sizeof(pages) / sizeof(pages[0]),
+                                    {Cutoff, Resonance, PulseWidth}, sounds, sizeof(sounds) / sizeof(sounds[0])};
+    return engine;
+}
+} // namespace sid
+
+using namespace sid;
+
+SidEngine::SidEngine() { for (unsigned n = 0; n < Count; ++n) p[n] = info().params[n].initial; update(); }
+void SidEngine::set_param(int id, int value) {
+    if (id < 0 || id >= Count) return;
+    p[size_t(id)] = std::clamp<int>(value, info().params[id].min, info().params[id].max);
+    dirty = true;
+}
+void SidEngine::update() {
+    dirty = false;
+    using dsp::Envelope;
+    shape = {Envelope::coefficient(time_seconds(p[Attack])), Envelope::coefficient(time_seconds(p[Decay])),
+             Envelope::coefficient(time_seconds(p[Release])), p[Sustain] / 100.0f};
+}
+
+void SidEngine::note_on(int key, int velocity) {
+    if (dirty) update();
+    Voice* v = nullptr;
+    for (auto& x : voices) if (x.key == key) { v = &x; break; }
+    if (!v) for (auto& x : voices) if (x.key < 0) { v = &x; break; }
+    if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
+    float s1 = v->s1, s2 = v->s2;
+    *v = Voice {};
+    v->s1 = s1 * 0.5f; v->s2 = s2 * 0.5f;
+    v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f;
+    v->env.gate(true);
+}
+void SidEngine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.env.gate(false); } }
+void SidEngine::all_notes_off() { for (auto& v : voices) if (v.held) { v.held = false; v.env.gate(false); } }
+void SidEngine::silence() { for (auto& v : voices) v = Voice {}; }
+bool SidEngine::sounding() const { for (auto& v : voices) if (v.key >= 0) return true; return false; }
+
+void SidEngine::render(float* out, unsigned frames) {
+    if (dirty) update();
+    bool old_chip = p[Model] == 1;
+    float crush = p[Crush] / 100.0f, steps = std::exp2(12 - crush * 9); // down to three bits at the top
+    for (unsigned start = 0; start < frames; start += 16) {
+        unsigned n = std::min(16u, frames - start);
+        lfo += rate_hertz(p[PwmRate]) * n / dsp::sample_rate;
+        lfo -= std::floor(lfo);
+        float width = std::clamp(p[PulseWidth] / 100.0f + p[PwmDepth] / 100.0f * 0.45f * std::sin(2 * dsp::pi * lfo), 0.03f, 0.97f);
+        for (auto& v : voices) {
+            if (v.key < 0) continue;
+            float key = v.key + bend * 2;
+            float dt = std::min(dsp::midi_hz(key) / dsp::sample_rate, 0.45f), dt2 = std::min(dsp::midi_hz(key + p[Detune]) / dsp::sample_rate, 0.45f);
+            // The filter at this block: cutoff, the envelope's push and key tracking, in octaves.
+            float octaves = p[Cutoff] / 100.0f * (old_chip ? 8.5f : 9.6f) + v.env.level * p[EnvAmount] / 100.0f * 5 + (key - 60) / 12.0f * p[KeyTrack] / 100.0f;
+            float g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate * 0.45f) / dsp::sample_rate);
+            float k = 2 - 1.95f * p[Resonance] / 100.0f;
+            for (unsigned f = 0; f < n; ++f) {
+                v.phase2 += dt2;
+                bool wrap2 = v.phase2 >= 1;
+                if (wrap2) v.phase2 -= 1;
+                v.phase += dt;
+                if (v.phase >= 1 || (p[Sync] && wrap2)) v.phase -= std::floor(v.phase);
+                // Noise steps sixteen times a cycle, so higher notes hiss brighter.
+                if (p[Wave] == 3 && unsigned(v.phase * 16) != unsigned((v.phase - dt) * 16)) v.noise = noise.next();
+                float x = 0;
+                switch (p[Wave]) {
+                case 0: x = 1 - 4 * std::fabs(v.phase - 0.5f); if (p[Ring] && v.phase2 >= 0.5f) x = -x; break; // ring: the second's sign flips it
+                case 1: x = 2 * v.phase - 1 - dsp::blep(v.phase, dt); break;
+                case 2: { float p2 = v.phase + 1 - width; p2 -= std::floor(p2);
+                          x = (v.phase < width ? 1.0f : -1.0f) + dsp::blep(v.phase, dt) - dsp::blep(p2, dt); break; }
+                default: x = v.noise; break;
+                }
+                if (crush > 0) x = std::round(x * steps) / steps;
+                if (old_chip) x = dsp::soft_clip(x * 1.6f) * 0.75f;
+                float y = x;
+                if (p[Mode] < 3) {
+                    float hp = (x - (k + g) * v.s1 - v.s2) / (1 + g * (g + k));
+                    float bp = g * hp + v.s1, lp = g * bp + v.s2;
+                    v.s1 = g * hp + bp; v.s2 = g * bp + lp;
+                    y = p[Mode] == 0 ? lp : p[Mode] == 1 ? bp : hp;
+                }
+                out[start + f] += y * v.env.next(shape) * (0.4f + 0.6f * v.velocity) * 0.3f;
+            }
+            if (!v.env.active()) v.key = -1;
+        }
+    }
+}
+
+} // namespace melodee

@@ -229,8 +229,20 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   pulse with hard sync, saw/triangle/pulse B with low-frequency mode,
   noise, a zero-delay four-pole ladder, two ADSRs, LFO, wheel on the fader,
   poly mod, glide, unison, drift), eight voices a track, ten Edit pages and
-  thirteen factory sounds made for it. FM6, CZ, SID, the 909 kit and the
-  sampler are named in the model but not written yet.
+  thirteen factory sounds made for it.
+- **FM6:** six sine operators (from a table) with ratio, fine, level, an
+  ADSR and velocity each; eight algorithms (stack, two stacks, three and
+  three, three pairs, stack and two, one to five, pair and four, all heard)
+  with feedback on operator 6; eight voices, seven Edit pages, nine sounds.
+- **SID:** a chip voice: triangle, saw, pulse or noise, pulse width with its
+  own LFO, ring and sync against a second oscillator, crush, a multimode
+  filter with envelope and key tracking, the 8580 or the grittier 6581;
+  six voices, four pages, nine sounds.
+- **CZ:** phase distortion: eight waves bent by the DCW and its envelope (a
+  pure sine at no bend), a second wave alternating each cycle, lines 1, 2,
+  1+1' and 1+2' with detune and octave, key follow, DCA envelope; eight
+  voices, four pages, eight sounds.
+  Sounds' K1 steps through all six engines.
 - **909:** a drum kit written here in the shape of the classic machine:
   kick and toms as sines with a falling pitch, snare and clap as tone and
   filtered noise, rim from two resonators, hats and cymbals from six

@@ -2,7 +2,10 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/prophet_params.h"
+#include "melodee/engine/cz.h"
+#include "melodee/engine/fm6.h"
 #include "melodee/engine/kit909.h"
+#include "melodee/engine/sid.h"
 #include "melodee/engine/sampler.h"
 #include <algorithm>
 #include <cmath>
@@ -13,9 +16,6 @@ namespace melodee {
 const EngineInfo& engine_info(EngineKind kind) {
     // Engines still to be written keep their name so a project can say what it needs.
     static const EngineInfo none {EngineKind::None, "EMPTY", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
-    static const EngineInfo fm6 {EngineKind::Fm6, "FM6", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
-    static const EngineInfo cz {EngineKind::Cz, "CZ", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
-    static const EngineInfo sid {EngineKind::Sid, "SID", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
     // The sampler's kit-wide values; each pad's own live in Track::pads.
     static const char* const filter_types[] {"Low pass", "Band pass", "High pass"};
     static const ParamInfo kit_params[] {
@@ -32,9 +32,9 @@ const EngineInfo& engine_info(EngineKind kind) {
                                      {sampler::Tune, sampler::Filter, sampler::Decay}, kits, 1};
     switch (kind) {
     case EngineKind::Prophet: return prophet::info();
-    case EngineKind::Fm6: return fm6;
-    case EngineKind::Cz: return cz;
-    case EngineKind::Sid: return sid;
+    case EngineKind::Fm6: return fm6::info();
+    case EngineKind::Cz: return cz::info();
+    case EngineKind::Sid: return sid::info();
     case EngineKind::Kit909: return kit909::info();
     case EngineKind::Sampler: return sampler;
     default: return none;

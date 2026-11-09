@@ -3,7 +3,10 @@
 #pragma once
 #include "melodee/engine/arp.h"
 #include "melodee/engine/command.h"
+#include "melodee/engine/cz.h"
+#include "melodee/engine/fm6.h"
 #include "melodee/engine/kit909.h"
+#include "melodee/engine/sid.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/engine/sampler.h"
@@ -77,6 +80,9 @@ private:
         ProphetEngine prophet;
         SamplerEngine sampler;
         Kit909Engine kit;
+        Fm6Engine fm;
+        SidEngine sid;
+        CzEngine cz;
         Engine* engine = nullptr;
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
         bool mute = false, solo = false;
