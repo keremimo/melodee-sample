@@ -65,4 +65,41 @@ service are unchanged.
 
 ## Status
 
-Planned. This section says what exists as milestones land.
+Milestones 1–5 exist: the app starts into Stage, and Stage, Keys, Mix,
+Sounds, Edit and Steps work with the Shift layer and the Exit sheet.
+
+- **Engine:** PROPHET, a two-oscillator polysynth written here (saw and
+  pulse with hard sync, saw/triangle/pulse B with low-frequency mode,
+  noise, a zero-delay four-pole ladder, two ADSRs, LFO, wheel on the fader,
+  poly mod, glide, unison, drift), eight voices a track, ten Edit pages and
+  thirteen factory sounds made for it. FM6, CZ, SID, the 909 kit and the
+  sampler are named in the model but not written yet.
+- **Host:** sixteen track slots, level / pan / mute / solo, a pattern mirror,
+  a sample-accurate step clock with swing, chance, accent and tie, meters
+  and a soft-clipped master after main volume. The send is stored, not heard
+  (no buses yet).
+- **Shell:** printed buttons (Sample cycles Stage → Keys → Mix, SEQ, Sample
+  Select, 16 Levels, Play, Stop, Seq Record, Tap Tempo, Minus / Plus, Erase),
+  soft keys, wheel and Push, Shift + Push back, Shift + wheel fine edit,
+  Erase + pot to the initial value, Shift + Erase clears the pattern, Shift +
+  Stop all notes off, Pad Bank + pad picks a track, Mute + pad mutes and with
+  Shift solos, pot pickup, the fader as mod wheel, pad / fader / button
+  lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
+- **Shift layer:** drawn as on its board. Of its second jobs, Erase, Stop and
+  Push work; the others wait for their pages.
+- **Remote:** `--ctl melodee-press BUTTON` presses a button (lower case,
+  spaces as dashes: `play`, `seq`, `wheel-push`, `top-right`), for checks
+  without hands on the device.
+- **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
+  sounds, edit, mix, steps, shift and exit at 1× and 2× (the 2× ones line up
+  with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
+  the starting project and checks the level. `./build.sh` runs both.
+
+Not yet: saving (the Exit sheet says so), Roll, Motion, the page map, the
+mod matrix, Patterns / Song / Length, effects and buses, punch, the sampler
+and chop, projects on the SD card, Tempo / Chord / Arp / Capture, poly
+aftertouch, favourites.
+
+Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
+events are single constants in `model/limits.h`; the Pad Bank and Mute holds
+are built as drawn (question 3).
