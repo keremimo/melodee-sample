@@ -63,6 +63,13 @@ private:
     std::array<Svf, 2> svf {};
     std::array<std::array<float, 6>, 2> allpass {};
     float phaser_l = 0, phaser_r = 0;
+    // Shimmer: an octave-up shifter in the reverb's feedback; Spit: its spits; Formant: three band passes a side.
+    unsigned shift_at = 0, spit_left = 0;
+    float shift_phase = 0, shimmer_l = 0, shimmer_r = 0, spit_gain = 1;
+    uint32_t seed = 0x9e3779b9u;
+    std::array<Svf, 6> formant {};
+    std::array<float, 3> formant_g {};
+    float formant_k = 1;
     // Reverb: four combs and two allpasses a side, after a predelay, inside `memory`.
     std::array<unsigned, 8> comb_length {}, comb_at {};
     std::array<float, 8> comb_filter {};

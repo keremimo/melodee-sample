@@ -118,12 +118,16 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   its one send goes into the bus it picks (A–D, 6 slots each, with a
   return), and everything meets in the master chain (6 slots) before main
   volume. Slot counts and the four buses are constants in
-  `model/limits.h` (open question 5). The effects are written here, 22 of
-  the picker's 28: Room, Reverb, Plate; Echo, Tape echo, Ping pong; Chorus,
-  Flanger, Phaser, Auto-pan, Tremolo; Drive, Tape, Crush, Fuzz; EQ, Filter,
-  Width; Compressor, Gate, Transient, Limiter. Shimmer, Looper, Pedal
-  chorus, Pedal phaser, Spit and Formant are listed dim and cannot be added
-  yet. Delay memory (reverbs, echoes, chorus, flanger, tape) comes from a
+  `model/limits.h` (open question 5). The effects are written here, all 28
+  of the picker's: Room, Reverb, Plate, Shimmer (the reverb with an
+  octave-up shifter in its feedback); Echo, Tape echo, Ping pong, Looper
+  (up to 1.5 s, RECORD overdubs, KEEP fades the old layers); Chorus,
+  Flanger, Phaser, Pedal chorus (one dark, slightly driven line read twice),
+  Pedal phaser (four stages, COLOUR adds feedback), Auto-pan, Tremolo;
+  Drive, Tape, Crush, Spit (now and then a few milliseconds held, crushed
+  and jumping in level), Fuzz; EQ, Filter, Formant (three band passes
+  morphing through A E I O U, SHIFT moves them), Width; Compressor, Gate,
+  Transient, Limiter. Delay memory (reverbs, echoes, chorus, flanger, tape) comes from a
   pool of 48 blocks of 1.5 s made at start, so the audio thread never
   allocates; past 48 such effects, a new one passes sound through.
 - **Effects pages** (KNOB FX steps Track → Sends → Bus → Master; B1/B3 walk
@@ -296,8 +300,8 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: typed names (markers, projects), Settings and About, Seq
-Record writing launches and punches into the song, six of the effects, pad
-effects (PadFX chains), time-stretch, favourites.
+Record writing launches and punches into the song, pad effects (PadFX
+chains), time-stretch, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

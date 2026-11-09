@@ -317,6 +317,37 @@ void effects() {
             effect.set_kind(EffectKind::None, pool); // gives its delay memory back
         }
     }
+    // Looper: what is recorded on one pass plays on the next with the input gone.
+    {
+        Effect looper;
+        looper.set_kind(EffectKind::Looper, pool);
+        looper.set_param(1, 1); // record
+        unsigned length = unsigned(time_seconds(70) * 44100);
+        std::vector<float> l(1), r(1);
+        for (unsigned n = 0; n < length; ++n) { l[0] = r[0] = n < 2000 ? 0.5f : 0; looper.process(l.data(), r.data(), 1); }
+        looper.set_param(1, 0);
+        float heard = 0;
+        for (unsigned n = 0; n < 2000; ++n) { l[0] = r[0] = 0; looper.process(l.data(), r.data(), 1); heard = std::max(heard, std::fabs(l[0])); }
+        CHECK(heard > 0.4f);
+        looper.set_kind(EffectKind::None, pool);
+    }
+    // Formant: an 800 Hz tone sits on A's first formant and between I's (280 and 2200 Hz).
+    {
+        auto level = [&](int vowel) {
+            Effect formant;
+            formant.set_kind(EffectKind::Formant, pool);
+            formant.set_param(0, vowel);
+            std::vector<float> l(128), r(128);
+            float peak = 0;
+            for (unsigned b = 0; b < 100; ++b) {
+                for (unsigned f = 0; f < 128; ++f) l[f] = r[f] = 0.3f * std::sin(6.2831853f * 800 * float(b * 128 + f) / 44100.0f);
+                formant.process(l.data(), r.data(), 128);
+                if (b > 50) for (unsigned f = 0; f < 128; ++f) peak = std::max(peak, std::fabs(l[f]));
+            }
+            return peak;
+        };
+        CHECK(level(0) > level(50) * 2);
+    }
     // When the pool is used up, a further delay effect passes sound through untouched.
     std::vector<Effect> many(DelayPool::blocks + 1);
     for (auto& e : many) e.set_kind(EffectKind::Echo, pool);

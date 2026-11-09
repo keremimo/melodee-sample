@@ -13,10 +13,15 @@ float db(float decibels) { return std::pow(10.0f, decibels / 20.0f); }
 float follow(float seconds) { return std::exp(-1.0f / std::max(seconds * fs, 1.0f)); }
 bool needs_memory(K k) {
     return k == K::Room || k == K::Reverb || k == K::Plate || k == K::Echo || k == K::TapeEcho || k == K::PingPong ||
-           k == K::Chorus || k == K::Flanger || k == K::Tape;
+           k == K::Chorus || k == K::Flanger || k == K::Tape || k == K::Shimmer || k == K::Looper || k == K::PedalChorus;
 }
 // Where each part of a reverb sits inside its block (floats).
 constexpr unsigned pre_length = 4410, comb_base = 2 * pre_length, comb_room = 1600, pass_base = comb_base + 8 * comb_room, pass_room = 700;
+// Shimmer's shifter after the reverb's parts: a short line a side.
+constexpr unsigned shift_base = pass_base + 4 * pass_room, shift_room = 4096;
+static_assert(shift_base + 2 * shift_room < DelayPool::block_floats, "shimmer fits in its block");
+// Formants of five vowels (A E I O U), Hz.
+constexpr float vowel_formants[5][3] {{800, 1150, 2900}, {400, 1700, 2600}, {280, 2200, 2950}, {450, 800, 2830}, {325, 700, 2530}};
 
 // RBJ cookbook filters.
 void shelf(float* out, float hz, float gain_db, bool high) {
@@ -59,6 +64,7 @@ void Effect::set_kind(EffectKind kind, DelayPool& pool) {
     for (unsigned n = 0; n < effect_params; ++n) p[n] = info.params[n].label ? info.params[n].initial : 0;
     write = 0; lfo = 0; env = env2 = 0; gain = 1; hold_l = hold_r = tone_l = tone_r = 0; hold_count = 0;
     svf = {}; allpass = {}; phaser_l = phaser_r = 0; comb_filter = {}; comb_at = {}; pass_at = {};
+    shift_at = spit_left = 0; shift_phase = shimmer_l = shimmer_r = 0; spit_gain = 1; formant = {};
     for (auto& q : eq) q.z1 = q.z2 = 0;
     update();
 }
@@ -76,7 +82,7 @@ void Effect::update() {
     auto pct = [&](unsigned n) { return p[n] / 100.0f; };
     mix = 1;
     switch (current) {
-    case K::Room: case K::Reverb: case K::Plate: {
+    case K::Room: case K::Reverb: case K::Plate: case K::Shimmer: {
         float scale = (current == K::Plate ? 0.55f : current == K::Room ? 0.6f : 0.8f) + pct(0) * 0.4f;
         static const unsigned combs[] {1116, 1188, 1277, 1356}, passes[] {556, 441};
         float spread = 1 + pct(5) * 0.025f;
@@ -93,6 +99,31 @@ void Effect::update() {
         damp = pct(2) * (current == K::Plate ? 0.3f : 0.6f);
         mix = pct(3);
         predelay = std::min(pre_length - 1, unsigned(pct(4) * 0.1f * fs));
+        if (current == K::Shimmer) { predelay = 0; d = pct(4) * 0.5f; } // how much of the octave goes round again
+        break;
+    }
+    case K::Looper:
+        delay = std::clamp(unsigned(time_seconds(p[0]) * fs), 64u, DelayPool::half - 1);
+        write %= delay;
+        a = pct(2); mix = pct(3);
+        break;
+    case K::PedalChorus:
+        a = rate_hertz(p[0]) * 0.6f; b = pct(1);
+        c = 1 - std::exp(-two_pi * (1500 + pct(2) * 7000) / fs); // the dark wet of a bucket brigade
+        mix = pct(3);
+        break;
+    case K::PedalPhaser: a = rate_hertz(p[0]) * 0.5f; b = pct(1); c = p[2] ? 0.6f : 0; mix = pct(3); break;
+    case K::Spit: a = pct(0); b = pct(1); mix = pct(2); break;
+    case K::Formant: {
+        float at = pct(0) * 4, shift = std::exp2(p[2] / 12.0f);
+        unsigned v = std::min(3u, unsigned(at));
+        float frac = at - float(v);
+        for (unsigned n = 0; n < 3; ++n) {
+            float hz = (vowel_formants[v][n] + (vowel_formants[v + 1][n] - vowel_formants[v][n]) * frac) * shift;
+            formant_g[n] = std::tan(dsp::pi * std::min(hz, fs * 0.45f) / fs);
+        }
+        formant_k = 1.2f - pct(1) * 1.1f; // narrower bands with more RESO
+        mix = pct(3);
         break;
     }
     case K::Echo: case K::TapeEcho: case K::PingPong:
@@ -195,6 +226,103 @@ void Effect::process(float* left, float* right, unsigned frames) {
             reverb(wet_l, wet_r);
             ++write;
             break;
+        case K::Shimmer: {
+            // The reverb hears the input and its own sound an octave up.
+            wet_l = l + shimmer_l * d; wet_r = r + shimmer_r * d;
+            reverb(wet_l, wet_r);
+            ++write;
+            // Octave up: two taps read twice as fast as the line is written,
+            // each faded in and out over the window, half a window apart.
+            float* sl = memory + shift_base;
+            float* sr = sl + shift_room;
+            sl[shift_at] = wet_l; sr[shift_at] = wet_r;
+            constexpr float window = 2048;
+            shift_phase += 1; if (shift_phase >= window) shift_phase -= window;
+            float out[2] {0, 0};
+            for (float offset : {0.0f, window / 2}) {
+                float ph = std::fmod(shift_phase + offset, window), back = window - ph + 1;
+                float g = std::sin(dsp::pi * ph / window);
+                float at = float(shift_at) + shift_room - back;
+                unsigned i = unsigned(at);
+                float fr = at - float(i);
+                const float* lines[2] {sl, sr};
+                for (unsigned side = 0; side < 2; ++side) {
+                    float x0 = lines[side][i % shift_room], x1 = lines[side][(i + 1) % shift_room];
+                    out[side] += (x0 + (x1 - x0) * fr) * g * g; // sin² windows half a window apart sum to one
+                }
+            }
+            if (++shift_at >= shift_room) shift_at = 0;
+            shimmer_l = out[0]; shimmer_r = out[1];
+            break;
+        }
+        case K::Looper: {
+            // The loop plays under the input; RECORD on adds the input to it, KEEP fading what was there.
+            float loop_l = line_l[write], loop_r = line_r[write];
+            wet_l = l + loop_l; wet_r = r + loop_r;
+            if (p[1]) { line_l[write] = dsp::soft_clip(loop_l * a + l); line_r[write] = dsp::soft_clip(loop_r * a + r); } // layers never run away
+            if (++write >= delay) write = 0;
+            break;
+        }
+        case K::PedalChorus: {
+            lfo += a / fs; lfo -= std::floor(lfo);
+            float tri = 1 - 4 * std::fabs(lfo - 0.5f); // -1..1
+            line_l[write] = (l + r) * 0.5f;            // one line, read twice for width
+            float base = 0.009f * fs, depth = 0.0045f * fs * b;
+            float w1 = dsp::soft_clip(delayed(line_l, write, base + depth * tri) * 1.3f) / 1.3f;
+            float w2 = dsp::soft_clip(delayed(line_l, write, base - depth * tri) * 1.3f) / 1.3f;
+            tone_l += (w1 - tone_l) * c; tone_r += (w2 - tone_r) * c;
+            wet_l = (l + tone_l) * 0.7f; wet_r = (r + tone_r) * 0.7f;
+            if (++write >= DelayPool::half) write = 0;
+            break;
+        }
+        case K::PedalPhaser: {
+            lfo += a / fs; lfo -= std::floor(lfo);
+            if ((f & 15) == 0) {
+                float tri = 1 - 2 * std::fabs(2 * lfo - 1); // 0..1
+                float hz = 160 * std::exp2(b * 3.8f * tri);
+                float t = std::tan(dsp::pi * hz / fs);
+                env2 = (t - 1) / (t + 1);
+            }
+            float x[2] {l + phaser_l * c, r + phaser_r * c};
+            for (unsigned side = 0; side < 2; ++side)
+                for (unsigned n = 0; n < 4; ++n) { auto& s = allpass[side][n]; float y = env2 * x[side] + s; s = x[side] - env2 * y; x[side] = y; }
+            phaser_l = x[0]; phaser_r = x[1];
+            wet_l = (l + x[0]) * 0.5f; wet_r = (r + x[1]) * 0.5f;
+            break;
+        }
+        case K::Spit: {
+            // Now and then a spit: a few milliseconds held, crushed and jumping in level.
+            seed = seed * 1664525u + 1013904223u;
+            if (!spit_left && (seed >> 8) % 100000 < unsigned(a * a * 120)) {
+                spit_left = 90 + (seed >> 4) % 900;
+                spit_gain = 0.4f + float((seed >> 12) % 100) / 60.0f;
+            }
+            float steps = std::exp2(10 - b * 7);
+            if (spit_left) {
+                --spit_left;
+                unsigned every = 2 + unsigned(b * 14);
+                if (hold_count++ % every == 0) { hold_l = std::round(l * steps) / steps; hold_r = std::round(r * steps) / steps; }
+                wet_l = dsp::soft_clip(hold_l * spit_gain * 2) * 0.6f; wet_r = dsp::soft_clip(hold_r * spit_gain * 2) * 0.6f;
+            } else {
+                wet_l = dsp::soft_clip(l * (1 + b)) / (1 + b * 0.5f); wet_r = dsp::soft_clip(r * (1 + b)) / (1 + b * 0.5f);
+            }
+            break;
+        }
+        case K::Formant: {
+            static constexpr float gains[3] {1.0f, 0.6f, 0.3f};
+            float x[2] {l, r}, y[2] {0, 0};
+            for (unsigned side = 0; side < 2; ++side)
+                for (unsigned n = 0; n < 3; ++n) {
+                    auto& s = formant[side * 3 + n];
+                    float g = formant_g[n];
+                    float hp = (x[side] - (formant_k + g) * s.s1 - s.s2) / (1 + g * (g + formant_k));
+                    float bp = g * hp + s.s1, lp = g * bp + s.s2;
+                    s.s1 = g * hp + bp; s.s2 = g * bp + lp;
+                    y[side] += bp * formant_k * gains[n] * 1.6f; // band pass at unit peak, then weighted
+                }
+            wet_l = y[0]; wet_r = y[1];
+            break;
+        }
         case K::Echo: case K::TapeEcho: case K::PingPong: {
             float back = float(delay);
             if (current == K::TapeEcho) { lfo += 0.6f / fs; lfo -= std::floor(lfo); back *= 1 + c * 0.004f * std::sin(two_pi * lfo); }
