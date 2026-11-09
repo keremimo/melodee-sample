@@ -155,8 +155,15 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   one under the cursor onto the last pad hit, K2 jumps. RECORDED lists the
   takes; RECENT waits for saved projects.
 - **Trim** (Push on a sampler track, or on Pads): the last pad's region over
-  the sample; K1 start, K2 end, K3 zoom (to 16 times closer). The other six
-  sampler pages (Pad, Play, Envelope, Filter, Follow, Cloud) are next.
+  the sample; K1 start, K2 end, K3 zoom (to 16 times closer).
+- **The sampler's seven pages** (B1 / B3 go round them, PAGE n / 7): Trim;
+  Pad (pitch, fine, level); Play (gate or one shot, mute group with its
+  pads shown, reverse); Envelope (attack, decay, release; sustain on row 2;
+  this pad only); Filter (cutoff, resonance, low / band / high pass, the
+  whole kit); Follow (the whole kit keeps the project's tempo by speed, each
+  pad's own tempo worked out from its length as whole bars; time-stretch
+  is not built yet); Cloud (pads as clouds of grains while held: position,
+  grain size 10 ms to 1 s, density, then scan, spread and on / off).
 - **Chop** (Chop on a sampler track): the last pad's sample cut by Hits
   (sensitivity), Even (2–64 slices) or Beats (1–8 beats a slice at the
   project's tempo). Pads audition slices, the wheel picks one, K3 moves its
@@ -245,13 +252,13 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, record, project, filesheet, tempo, arp, chord,
-  capture, shift and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: typed names (markers, projects), Settings and About, Seq
 Record writing launches into the song, six of the effects, pad effects,
-punch, the sampler's other six pages, favourites.
+punch, time-stretch, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds
