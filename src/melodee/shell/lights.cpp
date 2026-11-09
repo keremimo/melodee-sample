@@ -69,6 +69,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::Sample, play_group);
     on(B::Seq, ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds);
+    on(B::KnobFx, ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
     on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
     on(B::SixteenLevels, ui.page == PageId::Keys);
     lights.button(B::Play, playing ? L::Bright : L::Dim);

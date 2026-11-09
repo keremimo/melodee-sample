@@ -13,6 +13,7 @@ void Context::send(const Command& command) { host.send(command); }
 void Context::open(PageId page) {
     ui.sheet_open = false;
     ui.map_open = false;
+    ui.picker_open = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
     if (page != ui.page) { ui.previous = ui.page; ui.page = page; }
     if (page == PageId::Sounds) {
@@ -23,7 +24,7 @@ void Context::open(PageId page) {
 }
 
 void Context::back() {
-    if (ui.sheet_open || ui.map_open) { ui.sheet_open = ui.map_open = false; return; } // Shift + Push closes a sheet or map first
+    if (ui.sheet_open || ui.map_open || ui.picker_open) { ui.sheet_open = ui.map_open = ui.picker_open = false; return; } // a sheet, map or picker first
     open(ui.previous == ui.page ? PageId::Stage : ui.previous); }
 
 void Context::select_track(unsigned t) {
@@ -167,6 +168,9 @@ void Context::apply(const Binding& b, int value) {
         } else if (b.kind == Kind::SongPattern) ui.song_pattern = uint8_t(value);
         else ui.song_length = uint8_t(value);
         break;
+    case Kind::FxParam: set_effect_param(unsigned(b.id) / 64, (unsigned(b.id) / 8) % 8, unsigned(b.id) % 8, value); break;
+    case Kind::SendBus: set_send_bus(ui.track, unsigned(value)); break;
+    case Kind::BusReturn: set_return(unsigned(b.id), value); break;
     case Kind::None: break;
     }
 }
@@ -262,6 +266,64 @@ void Context::set_length(unsigned steps) {
 void Context::set_division(Division division) {
     pattern().division = division;
     send({Type::Division, ui.track, track().pattern, 0, int16_t(division)});
+}
+
+void Context::set_effect(unsigned n, unsigned slot, EffectKind kind) {
+    auto& chain = project.chain(n);
+    if (slot >= chain.size) return;
+    auto& s = chain.slots[slot];
+    if (kind == EffectKind::None) { // remove: the rest close up
+        for (unsigned k = slot + 1; k < chain.size; ++k) chain.slots[k - 1] = chain.slots[k];
+        chain.slots[chain.size - 1] = EffectSlot {};
+        sync_chain(n);
+        return;
+    }
+    s.kind = uint8_t(kind); s.bypass = false;
+    const auto& info = effect_info(kind);
+    for (unsigned q = 0; q < effect_params; ++q) s.params[q] = info.params[q].label ? info.params[q].initial : 0;
+    send({Type::FxKind, uint8_t(n), 0, uint16_t(slot), int16_t(kind)}); // the host takes the same initial values
+    send({Type::FxBypass, uint8_t(n), 0, uint16_t(slot), 0});
+}
+
+void Context::set_effect_param(unsigned n, unsigned slot, unsigned param, int value) {
+    auto& chain = project.chain(n);
+    if (slot >= chain.size || param >= effect_params) return;
+    chain.slots[slot].params[param] = int16_t(value);
+    send({Type::FxParam, uint8_t(n), uint8_t(param), uint16_t(slot), int16_t(value)});
+}
+
+void Context::toggle_bypass(unsigned n, unsigned slot) {
+    auto& s = project.chain(n).slots[slot % max_slots];
+    s.bypass = !s.bypass;
+    send({Type::FxBypass, uint8_t(n), 0, uint16_t(slot), int16_t(s.bypass)});
+}
+
+void Context::move_effect(unsigned n, unsigned slot, int way) {
+    auto& chain = project.chain(n);
+    int to = int(slot) + way;
+    if (to < 0 || unsigned(to) >= chain.count() || slot >= chain.count()) return;
+    std::swap(chain.slots[slot], chain.slots[size_t(to)]);
+    sync_chain(n);
+}
+
+void Context::sync_chain(unsigned n) {
+    const auto& chain = project.chain(n);
+    for (unsigned k = 0; k < max_slots; ++k) {
+        const auto& s = chain.slots[k];
+        send({Type::FxKind, uint8_t(n), 0, uint16_t(k), int16_t(s.kind)});
+        for (unsigned q = 0; q < effect_params; ++q) send({Type::FxParam, uint8_t(n), uint8_t(q), uint16_t(k), s.params[q]});
+        send({Type::FxBypass, uint8_t(n), 0, uint16_t(k), int16_t(s.bypass)});
+    }
+}
+
+void Context::set_send_bus(unsigned t, unsigned bus) {
+    project.tracks[t % track_count].mix.bus = uint8_t(bus % bus_count);
+    send({Type::SendBus, uint8_t(t), 0, 0, int16_t(bus % bus_count)});
+}
+
+void Context::set_return(unsigned bus, int level) {
+    project.buses[bus % bus_count].level = uint8_t(std::clamp(level, 0, 100));
+    send({Type::Return, 0, 0, uint16_t(bus % bus_count), int16_t(level)});
 }
 
 void Context::sync_song() {

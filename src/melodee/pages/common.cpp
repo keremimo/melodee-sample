@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/pages/common.h"
+#include "melodee/engine/effect_info.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
@@ -41,8 +42,10 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         const auto& b = bindings[n];
         auto& c = cards[n];
         if (!b.bound()) continue;
-        c.shade = ui::knob_shade(s.ui.track, n);
-        c.track = colour_of(s);
+        // A bus or the master belongs to no track: its cards are neutral.
+        bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
+        c.shade = neutral ? ui::colour::text : ui::knob_shade(s.ui.track, n);
+        c.track = neutral ? ui::colour::text : colour_of(s);
         c.fill = b.fraction();
         const auto& pot = s.ui.pots[n];
         if (pot.position >= 0 && !pot.engaged && pot.bound == b.key(s.ui.track)) {
@@ -67,7 +70,9 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.label = "PAN"; c.bipolar = true;
             c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
             break;
-        case Kind::Send: c.label = "SEND A"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::Send:
+            c.label = juce::String("SEND ") + char('A' + track.mix.bus % bus_count); c.value = juce::String(b.value); c.unit = "%";
+            break;
         case Kind::Root: c.label = "ROOT"; c.value = note_letter(unsigned(b.value)); break;
         case Kind::Scale: c.label = "SCALE"; c.value = scales()[size_t(b.value)].name; break;
         case Kind::Layout: c.label = "LAYOUT"; c.value = layout_name(PadLayout(b.value)); break;
@@ -94,6 +99,15 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
         case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
         case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
+        case Kind::FxParam: {
+            const auto& slot = s.project.chain(unsigned(b.id) / 64).slots[(unsigned(b.id) / 8) % 8];
+            const auto& pi = effect_info(EffectKind(slot.kind)).params[unsigned(b.id) % 8];
+            auto shown = show(pi, b.value);
+            c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
+            break;
+        }
+        case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
+        case Kind::BusReturn: c.label = "RETURN"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::None: break;
         }
     }

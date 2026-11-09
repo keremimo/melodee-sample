@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/command.h"
+#include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
@@ -58,6 +59,14 @@ public:
     void copy_pattern(unsigned track, unsigned from, unsigned to);
     void set_length(unsigned steps);                         // the selected track's pattern
     void set_division(Division division);
+    // Effects: chain numbers as in model/project.h (tracks, buses, master).
+    void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
+    void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);
+    void toggle_bypass(unsigned chain, unsigned slot);
+    void move_effect(unsigned chain, unsigned slot, int way);
+    void sync_chain(unsigned chain); // after moving or removing: the whole chain again
+    void set_send_bus(unsigned track, unsigned bus);
+    void set_return(unsigned bus, int level);
     // Song: after any change to project.song, send it to the audio thread.
     void sync_song();
     // Transport

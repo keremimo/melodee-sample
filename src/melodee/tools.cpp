@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/effect_info.h"
 #include "melodee/engine/prophet_params.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/pages/page.h"
@@ -68,6 +69,19 @@ void board_project(Shell& shell) {
                         {4, 0, 20, 4, false}, {4, 1, 24, 8, false}, {5, 0, 24, 8, false}, {7, 0, 28, 4, false}};
     for (const auto& clip : clips) song.place(clip);
     song.loop_start = 24; song.loop_end = 32;
+    // The effects boards: track 3's chain, four buses, the master.
+    auto put = [&](Chain& chain, unsigned slot, EffectKind kind) {
+        chain.slots[slot].kind = uint8_t(kind);
+        const auto& info = effect_info(kind);
+        for (unsigned q = 0; q < effect_params; ++q) chain.slots[slot].params[q] = info.params[q].label ? info.params[q].initial : 0;
+    };
+    put(project.tracks[2].fx, 0, EffectKind::Chorus); put(project.tracks[2].fx, 1, EffectKind::Tape); put(project.tracks[2].fx, 2, EffectKind::Eq);
+    put(project.buses[0].fx, 0, EffectKind::Room); put(project.buses[0].fx, 1, EffectKind::Echo); put(project.buses[0].fx, 2, EffectKind::Width);
+    put(project.buses[1].fx, 0, EffectKind::Echo); put(project.buses[2].fx, 0, EffectKind::Crush);
+    put(project.master, 0, EffectKind::Compressor); put(project.master, 1, EffectKind::Limiter);
+    project.buses[0].level = 70; project.buses[1].level = 55; project.buses[2].level = 40;
+    const uint8_t sends[] {8, 0, 42, 60, 4, 72, 55, 30, 24, 80};
+    for (unsigned t = 0; t < 10; ++t) project.tracks[t].mix.send = sends[t];
     // The Mod board's six routes on track 1.
     const ModRoute routes[] {
         {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34}, {uint8_t(ModSource::Velocity), uint8_t(ModDest::AmpLevel), 60},
@@ -155,6 +169,22 @@ const Preview previews[] {
          s.ui.page = PageId::Length; s.playing = true; s.steps[0] = 34; s.project.swing = 54;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    {"rack", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 1; s.playing = true;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"sends", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Sends; s.ui.track = 2; s.playing = true;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"bus", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Bus; s.ui.track = 2; s.playing = true;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"fxpick", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 3; s.playing = true;
+         s.ui.picker_open = true; s.ui.picker_items = true; s.ui.picker_family = 2; s.ui.picker_item = 2;
+     }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
 };
@@ -193,7 +223,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

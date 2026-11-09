@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
@@ -22,6 +23,12 @@ Binding param(const Track& track, int id) {
 std::array<Binding, 3> favourite_bindings(const Track& track) {
     const auto& info = engine_info(track.engine);
     return {param(track, info.favourites[0]), param(track, info.favourites[1]), param(track, info.favourites[2])};
+}
+
+unsigned page_chain(const Project& project, const UiState& ui) {
+    if (ui.page == PageId::Bus) return bus_chain(project.tracks[ui.track % track_count].mix.bus % bus_count);
+    if (ui.page == PageId::Master) return master_chain;
+    return ui.track % track_count;
 }
 
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
@@ -92,6 +99,27 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::SongZoom, 0, 0, int(sizeof(song_zooms) / sizeof(song_zooms[0])) - 1, ui.song_zoom},
                 Binding {Kind::SongPattern, int16_t(clip), 0, int(pattern_count) - 1, pattern_value},
                 Binding {Kind::SongLength, int16_t(clip), 1, 16, length_value}};
+    }
+    case PageId::Rack:
+    case PageId::Bus:
+    case PageId::Master: {
+        unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[chain];
+        const auto& c = project.chain(chain);
+        if (slot >= c.count() || ui.picker_open) return {};
+        const auto& s = c.slots[slot];
+        const auto& info = effect_info(EffectKind(s.kind));
+        std::array<Binding, 3> out;
+        for (unsigned k = 0; k < 3; ++k) {
+            unsigned q = (ui.fx_row[chain] % 2) * 3 + k;
+            const auto& pi = info.params[q];
+            if (pi.label) out[k] = {Kind::FxParam, int16_t(chain * 64 + slot * 8 + q), pi.min, pi.max, s.params[q]};
+        }
+        return out;
+    }
+    case PageId::Sends: {
+        unsigned bus = track.mix.bus % bus_count;
+        return {Binding {Kind::Send, 0, 0, 100, track.mix.send}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
+                Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
     case PageId::Roll:
     case PageId::Steps: {

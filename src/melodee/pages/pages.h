@@ -8,5 +8,6 @@ namespace melodee {
 // Shift + Push on Song: a marker at the cursor, or its next name (the one
 // place Shift + Push is not Back; Kerem's choice).
 void song_marker(Context& c);
-extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, steps_page, roll_page, motion_page, patterns_page, song_page, length_page;
+extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, steps_page, roll_page, motion_page, patterns_page, song_page, length_page,
+    rack_page, sends_page, bus_page, master_page;
 }

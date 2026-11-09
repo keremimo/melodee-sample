@@ -81,6 +81,10 @@ void Shell::button(Button b, bool pressed) {
         if (play_group(ui.page)) context_.open(ui.page == PageId::Stage ? PageId::Keys : ui.page == PageId::Keys ? PageId::Mix : PageId::Stage);
         else context_.open(PageId::Stage);
         break;
+    case Button::KnobFx: // the effects along the signal: track, sends, bus, master
+        context_.open(ui.page == PageId::Rack ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
+                      : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
+        break;
     case Button::Loop: // Patterns, then Song, then Length
         context_.open(ui.page == PageId::Patterns ? PageId::Song : ui.page == PageId::Song ? PageId::Length : PageId::Patterns);
         break;

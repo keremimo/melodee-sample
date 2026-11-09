@@ -16,7 +16,9 @@ struct Binding {
         None, Param, Level, Pan, Send, Root, Scale, Layout, Engine, Jump, Audition, StepLength, StepVelocity, StepChance,
         ModSource, ModDest, ModAmount, // id: the route
         PatternBars, Division, Swing,  // Length
-        SongZoom, SongPattern, SongLength // Song; id: the clip under the cursor, or -1
+        SongZoom, SongPattern, SongLength, // Song; id: the clip under the cursor, or -1
+        FxParam,                           // id: chain * 64 + slot * 8 + parameter
+        SendBus, BusReturn                 // Sends; BusReturn id: the bus
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter
@@ -37,6 +39,8 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
 // The three parameters the Motion page shows as lanes: those holding motion
 // on the track's playing pattern first, then the track's favourites.
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui);
+// The chain a page shows: the selected track's, its bus's, or the master's.
+unsigned page_chain(const Project& project, const UiState& ui);
 // Song's zoom steps, in bars across the view.
 constexpr unsigned song_zooms[] {4, 8, 16, 32, 64};
 // The track's three favourite parameters, for every page without its own.
