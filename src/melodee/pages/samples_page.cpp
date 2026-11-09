@@ -9,6 +9,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/ui/widgets.h"
 #include <filesystem>
+#include <vector>
 
 namespace melodee {
 namespace {
@@ -23,16 +24,19 @@ void draw(Paint& p, const Snapshot& s) {
         : juce::String(std::filesystem::path(s.sample_root).filename().string()).toUpperCase();
     h.left.push_back(pill(folder + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(s.files.size()), c));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"ALL", "RECORDED", "RECENT"}, 0, c}, h);
-    if (s.files.empty()) {
-        juce::String why = s.sample_root.empty() ? "No Samples folder on the card" : "No WAV files in Samples";
+    frame(p, s, {{"ALL", "RECORDED", "RECENT"}, s.ui.files_filter, c}, h);
+    std::vector<const SampleFile*> files;
+    for (const auto& f : s.files) if (s.ui.files_filter == 0 || f.path.find("/Recorded/") != std::string::npos) files.push_back(&f);
+    if (files.empty()) {
+        juce::String why = s.sample_root.empty() ? "No Samples folder on the card"
+            : s.ui.files_filter ? "Nothing recorded yet" : "No WAV files in Samples";
         p.text(why, zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 40, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred);
         return;
     }
-    unsigned count = unsigned(s.files.size()), cursor = std::min<unsigned>(s.ui.files_cursor, count - 1);
+    unsigned count = unsigned(files.size()), cursor = std::min<unsigned>(s.ui.files_cursor, count - 1);
     unsigned first = cursor < 2 ? 0 : std::min(cursor - 2, count > visible ? count - visible : 0);
     for (unsigned row = 0; row < visible && first + row < count; ++row) {
-        const auto& file = s.files[first + row];
+        const auto& file = *files[first + row];
         ListRow r;
         r.name = file.name; r.accent = c; r.current = first + row == cursor;
         // Which pads of this kit play it.
@@ -52,7 +56,8 @@ void wheel(Context& c, int delta) {
 
 void push(Context& c) {
     if (!c.library) return;
-    auto files = c.library->files();
+    std::vector<SampleFile> files;
+    for (const auto& f : c.library->files()) if (c.files_match(f.path)) files.push_back(f);
     if (c.ui.files_cursor >= files.size()) return;
     const auto& file = files[c.ui.files_cursor];
     int slot = c.sample_slot(file.path, file.name);
@@ -63,7 +68,14 @@ void push(Context& c) {
     c.send_pad(c.ui.track, c.track().last_pad);
 }
 
-void soft(Context& c, int key) { c.ui.files_cursor = 0; (void)key; } // RECORDED and RECENT come with Record
+void soft(Context& c, int key) {
+    if (key == 2) return; // RECENT comes with saved projects
+    c.ui.files_filter = uint8_t(key);
+    c.ui.files_cursor = 0;
+    unsigned listed = 0;
+    if (c.library) for (const auto& f : c.library->files()) listed += c.files_match(f.path);
+    c.ui.files_count = uint16_t(listed);
+}
 } // namespace
 
 const PageSpec samples_page {draw, play_pad, wheel, push, soft, octave};

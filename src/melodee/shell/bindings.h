@@ -22,7 +22,8 @@ struct Binding {
         PadPitch, PadLevel, PadPan,        // the last pad hit on a sampler track
         PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
         ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds
-        FileJump                           // Samples
+        FileJump,                          // Samples
+        RecThreshold, RecBars, RecGain     // Record
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter

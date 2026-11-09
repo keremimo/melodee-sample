@@ -24,6 +24,8 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Samples: return samples_page;
     case PageId::Trim: return trim_page;
     case PageId::Chop: return chop_page;
+    case PageId::Levels: return levels_page;
+    case PageId::Record: return record_page;
     case PageId::Stage:
     default: return stage_page;
     }

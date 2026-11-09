@@ -21,7 +21,7 @@ uint32_t MelodeeApp::now_ms() const {
     return uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started).count());
 }
 
-void MelodeeApp::render(const AudioBlock&, AudioBlock& output) { host.render(output.data(), audio_frames, shell.volume()); }
+void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) { host.render(output.data(), audio_frames, shell.volume(), input.data()); }
 
 void MelodeeApp::surface(const SurfaceEvent& event) {
     // A remote tool's prompt owns the controls while it is shown.
@@ -95,7 +95,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
 }
 
 void MelodeeApp::service(Hardware& hardware) {
-    library.service(hardware.platform);
+    library.service(hardware);
     // A short press of Power opens the Exit sheet.
     uint64_t presses = hardware.power.presses();
     if (power_known && presses > power_presses && !hardware.power.pressed()) shell.power_pressed();

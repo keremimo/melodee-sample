@@ -121,8 +121,9 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::Send, 0, 0, 100, track.mix.send}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
+    case PageId::Levels:
     case PageId::Pads: {
-        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        const auto& pad = track.pads[(ui.page == PageId::Levels ? track.levels_pad : track.last_pad) % sampler_pads];
         if (!pad.used()) return {};
         return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level},
                 Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
@@ -153,6 +154,9 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::ChopMode, 0, 0, int(ChopMode::Count) - 1, mode},
                 Binding {Kind::ChopAmount, int16_t(mode), lows[mode], highs[mode], ui.chop_amount[size_t(mode)]}, start};
     }
+    case PageId::Record:
+        return {Binding {Kind::RecThreshold, 0, -60, 0, ui.rec_threshold}, Binding {Kind::RecBars, 0, 0, 16, ui.rec_bars},
+                Binding {Kind::RecGain, 0, -12, 24, ui.rec_gain}};
     case PageId::Samples:
         return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
     case PageId::Roll:

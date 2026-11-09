@@ -4,6 +4,8 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/prophet_params.h"
+#include "melodee/engine/take_recorder.h"
+#include "melodee/model/scales.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
@@ -238,6 +240,21 @@ const Preview previews[] {
          s.ui.slices = chop(ChopMode::Even, 12, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
          s.ui.chop_slice = 4; s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"levels", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1;
+         s.sample.frames = 26460;
+         s.ui.levels_hit = 10; s.ui.levels_value = level_velocity(10);
+     }},
+    {"record", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Record; s.ui.track = 3; s.playing = true; s.ui.rec_source = 1; s.ui.rec_bars = 4; s.ui.rec_gain = 6;
+         s.ui.rec_pad = 16;
+         s.take.state = uint8_t(TakeRecorder::State::Recording); s.take.length = 4 * 85355; s.take.frames = 85355 + 50000;
+         s.take.level = 0.5f;
+         for (unsigned c = 0; c < 128 * s.take.frames / s.take.length; ++c)
+             s.take.peaks[c] = uint8_t(std::clamp((c % 22 < 3 ? 0.9 : 0.55) * (0.8 + 0.2 * std::sin(c * 0.9)) * (c < 4 ? 0.1 : 1.0), 0.0, 1.0) * 255);
+         s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
 };
@@ -276,7 +293,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/sample_library.h"
+#include "drivers/mixer.h"
 #include "drivers/platform.h"
+#include "runtime/app.h"
 #include "melodee/engine/engine_host.h"
 #include <algorithm>
 #include <cctype>
@@ -27,7 +29,15 @@ LoadedSample SampleLibrary::slot(unsigned n) const { std::lock_guard<std::mutex>
 std::string SampleLibrary::root() const { std::lock_guard<std::mutex> guard(lock); return known.root; }
 std::vector<SampleFile> SampleLibrary::files() const { std::lock_guard<std::mutex> guard(lock); return known.files; }
 
-void SampleLibrary::service(const Platform& platform) {
+void SampleLibrary::service(Hardware& hardware) {
+    const Platform& platform = hardware.platform;
+    // The input Record listens to: the line inputs or the microphone, else off.
+    int wanted = input_wanted.load();
+    if (wanted != input_routed && hardware.mixer.available()) {
+        hardware.mixer.input(wanted == 0 ? "mic" : wanted == 1 ? "line" : "off");
+        input_routed = wanted;
+    }
+    if (host.recorder().state() == TakeRecorder::State::Done) save_take();
     // Samples the audio thread has let go of.
     const SampleData* gone = nullptr;
     while (host.take_retired(gone))
@@ -70,10 +80,51 @@ void SampleLibrary::scan(const std::string& root) {
     changes.fetch_add(1, std::memory_order_release);
 }
 
+// A finished take: copied out of the recorder, written to Samples/Recorded on
+// the card when there is one, and handed back as the slot the take was armed for.
+void SampleLibrary::save_take() {
+    auto& recorder = host.recorder();
+    auto data = std::make_unique<SampleData>();
+    data->frames = recorder.frames();
+    data->left.assign(recorder.left(), recorder.left() + data->frames);
+    data->right.assign(recorder.right(), recorder.right() + data->frames);
+    unsigned slot = recorder.slot() % sample_slots;
+    recorder.release();
+    unsigned number = take_count.fetch_add(1) + 1;
+    LoadedSample loaded;
+    loaded.name = "TAKE " + std::to_string(number);
+    std::string root;
+    { std::lock_guard<std::mutex> guard(lock); root = known.root; }
+    if (!root.empty()) {
+        std::error_code error;
+        fs::create_directories(root + "/Recorded", error);
+        // The next free name, so takes from earlier sessions stay.
+        for (unsigned n = number; n < number + 1000; ++n) {
+            auto path = root + "/Recorded/TAKE " + std::to_string(n) + ".wav";
+            if (fs::exists(path, error)) continue;
+            loaded.name = "TAKE " + std::to_string(n);
+            take_count.store(n);
+            auto failed = write_wav(path, *data);
+            if (failed.empty()) loaded.path = path; else loaded.error = "not saved: " + failed;
+            break;
+        }
+    }
+    loaded.frames = data->frames;
+    make_overview(*data, loaded.overview);
+    loaded.hit_count = find_hits(*data, loaded.hits);
+    if (host.offer_sample(slot, data.get())) { owned.push_back(std::move(data)); loaded.ready = true; }
+    else loaded.error = "busy, try again";
+    if (!loaded.path.empty()) scan_wanted.store(true); // it shows under RECORDED
+    std::lock_guard<std::mutex> guard(lock);
+    known.slots[slot] = loaded;
+    changes.fetch_add(1, std::memory_order_release);
+}
+
 void SampleLibrary::read(const Request& request) {
     auto data = std::make_unique<SampleData>();
     auto error = read_wav(request.path, *data);
     LoadedSample loaded;
+    loaded.path = request.path;
     loaded.name = fs::path(request.path).stem().string();
     std::transform(loaded.name.begin(), loaded.name.end(), loaded.name.begin(), [](unsigned char c) { return char(std::toupper(c)); });
     if (!error.empty()) {

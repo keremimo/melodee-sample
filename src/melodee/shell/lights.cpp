@@ -8,6 +8,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/ui/tokens.h"
 #include "surface/led_colours.h"
+#include <cstdio>
 
 namespace melodee {
 namespace {
@@ -25,8 +26,32 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         library_seen = library_->generation();
         for (unsigned n = 0; n < sample_slots; ++n)
             if (project_->samples[n].used()) project_->samples[n].frames = library_->slot(n).frames;
-        ui_.files_count = uint16_t(library_->files().size());
+        unsigned listed = 0;
+        for (const auto& f : library_->files()) listed += context_.files_match(f.path);
+        ui_.files_count = uint16_t(listed);
+        // A take has landed: it becomes the slot it was armed for, on the pad chosen then.
+        if (ui_.rec_slot >= 0) {
+            auto take = library_->slot(unsigned(ui_.rec_slot));
+            if (take.ready || !take.error.empty()) {
+                auto& ref = project_->samples[size_t(ui_.rec_slot)];
+                std::snprintf(ref.path, sizeof(ref.path), "%s", take.path.empty() ? ("(memory) " + take.name).c_str() : take.path.c_str());
+                std::snprintf(ref.name, sizeof(ref.name), "%s", take.name.c_str());
+                ref.frames = take.frames;
+                if (take.ready && ui_.rec_pad >= 0) {
+                    auto& pad = project_->tracks[ui_.track].pads[size_t(ui_.rec_pad)];
+                    pad = PadSound {}; pad.sample = uint16_t(ui_.rec_slot);
+                    project_->tracks[ui_.track].last_pad = uint8_t(ui_.rec_pad);
+                    context_.send_pad(ui_.track, unsigned(ui_.rec_pad));
+                }
+                ui_.rec_slot = ui_.rec_pad = -1;
+            }
+        }
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
+    }
+    // Record listens to the mic or the line inputs while its page is open or a take runs.
+    if (library_) {
+        bool busy = host.recorder().state() != TakeRecorder::State::Idle;
+        library_->want_input((ui_.page == PageId::Record || busy) && ui_.rec_source < 2 ? int(ui_.rec_source) : -1);
     }
     unsigned presses = power.load(std::memory_order_relaxed);
     if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; }
@@ -90,6 +115,13 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::Seq, ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
+    {
+        auto state = host.recorder().state();
+        bool blink = (now / 250) % 2;
+        lights.button(B::SampleRecord, state == TakeRecorder::State::Recording ? ButtonLight::Bright
+                      : state == TakeRecorder::State::Armed ? (blink ? ButtonLight::Bright : ButtonLight::Dim)
+                      : ui.page == PageId::Record ? ButtonLight::Dim : ButtonLight::Off);
+    }
     on(B::KnobFx, ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
     on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
     on(B::SixteenLevels, ui.page == PageId::Keys);

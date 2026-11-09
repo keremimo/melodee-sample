@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/context.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/take_recorder.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/sample_library.h"
 #include <cstring>
@@ -48,6 +49,16 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         if (pad_keys[pad] >= 0) note(ui.track, pad_keys[pad], 0);
         pad_keys[pad] = -1;
         if (!down) return;
+        if (track().levels) { // 16 Levels: one kit pad, soft to loud or up in pitch
+            auto& t = track();
+            int semitones = t.levels_kind == 1 ? level_scale_step(project, pad) : t.levels_kind == 2 ? int(pad) : 0;
+            int v = t.levels_kind == 0 ? level_velocity(pad) : velocity;
+            ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(t.levels_kind == 0 ? v : semitones);
+            pad_keys[pad] = int16_t(sampler_first_note + t.levels_pad);
+            send({Type::PadNote, ui.track, uint8_t(semitones + 64), t.levels_pad, int16_t(v)});
+            record(pad_keys[pad], v);
+            return;
+        }
         unsigned kit = track().bank % sampler_banks * 16 + pad;
         track().last_pad = uint8_t(kit);
         pad_keys[pad] = int16_t(sampler_first_note + kit);
@@ -199,6 +210,9 @@ void Context::apply(const Binding& b, int value) {
     case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode)] = value; rechop(); break;
     case Kind::ChopStart: ui.slices.start[size_t(b.id) % max_slices] = uint32_t(uint64_t(value) * 44100 / 1000); break;
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
+    case Kind::RecThreshold: ui.rec_threshold = int8_t(value); break;
+    case Kind::RecBars: ui.rec_bars = uint8_t(value); break;
+    case Kind::RecGain: ui.rec_gain = int8_t(value); send({Type::RecordGain, 0, 0, 0, int16_t(value)}); break;
     case Kind::None: break;
     }
 }
@@ -323,6 +337,26 @@ void Context::rechop() {
     ui.slices = chop(ui.chop_mode, ui.chop_amount[size_t(ui.chop_mode)], loaded.frames, loaded.hits, loaded.hit_count, project.tempo);
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
 }
+
+// Arms a take for the first free sample slot and the first empty pad; a
+// second press starts it at once, a third stops it.
+void Context::record_press() {
+    auto state = host.recorder().state();
+    if (state == TakeRecorder::State::Armed) { send({Type::RecordNow}); return; }
+    if (state == TakeRecorder::State::Recording) { send({Type::RecordStop}); return; }
+    if (state != TakeRecorder::State::Idle || ui.rec_slot >= 0) return;
+    int slot = -1, empty = -1;
+    for (unsigned n = 0; n < sample_slots && slot < 0; ++n) if (!project.samples[n].used()) slot = int(n);
+    for (unsigned n = 0; n < sampler_pads && empty < 0; ++n) if (!track().pads[n].used()) empty = int(n);
+    if (slot < 0 || empty < 0) return;
+    auto& ref = project.samples[size_t(slot)];
+    std::strncpy(ref.path, "(recording)", sizeof(ref.path) - 1); // held for the take
+    std::strncpy(ref.name, "TAKE", sizeof(ref.name) - 1);
+    ui.rec_slot = int16_t(slot); ui.rec_pad = int16_t(empty);
+    send({Type::RecordArm, ui.rec_source, uint8_t(ui.rec_bars), uint16_t(slot), int16_t(ui.rec_threshold)});
+}
+
+bool Context::host_recording() const { return host.recorder().state() != TakeRecorder::State::Idle; }
 
 void Context::chop_to_pads() {
     auto& t = track();

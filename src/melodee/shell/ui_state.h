@@ -12,7 +12,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -63,6 +63,14 @@ struct UiState {
     Slices slices;              // Chop's markers on the sample in hand
     uint16_t chop_sample = no_sample;
     uint8_t chop_slice = 0;
+    int8_t levels_hit = -1;     // Levels: the pad played last, 0..15
+    int16_t levels_value = 0;   // and what it played: a velocity or semitones
+    uint8_t files_filter = 0;   // Samples: all, recorded
+    uint8_t rec_source = 1;     // Record: 0 mic, 1 line, 2 the mix (resample)
+    int8_t rec_threshold = -30; // dB; -60 starts at once
+    uint8_t rec_bars = 4;       // 0: until stopped
+    int8_t rec_gain = 0;        // dB
+    int16_t rec_slot = -1, rec_pad = -1; // where the take in progress will land
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

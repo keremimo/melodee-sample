@@ -108,7 +108,19 @@ void Shell::button(Button b, bool pressed) {
             if (kit && library_) library_->rescan();
         }
         break;
-    case Button::SixteenLevels: context_.open(context_.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys); break;
+    case Button::SampleRecord: // a sampler track: the Record page; there, arm, start now, stop
+        if (ui.shift || context_.track().engine != EngineKind::Sampler) break; // Capture comes with its own board
+        if (ui.page != PageId::Record) context_.open(PageId::Record);
+        else context_.record_press();
+        break;
+    case Button::SixteenLevels: { // a sampler track: the last pad on all sixteen, and again back to the kit
+        auto& t = context_.track();
+        if (t.engine != EngineKind::Sampler) { context_.open(PageId::Keys); break; }
+        if (ui.page == PageId::Levels) { t.levels = false; context_.open(PageId::Pads); break; }
+        t.levels = true; t.levels_pad = t.last_pad; ui.levels_hit = -1;
+        context_.open(PageId::Levels);
+        break;
+    }
     case Button::Chop: // the MPC's own job, on the sample of the last pad hit
         if (context_.track().engine != EngineKind::Sampler || !context_.pad().used()) break;
         if (ui.chop_sample != context_.pad().sample) { ui.chop_sample = context_.pad().sample; ui.chop_slice = 0; context_.rechop(); }
@@ -116,6 +128,7 @@ void Shell::button(Button b, bool pressed) {
         break;
     case Button::Play: context_.play(); break;
     case Button::Stop:
+        if (ui.page == PageId::Record) context_.send({Command::Type::RecordStop});
         if (ui.shift) context_.send({Command::Type::AllNotesOff, 255});
         else context_.stop();
         break;
@@ -223,6 +236,11 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     }
     out.position = unsigned(std::max(out.steps[ui_.track], 0));
     out.ticks = host.ticks();
+    {
+        const auto& r = host.recorder();
+        out.take.state = uint8_t(r.state()); out.take.frames = r.frames(); out.take.length = r.length(); out.take.level = r.level();
+        for (unsigned c = 0; c < out.take.peaks.size(); ++c) out.take.peaks[c] = r.peak(c);
+    }
     if (library_) {
         const auto& t = project_->tracks[ui_.track];
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;

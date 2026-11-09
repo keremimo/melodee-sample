@@ -130,6 +130,19 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::FileJump:
             c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
             break;
+        case Kind::RecThreshold:
+            c.label = "START AT";
+            if (b.value <= -60) c.value = "Now";
+            else { c.value = (b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value)); c.unit = "dB"; }
+            break;
+        case Kind::RecBars:
+            c.label = "LENGTH";
+            if (b.value) { c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; } else c.value = "Until stop";
+            break;
+        case Kind::RecGain:
+            c.label = "GAIN"; c.unit = "dB";
+            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+            break;
         case Kind::None: break;
         }
     }
