@@ -136,6 +136,33 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   are the same page in neutral colours. Pot moves on effects are not yet
   recorded into Motion; the sampler's pad effects (PadFX) come with the
   sampler.
+- **Sampler** (an engine like the others; Stage's track 5 starts as an
+  empty kit): 64 pads in four banks, each a region of one of the project's
+  samples (64 a project), with pitch, fine, level, pan, gate or one shot,
+  reverse, a mute group and an envelope; one low-pass filter on the whole
+  kit (K1–K3 on Stage: TUNE, FILTER, DECAY). Pad Bank tapped (or Minus /
+  Plus on Pads) steps the bank; bank lights A–D show it. Samples are WAV
+  files (16, 24 or 32-bit PCM or 32-bit float, any rate, up to 60 s) in the
+  card's `Samples` folder and one level of folders under it
+  (`$MELODEE_SAMPLES` on a host). The service thread reads a file, makes
+  its waveform and finds its hits, and hands the audio to the audio thread
+  through a lock-free queue; the sample it replaces comes back the same way
+  to be freed, so the audio thread never allocates or frees.
+- **Pads** (B2 on a sampler track, or 16 Levels): the bank as the pads sit,
+  the last pad hit with its length, play mode and waveform; K1 pitch, K2
+  level, K3 pan. Push opens Trim.
+- **Samples** (Sample Select on a sampler track): the files; Push loads the
+  one under the cursor onto the last pad hit, K2 jumps. RECORDED and RECENT
+  wait for Record.
+- **Trim** (Push on a sampler track, or on Pads): the last pad's region over
+  the sample; K1 start, K2 end, K3 zoom (to 16 times closer). The other six
+  sampler pages (Pad, Play, Envelope, Filter, Follow, Cloud) are next.
+- **Chop** (Chop on a sampler track): the last pad's sample cut by Hits
+  (sensitivity), Even (2–64 slices) or Beats (1–8 beats a slice at the
+  project's tempo). Pads audition slices, the wheel picks one, K3 moves its
+  start, Push splits it, Erase + pad removes a marker; B3 TO PADS lays the
+  slices on pads from the first free one (regions of the same file), B1
+  DROP goes back.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -163,17 +190,20 @@ through Steps, Roll and Motion; B1–B3 pick them too.
 - **Shift layer:** drawn as on its board. Of its second jobs, Erase, Stop and
   Push work; the others wait for their pages.
 - **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
-  case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`),
-  for checks without hands on the device.
+  case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
+  `wheel+N` / `wheel-N` turn the wheel and `pad1`..`pad16` strike a pad.
+  For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
-  clipsheet, length, rack, sends, bus, fxpick, shift and exit at 1× and 2× (the 2× ones line up
+  clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
+  shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: saving (the Exit sheet says so), typed marker names, Seq
-Record writing launches into the song, six of the effects, pad effects, punch, the sampler and chop, projects on the SD card,
-Tempo / Chord / Arp / Capture, favourites.
+Record writing launches into the song, six of the effects, pad effects,
+punch, Record, Levels and the sampler's other six pages, projects on the SD
+card, Tempo / Chord / Arp / Capture, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds
