@@ -11,7 +11,7 @@ SOURCES = ["src/melodee/engine/prophet.cpp", "src/melodee/engine/prophet_info.cp
            "src/melodee/engine/engine_info.cpp", "src/melodee/engine/engine_host.cpp",
            "src/melodee/shell/bindings.cpp", "src/melodee/engine/effects.cpp", "src/melodee/engine/effect_info.cpp",
            "src/melodee/engine/sampler.cpp", "src/melodee/engine/sample_data.cpp",
-           "src/melodee/model/project_file.cpp"]
+           "src/melodee/model/project_file.cpp", "src/melodee/engine/kit909.cpp"]
 
 
 class MelodeeTests(unittest.TestCase):

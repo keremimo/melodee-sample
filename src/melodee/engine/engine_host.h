@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/arp.h"
 #include "melodee/engine/command.h"
+#include "melodee/engine/kit909.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/engine/sampler.h"
@@ -75,6 +76,7 @@ private:
         EngineKind kind = EngineKind::None;
         ProphetEngine prophet;
         SamplerEngine sampler;
+        Kit909Engine kit;
         Engine* engine = nullptr;
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
         bool mute = false, solo = false;

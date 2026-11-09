@@ -7,6 +7,7 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/kit909.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/engine/arp.h"
@@ -597,9 +598,27 @@ void helpers() {
     for (unsigned n = 0; n < 100; ++n) { host.render(out.data(), 128, 1); for (auto s : out) peak = std::max(peak, std::fabs(s / 2147483648.0f)); }
     CHECK(!host.playing() && peak > 0.005f);
 }
+void drums() {
+    // Every drum of the 909 kit sounds, stays bounded and ends.
+    for (unsigned d = 0; d < kit909::Drums; ++d) {
+        Kit909Engine kit;
+        kit.note_on(int(36 + d), 120);
+        auto out = run(kit, 44100 * 10);
+        CHECK(peak_of(out, 0, 4410) > 0.02f);
+        CHECK(peak_of(out) < 2.0f);
+        CHECK(!kit.sounding());
+    }
+    // The closed hat chokes the open one.
+    Kit909Engine kit;
+    kit.note_on(36 + kit909::OpenHat, 120);
+    kit.note_on(36 + kit909::ClosedHat, 120);
+    auto out = run(kit, 44100);
+    CHECK(peak_of(out, 22050) < 0.001f);
+}
 } // namespace
 
 int main() {
+    drums();
     helpers();
     project_files();
     recording();

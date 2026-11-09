@@ -66,7 +66,8 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
     if (slot.engine) slot.engine->silence();
     slot.kind = kind;
     slot.engine = kind == EngineKind::Prophet ? static_cast<Engine*>(&slot.prophet)
-                : kind == EngineKind::Sampler ? static_cast<Engine*>(&slot.sampler) : nullptr;
+                : kind == EngineKind::Sampler ? static_cast<Engine*>(&slot.sampler)
+                : kind == EngineKind::Kit909 ? static_cast<Engine*>(&slot.kit) : nullptr;
     slot.sampler.set_samples(&samples);
     for (auto& off : slot.offs) off.key = -1;
 }
