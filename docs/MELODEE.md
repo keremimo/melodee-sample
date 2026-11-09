@@ -108,8 +108,12 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   edges while there are none. **Play on the Song page plays the arrangement
   from the cursor; Play anywhere else plays the patterns** (assumed, part of
   open question 4). The song stops at its end unless a loop is set.
-  Markers are drawn and used, but there is no way to add one yet (no board
-  shows it). SongZoom's motion and punch lanes are not drawn yet.
+  **Shift + Push on Song adds a marker at the cursor bar**; again on a
+  marker gives it the next name (INTRO, VERSE, CHORUS, BRIDGE, DROP,
+  BREAK, OUTRO), and after OUTRO removes it. A new marker takes the name
+  after the one before it. This is the one place Shift + Push is not Back
+  (Kerem's choice); the Shift layer says so on Song. Names come from that
+  list until a page for typing exists (open question 9). SongZoom's motion and punch lanes are not drawn yet.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -136,16 +140,16 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
 - **Shift layer:** drawn as on its board. Of its second jobs, Erase, Stop and
   Push work; the others wait for their pages.
-- **Remote:** `--ctl melodee-press BUTTON` presses a button (lower case,
-  spaces as dashes: `play`, `seq`, `wheel-push`, `top-right`), for checks
-  without hands on the device.
+- **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
+  case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`),
+  for checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: saving (the Exit sheet says so), adding song markers, Seq
+Not yet: saving (the Exit sheet says so), typed marker names, Seq
 Record writing launches into the song, effects and buses, punch, the sampler and chop, projects on the SD card,
 Tempo / Chord / Arp / Capture, favourites.
 
