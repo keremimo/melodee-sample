@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Melodee's model and audio side on the host: pad layouts, knob bindings,
 // the PROPHET engine and the engine host's sequencer and mixer.
+#include "melodee/engine/effects.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/model/mod_matrix.h"
@@ -272,9 +273,74 @@ void arrange() {
         CHECK(host.pattern_of(0) == 1);
     }
 }
+void effects() {
+    // Every built effect stays finite and bounded on a loud chord, at its initial values and at the extremes.
+    DelayPool pool;
+    for (unsigned k = 1; k < unsigned(EffectKind::Count); ++k) {
+        auto kind = EffectKind(k);
+        if (!effect_info(kind).built) continue;
+        for (int extreme = 0; extreme < 3; ++extreme) {
+            Effect effect;
+            effect.set_kind(kind, pool);
+            if (extreme)
+                for (unsigned q = 0; q < effect_params; ++q) {
+                    const auto& pi = effect_info(kind).params[q];
+                    if (pi.label) effect.set_param(q, extreme == 1 ? pi.min : pi.max);
+                }
+            std::vector<float> l(128), r(128);
+            float peak = 0;
+            for (unsigned b = 0; b < 400; ++b) {
+                for (unsigned f = 0; f < 128; ++f) {
+                    float t = float(b * 128 + f) / 44100.0f;
+                    l[f] = 0.8f * std::sin(6.283f * 220 * t) + 0.2f * std::sin(6.283f * 331 * t);
+                    r[f] = 0.8f * std::sin(6.283f * 277 * t);
+                }
+                effect.process(l.data(), r.data(), 128);
+                for (unsigned f = 0; f < 128; ++f) { CHECK(std::isfinite(l[f]) && std::isfinite(r[f])); peak = std::max({peak, std::fabs(l[f]), std::fabs(r[f])}); }
+            }
+            CHECK(peak < 20); // a resonant filter or makeup gain may rise, but nothing runs away
+            effect.set_kind(EffectKind::None, pool); // gives its delay memory back
+        }
+    }
+    // When the pool is used up, a further delay effect passes sound through untouched.
+    std::vector<Effect> many(DelayPool::blocks + 1);
+    for (auto& e : many) e.set_kind(EffectKind::Echo, pool);
+    std::vector<float> l(128, 0.5f), r(128, 0.5f);
+    many.back().process(l.data(), r.data(), 128);
+    CHECK(l[0] == 0.5f && r[127] == 0.5f);
+
+    // Along the signal: a track's low-pass quietens it; its send into an echo bus keeps sounding after the note.
+    auto render = [](bool filter, bool echo) {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 0);
+        project->tracks[0].params[prophet::AmpRelease] = 0;
+        if (filter) { project->tracks[0].fx.slots[0].kind = uint8_t(EffectKind::Filter); project->tracks[0].fx.slots[0].params = {5, 0, 0, 0, 0, 0}; }
+        if (echo) {
+            project->tracks[0].mix.send = 100;
+            project->buses[0].fx.slots[0].kind = uint8_t(EffectKind::Echo);
+            project->buses[0].fx.slots[0].params = {60, 50, 100, 80, 0, 0};
+        }
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::NoteOn, 0, 0, 57, 110});
+        std::vector<int32_t> out(256);
+        double held = 0, after = 0;
+        for (unsigned n = 0; n < 700; ++n) {
+            if (n == 172) host.send({Command::Type::NoteOff, 0, 0, 57, 0}); // half a second in
+            host.render(out.data(), 128, 1);
+            for (auto v : out) (n < 172 ? held : n > 200 ? after : held) += double(v / 2147483648.0f) * (v / 2147483648.0f);
+        }
+        return std::pair<double, double>(held, after);
+    };
+    auto dry = render(false, false), filtered = render(true, false), echoed = render(false, true);
+    CHECK(filtered.first * 10 < dry.first);
+    CHECK(dry.second < 1e-6 && echoed.second > 1e-3);
+}
 } // namespace
 
 int main() {
+    effects();
     arrange();
     mod_matrix();
     motion();

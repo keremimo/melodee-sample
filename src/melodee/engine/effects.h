@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#pragma once
+#include "melodee/engine/dsp.h"
+#include "melodee/engine/effect_info.h"
+#include <array>
+#include <cstdint>
+#include <memory>
+
+// Melodee's effects, written for sample-base: one Effect object per chain
+// slot, changed in place on the audio thread. Effects that need delay
+// memory (reverbs, echoes, chorus, flanger, tape) take a block from a pool
+// made up front, so nothing allocates while audio runs; when the pool is
+// used up the effect passes sound through untouched.
+namespace melodee {
+
+class DelayPool {
+public:
+    static constexpr unsigned blocks = 48;
+    static constexpr unsigned half = 66150;           // 1.5 s at 44.1 kHz, one channel
+    static constexpr unsigned block_floats = 2 * half;
+    DelayPool();
+    float* take();       // nullptr when none is free
+    void give(float* block);
+private:
+    std::unique_ptr<float[]> memory;
+    std::array<bool, blocks> used {};
+};
+
+class Effect {
+public:
+    void set_kind(EffectKind kind, DelayPool& pool); // sets the kind's initial parameters too
+    void set_param(unsigned index, int value);
+    void set_bypass(bool on) { bypass = on; }
+    EffectKind kind() const { return current; }
+    void process(float* left, float* right, unsigned frames);
+
+private:
+    struct Biquad {
+        float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0;
+        float run(float x) { float y = b0 * x + z1; z1 = b1 * x - a1 * y + z2; z2 = b2 * x - a2 * y; return y; }
+    };
+    struct Svf { float s1 = 0, s2 = 0; };
+    void update();
+    void reverb(float& l, float& r);
+    float delayed(const float* line, unsigned at, float back) const; // fractional read behind `at`
+
+    EffectKind current = EffectKind::None;
+    bool bypass = false;
+    std::array<int, effect_params> p {};
+    float* memory = nullptr;
+    unsigned write = 0;
+
+    // Derived values (update()).
+    float mix = 1, a = 0, b = 0, c = 0, d = 0, e = 0;
+    unsigned delay = 0;
+    std::array<Biquad, 6> eq {};
+    float svf_g = 0.5f, svf_k = 1;
+
+    // Running state.
+    float lfo = 0, env = 0, env2 = 0, gain = 1, hold_l = 0, hold_r = 0, tone_l = 0, tone_r = 0;
+    unsigned hold_count = 0;
+    std::array<Svf, 2> svf {};
+    std::array<std::array<float, 6>, 2> allpass {};
+    float phaser_l = 0, phaser_r = 0;
+    // Reverb: four combs and two allpasses a side, after a predelay, inside `memory`.
+    std::array<unsigned, 8> comb_length {}, comb_at {};
+    std::array<float, 8> comb_filter {};
+    std::array<unsigned, 4> pass_length {}, pass_at {};
+    unsigned predelay = 0;
+    float feedback = 0, damp = 0;
+};
+
+} // namespace melodee

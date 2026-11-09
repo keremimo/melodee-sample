@@ -32,6 +32,11 @@ struct Command {
         MotionWrite, // motion: Motion::write(motion)
         MotionClear, // motion: Motion::clear(track, pattern, param)
         Mod,         // track, index = route, route
+        FxKind,      // track = chain, index = slot, value = EffectKind (its initial values come with it)
+        FxParam,     // track = chain, index = slot, pattern = parameter, value
+        FxBypass,    // track = chain, index = slot, value
+        SendBus,     // track, value = bus 0-3
+        Return,      // index = bus, value = 0..100
         Pressure,    // track, index = key, value = 0..127 (poly aftertouch)
     };
     Command() = default;

@@ -57,10 +57,32 @@ struct ModRoute {
     bool used() const { return source && destination; }
 };
 
+// One effect in a chain: its kind (EffectKind; 0 none) and its six values.
+struct EffectSlot {
+    uint8_t kind = 0;
+    bool bypass = false;
+    std::array<int16_t, 6> params {};
+    bool used() const { return kind != 0; }
+};
+// A chain's slots stay packed from the front; `size` of them may be used.
+struct Chain {
+    std::array<EffectSlot, max_slots> slots {};
+    uint8_t size = max_slots;
+    unsigned count() const { unsigned n = 0; while (n < size && slots[n].used()) ++n; return n; }
+};
+struct Bus {
+    Chain fx;
+    uint8_t level = 70; // the return, 0..100
+};
+// Chains are numbered for commands: tracks 0-15, buses 16-19, master 20.
+constexpr unsigned bus_chain(unsigned bus) { return track_count + bus; }
+constexpr unsigned master_chain = track_count + bus_count;
+
 struct Mix {
     uint8_t level = 100; // 0..127, 100 is unity
     int8_t pan = 0;      // -50 (left) .. 50 (right)
-    uint8_t send = 0;    // 0..100, into the bus picked on Sends
+    uint8_t send = 0;    // 0..100, into `bus`
+    uint8_t bus = 0;     // 0..3: A-D
     bool mute = false, solo = false;
 };
 
@@ -212,6 +234,7 @@ struct Track {
     int8_t octave = 2;    // of the lowest pad, C4 = MIDI 60
     uint8_t last_note = 50;
     std::array<ModRoute, mod_routes> mods {};
+    Chain fx {{}, track_slots};
     bool used() const { return engine != EngineKind::None; }
     void set_name(const char* text) { std::strncpy(name, text, name_length - 1); name[name_length - 1] = 0; }
 };
@@ -225,6 +248,10 @@ struct Project {
     std::array<Track, track_count> tracks {};
     Motion motion;
     Song song;
+    std::array<Bus, bus_count> buses {};
+    Chain master {{}, master_slots};
+    Chain& chain(unsigned n) { return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master; }
+    const Chain& chain(unsigned n) const { return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master; }
     unsigned used_tracks() const { unsigned n = 0; for (auto& t : tracks) n += t.used(); return n; }
 };
 

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/command.h"
+#include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/model/project.h"
 #include "surface/midi.h"
@@ -62,6 +63,8 @@ private:
         std::array<int16_t, max_params> base {}; // the track's own values; motion only borrows them
         bool moved = false;                       // motion changed a value since Play
         float buffer[block] {};
+        float left[block] {}, right[block] {};
+        uint8_t bus = 0;
     };
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
@@ -76,6 +79,11 @@ private:
 
     MidiQueue<4096, Command> queue;
     std::array<Slot, track_count> slots;
+    DelayPool pool;
+    std::array<std::array<Effect, max_slots>, chain_count> fx;
+    std::array<float, bus_count> returns {0.7f, 0.7f, 0.7f, 0.7f};
+    float bus_l[bus_count][block] {}, bus_r[bus_count][block] {}, master_l[block] {}, master_r[block] {};
+    void run_chain(unsigned chain, float* left, float* right, unsigned frames);
     std::unique_ptr<PatternBank> patterns;
     Motion motion;
     Song song;

@@ -18,4 +18,8 @@ constexpr unsigned ticks_per_quarter = 24, ticks_per_bar = 4 * ticks_per_quarter
 constexpr unsigned song_clips = 256;    // clips in the arrange view
 constexpr unsigned song_markers = 16;
 constexpr unsigned song_bars = 999;
+// Effects along the signal (open question 5: slot counts and four buses).
+constexpr unsigned track_slots = 6, bus_slots = 6, master_slots = 6, bus_count = 4;
+constexpr unsigned max_slots = 6;
+constexpr unsigned chain_count = track_count + bus_count + 1; // tracks, buses A-D, master
 }

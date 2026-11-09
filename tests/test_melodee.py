@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ["src/melodee/engine/prophet.cpp", "src/melodee/engine/prophet_info.cpp",
            "src/melodee/engine/engine_info.cpp", "src/melodee/engine/engine_host.cpp",
-           "src/melodee/shell/bindings.cpp"]
+           "src/melodee/shell/bindings.cpp", "src/melodee/engine/effects.cpp", "src/melodee/engine/effect_info.cpp"]
 
 
 class MelodeeTests(unittest.TestCase):

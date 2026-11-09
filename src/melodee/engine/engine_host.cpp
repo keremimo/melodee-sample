@@ -28,6 +28,16 @@ EngineHost::EngineHost() : patterns(std::make_unique<PatternBank>()) {
 
 void EngineHost::load(const Project& project, const PatternBank& bank) {
     *patterns = bank;
+    for (unsigned n = 0; n < chain_count; ++n) {
+        const auto& chain = project.chain(n);
+        for (unsigned k = 0; k < max_slots; ++k) {
+            const auto& s = chain.slots[k];
+            fx[n][k].set_kind(EffectKind(s.kind), pool);
+            for (unsigned q = 0; q < effect_params; ++q) fx[n][k].set_param(q, s.params[q]);
+            fx[n][k].set_bypass(s.bypass);
+        }
+    }
+    for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
     motion = project.motion;
     song = project.song;
     tempo = project.tempo; swing = project.swing;
@@ -42,6 +52,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
         apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
         apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
         slot.send = track.mix.send / 100.0f;
+        slot.bus = track.mix.bus;
         slot.mute = track.mix.mute; slot.solo = track.mix.solo;
         slot.pattern = track.pattern;
         patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
@@ -84,6 +95,11 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::MotionWrite: motion.write(c.motion); break;
     case Type::Mod: if (slot.engine && c.index < mod_routes) slot.engine->set_mod(c.index, c.route); break;
+    case Type::FxKind: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_kind(EffectKind(c.value), pool); break;
+    case Type::FxParam: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_param(c.pattern, c.value); break;
+    case Type::FxBypass: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_bypass(c.value != 0); break;
+    case Type::SendBus: slot.bus = uint8_t(c.value % bus_count); break;
+    case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
     case Type::Pressure: if (slot.engine) slot.engine->set_pressure(c.index, c.value / 127.0f); break;
     case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param); break;
     case Type::Wheel: if (slot.engine) slot.engine->set_wheel(c.value / 1000.0f); break;
@@ -156,6 +172,13 @@ void EngineHost::run_offs(Slot& slot, unsigned frames) {
         if (off.key < 0) continue;
         off.samples -= int32_t(frames);
         if (off.samples <= 0) { if (slot.engine) slot.engine->note_off(off.key); off.key = -1; }
+    }
+}
+
+void EngineHost::run_chain(unsigned chain, float* left, float* right, unsigned frames) {
+    for (auto& effect : fx[chain]) {
+        if (effect.kind() == EffectKind::None) break; // slots are packed from the front
+        effect.process(left, right, frames);
     }
 }
 
@@ -276,26 +299,44 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume) {
     }
     is_playing.store(running, std::memory_order_relaxed);
 
+    // The signal: each track panned, through its chain, into the master and
+    // its send into one bus; each bus through its chain at its return level
+    // into the master; the master through its chain, then main volume.
+    for (unsigned b = 0; b < bus_count; ++b) { std::fill(bus_l[b], bus_l[b] + frames, 0.0f); std::fill(bus_r[b], bus_r[b] + frames, 0.0f); }
+    std::fill(master_l, master_l + frames, 0.0f); std::fill(master_r, master_r + frames, 0.0f);
+    for (unsigned t = 0; t < track_count; ++t) {
+        auto& slot = slots[t];
+        float level = 0;
+        if (slot.engine) {
+            for (unsigned f = 0; f < frames; ++f) {
+                float x = slot.buffer[f] * slot.gain;
+                slot.left[f] = x * slot.pan_left; slot.right[f] = x * slot.pan_right;
+            }
+            run_chain(t, slot.left, slot.right, frames);
+            bool heard = !slot.mute && !(solo && !slot.solo);
+            if (heard) {
+                for (unsigned f = 0; f < frames; ++f) {
+                    master_l[f] += slot.left[f]; master_r[f] += slot.right[f];
+                    level = std::max(level, std::max(std::fabs(slot.left[f]), std::fabs(slot.right[f])));
+                }
+                if (slot.send > 0)
+                    for (unsigned f = 0; f < frames; ++f) { bus_l[slot.bus][f] += slot.left[f] * slot.send; bus_r[slot.bus][f] += slot.right[f] * slot.send; }
+            }
+        }
+        float shown = meters[t].load(std::memory_order_relaxed) * 0.97f; // a short fall
+        meters[t].store(std::max(level, shown), std::memory_order_relaxed);
+    }
+    for (unsigned b = 0; b < bus_count; ++b) {
+        run_chain(bus_chain(b), bus_l[b], bus_r[b], frames);
+        for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * returns[b]; master_r[f] += bus_r[b][f] * returns[b]; }
+    }
+    run_chain(master_chain, master_l, master_r, frames);
     float peak = 0;
     for (unsigned f = 0; f < frames; ++f) {
-        float left = 0, right = 0;
-        for (auto& slot : slots) {
-            if (!slot.engine) continue;
-            float x = slot.buffer[f] * slot.gain;
-            if (slot.mute || (solo && !slot.solo)) x = 0;
-            slot.buffer[f] = x;
-            left += x * slot.pan_left; right += x * slot.pan_right;
-        }
-        left = dsp::soft_clip(left * volume); right = dsp::soft_clip(right * volume);
+        float left = dsp::soft_clip(master_l[f] * volume), right = dsp::soft_clip(master_r[f] * volume);
         peak = std::max(peak, std::max(std::fabs(left), std::fabs(right)));
         out[2 * f] = int32_t(std::clamp(left, -0.999f, 0.999f) * 2147483647.0f);
         out[2 * f + 1] = int32_t(std::clamp(right, -0.999f, 0.999f) * 2147483647.0f);
-    }
-    for (unsigned t = 0; t < track_count; ++t) {
-        float level = 0;
-        for (unsigned f = 0; f < frames; ++f) level = std::max(level, std::fabs(slots[t].buffer[f]));
-        float shown = meters[t].load(std::memory_order_relaxed) * 0.97f; // a short fall
-        meters[t].store(std::max(level, shown), std::memory_order_relaxed);
     }
     output_peak.store(peak, std::memory_order_relaxed);
 }
