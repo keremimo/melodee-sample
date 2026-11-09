@@ -79,7 +79,9 @@ void Shell::button(Button b, bool pressed) {
         if (play_group(ui.page)) context_.open(ui.page == PageId::Stage ? PageId::Keys : ui.page == PageId::Keys ? PageId::Mix : PageId::Stage);
         else context_.open(PageId::Stage);
         break;
-    case Button::Seq: context_.open(PageId::Steps); break;
+    case Button::Seq: // Steps, then Roll, then Motion
+        context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
+        break;
     case Button::SampleSelect: if (!ui.shift) context_.open(PageId::Sounds); break;
     case Button::SixteenLevels: context_.open(PageId::Keys); break;
     case Button::Play: context_.play(); break;
@@ -123,6 +125,10 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     check_pickup(n, b);
     ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n);
     if (ui_.shift) ui_.shift_used = true;
+    if (ui_.erase && b.kind == Binding::Kind::Param && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane
+        context_.clear_lane(b.id);
+        return;
+    }
     if (ui_.erase && b.kind == Binding::Kind::Param) { // Erase + pot: back to the initial value
         context_.apply(b, engine_info(context_.track().engine).params[b.id].initial);
         pot.engaged = false; pot.bound = 0;

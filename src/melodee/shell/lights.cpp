@@ -59,7 +59,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     auto on = [&](B button, bool lit) { lights.button(button, lit ? L::Bright : L::Off); };
     bool play_group = ui.page == PageId::Stage || ui.page == PageId::Keys || ui.page == PageId::Mix;
     on(B::Sample, play_group);
-    on(B::Seq, ui.page == PageId::Steps);
+    on(B::Seq, ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds);
     on(B::SixteenLevels, ui.page == PageId::Keys);
     lights.button(B::Play, playing ? L::Bright : L::Dim);

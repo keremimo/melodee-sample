@@ -70,6 +70,32 @@ void sheet(Paint& p, const Sheet& s) {
     p.g.drawFittedText(s.body, juce::Rectangle<int>(int(x + 12), int(at), int(w - 24), 30), juce::Justification::topLeft, 2, 1.0f);
 }
 
+void menu_sheet(Paint& p, const MenuSheet& m) {
+    // At 2x: left 130, top 96, 380 wide, padding 12, rows of 40 with 2 between.
+    constexpr float x = 65, y = 48, w = 190, row_h = 20;
+    float h = 6 + 14 + m.count * (row_h + 1) + 5;
+    for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
+    p.fill(x, y, w, h, colour::surf, 6);
+    p.ring(x, y, w, h, colour::line, 6);
+    p.text(m.title, x + 13, y + 6, w - 26, 10, caps_text(m.accent));
+    p.text(m.detail, x + 13, y + 6, w - 26, 10, caps_text(colour::mid), juce::Justification::centredRight);
+    for (unsigned n = 0; n < m.count; ++n) {
+        const auto& r = m.rows[n];
+        float ry = y + 20 + n * (row_h + 1), rx = x + 6, rw = w - 12;
+        if (n == m.current) {
+            p.fill(rx, ry, rw, row_h, colour::raised, 4);
+            p.g.saveState();
+            p.g.reduceClipRegion(juce::Rectangle<int>(int(rx), int(ry), 3, int(row_h)));
+            p.fill(rx, ry, 8, row_h, m.accent, 4);
+            p.g.restoreState();
+        }
+        p.text(r.name, rx + 7, ry, rw - 14, row_h, plain(r.danger ? colour::rec : colour::text, 12, Weight::Medium));
+        if (r.value.isNotEmpty())
+            p.text(r.value, rx + 7, ry, rw - 14, row_h, plain(r.on ? m.accent : colour::mid, 11, Weight::Medium),
+                   juce::Justification::centredRight);
+    }
+}
+
 void star(Paint& p, float cx, float cy, float r, juce::Colour c) {
     juce::Path path;
     path.addStar({cx, cy}, 5, r * 0.45f, r, 0);

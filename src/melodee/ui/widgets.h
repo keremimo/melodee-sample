@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/ui/paint.h"
+#include <array>
 
 // The smaller shared pieces the pictures are made of.
 namespace melodee::ui {
@@ -30,6 +31,21 @@ struct Sheet {
     bool power_icon = false;
 };
 void sheet(Paint& p, const Sheet& s);
+
+// A menu sheet: a card of actions over the dimmed picture, each row a name
+// and its value; the current row is raised with an accent bar (the note,
+// clip and file sheets).
+struct MenuRow {
+    juce::String name, value;
+    bool on = false, danger = false;
+};
+struct MenuSheet {
+    juce::String title, detail;
+    std::array<MenuRow, 8> rows {};
+    unsigned count = 0, current = 0;
+    juce::Colour accent = colour::text;
+};
+void menu_sheet(Paint& p, const MenuSheet& sheet);
 
 // A small five-point star, for favourites.
 void star(Paint& p, float cx, float cy, float r, juce::Colour c);

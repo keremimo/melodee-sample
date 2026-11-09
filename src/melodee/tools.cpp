@@ -39,9 +39,20 @@ void board_project(Shell& shell) {
         auto& p = shell.patterns().at[t][0];
         p.steps[0].notes[0] = {48, 100};
     }
-    // Track 1's pattern 2: the bass line of the Steps board.
-    shell.patterns().at[0][1] = shell.patterns().at[0][0];
-    shell.patterns().at[0][1].length = 64;
+    // Track 1's pattern 2: the bass line of the Steps board, in each of its four bars.
+    auto& line = shell.patterns().at[0][1];
+    line = shell.patterns().at[0][0];
+    line.length = 64;
+    for (unsigned s = 16; s < 64; ++s) {
+        line.steps[s] = line.steps[s % 16];
+        for (auto& n : line.steps[s].notes) if (n.velocity) n.key = uint8_t(n.key + 12); // as on the Roll board
+    }
+    line.steps[22].notes[0] = {48, 96}; line.steps[22].length = 2; line.steps[22].flags = step_accent;
+    // Motion on CUTOFF and RESO, as drawn on the Motion board.
+    const int cutoff[] {40, 44, 52, 60, 72, 80, 84, 80, 70, 62, 54, 48, 44, 50, 58, 62};
+    for (unsigned n = 0; n < 16; ++n) project.motion.write({0, 1, uint16_t(n * 4), uint8_t(prophet::Cutoff), int16_t(cutoff[n])});
+    const int reso[] {40, 52, 60, 52, 40, 35};
+    for (unsigned n = 0; n < 6; ++n) project.motion.write({0, 1, uint16_t(24 + n * 4), uint8_t(prophet::Resonance), int16_t(reso[n])});
 }
 
 struct Preview {
@@ -73,6 +84,17 @@ const Preview previews[] {
      }},
     {"steps", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"roll", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26; s.ui.recording = true;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"notesheet", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26; s.ui.sheet_open = true;
+     }},
+    {"motion", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Motion; s.playing = true; s.position = 40; s.ui.recording = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
@@ -113,7 +135,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit mix steps shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit mix steps roll notesheet motion shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

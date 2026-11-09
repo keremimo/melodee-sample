@@ -7,7 +7,8 @@
 // opens the MPC's audio, display or control surface.
 //   --melodee-preview DIR [PAGE...]  draws pages to DIR/<page>.png at 320 x 240
 //                                    and DIR/<page>@2x.png at the boards' 640 x 480.
-//                                    Pages: stage keys sounds edit mix steps shift exit
+//                                    Pages: stage keys sounds edit mix steps roll
+//                                    notesheet motion shift exit
 //   --melodee-sound FILE.wav         plays the starting project for two bars and
 //                                    checks it sounds and stays inside full scale
 // Returns the exit code, or nothing when argv names neither.

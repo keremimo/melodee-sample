@@ -11,6 +11,8 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Sounds: return sounds_page;
     case PageId::Edit: return edit_page;
     case PageId::Steps: return steps_page;
+    case PageId::Roll: return roll_page;
+    case PageId::Motion: return motion_page;
     case PageId::Stage:
     default: return stage_page;
     }

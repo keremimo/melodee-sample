@@ -11,6 +11,7 @@ using Type = Command::Type;
 void Context::send(const Command& command) { host.send(command); }
 
 void Context::open(PageId page) {
+    ui.sheet_open = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
     if (page != ui.page) { ui.previous = ui.page; ui.page = page; }
     if (page == PageId::Sounds) {
@@ -20,7 +21,9 @@ void Context::open(PageId page) {
     }
 }
 
-void Context::back() { open(ui.previous == ui.page ? PageId::Stage : ui.previous); }
+void Context::back() {
+    if (ui.sheet_open) { ui.sheet_open = false; return; } // Shift + Push closes a sheet first
+    open(ui.previous == ui.page ? PageId::Stage : ui.previous); }
 
 void Context::select_track(unsigned t) {
     if (ui.page == PageId::Sounds) audition(-1);
@@ -108,7 +111,7 @@ void Context::apply(const Binding& b, int value) {
     value = std::clamp(value, b.min, b.max);
     auto& t = track();
     switch (b.kind) {
-    case Kind::Param: set_param(ui.track, b.id, value); break;
+    case Kind::Param: set_param(ui.track, b.id, value); record_motion(b.id, value); break;
     case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); break;
     case Kind::Pan: t.mix.pan = int8_t(value); send({Type::Pan, ui.track, 0, 0, int16_t(value)}); break;
     case Kind::Send: t.mix.send = uint8_t(value); send({Type::Send, ui.track, 0, 0, int16_t(value)}); break;
@@ -154,6 +157,27 @@ void Context::set_step(unsigned t, unsigned at, const Step& value) {
     patterns.at[t % track_count][tr.pattern].steps[at % max_steps] = value;
     Command c {Type::SetStep, uint8_t(t), tr.pattern, uint16_t(at % max_steps), 0};
     c.step = value;
+    send(c);
+}
+
+void Context::record_motion(int param, int value) {
+    if (!ui.recording || !host.playing() || param < 0) return;
+    auto& t = track();
+    MotionEvent e;
+    e.track = ui.track; e.pattern = t.pattern; e.param = uint8_t(param); e.value = int16_t(value);
+    e.step = uint16_t(host.position() % pattern().length);
+    if (!project.motion.write(e)) return; // full: the move still sounds, it is just not kept
+    Command c {Type::MotionWrite};
+    c.motion = e;
+    send(c);
+}
+
+void Context::clear_lane(int param) {
+    if (param < 0) return;
+    auto& t = track();
+    project.motion.clear(ui.track, t.pattern, uint8_t(param));
+    Command c {Type::MotionClear};
+    c.motion.track = ui.track; c.motion.pattern = t.pattern; c.motion.param = uint8_t(param);
     send(c);
 }
 

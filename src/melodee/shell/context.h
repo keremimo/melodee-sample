@@ -47,6 +47,9 @@ public:
     void set_solo(unsigned track, bool on);
     // Steps
     void set_step(unsigned track, unsigned step, const Step& value);
+    // Motion: a pot move while recording and playing; Erase + pot on Motion.
+    void record_motion(int param, int value);
+    void clear_lane(int param);
     // Transport
     void play();
     void stop();

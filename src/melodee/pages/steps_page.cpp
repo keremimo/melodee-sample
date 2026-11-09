@@ -162,7 +162,10 @@ void nudge(Context& c, int way) {
     c.ui.step_cursor = int16_t(c.ui.steps_bar * bar_steps + c.ui.step_cursor % bar_steps);
 }
 
-void soft(Context&, int) {} // Roll and Motion come with their own boards
+void soft(Context& c, int key) {
+    static const PageId pages[] {PageId::Steps, PageId::Roll, PageId::Motion};
+    c.open(pages[key % 3]);
+}
 } // namespace
 
 const PageSpec steps_page {draw, pad, wheel, no_push, soft, nudge};

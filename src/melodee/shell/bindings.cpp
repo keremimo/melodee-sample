@@ -23,6 +23,23 @@ std::array<Binding, 3> favourite_bindings(const Track& track) {
     return {param(track, info.favourites[0]), param(track, info.favourites[1]), param(track, info.favourites[2])};
 }
 
+std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
+    const auto& track = project.tracks[ui.track % track_count];
+    const auto& info = engine_info(track.engine);
+    std::array<int, 3> lanes {-1, -1, -1};
+    unsigned n = 0;
+    auto add = [&](int param) {
+        if (param < 0 || unsigned(param) >= info.param_count || n == lanes.size()) return;
+        for (unsigned k = 0; k < n; ++k) if (lanes[k] == param) return;
+        lanes[n++] = param;
+    };
+    const auto& motion = project.motion;
+    for (unsigned e = 0; e < motion.count; ++e)
+        if (motion.events[e].track == ui.track && motion.events[e].pattern == track.pattern) add(motion.events[e].param);
+    for (auto f : info.favourites) add(f);
+    return lanes;
+}
+
 std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
     switch (ui.page) {
@@ -51,6 +68,11 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         const auto& row = page.rows[ui.edit_row[ui.track] % std::max(page.row_count(), 1u)];
         return {param(track, row[0]), param(track, row[1]), param(track, row[2])};
     }
+    case PageId::Motion: {
+        auto lanes = motion_lanes(project, ui);
+        return {param(track, lanes[0]), param(track, lanes[1]), param(track, lanes[2])};
+    }
+    case PageId::Roll:
     case PageId::Steps: {
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % max_steps;
         const auto& step = pattern.steps[at];

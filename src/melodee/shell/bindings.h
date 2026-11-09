@@ -27,6 +27,9 @@ struct Binding {
 
 // The cards for a page; `pattern` is the selected track's playing pattern.
 std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern);
+// The three parameters the Motion page shows as lanes: those holding motion
+// on the track's playing pattern first, then the track's favourites.
+std::array<int, 3> motion_lanes(const Project& project, const UiState& ui);
 // The track's three favourite parameters, for every page without its own.
 std::array<Binding, 3> favourite_bindings(const Track& track);
 
