@@ -4,6 +4,7 @@
 #include "drivers/power_button.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/paint.h"
+#include <cctype>
 
 
 MelodeeApp::MelodeeApp()
@@ -23,7 +24,28 @@ void MelodeeApp::surface(const SurfaceEvent& event) {
     shell.surface(event, now_ms());
 }
 
-void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) { shell.lights(lights, now_ms()); }
+void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
+    uint8_t button;
+    while (presses.pop(button)) {
+        // A remote press, as if by hand: down, then up.
+        for (bool down : {true, false}) {
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Button; event.input.index = button; event.input.pressed = down;
+            shell.surface(event, now_ms());
+        }
+    }
+    shell.lights(lights, now_ms());
+}
+
+std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
+    if (action != "melodee-press") return {};
+    for (unsigned n = 0; n < surface_buttons.size(); ++n) {
+        std::string name = surface_buttons[n].name;
+        for (auto& c : name) c = char(c == ' ' ? '-' : std::tolower(static_cast<unsigned char>(c)));
+        if (name == argument) return presses.push(uint8_t(n)) ? "OK melodee-press " + argument : "ERR busy";
+    }
+    return "ERR melodee-press takes a button: sample, seq, play, stop, top-left, wheel-push, ...";
+}
 
 void MelodeeApp::draw(juce::Graphics& g) {
     using namespace melodee;

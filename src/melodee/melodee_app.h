@@ -20,6 +20,8 @@ public:
     void lights(SurfaceLights& lights, Clock::time_point now) override; // MIDI thread
     void draw(juce::Graphics& g) override;                              // screen thread
     void service(Hardware& hardware) override;                          // service thread
+    std::string command(const std::string& action, const std::string& argument, Hardware&) override;
+    std::string command_names() const override { return "melodee-press"; }
     std::string status() const override;
     bool claims_wheel_push() const override { return true; }
     bool finished() const override { return shell.leaving(); }
@@ -31,5 +33,7 @@ private:
     melodee::Shell shell;
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     uint64_t power_presses = 0;               // service thread
+    // `melodee-press BUTTON`: the service thread queues, the MIDI thread presses.
+    MidiQueue<16, uint8_t> presses;
     bool power_known = false;
 };
