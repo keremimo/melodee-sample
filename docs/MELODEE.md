@@ -194,6 +194,23 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   then the project's samples load again. Nothing is created on the card
   until something is saved. LEAVE on the Exit sheet saves first (a new file
   if the project has none). Open at start is kept in `Melodee/settings`.
+- **Tempo** (hold Tap Tempo half a second; tapping works anywhere): K1
+  tempo, K2 swing, K3 click level; B1 halves, B3 doubles, B2 (or Shift +
+  Tap Tempo anywhere) the metronome, a short blip on each beat while
+  playing, higher on the bar. The wheel moves the tempo by 0.1.
+- **Arp** (Note Repeat: held, momentary; tapped, it stays on; tapped again
+  on its page, off): Up, Down, Up-down, Random, Order; K2 rate 1/4 to 1/32,
+  K3 octaves, Minus / Plus the gate. B3 Hold latches the keys. It runs on
+  its own clock at the tempo, so it plays with the song stopped too. On a
+  sampler track it is note repeat: the held pad at the rate.
+- **Chord** (B1 on Arp): one pad, one chord from the scale's own degrees:
+  Triad, Dia 7, Sus2, Sus4, Power, Dia 9; voicing Close, Open, Drop 2,
+  Spread; inversions. B1 there switches chords on or off. Chords play
+  through the arp too, and record into Steps and Roll as up to four notes.
+- **Capture** (Shift + Sample Record): what the pads played on the track
+  lately (a history of the last 512 presses), the last 1–4 bars quantised
+  to 1/16 or 1/8 and laid into a pattern (the first empty one); B3 or Push
+  keeps it and that pattern plays, B1 drops.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -227,13 +244,14 @@ through Steps, Roll and Motion; B1–B3 pick them too.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
-  levels, record, project, filesheet, shift and exit at 1× and 2× (the 2× ones line up
+  levels, record, project, filesheet, tempo, arp, chord,
+  capture, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: typed names (markers, projects), Settings and About, Seq
 Record writing launches into the song, six of the effects, pad effects,
-punch, the sampler's other six pages, Tempo / Chord / Arp / Capture, favourites.
+punch, the sampler's other six pages, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds
