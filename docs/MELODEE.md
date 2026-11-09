@@ -86,6 +86,30 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   wheel (the fader), key track, random, filter envelope. Destinations:
   cutoff, resonance, amp level, pitch, oscillator A or B pitch, pulse width,
   LFO rate, noise; each engine decides how far a destination moves.
+- **Clock:** 24 ticks a quarter. Each pattern has its own division (1/8,
+  1/8T, 1/16, 1/16T, 1/32); swing (project-wide, 50–75 %) stretches the
+  first sixteenth of every eighth.
+- **Patterns** (LOOP): tracks down, sixteen patterns across, eight tracks
+  in view following the selected one. Pads are its patterns: a tap queues
+  (it starts on the next bar, or at once when stopped), Erase + pad clears,
+  hold one and tap another to copy, Shift + pad launches that column on
+  every track (open question 8, built as drawn).
+- **Length** (B3): 1–256 steps; K1 by the bar, the wheel by the step, K2
+  division, K3 swing.
+- **Song** (B2): lanes per track, clips of patterns with their notes in
+  small and notches at each repeat, markers, loop brace, cursor, playhead
+  and an overview strip; K1 zoom (4–64 bars; at 4 the header says SNAP
+  1 BAR), K2 pattern and K3 length for the next clip, or of the clip under
+  the cursor. The wheel moves the cursor by the bar, pads pick the lane,
+  Push on empty time places a clip, Push on a clip opens the clip sheet
+  (split at the cursor, duplicate after, repeat to the next marker, loop
+  these bars, make its own pattern, show motion lane, mute, delete; B1 back,
+  B3 or Push does it). Minus / Plus jump between markers, or between clip
+  edges while there are none. **Play on the Song page plays the arrangement
+  from the cursor; Play anywhere else plays the patterns** (assumed, part of
+  open question 4). The song stops at its end unless a loop is set.
+  Markers are drawn and used, but there is no way to add one yet (no board
+  shows it). SongZoom's motion and punch lanes are not drawn yet.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -116,12 +140,13 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   spaces as dashes: `play`, `seq`, `wheel-push`, `top-right`), for checks
   without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
-  sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, shift and exit at 1× and 2× (the 2× ones line up
+  sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
+  clipsheet, length, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: saving (the Exit sheet says so), Patterns / Song / Length,
-effects and buses, punch, the sampler and chop, projects on the SD card,
+Not yet: saving (the Exit sheet says so), adding song markers, Seq
+Record writing launches into the song, effects and buses, punch, the sampler and chop, projects on the SD card,
 Tempo / Chord / Arp / Capture, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
