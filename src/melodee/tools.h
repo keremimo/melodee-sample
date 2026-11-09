@@ -12,7 +12,7 @@
 //                                    clipsheet length rack sends bus fxpick
 //                                    pads samples trim chop levels record
 //                                    project filesheet tempo arp chord capture
-//                                    shift exit
+//                                    pad play envelope filter follow cloud shift exit
 //   --melodee-sound FILE.wav         plays the starting project for two bars and
 //                                    checks it sounds and stays inside full scale
 // Returns the exit code, or nothing when argv names neither.

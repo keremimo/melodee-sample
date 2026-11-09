@@ -28,7 +28,8 @@ struct Binding {
         Tempo, ClickLevel,                 // Tempo (Swing as on Length)
         ArpMode, ArpRate, ArpOctaves,      // Arp
         ChordType, ChordVoicing, ChordInvert, // Chord
-        CaptureBars, CaptureQuantise, CaptureInto // Capture
+        CaptureBars, CaptureQuantise, CaptureInto, // Capture
+        PadFine, PadPlayMode, PadGroup, PadReverse, PadAttack, PadDecay, PadRelease, PadSustain // sampler pages
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter

@@ -31,6 +31,12 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Arp: return arp_page;
     case PageId::Chord: return chord_page;
     case PageId::Capture: return capture_page;
+    case PageId::PadPage: return pad_edit_page;
+    case PageId::PlayPage: return play_edit_page;
+    case PageId::EnvelopePage: return envelope_page;
+    case PageId::FilterPage: return filter_page;
+    case PageId::FollowPage: return follow_page;
+    case PageId::CloudPage: return cloud_page;
     case PageId::Stage:
     default: return stage_page;
     }

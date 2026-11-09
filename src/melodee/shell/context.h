@@ -81,6 +81,7 @@ public:
     void rechop();                                                     // Chop's markers from its mode and amount
     void chop_to_pads();                                               // the slices onto pads, from the first free one
     void record_press();
+    void follow_tempos(); // Follow on: each pad's own tempo, from its length as whole bars
     bool host_recording() const;                                       // a take is armed or running                                               // Sample Record on the Record page: arm, start now, stop
     bool files_match(const std::string& path) const { return ui.files_filter == 0 || path.find("/Recorded/") != std::string::npos; }
     // Effects: chain numbers as in model/project.h (tracks, buses, master).

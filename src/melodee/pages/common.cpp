@@ -136,6 +136,18 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.label = "JUMP"; c.value = juce::String(b.value + 1); c.unit = "/ " + juce::String(b.max + 1);
             break;
         case Kind::ProjectSort: c.label = "SORT"; c.value = b.value ? "Name" : "Newest"; break;
+        case Kind::PadFine: c.label = "FINE"; c.value = juce::String(b.value); c.unit = "ct"; c.bipolar = true; break;
+        case Kind::PadPlayMode: c.label = "PLAY"; c.value = b.value ? "One shot" : "Gate"; break;
+        case Kind::PadGroup: c.label = "GROUP"; c.value = b.value ? juce::String(b.value) : juce::String("None"); break;
+        case Kind::PadReverse: c.label = "REVERSE"; c.value = b.value ? "On" : "Off"; break;
+        case Kind::PadAttack: case Kind::PadDecay: case Kind::PadRelease: {
+            c.label = b.kind == Kind::PadAttack ? "ATTACK" : b.kind == Kind::PadDecay ? "DECAY" : "RELEASE";
+            if (b.kind == Kind::PadDecay && b.value >= 100) { c.value = "Hold"; break; }
+            float seconds = time_seconds(b.value) * (b.kind == Kind::PadAttack ? 0.3f : b.kind == Kind::PadRelease ? 0.5f : 1.0f);
+            if (seconds < 1) { c.value = juce::String(int(seconds * 1000)); c.unit = "ms"; } else { c.value = juce::String(seconds, 1); c.unit = "s"; }
+            break;
+        }
+        case Kind::PadSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(s.project.tempo / 10); c.unit = "bpm"; break;
         case Kind::ClickLevel: c.label = "CLICK"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::ArpMode: c.label = "MODE"; c.value = arp_mode_name(ArpMode(b.value)); break;

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/pages/page.h"
+#include "melodee/ui/chrome.h"
 
 // Each page file defines one of these; pages.cpp maps PageId to them.
 namespace melodee {
@@ -11,5 +12,9 @@ void song_marker(Context& c);
 extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, steps_page, roll_page, motion_page, patterns_page, song_page, length_page,
     rack_page, sends_page, bus_page, master_page,
     pads_page, samples_page, trim_page, chop_page,
-    levels_page, record_page, project_page, tempo_page, arp_page, chord_page, capture_page;
+    levels_page, record_page, project_page, tempo_page, arp_page, chord_page, capture_page,
+    pad_edit_page, play_edit_page, envelope_page, filter_page, follow_page, cloud_page;
+// The sampler's seven pages share their soft keys: the neighbours and PAGE n / 7.
+ui::SoftKeys sampler_keys(PageId page, juce::Colour colour);
+void sampler_soft(Context& c, int key);
 }

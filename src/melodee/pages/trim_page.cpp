@@ -4,7 +4,7 @@
 // its sample starts and ends. K1 start, K2 end, K3 zoom; closer in, each pot
 // covers a smaller stretch, and Shift + wheel moves the last one by a
 // millisecond. The handles wear the colours of the pots that move them.
-// (The sampler's other pages, Pad to Cloud, come with their own boards.)
+// B1 and B3 go round the sampler's seven pages (sampler_pages.cpp).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/ui/waveform.h"
@@ -29,7 +29,7 @@ void draw(Paint& p, const Snapshot& s) {
     juce::String name = pad.used() ? juce::String(s.project.samples[pad.sample % sample_slots].name) : juce::String("EMPTY");
     h.left.push_back(pill(juce::String("PAD ") + juce::String(label) + juce::String::fromUTF8(" \xc2\xb7 ") + name, c));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"", "TRIM", ""}, 1, c}, h);
+    frame(p, s, sampler_keys(PageId::Trim, c), h);
     p.text("Trim", zone::pad, zone::picture_y, 200, 22, plain(colour::text, type::title, Weight::SemiBold));
     uint32_t frames = s.sample.frames;
     if (!pad.used() || !frames) {
@@ -64,7 +64,7 @@ void draw(Paint& p, const Snapshot& s) {
 void push(Context&) {}
 } // namespace
 
-const PageSpec trim_page {draw, play_pad, no_wheel, push, [](Context&, int) {}, [](Context& c, int way) {
+const PageSpec trim_page {draw, play_pad, no_wheel, push, sampler_soft, [](Context& c, int way) {
     c.track().bank = uint8_t((c.track().bank + sampler_banks + way) % sampler_banks);
 }};
 

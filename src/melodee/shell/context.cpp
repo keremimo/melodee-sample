@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/context.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/sampler.h"
+#include <cmath>
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/chords.h"
 #include "melodee/model/scales.h"
@@ -207,7 +209,10 @@ void Context::apply(const Binding& b, int value) {
     value = std::clamp(value, b.min, b.max);
     auto& t = track();
     switch (b.kind) {
-    case Kind::Param: set_param(ui.track, b.id, value); record_motion(b.id, value); break;
+    case Kind::Param:
+        set_param(ui.track, b.id, value); record_motion(b.id, value);
+        if (t.engine == EngineKind::Sampler && b.id == sampler::Follow && value) follow_tempos();
+        break;
     case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); break;
     case Kind::Pan: t.mix.pan = int8_t(value); send({Type::Pan, ui.track, 0, 0, int16_t(value)}); break;
     case Kind::Send: t.mix.send = uint8_t(value); send({Type::Send, ui.track, 0, 0, int16_t(value)}); break;
@@ -282,6 +287,14 @@ void Context::apply(const Binding& b, int value) {
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
+    case Kind::PadFine: pad().fine = int8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadPlayMode: pad().play = PadPlay(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadGroup: pad().group = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadReverse: pad().reverse = value != 0; send_pad(ui.track, t.last_pad); break;
+    case Kind::PadAttack: pad().attack = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadDecay: pad().decay = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadRelease: pad().release = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadSustain: pad().sustain = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::Tempo: set_tempo(value * 10); break;
     case Kind::ClickLevel:
         project.click_level = uint8_t(value);
@@ -441,6 +454,25 @@ void Context::record_press() {
     std::strncpy(ref.name, "TAKE", sizeof(ref.name) - 1);
     ui.rec_slot = int16_t(slot); ui.rec_pad = int16_t(empty);
     send({Type::RecordArm, ui.rec_source, uint8_t(ui.rec_bars), uint16_t(slot), int16_t(ui.rec_threshold)});
+}
+
+void Context::follow_tempos() {
+    auto& t = track();
+    for (unsigned n = 0; n < sampler_pads; ++n) {
+        auto& pad = t.pads[n];
+        uint32_t frames = pad.used() ? project.samples[pad.sample % sample_slots].frames : 0;
+        if (!frames) continue;
+        uint32_t end = pad.end ? pad.end : frames, length = end > pad.start ? end - pad.start : 0;
+        if (length < 4410) continue; // a hit, not a loop: it keeps its speed
+        // The number of bars that puts it nearest the project's tempo, between 70 and 180 BPM.
+        double best = 0, target = project.tempo / 10.0;
+        for (double bars : {0.25, 0.5, 1.0, 2.0, 4.0, 8.0}) {
+            double bpm = bars * 4 * 60 * 44100.0 / length;
+            if (bpm >= 70 && bpm <= 180 && (best == 0 || std::fabs(bpm - target) < std::fabs(best - target))) best = bpm;
+        }
+        pad.own_tempo = uint16_t(best * 10);
+        send_pad(ui.track, n);
+    }
 }
 
 bool Context::host_recording() const { return host.recorder().state() != TakeRecorder::State::Idle; }

@@ -3,6 +3,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/sampler.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/sound_list.h"
@@ -173,6 +174,26 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
     case PageId::Capture:
         return {Binding {Kind::CaptureBars, 0, 1, 4, ui.capture_bars}, Binding {Kind::CaptureQuantise, 0, 0, 2, ui.capture_quantise},
                 Binding {Kind::CaptureInto, 0, 0, int(pattern_count) - 1, ui.capture_into}};
+    case PageId::PadPage:
+    case PageId::PlayPage:
+    case PageId::EnvelopePage: {
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        if (!pad.used()) return {};
+        if (ui.page == PageId::PadPage)
+            return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadFine, 0, -50, 50, pad.fine},
+                    Binding {Kind::PadLevel, 0, 0, 127, pad.level}};
+        if (ui.page == PageId::PlayPage)
+            return {Binding {Kind::PadPlayMode, 0, 0, 1, int(pad.play)}, Binding {Kind::PadGroup, 0, 0, 8, pad.group},
+                    Binding {Kind::PadReverse, 0, 0, 1, pad.reverse}};
+        if (ui.sampler_row) return {Binding {Kind::PadSustain, 0, 0, 100, pad.sustain}, Binding {}, Binding {}};
+        return {Binding {Kind::PadAttack, 0, 0, 100, pad.attack}, Binding {Kind::PadDecay, 0, 0, 100, pad.decay},
+                Binding {Kind::PadRelease, 0, 0, 100, pad.release}};
+    }
+    case PageId::FilterPage: return {param(track, sampler::Filter), param(track, sampler::Resonance), param(track, sampler::FilterType)};
+    case PageId::FollowPage: return {param(track, sampler::Follow), Binding {}, param(track, sampler::Tune)};
+    case PageId::CloudPage:
+        if (ui.sampler_row) return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
+        return {param(track, sampler::Position), param(track, sampler::Size), param(track, sampler::Density)};
     case PageId::Samples:
         return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
     case PageId::Roll:
