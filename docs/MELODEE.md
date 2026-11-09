@@ -114,6 +114,28 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   after the one before it. This is the one place Shift + Push is not Back
   (Kerem's choice); the Shift layer says so on Song. Names come from that
   list until a page for typing exists (open question 9). SongZoom's motion and punch lanes are not drawn yet.
+- **Effects along the signal:** each track runs its chain (6 slots), then
+  its one send goes into the bus it picks (A–D, 6 slots each, with a
+  return), and everything meets in the master chain (6 slots) before main
+  volume. Slot counts and the four buses are constants in
+  `model/limits.h` (open question 5). The effects are written here, 22 of
+  the picker's 28: Room, Reverb, Plate; Echo, Tape echo, Ping pong; Chorus,
+  Flanger, Phaser, Auto-pan, Tremolo; Drive, Tape, Crush, Fuzz; EQ, Filter,
+  Width; Compressor, Gate, Transient, Limiter. Shimmer, Looper, Pedal
+  chorus, Pedal phaser, Spit and Formant are listed dim and cannot be added
+  yet. Delay memory (reverbs, echoes, chorus, flanger, tape) comes from a
+  pool of 48 blocks of 1.5 s made at start, so the audio thread never
+  allocates; past 48 such effects, a new one passes sound through.
+- **Effects pages** (KNOB FX steps Track → Sends → Bus → Master; B1/B3 walk
+  along too): four device cards in view with a picture of each effect, the
+  device in view with its row (Minus / Plus) and how full the chain is. The
+  wheel picks a device; Push on it opens Change, Bypass, Move left / right,
+  Remove; Push on + ADD opens the picker (families left, effects right; Push
+  enters a family, B3 adds, B1 backs out). Sends shows the four buses and
+  sixteen send strips: K1 send, K2 bus, K3 that bus's return. Bus and Master
+  are the same page in neutral colours. Pot moves on effects are not yet
+  recorded into Motion; the sampler's pad effects (PadFX) come with the
+  sampler.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -145,12 +167,12 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   for checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
-  clipsheet, length, shift and exit at 1× and 2× (the 2× ones line up
+  clipsheet, length, rack, sends, bus, fxpick, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: saving (the Exit sheet says so), typed marker names, Seq
-Record writing launches into the song, effects and buses, punch, the sampler and chop, projects on the SD card,
+Record writing launches into the song, six of the effects, pad effects, punch, the sampler and chop, projects on the SD card,
 Tempo / Chord / Arp / Capture, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
