@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/ui/chrome.h"
+
+namespace melodee::ui {
+namespace {
+constexpr float item_h = 12.5f; // a pill or chip: 8 px capitals with 1.5 px above and below
+constexpr float header_mid = zone::header_y + zone::header_h / 2.0f;
+
+// Draws one header item with its left edge at x; returns its width.
+float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
+    using Kind = HeaderItem::Kind;
+    float top = header_mid - item_h / 2;
+    switch (it.kind) {
+    case Kind::Pill:
+    case Kind::Chip: {
+        auto style = caps_text(it.kind == Kind::Pill ? it.colour : colour::bg);
+        float w = p.width(it.text, style) + 9;
+        if (!measure_only) {
+            p.fill(x, top, w, item_h, it.kind == Kind::Pill ? colour::surf : it.colour, 3);
+            p.text(it.text, x, top, w, item_h, style, juce::Justification::centred);
+        }
+        return w;
+    }
+    case Kind::Text: {
+        auto style = plain(it.colour, 9, Weight::Medium);
+        float w = p.width(it.text, style);
+        if (!measure_only) p.text(it.text, x, top, w + 1, item_h, style);
+        return w;
+    }
+    case Kind::Tag: {
+        auto number = juce::String(it.track);
+        auto engine = caps_text(it.colour), name = plain(colour::text, type::body, Weight::Medium);
+        float ew = it.engine.isEmpty() ? 0 : p.width(it.engine, engine), nw = p.width(it.text, name);
+        float w = 13 + (ew > 0 ? 4 + ew : 0) + (nw > 0 ? 4 + nw : 0);
+        if (!measure_only) {
+            p.fill(x, header_mid - 6.5f, 13, 13, it.colour, 3);
+            p.text(number, x, header_mid - 6.5f, 13, 13, plain(colour::bg, 9, Weight::Bold), juce::Justification::centred);
+            float at = x + 17;
+            if (ew > 0) { p.text(it.engine, at, top, ew + 1, item_h, engine); at += ew + 4; }
+            if (nw > 0) p.text(it.text, at, top, nw + 1, item_h, name);
+        }
+        return w;
+    }
+    }
+    return 0;
+}
+} // namespace
+
+void soft_keys(Paint& p, const SoftKeys& keys) {
+    float column = zone::width / 3.0f;
+    for (int n = 0; n < 3; ++n) {
+        bool on = n == keys.active;
+        float x = n * column;
+        if (on) {
+            float cx = x + column / 2;
+            p.fill(cx - 15, -2, 30, 4, keys.accent, 1.5f); // drawn from above the edge: only the lower corners show
+        }
+        if (keys.labels[size_t(n)].isNotEmpty())
+            p.text(keys.labels[size_t(n)], x, zone::soft_y, column, zone::soft_h,
+                   caps_text(on ? colour::text : colour::mid, type::soft), juce::Justification::centred);
+    }
+}
+
+void header(Paint& p, const Header& h) {
+    float x = zone::pad;
+    // Transport: a play triangle while playing, a stop square otherwise.
+    if (h.playing) {
+        juce::Path tri;
+        tri.addTriangle(x + 1, header_mid - 3.75f, x + 1, header_mid + 3.75f, x + 7.5f, header_mid);
+        p.g.setColour(colour::text); p.g.fillPath(tri);
+    } else {
+        p.fill(x + 1, header_mid - 3, 6, 6, colour::mid, 1);
+    }
+    x += 13;
+    x += p.text(h.bpm, x, zone::header_y, 40, zone::header_h, plain(colour::text, type::bpm, Weight::Medium)) + 5;
+    if (h.recording) {
+        p.circle(x + 3, header_mid, 3, colour::rec);
+        x += 9;
+        x += p.text("REC", x, zone::header_y, 30, zone::header_h, caps_text(colour::rec)) + 5;
+    }
+    for (const auto& it : h.left) x += item(p, it, x, false) + 5;
+    float right = zone::width - zone::pad, total = 0;
+    for (const auto& it : h.right) total += item(p, it, 0, true) + 4;
+    float at = right - (total > 0 ? total - 4 : 0);
+    for (const auto& it : h.right) at += item(p, it, at, false) + 4;
+}
+
+} // namespace melodee::ui
