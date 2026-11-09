@@ -11,7 +11,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -43,6 +43,13 @@ struct UiState {
     uint8_t roll_note = 0;    // which of the cursor step's notes is selected
     bool map_open = false;    // the page map over Edit
     uint8_t map_cursor = 0;
+    int8_t pattern_held = -1; // Patterns: a pad held, so the next one copies it
+    bool pattern_copied = false;
+    uint16_t song_cursor = 0;   // bar
+    uint16_t song_view = 0;     // first bar in view
+    uint8_t song_zoom = 2;      // index into song_zooms
+    uint8_t song_pattern = 0;   // what Push places on empty time
+    uint8_t song_length = 4;    // bars
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

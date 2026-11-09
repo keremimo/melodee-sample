@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/ui/paint.h"
 #include <array>
+#include <utility>
 #include <vector>
 
 // The two rows at the top of every screen: the soft-key row naming B1-B3,
@@ -10,10 +11,14 @@
 // chips, plain text and the track tag).
 namespace melodee::ui {
 
+enum class KeyIcon : uint8_t { None, Back, Check }; // drawn before a label: back out, or do it
 struct SoftKeys {
+    SoftKeys(std::array<juce::String, 3> labels, int active = -1, juce::Colour accent = colour::text, std::array<KeyIcon, 3> icons = {})
+        : labels(std::move(labels)), active(active), accent(accent), icons(icons) {}
     std::array<juce::String, 3> labels;
     int active = -1;                    // the page's own key gets a short bar at the top edge
     juce::Colour accent = colour::text; // the bar's colour, usually the track's
+    std::array<KeyIcon, 3> icons {};
 };
 void soft_keys(Paint& p, const SoftKeys& keys);
 

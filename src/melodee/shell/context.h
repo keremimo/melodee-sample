@@ -52,6 +52,14 @@ public:
     // Motion: a pot move while recording and playing; Erase + pot on Motion.
     void record_motion(int param, int value);
     void clear_lane(int param);
+    // Patterns and Length
+    void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing
+    void clear_pattern(unsigned track, unsigned pattern);
+    void copy_pattern(unsigned track, unsigned from, unsigned to);
+    void set_length(unsigned steps);                         // the selected track's pattern
+    void set_division(Division division);
+    // Song: after any change to project.song, send it to the audio thread.
+    void sync_song();
     // Transport
     void play();
     void stop();

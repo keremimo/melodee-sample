@@ -38,6 +38,7 @@ void sheet(Paint& p, const Sheet& s);
 struct MenuRow {
     juce::String name, value;
     bool on = false, danger = false;
+    bool off = false; // not possible here: drawn dim
 };
 struct MenuSheet {
     juce::String title, detail;
@@ -46,6 +47,10 @@ struct MenuSheet {
     juce::Colour accent = colour::text;
 };
 void menu_sheet(Paint& p, const MenuSheet& sheet);
+
+// The same rows as a wide card over the whole picture, two columns of up to
+// four, with a chip and a title (the clip sheet).
+void wide_sheet(Paint& p, const MenuSheet& sheet, const juce::String& chip_text, juce::Colour chip_colour);
 
 // A small five-point star, for favourites.
 void star(Paint& p, float cx, float cy, float r, juce::Colour c);

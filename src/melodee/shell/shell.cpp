@@ -80,6 +80,9 @@ void Shell::button(Button b, bool pressed) {
         if (play_group(ui.page)) context_.open(ui.page == PageId::Stage ? PageId::Keys : ui.page == PageId::Keys ? PageId::Mix : PageId::Stage);
         else context_.open(PageId::Stage);
         break;
+    case Button::Loop: // Patterns, then Song, then Length
+        context_.open(ui.page == PageId::Patterns ? PageId::Song : ui.page == PageId::Song ? PageId::Length : PageId::Patterns);
+        break;
     case Button::Seq: // Steps, then Roll, then Motion
         context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
         break;
@@ -187,7 +190,26 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     for (unsigned t = 0; t < track_count; ++t)
         out.has_notes[t] = !patterns_->at[t][project_->tracks[t].pattern].empty();
     out.playing = host.playing();
-    out.position = host.position();
+    for (unsigned t = 0; t < track_count; ++t) {
+        out.steps[t] = host.step_of(t);
+        out.playing_patterns[t] = uint8_t(host.pattern_of(t));
+    }
+    out.position = unsigned(std::max(out.steps[ui_.track], 0));
+    out.ticks = host.ticks();
+    for (unsigned t = 0; t < track_count; ++t)
+        for (unsigned n = 0; n < pattern_count; ++n) {
+            const auto& pattern = patterns_->at[t][n];
+            auto& sketch = out.sketches[t][n];
+            sketch.length = pattern.length; sketch.division = pattern.division; sketch.notes = false;
+            for (unsigned k = 0; k < sketch.keys.size(); ++k) {
+                const Note* note = k < pattern.length ? pattern.steps[k].first() : nullptr;
+                sketch.keys[k] = note ? note->key : 0;
+                sketch.notes |= note != nullptr;
+            }
+            if (!sketch.notes) sketch.notes = !pattern.empty(); // notes beyond step 64
+        }
+    out.song_playing = host.song_playing();
+    out.song_bar = host.song_bar();
     for (unsigned t = 0; t < track_count; ++t) out.meters[t] = host.meter(t);
     out.now = now;
 }

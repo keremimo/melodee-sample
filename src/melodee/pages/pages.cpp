@@ -13,6 +13,9 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Steps: return steps_page;
     case PageId::Roll: return roll_page;
     case PageId::Motion: return motion_page;
+    case PageId::Patterns: return patterns_page;
+    case PageId::Song: return song_page;
+    case PageId::Length: return length_page;
     case PageId::Stage:
     default: return stage_page;
     }

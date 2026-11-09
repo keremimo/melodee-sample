@@ -49,6 +49,25 @@ void board_project(Shell& shell) {
         for (auto& n : line.steps[s].notes) if (n.velocity) n.key = uint8_t(n.key + 12); // as on the Roll board
     }
     line.steps[22].notes[0] = {48, 96}; line.steps[22].length = 2; line.steps[22].flags = step_accent;
+    // The Patterns board: which patterns hold notes, a small tune in each.
+    const char* state[] {"dpdeeeeedeeeeeee", "pdeeeeeeeeeeeeee", "pqddeeeedeeeeeee", "ddpeeeeeeeeeeeee",
+                         "dpddeeeeeeeeeeee", "pdeeeeeeeeeeeeee", "pdeeeeeeeeeeeeee", "deeeeeeeeeeeeeee"};
+    const int tune[] {0, 3, 7, 5, 10, 7};
+    const unsigned at[] {0, 3, 6, 8, 11, 14};
+    for (unsigned t = 0; t < 8; ++t)
+        for (unsigned n = 0; n < 16; ++n) {
+            if (state[t][n] == 'e' || (t == 0 && n == 1)) continue;
+            auto& pattern = shell.patterns().at[t][n];
+            for (unsigned k = 0; k < 6; ++k) pattern.steps[at[k] + (n % 2)].notes[0] = {uint8_t(48 + tune[(k + n + t) % 6]), 100};
+        }
+    // The Song board: markers, clips and the loop.
+    auto& song = project.song;
+    song.markers[0] = {16, "VERSE"}; song.markers[1] = {24, "DROP"}; song.marker_count = 2;
+    const Clip clips[] {{0, 0, 16, 8, false}, {0, 1, 24, 8, false}, {1, 0, 16, 4, false}, {1, 1, 24, 8, false},
+                        {2, 0, 16, 8, false}, {2, 2, 24, 2, false}, {2, 2, 26, 6, false}, {3, 2, 16, 16, false},
+                        {4, 0, 20, 4, false}, {4, 1, 24, 8, false}, {5, 0, 24, 8, false}, {7, 0, 28, 4, false}};
+    for (const auto& clip : clips) song.place(clip);
+    song.loop_start = 24; song.loop_end = 32;
     // The Mod board's six routes on track 1.
     const ModRoute routes[] {
         {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34}, {uint8_t(ModSource::Velocity), uint8_t(ModDest::AmpLevel), 60},
@@ -111,6 +130,31 @@ const Preview previews[] {
          s.ui.page = PageId::Motion; s.playing = true; s.position = 40; s.ui.recording = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    {"patterns", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true;
+         const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
+         for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.steps[t] = int(4 + t); }
+         s.project.tracks[2].pattern = 1;
+     }},
+    {"song", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 24; s.ui.song_view = 16; s.ui.song_zoom = 2;
+         s.ui.song_pattern = 2; s.ui.song_length = 4;
+         s.playing = s.song_playing = true; s.song_bar = 20; s.ticks = 48;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"songzoom", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 24; s.ui.song_zoom = 0;
+         s.playing = s.song_playing = true; s.song_bar = 25; s.ticks = 40;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"clipsheet", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 16; s.ui.sheet_open = true;
+         s.playing = true;
+     }},
+    {"length", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Length; s.playing = true; s.steps[0] = 34; s.project.swing = 54;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
 };
@@ -149,7 +193,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

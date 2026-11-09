@@ -14,4 +14,8 @@ constexpr unsigned motion_events = 256;  // open question 2: per project (as dra
 constexpr unsigned mod_routes = 8;       // open question 1: 8 drawn, 16 offered
 constexpr unsigned max_params = 96;      // engine parameters a track stores
 constexpr unsigned name_length = 24;
+constexpr unsigned ticks_per_quarter = 24, ticks_per_bar = 4 * ticks_per_quarter;
+constexpr unsigned song_clips = 256;    // clips in the arrange view
+constexpr unsigned song_markers = 16;
+constexpr unsigned song_bars = 999;
 }

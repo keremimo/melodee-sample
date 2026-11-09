@@ -199,9 +199,75 @@ void mod_matrix() {
     auto cards = page_bindings(project, ui, pattern);
     CHECK(cards[0].kind == Binding::Kind::ModSource && cards[2].value == 34 && cards[2].id == 2 && cards[2].min == -100);
 }
+void arrange() {
+    // The song store: placing a clip cuts what it covers; splits keep both sides.
+    Song song;
+    CHECK(song.place({0, 0, 0, 8, false}) && song.place({0, 1, 2, 2, false}));
+    CHECK(song.count == 3 && song.clip_at(0, 1) >= 0 && song.clips[size_t(song.clip_at(0, 3))].pattern == 1);
+    CHECK(song.clips[size_t(song.clip_at(0, 5))].pattern == 0 && song.clips[size_t(song.clip_at(0, 5))].bar == 4);
+    CHECK(song.clip_at(1, 0) < 0 && song.length() == 8);
+    song.erase(unsigned(song.clip_at(0, 3)));
+    CHECK(song.clip_at(0, 3) < 0 && song.count == 2);
+
+    auto setup = [](Project& project, PatternBank& bank) {
+        load_sound(project.tracks[0], EngineKind::Prophet, 0);
+        project.tempo = 1200;
+        bank.at[0][0].steps[0].notes[0] = {57, 100}; // pattern 1: a note on its first step only
+        bank.at[0][1].steps[0].notes[0] = {69, 100};
+    };
+    // One bar at 120 BPM is 88200 samples; render `bars` and say in which bars track 1 sounded.
+    auto sounding = [](EngineHost& host, unsigned bars) {
+        std::vector<bool> out;
+        std::vector<int32_t> block(256);
+        for (unsigned b = 0; b < bars; ++b) {
+            float peak = 0;
+            for (unsigned n = 0; n < 88200 / 128; ++n) {
+                host.render(block.data(), 128, 1);
+                for (auto v : block) peak = std::max(peak, std::fabs(v / 2147483648.0f));
+            }
+            out.push_back(peak > 0.002f);
+        }
+        return out;
+    };
+    // The song: track 1 has a clip in bar 2 only.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*project, *bank);
+        project->tracks[0].params[prophet::AmpRelease] = 0;
+        project->song.place({0, 0, 1, 1, false});
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        auto bars = sounding(host, 3);
+        CHECK(!bars[0] && bars[1]);
+        CHECK(!host.playing()); // past the song's end
+    }
+    // Patterns: a launch waits for the next bar; 1/8 steps take twice as long as 1/16.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        setup(*project, *bank);
+        bank->at[0][0].division = Division::Eighth;
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> block(256);
+        for (unsigned n = 0; n < 80; ++n) host.render(block.data(), 128, 1); // 10240 samples: before the second eighth (11025)
+        CHECK(host.step_of(0) == 0 && host.pattern_of(0) == 0);
+        for (unsigned n = 0; n < 10; ++n) host.render(block.data(), 128, 1); // 11520: past it
+        CHECK(host.step_of(0) == 1);
+        host.send({Command::Type::Pattern, 0, 0, 0, 1});
+        host.render(block.data(), 128, 1);
+        CHECK(host.pattern_of(0) == 0); // still the old one until the bar ends
+        for (unsigned n = 0; n < 88200 / 128; ++n) host.render(block.data(), 128, 1);
+        CHECK(host.pattern_of(0) == 1);
+    }
+}
 } // namespace
 
 int main() {
+    arrange();
     mod_matrix();
     motion();
     layouts();

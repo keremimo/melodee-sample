@@ -81,6 +81,18 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         auto lanes = motion_lanes(project, ui);
         return {param(track, lanes[0]), param(track, lanes[1]), param(track, lanes[2])};
     }
+    case PageId::Length:
+        return {Binding {Kind::PatternBars, 0, 1, int(max_steps / bar_steps), int((pattern.length + bar_steps - 1) / bar_steps)},
+                Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
+                Binding {Kind::Swing, 0, 50, 75, project.swing}};
+    case PageId::Song: {
+        int clip = project.song.clip_at(ui.track, ui.song_cursor);
+        int pattern_value = clip >= 0 ? project.song.clips[size_t(clip)].pattern : ui.song_pattern;
+        int length_value = clip >= 0 ? project.song.clips[size_t(clip)].bars : ui.song_length;
+        return {Binding {Kind::SongZoom, 0, 0, int(sizeof(song_zooms) / sizeof(song_zooms[0])) - 1, ui.song_zoom},
+                Binding {Kind::SongPattern, int16_t(clip), 0, int(pattern_count) - 1, pattern_value},
+                Binding {Kind::SongLength, int16_t(clip), 1, 16, length_value}};
+    }
     case PageId::Roll:
     case PageId::Steps: {
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % max_steps;

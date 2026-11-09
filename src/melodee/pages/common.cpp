@@ -86,6 +86,14 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.label = "AMOUNT"; c.bipolar = true;
             c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
             break;
+        case Kind::PatternBars: // turned by the bar, shown by the step
+            c.label = "LENGTH"; c.value = juce::String(s.pattern.length); c.unit = s.pattern.length == 1 ? "step" : "steps";
+            break;
+        case Kind::Division: c.label = "DIVISION"; c.value = division_name(Division(b.value)); break;
+        case Kind::Swing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
+        case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
+        case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
         case Kind::None: break;
         }
     }

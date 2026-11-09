@@ -100,11 +100,11 @@ void draw(Paint& p, const Snapshot& s) {
         MenuSheet m;
         m.title = "NOTE"; m.detail = step_label(cursor, note); m.accent = c;
         unsigned target = (cursor + copy_ahead) % pattern.length;
-        m.rows[0] = {"Accent", cur.flags & step_accent ? "On" : "Off", bool(cur.flags & step_accent), false};
-        m.rows[1] = {"Slide", cur.flags & step_slide ? "On" : "Off", bool(cur.flags & step_slide), false};
-        m.rows[2] = {"Tie to next", cur.flags & step_tie ? "On" : "Off", bool(cur.flags & step_tie), false};
-        m.rows[3] = {"Copy to", "Step " + juce::String(target + 1), false, false};
-        m.rows[4] = {"Delete note", "", false, true};
+        m.rows[0] = {"Accent", cur.flags & step_accent ? "On" : "Off", bool(cur.flags & step_accent), false, false};
+        m.rows[1] = {"Slide", cur.flags & step_slide ? "On" : "Off", bool(cur.flags & step_slide), false, false};
+        m.rows[2] = {"Tie to next", cur.flags & step_tie ? "On" : "Off", bool(cur.flags & step_tie), false, false};
+        m.rows[3] = {"Copy to", "Step " + juce::String(target + 1), false, false, false};
+        m.rows[4] = {"Delete note", "", false, true, false};
         m.count = sheet_rows; m.current = s.ui.sheet_row % sheet_rows;
         menu_sheet(p, m);
     }

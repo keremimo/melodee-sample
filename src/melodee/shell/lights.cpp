@@ -27,22 +27,30 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     const auto& project = *project_;
     const auto& track = project.tracks[ui.track];
     bool playing = host.playing();
-    uint32_t position = host.position();
+    int step_now = host.step_of(ui.track);
+    uint32_t ticks = host.ticks();
     for (unsigned pad = 0; pad < 16; ++pad) {
         bool held = ui.held_pads & (1u << pad);
         Rgb colour {};
-        if (ui.pad_bank || ui.mute || ui.page == PageId::Stage || ui.page == PageId::Mix) {
+        if (ui.pad_bank || ui.mute || ui.page == PageId::Stage || ui.page == PageId::Mix || ui.page == PageId::Song) {
             // The pads are the tracks.
             const auto& t = project.tracks[pad];
             float level = !t.used() ? 0 : pad == ui.track ? 1.0f : t.mix.mute ? 0.08f : 0.35f;
             colour = track_light(pad, level);
             if (ui.mute && t.used()) colour = t.mix.mute ? Rgb {} : (t.mix.solo ? led_colour::white(0.8f) : track_light(pad, 0.6f));
+        } else if (ui.page == PageId::Patterns) {
+            // The pads are the selected track's sixteen patterns: playing bright, queued
+            // blinking, holding notes dim, empty dark.
+            bool notes = !patterns_->at[ui.track][pad].empty();
+            bool live = host.pattern_of(ui.track) == pad, queued = playing && track.pattern == pad && !live;
+            float level = live ? 1.0f : queued ? ((now / 150) % 2 ? 0.8f : 0.15f) : notes ? 0.25f : 0;
+            colour = track_light(ui.track, level);
         } else if (ui.page == PageId::Steps) {
             const auto& pattern = context_.pattern();
             unsigned step = ui.steps_bar * bar_steps + pad;
             bool inside = step < pattern.length, on = inside && !pattern.steps[step].empty();
             colour = on ? track_light(ui.track, 0.8f) : inside ? Rgb {} : Rgb {};
-            if (playing && inside && position % pattern.length == step) colour = led_colour::white(0.7f);
+            if (playing && inside && step_now == int(step)) colour = led_colour::white(0.7f);
             if (int(step) == ui.held_step) colour = led_colour::white(1);
         } else if (track.used()) {
             auto note = pad_note(project, track, pad);
@@ -61,17 +69,17 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::Sample, play_group);
     on(B::Seq, ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds);
+    on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
     on(B::SixteenLevels, ui.page == PageId::Keys);
     lights.button(B::Play, playing ? L::Bright : L::Dim);
     lights.button(B::Stop, playing ? L::Dim : L::Off);
     lights.button(B::SeqRecord, ui.recording ? L::Bright : L::Dim);
     // Tap Tempo flashes on the beat while playing.
-    bool beat = playing && position % 4 == 0;
+    bool beat = playing && ticks % ticks_per_quarter < ticks_per_quarter / 3;
     lights.button(B::TapTempo, beat ? L::Bright : L::Dim);
     on(B::Mute, ui.mute);
     on(B::PadBank, ui.pad_bank);
     lights.button(B::Erase, ui.erase ? L::Bright : L::Off);
-    (void)now;
 }
 
 } // namespace melodee

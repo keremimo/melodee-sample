@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -27,8 +28,20 @@ struct Step {
     bool empty() const { for (auto n : notes) if (n.velocity) return false; return true; }
     const Note* first() const { for (auto& n : notes) if (n.velocity) return &n; return nullptr; }
 };
+// Step divisions a pattern can run at, in clock ticks (24 a quarter note).
+enum class Division : uint8_t { Eighth, EighthTriplet, Sixteenth, SixteenthTriplet, ThirtySecond, Count };
+inline unsigned division_ticks(Division d) {
+    static const unsigned ticks[] {12, 8, 6, 4, 3};
+    return ticks[unsigned(d) < unsigned(Division::Count) ? unsigned(d) : 2];
+}
+inline const char* division_name(Division d) {
+    static const char* names[] {"1/8", "1/8T", "1/16", "1/16T", "1/32"};
+    return names[unsigned(d) < unsigned(Division::Count) ? unsigned(d) : 2];
+}
+
 struct Pattern {
     uint16_t length = 16; // steps, 1..max_steps
+    Division division = Division::Sixteenth;
     std::array<Step, max_steps> steps {};
     bool empty() const { for (unsigned s = 0; s < length; ++s) if (!steps[s].empty()) return false; return true; }
 };
@@ -90,6 +103,55 @@ struct Motion {
     }
 };
 
+// The arrange view: clips of patterns on track lanes over bars, named
+// markers, and a loop brace.
+struct Clip {
+    uint8_t track = 0, pattern = 0;
+    uint16_t bar = 0, bars = 1; // from `bar`, for `bars` bars; the pattern repeats inside
+    bool muted = false;
+    uint16_t end() const { return uint16_t(bar + bars); }
+};
+struct Marker {
+    uint16_t bar = 0;
+    char name[12] {};
+};
+struct Song {
+    std::array<Clip, song_clips> clips {};
+    uint16_t count = 0;
+    std::array<Marker, song_markers> markers {};
+    uint8_t marker_count = 0;
+    uint16_t loop_start = 0, loop_end = 0; // bars; no loop when equal
+    int clip_at(unsigned track, unsigned bar) const {
+        for (unsigned n = 0; n < count; ++n)
+            if (clips[n].track == track && bar >= clips[n].bar && bar < clips[n].end()) return int(n);
+        return -1;
+    }
+    // Adds a clip, first cutting away whatever it covers on its lane; false when full.
+    bool place(const Clip& c) {
+        cut(c.track, c.bar, c.end());
+        if (count == clips.size()) return false;
+        clips[count++] = c;
+        return true;
+    }
+    void erase(unsigned index) {
+        if (index >= count) return;
+        for (unsigned n = index + 1; n < count; ++n) clips[n - 1] = clips[n];
+        --count;
+    }
+    // Clears bars [from, to) on a lane, shortening or splitting the clips there.
+    void cut(unsigned track, unsigned from, unsigned to) {
+        for (unsigned n = 0; n < count;) {
+            Clip c = clips[n];
+            if (c.track != track || c.end() <= from || c.bar >= to) { ++n; continue; }
+            erase(n);
+            if (c.bar < from) { Clip head = c; head.bars = uint16_t(from - c.bar); clips[count++] = head; }
+            if (c.end() > to && count < clips.size()) { Clip tail = c; tail.bar = uint16_t(to); tail.bars = uint16_t(c.end() - to); clips[count++] = tail; }
+        }
+    }
+    unsigned length() const { unsigned end = 0; for (unsigned n = 0; n < count; ++n) end = std::max<unsigned>(end, clips[n].end()); return end; }
+    bool looping() const { return loop_end > loop_start; }
+};
+
 enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Count };
 
 struct Track {
@@ -115,6 +177,7 @@ struct Project {
     uint8_t scale = 0;      // index into scales()
     std::array<Track, track_count> tracks {};
     Motion motion;
+    Song song;
     unsigned used_tracks() const { unsigned n = 0; for (auto& t : tracks) n += t.used(); return n; }
 };
 

@@ -89,10 +89,37 @@ void menu_sheet(Paint& p, const MenuSheet& m) {
             p.fill(rx, ry, 8, row_h, m.accent, 4);
             p.g.restoreState();
         }
-        p.text(r.name, rx + 7, ry, rw - 14, row_h, plain(r.danger ? colour::rec : colour::text, 12, Weight::Medium));
+        p.text(r.name, rx + 7, ry, rw - 14, row_h, plain(r.off ? colour::dim : r.danger ? colour::rec : colour::text, 12, Weight::Medium));
         if (r.value.isNotEmpty())
             p.text(r.value, rx + 7, ry, rw - 14, row_h, plain(r.on ? m.accent : colour::mid, 11, Weight::Medium),
                    juce::Justification::centredRight);
+    }
+}
+
+void wide_sheet(Paint& p, const MenuSheet& m, const juce::String& chip_text, juce::Colour chip_colour) {
+    constexpr float x = zone::pad, y = zone::picture_y + 2, w = zone::width - 2 * zone::pad, h = 143;
+    for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
+    p.fill(x, y, w, h, colour::surf, 6);
+    p.ring(x, y, w, h, colour::line, 6);
+    auto chip = caps_text(colour::bg);
+    float cw = p.width(chip_text, chip) + 9;
+    p.fill(x + 13, y + 10, cw, 12.5f, chip_colour, 3);
+    p.text(chip_text, x + 13, y + 10, cw, 12.5f, chip, juce::Justification::centred);
+    float tw = p.text(m.title, x + 13 + cw + 5, y + 8, 80, 16, plain(colour::text, 11, Weight::SemiBold));
+    p.text(m.detail, x + 13 + cw + 5 + tw + 6, y + 8, w, 16, caps_text(colour::mid, 7));
+    float column = (w - 14) / 2, row_h = 25;
+    for (unsigned n = 0; n < m.count; ++n) {
+        const auto& r = m.rows[n];
+        float rx = x + 7 + (n / 4) * column, ry = y + 31 + (n % 4) * row_h;
+        bool current = n == m.current;
+        if (current) {
+            p.fill(rx, ry, column - 6, row_h - 3, colour::raised, 4);
+            p.fill(rx + 6, ry + 6, 2, row_h - 15, m.accent, 1);
+        }
+        auto colour = r.off ? colour::dim : r.danger ? colour::rec : current ? colour::text : colour::sec;
+        float nw = p.text(r.name, rx + 15, ry, column - 20, row_h - 3, plain(colour, 10.5f, Weight::Medium));
+        if (r.value.isNotEmpty())
+            p.text(r.value, rx + 15 + nw + 4, ry, column - nw - 24, row_h - 3, plain(colour::mid, 9));
     }
 }
 

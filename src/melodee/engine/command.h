@@ -20,8 +20,13 @@ struct Command {
         Level, Pan, Send, Mute, Solo, // track, value
         SetStep,     // track, pattern, index = step, step
         Length,      // track, pattern, value = steps
-        Pattern,     // track, value = pattern to play
-        Play, Stop,
+        Pattern,     // track, value = pattern to play (on the next bar while playing patterns)
+        Division,    // track, pattern, value = Division
+        Play,        // value 1: the song from bar `index`; 0: the patterns
+        Stop,
+        SongClip,    // index, clip
+        SongCount,   // value = clips in use
+        SongLoop,    // index = first bar, value = bar after the last (equal: no loop)
         Tempo,       // value = tenths of a BPM
         Swing,       // value = percent
         MotionWrite, // motion: Motion::write(motion)
@@ -39,6 +44,7 @@ struct Command {
     Step step {};
     MotionEvent motion {};
     ModRoute route {};
+    Clip clip {};
 };
 
 } // namespace melodee

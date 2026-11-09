@@ -56,9 +56,24 @@ void soft_keys(Paint& p, const SoftKeys& keys) {
             float cx = x + column / 2;
             p.fill(cx - 15, -2, 30, 4, keys.accent, 1.5f); // drawn from above the edge: only the lower corners show
         }
-        if (keys.labels[size_t(n)].isNotEmpty())
-            p.text(keys.labels[size_t(n)], x, zone::soft_y, column, zone::soft_h,
-                   caps_text(on ? colour::text : colour::mid, type::soft), juce::Justification::centred);
+        const auto& text = keys.labels[size_t(n)];
+        auto style = caps_text(on ? colour::text : colour::mid, type::soft);
+        if (text.isNotEmpty()) p.text(text, x, zone::soft_y, column, zone::soft_h, style, juce::Justification::centred);
+        auto icon = keys.icons[size_t(n)];
+        if (icon == KeyIcon::None) continue;
+        float left = x + column / 2 - p.width(text, style) / 2, mid = zone::soft_h / 2.0f;
+        juce::Path path;
+        if (icon == KeyIcon::Back) {
+            float bx = left - 9;
+            path.startNewSubPath(bx + 5, mid + 3); path.lineTo(bx + 5, mid - 3); path.lineTo(bx + 1, mid - 3);
+            path.startNewSubPath(bx, mid - 3); path.lineTo(bx + 2, mid - 5);
+            path.startNewSubPath(bx, mid - 3); path.lineTo(bx + 2, mid - 1);
+        } else {
+            float kx = left - 10;
+            path.startNewSubPath(kx, mid); path.lineTo(kx + 2.5f, mid + 3); path.lineTo(kx + 7, mid - 4);
+        }
+        p.g.setColour(style.colour);
+        p.g.strokePath(path, juce::PathStrokeType(1.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 }
 

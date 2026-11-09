@@ -40,20 +40,7 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
     p.dim_zone(zone::knobs_y, zone::knobs_h);
     // Soft keys: STAY under B1, LEAVE under B3 (Push never quits).
-    soft_keys(p, {{"STAY", "", "LEAVE"}, 2, colour::text});
-    float column = zone::width / 3.0f, mid = zone::soft_h / 2.0f;
-    auto style = caps_text(colour::text, type::soft);
-    float stay = p.width("STAY", style), leave = p.width("LEAVE", style);
-    juce::Path back, check;
-    float bx = column / 2 - stay / 2 - 9;
-    back.startNewSubPath(bx + 5, mid + 3); back.lineTo(bx + 5, mid - 3); back.lineTo(bx + 1, mid - 3);
-    back.startNewSubPath(bx, mid - 3); back.lineTo(bx + 2, mid - 5);
-    back.startNewSubPath(bx, mid - 3); back.lineTo(bx + 2, mid - 1);
-    float kx = 2 * column + column / 2 - leave / 2 - 10;
-    check.startNewSubPath(kx, mid); check.lineTo(kx + 2.5f, mid + 3); check.lineTo(kx + 7, mid - 4);
-    auto stroke = juce::PathStrokeType(1.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
-    p.g.setColour(colour::mid); p.g.strokePath(back, stroke);
-    p.g.setColour(colour::text); p.g.strokePath(check, stroke);
+    soft_keys(p, {{"STAY", "", "LEAVE"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
 
     Header h = header_of(s);
     h.playing = false; h.recording = false;

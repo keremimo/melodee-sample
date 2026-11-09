@@ -62,7 +62,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
 void Context::record(int key, int velocity) {
     if (!ui.recording || !host.playing()) return;
     auto& p = pattern();
-    unsigned at = host.position() % p.length;
+    unsigned at = unsigned(std::max(host.step_of(ui.track), 0)) % p.length;
     Step step = p.steps[at];
     for (auto& n : step.notes) if (n.velocity && n.key == key) return;
     for (auto& n : step.notes) if (!n.velocity) { n = {uint8_t(key), uint8_t(velocity)}; break; }
@@ -150,6 +150,23 @@ void Context::apply(const Binding& b, int value) {
         set_route(unsigned(b.id), route);
         break;
     }
+    case Kind::PatternBars: set_length(unsigned(value) * bar_steps); break;
+    case Kind::Division: set_division(Division(value)); break;
+    case Kind::Swing:
+        project.swing = uint8_t(value);
+        send({Type::Swing, 0, 0, 0, int16_t(value)});
+        break;
+    case Kind::SongZoom: ui.song_zoom = uint8_t(value); break;
+    case Kind::SongPattern:
+    case Kind::SongLength:
+        if (b.id >= 0) { // the clip under the cursor
+            auto& clip = project.song.clips[size_t(b.id)];
+            if (b.kind == Kind::SongPattern) clip.pattern = uint8_t(value);
+            else { Clip changed = clip; changed.bars = uint16_t(value); project.song.erase(unsigned(b.id)); project.song.place(changed); }
+            sync_song();
+        } else if (b.kind == Kind::SongPattern) ui.song_pattern = uint8_t(value);
+        else ui.song_length = uint8_t(value);
+        break;
     case Kind::None: break;
     }
 }
@@ -188,7 +205,7 @@ void Context::record_motion(int param, int value) {
     auto& t = track();
     MotionEvent e;
     e.track = ui.track; e.pattern = t.pattern; e.param = uint8_t(param); e.value = int16_t(value);
-    e.step = uint16_t(host.position() % pattern().length);
+    e.step = uint16_t(unsigned(std::max(host.step_of(ui.track), 0)) % pattern().length);
     if (!project.motion.write(e)) return; // full: the move still sounds, it is just not kept
     Command c {Type::MotionWrite};
     c.motion = e;
@@ -204,7 +221,66 @@ void Context::clear_lane(int param) {
     send(c);
 }
 
-void Context::play() { send({Type::Play}); }
+void Context::launch(unsigned t, unsigned p) {
+    auto& tr = project.tracks[t % track_count];
+    tr.pattern = uint8_t(p % pattern_count);
+    send({Type::Pattern, uint8_t(t), 0, 0, int16_t(tr.pattern)});
+}
+
+void Context::clear_pattern(unsigned t, unsigned p) {
+    auto& pattern = patterns.at[t % track_count][p % pattern_count];
+    for (unsigned s = 0; s < max_steps; ++s) {
+        if (pattern.steps[s].empty()) continue;
+        pattern.steps[s] = Step {};
+        Command c {Type::SetStep, uint8_t(t), uint8_t(p), uint16_t(s)};
+        send(c);
+    }
+}
+
+void Context::copy_pattern(unsigned t, unsigned from, unsigned to) {
+    if (from == to) return;
+    const auto source = patterns.at[t % track_count][from % pattern_count];
+    auto& target = patterns.at[t % track_count][to % pattern_count];
+    for (unsigned s = 0; s < max_steps; ++s) {
+        if (target.steps[s].empty() && source.steps[s].empty()) continue;
+        target.steps[s] = source.steps[s];
+        Command c {Type::SetStep, uint8_t(t), uint8_t(to), uint16_t(s)};
+        c.step = source.steps[s];
+        send(c);
+    }
+    target.length = source.length; target.division = source.division;
+    send({Type::Length, uint8_t(t), uint8_t(to), 0, int16_t(target.length)});
+    send({Type::Division, uint8_t(t), uint8_t(to), 0, int16_t(target.division)});
+}
+
+void Context::set_length(unsigned steps) {
+    auto& p = pattern();
+    p.length = uint16_t(std::clamp<unsigned>(steps, 1, max_steps));
+    send({Type::Length, ui.track, track().pattern, 0, int16_t(p.length)});
+}
+
+void Context::set_division(Division division) {
+    pattern().division = division;
+    send({Type::Division, ui.track, track().pattern, 0, int16_t(division)});
+}
+
+void Context::sync_song() {
+    const auto& song = project.song;
+    for (unsigned n = 0; n < song.count; ++n) {
+        Command c {Type::SongClip, 0, 0, uint16_t(n)};
+        c.clip = song.clips[n];
+        send(c);
+    }
+    send({Type::SongCount, 0, 0, 0, int16_t(song.count)});
+    send({Type::SongLoop, 0, 0, song.loop_start, int16_t(song.loop_end)});
+}
+
+// On the Song page Play plays the arrangement from the cursor; elsewhere the
+// patterns (open question 4: Song's controls).
+void Context::play() {
+    if (ui.page == PageId::Song) send({Type::Play, 0, 0, ui.song_cursor, 1});
+    else send({Type::Play});
+}
 void Context::stop() {
     if (!host.playing()) send({Type::AllNotesOff, 255});
     send({Type::Stop});
