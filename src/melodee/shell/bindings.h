@@ -24,7 +24,11 @@ struct Binding {
         ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds
         FileJump,                          // Samples
         RecThreshold, RecBars, RecGain,    // Record
-        ProjectJump, ProjectSort           // Project
+        ProjectJump, ProjectSort,          // Project
+        Tempo, ClickLevel,                 // Tempo (Swing as on Length)
+        ArpMode, ArpRate, ArpOctaves,      // Arp
+        ChordType, ChordVoicing, ChordInvert, // Chord
+        CaptureBars, CaptureQuantise, CaptureInto // Capture
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter

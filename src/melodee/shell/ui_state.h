@@ -12,7 +12,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -74,6 +74,8 @@ struct UiState {
     uint16_t project_cursor = 0;  // Project: row under the cursor (0 is New project)
     bool delete_armed = false;    // the file sheet's Delete asks once more
     uint8_t project_sort = 0;     // 0 newest first, 1 by name
+    int8_t chord_pad = -1;        // Chord: the pad played last
+    uint8_t capture_bars = 2, capture_quantise = 1, capture_into = 0; // Capture
     uint16_t project_rows = 1;    // rows on the Project page, copied in by the shell
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last

@@ -93,14 +93,30 @@ public:
     void set_return(unsigned bus, int level);
     // Song: after any change to project.song, send it to the audio thread.
     void sync_song();
+    // What the pads played lately, for Capture: track, key, velocity, when and how long (ms).
+    struct Played { uint8_t track = 0, key = 0, velocity = 0; uint32_t at = 0, length = 0; };
+    std::array<Played, 512> history {};
+    unsigned history_at = 0;
+    void set_arp(bool on);
+    void set_click(bool on);
+    // Capture: the selected track's last bars from the history into a pattern.
+    void capture();
     // Transport
     void play();
     void stop();
     void tap_tempo();
     void set_tempo(int tenths);
 
+    // The keys each pad started (a chord has up to four), so a release ends them.
+    std::array<std::array<int16_t, notes_per_step>, 16> pad_keys = [] {
+        std::array<std::array<int16_t, notes_per_step>, 16> keys {};
+        for (auto& pad : keys) pad.fill(-1);
+        return keys;
+    }();
+    void key(int key, int velocity, bool down);
+
 private:
-    std::array<int16_t, 16> pad_keys {{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
+    unsigned held_pads() const { unsigned n = 0; for (auto& pad : pad_keys) n += pad[0] >= 0; return n; }
     std::array<uint32_t, 4> taps {};
     unsigned tap_count = 0;
     void record(int key, int velocity);

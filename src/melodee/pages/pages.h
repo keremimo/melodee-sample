@@ -11,5 +11,5 @@ void song_marker(Context& c);
 extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, steps_page, roll_page, motion_page, patterns_page, song_page, length_page,
     rack_page, sends_page, bus_page, master_page,
     pads_page, samples_page, trim_page, chop_page,
-    levels_page, record_page, project_page;
+    levels_page, record_page, project_page, tempo_page, arp_page, chord_page, capture_page;
 }

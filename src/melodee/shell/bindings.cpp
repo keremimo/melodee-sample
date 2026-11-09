@@ -161,6 +161,18 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         if (ui.sheet_open) return {};
         return {Binding {}, Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},
                 Binding {Kind::ProjectSort, 0, 0, 1, ui.project_sort}};
+    case PageId::Tempo:
+        return {Binding {Kind::Tempo, 0, 30, 300, project.tempo / 10}, Binding {Kind::Swing, 0, 50, 75, project.swing},
+                Binding {Kind::ClickLevel, 0, 0, 100, project.click_level}};
+    case PageId::Arp:
+        return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, 5, track.arp_rate},
+                Binding {Kind::ArpOctaves, 0, 1, 4, track.arp_octaves}};
+    case PageId::Chord:
+        return {Binding {Kind::ChordType, 0, 0, 5, track.chord_type}, Binding {Kind::ChordVoicing, 0, 0, 3, track.chord_voicing},
+                Binding {Kind::ChordInvert, 0, 0, 3, track.chord_invert}};
+    case PageId::Capture:
+        return {Binding {Kind::CaptureBars, 0, 1, 4, ui.capture_bars}, Binding {Kind::CaptureQuantise, 0, 0, 2, ui.capture_quantise},
+                Binding {Kind::CaptureInto, 0, 0, int(pattern_count) - 1, ui.capture_into}};
     case PageId::Samples:
         return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
     case PageId::Roll:

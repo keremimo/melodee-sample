@@ -3,6 +3,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/take_recorder.h"
+#include "melodee/model/chords.h"
 #include "melodee/model/scales.h"
 #include "melodee/model/project_file.h"
 #include "melodee/shell/project_store.h"
@@ -91,44 +92,65 @@ void Context::note(unsigned t, int key, int velocity) {
     send(c);
 }
 
+// One key of a pad press, to the arp when it is on, else straight to the
+// engine; every press also goes into the history Capture reads.
+void Context::key(int k, int velocity, bool down) {
+    auto& t = track();
+    if (t.arp) {
+        if (down || !t.arp_latch) send({Type::ArpKey, ui.track, 0, uint16_t(k), int16_t(down ? velocity : 0)});
+    } else {
+        note(ui.track, k, down ? velocity : 0);
+    }
+    if (down) {
+        record(k, velocity);
+        history[history_at % history.size()] = {ui.track, uint8_t(k), uint8_t(velocity), now, 0};
+        ++history_at;
+    } else {
+        for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()); ++n) {
+            auto& h = history[(history_at - 1 - n) % history.size()];
+            if (h.track == ui.track && h.key == k && !h.length) { h.length = std::max<uint32_t>(1, now - h.at); break; }
+        }
+    }
+}
+
 void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
     pad %= 16;
-    if (track().engine == EngineKind::Sampler) { // the pads are the kit's, in the bank in view
-        if (pad_keys[pad] >= 0) note(ui.track, pad_keys[pad], 0);
-        pad_keys[pad] = -1;
-        if (!down) return;
-        if (track().levels) { // 16 Levels: one kit pad, soft to loud or up in pitch
-            auto& t = track();
+    auto& t = track();
+    // Let go of whatever this pad started.
+    for (auto& k : pad_keys[pad]) if (k >= 0) { key(k, 0, false); k = -1; }
+    if (!down) return;
+    if (t.arp && t.arp_latch && !held_pads()) { // a fresh latch: the old keys go
+        send({Type::Arp, ui.track, 0, 0, 0}); send({Type::Arp, ui.track, 0, 0, 1});
+    }
+    if (t.engine == EngineKind::Sampler) { // the pads are the kit's, in the bank in view
+        if (t.levels) { // 16 Levels: one kit pad, soft to loud or up in pitch
             int semitones = t.levels_kind == 1 ? level_scale_step(project, pad) : t.levels_kind == 2 ? int(pad) : 0;
             int v = t.levels_kind == 0 ? level_velocity(pad) : velocity;
             ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(t.levels_kind == 0 ? v : semitones);
-            pad_keys[pad] = int16_t(sampler_first_note + t.levels_pad);
+            pad_keys[pad][0] = int16_t(sampler_first_note + t.levels_pad);
             send({Type::PadNote, ui.track, uint8_t(semitones + 64), t.levels_pad, int16_t(v)});
-            record(pad_keys[pad], v);
+            record(pad_keys[pad][0], v);
             return;
         }
-        unsigned kit = track().bank % sampler_banks * 16 + pad;
-        track().last_pad = uint8_t(kit);
-        pad_keys[pad] = int16_t(sampler_first_note + kit);
-        note(ui.track, pad_keys[pad], velocity);
-        record(pad_keys[pad], velocity);
+        unsigned kit = t.bank % sampler_banks * 16 + pad;
+        t.last_pad = uint8_t(kit);
+        pad_keys[pad][0] = int16_t(sampler_first_note + kit);
+        key(pad_keys[pad][0], velocity, true);
         return;
     }
-    if (!down) {
-        if (pad_keys[pad] >= 0) note(ui.track, pad_keys[pad], 0);
-        pad_keys[pad] = -1;
-        return;
-    }
-    auto& t = track();
     if (!t.used()) return;
-    auto chosen = pad_note(project, t, pad);
     int v = t.layout == PadLayout::Levels ? level_velocity(pad) : velocity;
     if (ui.page == PageId::Sounds) v = ui.audition_velocity;
-    if (pad_keys[pad] >= 0) note(ui.track, pad_keys[pad], 0);
-    pad_keys[pad] = int16_t(chosen.key);
-    if (t.layout != PadLayout::Levels) t.last_note = uint8_t(std::clamp(chosen.key, 0, 127));
-    note(ui.track, chosen.key, v);
-    record(chosen.key, v);
+    std::array<int, notes_per_step> keys {};
+    unsigned count = 1;
+    keys[0] = pad_note(project, t, pad).key;
+    if (t.chord && t.layout != PadLayout::Levels) count = chord_notes(project, t, pad, keys);
+    if (t.layout != PadLayout::Levels) t.last_note = uint8_t(std::clamp(keys[0], 0, 127));
+    for (unsigned n = 0; n < count; ++n) {
+        pad_keys[pad][n] = int16_t(std::clamp(keys[n], 0, 127));
+        key(pad_keys[pad][n], v, true);
+    }
+    ui.chord_pad = int8_t(pad);
 }
 
 // Seq Record while playing: the note lands on the step playing now.
@@ -260,6 +282,20 @@ void Context::apply(const Binding& b, int value) {
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
+    case Kind::Tempo: set_tempo(value * 10); break;
+    case Kind::ClickLevel:
+        project.click_level = uint8_t(value);
+        send({Type::Click, 0, 0, project.click_level, int16_t(project.click)});
+        break;
+    case Kind::ArpMode: t.arp_mode = uint8_t(value); send({Type::Arp, ui.track, 0, 1, int16_t(value)}); break;
+    case Kind::ArpRate: t.arp_rate = uint8_t(value); send({Type::Arp, ui.track, 0, 2, int16_t(value)}); break;
+    case Kind::ArpOctaves: t.arp_octaves = uint8_t(value); send({Type::Arp, ui.track, 0, 3, int16_t(value)}); break;
+    case Kind::ChordType: t.chord_type = uint8_t(value); break;
+    case Kind::ChordVoicing: t.chord_voicing = uint8_t(value); break;
+    case Kind::ChordInvert: t.chord_invert = uint8_t(value); break;
+    case Kind::CaptureBars: ui.capture_bars = uint8_t(value); break;
+    case Kind::CaptureQuantise: ui.capture_quantise = uint8_t(value); break;
+    case Kind::CaptureInto: ui.capture_into = uint8_t(value); break;
     case Kind::RecThreshold: ui.rec_threshold = int8_t(value); break;
     case Kind::RecBars: ui.rec_bars = uint8_t(value); break;
     case Kind::RecGain: ui.rec_gain = int8_t(value); send({Type::RecordGain, 0, 0, 0, int16_t(value)}); break;
@@ -276,7 +312,8 @@ void Context::set_route(unsigned r, const ModRoute& value) {
 }
 
 void Context::pressure(unsigned pad, uint8_t value) {
-    if (pad < 16 && pad_keys[pad] >= 0) send({Type::Pressure, ui.track, 0, uint16_t(pad_keys[pad]), int16_t(value)});
+    if (pad >= 16) return;
+    for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, ui.track, 0, uint16_t(k), int16_t(value)}); // every note of a chord
 }
 
 void Context::set_mute(unsigned t, bool on) {
@@ -494,6 +531,47 @@ void Context::sync_song() {
 
 // On the Song page Play plays the arrangement from the cursor; elsewhere the
 // patterns (open question 4: Song's controls).
+void Context::set_arp(bool on) {
+    auto& t = track();
+    t.arp = on;
+    // Notes held now stop; the arp starts with what is pressed next.
+    for (auto& pad : pad_keys) for (auto& k : pad) if (k >= 0) { note(ui.track, k, 0); k = -1; }
+    if (on) {
+        send({Type::Arp, ui.track, 0, 1, t.arp_mode}); send({Type::Arp, ui.track, 0, 2, t.arp_rate});
+        send({Type::Arp, ui.track, 0, 3, int16_t(t.engine == EngineKind::Sampler ? 1 : t.arp_octaves)}); // a kit repeats its pad
+        send({Type::Arp, ui.track, 0, 4, t.arp_gate});
+    }
+    send({Type::Arp, ui.track, 0, 0, int16_t(on)});
+}
+
+void Context::set_click(bool on) {
+    project.click = on;
+    send({Type::Click, 0, 0, project.click_level, int16_t(on)});
+}
+
+void Context::capture() {
+    auto& t = track();
+    double step_ms = 60000.0 / (project.tempo / 10.0) / 4;
+    double window = step_ms * bar_steps * ui.capture_bars, start = double(now) - window;
+    auto& p = patterns.at[ui.track][ui.capture_into % pattern_count];
+    clear_pattern(ui.track, ui.capture_into);
+    p.length = uint16_t(bar_steps * ui.capture_bars);
+    send({Type::Length, ui.track, ui.capture_into, 0, int16_t(p.length)});
+    unsigned grid = ui.capture_quantise == 2 ? 2 : 1; // 1/16, or 1/8 (every other step)
+    for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()); ++n) {
+        const auto& h = history[n];
+        if (h.track != ui.track || h.at < start || h.at > now) continue;
+        unsigned at = unsigned(std::lround((h.at - start) / step_ms / grid)) * grid;
+        if (at >= p.length) at = p.length - grid; // a note right at the end belongs to the last step
+        Step s = p.steps[at];
+        for (auto& note : s.notes) if (!note.velocity) { note = {h.key, h.velocity}; break; }
+        s.length = uint8_t(std::clamp<long>(std::lround((h.length ? h.length : step_ms) / step_ms), 1, 16));
+        set_step(ui.track, at, s);
+    }
+    t.pattern = ui.capture_into; // and it plays from here
+    send({Type::Pattern, ui.track, 0, 0, int16_t(t.pattern)});
+}
+
 void Context::play() {
     if (ui.page == PageId::Song) send({Type::Play, 0, 0, ui.song_cursor, 1});
     else send({Type::Play});

@@ -77,6 +77,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         if (!library_->load(context_.samples_to_load, real ? ref.path : "")) break;
         ++context_.samples_to_load;
     }
+    // Tap Tempo held half a second: the Tempo page.
+    if (tap_held && now - tap_down > 500 && ui_.page != PageId::Tempo) { tap_held = false; context_.open(PageId::Tempo); }
     // Record listens to the mic or the line inputs while its page is open or a take runs.
     if (library_) {
         bool busy = host.recorder().state() != TakeRecorder::State::Idle;
@@ -145,6 +147,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::Seq, ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
+    on(B::NoteRepeat, track.arp);
     {
         auto state = host.recorder().state();
         bool blink = (now / 250) % 2;

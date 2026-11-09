@@ -68,7 +68,11 @@ void Shell::button(Button b, bool pressed) {
         }
         return;
     }
-    if (!pressed) return;
+    if (!pressed) {
+        if (b == Button::TapTempo) tap_held = false;
+        if (b == Button::NoteRepeat && repeat_turned_on && context_.now - repeat_down > 400) context_.set_arp(false); // it was held
+        return;
+    }
     if (ui.shift) ui.shift_used = true;
 
     if (ui.exit_open) {
@@ -118,7 +122,14 @@ void Shell::button(Button b, bool pressed) {
         }
         break;
     case Button::SampleRecord: // a sampler track: the Record page; there, arm, start now, stop
-        if (ui.shift || context_.track().engine != EngineKind::Sampler) break; // Capture comes with its own board
+        if (ui.shift) { // Capture: the last bars played, into a pattern
+            ui.capture_into = context_.track().pattern;
+            for (unsigned n = 0; n < pattern_count; ++n)
+                if (patterns_->at[ui.track][n].empty()) { ui.capture_into = uint8_t(n); break; }
+            context_.open(PageId::Capture);
+            break;
+        }
+        if (context_.track().engine != EngineKind::Sampler) break;
         if (ui.page != PageId::Record) context_.open(PageId::Record);
         else context_.record_press();
         break;
@@ -142,7 +153,19 @@ void Shell::button(Button b, bool pressed) {
         else context_.stop();
         break;
     case Button::SeqRecord: ui.recording = !ui.recording; break;
-    case Button::TapTempo: context_.tap_tempo(); break;
+    case Button::TapTempo:
+        if (ui.shift) { context_.set_click(!context_.project.click); break; } // Shift: the metronome
+        context_.tap_tempo();
+        tap_down = context_.now; tap_held = true; // held, it opens the Tempo page
+        break;
+    case Button::NoteRepeat: { // the arp (note repeat on a kit): held, for as long; tapped, it stays on
+        bool was = context_.track().arp;
+        if (!was) context_.set_arp(true);
+        repeat_down = context_.now; repeat_turned_on = !was;
+        if (ui.page != PageId::Arp && ui.page != PageId::Chord) context_.open(PageId::Arp);
+        else if (was) context_.set_arp(false); // a tap on the page turns it off
+        break;
+    }
     case Button::Minus: page.nudge(context_, -1); break;
     case Button::Plus: page.nudge(context_, 1); break;
     case Button::TopLeft: page.soft(context_, 0); break;
@@ -258,6 +281,8 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         out.take.state = uint8_t(r.state()); out.take.frames = r.frames(); out.take.length = r.length(); out.take.level = r.level();
         for (unsigned c = 0; c < out.take.peaks.size(); ++c) out.take.peaks[c] = r.peak(c);
     }
+    if (ui_.page == PageId::Capture) { out.history = context_.history; out.history_at = context_.history_at; }
+    for (unsigned n = 0; n < 16; ++n) out.held_keys[n] = context_.pad_keys[n][0];
     out.project_path = context_.project_path; out.project_folder = context_.project_folder; out.dirty = context_.dirty;
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
     if (library_) {

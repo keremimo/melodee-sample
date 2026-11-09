@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/project.h"
+#include "melodee/shell/context.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/ui_state.h"
@@ -47,6 +48,9 @@ struct Snapshot {
     ProjectStore::View projects;       // Project page and Exit
     std::string project_path, project_folder;
     bool dirty = false;
+    std::array<Context::Played, 512> history {}; // Capture
+    unsigned history_at = 0;
+    std::array<int16_t, 16> held_keys {};         // Arp: the first key of each pad held
     uint32_t now = 0;                        // ms, for transient highlights
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };

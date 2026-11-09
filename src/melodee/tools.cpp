@@ -275,6 +275,29 @@ const Preview previews[] {
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
          preview_projects(s);
      }},
+    {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = 24; s.project.click = true; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+    {"arp", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Arp; s.ui.track = 2; s.playing = true;
+         auto& t = s.project.tracks[2]; t.arp = true; t.chord = true; t.arp_octaves = 2; t.chord_type = 1;
+         s.project.root = 2; s.project.scale = 2; t.octave = 2;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"chord", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Chord; s.ui.track = 2; s.playing = true; s.ui.chord_pad = 1;
+         auto& t = s.project.tracks[2]; t.chord = true; t.chord_type = 1; t.octave = 2;
+         s.project.root = 2; s.project.scale = 2;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"capture", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Capture; s.ui.track = 0; s.playing = true; s.ui.capture_into = 2;
+         // Four bars of a bass line played on the pads, just now.
+         double step = 60000.0 / 124.0 / 4;
+         const int keys[] {38, 41, 36, 33, 45, 40, 38, 43};
+         for (unsigned n = 0; n < 40; ++n)
+             s.history[n] = {0, uint8_t(keys[n % 8] + (n % 5 == 0 ? 12 : 0)), 100, uint32_t(s.now - 64 * step + n * 1.6 * step), uint32_t(step * (1 + n % 3))};
+         s.history_at = 40;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
 };
@@ -313,7 +336,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

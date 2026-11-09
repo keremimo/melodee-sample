@@ -71,6 +71,8 @@ private:
     SampleLibrary* library_ = nullptr;
     unsigned library_seen = ~0u;
     bool pad_bank_used = false;
+    uint32_t tap_down = 0, repeat_down = 0;
+    bool tap_held = false, repeat_turned_on = false;
     ProjectStore* store_ = nullptr;
     unsigned store_seen = ~0u;
     int leave_after_save = -1; // the saves count to wait for before leaving

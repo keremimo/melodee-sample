@@ -27,6 +27,10 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Levels: return levels_page;
     case PageId::Record: return record_page;
     case PageId::Project: return project_page;
+    case PageId::Tempo: return tempo_page;
+    case PageId::Arp: return arp_page;
+    case PageId::Chord: return chord_page;
+    case PageId::Capture: return capture_page;
     case PageId::Stage:
     default: return stage_page;
     }
