@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <string>
 
 // What a page's controls may do, on the MIDI thread: change the project and
 // the UI state, and send the matching Commands to the audio thread. Each
@@ -17,6 +18,7 @@
 namespace melodee {
 
 class EngineHost;
+class SampleLibrary;
 
 class Context {
 public:
@@ -59,6 +61,13 @@ public:
     void copy_pattern(unsigned track, unsigned from, unsigned to);
     void set_length(unsigned steps);                         // the selected track's pattern
     void set_division(Division division);
+    // Sampler tracks
+    SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
+    PadSound& pad() { return track().pads[track().last_pad % sampler_pads]; }
+    void send_pad(unsigned track, unsigned pad);
+    int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load
+    void rechop();                                                     // Chop's markers from its mode and amount
+    void chop_to_pads();                                               // the slices onto pads, from the first free one
     // Effects: chain numbers as in model/project.h (tracks, buses, master).
     void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
     void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);

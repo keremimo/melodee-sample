@@ -18,7 +18,11 @@ struct Binding {
         PatternBars, Division, Swing,  // Length
         SongZoom, SongPattern, SongLength, // Song; id: the clip under the cursor, or -1
         FxParam,                           // id: chain * 64 + slot * 8 + parameter
-        SendBus, BusReturn                 // Sends; BusReturn id: the bus
+        SendBus, BusReturn,                // Sends; BusReturn id: the bus
+        PadPitch, PadLevel, PadPan,        // the last pad hit on a sampler track
+        PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
+        ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds
+        FileJump                           // Samples
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter

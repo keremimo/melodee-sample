@@ -20,6 +20,10 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Sends: return sends_page;
     case PageId::Bus: return bus_page;
     case PageId::Master: return master_page;
+    case PageId::Pads: return pads_page;
+    case PageId::Samples: return samples_page;
+    case PageId::Trim: return trim_page;
+    case PageId::Chop: return chop_page;
     case PageId::Stage:
     default: return stage_page;
     }

@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/project.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/sample_library.h"
 #include "melodee/shell/snapshot.h"
 #include "melodee/shell/ui_state.h"
 #include "runtime/app.h"
@@ -34,6 +35,8 @@ public:
     void power_pressed() { power.fetch_add(1, std::memory_order_relaxed); }
     // Any thread: LEAVE was chosen on the Exit sheet.
     bool leaving() const { return leave.load(std::memory_order_relaxed); }
+    // Any thread: page, track, the last pad's sample slot and its frames, for `status`.
+    std::string summary() const;
 
     // Screen thread: a copy of what the page needs, taken under a short lock.
     void snapshot(Snapshot& out, uint32_t now_ms);
@@ -43,6 +46,8 @@ public:
     PatternBank& patterns() { return *patterns_; }
     UiState& ui() { return ui_; }
     Context& context() { return context_; }
+    // The app's sample library (service thread); the shell follows its changes.
+    void set_library(SampleLibrary* library) { library_ = library; context_.library = library; }
 
 private:
     void button(SurfaceButton button, bool pressed);
@@ -61,6 +66,10 @@ private:
     std::atomic<unsigned> power {0};
     unsigned power_seen = 0;
     std::atomic<bool> leave {false};
+    SampleLibrary* library_ = nullptr;
+    unsigned library_seen = ~0u;
+    bool pad_bank_used = false;
+    std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}; // copies for summary()
 };
 
 // The project Melodee starts with: four tracks with sounds and a bass line.

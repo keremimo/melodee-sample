@@ -82,6 +82,25 @@ void board_project(Shell& shell) {
     project.buses[0].level = 70; project.buses[1].level = 55; project.buses[2].level = 40;
     const uint8_t sends[] {8, 0, 42, 60, 4, 72, 55, 30, 24, 80};
     for (unsigned t = 0; t < 10; ++t) project.tracks[t].mix.send = sends[t];
+    // The sampler boards: track 4 is a kit, its first pads one-shots, then a break chopped in twelve.
+    {
+        auto& kit = project.tracks[3];
+        load_sound(kit, EngineKind::Sampler, 0);
+        kit.set_name("DUST KIT");
+        const char* names[] {"KICK", "SNARE", "HAT", "OPEN", "DUST BREAK"};
+        const uint32_t lengths[] {22050, 26460, 8820, 30870, 230087};
+        for (unsigned n = 0; n < 5; ++n) {
+            std::snprintf(project.samples[n].path, sizeof(project.samples[n].path), "/media/card/Samples/%s.wav", names[n]);
+            std::snprintf(project.samples[n].name, sizeof(project.samples[n].name), "%s", names[n]);
+            project.samples[n].frames = lengths[n];
+        }
+        const char* short_names[] {"Kick", "Snare", "Hat", "Open"};
+        for (unsigned n = 0; n < 4; ++n) { kit.pads[n].sample = uint16_t(n); std::snprintf(project.samples[n].name, sizeof(project.samples[n].name), "%s", short_names[n]); }
+        for (unsigned n = 0; n < 12; ++n) {
+            kit.pads[4 + n].sample = 4; kit.pads[4 + n].start = 230087 * n / 12; kit.pads[4 + n].end = 230087 * (n + 1) / 12;
+        }
+        kit.last_pad = 8;
+    }
     // The Mod board's six routes on track 1.
     const ModRoute routes[] {
         {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34}, {uint8_t(ModSource::Velocity), uint8_t(ModDest::AmpLevel), 60},
@@ -94,6 +113,20 @@ void board_project(Shell& shell) {
     for (unsigned n = 0; n < 16; ++n) project.motion.write({0, 1, uint16_t(n * 4), uint8_t(prophet::Cutoff), int16_t(cutoff[n])});
     const int reso[] {40, 52, 60, 52, 40, 35};
     for (unsigned n = 0; n < 6; ++n) project.motion.write({0, 1, uint16_t(24 + n * 4), uint8_t(prophet::Resonance), int16_t(reso[n])});
+}
+
+// A two-bar break for the sampler previews: twelve hits fading away, drawn as its overview.
+LoadedSample break_sample() {
+    LoadedSample s;
+    s.name = "DUST BREAK"; s.frames = 230087; s.ready = true;
+    for (unsigned c = 0; c < s.overview.size(); ++c) {
+        float in_hit = std::fmod(c * 12.0f / s.overview.size(), 1.0f);
+        float level = (c % 86 < 40 ? 0.9f : 0.6f) * std::exp(-in_hit * 4.0f) * (0.75f + 0.25f * std::sin(c * 1.3f));
+        s.overview[c] = uint8_t(std::clamp(level, 0.03f, 1.0f) * 255);
+    }
+    s.hit_count = 12;
+    for (unsigned n = 0; n < 12; ++n) s.hits[n] = {230087u * n / 12, 200};
+    return s;
 }
 
 struct Preview {
@@ -185,6 +218,26 @@ const Preview previews[] {
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 3; s.playing = true;
          s.ui.picker_open = true; s.ui.picker_items = true; s.ui.picker_family = 2; s.ui.picker_item = 2;
      }},
+    {"pads", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"samples", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 2; s.sample_root = "/media/card/Samples";
+         const char* files[] {"AMEN TYPE", "DUST BREAK", "FUNK LOOP 04", "RHODES STAB", "TAKE 1", "TAPE HIT", "VINYL CHORD", "WOOD BLOCK"};
+         for (auto name : files) s.files.push_back({std::string("/media/card/Samples/") + name + ".wav", name, 0});
+         s.files[1].path = s.project.samples[4].path;
+         s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"trim", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Trim; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"chop", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.ui.slices = chop(ChopMode::Even, 12, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.chop_slice = 4; s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
 };
@@ -223,7 +276,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

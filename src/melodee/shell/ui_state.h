@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/limits.h"
 #include "melodee/model/project.h"
+#include "melodee/shell/chop.h"
 #include <array>
 #include <cstdint>
 
@@ -11,7 +12,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -54,6 +55,14 @@ struct UiState {
     bool picker_open = false, picker_items = false;           // the effect picker; focus on its effects column
     uint8_t picker_family = 0, picker_item = 0;
     bool picker_replaces = false;                              // Change on a device, not + ADD
+    uint16_t files_cursor = 0;  // Samples
+    uint16_t files_count = 0;   // files the library lists, copied in by the shell
+    uint8_t trim_zoom = 0;      // Trim: 0 whole sample .. 4 sixteen times closer
+    ChopMode chop_mode = ChopMode::Hits;
+    std::array<int, 3> chop_amount {{60, 16, 1}}; // per mode: sensitivity, slice count, beats a slice
+    Slices slices;              // Chop's markers on the sample in hand
+    uint16_t chop_sample = no_sample;
+    uint8_t chop_slice = 0;
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

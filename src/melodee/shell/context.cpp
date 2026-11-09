@@ -3,6 +3,8 @@
 #include "melodee/shell/context.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
+#include "melodee/shell/sample_library.h"
+#include <cstring>
 #include <algorithm>
 
 namespace melodee {
@@ -42,6 +44,17 @@ void Context::note(unsigned t, int key, int velocity) {
 
 void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
     pad %= 16;
+    if (track().engine == EngineKind::Sampler) { // the pads are the kit's, in the bank in view
+        if (pad_keys[pad] >= 0) note(ui.track, pad_keys[pad], 0);
+        pad_keys[pad] = -1;
+        if (!down) return;
+        unsigned kit = track().bank % sampler_banks * 16 + pad;
+        track().last_pad = uint8_t(kit);
+        pad_keys[pad] = int16_t(sampler_first_note + kit);
+        note(ui.track, pad_keys[pad], velocity);
+        record(pad_keys[pad], velocity);
+        return;
+    }
     if (!down) {
         if (pad_keys[pad] >= 0) note(ui.track, pad_keys[pad], 0);
         pad_keys[pad] = -1;
@@ -171,6 +184,21 @@ void Context::apply(const Binding& b, int value) {
     case Kind::FxParam: set_effect_param(unsigned(b.id) / 64, (unsigned(b.id) / 8) % 8, unsigned(b.id) % 8, value); break;
     case Kind::SendBus: set_send_bus(ui.track, unsigned(value)); break;
     case Kind::BusReturn: set_return(unsigned(b.id), value); break;
+    case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadLevel: pad().level = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadPan: pad().pan = int8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadStart: pad().start = uint32_t(uint64_t(value) * 44100 / 1000); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadEnd: {
+        uint32_t frames = project.samples[pad().sample % sample_slots].frames, at = uint32_t(uint64_t(value) * 44100 / 1000);
+        pad().end = at >= frames ? 0 : at; // the sample's end is kept as 0, so it follows a longer reload
+        send_pad(ui.track, t.last_pad);
+        break;
+    }
+    case Kind::TrimZoom: ui.trim_zoom = uint8_t(value); break;
+    case Kind::ChopMode: ui.chop_mode = ChopMode(value); rechop(); break;
+    case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode)] = value; rechop(); break;
+    case Kind::ChopStart: ui.slices.start[size_t(b.id) % max_slices] = uint32_t(uint64_t(value) * 44100 / 1000); break;
+    case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
     case Kind::None: break;
     }
 }
@@ -266,6 +294,49 @@ void Context::set_length(unsigned steps) {
 void Context::set_division(Division division) {
     pattern().division = division;
     send({Type::Division, ui.track, track().pattern, 0, int16_t(division)});
+}
+
+void Context::send_pad(unsigned t, unsigned n) {
+    Command c {Type::Pad, uint8_t(t), 0, uint16_t(n % sampler_pads)};
+    c.pad = project.tracks[t % track_count].pads[n % sampler_pads];
+    send(c);
+}
+
+int Context::sample_slot(const std::string& path, const std::string& name) {
+    int free = -1;
+    for (unsigned n = 0; n < sample_slots; ++n) {
+        if (project.samples[n].used() && path == project.samples[n].path) return int(n); // already in the project
+        if (free < 0 && !project.samples[n].used()) free = int(n);
+    }
+    if (free < 0 || !library) return -1;
+    auto& ref = project.samples[size_t(free)];
+    std::strncpy(ref.path, path.c_str(), sizeof(ref.path) - 1);
+    std::strncpy(ref.name, name.c_str(), sizeof(ref.name) - 1);
+    ref.frames = 0; // known once loaded
+    library->load(unsigned(free), path);
+    return free;
+}
+
+void Context::rechop() {
+    if (!library || ui.chop_sample >= sample_slots) { ui.slices = {}; return; }
+    auto loaded = library->slot(ui.chop_sample);
+    ui.slices = chop(ui.chop_mode, ui.chop_amount[size_t(ui.chop_mode)], loaded.frames, loaded.hits, loaded.hit_count, project.tempo);
+    ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
+}
+
+void Context::chop_to_pads() {
+    auto& t = track();
+    uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
+    if (!frames) return;
+    unsigned pad = 0;
+    for (unsigned n = 0; n < ui.slices.count; ++n) {
+        while (pad < sampler_pads && t.pads[pad].used()) ++pad; // from the first free pad on
+        if (pad >= sampler_pads) break;
+        PadSound sound;
+        sound.sample = ui.chop_sample; sound.start = ui.slices.start[n]; sound.end = ui.slices.end(n, frames);
+        t.pads[pad] = sound;
+        send_pad(ui.track, pad);
+    }
 }
 
 void Context::set_effect(unsigned n, unsigned slot, EffectKind kind) {

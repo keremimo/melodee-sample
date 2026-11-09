@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/engine_host.h"
+#include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
 #include "runtime/app.h"
@@ -31,9 +32,12 @@ private:
     Clock::time_point started = Clock::now();
     melodee::EngineHost host;
     melodee::Shell shell;
+    melodee::SampleLibrary library; // service thread: files on the card
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     uint64_t power_presses = 0;               // service thread
-    // `melodee-press [shift+]BUTTON`: the service thread queues, the MIDI thread presses.
-    MidiQueue<16, uint8_t> presses;
+    // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread
+    // queues, the MIDI thread acts it out as if by hand.
+    struct Remote { uint8_t kind = 0, index = 0; int8_t delta = 0; }; // kind 0 button (index | 0x80 Shift), 1 wheel, 2 pad
+    MidiQueue<16, Remote> presses;
     bool power_known = false;
 };

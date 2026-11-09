@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/project.h"
+#include "melodee/shell/sample_library.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
 #include <cstdint>
@@ -33,6 +34,9 @@ struct Snapshot {
     unsigned song_bar = 0;
     std::array<float, track_count> meters {};
     std::array<std::array<PatternSketch, pattern_count>, track_count> sketches {};
+    LoadedSample sample;               // the sample in hand: the last pad's, or Chop's
+    std::vector<SampleFile> files;     // Samples
+    std::string sample_root;
     uint32_t now = 0;                        // ms, for transient highlights
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };

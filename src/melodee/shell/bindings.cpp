@@ -121,6 +121,40 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::Send, 0, 0, 100, track.mix.send}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
+    case PageId::Pads: {
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        if (!pad.used()) return {};
+        return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level},
+                Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
+    }
+    case PageId::Trim: {
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        uint32_t frames = pad.used() ? project.samples[pad.sample % sample_slots].frames : 0;
+        if (!frames) return {Binding {}, Binding {}, Binding {Kind::TrimZoom, 0, 0, 4, ui.trim_zoom}};
+        int length = int(uint64_t(frames) * 1000 / 44100), window = std::max(4, length >> ui.trim_zoom);
+        int start = int(uint64_t(pad.start) * 1000 / 44100), end = pad.end ? int(uint64_t(pad.end) * 1000 / 44100) : length;
+        // Closer in, each pot turns across a window of the sample that stays put while the handle is inside it.
+        auto range = [&](int value) { int lo = std::min(value / window * window, std::max(0, length - window)); return std::pair<int, int>(lo, std::min(length, lo + window)); };
+        auto [s0, s1] = range(start);
+        auto [e0, e1] = range(end);
+        return {Binding {Kind::PadStart, 0, s0, std::min(s1, end - 1), start}, Binding {Kind::PadEnd, 0, std::max(e0, start + 1), e1, end},
+                Binding {Kind::TrimZoom, 0, 0, 4, ui.trim_zoom}};
+    }
+    case PageId::Chop: {
+        int mode = int(ui.chop_mode);
+        static const int lows[] {0, 2, 1}, highs[] {100, int(max_slices), 8};
+        Binding start {};
+        uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
+        unsigned n = ui.chop_slice;
+        if (frames && n > 0 && n < ui.slices.count) {
+            int lo = int(uint64_t(ui.slices.start[n - 1]) * 1000 / 44100) + 1, hi = int(uint64_t(ui.slices.end(n, frames)) * 1000 / 44100) - 1;
+            start = {Kind::ChopStart, int16_t(n), lo, hi, int(uint64_t(ui.slices.start[n]) * 1000 / 44100)};
+        }
+        return {Binding {Kind::ChopMode, 0, 0, int(ChopMode::Count) - 1, mode},
+                Binding {Kind::ChopAmount, int16_t(mode), lows[mode], highs[mode], ui.chop_amount[size_t(mode)]}, start};
+    }
+    case PageId::Samples:
+        return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
     case PageId::Roll:
     case PageId::Steps: {
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % max_steps;

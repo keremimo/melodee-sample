@@ -20,10 +20,25 @@ Rgb track_light(unsigned track, float level) {
 void Shell::lights(SurfaceLights& lights, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock); // the screen thread may be copying the state
     // Power was pressed: the Exit sheet opens (the service thread only counts presses).
+    // The library found files or finished a sample: the lengths go into the project.
+    if (library_ && library_->generation() != library_seen) {
+        library_seen = library_->generation();
+        for (unsigned n = 0; n < sample_slots; ++n)
+            if (project_->samples[n].used()) project_->samples[n].frames = library_->slot(n).frames;
+        ui_.files_count = uint16_t(library_->files().size());
+        if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
+    }
     unsigned presses = power.load(std::memory_order_relaxed);
     if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; }
 
     const auto& ui = ui_;
+    {
+        const auto& t = project_->tracks[ui_.track];
+        const auto& pad = t.pads[t.last_pad % sampler_pads];
+        page_track.store(uint32_t(ui_.page) | uint32_t(ui_.track) << 8, std::memory_order_relaxed);
+        pad_sample.store(pad.sample, std::memory_order_relaxed);
+        pad_frames.store(pad.used() ? project_->samples[pad.sample % sample_slots].frames : 0, std::memory_order_relaxed);
+    }
     const auto& project = *project_;
     const auto& track = project.tracks[ui.track];
     bool playing = host.playing();
@@ -52,6 +67,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             colour = on ? track_light(ui.track, 0.8f) : inside ? Rgb {} : Rgb {};
             if (playing && inside && step_now == int(step)) colour = led_colour::white(0.7f);
             if (int(step) == ui.held_step) colour = led_colour::white(1);
+        } else if (track.engine == EngineKind::Sampler) {
+            unsigned kit = track.bank % sampler_banks * 16 + pad;
+            colour = track.pads[kit].used() ? track_light(ui.track, kit == track.last_pad ? 1.0f : 0.3f) : Rgb {};
         } else if (track.used()) {
             auto note = pad_note(project, track, pad);
             colour = track_light(ui.track, note.root ? 0.9f : 0.22f);
@@ -60,15 +78,18 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         lights.pad(pad, colour);
     }
     lights.fader(track.used() ? track_light(ui.track, 0.8f) : Rgb {});
-    for (unsigned bank = 0; bank < surface_bank_lights; ++bank) lights.bank(bank, false);
+    // Bank lights A-D: the sampler track's bank in view.
+    for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
+        lights.bank(bank, track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks);
 
     using B = SurfaceButton;
     using L = ButtonLight;
     auto on = [&](B button, bool lit) { lights.button(button, lit ? L::Bright : L::Off); };
-    bool play_group = ui.page == PageId::Stage || ui.page == PageId::Keys || ui.page == PageId::Mix;
+    bool play_group = ui.page == PageId::Stage || ui.page == PageId::Keys || ui.page == PageId::Pads || ui.page == PageId::Mix;
     on(B::Sample, play_group);
     on(B::Seq, ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
-    on(B::SampleSelect, ui.page == PageId::Sounds);
+    on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
+    on(B::Chop, ui.page == PageId::Chop);
     on(B::KnobFx, ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
     on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
     on(B::SixteenLevels, ui.page == PageId::Keys);

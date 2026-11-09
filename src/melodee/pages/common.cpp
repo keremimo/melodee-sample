@@ -31,7 +31,9 @@ ui::HeaderItem tag_of(const Snapshot& s, unsigned track) {
                          ui::track_colour(track));
 }
 
-ui::SoftKeys play_keys(const Snapshot& s, int active) { return {{"STAGE", "KEYS", "MIX"}, active, colour_of(s)}; }
+ui::SoftKeys play_keys(const Snapshot& s, int active) {
+    return {{"STAGE", s.track().engine == EngineKind::Sampler ? "PADS" : "KEYS", "MIX"}, active, colour_of(s)};
+}
 
 std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
     using Kind = Binding::Kind;
@@ -108,6 +110,26 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         }
         case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
         case Kind::BusReturn: c.label = "RETURN"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PadPitch: c.label = "PITCH"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
+        case Kind::PadLevel: c.label = "LEVEL"; c.value = juce::String(b.value); break;
+        case Kind::PadPan:
+            c.label = "PAN"; c.bipolar = true;
+            c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
+            break;
+        case Kind::PadStart: case Kind::PadEnd: case Kind::ChopStart:
+            c.label = b.kind == Kind::PadEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
+            break;
+        case Kind::TrimZoom: c.label = "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
+        case Kind::ChopMode: c.label = "MODE"; c.value = chop_mode_name(ChopMode(b.value)); break;
+        case Kind::ChopAmount: {
+            auto mode = ChopMode(b.id);
+            c.label = mode == ChopMode::Hits ? "HITS" : mode == ChopMode::Even ? "SLICES" : "BEATS";
+            c.value = juce::String(b.value); c.unit = mode == ChopMode::Hits ? "%" : "";
+            break;
+        }
+        case Kind::FileJump:
+            c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
+            break;
         case Kind::None: break;
         }
     }
@@ -125,7 +147,9 @@ void octave(Context& c, int way) { auto& t = c.track(); t.octave = int8_t(std::c
 void no_wheel(Context&, int) {}
 void no_push(Context&) {}
 void play_soft(Context& c, int key) {
-    static const PageId pages[] {PageId::Stage, PageId::Keys, PageId::Mix};
+    // On a sampler track B2 is PADS.
+    PageId keys = c.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
+    const PageId pages[] {PageId::Stage, keys, PageId::Mix};
     c.open(pages[key % 3]);
 }
 

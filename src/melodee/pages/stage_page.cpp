@@ -60,7 +60,7 @@ void push(Context& c) {
         c.open(PageId::Sounds);
         return;
     }
-    c.open(PageId::Edit);
+    c.open(c.track().engine == EngineKind::Sampler ? PageId::Trim : PageId::Edit);
 }
 } // namespace
 

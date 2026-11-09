@@ -12,7 +12,7 @@
 namespace melodee {
 namespace {
 using Button = SurfaceButton;
-bool play_group(PageId page) { return page == PageId::Stage || page == PageId::Keys || page == PageId::Mix; }
+bool play_group(PageId page) { return page == PageId::Stage || page == PageId::Keys || page == PageId::Pads || page == PageId::Mix; }
 } // namespace
 
 Shell::Shell(EngineHost& host)
@@ -50,7 +50,14 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
 void Shell::button(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
-    if (b == Button::PadBank) { ui.pad_bank = pressed; return; }
+    if (b == Button::PadBank) {
+        // Held with a pad it picks a track; a tap alone moves a sampler track to its next bank.
+        if (pressed) pad_bank_used = false;
+        else if (!pad_bank_used && context_.track().engine == EngineKind::Sampler)
+            context_.track().bank = uint8_t((context_.track().bank + 1) % sampler_banks);
+        ui.pad_bank = pressed;
+        return;
+    }
     if (b == Button::Mute) { ui.mute = pressed; if (pressed) ui.shift_used |= ui.shift; return; }
     if (b == Button::Erase) {
         ui.erase = pressed;
@@ -78,7 +85,10 @@ void Shell::button(Button b, bool pressed) {
     switch (b) {
     case Button::Sample:
         if (ui.shift) break; // Project and Settings come with their own boards
-        if (play_group(ui.page)) context_.open(ui.page == PageId::Stage ? PageId::Keys : ui.page == PageId::Keys ? PageId::Mix : PageId::Stage);
+        if (play_group(ui.page)) {
+            PageId keys = context_.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
+            context_.open(ui.page == PageId::Stage ? keys : (ui.page == PageId::Keys || ui.page == PageId::Pads) ? PageId::Mix : PageId::Stage);
+        }
         else context_.open(PageId::Stage);
         break;
     case Button::KnobFx: // the effects along the signal: track, sends, bus, master
@@ -91,8 +101,19 @@ void Shell::button(Button b, bool pressed) {
     case Button::Seq: // Steps, then Roll, then Motion
         context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
         break;
-    case Button::SampleSelect: if (!ui.shift) context_.open(PageId::Sounds); break;
-    case Button::SixteenLevels: context_.open(PageId::Keys); break;
+    case Button::SampleSelect: // on a sampler track it lists samples
+        if (!ui.shift) {
+            bool kit = context_.track().engine == EngineKind::Sampler;
+            context_.open(kit ? PageId::Samples : PageId::Sounds);
+            if (kit && library_) library_->rescan();
+        }
+        break;
+    case Button::SixteenLevels: context_.open(context_.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys); break;
+    case Button::Chop: // the MPC's own job, on the sample of the last pad hit
+        if (context_.track().engine != EngineKind::Sampler || !context_.pad().used()) break;
+        if (ui.chop_sample != context_.pad().sample) { ui.chop_sample = context_.pad().sample; ui.chop_slice = 0; context_.rechop(); }
+        context_.open(PageId::Chop);
+        break;
     case Button::Play: context_.play(); break;
     case Button::Stop:
         if (ui.shift) context_.send({Command::Type::AllNotesOff, 255});
@@ -174,7 +195,7 @@ void Shell::wheel(int delta) {
 void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
     if (down && !ui_.exit_open) {
-        if (ui_.pad_bank) { context_.select_track(pad); return; } // Pad Bank + pad: pick that track
+        if (ui_.pad_bank) { pad_bank_used = true; context_.select_track(pad); return; } // Pad Bank + pad: pick that track
         if (ui_.mute) {                                           // Mute + pad: mute; with Shift, solo
             const auto& mix = project_->tracks[pad].mix;
             if (ui_.shift) context_.set_solo(pad, !mix.solo);
@@ -202,6 +223,12 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     }
     out.position = unsigned(std::max(out.steps[ui_.track], 0));
     out.ticks = host.ticks();
+    if (library_) {
+        const auto& t = project_->tracks[ui_.track];
+        unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
+        out.sample = slot < sample_slots ? library_->slot(slot) : LoadedSample {};
+        if (ui_.page == PageId::Samples) { out.files = library_->files(); out.sample_root = library_->root(); }
+    }
     for (unsigned t = 0; t < track_count; ++t)
         for (unsigned n = 0; n < pattern_count; ++n) {
             const auto& pattern = patterns_->at[t][n];
@@ -220,6 +247,13 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.now = now;
 }
 
+std::string Shell::summary() const {
+    uint32_t pt = page_track.load(std::memory_order_relaxed);
+    return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
+           " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
+           " melodee_pad_frames=" + std::to_string(pad_frames.load());
+}
+
 void starting_project(Project& project, PatternBank& patterns) {
     project = Project {};
     std::snprintf(project.name, sizeof(project.name), "New project");
@@ -228,6 +262,7 @@ void starting_project(Project& project, PatternBank& patterns) {
     load_sound(project.tracks[1], EngineKind::Prophet, 5);  // SOFT PAD
     load_sound(project.tracks[2], EngineKind::Prophet, 6);  // GLASS PLUCK
     load_sound(project.tracks[3], EngineKind::Prophet, 3);  // SYNC LEAD
+    load_sound(project.tracks[4], EngineKind::Sampler, 0); // an empty kit: Sample Select fills its pads
     project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
     project.tracks[2].octave = 4; project.tracks[3].octave = 4;
     patterns = PatternBank {};
