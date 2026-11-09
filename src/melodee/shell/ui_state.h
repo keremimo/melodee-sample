@@ -41,6 +41,8 @@ struct UiState {
     bool sheet_open = false;  // the note sheet over Roll
     uint8_t sheet_row = 0;
     uint8_t roll_note = 0;    // which of the cursor step's notes is selected
+    bool map_open = false;    // the page map over Edit
+    uint8_t map_cursor = 0;
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

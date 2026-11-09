@@ -4,6 +4,7 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine.h"
 #include "melodee/engine/prophet_params.h"
+#include "melodee/model/mod_matrix.h"
 #include <array>
 
 // PROPHET: a two-oscillator polysynth written for sample-base. Oscillator A
@@ -26,6 +27,8 @@ public:
     void set_param(int id, int value) override;
     void set_wheel(float value) override { wheel = value; }
     void set_bend(float value) override { bend = value; }
+    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; }
+    void set_pressure(int key, float value) override;
     void render(float* out, unsigned frames) override;
     bool sounding() const override;
 
@@ -39,15 +42,21 @@ private:
         dsp::Ladder filter;
         dsp::Envelope amp_env, filter_env;
         float dt_a = 0, dt_b = 0, gain = 0;
+        float pressure = 0, random = 0; // mod sources of this voice
+        float noise_mod = 0;            // the matrix's noise level, per control block
         dsp::Oscillator::Mix mix_a, mix_b;
     };
     void update();        // derived values after a parameter change
     void control(Voice&); // per control block: pitch, filter, widths
+    // The mod matrix for one voice: how far each destination moves, in its own units.
+    struct Mods { float cutoff = 0, resonance = 0, amp = 0, pitch = 0, pitch_a = 0, pitch_b = 0, width = 0, noise = 0; };
+    Mods modulation(const Voice& v) const;
     Voice& allocate(int key);
     void start(Voice& v, int key, int velocity, bool retrigger);
 
     std::array<int, prophet::Count> p {};
     std::array<Voice, max_voices> voices {};
+    std::array<ModRoute, mod_routes> mods {};
     std::array<int, 16> stack {}; // held keys for mono and unison, newest last
     unsigned stacked = 0;
     uint32_t clock = 0;

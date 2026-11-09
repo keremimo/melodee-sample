@@ -30,10 +30,11 @@ struct ParamInfo {
 };
 
 // What the picture on an Edit page draws.
-enum class Picture : uint8_t { Bars, Wave, WaveB, Mixer, Filter, Envelope, Lfo };
+enum class Picture : uint8_t { Bars, Wave, WaveB, Mixer, Filter, Envelope, Lfo, Mod };
 
 struct EditPage {
-    const char* title;
+    const char* title; // as the page and the page map name it
+    const char* key;   // as a soft key names it: "FILTER ENV"
     Picture picture;
     std::array<std::array<int8_t, 3>, 3> rows; // parameter ids, -1 empty; rows of three
     unsigned row_count() const { unsigned n = 0; for (auto& r : rows) if (r[0] >= 0 || r[1] >= 0 || r[2] >= 0) ++n; return n; }
@@ -59,6 +60,11 @@ struct EngineInfo {
 };
 
 const EngineInfo& engine_info(EngineKind kind);
+// Edit's pages for an engine: its own, then the mod matrix, which every
+// engine shares ("a page like any other").
+unsigned edit_page_count(const EngineInfo& info);
+const EditPage& edit_page_at(const EngineInfo& info, unsigned index);
+bool is_mod_page(const EngineInfo& info, unsigned index);
 // The engines that can be loaded now, in the order K1 steps through them.
 unsigned available_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out);
 

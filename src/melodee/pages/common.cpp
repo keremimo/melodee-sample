@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/pages/common.h"
+#include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include <algorithm>
@@ -79,6 +80,12 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::StepLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
         case Kind::StepVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
         case Kind::StepChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::ModSource: c.label = "SOURCE"; c.value = mod_source_name(ModSource(b.value)); break;
+        case Kind::ModDest: c.label = "DEST"; c.value = mod_dest_name(ModDest(b.value)); break;
+        case Kind::ModAmount:
+            c.label = "AMOUNT"; c.bipolar = true;
+            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+            break;
         case Kind::None: break;
         }
     }

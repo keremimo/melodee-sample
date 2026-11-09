@@ -12,6 +12,7 @@ void Context::send(const Command& command) { host.send(command); }
 
 void Context::open(PageId page) {
     ui.sheet_open = false;
+    ui.map_open = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
     if (page != ui.page) { ui.previous = ui.page; ui.page = page; }
     if (page == PageId::Sounds) {
@@ -22,7 +23,7 @@ void Context::open(PageId page) {
 }
 
 void Context::back() {
-    if (ui.sheet_open) { ui.sheet_open = false; return; } // Shift + Push closes a sheet first
+    if (ui.sheet_open || ui.map_open) { ui.sheet_open = ui.map_open = false; return; } // Shift + Push closes a sheet or map first
     open(ui.previous == ui.page ? PageId::Stage : ui.previous); }
 
 void Context::select_track(unsigned t) {
@@ -139,8 +140,30 @@ void Context::apply(const Binding& b, int value) {
         ui.held_edited = true;
         break;
     }
+    case Kind::ModSource:
+    case Kind::ModDest:
+    case Kind::ModAmount: {
+        auto route = t.mods[size_t(b.id) % mod_routes];
+        if (b.kind == Kind::ModSource) route.source = uint8_t(value);
+        else if (b.kind == Kind::ModDest) route.destination = uint8_t(value);
+        else route.amount = int8_t(value);
+        set_route(unsigned(b.id), route);
+        break;
+    }
     case Kind::None: break;
     }
+}
+
+void Context::set_route(unsigned r, const ModRoute& value) {
+    if (r >= mod_routes) return;
+    track().mods[r] = value;
+    Command c {Type::Mod, ui.track, 0, uint16_t(r)};
+    c.route = value;
+    send(c);
+}
+
+void Context::pressure(unsigned pad, uint8_t value) {
+    if (pad < 16 && pad_keys[pad] >= 0) send({Type::Pressure, ui.track, 0, uint16_t(pad_keys[pad]), int16_t(value)});
 }
 
 void Context::set_mute(unsigned t, bool on) {

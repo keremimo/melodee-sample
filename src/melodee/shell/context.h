@@ -42,6 +42,8 @@ public:
     void load_sound(unsigned track, EngineKind kind, unsigned sound);
     void audition(int sound);                                 // -1: back to the loaded sound
     void apply(const Binding& binding, int value);            // a pot's new value
+    void set_route(unsigned route, const ModRoute& value);   // the selected track's mod matrix
+    void pressure(unsigned pad, uint8_t value);             // poly aftertouch from a held pad
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);

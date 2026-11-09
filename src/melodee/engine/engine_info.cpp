@@ -27,6 +27,14 @@ const EngineInfo& engine_info(EngineKind kind) {
     }
 }
 
+unsigned edit_page_count(const EngineInfo& info) { return info.page_count ? info.page_count + 1 : 0; }
+bool is_mod_page(const EngineInfo& info, unsigned index) { return info.page_count && index % edit_page_count(info) == info.page_count; }
+const EditPage& edit_page_at(const EngineInfo& info, unsigned index) {
+    static const EditPage mod {"Mod matrix", "MOD", Picture::Mod, {{{-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}}}};
+    if (!info.page_count || is_mod_page(info, index)) return mod;
+    return info.pages[index % edit_page_count(info)];
+}
+
 unsigned available_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out) {
     unsigned n = 0;
     for (unsigned k = 1; k < unsigned(EngineKind::Count); ++k)

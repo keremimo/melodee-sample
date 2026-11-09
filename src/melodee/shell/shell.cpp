@@ -28,7 +28,8 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
         unsigned kind = event.midi.status & 0xf0;
         if (kind == 0x90 && event.midi.value) pad(unsigned(event.pad), event.midi.value, true);
         else if (kind == 0x80 || kind == 0x90) pad(unsigned(event.pad), 0, false);
-        return; // pressure: for the mod matrix, later
+        else if (kind == 0xa0) context_.pressure(unsigned(event.pad), event.midi.value); // to the mod matrix
+        return;
     }
     if (input.kind == SurfaceInput::Kind::Button) { button(Button(input.index), input.pressed); return; }
     if (input.kind != SurfaceInput::Kind::Control) return;

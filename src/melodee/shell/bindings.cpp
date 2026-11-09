@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/sound_list.h"
 #include <algorithm>
@@ -64,7 +65,15 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
     case PageId::Edit: {
         const auto& info = engine_info(track.engine);
         if (!info.page_count) return {};
-        const auto& page = info.pages[ui.edit_page[ui.track] % info.page_count];
+        if (is_mod_page(info, ui.edit_page[ui.track])) {
+            unsigned r = ui.edit_row[ui.track] % mod_routes;
+            const auto& route = track.mods[r];
+            if (!route.used()) return {}; // Push on an empty row starts a route
+            return {Binding {Kind::ModSource, int16_t(r), 1, int(ModSource::Count) - 1, route.source},
+                    Binding {Kind::ModDest, int16_t(r), 1, int(ModDest::Count) - 1, route.destination},
+                    Binding {Kind::ModAmount, int16_t(r), -mod_amount_max, mod_amount_max, route.amount}};
+        }
+        const auto& page = edit_page_at(info, ui.edit_page[ui.track]);
         const auto& row = page.rows[ui.edit_row[ui.track] % std::max(page.row_count(), 1u)];
         return {param(track, row[0]), param(track, row[1]), param(track, row[2])};
     }

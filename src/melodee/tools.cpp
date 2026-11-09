@@ -3,6 +3,7 @@
 #include "melodee/tools.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/prophet_params.h"
+#include "melodee/model/mod_matrix.h"
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
 #include "runtime/screen.h"
@@ -48,6 +49,13 @@ void board_project(Shell& shell) {
         for (auto& n : line.steps[s].notes) if (n.velocity) n.key = uint8_t(n.key + 12); // as on the Roll board
     }
     line.steps[22].notes[0] = {48, 96}; line.steps[22].length = 2; line.steps[22].flags = step_accent;
+    // The Mod board's six routes on track 1.
+    const ModRoute routes[] {
+        {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34}, {uint8_t(ModSource::Velocity), uint8_t(ModDest::AmpLevel), 60},
+        {uint8_t(ModSource::Aftertouch), uint8_t(ModDest::OscBPitch), -18}, {uint8_t(ModSource::Wheel), uint8_t(ModDest::LfoRate), 45},
+        {uint8_t(ModSource::KeyTrack), uint8_t(ModDest::Cutoff), 50}, {uint8_t(ModSource::Random), uint8_t(ModDest::PulseWidth), 30},
+    };
+    for (unsigned r = 0; r < 6; ++r) project.tracks[0].mods[r] = routes[r];
     // Motion on CUTOFF and RESO, as drawn on the Motion board.
     const int cutoff[] {40, 44, 52, 60, 72, 80, 84, 80, 70, 62, 54, 48, 44, 50, 58, 62};
     for (unsigned n = 0; n < 16; ++n) project.motion.write({0, 1, uint16_t(n * 4), uint8_t(prophet::Cutoff), int16_t(cutoff[n])});
@@ -74,6 +82,12 @@ const Preview previews[] {
          s.ui.page = PageId::Edit; s.ui.edit_page[0] = 3; s.playing = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
          s.ui.pots[1] = {81, false, Binding {Binding::Kind::Param, prophet::Resonance, 0, 100, 0}.key(0)};
+     }},
+    {"soundmap", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Edit; s.ui.edit_page[0] = 3; s.ui.map_open = true; s.ui.map_cursor = 3; s.playing = true;
+     }},
+    {"mod", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Edit; s.ui.edit_page[0] = 10; s.playing = true;
      }},
     {"mix", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Mix; s.ui.track = 2; s.playing = true;
@@ -135,7 +149,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit mix steps roll notesheet motion shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

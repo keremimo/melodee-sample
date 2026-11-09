@@ -3,6 +3,7 @@
 // the PROPHET engine and the engine host's sequencer and mixer.
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/prophet.h"
+#include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include <array>
@@ -169,9 +170,39 @@ void motion() {
     };
     CHECK(level(true) * 20 < level(false));
 }
+void mod_matrix() {
+    // Aftertouch into the cutoff opens a closed filter while the pad is pressed.
+    auto loud = [](float pressure, int amount) {
+        ProphetEngine engine;
+        engine.set_param(prophet::Cutoff, 10);
+        engine.set_param(prophet::EnvAmount, 0);
+        engine.set_mod(0, {uint8_t(ModSource::Aftertouch), uint8_t(ModDest::Cutoff), int8_t(amount)});
+        engine.note_on(57, 100);
+        engine.set_pressure(57, pressure);
+        auto out = run(engine, 22050);
+        double energy = 0;
+        for (auto v : out) energy += double(v) * v;
+        return energy;
+    };
+    CHECK(loud(1, 100) > 4 * loud(0, 100));
+    CHECK(std::fabs(loud(1, 0) - loud(0, 0)) < 1e-9 * (loud(0, 0) + 1)); // amount 0 does nothing
+    // The Edit pages end with the mod matrix, whose cards bind the route under the wheel.
+    const auto& info = prophet::info();
+    CHECK(edit_page_count(info) == info.page_count + 1 && is_mod_page(info, info.page_count));
+    Project project;
+    load_sound(project.tracks[0], EngineKind::Prophet, 0);
+    UiState ui;
+    ui.page = PageId::Edit; ui.edit_page[0] = uint8_t(info.page_count); ui.edit_row[0] = 2;
+    Pattern pattern;
+    CHECK(!page_bindings(project, ui, pattern)[0].bound()); // an empty route: Push starts it
+    project.tracks[0].mods[2] = {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34};
+    auto cards = page_bindings(project, ui, pattern);
+    CHECK(cards[0].kind == Binding::Kind::ModSource && cards[2].value == 34 && cards[2].id == 2 && cards[2].min == -100);
+}
 } // namespace
 
 int main() {
+    mod_matrix();
     motion();
     layouts();
     bindings();

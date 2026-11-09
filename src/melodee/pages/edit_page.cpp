@@ -5,6 +5,7 @@
 // moves between rows of three; K1-K3 edit the row in view.
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/prophet_params.h"
+#include "melodee/model/mod_matrix.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/ui/widgets.h"
@@ -20,11 +21,9 @@ constexpr float px = zone::pad, py = zone::picture_y + 27, pw = zone::width - 2 
 
 const EditPage& current_page(const Snapshot& s, unsigned& index) {
     const auto& info = engine_info(s.track().engine);
-    index = s.ui.edit_page[s.ui.track] % info.page_count;
-    return info.pages[index];
+    index = s.ui.edit_page[s.ui.track] % edit_page_count(info);
+    return edit_page_at(info, index);
 }
-
-juce::String page_name(const char* title) { return juce::String(title).toUpperCase(); }
 
 // Which knob shade a parameter wears: its card's when on the row in view.
 juce::Colour shade_of(const Snapshot& s, const EditPage& page, int id) {
@@ -194,12 +193,67 @@ void bars_picture(Paint& p, const Snapshot& s, const EditPage& page) {
 
 void mixer_picture(Paint& p, const Snapshot& s, const EditPage& page) { bars_picture(p, s, page); }
 
+// MOD MATRIX: eight routes, all on one screen; the wheel picks the route.
+void mod_picture(Paint& p, const Snapshot& s) {
+    const auto& mods = s.track().mods;
+    auto c = colour_of(s);
+    unsigned current = s.ui.edit_row[s.ui.track] % mod_routes;
+    float y = zone::picture_y + 1, rh = 17;
+    for (unsigned r = 0; r < mod_routes; ++r, y += rh + 1) {
+        const auto& route = mods[r];
+        bool on = r == current;
+        float x = zone::pad;
+        if (on && route.used()) p.fill(x, y, zone::width - 2 * zone::pad, rh, colour::raised, 4);
+        if (on) {
+            p.g.saveState();
+            p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(rh)));
+            p.fill(x, y, 8, rh, c, 4);
+            p.g.restoreState();
+        }
+        p.text(juce::String(r + 1), x + 9, y, 10, rh, plain(route.used() ? c : colour::dim, 8, Weight::Bold));
+        if (!route.used()) { p.text("Empty", x + 24, y, 100, rh, plain(colour::dim, 10.5f, Weight::Medium)); continue; }
+        p.text(mod_source_name(ModSource(route.source)), x + 24, y, 75, rh,
+               plain(on ? knob_shade(s.ui.track, 0) : colour::sec, 10.5f, Weight::Medium));
+        juce::Path arrow;
+        float ax = x + 107, ay = y + rh / 2;
+        arrow.startNewSubPath(ax, ay); arrow.lineTo(ax + 10, ay);
+        arrow.startNewSubPath(ax + 7, ay - 3); arrow.lineTo(ax + 10, ay); arrow.lineTo(ax + 7, ay + 3);
+        p.g.setColour(colour::mid);
+        p.g.strokePath(arrow, juce::PathStrokeType(1, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        p.text(mod_dest_name(ModDest(route.destination)), x + 123, y, 90, rh,
+               plain(on ? knob_shade(s.ui.track, 1) : colour::sec, 10.5f, Weight::Medium));
+        float bx = x + 214, bw = 55, amount = route.amount / float(mod_amount_max);
+        p.fill(bx, ay - 1, bw, 2, colour::line, 1);
+        float from = std::min(0.0f, amount), to = std::max(0.0f, amount);
+        p.fill(bx + bw / 2 + from * bw / 2, ay - 1, (to - from) * bw / 2, 2, knob_shade(s.ui.track, 2), 1);
+        p.fill(bx + bw / 2 - 0.5f, ay - 2.5f, 1, 5, colour::mid);
+        juce::String value = (route.amount > 0 ? "+" : route.amount < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String())
+            + juce::String(std::abs(int(route.amount)));
+        p.text(value, x + 270, y, zone::width - 2 * zone::pad - 277, rh, plain(on ? colour::text : colour::sec, 10, Weight::Medium),
+               juce::Justification::centredRight);
+    }
+}
+
+// PAGE MAP (B2): every page of the engine, two columns; the wheel moves, Push jumps.
+void page_map(Paint& p, const Snapshot& s, const EngineInfo& info) {
+    auto c = colour_of(s);
+    unsigned count = edit_page_count(info), per_column = (count + 1) / 2;
+    float cw = (zone::width - 2 * zone::pad - 4) / 2, rh = 19;
+    for (unsigned n = 0; n < count; ++n) {
+        float x = zone::pad + (n / per_column) * (cw + 4), y = zone::picture_y + 1 + (n % per_column) * (rh + 2);
+        bool on = n == s.ui.map_cursor;
+        if (on) p.fill(x, y, cw, rh, c, 4);
+        p.text(juce::String(n + 1), x + 6, y, 11, rh, plain(on ? colour::bg : colour::dim, 7.5f, Weight::SemiBold));
+        p.text(edit_page_at(info, n).title, x + 23, y, cw - 26, rh, plain(on ? colour::bg : colour::sec, 11, Weight::Medium));
+    }
+}
+
 void draw(Paint& p, const Snapshot& s) {
     const auto& info = engine_info(s.track().engine);
     auto c = colour_of(s);
     Header h = header_of(s);
-    h.right.push_back(tag_of(s, s.ui.track));
     if (!info.page_count) {
+        h.right.push_back(tag_of(s, s.ui.track));
         frame(p, s, {{"", "", ""}, -1, c}, h);
         p.text("Nothing to edit yet", zone::pad, zone::picture_y, zone::width - 12, 40, plain(colour::dim, 11, Weight::Medium),
                juce::Justification::centred);
@@ -207,13 +261,21 @@ void draw(Paint& p, const Snapshot& s) {
     }
     unsigned index = 0;
     const auto& page = current_page(s, index);
-    unsigned count = info.page_count;
-    const auto& before = info.pages[(index + count - 1) % count];
-    const auto& after = info.pages[(index + 1) % count];
-    SoftKeys keys {{juce::String::fromUTF8("\xe2\x80\xb9 ") + page_name(before.title),
+    unsigned count = edit_page_count(info);
+    const auto& before = edit_page_at(info, index + count - 1);
+    const auto& after = edit_page_at(info, index + 1);
+    if (page.picture == Picture::Mod && !s.ui.map_open) {
+        unsigned used = 0;
+        for (const auto& r : s.track().mods) used += r.used();
+        h.left.push_back(pill(juce::String(used) + " OF " + juce::String(mod_routes) + " ROUTES"));
+    }
+    h.right.push_back(tag_of(s, s.ui.track));
+    SoftKeys keys {{juce::String::fromUTF8("\xe2\x80\xb9 ") + before.key,
                     "PAGE " + juce::String(index + 1) + " / " + juce::String(count),
-                    page_name(after.title) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c};
+                    juce::String(after.key) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c};
     frame(p, s, keys, h);
+    if (s.ui.map_open) { page_map(p, s, info); return; }
+    if (page.picture == Picture::Mod) { mod_picture(p, s); return; }
 
     float top = zone::picture_y;
     p.text(page.title, px, top, pw - 90, 22, plain(colour::text, type::title, Weight::SemiBold));
@@ -232,14 +294,20 @@ void draw(Paint& p, const Snapshot& s) {
     case Picture::Lfo: lfo_picture(p, s); break;
     case Picture::Mixer: mixer_picture(p, s, page); break;
     case Picture::Bars: bars_picture(p, s, page); break;
+    case Picture::Mod: break;
     }
 }
 
-unsigned page_count(Context& c) { return std::max(engine_info(c.track().engine).page_count, 1u); }
+unsigned page_count(Context& c) { return std::max(edit_page_count(engine_info(c.track().engine)), 1u); }
 
 void soft(Context& c, int key) {
-    if (key == 1) return; // the page map comes with its own board (SoundMap)
     unsigned count = page_count(c), t = c.ui.track;
+    if (key == 1) { // B2: the page map, starting on the page in view
+        c.ui.map_open = !c.ui.map_open;
+        c.ui.map_cursor = uint8_t(c.ui.edit_page[t] % count);
+        return;
+    }
+    c.ui.map_open = false;
     c.ui.edit_page[t] = uint8_t((c.ui.edit_page[t] + (key == 0 ? count - 1 : 1)) % count);
     c.ui.edit_row[t] = 0;
 }
@@ -247,12 +315,33 @@ void soft(Context& c, int key) {
 void wheel(Context& c, int delta) {
     const auto& info = engine_info(c.track().engine);
     if (!info.page_count) return;
-    unsigned t = c.ui.track;
-    unsigned rows = std::max(info.pages[c.ui.edit_page[t] % info.page_count].row_count(), 1u);
+    unsigned t = c.ui.track, count = edit_page_count(info);
+    if (c.ui.map_open) {
+        c.ui.map_cursor = uint8_t(std::clamp<int>(c.ui.map_cursor + delta, 0, int(count) - 1));
+        return;
+    }
+    unsigned rows = is_mod_page(info, c.ui.edit_page[t]) ? mod_routes : std::max(edit_page_at(info, c.ui.edit_page[t]).row_count(), 1u);
     c.ui.edit_row[t] = uint8_t(std::clamp<int>(c.ui.edit_row[t] + delta, 0, int(rows) - 1));
+}
+
+void push(Context& c) {
+    const auto& info = engine_info(c.track().engine);
+    if (!info.page_count) return;
+    unsigned t = c.ui.track;
+    if (c.ui.map_open) { // jump there
+        c.ui.edit_page[t] = c.ui.map_cursor;
+        c.ui.edit_row[t] = 0;
+        c.ui.map_open = false;
+        return;
+    }
+    if (is_mod_page(info, c.ui.edit_page[t])) {
+        // Push on an empty row starts a route: the LFO into the cutoff, nothing yet.
+        unsigned r = c.ui.edit_row[t] % mod_routes;
+        if (!c.track().mods[r].used()) c.set_route(r, {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 0});
+    }
 }
 } // namespace
 
-const PageSpec edit_page {draw, play_pad, wheel, no_push, soft, octave};
+const PageSpec edit_page {draw, play_pad, wheel, push, soft, octave};
 
 } // namespace melodee

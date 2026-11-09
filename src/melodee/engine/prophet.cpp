@@ -53,8 +53,48 @@ ProphetEngine::Voice& ProphetEngine::allocate(int key) {
     return *oldest;
 }
 
+void ProphetEngine::set_pressure(int key, float value) {
+    for (auto& v : voices) if (v.key == key && v.held) v.pressure = value;
+}
+
+// Each route adds source x amount; full amount moves a destination by:
+// cutoff 5 octaves, resonance and level fully, pitch 12 semitones, pulse
+// width 0.45, noise fully.
+ProphetEngine::Mods ProphetEngine::modulation(const Voice& v) const {
+    Mods m;
+    for (const auto& r : mods) {
+        if (!r.used() || !r.amount) continue;
+        float x = 0;
+        switch (ModSource(r.source)) {
+        case ModSource::Lfo: x = lfo_value; break;
+        case ModSource::Velocity: x = v.velocity; break;
+        case ModSource::Aftertouch: x = v.pressure; break;
+        case ModSource::Wheel: x = wheel; break;
+        case ModSource::KeyTrack: x = (v.pitch - 60.0f) / 60.0f; break;
+        case ModSource::Random: x = v.random; break;
+        case ModSource::FilterEnv: x = v.filter_env.level; break;
+        default: break;
+        }
+        x *= r.amount / float(mod_amount_max);
+        switch (ModDest(r.destination)) {
+        case ModDest::Cutoff: m.cutoff += x * 5; break;
+        case ModDest::Resonance: m.resonance += x; break;
+        case ModDest::AmpLevel: m.amp += x; break;
+        case ModDest::Pitch: m.pitch += x * 12; break;
+        case ModDest::OscAPitch: m.pitch_a += x * 12; break;
+        case ModDest::OscBPitch: m.pitch_b += x * 12; break;
+        case ModDest::PulseWidth: m.width += x * 0.45f; break;
+        case ModDest::Noise: m.noise += x; break;
+        default: break; // LfoRate is the engine's, see render()
+        }
+    }
+    return m;
+}
+
 void ProphetEngine::start(Voice& v, int key, int velocity, bool retrigger) {
     bool was = v.amp_env.active();
+    v.pressure = 0;
+    v.random = noise.next();
     v.key = key; v.held = true; v.age = ++clock;
     v.velocity = velocity / 127.0f;
     v.target = float(key);
@@ -133,18 +173,20 @@ void ProphetEngine::control(Voice& v) {
     float poly_env = v.filter_env.level * p[PolyEnv] / 100.0f;
     float bend_st = bend * p[BendRange];
     float drift = v.drift * p[Vintage] / 100.0f * 0.15f;
+    auto m = modulation(v);
+    v.noise_mod = m.noise;
 
     float key_a = v.pitch + p[FreqA] + bend_st + drift + v.detune
         + lfo * p[LfoFreq] / 100.0f * 2.0f + wheel * p[WheelFreq] / 100.0f * 2.0f
-        + (p[PolyFreqA] ? poly_env * 24.0f : 0);
+        + (p[PolyFreqA] ? poly_env * 24.0f : 0) + m.pitch + m.pitch_a;
     float key_b = (p[KeybB] ? v.pitch : 60.0f) + p[FreqB] + p[FineB] / 100.0f + bend_st + drift * 0.7f + v.detune
-        + lfo * p[LfoFreq] / 100.0f * 2.0f + wheel * p[WheelFreq] / 100.0f * 2.0f;
+        + lfo * p[LfoFreq] / 100.0f * 2.0f + wheel * p[WheelFreq] / 100.0f * 2.0f + m.pitch + m.pitch_b;
     v.dt_a = std::min(dsp::midi_hz(key_a) / dsp::sample_rate, 0.45f);
     float hz_b = dsp::midi_hz(key_b);
     if (p[LoFreqB]) hz_b /= 64.0f;
     v.dt_b = std::min(hz_b / dsp::sample_rate, 0.45f);
 
-    float width_a = p[PwA] / 100.0f + lfo * p[LfoPw] / 100.0f * 0.4f + (p[PolyPwA] ? poly_env * 0.4f : 0);
+    float width_a = p[PwA] / 100.0f + lfo * p[LfoPw] / 100.0f * 0.4f + (p[PolyPwA] ? poly_env * 0.4f : 0) + m.width;
     v.mix_a = {p[SawA] ? 1.0f : 0.0f, p[PulseA] ? 1.0f : 0.0f, 0, std::clamp(width_a, 0.05f, 0.95f)};
     float width_b = p[PwB] / 100.0f + lfo * p[LfoPw] / 100.0f * 0.4f;
     v.mix_b = {p[SawB] ? 1.0f : 0.0f, p[PulseB] ? 1.0f : 0.0f, p[TriB] ? 1.0f : 0.0f, std::clamp(width_b, 0.05f, 0.95f)};
@@ -157,8 +199,9 @@ void ProphetEngine::control(Voice& v) {
     octaves += lfo * p[LfoFilter] / 100.0f * 3.0f + wheel * p[WheelFilter] / 100.0f * 4.0f;
     // Poly mod into the filter: the envelope, and oscillator B where it is in its cycle.
     if (p[PolyFilter]) octaves += poly_env * 4.0f + (2.0f * v.b.phase - 1.0f) * p[PolyOscB] / 100.0f * 2.0f;
-    v.filter.tune(20.0f * std::exp2(octaves), p[Resonance] / 100.0f);
-    v.gain = 1.0f - p[VelAmp] / 100.0f * (1.0f - v.velocity);
+    octaves += m.cutoff;
+    v.filter.tune(20.0f * std::exp2(octaves), std::clamp(p[Resonance] / 100.0f + m.resonance, 0.0f, 1.0f));
+    v.gain = std::max(0.0f, (1.0f - p[VelAmp] / 100.0f * (1.0f - v.velocity)) * (1.0f + m.amp));
 }
 
 void ProphetEngine::render(float* out, unsigned frames) {
@@ -169,7 +212,14 @@ void ProphetEngine::render(float* out, unsigned frames) {
     bool sync = p[Sync] != 0;
     for (unsigned start = 0; start < frames; start += control_block) {
         unsigned n = std::min(control_block, frames - start);
-        lfo_value = lfo.next(rate_hertz(p[LfoRate]), unsigned(p[LfoShape]), float(n) / dsp::sample_rate);
+        // LFO rate routes: the engine has one LFO, so only voice-free sources move it.
+        float rate_octaves = 0;
+        for (const auto& r : mods)
+            if (r.used() && ModDest(r.destination) == ModDest::LfoRate) {
+                float x = ModSource(r.source) == ModSource::Wheel ? wheel : ModSource(r.source) == ModSource::Lfo ? lfo_value : 0;
+                rate_octaves += x * r.amount / float(mod_amount_max) * 3;
+            }
+        lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(rate_octaves), unsigned(p[LfoShape]), float(n) / dsp::sample_rate);
         for (auto& v : voices) {
             if (!v.amp_env.active()) { if (v.key >= 0 && !v.held) v.key = -1; continue; }
             control(v);
@@ -180,7 +230,8 @@ void ProphetEngine::render(float* out, unsigned frames) {
                 if (poly_b_pw != 0) mix_a.width = std::clamp(mix_a.width + b * poly_b_pw, 0.05f, 0.95f);
                 float a = v.a.next(v.dt_a * (1.0f + b * poly_b_fm), mix_a, wrap_a);
                 if (sync && wrap_b) v.a.reset(v.b.phase * v.dt_a / std::max(v.dt_b, 1e-6f));
-                float x = a * level_a + b * level_b + (level_n != 0 ? noise.next() * level_n : 0);
+                float ln = std::clamp(level_n + v.noise_mod, 0.0f, 1.0f);
+                float x = a * level_a + b * level_b + (ln != 0 ? noise.next() * ln : 0);
                 x *= 0.5f;
                 float y = v.filter.process(x);
                 v.filter_env.next(filter_shape);

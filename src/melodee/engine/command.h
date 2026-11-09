@@ -26,6 +26,8 @@ struct Command {
         Swing,       // value = percent
         MotionWrite, // motion: Motion::write(motion)
         MotionClear, // motion: Motion::clear(track, pattern, param)
+        Mod,         // track, index = route, route
+        Pressure,    // track, index = key, value = 0..127 (poly aftertouch)
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)
@@ -36,6 +38,7 @@ struct Command {
     int16_t value = 0;
     Step step {};
     MotionEvent motion {};
+    ModRoute route {};
 };
 
 } // namespace melodee

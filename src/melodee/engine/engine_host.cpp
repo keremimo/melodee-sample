@@ -35,6 +35,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
         select_engine(slot, track.engine);
         const auto& info = engine_info(track.engine);
         slot.base = track.params;
+        if (slot.engine) for (unsigned r = 0; r < mod_routes; ++r) slot.engine->set_mod(r, track.mods[r]);
         if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
         apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
         apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
@@ -79,6 +80,8 @@ void EngineHost::apply(const Command& c) {
         if (slot.engine) slot.engine->set_param(c.index, c.value);
         break;
     case Type::MotionWrite: motion.write(c.motion); break;
+    case Type::Mod: if (slot.engine && c.index < mod_routes) slot.engine->set_mod(c.index, c.route); break;
+    case Type::Pressure: if (slot.engine) slot.engine->set_pressure(c.index, c.value / 127.0f); break;
     case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param); break;
     case Type::Wheel: if (slot.engine) slot.engine->set_wheel(c.value / 1000.0f); break;
     case Type::Level: slot.gain = level_gain(c.value); break;

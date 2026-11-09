@@ -38,8 +38,9 @@ struct PatternBank {
 };
 
 struct ModRoute {
-    uint8_t source = 0, destination = 0; // 0: none
-    int8_t amount = 0;                   // -64..63
+    uint8_t source = 0, destination = 0; // ModSource, ModDest (model/mod_matrix.h); 0: none
+    int8_t amount = 0;                   // -100..100
+    bool used() const { return source && destination; }
 };
 
 struct Mix {

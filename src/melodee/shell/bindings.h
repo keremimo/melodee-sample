@@ -13,7 +13,8 @@ namespace melodee {
 
 struct Binding {
     enum class Kind : uint8_t {
-        None, Param, Level, Pan, Send, Root, Scale, Layout, Engine, Jump, Audition, StepLength, StepVelocity, StepChance
+        None, Param, Level, Pan, Send, Root, Scale, Layout, Engine, Jump, Audition, StepLength, StepVelocity, StepChance,
+        ModSource, ModDest, ModAmount // id: the route
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter

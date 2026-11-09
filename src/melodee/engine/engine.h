@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/project.h"
 #include <cstdint>
 
 // A sound engine as the engine host drives it, on the audio thread only.
@@ -18,6 +19,8 @@ public:
     virtual void set_param(int id, int value) = 0;
     virtual void set_wheel(float /*0..1*/) {}
     virtual void set_bend(float /*-1..1*/) {}
+    virtual void set_mod(unsigned /*route*/, const ModRoute&) {}
+    virtual void set_pressure(int /*key*/, float /*0..1*/) {}
     virtual void render(float* out, unsigned frames) = 0;
     virtual bool sounding() const = 0;
 };

@@ -39,16 +39,16 @@ const ParamInfo params[Count] {
 
 constexpr int8_t _ = -1;
 const EditPage pages[] {
-    {"Oscillator A", Picture::Wave, {{{FreqA, PwA, Sync}, {SawA, PulseA, _}, {_, _, _}}}},
-    {"Oscillator B", Picture::WaveB, {{{FreqB, FineB, PwB}, {SawB, TriB, PulseB}, {LoFreqB, KeybB, _}}}},
-    {"Mixer", Picture::Mixer, {{{LevelA, LevelB, Noise}, {_, _, _}, {_, _, _}}}},
-    {"Filter", Picture::Filter, {{{Cutoff, Resonance, EnvAmount}, {KeyTrack, VelFilter, _}, {_, _, _}}}},
-    {"Filter env", Picture::Envelope, {{{FilterAttack, FilterDecay, FilterSustain}, {FilterRelease, _, _}, {_, _, _}}}},
-    {"Amp env", Picture::Envelope, {{{AmpAttack, AmpDecay, AmpSustain}, {AmpRelease, VelAmp, _}, {_, _, _}}}},
-    {"LFO", Picture::Lfo, {{{LfoRate, LfoShape, LfoAmount}, {LfoFreq, LfoPw, LfoFilter}, {_, _, _}}}},
-    {"Wheel", Picture::Bars, {{{WheelFreq, WheelFilter, WheelLfo}, {_, _, _}, {_, _, _}}}},
-    {"Poly mod", Picture::Bars, {{{PolyEnv, PolyOscB, _}, {PolyFreqA, PolyPwA, PolyFilter}, {_, _, _}}}},
-    {"Performance", Picture::Bars, {{{Glide, Unison, Detune}, {Vintage, BendRange, Voices}, {_, _, _}}}},
+    {"Oscillator A", "OSC A", Picture::Wave, {{{FreqA, PwA, Sync}, {SawA, PulseA, _}, {_, _, _}}}},
+    {"Oscillator B", "OSC B", Picture::WaveB, {{{FreqB, FineB, PwB}, {SawB, TriB, PulseB}, {LoFreqB, KeybB, _}}}},
+    {"Mixer", "MIXER", Picture::Mixer, {{{LevelA, LevelB, Noise}, {_, _, _}, {_, _, _}}}},
+    {"Filter", "FILTER", Picture::Filter, {{{Cutoff, Resonance, EnvAmount}, {KeyTrack, VelFilter, _}, {_, _, _}}}},
+    {"Filter envelope", "FILTER ENV", Picture::Envelope, {{{FilterAttack, FilterDecay, FilterSustain}, {FilterRelease, _, _}, {_, _, _}}}},
+    {"Amp envelope", "AMP ENV", Picture::Envelope, {{{AmpAttack, AmpDecay, AmpSustain}, {AmpRelease, VelAmp, _}, {_, _, _}}}},
+    {"LFO", "LFO", Picture::Lfo, {{{LfoRate, LfoShape, LfoAmount}, {LfoFreq, LfoPw, LfoFilter}, {_, _, _}}}},
+    {"Wheel", "WHEEL", Picture::Bars, {{{WheelFreq, WheelFilter, WheelLfo}, {_, _, _}, {_, _, _}}}},
+    {"Poly mod", "POLY MOD", Picture::Bars, {{{PolyEnv, PolyOscB, _}, {PolyFreqA, PolyPwA, PolyFilter}, {_, _, _}}}},
+    {"Performance", "PERFORM", Picture::Bars, {{{Glide, Unison, Detune}, {Vintage, BendRange, Voices}, {_, _, _}}}},
 };
 
 // Each sound lists only what differs from the initial values.
