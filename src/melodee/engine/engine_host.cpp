@@ -104,6 +104,14 @@ void EngineHost::apply(const Command& c) {
     case Type::SendBus: slot.bus = uint8_t(c.value % bus_count); break;
     case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
     case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;
+    case Type::Reload:
+        if (c.pack) {
+            apply({Type::Stop});
+            for (auto& s : slots) if (s.engine) s.engine->silence();
+            load(c.pack->project, c.pack->patterns); // a one-off copy, while stopped
+            if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
+        }
+        break;
     case Type::RecordArm: {
         source_now.store(c.track % 3, std::memory_order_relaxed);
         uint32_t length = c.pattern ? uint32_t(c.pattern * 4 * 60.0 / (tempo / 10.0) * 44100) : 0;

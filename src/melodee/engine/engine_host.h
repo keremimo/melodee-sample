@@ -20,6 +20,13 @@
 // meters) is published as atomics.
 namespace melodee {
 
+// A whole project for the audio thread to switch to at once (a load or a new
+// project). The MIDI thread makes it, the audio thread hands it back.
+struct ProjectPack {
+    Project project;
+    PatternBank patterns;
+};
+
 class EngineHost {
 public:
     EngineHost();
@@ -56,6 +63,8 @@ public:
     // back through take_retired(), to be freed there.
     bool offer_sample(unsigned slot, const SampleData* sample) { return offers.push({uint16_t(slot), sample}); }
     bool take_retired(const SampleData*& sample) { return retired.pop(sample); }
+    // MIDI thread: a ProjectPack the audio thread has finished with, to free.
+    bool take_done_pack(const ProjectPack*& pack) { return done_packs.pop(pack); }
 
     static constexpr unsigned block = 128;
 
@@ -94,6 +103,7 @@ private:
     struct Offer { uint16_t slot = 0; const SampleData* sample = nullptr; };
     MidiQueue<64, Offer> offers;
     MidiQueue<128, const SampleData*> retired;
+    MidiQueue<8, const ProjectPack*> done_packs;
     SamplerEngine::Table samples {};
     TakeRecorder take;
     std::atomic<unsigned> source_now {0};

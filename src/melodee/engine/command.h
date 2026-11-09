@@ -43,7 +43,8 @@ struct Command {
         PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64: 16 Levels
         RecordArm,   // track = source (0 mic, 1 line, 2 the mix), index = sample slot, value = threshold dB, pattern = bars (0: until stopped)
         RecordGain,  // value = dB
-        RecordNow, RecordStop
+        RecordNow, RecordStop,
+        Reload       // pack: a whole project to switch to; handed back through the host's done queue
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)
@@ -57,6 +58,7 @@ struct Command {
     ModRoute route {};
     Clip clip {};
     PadSound pad {};
+    const struct ProjectPack* pack = nullptr;
 };
 
 } // namespace melodee

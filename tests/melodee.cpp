@@ -9,6 +9,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/model/mod_matrix.h"
+#include "melodee/model/project_file.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include <array>
@@ -465,9 +466,60 @@ void recording() {
     for (uint32_t f = 0; f < 88200; ++f) peak = std::max(peak, std::fabs(host.recorder().left()[f]));
     CHECK(peak > 0.01f);
 }
+void project_files() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    std::snprintf(project->name, sizeof(project->name), "Night drive");
+    project->tempo = 1245; project->swing = 58; project->root = 2; project->scale = 2;
+    load_sound(project->tracks[0], EngineKind::Prophet, 1);
+    project->tracks[0].params[prophet::Cutoff] = 33;
+    project->tracks[0].mix = {90, -20, 40, 2, true, false};
+    project->tracks[0].mods[3] = {1, 2, -45};
+    project->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), true, {60, 50, 30, 70, 0, 0}};
+    load_sound(project->tracks[4], EngineKind::Sampler, 0);
+    project->tracks[4].pads[9].sample = 2; project->tracks[4].pads[9].start = 1234; project->tracks[4].pads[9].group = 3;
+    std::snprintf(project->samples[2].path, sizeof(project->samples[2].path), "/media/card/Samples/Kick.wav");
+    bank->at[0][3].length = 96; bank->at[0][3].division = Division::Eighth;
+    bank->at[0][3].steps[95].notes[1] = {64, 77}; bank->at[0][3].steps[95].flags = step_tie;
+    project->motion.write({0, 3, 7, prophet::Resonance, 61});
+    project->song.place({0, 3, 8, 4, true});
+    project->song.step_marker(8);
+    project->song.loop_start = 8; project->song.loop_end = 12;
+    project->buses[1].level = 33; project->buses[1].fx.slots[0].kind = uint8_t(EffectKind::Room);
+    project->master.slots[0].kind = uint8_t(EffectKind::Limiter);
+
+    auto data = save_project(*project, *bank);
+    auto copy = std::make_unique<Project>();
+    auto copy_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(data, *copy, *copy_bank).empty());
+    CHECK(std::string(copy->name) == "Night drive" && copy->tempo == 1245 && copy->swing == 58 && copy->scale == 2);
+    CHECK(copy->tracks[0].engine == EngineKind::Prophet && copy->tracks[0].params[prophet::Cutoff] == 33);
+    CHECK(copy->tracks[0].mix.pan == -20 && copy->tracks[0].mix.bus == 2 && copy->tracks[0].mix.mute);
+    CHECK(copy->tracks[0].mods[3].amount == -45 && copy->tracks[0].fx.slots[0].bypass && copy->tracks[0].fx.slots[0].params[3] == 70);
+    CHECK(copy->tracks[4].engine == EngineKind::Sampler && copy->tracks[4].pads[9].start == 1234 && copy->tracks[4].pads[9].group == 3);
+    CHECK(!copy->tracks[4].pads[8].used());
+    CHECK(std::string(copy->samples[2].path) == "/media/card/Samples/Kick.wav");
+    CHECK(copy_bank->at[0][3].length == 96 && copy_bank->at[0][3].division == Division::Eighth);
+    CHECK(copy_bank->at[0][3].steps[95].notes[0].key == 64 && copy_bank->at[0][3].steps[95].flags == step_tie);
+    CHECK(copy->motion.count == 1 && copy->motion.events[0].value == 61);
+    CHECK(copy->song.count == 1 && copy->song.clips[0].muted && copy->song.marker_count == 1 && copy->song.loop_end == 12);
+    CHECK(copy->buses[1].level == 33 && copy->buses[1].fx.slots[0].kind == uint8_t(EffectKind::Room));
+    CHECK(copy->master.slots[0].kind == uint8_t(EffectKind::Limiter));
+    // A file that does not fit is refused and changes nothing; an unknown section is passed over.
+    auto damaged = data;
+    damaged.resize(damaged.size() / 2);
+    copy->tempo = 999;
+    CHECK(!load_project(damaged, *copy, *copy_bank).empty() && copy->tempo == 999);
+    auto extended = data;
+    const uint8_t extra[] {'N', 'E', 'X', 'T', 3, 0, 0, 0, 1, 2, 3};
+    extended.insert(extended.end(), extra, extra + sizeof(extra));
+    CHECK(load_project(extended, *copy, *copy_bank).empty() && copy->tempo == 1245);
+    CHECK(!load_project({1, 2, 3}, *copy, *copy_bank).empty());
+}
 } // namespace
 
 int main() {
+    project_files();
     recording();
     sampler_kit();
     effects();
