@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <string>
 #include <vector>
 
 using namespace melodee;
@@ -208,6 +209,13 @@ void arrange() {
     CHECK(song.clip_at(1, 0) < 0 && song.length() == 8);
     song.erase(unsigned(song.clip_at(0, 3)));
     CHECK(song.clip_at(0, 3) < 0 && song.count == 2);
+    // Markers: added at a bar, named after the one before, stepped through the names, then gone.
+    CHECK(song.step_marker(4) && song.marker_count == 1 && std::string(song.markers[0].name) == "INTRO");
+    CHECK(song.step_marker(12) && std::string(song.markers[size_t(song.marker_at(12))].name) == "VERSE");
+    CHECK(song.step_marker(4) && std::string(song.markers[size_t(song.marker_at(4))].name) == "VERSE");
+    for (unsigned n = 0; n < Song::marker_name_count - 2; ++n) CHECK(song.step_marker(4));
+    CHECK(std::string(song.markers[size_t(song.marker_at(4))].name) == "OUTRO");
+    CHECK(song.step_marker(4) && song.marker_at(4) < 0 && song.marker_count == 1 && song.marker_at(12) >= 0);
 
     auto setup = [](Project& project, PatternBank& bank) {
         load_sound(project.tracks[0], EngineKind::Prophet, 0);

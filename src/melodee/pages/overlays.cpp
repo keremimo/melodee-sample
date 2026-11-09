@@ -17,6 +17,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
         {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"SEQ RECORD", "Undo last take"},
         {"SAMPLE RECORD", "Capture last bars"}, {"TAP TEMPO", "Metronome"}, {"\xe2\x88\x92 / +", "Transpose pads"}, {"PUSH", "Back"},
     };
+    bool song = s.ui.page == PageId::Song && !s.ui.sheet_open; // there Push names a marker instead
     p.dim_zone(zone::soft_y, zone::soft_h);
     p.dim_zone(zone::knobs_y, zone::knobs_h);
     p.fill(0, zone::header_y, zone::width, zone::header_h + zone::picture_h, colour::bg);
@@ -32,7 +33,8 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
         unsigned column = n / 7, row = n % 7;
         float cx = x + 2 + column * (cw + 2) + 6, cy = y + 5 + row * 19;
         p.text(juce::String::fromUTF8(jobs[n][0]), cx, cy, cw - 12, 7, caps_text(c, 6));
-        p.text(jobs[n][1], cx, cy + 7, cw - 12, 11, plain(colour::text, 9.5f, Weight::Medium));
+        const char* job = song && n == 13 ? "Marker at cursor" : jobs[n][1];
+        p.text(job, cx, cy + 7, cw - 12, 11, plain(colour::text, 9.5f, Weight::Medium));
     }
 }
 

@@ -33,7 +33,7 @@ private:
     melodee::Shell shell;
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     uint64_t power_presses = 0;               // service thread
-    // `melodee-press BUTTON`: the service thread queues, the MIDI thread presses.
+    // `melodee-press [shift+]BUTTON`: the service thread queues, the MIDI thread presses.
     MidiQueue<16, uint8_t> presses;
     bool power_known = false;
 };

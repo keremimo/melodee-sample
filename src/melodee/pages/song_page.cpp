@@ -7,7 +7,9 @@
 // The wheel moves the cursor by the bar, pads pick the lane, Push on a clip
 // opens its sheet, Push on empty time places the pattern on K2 for the
 // length on K3. K1 zoom. Minus / Plus jump between markers (or clip edges
-// while there are none). Play here plays the song from the cursor.
+// while there are none). Shift + Push adds a marker at the cursor, or gives
+// it the next name, or after the last name removes it. Play here plays the
+// song from the cursor.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
@@ -273,6 +275,8 @@ void nudge(Context& c, int way) {
     c.ui.song_view = uint16_t(view_of(c.ui));
 }
 } // namespace
+
+void song_marker(Context& c) { c.project.song.step_marker(c.ui.song_cursor); }
 
 const PageSpec song_page {draw, pad, wheel, push, soft, nudge};
 

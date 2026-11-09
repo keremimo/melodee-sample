@@ -3,6 +3,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/page.h"
+#include "melodee/pages/pages.h"
 #include "surface/controls.h"
 #include <algorithm>
 #include <cstdio>
@@ -101,7 +102,8 @@ void Shell::button(Button b, bool pressed) {
     case Button::TopMiddle: page.soft(context_, 1); break;
     case Button::TopRight: page.soft(context_, 2); break;
     case Button::WheelPush:
-        if (ui.shift) context_.back();
+        if (ui.shift && ui.page == PageId::Song && !ui.sheet_open) song_marker(context_);
+        else if (ui.shift) context_.back();
         else page.push(context_);
         break;
     default: break;

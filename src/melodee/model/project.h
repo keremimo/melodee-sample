@@ -4,6 +4,7 @@
 #include "melodee/model/limits.h"
 #include <algorithm>
 #include <array>
+#include <iterator>
 #include <cstdint>
 #include <cstring>
 
@@ -150,6 +151,52 @@ struct Song {
     }
     unsigned length() const { unsigned end = 0; for (unsigned n = 0; n < count; ++n) end = std::max<unsigned>(end, clips[n].end()); return end; }
     bool looping() const { return loop_end > loop_start; }
+
+    // Markers: names come from a fixed list until there is a way to type
+    // one (open question 9). step_marker() adds one at `bar`, or moves an
+    // existing one to the next name; after the last name it goes.
+    static constexpr const char* marker_names[] {"INTRO", "VERSE", "CHORUS", "BRIDGE", "DROP", "BREAK", "OUTRO"};
+    static constexpr unsigned marker_name_count = sizeof(marker_names) / sizeof(marker_names[0]);
+    int marker_at(unsigned bar) const {
+        for (unsigned m = 0; m < marker_count; ++m) if (markers[m].bar == bar) return int(m);
+        return -1;
+    }
+    bool step_marker(unsigned bar) {
+        auto set = [](Marker& m, unsigned name) {
+            std::fill(std::begin(m.name), std::end(m.name), '\0');
+            for (unsigned k = 0; k + 1 < sizeof(m.name) && marker_names[name][k]; ++k) m.name[k] = marker_names[name][k];
+        };
+        auto name_of = [](const Marker& m) {
+            for (unsigned n = 0; n < marker_name_count; ++n) {
+                const char* a = marker_names[n]; const char* b = m.name;
+                while (*a && *a == *b) { ++a; ++b; }
+                if (!*a && !*b) return int(n);
+            }
+            return -1;
+        };
+        int at = marker_at(bar);
+        if (at >= 0) {
+            int next = name_of(markers[size_t(at)]) + 1;
+            if (next >= int(marker_name_count)) { // past the last name: the marker goes
+                for (unsigned m = unsigned(at) + 1; m < marker_count; ++m) markers[m - 1] = markers[m];
+                --marker_count;
+            } else {
+                set(markers[size_t(at)], unsigned(next));
+            }
+            return true;
+        }
+        if (marker_count == markers.size()) return false;
+        // A new marker takes the name after the marker before it, or the first.
+        int before = -1;
+        for (unsigned m = 0; m < marker_count; ++m)
+            if (markers[m].bar < bar && (before < 0 || markers[m].bar > markers[size_t(before)].bar)) before = int(m);
+        int name = before >= 0 ? name_of(markers[size_t(before)]) + 1 : 0;
+        Marker added;
+        added.bar = uint16_t(bar);
+        set(added, unsigned(std::clamp(name, 0, int(marker_name_count) - 1)));
+        markers[marker_count++] = added;
+        return true;
+    }
 };
 
 enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Count };

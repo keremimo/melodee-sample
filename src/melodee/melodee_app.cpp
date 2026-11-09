@@ -27,24 +27,30 @@ void MelodeeApp::surface(const SurfaceEvent& event) {
 void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
     uint8_t button;
     while (presses.pop(button)) {
-        // A remote press, as if by hand: down, then up.
-        for (bool down : {true, false}) {
+        // A remote press, as if by hand: down, then up; the top bit holds Shift around it.
+        auto send = [&](uint8_t index, bool down) {
             SurfaceEvent event;
-            event.input.kind = SurfaceInput::Kind::Button; event.input.index = button; event.input.pressed = down;
+            event.input.kind = SurfaceInput::Kind::Button; event.input.index = index; event.input.pressed = down;
             shell.surface(event, now_ms());
-        }
+        };
+        bool shifted = button & 0x80;
+        if (shifted) send(uint8_t(SurfaceButton::Shift), true);
+        send(button & 0x7f, true); send(button & 0x7f, false);
+        if (shifted) send(uint8_t(SurfaceButton::Shift), false);
     }
     shell.lights(lights, now_ms());
 }
 
 std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
     if (action != "melodee-press") return {};
+    bool shifted = argument.rfind("shift+", 0) == 0;
+    std::string wanted = shifted ? argument.substr(6) : argument;
     for (unsigned n = 0; n < surface_buttons.size(); ++n) {
         std::string name = surface_buttons[n].name;
         for (auto& c : name) c = char(c == ' ' ? '-' : std::tolower(static_cast<unsigned char>(c)));
-        if (name == argument) return presses.push(uint8_t(n)) ? "OK melodee-press " + argument : "ERR busy";
+        if (name == wanted) return presses.push(uint8_t(n | (shifted ? 0x80 : 0))) ? "OK melodee-press " + argument : "ERR busy";
     }
-    return "ERR melodee-press takes a button: sample, seq, play, stop, top-left, wheel-push, ...";
+    return "ERR melodee-press takes a button, optionally shift+: sample, seq, play, stop, top-left, wheel-push, ...";
 }
 
 void MelodeeApp::draw(juce::Graphics& g) {
