@@ -38,6 +38,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
         }
     }
     for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
+    click = project.click; click_level = project.click_level / 100.0f;
     motion = project.motion;
     song = project.song;
     tempo = project.tempo; swing = project.swing;
@@ -111,6 +112,28 @@ void EngineHost::apply(const Command& c) {
             load(c.pack->project, c.pack->patterns); // a one-off copy, while stopped
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
         }
+        break;
+    case Type::Click:
+        click = c.value != 0;
+        click_level = std::clamp<int>(c.index, 0, 100) / 100.0f;
+        break;
+    case Type::Arp: {
+        auto& a = slot.arp;
+        switch (c.index) {
+        case 0:
+            a.on = c.value != 0;
+            if (!a.on) { a.clear(); if (a.sounding >= 0 && slot.engine) slot.engine->note_off(a.sounding); a.sounding = -1; }
+            break;
+        case 1: a.mode = ArpMode(c.value % int(ArpMode::Count)); break;
+        case 2: a.rate = unsigned(c.value) % 6; break;
+        case 3: a.octaves = unsigned(std::clamp<int>(c.value, 1, 4)); break;
+        case 4: a.gate = unsigned(std::clamp<int>(c.value, 5, 100)); break;
+        }
+        break;
+    }
+    case Type::ArpKey:
+        if (c.value) slot.arp.press(c.index, c.value); else slot.arp.release(c.index);
+        if (!slot.arp.count) slot.arp.position = 0;
         break;
     case Type::RecordArm: {
         source_now.store(c.track % 3, std::memory_order_relaxed);
@@ -268,7 +291,26 @@ void EngineHost::bar_start() {
     }
 }
 
+void EngineHost::arp_tick() {
+    for (auto& slot : slots) {
+        auto& a = slot.arp;
+        if (!a.on || !slot.engine) continue;
+        unsigned rate = arp_rate_ticks(a.rate);
+        if (arp_ticks % rate) continue;
+        int velocity = 0, key = a.next(velocity);
+        if (key < 0) continue;
+        slot.engine->note_on(key, velocity);
+        schedule_off(slot, key, std::max<int32_t>(64, int32_t(quarter_tick() * rate * a.gate / 100.0)));
+    }
+    ++arp_ticks;
+}
+
 void EngineHost::tick() {
+    // The metronome: every quarter while playing, higher on the bar.
+    if (click && tick_now % ticks_per_quarter == 0) {
+        click_env = 1; click_phase = 0;
+        click_step = (tick_now % ticks_per_bar == 0 ? 1568.0f : 1046.0f) / 44100.0f;
+    }
     if (tick_now % ticks_per_bar == 0) bar_start();
     if (!running) return;
     for (unsigned t = 0; t < track_count; ++t) {
@@ -313,6 +355,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         if (old && !retired.push(old)) samples[offer.slot] = old; // no room to give it back: keep it, try later
     }
     frames = std::min(frames, block);
+    // The arps' clock, at the block's start (within 3 ms of the beat).
+    until_arp -= frames;
+    while (until_arp <= 0) { arp_tick(); until_arp += quarter_tick(); }
     bool solo = false;
     for (auto& slot : slots) {
         solo |= slot.solo;
@@ -388,6 +433,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     }
     float peak = 0;
     for (unsigned f = 0; f < frames; ++f) {
+        if (click_env > 0.0005f) { // a short blip on top of the mix
+            float blip = std::sin(2 * dsp::pi * click_phase) * click_env * click_level * 0.5f;
+            click_phase += click_step; click_phase -= std::floor(click_phase);
+            click_env *= 0.9985f;
+            master_l[f] += blip; master_r[f] += blip;
+        }
         float left = dsp::soft_clip(master_l[f] * volume), right = dsp::soft_clip(master_r[f] * volume);
         peak = std::max(peak, std::max(std::fabs(left), std::fabs(right)));
         out[2 * f] = int32_t(std::clamp(left, -0.999f, 0.999f) * 2147483647.0f);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/arp.h"
 #include "melodee/engine/command.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
@@ -87,10 +88,12 @@ private:
         float buffer[block] {};
         float left[block] {}, right[block] {};
         uint8_t bus = 0;
+        Arp arp;
     };
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
     void tick();       // plays whatever falls on this clock tick, then moves on
+    void arp_tick();   // the arps' own clock, running whether the song plays or not
     void bar_start();  // launches queued patterns, or follows the song
     double tick_samples(uint32_t at) const;
     void play_motion(unsigned track, Slot& slot, unsigned at);
@@ -108,6 +111,10 @@ private:
     TakeRecorder take;
     std::atomic<unsigned> source_now {0};
     float record_gain = 0;
+    double until_arp = 0;
+    uint32_t arp_ticks = 0;
+    bool click = false;
+    float click_level = 0.4f, click_env = 0, click_phase = 0, click_step = 0;
     float record_l[block] {}, record_r[block] {};
     std::array<Slot, track_count> slots;
     DelayPool pool;

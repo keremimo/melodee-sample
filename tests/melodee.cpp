@@ -9,6 +9,8 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/model/mod_matrix.h"
+#include "melodee/engine/arp.h"
+#include "melodee/model/chords.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
@@ -516,9 +518,51 @@ void project_files() {
     CHECK(load_project(extended, *copy, *copy_bank).empty() && copy->tempo == 1245);
     CHECK(!load_project({1, 2, 3}, *copy, *copy_bank).empty());
 }
+void helpers() {
+    // Chords from the scale: pad 2 in D Dorian from octave 3 is Em7, E3 G3 B3 D4 (the Chord board).
+    Project project;
+    project.root = 2; project.scale = 2;
+    Track track;
+    track.octave = 2; track.chord_type = 1;
+    std::array<int, notes_per_step> keys {};
+    CHECK(chord_notes(project, track, 1, keys) == 4 && keys[0] == 40 && keys[1] == 43 && keys[2] == 47 && keys[3] == 50);
+    CHECK(chord_name(project, track, 1) == "Em7" && chord_name(project, track, 0) == "Dm7");
+    track.chord_invert = 1;
+    chord_notes(project, track, 1, keys);
+    CHECK(keys[0] == 43 && keys[3] == 52); // first inversion: E goes up
+    track.chord_type = 4; track.chord_invert = 0;
+    CHECK(chord_notes(project, track, 0, keys) == 3 && keys[2] == keys[0] + 12 && chord_name(project, track, 0) == "D5");
+    // The arp: up, down and up-down over two keys and two octaves.
+    Arp a;
+    a.press(64, 90); a.press(60, 100);
+    a.octaves = 2;
+    int v = 0;
+    std::array<int, 6> up {};
+    for (auto& k : up) k = a.next(v);
+    CHECK(up[0] == 60 && up[1] == 64 && up[2] == 72 && up[3] == 76 && up[4] == 60);
+    a.mode = ArpMode::Down; a.position = 0;
+    CHECK(a.next(v) == 76 && a.next(v) == 72);
+    a.mode = ArpMode::Order; a.position = 0; a.octaves = 1;
+    CHECK(a.next(v) == 64 && v == 90 && a.next(v) == 60);
+    a.release(64); a.release(60);
+    CHECK(a.next(v) == -1);
+    // The host plays the arp while the song is stopped.
+    auto p = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(p->tracks[0], EngineKind::Prophet, 0);
+    EngineHost host;
+    host.load(*p, *bank);
+    host.send({Command::Type::Arp, 0, 0, 0, 1});
+    host.send({Command::Type::ArpKey, 0, 0, 60, 100});
+    std::vector<int32_t> out(256);
+    float peak = 0;
+    for (unsigned n = 0; n < 100; ++n) { host.render(out.data(), 128, 1); for (auto s : out) peak = std::max(peak, std::fabs(s / 2147483648.0f)); }
+    CHECK(!host.playing() && peak > 0.005f);
+}
 } // namespace
 
 int main() {
+    helpers();
     project_files();
     recording();
     sampler_kit();

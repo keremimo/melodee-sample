@@ -244,6 +244,12 @@ struct Track {
     bool levels = false;
     uint8_t levels_pad = 0;
     uint8_t levels_kind = 0; // 0 velocity (soft to loud), 1 up the project's scale, 2 by semitones
+    // Chord: one pad, one chord from the scale (up to four notes).
+    bool chord = false, chord_hold = false;
+    uint8_t chord_type = 1, chord_voicing = 0, chord_invert = 0;
+    // Arp (note repeat on a sampler track): held notes in turn at a rate.
+    bool arp = false, arp_latch = false;
+    uint8_t arp_mode = 0, arp_rate = 3, arp_octaves = 1, arp_gate = 60;
     bool used() const { return engine != EngineKind::None; }
     void set_name(const char* text) { std::strncpy(name, text, name_length - 1); name[name_length - 1] = 0; }
 };
@@ -254,6 +260,8 @@ struct Project {
     uint8_t swing = 50;     // percent, 50 is straight
     uint8_t root = 2;       // 0 C .. 11 B
     uint8_t scale = 0;      // index into scales()
+    bool click = false;     // the metronome while playing
+    uint8_t click_level = 40;
     std::array<Track, track_count> tracks {};
     Motion motion;
     Song song;

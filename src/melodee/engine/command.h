@@ -44,7 +44,10 @@ struct Command {
         RecordArm,   // track = source (0 mic, 1 line, 2 the mix), index = sample slot, value = threshold dB, pattern = bars (0: until stopped)
         RecordGain,  // value = dB
         RecordNow, RecordStop,
-        Reload       // pack: a whole project to switch to; handed back through the host's done queue
+        Reload,      // pack: a whole project to switch to; handed back through the host's done queue
+        Click,       // value: on; index: level 0..100
+        Arp,         // track; index = 0 on, 1 mode, 2 rate, 3 octaves, 4 gate; value
+        ArpKey       // track, index = key, value = velocity (0: let go)
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)
