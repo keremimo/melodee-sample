@@ -75,6 +75,17 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   up to four notes on it (or play in live with Seq Record), Minus / Plus move
   the octave and the view. Push on a note opens the note sheet: accent,
   slide, tie, copy half a bar on, delete.
+- **Edit, page map and mod matrix:** the engine's pages are followed by
+  the mod matrix, which every engine shares (PROPHET: page 11 of 11). B2
+  opens the page map: the wheel moves, Push jumps there, Shift + Push or B2
+  closes it, and the pots stay on the page underneath. The matrix has
+  eight routes a track (`mod_routes`, open question 1), all on one screen;
+  the wheel picks the route, Push on an empty row starts one (LFO into
+  cutoff, amount 0), K1 source, K2 destination, K3 amount (−100..100,
+  centre is none). Sources: LFO, velocity, aftertouch (pad pressure),
+  wheel (the fader), key track, random, filter envelope. Destinations:
+  cutoff, resonance, amp level, pitch, oscillator A or B pitch, pulse width,
+  LFO rate, noise; each engine decides how far a destination moves.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -105,14 +116,13 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   spaces as dashes: `play`, `seq`, `wheel-push`, `top-right`), for checks
   without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
-  sounds, edit, mix, steps, roll, notesheet, motion, shift and exit at 1× and 2× (the 2× ones line up
+  sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: saving (the Exit sheet says so), the page map, the
-mod matrix, Patterns / Song / Length, effects and buses, punch, the sampler
-and chop, projects on the SD card, Tempo / Chord / Arp / Capture, poly
-aftertouch, favourites.
+Not yet: saving (the Exit sheet says so), Patterns / Song / Length,
+effects and buses, punch, the sampler and chop, projects on the SD card,
+Tempo / Chord / Arp / Capture, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds
