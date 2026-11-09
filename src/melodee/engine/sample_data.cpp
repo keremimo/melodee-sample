@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/engine/sample_data.h"
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <fstream>
+
+namespace melodee {
+namespace {
+uint32_t u32(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24; }
+uint16_t u16(const uint8_t* p) { return uint16_t(p[0] | p[1] << 8); }
+} // namespace
+
+std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return "cannot open";
+    uint8_t head[12];
+    if (!file.read(reinterpret_cast<char*>(head), 12) || std::memcmp(head, "RIFF", 4) || std::memcmp(head + 8, "WAVE", 4)) return "not a WAV file";
+    unsigned format = 0, channels = 0, rate = 0, bits = 0;
+    std::vector<uint8_t> data;
+    while (file) {
+        uint8_t chunk[8];
+        if (!file.read(reinterpret_cast<char*>(chunk), 8)) break;
+        uint32_t size = u32(chunk + 4);
+        if (!std::memcmp(chunk, "fmt ", 4)) {
+            std::vector<uint8_t> fmt(size);
+            if (size < 16 || !file.read(reinterpret_cast<char*>(fmt.data()), size)) return "broken format chunk";
+            format = u16(&fmt[0]); channels = u16(&fmt[2]); rate = u32(&fmt[4]); bits = u16(&fmt[14]);
+            if (format == 0xfffe && size >= 26) format = u16(&fmt[24]); // WAVE_FORMAT_EXTENSIBLE: the sub-format
+        } else if (!std::memcmp(chunk, "data", 4)) {
+            if (!format) return "data before format";
+            uint64_t limit = uint64_t(max_seconds) * rate * channels * (bits / 8);
+            data.resize(size_t(std::min<uint64_t>(size, limit)));
+            file.read(reinterpret_cast<char*>(data.data()), std::streamsize(data.size()));
+            data.resize(size_t(file.gcount()));
+            break;
+        } else {
+            file.seekg(size + (size & 1), std::ios::cur);
+        }
+    }
+    bool pcm = format == 1 && (bits == 16 || bits == 24 || bits == 32), floating = format == 3 && bits == 32;
+    if (!pcm && !floating) return "unsupported sample format";
+    if (channels < 1 || channels > 2 || rate < 8000 || rate > 192000) return "unsupported channels or rate";
+    unsigned bytes = bits / 8, frames = unsigned(data.size() / (bytes * channels));
+    if (!frames) return "no audio";
+    auto sample = [&](unsigned frame, unsigned channel) {
+        const uint8_t* p = &data[(size_t(frame) * channels + channel) * bytes];
+        if (floating) { float f; std::memcpy(&f, p, 4); return std::isfinite(f) ? f : 0.0f; }
+        if (bits == 16) return int16_t(u16(p)) / 32768.0f;
+        if (bits == 24) return int32_t(uint32_t(p[0]) << 8 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 24) / 2147483648.0f;
+        return int32_t(u32(p)) / 2147483648.0f;
+    };
+    // To 44.1 kHz, linearly; enough for one-shots and loops alike.
+    double ratio = double(rate) / 44100.0;
+    unsigned length = unsigned(frames / ratio);
+    out.left.assign(length, 0.0f); out.right.assign(length, 0.0f); out.frames = length;
+    for (unsigned n = 0; n < length; ++n) {
+        double at = n * ratio;
+        unsigned i = unsigned(at);
+        float frac = float(at - i);
+        unsigned j = std::min(i + 1, frames - 1);
+        for (unsigned ch = 0; ch < 2; ++ch) {
+            unsigned c = std::min(ch, channels - 1);
+            float v = sample(i, c) + (sample(j, c) - sample(i, c)) * frac;
+            (ch ? out.right : out.left)[n] = v;
+        }
+    }
+    return {};
+}
+
+void make_overview(const SampleData& s, Overview& out) {
+    out.fill(0);
+    if (!s.frames) return;
+    for (unsigned column = 0; column < out.size(); ++column) {
+        unsigned from = unsigned(uint64_t(s.frames) * column / out.size()), to = unsigned(uint64_t(s.frames) * (column + 1) / out.size());
+        float peak = 0;
+        for (unsigned n = from; n < std::max(to, from + 1) && n < s.frames; ++n) peak = std::max({peak, std::fabs(s.left[n]), std::fabs(s.right[n])});
+        out[column] = uint8_t(std::lround(std::min(1.0f, peak) * 255));
+    }
+}
+
+// Onsets: the level in 5 ms windows; a hit is a window much louder than the
+// ones before it. Strength is how sharp the rise was.
+unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out) {
+    constexpr unsigned window = 220;
+    unsigned windows = s.frames / window;
+    std::vector<float> level(windows);
+    for (unsigned w = 0; w < windows; ++w) {
+        float sum = 0;
+        for (unsigned n = w * window; n < (w + 1) * window; ++n) sum += s.left[n] * s.left[n] + s.right[n] * s.right[n];
+        level[w] = std::sqrt(sum / (2 * window));
+    }
+    std::vector<Hit> found;
+    found.push_back({0, 255});
+    unsigned quiet_until = 0;
+    for (unsigned w = 4; w < windows; ++w) {
+        float before = (level[w - 1] + level[w - 2] + level[w - 3] + level[w - 4]) / 4;
+        float rise = level[w] - before;
+        if (w < quiet_until || rise <= 0.01f || level[w] < before * 1.6f) continue;
+        float strength = std::min(1.0f, rise / (level[w] + 1e-4f));
+        found.push_back({w * window, uint8_t(std::lround(strength * 255))});
+        quiet_until = w + 10; // 50 ms between hits
+    }
+    if (found.size() > out.size()) { // keep the strongest, then put them back in time order
+        std::sort(found.begin() + 1, found.end(), [](const Hit& a, const Hit& b) { return a.strength > b.strength; });
+        found.resize(out.size());
+        std::sort(found.begin(), found.end(), [](const Hit& a, const Hit& b) { return a.frame < b.frame; });
+    }
+    std::copy(found.begin(), found.end(), out.begin());
+    return unsigned(found.size());
+}
+
+} // namespace melodee

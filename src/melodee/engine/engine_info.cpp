@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/prophet_params.h"
+#include "melodee/engine/sampler.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -15,7 +16,15 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const EngineInfo cz {EngineKind::Cz, "CZ", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
     static const EngineInfo sid {EngineKind::Sid, "SID", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
     static const EngineInfo kit {EngineKind::Kit909, "909", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
-    static const EngineInfo sampler {EngineKind::Sampler, "SAMPLER", false, nullptr, 0, nullptr, 0, {-1, -1, -1}, nullptr, 0};
+    // The sampler's kit-wide values; each pad's own live in Track::pads.
+    static const ParamInfo kit_params[] {
+        {"TUNE", -24, 24, 0, Format::Semitones, nullptr}, {"FILTER", 0, 100, 100, Format::Percent, nullptr},
+        {"RESO", 0, 100, 10, Format::Percent, nullptr}, {"DECAY", 0, 100, 100, Format::Percent, nullptr},
+        {"LEVEL", 0, 127, 100, Format::Number, nullptr},
+    };
+    static const Sound kits[] {{"NEW KIT", {{{-1, 0}}}}};
+    static const EngineInfo sampler {EngineKind::Sampler, "SAMPLER", true, kit_params, sampler::Count, nullptr, 0,
+                                     {sampler::Tune, sampler::Filter, sampler::Decay}, kits, 1};
     switch (kind) {
     case EngineKind::Prophet: return prophet::info();
     case EngineKind::Fm6: return fm6;

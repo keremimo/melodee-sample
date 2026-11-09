@@ -48,6 +48,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
         const auto& info = engine_info(track.engine);
         slot.base = track.params;
         if (slot.engine) for (unsigned r = 0; r < mod_routes; ++r) slot.engine->set_mod(r, track.mods[r]);
+        for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad(pad, track.pads[pad]);
         if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
         apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
         apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
@@ -62,7 +63,9 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
 void EngineHost::select_engine(Slot& slot, EngineKind kind) {
     if (slot.engine) slot.engine->silence();
     slot.kind = kind;
-    slot.engine = kind == EngineKind::Prophet ? static_cast<Engine*>(&slot.prophet) : nullptr;
+    slot.engine = kind == EngineKind::Prophet ? static_cast<Engine*>(&slot.prophet)
+                : kind == EngineKind::Sampler ? static_cast<Engine*>(&slot.sampler) : nullptr;
+    slot.sampler.set_samples(&samples);
     for (auto& off : slot.offs) off.key = -1;
 }
 
@@ -100,6 +103,10 @@ void EngineHost::apply(const Command& c) {
     case Type::FxBypass: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_bypass(c.value != 0); break;
     case Type::SendBus: slot.bus = uint8_t(c.value % bus_count); break;
     case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
+    case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;
+    case Type::Audition:
+        if (slot.engine == &slot.sampler) slot.sampler.audition(c.pad.sample, c.pad.start, c.pad.end, c.value);
+        break;
     case Type::Pressure: if (slot.engine) slot.engine->set_pressure(c.index, c.value / 127.0f); break;
     case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param); break;
     case Type::Wheel: if (slot.engine) slot.engine->set_wheel(c.value / 1000.0f); break;
@@ -277,9 +284,21 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume) {
     if (!flushed) { flush_denormals(); flushed = true; }
     Command command;
     for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
+    Offer offer;
+    while (offers.pop(offer)) {
+        if (offer.slot >= sample_slots) continue;
+        for (auto& slot : slots) slot.sampler.sample_gone(offer.slot); // nothing may play the old one past here
+        const SampleData* old = samples[offer.slot];
+        samples[offer.slot] = offer.sample;
+        if (old && !retired.push(old)) samples[offer.slot] = old; // no room to give it back: keep it, try later
+    }
     frames = std::min(frames, block);
     bool solo = false;
-    for (auto& slot : slots) { solo |= slot.solo; std::fill(slot.buffer, slot.buffer + frames, 0.0f); }
+    for (auto& slot : slots) {
+        solo |= slot.solo;
+        std::fill(slot.buffer, slot.buffer + frames, 0.0f);
+        std::fill(slot.left, slot.left + frames, 0.0f); std::fill(slot.right, slot.right + frames, 0.0f);
+    }
 
     // Render up to each step, play the step, carry on: steps land on the sample.
     unsigned done = 0;
@@ -292,7 +311,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume) {
         for (auto& slot : slots) {
             if (!slot.engine) continue;
             run_offs(slot, n);
-            slot.engine->render(slot.buffer + done, n);
+            if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
+            else slot.engine->render(slot.buffer + done, n);
         }
         if (running) until_tick -= n;
         done += n;
@@ -308,9 +328,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume) {
         auto& slot = slots[t];
         float level = 0;
         if (slot.engine) {
-            for (unsigned f = 0; f < frames; ++f) {
-                float x = slot.buffer[f] * slot.gain;
-                slot.left[f] = x * slot.pan_left; slot.right[f] = x * slot.pan_right;
+            if (slot.engine->stereo()) { // its own stereo picture; the track's pan balances it
+                float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
+                for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= l; slot.right[f] *= r; }
+            } else {
+                for (unsigned f = 0; f < frames; ++f) {
+                    float x = slot.buffer[f] * slot.gain;
+                    slot.left[f] = x * slot.pan_left; slot.right[f] = x * slot.pan_right;
+                }
             }
             run_chain(t, slot.left, slot.right, frames);
             bool heard = !slot.mute && !(solo && !slot.solo);

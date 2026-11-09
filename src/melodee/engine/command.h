@@ -38,6 +38,8 @@ struct Command {
         SendBus,     // track, value = bus 0-3
         Return,      // index = bus, value = 0..100
         Pressure,    // track, index = key, value = 0..127 (poly aftertouch)
+        Pad,         // track, index = kit pad, pad
+        Audition,    // track, pad (sample, start, end), value = velocity: a region on no pad
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)
@@ -50,6 +52,7 @@ struct Command {
     MotionEvent motion {};
     ModRoute route {};
     Clip clip {};
+    PadSound pad {};
 };
 
 } // namespace melodee

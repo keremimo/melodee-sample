@@ -4,6 +4,7 @@
 #include "melodee/engine/command.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
+#include "melodee/engine/sampler.h"
 #include "melodee/model/project.h"
 #include "surface/midi.h"
 #include <array>
@@ -45,6 +46,12 @@ public:
     float peak() const { return output_peak.load(std::memory_order_relaxed); }
     unsigned dropped() const { return lost.load(std::memory_order_relaxed); }
 
+    // Service thread: a loaded sample for slot `slot` (nullptr empties it). The
+    // audio thread swaps it in at its next block and hands the one it replaced
+    // back through take_retired(), to be freed there.
+    bool offer_sample(unsigned slot, const SampleData* sample) { return offers.push({uint16_t(slot), sample}); }
+    bool take_retired(const SampleData*& sample) { return retired.pop(sample); }
+
     static constexpr unsigned block = 128;
 
 private:
@@ -52,6 +59,7 @@ private:
     struct Slot {
         EngineKind kind = EngineKind::None;
         ProphetEngine prophet;
+        SamplerEngine sampler;
         Engine* engine = nullptr;
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
         bool mute = false, solo = false;
@@ -78,6 +86,10 @@ private:
     double quarter_tick() const { return 44100.0 * 60.0 / (tempo / 10.0) / ticks_per_quarter; }
 
     MidiQueue<4096, Command> queue;
+    struct Offer { uint16_t slot = 0; const SampleData* sample = nullptr; };
+    MidiQueue<64, Offer> offers;
+    MidiQueue<128, const SampleData*> retired;
+    SamplerEngine::Table samples {};
     std::array<Slot, track_count> slots;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;

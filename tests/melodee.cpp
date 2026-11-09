@@ -2,6 +2,9 @@
 // Melodee's model and audio side on the host: pad layouts, knob bindings,
 // the PROPHET engine and the engine host's sequencer and mixer.
 #include "melodee/engine/effects.h"
+#include "melodee/engine/sample_data.h"
+#include "melodee/engine/sampler.h"
+#include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/model/mod_matrix.h"
@@ -11,6 +14,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <unistd.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -337,9 +342,96 @@ void effects() {
     CHECK(filtered.first * 10 < dry.first);
     CHECK(dry.second < 1e-6 && echoed.second > 1e-3);
 }
+void put32(std::ofstream& f, uint32_t v) { for (int n = 0; n < 4; ++n) f.put(char(v >> (8 * n))); }
+void put16(std::ofstream& f, uint16_t v) { f.put(char(v)); f.put(char(v >> 8)); }
+
+void sampler_kit() {
+    // A 16-bit stereo WAV at 22.05 kHz: four clicks a quarter second apart, read back at 44.1 kHz.
+    std::string path = "/tmp/melodee-test-" + std::to_string(::getpid()) + ".wav";
+    {
+        std::ofstream f(path, std::ios::binary);
+        unsigned frames = 22050;
+        f.write("RIFF", 4); put32(f, 36 + frames * 4); f.write("WAVEfmt ", 8); put32(f, 16); put16(f, 1); put16(f, 2);
+        put32(f, 22050); put32(f, 22050 * 4); put16(f, 4); put16(f, 16); f.write("data", 4); put32(f, frames * 4);
+        for (unsigned n = 0; n < frames; ++n) {
+            unsigned at = n % 5512;
+            int16_t v = int16_t(at < 400 ? 20000 * std::exp(-double(at) / 80.0) * std::sin(n * 0.3) : 0);
+            put16(f, uint16_t(v)); put16(f, uint16_t(v));
+        }
+    }
+    SampleData data;
+    CHECK(read_wav(path, data).empty());
+    std::remove(path.c_str());
+    CHECK(data.frames == 44100 && data.left.size() == 44100);
+    CHECK(!read_wav("/nonexistent.wav", data).empty());
+    Overview overview;
+    make_overview(data, overview);
+    if (!(overview[0] > 50 && overview[60] == 0)) std::fprintf(stderr, "overview %d %d frames %u\n", overview[0], overview[60], data.frames);
+    CHECK(overview[0] > 50 && overview[60] == 0);
+    std::array<Hit, max_hits> hits {};
+    unsigned found = find_hits(data, hits);
+    CHECK(found >= 4 && hits[0].frame == 0);
+    // Chop: hits at the clicks, even parts, beats at 120 BPM (22050 frames each).
+    auto even = chop(ChopMode::Even, 4, data.frames, hits, found, 1200);
+    CHECK(even.count == 4 && even.start[2] == 22050);
+    auto beats = chop(ChopMode::Beats, 1, data.frames, hits, found, 1200);
+    CHECK(beats.count == 2 && beats.start[1] == 22050);
+    auto clicks = chop(ChopMode::Hits, 100, data.frames, hits, found, 1200);
+    CHECK(clicks.count >= 4);
+    for (unsigned n = 1; n < 4; ++n) CHECK(std::abs(int(clicks.start[n]) - int(n * 11024)) < 600);
+    Slices edited = even;
+    CHECK(edited.add(1000) && edited.count == 5 && edited.start[1] == 1000);
+    edited.remove(1);
+    CHECK(edited.count == 4 && edited.start[1] == 11025);
+
+    // The engine: a one shot plays to its region's end after the pad lets go; a gate stops.
+    SamplerEngine::Table table {};
+    table[3] = &data;
+    auto run_pad = [&](PadPlay play, bool release) {
+        SamplerEngine engine;
+        engine.set_samples(&table);
+        PadSound pad; pad.sample = 3; pad.start = 0; pad.end = 4410; pad.play = play;
+        engine.set_pad(5, pad);
+        engine.note_on(int(sampler_first_note) + 5, 120);
+        std::vector<float> l(128, 0), r(128, 0);
+        float peak = 0;
+        for (unsigned b = 0; b < 40; ++b) {
+            if (release && b == 1) engine.note_off(int(sampler_first_note) + 5);
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            engine.render_stereo(l.data(), r.data(), 128);
+            if (b > 10) for (unsigned f = 0; f < 128; ++f) peak = std::max(peak, std::fabs(l[f]));
+        }
+        return std::pair<float, bool>(peak, engine.sounding());
+    };
+    auto one_shot = run_pad(PadPlay::OneShot, true), gate = run_pad(PadPlay::Gate, true);
+    CHECK(!one_shot.second);           // done by its end (4410 frames, ~34 blocks)
+    CHECK(gate.first < 0.02f);         // released early, so its later blocks are near silent
+    // A mute group: the second pad cuts the first.
+    SamplerEngine engine;
+    engine.set_samples(&table);
+    PadSound a; a.sample = 3; a.group = 1; a.play = PadPlay::OneShot;
+    engine.set_pad(0, a); engine.set_pad(1, a);
+    engine.note_on(int(sampler_first_note), 100);
+    engine.note_on(int(sampler_first_note) + 1, 100);
+    std::vector<float> l(128, 0), r(128, 0);
+    for (unsigned b = 0; b < 2; ++b) engine.render_stereo(l.data(), r.data(), 128);
+    CHECK(engine.sounding());
+    engine.sample_gone(3); // a sample about to be replaced: everything playing it stops
+    CHECK(!engine.sounding());
+
+    // The host takes a sample from the service side and gives the old one back.
+    EngineHost host;
+    SampleData other;
+    CHECK(host.offer_sample(3, &data) && host.offer_sample(3, &other));
+    std::vector<int32_t> out(256);
+    host.render(out.data(), 128, 1);
+    const SampleData* back = nullptr;
+    CHECK(host.take_retired(back) && back == &data && !host.take_retired(back));
+}
 } // namespace
 
 int main() {
+    sampler_kit();
     effects();
     arrange();
     mod_matrix();

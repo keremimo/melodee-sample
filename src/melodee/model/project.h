@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include "melodee/model/sampler.h"
 #include <algorithm>
 #include <array>
 #include <iterator>
@@ -235,6 +236,10 @@ struct Track {
     uint8_t last_note = 50;
     std::array<ModRoute, mod_routes> mods {};
     Chain fx {{}, track_slots};
+    // A sampler track's kit (unused by the synth engines).
+    std::array<PadSound, sampler_pads> pads {};
+    uint8_t bank = 0;     // the bank the pads play
+    uint8_t last_pad = 0; // the kit pad hit last (0..63): what the pots and Trim edit
     bool used() const { return engine != EngineKind::None; }
     void set_name(const char* text) { std::strncpy(name, text, name_length - 1); name[name_length - 1] = 0; }
 };
@@ -249,6 +254,7 @@ struct Project {
     Motion motion;
     Song song;
     std::array<Bus, bus_count> buses {};
+    std::array<SampleRef, sample_slots> samples {};
     Chain master {{}, master_slots};
     Chain& chain(unsigned n) { return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master; }
     const Chain& chain(unsigned n) const { return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master; }

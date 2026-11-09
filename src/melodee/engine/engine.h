@@ -22,6 +22,10 @@ public:
     virtual void set_mod(unsigned /*route*/, const ModRoute&) {}
     virtual void set_pressure(int /*key*/, float /*0..1*/) {}
     virtual void render(float* out, unsigned frames) = 0;
+    // An engine with its own stereo picture (the sampler's pad pans) renders
+    // both sides itself; the track's pan then works as a balance.
+    virtual bool stereo() const { return false; }
+    virtual void render_stereo(float* /*left*/, float* /*right*/, unsigned /*frames*/) {}
     virtual bool sounding() const = 0;
 };
 
