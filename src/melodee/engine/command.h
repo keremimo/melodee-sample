@@ -40,6 +40,10 @@ struct Command {
         Pressure,    // track, index = key, value = 0..127 (poly aftertouch)
         Pad,         // track, index = kit pad, pad
         Audition,    // track, pad (sample, start, end), value = velocity: a region on no pad
+        PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64: 16 Levels
+        RecordArm,   // track = source (0 mic, 1 line, 2 the mix), index = sample slot, value = threshold dB, pattern = bars (0: until stopped)
+        RecordGain,  // value = dB
+        RecordNow, RecordStop
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)

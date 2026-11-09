@@ -4,6 +4,7 @@
 #include "melodee/engine/effects.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sampler.h"
+#include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/prophet.h"
@@ -428,9 +429,46 @@ void sampler_kit() {
     const SampleData* back = nullptr;
     CHECK(host.take_retired(back) && back == &data && !host.take_retired(back));
 }
+void recording() {
+    // A take waits for the level, records its length, and is held until released.
+    auto recorder = std::make_unique<TakeRecorder>();
+    std::vector<float> quiet(128, 0.001f), loud(128, 0.5f);
+    recorder->arm(-30, 1000, 0, 7);
+    recorder->process(quiet.data(), quiet.data(), 128);
+    CHECK(recorder->state() == TakeRecorder::State::Armed && recorder->frames() == 0);
+    for (unsigned n = 0; n < 10; ++n) recorder->process(loud.data(), loud.data(), 128);
+    CHECK(recorder->state() == TakeRecorder::State::Done && recorder->frames() == 1000 && recorder->slot() == 7);
+    CHECK(std::fabs(recorder->left()[999] - 0.5f) < 1e-6f && recorder->peak(127) > 100);
+    recorder->arm(-30, 1000, 0, 1); // held: a new take waits for release
+    CHECK(recorder->frames() == 1000);
+    recorder->release();
+    CHECK(recorder->state() == TakeRecorder::State::Idle);
+    // At once (-60 dB), with gain, stopped early.
+    recorder->arm(-60, 0, 6, 2);
+    CHECK(recorder->state() == TakeRecorder::State::Recording);
+    recorder->process(quiet.data(), quiet.data(), 128);
+    recorder->stop();
+    CHECK(recorder->state() == TakeRecorder::State::Done && recorder->frames() == 128 && std::fabs(recorder->left()[0] - 0.001995f) < 1e-5f);
+    recorder->release();
+    // The host records the mix (resample) for a bar at 120 BPM.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[0], EngineKind::Prophet, 0);
+    EngineHost host;
+    host.load(*project, *bank);
+    host.send({Command::Type::RecordArm, 2, 1, 5, -60});
+    host.send({Command::Type::NoteOn, 0, 0, 57, 100});
+    std::vector<int32_t> out(256);
+    for (unsigned n = 0; n < 700; ++n) host.render(out.data(), 128, 1, nullptr);
+    CHECK(host.recorder().state() == TakeRecorder::State::Done && host.recorder().frames() == 88200);
+    float peak = 0;
+    for (uint32_t f = 0; f < 88200; ++f) peak = std::max(peak, std::fabs(host.recorder().left()[f]));
+    CHECK(peak > 0.01f);
+}
 } // namespace
 
 int main() {
+    recording();
     sampler_kit();
     effects();
     arrange();

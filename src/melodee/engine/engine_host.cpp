@@ -104,6 +104,18 @@ void EngineHost::apply(const Command& c) {
     case Type::SendBus: slot.bus = uint8_t(c.value % bus_count); break;
     case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
     case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;
+    case Type::RecordArm: {
+        source_now.store(c.track % 3, std::memory_order_relaxed);
+        uint32_t length = c.pattern ? uint32_t(c.pattern * 4 * 60.0 / (tempo / 10.0) * 44100) : 0;
+        take.arm(float(c.value), length, record_gain, c.index);
+        break;
+    }
+    case Type::RecordGain: record_gain = float(c.value); take.set_gain(record_gain); break;
+    case Type::RecordNow: take.start_now(); break;
+    case Type::RecordStop: take.stop(); break;
+    case Type::PadNote:
+        if (slot.engine == &slot.sampler) slot.sampler.play_pad(c.index, c.value, int(c.pattern) - 64);
+        break;
     case Type::Audition:
         if (slot.engine == &slot.sampler) slot.sampler.audition(c.pad.sample, c.pad.start, c.pad.end, c.value);
         break;
@@ -279,7 +291,7 @@ void EngineHost::tick() {
     tick_count.store(tick_now, std::memory_order_relaxed);
 }
 
-void EngineHost::render(int32_t* out, unsigned frames, float volume) {
+void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input) {
     static thread_local bool flushed = false;
     if (!flushed) { flush_denormals(); flushed = true; }
     Command command;
@@ -356,6 +368,16 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume) {
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * returns[b]; master_r[f] += bus_r[b][f] * returns[b]; }
     }
     run_chain(master_chain, master_l, master_r, frames);
+    // Record: the mix itself (before main volume), or what comes in.
+    if (source_now.load(std::memory_order_relaxed) == 2) take.process(master_l, master_r, frames);
+    else {
+        for (unsigned f = 0; f < frames; ++f) {
+            record_l[f] = input ? input[2 * f] / 2147483648.0f : 0.0f;
+            record_r[f] = input ? input[2 * f + 1] / 2147483648.0f : 0.0f;
+        }
+        if (source_now.load(std::memory_order_relaxed) == 0) std::copy(record_l, record_l + frames, record_r); // the mic is mono
+        take.process(record_l, record_r, frames);
+    }
     float peak = 0;
     for (unsigned f = 0; f < frames; ++f) {
         float left = dsp::soft_clip(master_l[f] * volume), right = dsp::soft_clip(master_r[f] * volume);

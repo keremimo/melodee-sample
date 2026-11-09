@@ -69,6 +69,19 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
     return {};
 }
 
+std::string write_wav(const std::string& path, const SampleData& s) {
+    std::ofstream file(path, std::ios::binary);
+    if (!file) return "cannot write";
+    auto put = [&](uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) file.put(char(v >> (8 * n))); };
+    uint32_t data = s.frames * 6;
+    file.write("RIFF", 4); put(36 + data, 4); file.write("WAVEfmt ", 8);
+    put(16, 4); put(1, 2); put(2, 2); put(44100, 4); put(44100 * 6, 4); put(6, 2); put(24, 2);
+    file.write("data", 4); put(data, 4);
+    for (uint32_t n = 0; n < s.frames; ++n)
+        for (float v : {s.left[n], s.right[n]}) put(uint32_t(int32_t(std::lround(std::clamp(v, -1.0f, 1.0f) * 8388607.0f))), 3);
+    return file.good() ? std::string() : std::string("write failed");
+}
+
 void make_overview(const SampleData& s, Overview& out) {
     out.fill(0);
     if (!s.frames) return;

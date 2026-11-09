@@ -29,6 +29,8 @@ public:
     void audition(uint16_t sample, uint32_t start, uint32_t end, int velocity);
     // A sample is about to change: whatever plays it stops now.
     void sample_gone(uint16_t sample);
+    // A kit pad shifted by `semitones` (16 Levels); note_off for the pad's note releases it.
+    void play_pad(unsigned pad, int velocity, int semitones);
 
     void note_on(int key, int velocity) override;
     void note_off(int key) override;
@@ -54,7 +56,7 @@ private:
         dsp::Envelope env;
         dsp::Envelope::Shape shape;
     };
-    void start(Voice& v, const PadSound& sound, int pad, int velocity);
+    void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0);
     Voice& free_voice();
 
     const Table* samples = nullptr;

@@ -240,6 +240,10 @@ struct Track {
     std::array<PadSound, sampler_pads> pads {};
     uint8_t bank = 0;     // the bank the pads play
     uint8_t last_pad = 0; // the kit pad hit last (0..63): what the pots and Trim edit
+    // 16 Levels on a sampler track: one kit pad on all sixteen pads.
+    bool levels = false;
+    uint8_t levels_pad = 0;
+    uint8_t levels_kind = 0; // 0 velocity (soft to loud), 1 up the project's scale, 2 by semitones
     bool used() const { return engine != EngineKind::None; }
     void set_name(const char* text) { std::strncpy(name, text, name_length - 1); name[name_length - 1] = 0; }
 };

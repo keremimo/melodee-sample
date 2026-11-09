@@ -27,6 +27,8 @@ constexpr unsigned max_hits = 128;
 // any rate, converted to 44.1 kHz) of at most `max_seconds`. Returns an
 // empty message on success, else what went wrong.
 std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60);
+// Writes 24-bit stereo PCM at 44.1 kHz; empty on success.
+std::string write_wav(const std::string& path, const SampleData& sample);
 void make_overview(const SampleData& sample, Overview& out);
 // The hits, strongest kept, sorted by frame; the first is always frame 0.
 unsigned find_hits(const SampleData& sample, std::array<Hit, max_hits>& out);

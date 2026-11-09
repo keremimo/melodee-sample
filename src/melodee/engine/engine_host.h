@@ -5,6 +5,7 @@
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
 #include "melodee/engine/sampler.h"
+#include "melodee/engine/take_recorder.h"
 #include "melodee/model/project.h"
 #include "surface/midi.h"
 #include <array>
@@ -32,8 +33,12 @@ public:
         return false;
     }
 
-    // Audio thread: `frames` interleaved stereo S32 frames, after `volume`.
-    void render(int32_t* out, unsigned frames, float volume);
+    // Audio thread: `frames` interleaved stereo S32 frames, after `volume`;
+    // `input` the capture block (silent when there is none), for Record.
+    void render(int32_t* out, unsigned frames, float volume, const int32_t* input = nullptr);
+    TakeRecorder& recorder() { return take; }
+    const TakeRecorder& recorder() const { return take; }
+    unsigned record_source() const { return source_now.load(std::memory_order_relaxed); }
 
     // Feedback, any thread.
     bool playing() const { return is_playing.load(std::memory_order_relaxed); }
@@ -90,6 +95,10 @@ private:
     MidiQueue<64, Offer> offers;
     MidiQueue<128, const SampleData*> retired;
     SamplerEngine::Table samples {};
+    TakeRecorder take;
+    std::atomic<unsigned> source_now {0};
+    float record_gain = 0;
+    float record_l[block] {}, record_r[block] {};
     std::array<Slot, track_count> slots;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;

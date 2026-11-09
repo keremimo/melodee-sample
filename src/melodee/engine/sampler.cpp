@@ -31,7 +31,7 @@ SamplerEngine::Voice& SamplerEngine::free_voice() {
     return *oldest;
 }
 
-void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity) {
+void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones) {
     if (!samples || !sound.used() || sound.sample >= sample_slots) return;
     const SampleData* data = (*samples)[sound.sample];
     if (!data || !data->frames) return;
@@ -45,7 +45,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     if (v.end <= v.start + 1) { v.pad = -1; return; }
     v.reverse = sound.reverse;
     v.position = v.reverse ? v.end - 1 : v.start;
-    v.step = std::exp2((sound.pitch + sound.fine / 100.0 + p[Tune]) / 12.0);
+    v.step = std::exp2((sound.pitch + semitones + sound.fine / 100.0 + p[Tune]) / 12.0);
     v.held = true; v.gate = sound.play == PadPlay::Gate; v.group = sound.group;
     v.age = ++clock;
     float level = sound.level / 100.0f * p[Level] / 100.0f, velocity_gain = 0.25f + 0.75f * velocity / 127.0f;
@@ -63,6 +63,10 @@ void SamplerEngine::note_on(int key, int velocity) {
     int pad = key - int(sampler_first_note);
     if (pad < 0 || pad >= int(sampler_pads)) return;
     start(free_voice(), pads[size_t(pad)], pad, velocity);
+}
+
+void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones) {
+    if (pad < sampler_pads) start(free_voice(), pads[pad], int(pad), velocity, semitones);
 }
 
 void SamplerEngine::note_off(int key) {

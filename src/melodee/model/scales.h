@@ -55,6 +55,12 @@ inline PadNote pad_note(const Project& project, const Track& track, unsigned pad
     }
 }
 // A pad's velocity in the 16 Levels layout: soft at pad 1, loud at pad 16.
-inline uint8_t level_velocity(unsigned pad) { return uint8_t(8 + pad * 119 / 15); }
+inline uint8_t level_velocity(unsigned pad) { return uint8_t(8 + (pad * 119 + 7) / 15); }
+// A pad's pitch in semitones when 16 Levels goes up the scale (pad 1 the root).
+inline int level_scale_step(const Project& project, unsigned pad) {
+    std::array<uint8_t, 12> degrees {};
+    unsigned count = scale_degrees(project.scale, degrees);
+    return 12 * int(pad / count) + degrees[pad % count];
+}
 
 } // namespace melodee
