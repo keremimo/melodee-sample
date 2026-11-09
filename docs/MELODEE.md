@@ -266,7 +266,8 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Push work; the others wait for their pages.
 - **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
-  `wheel+N` / `wheel-N` turn the wheel and `pad1`..`pad16` strike a pad.
+  `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad and
+  `k1=V`..`k3=V` move a pot to V (0..127).
   For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,

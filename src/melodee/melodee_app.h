@@ -39,7 +39,7 @@ private:
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread
     // queues, the MIDI thread acts it out as if by hand.
-    struct Remote { uint8_t kind = 0, index = 0; int8_t delta = 0; }; // kind 0 button (index | 0x80 Shift), 1 wheel, 2 pad
+    struct Remote { uint8_t kind = 0, index = 0; int8_t delta = 0; }; // kind 0 button (index | 0x80 Shift), 1 wheel, 2 pad, 3 pot (delta: 0..127)
     MidiQueue<16, Remote> presses;
     bool power_known = false;
 };

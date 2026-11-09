@@ -39,6 +39,12 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
             shell.surface(event, now_ms());
             continue;
         }
+        if (remote.kind == 3) { // a pot moved to a position
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control; event.input.index = remote.index; event.input.value = uint8_t(remote.delta);
+            shell.surface(event, now_ms());
+            continue;
+        }
         if (remote.kind == 2) { // a pad, struck and let go
             for (bool down : {true, false}) {
                 SurfaceEvent event;
@@ -69,6 +75,11 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         std::isdigit(static_cast<unsigned char>(argument[6]))) { // wheel+N, wheel-N (not wheel-push)
         int delta = std::atoi(argument.c_str() + 5);
         return presses.push({1, 0, int8_t(std::clamp(delta, -64, 63))}) ? "OK melodee-press " + argument : "ERR busy";
+    }
+    if (argument.size() > 3 && argument[0] == 'k' && argument[1] >= '1' && argument[1] <= '3' && argument[2] == '=') { // k1=64
+        int value = std::clamp(std::atoi(argument.c_str() + 3), 0, 127);
+        auto pot = SurfaceControl(unsigned(SurfaceControl::K1) + unsigned(argument[1] - '1'));
+        return presses.push({3, uint8_t(pot), int8_t(value)}) ? "OK melodee-press " + argument : "ERR busy";
     }
     if (argument.rfind("pad", 0) == 0 && argument.size() > 3) {
         int pad = std::atoi(argument.c_str() + 3);
