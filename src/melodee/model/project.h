@@ -262,6 +262,9 @@ struct Project {
     uint8_t scale = 0;      // index into scales()
     bool click = false;     // the metronome while playing
     uint8_t click_level = 40;
+    // Punch (Pad FX): what the punches hit (0 the master, 1 the selected
+    // track), the bank in view, and K1-K3: depth, snap grid (0 1/4 .. 3 1/32), tail (cut, fade, ring).
+    uint8_t punch_target = 0, punch_bank = 0, punch_depth = 100, punch_snap = 2, punch_tail = 0;
     std::array<Track, track_count> tracks {};
     Motion motion;
     Song song;

@@ -47,7 +47,12 @@ struct Command {
         Reload,      // pack: a whole project to switch to; handed back through the host's done queue
         Click,       // value: on; index: level 0..100
         Arp,         // track; index = 0 on, 1 mode, 2 rate, 3 octaves, 4 gate; value
-        ArpKey       // track, index = key, value = velocity (0: let go)
+        ArpKey,      // track, index = key, value = velocity (0: let go)
+        // Punch: track = the target (255 the master), index = PunchKind | pad << 8
+        // (pad 1..64: that pad alone on a sampler track, 0: the whole target),
+        // value = depth 0..100, pattern = snap (0 1/4 .. 3 1/32) | tail << 4.
+        PunchOn, PunchOff, // PunchOff: track and index's pad as PunchOn's; track 254: whatever punch is on
+        PunchDepth         // index's pad as PunchOn's (0: the master or track punch), value = depth
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)

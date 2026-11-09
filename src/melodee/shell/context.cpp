@@ -65,6 +65,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
 }
 
 void Context::open(PageId page) {
+    if (page != ui.page) punch_release(); // a pad held over a page change would never let go
     ui.sheet_open = false;
     ui.map_open = false;
     ui.picker_open = false;
@@ -303,6 +304,15 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadRelease: pad().release = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::PadSustain: pad().sustain = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::Tempo: set_tempo(value * 10); break;
+    case Kind::PunchDepth:
+        project.punch_depth = uint8_t(value);
+        if (ui.punch_held >= 0 || ui.punch_locked >= 0) send({Type::PunchDepth, 254, 0, 0, int16_t(value)});
+        break;
+    case Kind::PunchSnap: project.punch_snap = uint8_t(value); break;
+    case Kind::PunchTail: project.punch_tail = uint8_t(value); break;
+    case Kind::PadPunchKind: pad().punch = uint8_t(value); break;
+    case Kind::PadPunchRate: pad().punch_rate = uint8_t(value); break;
+    case Kind::PadPunchDepth: pad().punch_depth = uint8_t(value); break;
     case Kind::ClickLevel:
         project.click_level = uint8_t(value);
         send({Type::Click, 0, 0, project.click_level, int16_t(project.click)});
@@ -331,8 +341,48 @@ void Context::set_route(unsigned r, const ModRoute& value) {
     send(c);
 }
 
+void Context::punch_pad(unsigned pad, bool down) {
+    unsigned kind = project.punch_bank % 2 * 16 + pad % 16;
+    if (kind >= punch_kinds) return;
+    auto on = [&] {
+        send({Type::PunchOn, uint8_t(project.punch_target ? ui.track : 255), uint8_t(project.punch_snap | project.punch_tail << 4),
+              uint16_t(kind), int16_t(project.punch_depth)});
+    };
+    if (down && ui.shift) { // lock on, or off again
+        ui.shift_used = true;
+        if (ui.punch_locked == int(kind)) { send({Type::PunchOff, 254}); ui.punch_locked = -1; }
+        else { on(); ui.punch_locked = int8_t(kind); ui.punch_held = -1; }
+        return;
+    }
+    if (down) { on(); ui.punch_held = int8_t(kind); ui.punch_locked = -1; return; } // the last pressed wins
+    if (ui.punch_held == int(kind)) { send({Type::PunchOff, 254}); ui.punch_held = -1; }
+}
+
+void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {
+    auto& t = track();
+    unsigned kit = t.bank % sampler_banks * 16 + pad % 16;
+    if (t.engine == EngineKind::Sampler && !t.levels && down && t.pads[kit].punch) { // the punch first, so the hit goes through it
+        const auto& sound = t.pads[kit];
+        send({Type::PunchOn, ui.track, uint8_t(sound.punch_rate | project.punch_tail << 4), uint16_t((sound.punch - 1) | (kit + 1) << 8),
+              int16_t(sound.punch_depth)});
+        ui.pad_punch_held = int8_t(kit); ui.pad_punch_pressure = 0;
+    }
+    play_pad(pad, velocity, down);
+    if (!down && ui.pad_punch_held == int(kit)) { send({Type::PunchOff, ui.track, 0, uint16_t((kit + 1) << 8)}); ui.pad_punch_held = -1; }
+}
+
+void Context::punch_release() {
+    if (ui.punch_held >= 0) { send({Type::PunchOff, 254}); ui.punch_held = -1; }
+    if (ui.pad_punch_held >= 0) { send({Type::PunchOff, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8)}); ui.pad_punch_held = -1; }
+}
+
 void Context::pressure(unsigned pad, uint8_t value) {
     if (pad >= 16) return;
+    if (ui.page == PageId::PadPunch && ui.pad_punch_held >= 0 && ui.pad_punch_held % 16 == int(pad)) { // pressure is depth
+        ui.pad_punch_pressure = value;
+        send({Type::PunchDepth, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8), int16_t(value * 100 / 127)});
+        return;
+    }
     for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, ui.track, 0, uint16_t(k), int16_t(value)}); // every note of a chord
 }
 

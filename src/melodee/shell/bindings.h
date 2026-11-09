@@ -29,7 +29,9 @@ struct Binding {
         ArpMode, ArpRate, ArpOctaves,      // Arp
         ChordType, ChordVoicing, ChordInvert, // Chord
         CaptureBars, CaptureQuantise, CaptureInto, // Capture
-        PadFine, PadPlayMode, PadGroup, PadReverse, PadAttack, PadDecay, PadRelease, PadSustain // sampler pages
+        PadFine, PadPlayMode, PadGroup, PadReverse, PadAttack, PadDecay, PadRelease, PadSustain, // sampler pages
+        PunchDepth, PunchSnap, PunchTail,          // Punch
+        PadPunchKind, PadPunchRate, PadPunchDepth  // Pad Punch: the last pad hit
     };
     Kind kind = Kind::None;
     int16_t id = 0;      // Param: the parameter

@@ -251,6 +251,23 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   hat, crash and ride. Six Edit pages (kick, snare and clap, toms, hats,
   cymbals, levels with drive), five kits. Stage's track 6 starts as a 909
   with a beat.
+- **Punch (Pad FX):** 27 punches written here, sixteen to a bank on the
+  pads (Pad Bank or Minus / Plus for the other bank): loops of 1/4 to 1/32
+  of a bar, stutter, reverse, tape stop, half speed, downer, upper,
+  scratch, low, high, phone, sweeps down and up, crush, alias, gate,
+  tremolo, pan, echo, ring, flange, drive, vinyl. B1 aims them at the
+  master, B2 at the selected track. Hold a pad to punch, the last pressed
+  wins; Shift + pad locks one on and off. While playing a punch waits for
+  the next step of its snap grid. Repeats let one slice through, then
+  freeze the punch's two-second history and play it again. K1 depth, K2
+  snap, K3 tail (cut, fade, a long ring). Pad lights show the bank, held
+  and locked bright.
+- **Pad Punch (Pad FX again, or B3, on a sampler track):** each kit pad
+  carries a punch of its own, its rate and depth; the pad plays punched by
+  itself while the kit runs on (the sampler renders that pad's voices
+  apart). Pressure is depth. K1 punch of the last pad hit, K2 rate, K3
+  depth. Punch settings and the pads' punches are saved with the project.
+  Not recorded into the Song yet.
 - **Host:** sixteen track slots, level / pan / mute / solo, a pattern mirror,
   a sample-accurate step clock with swing, chance, accent and tie, meters
   and a soft-clipped master after main volume. The send is stored, not heard
@@ -266,20 +283,21 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Push work; the others wait for their pages.
 - **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
-  `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad and
+  `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad
+  (`shift+pad5` with Shift held) and
   `k1=V`..`k3=V` move a pot to V (0..127).
   For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, record, project, filesheet, tempo, arp, chord,
-  capture, pad, play, envelope, filter, follow, cloud, shift and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: typed names (markers, projects), Settings and About, Seq
-Record writing launches into the song, six of the effects, pad effects,
-punch, time-stretch, favourites.
+Record writing launches and punches into the song, six of the effects, pad
+effects (PadFX chains), time-stretch, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

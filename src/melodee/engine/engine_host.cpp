@@ -114,9 +114,36 @@ void EngineHost::apply(const Command& c) {
         if (c.pack) {
             apply({Type::Stop});
             for (auto& s : slots) if (s.engine) s.engine->silence();
+            pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
             load(c.pack->project, c.pack->patterns); // a one-off copy, while stopped
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
         }
+        break;
+    case Type::PunchOn: {
+        unsigned pad = c.index >> 8;
+        PendingPunch p {true, c.track, PunchKind((c.index & 0xff) % punch_count), std::clamp<int>(c.value, 0, 100) / 100.0f,
+                        unsigned(c.pattern & 3), unsigned(c.pattern >> 4) % 3};
+        if (pad) { // one pad alone, at once: the pad's hit is the start
+            if (c.track >= track_count) break;
+            if (pad_punch_track >= 0 && pad_punch_track != c.track) slots[size_t(pad_punch_track)].sampler.punch_pad(-1, nullptr);
+            pad_punch_track = c.track; pad_punch_pad = int(pad - 1);
+            slot.sampler.punch_pad(pad_punch_pad, &pad_punch);
+            double grid = bar_length() / (4u << p.snap);
+            pad_punch.start(p.kind, p.depth, bar_length(), grid, p.tail);
+            break;
+        }
+        if (running) pending = p;
+        else start_punch(p);
+        break;
+    }
+    case Type::PunchOff:
+        if (c.index >> 8) { if (int(c.index >> 8) - 1 == pad_punch_pad && c.track == pad_punch_track) pad_punch.stop(); break; }
+        if (pending.waiting && (pending.target == c.track || c.track == 254)) pending.waiting = false; // let go before it began
+        else if (punch_target == c.track || c.track == 254) punch.stop();
+        break;
+    case Type::PunchDepth:
+        if (c.index >> 8) pad_punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f);
+        else { punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f); pending.depth = std::clamp<int>(c.value, 0, 100) / 100.0f; }
         break;
     case Type::Click:
         click = c.value != 0;
@@ -313,7 +340,14 @@ void EngineHost::arp_tick() {
     ++arp_ticks;
 }
 
+void EngineHost::start_punch(const PendingPunch& p) {
+    if (p.target != punch_target) { punch.clear(); punch_target = p.target; } // a new signal: the old history is not its own
+    punch.start(p.kind, p.depth, bar_length(), bar_length() / (4u << p.snap), p.tail);
+}
+
 void EngineHost::tick() {
+    // A punch waiting for its grid.
+    if (pending.waiting && tick_now % (ticks_per_bar / (4u << pending.snap)) == 0) { pending.waiting = false; start_punch(pending); }
     // The metronome: every quarter while playing, higher on the bar.
     if (click && tick_now % ticks_per_quarter == 0) {
         click_env = 1; click_phase = 0;
@@ -411,6 +445,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 }
             }
             run_chain(t, slot.left, slot.right, frames);
+            if (punch_target == t) punch.process(slot.left, slot.right, frames);
             bool heard = !slot.mute && !(solo && !slot.solo);
             if (heard) {
                 for (unsigned f = 0; f < frames; ++f) {
@@ -429,6 +464,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * returns[b]; master_r[f] += bus_r[b][f] * returns[b]; }
     }
     run_chain(master_chain, master_l, master_r, frames);
+    if (punch_target == 255) punch.process(master_l, master_r, frames);
+    punch_on.store(punch.on() || pad_punch.on() || pending.waiting, std::memory_order_relaxed);
     // Record: the mix itself (before main volume), or what comes in.
     if (source_now.load(std::memory_order_relaxed) == 2) take.process(master_l, master_r, frames);
     else {

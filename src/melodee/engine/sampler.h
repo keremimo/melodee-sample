@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine.h"
+#include "melodee/engine/punch.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/model/sampler.h"
 #include <array>
@@ -50,6 +51,9 @@ public:
     bool sounding() const override;
     // The project's tempo, for Follow (tenths of a BPM).
     void set_tempo(unsigned tenths) { tempo = tenths; }
+    // Pad Punch: the voices of `pad` go through `punch` on their own before
+    // they join the kit (nullptr: none). The punch belongs to the host.
+    void punch_pad(int pad, Punch* punch) { aside_pad = pad; aside = punch; }
 
 private:
     struct Voice {
@@ -86,6 +90,9 @@ private:
     uint32_t clock = 0;
     float g = 1, k = 2, s1[2] {}, s2[2] {};
     bool filtered = false;
+    int aside_pad = -1;
+    Punch* aside = nullptr;
+    float aside_l[128] {}, aside_r[128] {};
 };
 
 } // namespace melodee

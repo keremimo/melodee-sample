@@ -194,6 +194,15 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
     case PageId::CloudPage:
         if (ui.sampler_row) return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
         return {param(track, sampler::Position), param(track, sampler::Size), param(track, sampler::Density)};
+    case PageId::Punch:
+        return {Binding {Kind::PunchDepth, 0, 0, 100, project.punch_depth}, Binding {Kind::PunchSnap, 0, 0, 3, project.punch_snap},
+                Binding {Kind::PunchTail, 0, 0, 2, project.punch_tail}};
+    case PageId::PadPunch: {
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        if (!pad.used()) return {};
+        return {Binding {Kind::PadPunchKind, 0, 0, int(punch_kinds), pad.punch}, Binding {Kind::PadPunchRate, 0, 0, 3, pad.punch_rate},
+                Binding {Kind::PadPunchDepth, 0, 0, 100, pad.punch_depth}};
+    }
     case PageId::Samples:
         return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
     case PageId::Roll:

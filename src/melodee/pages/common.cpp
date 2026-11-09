@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/pages/common.h"
+#include "melodee/engine/punch.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/model/chords.h"
@@ -149,6 +150,11 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         }
         case Kind::PadSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(s.project.tempo / 10); c.unit = "bpm"; break;
+        case Kind::PunchDepth: case Kind::PadPunchDepth: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PunchSnap: c.label = "SNAP"; c.value = punch_snaps[b.value % punch_snap_count]; break;
+        case Kind::PadPunchRate: c.label = "RATE"; c.value = punch_snaps[b.value % punch_snap_count]; break;
+        case Kind::PunchTail: c.label = "TAIL"; c.value = punch_tails[b.value % 3]; break;
+        case Kind::PadPunchKind: c.label = "PUNCH"; c.value = b.value ? punch_title(PunchKind(b.value - 1)) : "None"; break;
         case Kind::ClickLevel: c.label = "CLICK"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::ArpMode: c.label = "MODE"; c.value = arp_mode_name(ArpMode(b.value)); break;
         case Kind::ArpRate: c.label = "RATE"; c.value = arp_rate_name(unsigned(b.value)); break;
@@ -194,5 +200,34 @@ void play_soft(Context& c, int key) {
     const PageId pages[] {PageId::Stage, keys, PageId::Mix};
     c.open(pages[key % 3]);
 }
+
+// A pad's name: its sample's, or for pads sharing one sample (a chop), the
+// last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
+juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form) {
+    const auto& pads = s.track().pads;
+    const auto& pad = pads[kit];
+    if (!pad.used()) return {};
+    juce::String name = s.project.samples[pad.sample % sample_slots].name;
+    unsigned index = 0, sharing = 0;
+    for (unsigned n = 0; n < sampler_pads; ++n)
+        if (pads[n].sample == pad.sample) { ++sharing; if (n <= kit) ++index; }
+    if (sharing < 2) return name;
+    // The last word with letters in it ("LOOP 1 001" gives Loop).
+    juce::StringArray words;
+    words.addTokens(name, " ", "");
+    juce::String word = name;
+    for (int k = words.size() - 1; k >= 0; --k)
+        if (words[k].containsAnyOf("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")) { word = words[k]; break; }
+    word = word.toLowerCase();
+    word = word.substring(0, 1).toUpperCase() + word.substring(1);
+    if (short_form) { // the first letter and the next two consonants
+        juce::String brief = word.substring(0, 1);
+        for (int k = 1; k < word.length() && brief.length() < 3; ++k)
+            if (!juce::String("aeiou").containsChar(word[k])) brief += word[k];
+        word = brief;
+    }
+    return word + " " + juce::String(index);
+}
+
 
 } // namespace melodee

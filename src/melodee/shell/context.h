@@ -48,6 +48,11 @@ public:
     void apply(const Binding& binding, int value);            // a pot's new value
     void set_route(unsigned route, const ModRoute& value);   // the selected track's mod matrix
     void pressure(unsigned pad, uint8_t value);             // poly aftertouch from a held pad
+    // Punch: a pad of the Punch page (hold to punch, Shift + pad locks it on
+    // or off), and a kit pad on Pad Punch (the pad plays punched by its own).
+    void punch_pad(unsigned pad, bool down);
+    void pad_punch(unsigned pad, uint8_t velocity, bool down);
+    void punch_release();                                   // let go of every punch a pad holds
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);

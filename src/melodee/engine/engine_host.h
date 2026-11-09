@@ -9,6 +9,7 @@
 #include "melodee/engine/sid.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
+#include "melodee/engine/punch.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/project.h"
@@ -57,6 +58,7 @@ public:
     uint32_t ticks() const { return tick_count.load(std::memory_order_relaxed); } // clock ticks since Play, 24 a quarter
     int step_of(unsigned track) const { return steps_now[track % track_count].load(std::memory_order_relaxed); } // -1: none
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
+    bool punching() const { return punch_on.load(std::memory_order_relaxed); }
     bool song_playing() const { return in_song.load(std::memory_order_relaxed); }
     unsigned song_bar() const { return bar_now.load(std::memory_order_relaxed); }
     float meter(unsigned track) const { return meters[track % track_count].load(std::memory_order_relaxed); }
@@ -124,6 +126,15 @@ private:
     bool click = false;
     float click_level = 0.4f, click_env = 0, click_phase = 0, click_step = 0;
     float record_l[block] {}, record_r[block] {};
+    // Punch: one on the master or a track, one on a single sampler pad. A
+    // press while playing waits for the next step of its snap grid.
+    struct PendingPunch { bool waiting = false; uint8_t target = 255; PunchKind kind {}; float depth = 1; unsigned snap = 2, tail = 0; };
+    Punch punch, pad_punch;
+    uint8_t punch_target = 255;
+    int pad_punch_track = -1, pad_punch_pad = -1;
+    PendingPunch pending;
+    void start_punch(const PendingPunch& p);
+    double bar_length() const { return quarter_tick() * ticks_per_bar; }
     std::array<Slot, track_count> slots;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;
@@ -151,6 +162,7 @@ private:
     std::array<std::atomic<float>, track_count> meters {};
     std::atomic<float> output_peak {0};
     std::atomic<unsigned> lost {0};
+    std::atomic<bool> punch_on {false};
 };
 
 } // namespace melodee

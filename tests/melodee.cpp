@@ -12,6 +12,7 @@
 #include "melodee/engine/kit909.h"
 #include "melodee/engine/sid.h"
 #include "melodee/engine/prophet.h"
+#include "melodee/engine/punch.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/engine/arp.h"
 #include "melodee/model/chords.h"
@@ -22,6 +23,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <unistd.h>
 #include <memory>
@@ -649,9 +651,104 @@ void more_engines() {
         CHECK(peak_of(run(e, 4410)) > 0.005f);
     }
 }
+void punches() {
+    // A test signal with no repeats in it: noise.
+    auto signal = [](unsigned n) { uint32_t h = n * 2654435761u; return (int32_t(h) >> 8) / 8388608.0f * 0.5f; };
+    const double bar = 88320; // about two seconds a bar, a whole number of samples a slice
+    for (unsigned k = 0; k < punch_count; ++k) {
+        Punch punch;
+        std::vector<float> l(128), r(128);
+        unsigned at = 0;
+        auto block = [&] { for (unsigned f = 0; f < 128; ++f) l[f] = r[f] = signal(at + f); punch.process(l.data(), r.data(), 128); at += 128; };
+        for (unsigned b = 0; b < 200; ++b) block(); // history
+        punch.start(PunchKind(k), 1, bar, bar / 16, 1);
+        float peak = 0;
+        for (unsigned b = 0; b < 1400; ++b) { // four seconds held, past the history's length
+            block();
+            for (unsigned f = 0; f < 128; ++f) { CHECK(std::isfinite(l[f]) && std::isfinite(r[f])); peak = std::max(peak, std::fabs(l[f])); }
+        }
+        if (peak > 3) std::fprintf(stderr, "%s peak %f\n", punch_name(PunchKind(k)), peak);
+        CHECK(peak < 3);
+        punch.stop();
+        for (unsigned b = 0; b < 40; ++b) block(); // the 60 ms fade and then some
+        CHECK(!punch.active());
+        block();
+        for (unsigned f = 0; f < 128; ++f) CHECK(l[f] == signal(at - 128 + f)); // dry again, exactly
+    }
+    // Loop 16: the first slice plays as it comes, then again and again.
+    {
+        Punch punch;
+        std::vector<float> l(1), r(1), out;
+        unsigned at = 0, loop = unsigned(bar / 16);
+        punch.start(PunchKind::Loop16, 1, bar, bar / 16, 0);
+        for (; at < loop * 4; ++at) { l[0] = r[0] = signal(at); punch.process(l.data(), r.data(), 1); out.push_back(l[0]); }
+        for (unsigned n = 0; n < loop; ++n) {
+            CHECK(out[n] == signal(n));
+            CHECK(std::fabs(out[loop + n] - signal(n)) < 1e-6f && std::fabs(out[3 * loop + n] - signal(n)) < 1e-6f);
+        }
+    }
+    // Stutter: the slice, then silence as long.
+    {
+        Punch punch;
+        std::vector<float> l(1), r(1), out;
+        unsigned loop = unsigned(bar / 32);
+        punch.start(PunchKind::Stutter, 1, bar, bar / 16, 0);
+        for (unsigned at = 0; at < loop * 3; ++at) { l[0] = r[0] = signal(at); punch.process(l.data(), r.data(), 1); out.push_back(l[0]); }
+        CHECK(peak_of(out, loop + 2, 2 * loop - 2) == 0 && peak_of(out, 2 * loop + 2, 3 * loop - 2) > 0.1f);
+    }
+    // Half depth: halfway between dry and wet (the gate's closed half).
+    {
+        Punch punch;
+        std::vector<float> l(1), r(1);
+        punch.start(PunchKind::Gate, 0.5f, bar, 1000, 0);
+        float worst = 0;
+        for (unsigned at = 0; at < 1000; ++at) {
+            l[0] = r[0] = signal(at); punch.process(l.data(), r.data(), 1);
+            if (at > 510) worst = std::max(worst, std::fabs(l[0] - signal(at) * 0.5f));
+        }
+        CHECK(worst < 1e-6f);
+    }
+    // The host: a master punch while stopped starts at once; Off lets go; a pad punch on a sampler track.
+    {
+        auto host = std::make_unique<EngineHost>();
+        auto project = std::make_unique<Project>();
+        auto patterns = std::make_unique<PatternBank>();
+        host->load(*project, *patterns);
+        std::vector<int32_t> out(256);
+        host->send({Command::Type::PunchOn, 255, uint8_t(2 | 1 << 4), uint16_t(PunchKind::Gate), 100});
+        host->render(out.data(), 128, 1);
+        CHECK(host->punching());
+        host->send({Command::Type::PunchOff, 254});
+        host->render(out.data(), 128, 1);
+        CHECK(!host->punching());
+        host->send({Command::Type::Engine, 4, 0, uint16_t(EngineKind::Sampler)});
+        host->send({Command::Type::PunchOn, 4, 2, uint16_t(unsigned(PunchKind::Stutter) | 3 << 8), 80});
+        host->render(out.data(), 128, 1);
+        CHECK(host->punching());
+        host->send({Command::Type::PunchOff, 4, 0, uint16_t(3 << 8)});
+        host->render(out.data(), 128, 1);
+        CHECK(!host->punching());
+    }
+    // Punch settings and each pad's punch survive a save.
+    {
+        auto project = std::make_unique<Project>();
+        auto patterns = std::make_unique<PatternBank>();
+        project->punch_target = 1; project->punch_bank = 1; project->punch_depth = 64; project->punch_snap = 3; project->punch_tail = 2;
+        auto& pad = project->tracks[4].pads[9];
+        pad.sample = 0; pad.punch = 15; pad.punch_rate = 1; pad.punch_depth = 33;
+        std::strcpy(project->samples[0].path, "/x.wav");
+        auto bytes = save_project(*project, *patterns);
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(bytes, *back, *patterns).empty());
+        CHECK(back->punch_target == 1 && back->punch_bank == 1 && back->punch_depth == 64 && back->punch_snap == 3 && back->punch_tail == 2);
+        const auto& p2 = back->tracks[4].pads[9];
+        CHECK(p2.punch == 15 && p2.punch_rate == 1 && p2.punch_depth == 33);
+    }
+}
 } // namespace
 
 int main() {
+    punches();
     more_engines();
     drums();
     helpers();

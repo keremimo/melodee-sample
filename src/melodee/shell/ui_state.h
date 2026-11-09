@@ -12,7 +12,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -78,6 +78,9 @@ struct UiState {
     uint8_t sampler_row = 0;      // Envelope and Cloud: their second row
     uint8_t capture_bars = 2, capture_quantise = 1, capture_into = 0; // Capture
     uint16_t project_rows = 1;    // rows on the Project page, copied in by the shell
+    int8_t punch_held = -1, punch_locked = -1; // Punch: the punch a pad holds, the one Shift + pad locked on
+    int8_t pad_punch_held = -1;               // Pad Punch: the kit pad held, punching
+    uint8_t pad_punch_pressure = 0;           // and how hard, 0..127
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

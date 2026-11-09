@@ -153,8 +153,13 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         }
         if (g.age >= g.length) g.sample = nullptr;
     }
+    // The punched pad renders on its own (blocks of 128 at most here).
+    bool punching = aside && frames <= 128;
+    if (punching) { std::fill(aside_l, aside_l + frames, 0.0f); std::fill(aside_r, aside_r + frames, 0.0f); }
     for (auto& v : voices) {
         if (v.pad < 0 || v.cloud) continue;
+        float* to_l = punching && v.pad == aside_pad ? aside_l : left;
+        float* to_r = punching && v.pad == aside_pad ? aside_r : right;
         const float* l = v.sample->left.data();
         const float* r = v.sample->right.data();
         for (unsigned f = 0; f < frames; ++f) {
@@ -165,11 +170,15 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             unsigned j = std::min(i + 1, v.end - 1);
             float a = v.env.next(v.shape) * v.gain * v.fade;
             if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
-            left[f] += (l[i] + (l[j] - l[i]) * frac) * a * v.left;
-            right[f] += (r[i] + (r[j] - r[i]) * frac) * a * v.right;
+            to_l[f] += (l[i] + (l[j] - l[i]) * frac) * a * v.left;
+            to_r[f] += (r[i] + (r[j] - r[i]) * frac) * a * v.right;
             v.position += v.reverse ? -v.step : v.step;
             if (!v.env.active()) { v.pad = -1; break; }
         }
+    }
+    if (punching) {
+        aside->process(aside_l, aside_r, frames);
+        for (unsigned f = 0; f < frames; ++f) { left[f] += aside_l[f]; right[f] += aside_r[f]; }
     }
     if (!filtered) return;
     float* io[2] {left, right};

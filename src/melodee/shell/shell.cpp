@@ -53,6 +53,7 @@ void Shell::button(Button b, bool pressed) {
     if (b == Button::PadBank) {
         // Held with a pad it picks a track; a tap alone moves a sampler track to its next bank.
         if (pressed) pad_bank_used = false;
+        else if (!pad_bank_used && ui.page == PageId::Punch) project_->punch_bank ^= 1; // on Punch: the other bank of punches
         else if (!pad_bank_used && context_.track().engine == EngineKind::Sampler)
             context_.track().bank = uint8_t((context_.track().bank + 1) % sampler_banks);
         ui.pad_bank = pressed;
@@ -103,6 +104,9 @@ void Shell::button(Button b, bool pressed) {
             context_.open(ui.page == PageId::Stage ? keys : (ui.page == PageId::Keys || ui.page == PageId::Pads) ? PageId::Mix : PageId::Stage);
         }
         else context_.open(PageId::Stage);
+        break;
+    case Button::PadFx: // the punches: on the master or the track, or (again, on a sampler track) each pad's own
+        context_.open(ui.page == PageId::Punch && context_.track().engine == EngineKind::Sampler ? PageId::PadPunch : PageId::Punch);
         break;
     case Button::KnobFx: // the effects along the signal: track, sends, bus, master
         context_.open(ui.page == PageId::Rack ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
@@ -313,7 +317,8 @@ std::string Shell::summary() const {
     uint32_t pt = page_track.load(std::memory_order_relaxed);
     return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
-           " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load());
+           " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load()) +
+           " melodee_punch=" + std::to_string(int(host.punching()));
 }
 
 void starting_project(Project& project, PatternBank& patterns) {

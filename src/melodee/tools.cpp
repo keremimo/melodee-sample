@@ -299,6 +299,18 @@ const Preview previews[] {
          s.history_at = 40;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    {"punch", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Punch; s.ui.track = 2; s.playing = true; s.project.punch_target = 1;
+         s.ui.punch_held = 4; s.ui.punch_locked = 8; s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"padpunch", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::PadPunch; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3];
+         const uint8_t own[][2] {{1, 5}, {2, 14}, {3, 6}, {4, 2}, {8, 8}, {11, 15}};
+         for (auto& o : own) t.pads[o[0]].punch = o[1];
+         t.last_pad = 1; s.ui.pad_punch_held = 1; s.ui.pad_punch_pressure = 92; t.pads[1].punch_depth = 72;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"pad", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.pitch = 3; pad.fine = -8; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"play", [](Shell&, Snapshot& s) { s.ui.page = PageId::PlayPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;

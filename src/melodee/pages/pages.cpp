@@ -37,6 +37,8 @@ const PageSpec& page_spec(PageId page) {
     case PageId::FilterPage: return filter_page;
     case PageId::FollowPage: return follow_page;
     case PageId::CloudPage: return cloud_page;
+    case PageId::Punch: return punch_page;
+    case PageId::PadPunch: return pad_punch_page;
     case PageId::Stage:
     default: return stage_page;
     }

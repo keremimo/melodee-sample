@@ -15,6 +15,8 @@ constexpr unsigned sample_slots = 64;     // samples a project holds
 constexpr uint16_t no_sample = 0xffff;
 constexpr unsigned sampler_first_note = 36; // pad 1 of bank A; pad n of the kit is note 36 + n
 
+constexpr unsigned punch_kinds = 27;       // PunchKind::Count (engine/punch.h)
+
 enum class PadPlay : uint8_t { Gate, OneShot };
 
 struct PadSound {
@@ -29,6 +31,9 @@ struct PadSound {
     uint8_t group = 0;            // mute group 1..8, 0 none: pads in a group cut each other
     uint8_t attack = 0, decay = 100, sustain = 100, release = 20; // 0..100
     uint16_t own_tempo = 0;       // tenths of a BPM the region was played at, for Follow; 0 unknown
+    uint8_t punch = 0;            // Pad Punch: 0 none, else PunchKind + 1
+    uint8_t punch_rate = 2;       // its grid, 0 1/4 .. 3 1/32
+    uint8_t punch_depth = 100;    // when pressure is not used
     bool used() const { return sample != no_sample; }
 };
 

@@ -124,6 +124,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             colour = on ? track_light(ui.track, 0.8f) : inside ? Rgb {} : Rgb {};
             if (playing && inside && step_now == int(step)) colour = led_colour::white(0.7f);
             if (int(step) == ui.held_step) colour = led_colour::white(1);
+        } else if (ui.page == PageId::Punch) {
+            // The bank's punches: held or locked bright, in white on the master.
+            unsigned kind = project.punch_bank % 2 * 16 + pad;
+            float level = kind >= punch_kinds ? 0 : (ui.punch_held == int(kind) || ui.punch_locked == int(kind)) ? 1.0f : 0.25f;
+            colour = project.punch_target ? track_light(ui.track, level) : led_colour::white(level * 0.7f);
+        } else if (ui.page == PageId::PadPunch && track.engine == EngineKind::Sampler) {
+            unsigned kit = track.bank % sampler_banks * 16 + pad;
+            const auto& sound = track.pads[kit];
+            colour = sound.used() ? track_light(ui.track, ui.pad_punch_held == int(kit) ? 1.0f : sound.punch ? 0.5f : 0.12f) : Rgb {};
         } else if (track.engine == EngineKind::Sampler) {
             unsigned kit = track.bank % sampler_banks * 16 + pad;
             colour = track.pads[kit].used() ? track_light(ui.track, kit == track.last_pad ? 1.0f : 0.3f) : Rgb {};
@@ -157,6 +166,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                       : state == TakeRecorder::State::Armed ? (blink ? ButtonLight::Bright : ButtonLight::Dim)
                       : ui.page == PageId::Record ? ButtonLight::Dim : ButtonLight::Off);
     }
+    on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);
     on(B::KnobFx, ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
     on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
     on(B::SixteenLevels, ui.page == PageId::Keys);

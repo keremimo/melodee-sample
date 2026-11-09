@@ -16,6 +16,9 @@ ui::HeaderItem tag_of(const Snapshot& s, unsigned track);
 std::array<ui::KnobCard, 3> cards_of(const Snapshot& s);
 ui::SoftKeys play_keys(const Snapshot& s, int active); // STAGE KEYS MIX
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
+// A kit pad's name: its sample's, or for pads sharing one sample (a chop),
+// the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
+juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
 
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
