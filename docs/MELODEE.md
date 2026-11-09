@@ -152,8 +152,8 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   the last pad hit with its length, play mode and waveform; K1 pitch, K2
   level, K3 pan. Push opens Trim.
 - **Samples** (Sample Select on a sampler track): the files; Push loads the
-  one under the cursor onto the last pad hit, K2 jumps. RECORDED and RECENT
-  wait for Record.
+  one under the cursor onto the last pad hit, K2 jumps. RECORDED lists the
+  takes; RECENT waits for saved projects.
 - **Trim** (Push on a sampler track, or on Pads): the last pad's region over
   the sample; K1 start, K2 end, K3 zoom (to 16 times closer). The other six
   sampler pages (Pad, Play, Envelope, Filter, Follow, Cloud) are next.
@@ -163,6 +163,21 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   start, Push splits it, Erase + pad removes a marker; B3 TO PADS lays the
   slices on pads from the first free one (regions of the same file), B1
   DROP goes back.
+- **Levels** (16 Levels on a sampler track): the last pad hit on all
+  sixteen pads; B1–B3 pick what rises: velocity (8 to 127), pitch up the
+  project's scale, or semitones. The pots stay on that pad. 16 Levels again
+  goes back to the kit; until then the pads keep playing the levels on
+  every page. Seq Record keeps the velocity of a levels pad, not its pitch
+  yet.
+- **Record** (Sample Record on a sampler track): B1–B3 pick the mic, the
+  line inputs or the mix (resample, before main volume). Sample Record or
+  Push arms; the take starts when the level passes K1 (−60 dB: at once) or
+  on a second press, and ends after K2's bars (0: until stopped) or on Stop
+  or a third press. K3 gain. The take is recorded into a 60 s buffer made
+  at start; the service thread writes it to `Samples/Recorded/TAKE n.wav`
+  (24-bit) on the card and it lands on the first empty pad. The input is
+  routed only while the page is open or a take runs. Samples' RECORDED shows
+  those files.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   step (256 for the project, `model/limits.h`). The audio thread plays them
   step by step, each lane starting the pattern at the track's own value, and
@@ -196,13 +211,13 @@ through Steps, Roll and Motion; B1–B3 pick them too.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
-  shift and exit at 1× and 2× (the 2× ones line up
+  levels, record, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: saving (the Exit sheet says so), typed marker names, Seq
 Record writing launches into the song, six of the effects, pad effects,
-punch, Record, Levels and the sampler's other six pages, projects on the SD
+punch, the sampler's other six pages, projects on the SD
 card, Tempo / Chord / Arp / Capture, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
