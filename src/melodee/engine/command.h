@@ -24,6 +24,8 @@ struct Command {
         Play, Stop,
         Tempo,       // value = tenths of a BPM
         Swing,       // value = percent
+        MotionWrite, // motion: Motion::write(motion)
+        MotionClear, // motion: Motion::clear(track, pattern, param)
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)
@@ -33,6 +35,7 @@ struct Command {
     uint16_t index = 0;
     int16_t value = 0;
     Step step {};
+    MotionEvent motion {};
 };
 
 } // namespace melodee

@@ -52,11 +52,15 @@ private:
         bool mute = false, solo = false;
         uint8_t pattern = 0;
         std::array<PendingOff, 32> offs {};
+        std::array<int16_t, max_params> base {}; // the track's own values; motion only borrows them
+        bool moved = false;                       // motion changed a value since Play
         float buffer[block] {};
     };
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
     void step(); // plays the step at `position`, then moves on
+    void play_motion(unsigned track, Slot& slot, unsigned at);
+    void restore(Slot& slot);
     void schedule_off(Slot& slot, int key, int32_t samples);
     void run_offs(Slot& slot, unsigned frames);
     double samples_per_step() const { return 44100.0 * 60.0 / (tempo / 10.0) / 4.0; }
@@ -64,6 +68,7 @@ private:
     MidiQueue<4096, Command> queue;
     std::array<Slot, track_count> slots;
     std::unique_ptr<PatternBank> patterns;
+    Motion motion;
     uint16_t tempo = 1200;
     uint8_t swing = 50;
     bool running = false;

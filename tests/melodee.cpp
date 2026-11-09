@@ -136,9 +136,43 @@ void host_sequencer() {
     CHECK(peak > 0.005f);
     CHECK(host.dropped() == 0);
 }
+void motion() {
+    // The store: a second write at the same place replaces, clear drops one lane, and it fills at the limit.
+    Motion m;
+    CHECK(m.write({0, 0, 4, prophet::Cutoff, 10}) && m.write({0, 0, 4, prophet::Cutoff, 20}) && m.count == 1);
+    CHECK(m.events[0].value == 20);
+    CHECK(m.write({0, 0, 8, prophet::Resonance, 5}) && m.write({1, 0, 8, prophet::Cutoff, 5}));
+    m.clear(0, 0, prophet::Cutoff);
+    CHECK(m.count == 2 && !m.has(0, 0, prophet::Cutoff) && m.has(0, 0, prophet::Resonance) && m.has(1, 0, prophet::Cutoff));
+    Motion full;
+    for (unsigned n = 0; n < motion_events; ++n) CHECK(full.write({0, 0, uint16_t(n), 0, 0}));
+    CHECK(!full.write({0, 0, 999, 0, 0}) && full.count == motion_events);
+
+    // Played: the cutoff closed by motion from step 0 makes a held line much quieter,
+    // and Stop gives the track its own value back.
+    auto level = [](bool closed) {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 0);
+        for (unsigned s = 0; s < 16; ++s) bank->at[0][0].steps[s].notes[0] = {57, 100};
+        if (closed) project->motion.write({0, 0, 0, prophet::Cutoff, 0});
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        double energy = 0;
+        for (unsigned n = 0; n < 200; ++n) {
+            host.render(out.data(), 128, 1);
+            for (auto v : out) energy += double(v / 2147483648.0f) * (v / 2147483648.0f);
+        }
+        return energy;
+    };
+    CHECK(level(true) * 20 < level(false));
+}
 } // namespace
 
 int main() {
+    motion();
     layouts();
     bindings();
     prophet_engine();

@@ -49,6 +49,46 @@ struct Mix {
     bool mute = false, solo = false;
 };
 
+// A pot move recorded over a pattern: from `step` on, `param` holds `value`
+// on that track while that pattern plays.
+struct MotionEvent {
+    uint8_t track = 0, pattern = 0;
+    uint16_t step = 0;
+    uint8_t param = 0;
+    int16_t value = 0;
+};
+// Every motion event of the project, at most motion_events (open question 2:
+// per project, as the FM-1 counts them). Both the shell and the engine host
+// change it only through write() and clear(), so their copies stay equal.
+struct Motion {
+    std::array<MotionEvent, motion_events> events {};
+    uint16_t count = 0;
+    // Replaces the event at the same place, or adds one; false when full.
+    bool write(const MotionEvent& e) {
+        for (unsigned n = 0; n < count; ++n) {
+            auto& o = events[n];
+            if (o.track == e.track && o.pattern == e.pattern && o.step == e.step && o.param == e.param) { o.value = e.value; return true; }
+        }
+        if (count == events.size()) return false;
+        events[count++] = e;
+        return true;
+    }
+    // Removes one lane: a parameter's events on a track's pattern.
+    void clear(uint8_t track, uint8_t pattern, uint8_t param) {
+        unsigned w = 0;
+        for (unsigned n = 0; n < count; ++n) {
+            const auto& o = events[n];
+            if (!(o.track == track && o.pattern == pattern && o.param == param)) events[w++] = o;
+        }
+        count = uint16_t(w);
+    }
+    bool has(uint8_t track, uint8_t pattern, uint8_t param) const {
+        for (unsigned n = 0; n < count; ++n)
+            if (events[n].track == track && events[n].pattern == pattern && events[n].param == param) return true;
+        return false;
+    }
+};
+
 enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Count };
 
 struct Track {
@@ -73,6 +113,7 @@ struct Project {
     uint8_t root = 2;       // 0 C .. 11 B
     uint8_t scale = 0;      // index into scales()
     std::array<Track, track_count> tracks {};
+    Motion motion;
     unsigned used_tracks() const { unsigned n = 0; for (auto& t : tracks) n += t.used(); return n; }
 };
 

@@ -27,12 +27,14 @@ EngineHost::EngineHost() : patterns(std::make_unique<PatternBank>()) {
 
 void EngineHost::load(const Project& project, const PatternBank& bank) {
     *patterns = bank;
+    motion = project.motion;
     tempo = project.tempo; swing = project.swing;
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& track = project.tracks[t];
         auto& slot = slots[t];
         select_engine(slot, track.engine);
         const auto& info = engine_info(track.engine);
+        slot.base = track.params;
         if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
         apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
         apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
@@ -69,9 +71,15 @@ void EngineHost::apply(const Command& c) {
             const auto& info = engine_info(slot.kind);
             sound_values(info, c.index, values);
             for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), values[p]);
+            slot.base = values;
         }
         break;
-    case Type::Param: if (slot.engine) slot.engine->set_param(c.index, c.value); break;
+    case Type::Param:
+        if (c.index < max_params) slot.base[c.index] = c.value;
+        if (slot.engine) slot.engine->set_param(c.index, c.value);
+        break;
+    case Type::MotionWrite: motion.write(c.motion); break;
+    case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param); break;
     case Type::Wheel: if (slot.engine) slot.engine->set_wheel(c.value / 1000.0f); break;
     case Type::Level: slot.gain = level_gain(c.value); break;
     case Type::Pan: {
@@ -94,6 +102,7 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Stop:
         running = false;
+        for (auto& s : slots) restore(s);
         for (auto& s : slots) {
             for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
         }
@@ -119,12 +128,32 @@ void EngineHost::run_offs(Slot& slot, unsigned frames) {
     }
 }
 
+// Back to the track's own values once motion has moved them.
+void EngineHost::restore(Slot& slot) {
+    if (!slot.moved || !slot.engine) return;
+    for (unsigned p = 0; p < max_params; ++p) slot.engine->set_param(int(p), slot.base[p]);
+    slot.moved = false;
+}
+
+// Motion at step `at` of the track's pattern: each lane starts the pattern
+// at the track's own value, then follows its events.
+void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
+    if (at == 0) restore(slot);
+    for (unsigned n = 0; n < motion.count; ++n) {
+        const auto& e = motion.events[n];
+        if (e.track != t || e.pattern != slot.pattern || e.step != at) continue;
+        slot.engine->set_param(e.param, e.value);
+        slot.moved = true;
+    }
+}
+
 void EngineHost::step() {
     double length = samples_per_step();
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         if (!slot.engine) continue;
         const auto& pattern = patterns->at[t][slot.pattern];
+        if (motion.count) play_motion(t, slot, position_now % pattern.length);
         const auto& s = pattern.steps[position_now % pattern.length];
         if (s.empty()) continue;
         random = random * 1664525u + 1013904223u;
