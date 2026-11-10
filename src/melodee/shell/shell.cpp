@@ -116,7 +116,8 @@ void Shell::button(Button b, bool pressed) {
     }
     const auto& page = page_spec(ui.page);
     switch (b) {
-    case Button::PadFx: // the punches: on the master or the track, or (again, on a sampler track) each pad's own
+    case Button::PadFx: // Pad FX: the punches, or (again, on a sampler track) each pad's own; Shift: Flex Beat (as printed)
+        if (ui.shift) { context_.open(PageId::FlexBeat); break; }
         context_.open(ui.page == PageId::Punch && context_.track().engine == EngineKind::Sampler ? PageId::PadPunch : PageId::Punch);
         break;
     case Button::KnobFx:
@@ -395,6 +396,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.song_bar = host.song_bar();
     for (unsigned t = 0; t < track_count; ++t) out.meters[t] = host.meter(t);
     out.compression = host.compression();
+    out.flex_playing = host.flex_playing();
     out.now = now;
 }
 
@@ -428,7 +430,19 @@ std::string Shell::fx_summary() const {
          + " melodee_comp=" + std::to_string(c & 1) + " melodee_comp_color=" + std::to_string((c >> 1) & 1)
          + " melodee_comp_boost=" + std::to_string((c >> 2) & 0x3f) + " melodee_comp_attack=" + std::to_string((c >> 8) & 0xff)
          + " melodee_comp_release=" + std::to_string((c >> 16) & 0xff) + " melodee_comp_amount=" + std::to_string(c >> 24)
-         + " melodee_comp_reduction=" + text;
+         + " melodee_comp_reduction=" + text + padfx_summary();
+}
+
+// Phase 7b: Pad FX and Flex Beat.
+std::string Shell::padfx_summary() const {
+    uint32_t b = padfx_bits.load(std::memory_order_relaxed), slots = punch_slots_bits.load(std::memory_order_relaxed);
+    std::string kinds;
+    for (unsigned n = 0; n < 4; ++n) kinds += (n ? "," : "") + std::to_string(int((slots >> (8 * n)) & 0xff) - 1);
+    return " melodee_punch_bank=" + std::to_string(b & 3) + " melodee_engaged=" + std::to_string((b >> 2) & 0x1f)
+         + " melodee_latched=" + std::to_string((b >> 7) & 0x1f) + " melodee_punch_selected=" + std::to_string(int((b >> 12) & 0xff) - 1)
+         + " melodee_punch_slots=" + kinds + " melodee_live=" + std::to_string(host.live_punches())
+         + " melodee_flex=" + std::to_string(host.flex_playing()) + " melodee_flex_mode=" + std::to_string((b >> 20) & 1)
+         + " melodee_flex_quantize=" + std::to_string((b >> 21) & 1) + " melodee_flex_mix=" + std::to_string((b >> 22) & 0x7f);
 }
 
 // Phase 6: Input Config, Sample Record, Audio Recall and renders.

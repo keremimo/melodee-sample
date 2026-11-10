@@ -3,6 +3,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
+#include "melodee/engine/pad_fx_info.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/sampler.h"
@@ -246,6 +247,10 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         if (slot >= c.count() || ui.picker_open) return {};
         return effect_row(chain * 64 + slot * 8, c.slots[slot], 1 - ui.fx_row[UiState::cursor_of(chain)] % 2);
     }
+    case PageId::Punch: // an MPC Pad FX in hand: Shift + K1-K3 are Melodee's depth, snap and tail
+        if (ui.punch_selected < 0 || !punch_is_mpc(PunchKind(ui.punch_selected))) return {};
+        return {Binding {Kind::PunchDepth, 0, 0, 100, project.punch_depth}, Binding {Kind::PunchSnap, 0, 0, 3, project.punch_snap},
+                Binding {Kind::PunchTail, 0, 0, 2, project.punch_tail}};
     case PageId::Compressor: // Shift + K3: In Boost
         return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, project.compressor.boost}};
     case PageId::Keys: // Shift + K3: the pads by semitones
@@ -459,9 +464,21 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::CloudPage:
         if (ui.sampler_row) return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
         return {param(track, sampler::Position), param(track, sampler::Size), param(track, sampler::Density)};
-    case PageId::Punch:
+    case PageId::Punch: { // the MPC's Pad FX pressed last: its K1-K3 (as on the MPC); else depth, snap, tail
+        if (ui.punch_selected >= 0 && punch_is_mpc(PunchKind(ui.punch_selected))) {
+            unsigned mpc = unsigned(ui.punch_selected) - punch_mpc_first;
+            std::array<Binding, 3> out;
+            for (unsigned n = 0; n < punch_params; ++n) {
+                const auto& pi = mpc_pad_fx(mpc).params[n];
+                if (pi.label) out[n] = {Kind::PadFxParam, int32_t(mpc * 4 + n), pi.min, pi.max, project.pad_fx_params[mpc][n]};
+            }
+            return out;
+        }
         return {Binding {Kind::PunchDepth, 0, 0, 100, project.punch_depth}, Binding {Kind::PunchSnap, 0, 0, 3, project.punch_snap},
                 Binding {Kind::PunchTail, 0, 0, 2, project.punch_tail}};
+    }
+    case PageId::FlexBeat: // K1 One Shot / Loop, K3 mix (as on the MPC)
+        return {Binding {Kind::FlexMode, 0, 0, 1, project.flex.mode}, Binding {}, Binding {Kind::FlexMix, 0, 0, 100, project.flex.mix}};
     case PageId::PadPunch: {
         const auto& pad = track.pads[track.last_pad % sampler_pads];
         if (!pad.used()) return {};

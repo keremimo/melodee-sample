@@ -618,18 +618,45 @@ Steps, Roll and Motion B1–B3 pick those three.
   plays a pad with a chain on a lane of its own (eight at once; a lane
   stays three seconds after the pad falls silent, for tails). Cloud pads
   are left out, their grains have no pad. Saved with the project.
-- **Punch (Pad FX):** 27 punches written here, sixteen to a bank on the
-  pads (Pad Bank or Minus / Plus for the other bank): loops of 1/4 to 1/32
-  of a bar, stutter, reverse, tape stop, half speed, downer, upper,
-  scratch, low, high, phone, sweeps down and up, crush, alias, gate,
-  tremolo, pan, echo, ring, flange, drive, vinyl. B1 aims them at the
-  master, B2 at the selected track. Hold a pad to punch, the last pressed
-  wins; Push while holding one locks it on, Push again lets it go (it was
-  Shift + pad until Shift + pad became the printed jobs). While playing a punch waits for
+- **Pad FX (Pad FX; parity phase 7b, as on the MPC):** 47 punches written
+  here, sixteen to a bank (Pad Bank or Minus / Plus: MPC, Melodee 1,
+  Melodee 2; new projects open on MPC). **MPC:** the MPC's sixteen in its
+  pad order, Half Speed (x1.5 / x2 / x4, mix), Chorus, Flanger, Phaser
+  (speed in note values), Comb Filter, LP / HP / BP Filter (resonance, an
+  LFO's speed and range), Ring Mod (max freq), LoFi (bits, decimator),
+  Color (Cassette, Flutter, Tube Amp, Vinyl, Saturation, Radio),
+  Granulator (density, feedback, grain length), Beat Repeat (division,
+  reverse, a resonant filter closing over it), Rev Stepper (slices
+  forwards and backwards, repeats), Delay (1/1 .. 1/64T, Normal /
+  X-Feedback / Ping-Pong), Reverb (pre-delay, decay, diffusion;
+  `engine/punch_mpc.cpp`). **Melodee 1 and 2:** loops of 1/4 to 1/32 of a
+  bar, stutter, reverse, tape stop, half speed, downer, upper, scratch,
+  low, high, phone, sweeps down and up, crush, alias, gate, tremolo, pan,
+  echo, ring, flange, drive, vinyl, and Flex Beat's backspin, trance gate,
+  shuffle and pump. Hold pads to punch, **up to four at once** in series
+  on the target; a fifth bypasses the one engaged first (its pad blinks,
+  BYPASS) until a newer one lets go. **Pressure** is each punch's depth (up
+  to K1's depth; with Pad pressure off, K1's depth). **B1 LATCH** keeps the
+  punch pressed last at its depth after its pad lets go (latched punches
+  play on across pages); B1 on it again lets go; Push does as B1. B2 aims
+  them at the master or the selected track (everything lets go), B3 opens
+  Pad Punch on a kit track. An MPC punch pressed last: K1–K3 are its own
+  (kept with the project, `PFXP`), Shift + K1–K3 depth, snap, tail; a
+  Melodee one: K1 depth, K2 snap, K3 tail. While playing a punch waits for
   the next step of its snap grid. Repeats let one slice through, then
-  freeze the punch's two-second history and play it again. K1 depth, K2
-  snap, K3 tail (cut, fade, a long ring). Pad lights show the bank, held
-  and locked bright.
+  freeze the punch's two-second history and play it again. Pads light
+  sounding bright, bypassed blinking. Seq Record into the song writes the
+  newest punch on the punch lane.
+- **Flex Beat (Shift + Pad FX; parity phase 7b, as on the MPC):** a time
+  effect over the master for a bar. Pad 1 Empty (where it starts); 2 Tape
+  Stop, 3 Backspin, 4 Half Speed, 5 Reverse, 6 Scratch, 7 Stutter, 8–10
+  Repeat 1/4, 1/8, 1/16, 11 Gate 1/16, 12 Trance Gate, 13 Shuffle (half a
+  bar's sixteenths in another order), 14 Pitch Down, 15 Pitch Up, 16 Pump
+  (Akai's guide does not list its fifteen; these are Melodee's). K1 One
+  Shot (back to Empty after the bar) or Loop (again each bar until another
+  pad or Empty), K3 mix, B3 quantize (starts on the next sixteenth). Kept
+  with the project (`PFXP`). `pages/flex_beat_page.cpp`, the engine's
+  `flex` punch.
 - **Pad Punch (Pad FX again, or B3, on a sampler track):** each kit pad
   carries a punch of its own, its rate and depth; the pad plays punched by
   itself while the kit runs on (the sampler renders that pad's voices
@@ -711,7 +738,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   Off / On / Rec, Sample Record → Audio Recall (25 s onto the next empty pad), Seq
   Record → Recall (Capture), Play → continue from the bar the song stopped
   in, Stop → all notes off, Minus / Plus → undo / redo on every page, Push
-  → back, Knob FX → FX SELECT (Melodee's chains). **Shift + Pad 1–16** are the jobs printed under the pads, on
+  → back, Knob FX → FX SELECT (Melodee's chains), Pad FX → Flex Beat. **Shift + Pad 1–16** are the jobs printed under the pads, on
   every page but the browser (where Shift + pad loads onto the next empty
   pad; `shell/shift_pad_jobs.cpp` holds the table, from Akai's
   guide): 1 Full Level (every hit at 127, again back to the pad response it
@@ -773,7 +800,10 @@ Steps, Roll and Motion B1–B3 pick those three.
   `melodee_rec_fx=`, `melodee_knob_entry=`, `melodee_knob_kind=`, `melodee_knob_cursor=`,
   `melodee_knob_tracks=` (a bit a track), `melodee_knob_pads=` (the bank in view, a bit a pad),
   `melodee_comp=`, `melodee_comp_color=`, `melodee_comp_boost=`, `melodee_comp_attack=`,
-  `melodee_comp_release=`, `melodee_comp_amount=` and `melodee_comp_reduction=` (dB). For checks without hands on the device.
+  `melodee_comp_release=`, `melodee_comp_amount=` and `melodee_comp_reduction=` (dB); phase 7b `melodee_punch_bank=`
+  (0, 1 Melodee, 2 MPC), `melodee_engaged=`, `melodee_latched=`, `melodee_punch_selected=`, `melodee_punch_slots=` (the four
+  live slots' PunchKind, -1 empty), `melodee_live=` (a bit a slot sounding), `melodee_flex=` (the Flex Beat pad playing,
+  0 Empty), `melodee_flex_mode=`, `melodee_flex_quantize=`, `melodee_flex_mix=`. For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, browserinternal, trim, chop, chopmanual, chopshift,
@@ -781,7 +811,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
   levelsfilter, levelssynth, punch, padpunch, padfx, knobfx, knobfxtracks, knobfxbypass, knobfxstage, knobfxshift,
-  compressor, pickerdirt, rackspring, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

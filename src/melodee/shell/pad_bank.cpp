@@ -20,7 +20,7 @@ void pad_bank_button(Context& c, bool pressed) {
     ui.pad_bank = false;
     if (ui.pad_bank_used) return; // held for a pad, a jump or a copy: no step
     if (ui.shift) ui.shift_used = true;
-    if (ui.page == PageId::Punch) { c.project.punch_bank ^= 1; return; } // the other bank of punches
+    if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (c.track().engine == EngineKind::Sampler) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
     c.notice("Pad Bank + pad: track"); // no banks on this track: say what the button does here
 }
@@ -29,7 +29,7 @@ bool pad_bank_move(Context& c, int way) {
     auto& ui = c.ui;
     if (!ui.pad_bank || !way) return false;
     ui.pad_bank_used = true;
-    if (ui.page == PageId::Punch) c.project.punch_bank ^= 1;
+    if (ui.page == PageId::Punch) c.step_punch_bank(way);
     else if (c.track().engine == EngineKind::Sampler) { step_bank(c, way); say_bank(c); }
     else c.notice("Banks: kit tracks");
     return true;

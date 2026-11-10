@@ -9,13 +9,19 @@ namespace melodee {
 const char* punch_name(PunchKind kind) {
     static const char* names[] {"LOOP 4", "LOOP 8", "LOOP 16", "LOOP 32", "STUTTER", "REVERSE", "STOP", "HALF", "LOW", "HIGH",
                                 "PHONE", "CRUSH", "ALIAS", "GATE", "ECHO", "WOBBLE",
-                                "SWEEP DN", "SWEEP UP", "RING", "FLANGE", "DRIVE", "PAN", "TREMOLO", "DOWNER", "UPPER", "SCRATCH", "VINYL"};
+                                "SWEEP DN", "SWEEP UP", "RING", "FLANGE", "DRIVE", "PAN", "TREMOLO", "DOWNER", "UPPER", "SCRATCH", "VINYL",
+                                "HALF SPEED", "CHORUS", "FLANGER", "PHASER", "COMB", "LP FILTER", "HP FILTER", "BP FILTER", "RING MOD",
+                                "LOFI", "COLOR", "GRANULATOR", "BEAT REPEAT", "REV STEPPER", "DELAY", "REVERB",
+                                "BACKSPIN", "TRANCE GATE", "SHUFFLE", "PUMP"};
     return names[unsigned(kind) % punch_count];
 }
 const char* punch_title(PunchKind kind) {
     static const char* names[] {"Loop 4", "Loop 8", "Loop 16", "Loop 32", "Stutter", "Reverse", "Stop", "Half", "Low", "High",
                                 "Phone", "Crush", "Alias", "Gate", "Echo", "Wobble",
-                                "Sweep down", "Sweep up", "Ring", "Flange", "Drive", "Pan", "Tremolo", "Downer", "Upper", "Scratch", "Vinyl"};
+                                "Sweep down", "Sweep up", "Ring", "Flange", "Drive", "Pan", "Tremolo", "Downer", "Upper", "Scratch", "Vinyl",
+                                "Half Speed", "Chorus", "Flanger", "Phaser", "Comb Filter", "LP Filter", "HP Filter", "BP Filter", "Ring Mod",
+                                "LoFi", "Color", "Granulator", "Beat Repeat", "Rev Stepper", "Delay", "Reverb",
+                                "Backspin", "Trance Gate", "Shuffle", "Pump"};
     return names[unsigned(kind) % punch_count];
 }
 
@@ -25,8 +31,9 @@ void Punch::clear() {
     held = frozen = false; fading = 0;
 }
 
-void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples, unsigned tail_mode) {
+void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples, unsigned tail_mode, const int16_t* values) {
     kind = k; depth = d; bar = std::max(256.0, bar_samples); grid = std::clamp(grid_samples, 64.0, bar);
+    set_params(values);
     held = true; fading = 0; age = 0; lag = 0; speed = 1;
     s1[0] = s1[1] = s2[0] = s2[1] = 0;
     switch (k) {
@@ -34,9 +41,10 @@ void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples,
     case PunchKind::Loop8: loop = bar / 8; break;
     case PunchKind::Loop16: loop = bar / 16; break;
     case PunchKind::Loop32: case PunchKind::Stutter: loop = bar / 32; break;
-    case PunchKind::Reverse: loop = bar / 2; break;
+    case PunchKind::Reverse: case PunchKind::Shuffle: loop = bar / 2; break;
     default: loop = grid; break;
     }
+    if (punch_is_mpc(k) || k >= PunchKind::Backspin) begin_mpc(); // may set its own loop
     loop = std::clamp(loop, 64.0, double(history - 2));
     frozen = false; // a repeat first lets one slice through, then freezes the history on it
     fade_step = tail_mode == 2 ? 1.0f / (1.5f * dsp::sample_rate) : 1.0f / (0.06f * dsp::sample_rate);
@@ -64,7 +72,8 @@ void Punch::process(float* l, float* r, unsigned frames) {
         float amount = held ? depth : fading * depth;
         if (amount <= 0 && frozen) frozen = false; // the release is over: the history runs again
         if (amount > 0 && repeats() && !frozen && double(age) >= loop) frozen = true; // the slice is in
-        if (!frozen) { left[write] = dry_l; right[write] = dry_r; }
+        bool lines = own_lines() && amount > 0; // Reverb: the history is its lines meanwhile
+        if (!frozen && !lines) { left[write] = dry_l; right[write] = dry_r; }
         if (amount > 0) {
             float wet_l = dry_l, wet_r = dry_r;
             double since = double(age), after = since - loop; // for repeats: time since the slice was taken
@@ -157,14 +166,14 @@ void Punch::process(float* l, float* r, unsigned frames) {
                 wet_l = s1[0] * 0.85f + crackle; wet_r = s1[1] * 0.85f + crackle;
                 break;
             }
-            default: break;
+            default: mpc(dry_l, dry_r, wet_l, wet_r, since); break; // the MPC's Pad FX and Flex Beat's own (punch_mpc.cpp)
             }
             l[f] = dry_l + (wet_l - dry_l) * amount;
             r[f] = dry_r + (wet_r - dry_r) * amount;
             ++age;
             if (!held) fading = std::max(0.0f, fading - fade_step);
         }
-        if (!frozen && ++write >= history) write = 0;
+        if (!frozen && !lines && ++write >= history) write = 0;
     }
 }
 

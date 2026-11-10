@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// PUNCH (Pad FX): sixteen punches on the pads, two banks, 27 in all; Pad
-//   Bank (or Minus / Plus) changes bank. B1 aims them at the master, B2 at
-//   the selected track; B3 opens Pad Punch on a sampler track. Hold a pad to
-//   punch, the last pressed wins; Push while holding it locks it on, Push
-//   again lets it go (Shift + pad is the printed jobs since parity phase 1b).
-//   While playing a punch waits for the next step of its snap grid.
-//   K1 depth, K2 snap grid, K3 tail (cut, fade, ring) on release.
+// PAD FX (Pad FX; parity phase 7b, as on the MPC): the bank's sixteen
+//   punches on the pads: the MPC's own (Half Speed ... Reverb, bank MPC)
+//   or Melodee's 31 on two more banks (Pad Bank or Minus / Plus). Hold pads
+//   to punch, up to four at once; a fifth bypasses the one engaged first
+//   until a newer one lets go. Pressure is each punch's depth. B1 LATCH keeps
+//   the punch pressed last at its depth (B1 again on it lets go; Push does the
+//   same). B2 aims them at the master or the selected track; B3 opens Pad
+//   Punch on a sampler track. An MPC punch in hand: K1-K3 its own (Shift:
+//   depth, snap, tail); Melodee's: K1 depth, K2 snap grid, K3 tail.
 // PAD PUNCH (Pad FX again, or B3): each kit pad carries a punch of its own;
 //   hit the pad and it alone plays punched while the kit runs on. Pressure
 //   is depth. K1 picks the punch of the last pad hit, K2 its rate, K3 the
 //   depth when pressure is not used.
+#include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/punch.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -28,40 +31,51 @@ SoftKeys punch_keys(const Snapshot& s, int active) {
     return {{"MASTER", "TRACK", kit(s) ? "PAD" : ""}, active, c};
 }
 
-// ---------- Punch ----------
+// ---------- Pad FX ----------
+const char* bank_name(unsigned bank) { static const char* const names[] {"MELODEE 1", "MELODEE 2", "MPC"}; return names[bank % punch_banks]; }
+
 void punch_draw(Paint& p, const Snapshot& s) {
     bool master = s.project.punch_target == 0;
     juce::Colour c = master ? colour::text : colour_of(s);
-    unsigned bank = s.project.punch_bank % 2;
+    unsigned bank = s.project.punch_bank % punch_banks;
+    int selected = s.ui.punch_selected, at = selected >= 0 ? s.ui.engaged_at(selected) : -1;
+    bool latched = at >= 0 && s.ui.engaged[size_t(at)].latched;
+    unsigned sounding = 0;
+    for (auto k : s.ui.punch_slot) sounding += k >= 0;
     Header h = header_of(s);
-    h.left.push_back(pill("BANK " + juce::String(bank + 1) + " / 2"));
+    h.left.push_back(pill("PAD FX"));
+    h.left.push_back(pill(bank_name(bank), bank == 2 ? c : colour::mid));
+    if (s.ui.engaged_count) h.left.push_back(pill(juce::String(sounding) + " / 4 ON", c));
     if (master) h.right.push_back(pill("MASTER", colour::text));
     else h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, punch_keys(s, master ? 0 : 1), h);
+    frame(p, s, {{"LATCH", master ? "MASTER" : "TRACK", kit(s) ? "PAD" : ""}, latched ? 0 : -1, c}, h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f;
     constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (145 - 1.5f - 3 * gap) / 4;
     for (unsigned n = 0; n < 16; ++n) {
-        unsigned kind = bank * 16 + n, row = 3 - n / 4, column = n % 4;
+        int kind = punch_on_pad(bank, n);
+        unsigned row = 3 - n / 4, column = n % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
-        if (kind >= punch_count) { p.fill(x, y, w, ch, colour::quiet, 4); continue; }
-        bool held = s.ui.punch_held == int(kind), locked = s.ui.punch_locked == int(kind);
-        p.fill(x, y, w, ch, held ? c : colour::surf, 4);
-        if (locked) p.ring(x, y, w, ch, c, 4, 1);
-        p.text(juce::String(n + 1), x + 6, y + 4, 20, 8, plain(held ? colour::bg : colour::dim, 6.5f, Weight::SemiBold));
-        if (held || locked)
-            p.text(held ? "HELD" : "LOCK", x + w - 36, y + 4, 30, 8, caps_text(held ? colour::bg : c, 6.5f), juce::Justification::right);
+        if (kind < 0) { p.fill(x, y, w, ch, colour::quiet, 4); continue; }
+        int e = s.ui.engaged_at(kind);
+        bool on = s.ui.punch_sounding(kind), waiting = e >= 0 && !on, latch = e >= 0 && s.ui.engaged[size_t(e)].latched;
+        p.fill(x, y, w, ch, on ? c : waiting ? colour::raised : colour::surf, 4);
+        if (latch || kind == selected) p.ring(x, y, w, ch, on ? colour::bg : c, 4, kind == selected ? 1.5f : 1);
+        p.text(juce::String(n + 1), x + 6, y + 4, 20, 8, plain(on ? colour::bg : colour::dim, 6.5f, Weight::SemiBold));
+        juce::String mark = latch ? "LATCH" : waiting ? "BYPASS" : on ? "ON" : "";
+        if (mark.isNotEmpty())
+            p.text(mark, x + w - 40, y + 4, 34, 8, caps_text(on ? colour::bg : c, 6), juce::Justification::right);
         juce::String name = punch_name(PunchKind(kind));
-        p.text(name, x + 6, y + ch - 16, w - 12, 13, p.fit(name, plain(held ? colour::bg : c, 11, Weight::SemiBold), w - 12, 7));
+        p.text(name, x + 6, y + ch - 16, w - 12, 13, p.fit(name, plain(on ? colour::bg : c, 11, Weight::SemiBold), w - 12, 6.5f));
     }
 }
 void punch_pad(Context& c, unsigned pad, uint8_t, bool down) { c.punch_pad(pad, down); }
 void punch_soft(Context& c, int key) {
-    if (key == 2) { if (c.track().engine == EngineKind::Sampler) c.open(PageId::PadPunch); return; }
-    c.punch_release();
-    c.project.punch_target = uint8_t(key);
+    if (key == 0) { c.latch_punch(); return; }
+    if (key == 1) { c.set_punch_target(c.project.punch_target ? 0 : 1); return; }
+    if (c.track().engine == EngineKind::Sampler) c.open(PageId::PadPunch);
 }
-void punch_bank(Context& c, int way) { c.punch_release(); c.project.punch_bank = uint8_t((c.project.punch_bank + 2 + way) % 2); }
+void punch_bank(Context& c, int way) { c.step_punch_bank(way); }
 
 // ---------- Pad Punch ----------
 void pad_punch_draw(Paint& p, const Snapshot& s) {
@@ -126,7 +140,7 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
 void pad_punch_pad(Context& c, unsigned pad, uint8_t velocity, bool down) { c.pad_punch(pad, velocity, down); }
 void pad_punch_soft(Context& c, int key) {
     if (key == 2) return;
-    c.project.punch_target = uint8_t(key);
+    c.set_punch_target(unsigned(key));
     c.open(PageId::Punch);
 }
 void pad_punch_bank(Context& c, int way) {
@@ -135,7 +149,7 @@ void pad_punch_bank(Context& c, int way) {
 }
 } // namespace
 
-const PageSpec punch_page {punch_draw, punch_pad, no_wheel, [](Context& c) { c.lock_punch(); }, punch_soft, punch_bank};
+const PageSpec punch_page {punch_draw, punch_pad, no_wheel, [](Context& c) { c.latch_punch(); }, punch_soft, punch_bank};
 const PageSpec pad_punch_page {pad_punch_draw, pad_punch_pad, no_wheel, no_push, pad_punch_soft, pad_punch_bank};
 
 } // namespace melodee

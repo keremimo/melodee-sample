@@ -17,7 +17,7 @@ namespace melodee {
 
 enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
-                            KnobFx, Compressor, Count };          // parity phase 7
+                            KnobFx, Compressor, FlexBeat, Count }; // parity phase 7 and 7b
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -136,7 +136,18 @@ struct UiState {
     uint8_t sampler_row = 0;      // Envelope and Cloud: their second row
     uint8_t capture_bars = 2, capture_quantise = 1, capture_into = 0; // Capture
     uint16_t project_rows = 1;    // rows on the Project page, copied in by the shell
-    int8_t punch_held = -1, punch_locked = -1; // Punch: the punch a pad holds, the one Shift + pad locked on
+    // Pad FX (parity phase 7b): the punches engaged, oldest first (held, or latched with B1); the newest four sound,
+    // the older ones wait bypassed until those let go. Which punch each live slot plays, and the one last pressed
+    // (K1-K3 and B1 act on it).
+    struct Engaged { int8_t kind = -1, pad = -1; bool latched = false; uint8_t depth = 100; };
+    static constexpr unsigned engaged_capacity = 16;
+    std::array<Engaged, engaged_capacity> engaged {};
+    uint8_t engaged_count = 0;
+    std::array<int8_t, 4> punch_slot {{-1, -1, -1, -1}};
+    int8_t punch_selected = -1;
+    uint8_t flex_chosen = 0; // Flex Beat: the pad chosen last (0 Empty)
+    int engaged_at(int kind) const { for (unsigned n = 0; n < engaged_count; ++n) if (engaged[n].kind == kind) return int(n); return -1; }
+    bool punch_sounding(int kind) const { for (auto k : punch_slot) if (k == kind && kind >= 0) return true; return false; }
     int8_t pad_punch_held = -1;               // Pad Punch: the kit pad held, punching
     uint8_t pad_punch_pressure = 0;           // and how hard, 0..127
     Settings settings;                        // Melodee's own, from the card

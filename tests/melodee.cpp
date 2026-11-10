@@ -15,6 +15,7 @@
 #include "melodee/engine/prophet.h"
 #include "melodee/engine/expression.h"
 #include "melodee/engine/punch.h"
+#include "melodee/engine/pad_fx_info.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/engine/arp.h"
 #include "melodee/model/chords.h"
@@ -2467,7 +2468,122 @@ void performance_effects() {
     CHECK(page_bindings(*project, ui, pattern, true)[2].kind == Binding::Kind::CompBoost);
 }
 
+
+// Parity phase 7b: the MPC's Pad FX, four live slots, Flex Beat.
+void pad_fx_and_flex() {
+    // The model's defaults are the guide's initial values; banks: Melodee 1, Melodee 2 (+ Flex Beat's four), MPC.
+    for (unsigned m = 0; m < 16; ++m)
+        for (unsigned n = 0; n < punch_params; ++n) {
+            const auto& pi = mpc_pad_fx(m).params[n];
+            CHECK(pad_fx_defaults[m][n] == (pi.label ? pi.initial : 0));
+        }
+    CHECK(std::string(mpc_pad_fx(0).name) == "Half Speed" && std::string(mpc_pad_fx(15).name) == "Reverb");
+    CHECK(punch_on_pad(2, 0) == int(PunchKind::HalfSpeed) && punch_on_pad(2, 15) == int(PunchKind::Reverb));
+    CHECK(punch_on_pad(0, 3) == int(PunchKind::Loop32) && punch_on_pad(1, 10) == int(PunchKind::Vinyl));
+    CHECK(punch_on_pad(1, 11) == int(PunchKind::Backspin) && punch_on_pad(1, 14) == int(PunchKind::Pump) && punch_on_pad(1, 15) == -1);
+    CHECK(std::string(flex_beat(0).name) == "Empty");
+    for (unsigned n = 1; n < flex_pads; ++n) CHECK(unsigned(flex_beat(n).kind) < punch_count);
+
+    auto signal = [](unsigned n) { uint32_t h = n * 2654435761u; return (int32_t(h) >> 8) / 8388608.0f * 0.5f; };
+    const double bar = 88200, even_bar = 88320; // the second a whole number of samples a sixteenth
+    // Delay 1/4 of a bar: an impulse comes back 22050 samples later, then again quieter.
+    {
+        Punch punch;
+        const int16_t params[] {3, 50, 0};
+        punch.start(PunchKind::Delay, 1, bar, bar / 16, 0, params);
+        std::vector<float> l(1), r(1), out;
+        for (unsigned n = 0; n < 50000; ++n) { l[0] = r[0] = n == 10 ? 1.0f : 0.0f; punch.process(l.data(), r.data(), 1); out.push_back(l[0]); }
+        CHECK(std::fabs(out[10] - 1) < 1e-6f && out[10 + 22050] > 0.6f && out[10 + 44100] > 0.2f && out[10 + 44100] < out[10 + 22050]);
+    }
+    // Beat Repeat 1/16 reversed: after the slice, it plays backwards.
+    {
+        Punch punch;
+        const int16_t params[] {4, 1, 0};
+        punch.start(PunchKind::BeatRepeat, 1, even_bar, even_bar / 16, 0, params);
+        unsigned loop = unsigned(even_bar / 16);
+        std::vector<float> l(1), r(1), out;
+        for (unsigned n = 0; n < loop * 3; ++n) { l[0] = r[0] = signal(n); punch.process(l.data(), r.data(), 1); out.push_back(l[0]); }
+        CHECK(std::fabs(out[loop + 100] - signal(loop - 101)) < 1e-4f);
+    }
+    // Rev Stepper: forwards, backwards, forwards ... then a new slice let through.
+    {
+        Punch punch;
+        const int16_t params[] {4, 2, 0};
+        punch.start(PunchKind::RevStepper, 1, even_bar, even_bar / 16, 0, params);
+        unsigned loop = unsigned(even_bar / 16);
+        std::vector<float> l(1), r(1), out;
+        for (unsigned n = 0; n < loop * 5; ++n) { l[0] = r[0] = signal(n); punch.process(l.data(), r.data(), 1); out.push_back(l[0]); }
+        CHECK(std::fabs(out[3 * loop + 500] - signal(3 * loop + 500)) < 1e-6f); // two plays, then the input again
+    }
+    // K1-K3 change a running punch: LoFi at 2 bits holds only a few levels.
+    {
+        Punch punch;
+        punch.start(PunchKind::LoFi, 1, bar, bar / 16, 0);
+        const int16_t two_bits[] {2, 0, 0};
+        punch.set_params(two_bits);
+        std::vector<float> l(256), r(256);
+        for (unsigned n = 0; n < 256; ++n) l[n] = r[n] = signal(n);
+        punch.process(l.data(), r.data(), 256);
+        for (unsigned n = 0; n < 256; ++n) CHECK(l[n] == 0 || std::fabs(std::fabs(l[n]) - 0.5f) < 1e-6f || std::fabs(std::fabs(l[n]) - 1) < 1e-6f);
+    }
+
+    // The host: four live slots at once, each let go on its own; Flex Beat's One Shot gives way to Empty after a bar.
+    {
+        auto host = std::make_unique<EngineHost>();
+        auto project = std::make_unique<Project>();
+        auto patterns = std::make_unique<PatternBank>();
+        host->load(*project, *patterns);
+        std::vector<int32_t> out(256);
+        const PunchKind kinds[] {PunchKind::HalfSpeed, PunchKind::Chorus, PunchKind::Comb, PunchKind::Granulator};
+        for (unsigned n = 0; n < 4; ++n) {
+            Command on {Command::Type::PunchOn, 255, uint8_t(2 | 1 << 4), uint16_t(kinds[n]), 100};
+            on.position = n + 1;
+            host->send(on);
+        }
+        host->render(out.data(), 128, 1);
+        CHECK(host->live_punches() == 0xf);
+        Command off {Command::Type::PunchOff, 255};
+        off.position = 2;
+        host->send(off);
+        host->render(out.data(), 128, 1);
+        CHECK(host->live_punches() == 0xd);
+        host->send({Command::Type::PunchParam, 0, 2, 11, 200}); // Granulator's grain length while it plays
+        host->send({Command::Type::PunchOff, 254});
+        host->render(out.data(), 128, 1);
+        CHECK(host->live_punches() == 0 && !host->punching());
+        host->send({Command::Type::FlexBeat, 0, 0, 3, 0}); // quantize off: at once
+        host->send({Command::Type::FlexBeat, 0, 0, 0, 3});
+        host->render(out.data(), 128, 1);
+        CHECK(host->flex_playing() == 3);
+        for (unsigned n = 0; n < 700; ++n) host->render(out.data(), 128, 1); // a bar at 120 is 88200 samples
+        CHECK(host->flex_playing() == 0);
+        host->send({Command::Type::FlexBeat, 0, 0, 1, 1}); // Loop
+        host->send({Command::Type::FlexBeat, 0, 0, 0, 7});
+        for (unsigned n = 0; n < 1400; ++n) host->render(out.data(), 128, 1);
+        CHECK(host->flex_playing() == 7);
+        host->send({Command::Type::FlexBeat, 0, 0, 0, 0}); // Empty
+        host->render(out.data(), 128, 1);
+        CHECK(host->flex_playing() == 0);
+    }
+    // The project file keeps K1-K3 and Flex Beat; older files (no PFXP) load the defaults; the MPC's bank is 2.
+    {
+        auto project = std::make_unique<Project>();
+        auto patterns = std::make_unique<PatternBank>();
+        CHECK(project->punch_bank == 2);
+        project->pad_fx_params[14] = {2, 80, 2};
+        project->flex = {1, 60, false};
+        auto bytes = save_project(*project, *patterns);
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(bytes, *back, *patterns).empty());
+        CHECK(back->pad_fx_params[14][1] == 80 && back->pad_fx_params[14][2] == 2 && back->flex.mode == 1 && back->flex.mix == 60 && !back->flex.quantize);
+        for (size_t n = 0; n + 4 <= bytes.size(); ++n) if (std::memcmp(&bytes[n], "PFXP", 4) == 0) std::memcpy(&bytes[n], "XXXX", 4);
+        auto old = std::make_unique<Project>();
+        CHECK(load_project(bytes, *old, *patterns).empty() && old->pad_fx_params == pad_fx_defaults && old->flex.quantize);
+    }
+}
+
 int main() {
+    pad_fx_and_flex();
     performance_effects();
     audio_input_and_rendering();
     chop_and_browser();

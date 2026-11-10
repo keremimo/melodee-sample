@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/dsp.h"
 #include "melodee/model/sampler.h"
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -17,8 +18,15 @@ namespace melodee {
 enum class PunchKind : uint8_t {
     Loop4, Loop8, Loop16, Loop32, Stutter, Reverse, Stop, Half, Low, High, Phone, Crush, Alias, Gate, Echo, Wobble, // bank 1
     SweepDown, SweepUp, Ring, Flange, Drive, Pan, Tremolo, Downer, Upper, Scratch, Vinyl,                           // bank 2
+    // Parity phase 7b: the MPC's Pad FX, pads 1-16 (punch_mpc.cpp), each with up to three parameters.
+    HalfSpeed, Chorus, Flanger, Phaser, Comb, LpLfo, HpLfo, BpLfo, RingMod, LoFi, Color, Granulator, BeatRepeat, RevStepper, Delay, Reverb,
+    // and Flex Beat's time effects Melodee had none of (also on bank 2 after Vinyl).
+    Backspin, TranceGate, Shuffle, Pump,
     Count
 };
+constexpr unsigned punch_mpc_first = unsigned(PunchKind::HalfSpeed); // the MPC's sixteen, in pad order
+constexpr unsigned punch_params = 3;
+inline bool punch_is_mpc(PunchKind k) { return unsigned(k) >= punch_mpc_first && unsigned(k) < punch_mpc_first + 16; }
 constexpr unsigned punch_count = unsigned(PunchKind::Count);
 static_assert(punch_count == punch_kinds, "the model's count of punches");
 const char* punch_name(PunchKind kind);      // as on the pads: "LOOP 4"
@@ -33,7 +41,8 @@ public:
     Punch() : left(new float[history]()), right(new float[history]()) {}
     // `bar` and `grid` in samples (the song's bar and the snap grid); depth
     // 0..1; tail 0 cut, 1 fade (60 ms), 2 ring (a second and a half).
-    void start(PunchKind kind, float depth, double bar, double grid, unsigned tail);
+    void start(PunchKind kind, float depth, double bar, double grid, unsigned tail, const int16_t* params = nullptr);
+    void set_params(const int16_t* values); // the MPC kinds' K1-K3 (pad_fx_info.h ranges); nullptr: their initial values
     void stop();
     void set_depth(float d) { depth = d; }
     bool on() const { return held; }
@@ -43,7 +52,22 @@ public:
     void clear(); // forget the history (a project switch)
 
 private:
-    bool repeats() const { return kind <= PunchKind::Reverse; }
+    bool repeats() const {
+        return kind <= PunchKind::Reverse || kind == PunchKind::BeatRepeat || kind == PunchKind::RevStepper || kind == PunchKind::Shuffle;
+    }
+    bool own_lines() const { return kind == PunchKind::Reverb; } // uses the history as its own delay lines: not written meanwhile
+    void begin_mpc();                                            // the MPC kinds' running state, at start
+    void mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double since); // one sample of an MPC or Flex Beat kind
+    std::array<int16_t, punch_params> param {};
+    // Their running state: phases, filter and allpass stages, grains, the reverb's lines.
+    double phase = 0, phase2 = 0;
+    std::array<float, 16> st {};
+    std::array<float, 12> ap {};
+    struct Grain { double back = 0; uint32_t age = 0, length = 0; };
+    std::array<Grain, 8> grains {};
+    double next_grain = 0;
+    uint32_t seed = 0x1234567u;
+    std::array<unsigned, 12> at {}, len {};
     float read(const float* line, double back) const;
     std::unique_ptr<float[]> left, right;
     unsigned write = 0;

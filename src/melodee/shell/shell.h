@@ -99,11 +99,13 @@ private:
     // used, the browser (rows, cursor, drive, preview) and its folder.
     std::atomic<uint32_t> record_bits {0}; // phase 6: source, monitor, the take's pad + 1, cuts, rendering, pick, threshold
     std::atomic<uint32_t> knob_bits {0}, knob_targets {0}, comp_bits {0}; // phase 7: Knob FX and the master compressor
+    std::atomic<uint32_t> padfx_bits {0}, punch_slots_bits {0};            // phase 7b: Pad FX and Flex Beat
     std::atomic<uint32_t> chop_bits {0}, pad_start_now {0}, pad_end_now {0}, files_bits {0};
     mutable std::mutex text_lock;
     std::string pad_name_text, folder_text; // under text_lock
     std::string input_summary() const;  // phase 6: Input Config, takes, Recall, renders
     std::string fx_summary() const;     // phase 7: Knob FX, the master compressor
+    std::string padfx_summary() const;  // phase 7b: Pad FX, Flex Beat
     std::string sample_summary() const;
 };
 

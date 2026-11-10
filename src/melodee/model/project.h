@@ -4,6 +4,7 @@
 #include "melodee/model/compressor.h"
 #include "melodee/model/knob_fx.h"
 #include "melodee/model/limits.h"
+#include "melodee/model/pad_fx.h"
 #include "melodee/model/pattern.h"
 #include "melodee/model/sampler.h"
 #include <algorithm>
@@ -296,7 +297,10 @@ struct Project {
     uint8_t click_level = 40;
     // Punch (Pad FX): what the punches hit (0 the master, 1 the selected
     // track), the bank in view, and K1-K3: depth, snap grid (0 1/4 .. 3 1/32), tail (cut, fade, ring).
-    uint8_t punch_target = 0, punch_bank = 0, punch_depth = 100, punch_snap = 2, punch_tail = 0;
+    // punch_bank: 0 and 1 Melodee's own banks, 2 the MPC's sixteen (parity phase 7b; new projects start there).
+    uint8_t punch_target = 0, punch_bank = 2, punch_depth = 100, punch_snap = 2, punch_tail = 0;
+    PadFxParams pad_fx_params = pad_fx_defaults; // the MPC's Pad FX, K1-K3 each (parity phase 7b)
+    FlexSettings flex;                           // Flex Beat (Shift + Pad FX)
     std::array<Track, track_count> tracks {};
     KnobFx knob_fx;         // Knob FX (parity phase 7)
     MasterComp compressor;  // Shift + Pad 5 (parity phase 7)

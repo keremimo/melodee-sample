@@ -23,7 +23,7 @@ constexpr unsigned sampler_first_note = 36; // pad 1 of bank A; pad n of the kit
 // Kit notes run past MIDI's 127 (bank H pad 16 is 163): they stay inside Melodee.
 constexpr unsigned sampler_last_key = sampler_first_note + sampler_pads - 1;
 
-constexpr unsigned punch_kinds = 27;       // PunchKind::Count (engine/punch.h)
+constexpr unsigned punch_kinds = 47;       // PunchKind::Count (engine/punch.h); 27 before parity phase 7b
 
 enum class PadPlay : uint8_t { Gate, OneShot }; // Gate is the MPC's Note On (Shift + Chop)
 

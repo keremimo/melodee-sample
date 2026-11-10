@@ -446,7 +446,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::NameChar: ui.name.set_char(unsigned(value)); break;
     case Kind::PunchDepth:
         project.punch_depth = uint8_t(value);
-        if (ui.punch_held >= 0 || ui.punch_locked >= 0) send({Type::PunchDepth, 254, 0, 0, int16_t(value)});
+        for (unsigned n = 0; n < ui.engaged_count; ++n) ui.engaged[n].depth = uint8_t(value);
+        if (ui.engaged_count) send({Type::PunchDepth, 254, 0, 0, int16_t(value)}); // every live slot
         break;
     case Kind::PunchSnap: project.punch_snap = uint8_t(value); break;
     case Kind::PunchTail: project.punch_tail = uint8_t(value); break;
@@ -468,6 +469,9 @@ void Context::apply(const Binding& b, int value) {
     case Kind::CaptureInto: ui.capture_into = uint8_t(value); break;
     case Kind::RecSource: set_input_source(InputSource(value)); break;
     case Kind::KnobParam: knob_fx_param(unsigned(b.id), value); break;
+    case Kind::PadFxParam: set_pad_fx_param(unsigned(b.id) / 4, unsigned(b.id) % 4, value); break;
+    case Kind::FlexMode: set_flex(1, value); break;
+    case Kind::FlexMix: set_flex(2, value); break;
     case Kind::CompAttack: set_compressor(2, value); break;
     case Kind::CompRelease: set_compressor(3, value); break;
     case Kind::CompAmount: set_compressor(4, value); break;
@@ -487,23 +491,6 @@ void Context::set_route(unsigned r, const ModRoute& value) {
     Command c {Type::Mod, ui.track, 0, uint16_t(r)};
     c.route = value;
     send(c);
-}
-
-void Context::punch_pad(unsigned pad, bool down) {
-    unsigned kind = project.punch_bank % 2 * 16 + pad % 16;
-    if (kind >= punch_kinds) return;
-    auto on = [&] {
-        send({Type::PunchOn, uint8_t(project.punch_target ? ui.track : 255), uint8_t(project.punch_snap | project.punch_tail << 4),
-              uint16_t(kind), int16_t(project.punch_depth)});
-    };
-    uint8_t target = uint8_t(project.punch_target ? ui.track : 255);
-    if (down) { on(); ui.punch_held = int8_t(kind); ui.punch_locked = -1; begin_punch(kind, target, project.punch_depth); return; } // the last pressed wins
-    if (ui.punch_held == int(kind)) { send({Type::PunchOff, 254}); ui.punch_held = -1; end_punch(); }
-}
-
-void Context::lock_punch() {
-    if (ui.punch_held >= 0) { ui.punch_locked = ui.punch_held; ui.punch_held = -1; return; } // it plays on after the pad lets go
-    if (ui.punch_locked >= 0) { send({Type::PunchOff, 254}); ui.punch_locked = -1; end_punch(); }
 }
 
 void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {
@@ -634,13 +621,9 @@ void Context::toggle_favourite() {
     if (store) store->save_settings(ui.settings.text());
 }
 
-void Context::punch_release() {
-    if (ui.punch_held >= 0) { send({Type::PunchOff, 254}); ui.punch_held = -1; end_punch(); }
-    if (ui.pad_punch_held >= 0) { send({Type::PunchOff, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8)}); ui.pad_punch_held = -1; }
-}
-
 void Context::pressure(unsigned pad, uint8_t value) {
     if (pad >= 16 || !ui.settings.pressure) return; // Settings: Pad pressure off
+    if (punch_pressure(pad, value)) return;         // Pad FX: a held punch's depth
     if (ui.page == PageId::PadPunch && ui.pad_punch_held >= 0 && ui.pad_punch_held % 16 == int(pad)) { // pressure is depth
         ui.pad_punch_pressure = value;
         send({Type::PunchDepth, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8), int16_t(value * 100 / 127)});

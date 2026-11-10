@@ -10,6 +10,7 @@
 #include "melodee/engine/sid.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
+#include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
@@ -108,6 +109,8 @@ public:
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
     bool punching() const { return punch_on.load(std::memory_order_relaxed); }
     float compression() const { return comp.reduction_db(); } // dB the master compressor takes off now
+    unsigned flex_playing() const { return flex_now.load(std::memory_order_relaxed); } // Flex Beat's pad playing, 0 Empty
+    unsigned live_punches() const { return live_on.load(std::memory_order_relaxed); }  // Pad FX: a bit a live slot sounding
     bool song_playing() const { return in_song.load(std::memory_order_relaxed); }
     unsigned song_bar() const { return bar_now.load(std::memory_order_relaxed); }
     float meter(unsigned track) const { return meters[track % track_count].load(std::memory_order_relaxed); }
@@ -208,8 +211,23 @@ private:
     // Punch: one on the master or a track, one on a single sampler pad. A
     // press while playing waits for the next step of its snap grid.
     struct PendingPunch { bool waiting = false; uint8_t target = 255; PunchKind kind {}; float depth = 1; unsigned snap = 2, tail = 0; };
-    Punch punch, pad_punch;
+    Punch punch, pad_punch; // `punch`: the song's punches
     uint8_t punch_target = 255;
+    // Pad FX (parity phase 7b): four punches held at once, in series on their target, each with its own grid wait.
+    static constexpr unsigned live_slots = 4;
+    struct Live { Punch punch; PendingPunch pending; uint8_t target = 255; };
+    std::array<Live, live_slots> live;
+    std::array<std::array<int16_t, punch_params>, 16> mpc_params {}; // the MPC's Pad FX: K1-K3 each
+    const int16_t* params_of(PunchKind kind) const { return punch_is_mpc(kind) ? mpc_params[unsigned(kind) - punch_mpc_first].data() : nullptr; }
+    void start_live(unsigned slot, const PendingPunch& p);
+    void run_live(uint8_t target, float* left, float* right, unsigned frames);
+    // Flex Beat: a time effect over the master for a bar, then Empty again (One Shot) or again (Loop).
+    Punch flex;
+    uint8_t flex_pad = 0, flex_mode = 0, flex_mix = 100;
+    bool flex_quantize = true, flex_waiting = false;
+    double flex_left = 0; // samples of its bar left
+    void start_flex();
+    std::atomic<unsigned> flex_now {0};
     int pad_punch_track = -1, pad_punch_pad = -1;
     PendingPunch pending;
     bool song_recording = false, punch_from_song = false, live_punch = false;
@@ -267,6 +285,7 @@ private:
     std::atomic<float> output_peak {0};
     std::atomic<unsigned> lost {0};
     std::atomic<bool> punch_on {false};
+    std::atomic<unsigned> live_on {0};
 };
 
 } // namespace melodee

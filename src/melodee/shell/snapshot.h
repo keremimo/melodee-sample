@@ -37,6 +37,7 @@ struct Snapshot {
     unsigned song_bar = 0;
     std::array<float, track_count> meters {};
     float compression = 0;                   // dB the master compressor takes off now (parity phase 7)
+    unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)
     std::array<std::array<PatternSketch, pattern_count>, track_count> sketches {};
     LoadedSample sample;               // the sample in hand: the last pad's, or Chop's
     struct Take {

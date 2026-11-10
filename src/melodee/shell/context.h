@@ -78,10 +78,19 @@ public:
     // Punch: a pad of the Punch page (hold to punch), Push with it held to
     // lock it on (Push again unlocks), and a kit pad on Pad Punch (the pad
     // plays punched by its own).
+    // Pad FX (parity phase 7b, shell/pad_fx.cpp): four at once, B1 latch, pressure as depth.
     void punch_pad(unsigned pad, bool down);
-    void lock_punch();
+    void latch_punch();                                     // B1 (or Push): the punch last pressed latched, or let go
     void pad_punch(unsigned pad, uint8_t velocity, bool down);
-    void punch_release();                                   // let go of every punch a pad holds
+    void punch_release(bool latched_too = false);           // let go of every punch a pad holds (and the latched ones)
+    bool punch_pressure(unsigned pad, uint8_t value);       // a held punch's depth from its pad's pressure
+    void set_punch_target(unsigned target);                 // 0 the master, 1 the selected track (everything lets go)
+    void step_punch_bank(int way);                          // Melodee 1, Melodee 2, MPC
+    void set_pad_fx_param(unsigned mpc, unsigned param, int value); // an MPC Pad FX's K1-K3
+    void sync_live();                                       // the newest four engaged punches into the live slots
+    uint8_t punch_target_now() const;
+    void flex_pad(unsigned pad);                            // Flex Beat: pad 1 Empty, 2-16 its effects
+    void set_flex(unsigned what, int value);                // as Command::FlexBeat's index: 1 mode, 2 mix, 3 quantize
     void change_setting(unsigned row, int way);             // one step along a Settings row, kept on the card
     void toggle_favourite();                                // the sound under the Sounds cursor, else the loaded one
     // The Name sheet: what is named, its first text and how long it may be.

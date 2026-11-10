@@ -27,6 +27,7 @@ enum class Format : uint8_t {
     Tenths,    // a tenth a step: 0.0 .. (Amp sim's DRIVE 0-11)
     Seconds,   // tenths of a second (Spring's TIME 1.0-10.0 s)
     Hertz,     // Hz as they are, kHz from 1000
+    CentiHz,   // hundredths of a Hz (Pad FX's rates: 0.02-10.00 Hz)
 };
 
 struct ParamInfo {

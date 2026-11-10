@@ -4,6 +4,7 @@
 #include "melodee/engine/punch.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
+#include "melodee/engine/pad_fx_info.h"
 #include "melodee/model/chords.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
@@ -264,6 +265,14 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
             break;
         }
+        case Kind::PadFxParam: {
+            const auto& pi = mpc_pad_fx(unsigned(b.id) / 4).params[unsigned(b.id) % 4 % punch_params];
+            auto shown = show(pi, b.value);
+            c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.fill = gauge_of(pi, b.value);
+            break;
+        }
+        case Kind::FlexMode: c.label = "MODE"; c.value = b.value ? "Loop" : "One Shot"; break;
+        case Kind::FlexMix: c.label = "MIX"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::CompAttack: case Kind::CompRelease: {
             float ms = b.kind == Kind::CompAttack ? comp_attack_ms(b.value) : comp_release_ms(b.value);
             c.label = b.kind == Kind::CompAttack ? "ATTACK" : "RELEASE";

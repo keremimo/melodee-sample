@@ -245,6 +245,10 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.u8(255);
     }
     w.end(at);
+    at = w.begin("PFXP"); // Pad FX's K1-K3 for the MPC's sixteen, Flex Beat's settings (parity phase 7b)
+    for (const auto& one : project.pad_fx_params) for (auto v : one) w.i16(v);
+    w.u8(project.flex.mode); w.u8(project.flex.mix); w.u8(project.flex.quantize);
+    w.end(at);
     at = w.begin("CMPR"); // the master compressor (parity phase 7)
     {
         const auto& c = project.compressor;
@@ -460,7 +464,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 chain.size = pad_slots;
             }
         } else if (name == "PNCH") {
-            project->punch_target = uint8_t(r.u8() % 2); project->punch_bank = uint8_t(r.u8() % 2);
+            project->punch_target = uint8_t(r.u8() % 2); project->punch_bank = uint8_t(r.u8() % 3);
             project->punch_depth = uint8_t(std::min(100u, r.u8())); project->punch_snap = uint8_t(r.u8() % 4); project->punch_tail = uint8_t(r.u8() % 3);
             while (r.ok && !r.done()) {
                 unsigned t = r.u8();
@@ -481,6 +485,9 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 for (auto& w : words) w = r.u32();
                 k.pads[t][0] = words[0] | words[1] << 32; k.pads[t][1] = words[2] | words[3] << 32;
             }
+        } else if (name == "PFXP") {
+            for (auto& one : project->pad_fx_params) for (auto& v : one) v = int16_t(r.i16());
+            project->flex.mode = uint8_t(r.u8() & 1); project->flex.mix = uint8_t(std::min(100u, r.u8())); project->flex.quantize = r.u8() != 0;
         } else if (name == "CMPR") {
             auto& c = project->compressor;
             c.on = r.u8() != 0; c.color = r.u8() != 0;

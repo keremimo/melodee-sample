@@ -80,6 +80,9 @@ void EngineHost::load_state(const Project& project) {
     knob_pads = k.pads;
     comp_settings = project.compressor;
     comp.set(comp_settings);
+    // Pad FX's K1-K3 and Flex Beat's settings.
+    mpc_params = project.pad_fx_params;
+    flex_mode = project.flex.mode; flex_mix = project.flex.mix; flex_quantize = project.flex.quantize;
     click = project.click == 1; click_level = project.click_level / 100.0f;
     motion = project.motion;
     song = project.song;
@@ -253,6 +256,8 @@ void EngineHost::apply(const Command& c) {
             apply({Type::Stop});
             for (auto& s : slots) if (s.engine) s.engine->silence();
             pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
+            for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
+            flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
             load_state(c.pack->project);
             std::swap(patterns, c.pack->patterns); // the pack takes the old ones back to be freed
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
@@ -271,23 +276,57 @@ void EngineHost::apply(const Command& c) {
             pad_punch_track = c.track; pad_punch_pad = int(pad - 1);
             slot.sampler.punch_pad(pad_punch_pad, &pad_punch);
             double grid = bar_length() / (4u << p.snap);
-            pad_punch.start(p.kind, p.depth, bar_length(), grid, p.tail);
+            pad_punch.start(p.kind, p.depth, bar_length(), grid, p.tail, params_of(p.kind));
             break;
         }
-        live_punch = true; punch_from_song = false;
-        if (running) pending = p;
-        else start_punch(p);
+        unsigned s = c.position ? (c.position - 1) % live_slots : 0;
+        live_punch = true;
+        if (punch_from_song) { punch.stop(); punch_from_song = false; } // a punch by hand wins over the song's
+        if (running) live[s].pending = p;
+        else start_live(s, p);
         break;
     }
     case Type::PunchOff:
         if (c.index >> 8) { if (int(c.index >> 8) - 1 == pad_punch_pad && c.track == pad_punch_track) pad_punch.stop(); break; }
-        if (pending.waiting && (pending.target == c.track || c.track == 254)) pending.waiting = false; // let go before it began
-        else if (punch_target == c.track || c.track == 254) punch.stop();
+        for (unsigned s = 0; s < live_slots; ++s) {
+            if (c.track != 254 && (c.position ? (c.position - 1) % live_slots : 0) != s) continue;
+            live[s].pending.waiting = false; // let go before it began
+            live[s].punch.stop();
+        }
         live_punch = false;
+        for (auto& l : live) live_punch |= l.punch.on() || l.pending.waiting;
         break;
     case Type::PunchDepth:
         if (c.index >> 8) pad_punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f);
-        else { punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f); pending.depth = std::clamp<int>(c.value, 0, 100) / 100.0f; }
+        else
+            for (unsigned s = 0; s < live_slots; ++s) {
+                if (c.position && (c.position - 1) % live_slots != s) continue; // 0: every slot (K1 depth)
+                live[s].punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f);
+                live[s].pending.depth = std::clamp<int>(c.value, 0, 100) / 100.0f;
+            }
+        break;
+    case Type::PunchParam: {
+        if (c.index >= 16 || c.pattern >= punch_params) break;
+        mpc_params[c.index][c.pattern] = c.value;
+        auto kind = PunchKind(punch_mpc_first + c.index);
+        for (auto& l : live) if (l.punch.kind_now() == kind) l.punch.set_params(mpc_params[c.index].data());
+        if (pad_punch.kind_now() == kind) pad_punch.set_params(mpc_params[c.index].data());
+        break;
+    }
+    case Type::FlexBeat:
+        switch (c.index) {
+        case 0:
+            flex_pad = uint8_t(c.value % int(flex_pads));
+            flex_waiting = false;
+            if (!flex_pad) { flex.stop(); flex_now.store(0, std::memory_order_relaxed); break; }
+            if (running && flex_quantize) flex_waiting = true; // on the next sixteenth
+            else start_flex();
+            break;
+        case 1: flex_mode = uint8_t(c.value != 0); break;
+        case 2: flex_mix = uint8_t(std::clamp<int>(c.value, 0, 100)); flex.set_depth(flex_mix / 100.0f); break;
+        case 3: flex_quantize = c.value != 0; break;
+        default: break;
+        }
         break;
     case Type::Click:
         click = c.value != 0;
@@ -611,9 +650,27 @@ void EngineHost::arp_note(Slot& slot, int key, int velocity, int from, int32_t l
     schedule_off(slot, key, length);
 }
 
+void EngineHost::start_live(unsigned s, const PendingPunch& p) {
+    auto& l = live[s % live_slots];
+    if (p.target != l.target) { l.punch.clear(); l.target = p.target; } // a new signal: the old history is not its own
+    l.punch.start(p.kind, p.depth, bar_length(), bar_length() / (4u << p.snap), p.tail, params_of(p.kind));
+}
+
+void EngineHost::run_live(uint8_t target, float* left, float* right, unsigned frames) {
+    for (auto& l : live) if (l.target == target && l.punch.active()) l.punch.process(left, right, frames);
+}
+
+void EngineHost::start_flex() {
+    const auto& info = flex_beat(flex_pad);
+    flex.start(info.kind, flex_mix / 100.0f, bar_length(), bar_length() / (4u << info.grid), 1);
+    flex_left = bar_length();
+    flex_waiting = false;
+    flex_now.store(flex_pad, std::memory_order_relaxed);
+}
+
 void EngineHost::start_punch(const PendingPunch& p) {
     if (p.target != punch_target) { punch.clear(); punch_target = p.target; } // a new signal: the old history is not its own
-    punch.start(p.kind, p.depth, bar_length(), bar_length() / (4u << p.snap), p.tail);
+    punch.start(p.kind, p.depth, bar_length(), bar_length() / (4u << p.snap), p.tail, params_of(p.kind));
 }
 
 void EngineHost::play_song_punches() {
@@ -643,8 +700,12 @@ void EngineHost::tick() {
         until_tick += tick_length();
         return;
     }
-    // A punch waiting for its grid.
-    if (pending.waiting && tick_now % (4 * ticks_per_quarter / (4u << pending.snap)) == 0) { pending.waiting = false; start_punch(pending); }
+    // Punches waiting for their grid, and Flex Beat for its sixteenth.
+    for (unsigned s = 0; s < live_slots; ++s) {
+        auto& p = live[s].pending;
+        if (p.waiting && tick_now % (4 * ticks_per_quarter / (4u << p.snap)) == 0) { p.waiting = false; start_live(s, p); }
+    }
+    if (flex_waiting && tick_now % sixteenth_ticks == 0) start_flex();
     // The metronome: every beat while playing, higher on the bar.
     if (click && tick_now % beat == 0) {
         click_env = 1; click_phase = 0;
@@ -800,6 +861,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             }
             run_chain(t, slot.left, slot.right, frames);
             if (punch_target == t) punch.process(slot.left, slot.right, frames);
+            run_live(uint8_t(t), slot.left, slot.right, frames);
             bool heard = !slot.mute && !(solo && !slot.solo);
             // Knob FX: a kit's pads switched on come out apart, after their own chain (not the track's), at the track's level and pan.
             if (heard && slot.engine == &slot.sampler && slot.sampler.knob_fed()) {
@@ -844,8 +906,21 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     }
     run_chain(master_chain, master_l, master_r, frames);
     if (punch_target == 255) punch.process(master_l, master_r, frames);
+    // Flex Beat over the whole master: a bar, then Empty again (One Shot) or the same again (Loop).
+    if (flex_pad && flex.on()) {
+        flex_left -= frames;
+        if (flex_left <= 0) {
+            if (flex_mode) start_flex();
+            else { flex.stop(); flex_pad = 0; flex_now.store(0, std::memory_order_relaxed); }
+        }
+    }
+    if (flex.active()) flex.process(master_l, master_r, frames);
+    run_live(255, master_l, master_r, frames);
     comp.process(master_l, master_r, frames); // the master compressor (Shift + Pad 5), before main volume
-    punch_on.store(punch.on() || pad_punch.on() || pending.waiting, std::memory_order_relaxed);
+    unsigned sounding = 0;
+    for (unsigned s = 0; s < live_slots; ++s) sounding |= unsigned(live[s].punch.on() || live[s].pending.waiting) << s;
+    live_on.store(sounding, std::memory_order_relaxed);
+    punch_on.store(punch.on() || pad_punch.on() || sounding, std::memory_order_relaxed);
     // The input source (or the mix itself, before main volume): the take, the
     // Recall ring and the meter hear it; a render takes the mix.
     select_input(input, usb, frames);

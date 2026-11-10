@@ -551,7 +551,24 @@ const Preview previews[] {
     {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},
     {"punch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Punch; s.ui.track = 2; s.playing = true; s.project.punch_target = 1;
-         s.ui.punch_held = 4; s.ui.punch_locked = 8; s.ui.turning = 1; s.ui.turned_at = s.now;
+         s.project.punch_bank = 0; // Melodee's first bank: Loop 1/4 latched, Low held
+         s.ui.engaged[0] = {8, -1, true, 100}; s.ui.engaged[1] = {4, 4, false, 100}; s.ui.engaged_count = 2;
+         s.ui.punch_slot = {{8, 4, -1, -1}}; s.ui.punch_selected = 4;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    // Parity phase 7b: the MPC's Pad FX, five engaged (the first bypassed), and Flex Beat.
+    {"padfxmpc", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Punch; s.ui.track = 0; s.playing = true; s.project.punch_bank = 2; s.project.punch_target = 0;
+         const int8_t kinds[] {int8_t(punch_mpc_first + 5), int8_t(punch_mpc_first + 1), int8_t(punch_mpc_first + 12),
+                               int8_t(punch_mpc_first + 14), int8_t(punch_mpc_first + 9)};
+         for (unsigned n = 0; n < 5; ++n) s.ui.engaged[n] = {kinds[n], int8_t(n == 4 ? 9 : -1), n == 1, 100};
+         s.ui.engaged_count = 5;
+         s.ui.punch_slot = {{kinds[1], kinds[2], kinds[3], kinds[4]}}; s.ui.punch_selected = kinds[4];
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"flexbeat", [](Shell&, Snapshot& s) { // Loop mode, Backspin playing, quantize on
+         s.ui.page = PageId::FlexBeat; s.playing = true; s.project.flex.mode = 1; s.project.flex.mix = 80;
+         s.flex_playing = 2; s.ui.flex_chosen = 2; s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
     {"padpunch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::PadPunch; s.ui.track = 3; s.playing = true; s.sample = break_sample();

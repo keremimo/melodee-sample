@@ -55,7 +55,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     // The page's own Shift + B1-B3, last: Trim's and Chop's (as on the MPC).
     bool trim = s.ui.page == PageId::Trim && kit, chop = s.ui.page == PageId::Chop && kit, browser = s.ui.page == PageId::Samples && kit;
     const char* const jobs[][2] {
-        {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"KNOB FX", "FX select: chains"}, {"PAD BANK", "Previous bank"}, {"ERASE", copy},
+        {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"PAD FX", "Flex Beat"}, {"KNOB FX", "FX select: chains"}, {"PAD BANK", "Previous bank"}, {"ERASE", copy},
         {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"CHOP", kit ? "Note On / One shot" : "Note On (kit pads)"},
         {"16 LEVELS", levels}, {"SAMPLE SELECT", select},
         {"MUTE", "Unmute all; mute + pad: solo"}, {"TAP TEMPO", clicks[s.project.click % 3]},

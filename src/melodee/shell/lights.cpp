@@ -150,6 +150,16 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             comp_bits.store(uint32_t(c.on) | uint32_t(c.color) << 1 | uint32_t(c.boost) << 2 | uint32_t(c.attack) << 8 | uint32_t(c.release) << 16
                             | uint32_t(c.amount) << 24, std::memory_order_relaxed);
         }
+        { // phase 7b: Pad FX (bank, engaged, latched, selected; the slots' kinds + 1) and Flex Beat's settings
+            unsigned latched = 0;
+            for (unsigned n = 0; n < ui_.engaged_count; ++n) latched += ui_.engaged[n].latched;
+            padfx_bits.store(uint32_t(project_->punch_bank % 4) | uint32_t(ui_.engaged_count & 0x1f) << 2 | uint32_t(latched & 0x1f) << 7
+                             | uint32_t(uint8_t(ui_.punch_selected + 1)) << 12 | uint32_t(project_->flex.mode) << 20
+                             | uint32_t(project_->flex.quantize) << 21 | uint32_t(project_->flex.mix) << 22, std::memory_order_relaxed);
+            uint32_t slots = 0;
+            for (unsigned n = 0; n < 4; ++n) slots |= uint32_t(uint8_t(ui_.punch_slot[n] + 1)) << (8 * n);
+            punch_slots_bits.store(slots, std::memory_order_relaxed);
+        }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
             for (const auto& ref : project_->samples) used += ref.used();
@@ -236,10 +246,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 colour = track_light(pad, k.track_on(pad) ? 1.0f : project.tracks[pad].used() ? 0.12f : 0.04f);
             }
         } else if (ui.page == PageId::Punch) {
-            // The bank's punches: held or locked bright, in white on the master.
-            unsigned kind = project.punch_bank % 2 * 16 + pad;
-            float level = kind >= punch_kinds ? 0 : (ui.punch_held == int(kind) || ui.punch_locked == int(kind)) ? 1.0f : 0.25f;
+            // The bank's punches: sounding bright, engaged but bypassed (a fifth) blinking, the rest faint; white on the master.
+            int kind = punch_on_pad(project.punch_bank, pad);
+            bool waiting = kind >= 0 && ui.engaged_at(kind) >= 0 && !ui.punch_sounding(kind);
+            float level = kind < 0 ? 0 : ui.punch_sounding(kind) ? 1.0f : waiting ? ((now / 250) % 2 ? 0.5f : 0.15f) : 0.25f;
             colour = project.punch_target ? track_light(ui.track, level) : led_colour::white(level * 0.7f);
+        } else if (ui.page == PageId::FlexBeat) {
+            // Flex Beat: the pad playing bright (Empty when none), the others faint.
+            unsigned playing = host.flex_playing();
+            colour = led_colour::white(pad == playing ? 0.8f : pad == 0 ? 0.08f : 0.2f);
         } else if (ui.page == PageId::PadPunch && track.engine == EngineKind::Sampler) {
             unsigned kit = track.bank % sampler_banks * 16 + pad;
             const auto& sound = track.pads[kit];
@@ -316,7 +331,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                       : state == TakeRecorder::State::Armed || state == TakeRecorder::State::Cued ? (blink ? L::Bright : L::Dim)
                       : job(B::SampleRecord) ? L::Dim : L::Off);
     }
-    on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);
+    on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
     on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
     on(B::Loop, track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop); // the last pad loops
     // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
