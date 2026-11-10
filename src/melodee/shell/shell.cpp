@@ -14,6 +14,7 @@
 #include "melodee/shell/note_repeat.h"
 #include <cstdio>
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/roll.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/shift_pads.h"
@@ -126,7 +127,11 @@ void Shell::press(Button b, bool pressed) {
     if (b == Button::Sample) { if (!ui.exit_open) sample_button(context_, true); return; } // shell/sample_mode.cpp: held, a pad picks a kit pad
     if (b == Button::Erase) {
         ui.erase = pressed;
-        if (!pressed) return;
+        if (!pressed) { // tapped on its own: on Roll the note in focus goes (one undo)
+            if (!ui.erase_used && ui.page == PageId::Roll && !ui.sheet_open && ui.ask == UiState::Ask::None) roll_erase(context_);
+            return;
+        }
+        ui.erase_used = ui.shift || ui.copying != UiState::Copying::Off; // Copy, or leaving it, is the press's job
         if (ui.shift) { // Shift + Erase: Copy, as printed: tracks with Pad Bank held, kit pads on a kit, patterns on Patterns (again: off)
             ui.shift_used = true;
             if (ui.pad_bank) ui.pad_bank_used = true;
@@ -289,6 +294,8 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     int before = pot.position;
     pot.position = int16_t(position);
     if (syncing) { pot.bound = 0; check_pickup(n, b); return; }
+    if (ui_.erase) ui_.erase_used = true; // Erase + pot: its release deletes nothing
+    if (ui_.sheet_open && ui_.page == PageId::Roll) ui_.sheet_open = false; // a pot leaves Roll's sheet and does its job
     if (!b.bound()) return;
     check_pickup(n, b);
     ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n); ui_.last_pot_shift = ui_.shift;
@@ -322,7 +329,7 @@ void Shell::wheel(int delta) {
         return;
     }
     if (pad_bank_move(context_, delta)) return; // Pad Bank held: the wheel jumps banks
-    if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns) { // on Patterns Shift + wheel locates by Q
+    if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns && ui_.page != PageId::Roll) { // Patterns: locates by Q; Roll: note to note
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
         ui_.shift_used = true;
         auto bindings = page_bindings(*project_, ui_, context_.pattern(), ui_.last_pot_shift);
@@ -353,6 +360,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
 void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down) velocity = ui_.settings.velocity(velocity); // the pad response
     if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
+    if (down && ui_.erase) ui_.erase_used = true; // Erase + pad: its release deletes nothing
     if (down && (ui_.exit_open || ui_.ask != UiState::Ask::None)) return; // a sheet or a question over the page
     if (down && track_pad(context_, pad)) { end_copy_away(); return; } // Pad Bank + pad: that track (or a track copy's)
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
@@ -489,7 +497,10 @@ std::string Shell::summary() const {
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
-           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary()
+           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) +
+           " melodee_roll_key=" + std::to_string(roll_key_now.load()) + " melodee_roll_focus=" + std::to_string(roll_focus_now.load()) +
+           " melodee_roll_view=" + std::to_string(roll_view_now.load() + 1) + " melodee_roll_top=" + std::to_string(roll_top_now.load()) +
+           " melodee_sheet=" + std::to_string(sheet_now.load()) + pad_summary() + sample_summary()
            + input_summary() + fx_summary() + midi_io.summary(host) + midi_config_summary() + phase10_summary() +
            // Phase 10b: SD card access (0 home, 1 lending, 2 lent, 3 returning; the note shell/card_access.h's CardNote).
            " melodee_card=" + std::to_string(card_link.state.load()) + " melodee_card_note=" + std::to_string(card_link.note.load()) +

@@ -38,6 +38,7 @@ struct Binding {
         NameSuggest, NameChar,                     // the Name sheet
         Transpose,                                 // Keys, Shift + K3: the pads by semitones
         EventVelocity, EventLength,                // Step Edit: the selected event (length in steps of Q)
+        EventChance,                               // Roll, K3: the note in focus, percent
         // Sample Mode (parity phase 4), the last pad hit; TrimZoom's id is the handle it closes in on (0 start, 1 end, 2 loop)
         PadLoopPoint, PadLoop, PadMono, PadLink, PadOffset, PadVelSense, PadDecayFrom,
         PadFilterType, PadCutoff, PadResonance, PadFAttack, PadFDecay, PadFSustain, PadFRelease, PadFAmount,

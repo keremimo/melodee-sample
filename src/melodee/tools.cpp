@@ -180,6 +180,27 @@ void step_edit_kit(Shell& shell, Snapshot& s) {
     s.ui.step_cursor = 4; s.ui.step_event = 1;
 }
 
+// Roll on track 1: a bass line over bars 2 and 3 (the playable prototype's), a chord at 2.2.3, an accent at 2.3.1,
+// A4 over the rows and D3 under them; the cursor on `step` and `key`.
+void roll_bass(Shell& shell, Snapshot& s, unsigned step, uint8_t key) {
+    s.ui.page = PageId::Roll; s.ui.track = 0;
+    auto& pattern = shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count];
+    pattern = Pattern {};
+    pattern.length = 4 * 4 * ticks_per_quarter;
+    const struct { unsigned step, length; uint8_t key, velocity, flags; } notes[] {
+        {16, 3, 62, 100, 0}, {18, 1, 50, 80, 0}, {19, 1, 62, 70, 0}, {20, 1, 65, 90, 0}, {22, 2, 60, 96, 0}, {22, 2, 64, 84, 0},
+        {24, 4, 57, 112, step_accent}, {25, 1, 69, 88, 0}, {26, 1, 60, 60, 0}, {28, 2, 62, 100, 0}, {30, 4, 55, 90, 0},
+        {34, 2, 62, 100, 0}, {38, 2, 60, 90, 0}, {40, 4, 57, 100, 0},
+    };
+    for (const auto& n : notes) {
+        Event e;
+        e.tick = n.step * sixteenth_ticks; e.length = uint16_t(n.length * sixteenth_ticks);
+        e.key = n.key; e.velocity = n.velocity; e.flags = n.flags;
+        pattern.add(e);
+    }
+    s.ui.step_cursor = int16_t(step); s.ui.roll_key = key; s.ui.roll_view = 16; s.ui.roll_top = 67;
+}
+
 // Motion on the kit: pad A09's level and tune recorded over pattern 1, and
 // A01's level (not shown: A09 is the last pad hit).
 void pad_motion_kit(Shell&, Snapshot& s) {
@@ -326,13 +347,6 @@ const Preview previews[] {
     {"steps", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
          s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
-    {"roll", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26 * sixteenth_ticks; s.ui.recording = true;
-         s.ui.turning = 1; s.ui.turned_at = s.now;
-     }},
-    {"notesheet", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26 * sixteenth_ticks; s.ui.sheet_open = true;
      }},
     {"motion", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Motion; s.playing = true; s.position = 40 * sixteenth_ticks; s.ui.recording = true;
@@ -879,6 +893,19 @@ const Preview previews[] {
     {"eraselane", [](Shell& shell, Snapshot& s) { // Erase + K1 on Motion: the pad lane goes once B3 says so
          pad_motion_kit(shell, s);
          s.ui.ask = UiState::Ask::EraseLane; s.ui.ask_target = motion_lane(motion_pad_param(PadParam::Level), 8);
+     }},
+    // Roll R1 (shell/roll.h): track 1's pattern rewritten, so last of all.
+    {"roll", [](Shell& shell, Snapshot& s) { // the chord at 2.2.3, C4 in focus, K2 turning
+         roll_bass(shell, s, 22, 60);
+         s.playing = true; s.position = 26 * sixteenth_ticks; s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"notesheet", [](Shell& shell, Snapshot& s) { // Push on the note in focus: B1 CLOSE, B3 DO IT
+         roll_bass(shell, s, 24, 57);
+         s.ui.sheet_open = true;
+     }},
+    {"rolledges", [](Shell& shell, Snapshot& s) { // the rows lower: notes above and below are dots on the edges
+         roll_bass(shell, s, 30, 55);
+         s.ui.roll_top = 63;
      }},
 };
 

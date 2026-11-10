@@ -15,6 +15,7 @@
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/step_edit.h"
+#include "melodee/shell/roll.h"
 #include <algorithm>
 
 namespace melodee {
@@ -593,7 +594,14 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Samples:
         return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
-    case PageId::Roll:
+    case PageId::Roll: { // the note in focus: K1 its length in steps of Q, K2 velocity, K3 chance; none, no cards
+        int at = roll_focus(pattern, ui);
+        if (at < 0) return {};
+        const auto& e = pattern.events[size_t(at)];
+        unsigned q = pattern.q(), steps = std::max(1u, (e.length + q / 2) / q);
+        return {Binding {Kind::EventLength, 0, 1, 64, int(std::min(steps, 64u))}, Binding {Kind::EventVelocity, 0, 1, 127, e.velocity},
+                Binding {Kind::EventChance, 0, 0, 100, e.chance}};
+    }
     case PageId::Steps: {
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
         const auto step = pattern.step(at);

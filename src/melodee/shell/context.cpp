@@ -508,6 +508,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::RecGain: ui.settings.input.gain = int8_t(value); input_changed(); break;
     case Kind::EventVelocity: set_event_velocity(*this, value); break;
     case Kind::EventLength: set_event_length(*this, value); break;
+    case Kind::EventChance: set_event_chance(*this, value); break;
     case Kind::StageSound: preset_turn(value); break;
     case Kind::SoundList: ui.sounds_filter = uint8_t(value); ui.preset_due = 0; break;
     case Kind::ArpGate: t.arp_gate = uint8_t(value); send({Type::Arp, ui.track, 0, 4, int16_t(value)}); break;

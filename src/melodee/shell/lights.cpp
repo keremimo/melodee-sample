@@ -13,6 +13,7 @@
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/roll.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/shell.h"
 #include <filesystem>
@@ -151,6 +152,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             event_tick.store(chosen >= 0 ? shown.events[size_t(chosen)].tick : 0, std::memory_order_relaxed);
             ask_now.store(uint32_t(ui_.ask), std::memory_order_relaxed);
             motion_now.store(project_->motion.count, std::memory_order_relaxed);
+            if (ui_.page == PageId::Roll) { // the view as the page draws it
+                UiState roll = ui_;
+                roll_follow(shown, roll);
+                roll_key_now.store(roll.roll_key, std::memory_order_relaxed);
+                roll_focus_now.store(roll_focus(shown, roll) >= 0 ? 1 : 0, std::memory_order_relaxed);
+                roll_view_now.store(roll_first(shown, roll), std::memory_order_relaxed);
+                roll_top_now.store(roll.roll_top, std::memory_order_relaxed);
+            }
+            sheet_now.store(ui_.sheet_open ? 1 : 0, std::memory_order_relaxed);
         }
         auto sig = project_->time_signature();
         signature_now.store(sig.beats * 100u + sig.unit, std::memory_order_relaxed);

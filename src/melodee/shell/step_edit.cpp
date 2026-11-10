@@ -3,6 +3,7 @@
 #include "melodee/shell/step_edit.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/roll.h"
 #include <algorithm>
 
 namespace melodee {
@@ -81,6 +82,7 @@ void nudge_event(Context& c, int ticks) {
 
 void set_event_velocity(Context& c, int velocity) {
     auto& pattern = c.pattern();
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui); // Roll's cards: the note in focus
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     pattern.events[size_t(at)].velocity = uint8_t(std::clamp(velocity, 1, 127));
@@ -89,9 +91,19 @@ void set_event_velocity(Context& c, int velocity) {
 
 void set_event_length(Context& c, int steps) {
     auto& pattern = c.pattern();
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui);
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     pattern.events[size_t(at)].length = uint16_t(std::clamp<int64_t>(int64_t(std::max(steps, 1)) * pattern.q(), 1, 0xffff));
+    c.sync_pattern(c.ui.track, c.track().pattern);
+}
+
+void set_event_chance(Context& c, int chance) {
+    auto& pattern = c.pattern();
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui);
+    int at = selected_event(pattern, c.ui);
+    if (at < 0) return;
+    pattern.events[size_t(at)].chance = uint8_t(std::clamp(chance, 0, 100));
     c.sync_pattern(c.ui.track, c.track().pattern);
 }
 

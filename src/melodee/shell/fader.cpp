@@ -60,6 +60,7 @@ void fader_move(Context& c, int value, bool syncing) {
     check_takeover(c, job, before);
     if (syncing) return; // where it sits at start: nothing moves
     ui.fader_moved_at = c.now;
+    if (ui.erase) ui.erase_used = true; // Erase + fader: its release deletes nothing
     if (ui.ask != UiState::Ask::None) return; // a question open: the fader waits, as the pots do
     if (job.source == FaderJob::Source::Nudge) { // Step Edit: by how far it went (its place means nothing here)
         if (before < 0) return;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/pad_bank.h"
+#include "melodee/model/scales.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/track_copy.h"
 #include <algorithm>
@@ -8,6 +9,13 @@
 namespace melodee {
 namespace {
 void say_bank(Context& c) { c.notice(std::string("Bank ") + char('A' + c.track().bank % sampler_banks)); }
+
+// Roll on a synth: the pads an octave up or down, and the notes they now play.
+void step_octave(Context& c, int way) {
+    auto& t = c.track();
+    t.octave = int8_t(std::clamp(t.octave + way, 0, 7));
+    c.notice(std::string("Pads ") + note_name(pad_note(c.project, t, 0).key) + "–" + note_name(pad_note(c.project, t, 15).key));
+}
 } // namespace
 
 void step_bank(Context& c, int way) {
@@ -19,7 +27,11 @@ void pad_bank_button(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (pressed) {
         if (ui.pad_bank_tap_at && c.now - ui.pad_bank_tap_at <= pad_bank_double_ms && !ui.shift) { // tapped twice: the Tracks screen
-            if (ui.pad_bank_stepped) { step_bank(c, -1); ui.notice[0] = 0; } // the first tap's step undone, and its word
+            if (ui.pad_bank_stepped) { // the first tap's step undone (a kit's bank, Roll's octave), and its word
+                if (c.track().engine == EngineKind::Sampler) step_bank(c, -1);
+                else step_octave(c, -1);
+                ui.notice[0] = 0;
+            }
             ui.pad_bank_tap_at = 0; ui.pad_bank_stepped = false;
             ui.tracks_half = uint8_t(ui.track / 8);
             c.open(PageId::Tracks);
@@ -38,6 +50,11 @@ void pad_bank_button(Context& c, bool pressed) {
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (c.track().engine == EngineKind::Sampler) {
         step_bank(c, ui.shift ? -1 : 1); say_bank(c);
+        ui.pad_bank_stepped = !ui.shift;
+        return;
+    }
+    if (ui.page == PageId::Roll && c.track().engine != EngineKind::Kit909) { // Roll on a synth: −/+ are its pitch, so the pads' octave is here
+        step_octave(c, ui.shift ? -1 : 1);
         ui.pad_bank_stepped = !ui.shift;
         return;
     }

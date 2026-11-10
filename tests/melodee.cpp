@@ -43,6 +43,7 @@
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/undo_scope.h"
+#include "melodee/shell/roll.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/card_access.h"
@@ -3864,7 +3865,48 @@ void stage() {
     }
 }
 
+// Roll R1 (shell/roll.h): the cursor, the note in focus and the view, on the pattern's events.
+void roll() {
+    Pattern p;
+    p.length = 4 * 4 * ticks_per_quarter; // four bars of 4/4 at 1/16: 64 steps
+    auto add = [&](unsigned step, uint8_t key) { Event e; e.tick = step * sixteenth_ticks; e.key = key; CHECK(p.add(e)); };
+    add(0, 62); add(6, 60); add(6, 64); add(8, 57); add(40, 69);
+    UiState ui;
+    ui.step_cursor = 6; ui.roll_key = 60;
+    CHECK(roll_focus(p, ui) >= 0 && p.events[size_t(roll_focus(p, ui))].key == 60);
+    roll_pitch(p, ui, 1); CHECK(ui.roll_key == 64);                           // Minus / Plus: the chord in the step first
+    roll_pitch(p, ui, 1); CHECK(ui.roll_key == 65 && roll_focus(p, ui) < 0);  // then a semitone
+    roll_pitch(p, ui, -1); CHECK(ui.roll_key == 64);                          // and back onto the chord's top
+    roll_step(p, ui, 2); CHECK(ui.step_cursor == 8 && ui.roll_key == 57);     // the wheel: onto the nearest note starting there
+    roll_step(p, ui, 1); CHECK(ui.step_cursor == 9 && ui.roll_key == 57 && roll_focus(p, ui) < 0); // an empty step keeps the pitch
+    CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 40 && ui.roll_key == 69);  // Shift + wheel: note to note over empty bars
+    CHECK(!roll_jump(p, ui, 1) && ui.step_cursor == 40);
+    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 8 && ui.roll_key == 57);
+    // The view scrolls a step at a time, the cursor two steps from either edge, inside the pattern.
+    ui.step_cursor = 40; ui.roll_view = 0; roll_follow(p, ui); CHECK(ui.roll_view == 27 && roll_first(p, ui) == 27);
+    ui.step_cursor = 63; roll_follow(p, ui); CHECK(ui.roll_view == 48);
+    ui.step_cursor = 30; roll_follow(p, ui); CHECK(ui.roll_view == 28);
+    ui.step_cursor = 0; roll_follow(p, ui); CHECK(ui.roll_view == 0);
+    ui.roll_key = 80; ui.roll_top = 65; roll_follow(p, ui); CHECK(ui.roll_top == 81); // a row above the cursor's key
+    ui.roll_key = 40; roll_follow(p, ui); CHECK(ui.roll_top == 50);                   // and one below
+    // Step Edit's selection follows the focus, so its cards, fader and erase act on the note in focus.
+    ui.step_cursor = 6; ui.roll_key = 64; roll_select(p, ui);
+    CHECK(selected_event(p, ui) == roll_focus(p, ui) && p.events[size_t(selected_event(p, ui))].key == 64);
+    CHECK(roll_position(4 * 96 + 96 + 48, 4 * 96, 96, 24) == "2.2.3" && roll_position(0, 384, 96, 96) == "1.1");
+    // Roll's cards are the note in focus; none there, no cards.
+    Project project;
+    load_sound(project.tracks[0], EngineKind::Prophet, 1);
+    ui.page = PageId::Roll; ui.track = 0;
+    auto cards = page_bindings(project, ui, p);
+    CHECK(cards[0].kind == Binding::Kind::EventLength && cards[1].kind == Binding::Kind::EventVelocity && cards[2].kind == Binding::Kind::EventChance);
+    CHECK(cards[1].value == 100 && cards[2].value == 100 && cards[0].value == 1);
+    ui.roll_key = 63; CHECK(!page_bindings(project, ui, p)[0].bound());
+    Binding chance; chance.kind = Binding::Kind::EventChance;
+    CHECK(binding_scope(project, ui, chance).kind == UndoScope::Kind::Pattern);
+}
+
 int main() {
+    roll();
     stage();
     midi_tracks();
     device_rates();

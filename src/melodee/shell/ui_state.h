@@ -56,6 +56,7 @@ struct UiState {
     bool shift = false, shift_used = false; // Shift held; another control used during the hold
     bool pad_bank = false, mute = false, erase = false; // held
     bool pad_bank_used = false;  // Pad Bank held did something (a pad, -/+, the wheel): its release steps no bank
+    bool erase_used = false;     // Erase held did something (a pad, a pot, the fader): its release deletes nothing
     // Mute mode (shell/mute_mode.cpp): a tap latches it, a hold lasts while held.
     bool mute_latch = false, mute_used = false;
     uint32_t mute_down = 0;
@@ -111,7 +112,12 @@ struct UiState {
     bool held_created = false, held_edited = false;
     bool sheet_open = false;  // the note sheet over Roll
     uint8_t sheet_row = 0;
-    uint8_t roll_note = 0;    // which of the cursor step's notes is selected
+    // Roll (shell/roll.h): the cursor is step_cursor (a step of Q) and roll_key (a pitch), and the note
+    // starting there on that key is in focus. roll_view: the first step in view; roll_top: the top row's key;
+    // roll_new: the length a pad's new note gets, in ticks (0: one step of Q).
+    uint8_t roll_key = 62, roll_top = 65;
+    int16_t roll_view = 0;
+    uint16_t roll_new = 0;
     bool map_open = false;    // the page map over Edit
     uint8_t map_cursor = 0;
     int8_t pattern_held = -1; // Patterns: a pad held, so the next one copies it

@@ -126,7 +126,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::StepVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
     case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
     case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
-    case Kind::StepChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::StepChance: case Kind::EventChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::ModSource: c.label = "SOURCE"; c.value = mod_source_name(ModSource(b.value)); break;
     case Kind::ModDest: {
         const char* name = mod_dest_label(engine_info(track.engine), ModDest(b.value));

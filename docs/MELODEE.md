@@ -74,9 +74,9 @@ cards.
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the screen shows the tracks, eight at a time (the half with the selected track), a pad picks one, −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. Tapped twice (within 450 ms): the Tracks screen, latched; on a kit the first tap's bank step is undone, and a tap on Tracks goes back to Stage | Previous bank |
+| Pad Bank | Next bank of the kit, A–H round. Held: the screen shows the tracks, eight at a time (the half with the selected track), a pad picks one, −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. Tapped twice (within 450 ms): the Tracks screen, latched; on a kit the first tap's bank step is undone, and a tap on Tracks goes back to Stage. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The track's target (Fader page), or the page's own job (Fader below); its light follows the value | |
-| Erase | Held + pad, pot, step or fader: clear it (below) | Copy: kit pads, patterns on Patterns, tracks with Pad Bank held |
+| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus | Copy: kit pads, patterns on Patterns, tracks with Pad Bank held |
 | Note Repeat | A tap latches, a hold lasts; double tap opens Arp | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
@@ -84,9 +84,9 @@ cards.
 | 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back | The type: Velocity, Filter (kits), Tune, Scale |
 | Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. Synth or 909: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
-| Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit | |
+| Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
-| − / + | Lists move as the wheel does; on play pages the octave; Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
+| − / + | Lists move as the wheel does; on play pages the octave (on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
 | Sample Record | Record (kit tracks); on Record it ends the take and opens Stage's TRIM on the pad | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into a pattern |
 | Stop | Stop (on Record, ends the take) | All notes off |
@@ -241,10 +241,22 @@ eighth.
   length, K2 Q, K3 velocity, Shift + K1 the event's length, Shift + K2 time
   signature; the fader nudges the event a tick a step; B3 erases the event,
   Erase + pad asks, then erases that pad's events. Hold B1 for the BPM.
-- **Steps, Roll, Motion** (Shift + Seq again, round): Steps the bar's steps
-  on the pads; Roll a piano roll of a bar (pads write up to four notes a
-  step, Push on a note opens its sheet: accent, slide, tie, copy, delete);
-  Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
+- **Roll** (Shift + Seq on a synth or MIDI track; a kit opens Step Edit):
+  the pattern's notes, each at its own tick for its own length, over bar
+  lines, any number to a step. The cursor is a step of Q and a pitch: the
+  wheel moves it a step (onto the nearest note starting there), Shift +
+  wheel note to note, −/+ walk the chord in the step and then a semitone;
+  the view scrolls a step at a time, and dots on its edges mark notes above
+  and below. The note at the cursor is in focus, drawn white and named in
+  the header; K1 its length, K2 velocity, K3 chance. A pad writes its note
+  at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
+  is the pads' octave (Shift: down). Erase tapped alone deletes the note in
+  focus; Erase + pad asks, then erases that key's notes. Push opens its
+  sheet (accent, slide, tie, delete): B1 CLOSE, B3 DO IT or Push, and a pad
+  or a pot closes it too. With Seq Record on while playing, pads play in
+  live.
+- **Steps, Motion** (Shift + Seq again, round): Steps the bar's steps
+  on the pads; Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
   playing sixteenth; a kit pad's level, tune, pan, envelopes, filter and
   more are lanes of that pad; Erase + pot asks, then clears the lane).
 - **Time Correct** (Shift + Pad 14): the selected pattern onto Q; pads pick

@@ -63,6 +63,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
         return of(S::Master, ui);
     case Kind::SongPattern: case Kind::SongLength: return b.id >= 0 ? of(S::Song, ui) : UndoScope {};
     case Kind::StepLength: case Kind::StepVelocity: case Kind::StepChance: case Kind::EventVelocity: case Kind::EventLength:
+    case Kind::EventChance:
         return pattern_scope(project, ui);
     default: return {};
     }
