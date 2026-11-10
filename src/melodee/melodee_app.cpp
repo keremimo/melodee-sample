@@ -61,6 +61,8 @@ void MelodeeApp::midi_output(MidiOutput& out, Clock::time_point now) {
 }
 
 void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
+    melodee::LooperAsk looper_ask;
+    while (remote_looper.pop(looper_ask)) shell.looper_ask(looper_ask, now_ms());
     Remote remote;
     while (presses.pop(remote)) {
         if (remote.kind == 1) { // the wheel
@@ -147,6 +149,13 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         if (!m.packet.size) return "ERR melodee-midi takes hex bytes: [usb] 90 3c 64";
         return remote_midi.push(m) ? "OK melodee-midi " + argument : "ERR busy";
     }
+    if (action == "melodee-looper") { // docs/LOOPER.md: status straight from the engine; the rest on the MIDI thread
+        if (argument.empty() || argument == "status") return "OK " + melodee::looper_status(host.looper());
+        melodee::LooperAsk ask;
+        std::string error;
+        if (!melodee::parse_looper(argument, ask, error)) return "ERR " + error;
+        return remote_looper.push(ask) ? "OK melodee-looper " + argument : "ERR busy";
+    }
     if (action != "melodee-press") return {};
     if (argument.rfind("wheel", 0) == 0 && argument.size() > 6 && (argument[5] == '+' || argument[5] == '-') &&
         std::isdigit(static_cast<unsigned char>(argument[6]))) { // wheel+N, wheel-N (not wheel-push)
@@ -228,6 +237,7 @@ void MelodeeApp::jack(const JackEvent&, Hardware& hardware) {
 
 void MelodeeApp::service(Hardware& hardware) {
     input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
+    host.looper().service(); // the Looper's memory in and out, its fits (docs/LOOPER.md)
     card_access(hardware);
     // The card is Melodee's only while the base has it home: nothing reads or writes it meanwhile.
     if (hardware.card.status().state == CardShareState::Home) {

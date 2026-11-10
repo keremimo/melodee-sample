@@ -50,6 +50,7 @@ public:
         anchored = false;
     }
     double frames_a_second() const { return rate.load(std::memory_order_relaxed); }
+    uint64_t latency_frames() const { return latency.load(std::memory_order_relaxed); }
     // Audio thread, at each block's start.
     void stamp(int64_t now_ns, uint64_t frame) {
         double ns_a_frame = 1e9 / rate.load(std::memory_order_relaxed);

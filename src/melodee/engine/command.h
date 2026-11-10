@@ -91,7 +91,11 @@ struct Command {
         // Parity phase 9b, MTC in: index 0 following off; 1 locate (Start or a jump), 2 a time sample. 1 and 2: position =
         // the frame heard when the quarter frame came (low 32 bits), micros = where the master was then (microseconds since
         // 0:00:00:00, the hours left out). The song is placed there through the tempo playing now (1) and kept on time (2).
-        MtcIn
+        MtcIn,
+        // The Looper (docs/LOOPER.md): track = the loop 0-3, index = looper::Do, value, position (Latency's frames).
+        // Level, Pan, Send, Mute, Solo and SendBus with track 16-19 are the loop tracks L1-L4's strips; their
+        // chains are loop_chain(0..3) for FxKind, FxParam and FxBypass.
+        Looper
 
     };
     Command() = default;

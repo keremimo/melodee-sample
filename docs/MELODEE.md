@@ -23,7 +23,7 @@ sample-base runtime in the `base/` submodule. Layering follows
 | --- | --- |
 | `melodee_app.*` | The `App`: hands each runtime hook to its owner below. Thin. |
 | `model/` | The project: tracks, patterns (event lists), song, mix, motion, kits, limits (`limits.h`). Plain data, no threads. |
-| `engine/` | Audio: DSP pieces, the six engines and MIDI's silent one, effects and punches, the engine host (16 tracks, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
+| `engine/` | Audio: DSP pieces, the six engines and MIDI's silent one, effects and punches, the Looper (`looper.*`), the engine host (16 tracks and L1–L4, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
 | `ui/` | The design system: tokens, the Rubik typeface, the components every page is built from. |
 | `pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
 | `shell/` | The control grammar and everything around the pages: printed buttons and their Shift jobs, Shift + pad (`shift_pad_jobs`), Pad Bank, mute mode, Note Repeat, Seq + Sample, undo, the fader, takeover, lights, MIDI in and out, the card (`project_store`, `sample_library`, `card_access`), audio input and renders, and the snapshot handed to the screen. |
@@ -80,8 +80,8 @@ cards.
 | Note Repeat | A tap latches, a hold lasts; double tap opens Arp | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
-| Loop | The last kit pad's loop on or off, lit while it loops | Reverse the last pad |
-| 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back | The type: Velocity, Filter (kits), Tune, Scale |
+| Loop | The last kit pad's loop on or off, lit while it loops. Tapped twice (within 450 ms) or held half a second: the Looper (the first tap's loop taken back); on the Looper, back | Reverse the last pad |
+| 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper | The type: Velocity, Filter (kits), Tune, Scale, Loop |
 | Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. Synth or 909: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
@@ -212,6 +212,54 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
   Close, Open, Drop 2, Spread; inversions).
 - **Tempo** (hold Tap Tempo): K1 tempo, K2 swing, K3 click level; B1 halves,
   B3 doubles, B2 the metronome Off / On / Rec; the wheel by 0.1, −/+ by 1.
+
+### Looper
+
+Four tempo-synced audio loops on tracks of their own, **L1–L4**, there while
+the Looper is on ([LOOPER.md](LOOPER.md) has the design). Each loop track has
+a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
+
+- **Looper** (Loop twice or held; 16 Levels of type Loop): off, it asks first
+  (B3 or Push turns it on: 45 MB a loop, made in the background). **B1 LOOPS**:
+  a row a loop, its state as a word (ARM, REC, DUB, PLAY, STOP, FIT; a change
+  waiting blinks), its waveform and playhead, its length and source (a loop
+  at another tempo shows the tempo it was recorded at, amber); K1 the loop,
+  K2 its length (Free, 1, 2, 4, 8, 16 bars; before a take), K3 its level;
+  Shift + K1 feedback, Shift + K2 Quantize (Bar, Beat, Off), Shift + K3 After
+  take (Play, Overdub, Stop). **B2 MIX**: L1–L4 as strips; K1 level, K2 pan,
+  K3 send, Shift + K3 the bus. **B3 MORE**: the loop's sheet: Source (Push
+  steps Input, the tracks there are, the other loops, Mix), Play / Stop at the
+  next boundary, Stop now, Undo / Redo last overdub (its layers), Commit to
+  pad, Commit + note at bar 1, Clear loop and Looper off (both ask). The
+  wheel and −/+ pick the loop (on the sheet its row). **Push**: record →
+  close → overdub ⇄ play; on a loop at another tempo it first fits it (Push
+  again cancels), then overdubs. Shift + Knob FX opens the loop track's chain
+  (B1 back to the Looper).
+- **Pads** on the Looper: a column a loop. 13–16 record / overdub / play (as
+  Push), 9–12 play or stop on the next boundary (again cancels; Shift: at
+  once), 5–8 undo then redo, 1–4 held 0.6 s clear. Lights: red recording
+  (blinking armed), orange overdubbing; the loop's colour playing, brighter
+  on the beat, white on the bar; white for undo, dim for redo; red filling
+  while a clear is held. Mute mode: a column mutes its loop track, Shift solos.
+- **Sources**: Input (Input Config's source after its gain), a track after
+  its chain, another loop's track, or Mix (as Resample hears it: overdubbing
+  from Mix replaces, a bounce). Each arrives a block late, Input a converter
+  round trip more (`melodee-looper latency`); the loop writes it that far
+  behind its play head.
+- **Transport**: Play lines every loop up with bar 1 and starts armed takes
+  on its downbeat (with Count-In, after the count); Stop closes takes, ends
+  overdubs and holds the loops silent. The metronome's Rec setting clicks
+  while a loop records. `melodee-looper transport free` keeps time while
+  stopped.
+- **Tempo**: a loop keeps its pitch and stays on the beat at any tempo (a
+  WSOLA stretch on the audio thread); Fit renders it at the tempo now on the
+  service thread.
+- **Kept**: with the project, as `<project> Loops/Loop N.wav` beside its
+  file (hidden on Project, and moved, renamed, duplicated and deleted with
+  it); a loop saved stopped comes back stopped. **Commit to pad** (a kit
+  track selected): `Samples/Looper/L<n> Loop m.wav` onto the kit's next empty
+  pad, one undo; + note writes a note at bar 1 as long as the loop (the
+  pattern made long enough) and stops the loop.
 
 ### Sequencing
 
@@ -540,7 +588,9 @@ voices or the engine's own count; tracks render in one block of 128 frames.
 - `Melodee/settings`: Melodee's settings, MIDI Config, Input Config, the
   favourites and the project to open at start.
 - `Samples/`: loaded from anywhere under it; Melodee writes `Recorded/`,
-  `Edits/` and saved samples there, and bank files in `Banks/`.
+  `Edits/` and saved samples there, bank files in `Banks/`, and committed
+  loops in `Looper/`.
+- `Melodee/Projects/**/<project> Loops/Loop N.wav`: a project's loops.
   `Melodee/Mixdowns/` holds song mixdowns.
 
 Nothing is created on the card until something is saved. On a host,
@@ -557,6 +607,11 @@ and Melodee's:
   button held around it (`shift+pad5`, `erase+pad5`, `pad-bank+pad5`,
   `mute+pad5`); `hold-BUTTON` / `release-BUTTON`, `hold-padN` /
   `release-padN`; `k1=V`..`k3=V`, `shift+k3=V`, `fader=V` (0..127).
+- `melodee-looper status | on | off | rec|toggle|halt|now|undo|clear N |
+  length N 1-16|free | feedback N 0-1 | level|pan|send|bus N V | mute|solo N
+  0|1 | quantize bar|beat|off | then play|overdub|stop | source N
+  input|track M|loop M|mix | latency FRAMES|auto | transport follow|free |
+  commit N [note]` (docs/LOOPER.md).
 - `melodee-midi [usb] HEX...`: one message into the input path, as if from
   the External (or USB) port. `melodee-midi panic`: MIDI Config's MIDI
   Panic.
@@ -598,7 +653,11 @@ Chop (`melodee_chop_*`); the browser (`melodee_files`,
 `melodee_map`, `melodee_demos`, `melodee_gesture`, `melodee_engine`); SD
 card access (`melodee_card` 0 home, 1 lending, 2 lent, 3 returning;
 `melodee_card_note`, the reason a lend did not start, `CardNote`;
-`melodee_card_ejected`, `melodee_card_locked`). The runtime's own
+`melodee_card_ejected`, `melodee_card_locked`); the Looper (`melodee_looper`,
+`melodee_loop_quantize`, `melodee_loop_then`, `melodee_loop_transport`,
+`melodee_loop_latency`, `melodee_loop_memory`, and `melodee_loop1` ..
+`melodee_loop4`: state, length, place, bars, layers, undo, source, feedback,
+tempo, stretched, fitting, pending). The runtime's own
 `card_share=` says the same from the base's side.
 
 ## Previews

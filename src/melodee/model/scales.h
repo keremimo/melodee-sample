@@ -68,9 +68,10 @@ inline int level_scale_step(const Project& project, unsigned pad) {
 // original on pad 4; Filter the pad's cutoff from the bottom up to its own
 // over pads 1-8 and on to the top over 9-16 (kit pads only); Scale up the
 // project's scale. velocity 0: the pad's own; cutoff -1: the pad's own.
-enum class LevelsKind : uint8_t { Velocity, Scale, Tune, Filter, Count };
+// Loop: 16 Levels opens the Looper, its pads the loop grid (docs/LOOPER.md).
+enum class LevelsKind : uint8_t { Velocity, Scale, Tune, Filter, Loop, Count };
 inline const char* levels_kind_name(LevelsKind k) {
-    static const char* const names[] {"Velocity", "Scale", "Tune", "Filter"};
+    static const char* const names[] {"Velocity", "Scale", "Tune", "Filter", "Loop"};
     return names[unsigned(k) % unsigned(LevelsKind::Count)];
 }
 struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0; };

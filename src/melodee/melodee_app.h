@@ -5,6 +5,7 @@
 #include "melodee/shell/input_route.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
 #include "drivers/usb_audio.h"
@@ -56,6 +57,7 @@ private:
     // `melodee-midi [usb] HEX...`: one message as if it came in on the External (or USB) port, for checks without a cable.
     struct RemoteMidi { bool usb = false; MidiPacket packet; };
     MidiQueue<16, RemoteMidi> remote_midi;
+    MidiQueue<16, melodee::LooperAsk> remote_looper; // `melodee-looper`, parsed on arrival, done on the MIDI thread
     std::atomic<bool> panic_asked {false}; // `melodee-midi panic`
     bool power_known = false;
     melodee::CardNote card_note = melodee::CardNote::None; // service thread: why the last lend did not start

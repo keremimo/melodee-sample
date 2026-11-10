@@ -68,8 +68,10 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         if (s.ui.page == PageId::Stage) c.focus = int(n) == stage_focus(s.ui); // the wheel's card
         // A bus or the master belongs to no track: its cards are neutral.
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
-        c.shade = neutral ? ui::colour::text : ui::knob_shade(s.ui.track, n);
-        c.track = neutral ? ui::colour::text : colour_of(s);
+        bool loop = s.ui.page == PageId::Looper || (s.ui.page == PageId::Rack && s.ui.fx_loop >= 0); // L1-L4: their own colours
+        unsigned l = s.ui.page == PageId::Looper ? s.ui.loop : unsigned(std::max<int>(s.ui.fx_loop, 0));
+        c.shade = neutral ? ui::colour::text : loop ? ui::loop_shade(l, n) : ui::knob_shade(s.ui.track, n);
+        c.track = neutral ? ui::colour::text : loop ? ui::loop_colour(l) : colour_of(s);
         c.fill = b.fraction();
         const auto& pot = s.ui.pots[n];
         if (pot.position >= 0 && !pot.engaged && pot.bound == b.key(s.ui.track)) {
@@ -167,6 +169,28 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
+    // The Looper (docs/LOOPER.md).
+    case Kind::LoopPick: c.label = "LOOP"; c.value = "L" + juce::String(b.value + 1); break;
+    case Kind::LoopLength: { // set before a take; a loop with audio shows the bars it spans
+        unsigned bars = looper::lengths[size_t(b.value) % looper::lengths.size()];
+        const auto& v = s.loops[unsigned(b.id) % loop_tracks].view;
+        if (v.ticks > 0) bars = unsigned(std::max(1L, std::lround(v.ticks / std::max(1u, s.project.bar_ticks()))));
+        c.label = "LENGTH"; c.value = bars ? juce::String(bars) : juce::String("Free"); c.unit = !bars ? "" : bars == 1 ? "bar" : "bars";
+        break;
+    }
+    case Kind::LoopLevel: c.label = "LEVEL"; c.value = juce::String(b.value); break;
+    case Kind::LoopFeedback: c.label = "FEEDBACK"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::LoopQuantize: c.label = "QUANTIZE"; c.value = looper::quantize_name(unsigned(b.value)); break;
+    case Kind::LoopThen: c.label = "AFTER TAKE"; c.value = looper::then_name(unsigned(b.value)); break;
+    case Kind::LoopPan:
+        c.label = "PAN"; c.bipolar = true;
+        c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
+        break;
+    case Kind::LoopSend:
+        c.label = juce::String("SEND ") + char('A' + s.project.loop_mix[unsigned(b.id) % loop_tracks].bus % bus_count);
+        c.value = juce::String(b.value); c.unit = "%";
+        break;
+    case Kind::LoopBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
     case Kind::BusReturn: c.label = "RETURN"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::PadPitch: c.label = "PITCH"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
     case Kind::PadLevel: c.label = "VOLUME"; c.value = decibels(b.value); c.unit = b.value > 0 ? "dB" : ""; break;

@@ -13,6 +13,7 @@
 namespace melodee {
 namespace {
 constexpr char magic[8] {'M', 'E', 'L', 'O', 'D', 'E', 'E', '1'};
+constexpr unsigned loop_record = 15; // LOOP: bars, feedback, source, frames, ticks, tempo, layers, stopped
 
 class Writer {
 public:
@@ -227,6 +228,28 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     at = w.begin("MSTR");
     write_chain(w, project.master);
     w.end(at);
+    // The Looper (docs/LOOPER.md): on, its settings, each loop's set length, feedback, source and the audio kept
+    // beside the file (frames, ticks in 1/65536, tempo, layers); its tracks' strips and chains.
+    bool loops_used = project.looper.on;
+    for (unsigned l = 0; l < loop_tracks; ++l) loops_used |= project.loop_fx[l].count() > 0;
+    if (loops_used) {
+        const auto& lp = project.looper;
+        at = w.begin("LOOP");
+        w.u8(lp.on); w.u8(lp.quantize); w.u8(lp.then); w.u8(lp.transport);
+        w.u8(loop_record); // each loop's record is this long; a reader skips what it does not know, takes defaults for what is missing
+        for (const auto& l : lp.loops) {
+            w.u8(l.bars); w.u8(l.feedback); w.u8(l.source); w.u32(l.frames);
+            w.u32(uint32_t(std::clamp(l.ticks, 0.0, 65535.0) * 65536.0)); w.u16(l.tempo); w.u8(l.layers); w.u8(l.stopped);
+        }
+        w.end(at);
+        at = w.begin("LPMX");
+        for (unsigned l = 0; l < loop_tracks; ++l) {
+            const auto& m = project.loop_mix[l];
+            w.u8(m.level); w.i16(m.pan); w.u8(m.send); w.u8(m.bus); w.u8(m.mute); w.u8(m.solo);
+            write_chain(w, project.loop_fx[l]);
+        }
+        w.end(at);
+    }
     at = w.begin("TRNS"); // each track's transposition
     for (unsigned t = 0; t < track_count; ++t) w.i16(project.tracks[t].transpose);
     w.end(at);
@@ -369,7 +392,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             }
             read_chain(r, tr.fx);
             tr.bank = uint8_t(r.u8() % sampler_banks); tr.last_pad = uint8_t(r.u8() % sampler_pads);
-            tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 4);
+            tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 5); // LevelsKind: Velocity, Scale, Tune, Filter, Loop
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, tr.pads.data(), sampler_pads);
         } else if (name == "PVER") {
@@ -507,6 +530,34 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             read_chain(r, project->buses[b].fx);
         } else if (name == "MSTR") {
             read_chain(r, project->master);
+        } else if (name == "LOOP") { // the Looper (docs/LOOPER.md)
+            auto& lp = project->looper;
+            lp.on = r.u8() != 0;
+            lp.quantize = uint8_t(std::min<unsigned>(r.u8(), unsigned(looper::Quantize::Count) - 1));
+            lp.then = uint8_t(std::min<unsigned>(r.u8(), unsigned(looper::Then::Count) - 1));
+            lp.transport = uint8_t(std::min<unsigned>(r.u8(), unsigned(looper::Transport::Count) - 1));
+            unsigned size = r.u8();
+            for (unsigned l = 0; l < loop_tracks && r.ok; ++l) {
+                auto& t = lp.loops[l];
+                unsigned left = size;
+                auto byte = [&]() -> unsigned { if (!left) return 0; --left; return r.u8(); };
+                auto word = [&]() { unsigned a = byte(); return a | byte() << 8; };
+                auto quad = [&]() { uint32_t a = word(); return a | uint32_t(word()) << 16; };
+                t.bars = uint8_t(std::min(16u, byte())); t.feedback = uint8_t(std::min(100u, byte()));
+                unsigned source = byte();
+                t.source = uint8_t(source < looper::source_count && source != looper::source_loop(l) ? source : looper::source_input);
+                t.frames = quad(); t.ticks = quad() / 65536.0; t.tempo = uint16_t(word()); t.layers = uint8_t(byte()); t.stopped = byte() != 0;
+                while (left) byte(); // what a newer build added
+                if (!r.ok || t.ticks <= 0) t.frames = 0;
+            }
+        } else if (name == "LPMX") {
+            for (unsigned l = 0; l < loop_tracks && r.ok; ++l) {
+                auto& m = project->loop_mix[l];
+                m.level = uint8_t(std::min(127u, r.u8())); m.pan = int8_t(std::clamp(r.i16(), -50, 50));
+                m.send = uint8_t(std::min(100u, r.u8())); m.bus = uint8_t(r.u8() % bus_count); m.mute = r.u8() != 0; m.solo = r.u8() != 0;
+                read_chain(r, project->loop_fx[l]);
+                project->loop_fx[l].size = track_slots;
+            }
         } else if (name == "TRNS") {
             for (unsigned t = 0; t < track_count && r.ok; ++t) project->tracks[t].transpose = int8_t(std::clamp(r.i16(), -12, 12));
         } else if (name == "SPCH") {

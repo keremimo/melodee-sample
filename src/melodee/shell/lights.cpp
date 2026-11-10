@@ -10,6 +10,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/fader_job.h"
+#include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
@@ -30,7 +31,51 @@ Rgb track_light(unsigned track, float level) {
     uint32_t c = ui::track_shades[track % track_count][0];
     return led_colour::rgb(((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f, level);
 }
+Rgb loop_colour_light(unsigned loop, float level) {
+    uint32_t c = ui::loop_shades[loop % loop_tracks][0];
+    return led_colour::rgb(((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f, level);
+}
 } // namespace
+
+// The loop grid (docs/LOOPER.md): a column a loop, pad 1 bottom left; in mute mode each column its loop track.
+Rgb Shell::loop_light(unsigned pad, uint32_t now, bool muting) const {
+    using S = Looper::State;
+    const auto& lp = host.looper();
+    unsigned loop = pad % 4, row = pad / 4 % 4;
+    if (!lp.enabled_now()) return {};
+    auto v = lp.view(loop);
+    const auto& m = project_->loop_mix[loop];
+    if (muting) return m.mute ? led_colour::rgb(1, 0, 0, 0.35f) : m.solo ? led_colour::white(0.8f) : loop_colour_light(loop, 0.6f);
+    bool blink = (now / 200) % 2, audio = v.length > 0;
+    bool waiting = v.pending != Looper::Pending::None;
+    switch (row) {
+    case 3: // record / overdub / play
+        if (v.state == S::Recording) return led_colour::rgb(1, 0, 0, 1);
+        if (v.state == S::Armed) return led_colour::rgb(1, 0, 0, blink ? 1.0f : 0.15f);
+        if (v.state == S::Overdub) return led_colour::rgb(1, 0.45f, 0, 1);
+        if (v.fitting) return loop_colour_light(loop, blink ? 0.8f : 0.2f);
+        return loop_colour_light(loop, audio ? 0.3f : 0.12f);
+    case 2: { // play or stop on the next boundary
+        if (!audio) return {};
+        if (waiting) return loop_colour_light(loop, blink ? 0.9f : 0.12f);
+        if (v.state == S::Playing || v.state == S::Overdub) {
+            double tick = lp.beat_tick();
+            unsigned bar = project_->bar_ticks(), beat = project_->beat_ticks();
+            double in_bar = std::fmod(std::max(tick, 0.0), double(bar)), in_beat = std::fmod(std::max(tick, 0.0), double(beat));
+            if (host.playing() && in_bar < beat / 4.0) return led_colour::white(0.9f);
+            return loop_colour_light(loop, host.playing() && in_beat < beat / 4.0 ? 1.0f : 0.55f);
+        }
+        return loop_colour_light(loop, 0.12f);
+    }
+    case 1: // undo, then redo
+        return v.undo == looper::Undo::Undo ? led_colour::white(0.6f) : v.undo == looper::Undo::Redo ? led_colour::white(0.15f) : Rgb {};
+    default: { // hold to clear
+        if (!audio && v.state == S::Empty) return {};
+        if (ui_.loop_clear == int(loop)) return led_colour::rgb(1, 0, 0, std::min(1.0f, 0.2f + 0.8f * float(now - ui_.loop_clear_at) / loop_clear_ms));
+        return led_colour::rgb(1, 0, 0, 0.2f);
+    }
+    }
+}
 
 void Shell::lights(SurfaceLights& lights, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock); // the screen thread may be copying the state
@@ -78,7 +123,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             }
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
-        if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save) leave.store(true);
+        if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) leave.store(true); // loop files too
     }
     context_.song_tick();
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
@@ -117,6 +162,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     // Tap Tempo held half a second: the Tempo page.
     if (tap_held && now - tap_down > 500 && ui_.page != PageId::Tempo) { tap_held = false; context_.open(PageId::Tempo); }
+    context_.now = now;
+    looper_tick(context_, now); // Loop held, a clear pad held, refusals, the metronome (shell/looper_jobs.cpp)
     unsigned presses = power.load(std::memory_order_relaxed);
     if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; }
 
@@ -256,7 +303,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     for (unsigned pad = 0; pad < 16; ++pad) {
         bool held = ui.held_pads & (1u << pad);
         Rgb colour {};
-        if (mute_kit) {
+        if (ui.page == PageId::Looper && !tracks) {
+            colour = loop_light(pad, now, muting);
+        } else if (mute_kit) {
             // Mute mode on a kit: the bank's pads, muted red, soloed white, the rest in the track's colour.
             unsigned kit = track.bank % sampler_banks * 16 + pad;
             colour = !track.pads[kit].used() ? Rgb {} : track.pad_muted(kit) ? muted_red
@@ -336,11 +385,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             auto note = pad_note(project, track, pad);
             colour = track_light(ui.track, note.root ? 0.9f : 0.22f);
         }
-        if (shift_pads) { // Shift held: the pads with a printed job glow, a toggle that is on brightly
+        if (shift_pads && !(ui.page == PageId::Looper && pad >= 8 && pad < 12)) { // Shift held (the grid's 9-12: play or stop at once): the pads with a printed job glow, a toggle that is on brightly
             unsigned level = shift_pad_level(ui, pad);
             colour = level ? track_light(ui.track, level == 2 ? 1.0f : 0.3f) : Rgb {};
         }
-        if (held && ui.page != PageId::Steps && !tracks && !muting) colour = led_colour::white(1);
+        if (held && ui.page != PageId::Steps && ui.page != PageId::Looper && !tracks && !muting) colour = led_colour::white(1);
         if (ui.settings.pad_lights == 1) { // white, as bright as the colour was
             float full = std::max<float>(led_colour::white(1).r, 1);
             colour = led_colour::white(std::max({colour.r, colour.g, colour.b}) / full);
@@ -421,7 +470,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
     on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
-    on(B::Loop, track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop); // the last pad loops
+    on(B::Loop, ui.page == PageId::Looper || (track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the last pad loops; the Looper
     // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
     on(B::SixteenLevels, ui.page == PageId::Levels || track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));
     on(B::Play, playing);

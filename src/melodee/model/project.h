@@ -4,6 +4,7 @@
 #include "melodee/model/compressor.h"
 #include "melodee/model/knob_fx.h"
 #include "melodee/model/limits.h"
+#include "melodee/model/looper.h"
 #include "melodee/model/pad_fx.h"
 #include "melodee/model/pattern.h"
 #include "melodee/model/sampler.h"
@@ -52,9 +53,11 @@ struct Bus {
     Chain fx;
     uint8_t level = 70; // the return, 0..100
 };
-// Chains are numbered for commands: tracks 0-15, buses 16-19, master 20.
+// Chains are numbered for commands: tracks 0-15, buses 16-19, master 20, the Looper's L1-L4 21-24.
 constexpr unsigned bus_chain(unsigned bus) { return track_count + bus; }
 constexpr unsigned master_chain = track_count + bus_count;
+constexpr unsigned loop_chain(unsigned loop) { return master_chain + 1 + loop; }
+constexpr bool is_loop_chain(unsigned n) { return n > master_chain && n < master_chain + 1 + loop_tracks; }
 // Each sampler pad's own chain follows: pad_chain(track, pad).
 constexpr unsigned pad_chain_base = chain_count;
 constexpr unsigned pad_chain(unsigned track, unsigned pad) { return pad_chain_base + track * sampler_pads + pad; }
@@ -317,8 +320,13 @@ struct Project {
     std::array<Bus, bus_count> buses {};
     std::array<SampleRef, sample_slots> samples {};
     Chain master {{}, master_slots};
+    // The Looper (docs/LOOPER.md): its settings, and its four tracks' strips and chains.
+    LooperSettings looper;
+    std::array<Mix, loop_tracks> loop_mix {};
+    std::array<Chain, loop_tracks> loop_fx = [] { std::array<Chain, loop_tracks> c {}; for (auto& x : c) x.size = track_slots; return c; }();
     Chain& chain(unsigned n) {
         if (n >= pad_chain_base) { n -= pad_chain_base; return tracks[(n / sampler_pads) % track_count].pad_fx.at[n % sampler_pads]; }
+        if (is_loop_chain(n)) return loop_fx[n - loop_chain(0)];
         return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master;
     }
     const Chain& chain(unsigned n) const { return const_cast<Project*>(this)->chain(n); }

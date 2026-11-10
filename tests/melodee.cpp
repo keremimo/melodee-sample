@@ -55,6 +55,7 @@
 #include "melodee/model/song_flatten.h"
 #include "melodee/engine/recall_ring.h"
 #include "melodee/engine/bounce.h"
+#include "melodee/engine/looper.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1367,11 +1368,11 @@ void button_remap() {
     for (unsigned n = 0; n < 40; ++n) go(n % 2 ? PageId::Tempo : PageId::Project), go(PageId(unsigned(PageId::Samples) + n % 3));
     CHECK(nav.back_depth <= UiState::back_capacity);
 
-    // Faint lights: Chop and Loop only with a kit, Erase where it does something.
+    // Faint lights: Chop only with a kit; Loop everywhere (twice or held, the Looper); Erase where it does something.
     using B = SurfaceButton;
     UiState l; l.page = PageId::Stage; l.track = 0;
     CHECK(button_has_job(*project, l, B::Seq, false, false));
-    CHECK(!button_has_job(*project, l, B::Chop, false, false) && !button_has_job(*project, l, B::Loop, false, false));
+    CHECK(!button_has_job(*project, l, B::Chop, false, false) && button_has_job(*project, l, B::Loop, false, false));
     CHECK(!button_has_job(*project, l, B::Erase, false, false) && button_has_job(*project, l, B::Erase, false, true));
     l.track = 1;
     CHECK(button_has_job(*project, l, B::Loop, true, false) && !button_has_job(*project, l, B::Chop, true, false)); // the last pad is empty
@@ -3905,7 +3906,276 @@ void roll() {
     CHECK(binding_scope(project, ui, chance).kind == UndoScope::Kind::Pattern);
 }
 
+// The Looper (docs/LOOPER.md): takes, quantize, overdub, feedback, undo, the transport, sources, the stretch,
+// fitting, holding for a save, and its four tracks in the engine host's mix.
+void looper_engine() {
+    constexpr double bpm = 240, per = 96.0 * bpm / 60.0 / 44100.0; // ticks a frame; a bar of 4/4 is one second
+    constexpr unsigned bar_frames = 44100;
+    auto signal = [](uint64_t f) { return float(0.3 * std::sin(double(f) * 0.0137) + 0.1 * std::sin(double(f) * 0.29)); };
+    auto lp = std::make_unique<Looper>();
+    Looper& looper = *lp;
+    float out_l[loop_tracks][looper::block], out_r[loop_tracks][looper::block];
+    float src_l[looper::block] {}, src_r[looper::block] {}, mix_l[looper::block] {}, mix_r[looper::block] {};
+    uint64_t frame = 0;     // frames run so far
+    double tick = 0;
+    bool running = true, restart = true;
+    std::vector<float> heard; // loop 1's output, every frame
+    float constant = -1;      // >= 0: the source plays this instead of the signal
+    // One block: the source played the block before (as the host keeps it), then the looper.
+    auto block = [&](unsigned frames = looper::block) {
+        Looper::Clock c;
+        c.tick = tick; c.per_frame = per; c.bar = 384; c.beat = 96;
+        c.running = running; c.restart = restart; c.rate = 44100;
+        restart = false;
+        Looper::Sources s;
+        s.frames = frame ? frames : 0;
+        s.at[looper::source_input] = {src_l, src_r};
+        s.at[looper::source_mix] = {mix_l, mix_r};
+        looper.run(c, s, frames, out_l, out_r);
+        for (unsigned f = 0; f < frames; ++f) {
+            heard.push_back(out_l[0][f]);
+            float x = constant >= 0 ? constant : signal(frame + f);
+            src_l[f] = x; src_r[f] = -x;
+            mix_l[f] = out_l[0][f] + 0.5f; mix_r[f] = out_r[0][f] + 0.5f; // what the "mix" played: the loop and a level
+        }
+        frame += frames;
+        if (running) tick += frames * per;
+        looper.service();
+    };
+    auto run_frames = [&](uint64_t frames) { for (uint64_t n = 0; n < frames / looper::block; ++n) block(); };
+
+    // Off: no memory, nothing recorded.
+    looper.ask(looper::Do::Primary, 0, 0);
+    block();
+    CHECK(looper.view(0).state == Looper::State::Empty && !looper.view(0).ready);
+    // On: the service thread makes two buffers a loop.
+    looper.ask(looper::Do::Enable, 0, 1);
+    for (unsigned n = 0; n < 20; ++n) block();
+    CHECK(looper.enabled_now() && looper.buffers_out() == 2 * loop_tracks);
+    for (unsigned n = 0; n < loop_tracks; ++n) CHECK(looper.view(n).ready);
+
+    // A take of one bar on the bar: Armed, then Recording on bar 2's downbeat, closed one bar later, then playing.
+    looper.ask(looper::Do::Length, 0, 1);
+    while (tick < 384 - 2 * looper::block * per) block();
+    looper.ask(looper::Do::Primary, 0, 0);
+    block();
+    CHECK(looper.view(0).state == Looper::State::Armed && looper.view(0).pending == Looper::Pending::Start);
+    while (tick < 384 + 10 * looper::block * per) block();
+    CHECK(looper.view(0).state == Looper::State::Recording && looper.armed() == false && looper.recording());
+    uint64_t take_start = uint64_t(std::llround(384 / per)); // the frame of bar 2
+    while (tick < 768 + 4 * looper::block * per) block();
+    auto v = looper.view(0);
+    CHECK(v.state == Looper::State::Playing && v.length == bar_frames && std::fabs(v.ticks - 384) < 1e-6 && v.tempo == 2400 && v.layers == 1);
+    // It plays what was played in its bar, on the beat: frame F of bar 3 is the frame a bar before.
+    while (tick < 1152 - 4 * looper::block * per) block();
+    for (uint64_t f = take_start + bar_frames + 2000; f < take_start + 2 * bar_frames - 2000; f += 997)
+        CHECK(std::fabs(heard[f] - signal(f - bar_frames)) < 2e-3f);
+    // The waveform was drawn again from the take.
+    unsigned lit = 0;
+    for (unsigned c = 0; c < looper::peak_columns; ++c) lit += looper.peak(0, c) > 20;
+    CHECK(lit > looper::peak_columns * 3 / 4);
+
+    // Overdub a constant for a bar (feedback 100 %): old layers + 0.25; undo takes it back, redo brings it.
+    constant = 0.25f;
+    block();
+    looper.ask(looper::Do::Primary, 0, 0);
+    block(); block(); // the writer starts a block (the source's lag) after the press
+    CHECK(looper.view(0).state == Looper::State::Overdub && looper.view(0).layers == 2);
+    run_frames(bar_frames + 4 * looper::block);
+    looper.ask(looper::Do::Primary, 0, 0);
+    run_frames(8 * looper::block);
+    v = looper.view(0);
+    CHECK(v.state == Looper::State::Playing && v.undo == looper::Undo::Undo && v.layers == 2);
+    uint64_t at = frame + 1000;
+    run_frames(2000);
+    CHECK(std::fabs(heard[at] - (signal(at - 3 * bar_frames) + 0.25f)) < 0.01f);
+    looper.ask(looper::Do::Undo, 0, 0);
+    run_frames(30 * looper::block); // swapped a chunk a block
+    v = looper.view(0);
+    CHECK(v.undo == looper::Undo::Redo && v.layers == 1);
+    at = frame + 1000;
+    run_frames(2000);
+    CHECK(std::fabs(heard[at] - signal(at - (at - take_start) / bar_frames * bar_frames)) < 0.01f);
+    looper.ask(looper::Do::Undo, 0, 0);
+    run_frames(30 * looper::block);
+    CHECK(looper.view(0).undo == looper::Undo::Undo && looper.view(0).layers == 2);
+    // Feedback 0: an overdub pass replaces what it covers.
+    looper.ask(looper::Do::Feedback, 0, 0);
+    looper.ask(looper::Do::Primary, 0, 0);
+    run_frames(bar_frames + 8 * looper::block);
+    looper.ask(looper::Do::Primary, 0, 0);
+    run_frames(8 * looper::block);
+    at = frame + 500;
+    run_frames(1000);
+    CHECK(std::fabs(heard[at] - 0.25f) < 0.01f);
+    looper.ask(looper::Do::Feedback, 0, 100);
+
+    // Stop at the next bar (and cancel), then at once; Now plays it again.
+    looper.ask(looper::Do::Toggle, 0, 0);
+    CHECK(looper.view(0).pending == Looper::Pending::None); // not until the next block's view
+    block();
+    CHECK(looper.view(0).pending == Looper::Pending::Stop);
+    looper.ask(looper::Do::Toggle, 0, 0);
+    block();
+    CHECK(looper.view(0).pending == Looper::Pending::None && looper.view(0).state == Looper::State::Playing);
+    looper.ask(looper::Do::Halt, 0, 0);
+    run_frames(2 * looper::block);
+    CHECK(looper.view(0).state == Looper::State::Stopped && !looper.view(0).sounding);
+    looper.ask(looper::Do::Now, 0, 0);
+    run_frames(2 * looper::block);
+    CHECK(looper.view(0).state == Looper::State::Playing && looper.view(0).sounding);
+
+    // The transport stops: loops hold silent; a press on an empty loop arms; Play lines up and starts the take on bar 1.
+    running = false;
+    run_frames(4 * looper::block);
+    CHECK(!looper.view(0).sounding && looper.view(0).state == Looper::State::Playing);
+    looper.ask(looper::Do::Length, 1, 0);
+    looper.ask(looper::Do::Source, 1, looper::source_mix);
+    looper.ask(looper::Do::Primary, 1, 0);
+    run_frames(4 * looper::block);
+    CHECK(looper.view(1).state == Looper::State::Armed);
+    running = true; restart = true; tick = 0;
+    block();
+    CHECK(looper.view(1).state == Looper::State::Recording && looper.view(0).sounding);
+    CHECK(looper.view(0).position < 2 * looper::block); // loop 1 from its start
+    // A free take closes on the next bar after the press.
+    run_frames(bar_frames / 2);
+    looper.ask(looper::Do::Primary, 1, 0);
+    block();
+    CHECK(looper.view(1).pending == Looper::Pending::Close);
+    run_frames(bar_frames);
+    v = looper.view(1);
+    CHECK(v.state == Looper::State::Playing && v.length == bar_frames && std::fabs(v.ticks - 384) < 1e-6);
+    // The source is fixed while it records; never itself.
+    looper.ask(looper::Do::Source, 2, looper::source_loop(2));
+    block();
+    CHECK(looper.view(2).source == looper::source_input && looper.view(2).errors == 1);
+
+    // Another tempo: loop 1 stays on the beat and keeps its pitch (stretched), then Push fits it and overdubs.
+    constexpr double faster = 96.0 * 300 / 60.0 / 44100.0;
+    auto block_at = [&](double p) {
+        Looper::Clock c; c.tick = tick; c.per_frame = p; c.running = true; c.rate = 44100;
+        Looper::Sources s; s.frames = looper::block; s.at[looper::source_input] = {src_l, src_r};
+        looper.run(c, s, looper::block, out_l, out_r);
+        tick += looper::block * p;
+        looper.service();
+    };
+    for (unsigned n = 0; n < 200; ++n) block_at(faster);
+    CHECK(looper.view(0).stretched);
+    float energy = 0;
+    for (unsigned n = 0; n < 100; ++n) { block_at(faster); for (unsigned f = 0; f < looper::block; ++f) energy += out_l[0][f] * out_l[0][f]; }
+    CHECK(energy > 1.0f);
+    looper.ask(looper::Do::Primary, 0, 0);
+    block_at(faster);       // the service thread fits it
+    block_at(faster);       // and the audio thread swaps it in, then punches in
+    v = looper.view(0);
+    CHECK(!v.fitting && !v.stretched && v.length == 35280 && v.tempo == 3000 && v.state == Looper::State::Overdub && v.undo == looper::Undo::None);
+    looper.ask(looper::Do::Primary, 0, 0);
+    for (unsigned n = 0; n < 10; ++n) block_at(faster);
+    // A set length too long for a loop's memory at this tempo is refused.
+    looper.ask(looper::Do::Clear, 2, 0);
+    looper.ask(looper::Do::Length, 2, 16);
+    Looper::Clock slow; slow.tick = tick; slow.per_frame = 96.0 * 40 / 60.0 / 44100.0; slow.running = true; slow.rate = 44100;
+    Looper::Sources none;
+    looper.run(slow, none, looper::block, out_l, out_r);
+    looper.ask(looper::Do::Primary, 2, 0);
+    looper.run(slow, none, looper::block, out_l, out_r);
+    CHECK(looper.view(2).state == Looper::State::Empty && looper.view(2).error == looper::Error::TooLong);
+    looper.ask(looper::Do::Length, 2, 0);
+
+    // Held for a save: granted once nothing writes it; a clear waits until it is let go.
+    CHECK(!looper.hold(1));
+    block_at(faster);
+    CHECK(looper.hold(1) && looper.held_left(1) && looper.view(1).held);
+    looper.ask(looper::Do::Clear, 1, 0);
+    for (unsigned n = 0; n < 4; ++n) block_at(faster);
+    CHECK(looper.view(1).state == Looper::State::Playing);
+    looper.release(1);
+    for (unsigned n = 0; n < 8; ++n) block_at(faster);
+    CHECK(looper.view(1).state == Looper::State::Empty && !looper.view(1).held);
+
+    // A saved loop comes back through the service thread, playing.
+    auto* buffer = new LoopBuffer;
+    for (unsigned f = 0; f < 1000; ++f) buffer->left[f] = buffer->right[f] = 0.5f;
+    LoopLoad item; item.buffer = buffer; item.loop = 3; item.frames = 1000; item.ticks = 96; item.tempo = 2400;
+    CHECK(looper.give_load(item));
+    for (unsigned n = 0; n < 4; ++n) block_at(per);
+    v = looper.view(3);
+    CHECK(v.state == Looper::State::Playing && v.length == 1000 && v.tempo == 2400 && looper.buffers_out() == 2 * loop_tracks);
+    item.buffer = new LoopBuffer; item.stopped = true; // saved stopped: back stopped
+    CHECK(looper.give_load(item));
+    for (unsigned n = 0; n < 4; ++n) block_at(per);
+    CHECK(looper.view(3).state == Looper::State::Stopped && looper.buffers_out() == 2 * loop_tracks);
+
+    // Off: every loop goes, the memory goes back and is freed.
+    looper.ask(looper::Do::Enable, 0, 0);
+    for (unsigned n = 0; n < 4; ++n) block_at(per);
+    CHECK(!looper.enabled_now() && looper.buffers_out() == 0);
+    for (unsigned n = 0; n < loop_tracks; ++n) CHECK(looper.view(n).state == Looper::State::Empty);
+
+    // In the engine host: L1 records track 1 (a PROPHET note), plays into its own track at its level, muted by its strip.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (auto& t : project->tracks) t.engine = EngineKind::None;
+    load_sound(project->tracks[0], EngineKind::Prophet, 1);
+    project->looper.on = true;
+    project->looper.loops[0].source = looper::source_track(0);
+    project->looper.loops[0].bars = 1;
+    project->tempo = 2400;
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    std::vector<int32_t> out(256);
+    auto render = [&](unsigned blocks) { for (unsigned n = 0; n < blocks; ++n) { host->render(out.data(), 128, 1); host->looper().service(); } };
+    render(20);
+    CHECK(host->looper().view(0).ready);
+    host->send({Command::Type::Play, 0, 0, 0, 0});
+    host->send({Command::Type::Looper, 0, 0, uint16_t(looper::Do::Primary)});
+    host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+    render(4);
+    CHECK(host->looper().view(0).state == Looper::State::Recording);
+    render(bar_frames / 128 + 4);
+    host->send({Command::Type::NoteOff, 0, 0, 60});
+    host->send({Command::Type::Level, 0, 0, 0, 0}); // track 1 silent: what is heard now is the loop
+    render(bar_frames / 128 / 2);
+    CHECK(host->looper().view(0).state == Looper::State::Playing);
+    float loud = 0;
+    for (unsigned n = 0; n < 50; ++n) { render(1); for (auto x : out) loud = std::max(loud, std::fabs(x / 2147483648.0f)); }
+    host->send({Command::Type::Mute, uint8_t(track_count), 0, 0, 1});
+    render(4);
+    loud = 0;
+    for (unsigned n = 0; n < 50; ++n) { render(1); for (auto x : out) loud = std::max(loud, std::fabs(x / 2147483648.0f)); }
+    CHECK(loud < 1e-4f);
+    // The project keeps the Looper: its settings, each loop's values and saved audio's length, L1-L4's strips and chains.
+    {
+        Project saved;
+        PatternBank no_patterns;
+        saved.looper.on = true; saved.looper.quantize = 1; saved.looper.then = 2; saved.looper.transport = 1;
+        saved.looper.loops[2] = LoopTrack {4, 70, looper::source_mix, 176400, 1536.25, 1200, 3, true};
+        saved.looper.loops[1].source = looper::source_loop(1); // itself: never (read back as the input)
+        saved.loop_mix[3].level = 90; saved.loop_mix[3].pan = -30; saved.loop_mix[3].send = 40; saved.loop_mix[3].bus = 2; saved.loop_mix[3].mute = true;
+        saved.loop_fx[3].slots[0].kind = uint8_t(EffectKind::Echo);
+        Project back;
+        PatternBank back_patterns;
+        CHECK(load_project(save_project(saved, no_patterns), back, back_patterns).empty());
+        const auto& l = back.looper.loops[2];
+        CHECK(back.looper.on && back.looper.quantize == 1 && back.looper.then == 2 && back.looper.transport == 1);
+        CHECK(l.bars == 4 && l.feedback == 70 && l.source == looper::source_mix && l.frames == 176400 && std::fabs(l.ticks - 1536.25) < 1e-4 && l.tempo == 1200 && l.layers == 3 && l.stopped);
+        CHECK(back.looper.loops[1].source == looper::source_input);
+        const auto& m = back.loop_mix[3];
+        CHECK(m.level == 90 && m.pan == -30 && m.send == 40 && m.bus == 2 && m.mute && back.loop_fx[3].count() == 1);
+        CHECK(back.chain(loop_chain(3)).slots[0].kind == uint8_t(EffectKind::Echo) && is_loop_chain(loop_chain(0)) && !is_loop_chain(master_chain));
+        Project plain_project;
+        CHECK(load_project(save_project(plain_project, no_patterns), back, back_patterns).empty() && !back.looper.on);
+    }
+    // Stop: the loop holds silent.
+    host->send({Command::Type::Mute, uint8_t(track_count), 0, 0, 0});
+    host->send({Command::Type::Stop});
+    render(8);
+    CHECK(!host->looper().view(0).sounding);
+}
+
 int main() {
+    looper_engine();
     roll();
     stage();
     midi_tracks();

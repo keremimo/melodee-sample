@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/sample_data.h"
+#include "melodee/model/looper.h"
 #include "melodee/model/sampler.h"
 #include "surface/midi.h"
 #include <array>
@@ -104,6 +105,15 @@ public:
     bool render(const Render& job) { return renders.push(job); }
     std::string card() const; // the card's top folder; empty without one
 
+    // The Looper (docs/LOOPER.md, shell/looper_files.cpp). Commit to pad: loop `loop` into slot `slot`, as
+    // Samples/Looper/L<n> Loop m.wav, once the audio thread lets it be read. A project's loops: written as
+    // <dir>/Loop N.wav for the loops in `mask` (the others' files go), or read back into the Looper.
+    struct LoopCommit { uint8_t slot = 0, loop = 0; };
+    bool commit_loop(const LoopCommit& job) { return commits.push(job); }
+    struct LoopFiles { bool save = true; std::string dir; uint8_t mask = 0; std::array<LoopTrack, loop_tracks> loops {}; };
+    void loop_files(LoopFiles job);
+    bool loops_busy() const; // loop files still being written (leaving waits)
+
     // Any thread but audio: a copy of what is known.
     struct View {
         std::string root;  // the card's Samples folder, where Melodee writes; empty: no card
@@ -158,6 +168,17 @@ private:
     void land(unsigned slot, std::unique_ptr<SampleData> data, const char* folder, const char* stem, const char* what);
     bool rendering = false;
     Render render_job;
+    // The Looper's files: a commit waiting for its loop, file jobs in turn (shell/looper_files.cpp).
+    MidiQueue<4, LoopCommit> commits;
+    struct Waiting { bool on = false; LoopCommit job; unsigned passes = 0; };
+    Waiting committing;
+    mutable std::mutex loop_lock;
+    std::vector<LoopFiles> loop_jobs;
+    LoopFiles loop_job;
+    bool loop_job_on = false;
+    unsigned loop_at = 0, loop_passes = 0;
+    std::atomic<bool> loop_busy {false};
+    void loop_service(); // a step of the commit and the file jobs, never waiting
     std::unique_ptr<SampleData> render_data;
     WavStream render_file;
     std::string render_path;

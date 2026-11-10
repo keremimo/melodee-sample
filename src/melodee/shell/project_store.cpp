@@ -157,6 +157,28 @@ void ProjectStore::service(Hardware& hardware) {
     }
 }
 
+// A project's loops (docs/LOOPER.md) sit beside it in "<name> Loops"; that folder belongs to the project, is not
+// listed, and goes wherever the project goes.
+namespace {
+fs::path loops_of(const fs::path& project) { return project.parent_path() / (project.stem().string() + " Loops"); }
+bool is_loops_folder(const fs::path& dir, const char* extension) {
+    auto name = dir.filename().string();
+    const std::string tail = " Loops";
+    if (name.size() <= tail.size() || name.compare(name.size() - tail.size(), tail.size(), tail)) return false;
+    std::error_code error;
+    return fs::exists(dir.parent_path() / (name.substr(0, name.size() - tail.size()) + extension), error);
+}
+void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
+    std::error_code error;
+    auto source = loops_of(from);
+    if (!fs::is_directory(source, error)) return;
+    auto target = loops_of(to);
+    fs::remove_all(target, error);
+    if (copy) fs::copy(source, target, fs::copy_options::recursive, error);
+    else fs::rename(source, target, error);
+}
+} // namespace
+
 void ProjectStore::run(Request& r) {
     std::error_code error;
     switch (r.kind) {
@@ -186,11 +208,12 @@ void ProjectStore::run(Request& r) {
     case Request::Kind::Duplicate: {
         auto base = fs::path(r.path).stem().string();
         auto target = free_path(base);
-        if (!target.empty()) fs::copy_file(r.path, target, error);
+        if (!target.empty()) { fs::copy_file(r.path, target, error); carry_loops(r.path, target, true); }
         break;
     }
     case Request::Kind::Remove:
         fs::remove(r.path, error);
+        fs::remove_all(loops_of(r.path), error);
         break;
     case Request::Kind::NewFolder: {
         auto dir = root + (folder.empty() ? "" : "/" + folder);
@@ -213,6 +236,7 @@ void ProjectStore::run(Request& r) {
         if (fs::exists(target, error)) { publish_message("A project has that name"); return; }
         fs::rename(r.path, target, error);
         if (error) { publish_message("Could not rename"); return; }
+        carry_loops(r.path, target, false);
         if (start == r.path) { start = target.string(); write_settings(error); }
         break;
     }
@@ -227,6 +251,7 @@ void ProjectStore::run(Request& r) {
         }
         fs::rename(r.path, target, error);
         if (error) { publish_message("Could not move"); return; }
+        carry_loops(r.path, target, false);
         if (start == r.path) { start = target.string(); write_settings(error); }
         std::lock_guard<std::mutex> guard(lock);
         known.moved_from = r.path; known.moved_to = target.string();
@@ -271,6 +296,7 @@ void ProjectStore::scan() {
             e.path = item.path().string();
             e.name = item.path().stem().string();
             if (item.is_directory(error)) {
+                if (is_loops_folder(item.path(), extension)) continue; // a project's loops
                 e.kind = ProjectEntry::Kind::Folder;
                 for (const auto& inner : fs::directory_iterator(item.path(), error)) e.projects += inner.path().extension() == extension;
             } else if (item.path().extension() == extension) {
@@ -294,7 +320,7 @@ void ProjectStore::scan() {
     if (!root.empty()) {
         std::function<void(const fs::path&, const std::string&, unsigned)> walk = [&](const fs::path& at, const std::string& rel, unsigned depth) {
             for (const auto& item : fs::directory_iterator(at, error)) {
-                if (!item.is_directory(error) || folders.size() >= 128) continue;
+                if (!item.is_directory(error) || folders.size() >= 128 || is_loops_folder(item.path(), extension)) continue;
                 auto name = rel.empty() ? item.path().filename().string() : rel + "/" + item.path().filename().string();
                 folders.push_back(name);
                 if (depth < 4) walk(item.path(), name, depth + 1);

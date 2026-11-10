@@ -110,6 +110,7 @@ void SampleLibrary::service(Hardware& hardware) {
     drain_render(); // a render's frames, as they come, every pass
     uint8_t recall_slot;
     if (recalls.pop(recall_slot)) save_recall(recall_slot);
+    loop_service(); // the Looper's commit and files (shell/looper_files.cpp)
     // Samples the audio thread has let go of.
     const SampleData* gone = nullptr;
     while (host.take_retired(gone)) {

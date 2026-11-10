@@ -324,6 +324,9 @@ public:
     std::array<Played, 512> history {};
     unsigned history_at = 0;
     void set_arp(bool on);
+    // The Looper (shell/looper_jobs.cpp): refusals already said, and whether a loop records (the metronome's Rec).
+    std::array<unsigned, loop_tracks> loop_errors {};
+    bool loop_click = false;
     void set_click(unsigned mode); // the metronome: 0 off, 1 on, 2 only while Seq Record
     void send_click();
     // Capture: the selected track's last bars from the history into a pattern.

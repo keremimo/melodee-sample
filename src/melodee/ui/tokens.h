@@ -31,6 +31,12 @@ constexpr std::array<std::array<uint32_t, 3>, 16> track_shades {{
 }};
 inline juce::Colour track_colour(unsigned track) { return hex(track_shades[track % 16][0]); }
 inline juce::Colour knob_shade(unsigned track, unsigned knob) { return hex(track_shades[track % 16][knob % 3]); }
+// The Looper's tracks L1-L4 (docs/LOOPER.md): colours of their own, apart from the sixteen, shaded the same way.
+constexpr std::array<std::array<uint32_t, 3>, 4> loop_shades {{
+    {0x6FD3FF, 0x6FA6FF, 0x6FFFE5}, {0xFFA36F, 0xFF7A6F, 0xFFD06F}, {0xC09CFF, 0x9C9EFF, 0xE69CFF}, {0x7DEBA6, 0x7DEBD9, 0xA4EB7D},
+}};
+inline juce::Colour loop_colour(unsigned loop) { return hex(loop_shades[loop % 4][0]); }
+inline juce::Colour loop_shade(unsigned loop, unsigned knob) { return hex(loop_shades[loop % 4][knob % 3]); }
 
 // Zones, top to bottom, at device size.
 namespace zone {

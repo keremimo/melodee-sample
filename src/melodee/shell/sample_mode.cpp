@@ -87,12 +87,18 @@ void levels_button(Context& c) {
     auto& t = c.track();
     auto& ui = c.ui;
     bool kit = t.engine == EngineKind::Sampler;
-    if (!t.used()) { c.notice("16 Levels: an empty track"); return; }
-    if (ui.shift) { // the type: Velocity, Filter (kit pads), Tune, then Melodee's Scale
-        static const LevelsKind kit_order[] {LevelsKind::Velocity, LevelsKind::Filter, LevelsKind::Tune, LevelsKind::Scale};
-        static const LevelsKind synth_order[] {LevelsKind::Velocity, LevelsKind::Tune, LevelsKind::Scale};
-        const LevelsKind* order = kit ? kit_order : synth_order;
-        unsigned count = kit ? 4 : 3, at = 0;
+    // Loop (docs/LOOPER.md): 16 Levels opens the Looper, its pads the loop grid; again goes back.
+    if (!ui.shift && t.levels_kind == unsigned(LevelsKind::Loop)) {
+        if (ui.page == PageId::Looper) c.back(); else c.open(PageId::Looper);
+        return;
+    }
+    if (!t.used() && !ui.shift) { c.notice("16 Levels: an empty track"); return; }
+    if (ui.shift) { // the type: Velocity, Filter (kit pads), Tune, then Melodee's Scale and the Looper's Loop
+        static const LevelsKind kit_order[] {LevelsKind::Velocity, LevelsKind::Filter, LevelsKind::Tune, LevelsKind::Scale, LevelsKind::Loop};
+        static const LevelsKind synth_order[] {LevelsKind::Velocity, LevelsKind::Tune, LevelsKind::Scale, LevelsKind::Loop};
+        static const LevelsKind empty_order[] {LevelsKind::Velocity, LevelsKind::Loop};
+        const LevelsKind* order = !t.used() ? empty_order : kit ? kit_order : synth_order;
+        unsigned count = !t.used() ? 2 : kit ? 5 : 4, at = 0;
         for (unsigned n = 0; n < count; ++n) if (unsigned(order[n]) == t.levels_kind) at = n;
         t.levels_kind = uint8_t(order[(at + 1) % count]);
         ui.levels_hit = -1;

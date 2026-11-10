@@ -5,12 +5,14 @@
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/demo_projects.h"
+#include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/midi_io.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/snapshot.h"
 #include "melodee/shell/ui_state.h"
 #include "runtime/app.h"
+#include "surface/leds.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -39,6 +41,7 @@ public:
     void midi_lost();
     void midi_output(MidiOutput& out, MidiIo::Clock::time_point now, uint32_t now_ms);
     void midi_panic(uint32_t now_ms); // `melodee-midi panic`, as MIDI Config's row
+    void looper_ask(const LooperAsk& ask, uint32_t now_ms); // `melodee-looper` (shell/looper_jobs.h)
     float volume() const { return main_volume.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
     // Any thread: Settings' sample rate and buffer (periods), once the card's settings are read; until then the default.
@@ -82,6 +85,7 @@ private:
     std::atomic<uint64_t> button_levels {0};
     std::atomic<uint32_t> pads_lit {0}; // the pads lit, a bit each, for `status`
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
+    Rgb loop_light(unsigned pad, uint32_t now, bool muting) const; // the Looper's grid (shell/lights.cpp)
     void end_copy_away();  // copying stops away from the pads it copies
 
     EngineHost& host;

@@ -33,7 +33,9 @@ constexpr unsigned song_bars = 999;
 // Effects along the signal (open question 5: slot counts and four buses).
 constexpr unsigned track_slots = 6, bus_slots = 6, master_slots = 6, bus_count = 4;
 constexpr unsigned max_slots = 6;
-constexpr unsigned chain_count = track_count + bus_count + 1; // tracks, buses A-D, master
+// The Looper's four tracks, L1-L4 (docs/LOOPER.md): a mix strip and a chain each, there while it is on.
+constexpr unsigned loop_tracks = 4;
+constexpr unsigned chain_count = track_count + bus_count + 1 + loop_tracks; // tracks, buses A-D, master, L1-L4
 constexpr unsigned effect_kinds = 42;                          // EffectKind::Count, None included (engine/effect_info.h checks)
 constexpr unsigned pad_slots = 4;                              // each sampler pad's own chain (PadFX)
 // Motion lanes name engine parameters (0..max_params-1), then the track

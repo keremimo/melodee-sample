@@ -37,6 +37,7 @@ std::array<Binding, 3> favourite_bindings(const Track& track) {
 }
 
 unsigned page_chain(const Project& project, const UiState& ui) {
+    if (ui.page == PageId::Rack && ui.fx_loop >= 0) return loop_chain(unsigned(ui.fx_loop) % loop_tracks); // the Looper's track
     if (ui.page == PageId::Bus) return bus_chain(project.tracks[ui.track % track_count].mix.bus % bus_count);
     if (ui.page == PageId::Master) return master_chain;
     if (ui.page == PageId::PadFx) { const auto& t = project.tracks[ui.track % track_count]; return pad_chain(ui.track % track_count, t.last_pad % sampler_pads); }
@@ -358,6 +359,14 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     if (ui.name.open()) return {};
     if (knob_owns(project, ui)) return knob_bindings(project, true);
     switch (ui.page) {
+    case PageId::Looper: { // Shift: feedback, Quantize, After take; on MIX Shift + K3 the bus
+        unsigned l = ui.loop % loop_tracks;
+        if (!project.looper.on || ui.loop_sheet) return {};
+        if (ui.looper_view == 1) return {Binding {}, Binding {}, Binding {Kind::LoopBus, int(l), 0, int(bus_count) - 1, project.loop_mix[l].bus}};
+        return {Binding {Kind::LoopFeedback, int(l), 0, 100, project.looper.loops[l].feedback},
+                Binding {Kind::LoopQuantize, 0, 0, int(looper::Quantize::Count) - 1, project.looper.quantize},
+                Binding {Kind::LoopThen, 0, 0, int(looper::Then::Count) - 1, project.looper.then}};
+    }
     case PageId::Record: case PageId::InputConfig: // Shift + K3: Melodee's input gain
         return {Binding {}, Binding {}, Binding {Kind::RecGain, 0, -12, 24, ui.settings.input.gain}};
     case PageId::Patterns: // Shift: any bar count, the time signature, the metronome's level (as on the MPC)
@@ -425,6 +434,19 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned count = name_suggestions(ui.name, names);
         return {Binding {Kind::NameSuggest, 0, 0, int(std::max(count, 2u)) - 1, std::min<int>(ui.name.suggestion, int(count) - 1)},
                 Binding {Kind::NameChar, 0, 0, int(NameEntry::charset_size()) - 1, int(ui.name.char_at())}, Binding {}};
+    }
+    if (ui.page == PageId::Looper) { // the Looper (docs/LOOPER.md): LOOPS, or the loop tracks' MIX
+        unsigned l = ui.loop % loop_tracks;
+        const auto& m = project.loop_mix[l];
+        if (!project.looper.on || ui.loop_sheet) return {};
+        if (ui.looper_view == 1)
+            return {Binding {Kind::LoopLevel, int(l), 0, 127, m.level}, Binding {Kind::LoopPan, int(l), -50, 50, m.pan},
+                    Binding {Kind::LoopSend, int(l), 0, 100, m.send}};
+        unsigned at = 0;
+        for (unsigned n = 0; n < looper::lengths.size(); ++n) if (looper::lengths[n] == project.looper.loops[l].bars) at = n;
+        return {Binding {Kind::LoopPick, 0, 0, int(loop_tracks) - 1, int(l)},
+                Binding {Kind::LoopLength, int(l), 0, int(looper::lengths.size()) - 1, int(at)},
+                Binding {Kind::LoopLevel, int(l), 0, 127, m.level}};
     }
     switch (ui.page) {
     case PageId::Keys:

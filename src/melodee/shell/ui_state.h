@@ -22,6 +22,7 @@ enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motio
                             MidiConfig,                        // parity phase 9: Shift + Pad 8
                             CardAccess,                        // parity phase 10b: Project's SD card access
                             Tracks,                            // Pad Bank tapped twice: the sixteen tracks, eight at a time
+                            Looper,                            // Loop tapped twice or held: the four loops (docs/LOOPER.md)
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -222,9 +223,20 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack }; // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff }; // ClearLoop: target the loop // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
+    // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),
+    // its sheet (B3 MORE) and the row under the cursor; Loop's taps (twice, or held, opens the page) and whether
+    // its press toggled the last pad's loop; the loop whose clear pad is held on the grid, since when; and the
+    // loop whose chain FX Select shows (-1: the selected track's).
+    uint8_t loop = 0, looper_view = 0, loop_row = 0;
+    bool loop_sheet = false;
+    uint32_t loop_tap_at = 0, loop_down = 0;
+    bool loop_held = false, loop_toggled = false;
+    int8_t loop_clear = -1;
+    uint32_t loop_clear_at = 0;
+    int8_t fx_loop = -1;
     // SD card access (shell/card_access.h): the card as the service thread
     // last saw it, copied in on the MIDI thread.
     CardView card;

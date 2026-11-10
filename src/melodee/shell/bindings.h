@@ -54,7 +54,10 @@ struct Binding {
         // an empty track's choosers; the Tracks screen's track and its pattern.
         StageSound, SoundList, ArpGate, ArpHold,
         NewEngine, NewSound, NewSource, NewPort, NewChannel, // NewEngine: index into new_engines()
-        TrackPick, TrackPattern
+        TrackPick, TrackPattern,
+        // The Looper (docs/LOOPER.md): the loop, its length (index into looper::lengths), the settings every loop
+        // shares; on MIX the loop track's strip (id: the loop).
+        LoopPick, LoopLength, LoopLevel, LoopFeedback, LoopQuantize, LoopThen, LoopPan, LoopSend, LoopBus
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

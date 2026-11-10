@@ -213,7 +213,8 @@ void Context::files_landed() {
             edit.pad_after = edit.pad_before;
             edit.pad_after.sound = PadSound {};
             edit.pad_after.sound.sample = uint16_t(was.slot);
-            edit.what = pad_text(loaded.name.rfind("RESAMPLE", 0) == 0 ? "Resample to" : "Audio Recall to", kit);
+            edit.what = pad_text(loaded.name.rfind("RESAMPLE", 0) == 0 ? "Resample to" : loaded.name.find(" Loop") != std::string::npos ? "Commit to"
+                                 : "Audio Recall to", kit);
             t.last_pad = uint8_t(kit);
         } else if (was.trim) { // the pad, if it still plays what was trimmed, onto the whole new file
             unsigned kit = unsigned(was.pad) % sampler_pads;

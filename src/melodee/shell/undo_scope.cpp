@@ -107,6 +107,7 @@ std::string scope_name(const Project& project, const UiState& ui, const UndoScop
     case S::Chain:
         if (s.index >= pad_chain_base) { char label[4]; pad_label((s.index - pad_chain_base) % sampler_pads, label); return std::string(label) + " FX"; }
         if (s.index == master_chain) return "Master FX";
+        if (is_loop_chain(s.index)) return "L" + std::to_string(s.index - loop_chain(0) + 1) + " FX";
         if (s.index >= track_count) return std::string("Bus ") + char('A' + (s.index - track_count) % bus_count) + " FX";
         return "T" + std::to_string(s.index + 1) + " FX";
     case S::Master:

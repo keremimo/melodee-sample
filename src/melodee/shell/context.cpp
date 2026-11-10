@@ -18,6 +18,7 @@
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/name_suggest.h"
+#include "melodee/shell/looper_jobs.h"
 #include <filesystem>
 #include <cstdio>
 #include <cstring>
@@ -41,6 +42,7 @@ void Context::save_project_to(const std::string& path) {
     if (!store || path.empty()) return;
     auto name = std::filesystem::path(path).stem().string();
     std::snprintf(project.name, sizeof(project.name), "%s", name.c_str());
+    save_loop_files(*this, path); // the loops' lengths into the project, their audio beside it (docs/LOOPER.md)
     store->save(path, melodee::save_project(project, patterns));
     project_path = path;
     dirty = false;
@@ -75,6 +77,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     project_path = path;
     dirty = false;
     samples_to_load = 0; // every sample slot again, a few each tick
+    load_loop_files(*this, path); // its loops, from beside its file (docs/LOOPER.md)
 }
 
 bool Context::reformat() {
@@ -83,6 +86,7 @@ bool Context::reformat() {
     auto* pack = new ProjectPack(project, patterns);
     Command c {Type::Reload};
     c.pack = pack;
+    c.value = 1; // the same project: its loops stay
     if (host.send(c)) return true;
     delete pack;
     return false;
@@ -99,6 +103,8 @@ void Context::open(PageId page) {
     ui.sheet_open = false;
     ui.move_open = false;
     ui.map_open = false;
+    ui.loop_sheet = false;
+    ui.fx_loop = -1; // FX Select on a loop track is set by its caller after this
     ui.picker_open = false;
     ui.song_export = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
@@ -523,6 +529,13 @@ void Context::apply(const Binding& b, int value) {
     case Kind::NewChannel: ui.new_channel = uint8_t(value); break;
     case Kind::TrackPick: select_track(unsigned(value)); ui.tracks_half = uint8_t(ui.track / 8); break;
     case Kind::TrackPattern: launch(ui.track, unsigned(value)); break;
+    // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp).
+    case Kind::LoopPick: ui.loop = uint8_t(value % loop_tracks); break;
+    case Kind::LoopLength: looper_do(*this, looper::Do::Length, ui.loop, looper::lengths[size_t(value) % looper::lengths.size()]); break;
+    case Kind::LoopFeedback: looper_do(*this, looper::Do::Feedback, ui.loop, value); break;
+    case Kind::LoopQuantize: looper_do(*this, looper::Do::Quantize, ui.loop, value); break;
+    case Kind::LoopThen: looper_do(*this, looper::Do::Then, ui.loop, value); break;
+    case Kind::LoopLevel: case Kind::LoopPan: case Kind::LoopSend: case Kind::LoopBus: set_loop_mix(*this, ui.loop, b.kind, value); break;
     case Kind::None: break;
     }
 }
@@ -1268,7 +1281,7 @@ void Context::set_click(unsigned mode) {
 
 // The audio thread only hears on or off: Rec is on while Seq Record is.
 void Context::send_click() {
-    bool on = project.click == 1 || (project.click == 2 && ui.recording);
+    bool on = project.click == 1 || (project.click == 2 && (ui.recording || loop_click)); // a loop recording counts (docs/LOOPER.md)
     send({Type::Click, 0, 0, project.click_level, int16_t(on)});
 }
 
@@ -1308,7 +1321,8 @@ void Context::play(bool external) {
     if (host.playing()) return;
     played_song = ui.page == PageId::Song;
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
-    bool count = ui.recording && ui.settings.count_in && !external;
+    // A loop armed while stopped counts in as a recording does (docs/LOOPER.md).
+    bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
     if (played_song) send({Type::Play, uint8_t(count), 0, ui.song_cursor, 1});
     else send({Type::Play, uint8_t(count)});
     if (external) send({Type::ExtSync, 0, 0, 3}); // the ticks wait for the clock's pulses
@@ -1318,7 +1332,7 @@ void Context::play(bool external) {
 void Context::play_continue(bool external) {
     if (host.playing()) return;
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
-    bool count = ui.recording && ui.settings.count_in && !external;
+    bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
     if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
     else { Command c {Type::Play, uint8_t(count)}; c.position = ui.locate; send(c); }
     if (external) send({Type::ExtSync, 0, 0, 3});

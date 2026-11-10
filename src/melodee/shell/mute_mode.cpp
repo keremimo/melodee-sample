@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/mute_mode.h"
+#include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/context.h"
 
 namespace melodee {
@@ -27,6 +28,7 @@ void set_pad_mute(Context& c, unsigned t, unsigned kit, bool on) {
 }
 
 void mute_pad(Context& c, unsigned pad, bool kit_pads) {
+    if (c.ui.page == PageId::Looper) { loop_mute_pad(c, pad); return; } // the loop tracks, a column each
     auto& ui = c.ui;
     ui.mute_used = true;
     pad %= 16;

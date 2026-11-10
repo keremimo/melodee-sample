@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/input_route.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/common.h"
@@ -39,6 +40,12 @@ void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t no
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;
     midi_io.receive(context_, port, packet);
+}
+
+void Shell::looper_ask(const LooperAsk& ask, uint32_t now) {
+    std::lock_guard<std::mutex> guard(lock);
+    context_.now = now;
+    looper_remote(context_, ask);
 }
 
 void Shell::midi_panic(uint32_t now) {
@@ -125,6 +132,7 @@ void Shell::press(Button b, bool pressed) {
     if (b == Button::Mute) { mute_button(context_, pressed); return; }         // shell/mute_mode.cpp
     if (b == Button::NoteRepeat && !ui.exit_open) { repeat_button(context_, pressed); return; } // shell/note_repeat.cpp
     if (b == Button::Sample) { if (!ui.exit_open) sample_button(context_, true); return; } // shell/sample_mode.cpp: held, a pad picks a kit pad
+    if (b == Button::Loop && !ui.exit_open) { loop_press(context_, pressed); return; } // twice or held: the Looper (shell/looper_jobs.cpp)
     if (b == Button::Erase) {
         ui.erase = pressed;
         if (!pressed) { // tapped on its own: on Roll the note in focus goes (one undo)
@@ -174,11 +182,12 @@ void Shell::press(Button b, bool pressed) {
         break;
     case Button::KnobFx:
         if (!ui.shift) { context_.knob_fx_button(); break; } // Knob FX, as on the MPC: the mode on or off (shell/knob_fx.cpp)
-        // Shift + Knob FX (FX SELECT): Melodee's effects along the signal, track, sends, bus, master
-        context_.open(ui.page == PageId::Rack ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
+        // Shift + Knob FX (FX SELECT): Melodee's effects along the signal, track, sends, bus, master;
+        // on the Looper the selected loop track's chain
+        if (ui.page == PageId::Looper && context_.project.looper.on) { int8_t l = int8_t(ui.loop % loop_tracks); context_.open(PageId::Rack); ui.fx_loop = l; break; }
+        context_.open(ui.page == PageId::Rack && ui.fx_loop < 0 ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
                       : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
         break;
-    case Button::Loop: loop_button(context_); break; // the last pad's loop; Shift: reverse (shell/sample_mode.cpp)
     case Button::Seq: // Patterns; Shift: Step Edit on a kit, Roll on a synth, again round the four
         if (ui.shift) {
             auto engine = context_.track().engine;
@@ -366,6 +375,11 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
     if (down && ui_.mute_mode()) { mute_pad(context_, pad, kit_pads()); return; } // mute mode: mute; with Shift, solo
     if (down && sample_pad(context_, pad)) return; // Sample held: the pad becomes the last pad, unheard
+    if (down && ui_.shift && ui_.page == PageId::Looper && pad >= 8 && pad < 12) { // the loop grid: play or stop at once
+        ui_.shift_used = true;
+        loop_grid_pad(context_, pad, true);
+        return;
+    }
     if (down && ui_.shift) { // the printed Shift + pad jobs, on every page but the browser (its next empty pad)
         ui_.shift_used = true;
         if (!samples_shift_pad(context_)) shift_pad(context_, pad);
@@ -470,6 +484,17 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         }
     out.song_playing = host.song_playing();
     out.song_bar = host.song_bar();
+    {
+        const auto& lp = host.looper();
+        out.looper_on = lp.enabled_now();
+        out.loop_tick = lp.beat_tick();
+        for (unsigned n = 0; n < loop_tracks; ++n) {
+            auto& l = out.loops[n];
+            l.view = lp.view(n);
+            l.meter = host.loop_meter(n);
+            if (ui_.page == PageId::Looper) for (unsigned c = 0; c < looper::peak_columns; ++c) l.peaks[c] = lp.peak(n, c);
+        }
+    }
     for (unsigned t = 0; t < track_count; ++t) out.meters[t] = host.meter(t);
     out.compression = host.compression();
     out.flex_playing = host.flex_playing();
@@ -504,7 +529,8 @@ std::string Shell::summary() const {
            + input_summary() + fx_summary() + midi_io.summary(host) + midi_config_summary() + phase10_summary() +
            // Phase 10b: SD card access (0 home, 1 lending, 2 lent, 3 returning; the note shell/card_access.h's CardNote).
            " melodee_card=" + std::to_string(card_link.state.load()) + " melodee_card_note=" + std::to_string(card_link.note.load()) +
-           " melodee_card_ejected=" + std::to_string(int(card_link.ejected.load())) + " melodee_card_locked=" + std::to_string(int(card_link.locked.load()));
+           " melodee_card_ejected=" + std::to_string(int(card_link.ejected.load())) + " melodee_card_locked=" + std::to_string(int(card_link.locked.load())) +
+           " " + looper_status(host.looper());
 }
 
 // Phase 10: undo (depth, redo waiting, the last step's name), Seq + Sample, the sampler map, DEMOS, a pot gesture open.

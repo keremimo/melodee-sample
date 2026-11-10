@@ -6,6 +6,7 @@
 #include "melodee/engine/cz.h"
 #include "melodee/engine/fm6.h"
 #include "melodee/engine/kit909.h"
+#include "melodee/engine/looper.h"
 #include "melodee/engine/master_comp.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sid.h"
@@ -92,6 +93,10 @@ public:
     // interleaved stereo floats, for the USB sources.
     void render(int32_t* out, unsigned frames, float volume, const int32_t* input = nullptr, float* stems = nullptr,
                 const float* usb = nullptr);
+    // The Looper (docs/LOOPER.md): its loops play into the tracks L1-L4, after the sixteen.
+    Looper& looper() { return loops; }
+    const Looper& looper() const { return loops; }
+    float loop_meter(unsigned loop) const { return loop_meters[loop % loop_tracks].load(std::memory_order_relaxed); }
     TakeRecorder& recorder() { return take; }
     const TakeRecorder& recorder() const { return take; }
     RecallRing& recall() { return recall_ring; }
@@ -184,7 +189,7 @@ private:
         std::array<Skip, 8> skips {};
     };
     void load_track(unsigned t, const Track& track); // a whole track's sound, kit, mix and effects
-    void load_state(const Project& project);         // all but the patterns
+    void load_state(const Project& project, bool keep_loops = false); // all but the patterns (keep_loops: the same project at a new rate)
     void run_late(Slot& slot, unsigned frames);       // a swung arp note, when its time comes
     void arp_note(Slot& slot, int key, int velocity, int from, int32_t length); // with its pad's pressure
     void apply(const Command& command);
@@ -330,6 +335,24 @@ private:
     void knob_command(const Command& c);
     MasterCompressor comp;
     MasterComp comp_settings;
+    // The Looper and its four tracks' strips; what each source played the block before, for its loops to record.
+    struct LoopStrip {
+        float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
+        bool mute = false, solo = false;
+        uint8_t bus = 0;
+        float left[block] {}, right[block] {};
+    };
+    Looper loops;
+    std::array<LoopStrip, loop_tracks> loop_strips {};
+    std::array<std::atomic<float>, loop_tracks> loop_meters {};
+    float source_l[looper::source_count][block] {}, source_r[looper::source_count][block] {};
+    unsigned source_frames = 0;
+    bool loop_restart = false; // Play or a jump: the loops line up when the sequencer next runs
+    bool loop_running = false, loop_counting = false;
+    double loop_tick = 0;      // the sequencer's place at this block's first frame (the tick it plays next, less what is left)
+    bool loop_strip_command(const Command& c); // Level, Pan, Send, Mute, Solo, SendBus for L1-L4 (track 16-19)
+    void run_loops(unsigned frames, bool solo); // the loops into their tracks, and those into the master and buses
+    void keep_sources(unsigned frames);         // this block's sources for the loops' next one
     std::array<PlayPatterns, track_count> patterns {};
     Motion motion;
     Song song;

@@ -60,7 +60,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
 }
 
 // Everything of a project but its patterns (Reload swaps those in by pointer).
-void EngineHost::load_state(const Project& project) {
+void EngineHost::load_state(const Project& project, bool keep_loops) {
     for (unsigned n = track_count; n < chain_count; ++n) { // the buses and the master; each track's in load_track()
         const auto& chain = project.chain(n);
         for (unsigned k = 0; k < max_slots; ++k) {
@@ -91,6 +91,16 @@ void EngineHost::load_state(const Project& project) {
     seq_tempo = project.seq_tempo; pattern_tempo = project.pattern_tempo;
     bar = project.bar_ticks(); beat = project.beat_ticks();
     for (unsigned t = 0; t < track_count; ++t) load_track(t, project.tracks[t]);
+    for (unsigned l = 0; l < loop_tracks; ++l) { // the Looper's tracks
+        const auto& m = project.loop_mix[l];
+        uint8_t t = uint8_t(track_count + l);
+        for (auto type : {Command::Type::Level, Command::Type::Pan, Command::Type::Send, Command::Type::Mute, Command::Type::Solo, Command::Type::SendBus}) {
+            int16_t v = type == Command::Type::Level ? m.level : type == Command::Type::Pan ? m.pan : type == Command::Type::Send ? m.send
+                      : type == Command::Type::Mute ? m.mute : type == Command::Type::Solo ? m.solo : m.bus;
+            loop_strip_command({type, t, 0, 0, v});
+        }
+    }
+    loops.configure(project.looper, keep_loops);
     knob_targets();
     lead = project.tracks[0].pattern;
     tempo = 0;
@@ -194,10 +204,31 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
     for (auto& off : slot.offs) off.key = -1;
 }
 
+bool EngineHost::loop_strip_command(const Command& c) {
+    using Type = Command::Type;
+    if (c.track < track_count || c.track >= track_count + loop_tracks) return false;
+    auto& strip = loop_strips[c.track - track_count];
+    switch (c.type) {
+    case Type::Level: strip.gain = level_gain(c.value); return true;
+    case Type::Pan: {
+        float angle = (std::clamp<int>(c.value, -50, 50) + 50) / 100.0f * dsp::pi / 2;
+        strip.pan_left = std::cos(angle); strip.pan_right = std::sin(angle);
+        return true;
+    }
+    case Type::Send: strip.send = c.value / 100.0f; return true;
+    case Type::Mute: strip.mute = c.value != 0; return true;
+    case Type::Solo: strip.solo = c.value != 0; return true;
+    case Type::SendBus: strip.bus = uint8_t(c.value % bus_count); return true;
+    default: return false;
+    }
+}
+
 void EngineHost::apply(const Command& c) {
     using Type = Command::Type;
+    if (loop_strip_command(c)) return;
     auto& slot = slots[c.track % track_count];
     switch (c.type) {
+    case Type::Looper: loops.ask(looper::Do(c.index), c.track, c.value, c.position); break;
     case Type::NoteOn:
         if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value);
         if (c.pattern != 1) midi_note(c.track % track_count, c.index, c.value, frame_now, -1); // a pad's note (not one from MIDI in)
@@ -284,7 +315,7 @@ void EngineHost::apply(const Command& c) {
             pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
             for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
             flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
-            load_state(c.pack->project);
+            load_state(c.pack->project, c.value == 1);
             reformatting = false;
             std::swap(patterns, c.pack->patterns); // the pack takes the old ones back to be freed
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
@@ -535,6 +566,7 @@ void EngineHost::apply(const Command& c) {
         song_mode = c.value == 1; song_bar_now = c.index;
         count_left = c.track == 1 ? bar : 0;
         count_beat.store(count_left ? 1 : 0, std::memory_order_relaxed);
+        loop_restart = true;
         for (auto& s : slots) {
             s.start = 0; s.clip = -1; s.silent = song_mode;
             if (s.queued != 255) { s.pattern = s.queued; s.queued = 255; }
@@ -588,6 +620,7 @@ void EngineHost::apply(const Command& c) {
         if (!running || song_mode) break;
         sync_stop(frame_now); // the clocks go on from the new place: Song Position and Continue
         tick_now = c.position; until_tick = 0; // the new place plays at once
+        loop_restart = true;
         for (auto& s : slots) { s.start = 0; for (auto& skip : s.skips) skip.key = -1; }
         tick_count.store(tick_now, std::memory_order_relaxed);
         break;
@@ -1088,12 +1121,16 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     until_arp -= frames;
     while (until_arp <= 0) { arp_tick(); until_arp += arp_tick_length(); }
     bool solo = false;
+    for (auto& strip : loop_strips) solo |= strip.solo && loops.on();
     for (auto& slot : slots) {
         solo |= slot.solo;
         std::fill(slot.buffer, slot.buffer + frames, 0.0f);
         std::fill(slot.left, slot.left + frames, 0.0f); std::fill(slot.right, slot.right + frames, 0.0f);
     }
 
+    // The Looper's time is the sequencer's at the block's first frame (run_loops() comes after the block is played).
+    loop_running = running; loop_counting = count_left > 0;
+    loop_tick = running ? double(tick_now) - until_tick / tick_length() : 0;
     // Render up to each step, play the step, carry on: steps land on the sample.
     unsigned done = 0;
     while (done < frames) {
@@ -1182,6 +1219,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         float shown = meters[t].load(std::memory_order_relaxed) * 0.97f; // a short fall
         meters[t].store(std::max(level, shown), std::memory_order_relaxed);
     }
+    run_loops(frames, solo);
     for (unsigned b = 0; b < bus_count; ++b) {
         run_chain(bus_chain(b), bus_l[b], bus_r[b], frames);
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * returns[b]; master_r[f] += bus_r[b][f] * returns[b]; }
@@ -1208,6 +1246,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (flex.active()) flex.process(master_l, master_r, frames);
     run_live(255, master_l, master_r, frames);
     comp.process(master_l, master_r, frames); // the master compressor (Shift + Pad 5), before main volume
+    if (loops.on()) { // the mix as a loop records it (as Resample hears it)
+        std::copy(master_l, master_l + frames, source_l[looper::source_mix]);
+        std::copy(master_r, master_r + frames, source_r[looper::source_mix]);
+    }
     unsigned sounding = 0;
     for (unsigned s = 0; s < live_slots; ++s) sounding |= unsigned(live[s].punch.on() || live[s].pending.waiting) << s;
     live_on.store(sounding, std::memory_order_relaxed);
@@ -1221,6 +1263,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         knob_in.process(record_l, record_r, frames);
     take.process(record_l, record_r, frames);
     recall_ring.write(record_l, record_r, frames);
+    keep_sources(frames);
     render_out.process(master_l, master_r, frames);
     // Monitor: the source heard with the mix (never the mix itself, heard already).
     if (monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample))
@@ -1241,6 +1284,63 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     output_peak.store(peak, std::memory_order_relaxed);
     if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
     frame_now += frames;
+}
+
+// The Looper's block: its clock from the sequencer's, its loops into L1-L4, each through its strip (a stereo
+// picture its pan balances), its chain, mute and solo, into the master and its send's bus.
+void EngineHost::run_loops(unsigned frames, bool solo) {
+    Looper::Clock time;
+    time.rate = dsp::sample_rate();
+    time.bar = bar; time.beat = beat;
+    time.running = loop_running;
+    time.counting = loop_counting;
+    time.per_frame = speed / tick_length();
+    time.tick = loop_tick;
+    time.restart = loop_restart && loop_running && !loop_counting;
+    if (time.restart) loop_restart = false;
+    time.input_lag = unsigned(clock.latency_frames());
+    Looper::Sources sources;
+    sources.frames = source_frames;
+    for (unsigned s = 0; s < looper::source_count; ++s) sources.at[s] = {source_l[s], source_r[s]};
+    float out_l[loop_tracks][looper::block], out_r[loop_tracks][looper::block];
+    loops.run(time, sources, frames, out_l, out_r);
+    if (!loops.on()) { for (auto& m : loop_meters) m.store(0, std::memory_order_relaxed); return; }
+    for (unsigned n = 0; n < loop_tracks; ++n) {
+        auto& strip = loop_strips[n];
+        float level = 0;
+        float l = strip.gain * strip.pan_left * 1.4142f, r = strip.gain * strip.pan_right * 1.4142f;
+        for (unsigned f = 0; f < frames; ++f) { strip.left[f] = out_l[n][f] * l; strip.right[f] = out_r[n][f] * r; }
+        run_chain(loop_chain(n), strip.left, strip.right, frames);
+        bool heard = loops.on() && !strip.mute && !(solo && !strip.solo);
+        if (heard) {
+            for (unsigned f = 0; f < frames; ++f) {
+                master_l[f] += strip.left[f]; master_r[f] += strip.right[f];
+                level = std::max(level, std::max(std::fabs(strip.left[f]), std::fabs(strip.right[f])));
+            }
+            if (strip.send > 0)
+                for (unsigned f = 0; f < frames; ++f) { bus_l[strip.bus][f] += strip.left[f] * strip.send; bus_r[strip.bus][f] += strip.right[f] * strip.send; }
+        }
+        float shown = loop_meters[n].load(std::memory_order_relaxed) * 0.97f;
+        loop_meters[n].store(std::max(level, shown), std::memory_order_relaxed);
+    }
+}
+
+// What each source played this block, for the loops to write in the next (the mix was kept after the compressor).
+void EngineHost::keep_sources(unsigned frames) {
+    source_frames = 0;
+    if (!loops.on()) return;
+    uint32_t used = loops.sources_used();
+    auto keep = [&](unsigned s, const float* l, const float* r) {
+        if (!((used >> s) & 1)) return;
+        std::copy(l, l + frames, source_l[s]); std::copy(r, r + frames, source_r[s]);
+    };
+    keep(looper::source_input, record_l, record_r);
+    for (unsigned t = 0; t < track_count; ++t) {
+        if (slots[t].engine) keep(looper::source_track(t), slots[t].left, slots[t].right);
+        else if ((used >> looper::source_track(t)) & 1) { std::fill(source_l[looper::source_track(t)], source_l[looper::source_track(t)] + frames, 0.0f); std::fill(source_r[looper::source_track(t)], source_r[looper::source_track(t)] + frames, 0.0f); }
+    }
+    for (unsigned n = 0; n < loop_tracks; ++n) keep(looper::source_loop(n), loop_strips[n].left, loop_strips[n].right);
+    source_frames = frames;
 }
 
 } // namespace melodee

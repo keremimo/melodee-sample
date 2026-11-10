@@ -91,6 +91,11 @@ void draw(Paint& p, const Snapshot& s) {
         keys.labels = {"", "PAD", "TRACK" + on};
         h.left.push_back(pill(name, c));
         h.right.push_back(tag_of(s, s.ui.track));
+    } else if (track && s.ui.fx_loop >= 0) { // a loop track's chain (docs/LOOPER.md): B1 back to the Looper
+        unsigned l = unsigned(s.ui.fx_loop) % loop_tracks;
+        c = loop_colour(l);
+        keys = SoftKeys {{back + "LOOPER", "L" + juce::String(l + 1), ""}, 1, c};
+        h.right.push_back(chip("L" + juce::String(l + 1), c));
     } else if (track) { keys.labels = {kit ? back + "PAD" : juce::String(), "TRACK", "SENDS" + on}; h.right.push_back(tag_of(s, s.ui.track)); }
     else if (s.ui.page == PageId::Bus) {
         keys.labels = {back + "SENDS", bus_name(bus), "MASTER" + on};
@@ -224,6 +229,7 @@ void soft(Context& c, int key) {
         return;
     }
     if (ui.sheet_open) { if (key == 0) ui.sheet_open = false; return; }
+    if (ui.page == PageId::Rack && ui.fx_loop >= 0) { if (key == 0) c.open(PageId::Looper); return; } // a loop track's chain
     bool kit = c.track().engine == EngineKind::Sampler;
     PageId before = ui.page == PageId::PadFx ? PageId::PadFx : ui.page == PageId::Rack ? (kit ? PageId::PadFx : PageId::Rack)
                   : ui.page == PageId::Bus ? PageId::Sends : PageId::Bus;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/looper.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/project_store.h"
@@ -66,6 +67,16 @@ struct Snapshot {
     unsigned history_at = 0;
     std::array<int16_t, 16> held_keys {};         // Arp: the first key of each pad held
     uint32_t now = 0;                        // ms, for transient highlights
+    // The Looper (docs/LOOPER.md): each loop as the engine shows it, its waveform and its track's meter; the
+    // engine on and its clock (ticks), for bar.beat.
+    struct LoopShown {
+        Looper::View view;
+        std::array<uint8_t, looper::peak_columns> peaks {};
+        float meter = 0;
+    };
+    std::array<LoopShown, loop_tracks> loops {};
+    bool looper_on = false;
+    double loop_tick = 0;
     // The audio device as it runs now (the app fills these from the runtime's session): Settings shows them.
     unsigned audio_rate = 44100, audio_periods = 3, audio_xruns = 0;
     const Track& track() const { return project.tracks[ui.track % track_count]; }

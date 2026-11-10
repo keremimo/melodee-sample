@@ -246,6 +246,31 @@ void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
     on_stage(s, 11, group, sub); s.playing = true;
 }
 
+// The Looper's previews: L1 playing with an overdub (stretched to another tempo), L2 recording a free take,
+// L3 stopped with a change waiting, L4 armed; peaks drawn as a beat would.
+void looper_scene(Snapshot& s) {
+    s.ui.page = PageId::Looper; s.playing = true; s.ui.loop = 0;
+    s.project.looper.on = true; s.looper_on = true; s.loop_tick = 384 * 2 + 96 * 2 + 10;
+    auto fill = [](Snapshot::LoopShown& l, unsigned seed) {
+        for (unsigned c = 0; c < looper::peak_columns; ++c) {
+            unsigned beat = c % 32;
+            float env = beat < 3 ? 1.0f : std::exp(-float(beat) / (8.0f + seed));
+            l.peaks[c] = uint8_t(std::min(255.0f, 40 + 200 * env * (0.6f + 0.4f * std::fabs(std::sin(c * 0.37f + seed)))));
+        }
+    };
+    auto& a = s.loops[0].view; a.state = Looper::State::Overdub; a.length = 176400; a.position = 70000; a.span = a.length; a.ticks = 4 * 384;
+    a.tempo = 1240; a.layers = 3; a.undo = looper::Undo::Undo; a.ready = true; a.stretched = true; a.source = looper::source_input; fill(s.loops[0], 1);
+    s.loops[0].meter = 0.5f;
+    auto& b = s.loops[1].view; b.state = Looper::State::Recording; b.length = 0; b.position = 60000; b.span = 176400; b.ready = true; b.layers = 1;
+    b.source = looper::source_track(2); fill(s.loops[1], 3);
+    auto& c = s.loops[2].view; c.state = Looper::State::Stopped; c.pending = Looper::Pending::Play; c.length = 44100; c.position = 12000; c.span = c.length;
+    c.ticks = 384; c.tempo = 1200; c.layers = 1; c.ready = true; c.source = looper::source_mix; fill(s.loops[2], 5);
+    auto& d = s.loops[3].view; d.state = Looper::State::Armed; d.bars = 2; d.ready = true; d.source = looper::source_loop(0);
+    s.project.looper.loops[3].bars = 2; s.project.looper.loops[1].source = looper::source_track(2);
+    s.project.loop_mix[0].level = 110; s.project.loop_mix[0].send = 30; s.project.loop_mix[1].pan = -20; s.project.loop_mix[2].mute = true;
+    s.project.loop_mix[3].solo = true; s.project.loop_mix[3].bus = 2; s.project.loop_mix[3].send = 55;
+}
+
 struct Preview {
     const char* name;
     void (*set)(Shell&, Snapshot&);
@@ -306,6 +331,20 @@ const Preview previews[] {
     {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); }},
     {"stageemptymidi", [](Shell&, Snapshot& s) { on_stage(s, 12, 2, 0); s.ui.new_channel = 3; }},
     {"tracks", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; }}, // Pad Bank tapped twice
+    // The Looper (docs/LOOPER.md): four loops in every state, the loop tracks' MIX, the loop's sheet, off, a loop's chain.
+    {"looper", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.turning = 1; s.ui.turned_at = s.now; }},
+    {"loopermix", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.looper_view = 1; s.ui.loop = 2; }},
+    {"loopersheet", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.loop_sheet = true; s.ui.loop_row = 3; }},
+    {"loopershift", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.shift = true; }},
+    {"looperoff", [](Shell&, Snapshot& s) { s.ui.page = PageId::Looper; }},
+    {"looperempty", [](Shell&, Snapshot& s) { // just turned on: one loop playing, three empty
+         looper_scene(s);
+         for (unsigned n = 1; n < loop_tracks; ++n) { s.loops[n].view = Looper::View {}; s.loops[n].view.ready = true; }
+     }},
+    {"looperfx", [](Shell&, Snapshot& s) {
+         looper_scene(s); s.ui.page = PageId::Rack; s.ui.fx_loop = 1;
+         s.project.loop_fx[1].slots[0].kind = uint8_t(EffectKind::Echo);
+     }},
     {"tracks2", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.ui.tracks_half = 1; }},
     {"keys", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
