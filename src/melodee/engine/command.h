@@ -87,7 +87,11 @@ struct Command {
         // in by MIDI and never go out again.
         MidiTrack,
         MidiSync,
-        ExtSync
+        ExtSync,
+        // Parity phase 9b, MTC in: index 0 following off; 1 locate (Start or a jump), 2 a time sample. 1 and 2: position =
+        // the frame heard when the quarter frame came (low 32 bits), micros = where the master was then (microseconds since
+        // 0:00:00:00, the hours left out). The song is placed there through the tempo playing now (1) and kept on time (2).
+        MtcIn
 
     };
     Command() = default;
@@ -98,6 +102,7 @@ struct Command {
     uint16_t index = 0;
     int16_t value = 0;
     uint32_t position = 0;
+    uint32_t micros = 0; // MtcIn
     Pattern* data = nullptr;
     MotionEvent motion {};
     ModRoute route {};

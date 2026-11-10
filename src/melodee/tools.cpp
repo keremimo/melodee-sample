@@ -622,6 +622,12 @@ const Preview previews[] {
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.playing = true; s.following = true; s.tempo = 1284;
          s.ui.settings.midi.sync_in = MidiSync::Clock;
      }},
+    {"extmtc", [](Shell&, Snapshot& s) { // the song while MTC in leads (parity phase 9b): EXT MTC, the song's own tempo
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 25; s.ui.song_view = 16; s.ui.song_zoom = 2;
+         s.playing = s.song_playing = true; s.song_bar = 25; s.ticks = 48 * 4;
+         s.following = true; s.following_mtc = true;
+         s.ui.settings.midi.sync_in = MidiSync::Mtc;
+     }},
     {"padpunch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::PadPunch; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3];

@@ -136,6 +136,11 @@ public:
     }
     unsigned midi_dropped() const { return midi_lost.load(std::memory_order_relaxed); }
     bool following() const { return ext_now.load(std::memory_order_relaxed); } // the sequencer waits for MIDI clock in
+    // MTC in (parity phase 9b): the song placed and kept on time by it; how far off it is (filtered) and the pace trim.
+    bool mtc_following() const { return mtc_now.load(std::memory_order_relaxed); }
+    int mtc_error_us() const { return mtc_error_now.load(std::memory_order_relaxed); }
+    int mtc_trim_ppm() const { return mtc_ppm.load(std::memory_order_relaxed); }
+    unsigned mtc_places() const { return mtc_placed.load(std::memory_order_relaxed); } // locates done (Start, jumps, catch-ups)
     // MIDI thread: a pattern copy the audio thread played until a newer one came (PatternData), to free.
     bool take_retired_pattern(Pattern*& pattern) { return retired_patterns.pop(pattern); }
 
@@ -218,6 +223,19 @@ private:
     std::array<uint32_t, 64> ext_ring {};                                     // pulses not let through yet: their frames
     unsigned ext_head = 0, ext_tail = 0;
     std::atomic<bool> ext_now {false};
+    // MTC in (parity phase 9b). Time code says where the song should be, not its tempo: the sequencer runs on its own
+    // tempo, a hair faster or slower (`speed`, within 0.5 %) to stay on the master's time; far off, it is placed again.
+    bool mtc_on = false;
+    double mtc_at = 0;    // the song's seconds at frame_now, as the sequencer has run them
+    double mtc_error = 0; // seconds the master is ahead of the song, filtered against jitter
+    double speed = 1;     // the sequencer's pace against the audio clock
+    unsigned mtc_misses = 0;
+    std::atomic<bool> mtc_now {false};
+    std::atomic<int> mtc_error_now {0}, mtc_ppm {0};
+    std::atomic<unsigned> mtc_placed {0};
+    void mtc_place(double seconds); // the song (or the patterns playing) to where `seconds` falls at the tempo playing now
+    void mtc_off();
+    void clips_at_bar(bool force);    // the song's clips for song_bar_now (a clip from where it stands in the bar)
     double quarter_samples() const { return tick_length() * ticks_per_quarter; }
     void follow_tempo();  // the tempo now: the global one, or the lead pattern's own (BPM per pattern)
     bool skipped(Slot& slot, unsigned key, uint32_t tick);

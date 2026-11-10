@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/midi_out.h"
 #include "melodee/shell/midi_route.h"
+#include "melodee/shell/mtc_in.h"
 #include "runtime/app.h"
 #include <array>
 #include <atomic>
@@ -17,6 +18,9 @@
 // transport and the clock's pulses lead the sequencer while Sync In is MIDI
 // Clock (each with the kernel's receive stamp, so the tempo comes out steady);
 // Program Change launches patterns; Thru sends it all on as it came.
+// While Sync In is MTC (phase 9b), time code starts, places and stops the
+// song or the patterns (shell/mtc_in.h reads it; the engine host keeps the
+// sequencer on its time).
 //
 // Out: the engine host decides on the audio thread what goes out at which of
 // its frames (pads, patterns, the clocks); here each becomes a
@@ -26,6 +30,7 @@
 namespace melodee {
 
 class Context;
+class EngineHost;
 
 class MidiIo {
 public:
@@ -33,13 +38,17 @@ public:
     void receive(Context& c, const MidiPortInfo& port, const MidiPacket& packet); // MIDI thread
     void lost(Context& c);                                                       // an input went away
     void pump(Context& c, MidiOutput& out, Clock::time_point now);               // every pass of the MIDI loop
-    std::string summary() const;                                                 // `status` fields, any thread
-    bool following() const { return ext_running.load(std::memory_order_relaxed); } // MIDI clock in leads the transport
+    std::string summary(const EngineHost& host) const;                           // `status` fields, any thread
+    // MIDI clock or MTC in leads the transport.
+    bool following() const { return ext_running.load(std::memory_order_relaxed) || mtc_leads.load(std::memory_order_relaxed); }
+    bool following_mtc() const { return mtc_leads.load(std::memory_order_relaxed); }
     unsigned tempo_in() const { return tempo_seen.load(std::memory_order_relaxed); }
 
 private:
     void configure(Context& c, bool force = false);    // MIDI Config and the tracks' channels to the engine, when they change
     void deliver(Context& c, MidiOutput& out, const MidiOutEvent& e);
+    void follow_mtc(Context& c, const MtcReader::Event& e); // what time code did: start, place, keep on time, stop
+    void send_mtc(Context& c, uint16_t what, const MtcReader::Event& e);
     void send_all(Context& c, MidiOutput& out, const MidiPacket& packet); // to every output of the chosen port
     struct Pending { int64_t due = 0; MidiOutEvent event; };
     std::array<Pending, 512> pending {}; // sorted by when it is heard
@@ -59,6 +68,12 @@ private:
     unsigned late_count = 0;
     std::atomic<unsigned> late_avg_us {0}, late_max_us {0}, jitter_in {0}, bunched {0}; // bunched: clock pulses in under 2 ms
     uint64_t last_pulse_ns = 0;
+    // MTC in: the reader; it started what plays (and the engine has taken it up); held: stopped here while the master
+    // ran on, so it waits for the master to stop before following again.
+    MtcReader mtc;
+    bool mtc_playing = false, mtc_taken = false, mtc_held = false;
+    std::atomic<bool> mtc_leads {false};
+    std::atomic<unsigned> mtc_state {0}, mtc_rate {25}, mtc_code {0}, mtc_jumps {0};
 };
 
 } // namespace melodee

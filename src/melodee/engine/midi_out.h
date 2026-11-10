@@ -66,6 +66,11 @@ public:
         double f = double(ns - published.load(std::memory_order_relaxed)) * rate.load(std::memory_order_relaxed) / 1e9;
         return f > 0 ? uint64_t(f) : 0;
     }
+    // Any thread: the frame heard at `ns` (rendered `latency` frames before; MTC in lines the song up with it).
+    uint64_t heard_frame(int64_t ns) const {
+        uint64_t f = frame_at(ns), l = latency.load(std::memory_order_relaxed);
+        return f > l ? f - l : 0;
+    }
     bool known() const { return published.load(std::memory_order_relaxed) != 0; }
 
 private:

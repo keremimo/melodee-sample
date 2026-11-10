@@ -712,7 +712,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   star on each in ALL. Kept by engine in the settings file.
 - **MIDI and sync** (parity phase 9, as Akai's midi_configuration page;
   `pages/midi_config_page.cpp`, `shell/midi_config_rows.h`,
-  `shell/midi_io.cpp`, `shell/midi_route.cpp`, `engine/midi_out.h`,
+  `shell/midi_io.cpp`, `shell/midi_route.cpp`, `shell/mtc_in.cpp`, `engine/midi_out.h`,
   `model/midi_config.h`): **MIDI Config** (Shift + Pad 8; wheel moves,
   Push opens a value, wheel changes it, Push keeps it; Minus / Plus change
   it at once; B1 back) holds MIDI Port (External: the 1/8" jacks; USB:
@@ -723,7 +723,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   on it), Pad MIDI In (Off / On), Pad MIDI Out (Never, Always, Empty: only
   notes with no sound of their own, a kit pad without a sample or a track
   without an engine, whose pattern then plays MIDI only), MIDI Sync In and
-  Out (Off, MIDI Clock, MTC; MTC in is phase 9b), MIDI Thru, Receive
+  Out (Off, MIDI Clock, MTC), MIDI Thru, Receive
   Program Change (Sequence: program 1–16 launches that pattern on every
   track), CV/Sync Out (SYNC OUT) with its Base 1–8 and Division 1–24
   (pulses a quarter: base × division, 2 by default as Volcas and Pocket
@@ -741,7 +741,31 @@ Steps, Roll and Motion B1–B3 pick those three.
   out again. With Sync In MIDI Clock, Start plays from the top, Continue
   from Song Position, Stop stops (no count-in), the tempo comes from the
   pulses (the header says EXT CLOCK) and each pulse lets the sequencer
-  through four ticks, at the frame a block after it came. **Out:** the
+  through four ticks, at the frame a block after it came. With Sync In
+  MTC (phase 9b), time code leads instead (the header says EXT MTC):
+  24, 25, 29.97 drop-frame and 30 fps, read by `shell/mtc_in.h` on the
+  MIDI thread. It follows only once two whole codes in a row agree (four
+  to six frames, 130–250 ms), then plays (no count-in; the song on Song,
+  the patterns elsewhere) placed where the master is; quarter frames
+  stopping for 120 ms, or running backwards, stop it; a code that does
+  not follow on is a jump, placed again once it settles; a full frame
+  while stopped moves the playhead (Song's cursor bar, or where Shift +
+  Play carries on). **Time to bars:** 0:00:00:00 is the start (the hours
+  are left out, so a DAW's 1:00:00:00 is the start too), turned into
+  ticks through the tempo playing at that moment (BPM per pattern: the
+  lead pattern's; the song plays at one tempo throughout), so a place is
+  `seconds × BPM / 60 × 96` ticks: in the song its bar and tick (round
+  its loop as it plays it; past its end it stops), elsewhere every
+  track's pattern from the patterns' start, as the wheel's Locate does.
+  MTC carries no tempo: while it runs, the sequencer keeps its own (a
+  pattern launched with its own BPM changes it at the bar as usual) and
+  the engine host only keeps it on the master's time, every quarter frame
+  a sample stamped by the kernel and lined up with the frame heard then
+  (audio latency made up for), averaged over about ten, trimming the
+  sequencer's pace by up to 0.5 % (a millisecond behind: 0.2 % faster);
+  four samples in a row more than 0.1 s off place it again. Stop here
+  while the master runs on: it waits for the master to stop before
+  following again. **Out:** the
   engine host decides on the audio thread what goes out at which of its
   frames (pads, 16 Levels, the arp, patterns' notes with their lengths,
   the clocks); the MIDI thread makes each a `juce::MidiMessage` and sends
@@ -892,7 +916,11 @@ Steps, Roll and Motion B1–B3 pick those three.
   `melodee_fader_at=`; phase 9 `melodee_midi_in=` / `melodee_midi_out=` (messages), `melodee_midi_last=` (the last in,
   hex), `melodee_clock_in=` (pulses), `melodee_clock_jitter_us=` (their spread by the kernel's stamps),
   `melodee_clock_bunched=` (pulses under 2 ms apart), `melodee_ext=` (clock in leads), `melodee_ext_tempo=`,
-  `melodee_cv_pulses=`, `melodee_cv_ok=`, `melodee_mtc_in=`, `melodee_midi_late_us=avg/max` (how late the MIDI thread
+  `melodee_cv_pulses=`, `melodee_cv_ok=`, `melodee_mtc_in=` (quarter and full frames), phase 9b `melodee_mtc=` (0 idle,
+  1 settling, 2 running), `melodee_mtc_rate=` (24, 25, 2997, 30), `melodee_mtc_code=` (mm:ss:ff of the last whole code),
+  `melodee_mtc_jumps=`, `melodee_mtc_leads=`, `melodee_mtc_error_us=` (how far the song is behind the master, averaged),
+  `melodee_mtc_trim_ppm=` (the pace trim), `melodee_mtc_places=` (Start, jumps and catch-ups), `melodee_ticks=` (the
+  sequencer's tick since Play), `melodee_song_bar=`, `melodee_midi_late_us=avg/max` (how late the MIDI thread
   sends against the frame heard, per 200 messages), and MIDI Config's `melodee_midi_port=` (0 External, 1 USB),
   `melodee_midi_in_ch=`, `melodee_midi_out_ch=`, `melodee_pad_in=`, `melodee_pad_out=`, `melodee_sync_in=`,
   `melodee_sync_out=` (0 Off, 1 Clock, 2 MTC), `melodee_thru=`, `melodee_program_change=`, `melodee_cv_out=`,
@@ -904,7 +932,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
   levelsfilter, levelssynth, punch, padpunch, padfx, knobfx, knobfxtracks, knobfxbypass, knobfxstage, knobfxshift,
-  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, fader, fadersynth, fadercard, faderpickup, fadersettings, midiconfig, midiconfigcv, midireset, extclock, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, fader, fadersynth, fadercard, faderpickup, fadersettings, midiconfig, midiconfigcv, midireset, extclock, extmtc, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

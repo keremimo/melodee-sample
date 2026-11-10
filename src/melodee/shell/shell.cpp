@@ -378,6 +378,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.tempo = context_.tempo_now();
     // MIDI clock in leads the tempo while Sync In is on and a clock comes.
     out.following = midi_io.following();
+    out.following_mtc = midi_io.following_mtc();
     if (ui_.settings.midi.sync_in == MidiSync::Clock && midi_io.tempo_in()) out.tempo = host.tempo_now();
     {
         const auto& r = host.recorder();
@@ -435,7 +436,7 @@ std::string Shell::summary() const {
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
            " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary()
-           + input_summary() + fx_summary() + midi_io.summary() + midi_config_summary();
+           + input_summary() + fx_summary() + midi_io.summary(host) + midi_config_summary();
 }
 
 // Phase 9: MIDI Config as set (the settings are the MIDI thread's; these are copies taken in lights()).

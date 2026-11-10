@@ -442,6 +442,26 @@ void EngineHost::apply(const Command& c) {
         sync.set_external(ext_gate);
         ext_now.store(ext_gate, std::memory_order_relaxed);
         break;
+    case Type::MtcIn: {
+        if (c.index == 0) { mtc_off(); break; }
+        if (!running) break;
+        // Where the master is at this block's first frame: it was at `micros` when frame `position` was heard.
+        int32_t ago = int32_t(uint32_t(frame_now) - c.position);
+        double master = c.micros / 1e6 + ago / clock.frames_a_second();
+        double error = master - mtc_at;
+        if (c.index == 1 && !(mtc_on && std::fabs(error) < 0.02)) { mtc_place(master); break; } // the same place: no jump
+        if (!mtc_on) break;
+        if (std::fabs(error) > 0.1) { // a stray sample, or the song fell far behind (an overload): placed again
+            if (++mtc_misses >= 4) mtc_place(master);
+            break;
+        }
+        mtc_misses = 0;
+        mtc_error += 0.1 * (error - mtc_error);                 // jitter averaged over about ten quarter frames
+        speed = 1 + std::clamp(mtc_error * 2, -0.005, 0.005);  // a millisecond behind: 0.2 % faster until caught up
+        mtc_error_now.store(int(mtc_error * 1e6), std::memory_order_relaxed);
+        mtc_ppm.store(int(std::lround((speed - 1) * 1e6)), std::memory_order_relaxed);
+        break;
+    }
     case Type::Audition:
         if (slot.engine == &slot.sampler) slot.sampler.audition(c.pad.sample, c.pad.start, c.pad.end, c.value);
         break;
@@ -489,6 +509,7 @@ void EngineHost::apply(const Command& c) {
     case Type::SongLoop: song.loop_start = c.index; song.loop_end = uint16_t(c.value); break;
     case Type::Play:
         if (running) break;
+        mtc_off(); // MTC in places it right after (MtcIn locate)
         running = true; until_tick = 0;
         tick_now = c.value == 1 ? 0 : c.position;
         arp_ticks = 0; until_arp = 0; // the repeats line up with the bar, so their swing falls with the sequencer's
@@ -507,6 +528,7 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Stop:
         running = false;
+        mtc_off();
         sync_stop(frame_now);
         midi_all_off(255, frame_now);
         render_out.cancel(); // a render stopped by hand is dropped; one in its tail ends there
@@ -652,21 +674,66 @@ void EngineHost::bar_start() {
         for (auto& s : slots) for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
         return;
     }
+    clips_at_bar(false);
+}
+
+void EngineHost::clips_at_bar(bool force) {
     bar_now.store(song_bar_now, std::memory_order_relaxed);
+    uint32_t bar_tick = tick_now - tick_now % bar; // the tick this bar began on
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         int index = song.clip_at(t, song_bar_now);
         slot.silent = index < 0 || song.clips[size_t(index)].muted;
         if (slot.silent) { slot.clip = -1; positions_now[t].store(-1, std::memory_order_relaxed); continue; }
         const auto& clip = song.clips[size_t(index)];
-        if (index != slot.clip || song_bar_now == clip.bar) {
+        if (force || index != slot.clip || song_bar_now == clip.bar) {
             // A clip starts (or the loop came back into it): its pattern from where the clip says.
             slot.clip = index;
             slot.pattern = clip.pattern;
-            slot.start = tick_now - (song_bar_now - clip.bar) * bar;
+            slot.start = bar_tick - (song_bar_now - clip.bar) * bar;
             patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
         }
     }
+}
+
+void EngineHost::mtc_off() {
+    mtc_on = false; speed = 1; mtc_error = 0; mtc_misses = 0;
+    mtc_now.store(false, std::memory_order_relaxed);
+    mtc_error_now.store(0, std::memory_order_relaxed); mtc_ppm.store(0, std::memory_order_relaxed);
+}
+
+// MTC in: time to the song through the tempo playing now (BPM per pattern: the lead pattern's; in the song, the one it
+// plays at). Patterns: every track from the patterns' start, as Locate (the tick since Play, each track's pattern round
+// as many times as fits). Song: the bar and the tick in it, round the loop as the song plays it; past its end, it stops.
+void EngineHost::mtc_place(double seconds) {
+    double ticks = std::max(0.0, seconds) * tempo / 10.0 / 60.0 * ticks_per_quarter;
+    auto at = uint32_t(std::ceil(ticks - 1e-9));
+    sync_stop(frame_now); // the clocks out go on from the new place
+    count_left = 0; count_beat.store(0, std::memory_order_relaxed);
+    until_tick = (at - ticks) * tick_length(); // the tick after the place, to the sample
+    for (auto& s : slots) for (auto& skip : s.skips) skip.key = -1;
+    if (song_mode) {
+        unsigned b = at / bar, offset = at % bar;
+        if (song.looping() && b >= song.loop_end) b = song.loop_start + (b - song.loop_start) % (song.loop_end - song.loop_start);
+        tick_now = b * bar + offset;
+        for (auto& s : slots) s.clip = -1; // every clip from the new place
+        if (offset == 0) {
+            song_bar_now = b ? b - 1 : 0; // the first tick's bar_start() moves it on to b (and finds its end)
+        } else if (!song.looping() && !song_recording && b >= std::max(song.length(), 1u)) {
+            running = false; // past the song's end
+            for (auto& s : slots) for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
+        } else {
+            song_bar_now = b;
+            clips_at_bar(true);
+        }
+    } else {
+        tick_now = at;
+        for (auto& s : slots) s.start = 0;
+    }
+    tick_count.store(tick_now, std::memory_order_relaxed);
+    mtc_on = running; mtc_at = seconds; mtc_error = 0; speed = 1; mtc_misses = 0;
+    mtc_now.store(mtc_on, std::memory_order_relaxed);
+    mtc_placed.fetch_add(1, std::memory_order_relaxed);
 }
 
 void EngineHost::arp_tick() {
@@ -959,7 +1026,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 if (!held) { block_at = done; tick(); continue; }
                 if (ext_tail != ext_head) n = std::clamp<unsigned>(unsigned(int32_t(ext_ring[ext_tail] - uint32_t(frame_now + done))), 1, n);
             } else {
-                n = std::min<unsigned>(n, unsigned(std::ceil(until_tick)));
+                n = std::min<unsigned>(n, unsigned(std::ceil(until_tick / speed)));
             }
         }
         for (auto& slot : slots) {
@@ -970,11 +1037,15 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             else slot.engine->render(slot.buffer + done, n);
         }
         sync.run(frame_now + done, n, quarter_samples(), [&](const MidiOutEvent& e) { emit(e); });
-        if (running && !held) until_tick -= n;
+        if (running && !held) {
+            until_tick -= n * speed;                                     // MTC in trims the pace; 1 otherwise
+            if (mtc_on) mtc_at += n * speed / clock.frames_a_second();
+        }
         done += n;
     }
     midi_offs_due(frame_now + frames);
     if (!running && sync_started) sync_stop(frame_now + frames); // the song came to its end
+    if (!running && mtc_on) mtc_off();                           // and MTC in no longer leads it
     is_playing.store(running, std::memory_order_relaxed);
 
     // The signal: each track panned, through its chain, into the master and

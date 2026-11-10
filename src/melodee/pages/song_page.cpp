@@ -84,7 +84,8 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill("BAR " + juce::String(cursor + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + clock_of(cursor, s.project.tempo, s.project.bar_ticks())));
     if (zoom == song_zooms[0]) h.left.push_back(pill("SNAP 1 BAR"));
-    else if (song.looping()) h.left.push_back(pill("LOOP " + juce::String(song.loop_start + 1) + dash() + juce::String(song.loop_end), colour::text));
+    // Following MIDI clock or MTC in, its chip takes the loop's room (the ruler's brace still shows the loop).
+    else if (song.looping() && !s.following) h.left.push_back(pill("LOOP " + juce::String(song.loop_start + 1) + dash() + juce::String(song.loop_end), colour::text));
     h.right.push_back(tag_of(s, s.ui.track));
 
     if (s.ui.sheet_open && selected_clip >= 0) {

@@ -120,8 +120,17 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (c.host.playing()) c.stop();
         return;
     }
-    if (m.isQuarterFrame() || m.isFullFrame()) { // MTC in: phase 9b
+    if (m.isQuarterFrame() || m.isFullFrame()) { // MTC in (phase 9b)
         mtc_in.fetch_add(1, std::memory_order_relaxed);
+        if (config.sync_in != MidiSync::Mtc) return;
+        if (m.isQuarterFrame()) {
+            if (packet.size >= 2) follow_mtc(c, mtc.quarter(packet.bytes[1], packet.timestamp_ns));
+        } else {
+            int h = 0, mi = 0, s = 0, f = 0;
+            juce::MidiMessage::SmpteTimecodeType type {};
+            m.getFullFrameParameters(h, mi, s, f, type);
+            follow_mtc(c, mtc.full(unsigned(h), unsigned(mi), unsigned(s), unsigned(f), MtcRate(int(type) & 3), packet.timestamp_ns));
+        }
         return;
     }
     if (packet.size > 3 || packet.bytes[0] >= 0xf0) return;
@@ -183,6 +192,56 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     }
 }
 
+// --- MTC in ---
+
+void MidiIo::send_mtc(Context& c, uint16_t what, const MtcReader::Event& e) {
+    Command cmd {Type::MtcIn, 0, 0, what};
+    cmd.position = uint32_t(c.host.audio_clock().heard_frame(int64_t(e.ns))); // the master was at e.seconds when this was heard
+    cmd.micros = uint32_t(std::clamp(e.seconds, 0.0, 4000.0) * 1e6);
+    c.send(cmd);
+}
+
+void MidiIo::follow_mtc(Context& c, const MtcReader::Event& e) {
+    using K = MtcReader::Event::Kind;
+    mtc_state.store(mtc.running() ? 2 : mtc.settling() ? 1 : 0, std::memory_order_relaxed);
+    switch (e.kind) {
+    case K::None: break;
+    case K::Cue: { // the master located while stopped: the playhead there, as Play would start it
+        if (c.host.playing()) break;
+        double ticks = e.seconds * c.project.tempo_of(c.ui.lead_pattern) / 10.0 / 60.0 * ticks_per_quarter;
+        if (c.ui.page == PageId::Song) {
+            const auto& song = c.project.song;
+            auto bar = unsigned(ticks / c.project.bar_ticks());
+            if (song.looping() && bar >= song.loop_end) bar = song.loop_start + (bar - song.loop_start) % (song.loop_end - song.loop_start);
+            c.ui.song_cursor = uint16_t(std::min(bar, 65535u));
+        } else {
+            c.ui.locate = uint32_t(ticks) % std::max<uint32_t>(c.pattern().length, 1);
+        }
+        break;
+    }
+    case K::Start:
+    case K::Jump:
+        if (mtc_held) break; // stopped here: not until the master stops and starts again
+        if (!c.host.playing() && !mtc_playing) c.play(true); // no count-in; the song on Song, else the patterns
+        if (!mtc_playing) mtc_taken = false;
+        mtc_playing = true;
+        send_mtc(c, 1, e);
+        break;
+    case K::Time:
+        if (mtc_playing) send_mtc(c, 2, e);
+        break;
+    case K::Stop:
+        if (mtc_playing && c.host.playing()) c.stop();
+        mtc_playing = mtc_taken = mtc_held = false;
+        break;
+    }
+    mtc_leads.store(mtc_playing && !mtc_held, std::memory_order_relaxed);
+    mtc_rate.store(mtc.rate() == MtcRate::Fps24 ? 24 : mtc.rate() == MtcRate::Fps25 ? 25 : mtc.rate() == MtcRate::Fps30 ? 30 : 2997,
+                   std::memory_order_relaxed);
+    mtc_code.store(mtc.frame(), std::memory_order_relaxed);
+    mtc_jumps.store(mtc.jumps(), std::memory_order_relaxed);
+}
+
 void MidiIo::lost(Context& c) {
     c.midi_release_all();
     if (ext_running.exchange(false)) c.send({Type::ExtSync, 0, 0, 4});
@@ -205,6 +264,12 @@ void MidiIo::configure(Context& c, bool force) {
         if (!configured || follow != (config_sent.sync_in == MidiSync::Clock)) {
             c.send({Type::ExtSync, 0, 0, 0, int16_t(follow)});
             if (!follow) { ext_running.store(false); tempo_sent = 0; tempo_seen.store(0); follower.reset(); }
+        }
+        if (config.sync_in != MidiSync::Mtc && configured && config_sent.sync_in == MidiSync::Mtc) { // MTC no longer leads
+            mtc.reset();
+            if (mtc_playing) c.send({Type::MtcIn, 0, 0, 0}); // what plays carries on by itself
+            mtc_playing = mtc_taken = mtc_held = false;
+            mtc_leads.store(false); mtc_state.store(0);
         }
         config_sent = config;
     }
@@ -262,6 +327,15 @@ void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
 
 void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     configure(c);
+    if (c.ui.settings.midi.sync_in == MidiSync::Mtc) {
+        follow_mtc(c, mtc.idle(uint64_t(ns_of(now)))); // the quarter frames stopped: Stop
+        // Stopped here (Stop, the song's end, Play elsewhere) while the master runs on: wait for it to stop.
+        if (mtc_playing && c.host.mtc_following()) mtc_taken = true;
+        else if (mtc_playing && mtc_taken && !c.host.mtc_following()) {
+            mtc_playing = mtc_taken = false; mtc_held = mtc.running() || mtc.settling();
+            mtc_leads.store(false, std::memory_order_relaxed);
+        }
+    }
     for (unsigned n = 0; n < thru_count; ++n) send_all(c, out, thru[n]);
     thru_count = 0;
     const auto& clock = c.host.audio_clock();
@@ -294,14 +368,28 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     if (pending_count) out.wake_at(Clock::time_point(std::chrono::nanoseconds(pending[0].due)));
 }
 
-std::string MidiIo::summary() const {
+std::string MidiIo::summary(const EngineHost& host) const {
     char last[16];
     std::snprintf(last, sizeof(last), "%06x", last_in.load());
+    // MTC in: 0 idle, 1 settling, 2 running; the rate (2997 drop-frame); the last code read whole; jumps; leading;
+    // how far the song is behind the master (filtered) and the pace trim; places (Start, jumps, catch-ups); where the
+    // sequencer is (ticks since Play, the song's bar).
+    unsigned minutes = 0, seconds = 0, frames = 0, rate = mtc_rate.load();
+    mtc_code_of(mtc_code.load(), rate == 24 ? MtcRate::Fps24 : rate == 25 ? MtcRate::Fps25 : rate == 30 ? MtcRate::Fps30 : MtcRate::Fps2997Drop,
+                minutes, seconds, frames);
+    char code[16];
+    std::snprintf(code, sizeof(code), "%02u:%02u:%02u", minutes, seconds, frames);
+    std::string mtc_summary = " melodee_mtc=" + std::to_string(mtc_state.load()) + " melodee_mtc_rate=" + std::to_string(rate) +
+                              " melodee_mtc_code=" + code + " melodee_mtc_jumps=" + std::to_string(mtc_jumps.load()) +
+                              " melodee_mtc_leads=" + std::to_string(int(mtc_leads.load())) + " melodee_mtc_error_us=" +
+                              std::to_string(host.mtc_error_us()) + " melodee_mtc_trim_ppm=" + std::to_string(host.mtc_trim_ppm()) +
+                              " melodee_mtc_places=" + std::to_string(host.mtc_places()) + " melodee_ticks=" +
+                              std::to_string(host.ticks()) + " melodee_song_bar=" + std::to_string(host.song_bar());
     return " melodee_midi_in=" + std::to_string(ins.load()) + " melodee_midi_out=" + std::to_string(outs.load()) +
            " melodee_midi_last=" + last + " melodee_clock_in=" + std::to_string(pulses_in.load()) +
            " melodee_clock_jitter_us=" + std::to_string(jitter_in.load()) + " melodee_clock_bunched=" + std::to_string(bunched.load()) + " melodee_ext=" + std::to_string(int(ext_running.load())) + " melodee_ext_tempo=" + std::to_string(tempo_seen.load()) +
            " melodee_cv_pulses=" + std::to_string(cv_pulses.load()) + " melodee_cv_ok=" + std::to_string(int(cv_ok.load())) +
-           " melodee_mtc_in=" + std::to_string(mtc_in.load()) + " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
+           " melodee_mtc_in=" + std::to_string(mtc_in.load()) + mtc_summary + " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
            std::to_string(late_max_us.load());
 }
 

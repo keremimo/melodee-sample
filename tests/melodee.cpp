@@ -25,6 +25,7 @@
 #include "melodee/shell/settings.h"
 #include "melodee/shell/fader_job.h"
 #include "melodee/shell/midi_route.h"
+#include "melodee/shell/mtc_in.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/engine/midi_out.h"
 #include "melodee/shell/takeover.h"
@@ -2932,8 +2933,211 @@ void midi_and_sync() {
     }
 }
 
+// MTC in (parity phase 9b): generated time code at each rate, read, settled, followed through jitter, a jump, a lost
+// piece, Stop and running backwards; then the engine host placing the patterns and the song and keeping them on time.
+struct Qf { uint8_t data; uint64_t ns; double seconds; };
+
+// Quarter frames from frame `first` (hour 1, as a DAW starts) for `rounds` rounds of eight; `pace` above 1 runs fast.
+std::vector<Qf> mtc_stream(MtcRate rate, uint32_t first, unsigned rounds, uint64_t start_ns, double pace = 1, uint32_t jitter_ns = 0) {
+    std::vector<Qf> out;
+    double fps = mtc_frames_a_second(rate);
+    uint32_t noise = 777;
+    for (unsigned r = 0; r < rounds; ++r) {
+        unsigned m = 0, sec = 0, f = 0, h = 1;
+        uint32_t code = first + 2 * r;
+        mtc_code_of(code, rate, m, sec, f);
+        h += code / uint32_t(std::lround(fps * 3600)); // past the hour (not reached here)
+        uint8_t nib[8] {uint8_t(f & 15), uint8_t(f >> 4), uint8_t(sec & 15), uint8_t(sec >> 4), uint8_t(m & 15), uint8_t(m >> 4),
+                        uint8_t(h & 15), uint8_t(((h >> 4) & 1) | unsigned(rate) << 1)};
+        for (unsigned k = 0; k < 8; ++k) {
+            double at = (code + k / 4.0) / fps; // where the master is as piece k goes out
+            double since = (code - first + k / 4.0) / fps / pace;
+            noise = noise * 1664525u + 1013904223u;
+            uint64_t j = jitter_ns ? (noise >> 8) % jitter_ns : 0;
+            out.push_back({uint8_t(k << 4 | nib[k]), start_ns + uint64_t(since * 1e9) + j, at});
+        }
+    }
+    return out;
+}
+
+void mtc_in() {
+    using K = MtcReader::Event::Kind;
+    // Frame indexes and back; 29.97 drop-frame skips ;00 and ;01 each minute but every tenth.
+    {
+        unsigned m = 0, s = 0, f = 0;
+        CHECK(mtc_frame_index(1, 0, 2, MtcRate::Fps2997Drop) == 1800 && mtc_frame_index(10, 0, 0, MtcRate::Fps2997Drop) == 17982);
+        mtc_code_of(1799, MtcRate::Fps2997Drop, m, s, f); CHECK(m == 0 && s == 59 && f == 29);
+        mtc_code_of(1800, MtcRate::Fps2997Drop, m, s, f); CHECK(m == 1 && s == 0 && f == 2);
+        mtc_code_of(17982, MtcRate::Fps2997Drop, m, s, f); CHECK(m == 10 && s == 0 && f == 0);
+        for (uint32_t n = 0; n < 107892; n += 7) {
+            mtc_code_of(n, MtcRate::Fps2997Drop, m, s, f);
+            CHECK(mtc_frame_index(m, s, f, MtcRate::Fps2997Drop) == n);
+        }
+        CHECK(mtc_frame_index(2, 3, 4, MtcRate::Fps24) == (2 * 60 + 3) * 24 + 4 && mtc_frame_index(0, 1, 0, MtcRate::Fps30) == 30);
+    }
+    // Each rate: settles within six frames, starts where the master is, then every quarter frame is a time sample.
+    for (auto rate : {MtcRate::Fps24, MtcRate::Fps25, MtcRate::Fps2997Drop, MtcRate::Fps30}) {
+        double fps = mtc_frames_a_second(rate);
+        // From 0:59:59 (29.97 df: across the minute, where two labels are skipped), started on piece 3, 0.2 ms jitter.
+        uint32_t first = mtc_frame_index(0, 59, 0, rate);
+        auto stream = mtc_stream(rate, first, 200, 5000000000ull, 1, 200000);
+        MtcReader reader;
+        int started = -1, times = 0, others = 0;
+        double worst = 0;
+        for (size_t n = 3; n < stream.size(); ++n) {
+            auto e = reader.quarter(stream[n].data, stream[n].ns);
+            if (e.kind == K::Start) { started = int(n); CHECK(std::fabs(e.seconds - stream[n].seconds) < 1e-6); }
+            else if (e.kind == K::Time) { ++times; worst = std::max(worst, std::fabs(e.seconds - stream[n].seconds)); }
+            else if (e.kind != K::None) ++others;
+        }
+        CHECK(started > 0 && started <= 3 + 5 + 16 && (stream[size_t(started)].ns - stream[3].ns) / 1e9 < 6 / fps);
+        CHECK(times == int(stream.size()) - started - 1 && others == 0 && worst < 1e-6 && reader.rate() == rate && reader.jumps() == 0);
+        // Quarter frames stop: Stop once, 120 ms after the last.
+        uint64_t last = stream.back().ns;
+        CHECK(reader.idle(last + 100000000).kind == K::None);
+        CHECK(reader.idle(last + 130000000).kind == K::Stop && !reader.running());
+        CHECK(reader.idle(last + 140000000).kind == K::None);
+    }
+    // A jump while running: settles again, then Jump to the new place; a lost piece is no jump.
+    {
+        MtcReader reader;
+        auto a = mtc_stream(MtcRate::Fps25, 250, 20, 1000000000ull);
+        for (auto& q : a) reader.quarter(q.data, q.ns);
+        CHECK(reader.running());
+        auto b = mtc_stream(MtcRate::Fps25, 750, 20, a.back().ns + 10000000);
+        int jumped = -1, times = 0;
+        for (size_t n = 0; n < b.size(); ++n) {
+            auto e = reader.quarter(b[n].data, b[n].ns);
+            if (e.kind == K::Jump) { jumped = int(n); CHECK(std::fabs(e.seconds - b[n].seconds) < 1e-6 && e.seconds > 30); }
+            if (e.kind == K::Time && jumped < 0) { ++times; CHECK(e.seconds < 12); } // before the new code: on from the old
+            CHECK(e.kind != K::Stop && e.kind != K::Start);
+        }
+        CHECK(jumped > 8 && jumped < 24 && times == 7 && reader.jumps() == 1); // pieces 0-6 on from the old code
+        auto c = mtc_stream(MtcRate::Fps25, 790, 10, b.back().ns + 10000000);
+        bool stray = false;
+        for (size_t n = 0; n < c.size(); ++n) {
+            if (n == 13) continue; // lost
+            auto e = reader.quarter(c[n].data, c[n].ns);
+            stray |= e.kind != K::Time && e.kind != K::None;
+            if (e.kind == K::Time) CHECK(std::fabs(e.seconds - c[n].seconds) < 1e-6);
+        }
+        CHECK(!stray && reader.jumps() == 1 && reader.running());
+        // Running backwards: Stop.
+        auto back = mtc_stream(MtcRate::Fps25, 900, 4, c.back().ns + 10000000);
+        for (auto& q : back) reader.quarter(q.data, q.ns);
+        CHECK(reader.running());
+        CHECK(reader.quarter(back[30].data, back.back().ns + 10000000).kind == K::Stop && !reader.running());
+        // A full frame while stopped is a cue; while running, the quarter frames after it place the song.
+        auto cue = reader.full(1, 2, 30, 12, MtcRate::Fps25, back.back().ns + 300000000);
+        CHECK(cue.kind == K::Cue && std::fabs(cue.seconds - (150 + 12 / 25.0)) < 1e-9);
+        auto d = mtc_stream(MtcRate::Fps25, 3762, 6, back.back().ns + 500000000);
+        int starts = 0;
+        for (auto& q : d) starts += reader.quarter(q.data, q.ns).kind == K::Start;
+        CHECK(starts == 1);
+        auto moved = reader.full(1, 0, 10, 0, MtcRate::Fps25, d.back().ns + 5000000);
+        CHECK(moved.kind == K::None && !reader.running());
+        auto e2 = mtc_stream(MtcRate::Fps25, 250, 6, d.back().ns + 10000000);
+        int jumps = 0;
+        for (auto& q : e2) jumps += reader.quarter(q.data, q.ns).kind == K::Jump;
+        CHECK(jumps == 1);
+    }
+    // The engine host: MTC places the patterns through the tempo playing, keeps them on time, catches a jump.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        project->tempo = 1200;
+        put(bank->at[0][0], 4, 45, 100);
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        std::vector<int32_t> out(256);
+        uint64_t frame = 0;
+        auto render = [&] { host.render(out.data(), 128, 1); frame += 128; };
+        auto mtc = [&](uint16_t what, double seconds, uint64_t at) {
+            Command c {Command::Type::MtcIn, 0, 0, what};
+            c.position = uint32_t(at); c.micros = uint32_t(seconds * 1e6);
+            host.send(c);
+        };
+        render();
+        host.send({Command::Type::Play});
+        mtc(1, 2.5, frame); // 2.5 s at 120 BPM: tick 480, the bar's second beat
+        render();
+        CHECK(host.playing() && host.mtc_following() && host.ticks() >= 480 && host.ticks() <= 481 && host.position_of(0) >= 96 &&
+              host.position_of(0) <= 97 && host.mtc_places() == 1);
+        // A master 0.1 % fast with up to 1 ms of jitter: the song keeps on its time, trimmed about 1000 ppm.
+        double start = 2.5;
+        uint64_t from = frame - 128; // where 2.5 s was
+        uint32_t noise = 99;
+        for (unsigned n = 0; n < 3445 * 2; ++n) { // 20 s
+            if (n % 2 == 0) {
+                double master = start + double(frame - from) / 44100 * 1.001;
+                noise = noise * 1664525u + 1013904223u;
+                int64_t late = int64_t((noise >> 8) % 44) - 22; // the stamp up to half a millisecond either way
+                mtc(2, master, uint64_t(int64_t(frame) + late));
+            }
+            render();
+        }
+        double master = start + double(frame - from) / 44100 * 1.001;
+        double ticks = master * 192;
+        CHECK(std::fabs(double(host.ticks()) - ticks) < 2 && host.mtc_places() == 1);
+        CHECK(host.mtc_trim_ppm() > 900 && host.mtc_trim_ppm() < 1100 && host.mtc_error_us() > 300 && host.mtc_error_us() < 700);
+        // A sample far off is ignored; four in a row place it again.
+        mtc(2, master + 5, frame); render();
+        CHECK(host.mtc_places() == 1);
+        for (unsigned n = 0; n < 4; ++n) { mtc(2, master + 5 + n * 128 / 44100.0, frame); render(); }
+        CHECK(host.mtc_places() == 2 && std::fabs(double(host.ticks()) - (master + 5) * 192) < 4);
+        // A locate within 20 ms of where it is: no jump.
+        mtc(1, master + 5 + 5 * 128 / 44100.0, frame); render();
+        CHECK(host.mtc_places() == 2);
+        // BPM per pattern: pattern 1 at 90 BPM leads, so 2 s is tick 288.
+        host.send({Command::Type::Stop});
+        host.send({Command::Type::PatternTempo, 0, 0, 0, 900});
+        host.send({Command::Type::SeqTempo, 0, 0, 0, 1});
+        render();
+        CHECK(!host.playing() && !host.mtc_following());
+        host.send({Command::Type::Play});
+        mtc(1, 2.0, frame);
+        render();
+        CHECK(host.ticks() >= 288 && host.ticks() <= 289);
+        host.send({Command::Type::Stop});
+        host.send({Command::Type::SeqTempo, 0, 0, 0, 0});
+        // The song: bar 5 and a beat; then round its loop (bars 3-4); past its end (no loop) it stops.
+        Clip clip; clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 8;
+        host.send([&] { Command c {Command::Type::SongClip}; c.index = 0; c.clip = clip; return c; }());
+        host.send({Command::Type::SongCount, 0, 0, 0, 1});
+        render();
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        mtc(1, 8.5, frame);
+        render();
+        CHECK(host.song_playing() && host.song_bar() == 4 && host.position_of(0) >= 96 && host.position_of(0) <= 97);
+        for (unsigned n = 0; n < 600; ++n) render(); // into bar 6: three beats left of bar 5 (1.5 s), 1.74 s rendered
+        CHECK(host.song_bar() == 5);
+        host.send({Command::Type::Stop});
+        host.send({Command::Type::SongLoop, 0, 0, 2, 4});
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        mtc(1, 10.0, frame); // bar 6 on the bar line: the loop's bar 3 (index 2 + (5 - 2) % 2 = 3)
+        render();
+        CHECK(host.song_bar() == 3 && host.position_of(0) >= 0 && host.position_of(0) <= 1);
+        host.send({Command::Type::Stop});
+        host.send({Command::Type::SongLoop, 0, 0, 0, 0});
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        mtc(1, 15.5, frame); // the last bar's last beat: the song ends by itself and MTC no longer leads
+        render();
+        CHECK(host.song_bar() == 7 && host.mtc_following());
+        for (unsigned n = 0; n < 200; ++n) render();
+        CHECK(!host.playing() && !host.mtc_following());
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        mtc(1, 20.5, frame); // bar 11 of an eight-bar song
+        render(); render();
+        CHECK(!host.playing() && !host.mtc_following());
+        CHECK(host.dropped() == 0 && host.midi_dropped() == 0);
+    }
+}
+
 int main() {
     midi_and_sync();
+    mtc_in();
     fader_and_takeover();
     pad_fx_and_flex();
     performance_effects();
