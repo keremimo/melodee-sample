@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/pages/common.h"
 #include "melodee/pages/page.h"
 #include "melodee/pages/pages.h"
 #include "surface/controls.h"
@@ -78,10 +79,20 @@ void Shell::button(Button b, bool pressed) {
     if (b == Button::Mute) { ui.mute = pressed; if (pressed) ui.shift_used |= ui.shift; return; }
     if (b == Button::Erase) {
         ui.erase = pressed;
-        if (pressed && ui.shift) { // Shift + Erase: clear the pattern in view
+        if (!pressed) return;
+        if (ui.shift && kit_pads()) { // Shift + Erase on a kit: copy a pad (again: off)
             ui.shift_used = true;
-            auto& pattern = context_.pattern();
-            for (unsigned s = 0; s < pattern.length; ++s) if (!pattern.steps[s].empty()) context_.set_step(ui.track, s, Step {});
+            ui.pad_copy = !ui.pad_copy; ui.copy_from = -1;
+            if (!ui.pad_copy) context_.notice("Copy off");
+        } else if (ui.shift) { // Shift + Erase: clear the pattern in view
+            ui.shift_used = true;
+            context_.edit_pattern(ui.track, context_.track().pattern, "Clear pattern", [&] {
+                auto& pattern = context_.pattern();
+                for (unsigned s = 0; s < pattern.length; ++s) if (!pattern.steps[s].empty()) context_.set_step(ui.track, s, Step {});
+            });
+        } else if (ui.pad_copy) { // Erase alone leaves copying
+            ui.pad_copy = false; ui.copy_from = -1;
+            context_.notice("Copy off");
         }
         return;
     }
@@ -180,10 +191,7 @@ void Shell::button(Button b, bool pressed) {
         else context_.stop();
         break;
     case Button::SeqRecord:
-        if (ui.shift) { ui.shift_used = true; context_.undo_take(); break; }
-        ui.recording = !ui.recording;
-        if (ui.recording) context_.begin_take();
-        context_.send({Command::Type::SongRecord, 0, 0, 0, int16_t(ui.recording)});
+        context_.set_recording(!ui.recording); // a take: Shift + Minus undoes it like any edit
         break;
     case Button::TapTempo:
         if (ui.shift) { context_.set_click(!context_.project.click); break; } // Shift: the metronome
@@ -198,8 +206,17 @@ void Shell::button(Button b, bool pressed) {
         else if (was) context_.set_arp(false); // a tap on the page turns it off
         break;
     }
-    case Button::Minus: if (ui.shift && play_group(ui.page)) context_.transpose(-1); else page.nudge(context_, -1); break;
-    case Button::Plus: if (ui.shift && play_group(ui.page)) context_.transpose(1); else page.nudge(context_, 1); break;
+    // Shift + Minus / Plus: undo and redo, as printed; on Keys they transpose the pads.
+    case Button::Minus:
+        if (ui.shift && ui.page == PageId::Keys) context_.transpose(-1);
+        else if (ui.shift) context_.undo();
+        else page.nudge(context_, -1);
+        break;
+    case Button::Plus:
+        if (ui.shift && ui.page == PageId::Keys) context_.transpose(1);
+        else if (ui.shift) context_.redo();
+        else page.nudge(context_, 1);
+        break;
     case Button::TopLeft: page.soft(context_, 0); break;
     case Button::TopMiddle: page.soft(context_, 1); break;
     case Button::TopRight: page.soft(context_, 2); break;
@@ -218,6 +235,7 @@ void Shell::button(Button b, bool pressed) {
         break;
     default: break;
     }
+    if (ui.pad_copy && !kit_pads()) { ui.pad_copy = false; ui.copy_from = -1; } // left the kit: copying ends
 }
 
 // A pot changes its value once it reaches it (pickup); until then the card
@@ -286,7 +304,11 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     if (down) velocity = ui_.settings.velocity(velocity); // the pad response
     if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
     if (down && !ui_.exit_open) {
-        if (ui_.pad_bank) { pad_bank_used = true; context_.select_track(pad); return; } // Pad Bank + pad: pick that track
+        if (ui_.pad_bank) { // Pad Bank + pad: pick that track
+            pad_bank_used = true; context_.select_track(pad);
+            if (ui_.pad_copy && !kit_pads()) { ui_.pad_copy = false; ui_.copy_from = -1; }
+            return;
+        }
         if (ui_.mute) {                                           // Mute + pad: mute; with Shift, solo
             const auto& mix = project_->tracks[pad].mix;
             if (ui_.shift) context_.set_solo(pad, !mix.solo);
@@ -296,7 +318,28 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     }
     if (down && ui_.exit_open) return;
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
+    if (down && kit_pads() && (ui_.pad_copy || ui_.erase)) {
+        unsigned kit = context_.track().bank % sampler_banks * 16 + pad;
+        if (!ui_.pad_copy) { context_.delete_pad(kit); return; } // Erase + pad: the pad empty
+        if (ui_.copy_from < 0) {                                    // copying: first the pad to copy
+            if (context_.track().pads[kit].used()) { ui_.copy_from = int8_t(kit); context_.track().last_pad = uint8_t(kit); }
+            else context_.notice(pad_text("Empty", kit));
+            return;
+        }
+        if (unsigned(ui_.copy_from) == kit) return;                // then where it goes
+        context_.copy_pad(unsigned(ui_.copy_from), kit);
+        context_.track().last_pad = uint8_t(kit);
+        ui_.pad_copy = false; ui_.copy_from = -1;
+        return;
+    }
     page_spec(ui_.page).pad(context_, pad, velocity, down);
+}
+
+// Whether the pads play the selected track's kit on this page, one pad each:
+// there Erase + pad deletes a pad and Shift + Erase copies one.
+bool Shell::kit_pads() const {
+    const auto& t = project_->tracks[ui_.track % track_count];
+    return t.engine == EngineKind::Sampler && !t.levels && page_spec(ui_.page).pad == play_pad;
 }
 
 void Shell::snapshot(Snapshot& out, uint32_t now) {

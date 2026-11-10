@@ -14,8 +14,8 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     static const char* const jobs[][2] {
         {"SAMPLE", "Projects"}, {"PAD BANK", "Previous pad bank"}, {"SAMPLE SELECT", "Save sound"},
         {"MUTE", "+ pad: solo track"}, {"ERASE", "Clear pattern"}, {"LOOP", "Double length"}, {"SEQ", "Quantise take"},
-        {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"SEQ RECORD", "Undo last take"},
-        {"SAMPLE RECORD", "Capture last bars"}, {"TAP TEMPO", "Metronome"}, {"\xe2\x88\x92 / +", "Transpose pads"}, {"PUSH", "Back"},
+        {"PLAY", "Continue"}, {"STOP", "All notes off"},
+        {"SAMPLE RECORD", "Capture last bars"}, {"TAP TEMPO", "Metronome"}, {"\xe2\x88\x92 / +", "Undo / redo"}, {"PUSH", "Back"},
     };
     bool song = s.ui.page == PageId::Song && !s.ui.sheet_open; // there Push names a marker instead
     p.dim_zone(zone::soft_y, zone::soft_h);
@@ -29,13 +29,36 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     p.fill(x, y, w, ph, colour::surf, 6);
     auto c = colour_of(s);
     float cw = (w - 4 - 2) / 2;
-    for (unsigned n = 0; n < 14; ++n) {
+    constexpr unsigned count = sizeof(jobs) / sizeof(jobs[0]);
+    for (unsigned n = 0; n < count; ++n) {
         unsigned column = n / 7, row = n % 7;
         float cx = x + 2 + column * (cw + 2) + 6, cy = y + 5 + row * 19;
         p.text(juce::String::fromUTF8(jobs[n][0]), cx, cy, cw - 12, 7, caps_text(c, 6));
-        const char* job = song && n == 13 ? "Marker at cursor" : jobs[n][1];
+        bool keys = s.ui.page == PageId::Keys; // there Minus / Plus transpose the pads instead
+        bool kit = s.track().engine == EngineKind::Sampler && !s.track().levels && page_spec(s.ui.page).pad == play_pad; // there Erase copies a pad
+        const char* job = song && n == count - 1 ? "Marker at cursor" : keys && n == 11 ? "Transpose pads"
+                        : kit && n == 4 ? "Copy pad" : jobs[n][1];
         p.text(job, cx, cy + 7, cw - 12, 11, plain(colour::text, 9.5f, Weight::Medium));
     }
+}
+
+// Over the header: copying a pad (until it is done), or for a moment what
+// an undo, redo, delete or copy did.
+void draw_notice(Paint& p, const Snapshot& s) {
+    juce::String text;
+    if (s.ui.pad_copy) {
+        char label[4]; pad_label(unsigned(std::max<int>(s.ui.copy_from, 0)), label);
+        text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pad") : "Copy " + juce::String(label) + ": pick where";
+    } else if (s.ui.notice[0] && s.now - s.ui.notice_at < 1500) {
+        text = juce::String(s.ui.notice);
+    } else {
+        return;
+    }
+    p.fill(0, zone::header_y, zone::width, zone::header_h, colour::bg);
+    Header h = header_of(s);
+    h.left.push_back(chip(text.toUpperCase(), s.ui.pad_copy ? colour_of(s) : colour::text));
+    h.right.push_back(tag_of(s, s.ui.track));
+    header(p, h);
 }
 
 void draw_exit_sheet(Paint& p, const Snapshot& s) {

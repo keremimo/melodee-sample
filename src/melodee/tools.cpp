@@ -244,6 +244,13 @@ const Preview previews[] {
     {"pads", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"padcopy", [](Shell&, Snapshot& s) { // Shift + Erase, then a pad: where does it go
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.pad_copy = true; s.ui.copy_from = 2;
+     }},
+    {"undo", [](Shell&, Snapshot& s) { // Shift + Minus: what came back
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
+         std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Undo Delete A05"); s.ui.notice_at = s.now;
+     }},
     {"samples", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 2; s.sample_root = "/media/card/Samples";
          const char* files[] {"AMEN TYPE", "DUST BREAK", "FUNK LOOP 04", "RHODES STAB", "TAKE 1", "TAPE HIT", "VINYL CHORD", "WOOD BLOCK"};
@@ -371,6 +378,7 @@ void draw(juce::Graphics& g, const Snapshot& s) {
     ui::Paint p(g);
     g.fillAll(ui::colour::bg);
     page_spec(s.ui.page).draw(p, s);
+    draw_notice(p, s);
     if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);
     else if (s.ui.shift && !s.ui.shift_used && !s.ui.name.open()) draw_shift_layer(p, s);

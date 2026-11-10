@@ -69,14 +69,14 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     auto& ui = c.ui;
     if (down) {
-        if (ui.erase) { c.clear_pattern(ui.track, pad); return; }
+        if (ui.erase) { c.edit_pattern(ui.track, pad, "Clear pattern", [&] { c.clear_pattern(ui.track, pad); }); return; }
         if (ui.shift) { // Shift + pad: that column on every track
             for (unsigned t = 0; t < track_count; ++t) if (c.project.tracks[t].used()) c.launch(t, pad);
             ui.shift_used = true;
             return;
         }
         if (ui.pattern_held >= 0 && ui.pattern_held != int(pad)) { // hold one, tap another: copy
-            c.copy_pattern(ui.track, unsigned(ui.pattern_held), pad);
+            c.edit_pattern(ui.track, pad, "Copy pattern", [&] { c.copy_pattern(ui.track, unsigned(ui.pattern_held), pad); });
             ui.pattern_copied = true;
             return;
         }

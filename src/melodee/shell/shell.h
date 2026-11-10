@@ -58,6 +58,7 @@ private:
     void wheel(int delta);
     void pad(unsigned pad, uint8_t velocity, bool down);
     void check_pickup(unsigned index, const Binding& binding);
+    bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
 
     EngineHost& host;
     std::unique_ptr<Project> project_;

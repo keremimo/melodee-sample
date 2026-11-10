@@ -122,7 +122,7 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     unsigned st = unsigned(c.ui.steps_bar) * bar_steps + pad % 16;
     if (st >= pattern.length) return;
     if (down) {
-        if (c.ui.erase) { c.set_step(c.ui.track, st, Step {}); return; }
+        if (c.ui.erase) { c.edit_pattern(c.ui.track, c.track().pattern, "Erase step", [&] { c.set_step(c.ui.track, st, Step {}); }); return; }
         c.ui.step_cursor = int16_t(st);
         c.ui.held_step = int16_t(st);
         c.ui.held_since = c.now;

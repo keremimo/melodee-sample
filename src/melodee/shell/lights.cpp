@@ -203,7 +203,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     lights.button(B::TapTempo, beat ? L::Bright : L::Dim);
     on(B::Mute, ui.mute);
     on(B::PadBank, ui.pad_bank);
-    lights.button(B::Erase, ui.erase ? L::Bright : L::Off);
+    lights.button(B::Erase, ui.erase || ui.pad_copy ? L::Bright : L::Off); // lit while copying a pad
 }
 
 } // namespace melodee

@@ -20,6 +20,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/history.h"
 #include "melodee/shell/name_entry.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/model/sound_file.h"
@@ -1047,7 +1048,32 @@ void names() {
 }
 } // namespace
 
+// Undo and redo: edits move between the lists, a new one drops the redos,
+// and only the last 32 are kept.
+void history() {
+    Track t;
+    t.pads[3].sample = 7; t.pads[3].pitch = 5; t.pad_fx.at[3].slots[0].kind = 2;
+    PadState copied = pad_state(t, 3);
+    set_pad_state(t, 20, copied);
+    CHECK(t.pads[20].sample == 7 && t.pads[20].pitch == 5 && t.pad_fx.at[20].slots[0].kind == 2 && t.pad_fx.at[20].size == pad_slots);
+    CHECK(pad_text("Delete", 20) == "Delete B05");
+
+    History h;
+    CHECK(!h.undo() && !h.redo());
+    for (int n = 0; n < 40; ++n) { Edit e; e.pad = int16_t(n); h.push(std::move(e)); }
+    int undone = 0;
+    while (Edit* e = h.undo()) { CHECK(e->pad == 39 - undone); ++undone; }
+    CHECK(undone == int(History::depth));
+    Edit* again = h.redo();
+    CHECK(again && again->pad == 8);   // the oldest kept
+    CHECK(h.can_redo());
+    Edit fresh; fresh.pad = 99;
+    h.push(std::move(fresh));          // a new edit: nothing to redo
+    CHECK(!h.can_redo() && h.undo()->pad == 99 && h.undo()->pad == 8 && !h.can_undo());
+}
+
 int main() {
+    history();
     names();
     settings();
     punches();

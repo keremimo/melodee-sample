@@ -23,6 +23,7 @@ const PageSpec& page_spec(PageId page);
 // Overlays drawn over any page.
 void draw_shift_layer(ui::Paint& p, const Snapshot& s);
 void draw_exit_sheet(ui::Paint& p, const Snapshot& s);
+void draw_notice(ui::Paint& p, const Snapshot& s);     // copying a pad, or what an undo did
 void draw_name_sheet(ui::Paint& p, const Snapshot& s); // while ui.name is open
 
 } // namespace melodee

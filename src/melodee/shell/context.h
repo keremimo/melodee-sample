@@ -7,6 +7,7 @@
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/history.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
 #include <vector>
@@ -42,12 +43,12 @@ public:
     void begin_punch(unsigned kind, uint8_t target, uint8_t depth);
     void end_punch();
     unsigned song_sixteenth() const;                   // where the song is, in sixteenths
-    // The last take: what it may be undone to, and where each note fell.
+    // The last take: where each note fell (for Quantise), and while Seq
+    // Record is on, the edit it becomes in the history when it goes off.
     struct TakeNote { uint16_t step = 0; uint8_t key = 0; bool late = false; };
     std::array<TakeNote, 256> take_notes {};
     unsigned take_count = 0;
-    std::unique_ptr<Pattern> before_take;
-    std::unique_ptr<Song> song_before_take;
+    std::unique_ptr<Edit> take_edit;
     int take_track = -1, take_pattern = -1;
     bool played_song = false; // the last Play was the song's
     EngineHost& host;
@@ -98,9 +99,8 @@ public:
     void double_length();     // Shift + Loop: the pattern twice as long, played twice
     void quantise_take();     // Shift + Seq: the last take's late notes onto their nearest step
     void play_continue();     // Shift + Play: on from where it stopped
-    void undo_take();         // Shift + Seq Record: back to before the last take
-    void transpose(int way);  // Shift + Minus / Plus: the pads by a semitone
-    void begin_take();        // Seq Record on: what the take may be undone to
+    void transpose(int way);  // Shift + Minus / Plus on Keys: the pads by a semitone
+    void set_recording(bool on); // Seq Record: a take begins; when it ends it goes into the history
     void sync_punches();
     // Mix
     void set_mute(unsigned track, bool on);
@@ -110,6 +110,32 @@ public:
     // Motion: a pot move while recording and playing; Erase + pot on Motion.
     void record_motion(int param, int value);
     void clear_lane(int param);
+    // Undo and redo (Shift + Minus / Plus): pad deletes and copies, takes,
+    // and pattern edits made through edit_pattern() go into the one history.
+    History edits;
+    Edit begin_edit(const char* what, unsigned t, int p, bool song); // what may change, as it is now
+    void commit_edit(Edit&& edit);                                    // as it is after; kept if anything changed
+    void apply_edit(const Edit& edit, bool after);
+    void restore_song(const Song& value);
+    void restore_motion(const Motion& value);
+    void undo();
+    void redo();
+    void notice(const std::string& text);                    // a word over the header for a moment
+    void delete_pad(unsigned kit);                           // Erase + pad on a kit: the pad empty
+    void copy_pad(unsigned from, unsigned to);               // Shift + Erase, pad, pad: sound and effects
+    void restore_pattern(unsigned track, unsigned pattern, const Pattern& value);
+    void restore_pad(unsigned track, unsigned kit, const PadState& value);
+    // Runs `change` on a pattern of a track (and its motion) and keeps it as one edit, if it changed anything.
+    template <class Change> void edit_pattern(unsigned t, unsigned p, const char* what, Change&& change) {
+        Edit edit = begin_edit(what, t, int(p), false);
+        change();
+        commit_edit(std::move(edit));
+    }
+    static bool same_step(const Step& a, const Step& b) {
+        for (unsigned n = 0; n < notes_per_step; ++n)
+            if (a.notes[n].key != b.notes[n].key || a.notes[n].velocity != b.notes[n].velocity) return false;
+        return a.length == b.length && a.chance == b.chance && a.flags == b.flags;
+    }
     // Patterns and Length
     void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing
     void clear_pattern(unsigned track, unsigned pattern);
@@ -173,6 +199,9 @@ public:
     void key(int key, int velocity, bool down);
 
 private:
+    void quantise_notes();
+    void double_notes();
+    void capture_notes();
     unsigned held_pads() const { unsigned n = 0; for (auto& pad : pad_keys) n += pad[0] >= 0; return n; }
     std::array<uint32_t, 4> taps {};
     unsigned tap_count = 0;

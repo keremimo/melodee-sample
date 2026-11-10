@@ -107,6 +107,12 @@ struct UiState {
     uint32_t turned_at = 0;   // when, in ms
     int8_t last_pot = -1;     // for Shift + wheel fine edits
     uint32_t held_pads = 0;
+    // Shift + Erase on a kit: copy one pad onto another. Armed, then the source, then the target.
+    bool pad_copy = false;
+    int8_t copy_from = -1;    // the kit pad picked first, -1 until then
+    // A word over the header for a moment: what an undo, redo, delete or copy did.
+    char notice[32] {};
+    uint32_t notice_at = 0;   // ms
 };
 
 } // namespace melodee

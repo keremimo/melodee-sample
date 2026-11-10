@@ -58,6 +58,8 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     ui = UiState {};
     ui.pots = keep;
     for (auto& pot : ui.pots) pot.bound = 0; // pick the new values up again
+    edits.clear();                            // its edits were made to another project
+    take_edit.reset(); take_count = 0; take_track = -1;
     auto* pack = new ProjectPack {project, patterns};
     Command c {Type::Reload};
     c.pack = pack;
@@ -691,6 +693,143 @@ void Context::copy_pattern(unsigned t, unsigned from, unsigned to) {
     send({Type::Division, uint8_t(t), uint8_t(to), 0, int16_t(target.division)});
 }
 
+// Undo and redo. ----------------------------------------------------------
+
+void Context::notice(const std::string& text) {
+    std::snprintf(ui.notice, sizeof(ui.notice), "%s", text.c_str());
+    ui.notice_at = now;
+}
+
+void Context::restore_pattern(unsigned t, unsigned p, const Pattern& value) {
+    t %= track_count; p %= pattern_count;
+    auto& target = patterns.at[t][p];
+    for (unsigned s = 0; s < max_steps; ++s) {
+        if (same_step(target.steps[s], value.steps[s])) continue;
+        target.steps[s] = value.steps[s];
+        Command c {Type::SetStep, uint8_t(t), uint8_t(p), uint16_t(s)};
+        c.step = value.steps[s];
+        send(c);
+    }
+    target.length = value.length; target.division = value.division;
+    send({Type::Length, uint8_t(t), uint8_t(p), 0, int16_t(target.length)});
+    send({Type::Division, uint8_t(t), uint8_t(p), 0, int16_t(target.division)});
+}
+
+void Context::restore_pad(unsigned t, unsigned kit, const PadState& value) {
+    t %= track_count; kit %= sampler_pads;
+    set_pad_state(project.tracks[t], kit, value);
+    send_pad(t, kit);
+    sync_chain(pad_chain(t, kit));
+}
+
+void Context::delete_pad(unsigned kit) {
+    kit %= sampler_pads;
+    auto& t = track();
+    if (!t.pads[kit].used()) { notice(pad_text("Empty", kit)); return; }
+    Edit edit;
+    edit.what = pad_text("Delete", kit); edit.track = ui.track; edit.pad = int16_t(kit);
+    edit.pad_before = pad_state(t, kit);
+    edit.pad_after = PadState {};
+    edit.pad_after.chain.size = pad_slots;
+    restore_pad(ui.track, kit, edit.pad_after);
+    notice(edit.what);
+    edits.push(std::move(edit));
+}
+
+void Context::copy_pad(unsigned from, unsigned to) {
+    from %= sampler_pads; to %= sampler_pads;
+    if (from == to) return;
+    auto& t = track();
+    Edit edit;
+    char a[4], b[4]; pad_label(from, a); pad_label(to, b);
+    edit.what = std::string("Copy ") + a + " to " + b; edit.track = ui.track; edit.pad = int16_t(to);
+    edit.pad_before = pad_state(t, to);
+    edit.pad_after = pad_state(t, from);
+    restore_pad(ui.track, to, edit.pad_after);
+    notice(edit.what);
+    edits.push(std::move(edit));
+}
+
+Edit Context::begin_edit(const char* what, unsigned t, int p, bool song) {
+    Edit edit;
+    edit.what = what; edit.track = uint8_t(t % track_count);
+    if (p >= 0) { edit.pattern = int16_t(unsigned(p) % pattern_count); edit.pattern_before = std::make_unique<Pattern>(patterns.at[edit.track][edit.pattern]); }
+    if (song) edit.song_before = std::make_unique<Song>(project.song);
+    edit.motion_before = std::make_unique<Motion>(project.motion);
+    return edit;
+}
+
+// Keeps what changed since begin_edit(); an edit that changed nothing is dropped.
+void Context::commit_edit(Edit&& edit) {
+    bool changed = false;
+    if (edit.pattern_before) {
+        const auto& now = patterns.at[edit.track][unsigned(edit.pattern)];
+        bool differs = now.length != edit.pattern_before->length || now.division != edit.pattern_before->division;
+        for (unsigned s = 0; s < max_steps && !differs; ++s) differs = !same_step(now.steps[s], edit.pattern_before->steps[s]);
+        if (differs) edit.pattern_after = std::make_unique<Pattern>(now);
+        else { edit.pattern_before.reset(); edit.pattern = -1; }
+        changed |= differs;
+    }
+    // Byte compares: a stray difference only keeps a part that did not change.
+    if (edit.song_before) {
+        if (std::memcmp(edit.song_before.get(), &project.song, sizeof(Song)) != 0) { edit.song_after = std::make_unique<Song>(project.song); changed = true; }
+        else edit.song_before.reset();
+    }
+    if (edit.motion_before) {
+        if (std::memcmp(edit.motion_before.get(), &project.motion, sizeof(Motion)) != 0) { edit.motion_after = std::make_unique<Motion>(project.motion); changed = true; }
+        else edit.motion_before.reset();
+    }
+    if (changed) edits.push(std::move(edit));
+}
+
+void Context::restore_song(const Song& value) {
+    project.song = value;
+    sync_song();
+    sync_punches();
+}
+
+void Context::restore_motion(const Motion& value) {
+    auto& motion = project.motion;
+    for (unsigned n = 0; n < motion.count; ++n) { // every lane there is now goes
+        Command c {Type::MotionClear};
+        c.motion = motion.events[n];
+        send(c);
+    }
+    motion = value;
+    for (unsigned n = 0; n < motion.count; ++n) {
+        Command c {Type::MotionWrite};
+        c.motion = motion.events[n];
+        send(c);
+    }
+}
+
+void Context::apply_edit(const Edit& e, bool after) {
+    if (e.pad >= 0) restore_pad(e.track, unsigned(e.pad), after ? e.pad_after : e.pad_before);
+    const auto& pattern = after ? e.pattern_after : e.pattern_before;
+    if (e.pattern >= 0 && pattern) restore_pattern(e.track, unsigned(e.pattern), *pattern);
+    const auto& song = after ? e.song_after : e.song_before;
+    if (song) restore_song(*song);
+    const auto& motion = after ? e.motion_after : e.motion_before;
+    if (motion) restore_motion(*motion);
+    take_count = 0; take_track = -1; // Quantise has no take to work on any more
+}
+
+void Context::undo() {
+    if (ui.recording) set_recording(false); // a take in progress ends, and is the edit undone
+    Edit* e = edits.undo();
+    if (!e) { notice("Nothing to undo"); return; }
+    apply_edit(*e, false);
+    notice("Undo " + e->what);
+}
+
+void Context::redo() {
+    if (ui.recording) return; // a take in progress would be lost under it
+    Edit* e = edits.redo();
+    if (!e) { notice("Nothing to redo"); return; }
+    apply_edit(*e, true);
+    notice("Redo " + e->what);
+}
+
 void Context::set_length(unsigned steps) {
     auto& p = pattern();
     p.length = uint16_t(std::clamp<unsigned>(steps, 1, max_steps));
@@ -901,6 +1040,10 @@ void Context::set_click(bool on) {
 }
 
 void Context::capture() {
+    edit_pattern(ui.track, ui.capture_into, "Capture", [&] { capture_notes(); });
+}
+
+void Context::capture_notes() {
     auto& t = track();
     double step_ms = 60000.0 / (project.tempo / 10.0) / 4;
     double window = step_ms * bar_steps * ui.capture_bars, start = double(now) - window;
@@ -936,6 +1079,10 @@ void Context::play_continue() {
 }
 
 void Context::double_length() {
+    edit_pattern(ui.track, track().pattern, "Double length", [&] { double_notes(); });
+}
+
+void Context::double_notes() {
     auto& p = pattern();
     unsigned length = p.length;
     if (length * 2 > max_steps) return;
@@ -956,37 +1103,29 @@ void Context::double_length() {
     set_length(length * 2);
 }
 
-void Context::begin_take() {
-    take_count = 0;
-    take_track = ui.track; take_pattern = track().pattern;
-    if (!before_take) before_take = std::make_unique<Pattern>();
-    if (!song_before_take) song_before_take = std::make_unique<Song>();
-    *before_take = pattern();
-    *song_before_take = project.song;
-}
-
-void Context::undo_take() {
-    if (take_track < 0 || !before_take) return;
-    if (ui.recording) { ui.recording = false; send({Type::SongRecord, 0, 0, 0, 0}); song_tick(); }
-    unsigned t = unsigned(take_track), p = unsigned(take_pattern);
-    auto& now = patterns.at[t][p];
-    for (unsigned s = 0; s < max_steps; ++s) {
-        if (now.steps[s].empty() && before_take->steps[s].empty()) continue;
-        now.steps[s] = before_take->steps[s];
-        Command c {Type::SetStep, uint8_t(t), uint8_t(p), uint16_t(s)};
-        c.step = now.steps[s];
-        send(c);
+// Seq Record on: the take begins, with what it may change as it is now.
+// Off: the clips being written end, and the take goes into the history.
+void Context::set_recording(bool on) {
+    if (on == ui.recording) return;
+    ui.recording = on;
+    send({Type::SongRecord, 0, 0, 0, int16_t(on)});
+    if (on) {
+        take_count = 0;
+        take_track = ui.track; take_pattern = track().pattern;
+        take_edit = std::make_unique<Edit>(begin_edit("Take", ui.track, track().pattern, true));
+        return;
     }
-    now.length = before_take->length;
-    send({Type::Length, uint8_t(t), uint8_t(p), 0, int16_t(now.length)});
-    project.song = *song_before_take;
-    sync_song();
-    sync_punches();
-    take_count = 0; take_track = -1;
+    song_tick(); // finishes the clips and the punch being written
+    if (take_edit) commit_edit(std::move(*take_edit));
+    take_edit.reset();
 }
 
 void Context::quantise_take() {
     if (take_track < 0 || unsigned(take_track) != ui.track || int(track().pattern) != take_pattern) return;
+    edit_pattern(ui.track, track().pattern, "Quantise", [&] { quantise_notes(); });
+}
+
+void Context::quantise_notes() {
     auto& p = pattern();
     for (unsigned n = 0; n < take_count; ++n) {
         auto& note = take_notes[n];

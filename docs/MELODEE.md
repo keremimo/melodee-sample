@@ -156,6 +156,21 @@ through Steps, Roll and Motion; B1–B3 pick them too.
 - **Pads** (B2 on a sampler track, or 16 Levels): the bank as the pads sit,
   the last pad hit with its length, play mode and waveform; K1 pitch, K2
   level, K3 pan. Push opens Trim.
+- **Delete and copy pads** (on every page where the pads play the kit,
+  not on Levels): Erase + pad empties that pad, its sound and its own
+  effects. Shift + Erase starts copying (Erase lit, the header says so):
+  the first pad is the one copied, the next one where it goes (Pad Bank in
+  between reaches the other banks); Shift + Erase again or Erase leaves.
+  Away from the kit pads Shift + Erase still clears the pattern.
+- **Undo and redo** (Shift + Minus, Shift + Plus; on Keys they transpose
+  instead), one history for every edit it keeps, the last 32: pad deletes
+  and copies; a Seq Record take as a whole (its notes, the clips and
+  punches it wrote into the song, its pot moves on Motion; Shift + Minus
+  while recording ends the take and takes it back); Shift + Erase's pattern
+  clear, Erase + pad on Steps and Patterns, pattern copies, Quantise,
+  Double length and Capture. The header names what came back. A new
+  project or a load forgets them. Pot moves outside a take and Song page
+  edits are not kept.
 - **Samples** (Sample Select on a sampler track): the files; Push loads the
   one under the cursor onto the last pad hit, K2 jumps. RECORDED lists the
   takes; RECENT the files this project already holds.
@@ -343,10 +358,10 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   solo, Erase → clear the pattern, Loop → double its length (notes and
   motion played twice), Seq → quantise the last take (notes played past
   half a step move onto the next), Play → continue from the bar the song
-  stopped in, Stop → all notes off, Seq Record → undo the last take (the
-  pattern and the song as they were when Seq Record went on), Sample
-  Record → Capture, Tap Tempo → metronome, Minus / Plus → transpose the
-  pads by a semitone (saved with the track, shown on Keys), Push → back.
+  stopped in, Stop → all notes off, Sample
+  Record → Capture, Tap Tempo → metronome, Minus / Plus → undo / redo
+  (on Keys: transpose the pads by a semitone, saved with the track),
+  Erase → copy a pad where the pads play a kit, Push → back.
 - **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
   `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad
@@ -356,7 +371,7 @@ through Steps, Roll and Motion; B1–B3 pick them too.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
-  levels, record, project, filesheet, tempo, arp, chord,
+  levels, padcopy, undo, record, project, filesheet, tempo, arp, chord,
   capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
