@@ -29,6 +29,7 @@ std::array<Binding, 3> favourite_bindings(const Track& track) {
 unsigned page_chain(const Project& project, const UiState& ui) {
     if (ui.page == PageId::Bus) return bus_chain(project.tracks[ui.track % track_count].mix.bus % bus_count);
     if (ui.page == PageId::Master) return master_chain;
+    if (ui.page == PageId::PadFx) { const auto& t = project.tracks[ui.track % track_count]; return pad_chain(ui.track % track_count, t.last_pad % sampler_pads); }
     return ui.track % track_count;
 }
 
@@ -103,17 +104,18 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Rack:
     case PageId::Bus:
-    case PageId::Master: {
-        unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[chain];
+    case PageId::Master:
+    case PageId::PadFx: {
+        unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
         const auto& c = project.chain(chain);
         if (slot >= c.count() || ui.picker_open) return {};
         const auto& s = c.slots[slot];
         const auto& info = effect_info(EffectKind(s.kind));
         std::array<Binding, 3> out;
         for (unsigned k = 0; k < 3; ++k) {
-            unsigned q = (ui.fx_row[chain] % 2) * 3 + k;
+            unsigned q = (ui.fx_row[UiState::cursor_of(chain)] % 2) * 3 + k;
             const auto& pi = info.params[q];
-            if (pi.label) out[k] = {Kind::FxParam, int16_t(chain * 64 + slot * 8 + q), pi.min, pi.max, s.params[q]};
+            if (pi.label) out[k] = {Kind::FxParam, int32_t(chain * 64 + slot * 8 + q), pi.min, pi.max, s.params[q]};
         }
         return out;
     }

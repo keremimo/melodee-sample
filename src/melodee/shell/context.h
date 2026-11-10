@@ -96,6 +96,7 @@ public:
     void toggle_bypass(unsigned chain, unsigned slot);
     void move_effect(unsigned chain, unsigned slot, int way);
     void sync_chain(unsigned chain); // after moving or removing: the whole chain again
+    void send_fx(Command::Type type, unsigned chain, unsigned slot, unsigned param, int16_t value);
     void set_send_bus(unsigned track, unsigned bus);
     void set_return(unsigned bus, int level);
     // Song: after any change to project.song, send it to the audio thread.

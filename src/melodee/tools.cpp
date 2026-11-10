@@ -299,6 +299,20 @@ const Preview previews[] {
          s.history_at = 40;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    {"padfx", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::PadFx; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3];
+         t.last_pad = 1;
+         auto& chain = t.pad_fx.at[1];
+         const EffectKind kinds[] {EffectKind::Transient, EffectKind::Drive};
+         for (unsigned k = 0; k < 2; ++k) {
+             chain.slots[k].kind = uint8_t(kinds[k]);
+             const auto& info = effect_info(kinds[k]);
+             for (unsigned q = 0; q < effect_params; ++q) chain.slots[k].params[q] = info.params[q].label ? info.params[q].initial : 0;
+         }
+         chain.slots[0].params[1] = -20;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_cursor = 0; }},
     {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},
     {"punch", [](Shell&, Snapshot& s) {

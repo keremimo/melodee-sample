@@ -182,7 +182,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                       : ui.page == PageId::Record ? ButtonLight::Dim : ButtonLight::Off);
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);
-    on(B::KnobFx, ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
+    on(B::KnobFx, ui.page == PageId::PadFx || ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
     on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
     on(B::SixteenLevels, ui.page == PageId::Keys);
     lights.button(B::Play, playing ? L::Bright : L::Dim);

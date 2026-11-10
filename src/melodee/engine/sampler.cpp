@@ -130,6 +130,16 @@ void SamplerEngine::spawn(Voice& v) {
                 uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate), v.gain * v.env.level, v.left, v.right};
 }
 
+SamplerEngine::Lane* SamplerEngine::lane_for(int pad) {
+    Lane* free = nullptr;
+    for (auto& l : lane) {
+        if (l.pad == pad) return &l;
+        if (l.pad < 0 && !free) free = &l;
+    }
+    if (free) { free->pad = pad; free->fed = false; free->tail = 0; std::fill(std::begin(free->l), std::end(free->l), 0.0f); std::fill(std::begin(free->r), std::end(free->r), 0.0f); }
+    return free;
+}
+
 void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     // Clouds: their voices only place grains; the grains play.
     for (auto& v : voices) {
@@ -153,13 +163,20 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         }
         if (g.age >= g.length) g.sample = nullptr;
     }
-    // The punched pad renders on its own (blocks of 128 at most here).
-    bool punching = aside && frames <= 128;
+    // The punched pad renders on its own, and so does each pad with a chain
+    // (blocks of 128 at most here).
+    bool punching = aside && frames <= 128, chains = pad_effects && frames <= 128;
     if (punching) { std::fill(aside_l, aside_l + frames, 0.0f); std::fill(aside_r, aside_r + frames, 0.0f); }
+    if (chains) for (auto& l : lane) if (l.pad >= 0) { l.fed = false; std::fill(l.l, l.l + frames, 0.0f); std::fill(l.r, l.r + frames, 0.0f); }
     for (auto& v : voices) {
         if (v.pad < 0 || v.cloud) continue;
         float* to_l = punching && v.pad == aside_pad ? aside_l : left;
         float* to_r = punching && v.pad == aside_pad ? aside_r : right;
+        if (chains && v.pad < int(sampler_pads) && (*pad_effects)[size_t(v.pad)][0].kind() != EffectKind::None)
+            if (Lane* l = lane_for(v.pad)) {
+                if (!l->fed) { l->fed = true; l->tail = uint32_t(3 * dsp::sample_rate); }
+                to_l = l->l; to_r = l->r;
+            }
         const float* l = v.sample->left.data();
         const float* r = v.sample->right.data();
         for (unsigned f = 0; f < frames; ++f) {
@@ -176,6 +193,16 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             if (!v.env.active()) { v.pad = -1; break; }
         }
     }
+    if (chains)
+        for (auto& l : lane) {
+            if (l.pad < 0) continue;
+            for (auto& effect : (*pad_effects)[size_t(l.pad)]) effect.process(l.l, l.r, frames);
+            float* into_l = punching && l.pad == aside_pad ? aside_l : left; // a punched pad: its chain, then the punch
+            float* into_r = punching && l.pad == aside_pad ? aside_r : right;
+            for (unsigned f = 0; f < frames; ++f) { into_l[f] += l.l[f]; into_r[f] += l.r[f]; }
+            if (!l.fed) l.tail = l.tail > frames ? l.tail - frames : 0;
+            if (!l.tail || (*pad_effects)[size_t(l.pad)][0].kind() == EffectKind::None) l.pad = -1;
+        }
     if (punching) {
         aside->process(aside_l, aside_r, frames);
         for (unsigned f = 0; f < frames; ++f) { left[f] += aside_l[f]; right[f] += aside_r[f]; }

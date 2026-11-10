@@ -52,7 +52,9 @@ struct Command {
         // (pad 1..64: that pad alone on a sampler track, 0: the whole target),
         // value = depth 0..100, pattern = snap (0 1/4 .. 3 1/32) | tail << 4.
         PunchOn, PunchOff, // PunchOff: track and index's pad as PunchOn's; track 254: whatever punch is on
-        PunchDepth         // index's pad as PunchOn's (0: the master or track punch), value = depth
+        PunchDepth,        // index's pad as PunchOn's (0: the master or track punch), value = depth
+        // A sampler pad's own chain: track, pattern = pad, index = slot | parameter << 8, value as FxKind/FxParam/FxBypass.
+        PadFxKind, PadFxParam, PadFxBypass
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)

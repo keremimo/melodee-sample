@@ -5,11 +5,11 @@
 namespace melodee {
 using namespace ui;
 
-void signal_flow(Paint& p, Stop at, juce::Colour c) {
-    static const char* names[] {"TRACK", "SENDS", "BUS", "MASTER"};
+void signal_flow(Paint& p, Stop at, juce::Colour c, bool with_pad) {
+    static const char* names[] {"PAD", "TRACK", "SENDS", "BUS", "MASTER"};
     float x = zone::pad, y = zone::picture_y + 1, h = 12;
-    for (unsigned n = 0; n < 4; ++n) {
-        if (n) {
+    for (unsigned n = with_pad ? 0 : 1; n < 5; ++n) {
+        if (n > (with_pad ? 0u : 1u)) {
             juce::Path arrow;
             float ay = y + h / 2;
             arrow.startNewSubPath(x, ay); arrow.lineTo(x + 6, ay);

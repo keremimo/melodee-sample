@@ -22,4 +22,5 @@ constexpr unsigned song_bars = 999;
 constexpr unsigned track_slots = 6, bus_slots = 6, master_slots = 6, bus_count = 4;
 constexpr unsigned max_slots = 6;
 constexpr unsigned chain_count = track_count + bus_count + 1; // tracks, buses A-D, master
+constexpr unsigned pad_slots = 4;                              // each sampler pad's own chain (PadFX)
 }

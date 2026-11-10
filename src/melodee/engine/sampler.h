@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/dsp.h"
+#include "melodee/engine/effects.h"
 #include "melodee/engine/engine.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/sample_data.h"
@@ -54,6 +55,12 @@ public:
     // Pad Punch: the voices of `pad` go through `punch` on their own before
     // they join the kit (nullptr: none). The punch belongs to the host.
     void punch_pad(int pad, Punch* punch) { aside_pad = pad; aside = punch; }
+    // PadFX: each pad's own chain (the host's). A pad with a chain plays
+    // through it on a lane of its own, up to `lanes` pads at once; a lane
+    // stays with its pad three seconds after the pad falls silent, for tails.
+    using PadEffects = std::array<std::array<Effect, pad_slots>, sampler_pads>;
+    void set_pad_effects(PadEffects* effects) { pad_effects = effects; }
+    static constexpr unsigned lanes = 8;
 
 private:
     struct Voice {
@@ -93,6 +100,10 @@ private:
     int aside_pad = -1;
     Punch* aside = nullptr;
     float aside_l[128] {}, aside_r[128] {};
+    struct Lane { int pad = -1; uint32_t tail = 0; bool fed = false; float l[128] {}, r[128] {}; };
+    PadEffects* pad_effects = nullptr;
+    std::array<Lane, lanes> lane {};
+    Lane* lane_for(int pad); // the pad's lane, a free one, or nullptr
 };
 
 } // namespace melodee

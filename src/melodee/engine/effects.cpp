@@ -173,7 +173,7 @@ void Effect::update() {
         mix = pct(5);
         break;
     case K::Gate: a = db(float(p[0])); e = follow(time_seconds(p[1])); break;
-    case K::Transient: a = p[0] / 100.0f; b = p[1] / 100.0f; break;
+    case K::Transient: a = p[0] / 100.0f; b = p[1] / 100.0f; mix = pct(2); break;
     case K::Limiter: a = db(float(p[0])); e = follow(time_seconds(p[1]) * 0.5f); break;
     default: break;
     }

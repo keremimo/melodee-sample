@@ -34,7 +34,7 @@ struct Binding {
         PadPunchKind, PadPunchRate, PadPunchDepth  // Pad Punch: the last pad hit
     };
     Kind kind = Kind::None;
-    int16_t id = 0;      // Param: the parameter
+    int32_t id = 0;      // Param: the parameter
     int min = 0, max = 0, value = 0;
     // Which control this is, for pickup; a song clip's index may move as clips change, so it is left out.
     uint32_t key(unsigned track) const {

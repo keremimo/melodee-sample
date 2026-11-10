@@ -567,21 +567,22 @@ void Context::set_effect(unsigned n, unsigned slot, EffectKind kind) {
     s.kind = uint8_t(kind); s.bypass = false;
     const auto& info = effect_info(kind);
     for (unsigned q = 0; q < effect_params; ++q) s.params[q] = info.params[q].label ? info.params[q].initial : 0;
-    send({Type::FxKind, uint8_t(n), 0, uint16_t(slot), int16_t(kind)}); // the host takes the same initial values
-    send({Type::FxBypass, uint8_t(n), 0, uint16_t(slot), 0});
+    send_fx(Type::FxKind, n, slot, 0, int16_t(kind)); // the host takes the same initial values
+    send_fx(Type::FxBypass, n, slot, 0, 0);
 }
 
 void Context::set_effect_param(unsigned n, unsigned slot, unsigned param, int value) {
     auto& chain = project.chain(n);
     if (slot >= chain.size || param >= effect_params) return;
     chain.slots[slot].params[param] = int16_t(value);
-    send({Type::FxParam, uint8_t(n), uint8_t(param), uint16_t(slot), int16_t(value)});
+    send_fx(Type::FxParam, n, slot, param, int16_t(value));
 }
 
 void Context::toggle_bypass(unsigned n, unsigned slot) {
     auto& s = project.chain(n).slots[slot % max_slots];
+    if (slot >= project.chain(n).size) return;
     s.bypass = !s.bypass;
-    send({Type::FxBypass, uint8_t(n), 0, uint16_t(slot), int16_t(s.bypass)});
+    send_fx(Type::FxBypass, n, slot, 0, int16_t(s.bypass));
 }
 
 void Context::move_effect(unsigned n, unsigned slot, int way) {
@@ -594,12 +595,21 @@ void Context::move_effect(unsigned n, unsigned slot, int way) {
 
 void Context::sync_chain(unsigned n) {
     const auto& chain = project.chain(n);
-    for (unsigned k = 0; k < max_slots; ++k) {
+    for (unsigned k = 0; k < chain.size; ++k) {
         const auto& s = chain.slots[k];
-        send({Type::FxKind, uint8_t(n), 0, uint16_t(k), int16_t(s.kind)});
-        for (unsigned q = 0; q < effect_params; ++q) send({Type::FxParam, uint8_t(n), uint8_t(q), uint16_t(k), s.params[q]});
-        send({Type::FxBypass, uint8_t(n), 0, uint16_t(k), int16_t(s.bypass)});
+        send_fx(Type::FxKind, n, k, 0, int16_t(s.kind));
+        for (unsigned q = 0; q < effect_params; ++q) send_fx(Type::FxParam, n, k, q, s.params[q]);
+        send_fx(Type::FxBypass, n, k, 0, int16_t(s.bypass));
     }
+}
+
+// A chain's command: a track, bus or master chain by number; a pad's chain
+// as PadFx*, with the track, the pad and the slot and parameter together.
+void Context::send_fx(Command::Type type, unsigned n, unsigned slot, unsigned param, int16_t value) {
+    if (n < pad_chain_base) { send({type, uint8_t(n), uint8_t(param), uint16_t(slot), value}); return; }
+    n -= pad_chain_base;
+    Type pad = type == Type::FxKind ? Type::PadFxKind : type == Type::FxParam ? Type::PadFxParam : Type::PadFxBypass;
+    send({pad, uint8_t(n / sampler_pads), uint8_t(n % sampler_pads), uint16_t(slot | param << 8), value});
 }
 
 void Context::set_send_bus(unsigned t, unsigned bus) {

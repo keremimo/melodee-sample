@@ -64,7 +64,7 @@ const EffectInfo effects[] {
      {96, 70, 60, 58, 58, 58, 58, 58, 58, 58, 58}},
     {K::Gate, "Gate", F::Dynamics, true, {P("THRESH", -80, 0, -40, Format::Number), P("RELEASE", 0, 100, 30, Format::Time), none, none, none, none},
      {90, 70, 50, 0, 0, 0, 90, 70, 50, 0, 0}},
-    {K::Transient, "Transient", F::Dynamics, true, {P("ATTACK", -100, 100, 40, Format::Number), P("SUSTAIN", -100, 100, 0, Format::Number), none, none, none, none},
+    {K::Transient, "Transient", F::Dynamics, true, {P("ATTACK", -100, 100, 40, Format::Number), P("SUSTAIN", -100, 100, 0, Format::Number), mix(100), none, none, none},
      {96, 40, 26, 20, 16, 14, 12, 10, 10, 8, 8}},
     {K::Limiter, "Limiter", F::Dynamics, true, {P("CEILING", -24, 0, -1, Format::Number), P("RELEASE", 0, 100, 30, Format::Time), none, none, none, none},
      {70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70}},

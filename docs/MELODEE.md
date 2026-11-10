@@ -255,6 +255,12 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   hat, crash and ride. Six Edit pages (kick, snare and clap, toms, hats,
   cymbals, levels with drive), five kits. Stage's track 6 starts as a 909
   with a beat.
+- **Pad effects (B1 from Track, sampler tracks):** each of a kit's 64
+  pads has its own chain of four effects, ahead of the track's; the page
+  shows the last pad hit, with PAD first on the signal strip. The sampler
+  plays a pad with a chain on a lane of its own (eight at once; a lane
+  stays three seconds after the pad falls silent, for tails). Cloud pads
+  are left out, their grains have no pad. Saved with the project.
 - **Punch (Pad FX):** 27 punches written here, sixteen to a bank on the
   pads (Pad Bank or Minus / Plus for the other bank): loops of 1/4 to 1/32
   of a bar, stutter, reverse, tape stop, half speed, downer, upper,
@@ -307,13 +313,13 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, record, project, filesheet, tempo, arp, chord,
-  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, settings, about, shift and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: typed names (markers, projects), Seq
-Record writing launches and punches into the song, pad effects (PadFX
-chains), time-stretch, favourites.
+Record writing launches and punches into the song, time-stretch,
+favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

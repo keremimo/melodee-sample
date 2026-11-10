@@ -138,6 +138,7 @@ private:
     std::array<Slot, track_count> slots;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;
+    std::unique_ptr<std::array<SamplerEngine::PadEffects, track_count>> pad_fx; // each sampler pad's chain
     std::array<float, bus_count> returns {0.7f, 0.7f, 0.7f, 0.7f};
     float bus_l[bus_count][block] {}, bus_r[bus_count][block] {}, master_l[block] {}, master_r[block] {};
     void run_chain(unsigned chain, float* left, float* right, unsigned frames);

@@ -151,6 +151,14 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     at = w.begin("MSTR");
     write_chain(w, project.master);
     w.end(at);
+    at = w.begin("PDFX"); // each sampler pad's own chain
+    for (unsigned t = 0; t < track_count; ++t)
+        for (unsigned n = 0; n < sampler_pads; ++n) {
+            const auto& chain = project.tracks[t].pad_fx.at[n];
+            if (chain.count()) { w.u8(t); w.u8(n); write_chain(w, chain); }
+        }
+    w.u8(255);
+    w.end(at);
     at = w.begin("PNCH");
     w.u8(project.punch_target); w.u8(project.punch_bank); w.u8(project.punch_depth); w.u8(project.punch_snap); w.u8(project.punch_tail);
     for (unsigned t = 0; t < track_count; ++t)
@@ -261,6 +269,15 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             read_chain(r, project->buses[b].fx);
         } else if (name == "MSTR") {
             read_chain(r, project->master);
+        } else if (name == "PDFX") {
+            while (r.ok && !r.done()) {
+                unsigned t = r.u8();
+                if (t >= track_count) break;
+                auto& chain = project->tracks[t].pad_fx.at[r.u8() % sampler_pads];
+                read_chain(r, chain);
+                for (unsigned k = pad_slots; k < max_slots; ++k) chain.slots[k] = EffectSlot {};
+                chain.size = pad_slots;
+            }
         } else if (name == "PNCH") {
             project->punch_target = uint8_t(r.u8() % 2); project->punch_bank = uint8_t(r.u8() % 2);
             project->punch_depth = uint8_t(std::min(100u, r.u8())); project->punch_snap = uint8_t(r.u8() % 4); project->punch_tail = uint8_t(r.u8() % 3);

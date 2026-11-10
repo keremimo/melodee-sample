@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// TRACK EFFECTS (Knob FX), BUS (B3 from Sends) and MASTER (B3 from Bus): one
-// page shape for every stop along the signal. Up to six effects in a row;
+// PAD EFFECTS (B1 from Track on a sampler track), TRACK EFFECTS (Knob FX),
+// BUS (B3 from Sends) and MASTER (B3 from Bus): one page shape for every
+// stop along the signal. A pad's chain is the last pad hit's, four slots. Up to six effects in a row;
 // the wheel picks a device, the three pots hold three of its parameters and
 // Minus / Plus the other row. Push on a device: change, bypass, move,
 // remove. Push on + ADD opens the picker: 28 effects in six families, Push
@@ -70,13 +71,27 @@ void device_card(Paint& p, const Snapshot& s, const EffectSlot& slot, unsigned i
 void draw(Paint& p, const Snapshot& s) {
     unsigned n = page_chain(s.project, s.ui), bus = bus_of(s.project, s.ui.track);
     const auto& chain = s.project.chain(n);
-    bool track = s.ui.page == PageId::Rack;
+    bool pad = s.ui.page == PageId::PadFx, track = s.ui.page == PageId::Rack || pad, kit = s.track().engine == EngineKind::Sampler;
     auto c = track ? colour_of(s) : colour::text;
-    unsigned count = chain.count(), cursor = std::min<unsigned>(s.ui.fx_cursor[n], count);
+    unsigned count = chain.count(), cursor = std::min<unsigned>(s.ui.fx_cursor[UiState::cursor_of(n)], count);
     Header h = header_of(s);
     SoftKeys keys {{"", "TRACK", "SENDS"}, 1, c};
     juce::String back = juce::String::fromUTF8("\xe2\x80\xb9 "), on = juce::String::fromUTF8(" \xe2\x80\xba");
-    if (track) { keys.labels = {"", "TRACK", "SENDS" + on}; h.right.push_back(tag_of(s, s.ui.track)); }
+    if (pad && !kit) {
+        frame(p, s, {{"", "PAD", "TRACK" + on}, 1, c}, h);
+        p.text("Pad effects are for a sampler track", zone::pad, zone::picture_y + 60, zone::width - 2 * zone::pad, 16,
+               plain(colour::dim, 11), juce::Justification::centred);
+        return;
+    }
+    if (pad) {
+        unsigned last = s.track().last_pad % sampler_pads;
+        char label[4]; pad_label(last, label);
+        juce::String name = "PAD " + juce::String(label);
+        if (s.track().pads[last].used()) name += juce::String::fromUTF8(" \xc2\xb7 ") + pad_name(s, last, false).toUpperCase();
+        keys.labels = {"", "PAD", "TRACK" + on};
+        h.left.push_back(pill(name, c));
+        h.right.push_back(tag_of(s, s.ui.track));
+    } else if (track) { keys.labels = {kit ? back + "PAD" : juce::String(), "TRACK", "SENDS" + on}; h.right.push_back(tag_of(s, s.ui.track)); }
     else if (s.ui.page == PageId::Bus) {
         keys.labels = {back + "SENDS", bus_name(bus), "MASTER" + on};
         h.left.push_back(pill("RETURN " + juce::String(s.project.buses[bus].level) + " %"));
@@ -94,7 +109,7 @@ void draw(Paint& p, const Snapshot& s) {
     }
     frame(p, s, keys, h);
     if (s.ui.picker_open) { picker(p, s, c); return; }
-    signal_flow(p, track ? Stop::Track : s.ui.page == PageId::Bus ? Stop::Bus : Stop::Master, c);
+    signal_flow(p, pad ? Stop::Pad : track ? Stop::Track : s.ui.page == PageId::Bus ? Stop::Bus : Stop::Master, c, kit);
 
     // Four cards across; the window follows the cursor through six slots and + ADD.
     unsigned shown = std::min<unsigned>(chain.size, count + 1), first = cursor > 3 ? cursor - 3 : 0;
@@ -116,7 +131,7 @@ void draw(Paint& p, const Snapshot& s) {
                                        : count < chain.size ? juce::String("Add an effect") : juce::String("Chain full");
     float nw = p.text(name, zone::pad, fy, 160, 20, plain(colour::text, 14, Weight::SemiBold));
     if (cursor < count) {
-        unsigned row = s.ui.fx_row[n] % 2;
+        unsigned row = s.ui.fx_row[UiState::cursor_of(n)] % 2;
         const auto& info = effect_info(EffectKind(chain.slots[cursor].kind));
         bool second = info.params[3].label != nullptr;
         if (second) {
@@ -151,10 +166,10 @@ void add_from_picker(Context& c) {
     std::array<EffectKind, 8> list {};
     unsigned count = family_effects(Family(c.ui.picker_family % unsigned(Family::Count)), list);
     if (c.ui.picker_item >= count || !effect_info(list[c.ui.picker_item]).built) return; // not built yet
-    unsigned n = chain_here(c), cursor = std::min<unsigned>(c.ui.fx_cursor[n], c.project.chain(n).count());
+    unsigned n = chain_here(c), at = UiState::cursor_of(n), cursor = std::min<unsigned>(c.ui.fx_cursor[at], c.project.chain(n).count());
     if (cursor >= c.project.chain(n).size) return;
     c.set_effect(n, cursor, list[c.ui.picker_item]);
-    c.ui.fx_row[n] = 0;
+    c.ui.fx_row[at] = 0;
     c.ui.picker_open = false;
 }
 
@@ -168,18 +183,19 @@ void wheel(Context& c, int delta) {
         return;
     }
     if (ui.sheet_open) { ui.sheet_row = uint8_t(std::clamp<int>(ui.sheet_row + delta, 0, int(device_actions) - 1)); return; }
-    unsigned n = chain_here(c);
+    unsigned n = chain_here(c), at = UiState::cursor_of(n);
     const auto& chain = c.project.chain(n);
     unsigned last = std::min<unsigned>(chain.count(), chain.size - 1);
-    ui.fx_cursor[n] = uint8_t(std::clamp<int>(ui.fx_cursor[n] + delta, 0, int(last)));
-    ui.fx_row[n] = 0;
+    ui.fx_cursor[at] = uint8_t(std::clamp<int>(ui.fx_cursor[at] + delta, 0, int(last)));
+    ui.fx_row[at] = 0;
 }
 
 void push(Context& c) {
     auto& ui = c.ui;
-    unsigned n = chain_here(c);
+    unsigned n = chain_here(c), at = UiState::cursor_of(n);
+    if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return;
     const auto& chain = c.project.chain(n);
-    unsigned cursor = std::min<unsigned>(ui.fx_cursor[n], chain.count());
+    unsigned cursor = std::min<unsigned>(ui.fx_cursor[at], chain.count());
     if (ui.picker_open) {
         if (!ui.picker_items) { ui.picker_items = true; ui.picker_item = 0; }
         else add_from_picker(c);
@@ -189,8 +205,8 @@ void push(Context& c) {
         switch (ui.sheet_row % device_actions) {
         case 0: ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = true; break;
         case 1: c.toggle_bypass(n, cursor); return; // stays open to see it change
-        case 2: c.move_effect(n, cursor, -1); if (cursor) ui.fx_cursor[n] = uint8_t(cursor - 1); break;
-        case 3: c.move_effect(n, cursor, 1); if (cursor + 1 < chain.count()) ui.fx_cursor[n] = uint8_t(cursor + 1); break;
+        case 2: c.move_effect(n, cursor, -1); if (cursor) ui.fx_cursor[at] = uint8_t(cursor - 1); break;
+        case 3: c.move_effect(n, cursor, 1); if (cursor + 1 < chain.count()) ui.fx_cursor[at] = uint8_t(cursor + 1); break;
         case 4: c.set_effect(n, cursor, EffectKind::None); break;
         }
         ui.sheet_open = false;
@@ -208,21 +224,24 @@ void soft(Context& c, int key) {
         return;
     }
     if (ui.sheet_open) { if (key == 0) ui.sheet_open = false; return; }
-    PageId before = ui.page == PageId::Rack ? PageId::Rack : ui.page == PageId::Bus ? PageId::Sends : PageId::Bus;
-    PageId after = ui.page == PageId::Rack ? PageId::Sends : ui.page == PageId::Bus ? PageId::Master : PageId::Master;
+    bool kit = c.track().engine == EngineKind::Sampler;
+    PageId before = ui.page == PageId::PadFx ? PageId::PadFx : ui.page == PageId::Rack ? (kit ? PageId::PadFx : PageId::Rack)
+                  : ui.page == PageId::Bus ? PageId::Sends : PageId::Bus;
+    PageId after = ui.page == PageId::PadFx ? PageId::Rack : ui.page == PageId::Rack ? PageId::Sends : PageId::Master;
     if (key == 0 && before != ui.page) c.open(before);
     if (key == 2 && after != ui.page) c.open(after);
 }
 
 // Minus / Plus: the device's other row of parameters.
 void nudge(Context& c, int way) {
-    unsigned n = chain_here(c);
-    c.ui.fx_row[n] = uint8_t(std::clamp(c.ui.fx_row[n] + way, 0, 1));
+    unsigned at = UiState::cursor_of(chain_here(c));
+    c.ui.fx_row[at] = uint8_t(std::clamp(c.ui.fx_row[at] + way, 0, 1));
 }
 } // namespace
 
 const PageSpec rack_page {draw, play_pad, wheel, push, soft, nudge};
 const PageSpec bus_page {draw, play_pad, wheel, push, soft, nudge};
 const PageSpec master_page {draw, play_pad, wheel, push, soft, nudge};
+const PageSpec pad_fx_page {draw, play_pad, wheel, push, soft, nudge};
 
 } // namespace melodee

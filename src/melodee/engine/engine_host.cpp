@@ -22,6 +22,8 @@ float level_gain(int level) { float x = std::clamp(level, 0, 127) / 100.0f; retu
 
 EngineHost::EngineHost() : patterns(std::make_unique<PatternBank>()) {
     for (auto& s : steps_now) s.store(-1);
+    pad_fx = std::make_unique<std::array<SamplerEngine::PadEffects, track_count>>();
+    for (unsigned t = 0; t < track_count; ++t) slots[t].sampler.set_pad_effects(&(*pad_fx)[t]);
     // Build every engine's static tables now, not on the audio thread.
     for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) (void)engine_info(EngineKind(k));
 }
@@ -37,6 +39,18 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
             fx[n][k].set_bypass(s.bypass);
         }
     }
+    for (unsigned t = 0; t < track_count; ++t)
+        for (unsigned pad = 0; pad < sampler_pads; ++pad) {
+            const auto& chain = project.tracks[t].pad_fx.at[pad];
+            for (unsigned k = 0; k < pad_slots; ++k) {
+                auto& effect = (*pad_fx)[t][pad][k];
+                const auto& s = chain.slots[k];
+                if (!s.kind && effect.kind() == EffectKind::None) continue; // most pads have none
+                effect.set_kind(EffectKind(s.kind), pool);
+                for (unsigned q = 0; q < effect_params; ++q) effect.set_param(q, s.params[q]);
+                effect.set_bypass(s.bypass);
+            }
+        }
     for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
     click = project.click; click_level = project.click_level / 100.0f;
     motion = project.motion;
@@ -107,6 +121,15 @@ void EngineHost::apply(const Command& c) {
     case Type::FxKind: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_kind(EffectKind(c.value), pool); break;
     case Type::FxParam: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_param(c.pattern, c.value); break;
     case Type::FxBypass: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_bypass(c.value != 0); break;
+    case Type::PadFxKind: case Type::PadFxParam: case Type::PadFxBypass: {
+        unsigned slot = c.index & 0xff, param = c.index >> 8;
+        if (c.track >= track_count || c.pattern >= sampler_pads || slot >= pad_slots) break;
+        auto& effect = (*pad_fx)[c.track][c.pattern][slot];
+        if (c.type == Type::PadFxKind) effect.set_kind(EffectKind(c.value), pool);
+        else if (c.type == Type::PadFxParam) effect.set_param(param, c.value);
+        else effect.set_bypass(c.value != 0);
+        break;
+    }
     case Type::SendBus: slot.bus = uint8_t(c.value % bus_count); break;
     case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
     case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;

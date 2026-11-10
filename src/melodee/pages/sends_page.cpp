@@ -20,7 +20,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{juce::String::fromUTF8("\xe2\x80\xb9 TRACK"), "SENDS",
                   juce::String("BUS ") + char('A' + bus) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c}, h);
-    signal_flow(p, Stop::Sends, c);
+    signal_flow(p, Stop::Sends, c, s.track().engine == EngineKind::Sampler);
 
     // The four buses: letter, first effect, return.
     float y = zone::picture_y + 18, gap = 4, bw = (zone::width - 2 * zone::pad - 3 * gap) / 4, bh = 20;

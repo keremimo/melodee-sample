@@ -78,6 +78,14 @@ struct Bus {
 // Chains are numbered for commands: tracks 0-15, buses 16-19, master 20.
 constexpr unsigned bus_chain(unsigned bus) { return track_count + bus; }
 constexpr unsigned master_chain = track_count + bus_count;
+// Each sampler pad's own chain follows: pad_chain(track, pad).
+constexpr unsigned pad_chain_base = chain_count;
+constexpr unsigned pad_chain(unsigned track, unsigned pad) { return pad_chain_base + track * sampler_pads + pad; }
+// The kit's pad chains, four slots each.
+struct PadChains {
+    std::array<Chain, sampler_pads> at;
+    PadChains() { for (auto& c : at) c.size = pad_slots; }
+};
 
 struct Mix {
     uint8_t level = 100; // 0..127, 100 is unity
@@ -236,6 +244,7 @@ struct Track {
     uint8_t last_note = 50;
     std::array<ModRoute, mod_routes> mods {};
     Chain fx {{}, track_slots};
+    PadChains pad_fx;     // a sampler track: each pad's chain (PadFX)
     // A sampler track's kit (unused by the synth engines).
     std::array<PadSound, sampler_pads> pads {};
     uint8_t bank = 0;     // the bank the pads play
@@ -271,8 +280,11 @@ struct Project {
     std::array<Bus, bus_count> buses {};
     std::array<SampleRef, sample_slots> samples {};
     Chain master {{}, master_slots};
-    Chain& chain(unsigned n) { return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master; }
-    const Chain& chain(unsigned n) const { return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master; }
+    Chain& chain(unsigned n) {
+        if (n >= pad_chain_base) { n -= pad_chain_base; return tracks[(n / sampler_pads) % track_count].pad_fx.at[n % sampler_pads]; }
+        return n < track_count ? tracks[n].fx : n < master_chain ? buses[n - track_count].fx : master;
+    }
+    const Chain& chain(unsigned n) const { return const_cast<Project*>(this)->chain(n); }
     unsigned used_tracks() const { unsigned n = 0; for (auto& t : tracks) n += t.used(); return n; }
 };
 

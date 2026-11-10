@@ -499,6 +499,48 @@ void sampler_kit() {
         unsigned plain = length(false), followed = length(true);
         CHECK(followed > plain * 18 / 10 && followed < plain * 22 / 10);
     }
+    // PadFX: a pad with a chain plays through it; a pad without one is untouched.
+    {
+        DelayPool pool;
+        auto effects = std::make_unique<SamplerEngine::PadEffects>();
+        (*effects)[5][0].set_kind(EffectKind::Crush, pool);
+        (*effects)[5][0].set_param(0, 2); // two bits
+        auto play = [&](unsigned pad, bool chained) {
+            SamplerEngine engine;
+            engine.set_samples(&table);
+            if (chained) engine.set_pad_effects(effects.get());
+            PadSound sound; sound.sample = 3; sound.end = 4410;
+            engine.set_pad(pad, sound);
+            engine.note_on(int(sampler_first_note + pad), 120);
+            std::vector<float> l(128), r(128), all;
+            for (unsigned b = 0; b < 30; ++b) {
+                std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+                engine.render_stereo(l.data(), r.data(), 128);
+                all.insert(all.end(), l.begin(), l.end());
+            }
+            return all;
+        };
+        auto dry = play(5, false), wet = play(5, true), other = play(6, true), other_dry = play(6, false);
+        float difference = 0;
+        for (size_t n = 0; n < dry.size(); ++n) difference = std::max(difference, std::fabs(dry[n] - wet[n]));
+        CHECK(difference > 0.01f);
+        CHECK(other == other_dry);
+    }
+    // Pad chains survive a save, four slots each.
+    {
+        auto project = std::make_unique<Project>();
+        auto patterns = std::make_unique<PatternBank>();
+        auto& chain = project->tracks[4].pad_fx.at[17];
+        CHECK(chain.size == pad_slots && project->chain(pad_chain(4, 17)).size == pad_slots);
+        chain.slots[0].kind = uint8_t(EffectKind::Drive); chain.slots[0].params[0] = 77;
+        chain.slots[1].kind = uint8_t(EffectKind::Room); chain.slots[1].bypass = true;
+        auto bytes = save_project(*project, *patterns);
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(bytes, *back, *patterns).empty());
+        const auto& loaded = back->tracks[4].pad_fx.at[17];
+        CHECK(loaded.size == pad_slots && loaded.count() == 2 && loaded.slots[0].params[0] == 77 && loaded.slots[1].bypass);
+        CHECK(back->tracks[4].pad_fx.at[16].count() == 0);
+    }
     // The host takes a sample from the service side and gives the old one back.
     EngineHost host;
     SampleData other;
