@@ -17,7 +17,7 @@ namespace melodee {
 class DelayPool {
 public:
     static constexpr unsigned blocks = 48;
-    static constexpr unsigned half = 66150;           // 1.5 s at 44.1 kHz, one channel
+    static constexpr unsigned half = 144000;          // 1.5 s at 96 kHz (3.3 s at 44.1), one channel
     static constexpr unsigned block_floats = 2 * half;
     DelayPool();
     float* take();       // nullptr when none is free

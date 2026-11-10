@@ -584,6 +584,11 @@ const Preview previews[] {
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_cursor = 0; }},
+    {"settingsaudio", [](Shell&, Snapshot& s) { // the audio rows, scrolled into view, 48 kHz with a dropout
+        s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::AudioBuffer; s.ui.settings_editing = true;
+        s.ui.settings.audio_rate = 48000; s.ui.settings.audio_periods = 4;
+        s.audio_rate = 48000; s.audio_periods = 4; s.audio_xruns = 1;
+    }},
     {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},
     {"punch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Punch; s.ui.track = 2; s.playing = true; s.project.punch_target = 1;

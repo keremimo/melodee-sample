@@ -9,7 +9,7 @@
 namespace melodee::rbj {
 
 inline void shelf(float* out, float hz, float gain_db, bool high) {
-    constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
+    const float fs = dsp::sample_rate(); constexpr float two_pi = 2 * dsp::pi;
     float A = std::pow(10.0f, gain_db / 40.0f), w = two_pi * hz / fs, cw = std::cos(w), sw = std::sin(w);
     float alpha = sw / 2 * std::sqrt(2.0f), s = 2 * std::sqrt(A) * alpha;
     float b0, b1, b2, a0, a1, a2;
@@ -24,7 +24,7 @@ inline void shelf(float* out, float hz, float gain_db, bool high) {
 }
 
 inline void peak(float* out, float hz, float gain_db, float q) {
-    constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
+    const float fs = dsp::sample_rate(); constexpr float two_pi = 2 * dsp::pi;
     float A = std::pow(10.0f, gain_db / 40.0f), w = two_pi * hz / fs, alpha = std::sin(w) / (2 * q), cw = std::cos(w);
     float a0 = 1 + alpha / A;
     out[0] = (1 + alpha * A) / a0; out[1] = -2 * cw / a0; out[2] = (1 - alpha * A) / a0; out[3] = -2 * cw / a0; out[4] = (1 - alpha / A) / a0;
@@ -32,7 +32,7 @@ inline void peak(float* out, float hz, float gain_db, float q) {
 
 // Low pass (high = false) or high pass at `hz` with quality `q` (0.707: no bump).
 inline void pass(float* out, float hz, float q, bool high) {
-    constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
+    const float fs = dsp::sample_rate(); constexpr float two_pi = 2 * dsp::pi;
     hz = std::fmin(hz, fs * 0.45f);
     float w = two_pi * hz / fs, cw = std::cos(w), alpha = std::sin(w) / (2 * q), a0 = 1 + alpha;
     float b1 = high ? -(1 + cw) : 1 - cw, b0 = high ? (1 + cw) / 2 : (1 - cw) / 2;

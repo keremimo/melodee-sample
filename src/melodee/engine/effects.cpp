@@ -9,12 +9,15 @@
 namespace melodee {
 namespace {
 using K = EffectKind;
-constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
+constexpr float two_pi = 2 * dsp::pi;
+float fs() { return dsp::sample_rate(); } // the device's rate now
 float db(float decibels) { return std::pow(10.0f, decibels / 20.0f); }
-float follow(float seconds) { return std::exp(-1.0f / std::max(seconds * fs, 1.0f)); }
+float follow(float seconds) { return std::exp(-1.0f / std::max(seconds * fs(), 1.0f)); }
 bool needs_memory(K k) { return effect_needs_memory(k); }
 // Where each part of a reverb sits inside its block (floats).
-constexpr unsigned pre_length = 4410, comb_base = 2 * pre_length, comb_room = 1600, pass_base = comb_base + 8 * comb_room, pass_room = 700;
+// Room for 96 kHz: the reverb's lengths are Freeverb's at 44.1 kHz, stretched to the device's rate.
+constexpr unsigned pre_length = 9600, comb_base = 2 * pre_length, comb_room = 3500, pass_base = comb_base + 8 * comb_room, pass_room = 1540;
+float stretch() { return fs() / dsp::model_rate; } // 44.1 kHz lengths to the device's rate
 // Shimmer's shifter after the reverb's parts: a short line a side.
 constexpr unsigned shift_base = pass_base + 4 * pass_room, shift_room = 4096;
 static_assert(shift_base + 2 * shift_room < DelayPool::block_floats, "shimmer fits in its block");
@@ -75,7 +78,7 @@ void Effect::update() {
     mix = 1;
     switch (current) {
     case K::Room: case K::Reverb: case K::Plate: case K::Shimmer: {
-        float scale = (current == K::Plate ? 0.55f : current == K::Room ? 0.6f : 0.8f) + pct(0) * 0.4f;
+        float scale = ((current == K::Plate ? 0.55f : current == K::Room ? 0.6f : 0.8f) + pct(0) * 0.4f) * stretch();
         static const unsigned combs[] {1116, 1188, 1277, 1356}, passes[] {556, 441};
         float spread = 1 + pct(5) * 0.025f;
         for (unsigned n = 0; n < 4; ++n) {
@@ -87,21 +90,21 @@ void Effect::update() {
         for (unsigned n = 0; n < 4; ++n) pass_at[n] %= std::max(pass_length[n], 1u);
         // Decay time to comb feedback: -60 dB after `seconds` through the average comb.
         float seconds = std::clamp(time_seconds(p[1]), 0.2f, 12.0f);
-        feedback = std::pow(10.0f, -3.0f * (1250 * scale) / (seconds * fs));
+        feedback = std::pow(10.0f, -3.0f * (1250 * scale) / (seconds * fs()));
         damp = pct(2) * (current == K::Plate ? 0.3f : 0.6f);
         mix = pct(3);
-        predelay = std::min(pre_length - 1, unsigned(pct(4) * 0.1f * fs));
+        predelay = std::min(pre_length - 1, unsigned(pct(4) * 0.1f * fs()));
         if (current == K::Shimmer) { predelay = 0; d = pct(4) * 0.5f; } // how much of the octave goes round again
         break;
     }
     case K::Looper:
-        delay = std::clamp(unsigned(time_seconds(p[0]) * fs), 64u, DelayPool::half - 1);
+        delay = std::clamp(unsigned(time_seconds(p[0]) * fs()), 64u, DelayPool::half - 1);
         write %= delay;
         a = pct(2); mix = pct(3);
         break;
     case K::PedalChorus:
         a = rate_hertz(p[0]) * 0.6f; b = pct(1);
-        c = 1 - std::exp(-two_pi * (1500 + pct(2) * 7000) / fs); // the dark wet of a bucket brigade
+        c = 1 - std::exp(-two_pi * (1500 + pct(2) * 7000) / fs()); // the dark wet of a bucket brigade
         mix = pct(3);
         break;
     case K::PedalPhaser: a = rate_hertz(p[0]) * 0.5f; b = pct(1); c = p[2] ? 0.6f : 0; mix = pct(3); break;
@@ -112,17 +115,17 @@ void Effect::update() {
         float frac = at - float(v);
         for (unsigned n = 0; n < 3; ++n) {
             float hz = (vowel_formants[v][n] + (vowel_formants[v + 1][n] - vowel_formants[v][n]) * frac) * shift;
-            formant_g[n] = std::tan(dsp::pi * std::min(hz, fs * 0.45f) / fs);
+            formant_g[n] = std::tan(dsp::pi * std::min(hz, fs() * 0.45f) / fs());
         }
         formant_k = 1.2f - pct(1) * 1.1f; // narrower bands with more RESO
         mix = pct(3);
         break;
     }
     case K::Echo: case K::TapeEcho: case K::PingPong:
-        delay = std::min(DelayPool::half - 64, unsigned(time_seconds(p[0]) * fs));
+        delay = std::min(DelayPool::half - 64, unsigned(time_seconds(p[0]) * fs()));
         a = pct(1);                                                   // feedback
         mix = pct(2);
-        b = 1 - std::exp(-two_pi * (800 + pct(current == K::TapeEcho ? 4 : 3) * 9000) / fs); // tone: lowpass in the loop
+        b = 1 - std::exp(-two_pi * (800 + pct(current == K::TapeEcho ? 4 : 3) * 9000) / fs()); // tone: lowpass in the loop
         c = current == K::TapeEcho ? pct(3) : 0;                       // wow
         break;
     case K::Chorus: case K::Flanger:
@@ -134,7 +137,7 @@ void Effect::update() {
     case K::AutoPan: case K::Tremolo: a = rate_hertz(p[0]); b = pct(1); c = float(p[2]); break;
     case K::Drive: case K::Fuzz:
         a = db(pct(0) * (current == K::Fuzz ? 40 : 24));
-        b = 1 - std::exp(-two_pi * (1000 + pct(1) * 15000) / fs);
+        b = 1 - std::exp(-two_pi * (1000 + pct(1) * 15000) / fs());
         mix = pct(2);
         break;
     case K::Tape: a = db(pct(0) * 18); c = pct(1); mix = pct(2); break;
@@ -154,7 +157,7 @@ void Effect::update() {
     }
     case K::Filter: {
         float hz = 20.0f * std::exp2(pct(0) * 9.97f);
-        svf_g = std::tan(dsp::pi * std::min(hz, fs * 0.45f) / fs);
+        svf_g = std::tan(dsp::pi * std::min(hz, fs() * 0.45f) / fs());
         svf_k = 2 - 1.9f * pct(1);
         break;
     }
@@ -257,10 +260,10 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::PedalChorus: {
-            lfo += a / fs; lfo -= std::floor(lfo);
+            lfo += a / fs(); lfo -= std::floor(lfo);
             float tri = 1 - 4 * std::fabs(lfo - 0.5f); // -1..1
             line_l[write] = (l + r) * 0.5f;            // one line, read twice for width
-            float base = 0.009f * fs, depth = 0.0045f * fs * b;
+            float base = 0.009f * fs(), depth = 0.0045f * fs() * b;
             float w1 = dsp::soft_clip(delayed(line_l, write, base + depth * tri) * 1.3f) / 1.3f;
             float w2 = dsp::soft_clip(delayed(line_l, write, base - depth * tri) * 1.3f) / 1.3f;
             tone_l += (w1 - tone_l) * c; tone_r += (w2 - tone_r) * c;
@@ -269,11 +272,11 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::PedalPhaser: {
-            lfo += a / fs; lfo -= std::floor(lfo);
+            lfo += a / fs(); lfo -= std::floor(lfo);
             if ((f & 15) == 0) {
                 float tri = 1 - 2 * std::fabs(2 * lfo - 1); // 0..1
                 float hz = 160 * std::exp2(b * 3.8f * tri);
-                float t = std::tan(dsp::pi * hz / fs);
+                float t = std::tan(dsp::pi * hz / fs());
                 env2 = (t - 1) / (t + 1);
             }
             float x[2] {l + phaser_l * c, r + phaser_r * c};
@@ -318,7 +321,7 @@ void Effect::process(float* left, float* right, unsigned frames) {
         }
         case K::Echo: case K::TapeEcho: case K::PingPong: {
             float back = float(delay);
-            if (current == K::TapeEcho) { lfo += 0.6f / fs; lfo -= std::floor(lfo); back *= 1 + c * 0.004f * std::sin(two_pi * lfo); }
+            if (current == K::TapeEcho) { lfo += 0.6f / fs(); lfo -= std::floor(lfo); back *= 1 + c * 0.004f * std::sin(two_pi * lfo); }
             float dl = delayed(line_l, write, back), dr = delayed(line_r, write, back);
             tone_l += (dl - tone_l) * b; tone_r += (dr - tone_r) * b;
             float fl = tone_l * a, fr = tone_r * a;
@@ -330,8 +333,8 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::Chorus: case K::Flanger: {
-            lfo += a / fs; lfo -= std::floor(lfo);
-            float base = current == K::Chorus ? 0.015f * fs : 0.003f * fs, depth = current == K::Chorus ? 0.007f * fs : 0.0025f * fs;
+            lfo += a / fs(); lfo -= std::floor(lfo);
+            float base = current == K::Chorus ? 0.015f * fs() : 0.003f * fs(), depth = current == K::Chorus ? 0.007f * fs() : 0.0025f * fs();
             float ml = base + depth * b * std::sin(two_pi * lfo), mr = base + depth * b * std::sin(two_pi * (lfo + 0.25f));
             wet_l = delayed(line_l, write, ml); wet_r = delayed(line_r, write, mr);
             line_l[write] = l + wet_l * c; line_r[write] = r + wet_r * c;
@@ -339,10 +342,10 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::Phaser: {
-            lfo += a / fs; lfo -= std::floor(lfo);
+            lfo += a / fs(); lfo -= std::floor(lfo);
             if ((f & 15) == 0) {
                 float hz = 300 * std::exp2(b * 3.5f * (0.5f + 0.5f * std::sin(two_pi * lfo)));
-                float t = std::tan(dsp::pi * hz / fs);
+                float t = std::tan(dsp::pi * hz / fs());
                 env2 = (t - 1) / (t + 1); // one allpass coefficient for all stages
             }
             float x[2] {l + phaser_l * c, r + phaser_r * c};
@@ -353,13 +356,13 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::AutoPan: {
-            lfo += a / fs; lfo -= std::floor(lfo);
+            lfo += a / fs(); lfo -= std::floor(lfo);
             float s = std::sin(two_pi * lfo) * b;
             wet_l = l * std::min(1.0f, 1 - s); wet_r = r * std::min(1.0f, 1 + s);
             break;
         }
         case K::Tremolo: {
-            lfo += a / fs; lfo -= std::floor(lfo);
+            lfo += a / fs(); lfo -= std::floor(lfo);
             float wave = c ? (lfo < 0.5f ? 1.0f : -1.0f) : std::sin(two_pi * lfo);
             gain += ((1 - b * (0.5f - 0.5f * wave)) - gain) * 0.01f; // smoothed, so the square does not click
             wet_l = l * gain; wet_r = r * gain;
@@ -376,8 +379,8 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::Tape: {
-            lfo += 0.8f / fs; lfo -= std::floor(lfo);
-            float back = 0.005f * fs * (1 + c * 0.6f * std::sin(two_pi * lfo));
+            lfo += 0.8f / fs(); lfo -= std::floor(lfo);
+            float back = 0.005f * fs() * (1 + c * 0.6f * std::sin(two_pi * lfo));
             line_l[write] = l; line_r[write] = r;
             wet_l = dsp::soft_clip(delayed(line_l, write, back) * a) / std::sqrt(a);
             wet_r = dsp::soft_clip(delayed(line_r, write, back) * a) / std::sqrt(a);

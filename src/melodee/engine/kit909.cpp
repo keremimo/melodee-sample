@@ -51,9 +51,10 @@ const EngineInfo& info() {
 
 using namespace kit909;
 namespace {
-constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
+constexpr float two_pi = 2 * dsp::pi;
+float fs() { return dsp::sample_rate(); } // the device's rate now
 // Down 60 dB in twice `seconds`: the drums ring about as long as their settings say.
-float decay_per_sample(float seconds) { return std::exp(-6.9f / (std::max(seconds, 0.005f) * 2 * fs)); }
+float decay_per_sample(float seconds) { return std::exp(-6.9f / (std::max(seconds, 0.005f) * 2 * fs())); }
 }
 
 Kit909Engine::Kit909Engine() { for (unsigned n = 0; n < Count; ++n) p[n] = info().params[n].initial; }
@@ -79,7 +80,7 @@ float Kit909Engine::metal(Voice& v, float base) {
     static const float ratios[] {1.0f, 1.4471f, 1.6170f, 1.9265f, 2.5028f, 2.6637f};
     float sum = 0;
     for (unsigned n = 0; n < 6; ++n) {
-        v.phases[n] += base * ratios[n] / fs;
+        v.phases[n] += base * ratios[n] / fs();
         v.phases[n] -= std::floor(v.phases[n]);
         sum += v.phases[n] < 0.5f ? 1.0f : -1.0f;
     }
@@ -94,7 +95,7 @@ float Kit909Engine::drum(unsigned d, Voice& v) {
     case Kick: {
         float base = 40 + pct(KickTune) * 35, sweep = base * (1 + 5 * v.pitch_env);
         v.pitch_env *= decay_per_sample(0.02f + 0.03f * (1 - pct(KickAttack)));
-        v.phase += sweep / fs; v.phase -= std::floor(v.phase);
+        v.phase += sweep / fs(); v.phase -= std::floor(v.phase);
         v.amp *= decay_per_sample(0.08f + pct(KickDecay) * 0.9f);
         float click = v.age < 60 ? noise.next() * (1 - v.age / 60) * pct(KickAttack) : 0;
         out = (std::sin(two_pi * v.phase) * v.amp + click * 0.6f) * pct(KickLevel) * 1.4f;
@@ -102,7 +103,7 @@ float Kit909Engine::drum(unsigned d, Voice& v) {
     }
     case Snare: {
         float base = 160 + pct(SnareTune) * 120;
-        v.phase += base / fs; v.phase2 += base * 1.87f / fs;
+        v.phase += base / fs(); v.phase2 += base * 1.87f / fs();
         v.phase -= std::floor(v.phase); v.phase2 -= std::floor(v.phase2);
         v.amp *= decay_per_sample(0.08f + 0.1f * pct(SnareTone));
         v.noise_amp *= decay_per_sample(0.05f + 0.25f * pct(SnareSnappy));
@@ -114,7 +115,7 @@ float Kit909Engine::drum(unsigned d, Voice& v) {
     }
     case Clap: {
         // Three quick slaps, then the room.
-        float t = v.age / fs, gate = 0;
+        float t = v.age / fs(), gate = 0;
         for (float at : {0.0f, 0.011f, 0.022f}) if (t >= at && t < at + 0.009f) gate = std::exp(-(t - at) * 300);
         v.noise_amp *= decay_per_sample(0.08f + 0.4f * pct(ClapDecay));
         float n = noise.next();
@@ -123,7 +124,7 @@ float Kit909Engine::drum(unsigned d, Voice& v) {
         break;
     }
     case Rim: {
-        float t = v.age / fs;
+        float t = v.age / fs();
         out = (std::sin(two_pi * 1700 * t) * 0.6f + std::sin(two_pi * 480 * t)) * std::exp(-t * 180) * pct(RimLevel);
         if (t > 0.05f) v.on = false;
         break;
@@ -132,7 +133,7 @@ float Kit909Engine::drum(unsigned d, Voice& v) {
         int tune = d == LowTom ? LowTune : d == MidTom ? MidTune : HighTune;
         float base = (d == LowTom ? 80 : d == MidTom ? 120 : 170) * (0.7f + 0.6f * pct(tune));
         v.pitch_env *= decay_per_sample(0.08f);
-        v.phase += base * (1 + 0.6f * v.pitch_env) / fs; v.phase -= std::floor(v.phase);
+        v.phase += base * (1 + 0.6f * v.pitch_env) / fs(); v.phase -= std::floor(v.phase);
         v.amp *= decay_per_sample(0.15f + 0.6f * pct(TomDecay));
         out = (std::sin(two_pi * v.phase) * v.amp + noise.next() * v.amp * 0.05f) * pct(TomLevel);
         break;

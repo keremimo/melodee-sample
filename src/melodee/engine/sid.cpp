@@ -95,7 +95,7 @@ void SidEngine::render(float* out, unsigned frames) {
     float crush = p[Crush] / 100.0f, steps = std::exp2(12 - crush * 9); // down to three bits at the top
     for (unsigned start = 0; start < frames; start += 16) {
         unsigned n = std::min(16u, frames - start);
-        lfo += rate_hertz(p[PwmRate]) * n / dsp::sample_rate;
+        lfo += rate_hertz(p[PwmRate]) * n / dsp::sample_rate();
         lfo -= std::floor(lfo);
         float sweep = p[PulseWidth] / 100.0f + p[PwmDepth] / 100.0f * 0.45f * std::sin(2 * dsp::pi * lfo);
         lfo_value = vibrato.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), n);
@@ -106,13 +106,13 @@ void SidEngine::render(float* out, unsigned frames) {
             auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env.level});
             // Pitch: the bend, the matrix and pressure's vibrato.
             float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
-            float dt = std::min(dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate, 0.45f);
-            float dt2 = std::min(dsp::midi_hz(key + p[Detune] + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate, 0.45f);
+            float dt = std::min(dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate(), 0.45f);
+            float dt2 = std::min(dsp::midi_hz(key + p[Detune] + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate(), 0.45f);
             float width = std::clamp(sweep + at(m, ModDest::PulseWidth) * 0.45f, 0.03f, 0.97f);
             // The filter at this block: cutoff, the envelope's push, key tracking, pressure and the matrix, in octaves.
             float octaves = p[Cutoff] / 100.0f * (old_chip ? 8.5f : 9.6f) + v.env.level * p[EnvAmount] / 100.0f * 5 + (key - 60) / 12.0f * p[KeyTrack] / 100.0f
                 + v.touch * p[AtBright] / 100.0f * 4 + at(m, ModDest::Cutoff) * 5;
-            float g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate * 0.45f) / dsp::sample_rate);
+            float g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate() * 0.45f) / dsp::sample_rate());
             float k = 2 - 1.95f * std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f);
             float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f;
             for (unsigned f = 0; f < n; ++f) {

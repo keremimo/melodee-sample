@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/model_rate.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -19,14 +20,15 @@
 // song ended, on until the mix falls silent) -> Done. Stop meanwhile is
 // Cancelled; a ring the service thread could not keep up with is Failed.
 // The audio thread moves it on, the service thread puts it back to Idle
-// once it has taken everything (release()).
+// once it has taken everything (release()). The render is kept at 44.1 kHz
+// (ToModelRate), so frames() and what pop() gives count those.
 namespace melodee {
 
 class Bounce {
 public:
     enum class State : uint8_t { Idle, Cued, Running, Tail, Done, Cancelled, Failed };
     static constexpr uint32_t ring_frames = 1u << 19;        // 11.9 s
-    static constexpr uint32_t silence_frames = 8820;         // a tail ends after 200 ms below -70 dB
+    static constexpr uint32_t silence_frames = 8820;         // a tail ends after 200 ms below -70 dB (44.1 kHz frames)
     static constexpr uint32_t tail_limit = 10 * 44100;       // or after 10 s
 
     Bounce() : ring_(new float[size_t(ring_frames) * 2]()) {}
@@ -37,8 +39,11 @@ public:
         if (s != State::Idle) return;
         read_.store(0); write_.store(0); frames_.store(0);
         start_at = -1; stop_at = -1; tail_frames = 0; quiet = 0;
+        convert.reset();
         state_.store(State::Cued);
     }
+    // Audio thread: the device's rate (EngineHost::set_audio_format).
+    void set_rate(float device) { convert.set_rate(device); }
     bool cued() const { return state_.load(std::memory_order_relaxed) == State::Cued; }
     bool running() const { return state_.load(std::memory_order_relaxed) == State::Running; }
     void begin(unsigned offset) { if (cued()) { start_at = int(offset); state_.store(State::Running); } }
@@ -59,19 +64,22 @@ public:
         uint64_t w = write_.load(std::memory_order_relaxed), rd = read_.load(std::memory_order_acquire);
         if (to > from && w + (to - from) - rd > ring_frames) { state_.store(State::Failed); return; }
         float loudest = 0;
+        uint32_t kept = 0;
         for (unsigned f = from; f < to; ++f) {
-            size_t i = size_t((w + f - from) % ring_frames) * 2;
-            ring_[i] = l[f]; ring_[i + 1] = r[f];
             loudest = std::max({loudest, std::fabs(l[f]), std::fabs(r[f])});
+            convert.feed(l[f], r[f], [&](float cl, float cr) {
+                size_t i = size_t((w + kept) % ring_frames) * 2;
+                ring_[i] = cl; ring_[i + 1] = cr; ++kept;
+            });
         }
-        if (to > from) {
-            write_.store(w + (to - from), std::memory_order_release);
-            frames_.fetch_add(to - from, std::memory_order_relaxed);
+        if (kept) {
+            write_.store(w + kept, std::memory_order_release);
+            frames_.fetch_add(kept, std::memory_order_relaxed);
         }
         if (stop_at >= 0) { stop_at = -1; state_.store(State::Done); return; }
         if (s == State::Tail) {
-            tail_frames += n;
-            quiet = loudest < 0.0003f ? quiet + n : 0;
+            tail_frames += kept;
+            quiet = loudest < 0.0003f ? quiet + kept : 0;
             if (quiet >= silence_frames || tail_frames >= tail_limit) state_.store(State::Done);
         }
     }
@@ -100,6 +108,7 @@ public:
 
 private:
     std::unique_ptr<float[]> ring_;
+    ToModelRate convert;
     std::atomic<State> state_ {State::Idle};
     std::atomic<uint64_t> read_ {0}, write_ {0};
     std::atomic<uint32_t> frames_ {0};

@@ -20,7 +20,7 @@ void SamplerEngine::set_param(int id, int value) {
     // The kit filter: a low pass that is out of the way when fully open.
     float hz = 20.0f * std::exp2(p[Filter] / 100.0f * 9.97f);
     filtered = p[Filter] < 99 || p[FilterType] != 0;
-    g = std::tan(dsp::pi * std::min(hz, dsp::sample_rate * 0.45f) / dsp::sample_rate);
+    g = std::tan(dsp::pi * std::min(hz, dsp::sample_rate() * 0.45f) / dsp::sample_rate());
     k = 2 - 1.9f * p[Resonance] / 100.0f;
 }
 
@@ -58,13 +58,15 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     // PITCH Stretch keeps a pitch change from changing the length too.
     double rate = 1.0, frames = double(v.end - v.start);
     if (sound.warp == warp_seq) {
-        double own = sound.beats ? sound.beats * 60.0 * 44100.0 / frames * 10.0 : double(sound.own_tempo);
+        double own = sound.beats ? sound.beats * 60.0 * dsp::model_rate / frames * 10.0 : double(sound.own_tempo);
         if (own > 0) rate = tempo / own;
     } else if (sound.warp >= warp_min) rate = 100.0 / sound.warp;
     else if (p[Follow] && sound.own_tempo) rate = double(tempo) / sound.own_tempo;
     bool tape = p[FollowHow] == 2;
-    double pitch = tape ? v.step * rate : v.step;                         // what the taps read at
-    double advance = rate * (p[PitchHow] == 1 ? 1.0 : v.step);            // how fast the sound moves on
+    // Samples are at 44.1 kHz: at another device rate each output frame reads that much further along.
+    double per_frame = dsp::model_rate / dsp::sample_rate();
+    double pitch = (tape ? v.step * rate : v.step) * per_frame;              // what the taps read at
+    double advance = rate * (p[PitchHow] == 1 ? 1.0 : v.step) * per_frame; // how fast the sound moves on
     v.step = pitch;
     if (!v.cloud && pad < int(sampler_pads) && std::fabs(pitch - advance) > 1e-6) {
         v.stretch = true;
@@ -73,14 +75,14 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.place = v.position;
         // Beats: a segment a sixteenth of the project long, cut in at its own place, so hits stay whole.
         // Tones: 60 ms windows, half overlapped, for held sounds.
-        v.window = v.beats ? std::max(256u, unsigned(dsp::sample_rate * 15 / (tempo / 10.0))) : 2646u;
+        v.window = v.beats ? std::max(256u, unsigned(dsp::sample_rate() * 15 / (tempo / 10.0))) : unsigned(0.06f * dsp::sample_rate());
         v.hop = v.beats ? v.window : v.window / 2;
         v.since_hop = v.hop; // a tap at once
     }
     v.held = true; v.gate = sound.play == PadPlay::Gate; v.group = sound.group;
     v.age = ++clock;
     // Offset: up to a sixteenth of the project's tempo after the hit.
-    v.wait = pad < int(sampler_pads) ? uint32_t(sound.offset * (dsp::sample_rate * 15 / (tempo / 10.0)) / 100) : 0;
+    v.wait = pad < int(sampler_pads) ? uint32_t(sound.offset * (dsp::sample_rate() * 15 / (tempo / 10.0)) / 100) : 0;
     // Volume (dB, as the MPC shows it), Normalize, and velocity by the pad's sensitivity.
     float sense = sound.velocity_sense / 100.0f, curve = 0.25f + 0.75f * std::clamp(velocity, 0, 127) / 127.0f;
     float velocity_gain = 1.0f - sense * (1.0f - curve);
@@ -94,7 +96,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     bool hold = sound.decay >= 100 || from_end;
     v.shape = {dsp::Envelope::coefficient(time_seconds(sound.attack) * 0.3f), dsp::Envelope::coefficient(hold ? 1000.0f : decay_s),
                dsp::Envelope::coefficient(time_seconds(sound.release) * 0.5f + 0.003f), hold ? 1.0f : sound.sustain / 100.0f};
-    if (from_end && sound.decay < 100 && !v.loop) v.tail = decay_s * dsp::sample_rate;
+    if (from_end && sound.decay < 100 && !v.loop) v.tail = decay_s * dsp::sample_rate();
     v.env.gate(true);
     // The pad's filter, or 16 Levels' cutoff (Classic when the pad has none).
     v.filter = sound.filter;
@@ -112,7 +114,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         bool f_hold = from_end;
         v.filter_shape = {dsp::Envelope::coefficient(time_seconds(sound.filter_attack) * 0.3f), dsp::Envelope::coefficient(f_hold ? 1000.0f : f_decay),
                           dsp::Envelope::coefficient(time_seconds(sound.filter_release) * 0.5f + 0.003f), f_hold ? 1.0f : sound.filter_sustain / 100.0f};
-        if (f_hold && !v.loop && sound.filter_decay < 100) v.filter_tail = f_decay * dsp::sample_rate; // 100 holds, as the amp's decay
+        if (f_hold && !v.loop && sound.filter_decay < 100) v.filter_tail = f_decay * dsp::sample_rate(); // 100 holds, as the amp's decay
         v.filter_env.gate(true);
         v.since_tune = 1u << 30; // tune on the first frame
     }
@@ -213,7 +215,7 @@ void SamplerEngine::spawn(Voice& v) {
     seed = seed * 1664525u + 1013904223u;
     float detune = int32_t(seed) / 2147483648.0f * p[Spread] / 100.0f; // up to a semitone either way per 100 cents
     *g = Grain {v.sample, at, v.step * std::exp2(detune / 12.0), 0,
-                uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate), v.gain * v.env.level, v.left, v.right};
+                uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate()), v.gain * v.env.level, v.left, v.right};
 }
 
 // Output frames left before the region's end (reversed: its start), for
@@ -234,7 +236,7 @@ void SamplerEngine::voice_out(Voice& v, float l, float r, float a, float left_fr
         if (++v.since_tune >= 16) {
             v.since_tune = 0;
             float hz = 20.0f * std::exp2(std::min(v.cutoff + v.depth * e, 10.5f));
-            v.fg = std::tan(dsp::pi * std::min(hz, dsp::sample_rate * 0.45f) / dsp::sample_rate);
+            v.fg = std::tan(dsp::pi * std::min(hz, dsp::sample_rate() * 0.45f) / dsp::sample_rate());
         }
         const float g = v.fg;
         auto stage = [&](float x, float k, float* s) { // one state-variable stage: low, band and high pass
@@ -334,7 +336,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         if (!v.env.active() || (v.choked && (v.fade -= 0.25f) <= 0)) { v.pad = -1; continue; }
         v.scan += (p[Scan] - 50) / 50.0 * v.step * frames; // forwards or backwards at up to its own speed
         v.next_grain -= frames;
-        double every = dsp::sample_rate / std::max(1, int(1 + p[Density] * 0.99));
+        double every = dsp::sample_rate() / std::max(1, int(1 + p[Density] * 0.99));
         while (v.next_grain <= 0) { spawn(v); v.next_grain += every; }
     }
     for (auto& g : grains) {
@@ -366,7 +368,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         float* to_r = punching && v.pad == aside_pad ? aside_r : out_r(v.pad);
         if (chains && v.pad < int(sampler_pads) && (*pad_effects)[size_t(v.pad)][0].kind() != EffectKind::None)
             if (Lane* l = lane_for(v.pad)) {
-                if (!l->fed) { l->fed = true; l->tail = uint32_t(3 * dsp::sample_rate); }
+                if (!l->fed) { l->fed = true; l->tail = uint32_t(3 * dsp::sample_rate()); }
                 to_l = l->l; to_r = l->r;
             }
         const float* l = v.sample->left.data();

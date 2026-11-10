@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/model_rate.h"
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
@@ -13,25 +14,28 @@
 // ever copied, so the oldest frames copied are never the ones being
 // overwritten during the copy (it takes a few milliseconds); a copy checks
 // afterwards that the writer stayed clear, and says so when it did not.
-// 26 s of stereo float: about 9 MB, made at start.
+// 26 s of stereo float: about 9 MB, made at start. Kept at 44.1 kHz
+// (ToModelRate) whatever the device runs at.
 namespace melodee {
 
 class RecallRing {
 public:
-    static constexpr uint32_t rate = 44100, seconds = 25, capacity = (seconds + 1) * rate;
+    static constexpr uint32_t rate = uint32_t(dsp::model_rate), seconds = 25, capacity = (seconds + 1) * rate;
 
     RecallRing() : left_(new float[capacity]()), right_(new float[capacity]()) {}
 
     // Audio thread.
     void write(const float* l, const float* r, unsigned n) {
-        uint64_t at = written_.load(std::memory_order_relaxed);
+        uint64_t at = written_.load(std::memory_order_relaxed), kept = 0;
         uint32_t i = uint32_t(at % capacity);
-        for (unsigned f = 0; f < n; ++f) {
-            left_[i] = l[f]; right_[i] = r[f];
+        for (unsigned f = 0; f < n; ++f) convert.feed(l[f], r[f], [&](float cl, float cr) {
+            left_[i] = cl; right_[i] = cr; ++kept;
             if (++i == capacity) i = 0;
-        }
-        written_.store(at + n, std::memory_order_release);
+        });
+        written_.store(at + kept, std::memory_order_release);
     }
+    // Audio thread: the device's rate changed; what came before is not recalled with it.
+    void set_rate(float device) { convert.set_rate(device); restart(); }
     // Audio thread: the source changed, so what came before is not recalled with it.
     void restart() { since_.store(written_.load(std::memory_order_relaxed), std::memory_order_release); }
 
@@ -56,6 +60,7 @@ public:
 
 private:
     std::unique_ptr<float[]> left_, right_;
+    ToModelRate convert;
     std::atomic<uint64_t> written_ {0}, since_ {0};
 };
 

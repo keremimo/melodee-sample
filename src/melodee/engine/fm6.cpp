@@ -171,8 +171,8 @@ void Fm6Engine::render(float* out, unsigned frames) {
         auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env[0].level});
         // Pitch: the bend, the matrix and pressure's vibrato; carriers and modulators can part.
         float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
-        float hz_carrier = dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate;
-        float hz_modulator = dsp::midi_hz(key + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate;
+        float hz_carrier = dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate();
+        float hz_modulator = dsp::midi_hz(key + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
         // Brightness: pressure and the matrix scale every modulator, as a DX patch's aftertouch into modulator levels.
         float bright = std::min(8.0f, std::exp2(2 * (at(m, ModDest::Cutoff) + v.touch * p[AtBright] / 100.0f)));
         float steps = std::clamp(p[Feedback] + at(m, ModDest::Resonance) * 7, 0.0f, 7.0f);

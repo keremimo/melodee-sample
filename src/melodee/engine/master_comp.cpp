@@ -7,8 +7,8 @@
 
 namespace melodee {
 namespace {
-constexpr float fs = dsp::sample_rate;
-float follow(float ms) { return std::exp(-1.0f / std::max(ms * 0.001f * fs, 1.0f)); }
+float fs() { return dsp::sample_rate(); } // the device's rate now
+float follow(float ms) { return std::exp(-1.0f / std::max(ms * 0.001f * fs(), 1.0f)); }
 } // namespace
 
 void MasterCompressor::set(const MasterComp& settings) {
@@ -41,7 +41,7 @@ void MasterCompressor::process(float* left, float* right, unsigned frames) {
         l *= gain; r *= gain;
         if (s.color) {
             // A slow wobble (a few cents), the lows doubled in parallel, then soft saturation.
-            wobble += 0.6f / fs; wobble -= std::floor(wobble);
+            wobble += 0.6f / fs(); wobble -= std::floor(wobble);
             delay_l[at] = l; delay_r[at] = r;
             float back = 40 + 6 * std::sin(2 * dsp::pi * wobble);
             float pos = float(at) + line - back;

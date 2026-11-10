@@ -37,7 +37,7 @@ constexpr unsigned punch_snap_count = 4;
 
 class Punch {
 public:
-    static constexpr unsigned history = 88200; // two seconds
+    static constexpr unsigned history = 192000; // two seconds at 96 kHz
     Punch() : left(new float[history]()), right(new float[history]()) {}
     // `bar` and `grid` in samples (the song's bar and the snap grid); depth
     // 0..1; tail 0 cut, 1 fade (60 ms), 2 ring (a second and a half).

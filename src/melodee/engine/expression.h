@@ -64,7 +64,7 @@ inline float velocity_gain(float velocity, float depth) {
 // Pressure arrives in steps from the pads; a voice follows it over about
 // 10 ms so vibrato depth and brightness don't click.
 inline void follow(float& value, float target, unsigned frames) {
-    value += (target - value) * (1.0f - std::exp(-float(frames) / (0.010f * dsp::sample_rate)));
+    value += (target - value) * (1.0f - std::exp(-float(frames) / (0.010f * dsp::sample_rate())));
 }
 
 // AT > VIB 100 swings the pitch a semitone each way at full pressure.
@@ -77,7 +77,7 @@ constexpr int default_at_vib = 35, default_at_bright = 50, default_vib_rate = 73
 struct Vibrato {
     float phase = 0;
     float next(float hz, unsigned frames) {
-        phase += hz * float(frames) / dsp::sample_rate;
+        phase += hz * float(frames) / dsp::sample_rate();
         phase -= std::floor(phase);
         return std::sin(2 * dsp::pi * phase);
     }

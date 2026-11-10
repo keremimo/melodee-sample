@@ -32,7 +32,7 @@ void ProphetEngine::update() {
                     Envelope::coefficient(time_seconds(p[FilterRelease])), p[FilterSustain] / 100.0f};
     // Glide: about 2 s at the top, per control block.
     float glide = p[Glide] ? 0.002f * std::pow(1000.0f, p[Glide] / 100.0f) : 0;
-    glide_coefficient = glide > 0 ? 1.0f - std::exp(-float(control_block) / (glide * dsp::sample_rate) * 3.0f) : 1.0f;
+    glide_coefficient = glide > 0 ? 1.0f - std::exp(-float(control_block) / (glide * dsp::sample_rate()) * 3.0f) : 1.0f;
 }
 
 bool ProphetEngine::sounding() const {
@@ -154,10 +154,10 @@ void ProphetEngine::control(Voice& v) {
         + (p[PolyFreqA] ? poly_env * 24.0f : 0) + pitch_mod + at(m, ModDest::OscAPitch) * 12;
     float key_b = (p[KeybB] ? v.pitch : 60.0f) + p[FreqB] + p[FineB] / 100.0f + bend_st + drift * 0.7f + v.detune
         + lfo * p[LfoFreq] / 100.0f * 2.0f + wheel * p[WheelFreq] / 100.0f * 2.0f + pitch_mod + at(m, ModDest::OscBPitch) * 12;
-    v.dt_a = std::min(dsp::midi_hz(key_a) / dsp::sample_rate, 0.45f);
+    v.dt_a = std::min(dsp::midi_hz(key_a) / dsp::sample_rate(), 0.45f);
     float hz_b = dsp::midi_hz(key_b);
     if (p[LoFreqB]) hz_b /= 64.0f;
-    v.dt_b = std::min(hz_b / dsp::sample_rate, 0.45f);
+    v.dt_b = std::min(hz_b / dsp::sample_rate(), 0.45f);
 
     float width_a = p[PwA] / 100.0f + lfo * p[LfoPw] / 100.0f * 0.4f + (p[PolyPwA] ? poly_env * 0.4f : 0) + at(m, ModDest::PulseWidth) * 0.45f;
     v.mix_a = {p[SawA] ? 1.0f : 0.0f, p[PulseA] ? 1.0f : 0.0f, 0, std::clamp(width_a, 0.05f, 0.95f)};
@@ -186,7 +186,7 @@ void ProphetEngine::render(float* out, unsigned frames) {
     for (unsigned start = 0; start < frames; start += control_block) {
         unsigned n = std::min(control_block, frames - start);
         float rate_octaves = expression::lfo_rate_octaves(mods, wheel, lfo_value);
-        lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(rate_octaves), unsigned(p[LfoShape]), float(n) / dsp::sample_rate);
+        lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(rate_octaves), unsigned(p[LfoShape]), float(n) / dsp::sample_rate());
         vibrato_value = vibrato.next(rate_hertz(p[VibRate]), n);
         for (auto& v : voices) {
             if (!v.amp_env.active()) { if (v.key >= 0 && !v.held) v.key = -1; continue; }

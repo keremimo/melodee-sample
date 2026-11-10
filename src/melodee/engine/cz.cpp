@@ -133,8 +133,8 @@ void CzEngine::render(float* out, unsigned frames) {
         // Pitch: the bend, the matrix and pressure's vibrato.
         float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
         // Line 1 (or 2 alone, a fifth of the detune up); with 1+1' or 1+2' the second line too, detuned.
-        float dt0 = dsp::midi_hz(key + (line == 1 ? p[Octave] * 12 : 0) + at(m, line == 1 ? ModDest::OscBPitch : ModDest::OscAPitch) * 12) / dsp::sample_rate;
-        float dt1 = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate;
+        float dt0 = dsp::midi_hz(key + (line == 1 ? p[Octave] * 12 : 0) + at(m, line == 1 ? ModDest::OscBPitch : ModDest::OscAPitch) * 12) / dsp::sample_rate();
+        float dt1 = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
         float follow = 1 - p[KeyFollow] / 100.0f * std::clamp((key - 48) / 48.0f, 0.0f, 1.0f); // high notes bend less
         float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel))
             * (both ? 0.18f : 0.26f);

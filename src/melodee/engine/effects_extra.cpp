@@ -13,10 +13,11 @@
 namespace melodee {
 namespace {
 using K = EffectKind;
-constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
+constexpr float two_pi = 2 * dsp::pi;
+float fs() { return dsp::sample_rate(); } // the device's rate now
 float db(float decibels) { return std::pow(10.0f, decibels / 20.0f); }
-float follow(float seconds) { return std::exp(-1.0f / std::max(seconds * fs, 1.0f)); }
-float one_pole(float hz) { return 1 - std::exp(-two_pi * std::min(hz, fs * 0.45f) / fs); }
+float follow(float seconds) { return std::exp(-1.0f / std::max(seconds * fs(), 1.0f)); }
+float one_pole(float hz) { return 1 - std::exp(-two_pi * std::min(hz, fs() * 0.45f) / fs()); }
 
 // A ring of `length` floats at `line`: what was written `back` samples before `at` (fractional).
 float tap(const float* line, unsigned length, unsigned at, float back) {
@@ -28,10 +29,12 @@ float tap(const float* line, unsigned length, unsigned at, float back) {
 }
 
 // Where each effect keeps its lines inside its pool block (floats).
-constexpr unsigned diff_line = 44100, diff_room = 600;          // Diff delay: up to a second a side, then 4 diffusers a side
-constexpr unsigned short_line = 11100;                          // Sample delay, Spring's predelay: 250 ms a side
-constexpr unsigned spring_base = 2 * short_line, spring_room = 4000;
-constexpr unsigned wobble_line = 4096;                          // Ensemble, Multi-chorus (one line), Vinyl, Tape emulator (a side)
+// Room for 96 kHz; lengths written in 44.1 kHz samples are stretched to the device's rate.
+float stretch() { return fs() / dsp::model_rate; }
+constexpr unsigned diff_line = 96000, diff_room = 1320;         // Diff delay: up to a second a side, then 4 diffusers a side
+constexpr unsigned short_line = 24100;                          // Sample delay, Spring's predelay: 250 ms a side
+constexpr unsigned spring_base = 2 * short_line, spring_room = 8800;
+constexpr unsigned wobble_line = 9000;                          // Ensemble, Multi-chorus (one line), Vinyl, Tape emulator (a side)
 static_assert(2 * diff_line + 8 * diff_room <= DelayPool::block_floats, "Diff delay fits in its block");
 static_assert(spring_base + 2 * spring_room <= DelayPool::block_floats, "Spring fits in its block");
 
@@ -73,29 +76,32 @@ void Effect::update_extra() {
     mix = 1;
     switch (current) {
     case K::DiffDelay: {
-        delay = std::clamp(unsigned(time_seconds(p[0]) * fs), 2u, diff_line - 2);
+        delay = std::clamp(unsigned(time_seconds(p[0]) * fs()), 2u, diff_line - 2);
         a = pct(1); mix = pct(2);
         b = pct(3) * 0.7f;                             // the diffusers' coefficient
         c = one_pole(18000 * std::exp2(-pct(4) * 5));  // high damping: a low pass in the loop
         static const unsigned lengths[] {142, 107, 379, 277};
-        for (unsigned n = 0; n < 4; ++n) { comb_length[n] = lengths[n]; comb_length[n + 4] = std::min(diff_room - 1, unsigned(lengths[n] * 1.13f)); }
+        for (unsigned n = 0; n < 4; ++n) {
+            comb_length[n] = std::max(1u, unsigned(lengths[n] * stretch()));
+            comb_length[n + 4] = std::min(diff_room - 1, unsigned(lengths[n] * 1.13f * stretch()));
+        }
         for (unsigned n = 0; n < 8; ++n) comb_at[n] %= comb_length[n];
         break;
     }
     case K::SampleDelay:
-        a = std::max(1.0f, p[0] * fs / 1000); b = std::max(1.0f, p[1] * fs / 1000); mix = pct(2);
+        a = std::max(1.0f, p[0] * fs() / 1000); b = std::max(1.0f, p[1] * fs() / 1000); mix = pct(2);
         break;
     case K::Spring: {
-        predelay = std::min(short_line - 2, unsigned(p[0] * fs / 1000));
+        predelay = std::min(short_line - 2, unsigned(p[0] * fs() / 1000));
         float seconds = p[1] / 10.0f;
-        comb_length[0] = 1557; comb_length[1] = 1789; // the springs' round trips, 35 and 41 ms
+        comb_length[0] = unsigned(1557 * stretch()); comb_length[1] = unsigned(1789 * stretch()); // the springs' round trips, 35 and 41 ms
         comb_at[0] %= comb_length[0]; comb_at[1] %= comb_length[1];
-        a = std::pow(10.0f, -3.0f * comb_length[0] / (seconds * fs));
-        b = std::pow(10.0f, -3.0f * comb_length[1] / (seconds * fs));
+        a = std::pow(10.0f, -3.0f * comb_length[0] / (seconds * fs()));
+        b = std::pow(10.0f, -3.0f * comb_length[1] / (seconds * fs()));
         mix = pct(2);
         c = pct(3);                                    // width
         d = 0.45f + pct(4) * 0.35f;                    // dispersion: the chirp's allpass coefficient
-        e = std::exp(-two_pi * float(p[5]) / fs);      // low cut, a one-pole high pass
+        e = std::exp(-two_pi * float(p[5]) / fs());      // low cut, a one-pole high pass
         damp = one_pole(4500);
         break;
     }
@@ -121,12 +127,12 @@ void Effect::update_extra() {
         break;
     case K::SoftClip: a = db(float(p[0])); b = db(float(p[3])); mix = pct(2); break;
     case K::Ensemble:
-        a = rate_hertz(p[0]); b = p[1] * fs / 1000; mix = pct(2);
-        c = (p[3] + 0.5f) * fs / 1000; d = pct(4); e = pct(5);
+        a = rate_hertz(p[0]); b = p[1] * fs() / 1000; mix = pct(2);
+        c = (p[3] + 0.5f) * fs() / 1000; d = pct(4); e = pct(5);
         break;
     case K::MultiChorus:
-        a = rate_hertz(p[0]); b = p[1] * fs / 1000; mix = pct(2);
-        c = (p[4] + 0.5f) * fs / 1000; delay = p[3] == 0 ? 3 : p[3] == 1 ? 4 : 6;
+        a = rate_hertz(p[0]); b = p[1] * fs() / 1000; mix = pct(2);
+        c = (p[4] + 0.5f) * fs() / 1000; delay = p[3] == 0 ? 3 : p[3] == 1 ? 4 : 6;
         if (voice_phase[1] == 0) for (unsigned n = 0; n < voice_phase.size(); ++n) voice_phase[n] = n / 6.0f; // spread round the turn
         break;
     case K::AutoWah:
@@ -136,8 +142,8 @@ void Effect::update_extra() {
         break;
     case K::Vintage: {
         const Machine& m = machines[std::clamp(p[0], 0, 3)];
-        a = m.rate / fs; b = std::exp2(m.bits - 1); d = m.drive;
-        svf_g = std::tan(dsp::pi * std::min(m.cutoff, fs * 0.45f) / fs);
+        a = m.rate / fs(); b = std::exp2(m.bits - 1); d = m.drive;
+        svf_g = std::tan(dsp::pi * std::min(m.cutoff, fs() * 0.45f) / fs());
         svf_k = 2 - 1.9f * m.reso;
         mix = pct(2);
         break;
@@ -270,13 +276,13 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
         }
         case K::Ensemble: {
             // Three voices on one line, a third of a turn apart, each with a faster shimmer on top; spread left, centre, right.
-            lfo += a / fs; lfo -= std::floor(lfo);
-            env2 += a * 6.3f / fs; env2 -= std::floor(env2);
+            lfo += a / fs(); lfo -= std::floor(lfo);
+            env2 += a * 6.3f / fs(); env2 -= std::floor(env2);
             line_l[write] = (l + r) * 0.5f;
             float v[3];
             for (unsigned n = 0; n < 3; ++n) {
                 float offset = n / 3.0f;
-                float back = c + b * (0.5f + 0.5f * std::sin(two_pi * (lfo + offset))) + d * 0.0006f * fs * (1 + std::sin(two_pi * (env2 + offset)));
+                float back = c + b * (0.5f + 0.5f * std::sin(two_pi * (lfo + offset))) + d * 0.0006f * fs() * (1 + std::sin(two_pi * (env2 + offset)));
                 v[n] = tap(line_l, wobble_line, write, back);
             }
             if (++write >= wobble_line) write = 0;
@@ -290,7 +296,7 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
             float out[2] {0, 0};
             for (unsigned n = 0; n < delay; ++n) {
                 float& phase = voice_phase[n];
-                phase += a * (1 + 0.11f * n) / fs; phase -= std::floor(phase);
+                phase += a * (1 + 0.11f * n) / fs(); phase -= std::floor(phase);
                 float x = tap(line_l, wobble_line, write, c + b * (0.5f + 0.5f * std::sin(two_pi * phase)));
                 out[n % 2] += x * 0.85f; out[1 - n % 2] += x * 0.35f;
             }
@@ -306,7 +312,7 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
             if ((f & 7) == 0) {
                 float open = std::clamp(env * 4, 0.0f, 1.0f) * p[0] / 100.0f;
                 float hz = std::clamp(150 * std::exp2(p[3] / 100.0f * 4 + open * 5), 40.0f, 16000.0f);
-                svf_g = std::tan(dsp::pi * hz / fs);
+                svf_g = std::tan(dsp::pi * hz / fs());
             }
             float* io[2] {&wet_l, &wet_r};
             for (unsigned side = 0; side < 2; ++side) {
@@ -337,9 +343,9 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
         }
         case K::Vinyl: {
             // A slow wow at 33 rpm, the band of a record, crackle and surface noise.
-            lfo += 0.55f / fs; lfo -= std::floor(lfo);
+            lfo += 0.55f / fs(); lfo -= std::floor(lfo);
             line_l[write] = l; line_l[wobble_line + write] = r;
-            float back = 0.004f * fs + c * 0.0025f * fs * std::sin(two_pi * lfo);
+            float back = 0.004f * fs() + c * 0.0025f * fs() * std::sin(two_pi * lfo);
             float x[2] {tap(line_l, wobble_line, write, back), tap(line_l + wobble_line, wobble_line, write, back)};
             if (++write >= wobble_line) write = 0;
             tone_l += (x[0] - tone_l) * a; tone_r += (x[1] - tone_r) * a;
@@ -359,14 +365,14 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
         }
         case K::TapeEmu: {
             // Wow (slow), a wandering pitch, hiss, and the tape's soft saturation and dull top.
-            lfo += 0.7f / fs; lfo -= std::floor(lfo);
+            lfo += 0.7f / fs(); lfo -= std::floor(lfo);
             float& drift = state[0];
             float& aim = state[1];
             float& hiss = state[2];
             if ((hold_count++ & 4095) == 0) aim = noise(seed);
             drift += (aim - drift) * 0.0004f;
             line_l[write] = l; line_l[wobble_line + write] = r;
-            float back = 0.008f * fs + a * 0.003f * fs * std::sin(two_pi * lfo) + c * 0.004f * fs * drift;
+            float back = 0.008f * fs() + a * 0.003f * fs() * std::sin(two_pi * lfo) + c * 0.004f * fs() * drift;
             float x[2] {tap(line_l, wobble_line, write, back), tap(line_l + wobble_line, wobble_line, write, back)};
             if (++write >= wobble_line) write = 0;
             hiss += (noise(seed) - hiss) * 0.5f;

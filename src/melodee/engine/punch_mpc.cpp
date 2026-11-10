@@ -14,10 +14,12 @@
 
 namespace melodee {
 namespace {
-constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
+constexpr float two_pi = 2 * dsp::pi;
+float fs() { return dsp::sample_rate(); } // the device's rate now
 using K = PunchKind;
 // Where Reverb keeps its parts inside each side's history (floats).
-constexpr unsigned pre_room = 11100, comb_base = pre_room, comb_room = 2000, pass_base = comb_base + 4 * comb_room, pass_room = 800;
+// Room for 96 kHz: Freeverb's 44.1 kHz lengths, stretched to the device's rate.
+constexpr unsigned pre_room = 24100, comb_base = pre_room, comb_room = 4400, pass_base = comb_base + 4 * comb_room, pass_room = 1760;
 constexpr unsigned reverb_floats = pass_base + 2 * pass_room;
 static_assert(reverb_floats < Punch::history, "Reverb fits in the history");
 
@@ -47,8 +49,9 @@ void Punch::begin_mpc() {
         std::fill(left.get(), left.get() + reverb_floats, 0.0f);
         std::fill(right.get(), right.get() + reverb_floats, 0.0f);
         static const unsigned combs[] {1116, 1188, 1277, 1356}, passes[] {556, 441};
-        for (unsigned n = 0; n < 4; ++n) { len[n] = combs[n]; at[n] = 0; }
-        for (unsigned n = 0; n < 2; ++n) { len[4 + n] = passes[n]; at[4 + n] = 0; }
+        float stretch = fs() / dsp::model_rate;
+        for (unsigned n = 0; n < 4; ++n) { len[n] = unsigned(combs[n] * stretch); at[n] = 0; }
+        for (unsigned n = 0; n < 2; ++n) { len[4 + n] = unsigned(passes[n] * stretch); at[4 + n] = 0; }
         at[6] = 0; // the predelay's write position
         break;
     }
@@ -71,9 +74,9 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         break;
     }
     case K::Chorus: case K::Flanger: { // a modulated delay on the history, fed back into it
-        phase += param[0] / 100.0 / fs; phase -= std::floor(phase);
+        phase += param[0] / 100.0 / fs(); phase -= std::floor(phase);
         bool chorus = kind == K::Chorus;
-        double base = (chorus ? 0.012 : 0.0015) * fs, depth = (chorus ? 0.006 : 0.004) * fs * pct(1);
+        double base = (chorus ? 0.012 : 0.0015) * fs(), depth = (chorus ? 0.006 : 0.004) * fs() * pct(1);
         double back_l = base + depth * (0.5 + 0.5 * std::sin(two_pi * phase));
         double back_r = base + depth * (0.5 + 0.5 * std::sin(two_pi * (phase + 0.25)));
         float ml = read(left.get(), back_l), mr = read(right.get(), back_r);
@@ -87,7 +90,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         if (unsigned(age) % 16 == 0) {
             float u = 0.5f + 0.5f * std::sin(two_pi * float(phase));
             float hz = 200 * std::exp2(pct(2) * 5.5f * u);
-            float t = std::tan(dsp::pi * hz / fs);
+            float t = std::tan(dsp::pi * hz / fs());
             st[2] = (t - 1) / (t + 1);
         }
         float x[2] {dry_l + st[0] * pct(0) * 0.8f, dry_r + st[1] * pct(0) * 0.8f};
@@ -99,7 +102,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
     }
     case K::Comb: { // notches: the history added back 1-10 ms late, the delay swept at SPEED
         phase += 1.0 / (bar * pad_fx_speeds[std::clamp<int>(param[0], 0, 10)]); phase -= std::floor(phase);
-        double back = (0.001 + 0.009 * (0.5 + 0.5 * std::sin(two_pi * phase))) * fs;
+        double back = (0.001 + 0.009 * (0.5 + 0.5 * std::sin(two_pi * phase))) * fs();
         float cl = read(left.get(), back), cr = read(right.get(), back);
         left[write] = dry_l + cl * 0.6f; right[write] = dry_r + cr * 0.6f;
         wet_l = (dry_l + cl) * 0.55f; wet_r = (dry_r + cr) * 0.55f;
@@ -109,7 +112,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         phase += 1.0 / (bar * pad_fx_speeds[std::clamp<int>(param[1], 0, 10)]); phase -= std::floor(phase);
         float u = 0.5f + 0.5f * std::sin(two_pi * float(phase)), octaves = pct(2) * 7;
         float hz = kind == K::LpLfo ? 16000 * std::exp2(-octaves * u) : kind == K::HpLfo ? 40 * std::exp2(octaves * u) : 250 * std::exp2(octaves * 0.8f * u);
-        float g = std::tan(dsp::pi * std::clamp(hz, 30.0f, 18000.0f) / fs), k = 2 - 1.9f * pct(0);
+        float g = std::tan(dsp::pi * std::clamp(hz, 30.0f, 18000.0f) / fs()), k = 2 - 1.9f * pct(0);
         for (unsigned side = 0; side < 2; ++side) {
             float lp, bp, hp;
             svf(*io[side], g, k, s1[side], s2[side], lp, bp, hp);
@@ -120,7 +123,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
     case K::RingMod: { // a sine at MAX FREQ, wobbling down to an eighth of it once a bar: slow, it ducks
         phase2 += 1.0 / bar; phase2 -= std::floor(phase2);
         double hz = param[0] * (0.125 + 0.875 * (0.5 + 0.5 * std::cos(two_pi * phase2)));
-        phase += hz / fs; phase -= std::floor(phase);
+        phase += hz / fs(); phase -= std::floor(phase);
         float m = float(std::sin(two_pi * phase));
         wet_l *= m; wet_r *= m;
         break;
@@ -134,12 +137,12 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         break;
     }
     case K::Color: { // vintage gear: cassette, flutter, tube amp, vinyl, saturation, radio
-        phase += 1.0 / fs; phase -= std::floor(phase); // a second's clock for the wobbles
+        phase += 1.0 / fs(); phase -= std::floor(phase); // a second's clock for the wobbles
         switch (std::clamp<int>(param[0], 0, 5)) {
         case 0: { // Cassette: wow, a dull top, hiss, a little saturation
             double back = 60 + 30 * std::sin(two_pi * 0.8 * phase);
             replay(back);
-            float a = 1 - std::exp(-two_pi * 7000 / fs);
+            float a = 1 - std::exp(-two_pi * 7000 / fs());
             st[0] += (wet_l - st[0]) * a; st[1] += (wet_r - st[1]) * a;
             float hiss = noise(seed) * 0.004f;
             wet_l = dsp::soft_clip(st[0] * 1.3f) / 1.3f + hiss; wet_r = dsp::soft_clip(st[1] * 1.3f) / 1.3f + hiss;
@@ -158,7 +161,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
             break;
         }
         case 3: { // Vinyl: the record's band, crackle
-            float a = 1 - std::exp(-two_pi * 4500 / fs);
+            float a = 1 - std::exp(-two_pi * 4500 / fs());
             st[0] += (dry_l - st[0]) * a; st[1] += (dry_r - st[1]) * a;
             st[4] += (st[0] - st[4]) * 0.004f; st[5] += (st[1] - st[5]) * 0.004f;
             if ((uint32_t(noise(seed) * 1e6f + 1e6f)) % 3000 == 0) st[6] = 0.25f * noise(seed);
@@ -169,7 +172,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         case 4: wet_l = dsp::soft_clip(dry_l * 3) * 0.45f; wet_r = dsp::soft_clip(dry_r * 3) * 0.45f; break; // Saturation
         default: { // Radio: mono, a narrow band, a little broken up
             float x = (dry_l + dry_r) * 0.5f;
-            float hp_a = 1 - std::exp(-two_pi * 500 / fs), lp_a = 1 - std::exp(-two_pi * 3000 / fs);
+            float hp_a = 1 - std::exp(-two_pi * 500 / fs()), lp_a = 1 - std::exp(-two_pi * 3000 / fs());
             st[0] += (x - st[0]) * hp_a;
             st[1] += ((x - st[0]) - st[1]) * lp_a;
             wet_l = wet_r = dsp::soft_clip(st[1] * 2.5f) * 0.7f;
@@ -181,12 +184,12 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
     case K::Granulator: { // grains of the last second, DENSITY a second, GRAIN LEN long, fed back
         next_grain -= 1;
         if (next_grain <= 0) {
-            next_grain += fs / std::max(1, int(param[0]));
+            next_grain += fs() / std::max(1, int(param[0]));
             for (auto& g : grains)
                 if (!g.length) {
-                    uint32_t length = uint32_t(param[2] * fs / 1000);
+                    uint32_t length = uint32_t(param[2] * fs() / 1000);
                     g.length = std::max(length, 64u); g.age = 0;
-                    g.back = g.length + (uint32_t(noise(seed) * 0.5f * fs + 0.5f * fs)); // somewhere in the last second
+                    g.back = g.length + (uint32_t(noise(seed) * 0.5f * fs() + 0.5f * fs())); // somewhere in the last second
                     break;
                 }
         }
@@ -212,7 +215,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         replay(param[1] ? in + 1 : loop - in);
         if (param[2] > 0) {
             float closing = float(std::min(1.0, after / bar)); // over a bar
-            float g = std::tan(dsp::pi * std::clamp(14000 * std::exp2(-closing * 5), 60.0f, 16000.0f) / fs), k = 2 - 1.9f * pct(2);
+            float g = std::tan(dsp::pi * std::clamp(14000 * std::exp2(-closing * 5), 60.0f, 16000.0f) / fs()), k = 2 - 1.9f * pct(2);
             for (unsigned side = 0; side < 2; ++side) { float lp, bp, hp; svf(*io[side], g, k, s1[side], s2[side], lp, bp, hp); *io[side] = lp; }
         }
         break;
@@ -240,7 +243,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         break;
     }
     case K::Reverb: { // predelay, four combs and two allpasses a side, in the history (not written meanwhile)
-        unsigned pre = std::min(pre_room - 1, unsigned(param[0] * fs / 1000));
+        unsigned pre = std::min(pre_room - 1, unsigned(param[0] * fs() / 1000));
         float feedback = 0.7f + pct(1) * 0.27f, diffuse = 0.3f + pct(2) * 0.4f;
         float* lines[2] {left.get(), right.get()};
         float in[2] {dry_l, dry_r};

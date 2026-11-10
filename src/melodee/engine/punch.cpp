@@ -47,7 +47,7 @@ void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples,
     if (punch_is_mpc(k) || k >= PunchKind::Backspin) begin_mpc(); // may set its own loop
     loop = std::clamp(loop, 64.0, double(history - 2));
     frozen = false; // a repeat first lets one slice through, then freezes the history on it
-    fade_step = tail_mode == 2 ? 1.0f / (1.5f * dsp::sample_rate) : 1.0f / (0.06f * dsp::sample_rate);
+    fade_step = tail_mode == 2 ? 1.0f / (1.5f * dsp::sample_rate()) : 1.0f / (0.06f * dsp::sample_rate());
     if (tail_mode == 0) fade_step = 1; // cut: gone at the next sample
 }
 
@@ -124,7 +124,7 @@ void Punch::process(float* l, float* r, unsigned frames) {
                 float hz = kind == PunchKind::Low ? 400 : kind == PunchKind::High ? 2500 : kind == PunchKind::Phone ? 1600
                     : kind == PunchKind::Wobble ? 300 * std::exp2(3 * (0.5f + 0.5f * std::sin(two_pi * float(since / grid))))
                     : kind == PunchKind::SweepDown ? 12000 * std::exp2(-float(since / bar) * 6) : 120 * std::exp2(float(since / bar) * 6);
-                float g = std::tan(dsp::pi * std::clamp(hz, 30.0f, 18000.0f) / dsp::sample_rate), k = kind == PunchKind::Phone ? 1.2f : 0.7f;
+                float g = std::tan(dsp::pi * std::clamp(hz, 30.0f, 18000.0f) / dsp::sample_rate()), k = kind == PunchKind::Phone ? 1.2f : 0.7f;
                 float* io[2] {&wet_l, &wet_r};
                 for (unsigned side = 0; side < 2; ++side) {
                     float x = *io[side];
@@ -151,7 +151,7 @@ void Punch::process(float* l, float* r, unsigned frames) {
                 left[write] = wet_l; right[write] = wet_r;
                 break;
             }
-            case PunchKind::Ring: { float m = std::sin(two_pi * float(since) * 440 / dsp::sample_rate); wet_l *= m; wet_r *= m; break; }
+            case PunchKind::Ring: { float m = std::sin(two_pi * float(since) * 440 / dsp::sample_rate()); wet_l *= m; wet_r *= m; break; }
             case PunchKind::Flange: {
                 double back = 44 + 120 * (0.5 + 0.5 * std::sin(two_pi * since / (bar / 2)));
                 wet_l = (dry_l + read(left.get(), back)) * 0.6f; wet_r = (dry_r + read(right.get(), back)) * 0.6f;
@@ -161,7 +161,7 @@ void Punch::process(float* l, float* r, unsigned frames) {
             case PunchKind::Vinyl: {
                 uint32_t h = uint32_t(age) * 2654435761u;
                 float crackle = (h >> 24) % 97 == 0 ? 0.15f * ((h >> 8 & 1) ? 1 : -1) : 0;
-                float g = std::tan(dsp::pi * 3500 / dsp::sample_rate) / (1 + std::tan(dsp::pi * 3500 / dsp::sample_rate));
+                float g = std::tan(dsp::pi * 3500 / dsp::sample_rate()) / (1 + std::tan(dsp::pi * 3500 / dsp::sample_rate()));
                 s1[0] += g * (dry_l - s1[0]); s1[1] += g * (dry_r - s1[1]);
                 wet_l = s1[0] * 0.85f + crackle; wet_r = s1[1] * 0.85f + crackle;
                 break;

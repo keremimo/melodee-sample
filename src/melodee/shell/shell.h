@@ -40,6 +40,9 @@ public:
     void midi_output(MidiOutput& out, MidiIo::Clock::time_point now, uint32_t now_ms);
     float volume() const { return main_volume.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
+    // Any thread: Settings' sample rate and buffer (periods), once the card's settings are read; until then the default.
+    unsigned audio_rate() const { return audio_wanted.load(std::memory_order_relaxed) & 0xfffff; }
+    unsigned audio_periods() const { return audio_wanted.load(std::memory_order_relaxed) >> 20; }
 
     // Service thread: Power was pressed. MIDI thread acts on it in lights().
     void power_pressed() { power.fetch_add(1, std::memory_order_relaxed); }
@@ -88,11 +91,13 @@ private:
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
     std::atomic<float> main_volume {0.7f};
     std::atomic<unsigned> screen_wanted {0}; // 0 until the settings say; then 20..100 %
+    std::atomic<uint32_t> audio_wanted {44100u | 3u << 20}; // rate | periods << 20
     std::atomic<unsigned> power {0};
     unsigned power_seen = 0;
     std::atomic<bool> leave {false};
     SampleLibrary* library_ = nullptr;
     unsigned library_seen = ~0u;
+    unsigned format_seen = 0; // the engine's format_changes() the project was last sent again for
     uint32_t tap_down = 0;
     bool tap_held = false;
     ProjectStore* store_ = nullptr;

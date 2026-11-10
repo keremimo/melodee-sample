@@ -375,7 +375,15 @@ while following.
 - **Settings** (B2 on Project): palette, pad response (soft, medium, hard,
   full level), pad pressure on / off, pad lights, Knob / Knob FX / Fader
   takeover (Pickup, Scaled, Instant; Scaled, Scaled, Pickup by default),
-  screen brightness. Kept in `Melodee/settings` with the project to open at
+  screen brightness, sample rate (44.1, 48, 96 kHz) and audio buffer (256,
+  384, 512, 768, 1024 frames, shown with the delay it makes: longer rides
+  out a busy moment without a crackle, shorter is heard sooner); under the
+  rows, what the device runs at now and its dropouts since start. A rate or
+  buffer change reopens the audio device (a short silence) and a rate change
+  stops playback: the engine builds every sound and effect again at the new
+  rate. Samples, takes, renders and every frame count in a project stay at
+  44.1 kHz whatever the rate (`engine/model_rate.h`), so projects open the
+  same at any rate. Kept in `Melodee/settings` with the project to open at
   start. **About** (B3): engines, effects, limits, versions, licence.
 - **Name sheet** (Save, Rename, markers, sounds, samples): pads type like
   phone keys (pad 14 space, 15 digits and `- _ .`, 16 delete); the wheel

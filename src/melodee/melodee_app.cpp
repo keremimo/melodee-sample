@@ -19,8 +19,13 @@ MelodeeApp::MelodeeApp()
     shell.set_store(&store);
     shell.set_input(&input_route);
     host.load(shell.project(), shell.patterns());
-    // MIDI out and sync are timed on the device's own clock: its rate and the frames it keeps queued.
-    host.set_audio_format(audio_rate, uint64_t(audio_frames) * audio_queued_periods);
+}
+
+// MIDI out and sync are timed on the device's own clock: its rate and the frames it keeps queued. A new rate
+// silences the engine until the shell has sent the project again; USB-C in is converted to the rate.
+void MelodeeApp::audio_opened(const AudioFormat& format) {
+    host.set_audio_format(format.rate, format.latency_frames());
+    input_route.set_device_rate(format.rate);
 }
 
 uint32_t MelodeeApp::now_ms() const {
@@ -199,6 +204,9 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
 void MelodeeApp::draw(juce::Graphics& g) {
     using namespace melodee;
     shell.snapshot(*frame, now_ms());
+    frame->audio_rate = session().audio.rate.load(std::memory_order_relaxed);
+    frame->audio_periods = session().audio.periods.load(std::memory_order_relaxed);
+    frame->audio_xruns = session().audio.xruns.load(std::memory_order_relaxed);
     ui::Paint p(g);
     g.fillAll(ui::colour::bg);
     page_spec(frame->ui.page).draw(p, *frame);

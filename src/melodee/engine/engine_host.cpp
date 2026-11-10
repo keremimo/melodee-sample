@@ -97,6 +97,17 @@ void EngineHost::load_state(const Project& project) {
     follow_tempo();
 }
 
+void EngineHost::set_audio_format(double frames_a_second, uint64_t latency_frames) {
+    clock.set_format(frames_a_second, latency_frames);
+    sync.set_rate(frames_a_second);
+    float rate = float(frames_a_second);
+    if (rate == dsp::sample_rate()) return;
+    dsp::device_rate.store(rate, std::memory_order_relaxed);
+    take.set_rate(rate); recall_ring.set_rate(rate); render_out.set_rate(rate);
+    reformatting = true;
+    format_serial.fetch_add(1, std::memory_order_release);
+}
+
 void EngineHost::follow_tempo() {
     unsigned own = pattern_tempo[lead % pattern_count];
     uint16_t now = uint16_t(ext_on && ext_tempo ? ext_tempo : seq_tempo && own ? own : global_tempo); // MIDI clock in leads
@@ -267,6 +278,7 @@ void EngineHost::apply(const Command& c) {
             for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
             flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
             load_state(c.pack->project);
+            reformatting = false;
             std::swap(patterns, c.pack->patterns); // the pack takes the old ones back to be freed
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
         }
@@ -876,7 +888,7 @@ void EngineHost::tick() {
         unsigned done = bar - count_left;
         if (done % beat == 0) {
             click_env = 1; click_phase = 0;
-            click_step = (done == 0 ? 1568.0f : 1046.0f) / 44100.0f;
+            click_step = (done == 0 ? 1568.0f : 1046.0f) / dsp::sample_rate();
             count_beat.store(done / beat + 1, std::memory_order_relaxed);
         }
         --count_left;
@@ -900,7 +912,7 @@ void EngineHost::tick() {
     // The metronome: every beat while playing, higher on the bar.
     if (click && tick_now % beat == 0) {
         click_env = 1; click_phase = 0;
-        click_step = (tick_now % bar == 0 ? 1568.0f : 1046.0f) / 44100.0f;
+        click_step = (tick_now % bar == 0 ? 1568.0f : 1046.0f) / dsp::sample_rate();
     }
     // A pattern render ends after its ticks, on the frame.
     if (!bounce_song && render_out.running() && tick_now >= bounce_ticks) render_out.finish(block_at);
@@ -1001,6 +1013,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     Command command;
     for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
     frames = std::min(frames, block);
+    if (reformatting) { // a new rate: silent until the Reload has built everything again at it
+        std::fill(out, out + 2 * frames, 0);
+        if (stems) std::fill(stems, stems + size_t(track_count) * block, 0.0f);
+        frame_now += frames;
+        return;
+    }
     // The clock tempo-synced effects follow: quarters since Play (on from where it was while stopped).
     effect_clock.quarter = tick_length() * ticks_per_quarter;
     if (running) effect_clock.beats = (double(tick_now) - std::max(until_tick, 0.0) / tick_length()) / ticks_per_quarter;
@@ -1107,7 +1125,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * returns[b]; master_r[f] += bus_r[b][f] * returns[b]; }
     }
     // Knob FX into the master; after its targets let go it rings on for a few seconds (tails), then rests.
-    if (knob_fed) knob_tail = uint32_t(6 * dsp::sample_rate);
+    if (knob_fed) knob_tail = uint32_t(6 * dsp::sample_rate());
     if (knob_tail && knob.kind() != EffectKind::None) {
         knob.process(knob_l, knob_r, frames);
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += knob_l[f]; master_r[f] += knob_r[f]; }

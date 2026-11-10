@@ -213,6 +213,9 @@ public:
     std::string kit_from;                     // the file Load Kit waits for
     // Switches the whole app to `project`: the audio thread gets a copy, samples reload.
     void switch_to(const Project& project, const PatternBank& patterns, const std::string& path);
+    // The device's rate changed (Settings' SAMPLE RATE): the same project again, so the audio thread works out every
+    // engine and effect anew at it. It stops playback. False when the queue was full (try again).
+    bool reformat();
     unsigned samples_to_load = sample_slots; // next sample slot to (re)load after a switch
     PadSound& pad() { return track().pads[track().last_pad % sampler_pads]; }
     void send_pad(unsigned track, unsigned pad);

@@ -20,6 +20,8 @@ class MelodeeApp : public App {
 public:
     MelodeeApp();
     void render(const AudioBlock& input, AudioBlock& output) override; // audio thread
+    AudioFormat audio_format() const override { return {shell.audio_rate(), shell.audio_periods()}; } // any thread: Settings'
+    void audio_opened(const AudioFormat& format) override;              // audio thread
     const UsbStems* stems() const override { return &stem_block; }    // audio thread
     void surface(const SurfaceEvent& event) override;                   // MIDI thread
     void lights(SurfaceLights& lights, Clock::time_point now) override; // MIDI thread

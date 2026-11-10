@@ -66,6 +66,8 @@ struct Snapshot {
     unsigned history_at = 0;
     std::array<int16_t, 16> held_keys {};         // Arp: the first key of each pad held
     uint32_t now = 0;                        // ms, for transient highlights
+    // The audio device as it runs now (the app fills these from the runtime's session): Settings shows them.
+    unsigned audio_rate = 44100, audio_periods = 3, audio_xruns = 0;
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };
 

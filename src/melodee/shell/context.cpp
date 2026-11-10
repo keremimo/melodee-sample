@@ -75,6 +75,17 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     samples_to_load = 0; // every sample slot again, a few each tick
 }
 
+bool Context::reformat() {
+    send({Type::AllNotesOff, 255});
+    free_retired();
+    auto* pack = new ProjectPack(project, patterns);
+    Command c {Type::Reload};
+    c.pack = pack;
+    if (host.send(c)) return true;
+    delete pack;
+    return false;
+}
+
 void Context::open(PageId page) {
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
     if (page != PageId::Patterns) ui.seq_sample = false; // Seq + Sample lives on Patterns

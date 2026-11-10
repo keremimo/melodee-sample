@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 
@@ -10,7 +11,17 @@
 // envelopes, an LFO and noise. No allocation, no locks, no I/O.
 namespace melodee::dsp {
 
-constexpr float sample_rate = 44100.0f;
+// The audio device's rate, 44.1, 48 or 96 kHz (Settings' SAMPLE RATE). The
+// audio thread sets it (EngineHost::set_audio_format) before it renders at a
+// new rate; what the engines keep worked out from it is rebuilt then.
+inline std::atomic<float> device_rate {44100.0f};
+inline float sample_rate() { return device_rate.load(std::memory_order_relaxed); }
+// Samples, takes, renders and every frame count a project keeps (a pad's
+// start, a slice, a take's length) are at 44.1 kHz whatever the device runs,
+// so a project sounds and opens the same at any rate.
+constexpr float model_rate = 44100.0f;
+// The highest device rate: delay memory made up front is sized for it.
+constexpr float max_rate = 96000.0f;
 constexpr float pi = 3.14159265358979f;
 
 inline float midi_hz(float key) { return 440.0f * std::exp2((key - 69.0f) / 12.0f); }
@@ -57,8 +68,8 @@ struct Ladder {
     float s[4] {};
     float g = 0.1f, G = 0.09f, k = 0;
     void tune(float hz, float resonance /* 0..1 */) {
-        hz = std::clamp(hz, 16.0f, sample_rate * 0.45f);
-        g = std::tan(pi * hz / sample_rate);
+        hz = std::clamp(hz, 16.0f, sample_rate() * 0.45f);
+        g = std::tan(pi * hz / sample_rate());
         G = g / (1.0f + g);
         k = 3.95f * std::clamp(resonance, 0.0f, 1.0f);
     }
@@ -85,7 +96,7 @@ struct Envelope {
     Stage stage = Stage::Idle;
     float level = 0;
     struct Shape { float attack = 0.999f, decay = 0.999f, release = 0.999f, sustain = 1; };
-    static float coefficient(float seconds) { return std::exp(-1.0f / std::max(seconds * sample_rate, 1.0f) * 3.0f); }
+    static float coefficient(float seconds) { return std::exp(-1.0f / std::max(seconds * sample_rate(), 1.0f) * 3.0f); }
     void gate(bool on) { stage = on ? Stage::Attack : (stage == Stage::Idle ? Stage::Idle : Stage::Release); }
     float next(const Shape& s) {
         switch (stage) {

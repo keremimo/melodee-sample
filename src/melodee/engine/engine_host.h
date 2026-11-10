@@ -129,11 +129,11 @@ public:
     // MIDI thread (parity phase 9): what goes out, each at its frame, and the clock that says when that frame is heard.
     bool take_midi(MidiOutEvent& event) { return midi_events.pop(event); }
     const AudioClock& audio_clock() const { return clock; }
-    // Before the audio thread starts: the device's frames a second and the frames it holds queued (MIDI out lines up with them).
-    void set_audio_format(double frames_a_second, uint64_t latency_frames) {
-        clock.set_format(frames_a_second, latency_frames);
-        sync.set_rate(frames_a_second);
-    }
+    // Audio thread, before the first block at each open of the device (and before it starts): its frames a second and
+    // the frames it holds queued (MIDI out lines up with them). A new rate silences render() until the project comes
+    // again (a Reload: every engine and effect worked out anew at it); format_changes() tells the shell to send it.
+    void set_audio_format(double frames_a_second, uint64_t latency_frames);
+    unsigned format_changes() const { return format_serial.load(std::memory_order_acquire); }
     unsigned midi_dropped() const { return midi_lost.load(std::memory_order_relaxed); }
     bool following() const { return ext_now.load(std::memory_order_relaxed); } // the sequencer waits for MIDI clock in
     // MTC in (parity phase 9b): the song placed and kept on time by it; how far off it is (filtered) and the pace trim.
@@ -195,7 +195,7 @@ private:
     void restore(Slot& slot);
     void schedule_off(Slot& slot, int key, int32_t samples);
     void run_offs(Slot& slot, unsigned frames);
-    double tick_length() const { return 44100.0 * 60.0 / (tempo / 10.0) / ticks_per_quarter; } // samples a clock tick
+    double tick_length() const { return dsp::sample_rate() * 60.0 / (tempo / 10.0) / ticks_per_quarter; } // device frames a clock tick
     double arp_tick_length() const { return tick_length() * (ticks_per_quarter / arp_ticks_per_quarter); }
     // MIDI out and sync (parity phase 9).
     void emit(const MidiOutEvent& e) { if (!midi_events.push(e)) midi_lost.fetch_add(1, std::memory_order_relaxed); }
@@ -206,6 +206,8 @@ private:
     void midi_all_off(unsigned track, uint64_t at);                         // 255: every track's
     void sync_stop(uint64_t at);
     void ext_release(uint64_t at);                                           // clock pulses whose frame has come
+    std::atomic<unsigned> format_serial {0};
+    bool reformatting = false; // audio thread: the rate changed and the Reload has not come yet
     MidiQueue<1024, MidiOutEvent> midi_events;
     std::atomic<unsigned> midi_lost {0};
     AudioClock clock;

@@ -8,11 +8,13 @@
 #include "melodee/model/midi_config.h"
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <sstream>
 #include <string>
 
 // Melodee's own settings, not the project's: how the pads respond and
-// light, whether their pressure is used, how the knobs, Knob FX and the fader take over a value, the screen, and the MPC's recording toggles
+// light, whether their pressure is used, how the knobs, Knob FX and the fader take over a value, the screen, the audio
+// device's rate and buffer, and the MPC's recording toggles
 // (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize) and Input Config (Shift + Sample). Kept as key=value lines in the
 // `settings` file next to the projects (with the project to open at start).
 namespace melodee {
@@ -28,7 +30,8 @@ inline const char* takeover_name(Takeover t) {
 }
 
 struct Settings {
-    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, Screen, Rows };
+    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, Screen, SampleRate,
+                         AudioBuffer, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
@@ -45,6 +48,12 @@ struct Settings {
     // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.
     Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
     uint8_t screen = 100;     // brightness, 20..100 %
+    // The audio device (App::audio_format()): its rate, and the 128-frame periods queued ahead of the jacks. More
+    // periods ride out a slow block (no crackle) and are heard later; a higher rate costs more CPU a second.
+    static constexpr std::array<unsigned, 3> rates {{44100, 48000, 96000}};
+    static constexpr std::array<uint8_t, 5> buffers {{2, 3, 4, 6, 8}}; // periods: 256, 384, 512, 768, 1024 frames
+    uint32_t audio_rate = 44100;
+    uint8_t audio_periods = 3;
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
     MidiConfig midi;          // MIDI Config (Shift + Pad 8, parity phase 9)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
@@ -62,7 +71,7 @@ struct Settings {
 
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
-                                    "Fader takeover", "Screen"};
+                                    "Fader takeover", "Screen", "Sample rate", "Audio buffer"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -76,6 +85,13 @@ struct Settings {
         case KnobTakeover: return takeover_name(knob_takeover);
         case KnobFxTakeover: return takeover_name(knob_fx_takeover);
         case FaderTakeover: return takeover_name(fader_takeover);
+        case SampleRate: return audio_rate == 44100 ? "44.1 kHz" : std::to_string(audio_rate / 1000) + " kHz";
+        case AudioBuffer: { // the frames queued, and how late that is heard at the rate chosen
+            unsigned frames = 128u * audio_periods;
+            char text[32];
+            std::snprintf(text, sizeof(text), "%u  %.1f ms", frames, 1000.0 * frames / audio_rate);
+            return text;
+        }
         default: return std::to_string(screen) + " %";
         }
     }
@@ -89,8 +105,15 @@ struct Settings {
         case KnobFxTakeover: knob_fx_takeover = step_takeover(knob_fx_takeover, way); break;
         case FaderTakeover: fader_takeover = step_takeover(fader_takeover, way); break;
         case Screen: screen = uint8_t(std::clamp(int(screen) + way * 10, 20, 100)); break;
+        case SampleRate: audio_rate = rates[size_t(std::clamp(rate_index() + (way < 0 ? -1 : 1), 0, int(rates.size()) - 1))]; break;
+        case AudioBuffer: audio_periods = buffers[size_t(std::clamp(buffer_index() + (way < 0 ? -1 : 1), 0, int(buffers.size()) - 1))]; break;
         default: break;
         }
+    }
+    int rate_index() const { return int(std::find(rates.begin(), rates.end(), audio_rate) - rates.begin()) % int(rates.size()); }
+    int buffer_index() const {
+        auto at = std::lower_bound(buffers.begin(), buffers.end(), audio_periods);
+        return at == buffers.end() ? int(buffers.size()) - 1 : int(at - buffers.begin());
     }
     static Takeover step_takeover(Takeover t, int way) {
         int count = int(Takeover::Count);
@@ -113,7 +136,8 @@ struct Settings {
             << "\nscreen=" << int(screen) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
-            << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain) << '\n';
+            << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
+            << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
@@ -153,6 +177,8 @@ struct Settings {
             else if (key == "rec_length") input.length = uint8_t(std::clamp(value, 0, int(rec_lengths) - 1));
             else if (key == "rec_fx") input.fx = value != 0;
             else if (key == "rec_gain") input.gain = int8_t(std::clamp(value, -12, 24));
+            else if (key == "audio_rate") { if (std::find(rates.begin(), rates.end(), unsigned(value)) != rates.end()) audio_rate = uint32_t(value); }
+            else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (read_midi_config(midi, key, value)) {}
             else if (key.rfind("favourites", 0) == 0) { // favourites3=0,4,12
                 unsigned e = unsigned(std::atoi(key.c_str() + 10));

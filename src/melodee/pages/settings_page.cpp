@@ -7,7 +7,12 @@
 //   medium, hard, full level), pad pressure (on, off), pad lights (track
 //   colours, white, off), how the knobs, Knob FX and the fader take over a
 //   value (Pickup, Scaled, Instant; the MPC keeps these on MIDI Config,
-//   phase 9 shows them there too), screen brightness.
+//   phase 9 shows them there too), screen brightness, the sample rate
+//   (44.1, 48, 96 kHz) and the audio buffer (256 to 1024 frames: longer
+//   rides out a slow moment without a crackle, shorter is heard sooner).
+//   Seven rows show at a time, scrolled with the cursor; the line under
+//   them says what the audio device runs at now and its dropouts so far
+//   (a change takes a moment and stops playback).
 // ABOUT (B3): what this is and what it is made of.
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/punch.h"
@@ -28,8 +33,10 @@ void settings_draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 1, colour::text}, system_header(s));
     const auto& set = s.ui.settings;
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y + 0.5f;
-    constexpr float rh = 18; // eight rows in the picture's 148 px
-    for (unsigned row = 0; row < Settings::Rows; ++row, y += rh) {
+    constexpr float rh = 18;      // seven rows and the audio line in the picture's 148 px
+    constexpr unsigned shown = 7;
+    unsigned first = unsigned(std::clamp(int(s.ui.settings_cursor) - int(shown) + 2, 0, int(Settings::Rows - shown)));
+    for (unsigned row = first; row < first + shown; ++row, y += rh) {
         bool cursor = row == s.ui.settings_cursor, editing = cursor && s.ui.settings_editing;
         if (cursor) { p.fill(x, y, w, rh - 1, colour::raised, 4); p.fill(x, y, 3, rh - 1, colour::text); }
         p.text(Settings::row_name(row), x + 9, y, w / 2, rh - 1, plain(cursor ? colour::text : colour::sec, 11.5f, Weight::Medium));
@@ -44,6 +51,13 @@ void settings_draw(Paint& p, const Snapshot& s) {
         if (row == Settings::Palette && cursor) // the palette's first track colours
             for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 5, 7, 7, track_colour(t), 2);
     }
+    // What runs now: a change shows here once the device has reopened.
+    juce::String rate = s.audio_rate == 44100 ? "44.1" : juce::String(s.audio_rate / 1000);
+    unsigned frames = 128 * s.audio_periods;
+    juce::String now = "RUNNING " + rate + " KHZ  " + juce::String(frames) + " FRAMES  " +
+                       juce::String(1000.0 * frames / std::max(1u, s.audio_rate), 1) + " MS  " +
+                       juce::String(s.audio_xruns) + (s.audio_xruns == 1 ? " DROPOUT" : " DROPOUTS");
+    p.text(now, x + 9, y + 4, w - 18, 13, caps_text(s.audio_xruns ? colour::text : colour::mid, 7));
 }
 void settings_wheel(Context& c, int delta) {
     if (c.ui.settings_editing) { c.change_setting(c.ui.settings_cursor, delta > 0 ? 1 : -1); return; }

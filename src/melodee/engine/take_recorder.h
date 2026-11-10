@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/model_rate.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -16,13 +17,14 @@
 // process() runs on the audio thread and never allocates. The engine host
 // applies the gain before it. State moves Idle -> Armed or Cued ->
 // Recording -> Done (audio thread) and Done -> Idle (service thread,
-// release()), so the two never write the buffer at once.
+// release()), so the two never write the buffer at once. The take is kept
+// at 44.1 kHz (ToModelRate), so frames(), length() and peak() count those.
 namespace melodee {
 
 class TakeRecorder {
 public:
     enum class State : uint8_t { Idle, Armed, Recording, Done, Cued };
-    static constexpr uint32_t max_frames = 60 * 44100;
+    static constexpr uint32_t max_frames = 60 * uint32_t(dsp::model_rate);
     static constexpr unsigned columns = 128;
 
     TakeRecorder() : left_(new float[max_frames]()), right_(new float[max_frames]()) {}
@@ -38,8 +40,11 @@ public:
         start_at = 0;
         for (auto& c : peaks) c.store(0, std::memory_order_relaxed);
         limit_.store(limit);
+        convert.reset();
         state_.store(cued ? State::Cued : threshold <= 0 ? State::Recording : State::Armed);
     }
+    // Audio thread: the device's rate (EngineHost::set_audio_format).
+    void set_rate(float device) { convert.set_rate(device); }
     void start_now() { auto s = state_.load(); if (s == State::Armed || s == State::Cued) state_.store(State::Recording); }
     // The pattern came round `offset` frames into this block: a cued take starts there.
     void go(unsigned offset) { if (state_.load() == State::Cued) { start_at = offset; state_.store(State::Recording); } }
@@ -60,15 +65,17 @@ public:
         unsigned skip = std::min(start_at, n); // a cued take starts where the pattern came round
         start_at = 0;
         l += skip; r += skip; n -= skip;
-        unsigned take = unsigned(std::min<uint32_t>(n, limit - at));
-        for (unsigned f = 0; f < take; ++f) {
-            left_[at + f] = l[f]; right_[at + f] = r[f];
-            unsigned c = unsigned(uint64_t(at + f) * columns / limit);
-            uint8_t v = uint8_t(std::min(1.0f, std::max(std::fabs(left_[at + f]), std::fabs(right_[at + f]))) * 255);
+        uint32_t kept = at;
+        for (unsigned f = 0; f < n && kept < limit; ++f) convert.feed(l[f], r[f], [&](float cl, float cr) {
+            if (kept >= limit) return;
+            left_[kept] = cl; right_[kept] = cr;
+            unsigned c = unsigned(uint64_t(kept) * columns / limit);
+            uint8_t v = uint8_t(std::min(1.0f, std::max(std::fabs(cl), std::fabs(cr))) * 255);
             if (v > peaks[c].load(std::memory_order_relaxed)) peaks[c].store(v, std::memory_order_relaxed);
-        }
-        frames_.store(at + take, std::memory_order_release);
-        if (at + take >= limit) state_.store(State::Done);
+            ++kept;
+        });
+        frames_.store(kept, std::memory_order_release);
+        if (kept >= limit) state_.store(State::Done);
     }
 
     // Any thread.
@@ -86,6 +93,7 @@ public:
 
 private:
     std::unique_ptr<float[]> left_, right_;
+    ToModelRate convert;
     float threshold = 0.03f;
     unsigned start_at = 0;
     uint32_t limit = max_frames;

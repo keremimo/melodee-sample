@@ -53,6 +53,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.files_landed();  // Trim Sample, Extract, Save Sample, takes, Recall, Resample: done on the service thread
     context_.record_tick(now); // Input Config's route and monitor, settings kept, renders followed
     context_.browser_tick();  // the browser's listings and previews
+    // The device's rate changed: the project again, worked out at the new rate.
+    if (unsigned changes = host.format_changes(); changes != format_seen && context_.reformat()) format_seen = changes;
     // Projects: a finished pack to free, a loaded project to switch to, a save to leave after.
     {
         const ProjectPack* done = nullptr;
@@ -95,6 +97,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     // The backlight stays as the stock app left it until Screen asks for less (and then follows it).
     if (ui_.settings.screen != 100 || screen_wanted.load(std::memory_order_relaxed)) screen_wanted.store(ui_.settings.screen, std::memory_order_relaxed);
+    audio_wanted.store(ui_.settings.audio_rate | uint32_t(ui_.settings.audio_periods) << 20, std::memory_order_relaxed);
     // The Project page's row count, for K2's range.
     if (store_ && ui_.page == PageId::Project && store_->generation() != store_seen) {
         store_seen = store_->generation();

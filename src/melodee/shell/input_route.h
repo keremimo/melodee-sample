@@ -35,6 +35,8 @@ public:
     // Audio thread: this block from USB-C (interleaved stereo, `frames` <= 128),
     // or nullptr while no USB source is chosen.
     const float* usb_block(unsigned frames);
+    // Audio thread: the device's rate, which USB-C in is converted to.
+    void set_device_rate(unsigned rate) { usb.set_device_rate(rate); }
 
     // Any thread.
     bool speaker_on() const { return speaker.load(std::memory_order_relaxed) == 1; }

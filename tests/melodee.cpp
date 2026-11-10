@@ -3311,7 +3311,122 @@ void projects_and_polish() {
     CHECK(into.params[sampler::Filter] == 33 && into.mix.level == 55); // the kit's own values; the track keeps its strip
 }
 
+// Settings' sample rate (44.1 / 48 / 96 kHz): the engine follows the device's rate, so a project plays at the same
+// tempo and pitch at each, and what is recorded or rendered is kept at 44.1 kHz.
+void device_rates() {
+    // The sequencer: a new rate waits, silent, for the project again; then at 48 kHz step 5 at 120 BPM starts 0.5 s in.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        project->tempo = 1200;
+        put(bank->at[0][0], 4, 45, 100);
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        host->set_audio_format(48000, 384);
+        CHECK(host->format_changes() == 1 && dsp::sample_rate() == 48000.0f);
+        std::vector<int32_t> out(256);
+        host->send({Command::Type::Audition, 0, 0, 0, 60});
+        for (unsigned n = 0; n < 10; ++n) { host->render(out.data(), 128, 1); for (auto v : out) CHECK(v == 0); }
+        Command reload {Command::Type::Reload};
+        reload.pack = new ProjectPack(*project, *bank);
+        host->send(reload);
+        host->send({Command::Type::Play});
+        std::vector<float> left;
+        for (unsigned n = 0; n < 260; ++n) {
+            host->render(out.data(), 128, 1);
+            for (unsigned f = 0; f < 128; ++f) left.push_back(out[2 * f] / 2147483648.0f);
+        }
+        CHECK(host->playing());
+        CHECK(peak_of(left, 0, 23900) == 0);
+        CHECK(peak_of(left, 24000, 32000) > 0.005f);
+        const ProjectPack* done = nullptr;
+        while (host->take_done_pack(done)) delete done;
+        host->set_audio_format(48000, 512); // the same rate, more buffer: nothing to work out again
+        CHECK(host->format_changes() == 1);
+    }
+    // A pad: a 441 Hz sample (at 44.1 kHz, as samples are kept) plays at 441 Hz and lasts a second at 48 and 96 kHz.
+    {
+        auto tone = std::make_unique<SampleData>();
+        tone->frames = 44100;
+        tone->left.resize(44100); tone->right.resize(44100);
+        for (unsigned n = 0; n < 44100; ++n) tone->left[n] = tone->right[n] = 0.5f * std::sin(2 * 3.14159265 * 441 * n / 44100.0);
+        SamplerEngine::Table tones {};
+        tones[0] = tone.get();
+        for (float rate : {48000.0f, 96000.0f}) {
+            dsp::device_rate.store(rate);
+            SamplerEngine engine;
+            engine.set_samples(&tones);
+            engine.set_tempo(1200);
+            PadSound sound; sound.sample = 0; sound.decay = 100;
+            engine.set_pad(0, sound);
+            engine.note_on(int(sampler_first_note), 120);
+            std::vector<float> l(128), r(128), all;
+            for (unsigned b = 0; b < 2000 && engine.sounding(); ++b) {
+                std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+                engine.render_stereo(l.data(), r.data(), 128);
+                all.insert(all.end(), l.begin(), l.end());
+            }
+            unsigned crossings = 0, from = 2000, to = unsigned(rate * 0.8f);
+            for (unsigned n = from + 1; n < to; ++n) crossings += (all[n - 1] < 0) != (all[n] < 0);
+            float hz = crossings / 2.0f / ((to - from) / rate);
+            if (!(std::fabs(float(all.size()) - rate) < 600 && std::fabs(hz - 441) < 5)) std::fprintf(stderr, "%g: %zu frames %f Hz\n", double(rate), all.size(), double(hz));
+            CHECK(std::fabs(float(all.size()) - rate) < 600 && std::fabs(hz - 441) < 5);
+        }
+    }
+    // A take at 96 kHz: a second of 1 kHz is kept as 44100 frames of 1 kHz; 30 kHz (above what 44.1 kHz holds) is filtered out, not folded down.
+    {
+        dsp::device_rate.store(96000.0f);
+        for (float hz : {1000.0f, 30000.0f}) {
+            auto take = std::make_unique<TakeRecorder>();
+            take->set_rate(96000);
+            take->arm(-100, 0, 0);
+            std::vector<float> l(128), r(128);
+            for (unsigned b = 0; b < 750; ++b) {
+                for (unsigned f = 0; f < 128; ++f) l[f] = r[f] = 0.5f * std::sin(2 * 3.14159265f * hz * float(b * 128 + f) / 96000.0f);
+                take->process(l.data(), r.data(), 128);
+            }
+            take->stop();
+            CHECK(take->state() == TakeRecorder::State::Done && std::abs(int(take->frames()) - 44100) <= 2);
+            std::vector<float> kept(take->left(), take->left() + take->frames());
+            if (hz < 2000) {
+                unsigned crossings = 0;
+                for (unsigned n = 1001; n < 41000; ++n) crossings += (kept[n - 1] < 0) != (kept[n] < 0);
+                CHECK(std::fabs(crossings / 2.0f / (40000 / 44100.0f) - 1000) < 5);
+                CHECK(peak_of(kept, 1000) > 0.45f);
+            } else CHECK(peak_of(kept, 1000) < 0.03f);
+        }
+        // Resample at 96 kHz: a second rendered is 44100 frames kept.
+        auto bounce = std::make_unique<Bounce>();
+        bounce->set_rate(96000);
+        bounce->cue(); bounce->begin(0);
+        std::vector<float> l(128, 0.25f), r(128, 0.25f), drained(4096 * 2);
+        unsigned popped = 0;
+        for (unsigned b = 0; b < 750; ++b) { bounce->process(l.data(), r.data(), 128); popped += bounce->pop(drained.data(), 4096); }
+        CHECK(std::abs(int(bounce->frames()) - 44100) <= 2 && popped == bounce->frames());
+    }
+    dsp::device_rate.store(44100.0f);
+    // Settings: kept and read back; a rate the device has no row for is left out, a buffer between rows goes up to one.
+    {
+        Settings a;
+        CHECK(a.audio_rate == 44100 && a.audio_periods == 3 && a.value_text(Settings::AudioBuffer) == "384  8.7 ms");
+        a.step(Settings::SampleRate, 1); a.step(Settings::SampleRate, 1); a.step(Settings::SampleRate, 1);
+        a.step(Settings::AudioBuffer, 1); a.step(Settings::AudioBuffer, 1);
+        CHECK(a.audio_rate == 96000 && a.audio_periods == 6 && a.value_text(Settings::SampleRate) == "96 kHz");
+        Settings b;
+        b.read(a.text());
+        CHECK(b.audio_rate == 96000 && b.audio_periods == 6);
+        b.read("audio_rate=22050\naudio_periods=5\n");
+        CHECK(b.audio_rate == 96000 && b.audio_periods == 6);
+        b.read("audio_periods=1\n");
+        CHECK(b.audio_periods == 2 && b.value_text(Settings::AudioBuffer) == "256  2.7 ms");
+        b.reset_factory();
+        CHECK(b.audio_rate == 44100 && b.audio_periods == 3);
+    }
+}
+
 int main() {
+    device_rates();
     card_access();
     projects_and_polish();
     midi_and_sync();
