@@ -140,6 +140,7 @@ void preview_projects(Snapshot& s) {
     v.entries = {{K::Folder, "Live sets", v.root + "/Live sets", 0, 0, 6, 0}, {K::Folder, "Sketches", v.root + "/Sketches", 0, 0, 14, 0},
                  {K::Project, "Night drive", v.root + "/Night drive.mldp", 10, 1240, 0, 4}, {K::Project, "Tape loops", v.root + "/Tape loops.mldp", 7, 920, 0, 3},
                  {K::Project, "Sunday sketch", v.root + "/Sunday sketch.mldp", 3, 1100, 0, 2}, {K::Project, "Basement jam", v.root + "/Basement jam.mldp", 12, 1400, 0, 1}};
+    v.folders = {"Live sets", "Live sets/Spring tour", "Sketches", "Sketches/2026"};
     s.project_path = v.root + "/Night drive.mldp";
     s.dirty = true;
 }
@@ -280,6 +281,10 @@ const Preview previews[] {
      }},
     {"filesheet", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
+         preview_projects(s);
+     }},
+    {"movefolder", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 3; s.ui.move_open = true; s.ui.move_cursor = 1;
          preview_projects(s);
      }},
     {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = 24; s.project.click = true; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},

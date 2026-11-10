@@ -6,13 +6,15 @@
 // opens its sheet: on the open one Save, Save as new, Duplicate, New folder
 // here, Open at start, Delete; on any other Load heads the list. Delete asks
 // once more. Save (with no file yet), Save as new and Rename open the Name
-// sheet; Move to folder waits for a folder picker. The amber dot marks
-// unsaved changes.
+// sheet; Move to folder opens a picker of every folder (the wheel picks,
+// Push or B3 moves, B1 backs out). The amber dot marks unsaved changes.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/ui/widgets.h"
 #include <cstdio>
+#include <filesystem>
+#include <vector>
 
 namespace melodee {
 namespace {
@@ -41,6 +43,17 @@ const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const st
     return row >= first && row - first < v.entries.size() ? &v.entries[row - first] : nullptr;
 }
 bool on_unsaved(unsigned row, const std::string& path) { return unsaved_row(path) && row == 1; }
+
+// Move to folder: where a project can go (the top, then every folder by
+// name), all but the folder it is in.
+std::vector<std::string> destinations(const ProjectStore::View& v, const std::string& path) {
+    std::string here = std::filesystem::path(path).parent_path().string(), top = v.root;
+    std::string rel = here.size() > top.size() ? here.substr(top.size() + 1) : std::string();
+    std::vector<std::string> out;
+    if (!rel.empty()) out.push_back("");
+    for (const auto& f : v.folders) if (f != rel) out.push_back(f);
+    return out;
+}
 
 void folder_icon(Paint& p, float x, float cy) {
     juce::Path icon;
@@ -71,7 +84,8 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(where));
     if (v.free_bytes) h.right.push_back(pill(free_text(v.free_bytes)));
     bool sheet = s.ui.sheet_open;
-    if (sheet) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    if (s.ui.move_open) frame(p, s, {{"BACK", "", "MOVE"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    else if (sheet) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
     else frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 0, colour::text}, h);
 
     unsigned count = unsigned(v.entries.size()) + first_entry(s.project_path), cursor = std::min<unsigned>(s.ui.project_cursor, count - 1);
@@ -133,6 +147,38 @@ void draw(Paint& p, const Snapshot& s) {
         }
         p.text(e->name, tx, y, right - tx - 4, list_row_h, p.fit(e->name, plain(open ? colour::text : colour::sec, 12, Weight::Medium), right - tx - 4, 8));
     }
+    if (s.ui.move_open) { // the folder picker over the list
+        const auto* e = entry_at(v, cursor, s.project_path);
+        if (!e) return;
+        auto list = destinations(v, e->path);
+        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
+        p.dim_zone(zone::knobs_y, zone::knobs_h);
+        float px = zone::pad + 6, pw = zone::width - 2 * zone::pad - 12, py = zone::picture_y + 3, ph = zone::picture_h - 6;
+        p.fill(px, py, pw, ph, colour::surf, 6);
+        p.ring(px, py, pw, ph, colour::line, 6);
+        p.text("MOVE " + juce::String(e->name).toUpperCase() + " TO", px + 9, py + 5, pw - 18, 10, p.fit("MOVE " + juce::String(e->name).toUpperCase() + " TO", caps_text(colour::mid, 7), pw - 18, 5));
+        if (list.empty()) {
+            p.text("No other folder: New folder here makes one", px, py + 50, pw, 14, plain(colour::dim, 10), juce::Justification::centred);
+            return;
+        }
+        constexpr unsigned shown = 6;
+        unsigned at = std::min<unsigned>(s.ui.move_cursor, unsigned(list.size()) - 1);
+        unsigned from = at < shown / 2 ? 0 : std::min<unsigned>(at - shown / 2, list.size() > shown ? unsigned(list.size()) - shown : 0);
+        for (unsigned r = 0; r < shown && from + r < list.size(); ++r) {
+            unsigned n = from + r;
+            float ry = py + 19 + r * 20, rx = px + 5, rw = pw - 10;
+            bool on = n == at;
+            if (on) {
+                p.fill(rx, ry, rw, 19, colour::raised.brighter(0.25f), 4);
+                p.g.saveState(); p.g.reduceClipRegion(juce::Rectangle<int>(int(rx), int(ry), 3, 19));
+                p.fill(rx, ry, 8, 19, colour::text, 4); p.g.restoreState();
+            }
+            folder_icon(p, rx + 6, ry + 9.5f);
+            juce::String name = list[n].empty() ? juce::String("Projects (the top)") : juce::String(list[n]).replace("/", juce::String::fromUTF8(" \xe2\x80\xba "));
+            p.text(name, rx + 22, ry, rw - 28, 19, p.fit(name, plain(on ? colour::text : colour::sec, 11, Weight::Medium), rw - 28, 7));
+        }
+        return;
+    }
     if (!v.message.empty() && !sheet)
         p.text(v.message, x, zone::picture_y + 132, w, 12, caps_text(colour::rec, 7), juce::Justification::centredRight);
 
@@ -149,11 +195,11 @@ void draw(Paint& p, const Snapshot& s) {
         if (unsaved) { m.detail = "NOT SAVED"; m.detail_colour = amber; }
         else if (open && s.dirty) { m.detail = "UNSAVED CHANGES"; m.detail_colour = amber; }
         for (unsigned k = 0; k < n; ++k) {
-            bool off = list[k] == MoveTo;
+            bool off = false;
             juce::String name = action_name(list[k]);
             if (list[k] == Delete && s.ui.delete_armed && k == s.ui.sheet_row) name = "Delete: press again";
             if (list[k] == OpenAtStart && !unsaved && v.start == e->path) name = "Opens at start";
-            if (unsaved && (list[k] == Duplicate || list[k] == OpenAtStart || list[k] == Delete)) off = true; // no file yet
+            if (unsaved && (list[k] == Duplicate || list[k] == OpenAtStart || list[k] == Delete || list[k] == MoveTo)) off = true; // no file yet
             m.rows[k] = {name, "", false, list[k] == Delete, off};
         }
         m.count = n; m.current = s.ui.sheet_row % n;
@@ -181,7 +227,7 @@ void act(Context& c) {
     unsigned n = actions(open, list);
     auto action = list[c.ui.sheet_row % n];
     if (action != Delete) c.ui.delete_armed = false;
-    if (unsaved && (action == Duplicate || action == OpenAtStart || action == Delete)) return;
+    if (unsaved && (action == Duplicate || action == OpenAtStart || action == Delete || action == MoveTo)) return;
     switch (action) {
     case Load: c.store->load(e->path); break;
     case Save:
@@ -199,13 +245,32 @@ void act(Context& c) {
         c.ui.delete_armed = false;
         break;
     case Rename: c.rename_project(unsaved ? std::string() : e->path, unsaved ? std::string(c.project.name) : e->name); return;
-    case MoveTo: return; // needs a folder picker
+    case MoveTo: c.ui.sheet_open = false; c.ui.move_open = true; c.ui.move_cursor = 0; return;
     }
     c.ui.sheet_open = false;
     c.store->list(c.project_folder);
 }
 
+// The picker: Push or B3 moves the project there, B1 backs out.
+void move_here(Context& c) {
+    auto v = view_of(c);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+    c.ui.move_open = false;
+    if (!e || !c.store) return;
+    auto list = destinations(v, e->path);
+    if (list.empty()) return;
+    c.store->move(e->path, list[std::min<size_t>(c.ui.move_cursor, list.size() - 1)]);
+    c.store->list(c.project_folder);
+}
+
 void wheel(Context& c, int delta) {
+    if (c.ui.move_open) {
+        auto v = view_of(c);
+        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+        size_t n = e ? destinations(v, e->path).size() : 0;
+        c.ui.move_cursor = uint16_t(std::clamp<int>(c.ui.move_cursor + delta, 0, std::max(int(n) - 1, 0)));
+        return;
+    }
     if (c.ui.sheet_open) {
         auto v = view_of(c);
         const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
@@ -220,6 +285,7 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
+    if (c.ui.move_open) { move_here(c); return; }
     if (c.ui.sheet_open) { act(c); return; }
     auto v = view_of(c);
     if (on_unsaved(c.ui.project_cursor, c.project_path)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false; return; }
@@ -240,6 +306,11 @@ void push(Context& c) {
 }
 
 void soft(Context& c, int key) {
+    if (c.ui.move_open) {
+        if (key == 0) c.ui.move_open = false;
+        if (key == 2) move_here(c);
+        return;
+    }
     if (c.ui.sheet_open) {
         if (key == 0) { c.ui.sheet_open = false; c.ui.delete_armed = false; }
         if (key == 2) act(c);

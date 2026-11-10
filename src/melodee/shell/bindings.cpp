@@ -195,7 +195,7 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::RecThreshold, 0, -60, 0, ui.rec_threshold}, Binding {Kind::RecBars, 0, 0, 16, ui.rec_bars},
                 Binding {Kind::RecGain, 0, -12, 24, ui.rec_gain}};
     case PageId::Project:
-        if (ui.sheet_open) return {};
+        if (ui.sheet_open || ui.move_open) return {};
         return {Binding {}, Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},
                 Binding {Kind::ProjectSort, 0, 0, 1, ui.project_sort}};
     case PageId::Tempo:

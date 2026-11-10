@@ -48,6 +48,7 @@ public:
     void save_settings(const std::string& text); // Melodee's settings (shell/settings.h), kept with the start project
     void rename(const std::string& path, const std::string& name); // a project, in its folder
     void save_sound(const std::string& name, std::vector<uint8_t> bytes); // Melodee/Sounds/<name>.mlds
+    void move(const std::string& path, const std::string& folder); // a project into a folder ("" the top), its name kept (" 2" on a clash)
     // A project path in the folder in view for a typed name: the name itself,
     // or with " 2", " 3"... when a project has it already.
     std::string named_path(const std::string& name) const;
@@ -68,6 +69,8 @@ public:
         std::string settings;            // the settings file's lines but the start one
         bool settings_read = false;      // the card's settings file has been read (or found missing)
         std::vector<UserSound> sounds;   // Melodee/Sounds, by name
+        std::vector<std::string> folders; // every folder under the root, relative ("Live/Set 1"), by name
+        std::string moved_from, moved_to; // the last move, so an open project can follow its file
     };
     void view(View& out) const;
     unsigned generation() const { return changes.load(std::memory_order_acquire); }
@@ -75,7 +78,7 @@ public:
 
 private:
     struct Request {
-        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Settings, Rename, SaveSound } kind;
+        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Settings, Rename, SaveSound, Move } kind;
         std::string path;
         std::vector<uint8_t> bytes;
     };

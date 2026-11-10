@@ -9,6 +9,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 
 namespace melodee {
@@ -41,6 +42,9 @@ void ProjectStore::open_at_start(const std::string& path) { push(new Request {Re
 void ProjectStore::save_settings(const std::string& text) { push(new Request {Request::Kind::Settings, text, {}}); }
 void ProjectStore::rename(const std::string& path, const std::string& name) {
     push(new Request {Request::Kind::Rename, path, std::vector<uint8_t>(name.begin(), name.end())});
+}
+void ProjectStore::move(const std::string& path, const std::string& folder) {
+    push(new Request {Request::Kind::Move, path, std::vector<uint8_t>(folder.begin(), folder.end())});
 }
 void ProjectStore::save_sound(const std::string& name, std::vector<uint8_t> bytes) { push(new Request {Request::Kind::SaveSound, name, std::move(bytes)}); }
 
@@ -208,6 +212,22 @@ void ProjectStore::run(Request& r) {
         if (start == r.path) { start = target.string(); write_settings(error); }
         break;
     }
+    case Request::Kind::Move: {
+        auto dir = fs::path(root) / std::string(r.bytes.begin(), r.bytes.end());
+        auto stem = fs::path(r.path).stem().string();
+        if (fs::path(r.path).parent_path() == dir) break; // already there
+        fs::path target;
+        for (unsigned n = 1; n < 1000; ++n) {
+            target = dir / (stem + (n == 1 ? std::string() : " " + std::to_string(n)) + extension);
+            if (!fs::exists(target, error)) break;
+        }
+        fs::rename(r.path, target, error);
+        if (error) { publish_message("Could not move"); return; }
+        if (start == r.path) { start = target.string(); write_settings(error); }
+        std::lock_guard<std::mutex> guard(lock);
+        known.moved_from = r.path; known.moved_to = target.string();
+        break;
+    }
     case Request::Kind::SaveSound: {
         auto dir = fs::path(root).parent_path() / "Sounds";
         fs::create_directories(dir, error);
@@ -265,9 +285,24 @@ void ProjectStore::scan() {
             return a.kind == ProjectEntry::Kind::Folder ? a.name < b.name : a.modified > b.modified;
         });
     }
+    // Every folder under the root, for Move to folder (four deep at most).
+    std::vector<std::string> folders;
+    if (!root.empty()) {
+        std::function<void(const fs::path&, const std::string&, unsigned)> walk = [&](const fs::path& at, const std::string& rel, unsigned depth) {
+            for (const auto& item : fs::directory_iterator(at, error)) {
+                if (!item.is_directory(error) || folders.size() >= 128) continue;
+                auto name = rel.empty() ? item.path().filename().string() : rel + "/" + item.path().filename().string();
+                folders.push_back(name);
+                if (depth < 4) walk(item.path(), name, depth + 1);
+            }
+        };
+        walk(root, "", 1);
+        std::sort(folders.begin(), folders.end());
+    }
     std::lock_guard<std::mutex> guard(lock);
     known.root = root; known.folder = folder; known.start = start;
     known.entries = std::move(entries);
+    known.folders = std::move(folders);
     known.saves = saved.load();
     changes.fetch_add(1, std::memory_order_release);
 }

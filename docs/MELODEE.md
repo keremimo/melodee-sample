@@ -204,8 +204,11 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Save (the first time), Save as new and Rename open the Name sheet, its
   first name a free "Project n" (or the project's own); a typed name a
   project in the folder has already gets " 2", " 3"; Rename onto one is
-  refused with a message. Move to folder waits for a folder picker. Copies
-  are "<name> copy", folders Folder n. The service thread does every file operation (writing beside
+  refused with a message. Move to folder opens a picker of every folder
+  under Projects (four deep) and the top, all but the one the project is
+  in: the wheel picks, Push or B3 moves it there (" 2" when that folder has
+  the name already), B1 backs out; the open project follows its file, and
+  so does Open at start. Copies are "<name> copy", folders Folder n. The service thread does every file operation (writing beside
   the file, then renaming it into place); a load swaps the model on the MIDI
   thread and gives the audio thread a whole copy to switch to at once,
   then the project's samples load again. Nothing is created on the card
@@ -353,11 +356,9 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, record, project, filesheet, tempo, arp, chord,
-  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, shift and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
-
-Not yet: Move to folder (a folder picker).
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

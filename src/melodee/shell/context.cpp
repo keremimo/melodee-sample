@@ -70,6 +70,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
 void Context::open(PageId page) {
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
     ui.sheet_open = false;
+    ui.move_open = false;
     ui.map_open = false;
     ui.picker_open = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
@@ -82,7 +83,10 @@ void Context::open(PageId page) {
 }
 
 void Context::back() {
-    if (ui.sheet_open || ui.map_open || ui.picker_open) { ui.sheet_open = ui.map_open = ui.picker_open = false; return; } // a sheet, map or picker first
+    if (ui.sheet_open || ui.map_open || ui.picker_open || ui.move_open) { // a sheet, map or picker first
+        ui.sheet_open = ui.map_open = ui.picker_open = ui.move_open = false;
+        return;
+    }
     open(ui.previous == ui.page ? PageId::Stage : ui.previous); }
 
 void Context::select_track(unsigned t) {

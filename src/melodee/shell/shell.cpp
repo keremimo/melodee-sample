@@ -205,7 +205,7 @@ void Shell::button(Button b, bool pressed) {
     case Button::TopRight: page.soft(context_, 2); break;
     case Button::WheelPush:
         if (ui.shift && ui.page == PageId::Song && !ui.sheet_open) song_marker(context_);
-        else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && !context_.project_folder.empty()) {
+        else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
             // up a folder
             auto& f = context_.project_folder;
             auto cut = f.find_last_of('/');

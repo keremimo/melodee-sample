@@ -71,6 +71,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         ProjectStore::View v;
         store_->view(v);
         context_.user_sounds = std::move(v.sounds);
+        if (!v.moved_from.empty() && v.moved_from == context_.project_path) context_.project_path = v.moved_to; // the open project followed its file
     }
     ui_.user_sound_count = uint16_t(context_.user_sound_count(project_->tracks[ui_.track].engine));
     // Melodee's settings, once the card's file has been read.
