@@ -138,6 +138,7 @@ bool EngineHost::skipped(Slot& slot, unsigned key, uint32_t tick) {
 // the pool made at start, so this allocates nothing (audio thread for TrackLoad).
 void EngineHost::load_track(unsigned t, const Track& track) {
     auto& slot = slots[t % track_count];
+    midi_all_off(t, frame_now); // what this track sent ends before it changes
     select_engine(slot, track.engine);
     const auto& info = engine_info(track.engine);
     slot.base = track.params;
@@ -185,7 +186,8 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
                 : kind == EngineKind::Kit909 ? static_cast<Engine*>(&slot.kit)
                 : kind == EngineKind::Fm6 ? static_cast<Engine*>(&slot.fm)
                 : kind == EngineKind::Sid ? static_cast<Engine*>(&slot.sid)
-                : kind == EngineKind::Cz ? static_cast<Engine*>(&slot.cz) : nullptr;
+                : kind == EngineKind::Cz ? static_cast<Engine*>(&slot.cz)
+                : kind == EngineKind::Midi ? static_cast<Engine*>(&slot.midi) : nullptr;
     slot.sampler.set_samples(&samples);
     slot.arp.top = kind == EngineKind::Sampler ? int(sampler_last_key) : 127; // a kit's notes run past 127
     for (auto& off : slot.offs) off.key = -1;
@@ -211,8 +213,9 @@ void EngineHost::apply(const Command& c) {
                 for (auto& off : slots[t].offs) off.key = -1;
             }
         break;
-    case Type::Engine: select_engine(slot, EngineKind(c.index)); break;
+    case Type::Engine: midi_all_off(c.track, frame_now); select_engine(slot, EngineKind(c.index)); break;
     case Type::Sound:
+        if (slot.kind == EngineKind::Midi) midi_all_off(c.track, frame_now); // its port or channel may change
         if (slot.engine) {
             std::array<int16_t, max_params> values;
             const auto& info = engine_info(slot.kind);
@@ -222,6 +225,8 @@ void EngineHost::apply(const Command& c) {
         }
         break;
     case Type::Param:
+        // A MIDI track's port or channel: what went out on the old one ends there.
+        if (slot.kind == EngineKind::Midi && c.index < midi_track::Count && slot.base[c.index] != c.value) midi_all_off(c.track, frame_now);
         if (c.index < max_params) slot.base[c.index] = c.value;
         if (slot.engine) slot.engine->set_param(c.index, c.value);
         break;
@@ -424,7 +429,7 @@ void EngineHost::apply(const Command& c) {
         midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now, -1); // 16 Levels: the pad's note
         break;
     case Type::MidiTrack:
-        midi_all_off(c.track, frame_now); // what went out on the old channel ends there
+        if (!is_midi(c.track)) midi_all_off(c.track, frame_now); // what went out on the old channel ends there (a MIDI track keeps its own)
         out_channel[c.track % track_count] = uint8_t(std::min<unsigned>(c.index, 16));
         out_mode[c.track % track_count] = uint8_t(c.value);
         break;
@@ -501,8 +506,8 @@ void EngineHost::apply(const Command& c) {
         break;
     }
     case Type::Send: slot.send = c.value / 100.0f; break;
-    case Type::Mute: slot.mute = c.value != 0; break;
-    case Type::Solo: slot.solo = c.value != 0; break;
+    case Type::Mute: slot.mute = c.value != 0; midi_silenced(); break;
+    case Type::Solo: slot.solo = c.value != 0; midi_silenced(); break;
     case Type::PatternData:
         if (c.data) {
             auto& at = patterns[c.track % track_count][c.pattern % pattern_count];
@@ -670,6 +675,7 @@ void EngineHost::bar_start() {
         for (unsigned t = 0; t < track_count; ++t) {
             auto& slot = slots[t];
             if (slot.queued == 255) continue;
+            if (slot.kind == EngineKind::Midi && slot.queued != slot.pattern) midi_all_off(t, frame_now + block_at); // the old pattern's notes end
             slot.pattern = slot.queued; slot.queued = 255; slot.start = tick_now;
             patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
             lead = slot.pattern;
@@ -788,7 +794,9 @@ void EngineHost::arp_note(Slot& slot, int key, int velocity, int from, int32_t l
 // pad without a sample, a track without an engine). Past 127 is no MIDI note.
 bool EngineHost::out_wanted(unsigned t, int key) const {
     t %= track_count;
-    if (!out_channel[t] || !out_mode[t] || key < 0 || key > 127) return false;
+    if (key < 0 || key > 127) return false;
+    if (is_midi(t)) return heard(t); // a MIDI track: always, unless muted (docs/MIDI_TRACKS.md)
+    if (!out_channel[t] || !out_mode[t]) return false;
     if (out_mode[t] == 1) return true;
     const auto& slot = slots[t];
     if (!slot.engine) return true;
@@ -796,34 +804,55 @@ bool EngineHost::out_wanted(unsigned t, int key) const {
     return false;
 }
 
+bool EngineHost::heard(unsigned t) const {
+    bool solo = false;
+    for (const auto& s : slots) solo |= s.solo;
+    const auto& slot = slots[t % track_count];
+    return !slot.mute && !(solo && !slot.solo);
+}
+
+void EngineHost::midi_silenced() {
+    for (unsigned t = 0; t < track_count; ++t)
+        if (is_midi(t) && !heard(t)) midi_all_off(t, frame_now);
+}
+
 void EngineHost::midi_note(unsigned t, int key, int velocity, uint64_t at, int64_t length) {
     if (!out_wanted(t, key)) return;
-    uint8_t channel = out_channel[t % track_count];
+    t %= track_count;
+    // A MIDI track's own port and channel (its first two parameters), else Pad MIDI Out's channel on MIDI Config's port.
+    bool own = is_midi(t);
+    uint8_t channel = own ? uint8_t(std::clamp<int>(slots[t].base[midi_track::Channel], 1, 16)) : out_channel[t];
+    MidiDest dest = own ? midi_track::dest_of(slots[t].base[midi_track::Port]) : MidiDest::Config;
+    auto event = [&](MidiOutEvent::Kind kind, uint8_t b, uint64_t when) {
+        MidiOutEvent e {kind, channel, uint8_t(key), b, 0, when};
+        e.dest = dest;
+        emit(e);
+    };
     for (auto& off : midi_offs) // a retrigger ends the note it replaces first
-        if (off.on && off.channel == channel && off.key == key) { emit({MidiOutEvent::Kind::NoteOff, channel, uint8_t(key), 0, 0, at}); off.on = false; }
-    emit({MidiOutEvent::Kind::NoteOn, channel, uint8_t(key), uint8_t(std::clamp(velocity, 1, 127)), 0, at});
+        if (off.on && off.channel == channel && off.key == key && off.dest == dest) { event(MidiOutEvent::Kind::NoteOff, 0, at); off.on = false; }
+    event(MidiOutEvent::Kind::NoteOn, uint8_t(std::clamp(velocity, 1, 127)), at);
     for (auto& off : midi_offs)
-        if (!off.on) { off = {true, channel, uint8_t(key), uint8_t(t), length >= 0 ? at + uint64_t(length) : ~uint64_t(0)}; return; }
-    if (length >= 0) emit({MidiOutEvent::Kind::NoteOff, channel, uint8_t(key), 0, 0, at + uint64_t(length)}); // no room: its off now, timed
+        if (!off.on) { off = {true, channel, uint8_t(key), uint8_t(t), length >= 0 ? at + uint64_t(length) : ~uint64_t(0), dest}; return; }
+    if (length >= 0) event(MidiOutEvent::Kind::NoteOff, 0, at + uint64_t(length)); // no room: its off now, timed
 }
 
 void EngineHost::midi_note_off(unsigned t, int key, uint64_t at) {
     for (auto& off : midi_offs)
         if (off.on && off.track == t % track_count && off.key == key) {
-            emit({MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, at});
+            emit(off_event(off, at));
             off.on = false;
         }
 }
 
 void EngineHost::midi_offs_due(uint64_t until) {
     for (auto& off : midi_offs)
-        if (off.on && off.at < until) { emit({MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, off.at}); off.on = false; }
+        if (off.on && off.at < until) { emit(off_event(off, off.at)); off.on = false; }
 }
 
 void EngineHost::midi_all_off(unsigned track, uint64_t at) {
     for (auto& off : midi_offs)
         if (off.on && (track == 255 || off.track == track % track_count)) {
-            emit({MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, at});
+            emit(off_event(off, at));
             off.on = false;
         }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/midi_config.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -28,6 +29,7 @@ struct MidiOutEvent {
     uint8_t channel = 1, a = 0, b = 0;
     uint32_t value = 0;
     uint64_t frame = 0; // the audio thread's frame it belongs to
+    MidiDest dest = MidiDest::Config; // where it goes out (a MIDI track's own port, docs/MIDI_TRACKS.md)
 };
 
 // The audio clock against CLOCK_MONOTONIC. The audio thread stamps each

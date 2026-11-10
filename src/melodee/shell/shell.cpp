@@ -39,6 +39,12 @@ void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t no
     midi_io.receive(context_, port, packet);
 }
 
+void Shell::midi_panic(uint32_t now) {
+    std::lock_guard<std::mutex> guard(lock);
+    context_.now = now;
+    context_.midi_panic();
+}
+
 void Shell::midi_lost() {
     std::lock_guard<std::mutex> guard(lock);
     midi_io.lost(context_);

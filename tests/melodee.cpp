@@ -28,6 +28,7 @@
 #include "melodee/shell/mtc_in.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/engine/midi_out.h"
+#include "melodee/engine/midi_engine.h"
 #include "melodee/shell/takeover.h"
 #include "melodee/model/fader.h"
 #include "melodee/engine/effect_info.h"
@@ -3425,7 +3426,175 @@ void device_rates() {
     }
 }
 
+// MIDI tracks (docs/MIDI_TRACKS.md, phase M1): the engine, its port and channel, where its notes go, when they end.
+void midi_tracks() {
+    using K = MidiOutEvent::Kind;
+    // The engine: available, one DEVICE page and no mod matrix, port and channel as its parameters.
+    {
+        const auto& info = engine_info(EngineKind::Midi);
+        CHECK(info.available && std::string(info.name) == "MIDI" && info.param_count == midi_track::Count);
+        CHECK(edit_page_count(info) == 1 && !is_mod_page(info, 0) && edit_page_count(engine_info(EngineKind::Prophet)) == prophet::info().page_count + 1);
+        Track t;
+        load_sound(t, EngineKind::Midi, 0);
+        CHECK(t.engine == EngineKind::Midi && t.params[midi_track::Port] == midi_track::External && t.params[midi_track::Channel] == 1 &&
+              std::string(t.name) == "MIDI OUT");
+        CHECK(midi_track::dest_of(midi_track::UsbC) == MidiDest::UsbC && midi_track::dest_of(midi_track::AllUsb) == MidiDest::AllUsb &&
+              midi_track::dest_of(99) == MidiDest::External);
+        std::array<EngineKind, size_t(EngineKind::Count)> engines {};
+        unsigned count = available_engines(engines);
+        CHECK(count >= 1 && engines[count - 1] == EngineKind::Midi);
+    }
+    // Ports: a MIDI track's own, apart from MIDI Config's.
+    {
+        CHECK(dest_is(MidiDest::External, MidiPort::Usb, "SerialMIDI", false) && !dest_is(MidiDest::External, MidiPort::Usb, "MIDI Gadget", false));
+        CHECK(dest_is(MidiDest::UsbC, MidiPort::External, "MIDI Gadget", false) && !dest_is(MidiDest::UsbC, MidiPort::External, "USB-Audio", false));
+        CHECK(dest_is(MidiDest::AllUsb, MidiPort::External, "USB-Audio", false) && dest_is(MidiDest::AllUsb, MidiPort::External, "MIDI Gadget", false) &&
+              !dest_is(MidiDest::AllUsb, MidiPort::External, "SerialMIDI", false));
+        CHECK(dest_is(MidiDest::Config, MidiPort::External, "SerialMIDI", false) && !dest_is(MidiDest::Config, MidiPort::External, "MIDI Gadget", false));
+        CHECK(!dest_is(MidiDest::AllUsb, MidiPort::Usb, "MIDI Gadget", true)); // never the surface
+    }
+    // MIDI Config's MIDI Panic: a row that changes nothing when stepped.
+    {
+        Settings set; Track track;
+        CHECK(std::string(midi_row_name(PanicRow)) == "MIDI Panic" && PanicRow + 1 == ResetRow);
+        MidiConfig before = set.midi;
+        midi_row_step(set, track, PanicRow, 1);
+        CHECK(set.midi == before && midi_row_value(set, track, PanicRow).empty());
+    }
+    // The file: Midi in MIDT, None in TRAK, so a build without MIDT loads the track empty.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[3], EngineKind::Midi, 0);
+        project->tracks[3].params[midi_track::Port] = midi_track::AllUsb; project->tracks[3].params[midi_track::Channel] = 12;
+        auto bytes = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(bytes, *back, *bank).empty());
+        CHECK(back->tracks[3].engine == EngineKind::Midi && back->tracks[3].params[midi_track::Port] == midi_track::AllUsb &&
+              back->tracks[3].params[midi_track::Channel] == 12 && back->tracks[2].engine == EngineKind::None);
+        auto tag = std::search(bytes.begin(), bytes.end(), "MIDT", "MIDT" + 4);
+        CHECK(tag != bytes.end());
+        std::copy_n("ZZZZ", 4, tag); // as an older build sees it: a section it does not know
+        auto older = std::make_unique<Project>();
+        CHECK(load_project(bytes, *older, *bank).empty() && older->tracks[3].engine == EngineKind::None);
+    }
+    // The engine host: a MIDI track sends on its own port and channel, whatever Pad MIDI Out says.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[midi_track::Port] = midi_track::UsbC; project->tracks[0].params[midi_track::Channel] = 10;
+        load_sound(project->tracks[1], EngineKind::Prophet, 1);
+        project->tempo = 1200;
+        put(bank->at[0][0], 0, 60, 100, 2);
+        bank->at[0][1].length = 4 * project->bar_ticks(); // pattern 2: four bars, one long note
+        put(bank->at[0][1], 0, 62, 100, 64);
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        std::vector<int32_t> out(256);
+        auto drain = [&] { std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
+        auto block = [&] { host.render(out.data(), 128, 1); return drain(); };
+        host.send({Command::Type::MidiTrack, 1, 0, 5, 1}); // track 2 (a synth): Pad MIDI Out Always, channel 5
+        host.send({Command::Type::MidiTrack, 0, 0, 3, 0}); // MIDI Config says Never for track 1: a MIDI track sends anyway
+        CHECK(block().empty());
+        host.send({Command::Type::NoteOn, 0, 0, 48, 90});
+        host.send({Command::Type::NoteOn, 1, 0, 50, 90});
+        auto pads = block();
+        CHECK(pads.size() == 2);
+        CHECK(pads[0].kind == K::NoteOn && pads[0].channel == 10 && pads[0].a == 48 && pads[0].dest == MidiDest::UsbC);
+        CHECK(pads[1].kind == K::NoteOn && pads[1].channel == 5 && pads[1].dest == MidiDest::Config);
+        // A new channel ends the held note on the old one.
+        host.send({Command::Type::Param, 0, 0, midi_track::Channel, 11});
+        auto moved = block();
+        CHECK(moved.size() == 1 && moved[0].kind == K::NoteOff && moved[0].channel == 10 && moved[0].a == 48 && moved[0].dest == MidiDest::UsbC);
+        // The same value again sends nothing; a new port ends the notes too.
+        host.send({Command::Type::NoteOn, 0, 0, 49, 90});
+        host.send({Command::Type::Param, 0, 0, midi_track::Channel, 11});
+        auto again = block();
+        CHECK(again.size() == 1 && again[0].kind == K::NoteOn && again[0].channel == 11);
+        host.send({Command::Type::Param, 0, 0, midi_track::Port, midi_track::External});
+        auto ported = block();
+        CHECK(ported.size() == 1 && ported[0].kind == K::NoteOff && ported[0].a == 49 && ported[0].dest == MidiDest::UsbC);
+        host.send({Command::Type::NoteOn, 0, 0, 51, 90});
+        CHECK(block()[0].dest == MidiDest::External);
+        // Muted: its notes end, new ones stay home; the synth's MIDI is left alone.
+        host.send({Command::Type::Mute, 0, 0, 0, 1});
+        auto muted = block();
+        CHECK(muted.size() == 1 && muted[0].kind == K::NoteOff && muted[0].a == 51 && muted[0].channel == 11);
+        host.send({Command::Type::NoteOn, 0, 0, 52, 90});
+        CHECK(block().empty());
+        host.send({Command::Type::Mute, 0, 0, 0, 0});
+        // Another track soloed silences it the same way.
+        host.send({Command::Type::NoteOn, 0, 0, 53, 90});
+        CHECK(block().size() == 1);
+        host.send({Command::Type::Solo, 1, 0, 0, 1});
+        auto soloed = block();
+        CHECK(soloed.size() == 1 && soloed[0].kind == K::NoteOff && soloed[0].a == 53);
+        host.send({Command::Type::Solo, 1, 0, 0, 0});
+        host.send({Command::Type::NoteOff, 1, 0, 50});
+        block();
+        // Its pattern plays on its port and channel; the next pattern launched ends what the old one held.
+        host.send({Command::Type::Param, 0, 0, midi_track::Port, midi_track::AllUsb});
+        host.send({Command::Type::Play});
+        std::vector<MidiOutEvent> all;
+        for (unsigned n = 0; n < 120; ++n) for (auto& e : block()) all.push_back(e); // two sixteenths: 11025 frames
+        bool on = false, off = false;
+        for (auto& e : all) {
+            if (e.kind == K::NoteOn && e.a == 60) on = e.channel == 11 && e.dest == MidiDest::AllUsb;
+            if (e.kind == K::NoteOff && e.a == 60) off = true;
+        }
+        CHECK(on && off);
+        host.send({Command::Type::Pattern, 0, 0, 0, 1}); // pattern 2 on the next bar
+        all.clear();
+        for (unsigned n = 0; n < 700; ++n) for (auto& e : block()) all.push_back(e); // past the bar (88200 frames at 120 BPM)
+        int long_on = -1;
+        for (unsigned n = 0; n < all.size(); ++n) if (all[n].kind == K::NoteOn && all[n].a == 62) long_on = int(n);
+        CHECK(long_on >= 0);
+        host.send({Command::Type::Pattern, 0, 0, 0, 0}); // back to pattern 1: the long note ends at the bar, before it is due
+        all.clear();
+        for (unsigned n = 0; n < 700; ++n) for (auto& e : block()) all.push_back(e);
+        bool ended = false;
+        for (auto& e : all) if (e.kind == K::NoteOff && e.a == 62) { ended = true; break; }
+        CHECK(ended);
+        // Stop ends what it holds; an engine change too.
+        host.send({Command::Type::NoteOn, 0, 0, 54, 90});
+        block();
+        host.send({Command::Type::Stop});
+        auto stopped = block();
+        bool stop_off = false;
+        for (auto& e : stopped) stop_off |= e.kind == K::NoteOff && e.a == 54 && e.dest == MidiDest::AllUsb;
+        CHECK(stop_off);
+        host.send({Command::Type::NoteOn, 0, 0, 55, 90});
+        block();
+        host.send({Command::Type::Engine, 0, 0, uint16_t(EngineKind::Prophet)});
+        auto changed = block();
+        CHECK(changed.size() == 1 && changed[0].kind == K::NoteOff && changed[0].a == 55);
+    }
+    // The arp plays a MIDI track as it plays a synth.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        std::vector<int32_t> out(256);
+        host.send({Command::Type::Arp, 0, 0, 0, 1});
+        host.send({Command::Type::ArpKey, 0, 0, 60, 100});
+        host.send({Command::Type::ArpKey, 0, 0, 64, 100});
+        unsigned ons = 0, offs = 0;
+        for (unsigned n = 0; n < 400; ++n) { // sixteenths at 120 BPM: about nine
+            host.render(out.data(), 128, 1);
+            MidiOutEvent e;
+            while (host.take_midi(e)) { ons += e.kind == K::NoteOn && e.channel == 1 && e.dest == MidiDest::External; offs += e.kind == K::NoteOff; }
+        }
+        CHECK(ons >= 4 && offs >= 3);
+    }
+}
+
 int main() {
+    midi_tracks();
     device_rates();
     card_access();
     projects_and_polish();

@@ -16,6 +16,10 @@ namespace melodee {
 enum class MidiPort : uint8_t { External, Usb, Count };     // External: the 1/8" jacks (UART5); USB: USB-C (the gadget) and USB host
 enum class PadMidiOut : uint8_t { Never, Always, Empty, Count }; // Empty: only notes with no sound of their own (an empty pad or track)
 enum class MidiSync : uint8_t { Off, Clock, Mtc, Count };
+// Where one message goes out: MIDI Config's port (pads on audio tracks, the
+// clocks, Thru), or a MIDI track's own (docs/MIDI_TRACKS.md): the 1/8" jacks,
+// USB-C's gadget alone, or every USB output (the gadget and USB host devices).
+enum class MidiDest : uint8_t { Config, External, UsbC, AllUsb, Count };
 
 struct MidiConfig {
     MidiPort port = MidiPort::External;

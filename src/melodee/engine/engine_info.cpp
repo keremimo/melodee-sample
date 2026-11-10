@@ -5,6 +5,7 @@
 #include "melodee/engine/cz.h"
 #include "melodee/engine/fm6.h"
 #include "melodee/engine/kit909.h"
+#include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sid.h"
 #include "melodee/engine/sampler.h"
 #include <algorithm>
@@ -33,7 +34,18 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const Sound kits[] {{"NEW KIT", {{{-1, 0}}}}};
     static const EngineInfo sampler {EngineKind::Sampler, "SAMPLER", true, kit_params, sampler::Count, nullptr, 0,
                                      {sampler::Tune, sampler::Filter, sampler::Decay}, kits, 1};
+    // MIDI (docs/MIDI_TRACKS.md, phase M1): where the track's notes go out.
+    static const char* const midi_ports[] {"External", "USB-C", "All USB"};
+    static const ParamInfo midi_params[] {
+        {"PORT", 0, midi_track::PortCount - 1, midi_track::External, Format::Choice, midi_ports},
+        {"CHANNEL", 1, 16, 1, Format::Number, nullptr},
+    };
+    static const EditPage midi_pages[] {{"Device", "DEVICE", Picture::Bars, {{{midi_track::Port, midi_track::Channel, -1}, {-1, -1, -1}, {-1, -1, -1}}}}};
+    static const Sound midi_sounds[] {{"MIDI OUT", {{{-1, 0}}}}};
+    static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params, midi_track::Count, midi_pages, 1,
+                                  {midi_track::Port, midi_track::Channel, -1}, midi_sounds, 1, nullptr, 0, false};
     switch (kind) {
+    case EngineKind::Midi: return midi;
     case EngineKind::Prophet: return prophet::info();
     case EngineKind::Fm6: return fm6::info();
     case EngineKind::Cz: return cz::info();
@@ -44,8 +56,10 @@ const EngineInfo& engine_info(EngineKind kind) {
     }
 }
 
-unsigned edit_page_count(const EngineInfo& info) { return info.page_count ? info.page_count + 1 : 0; }
-bool is_mod_page(const EngineInfo& info, unsigned index) { return info.page_count && index % edit_page_count(info) == info.page_count; }
+unsigned edit_page_count(const EngineInfo& info) { return info.page_count ? info.page_count + (info.mod_matrix ? 1 : 0) : 0; }
+bool is_mod_page(const EngineInfo& info, unsigned index) {
+    return info.page_count && info.mod_matrix && index % edit_page_count(info) == info.page_count;
+}
 const EditPage& edit_page_at(const EngineInfo& info, unsigned index) {
     static const EditPage mod {"Mod matrix", "MOD", Picture::Mod, {{{-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}}}};
     if (!info.page_count || is_mod_page(info, index)) return mod;

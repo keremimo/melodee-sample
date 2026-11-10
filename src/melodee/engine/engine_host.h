@@ -7,6 +7,7 @@
 #include "melodee/engine/fm6.h"
 #include "melodee/engine/kit909.h"
 #include "melodee/engine/master_comp.h"
+#include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sid.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
@@ -157,6 +158,7 @@ private:
         Fm6Engine fm;
         SidEngine sid;
         CzEngine cz;
+        MidiEngine midi; // silent: a MIDI track (docs/MIDI_TRACKS.md)
         Engine* engine = nullptr;
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
         bool mute = false, solo = false;
@@ -200,6 +202,9 @@ private:
     // MIDI out and sync (parity phase 9).
     void emit(const MidiOutEvent& e) { if (!midi_events.push(e)) midi_lost.fetch_add(1, std::memory_order_relaxed); }
     bool out_wanted(unsigned t, int key) const;                              // this note of this track goes out
+    bool heard(unsigned t) const;                                            // not muted, nor silenced by another's solo
+    bool is_midi(unsigned t) const { return slots[t % track_count].kind == EngineKind::Midi; }
+    void midi_silenced();                                                    // MIDI tracks muted or soloed out: their notes end
     void midi_note(unsigned t, int key, int velocity, uint64_t at, int64_t length); // and its off after `length` frames (-1 none)
     void midi_note_off(unsigned t, int key, uint64_t at);
     void midi_offs_due(uint64_t until);                                      // offs before `until`, at their frames
@@ -213,7 +218,12 @@ private:
     AudioClock clock;
     uint64_t frame_now = 0;                                                  // frames rendered before this block
     std::array<uint8_t, track_count> out_channel {}, out_mode {};
-    struct MidiOff { bool on = false; uint8_t channel = 1, key = 0, track = 0; uint64_t at = 0; };
+    struct MidiOff { bool on = false; uint8_t channel = 1, key = 0, track = 0; uint64_t at = 0; MidiDest dest = MidiDest::Config; };
+    static MidiOutEvent off_event(const MidiOff& off, uint64_t at) {
+        MidiOutEvent e {MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, at};
+        e.dest = off.dest;
+        return e;
+    }
     std::array<MidiOff, 128> midi_offs {};
     SyncOut sync;
     bool sync_started = false;                                                // the song's clocks are going (after any count-in)

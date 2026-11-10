@@ -8,12 +8,13 @@
 
 // MIDI Config's rows (Shift + Pad 8, parity phase 9) in the MPC's order, with
 // Melodee's track channel after Out channel and the three takeover rows the
-// MPC keeps here (they are Settings' rows too), then Reset Factory Settings.
+// MPC keeps here (they are Settings' rows too), then Melodee's MIDI Panic
+// (docs/MIDI_TRACKS.md) and Reset Factory Settings.
 namespace melodee {
 
 enum MidiRow : uint8_t {
     MidiPortRow, InChannelRow, OutChannelRow, TrackChannelRow, PadInRow, PadOutRow, SyncInRow, SyncOutRow, ThruRow,
-    ProgramChangeRow, CvOutRow, CvBaseRow, CvDivisionRow, KnobTakeoverRow, KnobFxTakeoverRow, FaderTakeoverRow, ResetRow,
+    ProgramChangeRow, CvOutRow, CvBaseRow, CvDivisionRow, KnobTakeoverRow, KnobFxTakeoverRow, FaderTakeoverRow, PanicRow, ResetRow,
     MidiRows
 };
 
@@ -21,7 +22,7 @@ inline const char* midi_row_name(unsigned row) {
     static const char* const names[] {"MIDI Port", "MIDI In Channel", "MIDI Out Channel", "Track Channel", "Pad MIDI In",
                                       "Pad MIDI Out", "MIDI Sync In", "MIDI Sync Out", "MIDI Thru", "Receive Program Change",
                                       "CV/Sync Out", "CV/Sync Base", "CV/Sync Division", "Parameter Takeover",
-                                      "Knob FX Takeover", "Fader Takeover", "Reset Factory Settings"};
+                                      "Knob FX Takeover", "Fader Takeover", "MIDI Panic", "Reset Factory Settings"};
     return names[row % MidiRows];
 }
 

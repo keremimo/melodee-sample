@@ -49,7 +49,9 @@ private:
     void deliver(Context& c, MidiOutput& out, const MidiOutEvent& e);
     void follow_mtc(Context& c, const MtcReader::Event& e); // what time code did: start, place, keep on time, stop
     void send_mtc(Context& c, uint16_t what, const MtcReader::Event& e);
-    void send_all(Context& c, MidiOutput& out, const MidiPacket& packet); // to every output of the chosen port
+    // To every output of `dest` (MIDI Config's port, or a MIDI track's own).
+    void send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest = MidiDest::Config);
+    void panic(Context& c, MidiOutput& out); // All Sound Off, All Notes Off, pitch bend centre: every channel, every port
     struct Pending { int64_t due = 0; MidiOutEvent event; };
     std::array<Pending, 512> pending {}; // sorted by when it is heard
     unsigned pending_count = 0;
@@ -59,6 +61,7 @@ private:
     unsigned tempo_sent = 0;
     uint32_t song_position = 0; // ticks, from Song Position: where Continue carries on
     bool configured = false, cv_blocked = false, cv_taken = false;
+    unsigned panics_done = 0; // Context::midi_panics answered
     MidiConfig config_sent;
     std::array<uint8_t, track_count> channel_sent {}, mode_sent {};
     std::atomic<bool> ext_running {false}; // Start or Continue came, Stop not yet
@@ -67,6 +70,8 @@ private:
     int64_t late_sum = 0, late_max = 0;      // ns behind the due time, over the messages since the last report
     unsigned late_count = 0;
     std::atomic<unsigned> late_avg_us {0}, late_max_us {0}, jitter_in {0}, bunched {0}; // bunched: clock pulses in under 2 ms
+    // MIDI tracks (docs/MIDI_TRACKS.md): messages sent on a track's own port, the last one (its bytes and MidiDest), panics.
+    std::atomic<unsigned> track_outs {0}, last_out {0}, last_dest {0}, panics {0};
     uint64_t last_pulse_ns = 0;
     // MTC in: the reader; it started what plays (and the engine has taken it up); held: stopped here while the master
     // ran on, so it waits for the master to stop before following again.

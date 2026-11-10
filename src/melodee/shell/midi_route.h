@@ -16,6 +16,10 @@ namespace melodee {
 // SerialMIDI card), USB every other MIDI device (USB-C's gadget, USB host).
 // The control surface is never one.
 bool port_is(MidiPort port, const std::string& driver, bool surface);
+// Whether a message for `dest` goes out on a device: Config is MIDI Config's
+// port; a MIDI track's External the jacks, USB-C the gadget (f_midi, driver
+// "MIDI Gadget") alone, All USB every USB device. Never the surface.
+bool dest_is(MidiDest dest, MidiPort config, const std::string& driver, bool surface);
 
 // The tracks a note on `channel` (1..16) plays: every track that has it as
 // its own channel; when none does, the selected track if MIDI Config's In

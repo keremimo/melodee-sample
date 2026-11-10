@@ -56,6 +56,7 @@ void MelodeeApp::midi_output(MidiOutput& out, Clock::time_point now) {
         injected.packet.timestamp_ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
         shell.midi(port, injected.packet, now_ms());
     }
+    if (panic_asked.exchange(false)) shell.midi_panic(now_ms());
     shell.midi_output(out, now, now_ms());
 }
 
@@ -125,6 +126,10 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
 }
 
 std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
+    if (action == "melodee-midi" && argument == "panic") { // MIDI Config's MIDI Panic (docs/MIDI_TRACKS.md)
+        panic_asked.store(true);
+        return "OK melodee-midi panic";
+    }
     if (action == "melodee-midi") { // melodee-midi [usb] 90 3c 64
         RemoteMidi m;
         std::string rest = argument;

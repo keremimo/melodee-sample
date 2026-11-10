@@ -17,6 +17,11 @@ namespace {
 int64_t ns_of(MidiIo::Clock::time_point t) {
     return int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count());
 }
+std::string last_text(unsigned bytes) {
+    char text[16];
+    std::snprintf(text, sizeof(text), "%06x", bytes);
+    return text;
+}
 MidiPacket packet_of(const juce::MidiMessage& m) {
     MidiPacket p;
     p.size = unsigned(std::min<int>(m.getRawDataSize(), int(p.bytes.size())));
@@ -53,10 +58,17 @@ void Context::midi_release_all() {
 }
 
 void Context::change_midi(unsigned row, int way) {
-    if (row >= ResetRow) return;
+    if (row >= PanicRow) return;
     midi_row_step(ui.settings, track(), row, way);
     if (row == TrackChannelRow) dirty = true; // the project keeps it
     if (store) store->save_settings(ui.settings.text());
+}
+
+void Context::midi_panic() {
+    midi_release_all();
+    send({Type::AllNotesOff, 255}); // the engines, and the notes the engine host still owes an off
+    ++midi_panics;
+    notice("MIDI panic");
 }
 
 void Context::reset_settings() {
@@ -284,19 +296,43 @@ void MidiIo::configure(Context& c, bool force) {
     configured = true;
 }
 
-void MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet) {
+void MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest) {
     const auto& config = c.ui.settings.midi;
     bool sent = false;
     for (const auto& port : out.ports())
-        if (port.output && port_is(config.port, port.driver, port.surface)) sent |= out.send(port.address, packet);
-    if (sent) { outs.fetch_add(1, std::memory_order_relaxed); c.ui.midi_out_at = c.now; }
+        if (port.output && dest_is(dest, config.port, port.driver, port.surface)) sent |= out.send(port.address, packet);
+    if (!sent) return;
+    outs.fetch_add(1, std::memory_order_relaxed); c.ui.midi_out_at = c.now;
+    if (dest == MidiDest::Config) return;
+    track_outs.fetch_add(1, std::memory_order_relaxed);
+    last_out.store((unsigned(packet.bytes[0]) << 16) | (packet.size > 1 ? unsigned(packet.bytes[1]) << 8 : 0) |
+                   (packet.size > 2 ? packet.bytes[2] : 0), std::memory_order_relaxed);
+    last_dest.store(unsigned(dest), std::memory_order_relaxed);
+}
+
+void MidiIo::panic(Context& c, MidiOutput& out) {
+    // Notes waiting for their frame would start again after it: they go; their offs, the clocks and the rest stay.
+    unsigned kept = 0;
+    for (unsigned n = 0; n < pending_count; ++n)
+        if (pending[n].event.kind != MidiOutEvent::Kind::NoteOn) pending[kept++] = pending[n];
+    pending_count = kept;
+    for (const auto& port : out.ports()) {
+        if (!port.output || port.surface) continue;
+        for (int ch = 1; ch <= 16; ++ch) {
+            out.send(port.address, packet_of(juce::MidiMessage::allSoundOff(ch)));
+            out.send(port.address, packet_of(juce::MidiMessage::allNotesOff(ch)));
+            out.send(port.address, packet_of(juce::MidiMessage::pitchWheel(ch, 8192)));
+        }
+    }
+    c.ui.midi_out_at = c.now;
+    panics.fetch_add(1, std::memory_order_relaxed);
 }
 
 void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
     using K = MidiOutEvent::Kind;
     switch (e.kind) {
-    case K::NoteOn: send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b)))); break;
-    case K::NoteOff: send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a))); break;
+    case K::NoteOn: send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest); break;
+    case K::NoteOff: send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest); break;
     case K::Clock: send_all(c, out, packet_of(juce::MidiMessage::midiClock())); break;
     case K::Start: send_all(c, out, packet_of(juce::MidiMessage::midiStart())); break;
     case K::Stop: send_all(c, out, packet_of(juce::MidiMessage::midiStop())); break;
@@ -338,6 +374,7 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     }
     for (unsigned n = 0; n < thru_count; ++n) send_all(c, out, thru[n]);
     thru_count = 0;
+    if (panics_done != c.midi_panics) { panics_done = c.midi_panics; panic(c, out); }
     const auto& clock = c.host.audio_clock();
     int64_t now_ns = ns_of(now);
     MidiOutEvent e;
@@ -389,7 +426,9 @@ std::string MidiIo::summary(const EngineHost& host) const {
            " melodee_midi_last=" + last + " melodee_clock_in=" + std::to_string(pulses_in.load()) +
            " melodee_clock_jitter_us=" + std::to_string(jitter_in.load()) + " melodee_clock_bunched=" + std::to_string(bunched.load()) + " melodee_ext=" + std::to_string(int(ext_running.load())) + " melodee_ext_tempo=" + std::to_string(tempo_seen.load()) +
            " melodee_cv_pulses=" + std::to_string(cv_pulses.load()) + " melodee_cv_ok=" + std::to_string(int(cv_ok.load())) +
-           " melodee_mtc_in=" + std::to_string(mtc_in.load()) + mtc_summary + " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
+           " melodee_mtc_in=" + std::to_string(mtc_in.load()) + mtc_summary + " melodee_midi_track_out=" + std::to_string(track_outs.load()) +
+           " melodee_midi_last_out=" + last_text(last_out.load()) + " melodee_midi_last_dest=" + std::to_string(last_dest.load()) +
+           " melodee_midi_panics=" + std::to_string(panics.load()) + " melodee_midi_late_us=" + std::to_string(late_avg_us.load()) + "/" +
            std::to_string(late_max_us.load());
 }
 

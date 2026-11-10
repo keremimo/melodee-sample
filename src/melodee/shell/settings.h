@@ -57,7 +57,7 @@ struct Settings {
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
     MidiConfig midi;          // MIDI Config (Shift + Pad 8, parity phase 9)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
-    static constexpr unsigned engines = 7, sounds = 256;
+    static constexpr unsigned engines = 8, sounds = 256; // a row per EngineKind (MIDI is the eighth)
     std::array<std::bitset<sounds>, engines> favourites {};
     bool favourite(unsigned engine, unsigned sound) const { return engine < engines && sound < sounds && favourites[engine][sound]; }
     void toggle_favourite(unsigned engine, unsigned sound) { if (engine < engines && sound < sounds) favourites[engine].flip(sound); }

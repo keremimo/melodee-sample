@@ -657,6 +657,17 @@ const Preview previews[] {
     {"midireset", [](Shell&, Snapshot& s) { // Reset Factory Settings asks first: B1 NO, B3 YES
          s.ui.page = PageId::MidiConfig; s.ui.midi_cursor = ResetRow; s.ui.ask = UiState::Ask::ResetSettings;
      }},
+    // MIDI tracks (docs/MIDI_TRACKS.md, phase M1).
+    {"miditrack", [](Shell&, Snapshot& s) { // Edit on a MIDI track: DEVICE, USB-C on channel 10, the channel just turned
+         s.ui.page = PageId::Edit; s.ui.track = 4; s.ui.edit_page[4] = 0; s.playing = true;
+         auto& t = s.project.tracks[4];
+         load_sound(t, EngineKind::Midi, 0);
+         t.params[midi_track::Port] = midi_track::UsbC; t.params[midi_track::Channel] = 10;
+         s.ui.turning = 1; s.ui.turned_at = s.now; s.ui.midi_out_at = s.now;
+     }},
+    {"midipanic", [](Shell&, Snapshot& s) { // MIDI Config's MIDI Panic under the cursor
+         s.ui.page = PageId::MidiConfig; s.ui.midi_cursor = PanicRow; s.ui.midi_out_at = s.now;
+     }},
     {"extclock", [](Shell&, Snapshot& s) { // Patterns while MIDI clock in leads: EXT CLOCK, its tempo
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.playing = true; s.following = true; s.tempo = 1284;
          s.ui.settings.midi.sync_in = MidiSync::Clock;

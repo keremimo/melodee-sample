@@ -4,6 +4,7 @@
 #include "melodee/model/pad_params.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
 #include <cmath>
 #include "melodee/engine/take_recorder.h"
@@ -313,7 +314,8 @@ void Context::apply(const Binding& b, int value) {
     auto& t = track();
     switch (b.kind) {
     case Kind::Param:
-        set_param(ui.track, b.id, value); record_motion(b.id, value);
+        set_param(ui.track, b.id, value);
+        if (t.engine != EngineKind::Midi || b.id >= midi_track::Count) record_motion(b.id, value); // a MIDI track's port and channel are no lane
         if (t.engine == EngineKind::Sampler && b.id == sampler::Follow && value) follow_tempos();
         break;
     case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); break;

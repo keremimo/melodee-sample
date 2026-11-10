@@ -56,6 +56,7 @@ private:
     // `melodee-midi [usb] HEX...`: one message as if it came in on the External (or USB) port, for checks without a cable.
     struct RemoteMidi { bool usb = false; MidiPacket packet; };
     MidiQueue<16, RemoteMidi> remote_midi;
+    std::atomic<bool> panic_asked {false}; // `melodee-midi panic`
     bool power_known = false;
     melodee::CardNote card_note = melodee::CardNote::None; // service thread: why the last lend did not start
     uint64_t card_returns = 0;

@@ -13,6 +13,16 @@ bool port_is(MidiPort port, const std::string& driver, bool surface) {
     return port == MidiPort::External ? external : !external;
 }
 
+bool dest_is(MidiDest dest, MidiPort config, const std::string& driver, bool surface) {
+    if (surface) return false;
+    switch (dest) {
+    case MidiDest::External: return driver == "SerialMIDI";
+    case MidiDest::UsbC: return driver == "MIDI Gadget";
+    case MidiDest::AllUsb: return driver != "SerialMIDI";
+    default: return port_is(config, driver, surface);
+    }
+}
+
 uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_count>& own, unsigned selected, unsigned channel) {
     uint16_t tracks = 0;
     for (unsigned t = 0; t < track_count; ++t)

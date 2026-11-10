@@ -329,6 +329,10 @@ public:
     bool from_midi = false;                                 // note() is playing what came in: not echoed out
     void change_midi(unsigned row, int way);                // one step along a MIDI Config row (shell/midi_config_rows.h)
     void reset_settings();                                  // MIDI Config's Reset Factory Settings, after B3
+    // MIDI Panic (MIDI Config's row, `melodee-midi panic`): every note here ends, and MIDI out sends All Sound Off,
+    // All Notes Off and pitch bend centre on every channel of every port (shell/midi_io.cpp, counting these).
+    void midi_panic();
+    unsigned midi_panics = 0;
 
 private:
     void double_notes();

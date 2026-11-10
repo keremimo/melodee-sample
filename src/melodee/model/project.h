@@ -20,7 +20,9 @@ namespace melodee {
 
 // The engines a track can load. Only those with `available` set in their
 // EngineInfo can be picked yet.
-enum class EngineKind : uint8_t { None, Prophet, Fm6, Cz, Sid, Kit909, Sampler, Count };
+// Midi plays an external instrument (docs/MIDI_TRACKS.md); files keep it in
+// MIDT, TRAK says None, so older builds load the track empty.
+enum class EngineKind : uint8_t { None, Prophet, Fm6, Cz, Sid, Kit909, Sampler, Midi, Count };
 
 // Every pattern of every track (their events on the heap).
 struct PatternBank {

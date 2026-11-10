@@ -22,7 +22,7 @@ repository as one folder. Layering follows [APPS.md](APPS.md).
 | --- | --- |
 | `melodee_app.*` | The `App`: hands each runtime hook to its owner below. Thin. |
 | `model/` | The project: tracks, patterns (event lists), song, mix, motion, kits, limits (`limits.h`). Plain data, no threads. |
-| `engine/` | Audio: DSP pieces, the six engines, effects and punches, the engine host (16 tracks, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
+| `engine/` | Audio: DSP pieces, the six engines and MIDI's silent one, effects and punches, the engine host (16 tracks, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
 | `ui/` | The design system: tokens, the Rubik typeface, the components every page is built from. |
 | `pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
 | `shell/` | The control grammar and everything around the pages: printed buttons and their Shift jobs, Shift + pad (`shift_pad_jobs`), Pad Bank, mute mode, Note Repeat, Seq + Sample, undo, the fader, takeover, lights, MIDI in and out, the card (`project_store`, `sample_library`, `card_access`), audio input and renders, and the snapshot handed to the screen. |
@@ -333,8 +333,9 @@ selected track), Out channel, Track Channel (a track's own: plays it
 whichever is selected, and its notes go out there), Pad MIDI In / Out
 (Never, Always, Empty), Sync In / Out (Off, MIDI Clock, MTC), Thru, Program
 Change (launches that pattern), CV/Sync Out with Base 1–8 and Division 1–24
-(pulses a quarter), the three takeover rows and Reset Factory Settings (B3
-YES, B1 NO). The header shows IN / OUT as MIDI passes, EXT CLOCK or EXT MTC
+(pulses a quarter), the three takeover rows, MIDI Panic (Push: every note
+here ends, and All Sound Off, All Notes Off and pitch bend centre go out on
+every channel of every port) and Reset Factory Settings (B3 YES, B1 NO). The header shows IN / OUT as MIDI passes, EXT CLOCK or EXT MTC
 while following.
 
 - **In**: notes and pressure, CC 1 as the mod wheel, All Notes Off; a kit
@@ -346,6 +347,11 @@ while following.
 - **Out**: decided on the audio thread per frame and sent by the MIDI thread
   when that frame is heard (`engine/midi_out.h`): pads, patterns, the arp,
   MIDI clock, MTC (25 fps) and the CV clock, while playing.
+- **MIDI tracks** (`docs/MIDI_TRACKS.md`): a track with the MIDI engine
+  sends its pads, patterns and arp on its own port and channel (Edit's
+  DEVICE page: External, USB-C, All USB; 1–16), whatever Pad MIDI Out
+  says. Muted or soloed out, a new port or channel, a pattern launched,
+  another engine or Stop: the notes it holds end.
 
 ### Project and system
 
@@ -433,6 +439,8 @@ while following.
 - **909**: kick, snare, clap, rim, three toms, closed and open hat, crash,
   ride on pads 1–11 (12–16 dark); six Edit pages, five kits.
 - **Sampler**: the kit above.
+- **MIDI**: no sound; an external instrument on the track's own port and
+  channel (above, "MIDI and sync"). No mod matrix.
 
 Every synth has the mod matrix, Touch and an LFO. Each track has eight
 voices or the engine's own count; tracks render in one block of 128 frames.
@@ -442,7 +450,9 @@ voices or the engine's own count; tracks render in one block of 128 frames.
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
   `MOT2` / `MOTP` / `MOTW` motion, `TIME`, `PAD4` / `KITX` / `PMUT` kits,
-  `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `PVER` and the rest). Saved beside
+  `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER` and the rest; a
+  MIDI track is None in `TRAK` and MIDI in `MIDT`, so older builds load it
+  empty). Saved beside
   the file, then renamed into place.
 - `Melodee/Sounds/<name>.mlds`: a sound's values and mod routes.
 - `Melodee/settings`: Melodee's settings, MIDI Config, Input Config, the
@@ -466,7 +476,8 @@ and Melodee's:
   `mute+pad5`); `hold-BUTTON` / `release-BUTTON`, `hold-padN` /
   `release-padN`; `k1=V`..`k3=V`, `shift+k3=V`, `fader=V` (0..127).
 - `melodee-midi [usb] HEX...`: one message into the input path, as if from
-  the External (or USB) port.
+  the External (or USB) port. `melodee-midi panic`: MIDI Config's MIDI
+  Panic.
 - `card-share [on|off|force]` (the runtime's): SD card access from the
   remote; Melodee opens its page as if B1 had been pressed there.
 
@@ -496,7 +507,10 @@ Chop (`melodee_chop_*`); the browser (`melodee_files`,
 `melodee_flex*`); the fader (`melodee_fader_*`, `melodee_wheel`,
 `melodee_takeover`); MIDI (`melodee_midi_in`, `melodee_midi_out`,
 `melodee_midi_last`, `melodee_clock_*`, `melodee_ext`, `melodee_ext_tempo`,
-`melodee_cv_*`, `melodee_mtc*`, `melodee_midi_late_us`, MIDI Config's rows
+`melodee_cv_*`, `melodee_mtc*`, `melodee_midi_late_us`; MIDI tracks'
+`melodee_midi_track_out`, `melodee_midi_last_out` (its three bytes, hex),
+`melodee_midi_last_dest` (1 External, 2 USB-C, 3 All USB),
+`melodee_midi_panics`; MIDI Config's rows
 `melodee_midi_port` .. `melodee_midi_row`); undo and projects
 (`melodee_undo`, `melodee_redo`, `melodee_undo_last`, `melodee_seq_sample`,
 `melodee_map`, `melodee_demos`, `melodee_gesture`, `melodee_engine`); SD
@@ -510,7 +524,8 @@ card access (`melodee_card` 0 home, 1 lending, 2 lent, 3 returning;
 `build/sample-base --melodee-preview DIR [PAGE]` draws every named page at
 1× and 2× (the 2× ones line up with the 640 × 480 boards); the names are in
 `src/melodee/tools.cpp` (`cardrow`, `cardaccess`, `cardejected`,
-`cardlocked`, `cardnocomputer` and `cardnone` among them).
+`cardlocked`, `cardnocomputer`, `cardnone`, `miditrack` and `midipanic`
+among them).
 `--melodee-sound FILE.wav` renders two bars of the starting project and
 checks the level. `./build.sh` runs both.
 

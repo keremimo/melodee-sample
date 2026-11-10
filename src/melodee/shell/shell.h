@@ -38,6 +38,7 @@ public:
     void midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now_ms);
     void midi_lost();
     void midi_output(MidiOutput& out, MidiIo::Clock::time_point now, uint32_t now_ms);
+    void midi_panic(uint32_t now_ms); // `melodee-midi panic`, as MIDI Config's row
     float volume() const { return main_volume.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
     // Any thread: Settings' sample rate and buffer (periods), once the card's settings are read; until then the default.

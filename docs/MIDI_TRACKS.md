@@ -5,7 +5,8 @@ It makes no sound of its own: its pads, patterns, knobs, motion and the
 song drive an external instrument on a port and channel of its own, and it
 can take an audio input back as its sound so the instrument sits in the mix.
 
-Status: design, Kerem's answers of 2026-11-10. Nothing built yet.
+Status: Kerem's answers of 2026-11-10. **M1 built** (see "Phases"); M2–M5
+still design.
 
 ## Decisions (Kerem, 2026-11-10)
 
@@ -58,18 +59,27 @@ struct MidiDevice {
 };
 ```
 
-`Track` gains `MidiDevice midi` (about 1.6 KB a track). `EngineKind::Midi`
-is added before `Count`, so older files keep their engine numbers.
+`Track` gains `MidiDevice midi` from M2 on (about 1.6 KB a track) for what
+is not a number: slot definitions, the drum map, names, the device's name,
+the SysEx file. `EngineKind::Midi` is added before `Count`, so older files
+keep their engine numbers. In M1 port and channel are parameters, so
+`MidiDevice` does not exist yet.
 
-**Slot values are the engine's parameters 0..23.** That is the main reuse:
+**The device and the slots are the engine's parameters.** Port and Channel
+are parameters 0 and 1 (M1, `engine/midi_engine.h`); M2's slot values
+follow from parameter 8 (room for the device's later per-track values).
+That is the main reuse:
 motion lanes, takeover, undo, Seq Record, the fader's targets, Erase + knob
 and track copy already work on `Track::params`. A value moves the knob and
 the engine host sends the slot's message when it changes. Parameters past
 the slots hold what is per performance rather than per device: pressure
 mode (channel or poly), pitch bend range shown, and so on.
 
-File: a `MIDT` section per MIDI track (a version byte, then the fields).
-Older builds skip it, and a MIDI track loads there as an empty track.
+File: a `MIDT` section per MIDI track (track, a version byte, then the
+fields from M2 on). `TRAK` writes the engine as None for a MIDI track:
+older builds clamp an engine number they do not know to their last engine
+(the Sampler), so they must not see 7. They skip `MIDT` and load the track
+empty, its port and channel left in its parameters.
 
 ## Engine (audio thread)
 
@@ -223,7 +233,7 @@ port wait behind it, with a warning if Play is pressed meanwhile.
 
 - `status`: `melodee_midi_track_*` (dest, device, online, channel, delay,
   pads, program, slots used, held notes, CC sent / thinned, sysex state).
-- `melodee-midi-panic`.
+- `melodee-midi panic`.
 - Previews: `miditrack`, `mididevice`, `midislots`, `midislotedit`,
   `mididrum`, `midiaudio`, `midisysex`, `midioffline`.
 - `tests/melodee.cpp`, `midi_tracks()`: the events per kind and their
@@ -239,12 +249,19 @@ port wait behind it, with a warning if Play is pressed meanwhile.
 Each phase passes `./build.sh`, the tests and a device check, then commits
 and fast-forwards `feat/melodee-app` (standing rule).
 
-**M1: MIDI track, notes out.** `EngineKind::Midi` (`EngineInfo` entry,
-picked with K1 on an empty track), `model/midi_track.h`, the `MIDT`
-section, `MidiOutEvent::track` and per-track port resolution (External,
-USB-C, All USB), per-track Note Offs (mute, Stop, pattern change, engine
-change), Keys pads, the Edit DEVICE page, the USB-C stale-output drop.
-Panic.
+**M1: MIDI track, notes out. Built.** `EngineKind::Midi` (K1 on Sounds
+picks it, sound MIDI OUT), `engine/midi_engine.h` (a silent `Engine`, so
+the arp, note lengths and motion reach it as they reach a synth), port and
+channel as parameters on Edit's DEVICE page (no mod matrix page, no motion
+lane for them), `MidiOutEvent::dest` (the audio thread names the port,
+the MIDI thread matches it: `dest_is()`), Note Offs on mute, solo, a new
+port or channel, pattern launch, engine change and Stop, Keys pads (the
+synth layouts), the `MIDT` section, MIDI Config's MIDI Panic row and
+`melodee-midi panic`, `status` fields, previews `miditrack` and
+`midipanic`, test `midi_tracks()`. Settings keep a favourites row for it.
+Left out of M1: the USB-C stale-output drop (phase 9's Later box). The
+kernel's f_midi holds up to `qlen` USB requests that user space cannot
+take back, so it needs a device spike of its own in the base.
 
 **M2: knobs, motion, expression.** Slots as params, SLOTS pages and slot
 definition editing, Cc / Cc14 / NRPN / pitch bend / channel pressure,
@@ -265,9 +282,9 @@ chunked paced sending, on load and on demand.
 
 ## Open questions (ask before the phase that needs them)
 
-1. **Panic's binding (M1).** The MPC's printed Shift jobs keep their
-   meaning. Is Shift + Stop free on the MPC Sample, or should panic be a
-   row on MIDI Config plus a remote command only?
+1. **Panic's binding.** M1 built it as a MIDI Config row plus
+   `melodee-midi panic` (no printed button taken). Should Shift + Stop do
+   it too, if the MPC Sample leaves that free?
 2. **USB devices (M4).** Which synths will be plugged into the USB host
    port to test with? A real `snd-usb-audio` MIDI device is needed for the
    name matching and hotplug check.

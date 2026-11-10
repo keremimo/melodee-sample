@@ -73,6 +73,8 @@ struct EngineInfo {
     // engine (before phase 1d added pad expression): the ones after it load
     // at their initial values. 0: all of them.
     unsigned legacy_params = 0;
+    // Edit ends with the mod matrix page (MIDI has nothing to modulate yet).
+    bool mod_matrix = true;
 };
 
 const EngineInfo& engine_info(EngineKind kind);

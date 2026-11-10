@@ -9,8 +9,8 @@
 // Pad MIDI In, Pad MIDI Out (Never, Always, Empty), Sync In and Out (Off,
 // MIDI Clock, MTC), Thru, Receive Program Change (patterns), CV/Sync Out with
 // its Base and Division (pulses a quarter: base x division), the three
-// takeover modes (Settings has them too) and Reset Factory Settings (Push,
-// then B3 YES or B1 NO). B1 goes back. The pads play, so what they send can
+// takeover modes (Settings has them too), MIDI Panic (Push: every note off,
+// everywhere) and Reset Factory Settings (Push, then B3 YES or B1 NO). B1 goes back. The pads play, so what they send can
 // be tried; IN and OUT in the header light as MIDI passes.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -47,7 +47,7 @@ void draw(Paint& p, const Snapshot& s) {
         juce::String value = midi_row_value(s.ui.settings, track, row);
         if (row == TrackChannelRow) value = "T" + juce::String(s.ui.track + 1) + "  " + value;
         if (row == CvDivisionRow && s.ui.settings.midi.cv_out) value += "  (" + juce::String(s.ui.settings.midi.cv_ppqn()) + " PPQN)";
-        if (row == ResetRow) value = here ? "PUSH" : "";
+        if (row == ResetRow || row == PanicRow) value = here ? "PUSH" : "";
         auto style = plain(here ? colour::text : colour::mid, 11, Weight::Medium);
         float vw = p.width(value, style), vx = x + w - 7 - vw;
         if (editing) { // the open value: framed
@@ -56,7 +56,7 @@ void draw(Paint& p, const Snapshot& s) {
         }
         p.text(value, vx, y, vw, rh - 1, style);
     }
-    // Where the eight rows sit in the seventeen.
+    // Where the eight rows sit in the eighteen.
     float bar_x = zone::width - zone::pad - 3, top = zone::picture_y + 1, height = shown_rows * rh - 2;
     p.fill(bar_x, top, 2, height, colour::quiet, 1);
     p.fill(bar_x, top + height * first / MidiRows, 2, height * shown_rows / MidiRows, colour::mid, 1);
@@ -68,9 +68,10 @@ void wheel(Context& c, int delta) {
 }
 void push(Context& c) {
     if (c.ui.midi_cursor == ResetRow) { c.ui.midi_editing = false; ask(c, UiState::Ask::ResetSettings, 0); return; }
+    if (c.ui.midi_cursor == PanicRow) { c.ui.midi_editing = false; c.midi_panic(); return; }
     c.ui.midi_editing = !c.ui.midi_editing;
 }
-void nudge(Context& c, int way) { if (c.ui.midi_cursor != ResetRow) c.change_midi(c.ui.midi_cursor, way); }
+void nudge(Context& c, int way) { if (c.ui.midi_cursor < PanicRow) c.change_midi(c.ui.midi_cursor, way); }
 void soft(Context& c, int key) {
     c.ui.midi_editing = false;
     if (key == 0) c.back();
