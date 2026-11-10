@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include "melodee/model/input_config.h"
 #include <cmath>
 #include <cstdint>
 #include <sstream>
@@ -11,7 +12,7 @@
 
 // Melodee's own settings, not the project's: how the pads respond and
 // light, whether their pressure is used, whether pots pick up, the screen, and the MPC's recording toggles
-// (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize). Kept as key=value lines in the
+// (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize) and Input Config (Shift + Sample). Kept as key=value lines in the
 // `settings` file next to the projects (with the project to open at start).
 namespace melodee {
 
@@ -31,6 +32,7 @@ struct Settings {
     uint8_t pad_lights = 0;   // 0 track colours, 1 white, 2 off
     bool pickup = true;       // off: a pot's value jumps to where it sits
     uint8_t screen = 100;     // brightness, 20..100 %
+    InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
     static constexpr unsigned engines = 7, sounds = 256;
     std::array<std::bitset<sounds>, engines> favourites {};
@@ -76,7 +78,9 @@ struct Settings {
         std::ostringstream out;
         out << "pad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npickup=" << int(pickup)
             << "\nscreen=" << int(screen) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
-            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << '\n';
+            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
+            << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
+            << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain) << '\n';
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
             out << "favourites" << e << '=';
@@ -103,6 +107,12 @@ struct Settings {
             else if (key == "count_in") count_in = value != 0;
             else if (key == "rec_quantize") rec_quantize = value != 0;
             else if (key == "response_before") response_before = uint8_t(std::clamp(value, 0, 2));
+            else if (key == "input_source") input.source = InputSource(std::clamp(value, 0, int(InputSource::Count) - 1));
+            else if (key == "monitor") input.monitor = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1));
+            else if (key == "threshold") input.threshold = int8_t(std::clamp(value, int(InputConfig::threshold_min), 0));
+            else if (key == "rec_length") input.length = uint8_t(std::clamp(value, 0, int(rec_lengths) - 1));
+            else if (key == "rec_fx") input.fx = value != 0;
+            else if (key == "rec_gain") input.gain = int8_t(std::clamp(value, -12, 24));
             else if (key.rfind("favourites", 0) == 0) { // favourites3=0,4,12
                 unsigned e = unsigned(std::atoi(key.c_str() + 10));
                 if (e >= engines) continue;

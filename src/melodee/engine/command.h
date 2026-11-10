@@ -44,9 +44,11 @@ struct Command {
         Pad,         // track, index = kit pad, pad
         Audition,    // track, pad (sample, start, end), value = velocity: a region on no pad
         PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64, position = cutoff + 1 (0: the pad's): 16 Levels
-        RecordArm,   // track = source (0 mic, 1 line, 2 the mix), index = sample slot, value = threshold dB, pattern = bars (0: until stopped)
+        // track = InputSource, index = sample slot, value = threshold dB (-96: at once), pattern = rec length
+        // (0 until stopped, 1..16 bars, 255 Seq: the pattern of track `position`, from where it comes round while playing)
+        RecordArm,
         RecordGain,  // value = dB
-        RecordSource, // track = 0 mic, 1 line, 2 the mix: what the input meter reads before a take
+        RecordSource, // track = InputSource: what the meter, Audio Recall's ring and the next take hear
         RecordNow, RecordStop,
         Reload,      // pack: a whole project to switch to; handed back through the host's done queue
         Click,       // value: on; index: level 0..100
@@ -63,7 +65,10 @@ struct Command {
         SongPunchCount, // value = punches in use
         SongRecord,     // value: Seq Record on (a song playing on past its end keeps going, for launches written into it)
         PadMute,        // track, index = kit pad (0xffff: every pad), value: muted
-        TrackLoad       // track_pack: one whole track (sound, kit, patterns) and the motion; handed back like Reload's
+        TrackLoad,      // track_pack: one whole track (sound, kit, patterns) and the motion; handed back like Reload's
+        Monitor,        // value: the input source heard with the mix (not the mix itself)
+        BounceArm       // the next Play renders: value 0 the patterns for `position` ticks, 1 the song to its end and its tail
+
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)

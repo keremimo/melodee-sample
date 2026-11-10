@@ -24,6 +24,7 @@
 #include "melodee/shell/sample_library.h"
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 
 namespace melodee {
 namespace {
@@ -60,6 +61,21 @@ std::string derived(const SampleRef& ref, const std::string& tail) {
     return base.substr(0, room) + tail;
 }
 } // namespace
+
+int Context::hold_file(const std::string& name, unsigned t, int pad, uint8_t land) {
+    unsigned free = 0;
+    while (free < pending_files.size() && pending_files[free].slot >= 0) ++free;
+    int slot = free < pending_files.size() ? hold_slot(project, name) : -1;
+    if (slot < 0) return -1;
+    pending_files[free] = {int16_t(slot), uint8_t(t % track_count), int16_t(pad), false, PadSound {}, land};
+    return slot;
+}
+
+void Context::drop_file(int slot) {
+    if (slot < 0 || slot >= int(sample_slots)) return;
+    project.samples[size_t(slot)] = SampleRef {};
+    for (auto& p : pending_files) if (p.slot == slot) p = PendingFile {};
+}
 
 int Context::next_empty_pad(unsigned after) const {
     const auto& t = project.tracks[ui.track % track_count];
@@ -159,7 +175,10 @@ void Context::files_landed() {
     while (library->done(done)) {
         notice(done.text);
         for (auto& p : pending_files) // a file that could not be made: its slot is free again
-            if (done.failed >= 0 && p.slot == done.failed) { project.samples[size_t(p.slot)] = SampleRef {}; p = PendingFile {}; }
+            if (done.failed >= 0 && p.slot == done.failed) {
+                if (p.land == 2) { ui.rec_slot = ui.rec_pad = -1; ui.rec_chops = 0; } // the take is gone
+                project.samples[size_t(p.slot)] = SampleRef {}; p = PendingFile {};
+            }
     }
     for (auto& p : pending_files) {
         if (p.slot < 0) continue;
@@ -173,9 +192,19 @@ void Context::files_landed() {
         ref.frames = loaded.frames;
         dirty = true;
         auto& t = project.tracks[was.track % track_count];
+        if (was.land == 2) { take_landed(was.track, unsigned(was.pad) % sampler_pads, unsigned(was.slot), loaded); continue; }
         Edit edit;
         edit.track = was.track;
-        if (was.trim) { // the pad, if it still plays what was trimmed, onto the whole new file
+        if (was.land == 1) { // Audio Recall, Resample: onto the pad chosen, at the defaults
+            unsigned kit = unsigned(was.pad) % sampler_pads;
+            edit.pad = int16_t(kit);
+            edit.pad_before = pad_state(t, kit);
+            edit.pad_after = edit.pad_before;
+            edit.pad_after.sound = PadSound {};
+            edit.pad_after.sound.sample = uint16_t(was.slot);
+            edit.what = pad_text(loaded.name.rfind("RESAMPLE", 0) == 0 ? "Resample to" : "Audio Recall to", kit);
+            t.last_pad = uint8_t(kit);
+        } else if (was.trim) { // the pad, if it still plays what was trimmed, onto the whole new file
             unsigned kit = unsigned(was.pad) % sampler_pads;
             const auto& now_sound = t.pads[kit];
             if (now_sound.sample != was.sound.sample || now_sound.start != was.sound.start || now_sound.end != was.sound.end) {
@@ -203,8 +232,43 @@ void Context::files_landed() {
         }
         restore_pad(was.track, unsigned(edit.pad), edit.pad_after);
         notice(was.trim ? pad_text("Trimmed", unsigned(edit.pad)) : edit.what);
+        if (was.land == 1) send_pad(was.track, unsigned(edit.pad));
         edits.push(std::move(edit));
     }
+}
+
+// Sample Record's take: onto its pad, and the pads cut during it each from
+// their cut (pulled onto the strongest hit up to 50 ms before the tap) to
+// the next. Not an undo step, as takes never were.
+void Context::take_landed(unsigned t, unsigned kit, unsigned slot, const LoadedSample& loaded) {
+    auto& track = project.tracks[t % track_count];
+    std::array<uint32_t, UiState::rec_chop_capacity> at {};
+    unsigned cuts = ui.rec_track == t ? ui.rec_chops : 0;
+    for (unsigned n = 0; n < cuts; ++n) at[n] = std::min(snap_to_hit(ui.rec_chop_at[n], loaded.hits, loaded.hit_count), loaded.frames ? loaded.frames - 1 : 0);
+    auto place = [&](unsigned pad, uint32_t start, uint32_t end) {
+        auto& sound = track.pads[pad % sampler_pads];
+        sound = PadSound {};
+        sound.sample = uint16_t(slot); sound.start = start; sound.end = end;
+        send_pad(t, pad % sampler_pads);
+    };
+    // Cuts in the order they fall; a cut pulled onto an earlier one's place is dropped.
+    std::array<unsigned, UiState::rec_chop_capacity> order {};
+    for (unsigned n = 0; n < cuts; ++n) order[n] = n;
+    std::sort(order.begin(), order.begin() + cuts, [&](unsigned a, unsigned b) { return at[a] < at[b]; });
+    uint32_t first_cut = cuts ? at[order[0]] : 0;
+    place(kit, 0, first_cut > 0 ? first_cut : 0);
+    unsigned placed = 0;
+    for (unsigned k = 0; k < cuts; ++k) {
+        unsigned n = order[k];
+        uint32_t end = k + 1 < cuts ? at[order[k + 1]] : 0;
+        if (at[n] == 0 || (end && end <= at[n])) continue;
+        place(ui.rec_chop_pad[n], at[n], end);
+        ++placed;
+    }
+    track.last_pad = uint8_t(kit);
+    if (ui.rec_slot == int(slot)) { ui.rec_slot = ui.rec_pad = -1; ui.rec_chops = 0; }
+    dirty = true;
+    notice(placed ? pad_text("Take on", kit) + ", " + std::to_string(placed) + (placed == 1 ? " cut" : " cuts") : pad_text("Take on", kit));
 }
 
 void Context::preview_cursor() {

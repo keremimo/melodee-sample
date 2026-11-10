@@ -20,7 +20,7 @@ for what each engine does, not code that is built.
 | `src/melodee/engine/` | Audio: the DSP pieces, each engine, the engine host (16 tracks, mixer, sequencer clock) and the command queue that feeds it. |
 | `src/melodee/ui/` | The design system: tokens, the Rubik typeface, and the components every page is built from (soft keys, header, pill, chip, track tag, knob strip, page dots, list row, sheet). |
 | `src/melodee/pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
-| `src/melodee/shell/` | The page router and the control grammar: printed buttons, Shift layer, Pad Bank (`pad_bank`, `track_copy`), mute mode (`mute_mode`), Note Repeat (`note_repeat`), pot pickup, lights, and the snapshot handed to the screen. |
+| `src/melodee/shell/` | The page router and the control grammar: printed buttons, Shift layer, Pad Bank (`pad_bank`, `track_copy`), mute mode (`mute_mode`), Note Repeat (`note_repeat`), pot pickup, lights, and the snapshot handed to the screen. Audio input and renders (parity phase 6): `input_route` (the ADC route, USB-C in, the speaker; service thread), `sample_record` (Input Config, takes, Audio Recall), `render` (Resample, mixdown), `song_export`, and `sample_capture` (the service thread's side of Recall and renders). |
 | `src/melodee/tools.*` | `--melodee-preview DIR [PAGE]`: draws named pages to PNG on the host. |
 
 The design boards (`.local/melodee-design/`, not in git) are the reference
@@ -185,7 +185,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   the selected pattern half as long (what lies past the end goes), twice
   as long with its notes and motion twice, its notes twice as far apart or
   half (the length stays; what falls past the end goes). Each is one undo.
-- **Song** (Shift + Pad 12, or B2 on Patterns): lanes per track, clips of patterns with their notes in
+- **Song** (Shift + Pad 12): lanes per track, clips of patterns with their notes in
   small and notches at each repeat, markers, loop brace, cursor, playhead
   and an overview strip; K1 zoom (4–64 bars; at 4 the header says SNAP
   1 BAR), K2 pattern and K3 length for the next clip, or of the clip under
@@ -197,6 +197,15 @@ Steps, Roll and Motion B1–B3 pick those three.
   edges while there are none. **Play on the Song page plays the arrangement
   from the cursor; Play anywhere else plays the patterns** (assumed, part of
   open question 4). The song stops at its end unless a loop is set.
+  **B1 Export** (as on the MPC; Patterns is on Seq): B1 Cancel, **B2 Audio
+  mixdown** (the Name sheet, then the song plays once from its first bar,
+  loop brace or not, and on until its tails fall silent, at most 10 s, into
+  `Melodee/Mixdowns/<name>.wav` on the card, 24-bit; the header counts the
+  time; Stop drops it, or keeps what there is once the song has ended),
+  **B3 New pattern** (the first pattern number empty on every track and
+  used by no clip gets, on every track with clips, the song laid end to
+  end: each clip its pattern from the clip's start, muted clips left out,
+  up to 128 bars; one undo; motion and the song's punches stay in the song).
   **Shift + Push on Song adds a marker at the cursor bar**, named after the
   one before it (INTRO, VERSE, CHORUS, BRIDGE, DROP, BREAK, OUTRO); Shift +
   Push on a marker opens the Name sheet to type its name (K1 there steps
@@ -395,20 +404,57 @@ Steps, Roll and Motion B1–B3 pick those three.
   (Pads) or Keys; until then the pads keep playing the levels on every
   page. Seq Record keeps the velocity of a levels pad, not its pitch or
   cutoff yet.
-- **Input Config** (Shift + Sample, as printed; B2 on Record): B1–B3 pick
-  where Record takes its sound from: the mic, the line inputs or the mix
-  (resample, before main volume); K1 the threshold a take waits for (−60
-  dB: at once). The input meter moves while the page is open. Monitor,
-  record length and input effects come in phase 6.
+- **Input Config** (Shift + Sample, as printed; B2 on Record), as Akai's
+  input_configuration page lists it: K1 **source** Mic (mono, both ADC
+  sides averaged), Rear (the line inputs L and R), Rear L, Rear R (one side
+  on both), Resample (Melodee's mix before main volume), USB, USB L, USB R
+  (what a computer plays over USB-C, opened only while a USB source is
+  chosen; the line under the name says whether the computer is playing);
+  K2 **rec length** Free, Seq (the selected track's pattern) or Melodee's
+  1–16 bars; K3 **threshold** −96..0 dB (−96: at once); Shift + K3
+  Melodee's gain (−12..+24 dB). B1 **monitor** Off / Auto (heard only while
+  Record is in view) / On; the mix itself is never monitored onto itself.
+  While the mic is monitored the built-in speaker goes quiet (as on the
+  MPC, so it does not howl; the header says SPEAKER OFF); it also stays
+  off with headphones or line out in. B2 **Rec Input FX** On / Off (kept;
+  it acts once Knob FX exists, phase 7). B3 back. The source is always
+  routed (the ADC switches, USB-C), so the meter and Audio Recall always
+  hear it. All of it is kept with Melodee's settings on the card, a second
+  after the last change.
 - **Record** (Sample Record on a sampler track; elsewhere the header says
-  it wants a kit): from Input Config's source, shown in the header. Sample
-  Record or Push arms; the take starts when the level passes Input Config's
-  threshold or on a second press, and ends after K2's bars (0: until
-  stopped) or on Stop or a third press. K3 gain. The take is recorded into a 60 s buffer made
-  at start; the service thread writes it to `Samples/Recorded/TAKE n.wav`
-  (24-bit) on the card and it lands on the first empty pad. The input is
-  routed only while Record or Input Config is open or a take runs. The
-  browser shows them in `Samples/Recorded`.
+  it wants a kit), the MPC's Sample Record Mode: the same cards and B1 as
+  Input Config, in step with it (B2 opens it). **Tap a pad to record onto
+  it**: the take starts when the level passes the threshold (at once at
+  −96 dB); with rec length Seq while playing, where the pattern comes round,
+  sample for sample, and it runs the pattern's length. The pad again
+  while it waits starts it at once. **During the take, the other pads
+  tapped cut it** there (up to 15): when it lands, the first pad plays from
+  the start to the first cut, each cut pad from its cut to the next, each
+  cut pulled onto the strongest hit up to 50 ms before the tap. **The pad
+  again, Stop or Push ends it and Record stays; Sample Record ends it and
+  goes back to the pad's Sample page (Trim).** Push on its own records onto
+  the first empty pad (Melodee's). Pad lights: the take's pad red (flashing
+  while it waits), the cut pads white, the others faint. Erase + pad there
+  erases nothing (the pads record). Up to 60 s, in a
+  buffer made at start; the service thread writes it to
+  `Samples/Recorded/TAKE n.wav` (24-bit). A take is not an undo step.
+- **Audio Recall** (Shift + Sample Record): the source goes into a 25 s
+  ring all the time (26 s of stereo float, 9 MB made at start; restarted
+  when the source changes); Shift + Sample Record copies out what it holds,
+  from the first sound (quieter than −60 dB before it left out but for
+  10 ms), as `Samples/Recorded/RECALL n.wav`, onto the next empty pad after
+  the last one, on the service thread. One undo.
+- **Resample** (Shift + Pad 11): then tap a pad (the header says so; Shift +
+  Pad 11 again or Stop leaves it); the selected track's pattern, with every
+  track playing alongside, plays from its start and is rendered for its
+  length onto that pad (`Samples/Recorded/RESAMPLE n.wav`), up to 60 s, one
+  undo. What was playing plays on; otherwise it stops at the end. **Real
+  time, not faster**: the render is what the engine host plays (effects,
+  punches and pots moved meanwhile included), with no second copy of the
+  sixteen engines, their chains, delay lines and samples in memory and no
+  second core pinned beside the live one; it takes as long as the music.
+  The engine host hands each block of the mix to a 12 s ring the service
+  thread drains, so renders (and the song's mixdown) may be any length.
 - **Projects** (Shift + Pad 16): files (`.mldp`) in `Melodee/Projects` on
   the card, in folders (`$MELODEE_PROJECTS` on a host). The format is
   tagged sections, so older files stay readable and only what differs from
@@ -627,7 +673,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   Levels → its type, Sample Select → by engine (kit: Save Sample; synth:
   Save sound; on Sounds: star), Mute → unmute all (in mute mode, Shift + pad
   solos), Tap Tempo → metronome
-  Off / On / Rec, Sample Record → Audio Recall (not yet, phase 6), Seq
+  Off / On / Rec, Sample Record → Audio Recall (25 s onto the next empty pad), Seq
   Record → Recall (Capture), Play → continue from the bar the song stopped
   in, Stop → all notes off, Minus / Plus → undo / redo on every page, Push
   → back. **Shift + Pad 1–16** are the jobs printed under the pads, on
@@ -638,7 +684,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   and motion played twice), 4 Count-In and 10 Rec Quantize (toggles, kept
   in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 13 Trim
   Sample, 14 Time Correct, 15 Warp (Time stretch or Pitch for the kit), 16
-  Project. The others (5 Compressor, 8 MIDI Config, 9 Fader, 11 Resample)
+  Project, 11 Resample (then a pad). The others (5 Compressor, 8 MIDI Config, 9 Fader)
   say which phase brings them
   ("Compressor: phase 7"). The overlay draws the sixteen as the pads
   sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
@@ -679,12 +725,20 @@ Steps, Roll and Motion B1–B3 pick those three.
   (`melodee_pad_slots=`), the last pad's `melodee_pad_start=` /
   `melodee_pad_end=` (frames) and `melodee_pad_name=`, and the browser's
   `melodee_files=`, `melodee_file_cursor=`, `melodee_drive=`,
-  `melodee_preview=` and `melodee_folder=` (spaces as `_`). For checks
-  without hands on the device.
+  `melodee_preview=` and `melodee_folder=` (spaces as `_`); phase 6 adds
+  the take's `melodee_take=` (0 idle, 1 waiting, 2 recording, 3 saving, 4
+  cued), `melodee_take_frames=`, `melodee_rec_pad=` (1..128, 0 none),
+  `melodee_rec_cuts=`, Input Config's `melodee_input=` (InputSource: 0 Mic
+  .. 7 USB R) and the engine's `melodee_input_engine=`, `melodee_monitor=`
+  (0 Off, 1 Auto, 2 On), `melodee_monitoring=`, `melodee_threshold=`,
+  `melodee_speaker=` (1 on, 0 off, −1 untouched), `melodee_recall_frames=`,
+  `melodee_render=` (idle, cued, running, tail, done, cancelled, failed),
+  `melodee_render_frames=`, `melodee_rendering=` (1 Resample, 2 mixdown)
+  and `melodee_resample_pick=`. For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, browserinternal, trim, chop, chopmanual, chopshift,
-  levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
+  levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, inputusb, record, recordseq, resample, resampling, songexport, mixdownname, project, filesheet, tempo, arp, chord,
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
   levelsfilter, levelssynth, punch, padpunch, padfx, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up

@@ -16,6 +16,7 @@ MelodeeApp::MelodeeApp()
     : shell(host), library(host), frame(std::make_unique<melodee::Snapshot>()) {
     shell.set_library(&library);
     shell.set_store(&store);
+    shell.set_input(&input_route);
     host.load(shell.project(), shell.patterns());
 }
 
@@ -27,7 +28,7 @@ static_assert(usb_stem_count == melodee::track_count && usb_stem_frames == melod
               "one USB-C stem a track, a block at a time");
 
 void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
-    host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0]);
+    host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0], input_route.usb_block(audio_frames));
 }
 
 void MelodeeApp::surface(const SurfaceEvent& event) {
@@ -170,14 +171,16 @@ void MelodeeApp::draw(juce::Graphics& g) {
     draw_overlays(p, *frame);
 }
 
-// The speaker plays while neither headphones nor line out is plugged in. The
-// runtime leaves it as the stock app did, which is often off.
+// The speaker plays while neither headphones nor line out is plugged in (and
+// not while the mic is monitored). The runtime leaves it as the stock app
+// did, which is often off.
 void MelodeeApp::jack(const JackEvent&, Hardware& hardware) {
     bool plugged = session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1;
-    hardware.mixer.speaker(!plugged);
+    input_route.service(hardware, plugged);
 }
 
 void MelodeeApp::service(Hardware& hardware) {
+    input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
     library.service(hardware);
     store.service(hardware);
     // A short press of Power opens the Exit sheet.

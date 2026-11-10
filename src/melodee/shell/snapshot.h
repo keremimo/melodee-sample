@@ -44,6 +44,13 @@ struct Snapshot {
         float level = 0;
         std::array<uint8_t, 128> peaks {};
     } take;
+    // Parity phase 6: a render (Bounce::State, frames so far), what Audio Recall holds,
+    // whether the source is heard, the speaker quieted by the monitored mic, USB-C input.
+    uint8_t render_state = 0;
+    uint32_t render_frames = 0;
+    uint32_t recall_frames = 0;
+    bool monitoring = false, speaker_quieted = false;
+    uint8_t usb_state = 0;             // UsbStreamState
     std::vector<SampleFile> files;     // Samples: the folder listed
     std::string sample_root;           // the card's Samples folder; empty: no card
     std::string files_folder;          // the folder listed (empty: the internal drive's categories)

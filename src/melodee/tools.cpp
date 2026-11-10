@@ -11,6 +11,7 @@
 #include "melodee/model/pad_params.h"
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
+#include "drivers/usb_audio.h"
 #include "runtime/screen.h"
 #include "runtime/util.h"
 #include <algorithm>
@@ -384,18 +385,56 @@ const Preview previews[] {
          s.sample.frames = 26460;
          s.ui.levels_hit = 10; s.ui.levels_value = level_velocity(10);
      }},
-    {"inputconfig", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::InputConfig; s.ui.track = 3; s.ui.rec_source = 0; s.ui.rec_threshold = -24; s.take.level = 0.12f;
+    {"inputconfig", [](Shell&, Snapshot& s) { // the mic, monitored: the speaker goes quiet
+         s.ui.page = PageId::InputConfig; s.ui.track = 3; s.take.level = 0.12f;
+         auto& in = s.ui.settings.input;
+         in.source = InputSource::Mic; in.threshold = -24; in.monitor = Monitor::On; in.length = rec_seq;
+         s.monitoring = true; s.speaker_quieted = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
-    {"record", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Record; s.ui.track = 3; s.playing = true; s.ui.rec_source = 1; s.ui.rec_bars = 4; s.ui.rec_gain = 6;
-         s.ui.rec_pad = 16;
-         s.take.state = uint8_t(TakeRecorder::State::Recording); s.take.length = 4 * 85355; s.take.frames = 85355 + 50000;
+    {"inputusb", [](Shell&, Snapshot& s) { // USB-C L, waiting for the computer; Rec Input FX on
+         s.ui.page = PageId::InputConfig; s.ui.track = 3; s.take.level = 0.0f;
+         auto& in = s.ui.settings.input;
+         in.source = InputSource::UsbL; in.threshold = InputConfig::threshold_min; in.monitor = Monitor::Off; in.fx = true; in.gain = 6;
+         s.usb_state = uint8_t(UsbStreamState::Waiting);
+         s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"record", [](Shell&, Snapshot& s) { // a take onto B01 with three pads cut from it
+         s.ui.page = PageId::Record; s.ui.track = 3; s.playing = true;
+         auto& in = s.ui.settings.input;
+         in.source = InputSource::Rear; in.length = 2 + 3; in.gain = 6; // 4 bars
+         s.ui.rec_pad = 16; s.ui.rec_track = 3; s.ui.rec_slot = 5;
+         s.take.state = uint8_t(TakeRecorder::State::Recording); s.take.length = 4 * 88200; s.take.frames = 88200 + 50000;
          s.take.level = 0.5f;
+         s.ui.rec_chops = 3;
+         s.ui.rec_chop_pad = {17, 18, 19}; s.ui.rec_chop_at = {22050, 66150, 110250};
          for (unsigned c = 0; c < 128 * s.take.frames / s.take.length; ++c)
              s.take.peaks[c] = uint8_t(std::clamp((c % 22 < 3 ? 0.9 : 0.55) * (0.8 + 0.2 * std::sin(c * 0.9)) * (c < 4 ? 0.1 : 1.0), 0.0, 1.0) * 255);
          s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"recordseq", [](Shell&, Snapshot& s) { // Rec length Seq while playing: the take waits for the pattern to come round
+         s.ui.page = PageId::Record; s.ui.track = 3; s.playing = true;
+         auto& in = s.ui.settings.input;
+         in.source = InputSource::Resample; in.length = rec_seq; in.threshold = InputConfig::threshold_min;
+         s.ui.rec_pad = 2; s.ui.rec_track = 3; s.ui.rec_slot = 5;
+         s.take.state = uint8_t(TakeRecorder::State::Cued); s.take.level = 0.3f;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"resample", [](Shell&, Snapshot& s) { // Shift + Pad 11: the pad to render onto
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.ui.resample_pick = true;
+     }},
+    {"resampling", [](Shell&, Snapshot& s) { // the render playing, on Patterns
+         s.ui.page = PageId::Patterns; s.ui.track = 3; s.playing = true; s.ui.rendering = 1; s.render_frames = 44100 * 3 + 2000;
+         s.render_state = uint8_t(Bounce::State::Running);
+     }},
+    {"songexport", [](Shell&, Snapshot& s) { // Song, B1: Export
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 0; s.ui.song_export = true;
+         Clip clip; clip.track = 2; clip.pattern = 0; clip.bar = 0; clip.bars = 16;
+         s.project.song.place(clip);
+     }},
+    {"mixdownname", [](Shell&, Snapshot& s) { // Export, B2: the mixdown's name
+         s.ui.page = PageId::Song; s.ui.track = 2;
+         s.ui.name.start(NameTarget::Mixdown, "Night drive", 31, false);
      }},
     {"project", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 3;

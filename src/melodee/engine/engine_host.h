@@ -12,6 +12,9 @@
 #include "melodee/engine/punch.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
+#include "melodee/engine/bounce.h"
+#include "melodee/engine/recall_ring.h"
+#include "melodee/model/input_config.h"
 #include "melodee/model/project.h"
 #include "surface/midi.h"
 #include <array>
@@ -81,10 +84,18 @@ public:
     // `block` floats, the track after its chain and fader as you hear it,
     // summed to mono with its pan law taken back out, before the buses, the
     // master chain and main volume. Muted (or soloed-out) tracks are silent.
-    void render(int32_t* out, unsigned frames, float volume, const int32_t* input = nullptr, float* stems = nullptr);
+    // `usb`, when given, is what a computer plays over USB-C: `frames`
+    // interleaved stereo floats, for the USB sources.
+    void render(int32_t* out, unsigned frames, float volume, const int32_t* input = nullptr, float* stems = nullptr,
+                const float* usb = nullptr);
     TakeRecorder& recorder() { return take; }
     const TakeRecorder& recorder() const { return take; }
-    unsigned record_source() const { return source_now.load(std::memory_order_relaxed); }
+    RecallRing& recall() { return recall_ring; }
+    const RecallRing& recall() const { return recall_ring; }
+    Bounce& bounce() { return render_out; }
+    const Bounce& bounce() const { return render_out; }
+    unsigned record_source() const { return source_now.load(std::memory_order_relaxed); } // InputSource
+    bool monitoring() const { return monitor_on.load(std::memory_order_relaxed); }
 
     // Feedback, any thread.
     bool playing() const { return is_playing.load(std::memory_order_relaxed); }
@@ -177,8 +188,16 @@ private:
     void retire(Pattern* pattern);
     SamplerEngine::Table samples {};
     TakeRecorder take;
-    std::atomic<unsigned> source_now {0};
-    float record_gain = 0;
+    RecallRing recall_ring; // Audio Recall: the source, always
+    Bounce render_out;      // Resample and the song's mixdown
+    std::atomic<unsigned> source_now {1};
+    std::atomic<bool> monitor_on {false};
+    float record_gain = 1;  // linear
+    int cue_track = -1;     // a take cued for Rec length Seq starts where this track's pattern comes round
+    uint32_t bounce_ticks = 0; // a pattern render ends after this many ticks; 0 with bounce_song
+    bool bounce_song = false;  // the song's render: to its end, then its tail
+    unsigned block_at = 0;  // frames of this block rendered when tick() runs
+    void select_input(const int32_t* input, const float* usb, unsigned frames); // into record_l / record_r
     double until_arp = 0;
     uint32_t arp_ticks = 0;
     bool click = false;

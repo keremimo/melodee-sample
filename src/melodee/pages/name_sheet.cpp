@@ -29,6 +29,7 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
     case NameTarget::Marker: what = "MARKER " + juce::String::fromUTF8("\xc2\xb7 BAR ") + juce::String(s.ui.song_cursor + 1); break;
     case NameTarget::Sound: what = "SAVE SOUND " + juce::String::fromUTF8("\xc2\xb7 ") + engine_info(s.track().engine).name; break;
     case NameTarget::Sample: what = "SAVE SAMPLE"; break;
+    case NameTarget::Mixdown: what = "AUDIO MIXDOWN"; break;
     case NameTarget::None: break;
     }
     Header h = header_of(s);

@@ -3,6 +3,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,20 @@ constexpr unsigned max_hits = 128;
 std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60);
 // Writes 24-bit stereo PCM at 44.1 kHz; empty on success.
 std::string write_wav(const std::string& path, const SampleData& sample);
+// The same format written as it comes (the song's mixdown): open, add
+// interleaved stereo frames, then close, which puts the lengths in the header.
+class WavStream {
+public:
+    ~WavStream() { close(); }
+    bool open(const std::string& path);
+    bool add(const float* interleaved, unsigned frames);
+    bool close(); // false when anything failed
+    uint32_t frames() const { return written; }
+private:
+    std::FILE* file = nullptr;
+    uint32_t written = 0;
+    bool failed = false;
+};
 void make_overview(const SampleData& sample, Overview& out);
 // The hits, strongest kept, sorted by frame; the first is always frame 0.
 unsigned find_hits(const SampleData& sample, std::array<Hit, max_hits>& out);

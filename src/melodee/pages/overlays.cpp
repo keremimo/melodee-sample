@@ -59,7 +59,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
         {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"CHOP", kit ? "Note On / One shot" : "Note On (kit pads)"},
         {"16 LEVELS", levels}, {"SAMPLE SELECT", select},
         {"MUTE", "Unmute all; mute + pad: solo"}, {"TAP TEMPO", clicks[s.project.click % 3]},
-        {"SAMPLE RECORD", "Audio recall (later)"}, {"SEQ RECORD", "Recall last bars"},
+        {"SAMPLE RECORD", kit ? "Audio recall (25 s)" : "Audio recall (kit tracks)"}, {"SEQ RECORD", "Recall last bars"},
         {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"\xe2\x88\x92 / +", "Undo / redo"},
         {"PUSH", song ? "Marker at cursor" : "Back"},
         {trim ? "B1 / B2" : chop ? "B1 / B2 / B3" : browser ? "PADS" : "",

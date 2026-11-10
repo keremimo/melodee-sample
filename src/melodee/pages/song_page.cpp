@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// SONG (Shift + Pad 12, or B2 on Patterns): an arrange view of our own. One lane per track,
+// SONG (Shift + Pad 12): an arrange view of our own. B1 Export (parity
+// phase 6): B2 an audio mixdown, B3 the song as a new pattern. One lane per track,
 // time left to right; a clip is a pattern placed on a lane, in the track's
 // colour with its notes in small, notches at each repeat. Markers name the
 // parts, the brace is the loop, the strip at the bottom is the whole song.
@@ -111,7 +112,20 @@ void draw(Paint& p, const Snapshot& s) {
         wide_sheet(p, m, "P" + juce::String(clip.pattern + 1), track_colour(clip.track));
         return;
     }
-    frame(p, s, {{"PATTERNS", "SONG", ""}, 1, c}, h);
+    if (s.ui.song_export) {
+        // Export (B1), as on the MPC: B2 an audio mixdown, B3 a new pattern.
+        frame(p, s, {{"CANCEL", "MIXDOWN", "NEW PATTERN"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
+        p.dim_zone(zone::knobs_y, zone::knobs_h);
+        unsigned bars = song.length(), seconds = unsigned(bars * (double(s.project.bar_ticks()) / ticks_per_quarter) * 600.0 / std::max(1u, s.tempo) + 0.5);
+        Sheet sheet_card;
+        sheet_card.title = "Export the song";
+        sheet_card.body = bars ? juce::String(bars) + (bars == 1 ? " bar, " : " bars, ") + juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2)
+                                     + ", once through. To a WAV on the card, or one pattern."
+                               : juce::String("The song is empty: place clips first.");
+        ui::sheet(p, sheet_card);
+        return;
+    }
+    frame(p, s, {{"EXPORT", "SONG", ""}, 1, c}, h);
 
     // Markers, the ruler and the loop brace.
     float label_every = zoom <= 8 ? 1 : zoom / 4.0f;
@@ -246,6 +260,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 }
 
 void wheel(Context& c, int delta) {
+    if (c.ui.song_export) return;
     if (c.ui.sheet_open) {
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(clip_actions) - 1));
         return;
@@ -255,6 +270,7 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
+    if (c.ui.song_export) return;
     if (c.ui.sheet_open) { act(c); return; }
     if (clip_here(c)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; return; }
     if (!c.track().used()) return;
@@ -264,12 +280,13 @@ void push(Context& c) {
 }
 
 void soft(Context& c, int key) {
+    if (c.ui.song_export) { c.song_export_soft(key); return; } // B1 Cancel, B2 Audio mixdown, B3 New pattern
     if (c.ui.sheet_open) {
         if (key == 0) c.ui.sheet_open = false;
         if (key == 2) act(c);
         return;
     }
-    if (key == 0) c.open(PageId::Patterns);
+    if (key == 0) c.ui.song_export = true; // Export, as on the MPC (Patterns is on Seq)
 }
 
 // Minus / Plus: the previous or next marker, or clip edge while there are no markers.

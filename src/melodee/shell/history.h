@@ -5,6 +5,8 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 // Undo and redo (Shift + Minus / Shift + Plus), the one history for every
 // edit: what a press (or a whole Seq Record take) changed, before and after.
@@ -39,6 +41,9 @@ struct Edit {
     std::unique_ptr<Song> song_before, song_after;       // a take into the song
     std::unique_ptr<Motion> motion_before, motion_after; // pot moves recorded, or doubled
     std::unique_ptr<TrackState> track_before, track_after; // a track copied onto this one (`track`)
+    // One pattern number across tracks (Song -> new pattern): `column`, each changed track's pattern.
+    int16_t column = -1;
+    std::vector<std::pair<uint8_t, Pattern>> column_before, column_after;
 };
 
 class History {

@@ -28,6 +28,13 @@ ui::Header header_of(const Snapshot& s) {
     // Count-In: the beat counted before the take; Seq Record armed: Play starts it.
     if (s.count_in) h.left.push_back(ui::chip("COUNT " + juce::String(s.count_in), ui::colour::rec));
     else if (s.ui.rec_armed) h.left.push_back(ui::chip("REC ARMED", ui::colour::rec));
+    // A render as it plays (Resample, the song's mixdown), or Resample waiting for its pad.
+    if (s.ui.rendering) {
+        unsigned seconds = s.render_frames / 44100;
+        char clock[32];
+        std::snprintf(clock, sizeof(clock), "%s %u:%02u", s.ui.rendering == 1 ? "RESAMPLE" : "MIXDOWN", seconds / 60, seconds % 60);
+        h.left.push_back(ui::chip(clock, ui::colour::rec));
+    } else if (s.ui.resample_pick) h.left.push_back(ui::chip("RESAMPLE: TAP A PAD", ui::colour::rec));
     return h;
 }
 
@@ -239,14 +246,17 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::CaptureQuantise: c.label = "QUANTISE"; c.value = b.value == 0 ? "Off" : b.value == 1 ? "1/16" : "1/8"; break;
         case Kind::CaptureInto: c.label = "INTO"; c.value = "P" + juce::String(b.value + 1); break;
         case Kind::RecThreshold:
-            c.label = "START AT";
-            if (b.value <= -60) c.value = "Now";
+            c.label = "THRESHOLD";
+            if (b.value <= InputConfig::threshold_min) c.value = "At once";
             else { c.value = (b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value)); c.unit = "dB"; }
             break;
-        case Kind::RecBars:
-            c.label = "LENGTH";
-            if (b.value) { c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; } else c.value = "Until stop";
+        case Kind::RecLength:
+            c.label = "REC LENGTH";
+            if (b.value == int(rec_free)) c.value = "Free";
+            else if (b.value == int(rec_seq)) c.value = "Seq";
+            else { auto bars = rec_bars(unsigned(b.value)); c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars"; }
             break;
+        case Kind::RecSource: c.label = "SOURCE"; c.value = input_source_name(InputSource(b.value)); break;
         case Kind::RecGain:
             c.label = "GAIN"; c.unit = "dB";
             c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));

@@ -37,26 +37,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         for (unsigned n = 0; n < sample_slots; ++n)
             if (project_->samples[n].used()) project_->samples[n].frames = library_->slot(n).frames;
         ui_.files_count = uint16_t(std::min<size_t>(library_->files().size(), 0xffff));
-        // A take has landed: it becomes the slot it was armed for, on the pad chosen then.
-        if (ui_.rec_slot >= 0) {
-            auto take = library_->slot(unsigned(ui_.rec_slot));
-            if (take.ready || !take.error.empty()) {
-                auto& ref = project_->samples[size_t(ui_.rec_slot)];
-                std::snprintf(ref.path, sizeof(ref.path), "%s", take.path.empty() ? ("(memory) " + take.name).c_str() : take.path.c_str());
-                std::snprintf(ref.name, sizeof(ref.name), "%s", take.name.c_str());
-                ref.frames = take.frames;
-                if (take.ready && ui_.rec_pad >= 0) {
-                    auto& pad = project_->tracks[ui_.track].pads[size_t(ui_.rec_pad)];
-                    pad = PadSound {}; pad.sample = uint16_t(ui_.rec_slot);
-                    project_->tracks[ui_.track].last_pad = uint8_t(ui_.rec_pad);
-                    context_.send_pad(ui_.track, unsigned(ui_.rec_pad));
-                }
-                ui_.rec_slot = ui_.rec_pad = -1;
-            }
-        }
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
     }
-    context_.files_landed();  // Trim Sample, Extract, Save Sample: done on the service thread
+    context_.files_landed();  // Trim Sample, Extract, Save Sample, takes, Recall, Resample: done on the service thread
+    context_.record_tick(now); // Input Config's route and monitor, settings kept, renders followed
     context_.browser_tick();  // the browser's listings and previews
     // Projects: a finished pack to free, a loaded project to switch to, a save to leave after.
     {
@@ -113,11 +97,6 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     // Tap Tempo held half a second: the Tempo page.
     if (tap_held && now - tap_down > 500 && ui_.page != PageId::Tempo) { tap_held = false; context_.open(PageId::Tempo); }
-    // Record listens to the mic or the line inputs while it or Input Config is open, or a take runs.
-    if (library_) {
-        bool busy = host.recorder().state() != TakeRecorder::State::Idle;
-        library_->want_input((ui_.page == PageId::Record || ui_.page == PageId::InputConfig || busy) && ui_.rec_source < 2 ? int(ui_.rec_source) : -1);
-    }
     unsigned presses = power.load(std::memory_order_relaxed);
     if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; }
 
@@ -153,6 +132,12 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             pad_gain.store(pad.gain, std::memory_order_relaxed);
         }
         pad_frames.store(pad.used() ? project_->samples[pad.sample % sample_slots].frames : 0, std::memory_order_relaxed);
+        { // phase 6: Input Config, the take, renders
+            const auto& in = ui_.settings.input;
+            record_bits.store(uint32_t(in.source) | uint32_t(in.monitor) << 4 | uint32_t(ui_.rec_pad + 1) << 8 | uint32_t(ui_.rec_chops & 0x1f) << 16
+                              | uint32_t(ui_.rendering & 3) << 21 | uint32_t(ui_.resample_pick) << 23 | uint32_t(uint8_t(in.threshold)) << 24,
+                              std::memory_order_relaxed);
+        }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
             for (const auto& ref : project_->samples) used += ref.used();
@@ -186,6 +171,18 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             unsigned kit = track.bank % sampler_banks * 16 + pad;
             colour = !track.pads[kit].used() ? Rgb {} : track.pad_muted(kit) ? muted_red
                    : pad_soloed(track, kit) ? led_colour::white(0.8f) : track_light(ui.track, 0.6f);
+        } else if ((ui.page == PageId::Record || ui.resample_pick) && track.engine == EngineKind::Sampler && !tracks && !muting) {
+            // Record and Resample's pick: every pad can take a sample (empty ones faint); the take's pad
+            // red, flashing while it waits; the pads cut from it white.
+            unsigned kit = track.bank % sampler_banks * 16 + pad;
+            bool take_here = ui.rec_track == ui.track;
+            bool cut = false;
+            for (unsigned n = 0; n < ui.rec_chops && take_here; ++n) cut |= ui.rec_chop_pad[n] == kit;
+            auto state = host.recorder().state();
+            if (take_here && ui.rec_pad == int(kit))
+                colour = state == TakeRecorder::State::Recording || (now / 250) % 2 ? led_colour::rgb(1, 0, 0, 1) : led_colour::rgb(1, 0, 0, 0.2f);
+            else if (cut) colour = led_colour::white(0.9f);
+            else colour = track_light(ui.track, track.pads[kit].used() ? 0.3f : 0.07f);
         } else if (tracks || muting || ui.page == PageId::Stage || ui.page == PageId::Mix || ui.page == PageId::Song) {
             // The pads are the tracks.
             const auto& t = project.tracks[pad];
@@ -295,7 +292,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         auto state = host.recorder().state();
         bool blink = (now / 250) % 2;
         set(B::SampleRecord, state == TakeRecorder::State::Recording ? L::Bright
-                      : state == TakeRecorder::State::Armed ? (blink ? L::Bright : L::Dim)
+                      : state == TakeRecorder::State::Armed || state == TakeRecorder::State::Cued ? (blink ? L::Bright : L::Dim)
                       : job(B::SampleRecord) ? L::Dim : L::Off);
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);

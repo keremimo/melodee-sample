@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/shell/input_route.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/page.h"
@@ -143,17 +144,18 @@ void Shell::button(Button b, bool pressed) {
             if (kit && library_) library_->rescan();
         }
         break;
-    case Button::SampleRecord: // a sampler track: the Record page; there, arm, start now, stop
-        if (ui.shift) { context_.notice("Audio Recall: not yet"); break; } // the input ring lands in phase 6
+    case Button::SampleRecord: // a sampler track: the Record page; there, a take ends and Sample Mode has its pad
+        if (ui.shift) { context_.audio_recall(); break; } // Audio Recall: the input ring's last 25 s
         if (context_.track().engine != EngineKind::Sampler) { context_.notice("Sample Record: kit tracks"); break; }
         if (ui.page != PageId::Record) context_.open(PageId::Record);
-        else context_.record_press();
+        else context_.record_button();
         break;
     case Button::SixteenLevels: levels_button(context_); break; // the last pad (or note) on all sixteen; Shift: the type
     case Button::Chop: chop_button(context_); break;            // Chop on the last pad's sample; Shift: Note On
     case Button::Play: if (ui.shift) context_.play_continue(); else context_.play(); break;
     case Button::Stop:
-        if (ui.page == PageId::Record) context_.send({Command::Type::RecordStop});
+        if (ui.page == PageId::Record) context_.send({Command::Type::RecordStop}); // the take ends; Record stays
+        ui.resample_pick = false;
         if (ui.shift) context_.send({Command::Type::AllNotesOff, 255});
         else context_.stop();
         break;
@@ -289,6 +291,10 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         if (!samples_shift_pad(context_)) shift_pad(context_, pad);
         return;
     }
+    if (down && ui_.resample_pick) { // Resample (Shift + Pad 11): this pad gets the render
+        context_.resample_pad(context_.track().bank % sampler_banks * 16 + pad);
+        return;
+    }
     bool copying_pads = ui_.copying == UiState::Copying::Pads;
     if (down && kit_pads() && (copying_pads || ui_.erase)) {
         unsigned kit = context_.track().bank % sampler_banks * 16 + pad;
@@ -347,6 +353,11 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         const auto& r = host.recorder();
         out.take.state = uint8_t(r.state()); out.take.frames = r.frames(); out.take.length = r.length(); out.take.level = r.level();
         for (unsigned c = 0; c < out.take.peaks.size(); ++c) out.take.peaks[c] = r.peak(c);
+        out.render_state = uint8_t(host.bounce().state()); out.render_frames = host.bounce().frames();
+        out.recall_frames = host.recall().filled();
+        out.monitoring = host.monitoring();
+        out.speaker_quieted = input_ && input_->speaker_quieted();
+        out.usb_state = input_ ? uint8_t(input_->usb_state()) : 0;
     }
     if (ui_.page == PageId::Capture) { out.history = context_.history; out.history_at = context_.history_at; }
     for (unsigned n = 0; n < 16; ++n) out.held_keys[n] = context_.pad_keys[n][0];
@@ -391,7 +402,22 @@ std::string Shell::summary() const {
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
-           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary();
+           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary()
+           + input_summary();
+}
+
+// Phase 6: Input Config, Sample Record, Audio Recall and renders.
+std::string Shell::input_summary() const {
+    uint32_t r = record_bits.load(std::memory_order_relaxed);
+    static const char* const renders[] {"idle", "cued", "running", "tail", "done", "cancelled", "failed"};
+    return " melodee_take=" + std::to_string(unsigned(host.recorder().state())) + " melodee_take_frames=" + std::to_string(host.recorder().frames())
+         + " melodee_rec_pad=" + std::to_string((r >> 8) & 0xff) + " melodee_rec_cuts=" + std::to_string((r >> 16) & 0x1f)
+         + " melodee_input=" + std::to_string(r & 0xf) + " melodee_input_engine=" + std::to_string(host.record_source())
+         + " melodee_monitor=" + std::to_string((r >> 4) & 3) + " melodee_monitoring=" + std::to_string(int(host.monitoring()))
+         + " melodee_threshold=" + std::to_string(int8_t(r >> 24)) + " melodee_speaker=" + std::to_string(input_ ? int(input_->speaker_on()) : -1)
+         + " melodee_recall_frames=" + std::to_string(host.recall().filled())
+         + " melodee_render=" + renders[unsigned(host.bounce().state()) % 7] + " melodee_render_frames=" + std::to_string(host.bounce().frames())
+         + " melodee_rendering=" + std::to_string((r >> 21) & 3) + " melodee_resample_pick=" + std::to_string((r >> 23) & 1);
 }
 
 // Phase 4: the last pad's Sample Mode values, for remote checks.

@@ -301,15 +301,38 @@ void EngineHost::apply(const Command& c) {
         if (!slot.arp.count) slot.arp.position = 0;
         break;
     case Type::RecordArm: {
-        source_now.store(c.track % 3, std::memory_order_relaxed);
-        uint32_t length = c.pattern ? uint32_t(c.pattern * 4 * 60.0 / (tempo / 10.0) * 44100) : 0;
-        take.arm(float(c.value), length, record_gain, c.index);
+        if (take.state() != TakeRecorder::State::Idle) break;
+        unsigned source = c.track % unsigned(InputSource::Count);
+        if (source != source_now.load(std::memory_order_relaxed)) { source_now.store(source, std::memory_order_relaxed); recall_ring.restart(); }
+        bool seq = c.pattern == 255;
+        uint32_t length = 0;
+        cue_track = -1;
+        if (seq) { // the pattern's length; while it plays, from where it comes round
+            unsigned t = c.position % track_count;
+            length = uint32_t(std::max<uint32_t>(patterns[t][slots[t].pattern]->length, 1) * tick_length() + 0.5);
+            if (running && !slots[t].silent && slots[t].engine) cue_track = int(t);
+        } else if (c.pattern) {
+            length = uint32_t(double(c.pattern) * bar * tick_length() + 0.5);
+        }
+        take.arm(float(c.value), length, c.index, cue_track >= 0);
         break;
     }
-    case Type::RecordSource: if (take.state() == TakeRecorder::State::Idle) source_now.store(c.track % 3u, std::memory_order_relaxed); break;
-    case Type::RecordGain: record_gain = float(c.value); take.set_gain(record_gain); break;
+    case Type::RecordSource:
+        if (take.state() == TakeRecorder::State::Idle && c.track % unsigned(InputSource::Count) != source_now.load(std::memory_order_relaxed)) {
+            source_now.store(c.track % unsigned(InputSource::Count), std::memory_order_relaxed);
+            recall_ring.restart(); // what came in before is another source's
+        }
+        break;
+    case Type::RecordGain: record_gain = std::pow(10.0f, std::clamp<int>(c.value, -24, 24) / 20.0f); break;
     case Type::RecordNow: take.start_now(); break;
-    case Type::RecordStop: take.stop(); break;
+    case Type::RecordStop: take.stop(); cue_track = -1; break;
+    case Type::Monitor: monitor_on.store(c.value != 0, std::memory_order_relaxed); break;
+    case Type::BounceArm:
+        if (running) break; // the shell stops first
+        render_out.cue();
+        bounce_song = c.value == 1;
+        bounce_ticks = bounce_song ? 0 : std::max<uint32_t>(c.position, 1);
+        break;
     case Type::PadNote:
         if (slot.engine == &slot.sampler) slot.sampler.play_pad(c.index, c.value, int(c.pattern) - 64, int(c.position) - 1);
         break;
@@ -368,9 +391,16 @@ void EngineHost::apply(const Command& c) {
             if (s.queued != 255) { s.pattern = s.queued; s.queued = 255; }
         }
         in_song.store(song_mode, std::memory_order_relaxed);
+        if (render_out.cued()) { // a render starts with the first frame played
+            if (bounce_song != song_mode || count_left) render_out.cancel();
+            else render_out.begin(0);
+        }
         break;
     case Type::Stop:
         running = false;
+        render_out.cancel(); // a render stopped by hand is dropped; one in its tail ends there
+        if (take.state() == TakeRecorder::State::Cued) take.stop();
+        cue_track = -1;
         count_left = 0; count_beat.store(0, std::memory_order_relaxed);
         if (punch_from_song) { punch.stop(); punch_from_song = false; }
         song_mode = false;
@@ -496,9 +526,11 @@ void EngineHost::bar_start() {
         return;
     }
     if (tick_now) ++song_bar_now;
-    if (song.looping() && song_bar_now == song.loop_end) song_bar_now = song.loop_start;
-    if (!song.looping() && !song_recording && song_bar_now >= std::max(song.length(), 1u)) { // the end of the song
+    bool rendering = bounce_song && render_out.running(); // the mixdown plays the song once, loop or not
+    if (!rendering && song.looping() && song_bar_now == song.loop_end) song_bar_now = song.loop_start;
+    if ((rendering || !song.looping()) && !song_recording && song_bar_now >= std::max(song.length(), 1u)) { // the end of the song
         running = false;
+        if (rendering) render_out.tail(); // on until the mix falls silent
         for (auto& s : slots) for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
         return;
     }
@@ -591,6 +623,8 @@ void EngineHost::tick() {
         click_env = 1; click_phase = 0;
         click_step = (tick_now % bar == 0 ? 1568.0f : 1046.0f) / 44100.0f;
     }
+    // A pattern render ends after its ticks, on the frame.
+    if (!bounce_song && render_out.running() && tick_now >= bounce_ticks) render_out.finish(block_at);
     if (tick_now % bar == 0) bar_start();
     if (!running) return;
     if (song_mode && tick_now % sixteenth_ticks == 0) play_song_punches();
@@ -601,6 +635,7 @@ void EngineHost::tick() {
         uint32_t length = std::max<uint32_t>(pattern.length, 1);
         uint32_t at = (tick_now - slot.start) % length;
         positions_now[t].store(int(at), std::memory_order_relaxed);
+        if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
         if (motion.count && at % sixteenth_ticks == 0) play_motion(t, slot, at / sixteenth_ticks);
         const auto& events = pattern.events;
         for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n) {
@@ -622,7 +657,26 @@ void EngineHost::tick() {
     tick_count.store(tick_now, std::memory_order_relaxed);
 }
 
-void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input, float* stems) {
+// The input source, as Sample Record, Audio Recall and Monitor hear it, after the gain.
+void EngineHost::select_input(const int32_t* input, const float* usb, unsigned frames) {
+    auto source = InputSource(source_now.load(std::memory_order_relaxed));
+    constexpr float scale = 1.0f / 2147483648.0f;
+    for (unsigned f = 0; f < frames; ++f) {
+        float l = 0, r = 0;
+        if (source == InputSource::Resample) { l = master_l[f]; r = master_r[f]; }
+        else if (from_usb(source)) { if (usb) { l = usb[2 * f]; r = usb[2 * f + 1]; } }
+        else if (input) { l = input[2 * f] * scale; r = input[2 * f + 1] * scale; }
+        switch (source) {
+        case InputSource::Mic: l = r = (l + r) * 0.5f; break; // one widget on both ADC sides: their average
+        case InputSource::RearL: case InputSource::UsbL: r = l; break;
+        case InputSource::RearR: case InputSource::UsbR: l = r; break;
+        default: break;
+        }
+        record_l[f] = l * record_gain; record_r[f] = r * record_gain;
+    }
+}
+
+void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input, float* stems, const float* usb) {
     static thread_local bool flushed = false;
     if (!flushed) { flush_denormals(); flushed = true; }
     for (auto& q : limbo) if (q && retired_patterns.push(q)) q = nullptr; // retired copies the queue had no room for
@@ -654,7 +708,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     while (done < frames) {
         unsigned n = frames - done;
         if (running) {
-            if (until_tick <= 0) { tick(); continue; }
+            if (until_tick <= 0) { block_at = done; tick(); continue; }
             n = std::min<unsigned>(n, unsigned(std::ceil(until_tick)));
         }
         for (auto& slot : slots) {
@@ -715,16 +769,15 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     run_chain(master_chain, master_l, master_r, frames);
     if (punch_target == 255) punch.process(master_l, master_r, frames);
     punch_on.store(punch.on() || pad_punch.on() || pending.waiting, std::memory_order_relaxed);
-    // Record: the mix itself (before main volume), or what comes in.
-    if (source_now.load(std::memory_order_relaxed) == 2) take.process(master_l, master_r, frames);
-    else {
-        for (unsigned f = 0; f < frames; ++f) {
-            record_l[f] = input ? input[2 * f] / 2147483648.0f : 0.0f;
-            record_r[f] = input ? input[2 * f + 1] / 2147483648.0f : 0.0f;
-        }
-        if (source_now.load(std::memory_order_relaxed) == 0) std::copy(record_l, record_l + frames, record_r); // the mic is mono
-        take.process(record_l, record_r, frames);
-    }
+    // The input source (or the mix itself, before main volume): the take, the
+    // Recall ring and the meter hear it; a render takes the mix.
+    select_input(input, usb, frames);
+    take.process(record_l, record_r, frames);
+    recall_ring.write(record_l, record_r, frames);
+    render_out.process(master_l, master_r, frames);
+    // Monitor: the source heard with the mix (never the mix itself, heard already).
+    if (monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample))
+        for (unsigned f = 0; f < frames; ++f) { master_l[f] += record_l[f]; master_r[f] += record_r[f]; }
     float peak = 0;
     for (unsigned f = 0; f < frames; ++f) {
         if (click_env > 0.0005f) { // a short blip on top of the mix

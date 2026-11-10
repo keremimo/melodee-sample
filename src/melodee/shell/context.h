@@ -26,6 +26,8 @@ namespace melodee {
 class EngineHost;
 class SampleLibrary;
 class ProjectStore;
+class InputRoute;
+struct LoadedSample;
 
 class Context {
 public:
@@ -185,10 +187,33 @@ public:
     void rechop();                                                     // Chop's slices from its type and amount
     void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (audition, or Manual's taps)
     void chop_to_pads();                                               // the slices onto pads, from the first free one
-    void record_press();
-    void set_rec_source(unsigned source);                              // Input Config: B1-B3
     void follow_tempos(); // Follow on: each pad's own tempo, from its length as whole bars
-    bool host_recording() const;                                       // a take is armed or running                                               // Sample Record on the Record page: arm, start now, stop
+    bool host_recording() const;                                       // a take is armed, cued or running
+    // Input Config and Sample Record (parity phase 6, shell/sample_record.cpp).
+    InputRoute* input = nullptr;                          // set by the app: the hardware behind the source
+    void set_input_source(InputSource source);            // K1 on Input Config and Record
+    void cycle_monitor();                                 // B1: Off -> Auto -> On
+    void toggle_rec_fx();                                 // B2 on Input Config: Rec Input FX
+    void input_changed();                                 // a setting moved: the engine hears it, the card keeps it (soon)
+    void record_pad(unsigned kit);                        // a pad on Record: record onto it; during a take, cut it there
+    void record_press();                                  // Push on Record: arm onto the next empty pad, start now, stop
+    void record_button();                                 // Sample Record on Record: a take ends; back to the pad's page
+    void audio_recall();                                  // Shift + Sample Record: the ring's last 25 s onto the next empty pad
+    void record_tick(uint32_t at);                        // often (ms): monitor and route wishes, settings kept, renders followed
+    uint32_t settings_save_at = 0;                        // ms; 0 nothing waiting
+    uint32_t rec_armed_at = 0;                            // ms
+    bool monitor_sent = false, monitor_known = false;
+    int gain_sent = 0;
+    // Renders of the mix (parity phase 6, shell/render.cpp): Resample (Shift + Pad 11, then a pad) and the song's mixdown.
+    void resample();                                      // Shift + Pad 11: wait for the pad (again: not)
+    void resample_pad(unsigned kit);                      // the pad: the pattern rendered onto it
+    void mixdown(const std::string& name);                // Song's export, Audio mixdown, after the Name sheet
+    void render_tick(uint32_t at);                        // a render ended: transport back as it was
+    bool render_started = false;
+    uint32_t render_since = 0;
+    // Song -> new pattern (parity phase 6, shell/song_export.cpp): the song's clips as one long pattern on every track, one undo.
+    void song_to_pattern();
+    void song_export_soft(int key);                       // the export sheet's B1 Cancel, B2 Audio mixdown, B3 New pattern
     // Sample files (parity phase 5, shell/sample_files.cpp): files made from
     // a pad's audio on the service thread, and the browser's loads.
     void trim_sample();                                  // Shift + Pad 13: the last pad's region as a file of its own, one undo
@@ -205,8 +230,14 @@ public:
     std::string files_folder_seen;
     unsigned previews_seen = 0;
     int previewing = -1; // the track a preview plays on, -1 none
-    struct PendingFile { int16_t slot = -1; uint8_t track = 0; int16_t pad = -1; bool trim = false; PadSound sound {}; };
+    // land: 0 Extract (the next empty pad after `pad`), or Trim (`trim`); 1 onto `pad` itself (Recall,
+    // Resample; one undo); 2 the take of Sample Record onto `pad`, with the pads cut from it (ui.rec_chop_*).
+    struct PendingFile { int16_t slot = -1; uint8_t track = 0; int16_t pad = -1; bool trim = false; PadSound sound {}; uint8_t land = 0; };
     std::array<PendingFile, 8> pending_files {};
+    // A sample slot held for a file the service thread makes, landing as `land` says; -1 when slots or the list are full.
+    int hold_file(const std::string& name, unsigned track, int pad, uint8_t land);
+    void drop_file(int slot);                            // a held slot nothing came for: free again
+    void take_landed(unsigned track, unsigned kit, unsigned slot, const LoadedSample& loaded); // Sample Record's take onto its pads
     // Effects: chain numbers as in model/project.h (tracks, buses, master).
     void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
     void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);

@@ -82,6 +82,49 @@ std::string write_wav(const std::string& path, const SampleData& s) {
     return file.good() ? std::string() : std::string("write failed");
 }
 
+namespace {
+void wav_header(unsigned char* h, uint32_t frames) {
+    auto put = [&](unsigned at, uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) h[at + n] = uint8_t(v >> (8 * n)); };
+    uint32_t data = frames * 6;
+    std::memcpy(h, "RIFF", 4); put(4, 36 + data, 4); std::memcpy(h + 8, "WAVEfmt ", 8);
+    put(16, 16, 4); put(20, 1, 2); put(22, 2, 2); put(24, 44100, 4); put(28, 44100 * 6, 4); put(32, 6, 2); put(34, 24, 2);
+    std::memcpy(h + 36, "data", 4); put(40, data, 4);
+}
+} // namespace
+
+bool WavStream::open(const std::string& path) {
+    close();
+    file = std::fopen(path.c_str(), "wb");
+    written = 0; failed = !file;
+    unsigned char h[44];
+    wav_header(h, 0);
+    if (file && std::fwrite(h, 1, sizeof(h), file) != sizeof(h)) failed = true;
+    return !failed;
+}
+bool WavStream::add(const float* interleaved, unsigned frames) {
+    if (!file || failed) return false;
+    unsigned char bytes[6 * 256];
+    for (unsigned at = 0; at < frames; at += 256) {
+        unsigned n = std::min(256u, frames - at);
+        for (unsigned f = 0; f < 2 * n; ++f) {
+            auto v = uint32_t(int32_t(std::lround(std::clamp(interleaved[2 * at + f], -1.0f, 1.0f) * 8388607.0f)));
+            bytes[3 * f] = uint8_t(v); bytes[3 * f + 1] = uint8_t(v >> 8); bytes[3 * f + 2] = uint8_t(v >> 16);
+        }
+        if (std::fwrite(bytes, 1, 6 * n, file) != 6 * n) { failed = true; return false; }
+    }
+    written += frames;
+    return true;
+}
+bool WavStream::close() {
+    if (!file) return !failed;
+    unsigned char h[44];
+    wav_header(h, written);
+    if (std::fseek(file, 0, SEEK_SET) != 0 || std::fwrite(h, 1, sizeof(h), file) != sizeof(h)) failed = true;
+    if (std::fclose(file) != 0) failed = true;
+    file = nullptr;
+    return !failed;
+}
+
 void make_overview(const SampleData& s, Overview& out) {
     out.fill(0);
     if (!s.frames) return;

@@ -81,6 +81,7 @@ void Context::open(PageId page) {
     ui.move_open = false;
     ui.map_open = false;
     ui.picker_open = false;
+    ui.song_export = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
     if (page != ui.page) {
         push_back_stack(ui, page);
@@ -465,9 +466,10 @@ void Context::apply(const Binding& b, int value) {
     case Kind::CaptureBars: ui.capture_bars = uint8_t(value); break;
     case Kind::CaptureQuantise: ui.capture_quantise = uint8_t(value); break;
     case Kind::CaptureInto: ui.capture_into = uint8_t(value); break;
-    case Kind::RecThreshold: ui.rec_threshold = int8_t(value); break;
-    case Kind::RecBars: ui.rec_bars = uint8_t(value); break;
-    case Kind::RecGain: ui.rec_gain = int8_t(value); send({Type::RecordGain, 0, 0, 0, int16_t(value)}); break;
+    case Kind::RecSource: set_input_source(InputSource(value)); break;
+    case Kind::RecThreshold: ui.settings.input.threshold = int8_t(value); input_changed(); break;
+    case Kind::RecLength: ui.settings.input.length = uint8_t(value); input_changed(); break;
+    case Kind::RecGain: ui.settings.input.gain = int8_t(value); input_changed(); break;
     case Kind::EventVelocity: set_event_velocity(*this, value); break;
     case Kind::EventLength: set_event_length(*this, value); break;
     case Kind::None: break;
@@ -566,10 +568,6 @@ void Context::save_sample() {
     open_name(NameTarget::Sample, ref.name, sizeof(project.name) - 1, false); // a file's name may run as long as a project's
 }
 
-void Context::set_rec_source(unsigned source) {
-    ui.rec_source = uint8_t(source % 3);
-    send({Type::RecordSource, ui.rec_source});
-}
 
 void Context::finish_name() {
     auto& e = ui.name;
@@ -612,6 +610,7 @@ void Context::finish_name() {
         break;
     }
     case NameTarget::Sample: save_sample_as(text); break;
+    case NameTarget::Mixdown: mixdown(text); break;
     case NameTarget::None: break;
     }
 }
@@ -950,6 +949,8 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (motion) restore_motion(*motion);
     const auto& whole = after ? e.track_after : e.track_before;
     if (whole) restore_track(*this, e.track, *whole); // last: its pack carries the motion as restored
+    if (e.column >= 0)
+        for (const auto& [t, value] : after ? e.column_after : e.column_before) restore_pattern(t, unsigned(e.column), value);
     take_track = -1;
 }
 
@@ -1051,24 +1052,6 @@ void Context::rechop() {
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
     ui.chop_armed = ui.chop_mode == ChopMode::Manual;
     ui.chop_take_at = 0;
-}
-
-// Arms a take for the first free sample slot and the first empty pad; a
-// second press starts it at once, a third stops it.
-void Context::record_press() {
-    auto state = host.recorder().state();
-    if (state == TakeRecorder::State::Armed) { send({Type::RecordNow}); return; }
-    if (state == TakeRecorder::State::Recording) { send({Type::RecordStop}); return; }
-    if (state != TakeRecorder::State::Idle || ui.rec_slot >= 0) return;
-    int slot = -1, empty = -1;
-    for (unsigned n = 0; n < sample_slots && slot < 0; ++n) if (!project.samples[n].used()) slot = int(n);
-    for (unsigned n = 0; n < sampler_pads && empty < 0; ++n) if (!track().pads[n].used()) empty = int(n);
-    if (slot < 0 || empty < 0) return;
-    auto& ref = project.samples[size_t(slot)];
-    std::strncpy(ref.path, "(recording)", sizeof(ref.path) - 1); // held for the take
-    std::strncpy(ref.name, "TAKE", sizeof(ref.name) - 1);
-    ui.rec_slot = int16_t(slot); ui.rec_pad = int16_t(empty);
-    send({Type::RecordArm, ui.rec_source, uint8_t(ui.rec_bars), uint16_t(slot), int16_t(ui.rec_threshold)});
 }
 
 void Context::follow_tempos() {

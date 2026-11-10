@@ -81,12 +81,19 @@ public:
     // Changes each time the list or a loaded sample changes.
     unsigned generation() const { return changes.load(std::memory_order_acquire); }
 
-    // Service thread, every few milliseconds: files, loads, finished takes, the input route.
+    // Service thread, every few milliseconds: files, loads, finished takes, recalls and renders.
     void service(Hardware& hardware);
-    // MIDI thread: which input Record wants routed (0 mic, 1 line, -1 none).
-    void want_input(int source) { input_wanted.store(source); }
-    // The take number the next recording will get (TAKE 1, TAKE 2...).
-    unsigned takes() const { return take_count.load(); }
+
+    // MIDI thread (parity phase 6, shell/sample_capture.cpp). Audio Recall:
+    // the ring's last 25 s (from the first sound) into slot `slot`, as
+    // Samples/Recorded/RECALL n.wav. A render of the mix the engine host is
+    // about to play: into slot `slot` (Resample, Samples/Recorded/RESAMPLE
+    // n.wav), or straight into Melodee/Mixdowns/<name>.wav on the card (the
+    // song). `frames`: how long it should run, to make room up front.
+    bool recall(unsigned slot) { return recalls.push(uint8_t(slot)); }
+    struct Render { bool to_file = false; uint8_t slot = 0; uint32_t frames = 0; char name[40] {}; };
+    bool render(const Render& job) { return renders.push(job); }
+    std::string card() const; // the card's top folder; empty without one
 
     // Any thread but audio: a copy of what is known.
     struct View {
@@ -129,10 +136,22 @@ private:
     std::atomic<bool> scan_wanted {true};
     std::atomic<unsigned> changes {0};
     std::atomic<unsigned> preview_count {0};
-    std::atomic<int> input_wanted {-1};
-    int input_routed = -2;
     std::atomic<unsigned> take_count {0};
     void save_take();
+    // Recall and renders (shell/sample_capture.cpp).
+    MidiQueue<4, uint8_t> recalls;
+    MidiQueue<4, Render> renders;
+    void save_recall(unsigned slot);
+    void drain_render();
+    // A sample made here: written as Samples/<folder>/<stem> n.wav when there is a
+    // card, offered to `slot` and listed; `what` names it in a failure.
+    void land(unsigned slot, std::unique_ptr<SampleData> data, const char* folder, const char* stem, const char* what);
+    bool rendering = false;
+    Render render_job;
+    std::unique_ptr<SampleData> render_data;
+    WavStream render_file;
+    std::string render_path;
+    std::vector<float> render_chunk;
     std::vector<std::unique_ptr<SampleData>> owned; // service thread: every sample the audio thread may hold
     std::array<const SampleData*, sample_slots> data_of {}; // under `lock`: what each slot holds now, for peak()
     std::string root_seen, card_top;

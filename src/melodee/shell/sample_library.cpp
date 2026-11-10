@@ -102,13 +102,10 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out) {
 
 void SampleLibrary::service(Hardware& hardware) {
     const Platform& platform = hardware.platform;
-    // The input Record listens to: the line inputs or the microphone, else off.
-    int wanted_input = input_wanted.load();
-    if (wanted_input != input_routed && hardware.mixer.available()) {
-        hardware.mixer.input(wanted_input == 0 ? "mic" : wanted_input == 1 ? "line" : "off");
-        input_routed = wanted_input;
-    }
     if (host.recorder().state() == TakeRecorder::State::Done) save_take();
+    drain_render(); // a render's frames, as they come, every pass
+    uint8_t recall_slot;
+    if (recalls.pop(recall_slot)) save_recall(recall_slot);
     // Samples the audio thread has let go of.
     const SampleData* gone = nullptr;
     while (host.take_retired(gone)) {
@@ -138,7 +135,7 @@ void SampleLibrary::service(Hardware& hardware) {
             for (const auto& space : platform.storage())
                 if (space.path.rfind("/media/", 0) == 0 && fs::is_directory(space.path + "/Samples")) { top = space.path; root = space.path + "/Samples"; break; }
         bool changed = root != root_seen;
-        if (changed) { root_seen = root; card_top = top; std::lock_guard<std::mutex> guard(lock); known.root = root; }
+        if (changed) { root_seen = root; std::lock_guard<std::mutex> guard(lock); card_top = top; known.root = root; }
         scan_wanted.store(false);
         scan();
     }
@@ -286,20 +283,25 @@ void SampleLibrary::save_take() {
     data->right.assign(recorder.right(), recorder.right() + data->frames);
     unsigned slot = recorder.slot() % sample_slots;
     recorder.release();
+    land(slot, std::move(data), "Recorded", "TAKE", "Take");
+}
+
+void SampleLibrary::land(unsigned slot, std::unique_ptr<SampleData> data, const char* folder, const char* stem, const char* what) {
+    slot %= sample_slots;
     unsigned number = take_count.fetch_add(1) + 1;
     LoadedSample loaded;
-    loaded.name = "TAKE " + std::to_string(number);
+    loaded.name = std::string(stem) + " " + std::to_string(number);
     std::string root;
     { std::lock_guard<std::mutex> guard(lock); root = known.root; }
     if (!root.empty()) {
         std::error_code error;
-        fs::create_directories(root + "/Recorded", error);
-        // The next free name, so takes from earlier sessions stay.
-        for (unsigned n = number; n < number + 1000; ++n) {
-            auto path = root + "/Recorded/TAKE " + std::to_string(n) + ".wav";
+        std::string dir = root + "/" + folder;
+        fs::create_directories(dir, error);
+        // The first free number, so the ones from earlier sessions stay.
+        for (unsigned n = 1; n < 10000; ++n) {
+            auto path = dir + "/" + stem + " " + std::to_string(n) + ".wav";
             if (fs::exists(path, error)) continue;
-            loaded.name = "TAKE " + std::to_string(n);
-            take_count.store(n);
+            loaded.name = std::string(stem) + " " + std::to_string(n);
             auto failed = write_wav(path, *data);
             if (failed.empty()) loaded.path = path; else loaded.error = "not saved: " + failed;
             break;
@@ -310,11 +312,11 @@ void SampleLibrary::save_take() {
     loaded.hit_count = find_hits(*data, loaded.hits);
     const SampleData* held = nullptr;
     if (host.offer_sample(slot, data.get())) { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
-    else loaded.error = "busy, try again";
-    if (!loaded.path.empty()) scan_wanted.store(true); // it shows under RECORDED
+    else { finish(std::string(what) + ": busy, try again", int(slot)); return; }
+    if (!loaded.path.empty()) scan_wanted.store(true); // it shows in the browser
     std::lock_guard<std::mutex> guard(lock);
     known.slots[slot] = loaded;
-    if (held) data_of[slot % sample_slots] = held;
+    data_of[slot] = held;
     changes.fetch_add(1, std::memory_order_release);
 }
 

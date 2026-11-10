@@ -34,6 +34,10 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/model/pad_params.h"
+#include "melodee/model/input_config.h"
+#include "melodee/model/song_flatten.h"
+#include "melodee/engine/recall_ring.h"
+#include "melodee/engine/bounce.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -840,22 +844,22 @@ void recording() {
     // A take waits for the level, records its length, and is held until released.
     auto recorder = std::make_unique<TakeRecorder>();
     std::vector<float> quiet(128, 0.001f), loud(128, 0.5f);
-    recorder->arm(-30, 1000, 0, 7);
+    recorder->arm(-30, 1000, 7);
     recorder->process(quiet.data(), quiet.data(), 128);
     CHECK(recorder->state() == TakeRecorder::State::Armed && recorder->frames() == 0);
     for (unsigned n = 0; n < 10; ++n) recorder->process(loud.data(), loud.data(), 128);
     CHECK(recorder->state() == TakeRecorder::State::Done && recorder->frames() == 1000 && recorder->slot() == 7);
     CHECK(std::fabs(recorder->left()[999] - 0.5f) < 1e-6f && recorder->peak(127) > 100);
-    recorder->arm(-30, 1000, 0, 1); // held: a new take waits for release
+    recorder->arm(-30, 1000, 1); // held: a new take waits for release
     CHECK(recorder->frames() == 1000);
     recorder->release();
     CHECK(recorder->state() == TakeRecorder::State::Idle);
-    // At once (-60 dB), with gain, stopped early.
-    recorder->arm(-60, 0, 6, 2);
+    // At once (-96 dB), stopped early (the engine host applies the gain before it).
+    recorder->arm(-96, 0, 2);
     CHECK(recorder->state() == TakeRecorder::State::Recording);
     recorder->process(quiet.data(), quiet.data(), 128);
     recorder->stop();
-    CHECK(recorder->state() == TakeRecorder::State::Done && recorder->frames() == 128 && std::fabs(recorder->left()[0] - 0.001995f) < 1e-5f);
+    CHECK(recorder->state() == TakeRecorder::State::Done && recorder->frames() == 128 && std::fabs(recorder->left()[0] - 0.001f) < 1e-6f);
     recorder->release();
     // The host records the mix (resample) for a bar at 120 BPM.
     auto project = std::make_unique<Project>();
@@ -863,7 +867,7 @@ void recording() {
     load_sound(project->tracks[0], EngineKind::Prophet, 0);
     EngineHost host;
     host.load(*project, *bank);
-    host.send({Command::Type::RecordArm, 2, 1, 5, -60});
+    host.send({Command::Type::RecordArm, uint8_t(InputSource::Resample), 1, 5, -96});
     host.send({Command::Type::NoteOn, 0, 0, 57, 100});
     std::vector<int32_t> out(256);
     for (unsigned n = 0; n < 700; ++n) host.render(out.data(), 128, 1, nullptr);
@@ -1263,7 +1267,8 @@ void shift_pads() {
     CHECK(shift_pad_job(13).kind == K::Open);                                  // Time Correct (phase 2)
     CHECK(shift_pad_job(14).kind == K::Action);                                // Warp: Time stretch / Pitch (phase 4)
     CHECK(shift_pad_job(12).kind == K::Action);                                // Trim Sample (phase 5)
-    for (unsigned n : {4u, 7u, 8u, 10u})
+    CHECK(shift_pad_job(10).kind == K::Action);                                // Resample (phase 6)
+    for (unsigned n : {4u, 7u, 8u})
         CHECK(shift_pad_job(n).kind == K::Later && shift_pad_job(n).phase >= 2);
 
     UiState ui;
@@ -1302,12 +1307,14 @@ void button_remap() {
     auto cards = page_bindings(*project, ui, pattern);
     CHECK(cards[0].kind == Binding::Kind::PatternLength && pattern_lengths[cards[0].value] == 2); // 1, 2, 4 ..: 3 bars sits on 2
     CHECK(cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
-    ui.page = PageId::InputConfig; ui.rec_threshold = -24;
+    ui.page = PageId::InputConfig; ui.settings.input.threshold = -24;
     cards = page_bindings(*project, ui, pattern);
-    CHECK(cards[0].kind == Binding::Kind::RecThreshold && cards[0].value == -24 && !cards[1].bound() && !cards[2].bound());
-    ui.page = PageId::Record;
-    cards = page_bindings(*project, ui, pattern);
-    CHECK(!cards[0].bound() && cards[1].kind == Binding::Kind::RecBars && cards[2].kind == Binding::Kind::RecGain);
+    CHECK(cards[0].kind == Binding::Kind::RecSource && cards[1].kind == Binding::Kind::RecLength);
+    CHECK(cards[2].kind == Binding::Kind::RecThreshold && cards[2].value == -24 && cards[2].min == -96);
+    ui.page = PageId::Record; // the same cards as Input Config (phase 6), Shift + K3 the gain
+    auto record_cards = page_bindings(*project, ui, pattern);
+    for (unsigned n = 0; n < 3; ++n) CHECK(record_cards[n].kind == cards[n].kind && record_cards[n].value == cards[n].value);
+    CHECK(page_bindings(*project, ui, pattern, true)[2].kind == Binding::Kind::RecGain);
 
     // Back: Stage -> Sounds -> Steps -> Roll -> Motion -> Song; Back walks Song, Steps group, Sounds, Stage.
     UiState nav;
@@ -2078,7 +2085,204 @@ void chop_and_browser() {
     CHECK(shift_pad_job(12).kind == ShiftPadJob::Kind::Action && std::string(shift_pad_job(12).name) == "Trim Sample");
 }
 
+
+// Parity phase 6: Input Config, the input path, Sample Record's Seq take,
+// Audio Recall's ring, renders of the mix and Song -> new pattern.
+void audio_input_and_rendering() {
+    // Input Config: Auto hears the source only on Record; the mix is never monitored; the monitored mic quiets the speaker.
+    InputConfig in;
+    in.source = InputSource::Mic; in.monitor = Monitor::Auto;
+    CHECK(in.monitoring(true) && !in.monitoring(false) && in.mutes_speaker(true) && !in.mutes_speaker(false));
+    in.monitor = Monitor::On; CHECK(in.monitoring(false) && in.mutes_speaker(false));
+    in.source = InputSource::Rear; CHECK(in.monitoring(false) && !in.mutes_speaker(false));
+    in.source = InputSource::Resample; CHECK(!in.monitoring(true));
+    in.monitor = Monitor::Off; in.source = InputSource::Usb; CHECK(!in.monitoring(true));
+    CHECK(std::string(input_route(InputSource::Mic)) == "mic" && std::string(input_route(InputSource::RearR)) == "line"
+          && std::string(input_route(InputSource::UsbL)) == "off" && std::string(input_route(InputSource::Resample)) == "off");
+    CHECK(rec_bars(rec_free) == 0 && rec_bars(rec_seq) == 0 && rec_bars(2) == 1 && rec_bars(rec_lengths - 1) == 16);
+    // Kept with the settings; an older settings file (no input keys) gets the defaults.
+    Settings saved;
+    saved.input.source = InputSource::UsbR; saved.input.monitor = Monitor::On; saved.input.threshold = -72;
+    saved.input.length = rec_seq; saved.input.fx = true; saved.input.gain = -6;
+    Settings back; back.read(saved.text());
+    CHECK(back.input.source == InputSource::UsbR && back.input.monitor == Monitor::On && back.input.threshold == -72
+          && back.input.length == rec_seq && back.input.fx && back.input.gain == -6);
+    Settings old; old.read("pad_response=2\npickup=1\n");
+    CHECK(old.input.source == InputSource::Rear && old.input.monitor == Monitor::Auto && old.input.threshold == -30 && old.input.length == rec_free);
+    Settings wild; wild.read("input_source=99\nthreshold=-200\nrec_length=99\n");
+    CHECK(wild.input.source == InputSource::UsbR && wild.input.threshold == -96 && wild.input.length == rec_lengths - 1);
+
+    // The engine host's input path: each source's channels, the gain, the meter, and Monitor.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (auto& t : project->tracks) t.engine = EngineKind::None;
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    std::vector<int32_t> input(256), out(256);
+    for (unsigned f = 0; f < 128; ++f) { input[2 * f] = int32_t(0.5 * 2147483647.0); input[2 * f + 1] = int32_t(0.25 * 2147483647.0); }
+    std::vector<float> usb(256);
+    for (unsigned f = 0; f < 128; ++f) { usb[2 * f] = 0.125f; usb[2 * f + 1] = -0.0625f; }
+    auto level_of = [&](InputSource source, int gain) {
+        host->send({Command::Type::RecordSource, uint8_t(source)});
+        host->send({Command::Type::RecordGain, 0, 0, 0, int16_t(gain)});
+        for (unsigned n = 0; n < 40; ++n) host->render(out.data(), 128, 1, input.data(), nullptr, usb.data());
+        return host->recorder().level();
+    };
+    CHECK(std::fabs(level_of(InputSource::Rear, 0) - 0.5f) < 1e-3f && host->record_source() == unsigned(InputSource::Rear));
+    CHECK(std::fabs(level_of(InputSource::Mic, 0) - 0.375f) < 0.01f);  // the mic: both sides averaged (meter falling from 0.5)
+    CHECK(std::fabs(level_of(InputSource::UsbL, 0) - 0.125f) < 0.02f);
+    CHECK(level_of(InputSource::RearR, 6) > 0.49f && level_of(InputSource::RearR, 6) < 0.51f); // 0.25 at +6 dB
+    level_of(InputSource::Rear, 0);
+    host->send({Command::Type::Monitor, 0, 0, 0, 1});
+    host->render(out.data(), 128, 1, input.data());
+    CHECK(host->monitoring() && out[0] > int32_t(0.3 * 2147483647.0)); // the line input heard (soft clipped)
+    host->send({Command::Type::Monitor, 0, 0, 0, 0});
+    host->render(out.data(), 128, 1, input.data());
+    CHECK(out[0] == 0);
+    host->send({Command::Type::RecordSource, uint8_t(InputSource::Resample)});
+    host->send({Command::Type::Monitor, 0, 0, 0, 1});
+    host->render(out.data(), 128, 1, input.data());
+    CHECK(out[0] == 0); // the mix is never monitored onto itself
+    host->send({Command::Type::Monitor, 0, 0, 0, 0});
+
+    // Audio Recall's ring: always filling from the source, the last 25 s copied out; a new source starts it again.
+    auto ring = std::make_unique<RecallRing>();
+    std::vector<float> ramp_l(128), ramp_r(128);
+    for (uint32_t block = 0; block < 27 * 44100 / 128; ++block) {
+        for (unsigned f = 0; f < 128; ++f) { ramp_l[f] = float(block * 128 + f); ramp_r[f] = -ramp_l[f]; }
+        ring->write(ramp_l.data(), ramp_r.data(), 128);
+    }
+    uint32_t written = 27 * 44100 / 128 * 128;
+    CHECK(ring->filled() == 25 * 44100);
+    std::vector<float> l(25 * 44100), r(25 * 44100);
+    CHECK(ring->copy_last(25 * 44100, l.data(), r.data()));
+    CHECK(l.back() == float(written - 1) && l.front() == float(written - 25 * 44100) && r.back() == -l.back());
+    ring->restart();
+    CHECK(ring->filled() == 0);
+    ring->write(ramp_l.data(), ramp_r.data(), 128);
+    CHECK(ring->filled() == 128);
+    // The host fills its ring from the source, and starts it again when the source changes.
+    host->send({Command::Type::RecordSource, uint8_t(InputSource::Rear)});
+    for (unsigned n = 0; n < 10; ++n) host->render(out.data(), 128, 1, input.data());
+    CHECK(host->recall().filled() == 1280);
+    host->send({Command::Type::RecordSource, uint8_t(InputSource::RearL)});
+    host->render(out.data(), 128, 1, input.data());
+    CHECK(host->recall().filled() == 128);
+
+    // A render of the patterns: from Play, exactly the pattern's length (a bar at 120 BPM: 88200 frames), then done.
+    load_sound(project->tracks[0], EngineKind::Prophet, 0);
+    bank->at[0][0].length = project->bar_ticks();
+    bank->at[0][0].add({0, 24, 57, 110, 100, 0});
+    bank->at[0][0].add({192, 24, 60, 110, 100, 0});
+    host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    Command arm {Command::Type::BounceArm, 0, 0, 0, 0};
+    arm.position = project->bar_ticks();
+    host->send(arm);
+    host->send({Command::Type::Play, 0});
+    std::vector<float> taken(2 * 4096);
+    uint32_t got = 0;
+    float loudest = 0;
+    for (unsigned n = 0; n < 1000 && host->bounce().state() != Bounce::State::Done; ++n) {
+        host->render(out.data(), 128, 1, nullptr);
+        for (unsigned k; (k = host->bounce().pop(taken.data(), 4096)) > 0; got += k)
+            for (unsigned f = 0; f < 2 * k; ++f) loudest = std::max(loudest, std::fabs(taken[f]));
+    }
+    for (unsigned k; (k = host->bounce().pop(taken.data(), 4096)) > 0;) got += k;
+    CHECK(host->bounce().state() == Bounce::State::Done && got + 1 >= 88200 && got <= 88201 && host->bounce().frames() == got && loudest > 0.01f);
+    CHECK(host->playing()); // the shell stops it (or lets it play on)
+    host->bounce().release();
+    CHECK(host->bounce().state() == Bounce::State::Idle);
+    // Stop meanwhile drops it.
+    host->send({Command::Type::Stop});
+    host->send(arm);
+    host->send({Command::Type::Play, 0});
+    for (unsigned n = 0; n < 50; ++n) host->render(out.data(), 128, 1, nullptr);
+    CHECK(host->bounce().state() == Bounce::State::Running);
+    host->send({Command::Type::Stop});
+    host->render(out.data(), 128, 1, nullptr);
+    CHECK(host->bounce().state() == Bounce::State::Cancelled);
+    while (host->bounce().pop(taken.data(), 4096)) {}
+    host->bounce().release();
+
+    // The song's render: once through (the loop brace ignored), then its tail until the mix falls silent.
+    Clip clip; clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 2;
+    project->song.place(clip);
+    project->song.loop_start = 0; project->song.loop_end = 1;
+    host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    host->send({Command::Type::BounceArm, 0, 0, 0, 1});
+    host->send({Command::Type::Play, 0, 0, 0, 1});
+    bool tail = false;
+    for (unsigned n = 0; n < 6000 && host->bounce().state() != Bounce::State::Done; ++n) {
+        host->render(out.data(), 128, 1, nullptr);
+        tail |= host->bounce().state() == Bounce::State::Tail;
+        while (host->bounce().pop(taken.data(), 4096)) {}
+    }
+    uint32_t song_frames = host->bounce().frames();
+    CHECK(tail && host->bounce().state() == Bounce::State::Done && !host->playing());
+    CHECK(song_frames >= 2 * 88200 && song_frames <= 2 * 88200 + Bounce::tail_limit + 128);
+    host->bounce().release();
+
+    // Rec length Seq while playing: the take waits for the pattern to come round, then runs its length.
+    host = std::make_unique<EngineHost>();
+    project->song = Song {};
+    host->load(*project, *bank);
+    host->send({Command::Type::Play, 0});
+    for (unsigned n = 0; n < 100; ++n) host->render(out.data(), 128, 1, input.data()); // into the bar
+    Command seq {Command::Type::RecordArm, uint8_t(InputSource::Resample), 255, 3, -96};
+    seq.position = 0;
+    host->send(seq);
+    host->render(out.data(), 128, 1, input.data());
+    CHECK(host->recorder().state() == TakeRecorder::State::Cued && host->recorder().frames() == 0);
+    unsigned blocks = 1;
+    while (host->recorder().state() == TakeRecorder::State::Cued && blocks < 1000) { host->render(out.data(), 128, 1, input.data()); ++blocks; }
+    CHECK(host->recorder().state() == TakeRecorder::State::Recording && blocks + 100 >= 88200 / 128 && blocks + 100 <= 88200 / 128 + 2);
+    for (unsigned n = 0; n < 800 && host->recorder().state() == TakeRecorder::State::Recording; ++n) host->render(out.data(), 128, 1, input.data());
+    CHECK(host->recorder().state() == TakeRecorder::State::Done && host->recorder().frames() == 88200);
+    host->recorder().release();
+    // Stopped, Seq is the pattern's length from the threshold (here at once); Stop cancels a cued take.
+    host->send({Command::Type::Stop});
+    host->send(seq);
+    host->render(out.data(), 128, 1, input.data());
+    CHECK(host->recorder().state() == TakeRecorder::State::Recording && host->recorder().length() == 88200);
+    host->send({Command::Type::RecordStop});
+    host->render(out.data(), 128, 1, input.data());
+    host->recorder().release();
+
+    // The mixdown's file, written as it comes: read back, the same frames.
+    {
+        std::string path = "/tmp/melodee-wavstream-test.wav";
+        WavStream wav;
+        CHECK(wav.open(path));
+        std::vector<float> chunk(2 * 1000);
+        for (unsigned f = 0; f < 1000; ++f) { chunk[2 * f] = std::sin(f * 0.05f) * 0.5f; chunk[2 * f + 1] = -chunk[2 * f]; }
+        CHECK(wav.add(chunk.data(), 1000) && wav.add(chunk.data(), 500) && wav.frames() == 1500 && wav.close());
+        SampleData read;
+        CHECK(read_wav(path, read).empty() && read.frames == 1500 && std::fabs(read.left[700] - chunk[1400]) < 1e-4f
+              && std::fabs(read.right[1200] - chunk[2 * 200 + 1]) < 1e-4f);
+        std::remove(path.c_str());
+    }
+
+    // Song -> new pattern: clips laid end to end, each repeating its pattern from its start; muted clips left out.
+    Song song;
+    Pattern beat; beat.length = 2 * 96; beat.add({0, 24, 36, 100, 100, 0}); beat.add({96, 24, 38, 100, 100, 0});
+    beat.add({300, 24, 40, 100, 100, 0}); // past its end: never heard
+    std::array<Pattern, pattern_count> lane {};
+    lane[1] = beat;
+    unsigned bar = 384;
+    Clip a; a.track = 4; a.pattern = 1; a.bar = 1; a.bars = 2; song.place(a);
+    Clip muted = a; muted.bar = 4; muted.bars = 1; muted.muted = true; song.place(muted);
+    Clip other = a; other.track = 5; song.place(other);
+    Pattern flat; bool full = false;
+    CHECK(flatten_lane(song, 4, lane, bar, song.length(), flat, full) && !full);
+    CHECK(flat.length == 5 * bar && flat.events.size() == 8); // two bars of a half-bar pattern: four times two notes
+    CHECK(flat.events.front().tick == bar && flat.events.back().tick == 3 * bar - 96 && flat.events.back().key == 38);
+    CHECK(!flatten_lane(song, 6, lane, bar, song.length(), flat, full));
+}
+
 int main() {
+    audio_input_and_rendering();
     chop_and_browser();
     sample_mode();
     step_edit_and_pad_motion();

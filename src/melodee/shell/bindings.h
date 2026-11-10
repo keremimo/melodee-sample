@@ -26,7 +26,7 @@ struct Binding {
         PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
         ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds (id: the slice)
         FileJump,                          // Samples
-        RecThreshold, RecBars, RecGain,    // Record
+        RecThreshold, RecLength, RecGain,  // Record and Input Config (RecLength: 0 Free, 1 Seq, 2.. 1..16 bars)
         ProjectJump, ProjectSort,          // Project
         Tempo, ClickLevel,                 // Tempo (Swing as on Length)
         ArpMode, ArpRate, ArpOctaves,      // Arp
@@ -42,7 +42,8 @@ struct Binding {
         PadLoopPoint, PadLoop, PadMono, PadLink, PadOffset, PadVelSense, PadDecayFrom,
         PadFilterType, PadCutoff, PadResonance, PadFAttack, PadFDecay, PadFSustain, PadFRelease, PadFAmount,
         PadWarp, PadBeats,                         // PadWarp: 0 Off, 1..151 50..200 %, 152 Seq
-        ChopEnd, ChopZoom                          // Chop (parity phase 5): K2 the slice's end (ms); Shift + K1 / K2 zoom (id 0 start, 1 end)
+        ChopEnd, ChopZoom,                         // Chop (parity phase 5): K2 the slice's end (ms); Shift + K1 / K2 zoom (id 0 start, 1 end)
+        RecSource                                  // Record and Input Config (parity phase 6): InputSource
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

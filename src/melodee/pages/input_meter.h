@@ -10,8 +10,8 @@ namespace melodee {
 
 juce::String db_text(float db);              // "−30 DB"
 float db_of(float level);                    // linear peak to dB, −90 for silence
-const char* input_source_name(unsigned source); // MIC, LINE, RESAMPLE
-// Draws INPUT LEVEL, PEAK, the bar and STARTS AT across w from (x, y); about 31 high.
+// Draws INPUT LEVEL, PEAK, the bar (-96 to 0 dB, as the threshold runs) and
+// STARTS AT across w from (x, y); about 31 high.
 void input_meter(ui::Paint& p, const Snapshot& s, juce::Colour c, float x, float y, float w);
 
 } // namespace melodee

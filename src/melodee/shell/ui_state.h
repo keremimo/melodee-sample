@@ -112,11 +112,21 @@ struct UiState {
     uint32_t chop_take_at = 0;  // ms when pad 1 started that take, 0 none
     int8_t levels_hit = -1;     // Levels: the pad played last, 0..15
     int16_t levels_value = 0;   // and what it played: a velocity or semitones
-    uint8_t rec_source = 1;     // Input Config: 0 mic, 1 line, 2 the mix (resample)
-    int8_t rec_threshold = -30; // Input Config, dB; -60 starts at once
-    uint8_t rec_bars = 4;       // 0: until stopped
-    int8_t rec_gain = 0;        // dB
-    int16_t rec_slot = -1, rec_pad = -1; // where the take in progress will land
+    // Sample Record (parity phase 6; Input Config itself is in settings.input).
+    int16_t rec_slot = -1, rec_pad = -1; // where the take in progress will land (a kit pad, 0..127)
+    uint8_t rec_track = 0;               // on that track
+    // Pads tapped during the take: each cuts it there and gets the part from there on.
+    static constexpr unsigned rec_chop_capacity = 15;
+    std::array<uint8_t, rec_chop_capacity> rec_chop_pad {};
+    std::array<uint32_t, rec_chop_capacity> rec_chop_at {}; // frames into the take
+    uint8_t rec_chops = 0;
+    // Resample (Shift + Pad 11): waiting for the pad to render onto; then the render's pad (-1 none).
+    bool resample_pick = false;
+    int16_t render_pad = -1, render_slot = -1;
+    uint8_t render_track = 0;
+    uint8_t rendering = 0;               // 0 none, 1 Resample, 2 the song's mixdown
+    bool render_resume = false;          // Resample stopped what was playing: Play it again afterwards
+    bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
     uint16_t project_cursor = 0;  // Project: row under the cursor (0 is New project)
     bool delete_armed = false;    // the file sheet's Delete asks once more
     uint8_t project_sort = 0;     // 0 newest first, 1 by name

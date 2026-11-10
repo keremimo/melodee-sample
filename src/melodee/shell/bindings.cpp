@@ -169,6 +169,8 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     const auto& track = project.tracks[ui.track % track_count];
     if (ui.name.open()) return {};
     switch (ui.page) {
+    case PageId::Record: case PageId::InputConfig: // Shift + K3: Melodee's input gain
+        return {Binding {}, Binding {}, Binding {Kind::RecGain, 0, -12, 24, ui.settings.input.gain}};
     case PageId::Patterns: // Shift: any bar count, the time signature, the metronome's level (as on the MPC)
         return {Binding {Kind::PatternBars, 0, 1, int(max_bars), int(pattern_bars(project, pattern))},
                 Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
@@ -363,10 +365,12 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {handle_card(Kind::ChopStart, int(n), start, start_lo, end - gap, length, ui.chop_zoom),
                 handle_card(Kind::ChopEnd, int(n), end, start + gap, end_hi, length, ui.chop_zoom), type};
     }
-    case PageId::Record:
-        return {Binding {}, Binding {Kind::RecBars, 0, 0, 16, ui.rec_bars}, Binding {Kind::RecGain, 0, -12, 24, ui.rec_gain}};
-    case PageId::InputConfig: // the source is on B1-B3
-        return {Binding {Kind::RecThreshold, 0, -60, 0, ui.rec_threshold}, Binding {}, Binding {}};
+    case PageId::Record: case PageId::InputConfig: { // as on the MPC's Sample Record: K1 source, K2 rec length, K3 threshold
+        const auto& in = ui.settings.input;
+        return {Binding {Kind::RecSource, 0, 0, int(InputSource::Count) - 1, int(in.source)},
+                Binding {Kind::RecLength, 0, 0, int(rec_lengths) - 1, in.length},
+                Binding {Kind::RecThreshold, 0, InputConfig::threshold_min, 0, in.threshold}};
+    }
     case PageId::Project:
         if (ui.sheet_open || ui.move_open) return {};
         return {Binding {}, Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},

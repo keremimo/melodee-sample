@@ -50,6 +50,9 @@ void shift_pad(Context& c, unsigned pad) {
     case 14: // Warp: Time stretch or Pitch for the kit (its Follow how)
         c.toggle_warp_mode();
         return;
+    case 10: // Resample: then a pad, which gets the pattern rendered
+        c.resample();
+        return;
     case 11: // Song
         c.open(PageId::Song);
         return;

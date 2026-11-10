@@ -52,6 +52,7 @@ public:
     // The app's sample library (service thread); the shell follows its changes.
     void set_library(SampleLibrary* library) { library_ = library; context_.library = library; }
     void set_store(ProjectStore* store) { store_ = store; context_.store = store; }
+    void set_input(InputRoute* input) { input_ = input; context_.input = input; }
 
 private:
     void button(SurfaceButton button, bool pressed);
@@ -83,6 +84,7 @@ private:
     uint32_t tap_down = 0;
     bool tap_held = false;
     ProjectStore* store_ = nullptr;
+    InputRoute* input_ = nullptr;
     unsigned store_seen = ~0u, settings_seen = ~0u, sounds_seen = ~0u;
     bool settings_loaded = false;
     int leave_after_save = -1; // the saves count to wait for before leaving
@@ -95,9 +97,11 @@ private:
     std::atomic<int32_t> pad_gain {0};
     // Phase 5: Chop (type, slices, the slice in hand, armed), the last pad's region and file, slots
     // used, the browser (rows, cursor, drive, preview) and its folder.
+    std::atomic<uint32_t> record_bits {0}; // phase 6: source, monitor, the take's pad + 1, cuts, rendering, pick, threshold
     std::atomic<uint32_t> chop_bits {0}, pad_start_now {0}, pad_end_now {0}, files_bits {0};
     mutable std::mutex text_lock;
     std::string pad_name_text, folder_text; // under text_lock
+    std::string input_summary() const;  // phase 6: Input Config, takes, Recall, renders
     std::string sample_summary() const;
 };
 
