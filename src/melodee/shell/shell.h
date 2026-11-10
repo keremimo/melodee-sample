@@ -76,7 +76,7 @@ private:
     uint32_t tap_down = 0, repeat_down = 0;
     bool tap_held = false, repeat_turned_on = false;
     ProjectStore* store_ = nullptr;
-    unsigned store_seen = ~0u, settings_seen = ~0u;
+    unsigned store_seen = ~0u, settings_seen = ~0u, sounds_seen = ~0u;
     bool settings_loaded = false;
     int leave_after_save = -1; // the saves count to wait for before leaving
     std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}, tempo_now {0}; // copies for summary()

@@ -2,12 +2,14 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/command.h"
+#include "melodee/model/sound_file.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
+#include <vector>
 #include <memory>
 #include <cstdint>
 #include <functional>
@@ -75,6 +77,20 @@ public:
     void punch_release();                                   // let go of every punch a pad holds
     void change_setting(unsigned row, int way);             // one step along a Settings row, kept on the card
     void toggle_favourite();                                // the sound under the Sounds cursor, else the loaded one
+    // The Name sheet: what is named, its first text and how long it may be.
+    void open_name(NameTarget target, const std::string& initial, unsigned limit, bool capitals);
+    void finish_name();                                     // Done: the name goes where it was asked for
+    void cancel_name() { ui.name.target = NameTarget::None; }
+    void name_project(bool as_new);                         // Save (no file yet) or Save as new: a name first
+    void rename_project(const std::string& path, const std::string& name); // Rename on the file sheet
+    void name_marker(unsigned bar);                         // Shift + Push on a marker
+    void save_sound();                                      // Shift + Sample Select away from Sounds
+    std::string name_path;                                  // Rename: the file being renamed
+    unsigned name_bar = 0;                                  // Marker: its bar
+    // Sounds of one's own on the card, copied in by the shell; the k-th of an engine's.
+    std::vector<UserSound> user_sounds;
+    const UserSound* user_sound(EngineKind engine, unsigned k) const;
+    unsigned user_sound_count(EngineKind engine) const;
     // Seq Record while the song plays: pattern launches become clips from the
     // next bar, growing a bar at a time; punches land on the song's punch lane.
     void song_tick();                                       // MIDI thread, often: follows the song's bar

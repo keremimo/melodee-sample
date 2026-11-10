@@ -20,6 +20,9 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/name_entry.h"
+#include "melodee/shell/name_suggest.h"
+#include "melodee/model/sound_file.h"
 #include "melodee/shell/sound_list.h"
 #include <array>
 #include <cmath>
@@ -986,9 +989,66 @@ void settings() {
     std::array<uint16_t, max_listed> list {};
     CHECK(sound_list(*track, ui, list) == 2 && list[0] == 3 && list[1] == 9);
 }
+void names() {
+    // Pads type like phone keys: a tap the first letter, again within 0.6 s the other.
+    NameEntry e;
+    e.start(NameTarget::ProjectSave, "", 31, false);
+    e.pad(0, 1000);            // A
+    e.pad(0, 1300);            // B (again in time)
+    e.pad(0, 2500);            // A (too late: a new letter)
+    CHECK(std::string(e.text) == "BA");
+    e.lower = true;
+    e.pad(1, 3000); e.pad(1, 3100); // d
+    CHECK(std::string(e.text) == "BAd");
+    e.pad(13, 3500);           // space
+    e.pad(14, 3600);           // digits
+    e.pad(1, 3700);            // 2
+    CHECK(std::string(e.text) == "BAd 2" && e.cursor == 5);
+    e.pad(15, 3800);           // delete
+    CHECK(std::string(e.text) == "BAd " && e.length == 4);
+    e.move(-2);
+    e.erase();                 // the A
+    CHECK(std::string(e.text) == "Bd " && e.cursor == 1);
+    e.step_char(1);            // d -> e, under the cursor
+    CHECK(std::string(e.text) == "Be ");
+    e.clear();
+    CHECK(e.length == 0 && e.text[0] == 0);
+    // Limits, capitals and characters a card would refuse.
+    NameEntry m;
+    m.start(NameTarget::Marker, "verse/two:", 11, true);
+    CHECK(std::string(m.text) == "VERSETWO");
+    for (unsigned k = 0; k < 10; ++k) m.pad(4, 10000 + k * 1000);
+    CHECK(m.length == 11);
+    m.lower = true; m.clear(); m.pad(0, 50000);
+    CHECK(std::string(m.text) == "A"); // markers stay capitals
+    // K1's ready names: the marker list after the marker's own.
+    std::array<const char*, max_suggestions> names {};
+    NameEntry k;
+    k.start(NameTarget::Marker, "VERSE", 11, true);
+    unsigned count = name_suggestions(k, names);
+    CHECK(count == 1 + Song::marker_name_count && std::string(names[0]) == "VERSE" && std::string(names[1]) == "INTRO");
+    // A sound of one's own: its file keeps the engine, the name, the values and the routes.
+    auto track = std::make_unique<Track>();
+    load_sound(*track, EngineKind::Fm6, 2);
+    track->params[3] = -7; track->mods[1] = {2, 3, -40};
+    auto bytes = save_sound(sound_of(*track, "BELL TREE"));
+    UserSound back;
+    CHECK(load_sound_file(bytes, back));
+    CHECK(back.engine == EngineKind::Fm6 && std::string(back.name) == "BELL TREE" && back.params == track->params);
+    CHECK(back.mods[1].source == 2 && back.mods[1].destination == 3 && back.mods[1].amount == -40);
+    bytes[0] = 'X';
+    CHECK(!load_sound_file(bytes, back));
+    // The Sounds list counts sounds of one's own after the factory ones.
+    UiState ui;
+    ui.user_sound_count = 2;
+    std::array<uint16_t, max_listed> list {};
+    unsigned listed = sound_list(*track, ui, list);
+    CHECK(listed == fm6::info().sound_count + 2 && list[listed - 1] == fm6::info().sound_count + 1);
+}
 } // namespace
 
 int main() {
+    names();
     settings();
     punches();
     more_engines();

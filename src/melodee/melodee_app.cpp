@@ -112,8 +112,9 @@ void MelodeeApp::draw(juce::Graphics& g) {
     ui::Paint p(g);
     g.fillAll(ui::colour::bg);
     page_spec(frame->ui.page).draw(p, *frame);
+    if (frame->ui.name.open()) draw_name_sheet(p, *frame);
     if (frame->ui.exit_open) draw_exit_sheet(p, *frame);
-    else if (frame->ui.shift && !frame->ui.shift_used) draw_shift_layer(p, *frame);
+    else if (frame->ui.shift && !frame->ui.shift_used && !frame->ui.name.open()) draw_shift_layer(p, *frame);
 }
 
 void MelodeeApp::service(Hardware& hardware) {

@@ -108,12 +108,11 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   edges while there are none. **Play on the Song page plays the arrangement
   from the cursor; Play anywhere else plays the patterns** (assumed, part of
   open question 4). The song stops at its end unless a loop is set.
-  **Shift + Push on Song adds a marker at the cursor bar**; again on a
-  marker gives it the next name (INTRO, VERSE, CHORUS, BRIDGE, DROP,
-  BREAK, OUTRO), and after OUTRO removes it. A new marker takes the name
-  after the one before it. This is the one place Shift + Push is not Back
-  (Kerem's choice); the Shift layer says so on Song. Names come from that
-  list until a page for typing exists (open question 9). SongZoom's motion and punch lanes are not drawn yet.
+  **Shift + Push on Song adds a marker at the cursor bar**, named after the
+  one before it (INTRO, VERSE, CHORUS, BRIDGE, DROP, BREAK, OUTRO); Shift +
+  Push on a marker opens the Name sheet to type its name (K1 there steps
+  the ready names). This is the one place Shift + Push is not Back
+  (Kerem's choice); the Shift layer says so on Song.
 - **Effects along the signal:** each track runs its chain (6 slots), then
   its one send goes into the bus it picks (A–D, 6 slots each, with a
   return), and everything meets in the master chain (6 slots) before main
@@ -202,9 +201,11 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   with their tracks and tempo; K2 jumps, K3 sorts (newest, name). Push on a
   project opens its sheet: Save, Save as new, Duplicate, New folder here,
   Open at start, Delete (asks once more); on another project Load heads it.
-  Rename and Move to folder are dim until there is a page to type on (open
-  question 9). New names are Project n, copies "<name> copy", folders
-  Folder n. The service thread does every file operation (writing beside
+  Save (the first time), Save as new and Rename open the Name sheet, its
+  first name a free "Project n" (or the project's own); a typed name a
+  project in the folder has already gets " 2", " 3"; Rename onto one is
+  refused with a message. Move to folder waits for a folder picker. Copies
+  are "<name> copy", folders Folder n. The service thread does every file operation (writing beside
   the file, then renaming it into place); a load swaps the model on the MIDI
   thread and gives the audio thread a whole copy to switch to at once,
   then the project's samples load again. Nothing is created on the card
@@ -291,11 +292,24 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   apart). Pressure is depth. K1 punch of the last pad hit, K2 rate, K3
   depth. Punch settings and the pads' punches are saved with the project.
   Written into the Song with Seq Record on (see below).
-- **Favourites:** Shift + Sample Select ("Save sound" on the Shift layer)
-  stars the sound under the cursor on Sounds, elsewhere the track's loaded
-  sound; again unstars it. Sounds' FAVOURITES lists the starred ones, with
-  a star on each in ALL. Kept by engine in the settings file. Saving a
-  sound of one's own waits for typed names.
+- **Name sheet:** typing a name, over any page. Thirteen pads hold two
+  letters each like phone keys (a second tap within 0.6 s gives the
+  other), pad 14 a space, pad 15 digits and `- _ .`, pad 16 deletes; the
+  wheel moves the cursor, Shift + wheel or K2 turns the character under it
+  through the whole set, Erase deletes (Shift + Erase clears), Minus / Plus
+  move too, K1 fills in a ready name. B1 cancels, B2 Aa, B3 or Push keeps
+  it; an empty name changes nothing. Markers are capitals (11), projects
+  31, sounds 23; characters a card refuses in a file name are never
+  offered. Play and Stop still work under it.
+- **Sounds of one's own:** Shift + Sample Select away from Sounds is Save
+  sound: the Name sheet with the sound's name, then the engine's values
+  and mod routes go to `Melodee/Sounds/<name>.mlds` (a few hundred bytes;
+  the same name replaces it). They follow the factory sounds in Sounds,
+  numbered on, for their engine, and load, audition, star and show under
+  RECENT like them.
+- **Favourites:** on Sounds, Shift + Sample Select stars the sound under
+  the cursor; again unstars it. FAVOURITES lists the starred ones, with a
+  star on each in ALL. Kept by engine in the settings file.
 - **Settings (B2 on Project):** Melodee's own, kept in the `settings` file
   next to the projects (with the project to open at start): palette (NIGHT,
   the one there is), pad response (soft, medium, hard, fixed velocity), pad
@@ -320,8 +334,8 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Shift solos, pot pickup, the fader as mod wheel, pad / fader / button
   lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
 - **Shift layer:** drawn as on its board, and every second job works:
-  Sample → Projects, Pad Bank → previous bank, Sample Select → star the
-  sound (Save sound, until a sound of one's own can be named), Mute + pad →
+  Sample → Projects, Pad Bank → previous bank, Sample Select → Save sound
+  (on Sounds: star the one under the cursor), Mute + pad →
   solo, Erase → clear the pattern, Loop → double its length (notes and
   motion played twice), Seq → quantise the last take (notes played past
   half a step move onto the next), Play → continue from the bar the song
@@ -339,11 +353,11 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, song, songzoom,
   clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, record, project, filesheet, tempo, arp, chord,
-  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, shift and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, shift and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: typed names (markers, projects, a sound of one's own).
+Not yet: Move to folder (a folder picker).
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

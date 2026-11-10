@@ -271,7 +271,11 @@ struct Track {
     bool arp = false, arp_latch = false;
     uint8_t arp_mode = 0, arp_rate = 3, arp_octaves = 1, arp_gate = 60;
     bool used() const { return engine != EngineKind::None; }
-    void set_name(const char* text) { std::strncpy(name, text, name_length - 1); name[name_length - 1] = 0; }
+    void set_name(const char* text) {
+        unsigned n = 0;
+        for (; n + 1 < name_length && text[n]; ++n) name[n] = text[n];
+        std::fill(name + n, name + name_length, '\0');
+    }
 };
 
 struct Project {

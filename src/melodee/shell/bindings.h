@@ -31,7 +31,8 @@ struct Binding {
         CaptureBars, CaptureQuantise, CaptureInto, // Capture
         PadFine, PadPlayMode, PadGroup, PadReverse, PadAttack, PadDecay, PadRelease, PadSustain, // sampler pages
         PunchDepth, PunchSnap, PunchTail,          // Punch
-        PadPunchKind, PadPunchRate, PadPunchDepth  // Pad Punch: the last pad hit
+        PadPunchKind, PadPunchRate, PadPunchDepth, // Pad Punch: the last pad hit
+        NameSuggest, NameChar                      // the Name sheet
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

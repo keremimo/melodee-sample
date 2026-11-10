@@ -50,6 +50,19 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
 void Shell::button(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
+    if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
+        if (!pressed) return;
+        switch (b) {
+        case Button::TopLeft: context_.cancel_name(); return;
+        case Button::TopMiddle: if (!ui.name.caps_only) ui.name.lower = !ui.name.lower; return;
+        case Button::TopRight: case Button::WheelPush: context_.finish_name(); return;
+        case Button::Erase: if (ui.shift) { ui.shift_used = true; ui.name.clear(); } else ui.name.erase(); return;
+        case Button::Minus: ui.name.move(-1); return;
+        case Button::Plus: ui.name.move(1); return;
+        case Button::Play: case Button::Stop: break;
+        default: return;
+        }
+    }
     if (b == Button::PadBank) {
         // Held with a pad it picks a track; a tap alone moves a sampler track to its next bank.
         // With Shift, the previous bank.
@@ -124,7 +137,11 @@ void Shell::button(Button b, bool pressed) {
         context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
         break;
     case Button::SampleSelect: // on a sampler track it lists samples
-        if (ui.shift) { context_.toggle_favourite(); break; } // Save sound: a star among the favourites
+        if (ui.shift) { // on Sounds: a star among the favourites; elsewhere Save sound, named first
+            ui.shift_used = true;
+            if (ui.page == PageId::Sounds) context_.toggle_favourite(); else context_.save_sound();
+            break;
+        }
         if (!ui.shift) {
             bool kit = context_.track().engine == EngineKind::Sampler;
             context_.open(kit ? PageId::Samples : PageId::Sounds);
@@ -246,6 +263,10 @@ void Shell::pot(unsigned n, int position, bool syncing) {
 
 void Shell::wheel(int delta) {
     if (ui_.exit_open) return;
+    if (ui_.name.open()) { // Shift: the character under the cursor; else the cursor
+        if (ui_.shift) { ui_.shift_used = true; ui_.name.step_char(delta); } else ui_.name.move(delta);
+        return;
+    }
     if (ui_.shift && ui_.last_pot >= 0) {
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
         ui_.shift_used = true;
@@ -274,6 +295,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         }
     }
     if (down && ui_.exit_open) return;
+    if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
     page_spec(ui_.page).pad(context_, pad, velocity, down);
 }
 

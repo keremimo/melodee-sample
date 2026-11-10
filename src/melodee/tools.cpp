@@ -348,14 +348,26 @@ const Preview previews[] {
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
+    {"name", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Song; s.ui.song_cursor = 16; s.playing = true;
+         s.ui.name.start(NameTarget::Marker, "CHORUS", 11, true);
+         s.ui.name.pad(1, s.now); // C: the letter just typed, its pad lit
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"namesound", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Sounds; s.ui.track = 2; s.playing = true;
+         s.ui.name.start(NameTarget::Sound, "GLASS PLUCK", name_length - 1, true);
+         s.ui.name.digits = true; s.ui.name.insert(' '); s.ui.name.pad(1, s.now - 2000);
+     }},
 };
 
 void draw(juce::Graphics& g, const Snapshot& s) {
     ui::Paint p(g);
     g.fillAll(ui::colour::bg);
     page_spec(s.ui.page).draw(p, s);
+    if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);
-    else if (s.ui.shift && !s.ui.shift_used) draw_shift_layer(p, s);
+    else if (s.ui.shift && !s.ui.shift_used && !s.ui.name.open()) draw_shift_layer(p, s);
 }
 
 int preview(const std::string& folder, const std::vector<std::string>& names) {

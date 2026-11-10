@@ -8,6 +8,7 @@
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/name_suggest.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -150,6 +151,17 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         }
         case Kind::PadSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(s.project.tempo / 10); c.unit = "bpm"; break;
+        case Kind::NameSuggest: {
+            std::array<const char*, max_suggestions> names {};
+            unsigned count = name_suggestions(s.ui.name, names);
+            c.label = "SUGGEST"; c.value = count ? juce::String(names[std::min<unsigned>(unsigned(b.value), count - 1)]) : juce::String("None");
+            break;
+        }
+        case Kind::NameChar: {
+            char ch = NameEntry::charset[unsigned(b.value) % NameEntry::charset_size()];
+            c.label = "CHARACTER"; c.value = ch == ' ' ? juce::String("Space") : juce::String::charToString(juce::juce_wchar(ch));
+            break;
+        }
         case Kind::PunchDepth: case Kind::PadPunchDepth: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::PunchSnap: c.label = "SNAP"; c.value = punch_snaps[b.value % punch_snap_count]; break;
         case Kind::PadPunchRate: c.label = "RATE"; c.value = punch_snaps[b.value % punch_snap_count]; break;

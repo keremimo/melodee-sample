@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
 #include "melodee/engine/effect_info.h"
+#include "melodee/shell/name_suggest.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/model/mod_matrix.h"
@@ -78,6 +79,12 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
 
 std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
+    if (ui.name.open()) { // the Name sheet over the page: ready names, the character at the cursor
+        std::array<const char*, max_suggestions> names {};
+        unsigned count = name_suggestions(ui.name, names);
+        return {Binding {Kind::NameSuggest, 0, 0, int(std::max(count, 2u)) - 1, std::min<int>(ui.name.suggestion, int(count) - 1)},
+                Binding {Kind::NameChar, 0, 0, int(NameEntry::charset_size()) - 1, int(ui.name.char_at())}, Binding {}};
+    }
     switch (ui.page) {
     case PageId::Keys:
         return {Binding {Kind::Root, 0, 0, 11, project.root},

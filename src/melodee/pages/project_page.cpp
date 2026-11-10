@@ -5,8 +5,9 @@
 // on a folder goes in (Shift + Push comes back out), Push on a project
 // opens its sheet: on the open one Save, Save as new, Duplicate, New folder
 // here, Open at start, Delete; on any other Load heads the list. Delete asks
-// once more. Rename and Move to folder wait for a page to type on (open
-// question 9). The amber dot marks unsaved changes.
+// once more. Save (with no file yet), Save as new and Rename open the Name
+// sheet; Move to folder waits for a folder picker. The amber dot marks
+// unsaved changes.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/project_store.h"
@@ -148,7 +149,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (unsaved) { m.detail = "NOT SAVED"; m.detail_colour = amber; }
         else if (open && s.dirty) { m.detail = "UNSAVED CHANGES"; m.detail_colour = amber; }
         for (unsigned k = 0; k < n; ++k) {
-            bool off = list[k] == Rename || list[k] == MoveTo;
+            bool off = list[k] == MoveTo;
             juce::String name = action_name(list[k]);
             if (list[k] == Delete && s.ui.delete_armed && k == s.ui.sheet_row) name = "Delete: press again";
             if (list[k] == OpenAtStart && !unsaved && v.start == e->path) name = "Opens at start";
@@ -183,8 +184,11 @@ void act(Context& c) {
     if (unsaved && (action == Duplicate || action == OpenAtStart || action == Delete)) return;
     switch (action) {
     case Load: c.store->load(e->path); break;
-    case Save: c.save_project_to(unsaved ? c.store->free_path("") : e->path); break;
-    case SaveAsNew: c.save_project_to(c.store->free_path(std::string(c.project.name))); break;
+    case Save:
+        if (unsaved) { c.name_project(false); return; } // a name first
+        c.save_project_to(e->path);
+        break;
+    case SaveAsNew: c.name_project(true); return;
     case Duplicate: c.store->duplicate(e->path); break;
     case NewFolder: c.store->new_folder(); break;
     case OpenAtStart: c.store->open_at_start(e->path); break;
@@ -194,7 +198,8 @@ void act(Context& c) {
         if (open) c.project_path.clear(); // still open, but no longer on the card
         c.ui.delete_armed = false;
         break;
-    case Rename: case MoveTo: return; // need a page to type on
+    case Rename: c.rename_project(unsaved ? std::string() : e->path, unsaved ? std::string(c.project.name) : e->name); return;
+    case MoveTo: return; // needs a folder picker
     }
     c.ui.sheet_open = false;
     c.store->list(c.project_folder);

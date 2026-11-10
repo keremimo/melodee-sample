@@ -12,7 +12,9 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/name_suggest.h"
 #include <filesystem>
+#include <cstdio>
 #include <cstring>
 #include <algorithm>
 
@@ -189,9 +191,18 @@ void Context::set_param(unsigned t, int id, int value) {
 void Context::load_sound(unsigned t, EngineKind kind, unsigned sound) {
     auto& tr = project.tracks[t % track_count];
     bool engine_changed = tr.engine != kind;
-    melodee::load_sound(tr, kind, sound);
-    if (engine_changed) send({Type::Engine, uint8_t(t), 0, uint16_t(kind), 0});
-    send({Type::Sound, uint8_t(t), 0, uint16_t(tr.preset), 0});
+    const auto& info = engine_info(kind);
+    const UserSound* own = sound >= info.sound_count ? user_sound(kind, sound - info.sound_count) : nullptr;
+    if (own) { // a sound of one's own: its values and routes, as saved
+        tr.engine = kind; tr.preset = uint16_t(sound); tr.params = own->params; tr.mods = own->mods; tr.set_name(own->name);
+        if (engine_changed) send({Type::Engine, uint8_t(t), 0, uint16_t(kind), 0});
+        for (unsigned p = 0; p < info.param_count; ++p) send({Type::Param, uint8_t(t), 0, uint16_t(p), tr.params[p]});
+        for (unsigned r = 0; r < mod_routes; ++r) { Command c {Type::Mod, uint8_t(t), 0, uint16_t(r)}; c.route = tr.mods[r]; send(c); }
+    } else {
+        melodee::load_sound(tr, kind, sound);
+        if (engine_changed) send({Type::Engine, uint8_t(t), 0, uint16_t(kind), 0});
+        send({Type::Sound, uint8_t(t), 0, uint16_t(tr.preset), 0});
+    }
     if (t == ui.track) {
         // Keep it at the top of the recent list.
         unsigned w = 1;
@@ -213,7 +224,14 @@ void Context::audition(int sound) {
         ui.auditioning = -1;
         return;
     }
-    send({Type::Sound, ui.track, 0, uint16_t(sound), 0});
+    const auto& info = engine_info(t.engine);
+    if (unsigned(sound) >= info.sound_count) { // one's own: its values
+        const UserSound* own = user_sound(t.engine, unsigned(sound) - info.sound_count);
+        if (!own) return;
+        for (unsigned p = 0; p < info.param_count; ++p) send({Type::Param, ui.track, 0, uint16_t(p), own->params[p]});
+    } else {
+        send({Type::Sound, ui.track, 0, uint16_t(sound), 0});
+    }
     ui.auditioning = int16_t(sound);
 }
 
@@ -314,6 +332,13 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadRelease: pad().release = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::PadSustain: pad().sustain = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::Tempo: set_tempo(value * 10); break;
+    case Kind::NameSuggest: {
+        std::array<const char*, max_suggestions> names {};
+        unsigned count = name_suggestions(ui.name, names);
+        if (unsigned(value) < count) { ui.name.suggestion = uint8_t(value); ui.name.set(names[value]); }
+        break;
+    }
+    case Kind::NameChar: ui.name.set_char(unsigned(value)); break;
     case Kind::PunchDepth:
         project.punch_depth = uint8_t(value);
         if (ui.punch_held >= 0 || ui.punch_locked >= 0) send({Type::PunchDepth, 254, 0, 0, int16_t(value)});
@@ -385,6 +410,89 @@ void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {
 void Context::change_setting(unsigned row, int way) {
     ui.settings.step(row, way);
     if (store) store->save_settings(ui.settings.text());
+}
+
+const UserSound* Context::user_sound(EngineKind engine, unsigned k) const {
+    for (const auto& s : user_sounds) if (s.engine == engine && k-- == 0) return &s;
+    return nullptr;
+}
+unsigned Context::user_sound_count(EngineKind engine) const {
+    unsigned n = 0;
+    for (const auto& s : user_sounds) n += s.engine == engine;
+    return n;
+}
+
+void Context::open_name(NameTarget target, const std::string& initial, unsigned limit, bool capitals) {
+    ui.name.start(target, initial.c_str(), limit, capitals);
+    ui.sheet_open = false;
+}
+
+void Context::name_project(bool as_new) {
+    if (!store) return;
+    std::string suggestion = as_new ? std::string(project.name) : std::filesystem::path(store->free_path("")).stem().string();
+    open_name(as_new ? NameTarget::ProjectSaveAs : NameTarget::ProjectSave, suggestion, sizeof(project.name) - 1, false);
+}
+
+void Context::rename_project(const std::string& path, const std::string& name) {
+    name_path = path;
+    open_name(NameTarget::ProjectRename, name, sizeof(project.name) - 1, false);
+}
+
+void Context::name_marker(unsigned bar) {
+    int at = project.song.marker_at(bar);
+    if (at < 0) return;
+    name_bar = bar;
+    open_name(NameTarget::Marker, project.song.markers[size_t(at)].name, sizeof(Marker::name) - 1, true);
+}
+
+void Context::save_sound() {
+    auto& t = track();
+    if (t.engine == EngineKind::None || t.engine == EngineKind::Sampler || !store) return;
+    open_name(NameTarget::Sound, t.name, name_length - 1, true);
+}
+
+void Context::finish_name() {
+    auto& e = ui.name;
+    std::string text(e.text, e.length);
+    while (!text.empty() && text.back() == ' ') text.pop_back();
+    while (!text.empty() && text.front() == ' ') text.erase(text.begin());
+    NameTarget target = e.target;
+    e.target = NameTarget::None;
+    if (text.empty()) return; // an empty name changes nothing
+    switch (target) {
+    case NameTarget::ProjectSave: case NameTarget::ProjectSaveAs:
+        if (store) { save_project_to(store->named_path(text)); store->list(project_folder); }
+        break;
+    case NameTarget::ProjectRename:
+        if (name_path.empty() || name_path == project_path) std::snprintf(project.name, sizeof(project.name), "%s", text.c_str());
+        if (!name_path.empty() && store) {
+            store->rename(name_path, text);
+            if (name_path == project_path) {
+                auto p = std::filesystem::path(name_path);
+                project_path = (p.parent_path() / (text + p.extension().string())).string();
+            }
+            store->list(project_folder);
+        }
+        break;
+    case NameTarget::Marker: {
+        int at = project.song.marker_at(name_bar);
+        if (at >= 0) {
+            auto& m = project.song.markers[size_t(at)];
+            std::memset(m.name, 0, sizeof(m.name));
+            std::strncpy(m.name, text.c_str(), sizeof(m.name) - 1);
+            dirty = true;
+        }
+        break;
+    }
+    case NameTarget::Sound: {
+        auto& t = track();
+        if (!store || t.engine == EngineKind::None || t.engine == EngineKind::Sampler) break;
+        t.set_name(text.c_str());
+        store->save_sound(text, melodee::save_sound(sound_of(t, text.c_str())));
+        break;
+    }
+    case NameTarget::None: break;
+    }
 }
 
 void Context::toggle_favourite() {

@@ -6,6 +6,7 @@
 #include "runtime/app.h"
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -38,6 +39,38 @@ void ProjectStore::remove(const std::string& path) { push(new Request {Request::
 void ProjectStore::new_folder() { push(new Request {Request::Kind::NewFolder, {}, {}}); }
 void ProjectStore::open_at_start(const std::string& path) { push(new Request {Request::Kind::OpenAtStart, path, {}}); }
 void ProjectStore::save_settings(const std::string& text) { push(new Request {Request::Kind::Settings, text, {}}); }
+void ProjectStore::rename(const std::string& path, const std::string& name) {
+    push(new Request {Request::Kind::Rename, path, std::vector<uint8_t>(name.begin(), name.end())});
+}
+void ProjectStore::save_sound(const std::string& name, std::vector<uint8_t> bytes) { push(new Request {Request::Kind::SaveSound, name, std::move(bytes)}); }
+
+std::string ProjectStore::named_path(const std::string& name) const {
+    std::string dir;
+    { std::lock_guard<std::mutex> guard(lock); dir = known.root.empty() ? std::string() : known.root + (known.folder.empty() ? "" : "/" + known.folder); }
+    if (dir.empty() || name.empty()) return {};
+    std::error_code error;
+    for (unsigned n = 1; n < 1000; ++n) {
+        auto path = dir + "/" + name + (n == 1 ? std::string() : " " + std::to_string(n)) + extension;
+        if (!fs::exists(path, error)) return path;
+    }
+    return {};
+}
+
+// Sounds of one's own, read whole: they are a few hundred bytes each.
+void ProjectStore::scan_sounds() {
+    std::vector<UserSound> sounds;
+    std::error_code error;
+    if (!root.empty())
+        for (const auto& item : fs::directory_iterator(fs::path(root).parent_path() / "Sounds", error)) {
+            if (item.path().extension() != ".mlds") continue;
+            UserSound s;
+            if (load_sound_file(read_file(item.path().string()), s)) sounds.push_back(s);
+        }
+    std::sort(sounds.begin(), sounds.end(), [](const UserSound& a, const UserSound& b) { return std::strcmp(a.name, b.name) < 0; });
+    std::lock_guard<std::mutex> guard(lock);
+    known.sounds = std::move(sounds);
+    changes.fetch_add(1, std::memory_order_release);
+}
 
 std::unique_ptr<LoadedProject> ProjectStore::take_loaded() {
     LoadedProject* l = nullptr;
@@ -97,6 +130,7 @@ void ProjectStore::service(Hardware& hardware) {
                 std::lock_guard<std::mutex> guard(lock);
                 known.settings = settings; known.settings_read = !root.empty();
             }
+            scan_sounds();
             scan();
             if (!started && !start.empty() && fs::exists(start, error)) {
                 auto* l = new LoadedProject {start, {}, read_file(start)};
@@ -165,6 +199,29 @@ void ProjectStore::run(Request& r) {
         settings = r.path;
         write_settings(error);
         break;
+    case Request::Kind::Rename: {
+        std::string name(r.bytes.begin(), r.bytes.end());
+        auto target = fs::path(r.path).parent_path() / (name + extension);
+        if (fs::exists(target, error)) { publish_message("A project has that name"); return; }
+        fs::rename(r.path, target, error);
+        if (error) { publish_message("Could not rename"); return; }
+        if (start == r.path) { start = target.string(); write_settings(error); }
+        break;
+    }
+    case Request::Kind::SaveSound: {
+        auto dir = fs::path(root).parent_path() / "Sounds";
+        fs::create_directories(dir, error);
+        auto path = (dir / (r.path + ".mlds")).string(), temporary = path + ".new";
+        {
+            std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+            file.write(reinterpret_cast<const char*>(r.bytes.data()), std::streamsize(r.bytes.size()));
+            if (!file) { publish_message("Could not save the sound"); fs::remove(temporary, error); return; }
+        }
+        fs::rename(temporary, path, error);
+        if (error) { publish_message("Could not save the sound"); return; }
+        scan_sounds();
+        break;
+    }
     }
     if (error) publish_message(error.message());
     scan();

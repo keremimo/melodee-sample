@@ -9,8 +9,8 @@ namespace melodee {
 using namespace ui;
 
 void draw_shift_layer(Paint& p, const Snapshot& s) {
-    // Second jobs, as on the Shift board. Save sound stars the sound for
-    // FAVOURITES until a sound of one's own can be named.
+    // Second jobs, as on the Shift board. On Sounds, Save sound stars the
+    // sound under the cursor instead.
     static const char* const jobs[][2] {
         {"SAMPLE", "Projects"}, {"PAD BANK", "Previous pad bank"}, {"SAMPLE SELECT", "Save sound"},
         {"MUTE", "+ pad: solo track"}, {"ERASE", "Clear pattern"}, {"LOOP", "Double length"}, {"SEQ", "Quantise take"},

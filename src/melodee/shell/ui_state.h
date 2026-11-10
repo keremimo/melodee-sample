@@ -4,6 +4,7 @@
 #include "melodee/model/limits.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/chop.h"
+#include "melodee/shell/name_entry.h"
 #include "melodee/shell/settings.h"
 #include <array>
 #include <cstdint>
@@ -95,6 +96,8 @@ struct UiState {
     int8_t pad_punch_held = -1;               // Pad Punch: the kit pad held, punching
     uint8_t pad_punch_pressure = 0;           // and how hard, 0..127
     Settings settings;                        // Melodee's own, from the card
+    NameEntry name;                           // the Name sheet, over any page while open
+    uint16_t user_sound_count = 0;            // sounds of one's own for the track's engine, copied in by the shell
     uint8_t settings_cursor = 1;
     bool settings_editing = false;            // Push opened the value under the cursor
     std::array<Pot, 3> pots {};

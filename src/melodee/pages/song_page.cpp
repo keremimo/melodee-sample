@@ -287,7 +287,12 @@ void nudge(Context& c, int way) {
 }
 } // namespace
 
-void song_marker(Context& c) { c.project.song.step_marker(c.ui.song_cursor); }
+// Shift + Push: a marker at the cursor with the next ready name, or on a
+// marker the Name sheet to type its name (K1 there still steps the ready ones).
+void song_marker(Context& c) {
+    if (c.project.song.marker_at(c.ui.song_cursor) >= 0) c.name_marker(c.ui.song_cursor);
+    else c.project.song.step_marker(c.ui.song_cursor);
+}
 
 const PageSpec song_page {draw, pad, wheel, push, soft, nudge};
 

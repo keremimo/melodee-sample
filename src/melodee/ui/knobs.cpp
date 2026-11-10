@@ -24,7 +24,8 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
         float inner = x + 6, iw = w - 12;
         p.text(c.label, inner, top + 4.5f, iw, 10, caps_text(c.shade));
         auto value = plain(c.state == State::Pickup ? colour::dim : colour::text, type::value, Weight::Medium);
-        float vw = p.text(c.value, inner, top + 14, iw, 20, value);
+        float room = iw - (c.unit.isNotEmpty() ? p.width(c.unit, plain(colour::mid, 9)) + 3 : 0.0f);
+        float vw = p.text(c.value, inner, top + 14, iw, 20, p.fit(c.value, value, room, 9)); // a long name shrinks to fit
         if (c.unit.isNotEmpty())
             p.text(c.unit, inner + vw + 2.5f, top + 15.5f, iw - vw, 20, plain(colour::mid, 9));
         // The gauge: a 2 px track with the value filled in the knob's shade.
