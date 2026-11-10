@@ -84,7 +84,8 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   the octave and the view. Push on a note opens the note sheet: accent,
   slide, tie, copy half a bar on, delete.
 - **Edit, page map and mod matrix:** the engine's pages are followed by
-  the mod matrix, which every engine shares (PROPHET: page 11 of 11). B2
+  the mod matrix, which every engine shows (PROPHET: page 11 of 11; only
+  PROPHET hears it until parity phase 1d). B2
   opens the page map: the wheel moves, Push jumps there, Shift + Push or B2
   closes it, and the pots stay on the page underneath. The matrix has
   eight routes a track (`mod_routes`, open question 1), all on one screen;

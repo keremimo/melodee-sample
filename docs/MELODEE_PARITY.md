@@ -67,6 +67,9 @@ work from memory.
 2. Which other pages get fader context overrides (phase 8).
 3. Whether the internal drive (eMMC) is offered next to the SD card in the
    browsers, or the card only (phase 5).
+4. What pad pressure does on a synth out of the box (phase 1d): one
+   destination for every engine's sounds (cutoff / brightness, or vibrato),
+   or per engine.
 
 ## Phases
 
@@ -104,6 +107,22 @@ work from memory.
 - [ ] Note Repeat on the page: B1–B3 rates overlay, Shift triplets, double-tap opens Arp; triplet rates in the arp engine.
 - [ ] Shift + Erase with Pad Bank held copies a track (sound, kit, patterns; one undo). Phase 0 copies kit pads and patterns only.
 - [ ] Kits: 8 banks / 128 pads (`sampler_banks`, project file section, bank lights A–H); Pad Bank hold + −/+ or wheel jumps banks; hold shows the 16 tracks on screen.
+
+### Phase 1d: synth pad expression (Kerem, 2026-11-10)
+Kerem: synths don't respond to velocity or aftertouch. Found in phase 1b's
+session: both reach the engine host (`Command::NoteOn` velocity,
+`Command::Pressure` per key from the pads' poly aftertouch, `Context::pressure`),
+but pressure is heard only on PROPHET and only through a mod route set to
+Aftertouch (none by default); FM6, SID and CZ ignore `set_pressure` and the
+whole mod matrix (`set_mod`), though Edit shows its page on every engine.
+Velocity is heard everywhere (PROPHET VEL > AMP 50 / VEL > FLT 20, FM6 40 % per
+operator, CZ VELOCITY, SID fixed 0.4–1.0), but Full Level (Shift + Pad 1) was
+left on by phase 1b's device checks for a while, which plays every hit at 127.
+- [ ] Mod matrix and pressure on FM6, SID and CZ (each picks how far a destination moves, as PROPHET does), so the matrix page is heard on every engine.
+- [ ] Pressure does something out of the box on every synth (open question 4), without a mod route to set up; a route to Aftertouch still adds to it.
+- [ ] Velocity depth: clearly heard on every synth at its defaults (SID gets a velocity parameter like the others); factory sounds checked.
+- [ ] Pressure follows the notes a pad started: every note of a chord, and the arp's notes while the pad is held.
+- [ ] Checked by hand on the device (remote presses are fixed velocity 100 and send no pressure).
 
 ### Phase 2: timing foundation
 - [ ] Note offsets inside a step (ticks) in the model, engine and file; recording keeps the played time when Rec Quantize is off.
@@ -180,4 +199,4 @@ work from memory.
 - 2026-11-10: phase 0 done. Steps writes the kit pad hit last (`Track::step_note()`); 16 Levels lit while the pads play levels; Shift + Erase is Copy (kit pads, patterns on Patterns, also across tracks; elsewhere a notice), pattern clear only by Erase + pad on Patterns; Erase + pad on a kit erases that pad's notes while playing or recording (one undo, folded into an open take); Shift + −/+ undo / redo everywhere, Transpose on Keys row 2 (wheel); 909 pads 12–16 dark with a notice; Pad Bank tap on a track without banks says what Pad Bank + pad does. Previews `transpose`, `patterncopy`. Track copy (Pad Bank held) moved to phase 1c. Checked on the device through `--ctl melodee-press` (which now also takes `erase+pad3`, `pad-bank+pad5`: any button held around a pad): Pad Bank notice, 909 pad 12 notice, Steps writing A03's note, Erase + pad playing / stopped / in a take with undo and redo, pattern copy across tracks, undo on Keys, Transpose on row 2. 16 Levels light seen by Kerem: lit on Levels, dark with levels off. Then (Kerem): every pattern edit on the take's pattern during Seq Record (Erase + pad on Steps, Patterns or a kit, quantise, double, copy) is part of the take, not an undo of its own; checked on the device (Steps erase in a take, one Undo take, then Nothing to undo).
 - 2026-11-10: phase 1a done. Seq opens Patterns, whose cards are K1 length by the bar, K2 Q, K3 swing; the Length page is gone (Kerem: fold it in; B2 Song stays). Shift + Seq is Step Edit (Steps → Roll → Motion); "quantise take" is off the buttons until Time Correct. Loop opens the last pad's Play page on a kit, Shift + Loop flips its reverse. Shift + Sample opens Input Config (`pages/input_config_page.cpp`: source on B1–B3, threshold on K1, the input meter; a `RecordSource` command so the meter follows the source before arming); Record keeps K2 bars and K3 gain, B2 opens Input Config. Shift + Sample Record says Audio Recall is not there yet; Shift + Seq Record opens Recall (Capture). Shift + Sample Select: Sounds star, kit Save Sample (Name sheet, then "not yet"), synth Save sound. Shift + Tap Tempo cycles the metronome Off / On / Rec (`Project::click` is now a mode; Rec follows Seq Record). Back is a 16-deep page stack (`shell/page_stack.cpp`; sibling groups are one stop). Minimal Shift + pad route (`shell/shift_pads.cpp`): 3 Double Seq (was Shift + Loop), 12 Song, 16 Project (was Shift + Sample), except on Patterns and Punch, which keep Shift + pad for now. Button lights faint where the button has a job on the page, bright in use, dark otherwise (`shell/button_jobs.cpp`; Kerem's addition). Previews `inputconfig`, `shiftkit`; `length` dropped. Test `button_remap()`.
 - 2026-11-10: phase 1b done. Shift + Pad 1–16 are the printed jobs on every page, names from Akai's features guide (`shell/shift_pad_jobs.cpp` holds the table the dispatch, the overlay and the lights share; `shell/shift_pads.cpp` dispatches). Printed wins on Patterns and Punch (the rule above): Patterns' column launch moved to a B3 COLUMN latch (header LAUNCH COLUMN), Punch's lock to Push while a punch is held (Push again unlocks). Wired: 1 Full Level (pad response "Full level", every hit at 127; again back to the curve it came from), 3 Double Seq, 4 Count-In and 10 Rec Quantize (toggles in Melodee's settings file; behaviour in phase 2), 12 Song, 16 Project; the rest say "<name>: phase n". The overlay draws the sixteen as the pads sit with ON / OFF / phase marks next to a one-line button list, and while Shift is held the pads light (toggle on bright, a job faint, not built dark) and, as Akai's guide says, the buttons with a built Shift job glow faintly and the rest go dark (`button_has_shift_job()`). Shift + K: `shift_bindings()` is the Shift row, `page_bindings()` swaps it in while Shift is held, cards carry a Shift icon (filled while held), the overlay's knob strip shows only Shift cards; Keys transpose is Shift + K3 and `keys_row` is gone. −/+: lists (Sounds, Samples, Project, Patterns, Mix, Sends) move as the wheel, Tempo by a whole BPM, Motion nothing; octave stays on Stage, Keys, Edit, Chord, Roll. Remote: `shift+k3=V`, `hold-BUTTON` / `release-BUTTON`, `hold-padN` / `release-padN`; `status` adds `melodee_pads=`. Previews `shiftkeys` added, `transpose` redrawn. Test `shift_pads()`. Checked on the MPC through `--ctl` (see phase1b.md).
-
+- 2026-11-10: phase 1d added (Kerem: synths ignore velocity and aftertouch); findings in its preamble.
