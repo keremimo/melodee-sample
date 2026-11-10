@@ -30,6 +30,7 @@ struct MidiOutEvent {
     uint32_t value = 0;
     uint64_t frame = 0; // the audio thread's frame it belongs to
     MidiDest dest = MidiDest::Config; // where it goes out (a MIDI track's own port, docs/MIDI_TRACKS.md)
+    uint8_t track = 255;              // the MIDI track it is from (255: none)
 };
 
 // The audio clock against CLOCK_MONOTONIC. The audio thread stamps each

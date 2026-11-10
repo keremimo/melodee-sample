@@ -826,6 +826,7 @@ void EngineHost::midi_note(unsigned t, int key, int velocity, uint64_t at, int64
     auto event = [&](MidiOutEvent::Kind kind, uint8_t b, uint64_t when) {
         MidiOutEvent e {kind, channel, uint8_t(key), b, 0, when};
         e.dest = dest;
+        if (own) e.track = uint8_t(t);
         emit(e);
     };
     for (auto& off : midi_offs) // a retrigger ends the note it replaces first

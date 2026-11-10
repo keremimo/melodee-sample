@@ -222,6 +222,7 @@ private:
     static MidiOutEvent off_event(const MidiOff& off, uint64_t at) {
         MidiOutEvent e {MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, at};
         e.dest = off.dest;
+        if (off.dest != MidiDest::Config) e.track = off.track;
         return e;
     }
     std::array<MidiOff, 128> midi_offs {};

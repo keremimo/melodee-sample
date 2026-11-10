@@ -296,18 +296,19 @@ void MidiIo::configure(Context& c, bool force) {
     configured = true;
 }
 
-void MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest) {
+bool MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest) {
     const auto& config = c.ui.settings.midi;
     bool sent = false;
     for (const auto& port : out.ports())
         if (port.output && dest_is(dest, config.port, port.driver, port.surface)) sent |= out.send(port.address, packet);
-    if (!sent) return;
+    if (!sent) return false;
     outs.fetch_add(1, std::memory_order_relaxed); c.ui.midi_out_at = c.now;
-    if (dest == MidiDest::Config) return;
+    if (dest == MidiDest::Config) return true;
     track_outs.fetch_add(1, std::memory_order_relaxed);
     last_out.store((unsigned(packet.bytes[0]) << 16) | (packet.size > 1 ? unsigned(packet.bytes[1]) << 8 : 0) |
                    (packet.size > 2 ? packet.bytes[2] : 0), std::memory_order_relaxed);
     last_dest.store(unsigned(dest), std::memory_order_relaxed);
+    return true;
 }
 
 void MidiIo::panic(Context& c, MidiOutput& out) {
@@ -331,7 +332,10 @@ void MidiIo::panic(Context& c, MidiOutput& out) {
 void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
     using K = MidiOutEvent::Kind;
     switch (e.kind) {
-    case K::NoteOn: send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest); break;
+    case K::NoteOn:
+        if (send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest) && e.track < track_count)
+            c.ui.track_out_at[e.track] = c.now;
+        break;
     case K::NoteOff: send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest); break;
     case K::Clock: send_all(c, out, packet_of(juce::MidiMessage::midiClock())); break;
     case K::Start: send_all(c, out, packet_of(juce::MidiMessage::midiStart())); break;
@@ -375,6 +379,16 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     for (unsigned n = 0; n < thru_count; ++n) send_all(c, out, thru[n]);
     thru_count = 0;
     if (panics_done != c.midi_panics) { panics_done = c.midi_panics; panic(c, out); }
+    { // the outputs there now, for Edit's DEVICE picture (a handful of ports: cheap every pass)
+        uint32_t bits = 0, devices = 0;
+        for (const auto& port : out.ports()) {
+            if (!port.output || port.surface) continue;
+            if (port.driver == "SerialMIDI") bits |= 1;
+            else if (port.driver == "MIDI Gadget") bits |= 2;
+            else ++devices;
+        }
+        c.ui.midi_outputs = bits | std::min(devices, 255u) << 8;
+    }
     const auto& clock = c.host.audio_clock();
     int64_t now_ns = ns_of(now);
     MidiOutEvent e;

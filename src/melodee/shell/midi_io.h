@@ -50,7 +50,7 @@ private:
     void follow_mtc(Context& c, const MtcReader::Event& e); // what time code did: start, place, keep on time, stop
     void send_mtc(Context& c, uint16_t what, const MtcReader::Event& e);
     // To every output of `dest` (MIDI Config's port, or a MIDI track's own).
-    void send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest = MidiDest::Config);
+    bool send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest = MidiDest::Config); // true: sent somewhere
     void panic(Context& c, MidiOutput& out); // All Sound Off, All Notes Off, pitch bend centre: every channel, every port
     struct Pending { int64_t due = 0; MidiOutEvent event; };
     std::array<Pending, 512> pending {}; // sorted by when it is heard

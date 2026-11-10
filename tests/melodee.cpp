@@ -3504,10 +3504,11 @@ void midi_tracks() {
         CHECK(pads.size() == 2);
         CHECK(pads[0].kind == K::NoteOn && pads[0].channel == 10 && pads[0].a == 48 && pads[0].dest == MidiDest::UsbC);
         CHECK(pads[1].kind == K::NoteOn && pads[1].channel == 5 && pads[1].dest == MidiDest::Config);
+        CHECK(pads[0].track == 0 && pads[1].track == 255); // the DEVICE picture's light: a MIDI track's own sends only
         // A new channel ends the held note on the old one.
         host.send({Command::Type::Param, 0, 0, midi_track::Channel, 11});
         auto moved = block();
-        CHECK(moved.size() == 1 && moved[0].kind == K::NoteOff && moved[0].channel == 10 && moved[0].a == 48 && moved[0].dest == MidiDest::UsbC);
+        CHECK(moved.size() == 1 && moved[0].kind == K::NoteOff && moved[0].channel == 10 && moved[0].a == 48 && moved[0].dest == MidiDest::UsbC && moved[0].track == 0);
         // The same value again sends nothing; a new port ends the notes too.
         host.send({Command::Type::NoteOn, 0, 0, 49, 90});
         host.send({Command::Type::Param, 0, 0, midi_track::Channel, 11});
