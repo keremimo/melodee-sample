@@ -908,7 +908,8 @@ std::optional<int> run_tool(int argc, char** argv) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return preview(argv[2], names);
     }
-    if (argc == 3 && !std::strcmp(argv[1], "--melodee-sound")) return sound(argv[2]);
+    // --self-test is what device.py and the SD boot run before stopping the stock app.
+    if (argc == 3 && (!std::strcmp(argv[1], "--melodee-sound") || !std::strcmp(argv[1], "--self-test"))) return sound(argv[2]);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return bench(unsigned(std::max(1, std::atoi(argv[2]))), names);

@@ -4,7 +4,7 @@ Melodee is a groovebox app on sample-base: sixteen tracks, one per pad,
 each playing one sound engine (four synths, a 909 and a sampler), sequenced
 in patterns and a song, mixed and effected on the MPC. Every printed button
 keeps its MPC meaning; Melodee's own pages sit where the MPC leaves room.
-Start it with `python3 device.py start --app melodee`.
+Start it with `python3 device.py start`; `./release.sh` packages it for an SD card.
 
 Everything is written for sample-base: interface, sequencer and engines.
 Nothing from the FM-1 firmware is compiled or emulated; the engine ports in
@@ -15,8 +15,9 @@ now.
 
 ## Source layout
 
-Everything lives in `src/melodee/`, so it can later move to its own
-repository as one folder. Layering follows [APPS.md](APPS.md).
+Everything lives in `src/melodee/`, with `src/main.cpp` wiring it to the
+sample-base runtime in the `base/` submodule. Layering follows
+[APPS.md](../base/docs/APPS.md).
 
 | Folder | Responsibility |
 | --- | --- |
@@ -34,7 +35,7 @@ there shows the panel as this file describes it.
 
 ## Threads and data
 
-Each runtime hook runs on one thread ([APPS.md](APPS.md)); Melodee keeps
+Each runtime hook runs on one thread ([APPS.md](../base/docs/APPS.md)); Melodee keeps
 one owner per piece of state.
 
 - **MIDI thread** owns the project and the interface state. Pads, buttons,
@@ -531,7 +532,7 @@ card access (`melodee_card` 0 home, 1 lending, 2 lent, 3 returning;
 
 ## Previews
 
-`build/sample-base --melodee-preview DIR [PAGE]` draws every named page at
+`build/melodee --melodee-preview DIR [PAGE]` draws every named page at
 1× and 2× (the 2× ones line up with the 640 × 480 boards); the names are in
 `src/melodee/tools.cpp` (`cardrow`, `cardaccess`, `cardejected`,
 `cardlocked`, `cardnocomputer`, `cardnone`, `miditrack` and `midipanic`

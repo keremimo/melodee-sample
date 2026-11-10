@@ -24,7 +24,7 @@ class MelodeeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             binary = Path(temp) / "melodee"
             subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror",
-                            "-I" + str(ROOT / "src"), str(ROOT / "tests/melodee.cpp"),
+                            "-I" + str(ROOT / "src"), "-I" + str(ROOT / "base/src"), str(ROOT / "tests/melodee.cpp"),
                             *[str(ROOT / s) for s in SOURCES], "-o", str(binary)], check=True)
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stderr)
