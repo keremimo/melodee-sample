@@ -164,9 +164,12 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Pad (pitch, fine, level); Play (gate or one shot, mute group with its
   pads shown, reverse); Envelope (attack, decay, release; sustain on row 2;
   this pad only); Filter (cutoff, resonance, low / band / high pass, the
-  whole kit); Follow (the whole kit keeps the project's tempo by speed, each
-  pad's own tempo worked out from its length as whole bars; time-stretch
-  is not built yet); Cloud (pads as clouds of grains while held: position,
+  whole kit); Follow (the whole kit keeps the project's tempo, each pad's own
+  tempo worked out from its length as whole bars; K2 how: Beats plays a
+  sixteenth-long segment from where the sound should be, so hits stay
+  whole, Tones overlaps 60 ms windows for held sounds, Tape moves speed and
+  pitch together; K3 what a pitch change does: Speed, or Stretch to keep
+  the length; written here as a two-tap granular stretcher in the voice); Cloud (pads as clouds of grains while held: position,
   grain size 10 ms to 1 s, density, then scan, spread and on / off).
 - **Chop** (Chop on a sampler track): the last pad's sample cut by Hits
   (sensitivity), Even (2–64 slices) or Beats (1–8 beats a slice at the
@@ -318,8 +321,7 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: typed names (markers, projects), Seq
-Record writing launches and punches into the song, time-stretch,
-favourites.
+Record writing launches and punches into the song, favourites.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

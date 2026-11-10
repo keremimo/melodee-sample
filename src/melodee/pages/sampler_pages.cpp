@@ -198,7 +198,10 @@ void follow_draw(Paint& p, const Snapshot& s) {
     double longest = std::max(length, played);
     line(y, own > 0 ? "ITS OWN TEMPO " + juce::String(own, 0) + " BPM" : juce::String("ITS OWN TEMPO: TURN FOLLOW ON"), length, float(length / longest));
     line(y + 44, "IN THE PROJECT " + juce::String(project, 1) + " BPM", played, float(played / longest));
-    pills(p, y + 88, {on ? "FOLLOWING BY SPEED" : "NOT FOLLOWING", "STRETCH: NOT YET"}, c);
+    static const char* hows[] {"FOLLOWING BY BEATS", "FOLLOWING BY TONES", "FOLLOWING BY TAPE"};
+    unsigned how = unsigned(s.track().params[sampler::FollowHow]) % 3;
+    pills(p, y + 88, {on ? hows[how] : "NOT FOLLOWING",
+                      s.track().params[sampler::PitchHow] ? "PITCH KEEPS LENGTH" : "PITCH MOVES SPEED"}, c);
 }
 
 void cloud_draw(Paint& p, const Snapshot& s) {

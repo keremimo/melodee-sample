@@ -192,7 +192,7 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::PadRelease, 0, 0, 100, pad.release}};
     }
     case PageId::FilterPage: return {param(track, sampler::Filter), param(track, sampler::Resonance), param(track, sampler::FilterType)};
-    case PageId::FollowPage: return {param(track, sampler::Follow), Binding {}, param(track, sampler::Tune)};
+    case PageId::FollowPage: return {param(track, sampler::Follow), param(track, sampler::FollowHow), param(track, sampler::PitchHow)};
     case PageId::CloudPage:
         if (ui.sampler_row) return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
         return {param(track, sampler::Position), param(track, sampler::Size), param(track, sampler::Density)};

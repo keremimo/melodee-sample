@@ -22,6 +22,7 @@ enum Param : int8_t {
     Tune, Filter, Resonance, Decay, Level,      // the kit
     FilterType, Follow,                         // Filter, Follow pages
     Cloud, Position, Size, Density, Scan, Spread, // Cloud: pads as clouds of grains
+    FollowHow, PitchHow,                        // Follow: Beats / Tones / Tape; a pitch change moves speed or is stretched
     Count
 };
 }
@@ -71,6 +72,16 @@ private:
         uint32_t start = 0, end = 0;
         bool reverse = false, held = false, gate = false, choked = false, cloud = false;
         double next_grain = 0, scan = 0; // Cloud: samples to the next grain; how far the place has moved
+        // Stretch (Follow by Beats or Tones, or a pitch kept to length): `place`
+        // moves through the sample at `advance`; taps read from where they
+        // began at `step` (the pitch), each faded over `window`, a new one every `hop`.
+        bool stretch = false, beats = false;
+        double place = 0, advance = 1;
+        std::array<double, 2> tap {};
+        std::array<uint32_t, 2> tap_age {};
+        std::array<bool, 2> tap_on {};
+        uint32_t window = 1, hop = 1, since_hop = 0;
+        unsigned next_tap = 0;
         uint8_t group = 0;
         float gain = 0, left = 0.7071f, right = 0.7071f, fade = 1;
         uint32_t age = 0;
@@ -104,6 +115,7 @@ private:
     PadEffects* pad_effects = nullptr;
     std::array<Lane, lanes> lane {};
     Lane* lane_for(int pad); // the pad's lane, a free one, or nullptr
+    void stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned frames);
 };
 
 } // namespace melodee

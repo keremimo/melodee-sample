@@ -526,6 +526,48 @@ void sampler_kit() {
         CHECK(difference > 0.01f);
         CHECK(other == other_dry);
     }
+    // Follow: a 441 Hz tone recorded at 60 BPM, played at 120. By Beats or
+    // Tones it lasts half as long at the same pitch; by Tape it also rises
+    // an octave. PITCH Stretch keeps an octave up to the tone's own length.
+    {
+        auto tone = std::make_unique<SampleData>();
+        tone->frames = 44100;
+        tone->left.resize(44100); tone->right.resize(44100);
+        for (unsigned n = 0; n < 44100; ++n) tone->left[n] = tone->right[n] = 0.5f * std::sin(2 * 3.14159265 * 441 * n / 44100.0);
+        SamplerEngine::Table tones {};
+        tones[0] = tone.get();
+        struct Heard { unsigned frames; float hz; };
+        auto hear = [&](int how, int pitch_how, int follow, int semitones) {
+            SamplerEngine engine;
+            engine.set_samples(&tones);
+            engine.set_tempo(1200);
+            engine.set_param(sampler::Follow, follow); engine.set_param(sampler::FollowHow, how); engine.set_param(sampler::PitchHow, pitch_how);
+            PadSound sound; sound.sample = 0; sound.own_tempo = 600; sound.pitch = int8_t(semitones); sound.decay = 100;
+            engine.set_pad(0, sound);
+            engine.note_on(int(sampler_first_note), 120);
+            std::vector<float> l(128), r(128), all;
+            for (unsigned b = 0; b < 1000 && engine.sounding(); ++b) {
+                std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+                engine.render_stereo(l.data(), r.data(), 128);
+                all.insert(all.end(), l.begin(), l.end());
+            }
+            unsigned crossings = 0, from = 2000, to = std::min<unsigned>(unsigned(all.size()), 12000);
+            for (unsigned n = from + 1; n < to; ++n) crossings += (all[n - 1] < 0) != (all[n] < 0);
+            return Heard {unsigned(all.size()), crossings / 2.0f / ((to - from) / 44100.0f)};
+        };
+        for (int how : {0, 1}) {
+            auto h = hear(how, 0, 1, 0);
+            if (!(std::abs(int(h.frames) - 22050) < 600 && std::fabs(h.hz - 441) < 20)) std::fprintf(stderr, "how %d: %u frames %f Hz\n", how, h.frames, h.hz);
+            CHECK(std::abs(int(h.frames) - 22050) < 600 && std::fabs(h.hz - 441) < 20);
+        }
+        auto tape = hear(2, 0, 1, 0);
+        CHECK(std::abs(int(tape.frames) - 22050) < 600 && std::fabs(tape.hz - 882) < 30);
+        auto up = hear(1, 1, 0, 12); // no follow, an octave up, kept to length
+        if (!(std::abs(int(up.frames) - 44100) < 600 && std::fabs(up.hz - 882) < 30)) std::fprintf(stderr, "up: %u frames %f Hz\n", up.frames, up.hz);
+        CHECK(std::abs(int(up.frames) - 44100) < 600 && std::fabs(up.hz - 882) < 30);
+        auto plain = hear(1, 0, 0, 12); // an octave up by speed: half as long
+        CHECK(std::abs(int(plain.frames) - 22050) < 600 && std::fabs(plain.hz - 882) < 30);
+    }
     // Pad chains survive a save, four slots each.
     {
         auto project = std::make_unique<Project>();

@@ -46,8 +46,26 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     v.reverse = sound.reverse;
     v.position = v.reverse ? v.end - 1 : v.start;
     v.step = std::exp2((sound.pitch + semitones + sound.fine / 100.0 + p[Tune]) / 12.0);
-    if (p[Follow] && sound.own_tempo) v.step *= double(tempo) / sound.own_tempo; // Follow: the project's tempo, by speed
     v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
+    // Follow: the project's tempo from the pad's own. By Tape, speed and pitch
+    // move together; by Beats or Tones the sound is stretched, its pitch kept.
+    // PITCH Stretch keeps a pitch change from changing the length too.
+    double rate = p[Follow] && sound.own_tempo ? double(tempo) / sound.own_tempo : 1.0;
+    bool tape = p[FollowHow] == 2;
+    double pitch = tape ? v.step * rate : v.step;                         // what the taps read at
+    double advance = rate * (p[PitchHow] == 1 ? 1.0 : v.step);            // how fast the sound moves on
+    v.step = pitch;
+    if (!v.cloud && pad < int(sampler_pads) && std::fabs(pitch - advance) > 1e-6) {
+        v.stretch = true;
+        v.beats = p[FollowHow] == 0;
+        v.advance = advance;
+        v.place = v.position;
+        // Beats: a segment a sixteenth of the project long, cut in at its own place, so hits stay whole.
+        // Tones: 60 ms windows, half overlapped, for held sounds.
+        v.window = v.beats ? std::max(256u, unsigned(dsp::sample_rate * 15 / (tempo / 10.0))) : 2646u;
+        v.hop = v.beats ? v.window : v.window / 2;
+        v.since_hop = v.hop; // a tap at once
+    }
     v.held = true; v.gate = sound.play == PadPlay::Gate; v.group = sound.group;
     v.age = ++clock;
     float level = sound.level / 100.0f * p[Level] / 100.0f, velocity_gain = 0.25f + 0.75f * velocity / 127.0f;
@@ -130,6 +148,51 @@ void SamplerEngine::spawn(Voice& v) {
                 uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate), v.gain * v.env.level, v.left, v.right};
 }
 
+// A stretched voice: taps begin where `place` has got to and read at the
+// pad's pitch; Tones fades each over its window (sin², half overlapped, so
+// they sum to one), Beats plays each segment whole with 2 ms edges.
+void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned frames) {
+    const double way = v.reverse ? -1.0 : 1.0;
+    constexpr uint32_t edge = 88;
+    for (unsigned f = 0; f < frames; ++f) {
+        bool past = v.reverse ? v.place < v.start : v.place >= v.end - 1;
+        if (past) { v.pad = -1; return; }
+        if (v.since_hop >= v.hop) { // a new tap from here
+            v.since_hop = 0;
+            unsigned t = v.next_tap; v.next_tap ^= 1;
+            v.tap[t] = v.place; v.tap_age[t] = 0; v.tap_on[t] = true;
+        }
+        ++v.since_hop;
+        float a = v.env.next(v.shape) * v.gain * v.fade;
+        if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; return; } }
+        float sum_l = 0, sum_r = 0;
+        for (unsigned t = 0; t < 2; ++t) {
+            if (!v.tap_on[t]) continue;
+            double at = v.tap[t];
+            if (at < v.start || at >= v.end - 1 || v.tap_age[t] >= v.window) { v.tap_on[t] = false; continue; }
+            float w;
+            if (v.beats) {
+                uint32_t age = v.tap_age[t], left = v.window - age;
+                w = age < edge ? float(age) / edge : left < edge ? float(left) / edge : 1.0f;
+            } else {
+                float s = std::sin(dsp::pi * float(v.tap_age[t]) / float(v.window));
+                w = s * s;
+            }
+            unsigned i = unsigned(at);
+            float frac = float(at - i);
+            unsigned j = std::min(i + 1, v.end - 1);
+            sum_l += (l[i] + (l[j] - l[i]) * frac) * w;
+            sum_r += (r[i] + (r[j] - r[i]) * frac) * w;
+            v.tap[t] += way * v.step;
+            ++v.tap_age[t];
+        }
+        to_l[f] += sum_l * a * v.left;
+        to_r[f] += sum_r * a * v.right;
+        v.place += way * v.advance;
+        if (!v.env.active()) { v.pad = -1; return; }
+    }
+}
+
 SamplerEngine::Lane* SamplerEngine::lane_for(int pad) {
     Lane* free = nullptr;
     for (auto& l : lane) {
@@ -179,6 +242,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             }
         const float* l = v.sample->left.data();
         const float* r = v.sample->right.data();
+        if (v.stretch) { stretch(v, l, r, to_l, to_r, frames); continue; }
         for (unsigned f = 0; f < frames; ++f) {
             bool past = v.reverse ? v.position < v.start : v.position >= v.end - 1;
             if (past) { v.pad = -1; break; }
