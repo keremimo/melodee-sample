@@ -1,4 +1,4 @@
 [submodule "base"]
 	path = base
-	url = https://github.com/keremimo/sample-base.git
+	url = ../sample-base.git
 	branch = main

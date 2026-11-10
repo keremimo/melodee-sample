@@ -21,7 +21,7 @@ crash or any failure. What it does, page by page:
 Clone with the submodule:
 
 ```sh
-git clone --recurse-submodules https://github.com/keremimo/melodee-sample.git
+gh repo clone keremimo/melodee-sample -- --recurse-submodules
 ```
 
 ## Build
