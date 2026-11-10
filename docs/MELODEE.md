@@ -360,6 +360,10 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
+Installed on the card with `python3 device.py install-sd --app melodee`
+(see README): it starts at every boot and leaving it returns to stock until
+the next one.
+
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds
 are built as drawn (question 3).
