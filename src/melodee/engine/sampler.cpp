@@ -88,7 +88,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     float velocity_gain = 1.0f - sense * (1.0f - curve);
     v.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f);
     float angle = (std::clamp<int>(sound.pan, -50, 50) + 50) / 100.0f * dsp::pi / 2;
-    v.left = std::cos(angle) * 1.4142f; v.right = std::sin(angle) * 1.4142f; // centre is unity on both sides
+    v.left = std::cos(angle); v.right = std::sin(angle); // constant power: centre is -3 dB a side, as the stock MPC plays it
     // The pad's envelope; the kit's DECAY scales every pad's decay. A one shot
     // that decays from the end plays whole and fades over its decay before the end.
     float decay_s = time_seconds(sound.decay) * (p[Decay] / 100.0f) + 0.005f;

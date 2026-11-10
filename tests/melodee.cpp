@@ -661,6 +661,31 @@ void sampler_kit() {
         for (unsigned b = 0; b < 400; ++b) cloud.render_stereo(l.data(), r.data(), 128);
         CHECK(!cloud.sounding());
     }
+    // Level: a centred pad plays -3 dB a side (constant power, as the stock MPC measured over USB);
+    // hard left is the whole sample on the left. Mono and stereo files alike.
+    {
+        SampleData flat;
+        flat.frames = 44100;
+        flat.left.assign(flat.frames, 0.5f); flat.right.assign(flat.frames, 0.5f);
+        SamplerEngine::Table level_table {};
+        level_table[0] = &flat;
+        auto sides = [&](int pan) {
+            SamplerEngine e;
+            e.set_samples(&level_table);
+            PadSound pad; pad.sample = 0; pad.end = flat.frames; pad.pan = int8_t(pan);
+            e.set_pad(0, pad);
+            e.note_on(int(sampler_first_note), 127);
+            std::vector<float> l(128, 0), r(128, 0);
+            for (unsigned b = 0; b < 20; ++b) {
+                std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+                e.render_stereo(l.data(), r.data(), 128);
+            }
+            return std::pair<float, float>(l[64], r[64]);
+        };
+        auto centre = sides(0), left = sides(-50);
+        CHECK(std::fabs(centre.first - 0.5f * 0.7071f) < 0.005f && std::fabs(centre.second - 0.5f * 0.7071f) < 0.005f);
+        CHECK(std::fabs(left.first - 0.5f) < 0.005f && std::fabs(left.second) < 0.005f);
+    }
     // Follow: a pad played at 120 BPM in a 60 BPM project lasts twice as long.
     {
         auto length = [&](bool follow) {
@@ -1925,7 +1950,7 @@ void sample_mode() {
         pad.velocity_sense = 0;
         auto deaf = engine_with(pad);
         deaf->note_on(key, 10);
-        CHECK(std::fabs(run(*deaf, 8).first - run(*engine_with(base), 0).first) >= 0 && run(*deaf, 8).first > 0.45f);
+        CHECK(std::fabs(run(*deaf, 8).first - run(*engine_with(base), 0).first) >= 0 && run(*deaf, 8).first > 0.45f * 0.7071f); // a centred pad: -3 dB a side
     }
     { // Decay from the end: whole until the decay before the end; from the start it falls at once.
         PadSound pad = base; pad.end = 22050; pad.decay = 30;
@@ -1936,7 +1961,7 @@ void sample_mode() {
         auto start = engine_with(pad);
         start->note_on(key, 127);
         float fallen = run(*start, 90, 80).first;
-        CHECK(middle > 0.4f && fallen < middle * 0.3f);
+        CHECK(middle > 0.4f * 0.7071f && fallen < middle * 0.3f); // a centred pad: -3 dB a side
     }
     { // The pad filter: a low pass takes the high sine away and keeps the low one; a high pass the other way.
         PadSound pad = base; pad.end = 40000; pad.filter = PadFilter::Lpf4; pad.cutoff = 50;
@@ -1958,7 +1983,7 @@ void sample_mode() {
         pad.filter = PadFilter::Lpf2; pad.resonance = 0; pad.cutoff = 10; pad.filter_amount = 100; pad.filter_attack = 0; pad.filter_decay = 100;
         auto opened = engine_with(pad);
         opened->note_on(key, 127);
-        CHECK(run(*opened, 10, 2).second > 0.2f);
+        CHECK(run(*opened, 10, 2).second > 0.2f * 0.7071f); // a centred pad: -3 dB a side
         // 16 Levels' cutoff on a pad without a filter: Classic at that cutoff.
         auto levels = engine_with(base);
         levels->play_pad(0, 127, 0, 5);
