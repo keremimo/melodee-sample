@@ -127,6 +127,11 @@ Shown show(const ParamInfo& p, int v) {
         return {number(hz < 1 ? "%.2f" : hz < 10 ? "%.1f" : "%.0f", hz), "Hz"};
     }
     case Format::Level: return {decibels(v), "dB"};
+    case Format::Ms: return {std::to_string(v), "ms"};
+    case Format::Decibels: return {v > 0 ? "+" + std::to_string(v) : std::to_string(v), "dB"};
+    case Format::Tenths: return {number("%.1f", v / 10.0), ""};
+    case Format::Seconds: return {number("%.1f", v / 10.0), "s"};
+    case Format::Hertz: return v >= 1000 ? Shown {number("%.1f", v / 1000.0), "kHz"} : Shown {std::to_string(v), "Hz"};
     case Format::Number:
     default: return {std::to_string(v), ""};
     }

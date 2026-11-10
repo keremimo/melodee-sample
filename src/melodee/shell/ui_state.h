@@ -16,7 +16,8 @@
 namespace melodee {
 
 enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
-                            PadMix, PadFilterPage, FilterEnvPage, Count }; // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
+                            PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
+                            KnobFx, Compressor, Count };          // parity phase 7
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -90,6 +91,7 @@ struct UiState {
     bool picker_open = false, picker_items = false;           // the effect picker; focus on its effects column
     uint8_t picker_family = 0, picker_item = 0;
     bool picker_replaces = false;                              // Change on a device, not + ADD
+    uint8_t knob_cursor = 0;                                   // Knob FX: the list's entry under the cursor (Push loads it)
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)

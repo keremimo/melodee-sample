@@ -47,6 +47,8 @@ const PageSpec& page_spec(PageId page) {
     case PageId::PadMix: return pad_mix_page;
     case PageId::PadFilterPage: return pad_filter_page;
     case PageId::FilterEnvPage: return filter_env_page;
+    case PageId::KnobFx: return knob_fx_page;
+    case PageId::Compressor: return compressor_page;
     case PageId::Stage:
     default: return stage_page;
     }

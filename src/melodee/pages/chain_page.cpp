@@ -5,7 +5,7 @@
 // stop along the signal. A pad's chain is the last pad hit's, four slots. Up to six effects in a row;
 // the wheel picks a device, the three pots hold three of its parameters and
 // Minus / Plus the other row. Push on a device: change, bypass, move,
-// remove. Push on + ADD opens the picker: 28 effects in six families, Push
+// remove. Push on + ADD opens the picker: 41 effects in six families, Push
 // enters a family, B3 adds, B1 backs out. A bus or the master has no track,
 // so it is drawn in neutral.
 #include "melodee/engine/effect_info.h"
@@ -30,7 +30,7 @@ void picker(Paint& p, const Snapshot& s, juce::Colour c) {
     p.fill(x, y, w, h, colour::surf, 6);
     p.ring(x, y, w, h, colour::line, 6);
     for (unsigned f = 0; f < unsigned(Family::Count); ++f) {
-        std::array<EffectKind, 8> list {};
+        FamilyList list {};
         unsigned count = family_effects(Family(f), list);
         bool on = f == s.ui.picker_family;
         float fy = y + 6 + f * 22;
@@ -39,7 +39,7 @@ void picker(Paint& p, const Snapshot& s, juce::Colour c) {
         p.text(juce::String(count), x + 12, fy, 88, 20, caps_text(on ? c : colour::dim, 7), juce::Justification::centredRight);
     }
     p.fill(x + 112, y + 6, 1, h - 12, colour::line);
-    std::array<EffectKind, 8> list {};
+    FamilyList list {};
     unsigned count = family_effects(Family(s.ui.picker_family % unsigned(Family::Count)), list);
     float cw = (w - 124 - 9) / 2;
     for (unsigned n = 0; n < count; ++n) {
@@ -163,7 +163,7 @@ void draw(Paint& p, const Snapshot& s) {
 unsigned chain_here(Context& c) { return page_chain(c.project, c.ui); }
 
 void add_from_picker(Context& c) {
-    std::array<EffectKind, 8> list {};
+    FamilyList list {};
     unsigned count = family_effects(Family(c.ui.picker_family % unsigned(Family::Count)), list);
     if (c.ui.picker_item >= count || !effect_info(list[c.ui.picker_item]).built) return; // not built yet
     unsigned n = chain_here(c), at = UiState::cursor_of(n), cursor = std::min<unsigned>(c.ui.fx_cursor[at], c.project.chain(n).count());
@@ -177,7 +177,7 @@ void wheel(Context& c, int delta) {
     auto& ui = c.ui;
     if (ui.picker_open) {
         if (!ui.picker_items) { ui.picker_family = uint8_t(std::clamp<int>(ui.picker_family + delta, 0, int(Family::Count) - 1)); return; }
-        std::array<EffectKind, 8> list {};
+        FamilyList list {};
         unsigned count = family_effects(Family(ui.picker_family), list);
         ui.picker_item = uint8_t(std::clamp<int>(ui.picker_item + delta, 0, int(count) - 1));
         return;

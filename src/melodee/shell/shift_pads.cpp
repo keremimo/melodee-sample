@@ -53,6 +53,9 @@ void shift_pad(Context& c, unsigned pad) {
     case 10: // Resample: then a pad, which gets the pattern rendered
         c.resample();
         return;
+    case 4: // Compressor: the master's (parity phase 7)
+        c.open(PageId::Compressor);
+        break;
     case 11: // Song
         c.open(PageId::Song);
         return;

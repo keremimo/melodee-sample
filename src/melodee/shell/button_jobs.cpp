@@ -38,7 +38,8 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::TopRight: return ui.page == PageId::Chop && kit;                     // Merge
     case B::SampleRecord: return kit;                                            // Audio Recall
     case B::Erase: return kit_pads || ui.pad_bank || ui.page == PageId::Patterns || ui.copying != UiState::Copying::Off; // Copy (tracks with Pad Bank held)
-    default: return false; // Pad FX (Flex Beat), Knob FX (FX Select), Note Repeat (none printed): not yet
+    case B::KnobFx: return true;                                                 // FX SELECT: Melodee's chains
+    default: return false; // Pad FX (Flex Beat), Note Repeat (none printed): not yet
     }
 }
 

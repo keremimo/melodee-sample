@@ -10,6 +10,7 @@
 #include "melodee/shell/fader.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
+#include <cstdio>
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/shift_pads.h"
@@ -118,7 +119,9 @@ void Shell::button(Button b, bool pressed) {
     case Button::PadFx: // the punches: on the master or the track, or (again, on a sampler track) each pad's own
         context_.open(ui.page == PageId::Punch && context_.track().engine == EngineKind::Sampler ? PageId::PadPunch : PageId::Punch);
         break;
-    case Button::KnobFx: // the effects along the signal: track, sends, bus, master
+    case Button::KnobFx:
+        if (!ui.shift) { context_.knob_fx_button(); break; } // Knob FX, as on the MPC: the mode on or off (shell/knob_fx.cpp)
+        // Shift + Knob FX (FX SELECT): Melodee's effects along the signal, track, sends, bus, master
         context_.open(ui.page == PageId::Rack ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
                       : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
         break;
@@ -233,6 +236,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n); ui_.last_pot_shift = ui_.shift;
     if (ui_.shift) ui_.shift_used = true;
     if (ui_.ask != UiState::Ask::None) return; // a question open: the pots wait
+    if (ui_.erase && b.kind == Binding::Kind::KnobParam) { // Erase + pot on Knob FX's cards: back to the effect's initial value
+        context_.apply(b, effect_info(EffectKind(project_->knob_fx.kind)).params[size_t(b.id) % effect_params].initial);
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
     if (ui_.erase && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane, once B3 says so (as on the MPC)
         int lane = motion_lanes(*project_, ui_)[n];
         uint8_t param = uint8_t(lane_param(lane)), kit = uint8_t(lane_pad(lane) % sampler_pads);
@@ -386,6 +394,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.song_playing = host.song_playing();
     out.song_bar = host.song_bar();
     for (unsigned t = 0; t < track_count; ++t) out.meters[t] = host.meter(t);
+    out.compression = host.compression();
     out.now = now;
 }
 
@@ -403,7 +412,23 @@ std::string Shell::summary() const {
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
            " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary()
-           + input_summary();
+           + input_summary() + fx_summary();
+}
+
+// Phase 7: Knob FX and the master compressor.
+std::string Shell::fx_summary() const {
+    uint32_t k = knob_bits.load(std::memory_order_relaxed), targets = knob_targets.load(std::memory_order_relaxed);
+    uint32_t c = comp_bits.load(std::memory_order_relaxed);
+    char text[48];
+    std::snprintf(text, sizeof(text), "%.1f", double(host.compression()));
+    return " melodee_knob=" + std::to_string(k & 1) + " melodee_knob_bypass=" + std::to_string((k >> 1) & 1)
+         + " melodee_rec_fx=" + std::to_string((k >> 2) & 1) + " melodee_knob_entry=" + std::to_string((k >> 8) & 0xff)
+         + " melodee_knob_kind=" + std::to_string((k >> 16) & 0xff) + " melodee_knob_cursor=" + std::to_string(k >> 24)
+         + " melodee_knob_tracks=" + std::to_string(targets & 0xffff) + " melodee_knob_pads=" + std::to_string(targets >> 16)
+         + " melodee_comp=" + std::to_string(c & 1) + " melodee_comp_color=" + std::to_string((c >> 1) & 1)
+         + " melodee_comp_boost=" + std::to_string((c >> 2) & 0x3f) + " melodee_comp_attack=" + std::to_string((c >> 8) & 0xff)
+         + " melodee_comp_release=" + std::to_string((c >> 16) & 0xff) + " melodee_comp_amount=" + std::to_string(c >> 24)
+         + " melodee_comp_reduction=" + text;
 }
 
 // Phase 6: Input Config, Sample Record, Audio Recall and renders.

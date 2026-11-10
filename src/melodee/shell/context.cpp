@@ -467,6 +467,11 @@ void Context::apply(const Binding& b, int value) {
     case Kind::CaptureQuantise: ui.capture_quantise = uint8_t(value); break;
     case Kind::CaptureInto: ui.capture_into = uint8_t(value); break;
     case Kind::RecSource: set_input_source(InputSource(value)); break;
+    case Kind::KnobParam: knob_fx_param(unsigned(b.id), value); break;
+    case Kind::CompAttack: set_compressor(2, value); break;
+    case Kind::CompRelease: set_compressor(3, value); break;
+    case Kind::CompAmount: set_compressor(4, value); break;
+    case Kind::CompBoost: set_compressor(5, value); break;
     case Kind::RecThreshold: ui.settings.input.threshold = int8_t(value); input_changed(); break;
     case Kind::RecLength: ui.settings.input.length = uint8_t(value); input_changed(); break;
     case Kind::RecGain: ui.settings.input.gain = int8_t(value); input_changed(); break;

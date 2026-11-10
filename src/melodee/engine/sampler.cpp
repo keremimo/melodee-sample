@@ -352,12 +352,18 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     // The punched pad renders on its own, and so does each pad with a chain
     // (blocks of 128 at most here).
     bool punching = aside && frames <= 128, chains = pad_effects && frames <= 128;
+    bool knobbing = (knob_mask[0] || knob_mask[1]) && frames <= 128;
     if (punching) { std::fill(aside_l, aside_l + frames, 0.0f); std::fill(aside_r, aside_r + frames, 0.0f); }
     if (chains) for (auto& l : lane) if (l.pad >= 0) { l.fed = false; std::fill(l.l, l.l + frames, 0.0f); std::fill(l.r, l.r + frames, 0.0f); }
+    knob_used = false;
+    if (knobbing) { std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f); }
+    // Where a pad's sound joins: the kit, or Knob FX's own output.
+    auto out_l = [&](int pad) { if (knobbing && knobbed(pad)) { knob_used = true; return knob_l; } return left; };
+    auto out_r = [&](int pad) { return knobbing && knobbed(pad) ? knob_r : right; };
     for (auto& v : voices) {
         if (v.pad < 0 || v.cloud) continue;
-        float* to_l = punching && v.pad == aside_pad ? aside_l : left;
-        float* to_r = punching && v.pad == aside_pad ? aside_r : right;
+        float* to_l = punching && v.pad == aside_pad ? aside_l : out_l(v.pad);
+        float* to_r = punching && v.pad == aside_pad ? aside_r : out_r(v.pad);
         if (chains && v.pad < int(sampler_pads) && (*pad_effects)[size_t(v.pad)][0].kind() != EffectKind::None)
             if (Lane* l = lane_for(v.pad)) {
                 if (!l->fed) { l->fed = true; l->tail = uint32_t(3 * dsp::sample_rate); }
@@ -394,15 +400,17 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         for (auto& l : lane) {
             if (l.pad < 0) continue;
             for (auto& effect : (*pad_effects)[size_t(l.pad)]) effect.process(l.l, l.r, frames);
-            float* into_l = punching && l.pad == aside_pad ? aside_l : left; // a punched pad: its chain, then the punch
-            float* into_r = punching && l.pad == aside_pad ? aside_r : right;
+            float* into_l = punching && l.pad == aside_pad ? aside_l : out_l(l.pad); // a punched pad: its chain, then the punch
+            float* into_r = punching && l.pad == aside_pad ? aside_r : out_r(l.pad);
             for (unsigned f = 0; f < frames; ++f) { into_l[f] += l.l[f]; into_r[f] += l.r[f]; }
             if (!l.fed) l.tail = l.tail > frames ? l.tail - frames : 0;
             if (!l.tail || (*pad_effects)[size_t(l.pad)][0].kind() == EffectKind::None) l.pad = -1;
         }
     if (punching) {
         aside->process(aside_l, aside_r, frames);
-        for (unsigned f = 0; f < frames; ++f) { left[f] += aside_l[f]; right[f] += aside_r[f]; }
+        float* into_l = out_l(aside_pad);
+        float* into_r = out_r(aside_pad);
+        for (unsigned f = 0; f < frames; ++f) { into_l[f] += aside_l[f]; into_r[f] += aside_r[f]; }
     }
     if (!filtered) return;
     float* io[2] {left, right};

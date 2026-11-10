@@ -138,6 +138,18 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                               | uint32_t(ui_.rendering & 3) << 21 | uint32_t(ui_.resample_pick) << 23 | uint32_t(uint8_t(in.threshold)) << 24,
                               std::memory_order_relaxed);
         }
+        { // phase 7: Knob FX (mode, bypass, entry, kind; tracks and the bank's pads on), the compressor
+            const auto& k = project_->knob_fx;
+            knob_bits.store(uint32_t(k.on) | uint32_t(k.bypass) << 1 | uint32_t(ui_.settings.input.fx) << 2 | uint32_t(k.choice) << 8
+                            | uint32_t(k.kind) << 16 | uint32_t(ui_.knob_cursor) << 24, std::memory_order_relaxed);
+            unsigned first = t.bank % sampler_banks * 16;
+            uint32_t bank_pads = 0;
+            for (unsigned n = 0; n < 16; ++n) bank_pads |= uint32_t(k.pad_on(ui_.track, first + n)) << n;
+            knob_targets.store(uint32_t(k.tracks) | bank_pads << 16, std::memory_order_relaxed);
+            const auto& c = project_->compressor;
+            comp_bits.store(uint32_t(c.on) | uint32_t(c.color) << 1 | uint32_t(c.boost) << 2 | uint32_t(c.attack) << 8 | uint32_t(c.release) << 16
+                            | uint32_t(c.amount) << 24, std::memory_order_relaxed);
+        }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
             for (const auto& ref : project_->samples) used += ref.used();
@@ -214,6 +226,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             bool empty_pad = track.engine == EngineKind::Sampler && !track.pads[(unsigned(key) - sampler_first_note) % sampler_pads].used();
             colour = key < 0 ? Rgb {} : chosen >= 0 && pattern.events[size_t(chosen)].key == key ? led_colour::white(1)
                    : here ? track_light(ui.track, 1.0f) : empty_pad ? Rgb {} : track_light(ui.track, 0.12f);
+        } else if (ui.page == PageId::KnobFx) {
+            // Knob FX: the pads it is on bright, the rest faint (as on the MPC); kit pads of the bank, or tracks.
+            const auto& k = project.knob_fx;
+            if (track.engine == EngineKind::Sampler) {
+                unsigned kit = track.bank % sampler_banks * 16 + pad;
+                colour = track_light(ui.track, k.pad_on(ui.track, kit) ? 1.0f : track.pads[kit].used() ? 0.12f : 0.04f);
+            } else {
+                colour = track_light(pad, k.track_on(pad) ? 1.0f : project.tracks[pad].used() ? 0.12f : 0.04f);
+            }
         } else if (ui.page == PageId::Punch) {
             // The bank's punches: held or locked bright, in white on the master.
             unsigned kind = project.punch_bank % 2 * 16 + pad;
@@ -296,7 +317,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                       : job(B::SampleRecord) ? L::Dim : L::Off);
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);
-    on(B::KnobFx, ui.page == PageId::PadFx || ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
+    on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
     on(B::Loop, track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop); // the last pad loops
     // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
     on(B::SixteenLevels, ui.page == PageId::Levels || track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));

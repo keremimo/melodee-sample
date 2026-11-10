@@ -10,6 +10,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/name_suggest.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace melodee {
@@ -257,6 +258,21 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             else { auto bars = rec_bars(unsigned(b.value)); c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars"; }
             break;
         case Kind::RecSource: c.label = "SOURCE"; c.value = input_source_name(InputSource(b.value)); break;
+        case Kind::KnobParam: {
+            const auto& pi = effect_info(EffectKind(s.project.knob_fx.kind)).params[unsigned(b.id) % effect_params];
+            auto shown = show(pi, b.value);
+            c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
+            break;
+        }
+        case Kind::CompAttack: case Kind::CompRelease: {
+            float ms = b.kind == Kind::CompAttack ? comp_attack_ms(b.value) : comp_release_ms(b.value);
+            c.label = b.kind == Kind::CompAttack ? "ATTACK" : "RELEASE";
+            c.value = ms < 10 ? juce::String(ms, 1) : juce::String(int(std::lround(ms)));
+            c.unit = "ms";
+            break;
+        }
+        case Kind::CompAmount: c.label = "AMOUNT"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::CompBoost: c.label = "IN BOOST"; c.value = "+" + juce::String(b.value); c.unit = "dB"; break;
         case Kind::RecGain:
             c.label = "GAIN"; c.unit = "dB";
             c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));

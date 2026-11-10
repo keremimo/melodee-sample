@@ -70,6 +70,16 @@ void EngineHost::load_state(const Project& project) {
         }
     }
     for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
+    // Knob FX and the master compressor.
+    const auto& k = project.knob_fx;
+    knob.set_kind(EffectKind(k.kind), pool);
+    knob_in.set_kind(EffectKind(k.kind), pool);
+    for (unsigned q = 0; q < effect_params; ++q) { knob.set_param(q, k.params[q]); knob_in.set_param(q, k.params[q]); }
+    knob_heard = k.active();
+    knob_tracks = k.tracks;
+    knob_pads = k.pads;
+    comp_settings = project.compressor;
+    comp.set(comp_settings);
     click = project.click == 1; click_level = project.click_level / 100.0f;
     motion = project.motion;
     song = project.song;
@@ -77,6 +87,7 @@ void EngineHost::load_state(const Project& project) {
     seq_tempo = project.seq_tempo; pattern_tempo = project.pattern_tempo;
     bar = project.bar_ticks(); beat = project.beat_ticks();
     for (unsigned t = 0; t < track_count; ++t) load_track(t, project.tracks[t]);
+    knob_targets();
     lead = project.tracks[0].pattern;
     tempo = 0;
     follow_tempo();
@@ -327,6 +338,22 @@ void EngineHost::apply(const Command& c) {
     case Type::RecordNow: take.start_now(); break;
     case Type::RecordStop: take.stop(); cue_track = -1; break;
     case Type::Monitor: monitor_on.store(c.value != 0, std::memory_order_relaxed); break;
+    case Type::KnobFx: knob_command(c); break;
+    case Type::Compressor: {
+        MasterComp settings = comp_settings;
+        switch (c.index) {
+        case 0: settings.on = c.value != 0; break;
+        case 1: settings.color = c.value != 0; break;
+        case 2: settings.attack = uint8_t(c.value); break;
+        case 3: settings.release = uint8_t(c.value); break;
+        case 4: settings.amount = uint8_t(c.value); break;
+        case 5: settings.boost = uint8_t(c.value); break;
+        default: break;
+        }
+        comp_settings = settings;
+        comp.set(settings);
+        break;
+    }
     case Type::BounceArm:
         if (running) break; // the shell stops first
         render_out.cue();
@@ -676,6 +703,29 @@ void EngineHost::select_input(const int32_t* input, const float* usb, unsigned f
     }
 }
 
+void EngineHost::knob_targets() {
+    for (unsigned t = 0; t < track_count; ++t)
+        slots[t].sampler.set_knob_pads(knob_heard ? knob_pads[t][0] : 0, knob_heard ? knob_pads[t][1] : 0);
+}
+
+void EngineHost::knob_command(const Command& c) {
+    switch (c.index) {
+    case 0: knob.set_kind(EffectKind(c.value), pool); knob_in.set_kind(EffectKind(c.value), pool); break;
+    case 1: knob.set_param(c.pattern, c.value); knob_in.set_param(c.pattern, c.value); break;
+    case 2: knob_heard = c.value & 1; knob_rec = (c.value & 2) != 0; break;
+    case 3: knob_tracks = uint16_t(c.position); break;
+    case 4: {
+        if (c.track >= track_count || c.pattern > 3) break;
+        auto& word = knob_pads[c.track][c.pattern / 2];
+        unsigned shift = (c.pattern % 2) * 32;
+        word = (word & ~(uint64_t(0xffffffffu) << shift)) | (uint64_t(c.position) << shift);
+        break;
+    }
+    default: break;
+    }
+    knob_targets();
+}
+
 void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input, float* stems, const float* usb) {
     static thread_local bool flushed = false;
     if (!flushed) { flush_denormals(); flushed = true; }
@@ -693,6 +743,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     Command command;
     for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
     frames = std::min(frames, block);
+    // The clock tempo-synced effects follow: quarters since Play (on from where it was while stopped).
+    effect_clock.quarter = tick_length() * ticks_per_quarter;
+    if (running) effect_clock.beats = (double(tick_now) - std::max(until_tick, 0.0) / tick_length()) / ticks_per_quarter;
     // The arps' clock, at the block's start (within 3 ms of the beat).
     until_arp -= frames;
     while (until_arp <= 0) { arp_tick(); until_arp += arp_tick_length(); }
@@ -728,6 +781,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // into the master; the master through its chain, then main volume.
     for (unsigned b = 0; b < bus_count; ++b) { std::fill(bus_l[b], bus_l[b] + frames, 0.0f); std::fill(bus_r[b], bus_r[b] + frames, 0.0f); }
     std::fill(master_l, master_l + frames, 0.0f); std::fill(master_r, master_r + frames, 0.0f);
+    std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f);
+    bool knob_fed = false;
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         float level = 0;
@@ -746,9 +801,21 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             run_chain(t, slot.left, slot.right, frames);
             if (punch_target == t) punch.process(slot.left, slot.right, frames);
             bool heard = !slot.mute && !(solo && !slot.solo);
+            // Knob FX: a kit's pads switched on come out apart, after their own chain (not the track's), at the track's level and pan.
+            if (heard && slot.engine == &slot.sampler && slot.sampler.knob_fed()) {
+                const float* kl = slot.sampler.knob_left();
+                const float* kr = slot.sampler.knob_right();
+                float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
+                for (unsigned f = 0; f < frames; ++f) { knob_l[f] += kl[f] * l; knob_r[f] += kr[f] * r; }
+                knob_fed = true;
+            }
+            bool knobbed = knob_heard && ((knob_tracks >> t) & 1);
             if (heard) {
+                float* to_l = knobbed ? knob_l : master_l;
+                float* to_r = knobbed ? knob_r : master_r;
+                knob_fed |= knobbed;
                 for (unsigned f = 0; f < frames; ++f) {
-                    master_l[f] += slot.left[f]; master_r[f] += slot.right[f];
+                    to_l[f] += slot.left[f]; to_r[f] += slot.right[f];
                     level = std::max(level, std::max(std::fabs(slot.left[f]), std::fabs(slot.right[f])));
                 }
                 if (slot.send > 0)
@@ -766,12 +833,26 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         run_chain(bus_chain(b), bus_l[b], bus_r[b], frames);
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * returns[b]; master_r[f] += bus_r[b][f] * returns[b]; }
     }
+    // Knob FX into the master; after its targets let go it rings on for a few seconds (tails), then rests.
+    if (knob_fed) knob_tail = uint32_t(6 * dsp::sample_rate);
+    if (knob_tail && knob.kind() != EffectKind::None) {
+        knob.process(knob_l, knob_r, frames);
+        for (unsigned f = 0; f < frames; ++f) { master_l[f] += knob_l[f]; master_r[f] += knob_r[f]; }
+        knob_tail = knob_tail > frames ? knob_tail - frames : 0;
+    } else if (knob_fed) {
+        for (unsigned f = 0; f < frames; ++f) { master_l[f] += knob_l[f]; master_r[f] += knob_r[f]; }
+    }
     run_chain(master_chain, master_l, master_r, frames);
     if (punch_target == 255) punch.process(master_l, master_r, frames);
+    comp.process(master_l, master_r, frames); // the master compressor (Shift + Pad 5), before main volume
     punch_on.store(punch.on() || pad_punch.on() || pending.waiting, std::memory_order_relaxed);
     // The input source (or the mix itself, before main volume): the take, the
     // Recall ring and the meter hear it; a render takes the mix.
     select_input(input, usb, frames);
+    // Rec Input FX: Knob FX on the input while a take waits or runs (so Monitor hears it too).
+    auto taking = take.state();
+    if (knob_rec && knob_heard && (taking == TakeRecorder::State::Armed || taking == TakeRecorder::State::Recording || taking == TakeRecorder::State::Cued))
+        knob_in.process(record_l, record_r, frames);
     take.process(record_l, record_r, frames);
     recall_ring.write(record_l, record_r, frames);
     render_out.process(master_l, master_r, frames);
@@ -792,6 +873,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         out[2 * f + 1] = int32_t(std::clamp(right, -0.999f, 0.999f) * 2147483647.0f);
     }
     output_peak.store(peak, std::memory_order_relaxed);
+    if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
 }
 
 } // namespace melodee

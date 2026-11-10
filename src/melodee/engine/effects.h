@@ -27,6 +27,16 @@ private:
     std::array<bool, blocks> used {};
 };
 
+// The song's clock as tempo-synced effects hear it (Pumper): the host sets
+// it at the start of each block, before any effect runs. Audio thread only.
+struct EffectClock {
+    double quarter = 22050; // samples a quarter note
+    double beats = 0;       // quarter notes since Play (running on while stopped), at the block's start
+};
+inline EffectClock effect_clock;
+
+bool effect_needs_memory(EffectKind kind); // delay memory from the pool
+
 class Effect {
 public:
     void set_kind(EffectKind kind, DelayPool& pool); // sets the kind's initial parameters too
@@ -42,6 +52,8 @@ private:
     };
     struct Svf { float s1 = 0, s2 = 0; };
     void update();
+    void update_extra();                                    // the parity phase 7 effects (effects_extra.cpp)
+    void process_extra(float* left, float* right, unsigned frames);
     void reverb(float& l, float& r);
     float delayed(const float* line, unsigned at, float back) const; // fractional read behind `at`
 
@@ -54,7 +66,7 @@ private:
     // Derived values (update()).
     float mix = 1, a = 0, b = 0, c = 0, d = 0, e = 0;
     unsigned delay = 0;
-    std::array<Biquad, 6> eq {};
+    std::array<Biquad, 12> eq {}; // EQ: six; Amp sim: its tone stack and cabinet, three each a side
     float svf_g = 0.5f, svf_k = 1;
 
     // Running state.
@@ -76,6 +88,11 @@ private:
     std::array<unsigned, 4> pass_length {}, pass_at {};
     unsigned predelay = 0;
     float feedback = 0, damp = 0;
+    // Parity phase 7: Spring's dispersion (first-order allpasses, twelve a side),
+    // Multi-chorus's voices, and small running values the newer effects keep.
+    std::array<float, 24> chirp {};
+    std::array<float, 6> voice_phase {};
+    std::array<float, 8> state {};
 };
 
 } // namespace melodee

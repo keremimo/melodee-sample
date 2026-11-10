@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/compressor.h"
+#include "melodee/model/knob_fx.h"
 #include "melodee/model/limits.h"
 #include "melodee/model/pattern.h"
 #include "melodee/model/sampler.h"
@@ -296,6 +298,8 @@ struct Project {
     // track), the bank in view, and K1-K3: depth, snap grid (0 1/4 .. 3 1/32), tail (cut, fade, ring).
     uint8_t punch_target = 0, punch_bank = 0, punch_depth = 100, punch_snap = 2, punch_tail = 0;
     std::array<Track, track_count> tracks {};
+    KnobFx knob_fx;         // Knob FX (parity phase 7)
+    MasterComp compressor;  // Shift + Pad 5 (parity phase 7)
     Motion motion;
     Song song;
     std::array<Bus, bus_count> buses {};

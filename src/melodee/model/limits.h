@@ -34,6 +34,7 @@ constexpr unsigned song_bars = 999;
 constexpr unsigned track_slots = 6, bus_slots = 6, master_slots = 6, bus_count = 4;
 constexpr unsigned max_slots = 6;
 constexpr unsigned chain_count = track_count + bus_count + 1; // tracks, buses A-D, master
+constexpr unsigned effect_kinds = 42;                          // EffectKind::Count, None included (engine/effect_info.h checks)
 constexpr unsigned pad_slots = 4;                              // each sampler pad's own chain (PadFX)
 // Motion lanes name engine parameters (0..max_params-1), then the track
 // chain's effect parameters: motion_fx_base + slot * 6 + parameter.

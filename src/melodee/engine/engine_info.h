@@ -22,6 +22,11 @@ enum class Format : uint8_t {
     Switch,    // Off / On
     Choice,    // one of `choices`
     Level,     // 0..127 shown in dB, as the MPC shows volume (model/sampler.h volume_db)
+    Ms,        // milliseconds as they are
+    Decibels,  // signed dB as they are
+    Tenths,    // a tenth a step: 0.0 .. (Amp sim's DRIVE 0-11)
+    Seconds,   // tenths of a second (Spring's TIME 1.0-10.0 s)
+    Hertz,     // Hz as they are, kHz from 1000
 };
 
 struct ParamInfo {

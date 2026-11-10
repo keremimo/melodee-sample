@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/effects.h"
+#include "melodee/engine/rbj.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -11,10 +12,7 @@ using K = EffectKind;
 constexpr float fs = dsp::sample_rate, two_pi = 2 * dsp::pi;
 float db(float decibels) { return std::pow(10.0f, decibels / 20.0f); }
 float follow(float seconds) { return std::exp(-1.0f / std::max(seconds * fs, 1.0f)); }
-bool needs_memory(K k) {
-    return k == K::Room || k == K::Reverb || k == K::Plate || k == K::Echo || k == K::TapeEcho || k == K::PingPong ||
-           k == K::Chorus || k == K::Flanger || k == K::Tape || k == K::Shimmer || k == K::Looper || k == K::PedalChorus;
-}
+bool needs_memory(K k) { return effect_needs_memory(k); }
 // Where each part of a reverb sits inside its block (floats).
 constexpr unsigned pre_length = 4410, comb_base = 2 * pre_length, comb_room = 1600, pass_base = comb_base + 8 * comb_room, pass_room = 700;
 // Shimmer's shifter after the reverb's parts: a short line a side.
@@ -23,26 +21,19 @@ static_assert(shift_base + 2 * shift_room < DelayPool::block_floats, "shimmer fi
 // Formants of five vowels (A E I O U), Hz.
 constexpr float vowel_formants[5][3] {{800, 1150, 2900}, {400, 1700, 2600}, {280, 2200, 2950}, {450, 800, 2830}, {325, 700, 2530}};
 
-// RBJ cookbook filters.
-void shelf(float* out, float hz, float gain_db, bool high) {
-    float A = std::pow(10.0f, gain_db / 40.0f), w = two_pi * hz / fs, cw = std::cos(w), sw = std::sin(w);
-    float alpha = sw / 2 * std::sqrt(2.0f), s = 2 * std::sqrt(A) * alpha;
-    float b0, b1, b2, a0, a1, a2;
-    if (!high) {
-        b0 = A * ((A + 1) - (A - 1) * cw + s); b1 = 2 * A * ((A - 1) - (A + 1) * cw); b2 = A * ((A + 1) - (A - 1) * cw - s);
-        a0 = (A + 1) + (A - 1) * cw + s; a1 = -2 * ((A - 1) + (A + 1) * cw); a2 = (A + 1) + (A - 1) * cw - s;
-    } else {
-        b0 = A * ((A + 1) + (A - 1) * cw + s); b1 = -2 * A * ((A - 1) + (A + 1) * cw); b2 = A * ((A + 1) + (A - 1) * cw - s);
-        a0 = (A + 1) - (A - 1) * cw + s; a1 = 2 * ((A - 1) - (A + 1) * cw); a2 = (A + 1) - (A - 1) * cw - s;
-    }
-    out[0] = b0 / a0; out[1] = b1 / a0; out[2] = b2 / a0; out[3] = a1 / a0; out[4] = a2 / a0;
-}
-void peak(float* out, float hz, float gain_db, float q) {
-    float A = std::pow(10.0f, gain_db / 40.0f), w = two_pi * hz / fs, alpha = std::sin(w) / (2 * q), cw = std::cos(w);
-    float a0 = 1 + alpha / A;
-    out[0] = (1 + alpha * A) / a0; out[1] = -2 * cw / a0; out[2] = (1 - alpha * A) / a0; out[3] = -2 * cw / a0; out[4] = (1 - alpha / A) / a0;
-}
+using rbj::shelf;
+using rbj::peak;
 } // namespace
+
+bool effect_needs_memory(EffectKind k) {
+    switch (k) {
+    case K::Room: case K::Reverb: case K::Plate: case K::Echo: case K::TapeEcho: case K::PingPong: case K::Chorus:
+    case K::Flanger: case K::Tape: case K::Shimmer: case K::Looper: case K::PedalChorus:
+    case K::DiffDelay: case K::SampleDelay: case K::Spring: case K::Ensemble: case K::MultiChorus: case K::Vinyl: case K::TapeEmu:
+        return true;
+    default: return false;
+    }
+}
 
 DelayPool::DelayPool() : memory(new float[size_t(blocks) * block_floats]()) {}
 float* DelayPool::take() {
@@ -65,6 +56,7 @@ void Effect::set_kind(EffectKind kind, DelayPool& pool) {
     write = 0; lfo = 0; env = env2 = 0; gain = 1; hold_l = hold_r = tone_l = tone_r = 0; hold_count = 0;
     svf = {}; allpass = {}; phaser_l = phaser_r = 0; comb_filter = {}; comb_at = {}; pass_at = {};
     shift_at = spit_left = 0; shift_phase = shimmer_l = shimmer_r = 0; spit_gain = 1; formant = {};
+    chirp = {}; voice_phase = {}; state = {};
     for (auto& q : eq) q.z1 = q.z2 = 0;
     update();
 }
@@ -175,7 +167,7 @@ void Effect::update() {
     case K::Gate: a = db(float(p[0])); e = follow(time_seconds(p[1])); break;
     case K::Transient: a = p[0] / 100.0f; b = p[1] / 100.0f; mix = pct(2); break;
     case K::Limiter: a = db(float(p[0])); e = follow(time_seconds(p[1]) * 0.5f); break;
-    default: break;
+    default: update_extra(); break;
     }
 }
 
@@ -217,6 +209,7 @@ void Effect::reverb(float& l, float& r) {
 void Effect::process(float* left, float* right, unsigned frames) {
     if (bypass || current == K::None || !effect_info(current).built) return;
     if (needs_memory(current) && !memory) return; // the pool ran out: sound passes through
+    if (current >= K::DiffDelay) { process_extra(left, right, frames); return; }
     float* line_l = memory;
     float* line_r = memory ? memory + DelayPool::half : nullptr;
     for (unsigned f = 0; f < frames; ++f) {

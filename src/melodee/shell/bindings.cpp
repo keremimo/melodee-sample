@@ -165,9 +165,37 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
     return lanes;
 }
 
+namespace {
+// One row of an effect's parameters on K1-K3 (row 1 its first three); `id` the binding's chain and slot.
+std::array<Binding, 3> effect_row(unsigned id, const EffectSlot& s, unsigned row) {
+    const auto& info = effect_info(EffectKind(s.kind));
+    std::array<Binding, 3> out;
+    for (unsigned k = 0; k < 3; ++k) {
+        unsigned q = row * 3 + k;
+        const auto& pi = info.params[q];
+        if (pi.label) out[k] = {Kind::FxParam, int32_t(id + q), pi.min, pi.max, s.params[q]};
+    }
+    return out;
+}
+// Knob FX's row (Shift: its second), while the mode is on.
+std::array<Binding, 3> knob_bindings(const Project& project, bool shift) {
+    const auto& k = project.knob_fx;
+    const auto& info = effect_info(EffectKind(k.kind));
+    std::array<Binding, 3> out;
+    for (unsigned n = 0; n < 3; ++n) {
+        unsigned q = (shift ? 3 : 0) + n;
+        const auto& pi = info.params[q];
+        if (pi.label) out[n] = {Kind::KnobParam, int32_t(q), pi.min, pi.max, k.params[q]};
+    }
+    return out;
+}
+bool knob_owns(const Project& project, const UiState& ui) { return project.knob_fx.on && project.knob_fx.kind && !ui.name.open(); }
+} // namespace
+
 std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
     if (ui.name.open()) return {};
+    if (knob_owns(project, ui)) return knob_bindings(project, true);
     switch (ui.page) {
     case PageId::Record: case PageId::InputConfig: // Shift + K3: Melodee's input gain
         return {Binding {}, Binding {}, Binding {Kind::RecGain, 0, -12, 24, ui.settings.input.gain}};
@@ -212,6 +240,14 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         if (track.engine != EngineKind::Sampler || !pad.used() || ui.sampler_row) return {};
         return {Binding {}, Binding {Kind::PadLink, 0, 0, 16, pad.link}, Binding {}};
     }
+    case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: { // Shift + K: the device's other row (as Knob FX's Shift + K on the MPC)
+        unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
+        const auto& c = project.chain(chain);
+        if (slot >= c.count() || ui.picker_open) return {};
+        return effect_row(chain * 64 + slot * 8, c.slots[slot], 1 - ui.fx_row[UiState::cursor_of(chain)] % 2);
+    }
+    case PageId::Compressor: // Shift + K3: In Boost
+        return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, project.compressor.boost}};
     case PageId::Keys: // Shift + K3: the pads by semitones
         if (track.engine == EngineKind::Kit909) return {};
         return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
@@ -220,6 +256,8 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
 }
 
 std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern, bool shift) {
+    // Knob FX on: the pots are its, on every page (as on the MPC), but for the Name sheet.
+    if (knob_owns(project, ui)) return knob_bindings(project, shift);
     auto cards = base_bindings(project, ui, pattern);
     if (!shift) return cards;
     auto second = shift_bindings(project, ui, pattern);
@@ -314,15 +352,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
         const auto& c = project.chain(chain);
         if (slot >= c.count() || ui.picker_open) return {};
-        const auto& s = c.slots[slot];
-        const auto& info = effect_info(EffectKind(s.kind));
-        std::array<Binding, 3> out;
-        for (unsigned k = 0; k < 3; ++k) {
-            unsigned q = (ui.fx_row[UiState::cursor_of(chain)] % 2) * 3 + k;
-            const auto& pi = info.params[q];
-            if (pi.label) out[k] = {Kind::FxParam, int32_t(chain * 64 + slot * 8 + q), pi.min, pi.max, s.params[q]};
-        }
-        return out;
+        return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)] % 2);
     }
     case PageId::Sends: {
         unsigned bus = track.mix.bus % bus_count;
@@ -370,6 +400,11 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::RecSource, 0, 0, int(InputSource::Count) - 1, int(in.source)},
                 Binding {Kind::RecLength, 0, 0, int(rec_lengths) - 1, in.length},
                 Binding {Kind::RecThreshold, 0, InputConfig::threshold_min, 0, in.threshold}};
+    }
+    case PageId::Compressor: { // as on the MPC: K1 attack, K2 release, K3 amount
+        const auto& c = project.compressor;
+        return {Binding {Kind::CompAttack, 0, 0, 100, c.attack}, Binding {Kind::CompRelease, 0, 0, 100, c.release},
+                Binding {Kind::CompAmount, 0, 0, 100, c.amount}};
     }
     case PageId::Project:
         if (ui.sheet_open || ui.move_open) return {};

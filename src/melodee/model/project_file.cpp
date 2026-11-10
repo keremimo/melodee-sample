@@ -234,6 +234,23 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         }
     w.u8(255);
     w.end(at);
+    at = w.begin("KNFX"); // Knob FX (parity phase 7): the entry, its effect and values, bypass, the tracks and kit pads it is on
+    {
+        const auto& k = project.knob_fx;
+        w.u8(k.choice); w.u8(k.kind); w.u8(k.bypass);
+        for (auto v : k.params) w.i16(v);
+        w.u16(k.tracks);
+        for (unsigned t = 0; t < track_count; ++t)
+            if (k.any_pad(t)) { w.u8(t); w.u32(uint32_t(k.pads[t][0])); w.u32(uint32_t(k.pads[t][0] >> 32)); w.u32(uint32_t(k.pads[t][1])); w.u32(uint32_t(k.pads[t][1] >> 32)); }
+        w.u8(255);
+    }
+    w.end(at);
+    at = w.begin("CMPR"); // the master compressor (parity phase 7)
+    {
+        const auto& c = project.compressor;
+        w.u8(c.on); w.u8(c.color); w.u8(c.attack); w.u8(c.release); w.u8(c.amount); w.u8(c.boost);
+    }
+    w.end(at);
     for (unsigned t = 0; t < track_count; ++t) { // kit pads in banks E-H (parity phase 1c)
         const auto& tr = project.tracks[t];
         unsigned used = 0;
@@ -451,6 +468,24 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 auto& pad = project->tracks[t].pads[r.u8() % sampler_pads];
                 pad.punch = uint8_t(std::min(punch_kinds, r.u8())); pad.punch_rate = uint8_t(r.u8() % 4); pad.punch_depth = uint8_t(std::min(100u, r.u8()));
             }
+        } else if (name == "KNFX") {
+            auto& k = project->knob_fx;
+            k.choice = uint8_t(r.u8()); k.kind = uint8_t(r.u8()); k.bypass = r.u8() != 0;
+            if (k.kind >= effect_kinds) k.kind = 0;
+            for (auto& v : k.params) v = int16_t(r.i16());
+            k.tracks = uint16_t(r.u16());
+            while (r.ok && !r.done()) {
+                unsigned t = r.u8();
+                if (t >= track_count) break;
+                uint64_t words[4];
+                for (auto& w : words) w = r.u32();
+                k.pads[t][0] = words[0] | words[1] << 32; k.pads[t][1] = words[2] | words[3] << 32;
+            }
+        } else if (name == "CMPR") {
+            auto& c = project->compressor;
+            c.on = r.u8() != 0; c.color = r.u8() != 0;
+            c.attack = uint8_t(std::min(100u, r.u8())); c.release = uint8_t(std::min(100u, r.u8()));
+            c.amount = uint8_t(std::min(100u, r.u8())); c.boost = uint8_t(std::min(24u, r.u8()));
         } else if (name == "SMPL") {
             unsigned n = r.u8();
             if (n >= sample_slots) continue;

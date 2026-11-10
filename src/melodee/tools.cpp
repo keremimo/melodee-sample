@@ -189,6 +189,15 @@ void pad_motion_kit(Shell&, Snapshot& s) {
     s.project.motion.write({3, 0, 4, uint8_t(motion_pad_param(PadParam::Level)), 40, 0});
 }
 
+// Knob FX with list entry `entry` loaded, at its initial values (as Context::knob_fx_load does).
+void load_knob(KnobFx& k, unsigned entry) {
+    const auto& e = knob_fx_entry(entry);
+    k.choice = uint8_t(entry); k.kind = uint8_t(e.kind);
+    const auto& info = effect_info(e.kind);
+    for (unsigned q = 0; q < effect_params; ++q) k.params[q] = info.params[q].label ? info.params[q].initial : 0;
+    if (e.param >= 0) k.params[size_t(e.param)] = e.value;
+}
+
 struct Preview {
     const char* name;
     void (*set)(Shell&, Snapshot&);
@@ -484,6 +493,59 @@ const Preview previews[] {
          }
          chain.slots[0].params[1] = -20;
          s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    // Parity phase 7: Knob FX, the master compressor, the picker's new effects.
+    {"knobfx", [](Shell&, Snapshot& s) { // a kit: Ensemble on three pads of bank A
+         s.ui.page = PageId::KnobFx; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& k = s.project.knob_fx;
+         load_knob(k, 19); k.on = true;
+         for (unsigned pad : {0u, 1u, 4u}) k.set_pad(3, pad, true);
+         s.ui.knob_cursor = 21; s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"knobfxtracks", [](Shell&, Snapshot& s) { // a synth track: Delay on three tracks
+         s.ui.page = PageId::KnobFx; s.ui.track = 2; s.playing = true;
+         auto& k = s.project.knob_fx;
+         load_knob(k, 0); k.on = true;
+         for (unsigned t : {0u, 2u, 5u}) k.set_track(t, true);
+         s.ui.knob_cursor = 0;
+     }},
+    {"knobfxbypass", [](Shell&, Snapshot& s) { // bypassed, on every track
+         s.ui.page = PageId::KnobFx; s.ui.track = 0; s.playing = true;
+         auto& k = s.project.knob_fx;
+         load_knob(k, 7); k.on = true; k.bypass = true; k.tracks = 0xffff;
+         s.ui.knob_cursor = 7;
+     }},
+    {"knobfxstage", [](Shell&, Snapshot& s) { // the mode on away from its page: the pots are Amp Sim's
+         s.ui.page = PageId::Stage; s.ui.track = 0; s.playing = true;
+         auto& k = s.project.knob_fx;
+         load_knob(k, 16); k.on = true; k.set_track(0, true);
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"knobfxshift", [](Shell&, Snapshot& s) { // and Shift held: its second row (bass, mid, treble)
+         s.ui.page = PageId::Stage; s.ui.track = 0; s.ui.shift = true;
+         auto& k = s.project.knob_fx;
+         load_knob(k, 16); k.on = true; k.set_track(0, true);
+     }},
+    {"compressor", [](Shell&, Snapshot& s) { // Shift + Pad 5: engaged, Color on, taking 4.5 dB off
+         s.ui.page = PageId::Compressor; s.playing = true;
+         auto& c = s.project.compressor;
+         c.on = true; c.color = true; c.amount = 60; c.attack = 25; c.release = 40; c.boost = 3;
+         s.compression = 4.5f; s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"pickerdirt", [](Shell&, Snapshot& s) { // the picker on Dirt: Amp sim, Tube drive, Soft clipper, Vintage, Vinyl, Tape emulator
+         s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 2; s.playing = true;
+         s.ui.picker_open = true; s.ui.picker_items = true; s.ui.picker_family = uint8_t(Family::Dirt); s.ui.picker_item = 8;
+     }},
+    {"rackspring", [](Shell&, Snapshot& s) { // Spring and Pumper in a track's chain; Shift + K turns the second row
+         s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 0; s.playing = true;
+         auto& chain = s.project.tracks[2].fx;
+         const EffectKind kinds[] {EffectKind::Spring, EffectKind::Pumper};
+         for (unsigned k = 0; k < 2; ++k) {
+             chain.slots[k].kind = uint8_t(kinds[k]);
+             const auto& info = effect_info(kinds[k]);
+             for (unsigned q = 0; q < effect_params; ++q) chain.slots[k].params[q] = info.params[q].label ? info.params[q].initial : 0;
+         }
+         s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_cursor = 0; }},
     {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},

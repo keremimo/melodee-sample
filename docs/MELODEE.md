@@ -215,7 +215,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   its one send goes into the bus it picks (A–D, 6 slots each, with a
   return), and everything meets in the master chain (6 slots) before main
   volume. Slot counts and the four buses are constants in
-  `model/limits.h` (open question 5). The effects are written here, all 28
+  `model/limits.h` (open question 5). The effects are written here, all 41
   of the picker's: Room, Reverb, Plate, Shimmer (the reverb with an
   octave-up shifter in its feedback); Echo, Tape echo, Ping pong, Looper
   (up to 1.5 s, RECORD overdubs, KEEP fades the old layers); Chorus,
@@ -224,10 +224,45 @@ Steps, Roll and Motion B1–B3 pick those three.
   Drive, Tape, Crush, Spit (now and then a few milliseconds held, crushed
   and jumping in level), Fuzz; EQ, Filter, Formant (three band passes
   morphing through A E I O U, SHIFT moves them), Width; Compressor, Gate,
-  Transient, Limiter. Delay memory (reverbs, echoes, chorus, flanger, tape) comes from a
+  Transient, Limiter; and (parity phase 7, the rest of the MPC's Knob FX
+  list, `engine/effects_extra.cpp`) Spring (predelay, a low cut and a
+  dispersion chain in each spring's loop), Diff delay (each echo through
+  four diffusers), Sample delay (left and right apart, 0–250 ms), Pumper
+  (the gain ducks on each beat of SPEED, Bar to 1/32T, following the song's
+  clock), Amp sim (a tone stack, soft or hard valves, eleven cabinets),
+  Tube drive (clipping from HEADROOM, lopsided by SATURATION), Soft clipper
+  (Tanh, Sine, Parabolic), Ensemble (three voices with shimmer), Multi-chorus
+  (3, 4 or 6 voices), Auto-wah (a resonant low pass following the level),
+  Vintage (MPC3000, MPC60, SP1200 and SP1200 Ring: their rate, bits and
+  output filter), Vinyl (wow, the record's band, crackle) and Tape emulator
+  (wow, wandering pitch, hiss, saturation). Every effect's second row is
+  also Shift + K1–K3 on the effects pages. Delay memory (reverbs, echoes, chorus, flanger, tape) comes from a
   pool of 48 blocks of 1.5 s made at start, so the audio thread never
   allocates; past 48 such effects, a new one passes sound through.
-- **Effects pages** (KNOB FX steps Track → Sends → Bus → Master; B1/B3 walk
+- **Knob FX** (parity phase 7, as on the MPC; `shell/knob_fx.cpp`,
+  `pages/knob_fx_page.cpp`): Knob FX turns the mode on (lit) and opens its
+  page, again turns it off. While on, K1–K3 are the effect's on every page
+  (Shift + K1–K3 its second row), the page's own cards wait. The page lists
+  the MPC's 28 (Delay … Tape Emulator, the filters as Melodee's Filter with
+  its type set) and then Melodee's own 15; the wheel or Minus / Plus walk
+  it, Push loads. On a kit track the pads switch it on per kit pad of the
+  bank in view, elsewhere per track (bright on, faint off); B2 all (again:
+  none), B3 bypass. The pads and tracks it is on go through one effect on
+  their way to the master: a kit's pads after their own chain (not the
+  track's) at the track's level and pan, a track after its chain (its send
+  still dry); it rings on six seconds after the last one lets go. With Rec
+  Input FX on (Input Config) and Knob FX heard, a second copy of it is on
+  the input while a take waits or runs (Monitor hears it too). Saved with
+  the project (`KNFX`) but for whether the mode is on.
+- **Compressor** (Shift + Pad 5, as on the MPC; `engine/master_comp.cpp`,
+  `pages/compressor_page.cpp`): on the master after its chain, before main
+  volume. B1 Color (the lows doubled in parallel, a slow wobble, soft
+  saturation), B3 engage / bypass; K1 attack 0.1–150 ms, K2 release
+  3–300 ms, K3 amount (threshold to −30 dB and ratio to 10:1 together,
+  makeup half of what a 0 dB signal loses), Shift + K3 In Boost 0–24 dB.
+  The page draws its curve and the gain it takes off now. Saved (`CMPR`);
+  off in older projects.
+- **Effects pages** (Shift + Knob FX, FX SELECT, steps Track → Sends → Bus → Master; B1/B3 walk
   along too): four device cards in view with a picture of each effect, the
   device in view with its row (Minus / Plus) and how full the chain is. The
   wheel picks a device; Push on it opens Change, Bypass, Move left / right,
@@ -417,7 +452,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   While the mic is monitored the built-in speaker goes quiet (as on the
   MPC, so it does not howl; the header says SPEAKER OFF); it also stays
   off with headphones or line out in. B2 **Rec Input FX** On / Off (kept;
-  it acts once Knob FX exists, phase 7). B3 back. The source is always
+  with Knob FX heard, Knob FX is on the input during a take). B3 back. The source is always
   routed (the ADC switches, USB-C), so the meter and Audio Recall always
   hear it. All of it is kept with Melodee's settings on the card, a second
   after the last change.
@@ -676,7 +711,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   Off / On / Rec, Sample Record → Audio Recall (25 s onto the next empty pad), Seq
   Record → Recall (Capture), Play → continue from the bar the song stopped
   in, Stop → all notes off, Minus / Plus → undo / redo on every page, Push
-  → back. **Shift + Pad 1–16** are the jobs printed under the pads, on
+  → back, Knob FX → FX SELECT (Melodee's chains). **Shift + Pad 1–16** are the jobs printed under the pads, on
   every page but the browser (where Shift + pad loads onto the next empty
   pad; `shell/shift_pad_jobs.cpp` holds the table, from Akai's
   guide): 1 Full Level (every hit at 127, again back to the pad response it
@@ -684,9 +719,9 @@ Steps, Roll and Motion B1–B3 pick those three.
   and motion played twice), 4 Count-In and 10 Rec Quantize (toggles, kept
   in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 13 Trim
   Sample, 14 Time Correct, 15 Warp (Time stretch or Pitch for the kit), 16
-  Project, 11 Resample (then a pad). The others (5 Compressor, 8 MIDI Config, 9 Fader)
+  Project, 11 Resample (then a pad), 5 Compressor. The others (8 MIDI Config, 9 Fader)
   say which phase brings them
-  ("Compressor: phase 7"). The overlay draws the sixteen as the pads
+  ("Fader: phase 8"). The overlay draws the sixteen as the pads
   sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
   the track's colour, the rest dim with their phase; the pads light the
   same way while Shift is held. **Shift + K1–K3:** a card with a second
@@ -734,14 +769,19 @@ Steps, Roll and Motion B1–B3 pick those three.
   `melodee_speaker=` (1 on, 0 off, −1 untouched), `melodee_recall_frames=`,
   `melodee_render=` (idle, cued, running, tail, done, cancelled, failed),
   `melodee_render_frames=`, `melodee_rendering=` (1 Resample, 2 mixdown)
-  and `melodee_resample_pick=`. For checks without hands on the device.
+  and `melodee_resample_pick=`; phase 7 adds `melodee_knob=`, `melodee_knob_bypass=`,
+  `melodee_rec_fx=`, `melodee_knob_entry=`, `melodee_knob_kind=`, `melodee_knob_cursor=`,
+  `melodee_knob_tracks=` (a bit a track), `melodee_knob_pads=` (the bank in view, a bit a pad),
+  `melodee_comp=`, `melodee_comp_color=`, `melodee_comp_boost=`, `melodee_comp_attack=`,
+  `melodee_comp_release=`, `melodee_comp_amount=` and `melodee_comp_reduction=` (dB). For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, browserinternal, trim, chop, chopmanual, chopshift,
   levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, inputusb, record, recordseq, resample, resampling, songexport, mixdownname, project, filesheet, tempo, arp, chord,
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
-  levelsfilter, levelssynth, punch, padpunch, padfx, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  levelsfilter, levelssynth, punch, padpunch, padfx, knobfx, knobfxtracks, knobfxbypass, knobfxstage, knobfxshift,
+  compressor, pickerdirt, rackspring, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

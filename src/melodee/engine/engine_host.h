@@ -6,6 +6,7 @@
 #include "melodee/engine/cz.h"
 #include "melodee/engine/fm6.h"
 #include "melodee/engine/kit909.h"
+#include "melodee/engine/master_comp.h"
 #include "melodee/engine/sid.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
@@ -106,6 +107,7 @@ public:
     unsigned tempo_now() const { return tempo_shown.load(std::memory_order_relaxed); } // tenths of a BPM, as it plays
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
     bool punching() const { return punch_on.load(std::memory_order_relaxed); }
+    float compression() const { return comp.reduction_db(); } // dB the master compressor takes off now
     bool song_playing() const { return in_song.load(std::memory_order_relaxed); }
     unsigned song_bar() const { return bar_now.load(std::memory_order_relaxed); }
     float meter(unsigned track) const { return meters[track % track_count].load(std::memory_order_relaxed); }
@@ -222,6 +224,19 @@ private:
     std::array<float, bus_count> returns {0.7f, 0.7f, 0.7f, 0.7f};
     float bus_l[bus_count][block] {}, bus_r[bus_count][block] {}, master_l[block] {}, master_r[block] {};
     void run_chain(unsigned chain, float* left, float* right, unsigned frames);
+    // Knob FX (parity phase 7): one effect the chosen tracks and kit pads go
+    // through on their way to the master (`knob_in`, its twin, on the input
+    // during a take with Rec Input FX); it rings on a while after it stops.
+    Effect knob, knob_in;
+    bool knob_heard = false, knob_rec = false;
+    uint16_t knob_tracks = 0;
+    std::array<std::array<uint64_t, 2>, track_count> knob_pads {};
+    uint32_t knob_tail = 0;
+    float knob_l[block] {}, knob_r[block] {};
+    void knob_targets(); // hands each kit its pads (none while Knob FX is not heard)
+    void knob_command(const Command& c);
+    MasterCompressor comp;
+    MasterComp comp_settings;
     std::array<PlayPatterns, track_count> patterns {};
     Motion motion;
     Song song;

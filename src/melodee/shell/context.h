@@ -238,6 +238,17 @@ public:
     int hold_file(const std::string& name, unsigned track, int pad, uint8_t land);
     void drop_file(int slot);                            // a held slot nothing came for: free again
     void take_landed(unsigned track, unsigned kit, unsigned slot, const LoadedSample& loaded); // Sample Record's take onto its pads
+    // Knob FX and the master compressor (parity phase 7, shell/knob_fx.cpp).
+    void knob_fx_button();                                // Knob FX: the mode on (its page) or off
+    void knob_fx_load(unsigned entry);                    // Push on the list: the entry's effect at its initial values
+    void knob_fx_param(unsigned param, int value);        // K1-K3 (Shift: the second row) while the mode is on
+    void knob_fx_pad(unsigned pad);                       // a pad on the page: a kit pad of the bank in view, or a track, on / off
+    void knob_fx_all();                                   // B2: all on, or all off when all were on
+    void knob_fx_bypass();                                // B3
+    bool knob_fx_kit();                                   // its pads are kit pads (the selected track is a kit)
+    void send_knob_state();                               // heard or not, and Rec Input FX
+    void send_knob_targets();
+    void set_compressor(unsigned what, int value);        // as Command::Compressor's index: on, Color, attack, release, amount, boost
     // Effects: chain numbers as in model/project.h (tracks, buses, master).
     void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
     void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);

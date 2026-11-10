@@ -2,6 +2,7 @@
 // Melodee's model and audio side on the host: pad layouts, knob bindings,
 // the PROPHET engine and the engine host's sequencer and mixer.
 #include "melodee/engine/effects.h"
+#include <functional>
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
@@ -1268,12 +1269,13 @@ void shift_pads() {
     CHECK(shift_pad_job(14).kind == K::Action);                                // Warp: Time stretch / Pitch (phase 4)
     CHECK(shift_pad_job(12).kind == K::Action);                                // Trim Sample (phase 5)
     CHECK(shift_pad_job(10).kind == K::Action);                                // Resample (phase 6)
-    for (unsigned n : {4u, 7u, 8u})
+    CHECK(shift_pad_job(4).kind == K::Open);                                   // Compressor (phase 7)
+    for (unsigned n : {7u, 8u})
         CHECK(shift_pad_job(n).kind == K::Later && shift_pad_job(n).phase >= 2);
 
     UiState ui;
     CHECK(!ui.settings.full_level() && !ui.settings.count_in && ui.settings.rec_quantize);
-    CHECK(shift_pad_level(ui, 0) == 1 && shift_pad_level(ui, 9) == 2 && shift_pad_level(ui, 4) == 0 && shift_pad_level(ui, 11) == 1);
+    CHECK(shift_pad_level(ui, 0) == 1 && shift_pad_level(ui, 9) == 2 && shift_pad_level(ui, 7) == 0 && shift_pad_level(ui, 11) == 1);
     ui.settings.pad_response = 2;
     ui.settings.toggle_full_level();
     CHECK(ui.settings.full_level() && ui.settings.velocity(5) == 127 && shift_pad_level(ui, 0) == 2);
@@ -2281,7 +2283,192 @@ void audio_input_and_rendering() {
     CHECK(!flatten_lane(song, 6, lane, bar, song.length(), flat, full));
 }
 
+
+// Parity phase 7: the new effects, Knob FX (tracks, kit pads, the input) and the master compressor.
+void performance_effects() {
+    // The picker: 41 effects, every one built, two columns of six at most a family; Knob FX's list: the MPC's 28 first.
+    CHECK(effect_count() == 41);
+    for (unsigned f = 0; f < unsigned(Family::Count); ++f) { FamilyList list {}; CHECK(family_effects(Family(f), list) <= 12); }
+    for (unsigned k = 1; k < unsigned(EffectKind::Count); ++k) CHECK(effect_info(EffectKind(k)).built);
+    CHECK(knob_fx_count() == 43 && knob_fx_mpc_count() == 28);
+    CHECK(std::string(knob_fx_entry(0).name) == "Delay" && std::string(knob_fx_entry(27).name) == "Tape Emulator");
+    CHECK(knob_fx_entry(8).kind == EffectKind::Filter && knob_fx_entry(8).param == 2 && knob_fx_entry(8).value == 2); // HP Filter
+    for (unsigned e = 0; e < knob_fx_count(); ++e) CHECK(effect_info(knob_fx_entry(e).kind).built);
+    // New formats.
+    ParamInfo ms {"LEFT", 0, 250, 0, Format::Ms}, hz {"LOW CUT", 20, 1000, 0, Format::Hertz}, sec {"TIME", 10, 100, 0, Format::Seconds};
+    CHECK(show(ms, 12).value == "12" && show(ms, 12).unit == "ms" && show(hz, 1000).unit == "kHz" && show(sec, 25).value == "2.5");
+
+    DelayPool pool;
+    auto run = [](Effect& e, std::vector<float>& l, std::vector<float>& r) {
+        for (size_t at = 0; at < l.size(); at += 128) e.process(l.data() + at, r.data() + at, unsigned(std::min<size_t>(128, l.size() - at)));
+    };
+    // Sample delay: the right side late by its RIGHT, the left on time.
+    {
+        Effect e; e.set_kind(EffectKind::SampleDelay, pool);
+        e.set_param(0, 0); e.set_param(1, 10);
+        std::vector<float> l(2048, 0), r(2048, 0);
+        l[100] = r[100] = 1;
+        run(e, l, r);
+        CHECK(l[100] > 0.99f && std::fabs(r[100]) < 1e-3f && r[100 + 441] > 0.99f);
+        e.set_kind(EffectKind::None, pool);
+    }
+    // Pumper: on the beat the gain dips by DEPTH, between beats it is back.
+    {
+        Effect e; e.set_kind(EffectKind::Pumper, pool);
+        e.set_param(2, 100); e.set_param(3, 0); e.set_param(4, 30); // full depth, no attack, hold
+        effect_clock.quarter = 22050;
+        std::vector<float> l(22050, 0.5f), r(22050, 0.5f);
+        effect_clock.beats = 0;
+        for (size_t at = 0; at < l.size(); at += 128) {
+            effect_clock.beats = double(at) / 22050;
+            e.process(l.data() + at, r.data() + at, unsigned(std::min<size_t>(128, l.size() - at)));
+        }
+        CHECK(l[1500] < 0.1f && l[21000] > 0.4f);
+    }
+    // Vintage SP1200: steps held for 44100 / 26040 samples, so a ramp comes out in stairs.
+    {
+        Effect e; e.set_kind(EffectKind::Vintage, pool); e.set_param(0, 2);
+        std::vector<float> l(4096), r(4096);
+        for (unsigned n = 0; n < 4096; ++n) l[n] = r[n] = float(n) / 4096 - 0.5f;
+        run(e, l, r);
+        CHECK(std::isfinite(l[4000]) && std::fabs(l[4000] - (4000.0f / 4096 - 0.5f)) < 0.1f);
+    }
+
+    // Knob FX on a track: a low pass at its bottom quietens it while heard; bypassed, the track is as it was.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[0], EngineKind::Prophet, 0);
+    project->tracks[0].params[prophet::Cutoff] = 100;
+    auto energy = [&](const std::function<void(EngineHost&)>& set) {
+        EngineHost host;
+        host.load(*project, *bank);
+        set(host);
+        host.send({Command::Type::NoteOn, 0, 0, 69, 110});
+        std::vector<int32_t> out(256);
+        double sum = 0;
+        for (unsigned n = 0; n < 200; ++n) {
+            host.render(out.data(), 128, 1);
+            if (n > 40) for (auto v : out) sum += double(v / 2147483648.0f) * (v / 2147483648.0f);
+        }
+        return sum;
+    };
+    auto knob = [](EngineHost& host, EffectKind kind, std::initializer_list<std::pair<int, int>> params, bool heard, uint16_t tracks) {
+        host.send({Command::Type::KnobFx, 0, 0, 0, int16_t(kind)});
+        for (auto [q, v] : params) host.send({Command::Type::KnobFx, 0, uint8_t(q), 1, int16_t(v)});
+        host.send({Command::Type::KnobFx, 0, 0, 2, int16_t(heard ? 1 : 0)});
+        Command t {Command::Type::KnobFx, 0, 0, 3}; t.position = tracks; host.send(t);
+    };
+    double dry = energy([](EngineHost&) {});
+    double filtered = energy([&](EngineHost& h) { knob(h, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 1); });
+    double other = energy([&](EngineHost& h) { knob(h, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 2); });   // another track
+    double off = energy([&](EngineHost& h) { knob(h, EffectKind::Filter, {{0, 0}, {1, 0}}, false, 1); });    // bypassed / off
+    CHECK(filtered * 20 < dry && std::fabs(other - dry) < dry * 0.01 && std::fabs(off - dry) < dry * 0.01);
+
+    // Knob FX on kit pads: pad 1 through it, pad 2 not.
+    {
+        auto kit = std::make_unique<Project>(*project);
+        load_sound(kit->tracks[1], EngineKind::Sampler, 0);
+        for (unsigned pad : {0u, 1u}) { kit->tracks[1].pads[pad].sample = 0; kit->tracks[1].pads[pad].play = PadPlay::OneShot; }
+        SampleData tone;
+        tone.frames = 44100; tone.left.resize(44100); tone.right.resize(44100);
+        for (unsigned n = 0; n < 44100; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.3) * 0.5); // about 2.1 kHz
+        auto hit = [&](unsigned pad, bool knobbed) {
+            EngineHost host;
+            host.load(*kit, *bank);
+            CHECK(host.offer_sample(0, &tone));
+            knob(host, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 0);
+            Command pads {Command::Type::KnobFx, 1, 0, 4}; pads.position = knobbed ? 1u : 0u; host.send(pads); // pad A01
+            host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + pad), 110});
+            std::vector<int32_t> out(256);
+            double sum = 0;
+            for (unsigned n = 0; n < 100; ++n) { host.render(out.data(), 128, 1); if (n > 10) for (auto v : out) sum += double(v / 2147483648.0f) * (v / 2147483648.0f); }
+            const SampleData* gone = nullptr;
+            while (host.take_retired(gone)) {}
+            return sum;
+        };
+        double a_dry = hit(0, false), a_knob = hit(0, true), b_knob = hit(1, true);
+        CHECK(a_dry > 0 && a_knob * 20 < a_dry && std::fabs(b_knob - a_dry) < a_dry * 0.05);
+    }
+
+    // Rec Input FX: the take hears Knob FX on the input (the mix here, Resample), the speakers do not.
+    auto take = [&](bool rec_fx) {
+        EngineHost host;
+        host.load(*project, *bank);
+        knob(host, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 0);
+        host.send({Command::Type::KnobFx, 0, 0, 2, int16_t(1 | (rec_fx ? 2 : 0))});
+        host.send({Command::Type::RecordArm, uint8_t(InputSource::Resample), 1, 5, -96});
+        host.send({Command::Type::NoteOn, 0, 0, 69, 110});
+        std::vector<int32_t> out(256);
+        for (unsigned n = 0; n < 700; ++n) host.render(out.data(), 128, 1, nullptr);
+        double sum = 0;
+        for (uint32_t f = 2000; f < host.recorder().frames(); ++f) sum += double(host.recorder().left()[f]) * host.recorder().left()[f];
+        return sum;
+    };
+    double plain_take = take(false), fx_take = take(true);
+    CHECK(plain_take > 0 && fx_take * 20 < plain_take);
+
+    // The master compressor: engaged at full amount it takes the loud chord down, and says by how much.
+    auto loud = [&](bool on, bool color) {
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::Compressor, 0, 0, 4, 100});
+        host.send({Command::Type::Compressor, 0, 0, 1, int16_t(color)});
+        host.send({Command::Type::Compressor, 0, 0, 0, int16_t(on)});
+        for (int key : {57, 60, 64, 69}) host.send({Command::Type::NoteOn, 0, 0, uint16_t(key), 127});
+        std::vector<int32_t> out(256);
+        float most = 0;
+        for (unsigned n = 0; n < 300; ++n) {
+            host.render(out.data(), 128, 1);
+            if (n > 100) for (auto v : out) { most = std::max(most, std::fabs(v / 2147483648.0f)); CHECK(v != INT32_MIN); }
+        }
+        return std::pair<float, float>(most, host.compression());
+    };
+    auto uncompressed = loud(false, false), compressed = loud(true, false), coloured = loud(true, true);
+    CHECK(uncompressed.second == 0 && compressed.second > 3 && coloured.second > 3 && coloured.first > 0.01f);
+
+    // The project file: Knob FX and the compressor come back; older files (neither section) load them off.
+    project->knob_fx.choice = 16; project->knob_fx.kind = uint8_t(EffectKind::AmpSim); project->knob_fx.params = {3, 70, 40, 2, -3, 5};
+    project->knob_fx.on = true; project->knob_fx.bypass = true;
+    project->knob_fx.set_track(4, true); project->knob_fx.set_pad(1, 70, true);
+    project->compressor = {true, true, 12, 80, 66, 9};
+    auto data = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(data, *back, *back_bank).empty());
+    const auto& k = back->knob_fx;
+    CHECK(!k.on && k.bypass && k.choice == 16 && k.kind == uint8_t(EffectKind::AmpSim) && k.params[4] == -3 && k.track_on(4) && !k.track_on(3)
+          && k.pad_on(1, 70) && !k.pad_on(1, 6));
+    const auto& c = back->compressor;
+    CHECK(c.on && c.color && c.attack == 12 && c.release == 80 && c.amount == 66 && c.boost == 9);
+    auto older = data;
+    for (size_t n = 0; n + 4 <= older.size(); ++n)
+        if (std::memcmp(&older[n], "KNFX", 4) == 0 || std::memcmp(&older[n], "CMPR", 4) == 0) std::memcpy(&older[n], "XXXX", 4);
+    CHECK(load_project(older, *back, *back_bank).empty() && back->knob_fx.kind == 0 && !back->knob_fx.tracks && !back->compressor.on);
+
+    // Bindings: with the mode on the pots are Knob FX's on any page, Shift its second row; Shift + K on a chain gives the other row.
+    UiState ui;
+    ui.page = PageId::Mix;
+    project->knob_fx.on = true; project->knob_fx.bypass = false;
+    Pattern pattern;
+    auto cards = page_bindings(*project, ui, pattern, false);
+    CHECK(cards[0].kind == Binding::Kind::KnobParam && cards[0].id == 0 && cards[1].value == 70);
+    cards = page_bindings(*project, ui, pattern, true);
+    CHECK(cards[0].kind == Binding::Kind::KnobParam && cards[0].id == 3 && cards[2].value == 5);
+    project->knob_fx.on = false;
+    CHECK(page_bindings(*project, ui, pattern, false)[0].kind == Binding::Kind::Level);
+    ui.page = PageId::Rack; ui.track = 2;
+    project->tracks[2].fx.slots[0].kind = uint8_t(EffectKind::Spring);
+    project->tracks[2].fx.slots[0].params = {0, 25, 30, 70, 60, 120};
+    cards = page_bindings(*project, ui, pattern, true);
+    CHECK(cards[0].kind == Binding::Kind::FxParam && cards[0].id % 8 == 3 && cards[2].value == 120);
+    ui.page = PageId::Compressor;
+    cards = page_bindings(*project, ui, pattern, false);
+    CHECK(cards[0].kind == Binding::Kind::CompAttack && cards[2].kind == Binding::Kind::CompAmount && cards[2].value == 66);
+    CHECK(page_bindings(*project, ui, pattern, true)[2].kind == Binding::Kind::CompBoost);
+}
+
 int main() {
+    performance_effects();
     audio_input_and_rendering();
     chop_and_browser();
     sample_mode();

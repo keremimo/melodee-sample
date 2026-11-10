@@ -5,7 +5,7 @@
 #include <array>
 #include <cstdint>
 
-// The effects as the user interface sees them: 28 in six families, each with
+// The effects as the user interface sees them: 41 in six families, each with
 // up to six parameters in two rows of three, and a small picture of what it
 // does for its card. `built` marks the ones with DSP behind them yet.
 namespace melodee {
@@ -18,9 +18,13 @@ enum class EffectKind : uint8_t {
     Drive, Tape, Crush, Spit, Fuzz,
     Eq, Filter, Formant, Width,
     Compressor, Gate, Transient, Limiter,
+    // Parity phase 7: the MPC's Knob FX effects Melodee lacked (appended, so saved kinds keep their numbers).
+    DiffDelay, SampleDelay, Spring, Pumper, AmpSim, TubeDrive, SoftClip, Ensemble, MultiChorus, AutoWah,
+    Vintage, Vinyl, TapeEmu,
     Count
 };
 
+static_assert(unsigned(EffectKind::Count) == effect_kinds, "model/limits.h counts the effects");
 constexpr unsigned effect_params = 6;
 enum class Family : uint8_t { Space, Time, Motion, Dirt, Tone, Dynamics, Count };
 
@@ -35,8 +39,21 @@ struct EffectInfo {
 
 const EffectInfo& effect_info(EffectKind kind);
 const char* family_name(Family family);
-// The effects of a family in picker order.
-unsigned family_effects(Family family, std::array<EffectKind, 8>& out);
+// The effects of a family in picker order (two columns of six at most).
+using FamilyList = std::array<EffectKind, 12>;
+unsigned family_effects(Family family, FamilyList& out);
 inline unsigned effect_count() { return unsigned(EffectKind::Count) - 1; }
+
+// Knob FX's list (parity phase 7): the MPC's effects in its order, each as
+// one of Melodee's effects (a filter with its type set), then Melodee's own.
+struct KnobFxEntry {
+    const char* name;
+    EffectKind kind;
+    int8_t param = -1; // a parameter the entry sets over the effect's initial values
+    int16_t value = 0;
+};
+unsigned knob_fx_count();
+const KnobFxEntry& knob_fx_entry(unsigned index);
+unsigned knob_fx_mpc_count(); // the first ones are the MPC's
 
 } // namespace melodee
