@@ -162,10 +162,21 @@ void draw(Paint& p, const Snapshot& s) {
             p.g.setColour(colour::text); p.g.fillPath(tri);
         }
     }
+    // The punch lane: punches written into the song, in their target's colour.
+    if (song.punch_count) {
+        p.text("P", zone::pad, bottom - 1, 22, 6, caps_text(colour::dim, 5.5f), juce::Justification::centred);
+        for (unsigned n = 0; n < song.punch_count; ++n) {
+            const auto& e = song.punches[n];
+            float from = float(e.bar) + e.step / 16.0f, to = from + e.length / 16.0f;
+            if (to <= view || from >= view + zoom) continue;
+            float px = x0 + (std::max(from, float(view)) - view) * bw, pw = std::max(1.5f, (std::min(to, float(view + zoom)) - std::max(from, float(view))) * bw);
+            p.fill(px, bottom, pw, 2.5f, e.target == 255 ? colour::text : track_colour(e.target), 1);
+        }
+    }
     // The whole song, with the window on it.
     unsigned total = std::max({song.length(), view + zoom, 16u});
-    float oy = bottom + 3.5f, ow = x1 - x0;
-    p.text(juce::String(song.length()), zone::pad, oy - 4, 22, 9, plain(colour::dim, 6.5f, Weight::SemiBold), juce::Justification::centred);
+    float oy = bottom + 5, ow = x1 - x0;
+    p.text(juce::String(song.length()), zone::pad, oy - 3, 22, 9, plain(colour::dim, 6.5f, Weight::SemiBold), juce::Justification::centred);
     p.fill(x0, oy, ow, 2, colour::line, 1);
     p.fill(x0 + ow * view / total, oy - 1, std::max(4.0f, ow * zoom / total), 4, colour::mid, 2);
 }

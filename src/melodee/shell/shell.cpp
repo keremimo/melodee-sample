@@ -157,7 +157,10 @@ void Shell::button(Button b, bool pressed) {
         if (ui.shift) context_.send({Command::Type::AllNotesOff, 255});
         else context_.stop();
         break;
-    case Button::SeqRecord: ui.recording = !ui.recording; break;
+    case Button::SeqRecord:
+        ui.recording = !ui.recording;
+        context_.send({Command::Type::SongRecord, 0, 0, 0, int16_t(ui.recording)});
+        break;
     case Button::TapTempo:
         if (ui.shift) { context_.set_click(!context_.project.click); break; } // Shift: the metronome
         context_.tap_tempo();

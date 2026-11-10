@@ -147,12 +147,22 @@ struct Marker {
     uint16_t bar = 0;
     char name[12] {};
 };
+// A punch written into the song: where (a bar and its sixteenth), for how
+// many sixteenths, which punch (PunchKind), on what (255 the master, else a
+// track) and how deep.
+struct SongPunch {
+    uint16_t bar = 0;
+    uint8_t step = 0, length = 1, kind = 0, target = 255, depth = 100;
+};
 struct Song {
     std::array<Clip, song_clips> clips {};
     uint16_t count = 0;
     std::array<Marker, song_markers> markers {};
     uint8_t marker_count = 0;
     uint16_t loop_start = 0, loop_end = 0; // bars; no loop when equal
+    std::array<SongPunch, song_punches> punches {};
+    uint16_t punch_count = 0;
+    bool add_punch(const SongPunch& p) { if (punch_count == punches.size()) return false; punches[punch_count++] = p; return true; }
     int clip_at(unsigned track, unsigned bar) const {
         for (unsigned n = 0; n < count; ++n)
             if (clips[n].track == track && bar >= clips[n].bar && bar < clips[n].end()) return int(n);

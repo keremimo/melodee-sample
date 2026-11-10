@@ -142,6 +142,9 @@ void EngineHost::apply(const Command& c) {
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
         }
         break;
+    case Type::SongPunchSet: if (c.index < song_punches) song.punches[c.index] = c.song_punch; break;
+    case Type::SongPunchCount: song.punch_count = uint16_t(std::clamp<int>(c.value, 0, song_punches)); break;
+    case Type::SongRecord: song_recording = c.value != 0; break;
     case Type::PunchOn: {
         unsigned pad = c.index >> 8;
         PendingPunch p {true, c.track, PunchKind((c.index & 0xff) % punch_count), std::clamp<int>(c.value, 0, 100) / 100.0f,
@@ -155,6 +158,7 @@ void EngineHost::apply(const Command& c) {
             pad_punch.start(p.kind, p.depth, bar_length(), grid, p.tail);
             break;
         }
+        live_punch = true; punch_from_song = false;
         if (running) pending = p;
         else start_punch(p);
         break;
@@ -163,6 +167,7 @@ void EngineHost::apply(const Command& c) {
         if (c.index >> 8) { if (int(c.index >> 8) - 1 == pad_punch_pad && c.track == pad_punch_track) pad_punch.stop(); break; }
         if (pending.waiting && (pending.target == c.track || c.track == 254)) pending.waiting = false; // let go before it began
         else if (punch_target == c.track || c.track == 254) punch.stop();
+        live_punch = false;
         break;
     case Type::PunchDepth:
         if (c.index >> 8) pad_punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f);
@@ -246,6 +251,7 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Stop:
         running = false;
+        if (punch_from_song) { punch.stop(); punch_from_song = false; }
         song_mode = false;
         in_song.store(false, std::memory_order_relaxed);
         for (unsigned t = 0; t < track_count; ++t) {
@@ -327,7 +333,7 @@ void EngineHost::bar_start() {
     }
     if (tick_now) ++song_bar_now;
     if (song.looping() && song_bar_now == song.loop_end) song_bar_now = song.loop_start;
-    if (!song.looping() && song_bar_now >= std::max(song.length(), 1u)) { // the end of the song
+    if (!song.looping() && !song_recording && song_bar_now >= std::max(song.length(), 1u)) { // the end of the song
         running = false;
         for (auto& s : slots) for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
         return;
@@ -368,6 +374,19 @@ void EngineHost::start_punch(const PendingPunch& p) {
     punch.start(p.kind, p.depth, bar_length(), bar_length() / (4u << p.snap), p.tail);
 }
 
+void EngineHost::play_song_punches() {
+    if (punch_from_song && tick_now >= song_punch_until) { punch.stop(); punch_from_song = false; }
+    if (live_punch) return; // a punch held by hand wins
+    unsigned step = (tick_now % ticks_per_bar) / (ticks_per_bar / 16);
+    for (unsigned n = 0; n < song.punch_count; ++n) {
+        const auto& e = song.punches[n];
+        if (e.bar != song_bar_now || e.step != step) continue;
+        start_punch({false, e.target, PunchKind(e.kind % punch_count), e.depth / 100.0f, 2, 1});
+        punch_from_song = true;
+        song_punch_until = tick_now + std::max<uint32_t>(1, e.length) * (ticks_per_bar / 16);
+    }
+}
+
 void EngineHost::tick() {
     // A punch waiting for its grid.
     if (pending.waiting && tick_now % (ticks_per_bar / (4u << pending.snap)) == 0) { pending.waiting = false; start_punch(pending); }
@@ -378,6 +397,7 @@ void EngineHost::tick() {
     }
     if (tick_now % ticks_per_bar == 0) bar_start();
     if (!running) return;
+    if (song_mode && tick_now % (ticks_per_bar / 16) == 0) play_song_punches();
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         if (!slot.engine || slot.silent) continue;

@@ -151,6 +151,13 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     at = w.begin("MSTR");
     write_chain(w, project.master);
     w.end(at);
+    at = w.begin("SPCH"); // punches written into the song
+    w.u16(project.song.punch_count);
+    for (unsigned n = 0; n < project.song.punch_count; ++n) {
+        const auto& e = project.song.punches[n];
+        w.u16(e.bar); w.u8(e.step); w.u8(e.length); w.u8(e.kind); w.u8(e.target); w.u8(e.depth);
+    }
+    w.end(at);
     at = w.begin("PDFX"); // each sampler pad's own chain
     for (unsigned t = 0; t < track_count; ++t)
         for (unsigned n = 0; n < sampler_pads; ++n) {
@@ -269,6 +276,15 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             read_chain(r, project->buses[b].fx);
         } else if (name == "MSTR") {
             read_chain(r, project->master);
+        } else if (name == "SPCH") {
+            unsigned count = r.u16();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                SongPunch e;
+                e.bar = uint16_t(std::min<unsigned>(r.u16(), song_bars)); e.step = uint8_t(r.u8() % 16); e.length = uint8_t(std::max(1u, r.u8()));
+                e.kind = uint8_t(r.u8() % punch_kinds); e.target = uint8_t(r.u8()); e.depth = uint8_t(std::min(100u, r.u8()));
+                if (e.target != 255 && e.target >= track_count) e.target = 255;
+                if (r.ok) project->song.add_punch(e);
+            }
         } else if (name == "PDFX") {
             while (r.ok && !r.done()) {
                 unsigned t = r.u8();

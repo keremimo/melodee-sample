@@ -349,14 +349,15 @@ void Context::punch_pad(unsigned pad, bool down) {
         send({Type::PunchOn, uint8_t(project.punch_target ? ui.track : 255), uint8_t(project.punch_snap | project.punch_tail << 4),
               uint16_t(kind), int16_t(project.punch_depth)});
     };
+    uint8_t target = uint8_t(project.punch_target ? ui.track : 255);
     if (down && ui.shift) { // lock on, or off again
         ui.shift_used = true;
-        if (ui.punch_locked == int(kind)) { send({Type::PunchOff, 254}); ui.punch_locked = -1; }
-        else { on(); ui.punch_locked = int8_t(kind); ui.punch_held = -1; }
+        if (ui.punch_locked == int(kind)) { send({Type::PunchOff, 254}); ui.punch_locked = -1; end_punch(); }
+        else { on(); ui.punch_locked = int8_t(kind); ui.punch_held = -1; begin_punch(kind, target, project.punch_depth); }
         return;
     }
-    if (down) { on(); ui.punch_held = int8_t(kind); ui.punch_locked = -1; return; } // the last pressed wins
-    if (ui.punch_held == int(kind)) { send({Type::PunchOff, 254}); ui.punch_held = -1; }
+    if (down) { on(); ui.punch_held = int8_t(kind); ui.punch_locked = -1; begin_punch(kind, target, project.punch_depth); return; } // the last pressed wins
+    if (ui.punch_held == int(kind)) { send({Type::PunchOff, 254}); ui.punch_held = -1; end_punch(); }
 }
 
 void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {
@@ -392,7 +393,7 @@ void Context::toggle_favourite() {
 }
 
 void Context::punch_release() {
-    if (ui.punch_held >= 0) { send({Type::PunchOff, 254}); ui.punch_held = -1; }
+    if (ui.punch_held >= 0) { send({Type::PunchOff, 254}); ui.punch_held = -1; end_punch(); }
     if (ui.pad_punch_held >= 0) { send({Type::PunchOff, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8)}); ui.pad_punch_held = -1; }
 }
 
@@ -448,6 +449,99 @@ void Context::launch(unsigned t, unsigned p) {
     auto& tr = project.tracks[t % track_count];
     tr.pattern = uint8_t(p % pattern_count);
     send({Type::Pattern, uint8_t(t), 0, 0, int16_t(tr.pattern)});
+    if (ui.recording && host.song_playing()) record_launch(t % track_count, tr.pattern);
+}
+
+unsigned Context::song_sixteenth() const { return host.song_bar() * 16 + (host.ticks() % ticks_per_bar) / (ticks_per_bar / 16); }
+
+void Context::record_launch(unsigned t, unsigned p) {
+    unsigned bar = host.song_bar() + 1; // like a launch, on the next bar
+    if (bar >= song_bars) return;
+    project.song.place({uint8_t(t), uint8_t(p), uint16_t(bar), 1, false});
+    recording_from[t] = uint16_t(bar);
+    recording_tracks |= uint16_t(1u << t);
+    seen_song_bar = host.song_bar();
+    sync_song();
+}
+
+// Each bar the clips being written grow by one, so the song always holds the
+// bar after the one playing; past 16 bars a new clip carries on.
+void Context::song_tick() {
+    bool on = ui.recording && host.song_playing();
+    if (!on) {
+        if (recording_tracks) finish_launches();
+        if (recording_punch >= 0) end_punch();
+        seen_song_bar = ~0u;
+        return;
+    }
+    unsigned bar = host.song_bar();
+    if (bar == seen_song_bar) return;
+    if (seen_song_bar != ~0u && bar < seen_song_bar) { finish_launches(); seen_song_bar = bar; return; } // the loop came round
+    seen_song_bar = bar;
+    if (!recording_tracks) return;
+    auto& song = project.song;
+    for (unsigned t = 0; t < track_count; ++t) {
+        if (!(recording_tracks & (1u << t))) continue;
+        int index = -1;
+        for (unsigned n = 0; n < song.count; ++n) if (song.clips[n].track == t && song.clips[n].bar == recording_from[t]) index = int(n);
+        if (index < 0) { recording_tracks &= uint16_t(~(1u << t)); continue; }
+        Clip clip = song.clips[size_t(index)];
+        if (clip.end() != bar + 1 || bar + 1 >= song_bars) continue;
+        if (clip.bars >= 16) { // a new clip carries on
+            song.place({clip.track, clip.pattern, uint16_t(bar + 1), 1, false});
+            recording_from[t] = uint16_t(bar + 1);
+            continue;
+        }
+        song.cut(t, bar + 1, bar + 2); // what was written after it gives way
+        for (unsigned n = 0; n < song.count; ++n)
+            if (song.clips[n].track == t && song.clips[n].bar == recording_from[t]) { ++song.clips[n].bars; break; }
+    }
+    sync_song();
+}
+
+// Seq Record off or the song stopped: each clip ends with the bar that was playing.
+void Context::finish_launches() {
+    auto& song = project.song;
+    unsigned bar = seen_song_bar == ~0u ? 0 : seen_song_bar;
+    for (unsigned t = 0; t < track_count; ++t) {
+        if (!(recording_tracks & (1u << t))) continue;
+        for (unsigned n = 0; n < song.count; ++n) {
+            auto& c = song.clips[n];
+            if (c.track != t || c.bar != recording_from[t]) continue;
+            unsigned end = std::max<unsigned>(bar + 1, c.bar + 1u);
+            if (c.end() > end) c.bars = uint16_t(end - c.bar);
+            break;
+        }
+    }
+    recording_tracks = 0;
+    sync_song();
+}
+
+void Context::begin_punch(unsigned kind, uint8_t target, uint8_t depth) {
+    if (recording_punch >= 0) end_punch();
+    if (!(ui.recording && host.song_playing())) return;
+    unsigned at = song_sixteenth();
+    punch_take = SongPunch {uint16_t(at / 16), uint8_t(at % 16), 1, uint8_t(kind), target, depth};
+    recording_punch = int(at);
+}
+
+void Context::end_punch() {
+    if (recording_punch < 0) return;
+    unsigned now = host.song_playing() ? song_sixteenth() : unsigned(recording_punch) + 1;
+    int length = int(now) - recording_punch;
+    punch_take.length = uint8_t(std::clamp(length, 1, 255));
+    recording_punch = -1;
+    if (project.song.add_punch(punch_take)) sync_punches();
+}
+
+void Context::sync_punches() {
+    const auto& song = project.song;
+    for (unsigned n = 0; n < song.punch_count; ++n) {
+        Command c {Type::SongPunchSet, 0, 0, uint16_t(n)};
+        c.song_punch = song.punches[n];
+        send(c);
+    }
+    send({Type::SongPunchCount, 0, 0, 0, int16_t(song.punch_count)});
 }
 
 void Context::clear_pattern(unsigned t, unsigned p) {

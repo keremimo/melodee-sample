@@ -569,6 +569,48 @@ void sampler_kit() {
         auto plain = hear(1, 0, 0, 12); // an octave up by speed: half as long
         CHECK(std::abs(int(plain.frames) - 22050) < 600 && std::fabs(plain.hz - 882) < 30);
     }
+    // Punches written into the song play where they were written, for as long, and survive a save.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->song.place({0, 0, 0, 4, false});
+        project->song.add_punch({1, 4, 2, uint8_t(PunchKind::Gate), 255, 100});
+        auto bytes = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(bytes, *back, *bank).empty());
+        CHECK(back->song.punch_count == 1 && back->song.punches[0].bar == 1 && back->song.punches[0].step == 4 && back->song.punches[0].length == 2);
+        EngineHost host;
+        host.load(*back, *bank);
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        std::vector<int32_t> out(256);
+        // At 120 BPM a sixteenth is 5512.5 samples: the punch runs from 22050 * 4 + 4 * 5512.5 for two sixteenths.
+        auto at = [&](double sample) {
+            static double done = 0;
+            while (done < sample) { host.render(out.data(), 128, 1); done += 128; }
+            return host.punching();
+        };
+        double start = 88200 + 4 * 5512.5;
+        CHECK(!at(start - 2000));
+        CHECK(at(start + 2000));
+        CHECK(at(start + 2 * 5512.5 - 1000));
+        CHECK(!at(start + 2 * 5512.5 + 1000));
+    }
+    // Seq Record: a song playing on past its end while recording.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->song.place({0, 0, 0, 1, false});
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::SongRecord, 0, 0, 0, 1});
+        host.send({Command::Type::Play, 0, 0, 0, 1});
+        std::vector<int32_t> out(256);
+        for (unsigned b = 0; b < 3 * 88200 / 128; ++b) host.render(out.data(), 128, 1);
+        CHECK(host.playing() && host.song_bar() >= 2);
+        host.send({Command::Type::SongRecord, 0, 0, 0, 0});
+        for (unsigned b = 0; b < 2 * 88200 / 128; ++b) host.render(out.data(), 128, 1);
+        CHECK(!host.playing());
+    }
     // Pad chains survive a save, four slots each.
     {
         auto project = std::make_unique<Project>();

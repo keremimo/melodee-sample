@@ -17,6 +17,7 @@ constexpr unsigned name_length = 24;
 constexpr unsigned ticks_per_quarter = 24, ticks_per_bar = 4 * ticks_per_quarter;
 constexpr unsigned song_clips = 256;    // clips in the arrange view
 constexpr unsigned song_markers = 16;
+constexpr unsigned song_punches = 128;  // punches written into the song (Seq Record)
 constexpr unsigned song_bars = 999;
 // Effects along the signal (open question 5: slot counts and four buses).
 constexpr unsigned track_slots = 6, bus_slots = 6, master_slots = 6, bus_count = 4;

@@ -28,6 +28,17 @@ public:
     Project& project;
     PatternBank& patterns;
     UiState& ui;
+    // Seq Record into the song (song_tick()).
+    uint16_t recording_tracks = 0;                    // tracks whose launch is being written
+    std::array<uint16_t, track_count> recording_from {}; // where each one's clip begins
+    unsigned seen_song_bar = ~0u;
+    int recording_punch = -1;                          // the punch being written, -1 none
+    SongPunch punch_take {};
+    void record_launch(unsigned track, unsigned pattern);
+    void finish_launches();
+    void begin_punch(unsigned kind, uint8_t target, uint8_t depth);
+    void end_punch();
+    unsigned song_sixteenth() const;                   // where the song is, in sixteenths
     EngineHost& host;
     uint32_t now = 0; // ms, set for each control
 
@@ -55,6 +66,10 @@ public:
     void punch_release();                                   // let go of every punch a pad holds
     void change_setting(unsigned row, int way);             // one step along a Settings row, kept on the card
     void toggle_favourite();                                // the sound under the Sounds cursor, else the loaded one
+    // Seq Record while the song plays: pattern launches become clips from the
+    // next bar, growing a bar at a time; punches land on the song's punch lane.
+    void song_tick();                                       // MIDI thread, often: follows the song's bar
+    void sync_punches();
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);

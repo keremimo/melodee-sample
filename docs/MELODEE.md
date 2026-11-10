@@ -258,6 +258,14 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   hat, crash and ride. Six Edit pages (kick, snare and clap, toms, hats,
   cymbals, levels with drive), five kits. Stage's track 6 starts as a 909
   with a beat.
+- **Seq Record into the song:** with Seq Record on while the song plays
+  (Play on Song), a pattern launched on Patterns is written as a clip from
+  the next bar and grows a bar at a time (a new clip after 16 bars) while
+  it keeps playing; the song plays on past its end meanwhile. Turning Seq
+  Record off or stopping ends each clip with the bar that was playing.
+  Punches held or locked meanwhile land on the song's punch lane (under the
+  lanes, in the target's colour) with their sixteenth and length, and play
+  back there; a punch held by hand wins over a written one.
 - **Pad effects (B1 from Track, sampler tracks):** each of a kit's 64
   pads has its own chain of four effects, ahead of the track's; the page
   shows the last pad hit, with PAD first on the signal strip. The sampler
@@ -280,7 +288,7 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   itself while the kit runs on (the sampler renders that pad's voices
   apart). Pressure is depth. K1 punch of the last pad hit, K2 rate, K3
   depth. Punch settings and the pads' punches are saved with the project.
-  Not recorded into the Song yet.
+  Written into the Song with Seq Record on (see below).
 - **Favourites:** Shift + Sample Select ("Save sound" on the Shift layer)
   stars the sound under the cursor on Sounds, elsewhere the track's loaded
   sound; again unstars it. Sounds' FAVOURITES lists the starred ones, with
@@ -325,8 +333,7 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
-Not yet: typed names (markers, projects), Seq
-Record writing launches and punches into the song.
+Not yet: typed names (markers, projects, a sound of one's own).
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

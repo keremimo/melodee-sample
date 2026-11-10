@@ -204,6 +204,10 @@ const Preview previews[] {
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 24; s.ui.song_view = 16; s.ui.song_zoom = 2;
          s.ui.song_pattern = 2; s.ui.song_length = 4;
          s.playing = s.song_playing = true; s.song_bar = 20; s.ticks = 48;
+         // Punches written with Seq Record: a stutter on the master, a low pass on track 3.
+         s.project.song.add_punch({23, 12, 4, 4, 255, 100});
+         s.project.song.add_punch({27, 0, 16, 8, 2, 80});
+         s.project.song.add_punch({31, 8, 8, 1, 255, 100});
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"songzoom", [](Shell&, Snapshot& s) {

@@ -133,6 +133,9 @@ private:
     uint8_t punch_target = 255;
     int pad_punch_track = -1, pad_punch_pad = -1;
     PendingPunch pending;
+    bool song_recording = false, punch_from_song = false, live_punch = false;
+    uint32_t song_punch_until = 0; // the tick a song punch lets go
+    void play_song_punches();      // on each sixteenth of the song: punches written there
     void start_punch(const PendingPunch& p);
     double bar_length() const { return quarter_tick() * ticks_per_bar; }
     std::array<Slot, track_count> slots;

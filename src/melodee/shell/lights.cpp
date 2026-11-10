@@ -64,6 +64,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save) leave.store(true);
     }
+    context_.song_tick();
     // Melodee's settings, once the card's file has been read.
     if (store_ && !settings_loaded && store_->generation() != settings_seen) {
         settings_seen = store_->generation();

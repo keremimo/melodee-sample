@@ -54,7 +54,10 @@ struct Command {
         PunchOn, PunchOff, // PunchOff: track and index's pad as PunchOn's; track 254: whatever punch is on
         PunchDepth,        // index's pad as PunchOn's (0: the master or track punch), value = depth
         // A sampler pad's own chain: track, pattern = pad, index = slot | parameter << 8, value as FxKind/FxParam/FxBypass.
-        PadFxKind, PadFxParam, PadFxBypass
+        PadFxKind, PadFxParam, PadFxBypass,
+        SongPunchSet,   // index, song_punch
+        SongPunchCount, // value = punches in use
+        SongRecord      // value: Seq Record on (a song playing on past its end keeps going, for launches written into it)
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)
@@ -68,6 +71,7 @@ struct Command {
     ModRoute route {};
     Clip clip {};
     PadSound pad {};
+    SongPunch song_punch {};
     const struct ProjectPack* pack = nullptr;
 };
 
