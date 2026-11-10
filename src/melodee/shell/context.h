@@ -244,6 +244,9 @@ public:
     int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load
     void rechop();                                                     // Chop's slices from its type and amount
     void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (audition, or Manual's taps)
+    uint32_t zero_cut(uint32_t frame) const;                           // Chop: a cut on a zero crossing, with Zero Snap on
+    void snap_slices();                                                // Chop: every cut of the slices onto one
+    void toggle_zero_snap();                                           // Chop, B2: Zero Snap on / off (a setting)
     void chop_to_pads();                                               // the slices onto pads, from the first free one
     void follow_tempos(); // Follow on: each pad's own tempo, from its length as whole bars
     bool host_recording() const;                                       // a take is armed, cued or running

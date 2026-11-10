@@ -4199,7 +4199,86 @@ void looper_engine() {
     CHECK(!host->looper().view(0).sounding);
 }
 
+// Chop's Zero Snap and the slice edges' fades: a cut lands on a zero
+// crossing (summed sides, mostly looking back so a hit is kept whole), and a
+// region cut inside its file fades in and out over 2 ms.
+void zero_snap() {
+    SampleData sine;
+    sine.frames = 20000;
+    sine.left.resize(sine.frames); sine.right.resize(sine.frames);
+    for (uint32_t n = 0; n < sine.frames; ++n) sine.left[n] = sine.right[n] = 0.8f * float(std::sin(6.283185307179586 * 100.0 * n / 44100.0));
+    // 100 Hz crosses every 220.5 frames: 1000 lies 118 after 882 and 102 before 1102.5, which counts double.
+    uint32_t at = zero_crossing(sine, 1000);
+    CHECK(std::abs(int(at) - 882) <= 1);
+    CHECK(std::fabs(sine.left[at]) < 0.02f);
+    CHECK(zero_crossing(sine, at) == at);                       // a cut on a crossing stays
+    CHECK(std::abs(int(zero_crossing(sine, 1095)) - 1102) <= 1); // a crossing just after wins when much nearer
+    CHECK(zero_crossing(sine, 0) == 0 && zero_crossing(sine, 30000) == 30000); // the start, and past the end
+    // The sides summed: one side the other upside down is silence, so the cut stays.
+    SampleData opposite = sine;
+    for (auto& v : opposite.right) v = -v;
+    for (uint32_t n = 0; n < opposite.frames; ++n) opposite.left[n] = -opposite.right[n];
+    CHECK(zero_crossing(opposite, 1000) == 1000);
+    // Nothing crosses (an offset): the frame nearest zero in the window.
+    SampleData offset = sine;
+    for (uint32_t n = 0; n < offset.frames; ++n) offset.left[n] = offset.right[n] = 0.5f + 0.1f * float(std::sin(6.283185307179586 * 100.0 * n / 44100.0));
+    uint32_t low = zero_crossing(offset, 1000);
+    float lowest = 1;
+    for (uint32_t n = 1000 - zero_back; n <= 1000 + zero_ahead; ++n) lowest = std::min(lowest, offset.left[n]);
+    CHECK(low != 1000 && offset.left[low] == lowest);
+    // Silence, then a hit at 5000: a cut on the hit stays on it, one a little into it goes back to it.
+    SampleData hit;
+    hit.frames = 10000;
+    hit.left.assign(hit.frames, 0.0f);
+    for (uint32_t n = 5000; n < hit.frames; ++n) hit.left[n] = 0.9f * float(std::sin(6.283185307179586 * 60.0 * (n - 5000) / 44100.0) + 0.3);
+    hit.right = hit.left;
+    CHECK(zero_crossing(hit, 5000) <= 5000 && zero_crossing(hit, 5000) + zero_back >= 5000);
+    CHECK(zero_crossing(hit, 5030) <= 5000);
+
+    // The setting: on unless turned off, kept with the settings.
+    Settings fresh;
+    CHECK(fresh.zero_snap);
+    Settings off; off.zero_snap = false;
+    Settings back; back.read(off.text());
+    CHECK(!back.zero_snap);
+    back.read(fresh.text());
+    CHECK(back.zero_snap);
+
+    // The engine: a level sample, so the fades are all there is to hear.
+    SampleData level;
+    level.frames = 10000;
+    level.left.assign(level.frames, 0.5f); level.right = level.left;
+    SamplerEngine::Table table {};
+    table[2] = &level;
+    auto play = [&](uint32_t start, uint32_t end) {
+        SamplerEngine engine;
+        engine.set_samples(&table);
+        PadSound pad; pad.sample = 2; pad.start = start; pad.end = end; pad.play = PadPlay::OneShot; pad.decay = 100;
+        engine.set_pad(0, pad);
+        engine.note_on(int(sampler_first_note), 127);
+        std::vector<float> out;
+        std::vector<float> l(128), r(128);
+        for (unsigned b = 0; b < 50; ++b) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            engine.render_stereo(l.data(), r.data(), 128);
+            out.insert(out.end(), l.begin(), l.end());
+        }
+        return out;
+    };
+    auto slice = play(1000, 5000); // cut inside the file at both ends
+    float steady = slice[2000];
+    CHECK(steady > 0.1f);
+    CHECK(slice[0] < 0.05f * steady);                                   // fades in
+    CHECK(slice[44] > 0.3f * steady && slice[44] < 0.7f * steady);      // half way at 1 ms
+    CHECK(slice[100] > 0.98f * steady);                                 // whole after 2 ms
+    CHECK(slice[3990] < 0.2f * steady && slice[3998] < 0.05f * steady); // and out before its end
+    auto whole = play(0, 0);       // the file's own ends: no fade (only the attack, which both have)
+    if (!(whole[20] > 3 * slice[20])) std::fprintf(stderr, "zero_snap: whole %f %f slice %f %f\n", whole[20], whole[2000], slice[20], slice[2000]);
+    CHECK(whole[2000] > 0.1f && whole[20] > 3 * slice[20]);
+}
+
 int main() {
+    zero_snap();
     looper_engine();
     roll();
     stage();

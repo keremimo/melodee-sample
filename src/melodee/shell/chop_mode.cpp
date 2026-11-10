@@ -4,8 +4,10 @@
 // K2. In Manual, armed (K3 onto Manual, or Push), pad 1 plays the whole
 // region and every pad tapped while it plays cuts it there (up to 16
 // slices, as the MPC's), each cut pulled onto the strongest hit just before
-// it, since a tap comes a little after the sound it means.
+// it, since a tap comes a little after the sound it means. With Zero Snap on
+// (B2, kept with the settings) every cut then lands on a zero crossing.
 #include "melodee/shell/context.h"
+#include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 
 namespace melodee {
@@ -24,7 +26,7 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
         if (at < sl.end(sl.count - 1, frames)) {
             if (library) {
                 auto loaded = library->slot(ui.chop_sample);
-                at = snap_to_hit(at, loaded.hits, loaded.hit_count);
+                at = zero_cut(snap_to_hit(at, loaded.hits, loaded.hit_count));
             }
             if (sl.add(at, frames, manual_slices))
                 for (unsigned n = 0; n < sl.count; ++n) if (sl.start[n] == at) ui.chop_slice = uint8_t(n);
@@ -42,6 +44,32 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
     if (pad >= sl.count) return;
     ui.chop_slice = uint8_t(pad);
     audition(sl.start[pad], sl.end(pad, frames));
+}
+
+uint32_t Context::zero_cut(uint32_t frame) const {
+    if (!ui.settings.zero_snap || !library || ui.chop_sample >= sample_slots) return frame;
+    return library->zero_crossing(ui.chop_sample, frame);
+}
+
+// Each cut inside the sample onto a zero crossing; the first slice's start
+// and the last one's end too, unless they are the sample's own ends (its
+// file starts and stops there already). A cut kept from its neighbours by
+// move_start's 20 ms stays a little off the crossing.
+void Context::snap_slices() {
+    auto& sl = ui.slices;
+    uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
+    if (!ui.settings.zero_snap || !frames || !sl.count) return;
+    for (unsigned n = 0; n < sl.count; ++n)
+        if (sl.start[n]) sl.move_start(n, zero_cut(sl.start[n]), frames);
+    uint32_t last = sl.end(sl.count - 1, frames);
+    if (last < frames) sl.move_end(sl.count - 1, zero_cut(last), frames);
+}
+
+void Context::toggle_zero_snap() {
+    ui.settings.zero_snap = !ui.settings.zero_snap;
+    if (store) store->save_settings(ui.settings.text());
+    if (ui.settings.zero_snap) snap_slices(); // what is there now joins in; off leaves the cuts where they are
+    notice(ui.settings.zero_snap ? "Zero snap on" : "Zero snap off");
 }
 
 } // namespace melodee

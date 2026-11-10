@@ -116,6 +116,9 @@ private:
         // Loop: after the end (or, reversed, the loop point) it goes on from the loop point (or the end).
         bool loop = false;
         uint32_t loop_at = 0;
+        // A one shot's region edges inside the file (a chop's slices, a trimmed
+        // pad): faded over slice_edge so a cut mid-wave does not click.
+        bool edge_in = false, edge_out = false;
         uint32_t wait = 0;                  // Offset: frames before it starts
         float tail = 0, filter_tail = 0;    // Decay from the end: frames of output it fades (and the filter closes) over
         // The pad's filter: two state-variable stages a side, and its envelope.
@@ -130,6 +133,7 @@ private:
     void hit(int pad, int velocity, int semitones, int cutoff);
     void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0, int cutoff = -1, int trigger = -1);
     float frames_left(const Voice& v, double at, double speed) const; // output frames to the end, for the fades
+    static float edge_gain(const Voice& v, double at);                // the region edges' fades, 0..1
     void voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f);
     Voice& free_voice();
 

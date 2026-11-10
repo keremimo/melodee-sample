@@ -123,7 +123,9 @@ void Context::extract_slice() {
     std::string name = derived(ref, "-Slice " + std::to_string(ui.chop_slice + 1));
     int slot = free < pending_files.size() ? hold_slot(project, name) : -1;
     if (slot < 0) { notice(free < pending_files.size() ? "Extract: 64 samples" : "Extract: busy"); return; }
-    if (!library->write(job(SampleJob::Kind::Derive, ui.chop_sample, slot, sl.start[ui.chop_slice], sl.end(ui.chop_slice, frames), name, edits_folder))) {
+    SampleJob slice = job(SampleJob::Kind::Derive, ui.chop_sample, slot, sl.start[ui.chop_slice], sl.end(ui.chop_slice, frames), name, edits_folder);
+    slice.edges = true; // faded where it was cut, as the pads play it
+    if (!library->write(slice)) {
         project.samples[size_t(slot)] = SampleRef {};
         notice("Extract: busy");
         return;
@@ -250,14 +252,17 @@ void Context::files_landed() {
 }
 
 // Sample Record's take: onto its pad, and the pads cut during it each from
-// their cut (pulled onto the strongest hit up to 50 ms before the tap) to
-// the next. One undo, which puts every pad it filled back as it was.
+// their cut (pulled onto the strongest hit up to 50 ms before the tap, then
+// with Zero Snap onto a zero crossing) to the next. One undo, which puts every pad it filled back as it was.
 void Context::take_landed(unsigned t, unsigned kit, unsigned slot, const LoadedSample& loaded) {
     close_gesture(); // a pot's turns came before the take
     auto& track = project.tracks[t % track_count];
     std::array<uint32_t, UiState::rec_chop_capacity> at {};
     unsigned cuts = ui.rec_track == t ? ui.rec_chops : 0;
-    for (unsigned n = 0; n < cuts; ++n) at[n] = std::min(snap_to_hit(ui.rec_chop_at[n], loaded.hits, loaded.hit_count), loaded.frames ? loaded.frames - 1 : 0);
+    for (unsigned n = 0; n < cuts; ++n) {
+        at[n] = std::min(snap_to_hit(ui.rec_chop_at[n], loaded.hits, loaded.hit_count), loaded.frames ? loaded.frames - 1 : 0);
+        if (ui.settings.zero_snap && library) at[n] = library->zero_crossing(slot, at[n]); // Chop's Zero Snap
+    }
     Edit edit;
     edit.track = uint8_t(t % track_count);
     edit.what = pad_text("Take on", kit);

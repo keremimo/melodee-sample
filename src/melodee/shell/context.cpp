@@ -447,6 +447,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] = value; rechop(); break;
     case Kind::ChopStart: case Kind::ChopEnd: { // editing a slice makes the chop Manual, as on the MPC
         uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0, at = uint32_t(uint64_t(value) * 44100 / 1000);
+        at = zero_cut(std::min(at, frames)); // onto a zero crossing near the knob's millisecond
         if (b.kind == Kind::ChopStart) ui.slices.move_start(unsigned(b.id), at, frames);
         else ui.slices.move_end(unsigned(b.id), at, frames);
         ui.chop_mode = ChopMode::Manual; ui.chop_armed = false;
@@ -1122,6 +1123,7 @@ void Context::rechop() {
     auto loaded = library->slot(ui.chop_sample);
     ui.slices = chop(ui.chop_mode, ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()], ui.chop_from, ui.chop_to, loaded.frames,
                      loaded.hits, loaded.hit_count, project.tempo);
+    snap_slices();
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
     ui.chop_armed = ui.chop_mode == ChopMode::Manual;
     ui.chop_take_at = 0;

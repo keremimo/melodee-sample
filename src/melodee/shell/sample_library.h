@@ -55,6 +55,7 @@ struct SampleJob {
     uint8_t source = 0;   // the slot the audio comes from
     uint8_t target = 0;   // Derive: the slot the new file goes into
     uint32_t from = 0, to = 0; // frames; to 0: the end
+    bool edges = false;   // Extract: 2 ms fades where the slice was cut inside the source (shell/chop.h)
     char name[40] {};     // the file's name, without .wav; a free one is found
     char folder[16] {};   // under the card's Samples ("" itself)
 };
@@ -129,6 +130,9 @@ public:
     // MIDI thread: the loudest sample of slot `n` between two frames (0..1+), for
     // Normalize; -1 when it is not loaded. Reads the audio under the lock.
     float peak(unsigned n, uint32_t from, uint32_t to) const;
+    // MIDI thread: `frame` of slot `n` pulled onto the nearest zero crossing (shell/chop.h's
+    // Zero Snap); the frame itself when the slot is not loaded. Reads the audio under the lock.
+    uint32_t zero_crossing(unsigned n, uint32_t frame) const;
     std::vector<SampleFile> files() const;
     std::string root() const;
     std::string folder() const;

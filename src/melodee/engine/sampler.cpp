@@ -49,6 +49,8 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     v.position = v.reverse ? v.end - 1 : v.start;
     v.loop = sound.loop && pad < int(sampler_pads);
     v.loop_at = std::clamp(sound.loop_point(), v.start, v.end - 2);
+    v.edge_in = !v.loop && v.start > 0;              // the file's own start and end need no fade
+    v.edge_out = !v.loop && v.end < data->frames;
     v.step = std::exp2((sound.pitch + semitones + sound.fine / 100.0 + p[Tune]) / 12.0);
     v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
     // Warp, else Follow: the speed the region moves at. Warp's Seq plays it at
@@ -226,6 +228,19 @@ float SamplerEngine::frames_left(const Voice& v, double at, double speed) const 
     return float(std::max(0.0, distance) / std::max(speed, 1e-6));
 }
 
+// A region that starts or ends inside its file (a chop's slice, a trimmed
+// pad) fades in and out over 2 ms of the sample at those edges, whichever
+// way it plays, so a cut mid-wave does not click (shell/chop.h's Zero Snap
+// puts the cuts on zero crossings; this catches what is left: stereo, DC,
+// deep bass). A loop has no fades: it would dip at every turn.
+constexpr double slice_edge = 0.002 * dsp::model_rate;
+float SamplerEngine::edge_gain(const Voice& v, double at) {
+    double g = 1;
+    if (v.edge_in) g = std::min(g, (at - v.start) / slice_edge);
+    if (v.edge_out) g = std::min(g, ((v.end - 1) - at) / slice_edge);
+    return float(std::clamp(g, 0.0, 1.0));
+}
+
 // One frame of a voice: through the pad's filter (its cutoff moved by its
 // envelope, retuned every 16 frames), the amp and the pan.
 void SamplerEngine::voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f) {
@@ -304,6 +319,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
                 float s = std::sin(dsp::pi * float(v.tap_age[t]) / float(v.window));
                 w = s * s;
             }
+            if (v.edge_in || v.edge_out) w *= edge_gain(v, at); // a tap reaching the region's edge fades too
             unsigned i = unsigned(at);
             float frac = float(at - i);
             unsigned j = std::min(i + 1, v.end - 1);
@@ -392,6 +408,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             float frac = float(v.position - i);
             unsigned j = std::min(i + 1, v.end - 1);
             float a = v.env.next(v.shape) * v.gain * v.fade;
+            if (v.edge_in || v.edge_out) a *= edge_gain(v, v.position);
             if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
             voice_out(v, l[i] + (l[j] - l[i]) * frac, r[i] + (r[j] - r[i]) * frac, a, frames_left(v, v.position, v.step), to_l, to_r, f);
             v.position += v.reverse ? -v.step : v.step;

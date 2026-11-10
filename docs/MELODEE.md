@@ -378,6 +378,13 @@ thread.
   the strongest hit. Shift + B1 Extract (`Samples/Edits/<NAME>-Slice n.wav`
   onto the next empty pad), Shift + B2 Split, Shift + B3 Merge; Erase + pad
   takes a slice out. B3 TO PADS lays the slices on pads, B1 DROP back.
+  B2 SNAP ON / OFF is Zero Snap (on by default, kept with the settings):
+  every cut (each type's, Manual's taps, K1 / K2, Split, Sample Record's
+  pad cuts) lands on the nearest zero crossing of both sides summed,
+  looking up to 5 ms back and 1 ms ahead, so a slice starts and stops
+  without a click. A region that starts or ends inside its file (a slice,
+  a trimmed pad; not a loop) also fades over 2 ms at those edges, and
+  Extract writes those fades into its file.
 - **Trim Sample** (Shift + Pad 13): the region as
   `Samples/Edits/<NAME>-Trimmed.wav` in a new slot, the pad onto all of it;
   one undo; then Stage's TRIM. **Save Sample** (Shift + Sample Select on a kit): the Name

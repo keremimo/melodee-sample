@@ -12,7 +12,8 @@
 // B2 Split (the slice in two), Shift + B3 Merge (with the slice before);
 // Erase + pad takes a slice out (it joins the one before). B3 lays every
 // slice onto pads from the first free one as regions of the same file; B1
-// drops the chop.
+// drops the chop; B2 turns Zero Snap on or off (every cut onto a zero
+// crossing, shell/chop.h; on by default, kept with the settings).
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -38,7 +39,8 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(juce::String(chop_mode_name(s.ui.chop_mode)).toUpperCase(), c));
     h.right.push_back(tag_of(s, s.ui.track));
     if (s.ui.shift) frame(p, s, {{"EXTRACT", "SPLIT", "MERGE"}, -1, c}, h);
-    else frame(p, s, {{"DROP", "", "TO PADS"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    else frame(p, s, {{"DROP", s.ui.settings.zero_snap ? "SNAP ON" : "SNAP OFF", "TO PADS"}, 2, colour::text,
+                      {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
     float x = zone::pad, w = zone::width - 2 * zone::pad;
     p.text(juce::String(slices.count) + (slices.count == 1 ? " slice" : " slices"), x, zone::picture_y, 150, 22,
            plain(colour::text, type::title, Weight::SemiBold));
@@ -126,7 +128,11 @@ void soft(Context& c, int key) {
         uint32_t frames = ui.chop_sample < sample_slots ? c.project.samples[ui.chop_sample].frames : 0;
         if (key == 0) c.extract_slice();
         if (key == 1) {
-            if (ui.slices.split(ui.chop_slice, frames)) { ui.chop_mode = ChopMode::Manual; ui.chop_armed = false; }
+            if (ui.slices.split(ui.chop_slice, frames)) {
+                unsigned cut = ui.chop_slice + 1u; // the new cut, onto a zero crossing with Zero Snap on
+                ui.slices.move_start(cut, c.zero_cut(ui.slices.start[cut]), frames);
+                ui.chop_mode = ChopMode::Manual; ui.chop_armed = false;
+            }
             else c.notice("Split: too short");
         }
         if (key == 2) {
@@ -138,6 +144,7 @@ void soft(Context& c, int key) {
         return;
     }
     if (key == 0) c.back();
+    if (key == 1) c.toggle_zero_snap();
     if (key == 2) { c.chop_to_pads(); c.open(PageId::Pads); }
 }
 } // namespace

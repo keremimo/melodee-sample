@@ -36,6 +36,7 @@ struct Settings {
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
     bool rec_quantize = true; // recorded notes onto the grid (off: phase 2)
+    bool zero_snap = true;    // Chop's cuts onto zero crossings (Chop's B2; shell/chop.h)
     bool full_level() const { return pad_response == 3; }
     // Shift + Pad 1: full level on, or back to the curve it came from.
     void toggle_full_level() {
@@ -134,6 +135,7 @@ struct Settings {
             << "\npickup=" << int(knob_takeover != Takeover::Instant) << "\nknob_takeover=" << int(knob_takeover)
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
+            << "\nzero_snap=" << int(zero_snap)
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
@@ -170,6 +172,7 @@ struct Settings {
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
             else if (key == "count_in") count_in = value != 0;
             else if (key == "rec_quantize") rec_quantize = value != 0;
+            else if (key == "zero_snap") zero_snap = value != 0;
             else if (key == "response_before") response_before = uint8_t(std::clamp(value, 0, 2));
             else if (key == "input_source") input.source = InputSource(std::clamp(value, 0, int(InputSource::Count) - 1));
             else if (key == "monitor") input.monitor = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1));

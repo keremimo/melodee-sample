@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/chop.h"
 #include "drivers/mixer.h"
 #include "drivers/platform.h"
 #include "runtime/app.h"
@@ -38,6 +39,12 @@ float SampleLibrary::peak(unsigned n, uint32_t from, uint32_t to) const {
     float top = 0;
     for (uint32_t f = std::min(from, to); f < to; ++f) top = std::max({top, std::fabs(data->left[f]), std::fabs(data->right[f])});
     return top;
+}
+
+uint32_t SampleLibrary::zero_crossing(unsigned n, uint32_t frame) const {
+    std::lock_guard<std::mutex> guard(lock);
+    const SampleData* data = data_of[n % sample_slots];
+    return data && data->frames ? melodee::zero_crossing(*data, frame) : frame;
 }
 
 std::string SampleLibrary::root() const { std::lock_guard<std::mutex> guard(lock); return known.root; }
@@ -278,6 +285,18 @@ void SampleLibrary::bank_files() {
 // Save Sample, Trim Sample, Extract: a slot's region as a WAV file on the
 // card. Derive also puts the new file in a slot of its own (in memory when
 // there is no card), as a load would.
+// Extract's slice: 2 ms fades at the ends that were cut inside the source,
+// as the sampler plays a region's (engine/sampler.cpp), so the file does not
+// click where the slice was cut mid-wave.
+static void fade_edges(SampleData& data, bool in, bool out) {
+    uint32_t edge = std::min<uint32_t>(88, data.frames / 2);
+    for (uint32_t k = 0; k < edge; ++k) {
+        float g = float(k) / float(edge);
+        if (in) { data.left[k] *= g; data.right[k] *= g; }
+        if (out) { data.left[data.frames - 1 - k] *= g; data.right[data.frames - 1 - k] *= g; }
+    }
+}
+
 void SampleLibrary::make(const SampleJob& job) {
     const char* what = job.kind == SampleJob::Kind::Save ? "Save Sample" : "Sample";
     const SampleData* source = job.source < sample_slots ? data_of[job.source] : nullptr; // only this thread writes it
@@ -291,6 +310,7 @@ void SampleLibrary::make(const SampleJob& job) {
     data->frames = to - from;
     data->left.assign(source->left.begin() + from, source->left.begin() + to);
     data->right.assign(source->right.begin() + from, source->right.begin() + to);
+    if (job.edges) fade_edges(*data, from > 0, to < source->frames);
     std::string root;
     { std::lock_guard<std::mutex> guard(lock); root = known.root; }
     std::string name(job.name), path, error;
