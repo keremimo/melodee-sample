@@ -55,6 +55,7 @@ work from memory.
 | Knob FX | **MPC performance mode**: one effect on K1–K3, pads switch it on per kit pad (or per track off kit pages), B2 all, B3 bypass. |
 | Shift + Knob FX | **FX SELECT** = Melodee's chains (Track → Sends → Bus → Master, picker). |
 | Fader | Shift + Pad 9 picks a target per track: every MPC target plus mod wheel. Default: pad volume on sampler tracks, mod wheel on synths. **Context overrides** on pages with an obvious job (Mix: selected track level; Step Edit: nudge timing; more in phase 8). Light shows the value. |
+| Pattern length | **Up to 128 bars** (MPC), replacing the 256-step limit; K1 on Patterns steps 1, 2, 4 … 128 bars, Shift + K1 any bar count. Needs event-list pattern storage (phase 2). |
 | Erase + pad (kit) | Stopped: empty the pad. Playing or Seq Record: erase **that pad's notes** in the pattern (one undo). |
 | Shift + Erase | **Copy** everywhere: kit pads (kit pages), patterns (Patterns), tracks (Pad Bank held). Clearing a pattern stays Erase + pad on Patterns. |
 | Pad pressure on synths | What aftertouch does on synthesizers that have it (Kerem, 2026-11-10): pressing harder adds **vibrato** (the LFO into pitch) and **opens the sound** (cutoff on PROPHET and SID, DCW on CZ, modulator levels on FM6), as on a Prophet-6 / OB-6 or a DX7 patch. Each engine gets two parameters for it, AT > VIB and AT > BRIGHT, on its Edit pages next to the velocity ones, with defaults that are heard; a mod route from Aftertouch still adds to them. Phase 1d. |
@@ -62,9 +63,8 @@ work from memory.
 
 ## Open questions (ask before the phase that needs them)
 
-1. Pattern length: Kerem set 256 steps (16 bars) on 2026-11-09; the MPC
-   goes to 128 bars. 128 bars at 1/16 needs event-list storage instead of
-   the fixed `steps` array (phase 2).
+1. ~~Pattern length~~ decided 2026-11-10: **128 bars**, as on the MPC (see
+   the Decisions table and phase 2).
 2. Which other pages get fader context overrides (phase 8).
 3. Whether the internal drive (eMMC) is offered next to the SD card in the
    browsers, or the card only (phase 5).
@@ -133,7 +133,7 @@ left on by phase 1b's device checks for a while, which plays every hit at 127.
 - [ ] Half Seq (Shift + Pad 2), Double Seq (Shift + Pad 3, routed in phase 1a), Half / Double Speed (Shift + Pad 6 / 7).
 - [ ] Time Correct (Shift + Pad 14): K1 Q, K2 shift, K3 swing, pads choose, B2 all, B3 do it, undoable. Replaces "quantise take".
 - [ ] Wheel moves the playhead on Patterns (by beat; Shift by Q).
-- [ ] Open question 1 decided and done.
+- [ ] Patterns up to 128 bars: event-list storage instead of the fixed `steps` array (model, engine mirror, project file with a new section so old files load, Steps / Roll / Song / Motion / Capture / Double Seq follow). Audio thread still never allocates: the pool is made at start.
 
 ### Phase 3: Step Edit and automation
 - [ ] Step Edit page: the step's events listed, wheel steps by Q, −/+ through events, pads pick a pad's event, K1 length, K2 Q, K3 velocity, B3 erase event, fader nudges timing.
