@@ -232,17 +232,33 @@ Steps, Roll and Motion B1–B3 pick those three.
   would point elsewhere.
 - **Sampler** (an engine like the others; Stage's track 5 starts as an
   empty kit): 128 pads in eight banks, A–H, each a region of one of the project's
-  samples (64 a project), with pitch, fine, level, pan, gate or one shot,
-  reverse, a mute group and an envelope; one low-pass filter on the whole
-  kit (K1–K3 on Stage: TUNE, FILTER, DECAY). Pad Bank tapped steps the bank
+  samples (64 a project), as deep as the MPC's Sample Mode (parity phase
+  4): volume in dB (−inf, −74 to +6; the kit's volume on the same scale),
+  pitch, fine, pan, Note On (gate) or one shot, loop with a loop point and
+  Loop Lock, reverse, Mono or Poly, a mute group 1–16, Pad Link (a pad of
+  the same bank played with it), offset (the start waits up to a
+  sixteenth), velocity sensitivity, an envelope that decays from the start
+  or (the MPC's default) over the decay before the end, its own filter
+  (Off, Classic, LPF2 / LPF4, HPF2 / HPF4, BPF2 / BPF4) with a filter
+  envelope, Warp (50–200 %, or Seq: the project's tempo from # Beats) and
+  a Normalize gain; one filter on the whole kit after every pad (K1–K3 on
+  Stage: TUNE, FILTER, DECAY). Their values go in the project file's
+  `PAD4` section; files from before it load with the MPC's defaults, their
+  pads decaying from the start as they did. Pad Bank tapped steps the bank
   round A–H (Shift: back; Minus / Plus on Pads too), held with Minus / Plus
   or the wheel it jumps; the eight bank lights show it, the header names it
   for a moment. On a track without banks a tap says that Pad Bank + pad
   picks a track. Kit notes are 36 + pad, so banks F–H run past MIDI's 127
   (to 163); they stay inside Melodee. Pads of banks E–H go in the project
   file's `KITX` section, so older files load as they were. Steps writes the
-  pad hit last. Loop opens the last pad's Play page and Shift + Loop flips
-  its reverse (the header says which); pad looping itself is phase 4. Samples are WAV
+  pad hit last. **Loop** turns the last pad's loop on or off (on, Loop Lock
+  on with it) and is lit while that pad loops; Shift + Loop flips its
+  reverse. A one shot that loops plays until it is hit again; Note On loops
+  while held. **Shift + Chop** is Note On: the pad plays while held
+  (Gate), or One shot; the sampler pages' title shows a note, a loop and
+  an arrow for Note On, loop and reverse. **Hold Sample + pad** picks a kit
+  pad as the last pad without playing it (Sample alone acts on its
+  release). Samples are WAV
   files (16, 24 or 32-bit PCM or 32-bit float, any rate, up to 60 s) in the
   card's `Samples` folder and one level of folders under it
   (`$MELODEE_SAMPLES` on a host). The service thread reads a file, makes
@@ -293,11 +309,24 @@ Steps, Roll and Motion B1–B3 pick those three.
   one under the cursor onto the last pad hit, K2 jumps. RECORDED lists the
   takes; RECENT the files this project already holds.
 - **Trim** (Push on a sampler track, or on Pads): the last pad's region over
-  the sample; K1 start, K2 end, K3 zoom (to 16 times closer).
-- **The sampler's seven pages** (B1 / B3 go round them, PAGE n / 7): Trim;
-  Pad (pitch, fine, level); Play (gate or one shot, mute group with its
-  pads shown, reverse); Envelope (attack, decay, release; sustain on row 2;
-  this pad only); Filter (cutoff, resonance, low / band / high pass, the
+  the sample; K1 start, K2 end, K3 the loop point (turning it lets go of
+  Loop Lock), Shift + K1–K3 zoom in at that handle (to 16 times closer),
+  Shift + B1 Loop Lock (the loop point on the start), Shift + B2 Normalize
+  (the region's loudest sample to 0 dB as a gain on the pad, the file
+  untouched; one undo).
+- **The sampler's ten pages** (B1 / B3 go round them, PAGE n / 10), the
+  MPC's Sample Mode pages first: Trim; Mix (K1 volume in dB with its meter,
+  K3 pan, Shift + K2 the kit's volume); Amp Env (attack, decay on a one
+  shot or release on Note On, velocity sensitivity; Shift + K2 decay from
+  the start or the end; row 2 sustain and the other); Tune (semitones,
+  cents, Warp Off / 50–200 % / Seq; Shift + K3 # Beats, Auto works it out
+  from the length; Shift + Pad 15 Warp picks Time stretch or Pitch, which is
+  the kit's Follow how: Pitch is Tape, Time stretch goes back to Beats or
+  Tones); Play (Mono / Poly, mute group 1–16 with its pads shown, offset;
+  Shift + K2 Pad Link; row 2 Note On, reverse, loop); Filter (the pad's
+  own: cutoff, resonance, type); Filt Env (attack, decay or release, depth
+  up to seven octaves; Shift + K2 decay from; row 2 sustain and the other).
+  Then Melodee's: Kit filter (cutoff, resonance, low / band / high pass, the
   whole kit); Follow (the whole kit keeps the project's tempo, each pad's own
   tempo worked out from its length as whole bars; K2 how: Beats plays a
   sixteenth-long segment from where the sound should be, so hits stay
@@ -311,12 +340,17 @@ Steps, Roll and Motion B1–B3 pick those three.
   start, Push splits it, Erase + pad removes a marker; B3 TO PADS lays the
   slices on pads from the first free one (regions of the same file), B1
   DROP goes back.
-- **Levels** (16 Levels on a sampler track): the last pad hit on all
-  sixteen pads (16 Levels lit while they play levels); B1–B3 pick what rises: velocity (8 to 127), pitch up the
-  project's scale, or semitones. The pots stay on that pad. 16 Levels again
-  goes back to the kit; until then the pads keep playing the levels on
-  every page. Seq Record keeps the velocity of a levels pad, not its pitch
-  yet.
+- **Levels** (16 Levels): on a kit the last pad hit on all sixteen pads,
+  on a synth its last note (16 Levels lit while they play levels). The
+  type, as the MPC's (Shift + 16 Levels goes round them; B1–B3 pick):
+  Velocity (8 to 127); Filter (kit pads) the pad's cutoff from the bottom
+  up to its own over pads 1–8 and on to the top over 9–16 (Classic when the
+  pad has no filter); Tune by semitones with the original on pad 4; and
+  Melodee's Scale, up the project's scale (B3 again on a kit, B2 on a
+  synth). The pots stay on that pad. 16 Levels again goes back to the kit
+  (Pads) or Keys; until then the pads keep playing the levels on every
+  page. Seq Record keeps the velocity of a levels pad, not its pitch or
+  cutoff yet.
 - **Input Config** (Shift + Sample, as printed; B2 on Record): B1–B3 pick
   where Record takes its sound from: the mic, the line inputs or the mix
   (resample, before main volume); K1 the threshold a take waits for (−60
@@ -517,7 +551,8 @@ Steps, Roll and Motion B1–B3 pick those three.
   and a soft-clipped master after main volume. The send is stored, not heard
   (no buses yet).
 - **Shell:** printed buttons (Sample cycles Stage → Keys → Mix, Seq
-  Patterns, Loop the last pad's Play page on a kit (its loop in phase 4),
+  Patterns, Loop the last pad's loop on a kit, Chop, Sample held + pad
+  picks a kit pad,
   Sample Select, 16 Levels, Play, Stop, Seq Record, Tap Tempo, Minus /
   Plus, Erase), soft keys, wheel and Push, Minus / Plus (the octave on the
   play pages Stage, Keys, Edit, Chord and Roll; on the lists Sounds,
@@ -545,7 +580,8 @@ Steps, Roll and Motion B1–B3 pick those three.
 - **Shift layer:** drawn as on its board, every printed second job:
   Sample → Input Config, Seq → Step Edit, Pad Bank → previous bank, Erase →
   Copy (kit pads, patterns on Patterns, a track with Pad Bank held), Loop → reverse the last pad
-  (kit tracks), Sample Select → by engine (kit: Save Sample, not yet; synth:
+  (kit tracks; bright while reversed), Chop → Note On (bright while on), 16
+  Levels → its type, Sample Select → by engine (kit: Save Sample, not yet; synth:
   Save sound; on Sounds: star), Mute → unmute all (in mute mode, Shift + pad
   solos), Tap Tempo → metronome
   Off / On / Rec, Sample Record → Audio Recall (not yet, phase 6), Seq
@@ -557,8 +593,9 @@ Steps, Roll and Motion B1–B3 pick those three.
   came from), 2 Half Seq, 3 Double Seq (the pattern twice as long, notes
   and motion played twice), 4 Count-In and 10 Rec Quantize (toggles, kept
   in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 14 Time
-  Correct, 16 Project. The others (5 Compressor, 8 MIDI Config, 9 Fader, 11
-  Resample, 13 Trim Sample, 15 Warp) say which phase brings them
+  Correct, 15 Warp (Time stretch or Pitch for the kit), 16 Project. The
+  others (5 Compressor, 8 MIDI Config, 9 Fader, 11 Resample, 13 Trim
+  Sample) say which phase brings them
   ("Compressor: phase 7"). The overlay draws the sixteen as the pads
   sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
   the track's colour, the rest dim with their phase; the pads light the
@@ -587,14 +624,20 @@ Steps, Roll and Motion B1–B3 pick those three.
   `melodee_signature=`; Step Edit's `melodee_step=` (from 1),
   `melodee_event=n/count` (0 none) and `melodee_event_tick=`;
   `melodee_ask=` (0 none, 1 erase a pad's events, 2 erase a lane) and
-  `melodee_motion=` (the project's motion events). For checks without
-  hands on the device.
+  `melodee_motion=` (the project's motion events); the last pad's Sample
+  Mode values `melodee_last_pad=` (1..128), `melodee_pad_loop=`,
+  `melodee_pad_lock=`, `melodee_pad_note_on=`, `melodee_pad_reverse=`,
+  `melodee_pad_mono=`, `melodee_pad_filter=`, `melodee_pad_link=`,
+  `melodee_pad_decay_from=`, `melodee_pad_gain=` (hundredths of a dB) and
+  16 Levels' `melodee_levels=` and `melodee_levels_kind=`. For checks
+  without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
-  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
+  levelsfilter, levelssynth, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

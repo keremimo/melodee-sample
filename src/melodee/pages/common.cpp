@@ -144,7 +144,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
         case Kind::BusReturn: c.label = "RETURN"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::PadPitch: c.label = "PITCH"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
-        case Kind::PadLevel: c.label = "LEVEL"; c.value = juce::String(b.value); break;
+        case Kind::PadLevel: c.label = "VOLUME"; c.value = decibels(b.value); c.unit = b.value > 0 ? "dB" : ""; break;
         case Kind::PadPan:
             c.label = "PAN"; c.bipolar = true;
             c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
@@ -153,6 +153,37 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.label = b.kind == Kind::PadEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
             break;
         case Kind::TrimZoom: c.label = "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
+        case Kind::PadLoopPoint: c.label = "LOOP"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s"; break;
+        case Kind::PadLoop: c.label = "LOOP"; c.value = b.value ? "On" : "Off"; break;
+        case Kind::PadMono: c.label = "POLY"; c.value = b.value ? "Mono" : "Poly"; break;
+        case Kind::PadLink: {
+            char label[4]; pad_label(track.last_pad / 16 * 16 + unsigned(b.value + 15) % 16, label);
+            c.label = "PAD LINK"; c.value = b.value ? juce::String(label) : juce::String("Off");
+            break;
+        }
+        case Kind::PadOffset: c.label = "OFFSET"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PadVelSense: c.label = "VEL SENS"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PadDecayFrom: c.label = "DECAY FROM"; c.value = b.value ? "End" : "Start"; break;
+        case Kind::PadFilterType: c.label = "TYPE"; c.value = pad_filter_name(PadFilter(b.value)); break;
+        case Kind::PadCutoff: c.label = "CUTOFF"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PadResonance: c.label = "RESO"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PadFAmount: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PadFSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
+        case Kind::PadFAttack: case Kind::PadFDecay: case Kind::PadFRelease: {
+            c.label = b.kind == Kind::PadFAttack ? "ATTACK" : b.kind == Kind::PadFDecay ? "DECAY" : "RELEASE";
+            float seconds = time_seconds(b.value) * (b.kind == Kind::PadFAttack ? 0.3f : b.kind == Kind::PadFRelease ? 0.5f : 1.0f);
+            if (seconds < 1) { c.value = juce::String(int(seconds * 1000)); c.unit = "ms"; } else { c.value = juce::String(seconds, 1); c.unit = "s"; }
+            break;
+        }
+        case Kind::PadWarp: {
+            auto warp = warp_of_card(b.value);
+            c.label = "WARP";
+            if (warp == warp_seq) c.value = "Seq";
+            else if (warp == warp_off) c.value = "Off";
+            else { c.value = juce::String(int(warp)); c.unit = "%"; }
+            break;
+        }
+        case Kind::PadBeats: c.label = "# BEATS"; c.value = b.value ? juce::String(b.value) : juce::String("Auto"); break;
         case Kind::ChopMode: c.label = "MODE"; c.value = chop_mode_name(ChopMode(b.value)); break;
         case Kind::ChopAmount: {
             auto mode = ChopMode(b.id);
@@ -168,8 +199,8 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             break;
         case Kind::ProjectSort: c.label = "SORT"; c.value = b.value ? "Name" : "Newest"; break;
         case Kind::PadFine: c.label = "FINE"; c.value = juce::String(b.value); c.unit = "ct"; c.bipolar = true; break;
-        case Kind::PadPlayMode: c.label = "PLAY"; c.value = b.value ? "One shot" : "Gate"; break;
-        case Kind::PadGroup: c.label = "GROUP"; c.value = b.value ? juce::String(b.value) : juce::String("None"); break;
+        case Kind::PadPlayMode: c.label = "NOTE ON"; c.value = b.value ? "Off" : "On"; break;
+        case Kind::PadGroup: c.label = "MUTE GROUP"; c.value = b.value ? juce::String(b.value) : juce::String("Off"); break;
         case Kind::PadReverse: c.label = "REVERSE"; c.value = b.value ? "On" : "Off"; break;
         case Kind::PadAttack: case Kind::PadDecay: case Kind::PadRelease: {
             c.label = b.kind == Kind::PadAttack ? "ATTACK" : b.kind == Kind::PadDecay ? "DECAY" : "RELEASE";

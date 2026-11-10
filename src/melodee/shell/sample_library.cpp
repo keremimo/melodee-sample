@@ -7,6 +7,7 @@
 #include "melodee/engine/engine_host.h"
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -26,6 +27,16 @@ bool SampleLibrary::load(unsigned slot, const std::string& path) {
 
 void SampleLibrary::view(View& out) const { std::lock_guard<std::mutex> guard(lock); out = known; }
 LoadedSample SampleLibrary::slot(unsigned n) const { std::lock_guard<std::mutex> guard(lock); return known.slots[n % sample_slots]; }
+float SampleLibrary::peak(unsigned n, uint32_t from, uint32_t to) const {
+    std::lock_guard<std::mutex> guard(lock);
+    const SampleData* data = data_of[n % sample_slots];
+    if (!data || !data->frames) return -1;
+    to = std::min(to ? to : data->frames, data->frames);
+    float top = 0;
+    for (uint32_t f = std::min(from, to); f < to; ++f) top = std::max({top, std::fabs(data->left[f]), std::fabs(data->right[f])});
+    return top;
+}
+
 std::string SampleLibrary::root() const { std::lock_guard<std::mutex> guard(lock); return known.root; }
 std::vector<SampleFile> SampleLibrary::files() const { std::lock_guard<std::mutex> guard(lock); return known.files; }
 
@@ -40,8 +51,13 @@ void SampleLibrary::service(Hardware& hardware) {
     if (host.recorder().state() == TakeRecorder::State::Done) save_take();
     // Samples the audio thread has let go of.
     const SampleData* gone = nullptr;
-    while (host.take_retired(gone))
+    while (host.take_retired(gone)) {
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            for (auto& d : data_of) if (d == gone) d = nullptr;
+        }
         owned.erase(std::remove_if(owned.begin(), owned.end(), [&](const auto& p) { return p.get() == gone; }), owned.end());
+    }
     Request request;
     if (requests.pop(request)) read(request); // one file per pass keeps the thread answering
     // The Samples folder: $MELODEE_SAMPLES, else the first card's, looked for every few seconds.
@@ -112,11 +128,13 @@ void SampleLibrary::save_take() {
     loaded.frames = data->frames;
     make_overview(*data, loaded.overview);
     loaded.hit_count = find_hits(*data, loaded.hits);
-    if (host.offer_sample(slot, data.get())) { owned.push_back(std::move(data)); loaded.ready = true; }
+    const SampleData* held = nullptr;
+    if (host.offer_sample(slot, data.get())) { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
     else loaded.error = "busy, try again";
     if (!loaded.path.empty()) scan_wanted.store(true); // it shows under RECORDED
     std::lock_guard<std::mutex> guard(lock);
     known.slots[slot] = loaded;
+    if (held) data_of[slot % sample_slots] = held;
     changes.fetch_add(1, std::memory_order_release);
 }
 
@@ -125,12 +143,14 @@ void SampleLibrary::read(const Request& request) {
         if (host.offer_sample(request.slot, nullptr)) {
             std::lock_guard<std::mutex> guard(lock);
             known.slots[request.slot] = LoadedSample {};
+            data_of[request.slot % sample_slots] = nullptr;
             changes.fetch_add(1, std::memory_order_release);
         }
         return;
     }
     auto data = std::make_unique<SampleData>();
     auto error = read_wav(request.path, *data);
+    const SampleData* held = nullptr;
     LoadedSample loaded;
     loaded.path = request.path;
     loaded.name = fs::path(request.path).stem().string();
@@ -142,10 +162,11 @@ void SampleLibrary::read(const Request& request) {
         make_overview(*data, loaded.overview);
         loaded.hit_count = find_hits(*data, loaded.hits);
         if (!host.offer_sample(request.slot, data.get())) { loaded.error = "busy, try again"; }
-        else { owned.push_back(std::move(data)); loaded.ready = true; }
+        else { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
     }
     std::lock_guard<std::mutex> guard(lock);
     known.slots[request.slot] = loaded;
+    if (held) data_of[request.slot % sample_slots] = held;
     changes.fetch_add(1, std::memory_order_release);
 }
 

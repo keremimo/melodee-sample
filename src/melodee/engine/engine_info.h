@@ -21,6 +21,7 @@ enum class Format : uint8_t {
     Rate,      // 0..100 on an exponential 0.05 .. 30 Hz scale
     Switch,    // Off / On
     Choice,    // one of `choices`
+    Level,     // 0..127 shown in dB, as the MPC shows volume (model/sampler.h volume_db)
 };
 
 struct ParamInfo {
@@ -98,6 +99,7 @@ bool bipolar(const ParamInfo& p);
 
 // Exponential scales shared by the UI and the DSP.
 float time_seconds(int value); // Format::Time
+std::string decibels(int level); // Format::Level: "-inf", "-74.0" .. "+6.0"
 float rate_hertz(int value);   // Format::Rate
 
 } // namespace melodee

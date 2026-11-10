@@ -15,7 +15,8 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
+                            PadMix, PadFilterPage, FilterEnvPage, Count }; // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -101,6 +102,10 @@ struct UiState {
     uint16_t files_cursor = 0;  // Samples
     uint16_t files_count = 0;   // files the library lists, copied in by the shell
     uint8_t trim_zoom = 0;      // Trim: 0 whole sample .. 4 sixteen times closer
+    uint8_t trim_focus = 0;     // and where it closes in: 0 the start, 1 the end, 2 the loop point (Shift + K1-K3)
+    bool sample_held = false;   // Sample held: a pad picks a kit pad without playing it (as on the MPC)
+    bool sample_used = false;   // a pad was picked meanwhile, so letting go opens no page
+    uint8_t warp_stretch = 0;   // Shift + Pad 15: the Follow how (Beats or Tones) Time stretch goes back to
     ChopMode chop_mode = ChopMode::Hits;
     std::array<int, 3> chop_amount {{60, 16, 1}}; // per mode: sensitivity, slice count, beats a slice
     Slices slices;              // Chop's markers on the sample in hand

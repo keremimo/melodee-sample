@@ -82,10 +82,38 @@ void read_pad(Reader& r, Track& tr) {
     pad.sample = uint16_t(r.u16()); pad.start = r.u32(); pad.end = r.u32();
     pad.pitch = int8_t(std::clamp(r.i16(), -24, 24)); pad.fine = int8_t(std::clamp(r.i16(), -50, 50));
     pad.level = uint8_t(std::min(127u, r.u8())); pad.pan = int8_t(std::clamp(r.i16(), -50, 50));
-    pad.play = PadPlay(r.u8() & 1); pad.reverse = r.u8() != 0; pad.group = uint8_t(r.u8() % 9);
+    pad.play = PadPlay(r.u8() & 1); pad.reverse = r.u8() != 0; pad.group = uint8_t(r.u8() % 17);
     pad.attack = uint8_t(r.u8()); pad.decay = uint8_t(r.u8()); pad.sustain = uint8_t(r.u8()); pad.release = uint8_t(r.u8());
     pad.own_tempo = uint16_t(r.u16());
     if (pad.sample >= sample_slots) pad.sample = no_sample;
+}
+
+// A kit pad's Sample Mode values (parity phase 4), in PAD4: older builds
+// skip the section and older files load with the MPC's defaults, except
+// that their pads decay from the start, as they did.
+void write_pad4(Writer& w, unsigned n, const PadSound& pad) {
+    w.u8(n);
+    w.u8(unsigned(pad.loop) | unsigned(pad.loop_lock) << 1 | unsigned(pad.mono) << 2 | unsigned(pad.decay_from_start) << 3);
+    w.u32(pad.loop_start); w.u8(pad.link); w.u8(pad.offset); w.u8(pad.velocity_sense);
+    w.u8(unsigned(pad.filter)); w.u8(pad.cutoff); w.u8(pad.resonance);
+    w.u8(pad.filter_attack); w.u8(pad.filter_decay); w.u8(pad.filter_sustain); w.u8(pad.filter_release); w.u8(pad.filter_amount);
+    w.u8(pad.warp); w.u8(pad.beats); w.i16(pad.gain);
+}
+void read_pad4(Reader& r, Track& tr) {
+    auto& pad = tr.pads[r.u8() % sampler_pads];
+    unsigned flags = r.u8();
+    pad.loop = flags & 1; pad.loop_lock = (flags >> 1) & 1; pad.mono = (flags >> 2) & 1; pad.decay_from_start = (flags >> 3) & 1;
+    pad.loop_start = r.u32(); pad.link = uint8_t(r.u8() % 17); pad.offset = uint8_t(std::min(100u, r.u8()));
+    pad.velocity_sense = uint8_t(std::min(100u, r.u8()));
+    pad.filter = PadFilter(std::min(r.u8(), pad_filter_count - 1));
+    pad.cutoff = uint8_t(std::min(100u, r.u8())); pad.resonance = uint8_t(std::min(100u, r.u8()));
+    pad.filter_attack = uint8_t(std::min(100u, r.u8())); pad.filter_decay = uint8_t(std::min(100u, r.u8()));
+    pad.filter_sustain = uint8_t(std::min(100u, r.u8())); pad.filter_release = uint8_t(std::min(100u, r.u8()));
+    pad.filter_amount = uint8_t(std::min(100u, r.u8()));
+    unsigned warp = r.u8();
+    pad.warp = uint8_t(warp == warp_seq || (warp >= warp_min && warp <= warp_max) ? warp : warp_off);
+    pad.beats = uint8_t(std::min(max_pad_beats, r.u8()));
+    pad.gain = int16_t(std::clamp(r.i16(), -2000, 6000));
 }
 // A step as files before parity phase 2 kept it (PATT).
 void read_step(Reader& r, Step& s) {
@@ -216,6 +244,16 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = legacy_pads; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad(w, n, tr.pads[n]);
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // every used kit pad's Sample Mode values (parity phase 4)
+        const auto& tr = project.tracks[t];
+        unsigned used = 0;
+        for (const auto& pad : tr.pads) used += pad.used();
+        if (!used) continue;
+        at = w.begin("PAD4");
+        w.u8(t); w.u8(used);
+        for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad4(w, n, tr.pads[n]);
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // muted kit pads, a bit each
         const auto& tr = project.tracks[t];
         if (!tr.any_pad_muted()) continue;
@@ -239,6 +277,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     if (data.size() < 8 || std::memcmp(data.data(), magic, 8)) return "not a Melodee project";
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
+    std::array<bool, track_count> pad4 {};  // tracks whose pads had a PAD4 section
     std::vector<MotionEvent> legacy_motion; // MOTN: steps of each pattern's division, turned into sixteenths at the end
     Reader file(data.data() + 8, data.size() - 8);
     while (!file.done() && file.ok) {
@@ -270,7 +309,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             }
             read_chain(r, tr.fx);
             tr.bank = uint8_t(r.u8() % sampler_banks); tr.last_pad = uint8_t(r.u8() % sampler_pads);
-            tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 3);
+            tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 4);
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, tr);
         } else if (name == "PVER") {
@@ -280,6 +319,12 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             if (t >= track_count) continue;
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, project->tracks[t]);
+        } else if (name == "PAD4") {
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            pad4[t] = true;
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad4(r, project->tracks[t]);
         } else if (name == "PMUT") {
             unsigned t = r.u8();
             if (t >= track_count) continue;
@@ -415,6 +460,8 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
         if (!r.ok) return "damaged section " + name;
     }
     if (!file.ok) return "damaged file";
+    for (unsigned t = 0; t < track_count; ++t) // before parity phase 4 a pad's decay ran from its start
+        if (!pad4[t]) for (auto& pad : project->tracks[t].pads) pad.decay_from_start = true;
     for (auto e : legacy_motion) { // the pattern's own steps into sixteenths
         unsigned q = patterns->at[e.track][e.pattern].q();
         e.step = uint16_t((e.step * q + sixteenth_ticks / 2) / sixteenth_ticks);

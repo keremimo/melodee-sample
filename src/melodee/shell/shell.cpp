@@ -10,6 +10,7 @@
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/sample_mode.h"
 #include "melodee/shell/shift_pads.h"
 #include "surface/controls.h"
 #include <algorithm>
@@ -19,7 +20,6 @@
 namespace melodee {
 namespace {
 using Button = SurfaceButton;
-bool play_group(PageId page) { return page == PageId::Stage || page == PageId::Keys || page == PageId::Pads || page == PageId::Mix; }
 } // namespace
 
 Shell::Shell(EngineHost& host)
@@ -55,6 +55,7 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
 void Shell::button(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
+    if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (b == Button::TopLeft) ui.b1_held = pressed && ui.ask == UiState::Ask::None && (ui.page == PageId::Patterns || ui.page == PageId::StepEdit); // B1 held: the wheel sets the BPM
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
@@ -73,6 +74,7 @@ void Shell::button(Button b, bool pressed) {
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp
     if (b == Button::Mute) { mute_button(context_, pressed); return; }         // shell/mute_mode.cpp
     if (b == Button::NoteRepeat && !ui.exit_open) { repeat_button(context_, pressed); return; } // shell/note_repeat.cpp
+    if (b == Button::Sample) { if (!ui.exit_open) sample_button(context_, true); return; } // shell/sample_mode.cpp: held, a pad picks a kit pad
     if (b == Button::Erase) {
         ui.erase = pressed;
         if (!pressed) return;
@@ -112,14 +114,6 @@ void Shell::button(Button b, bool pressed) {
     }
     const auto& page = page_spec(ui.page);
     switch (b) {
-    case Button::Sample:
-        if (ui.shift) { context_.open(PageId::InputConfig); break; } // Shift + Sample: Input Config, as printed
-        if (play_group(ui.page)) {
-            PageId keys = context_.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
-            context_.open(ui.page == PageId::Stage ? keys : (ui.page == PageId::Keys || ui.page == PageId::Pads) ? PageId::Mix : PageId::Stage);
-        }
-        else context_.open(PageId::Stage);
-        break;
     case Button::PadFx: // the punches: on the master or the track, or (again, on a sampler track) each pad's own
         context_.open(ui.page == PageId::Punch && context_.track().engine == EngineKind::Sampler ? PageId::PadPunch : PageId::Punch);
         break;
@@ -127,11 +121,7 @@ void Shell::button(Button b, bool pressed) {
         context_.open(ui.page == PageId::Rack ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
                       : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
         break;
-    case Button::Loop: // the last pad's loop (phase 4); until then its Play page. Shift: reverse
-        if (context_.track().engine != EngineKind::Sampler) { context_.notice("Loop: a kit pad's"); break; }
-        if (ui.shift) context_.toggle_reverse();
-        else context_.open(PageId::PlayPage);
-        break;
+    case Button::Loop: loop_button(context_); break; // the last pad's loop; Shift: reverse (shell/sample_mode.cpp)
     case Button::Seq: // Patterns; Shift: Step Edit, again Steps -> Roll -> Motion -> Step Edit
         if (ui.shift) {
             context_.open(ui.page == PageId::StepEdit ? PageId::Steps : ui.page == PageId::Steps ? PageId::Roll
@@ -159,19 +149,8 @@ void Shell::button(Button b, bool pressed) {
         if (ui.page != PageId::Record) context_.open(PageId::Record);
         else context_.record_press();
         break;
-    case Button::SixteenLevels: { // a sampler track: the last pad on all sixteen, and again back to the kit
-        auto& t = context_.track();
-        if (t.engine != EngineKind::Sampler) { context_.open(PageId::Keys); break; }
-        if (ui.page == PageId::Levels) { t.levels = false; context_.open(PageId::Pads); break; }
-        t.levels = true; t.levels_pad = t.last_pad; ui.levels_hit = -1;
-        context_.open(PageId::Levels);
-        break;
-    }
-    case Button::Chop: // the MPC's own job, on the sample of the last pad hit
-        if (context_.track().engine != EngineKind::Sampler || !context_.pad().used()) break;
-        if (ui.chop_sample != context_.pad().sample) { ui.chop_sample = context_.pad().sample; ui.chop_slice = 0; context_.rechop(); }
-        context_.open(PageId::Chop);
-        break;
+    case Button::SixteenLevels: levels_button(context_); break; // the last pad (or note) on all sixteen; Shift: the type
+    case Button::Chop: chop_button(context_); break;            // Chop on the last pad's sample; Shift: Note On
     case Button::Play: if (ui.shift) context_.play_continue(); else context_.play(); break;
     case Button::Stop:
         if (ui.page == PageId::Record) context_.send({Command::Type::RecordStop});
@@ -304,6 +283,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     if (down && track_pad(context_, pad)) { end_copy_away(); return; } // Pad Bank + pad: that track (or a track copy's)
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
     if (down && ui_.mute_mode()) { mute_pad(context_, pad, kit_pads()); return; } // mute mode: mute; with Shift, solo
+    if (down && sample_pad(context_, pad)) return; // Sample held: the pad becomes the last pad, unheard
     if (down && ui_.shift) { ui_.shift_used = true; shift_pad(context_, pad); return; } // the printed Shift + pad jobs, on every page
     bool copying_pads = ui_.copying == UiState::Copying::Pads;
     if (down && kit_pads() && (copying_pads || ui_.erase)) {
@@ -405,7 +385,20 @@ std::string Shell::summary() const {
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
-           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load());
+           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary();
+}
+
+// Phase 4: the last pad's Sample Mode values, for remote checks.
+std::string Shell::pad_summary() const {
+    uint32_t b = pad_bits.load(std::memory_order_relaxed);
+    static const char* const kinds[] {"velocity", "scale", "tune", "filter"};
+    return " melodee_last_pad=" + std::to_string(((b >> 8) & 0xff) + 1) + " melodee_pad_loop=" + std::to_string(b & 1) +
+           " melodee_pad_lock=" + std::to_string((b >> 1) & 1) + " melodee_pad_note_on=" + std::to_string((b >> 2) & 1) +
+           " melodee_pad_reverse=" + std::to_string((b >> 3) & 1) + " melodee_pad_mono=" + std::to_string((b >> 4) & 1) +
+           " melodee_pad_filter=" + pad_filter_name(PadFilter((b >> 16) & 0xf)) + " melodee_pad_link=" + std::to_string((b >> 20) & 0x1f) +
+           " melodee_pad_decay_from=" + ((b >> 25) & 1 ? "start" : "end") +
+           " melodee_pad_gain=" + std::to_string(pad_gain.load(std::memory_order_relaxed)) +
+           " melodee_levels=" + std::to_string((b >> 5) & 1) + " melodee_levels_kind=" + kinds[(b >> 6) & 3];
 }
 
 // The lit pads by number, 1-16.

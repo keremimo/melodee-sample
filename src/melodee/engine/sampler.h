@@ -11,9 +11,11 @@
 #include <array>
 
 // SAMPLER: a kit of 128 pads, each a region of a sample, written for
-// sample-base after the melodee-ios sampler's behaviour: gate or one shot,
-// reverse, mute groups (pads in a group cut each other), its own pitch,
-// level, pan and envelope, and one filter on the whole kit. Notes 36..163
+// sample-base after the melodee-ios sampler's behaviour and the MPC
+// Sample's Sample Mode: gate (Note On) or one shot, loop and reverse, mute
+// groups (pads in a group cut each other), mono or poly, a linked pad,
+// offset, velocity sensitivity, its own pitch, level, pan, envelope, filter
+// and filter envelope, warp, and one filter on the whole kit. Notes 36..163
 // play pads 1..128 (bank A first). A muted pad is not heard. Stereo. Audio thread only; the sample
 // table belongs to the engine host.
 namespace melodee {
@@ -40,7 +42,7 @@ public:
     // until the pad's lane moves again or restore_pads() gives every pad its
     // own values back (the pattern's start, Stop). Hits after it hear it.
     void move_pad(unsigned pad, PadParam which, int value) {
-        if (pad >= sampler_pads || !pad_param_built(which)) return;
+        if (pad >= sampler_pads) return;
         set_pad_param(pads[pad], which, value);
         moved = true;
     }
@@ -53,8 +55,9 @@ public:
     void audition(uint16_t sample, uint32_t start, uint32_t end, int velocity);
     // A sample is about to change: whatever plays it stops now.
     void sample_gone(uint16_t sample);
-    // A kit pad shifted by `semitones` (16 Levels); note_off for the pad's note releases it.
-    void play_pad(unsigned pad, int velocity, int semitones);
+    // A kit pad shifted by `semitones`, its filter at `cutoff` (0..100; -1 its
+    // own): 16 Levels. note_off for the pad's note releases it.
+    void play_pad(unsigned pad, int velocity, int semitones, int cutoff = -1);
 
     void note_on(int key, int velocity) override;
     void note_off(int key) override;
@@ -80,6 +83,7 @@ public:
 private:
     struct Voice {
         int pad = -1; // -1 free; sampler_pads: the audition voice's region
+        int trigger = -1; // the pad whose hit started it: its own, or one linked to it (its note off releases it)
         const SampleData* sample = nullptr;
         uint16_t slot = no_sample;
         double position = 0, step = 1;
@@ -101,8 +105,24 @@ private:
         uint32_t age = 0;
         dsp::Envelope env;
         dsp::Envelope::Shape shape;
+        // Loop: after the end (or, reversed, the loop point) it goes on from the loop point (or the end).
+        bool loop = false;
+        uint32_t loop_at = 0;
+        uint32_t wait = 0;                  // Offset: frames before it starts
+        float tail = 0, filter_tail = 0;    // Decay from the end: frames of output it fades (and the filter closes) over
+        // The pad's filter: two state-variable stages a side, and its envelope.
+        PadFilter filter = PadFilter::Off;
+        float cutoff = 0, depth = 0;        // octaves above 20 Hz; how far the envelope opens it
+        float k1 = 1.4f, k2 = 1.4f, fg = 0.1f;
+        float fs[2][2][2] {};               // [stage][side][s1, s2]
+        unsigned since_tune = 0;
+        dsp::Envelope filter_env;
+        dsp::Envelope::Shape filter_shape;
     };
-    void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0);
+    void hit(int pad, int velocity, int semitones, int cutoff);
+    void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0, int cutoff = -1, int trigger = -1);
+    float frames_left(const Voice& v, double at, double speed) const; // output frames to the end, for the fades
+    void voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f);
     Voice& free_voice();
 
     struct Grain {
@@ -131,7 +151,7 @@ private:
     PadEffects* pad_effects = nullptr;
     std::array<Lane, lanes> lane {};
     Lane* lane_for(int pad); // the pad's lane, a free one, or nullptr
-    void stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned frames);
+    void stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames);
 };
 
 } // namespace melodee

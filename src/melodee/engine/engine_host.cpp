@@ -311,7 +311,7 @@ void EngineHost::apply(const Command& c) {
     case Type::RecordNow: take.start_now(); break;
     case Type::RecordStop: take.stop(); break;
     case Type::PadNote:
-        if (slot.engine == &slot.sampler) slot.sampler.play_pad(c.index, c.value, int(c.pattern) - 64);
+        if (slot.engine == &slot.sampler) slot.sampler.play_pad(c.index, c.value, int(c.pattern) - 64, int(c.position) - 1);
         break;
     case Type::Audition:
         if (slot.engine == &slot.sampler) slot.sampler.audition(c.pad.sample, c.pad.start, c.pad.end, c.value);

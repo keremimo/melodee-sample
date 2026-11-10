@@ -62,6 +62,9 @@ public:
     };
     void view(View& out) const;
     LoadedSample slot(unsigned n) const;
+    // MIDI thread: the loudest sample of slot `n` between two frames (0..1+), for
+    // Normalize; -1 when it is not loaded. Reads the audio under the lock.
+    float peak(unsigned n, uint32_t from, uint32_t to) const;
     std::vector<SampleFile> files() const;
     std::string root() const;
 
@@ -79,6 +82,7 @@ private:
     std::atomic<unsigned> take_count {0};
     void save_take();
     std::vector<std::unique_ptr<SampleData>> owned; // service thread: every sample the audio thread may hold
+    std::array<const SampleData*, sample_slots> data_of {}; // under `lock`: what each slot holds now, for peak()
     std::string root_seen;
     unsigned ticks = 0;
     mutable std::mutex lock;

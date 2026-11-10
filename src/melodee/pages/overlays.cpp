@@ -51,13 +51,17 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     const char* copy = s.ui.pad_bank ? "Copy track" : kit_pads ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pad, pattern, track";
     const char* select = s.ui.page == PageId::Sounds ? "Star sound" : kit ? "Save sample (later)" : "Save sound";
     static const char* const clicks[] {"Metronome: off", "Metronome: on", "Metronome: rec"};
+    const char* levels = !t.used() ? "Type (a sound first)" : !kit ? "Type: velocity, tune, scale" : "Type: velocity, filter, tune";
+    bool trim = s.ui.page == PageId::Trim && kit;
     const char* const jobs[][2] {
         {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"PAD BANK", "Previous bank"}, {"ERASE", copy},
-        {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"SAMPLE SELECT", select},
+        {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"CHOP", kit ? "Note On / One shot" : "Note On (kit pads)"},
+        {"16 LEVELS", levels}, {"SAMPLE SELECT", select},
         {"MUTE", "Unmute all; mute + pad: solo"}, {"TAP TEMPO", clicks[s.project.click % 3]},
         {"SAMPLE RECORD", "Audio recall (later)"}, {"SEQ RECORD", "Recall last bars"},
         {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"\xe2\x88\x92 / +", "Undo / redo"},
         {"PUSH", song ? "Marker at cursor" : "Back"},
+        {trim ? "B1 / B2" : "", trim ? "Loop lock / Normalize" : ""},
     };
     p.dim_zone(zone::soft_y, zone::soft_h);
     p.fill(0, zone::header_y, zone::width, zone::header_h + zone::picture_h, colour::bg);
@@ -95,7 +99,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     // The buttons' second jobs, one line each.
     float x = zone::pad + grid_w + 5, w = zone::width - zone::pad - x, name_w = 46;
     p.fill(x, top, w, grid_h, colour::surf, 6);
-    constexpr unsigned count = sizeof(jobs) / sizeof(jobs[0]);
+    const unsigned count = sizeof(jobs) / sizeof(jobs[0]) - (trim ? 0 : 1); // Trim's own B1 / B2 last
     float rh = (grid_h - 4) / count;
     for (unsigned n = 0; n < count; ++n) {
         float y = top + 2 + n * rh;

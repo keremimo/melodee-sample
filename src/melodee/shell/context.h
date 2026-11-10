@@ -107,6 +107,12 @@ public:
     void double_speed();      // Shift + Pad 7: every note half as far apart
     void time_correct();      // Time Correct's B3: the chosen notes onto Q, swung and shifted; one undo
     void toggle_reverse();    // Shift + Loop: the last pad's reverse
+    // Sample Mode jobs on the last pad hit (parity phase 4, shell/sample_mode.cpp).
+    void toggle_loop();       // Loop
+    void toggle_note_on();    // Shift + Chop: Note On (Gate) or One shot
+    void toggle_loop_lock();  // Shift + B1 on Trim: the loop point back on the start, or free
+    void normalize();         // Shift + B2 on Trim: the region's loudest point to 0 dB, one undo
+    void toggle_warp_mode();  // Shift + Pad 15: Warp by Time stretch or Pitch (the kit's Follow how)
     void play_continue();     // Shift + Play: on from where it stopped
     void set_recording(bool on); // a take begins; when it ends it goes into the history
     void seq_record();           // Seq Record: stopped, arm (Play starts the take); playing, record at once; recording, stop recording

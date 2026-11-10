@@ -31,26 +31,37 @@ SamplerEngine::Voice& SamplerEngine::free_voice() {
     return *oldest;
 }
 
-void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones) {
+void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
     if (!samples || !sound.used() || sound.sample >= sample_slots) return;
     const SampleData* data = (*samples)[sound.sample];
     if (!data || !data->frames) return;
-    // A pad in a mute group cuts the others in it.
+    // A pad in a mute group cuts the others in it; a mono pad cuts what it played before.
     if (sound.group)
         for (auto& o : voices) if (o.pad >= 0 && o.group == sound.group && o.pad != pad) o.choked = true;
+    if (sound.mono)
+        for (auto& o : voices) if (o.pad == pad && &o != &v) o.choked = true;
     v = Voice {};
-    v.pad = pad; v.sample = data; v.slot = sound.sample;
+    v.pad = pad; v.trigger = trigger >= 0 ? trigger : pad; v.sample = data; v.slot = sound.sample;
     v.start = std::min(sound.start, data->frames - 1);
     v.end = sound.end && sound.end <= data->frames ? sound.end : data->frames;
     if (v.end <= v.start + 1) { v.pad = -1; return; }
     v.reverse = sound.reverse;
     v.position = v.reverse ? v.end - 1 : v.start;
+    v.loop = sound.loop && pad < int(sampler_pads);
+    v.loop_at = std::clamp(sound.loop_point(), v.start, v.end - 2);
     v.step = std::exp2((sound.pitch + semitones + sound.fine / 100.0 + p[Tune]) / 12.0);
     v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
-    // Follow: the project's tempo from the pad's own. By Tape, speed and pitch
-    // move together; by Beats or Tones the sound is stretched, its pitch kept.
+    // Warp, else Follow: the speed the region moves at. Warp's Seq plays it at
+    // the project's tempo from its own (by # Beats, else worked out from its
+    // length); 50..200 % makes it that long. By Tape, speed and pitch move
+    // together; by Beats or Tones the sound is stretched, its pitch kept.
     // PITCH Stretch keeps a pitch change from changing the length too.
-    double rate = p[Follow] && sound.own_tempo ? double(tempo) / sound.own_tempo : 1.0;
+    double rate = 1.0, frames = double(v.end - v.start);
+    if (sound.warp == warp_seq) {
+        double own = sound.beats ? sound.beats * 60.0 * 44100.0 / frames * 10.0 : double(sound.own_tempo);
+        if (own > 0) rate = tempo / own;
+    } else if (sound.warp >= warp_min) rate = 100.0 / sound.warp;
+    else if (p[Follow] && sound.own_tempo) rate = double(tempo) / sound.own_tempo;
     bool tape = p[FollowHow] == 2;
     double pitch = tape ? v.step * rate : v.step;                         // what the taps read at
     double advance = rate * (p[PitchHow] == 1 ? 1.0 : v.step);            // how fast the sound moves on
@@ -68,26 +79,68 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     }
     v.held = true; v.gate = sound.play == PadPlay::Gate; v.group = sound.group;
     v.age = ++clock;
-    float level = sound.level / 100.0f * p[Level] / 100.0f, velocity_gain = 0.25f + 0.75f * velocity / 127.0f;
-    v.gain = level * level * velocity_gain;
+    // Offset: up to a sixteenth of the project's tempo after the hit.
+    v.wait = pad < int(sampler_pads) ? uint32_t(sound.offset * (dsp::sample_rate * 15 / (tempo / 10.0)) / 100) : 0;
+    // Volume (dB, as the MPC shows it), Normalize, and velocity by the pad's sensitivity.
+    float sense = sound.velocity_sense / 100.0f, curve = 0.25f + 0.75f * std::clamp(velocity, 0, 127) / 127.0f;
+    float velocity_gain = 1.0f - sense * (1.0f - curve);
+    v.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f);
     float angle = (std::clamp<int>(sound.pan, -50, 50) + 50) / 100.0f * dsp::pi / 2;
     v.left = std::cos(angle) * 1.4142f; v.right = std::sin(angle) * 1.4142f; // centre is unity on both sides
-    // The pad's envelope; the kit's DECAY scales every pad's decay.
-    float decay = sound.decay >= 100 ? 1000.0f : time_seconds(sound.decay) * (p[Decay] / 100.0f) + 0.005f;
-    v.shape = {dsp::Envelope::coefficient(time_seconds(sound.attack) * 0.3f), dsp::Envelope::coefficient(decay),
-               dsp::Envelope::coefficient(time_seconds(sound.release) * 0.5f + 0.003f), sound.decay >= 100 ? 1.0f : sound.sustain / 100.0f};
+    // The pad's envelope; the kit's DECAY scales every pad's decay. A one shot
+    // that decays from the end plays whole and fades over its decay before the end.
+    float decay_s = time_seconds(sound.decay) * (p[Decay] / 100.0f) + 0.005f;
+    bool from_end = !v.gate && !sound.decay_from_start;
+    bool hold = sound.decay >= 100 || from_end;
+    v.shape = {dsp::Envelope::coefficient(time_seconds(sound.attack) * 0.3f), dsp::Envelope::coefficient(hold ? 1000.0f : decay_s),
+               dsp::Envelope::coefficient(time_seconds(sound.release) * 0.5f + 0.003f), hold ? 1.0f : sound.sustain / 100.0f};
+    if (from_end && sound.decay < 100 && !v.loop) v.tail = decay_s * dsp::sample_rate;
     v.env.gate(true);
+    // The pad's filter, or 16 Levels' cutoff (Classic when the pad has none).
+    v.filter = sound.filter;
+    int at = sound.cutoff;
+    if (cutoff >= 0) { at = cutoff; if (v.filter == PadFilter::Off) v.filter = PadFilter::Classic; }
+    if (v.filter != PadFilter::Off) {
+        float res = sound.resonance / 100.0f;
+        v.cutoff = at / 100.0f * 9.97f;
+        v.depth = sound.filter_amount / 100.0f * 7.0f; // up to seven octaves open
+        bool four = v.filter == PadFilter::Lpf4 || v.filter == PadFilter::Hpf4 || v.filter == PadFilter::Bpf4;
+        if (v.filter == PadFilter::Classic) v.k1 = 2.0f - 1.97f * res;
+        else if (four) { v.k1 = 1.848f; v.k2 = std::max(0.05f, 0.765f - 0.715f * res); } // Butterworth pairs, the resonance on the second
+        else v.k1 = std::max(0.05f, 1.414f - 1.364f * res);
+        float f_decay = time_seconds(sound.filter_decay);
+        bool f_hold = from_end;
+        v.filter_shape = {dsp::Envelope::coefficient(time_seconds(sound.filter_attack) * 0.3f), dsp::Envelope::coefficient(f_hold ? 1000.0f : f_decay),
+                          dsp::Envelope::coefficient(time_seconds(sound.filter_release) * 0.5f + 0.003f), f_hold ? 1.0f : sound.filter_sustain / 100.0f};
+        if (f_hold && !v.loop && sound.filter_decay < 100) v.filter_tail = f_decay * dsp::sample_rate; // 100 holds, as the amp's decay
+        v.filter_env.gate(true);
+        v.since_tune = 1u << 30; // tune on the first frame
+    }
 }
 
-void SamplerEngine::note_on(int key, int velocity) {
-    int pad = key - int(sampler_first_note);
+// A kit pad hit: a one shot that loops stops instead when it is playing;
+// its linked pad (same bank) plays with it.
+void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff) {
     if (pad < 0 || pad >= int(sampler_pads) || pad_muted(unsigned(pad))) return;
-    start(free_voice(), pads[size_t(pad)], pad, velocity);
+    const auto& sound = pads[size_t(pad)];
+    if (sound.loop && sound.play == PadPlay::OneShot) {
+        bool stopped = false;
+        for (auto& v : voices)
+            if (v.pad == pad && v.trigger == pad && v.loop && v.env.stage != dsp::Envelope::Stage::Release && !v.choked) {
+                v.env.gate(false); v.filter_env.gate(false); stopped = true;
+            }
+        if (stopped) return;
+    }
+    start(free_voice(), sound, pad, velocity, semitones, cutoff);
+    if (sound.link) {
+        int linked = pad / 16 * 16 + (sound.link - 1) % 16;
+        if (linked != pad && !pad_muted(unsigned(linked))) start(free_voice(), pads[size_t(linked)], linked, velocity, 0, -1, pad);
+    }
 }
 
-void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones) {
-    if (pad < sampler_pads && !pad_muted(pad)) start(free_voice(), pads[pad], int(pad), velocity, semitones);
-}
+void SamplerEngine::note_on(int key, int velocity) { hit(key - int(sampler_first_note), velocity, 0, -1); }
+
+void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones, int cutoff) { hit(int(pad), velocity, semitones, cutoff); }
 
 void SamplerEngine::set_pad_mute(unsigned pad, bool on) {
     if (pad >= sampler_pads) return;
@@ -103,7 +156,10 @@ void SamplerEngine::set_pad_mutes(const std::array<uint64_t, (sampler_pads + 63)
 void SamplerEngine::note_off(int key) {
     int pad = key - int(sampler_first_note);
     for (auto& v : voices)
-        if (v.pad == pad && v.held) { v.held = false; if (v.gate) v.env.gate(false); } // a one shot plays on to its end
+        if (v.trigger == pad && v.pad >= 0 && v.held) { // a one shot plays on to its end (a loop until hit again)
+            v.held = false;
+            if (v.gate) { v.env.gate(false); v.filter_env.gate(false); }
+        }
 }
 
 void SamplerEngine::audition(uint16_t sample, uint32_t from, uint32_t to, int velocity) {
@@ -120,7 +176,7 @@ void SamplerEngine::sample_gone(uint16_t slot) {
 }
 
 void SamplerEngine::all_notes_off() {
-    for (auto& v : voices) if (v.pad >= 0) { v.held = false; v.env.gate(false); }
+    for (auto& v : voices) if (v.pad >= 0) { v.held = false; v.env.gate(false); v.filter_env.gate(false); }
 }
 void SamplerEngine::silence() {
     for (auto& v : voices) v = Voice {};
@@ -159,15 +215,71 @@ void SamplerEngine::spawn(Voice& v) {
                 uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate), v.gain * v.env.level, v.left, v.right};
 }
 
+// Output frames left before the region's end (reversed: its start), for
+// the fades of a one shot that decays from the end; a loop has no end.
+float SamplerEngine::frames_left(const Voice& v, double at, double speed) const {
+    if (v.loop || (!v.tail && !v.filter_tail)) return 1e9f;
+    double distance = v.reverse ? at - v.start : (v.end - 1) - at;
+    return float(std::max(0.0, distance) / std::max(speed, 1e-6));
+}
+
+// One frame of a voice: through the pad's filter (its cutoff moved by its
+// envelope, retuned every 16 frames), the amp and the pan.
+void SamplerEngine::voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f) {
+    if (v.tail > 0 && left_frames < v.tail) a *= left_frames / v.tail;
+    if (v.filter != PadFilter::Off) {
+        float e = v.filter_env.next(v.filter_shape);
+        if (v.filter_tail > 0 && left_frames < v.filter_tail) e *= left_frames / v.filter_tail;
+        if (++v.since_tune >= 16) {
+            v.since_tune = 0;
+            float hz = 20.0f * std::exp2(std::min(v.cutoff + v.depth * e, 10.5f));
+            v.fg = std::tan(dsp::pi * std::min(hz, dsp::sample_rate * 0.45f) / dsp::sample_rate);
+        }
+        const float g = v.fg;
+        auto stage = [&](float x, float k, float* s) { // one state-variable stage: low, band and high pass
+            float hp = (x - (k + g) * s[0] - s[1]) / (1 + g * (g + k));
+            float bp = g * hp + s[0], lp = g * bp + s[1];
+            s[0] = g * hp + bp; s[1] = g * bp + lp;
+            return std::array<float, 3> {lp, bp, hp};
+        };
+        float* io[2] {&l, &r};
+        for (unsigned side = 0; side < 2; ++side) {
+            float x = *io[side];
+            switch (v.filter) {
+            case PadFilter::Classic: { // a 12 dB low pass that saturates as it rings, after the MPC3000's
+                auto o = stage(dsp::soft_clip(x * 1.1f), v.k1, v.fs[0][side]);
+                v.fs[0][side][0] = dsp::soft_clip(v.fs[0][side][0]);
+                x = o[0];
+                break;
+            }
+            case PadFilter::Lpf2: x = stage(x, v.k1, v.fs[0][side])[0]; break;
+            case PadFilter::Hpf2: x = stage(x, v.k1, v.fs[0][side])[2]; break;
+            case PadFilter::Bpf2: x = stage(x, v.k1, v.fs[0][side])[1]; break;
+            case PadFilter::Lpf4: x = stage(stage(x, v.k1, v.fs[0][side])[0], v.k2, v.fs[1][side])[0]; break;
+            case PadFilter::Hpf4: x = stage(stage(x, v.k1, v.fs[0][side])[2], v.k2, v.fs[1][side])[2]; break;
+            case PadFilter::Bpf4: x = stage(stage(x, v.k1, v.fs[0][side])[1], v.k2, v.fs[1][side])[1]; break;
+            default: break;
+            }
+            *io[side] = x;
+        }
+    }
+    to_l[f] += l * a * v.left;
+    to_r[f] += r * a * v.right;
+}
+
 // A stretched voice: taps begin where `place` has got to and read at the
 // pad's pitch; Tones fades each over its window (sin², half overlapped, so
 // they sum to one), Beats plays each segment whole with 2 ms edges.
-void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned frames) {
+void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames) {
     const double way = v.reverse ? -1.0 : 1.0;
     constexpr uint32_t edge = 88;
-    for (unsigned f = 0; f < frames; ++f) {
-        bool past = v.reverse ? v.place < v.start : v.place >= v.end - 1;
-        if (past) { v.pad = -1; return; }
+    for (unsigned f = from; f < frames; ++f) {
+        bool past = v.reverse ? v.place < (v.loop ? v.loop_at : v.start) : v.place >= v.end - 1;
+        if (past) {
+            if (!v.loop) { v.pad = -1; return; }
+            v.place = v.reverse ? v.end - 1 : v.loop_at;
+            v.since_hop = v.hop; // a fresh tap from the loop point
+        }
         if (v.since_hop >= v.hop) { // a new tap from here
             v.since_hop = 0;
             unsigned t = v.next_tap; v.next_tap ^= 1;
@@ -197,8 +309,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             v.tap[t] += way * v.step;
             ++v.tap_age[t];
         }
-        to_l[f] += sum_l * a * v.left;
-        to_r[f] += sum_r * a * v.right;
+        voice_out(v, sum_l, sum_r, a, frames_left(v, v.place, v.advance), to_l, to_r, f);
         v.place += way * v.advance;
         if (!v.env.active()) { v.pad = -1; return; }
     }
@@ -253,17 +364,27 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             }
         const float* l = v.sample->left.data();
         const float* r = v.sample->right.data();
-        if (v.stretch) { stretch(v, l, r, to_l, to_r, frames); continue; }
-        for (unsigned f = 0; f < frames; ++f) {
-            bool past = v.reverse ? v.position < v.start : v.position >= v.end - 1;
-            if (past) { v.pad = -1; break; }
+        unsigned from = 0;
+        if (v.wait) { // Offset: it starts later in this block, or in a later one
+            from = std::min(v.wait, frames);
+            v.wait -= from;
+            if (v.choked) { v.pad = -1; continue; }
+            if (from == frames) continue;
+        }
+        if (v.stretch) { stretch(v, l, r, to_l, to_r, from, frames); continue; }
+        const uint32_t low = v.reverse && v.loop ? v.loop_at : v.start;
+        for (unsigned f = from; f < frames; ++f) {
+            bool past = v.reverse ? v.position < low : v.position >= v.end - 1;
+            if (past) {
+                if (!v.loop) { v.pad = -1; break; }
+                v.position = v.reverse ? v.end - 1 : v.loop_at; // round again
+            }
             unsigned i = unsigned(v.position);
             float frac = float(v.position - i);
             unsigned j = std::min(i + 1, v.end - 1);
             float a = v.env.next(v.shape) * v.gain * v.fade;
             if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
-            to_l[f] += (l[i] + (l[j] - l[i]) * frac) * a * v.left;
-            to_r[f] += (r[i] + (r[j] - r[i]) * frac) * a * v.right;
+            voice_out(v, l[i] + (l[j] - l[i]) * frac, r[i] + (r[j] - r[i]) * frac, a, frames_left(v, v.position, v.step), to_l, to_r, f);
             v.position += v.reverse ? -v.step : v.step;
             if (!v.env.active()) { v.pad = -1; break; }
         }

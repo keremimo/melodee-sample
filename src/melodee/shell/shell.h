@@ -61,6 +61,7 @@ private:
     void check_pickup(unsigned index, const Binding& binding);
     std::string button_text() const; // the button lights for `status`
     std::string lit_pads_text() const; // and the lit pads
+    std::string pad_summary() const;   // the last pad's Sample Mode values (phase 4)
     std::atomic<uint64_t> button_levels {0};
     std::atomic<uint32_t> pads_lit {0}; // the pads lit, a bit each, for `status`
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
@@ -90,6 +91,8 @@ private:
     // length in ticks, its notes, its Q and the first note's tick, and the time signature.
     std::atomic<uint32_t> rec_state {0}, pattern_ticks {0}, pattern_events {0}, pattern_q {0}, first_tick {0}, signature_now {0};
     std::atomic<uint32_t> step_now {0}, event_now {0}, step_events_now {0}, event_tick {0}, ask_now {0}, motion_now {0}; // Step Edit, a question, Motion
+    std::atomic<uint32_t> pad_bits {0}; // phase 4: the last pad's loop, lock, Note On, reverse, mono, filter, link; 16 Levels (summary())
+    std::atomic<int32_t> pad_gain {0};
 };
 
 // The project Melodee starts with: four tracks with sounds and a bass line.

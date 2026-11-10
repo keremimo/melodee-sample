@@ -37,7 +37,11 @@ struct Binding {
         PadPunchKind, PadPunchRate, PadPunchDepth, // Pad Punch: the last pad hit
         NameSuggest, NameChar,                     // the Name sheet
         Transpose,                                 // Keys, Shift + K3: the pads by semitones
-        EventVelocity, EventLength                 // Step Edit: the selected event (length in steps of Q)
+        EventVelocity, EventLength,                // Step Edit: the selected event (length in steps of Q)
+        // Sample Mode (parity phase 4), the last pad hit; TrimZoom's id is the handle it closes in on (0 start, 1 end, 2 loop)
+        PadLoopPoint, PadLoop, PadMono, PadLink, PadOffset, PadVelSense, PadDecayFrom,
+        PadFilterType, PadCutoff, PadResonance, PadFAttack, PadFDecay, PadFSustain, PadFRelease, PadFAmount,
+        PadWarp, PadBeats                          // PadWarp: 0 Off, 1..151 50..200 %, 152 Seq
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -87,6 +91,10 @@ constexpr unsigned pattern_length_count = sizeof(pattern_lengths) / sizeof(patte
 inline unsigned pattern_bars(const Project& project, const Pattern& pattern) {
     return std::max(1u, unsigned((pattern.length + project.bar_ticks() - 1) / project.bar_ticks()));
 }
+// Warp on its card: 0 Off, 1..151 for 50..200 %, 152 Seq; and back.
+constexpr int warp_card_seq = 152;
+inline int warp_card(uint8_t warp) { return warp == warp_seq ? warp_card_seq : warp >= warp_min ? int(warp) - (warp_min - 1) : 0; }
+inline uint8_t warp_of_card(int value) { return value >= warp_card_seq ? warp_seq : value <= 0 ? warp_off : uint8_t(value + warp_min - 1); }
 // Song's zoom steps, in bars across the view.
 constexpr unsigned song_zooms[] {4, 8, 16, 32, 64};
 // The track's three favourite parameters, for every page without its own.

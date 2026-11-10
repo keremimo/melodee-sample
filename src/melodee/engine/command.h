@@ -43,7 +43,7 @@ struct Command {
         Pressure,    // track, index = key, value = 0..127 (poly aftertouch)
         Pad,         // track, index = kit pad, pad
         Audition,    // track, pad (sample, start, end), value = velocity: a region on no pad
-        PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64: 16 Levels
+        PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64, position = cutoff + 1 (0: the pad's): 16 Levels
         RecordArm,   // track = source (0 mic, 1 line, 2 the mix), index = sample slot, value = threshold dB, pattern = bars (0: until stopped)
         RecordGain,  // value = dB
         RecordSource, // track = 0 mic, 1 line, 2 the mix: what the input meter reads before a take

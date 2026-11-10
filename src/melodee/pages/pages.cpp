@@ -44,6 +44,9 @@ const PageSpec& page_spec(PageId page) {
     case PageId::PadFx: return pad_fx_page;
     case PageId::TimeCorrect: return time_correct_page;
     case PageId::StepEdit: return step_edit_page;
+    case PageId::PadMix: return pad_mix_page;
+    case PageId::PadFilterPage: return pad_filter_page;
+    case PageId::FilterEnvPage: return filter_env_page;
     case PageId::Stage:
     default: return stage_page;
     }

@@ -12,7 +12,8 @@ int page_group(PageId page) {
     case PageId::StepEdit: case PageId::Steps: case PageId::Roll: case PageId::Motion: return 2;
     case PageId::Rack: case PageId::Sends: case PageId::Bus: case PageId::Master: case PageId::PadFx: return 3;
     case PageId::Trim: case PageId::PadPage: case PageId::PlayPage: case PageId::EnvelopePage:
-    case PageId::FilterPage: case PageId::FollowPage: case PageId::CloudPage: return 4;
+    case PageId::FilterPage: case PageId::FollowPage: case PageId::CloudPage:
+    case PageId::PadMix: case PageId::PadFilterPage: case PageId::FilterEnvPage: return 4;
     case PageId::Punch: case PageId::PadPunch: return 5;
     case PageId::Arp: case PageId::Chord: return 6;
     default: return 0;

@@ -1261,7 +1261,8 @@ void shift_pads() {
     CHECK(shift_pad_job(2).kind == K::Action && shift_pad_job(11).kind == K::Open && shift_pad_job(15).kind == K::Open);
     for (unsigned n : {1u, 5u, 6u}) CHECK(shift_pad_job(n).kind == K::Action); // Half Seq, Half / Double Speed (phase 2)
     CHECK(shift_pad_job(13).kind == K::Open);                                  // Time Correct (phase 2)
-    for (unsigned n : {4u, 7u, 8u, 10u, 12u, 14u})
+    CHECK(shift_pad_job(14).kind == K::Action);                                // Warp: Time stretch / Pitch (phase 4)
+    for (unsigned n : {4u, 7u, 8u, 10u, 12u})
         CHECK(shift_pad_job(n).kind == K::Later && shift_pad_job(n).phase >= 2);
 
     UiState ui;
@@ -1723,7 +1724,7 @@ void step_edit_and_pad_motion() {
     CHECK(lane_name(kit, lanes[0]) == "A10 LEVEL" && motion_param(kit, lanes[0]).value == 100);
     auto card = lane_binding(kit, 4, lanes[0]);
     CHECK(card.kind == Binding::Kind::PadLevel && card.max == 127 && card.value == 100);
-    CHECK(!motion_param(kit, motion_lane(motion_pad_param(PadParam::VelocitySense), 9)).info); // phase 4 brings it
+    CHECK(motion_param(kit, motion_lane(motion_pad_param(PadParam::VelocitySense), 9)).info); // parity phase 4 gave pads it
     CHECK(!motion_param(project->tracks[0], motion_lane(level, 9)).info);                      // not a kit
     kit.last_pad = 2;
     CHECK(motion_lanes(*project, kit_ui)[0] == motion_lane(motion_pad_param(PadParam::Attack), 2));
@@ -1779,7 +1780,215 @@ void step_edit_and_pad_motion() {
     while (host.take_retired(gone)) {}
 }
 
+// Parity phase 4: a kit pad as deep as the MPC's Sample Mode.
+void sample_mode() {
+    // Volume in dB as the MPC shows it.
+    CHECK(volume_db(100) == 0 && std::fabs(volume_db(1) + 74) < 0.01f && std::fabs(volume_db(127) - 6) < 0.01f && volume_gain(0) == 0);
+    CHECK(decibels(0) == "-inf" && decibels(127) == "+6.0" && decibels(100) == "0.0");
+
+    // A second of two sines: a low one on the left, a high one on the right.
+    SampleData data;
+    data.frames = 44100;
+    data.left.resize(44100); data.right.resize(44100);
+    for (unsigned n = 0; n < 44100; ++n) { data.left[n] = float(std::sin(n * 0.02) * 0.5); data.right[n] = float(std::sin(n * 1.0) * 0.5); }
+    SamplerEngine::Table table {};
+    table[0] = &data;
+    const int key = int(sampler_first_note);
+    // Renders `blocks` of 128; the peak of each side from block `from` on.
+    auto run = [&](SamplerEngine& e, unsigned blocks, unsigned from = 0) {
+        std::vector<float> l(128), r(128);
+        std::pair<float, float> peak {0, 0};
+        for (unsigned b = 0; b < blocks; ++b) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            e.render_stereo(l.data(), r.data(), 128);
+            if (b >= from) for (unsigned f = 0; f < 128; ++f) {
+                CHECK(std::isfinite(l[f]) && std::isfinite(r[f]));
+                peak.first = std::max(peak.first, std::fabs(l[f])); peak.second = std::max(peak.second, std::fabs(r[f]));
+            }
+        }
+        return peak;
+    };
+    auto engine_with = [&](const PadSound& pad, unsigned at = 0) {
+        auto e = std::make_unique<SamplerEngine>();
+        e->set_samples(&table);
+        e->set_pad(at, pad);
+        return e;
+    };
+    PadSound base;
+    base.sample = 0; base.end = 4410; base.play = PadPlay::OneShot;
+
+    { // Loop: a one shot loop plays past its end, and a second hit stops it.
+        PadSound pad = base; pad.loop = true;
+        auto e = engine_with(pad);
+        e->note_on(key, 127);
+        CHECK(run(*e, 60, 50).first > 0.1f && e->sounding());
+        e->note_off(key);
+        CHECK(e->sounding()); // a one shot loop plays on without the pad
+        e->note_on(key, 127);  // hit again: it stops
+        run(*e, 200);
+        CHECK(!e->sounding());
+        auto plain = engine_with(base);
+        plain->note_on(key, 127);
+        run(*plain, 40);
+        CHECK(!plain->sounding());
+        pad.reverse = true; pad.loop_lock = false; pad.loop_start = 2000; // reversed, from the end to the loop point and round
+        auto back = engine_with(pad);
+        back->note_on(key, 127);
+        CHECK(run(*back, 60, 50).first > 0.1f && back->sounding());
+    }
+    { // Offset: 100 % waits a sixteenth (5512 frames at 120 BPM).
+        PadSound pad = base; pad.offset = 100;
+        auto e = engine_with(pad);
+        e->set_tempo(1200);
+        e->note_on(key, 127);
+        CHECK(run(*e, 42).first == 0.0f);
+        CHECK(run(*e, 10).first > 0.1f);
+    }
+    { // Pad Link: pad 1 plays pad 3 of its bank too, and its note off lets a Note On pad go.
+        PadSound link; link.link = 3;
+        PadSound target = base; target.play = PadPlay::Gate; target.end = 40000;
+        auto e = engine_with(link);
+        e->set_pad(2, target);
+        e->note_on(key, 127);
+        CHECK(run(*e, 4).first > 0.1f);
+        e->note_off(key);
+        run(*e, 400);
+        CHECK(!e->sounding());
+    }
+    { // Mono: a second hit stops the first; Poly lets them sum.
+        PadSound pad = base; pad.end = 40000;
+        auto poly = engine_with(pad);
+        poly->note_on(key, 127); poly->note_on(key, 127);
+        float both = run(*poly, 8, 2).first;
+        pad.mono = true;
+        auto mono = engine_with(pad);
+        mono->note_on(key, 127); mono->note_on(key, 127);
+        float one = run(*mono, 8, 2).first;
+        CHECK(both > one * 1.7f && one > 0.1f);
+    }
+    { // Velocity sensitivity: at 0 a soft hit is as loud as a hard one.
+        PadSound pad = base;
+        auto soft = engine_with(pad), hard = engine_with(pad);
+        soft->note_on(key, 10); hard->note_on(key, 127);
+        CHECK(run(*soft, 8).first < run(*hard, 8).first * 0.5f);
+        pad.velocity_sense = 0;
+        auto deaf = engine_with(pad);
+        deaf->note_on(key, 10);
+        CHECK(std::fabs(run(*deaf, 8).first - run(*engine_with(base), 0).first) >= 0 && run(*deaf, 8).first > 0.45f);
+    }
+    { // Decay from the end: whole until the decay before the end; from the start it falls at once.
+        PadSound pad = base; pad.end = 22050; pad.decay = 30;
+        auto end = engine_with(pad);
+        end->note_on(key, 127);
+        float middle = run(*end, 90, 80).first;
+        pad.decay_from_start = true; pad.sustain = 0;
+        auto start = engine_with(pad);
+        start->note_on(key, 127);
+        float fallen = run(*start, 90, 80).first;
+        CHECK(middle > 0.4f && fallen < middle * 0.3f);
+    }
+    { // The pad filter: a low pass takes the high sine away and keeps the low one; a high pass the other way.
+        PadSound pad = base; pad.end = 40000; pad.filter = PadFilter::Lpf4; pad.cutoff = 50;
+        auto low = engine_with(pad);
+        low->note_on(key, 127);
+        auto lp = run(*low, 30, 10);
+        CHECK(lp.first > 0.3f && lp.second < 0.05f);
+        pad.filter = PadFilter::Hpf2; pad.cutoff = 70;
+        auto high = engine_with(pad);
+        high->note_on(key, 127);
+        auto hp = run(*high, 30, 10);
+        CHECK(hp.second > 0.3f && hp.first < 0.1f);
+        pad.filter = PadFilter::Classic; pad.cutoff = 20; pad.resonance = 100; // rings, but stays finite and bounded
+        auto classic = engine_with(pad);
+        classic->note_on(key, 127);
+        auto cl = run(*classic, 60);
+        CHECK(cl.first < 4 && cl.second < 4);
+        // The envelope opens a closed filter: with depth the high sine comes through at the attack's top.
+        pad.filter = PadFilter::Lpf2; pad.resonance = 0; pad.cutoff = 10; pad.filter_amount = 100; pad.filter_attack = 0; pad.filter_decay = 100;
+        auto opened = engine_with(pad);
+        opened->note_on(key, 127);
+        CHECK(run(*opened, 10, 2).second > 0.2f);
+        // 16 Levels' cutoff on a pad without a filter: Classic at that cutoff.
+        auto levels = engine_with(base);
+        levels->play_pad(0, 127, 0, 5);
+        CHECK(run(*levels, 10, 2).second < 0.05f);
+    }
+    { // Warp: 200 % by Pitch (Tape) plays twice as long.
+        PadSound pad = base; pad.warp = 200;
+        auto e = engine_with(pad);
+        e->set_param(sampler::FollowHow, 2);
+        e->note_on(key, 127);
+        run(*e, 50);
+        CHECK(e->sounding());
+        run(*e, 30);
+        CHECK(!e->sounding());
+        pad.warp = warp_seq; pad.beats = 1; // a beat: 4410 frames is 600 BPM, at 120 five times as long
+        auto seq = engine_with(pad);
+        seq->set_param(sampler::FollowHow, 2); seq->set_tempo(1200);
+        seq->note_on(key, 127);
+        run(*seq, 150);
+        CHECK(seq->sounding());
+    }
+    { // Motion on the new pad values reaches the voice: offset moved to 100 waits a sixteenth.
+        auto e = engine_with(base);
+        e->set_tempo(1200);
+        e->move_pad(0, PadParam::Offset, 100);
+        e->note_on(key, 127);
+        CHECK(run(*e, 42).first == 0.0f);
+        e->restore_pads();
+    }
+
+    // 16 Levels: Tune has the original on pad 4, Filter sweeps up to the pad's cutoff by pad 8.
+    auto project = std::make_unique<Project>();
+    load_sound(project->tracks[4], EngineKind::Sampler, 0);
+    auto& kit = project->tracks[4];
+    kit.pads[2].sample = 0; kit.pads[2].cutoff = 60; kit.levels_pad = 2;
+    kit.levels_kind = uint8_t(LevelsKind::Tune);
+    CHECK(levels_of(*project, kit, 3).semitones == 0 && levels_of(*project, kit, 0).semitones == -3 && levels_of(*project, kit, 15).semitones == 12);
+    kit.levels_kind = uint8_t(LevelsKind::Filter);
+    CHECK(levels_of(*project, kit, 0).cutoff == 0 && levels_of(*project, kit, 7).cutoff == 60 && levels_of(*project, kit, 15).cutoff == 100);
+    CHECK(levels_of(*project, project->tracks[0], 5).velocity == level_velocity(5)); // a synth: Filter is soft to loud
+
+    // Cards: Trim's Shift row zooms at each handle; Play's Shift + K2 Pad Link; Warp's card both ways.
+    kit.last_pad = 2; kit.pads[2].end = 30000; project->samples[0].frames = 44100;
+    UiState ui;
+    ui.track = 4; ui.page = PageId::Trim;
+    Pattern none;
+    auto trim = page_bindings(*project, ui, none, false);
+    CHECK(trim[2].kind == Binding::Kind::PadLoopPoint && trim[2].value == 0);
+    auto zoom = page_bindings(*project, ui, none, true);
+    CHECK(zoom[0].kind == Binding::Kind::TrimZoom && zoom[2].id == 2);
+    ui.page = PageId::PlayPage;
+    CHECK(page_bindings(*project, ui, none, true)[1].kind == Binding::Kind::PadLink);
+    ui.page = PageId::PadMix;
+    CHECK(page_bindings(*project, ui, none, true)[1].kind == Binding::Kind::Param && page_bindings(*project, ui, none, true)[1].id == sampler::Level);
+    CHECK(warp_of_card(warp_card(150)) == 150 && warp_of_card(warp_card(warp_seq)) == warp_seq && warp_of_card(0) == warp_off && warp_card(50) == 1);
+    for (unsigned p = 0; p < pad_param_count; ++p) CHECK(pad_param_built(PadParam(p)));
+
+    // The file: PAD4 keeps every new value; a file without it decays from the start, as it did.
+    auto& pad = kit.pads[2];
+    pad.loop = true; pad.loop_lock = false; pad.loop_start = 1234; pad.mono = true; pad.link = 7; pad.offset = 33; pad.velocity_sense = 44;
+    pad.filter = PadFilter::Bpf4; pad.resonance = 21; pad.filter_attack = 1; pad.filter_decay = 2; pad.filter_sustain = 3; pad.filter_release = 4;
+    pad.filter_amount = 5; pad.warp = 175; pad.beats = 16; pad.gain = 612; pad.group = 16;
+    auto bank = std::make_unique<PatternBank>();
+    auto data_file = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(data_file, *back, *back_bank).empty());
+    const auto& b = back->tracks[4].pads[2];
+    CHECK(b.loop && !b.loop_lock && b.loop_start == 1234 && b.mono && b.link == 7 && b.offset == 33 && b.velocity_sense == 44);
+    CHECK(b.filter == PadFilter::Bpf4 && b.cutoff == 60 && b.resonance == 21 && b.filter_attack == 1 && b.filter_decay == 2);
+    CHECK(b.filter_sustain == 3 && b.filter_release == 4 && b.filter_amount == 5 && b.warp == 175 && b.beats == 16 && b.gain == 612);
+    CHECK(b.group == 16 && !b.decay_from_start);
+    bool renamed = false;
+    for (size_t n = 0; n + 4 <= data_file.size() && !renamed; ++n)
+        if (std::memcmp(&data_file[n], "PAD4", 4) == 0) { std::memcpy(&data_file[n], "XXXX", 4); renamed = true; }
+    CHECK(renamed && load_project(data_file, *back, *back_bank).empty());
+    CHECK(back->tracks[4].pads[2].decay_from_start && !back->tracks[4].pads[2].loop && back->tracks[4].pads[2].used());
+}
+
 int main() {
+    sample_mode();
     step_edit_and_pad_motion();
     timing();
     pad_expression();

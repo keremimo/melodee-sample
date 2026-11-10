@@ -63,4 +63,35 @@ inline int level_scale_step(const Project& project, unsigned pad) {
     return 12 * int(pad / count) + degrees[pad % count];
 }
 
+// 16 Levels (the MPC's types, and Melodee's scale): what pad 0..15 plays
+// of the one sound. Velocity soft to loud; Tune by semitones with the
+// original on pad 4; Filter the pad's cutoff from the bottom up to its own
+// over pads 1-8 and on to the top over 9-16 (kit pads only); Scale up the
+// project's scale. velocity 0: the pad's own; cutoff -1: the pad's own.
+enum class LevelsKind : uint8_t { Velocity, Scale, Tune, Filter, Count };
+inline const char* levels_kind_name(LevelsKind k) {
+    static const char* const names[] {"Velocity", "Scale", "Tune", "Filter"};
+    return names[unsigned(k) % unsigned(LevelsKind::Count)];
+}
+struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0; };
+inline Level levels_of(const Project& project, const Track& track, unsigned pad) {
+    pad %= 16;
+    Level out;
+    switch (LevelsKind(track.levels_kind % unsigned(LevelsKind::Count))) {
+    case LevelsKind::Scale: out.semitones = level_scale_step(project, pad); out.shown = out.semitones; break;
+    case LevelsKind::Tune: out.semitones = int(pad) - 3; out.shown = out.semitones; break;
+    case LevelsKind::Filter:
+        if (track.engine == EngineKind::Sampler) {
+            int own = track.pads[track.levels_pad % sampler_pads].cutoff;
+            out.cutoff = pad < 8 ? own * int(pad) / 7 : own + (100 - own) * int(pad - 7) / 8;
+            out.shown = out.cutoff;
+            break;
+        }
+        [[fallthrough]]; // a synth has no pad filter: soft to loud
+    case LevelsKind::Velocity:
+    default: out.velocity = level_velocity(pad); out.shown = out.velocity; break;
+    }
+    return out;
+}
+
 } // namespace melodee

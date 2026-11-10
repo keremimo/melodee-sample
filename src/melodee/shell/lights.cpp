@@ -146,6 +146,12 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         auto sig = project_->time_signature();
         signature_now.store(sig.beats * 100u + sig.unit, std::memory_order_relaxed);
         pad_sample.store(pad.sample, std::memory_order_relaxed);
+        { // phase 4: the last pad's Sample Mode switches, gain, link and filter; 16 Levels' type
+            pad_bits.store(uint32_t(pad.loop) | uint32_t(pad.loop_lock) << 1 | uint32_t(pad.play == PadPlay::Gate) << 2 | uint32_t(pad.reverse) << 3
+                           | uint32_t(pad.mono) << 4 | uint32_t(t.levels) << 5 | uint32_t(t.levels_kind % 4) << 6 | uint32_t(t.last_pad) << 8
+                           | uint32_t(pad.filter) << 16 | uint32_t(pad.link) << 20 | uint32_t(pad.decay_from_start) << 25, std::memory_order_relaxed);
+            pad_gain.store(pad.gain, std::memory_order_relaxed);
+        }
         pad_frames.store(pad.used() ? project_->samples[pad.sample % sample_slots].frames : 0, std::memory_order_relaxed);
     }
     const auto& project = *project_;
@@ -256,7 +262,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                          B::Stop, B::Play, B::WheelPush}) {
             bool shift_job = button_has_shift_job(project, ui, button, kit);
             bool lit = button == B::Shift || (button == B::TapTempo && project.click) || (button == B::Erase && ui.copying != UiState::Copying::Off)
-                    || (button == B::NoteRepeat && track.arp) || (button == B::Mute && ui.mute_mode());
+                    || (button == B::NoteRepeat && track.arp) || (button == B::Mute && ui.mute_mode())
+                    || (track.engine == EngineKind::Sampler && button == B::Loop && track.pads[track.last_pad % sampler_pads].reverse)            // reverse on
+                    || (track.engine == EngineKind::Sampler && button == B::Chop && track.pads[track.last_pad % sampler_pads].play == PadPlay::Gate); // Note On
             set(button, !shift_job ? L::Off : lit ? L::Bright : L::Dim);
         }
         button_levels.store(levels, std::memory_order_relaxed);
@@ -278,9 +286,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);
     on(B::KnobFx, ui.page == PageId::PadFx || ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
-    on(B::Loop, ui.page == PageId::PlayPage); // phase 4: the last pad's loop on or off
-    // 16 Levels: lit while the pads play levels (a kit pad on all sixteen, or a synth's Levels layout).
-    on(B::SixteenLevels, ui.page == PageId::Levels || (track.engine == EngineKind::Sampler ? track.levels : track.layout == PadLayout::Levels));
+    on(B::Loop, track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop); // the last pad loops
+    // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
+    on(B::SixteenLevels, ui.page == PageId::Levels || track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));
     on(B::Play, playing);
     on(B::Stop, false);
     // Seq Record: bright while recording, flashing while armed (Play starts the take) or counting in.

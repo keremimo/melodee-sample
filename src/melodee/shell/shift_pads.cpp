@@ -44,6 +44,9 @@ void shift_pad(Context& c, unsigned pad) {
         settings.rec_quantize = !settings.rec_quantize;
         toggled(c, job.name, settings.rec_quantize);
         return;
+    case 14: // Warp: Time stretch or Pitch for the kit (its Follow how)
+        c.toggle_warp_mode();
+        return;
     case 11: // Song
         c.open(PageId::Song);
         return;

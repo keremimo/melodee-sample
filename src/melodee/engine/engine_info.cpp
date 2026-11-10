@@ -23,7 +23,7 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const ParamInfo kit_params[] {
         {"TUNE", -24, 24, 0, Format::Semitones, nullptr}, {"FILTER", 0, 100, 100, Format::Percent, nullptr},
         {"RESO", 0, 100, 10, Format::Percent, nullptr}, {"DECAY", 0, 100, 100, Format::Percent, nullptr},
-        {"LEVEL", 0, 127, 100, Format::Number, nullptr},
+        {"KIT VOL", 0, 127, 100, Format::Level, nullptr},
         {"TYPE", 0, 2, 0, Format::Choice, filter_types}, {"FOLLOW", 0, 1, 0, Format::Switch, nullptr},
         {"CLOUD", 0, 1, 0, Format::Switch, nullptr}, {"POSITION", 0, 100, 38, Format::Percent, nullptr},
         {"SIZE", 0, 100, 50, Format::Percent, nullptr}, {"DENSITY", 0, 100, 24, Format::Number, nullptr},
@@ -96,6 +96,14 @@ void load_sound(Track& track, EngineKind kind, unsigned sound) {
     track.set_name(info.sound_count ? info.sounds[track.preset].name : "");
 }
 
+std::string decibels(int level) {
+    if (level <= 0) return "-inf";
+    char text[16];
+    float db = volume_db(level);
+    std::snprintf(text, sizeof(text), db > 0.005f ? "+%.1f" : "%.1f", db);
+    return text;
+}
+
 float time_seconds(int value) { return 0.001f * std::pow(10000.0f, std::clamp(value, 0, 100) / 100.0f); }
 float rate_hertz(int value) { return 0.05f * std::pow(600.0f, std::clamp(value, 0, 100) / 100.0f); }
 
@@ -118,6 +126,7 @@ Shown show(const ParamInfo& p, int v) {
         float hz = rate_hertz(v);
         return {number(hz < 1 ? "%.2f" : hz < 10 ? "%.1f" : "%.0f", hz), "Hz"};
     }
+    case Format::Level: return {decibels(v), "dB"};
     case Format::Number:
     default: return {std::to_string(v), ""};
     }

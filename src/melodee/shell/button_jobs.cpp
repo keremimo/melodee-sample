@@ -14,7 +14,7 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
     bool kit = track.engine == EngineKind::Sampler;
     switch (button) {
     case B::Chop: return kit && track.pads[track.last_pad % sampler_pads].used(); // the last pad's sample
-    case B::Loop: return kit;          // the last pad's loop (its Play page until phase 4); Shift reverse
+    case B::Loop: return kit;          // the last pad's loop; Shift reverse
     case B::SampleRecord: return kit;  // Record; elsewhere it only says it wants a kit
     case B::Erase: // pads that clear, steps, chop markers, a pot with a parameter, or Copy on kit pads and Patterns
         return kit_pads || erase_pots || ui.page == PageId::Patterns || ui.page == PageId::Steps || ui.page == PageId::StepEdit || ui.page == PageId::Chop
@@ -32,8 +32,11 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::SeqRecord: case B::Play: case B::Stop: case B::Minus: case B::Plus: case B::WheelPush: case B::Shift:
         return true;
     case B::Loop: return kit;                                                    // reverse the last pad
+    case B::Chop: return kit && project.tracks[ui.track % track_count].pads[project.tracks[ui.track % track_count].last_pad % sampler_pads].used(); // Note On
+    case B::SixteenLevels: return project.tracks[ui.track % track_count].used(); // the 16 Levels type
+    case B::TopLeft: case B::TopMiddle: return ui.page == PageId::Trim && kit;   // Loop Lock, Normalize
     case B::Erase: return kit_pads || ui.pad_bank || ui.page == PageId::Patterns || ui.copying != UiState::Copying::Off; // Copy (tracks with Pad Bank held)
-    default: return false; // Sample Record (Audio Recall, phase 6), Chop, 16 Levels, Pad FX, Knob FX, Note Repeat (none printed): not yet
+    default: return false; // Sample Record (Audio Recall, phase 6), Pad FX, Knob FX, Note Repeat (none printed): not yet
     }
 }
 

@@ -440,7 +440,8 @@ const Preview previews[] {
     {"pad", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.pitch = 3; pad.fine = -8; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"play", [](Shell&, Snapshot& s) { s.ui.page = PageId::PlayPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
-         auto& t = s.project.tracks[3]; t.last_pad = 3; t.pads[2].group = 1; t.pads[3].group = 1; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+         auto& t = s.project.tracks[3]; t.last_pad = 3; t.pads[2].group = 1; t.pads[3].group = 1; t.pads[3].link = 7; t.pads[3].offset = 25; t.pads[3].loop = true;
+         s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"envelope", [](Shell&, Snapshot& s) { s.ui.page = PageId::EnvelopePage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.attack = 30; pad.decay = 60; pad.sustain = 55; pad.release = 40; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"filter", [](Shell&, Snapshot& s) { s.ui.page = PageId::FilterPage; s.ui.track = 3; s.playing = true;
@@ -450,6 +451,37 @@ const Preview previews[] {
          s.ui.turning = 1; s.ui.turned_at = s.now; }},
     {"cloud", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+    // Parity phase 4: Sample Mode.
+    {"padmix", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadMix; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         auto& t = s.project.tracks[3]; t.pads[8].level = 88; t.pads[8].pan = -18; t.params[sampler::Level] = 110; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+    {"padfilter", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadFilterPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Lpf4; pad.cutoff = 62; pad.resonance = 55; pad.filter_amount = 40;
+         s.ui.turning = 2; s.ui.turned_at = s.now; }},
+    {"filterenv", [](Shell&, Snapshot& s) { s.ui.page = PageId::FilterEnvPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Classic; pad.cutoff = 35; pad.filter_amount = 60;
+         pad.filter_attack = 30; pad.filter_decay = 70; pad.filter_sustain = 30; pad.decay_from_start = true; s.ui.turning = 2; s.ui.turned_at = s.now; }},
+    {"trimloop", [](Shell&, Snapshot& s) { // a loop with its own point, normalized, Note On and reversed (the icons)
+         s.ui.page = PageId::Trim; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000; pad.loop = true; pad.loop_lock = false; pad.loop_start = 60000;
+         pad.gain = 420; pad.play = PadPlay::Gate; pad.reverse = true; s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"trimshift", [](Shell&, Snapshot& s) { // Shift on Trim: Loop Lock and Normalize on B1 / B2, zoom on K1-K3
+         s.ui.page = PageId::Trim; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.shift = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000; pad.loop = true;
+     }},
+    {"ampenv", [](Shell&, Snapshot& s) { s.ui.page = PageId::EnvelopePage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.attack = 20; pad.decay = 70; pad.velocity_sense = 60; s.ui.turning = 1; s.ui.turned_at = s.now; }},
+    {"tune", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.pitch = -2; pad.warp = warp_seq; pad.beats = 8; s.ui.turning = 2; s.ui.turned_at = s.now; }},
+    {"levelsfilter", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1; t.levels_kind = uint8_t(LevelsKind::Filter);
+         t.pads[1].cutoff = 70; s.sample.frames = 26460; s.ui.levels_hit = 5;
+     }},
+    {"levelssynth", [](Shell&, Snapshot& s) { // 16 Levels on a synth: its last note, by Tune
+         s.ui.page = PageId::Levels; s.ui.track = 0; s.playing = true;
+         auto& t = s.project.tracks[0]; t.levels = true; t.levels_kind = uint8_t(LevelsKind::Tune); s.ui.levels_hit = 3;
+     }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
     {"shiftkeys", [](Shell&, Snapshot& s) { // Shift held on Keys: the Transpose card; Full Level and Rec Quantize on
          s.ui.page = PageId::Keys; s.ui.shift = true; s.project.tracks[0].transpose = 2;
@@ -522,7 +554,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud shift exit");
+    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
     return 0;
 }

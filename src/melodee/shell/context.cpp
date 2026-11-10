@@ -151,12 +151,14 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         send({Type::Arp, ui.track, 0, 0, 0}); send({Type::Arp, ui.track, 0, 0, 1});
     }
     if (t.engine == EngineKind::Sampler) { // the pads are the kit's, in the bank in view
-        if (t.levels) { // 16 Levels: one kit pad, soft to loud or up in pitch
-            int semitones = t.levels_kind == 1 ? level_scale_step(project, pad) : t.levels_kind == 2 ? int(pad) : 0;
-            int v = t.levels_kind == 0 ? level_velocity(pad) : velocity;
-            ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(t.levels_kind == 0 ? v : semitones);
+        if (t.levels) { // 16 Levels: one kit pad, soft to loud, its filter swept, or in pitch
+            auto level = levels_of(project, t, pad);
+            ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(level.shown);
             pad_keys[pad][0] = int16_t(sampler_first_note + t.levels_pad);
-            send({Type::PadNote, ui.track, uint8_t(semitones + 64), t.levels_pad, int16_t(v)});
+            int v = level.velocity ? level.velocity : velocity;
+            Command c {Type::PadNote, ui.track, uint8_t(level.semitones + 64), t.levels_pad, int16_t(v)};
+            c.position = uint32_t(level.cutoff + 1);
+            send(c);
             record(pad_keys[pad][0], v);
             return;
         }
@@ -172,6 +174,13 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         pad_keys[pad][0] = int16_t(36 + pad);
         t.last_note = uint8_t(36 + pad);
         key(pad_keys[pad][0], velocity, true);
+        return;
+    }
+    if (t.levels) { // 16 Levels on a synth: the last note on all sixteen, soft to loud or in pitch
+        auto level = levels_of(project, t, pad);
+        ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(level.shown);
+        pad_keys[pad][0] = int16_t(std::clamp(int(t.last_note) + level.semitones, 0, 127));
+        key(pad_keys[pad][0], level.velocity ? level.velocity : velocity, true);
         return;
     }
     int v = t.layout == PadLayout::Levels ? level_velocity(pad) : velocity;
@@ -375,7 +384,36 @@ void Context::apply(const Binding& b, int value) {
         send_pad(ui.track, t.last_pad);
         break;
     }
-    case Kind::TrimZoom: ui.trim_zoom = uint8_t(value); break;
+    case Kind::TrimZoom: ui.trim_zoom = uint8_t(value); ui.trim_focus = uint8_t(b.id % 3); break;
+    case Kind::PadLoopPoint: // turning it lets go of Loop Lock, as the point moves off the start
+        pad().loop_start = uint32_t(uint64_t(value) * 44100 / 1000);
+        if (pad().loop_lock) { pad().loop_lock = false; notice("Loop Lock off"); }
+        send_pad(ui.track, t.last_pad);
+        break;
+    case Kind::PadLoop: pad().loop = value != 0; send_pad(ui.track, t.last_pad); break;
+    case Kind::PadMono: pad().mono = value != 0; send_pad(ui.track, t.last_pad); break;
+    case Kind::PadLink: pad().link = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadDecayFrom: pad().decay_from_start = value == 0; send_pad(ui.track, t.last_pad); break;
+    case Kind::PadFilterType: pad().filter = PadFilter(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadWarp:
+        pad().warp = warp_of_card(value);
+        if (pad().warp == warp_seq && !pad().beats && !pad().own_tempo) follow_tempos(); // Seq needs the pad's own tempo
+        send_pad(ui.track, t.last_pad);
+        break;
+    case Kind::PadBeats: pad().beats = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadOffset: case Kind::PadVelSense: case Kind::PadCutoff: case Kind::PadResonance:
+    case Kind::PadFAttack: case Kind::PadFDecay: case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: {
+        // values Motion records as lanes of the pad
+        PadParam which = b.kind == Kind::PadOffset ? PadParam::Offset : b.kind == Kind::PadVelSense ? PadParam::VelocitySense
+                       : b.kind == Kind::PadCutoff ? PadParam::FilterCutoff : b.kind == Kind::PadResonance ? PadParam::FilterResonance
+                       : b.kind == Kind::PadFAttack ? PadParam::FilterAttack : b.kind == Kind::PadFDecay ? PadParam::FilterDecay
+                       : b.kind == Kind::PadFSustain ? PadParam::FilterSustain : b.kind == Kind::PadFRelease ? PadParam::FilterRelease
+                       : PadParam::FilterAmount;
+        set_pad_param(pad(), which, value);
+        send_pad(ui.track, t.last_pad);
+        record_pad_motion(which, value);
+        break;
+    }
     case Kind::ChopMode: ui.chop_mode = ChopMode(value); rechop(); break;
     case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode)] = value; rechop(); break;
     case Kind::ChopStart: ui.slices.start[size_t(b.id) % max_slices] = uint32_t(uint64_t(value) * 44100 / 1000); break;
@@ -384,7 +422,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
     case Kind::PadFine: pad().fine = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Fine, value); break;
     case Kind::PadPlayMode: pad().play = PadPlay(value); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadGroup: pad().group = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadGroup: pad().group = uint8_t(value); send_pad(ui.track, t.last_pad); break; // 0 none, 1..16
     case Kind::PadReverse: pad().reverse = value != 0; send_pad(ui.track, t.last_pad); break;
     case Kind::PadAttack: pad().attack = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Attack, value); break;
     case Kind::PadDecay: pad().decay = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Decay, value); break;
