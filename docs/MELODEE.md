@@ -381,7 +381,9 @@ while following.
   rows, what the device runs at now and its dropouts since start. A rate or
   buffer change reopens the audio device (a short silence) and a rate change
   stops playback: the engine builds every sound and effect again at the new
-  rate. Samples, takes, renders and every frame count in a project stay at
+  rate. The computer sees the MPC's USB-C audio at the new rate too (the
+  gadget reconnects: USB audio, MIDI and the network drop for a second; not
+  while the card is lent). Samples, takes, renders and every frame count in a project stay at
   44.1 kHz whatever the rate (`engine/model_rate.h`), so projects open the
   same at any rate. Kept in `Melodee/settings` with the project to open at
   start. **About** (B3): engines, effects, limits, versions, licence.
