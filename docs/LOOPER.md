@@ -150,7 +150,7 @@ each loop's published view and 256 peaks.
   previews.
 - **L3 tempo**: the stretch, Fit to tempo, count-in and the metronome.
 - **L4 keep**: saving and loading with the project, Commit to pad (+ note).
-- **L5 docs**: MELODEE.md, device check.
+- **L5 docs**: MELODEE.md, QUICKSTART.md (section 7), device check.
 
 Checked on the MPC (2026-11-11): Loop held and tapped twice open the page;
 takes on the bar from a track and the mix, overdub, undo and redo, a stop on
@@ -160,5 +160,4 @@ project playing (the app at 9 % CPU, no dropouts); Fit (4 bars, 352800 to
 project, and the loops back from the file (a stopped one stopped).
 
 Open: the input's round trip (`looper latency`) defaults to the output
-queue; it wants measuring with a cable from line out to line in. QUICKSTART
-does not show the Looper yet.
+queue; it wants measuring with a cable from line out to line in.

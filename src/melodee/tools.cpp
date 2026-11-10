@@ -259,7 +259,7 @@ void looper_scene(Snapshot& s) {
         }
     };
     auto& a = s.loops[0].view; a.state = Looper::State::Overdub; a.length = 176400; a.position = 70000; a.span = a.length; a.ticks = 4 * 384;
-    a.tempo = 1240; a.layers = 3; a.undo = looper::Undo::Undo; a.ready = true; a.stretched = true; a.source = looper::source_input; fill(s.loops[0], 1);
+    a.tempo = 1200; a.layers = 3; a.undo = looper::Undo::Undo; a.ready = true; a.stretched = true; a.source = looper::source_input; fill(s.loops[0], 1);
     s.loops[0].meter = 0.5f;
     auto& b = s.loops[1].view; b.state = Looper::State::Recording; b.length = 0; b.position = 60000; b.span = 176400; b.ready = true; b.layers = 1;
     b.source = looper::source_track(2); fill(s.loops[1], 3);

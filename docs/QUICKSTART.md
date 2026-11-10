@@ -165,7 +165,45 @@ ends it and opens TRIM. Shift + Sample opens the full Input Config.
 
 ![Recording onto a pad](images/quickstart/record.png)
 
-## 7. Save the project
+## 7. Loops
+
+Four audio loops that follow the tempo, on tracks of their own (L1–L4).
+
+**Open: tap Loop twice** (quickly), or hold it half a second. The first
+time, the Looper is off: B3 or Push turns it on.
+
+Each row is one loop: its state (ARM, REC, DUB, PLAY, STOP), its
+waveform, its length and what it records. K1 picks the loop, K2 its length
+(Free or 1–16 bars, set before recording), K3 its level. A loop playing at
+a tempo other than the one it was recorded at shows that tempo in amber; it
+keeps its pitch and stays on the beat.
+
+![The Looper](images/quickstart/looper.png)
+
+To record a loop:
+
+1. Pick what it records: **B3 MORE**, then Push on **Source** steps through
+   Input, the tracks, the other loops and Mix. B1 closes the sheet.
+2. Press **Play**, then **Push**. The loop arms and starts recording on the
+   next bar.
+3. Push again: it closes on the next bar and plays. (A set length closes
+   by itself.)
+4. Push while it plays to overdub, Push again to stop overdubbing.
+
+The pads are the loops too, a column each: the top row records and
+overdubs, the next plays or stops on the next bar, the third undoes the
+last overdub, and the bottom row held clears the loop.
+
+**B3 MORE** holds the rest: stop, undo, **Commit to pad** (the loop onto
+the next empty pad of the selected kit track, + a note at bar 1 if you
+like), clear and Looper off. **B2 MIX** is L1–L4's levels, pans and sends;
+Shift + Knob FX opens a loop's effects.
+
+![The loop's sheet](images/quickstart/loopersheet.png)
+
+Loops are saved with the project, next to its file.
+
+## 8. Save the project
 
 Press **Shift + Pad 16** for Project. Turn the wheel to the open project
 (marked OPEN) and Push for its sheet. **Save** is first: B3 DO IT or
@@ -182,9 +220,9 @@ B3 or Push saves, B1 cancels.
 Projects go to `Melodee/Projects` on the card. Leaving through the Exit
 sheet saves too.
 
-## 8. Where to go next
+## 9. Where to go next
 
 [MELODEE.md](MELODEE.md) covers every button, page and Shift job: Keys
 and Mix (press Sample again), Step Edit and the piano roll (Shift + Seq),
 Song (Shift + Pad 12), the effects (Knob FX, Pad FX, Shift + Knob FX),
-16 Levels, Note Repeat and the arp, MIDI and SD card access.
+16 Levels, Note Repeat and the arp, the Looper, MIDI and SD card access.
