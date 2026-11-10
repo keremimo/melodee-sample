@@ -20,14 +20,21 @@ const ParamInfo params[Count] {
     P("CUTOFF", 0, 100, 48), P("RESO", 0, 100, 55), P("MODE", 0, 3, 0, Format::Choice, modes), P("ENV > FILT", 0, 100, 40),
     P("KEY TRACK", 0, 100, 50),
     P("ATTACK", 0, 100, 0, Format::Time), P("DECAY", 0, 100, 45, Format::Time), P("SUSTAIN", 0, 100, 60), P("RELEASE", 0, 100, 30, Format::Time),
+    P("VELOCITY", 0, 100, 70), P("AT > VIB", 0, 100, expression::default_at_vib), P("AT > BRIGHT", 0, 100, expression::default_at_bright),
+    P("LFO RATE", 0, 100, expression::default_vib_rate, Format::Rate),
 };
 constexpr int8_t _ = -1;
 const EditPage pages[] {
     {"Oscillator", "OSC", Picture::Bars, {{{Wave, PulseWidth, Detune}, {Ring, Sync, Model}, {_, _, _}}}},
     {"Pulse and grit", "PWM", Picture::Bars, {{{PwmDepth, PwmRate, Crush}, {_, _, _}, {_, _, _}}}},
     {"Filter", "FILTER", Picture::Bars, {{{Cutoff, Resonance, Mode}, {EnvAmount, KeyTrack, _}, {_, _, _}}}},
-    {"Envelope", "ENVELOPE", Picture::Bars, {{{Attack, Decay, Sustain}, {Release, _, _}, {_, _, _}}}},
+    {"Envelope", "ENVELOPE", Picture::Bars, {{{Attack, Decay, Sustain}, {Release, Velocity, _}, {_, _, _}}}},
+    {"Touch", "TOUCH", Picture::Bars, {{{Velocity, _, _}, {AtVib, AtBright, LfoRate}, {_, _, _}}}},
 };
+// The mod matrix on SID: oscillator pitch is the voice's own, Osc 2 the
+// partner ring and sync listen to.
+const char* const mod_dests[] {"None", "Cutoff", "Resonance", "Amp level", "Pitch", "Osc pitch", "Osc 2 pitch",
+                               "Pulse width", "LFO rate", nullptr};
 const Sound sounds[] {
     {"INIT VOICE", {{{-1, 0}}}},
     {"RUBBER BASS", {{{Wave, 2}, {PulseWidth, 30}, {Cutoff, 35}, {Resonance, 65}, {EnvAmount, 60}, {Decay, 40}, {Sustain, 30}, {Model, 1}, {-1, 0}}}},
@@ -43,7 +50,7 @@ const Sound sounds[] {
 
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Sid, "SID", true, params, Count, pages, sizeof(pages) / sizeof(pages[0]),
-                                    {Cutoff, Resonance, PulseWidth}, sounds, sizeof(sounds) / sizeof(sounds[0])};
+                                    {Cutoff, Resonance, PulseWidth}, sounds, sizeof(sounds) / sizeof(sounds[0]), mod_dests, legacy_count};
     return engine;
 }
 } // namespace sid
@@ -73,8 +80,10 @@ void SidEngine::note_on(int key, int velocity) {
     *v = Voice {};
     v->s1 = s1 * 0.5f; v->s2 = s2 * 0.5f;
     v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f;
+    v->random = noise.next();
     v->env.gate(true);
 }
+void SidEngine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
 void SidEngine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.env.gate(false); } }
 void SidEngine::all_notes_off() { for (auto& v : voices) if (v.held) { v.held = false; v.env.gate(false); } }
 void SidEngine::silence() { for (auto& v : voices) v = Voice {}; }
@@ -88,15 +97,24 @@ void SidEngine::render(float* out, unsigned frames) {
         unsigned n = std::min(16u, frames - start);
         lfo += rate_hertz(p[PwmRate]) * n / dsp::sample_rate;
         lfo -= std::floor(lfo);
-        float width = std::clamp(p[PulseWidth] / 100.0f + p[PwmDepth] / 100.0f * 0.45f * std::sin(2 * dsp::pi * lfo), 0.03f, 0.97f);
+        float sweep = p[PulseWidth] / 100.0f + p[PwmDepth] / 100.0f * 0.45f * std::sin(2 * dsp::pi * lfo);
+        lfo_value = vibrato.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), n);
         for (auto& v : voices) {
             if (v.key < 0) continue;
-            float key = v.key + bend * 2;
-            float dt = std::min(dsp::midi_hz(key) / dsp::sample_rate, 0.45f), dt2 = std::min(dsp::midi_hz(key + p[Detune]) / dsp::sample_rate, 0.45f);
-            // The filter at this block: cutoff, the envelope's push and key tracking, in octaves.
-            float octaves = p[Cutoff] / 100.0f * (old_chip ? 8.5f : 9.6f) + v.env.level * p[EnvAmount] / 100.0f * 5 + (key - 60) / 12.0f * p[KeyTrack] / 100.0f;
+            using expression::at;
+            expression::follow(v.touch, v.pressure, n);
+            auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env.level});
+            // Pitch: the bend, the matrix and pressure's vibrato.
+            float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+            float dt = std::min(dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate, 0.45f);
+            float dt2 = std::min(dsp::midi_hz(key + p[Detune] + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate, 0.45f);
+            float width = std::clamp(sweep + at(m, ModDest::PulseWidth) * 0.45f, 0.03f, 0.97f);
+            // The filter at this block: cutoff, the envelope's push, key tracking, pressure and the matrix, in octaves.
+            float octaves = p[Cutoff] / 100.0f * (old_chip ? 8.5f : 9.6f) + v.env.level * p[EnvAmount] / 100.0f * 5 + (key - 60) / 12.0f * p[KeyTrack] / 100.0f
+                + v.touch * p[AtBright] / 100.0f * 4 + at(m, ModDest::Cutoff) * 5;
             float g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate * 0.45f) / dsp::sample_rate);
-            float k = 2 - 1.95f * p[Resonance] / 100.0f;
+            float k = 2 - 1.95f * std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f);
+            float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f;
             for (unsigned f = 0; f < n; ++f) {
                 v.phase2 += dt2;
                 bool wrap2 = v.phase2 >= 1;
@@ -122,7 +140,7 @@ void SidEngine::render(float* out, unsigned frames) {
                     v.s1 = g * hp + bp; v.s2 = g * bp + lp;
                     y = p[Mode] == 0 ? lp : p[Mode] == 1 ? bp : hp;
                 }
-                out[start + f] += y * v.env.next(shape) * (0.4f + 0.6f * v.velocity) * 0.3f;
+                out[start + f] += y * v.env.next(shape) * gain;
             }
             if (!v.env.active()) v.key = -1;
         }

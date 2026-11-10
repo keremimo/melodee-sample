@@ -98,7 +98,11 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::StepVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
         case Kind::StepChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::ModSource: c.label = "SOURCE"; c.value = mod_source_name(ModSource(b.value)); break;
-        case Kind::ModDest: c.label = "DEST"; c.value = mod_dest_name(ModDest(b.value)); break;
+        case Kind::ModDest: {
+            const char* name = mod_dest_label(engine_info(track.engine), ModDest(b.value));
+            c.label = "DEST"; c.value = name ? name : mod_dest_name(ModDest(b.value));
+            break;
+        }
         case Kind::ModAmount:
             c.label = "AMOUNT"; c.bipolar = true;
             c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));

@@ -134,8 +134,12 @@ void Context::key(int k, int velocity, bool down) {
 void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
     pad %= 16;
     auto& t = track();
-    // Let go of whatever this pad started.
-    for (auto& k : pad_keys[pad]) if (k >= 0) { key(k, 0, false); k = -1; }
+    // Let go of whatever this pad started. A latched arp plays on, without the pad's pressure.
+    for (auto& k : pad_keys[pad])
+        if (k >= 0) {
+            if (t.arp && t.arp_latch && t.engine != EngineKind::Sampler) send({Type::Pressure, ui.track, 0, uint16_t(k), 0});
+            key(k, 0, false); k = -1;
+        }
     if (!down) return;
     if (t.arp && t.arp_latch && !held_pads()) { // a fresh latch: the old keys go
         send({Type::Arp, ui.track, 0, 0, 0}); send({Type::Arp, ui.track, 0, 0, 1});
@@ -289,7 +293,13 @@ void Context::apply(const Binding& b, int value) {
     case Kind::ModAmount: {
         auto route = t.mods[size_t(b.id) % mod_routes];
         if (b.kind == Kind::ModSource) route.source = uint8_t(value);
-        else if (b.kind == Kind::ModDest) route.destination = uint8_t(value);
+        else if (b.kind == Kind::ModDest) { // past the destinations this engine has none of, the way it turned
+            const auto& info = engine_info(t.engine);
+            int way = value < route.destination ? -1 : 1, last = int(ModDest::Count) - 1;
+            while (value >= 1 && value <= last && !mod_dest_label(info, ModDest(value))) value += way;
+            if (value < 1 || value > last) break;
+            route.destination = uint8_t(value);
+        }
         else route.amount = int8_t(value);
         set_route(unsigned(b.id), route);
         break;
@@ -544,7 +554,7 @@ void Context::punch_release() {
 }
 
 void Context::pressure(unsigned pad, uint8_t value) {
-    if (pad >= 16) return;
+    if (pad >= 16 || !ui.settings.pressure) return; // Settings: Pad pressure off
     if (ui.page == PageId::PadPunch && ui.pad_punch_held >= 0 && ui.pad_punch_held % 16 == int(pad)) { // pressure is depth
         ui.pad_punch_pressure = value;
         send({Type::PunchDepth, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8), int16_t(value * 100 / 127)});

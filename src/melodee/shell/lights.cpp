@@ -4,6 +4,7 @@
 // 5 ms; the runtime sends only what changed). Colours come from the track
 // palette; button light values from surface/leds.h.
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
@@ -67,8 +68,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         if (auto loaded = store_->take_loaded()) {
             auto project = std::make_unique<Project>();
             auto bank = std::make_unique<PatternBank>();
-            if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank).empty())
+            unsigned version = 0;
+            if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version).empty()) {
+                for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
                 context_.switch_to(*project, *bank, loaded->path);
+            }
         }
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save) leave.store(true);
     }

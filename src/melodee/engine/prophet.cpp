@@ -57,43 +57,9 @@ void ProphetEngine::set_pressure(int key, float value) {
     for (auto& v : voices) if (v.key == key && v.held) v.pressure = value;
 }
 
-// Each route adds source x amount; full amount moves a destination by:
-// cutoff 5 octaves, resonance and level fully, pitch 12 semitones, pulse
-// width 0.45, noise fully.
-ProphetEngine::Mods ProphetEngine::modulation(const Voice& v) const {
-    Mods m;
-    for (const auto& r : mods) {
-        if (!r.used() || !r.amount) continue;
-        float x = 0;
-        switch (ModSource(r.source)) {
-        case ModSource::Lfo: x = lfo_value; break;
-        case ModSource::Velocity: x = v.velocity; break;
-        case ModSource::Aftertouch: x = v.pressure; break;
-        case ModSource::Wheel: x = wheel; break;
-        case ModSource::KeyTrack: x = (v.pitch - 60.0f) / 60.0f; break;
-        case ModSource::Random: x = v.random; break;
-        case ModSource::FilterEnv: x = v.filter_env.level; break;
-        default: break;
-        }
-        x *= r.amount / float(mod_amount_max);
-        switch (ModDest(r.destination)) {
-        case ModDest::Cutoff: m.cutoff += x * 5; break;
-        case ModDest::Resonance: m.resonance += x; break;
-        case ModDest::AmpLevel: m.amp += x; break;
-        case ModDest::Pitch: m.pitch += x * 12; break;
-        case ModDest::OscAPitch: m.pitch_a += x * 12; break;
-        case ModDest::OscBPitch: m.pitch_b += x * 12; break;
-        case ModDest::PulseWidth: m.width += x * 0.45f; break;
-        case ModDest::Noise: m.noise += x; break;
-        default: break; // LfoRate is the engine's, see render()
-        }
-    }
-    return m;
-}
-
 void ProphetEngine::start(Voice& v, int key, int velocity, bool retrigger) {
     bool was = v.amp_env.active();
-    v.pressure = 0;
+    v.pressure = 0; v.touch = 0;
     v.random = noise.next();
     v.key = key; v.held = true; v.age = ++clock;
     v.velocity = velocity / 127.0f;
@@ -173,20 +139,27 @@ void ProphetEngine::control(Voice& v) {
     float poly_env = v.filter_env.level * p[PolyEnv] / 100.0f;
     float bend_st = bend * p[BendRange];
     float drift = v.drift * p[Vintage] / 100.0f * 0.15f;
-    auto m = modulation(v);
-    v.noise_mod = m.noise;
+    // The mod matrix: full amount moves the cutoff 5 octaves, resonance and
+    // level fully, pitch 12 semitones, pulse width 0.45, noise fully.
+    expression::follow(v.touch, v.pressure, control_block);
+    using expression::at;
+    auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.pitch - 60.0f) / 60.0f, v.random, v.filter_env.level});
+    v.noise_mod = at(m, ModDest::Noise);
+    // Pressure, as aftertouch on a polysynth: vibrato and a brighter filter.
+    float vibrato_st = vibrato_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+    float pitch_mod = at(m, ModDest::Pitch) * 12 + vibrato_st;
 
     float key_a = v.pitch + p[FreqA] + bend_st + drift + v.detune
         + lfo * p[LfoFreq] / 100.0f * 2.0f + wheel * p[WheelFreq] / 100.0f * 2.0f
-        + (p[PolyFreqA] ? poly_env * 24.0f : 0) + m.pitch + m.pitch_a;
+        + (p[PolyFreqA] ? poly_env * 24.0f : 0) + pitch_mod + at(m, ModDest::OscAPitch) * 12;
     float key_b = (p[KeybB] ? v.pitch : 60.0f) + p[FreqB] + p[FineB] / 100.0f + bend_st + drift * 0.7f + v.detune
-        + lfo * p[LfoFreq] / 100.0f * 2.0f + wheel * p[WheelFreq] / 100.0f * 2.0f + m.pitch + m.pitch_b;
+        + lfo * p[LfoFreq] / 100.0f * 2.0f + wheel * p[WheelFreq] / 100.0f * 2.0f + pitch_mod + at(m, ModDest::OscBPitch) * 12;
     v.dt_a = std::min(dsp::midi_hz(key_a) / dsp::sample_rate, 0.45f);
     float hz_b = dsp::midi_hz(key_b);
     if (p[LoFreqB]) hz_b /= 64.0f;
     v.dt_b = std::min(hz_b / dsp::sample_rate, 0.45f);
 
-    float width_a = p[PwA] / 100.0f + lfo * p[LfoPw] / 100.0f * 0.4f + (p[PolyPwA] ? poly_env * 0.4f : 0) + m.width;
+    float width_a = p[PwA] / 100.0f + lfo * p[LfoPw] / 100.0f * 0.4f + (p[PolyPwA] ? poly_env * 0.4f : 0) + at(m, ModDest::PulseWidth) * 0.45f;
     v.mix_a = {p[SawA] ? 1.0f : 0.0f, p[PulseA] ? 1.0f : 0.0f, 0, std::clamp(width_a, 0.05f, 0.95f)};
     float width_b = p[PwB] / 100.0f + lfo * p[LfoPw] / 100.0f * 0.4f;
     v.mix_b = {p[SawB] ? 1.0f : 0.0f, p[PulseB] ? 1.0f : 0.0f, p[TriB] ? 1.0f : 0.0f, std::clamp(width_b, 0.05f, 0.95f)};
@@ -195,13 +168,13 @@ void ProphetEngine::control(Voice& v) {
     float octaves = p[Cutoff] / 100.0f * 9.97f;
     octaves += v.filter_env.level * p[EnvAmount] / 100.0f * 7.0f;
     octaves += (v.pitch - 60.0f) / 12.0f * (p[KeyTrack] * 0.5f);
-    octaves += (v.velocity - 0.5f) * p[VelFilter] / 100.0f * 2.0f;
+    octaves += (v.velocity - 0.5f) * p[VelFilter] / 100.0f * 4.0f;
     octaves += lfo * p[LfoFilter] / 100.0f * 3.0f + wheel * p[WheelFilter] / 100.0f * 4.0f;
     // Poly mod into the filter: the envelope, and oscillator B where it is in its cycle.
     if (p[PolyFilter]) octaves += poly_env * 4.0f + (2.0f * v.b.phase - 1.0f) * p[PolyOscB] / 100.0f * 2.0f;
-    octaves += m.cutoff;
-    v.filter.tune(20.0f * std::exp2(octaves), std::clamp(p[Resonance] / 100.0f + m.resonance, 0.0f, 1.0f));
-    v.gain = std::max(0.0f, (1.0f - p[VelAmp] / 100.0f * (1.0f - v.velocity)) * (1.0f + m.amp));
+    octaves += at(m, ModDest::Cutoff) * 5 + v.touch * p[AtBright] / 100.0f * 4.0f;
+    v.filter.tune(20.0f * std::exp2(octaves), std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f));
+    v.gain = std::max(0.0f, expression::velocity_gain(v.velocity, p[VelAmp] / 100.0f) * (1.0f + at(m, ModDest::AmpLevel)));
 }
 
 void ProphetEngine::render(float* out, unsigned frames) {
@@ -212,14 +185,9 @@ void ProphetEngine::render(float* out, unsigned frames) {
     bool sync = p[Sync] != 0;
     for (unsigned start = 0; start < frames; start += control_block) {
         unsigned n = std::min(control_block, frames - start);
-        // LFO rate routes: the engine has one LFO, so only voice-free sources move it.
-        float rate_octaves = 0;
-        for (const auto& r : mods)
-            if (r.used() && ModDest(r.destination) == ModDest::LfoRate) {
-                float x = ModSource(r.source) == ModSource::Wheel ? wheel : ModSource(r.source) == ModSource::Lfo ? lfo_value : 0;
-                rate_octaves += x * r.amount / float(mod_amount_max) * 3;
-            }
+        float rate_octaves = expression::lfo_rate_octaves(mods, wheel, lfo_value);
         lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(rate_octaves), unsigned(p[LfoShape]), float(n) / dsp::sample_rate);
+        vibrato_value = vibrato.next(rate_hertz(p[VibRate]), n);
         for (auto& v : voices) {
             if (!v.amp_env.active()) { if (v.key >= 0 && !v.held) v.key = -1; continue; }
             control(v);

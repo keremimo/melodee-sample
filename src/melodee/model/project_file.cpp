@@ -108,6 +108,9 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     auto at = w.begin("PROJ");
     w.text(project.name); w.u16(project.tempo); w.u8(project.swing); w.u8(project.root); w.u8(project.scale);
     w.end(at);
+    at = w.begin("PVER"); // which engine parameters TRAK's values cover
+    w.u8(params_version);
+    w.end(at);
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& tr = project.tracks[t];
         at = w.begin("TRAK");
@@ -218,7 +221,8 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     return w.out;
 }
 
-std::string load_project(const std::vector<uint8_t>& data, Project& target, PatternBank& target_patterns) {
+std::string load_project(const std::vector<uint8_t>& data, Project& target, PatternBank& target_patterns, unsigned* version) {
+    unsigned file_version = 0;
     if (data.size() < 8 || std::memcmp(data.data(), magic, 8)) return "not a Melodee project";
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
@@ -255,6 +259,8 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 3);
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, tr);
+        } else if (name == "PVER") {
+            file_version = r.u8();
         } else if (name == "KITX") {
             unsigned t = r.u8();
             if (t >= track_count) continue;
@@ -353,6 +359,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     if (!file.ok) return "damaged file";
     target = *project;
     target_patterns = *patterns;
+    if (version) *version = file_version;
     return {};
 }
 

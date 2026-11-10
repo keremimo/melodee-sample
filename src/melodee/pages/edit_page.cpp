@@ -220,8 +220,10 @@ void mod_picture(Paint& p, const Snapshot& s) {
         arrow.startNewSubPath(ax + 7, ay - 3); arrow.lineTo(ax + 10, ay); arrow.lineTo(ax + 7, ay + 3);
         p.g.setColour(colour::mid);
         p.g.strokePath(arrow, juce::PathStrokeType(1, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        p.text(mod_dest_name(ModDest(route.destination)), x + 123, y, 90, rh,
-               plain(on ? knob_shade(s.ui.track, 1) : colour::sec, 10.5f, Weight::Medium));
+        // A destination this engine has none of (a route kept from another engine) is drawn dim; it does nothing.
+        const char* dest = mod_dest_label(engine_info(s.track().engine), ModDest(route.destination));
+        p.text(dest ? dest : mod_dest_name(ModDest(route.destination)), x + 123, y, 90, rh,
+               plain(!dest ? colour::dim : on ? knob_shade(s.ui.track, 1) : colour::sec, 10.5f, Weight::Medium));
         float bx = x + 214, bw = 55, amount = route.amount / float(mod_amount_max);
         p.fill(bx, ay - 1, bw, 2, colour::line, 1);
         float from = std::min(0.0f, amount), to = std::max(0.0f, amount);

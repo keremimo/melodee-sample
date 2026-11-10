@@ -87,7 +87,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
         }
     }
     auto& a = slot.arp;
-    a.clear(); a.sounding = -1; slot.arp_late.key = -1;
+    a.clear(); a.sounding = -1; slot.arp_late.key = -1; slot.arp_played = slot.arp_from = -1;
     a.on = track.arp; a.mode = ArpMode(track.arp_mode % unsigned(ArpMode::Count)); a.rate = track.arp_rate % arp_rates;
     a.octaves = track.engine == EngineKind::Sampler ? 1 : std::clamp<unsigned>(track.arp_octaves, 1, 4); a.gate = std::clamp<unsigned>(track.arp_gate, 5, 100);
 }
@@ -256,7 +256,18 @@ void EngineHost::apply(const Command& c) {
     case Type::Audition:
         if (slot.engine == &slot.sampler) slot.sampler.audition(c.pad.sample, c.pad.start, c.pad.end, c.value);
         break;
-    case Type::Pressure: if (slot.engine) slot.engine->set_pressure(c.index, c.value / 127.0f); break;
+    case Type::Pressure: {
+        if (!slot.engine) break;
+        float value = std::clamp<int>(c.value, 0, 127) / 127.0f;
+        slot.engine->set_pressure(c.index, value);
+        // The arp's notes follow the pressure of the key they came from, while it is held.
+        if (slot.arp.on) {
+            slot.arp.press_harder(c.index, value);
+            if (slot.arp_from == int(c.index) && slot.arp_played >= 0 && slot.arp_played != int(c.index))
+                slot.engine->set_pressure(slot.arp_played, value);
+        }
+        break;
+    }
     case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param); break;
     case Type::Wheel: if (slot.engine) slot.engine->set_wheel(c.value / 1000.0f); break;
     case Type::Level: slot.gain = level_gain(c.value); break;
@@ -423,9 +434,8 @@ void EngineHost::arp_tick() {
         if (key < 0) continue;
         auto length = std::max<int32_t>(64, int32_t(quarter_tick() * rate * a.gate / 100.0));
         double late = arp_swing_ticks(a.rate, (arp_ticks % ticks_per_bar) / rate, swing); // every second straight note, as the project swings
-        if (late > 0) { slot.arp_late = {int16_t(key), int16_t(velocity), int32_t(quarter_tick() * late), length}; continue; }
-        slot.engine->note_on(key, velocity);
-        schedule_off(slot, key, length);
+        if (late > 0) { slot.arp_late = {int16_t(key), int16_t(velocity), int16_t(a.from), int32_t(quarter_tick() * late), length}; continue; }
+        arp_note(slot, key, velocity, a.from, length);
     }
     ++arp_ticks;
 }
@@ -435,8 +445,16 @@ void EngineHost::run_late(Slot& slot, unsigned frames) {
     if (late.key < 0) return;
     late.samples -= int32_t(frames);
     if (late.samples > 0) return;
-    if (slot.engine && slot.arp.on) { slot.engine->note_on(late.key, late.velocity); schedule_off(slot, late.key, late.length); }
+    if (slot.engine && slot.arp.on) arp_note(slot, late.key, late.velocity, late.from, late.length);
     late.key = -1;
+}
+
+void EngineHost::arp_note(Slot& slot, int key, int velocity, int from, int32_t length) {
+    slot.engine->note_on(key, velocity);
+    float pressure = slot.arp.pressure_of(from);
+    if (pressure > 0) slot.engine->set_pressure(key, pressure);
+    slot.arp_played = key; slot.arp_from = from;
+    schedule_off(slot, key, length);
 }
 
 void EngineHost::start_punch(const PendingPunch& p) {

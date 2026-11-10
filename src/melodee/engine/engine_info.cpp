@@ -52,6 +52,24 @@ const EditPage& edit_page_at(const EngineInfo& info, unsigned index) {
     return info.pages[index % edit_page_count(info)];
 }
 
+const char* mod_dest_label(const EngineInfo& info, ModDest dest) {
+    if (unsigned(dest) >= unsigned(ModDest::Count)) return nullptr;
+    if (!info.mod_dests || dest == ModDest::None) return mod_dest_name(dest);
+    return info.mod_dests[unsigned(dest)];
+}
+unsigned mod_dest_list(const EngineInfo& info, std::array<uint8_t, size_t(ModDest::Count)>& out) {
+    unsigned n = 0;
+    for (unsigned d = 0; d < unsigned(ModDest::Count); ++d)
+        if (mod_dest_label(info, ModDest(d))) out[n++] = uint8_t(d);
+    return n;
+}
+
+void upgrade_params(EngineKind kind, unsigned version, std::array<int16_t, max_params>& params) {
+    const auto& info = engine_info(kind);
+    if (version >= 1 || !info.legacy_params) return;
+    for (unsigned p = info.legacy_params; p < info.param_count && p < max_params; ++p) params[p] = info.params[p].initial;
+}
+
 unsigned available_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out) {
     unsigned n = 0;
     for (unsigned k = 1; k < unsigned(EngineKind::Count); ++k)

@@ -12,6 +12,7 @@
 #include "melodee/engine/kit909.h"
 #include "melodee/engine/sid.h"
 #include "melodee/engine/prophet.h"
+#include "melodee/engine/expression.h"
 #include "melodee/engine/punch.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/engine/arp.h"
@@ -206,6 +207,7 @@ void mod_matrix() {
         ProphetEngine engine;
         engine.set_param(prophet::Cutoff, 10);
         engine.set_param(prophet::EnvAmount, 0);
+        engine.set_param(prophet::AtBright, 0); engine.set_param(prophet::AtVib, 0); // pressure through the route only
         engine.set_mod(0, {uint8_t(ModSource::Aftertouch), uint8_t(ModDest::Cutoff), int8_t(amount)});
         engine.note_on(57, 100);
         engine.set_pressure(57, pressure);
@@ -228,6 +230,140 @@ void mod_matrix() {
     project.tracks[0].mods[2] = {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34};
     auto cards = page_bindings(project, ui, pattern);
     CHECK(cards[0].kind == Binding::Kind::ModSource && cards[2].value == 34 && cards[2].id == 2 && cards[2].min == -100);
+}
+// Phase 1d: pad expression on every synth (MELODEE_PARITY.md).
+std::unique_ptr<Engine> synth(EngineKind kind, std::initializer_list<std::pair<int, int>> changes = {}) {
+    std::unique_ptr<Engine> e;
+    switch (kind) {
+    case EngineKind::Prophet: e = std::make_unique<ProphetEngine>(); break;
+    case EngineKind::Fm6: e = std::make_unique<Fm6Engine>(); break;
+    case EngineKind::Sid: e = std::make_unique<SidEngine>(); break;
+    default: e = std::make_unique<CzEngine>(); break;
+    }
+    std::array<int16_t, max_params> values {};
+    sound_values(engine_info(kind), 0, values);
+    for (unsigned n = 0; n < engine_info(kind).param_count; ++n) e->set_param(int(n), values[n]);
+    for (auto [id, value] : changes) e->set_param(id, value);
+    return e;
+}
+struct Heard { double energy = 0, bright = 0; }; // bright: the share of energy in the sample-to-sample changes
+Heard heard(const std::vector<float>& v, size_t from = 0) {
+    Heard h;
+    double diff = 0;
+    for (size_t n = std::max<size_t>(from, 1); n < v.size(); ++n) { h.energy += double(v[n]) * v[n]; diff += double(v[n] - v[n - 1]) * (v[n] - v[n - 1]); }
+    h.bright = diff / (h.energy + 1e-12);
+    return h;
+}
+// A held note, pressed from the start of `frames` at `pressure`.
+std::vector<float> held_note(Engine& e, int velocity, float pressure, unsigned frames = 22050) {
+    e.note_on(57, velocity);
+    if (pressure > 0) e.set_pressure(57, pressure);
+    return run(e, frames);
+}
+void pad_expression() {
+    struct Synth { EngineKind kind; int at_vib, at_bright; };
+    const Synth synths[] {{EngineKind::Prophet, prophet::AtVib, prophet::AtBright}, {EngineKind::Fm6, fm6::AtVib, fm6::AtBright},
+                          {EngineKind::Sid, sid::AtVib, sid::AtBright}, {EngineKind::Cz, cz::AtVib, cz::AtBright}};
+    for (const auto& s : synths) {
+        const auto& info = engine_info(s.kind);
+        // The new parameters sit at the end of the list, so older files' values keep their places.
+        CHECK(info.legacy_params && info.legacy_params < info.param_count && s.at_vib >= int(info.legacy_params));
+        CHECK(info.params[s.at_vib].initial > 0 && info.params[s.at_bright].initial > 0);
+        // Velocity is clearly heard at the defaults: a soft hit well under a hard one (more than 6 dB).
+        auto soft = heard(held_note(*synth(s.kind), 40, 0)), hard = heard(held_note(*synth(s.kind), 127, 0));
+        CHECK(soft.energy * 4 < hard.energy);
+        // Pressure at the defaults: brighter, and the vibrato moves the pitch.
+        auto pressed = heard(held_note(*synth(s.kind), 100, 1), 4410), plain = heard(held_note(*synth(s.kind), 100, 0), 4410);
+        CHECK(pressed.bright > plain.bright * 1.15);
+        auto vib = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 100}}), 100, 1);
+        auto still = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 100}}), 100, 0);
+        double apart = 0, total = 0;
+        for (size_t n = 11025; n < vib.size(); ++n) { apart += double(vib[n] - still[n]) * (vib[n] - still[n]); total += double(still[n]) * still[n]; }
+        CHECK(apart > total * 0.1);
+        // Both at 0: pressure does nothing.
+        auto off = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}}), 100, 1);
+        auto none = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}}), 100, 0);
+        for (size_t n = 0; n < off.size(); ++n) CHECK(off[n] == none[n]);
+        // The mod matrix is heard: aftertouch into the engine's brightness (cutoff, modulators, DCW).
+        auto route = [&](float pressure) {
+            auto e = synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}});
+            e->set_mod(3, {uint8_t(ModSource::Aftertouch), uint8_t(ModDest::Cutoff), 100});
+            return heard(held_note(*e, 100, pressure), 4410);
+        };
+        CHECK(route(1).bright > route(0).bright * 1.15);
+        // An LFO route into pitch moves the pitch with no pressure.
+        auto lfo = synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}});
+        lfo->set_mod(0, {uint8_t(ModSource::Lfo), uint8_t(ModDest::Pitch), 50});
+        auto wobble = held_note(*lfo, 100, 0);
+        double moved = 0;
+        for (size_t n = 11025; n < wobble.size(); ++n) moved += double(wobble[n] - none[n]) * (wobble[n] - none[n]);
+        CHECK(moved > total * 0.1);
+        // Every factory sound's velocity and pressure stay bounded.
+        for (unsigned k = 0; k < info.sound_count; ++k) {
+            auto e = synth(s.kind);
+            std::array<int16_t, max_params> values {};
+            sound_values(info, k, values);
+            for (unsigned n = 0; n < info.param_count; ++n) e->set_param(int(n), values[n]);
+            CHECK(peak_of(held_note(*e, 127, 1, 44100)) < 2.0f);
+        }
+    }
+    // Destinations an engine has none of are not offered, and the others carry its own names.
+    CHECK(!mod_dest_label(engine_info(EngineKind::Cz), ModDest::Resonance));
+    CHECK(std::string(mod_dest_label(engine_info(EngineKind::Cz), ModDest::Cutoff)) == "DCW");
+    CHECK(std::string(mod_dest_label(engine_info(EngineKind::Prophet), ModDest::Noise)) == "Noise");
+    std::array<uint8_t, size_t(ModDest::Count)> dests {};
+    CHECK(mod_dest_list(engine_info(EngineKind::Prophet), dests) == unsigned(ModDest::Count));
+    CHECK(mod_dest_list(engine_info(EngineKind::Cz), dests) == 7);
+    // Older files: the new parameters get their initial values, not the zeros the file carried.
+    std::array<int16_t, max_params> old {};
+    sound_values(engine_info(EngineKind::Sid), 0, old);
+    for (unsigned n = sid::legacy_count; n < max_params; ++n) old[n] = 0;
+    upgrade_params(EngineKind::Sid, 0, old);
+    CHECK(old[sid::Velocity] == 70 && old[sid::AtVib] == expression::default_at_vib && old[sid::LfoRate] == expression::default_vib_rate);
+    old[sid::AtVib] = 0;
+    upgrade_params(EngineKind::Sid, params_version, old); // a newer file's 0 is a 0
+    CHECK(old[sid::AtVib] == 0);
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[2], EngineKind::Cz, 0);
+    project->tracks[2].params[cz::AtVib] = 0;
+    auto bytes = save_project(*project, *bank);
+    unsigned version = 9;
+    auto back = std::make_unique<Project>();
+    CHECK(load_project(bytes, *back, *bank, &version).empty() && version == params_version && back->tracks[2].params[cz::AtVib] == 0);
+    UserSound us;
+    us.engine = EngineKind::Cz;
+    auto sound_bytes = save_sound(us);
+    CHECK(load_sound_file(sound_bytes, us, &version) && version == params_version);
+    sound_bytes.pop_back(); // as written before phase 1d
+    CHECK(load_sound_file(sound_bytes, us, &version) && version == 0);
+    // The arp's notes follow the pressure of the pad holding their key, an octave up too.
+    auto arp_bright = [](int pressure) {
+        auto p = std::make_unique<Project>();
+        auto b = std::make_unique<PatternBank>();
+        load_sound(p->tracks[0], EngineKind::Prophet, 0);
+        p->tracks[0].params[prophet::AtVib] = 0;
+        p->tracks[0].params[prophet::AtBright] = 100;
+        p->tracks[0].params[prophet::Cutoff] = 30;
+        EngineHost host;
+        host.load(*p, *b);
+        host.send({Command::Type::Arp, 0, 0, 0, 1});
+        host.send({Command::Type::Arp, 0, 0, 3, 2}); // two octaves: notes the pad never played
+        host.send({Command::Type::ArpKey, 0, 0, 48, 100});
+        host.send({Command::Type::Pressure, 0, 0, 48, int16_t(pressure)});
+        std::vector<int32_t> out(256);
+        std::vector<float> mono;
+        for (unsigned n = 0; n < 400; ++n) { host.render(out.data(), 128, 1); for (unsigned f = 0; f < 128; ++f) mono.push_back(out[2 * f] / 2147483648.0f); }
+        return heard(mono, 4410).bright;
+    };
+    CHECK(arp_bright(127) > arp_bright(0) * 1.15);
+    // Settings: Pad pressure on by default, kept in the settings file.
+    Settings set;
+    CHECK(set.pressure && set.value_text(Settings::PadPressure) == "On");
+    set.step(Settings::PadPressure, 1);
+    Settings read_back;
+    read_back.read(set.text());
+    CHECK(!read_back.pressure);
 }
 void arrange() {
     // The song store: placing a clip cuts what it covers; splits keep both sides.
@@ -1314,6 +1450,7 @@ void parity_1c() {
 }
 
 int main() {
+    pad_expression();
     parity_1c();
     shift_pads();
     button_remap();

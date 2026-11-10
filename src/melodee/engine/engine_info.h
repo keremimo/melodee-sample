@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/mod_matrix.h"
 #include "melodee/model/project.h"
 #include <array>
 #include <cstdint>
@@ -57,6 +58,14 @@ struct EngineInfo {
     std::array<int8_t, 3> favourites {-1, -1, -1};
     const Sound* sounds = nullptr;
     unsigned sound_count = 0;
+    // The mod matrix's destinations as this engine names them, one per
+    // ModDest; nullptr where the engine has nothing there. Left out: every
+    // destination under its common name.
+    const char* const* mod_dests = nullptr;
+    // How many parameters older project and sound files carry for this
+    // engine (before phase 1d added pad expression): the ones after it load
+    // at their initial values. 0: all of them.
+    unsigned legacy_params = 0;
 };
 
 const EngineInfo& engine_info(EngineKind kind);
@@ -65,6 +74,13 @@ const EngineInfo& engine_info(EngineKind kind);
 unsigned edit_page_count(const EngineInfo& info);
 const EditPage& edit_page_at(const EngineInfo& info, unsigned index);
 bool is_mod_page(const EngineInfo& info, unsigned index);
+// The mod matrix's destinations on an engine: its name for one (nullptr
+// where it has none), and the ones it has, in order (None first).
+const char* mod_dest_label(const EngineInfo& info, ModDest dest);
+unsigned mod_dest_list(const EngineInfo& info, std::array<uint8_t, size_t(ModDest::Count)>& out);
+// Values from a file of an older params_version (limits.h): the parameters
+// added since take their initial values instead of the zeros the file holds.
+void upgrade_params(EngineKind kind, unsigned version, std::array<int16_t, max_params>& params);
 // The engines that can be loaded now, in the order K1 steps through them.
 unsigned available_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out);
 

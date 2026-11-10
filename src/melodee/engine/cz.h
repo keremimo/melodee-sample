@@ -4,6 +4,7 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/expression.h"
 #include <array>
 
 // CZ: phase distortion, written for sample-base. A cosine read with a bent
@@ -19,8 +20,10 @@ enum Param : int8_t {
     Line, Detune, Octave,
     DcwAmount, DcwAttack, DcwDecay, DcwSustain, DcwRelease, KeyFollow,
     DcaAttack, DcaDecay, DcaSustain, DcaRelease, Velocity,
+    AtVib, AtBright, LfoRate, // pad pressure and the LFO (phase 1d): last, so older files load
     Count
 };
+constexpr unsigned legacy_count = AtVib; // what files from before phase 1d carry
 float shape(unsigned wave, float phase, float dcw); // one sample of a wave at a phase (0..1) and bend (0..1)
 const EngineInfo& info();
 }
@@ -36,6 +39,8 @@ public:
     void set_param(int id, int value) override;
     void set_bend(float value) override { bend = value; }
     void set_wheel(float value) override { wheel = value; }
+    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; }
+    void set_pressure(int key, float value) override;
     void render(float* out, unsigned frames) override;
     bool sounding() const override;
 
@@ -44,7 +49,7 @@ private:
         int key = -1;
         bool held = false;
         uint32_t age = 0;
-        float velocity = 0;
+        float velocity = 0, pressure = 0, touch = 0, random = 0;
         std::array<float, 2> phase {};
         std::array<bool, 2> second {}; // which of the two waves this cycle
         dsp::Envelope dcw, dca;
@@ -53,7 +58,10 @@ private:
     std::array<int, cz::Count> p {};
     std::array<Voice, max_voices> voices {};
     dsp::Envelope::Shape dcw_shape, dca_shape;
-    float bend = 0, wheel = 0;
+    std::array<ModRoute, mod_routes> mods {};
+    expression::Vibrato lfo; // the pressure vibrato and the matrix's LFO
+    dsp::Noise noise;
+    float bend = 0, wheel = 0, lfo_value = 0;
     uint32_t clock = 0;
     bool dirty = true;
 };

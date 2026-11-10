@@ -10,13 +10,13 @@
 #include <string>
 
 // Melodee's own settings, not the project's: how the pads respond and
-// light, whether pots pick up, the screen, and the MPC's recording toggles
+// light, whether their pressure is used, whether pots pick up, the screen, and the MPC's recording toggles
 // (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize). Kept as key=value lines in the
 // `settings` file next to the projects (with the project to open at start).
 namespace melodee {
 
 struct Settings {
-    enum Row : uint8_t { Palette, PadResponse, PadLights, Pickup, Screen, Rows };
+    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, Pickup, Screen, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
@@ -27,6 +27,7 @@ struct Settings {
         if (full_level()) pad_response = response_before == 3 ? 1 : response_before;
         else { response_before = pad_response; pad_response = 3; }
     }
+    bool pressure = true;     // off: the pads send no pressure (synths, Pad Punch depth)
     uint8_t pad_lights = 0;   // 0 track colours, 1 white, 2 off
     bool pickup = true;       // off: a pot's value jumps to where it sits
     uint8_t screen = 100;     // brightness, 20..100 %
@@ -37,7 +38,7 @@ struct Settings {
     void toggle_favourite(unsigned engine, unsigned sound) { if (engine < engines && sound < sounds) favourites[engine].flip(sound); }
 
     static const char* row_name(unsigned row) {
-        static const char* names[] {"Palette", "Pad response", "Pad lights", "Knob pickup", "Screen"};
+        static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob pickup", "Screen"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -46,6 +47,7 @@ struct Settings {
         switch (row) {
         case Palette: return "NIGHT";
         case PadResponse: return responses[pad_response % 4];
+        case PadPressure: return pressure ? "On" : "Off";
         case PadLights: return lights[pad_lights % 3];
         case Pickup: return pickup ? "On" : "Off";
         default: return std::to_string(screen) + " %";
@@ -55,6 +57,7 @@ struct Settings {
     void step(unsigned row, int way) {
         switch (row) {
         case PadResponse: pad_response = uint8_t((pad_response + 4 + way) % 4); break;
+        case PadPressure: pressure = !pressure; break;
         case PadLights: pad_lights = uint8_t((pad_lights + 3 + way) % 3); break;
         case Pickup: pickup = !pickup; break;
         case Screen: screen = uint8_t(std::clamp(int(screen) + way * 10, 20, 100)); break;
@@ -73,7 +76,7 @@ struct Settings {
         std::ostringstream out;
         out << "pad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npickup=" << int(pickup)
             << "\nscreen=" << int(screen) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
-            << "\nresponse_before=" << int(response_before) << '\n';
+            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << '\n';
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
             out << "favourites" << e << '=';
@@ -95,6 +98,7 @@ struct Settings {
             if (key == "pad_response") pad_response = uint8_t(std::clamp(value, 0, 3));
             else if (key == "pad_lights") pad_lights = uint8_t(std::clamp(value, 0, 2));
             else if (key == "pickup") pickup = value != 0;
+            else if (key == "pressure") pressure = value != 0;
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
             else if (key == "count_in") count_in = value != 0;
             else if (key == "rec_quantize") rec_quantize = value != 0;

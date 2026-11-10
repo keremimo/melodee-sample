@@ -40,8 +40,11 @@ const std::array<ParamInfo, Count> params = [] {
         out[size_t(op_param(op, Decay))] = P("DECAY", 0, 100, carrier ? 75 : 55, Format::Time);
         out[size_t(op_param(op, Sustain))] = P("SUSTAIN", 0, 100, carrier ? 70 : 40, Format::Percent);
         out[size_t(op_param(op, Release))] = P("RELEASE", 0, 100, 40, Format::Time);
-        out[size_t(op_param(op, Velocity))] = P("VELOCITY", 0, 100, 40, Format::Percent);
+        out[size_t(op_param(op, Velocity))] = P("VELOCITY", 0, 100, 70, Format::Percent);
     }
+    out[AtVib] = P("AT > VIB", 0, 100, expression::default_at_vib, Format::Percent);
+    out[AtBright] = P("AT > BRIGHT", 0, 100, expression::default_at_bright, Format::Percent);
+    out[LfoRate] = P("LFO RATE", 0, 100, expression::default_vib_rate, Format::Rate);
     return out;
 }();
 
@@ -56,7 +59,13 @@ const EditPage pages[] {
     {"Voice", "VOICE", Picture::Bars, {{{Algorithm, Feedback, Volume}, {_, _, _}, {_, _, _}}}},
     op_page("Operator 1", "OP 1", 0), op_page("Operator 2", "OP 2", 1), op_page("Operator 3", "OP 3", 2),
     op_page("Operator 4", "OP 4", 3), op_page("Operator 5", "OP 5", 4), op_page("Operator 6", "OP 6", 5),
+    // Pad pressure (velocity is each operator's own); the LFO is also the matrix's.
+    {"Touch", "TOUCH", Picture::Bars, {{{AtVib, AtBright, LfoRate}, {_, _, _}, {_, _, _}}}},
 };
+// The mod matrix on FM6: brightness scales the modulators (2 octaves of
+// index at full), feedback adds to op 6's, carrier and modulator pitch apart.
+const char* const mod_dests[] {"None", "Brightness", "Feedback", "Amp level", "Pitch", "Carrier pitch", "Mod pitch",
+                               nullptr, "LFO rate", nullptr};
 #define OP(n, k) int16_t(op_param(n, k))
 const Sound sounds[] {
     {"INIT VOICE", {{{-1, 0}}}},
@@ -87,7 +96,8 @@ float ratio_of(int value) { return value <= 0 ? 0.5f : float(value); }
 
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Fm6, "FM6", true, params.data(), Count, pages, sizeof(pages) / sizeof(pages[0]),
-                                    {Algorithm, Feedback, int8_t(op_param(1, Level))}, sounds, sizeof(sounds) / sizeof(sounds[0])};
+                                    {Algorithm, Feedback, int8_t(op_param(1, Level))}, sounds, sizeof(sounds) / sizeof(sounds[0]),
+                                    mod_dests, legacy_count};
     return engine;
 }
 } // namespace fm6
@@ -138,8 +148,10 @@ void Fm6Engine::note_on(int key, int velocity) {
     if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
     *v = Voice {};
     v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f;
+    v->random = noise.next();
     for (auto& e : v->env) e.gate(true);
 }
+void Fm6Engine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
 void Fm6Engine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; for (auto& e : v.env) e.gate(false); } }
 void Fm6Engine::all_notes_off() { for (auto& v : voices) if (v.held) { v.held = false; for (auto& e : v.env) e.gate(false); } }
 void Fm6Engine::silence() { for (auto& v : voices) v = Voice {}; }
@@ -147,18 +159,33 @@ bool Fm6Engine::sounding() const { for (auto& v : voices) if (v.key >= 0) return
 
 void Fm6Engine::render(float* out, unsigned frames) {
     if (dirty) update();
+    using expression::at;
     const auto& r = routing(unsigned(p[Algorithm]));
-    float feedback = p[Feedback] ? std::exp2(float(p[Feedback]) - 7) * 0.8f : 0;
     unsigned carriers = 0;
     for (unsigned op = 0; op < ops; ++op) carriers += (r.carriers >> op) & 1;
     float volume = p[Volume] / 100.0f * 0.5f / std::sqrt(float(std::max(carriers, 1u)));
+    lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), frames);
     for (auto& v : voices) {
         if (v.key < 0) continue;
-        float hz = dsp::midi_hz(v.key + bend * 2) / dsp::sample_rate;
-        std::array<float, ops> gain {};
+        expression::follow(v.touch, v.pressure, frames);
+        auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env[0].level});
+        // Pitch: the bend, the matrix and pressure's vibrato; carriers and modulators can part.
+        float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+        float hz_carrier = dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate;
+        float hz_modulator = dsp::midi_hz(key + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate;
+        // Brightness: pressure and the matrix scale every modulator, as a DX patch's aftertouch into modulator levels.
+        float bright = std::min(8.0f, std::exp2(2 * (at(m, ModDest::Cutoff) + v.touch * p[AtBright] / 100.0f)));
+        float steps = std::clamp(p[Feedback] + at(m, ModDest::Resonance) * 7, 0.0f, 7.0f);
+        float feedback = steps > 0 ? std::exp2(steps - 7) * 0.8f : 0;
+        float amp = std::max(0.0f, 1 + at(m, ModDest::AmpLevel));
+        std::array<float, ops> gain {}, step {};
+        float self = 0; // op 6's level into its own feedback
         for (unsigned op = 0; op < ops; ++op) {
-            float sens = p[size_t(op_param(op, Velocity))] / 100.0f;
-            gain[op] = levels[op] * (1 - sens + sens * v.velocity);
+            bool carrier = (r.carriers >> op) & 1;
+            float level = levels[op] * expression::velocity_gain(v.velocity, p[size_t(op_param(op, Velocity))] / 100.0f);
+            if (op == 5) self = level;
+            gain[op] = level * (carrier ? amp : bright * (2 + wheel * 2)); // a modulator turns in radians (x 2 pi in sine())
+            step[op] = (carrier ? hz_carrier : hz_modulator) * ratios[op];
         }
         for (unsigned f = 0; f < frames; ++f) {
             float heard = 0;
@@ -169,11 +196,11 @@ void Fm6Engine::render(float* out, unsigned frames) {
                 if (op == 5) mod += v.feedback * feedback;
                 float e = v.env[size_t(op)].next(shapes[size_t(op)]);
                 float s = sine(v.phase[size_t(op)] + mod * 0.6f);
-                v.phase[size_t(op)] += hz * ratios[size_t(op)];
+                v.phase[size_t(op)] += step[size_t(op)];
                 if (v.phase[size_t(op)] > 1) v.phase[size_t(op)] -= 1;
                 float o = s * e * gain[size_t(op)];
-                if (op == 5) v.feedback = (v.feedback + o) * 0.5f; // averaged, as feedback FM wants
-                v.out[size_t(op)] = (r.carriers >> op) & 1 ? o : o * (2 + wheel * 2); // a modulator turns in radians (x 2 pi in sine())
+                if (op == 5) v.feedback = (v.feedback + s * e * self) * 0.5f; // averaged, as feedback FM wants
+                v.out[size_t(op)] = o;
                 if ((r.carriers >> op) & 1) heard += o;
             }
             out[f] += heard * volume;

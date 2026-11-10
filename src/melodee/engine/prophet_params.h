@@ -19,8 +19,10 @@ enum Param : int8_t {
     WheelFreq, WheelFilter, WheelLfo,
     PolyEnv, PolyOscB, PolyFreqA, PolyPwA, PolyFilter,
     Glide, Unison, Detune, Vintage, BendRange, Voices,
+    AtVib, AtBright, VibRate, // pad pressure (phase 1d): new ones go last so older files load
     Count
 };
+constexpr unsigned legacy_count = AtVib; // what files from before phase 1d carry
 
 const EngineInfo& info();
 

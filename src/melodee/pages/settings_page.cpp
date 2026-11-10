@@ -4,8 +4,8 @@
 //   to the projects. The wheel moves; Push opens a value, the wheel changes
 //   it, Push keeps it. Minus / Plus change the value under the cursor
 //   straight away. Palette (NIGHT, the one there is), pad response (soft,
-//   medium, hard, fixed), pad lights (track colours, white, off), knob
-//   pickup, screen brightness.
+//   medium, hard, full level), pad pressure (on, off), pad lights (track
+//   colours, white, off), knob pickup, screen brightness.
 // ABOUT (B3): what this is and what it is made of.
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/punch.h"

@@ -21,10 +21,11 @@ std::vector<uint8_t> save_sound(const UserSound& s) {
     for (auto v : s.params) i16(v);
     u8(mod_routes);
     for (const auto& m : s.mods) { u8(m.source); u8(m.destination); i16(m.amount); }
+    u8(params_version); // last: older readers stop before it, older files end without it
     return out;
 }
 
-bool load_sound_file(const std::vector<uint8_t>& data, UserSound& s) {
+bool load_sound_file(const std::vector<uint8_t>& data, UserSound& s, unsigned* version) {
     if (data.size() < 10 || std::memcmp(data.data(), magic, 8)) return false;
     size_t at = 8;
     bool ok = true;
@@ -43,6 +44,7 @@ bool load_sound_file(const std::vector<uint8_t>& data, UserSound& s) {
         ModRoute m {uint8_t(u8()), uint8_t(u8()), int8_t(std::clamp(i16(), -100, 100))};
         if (k < mod_routes) s.mods[k] = m;
     }
+    if (version) *version = ok && at < data.size() ? data[at] : 0;
     return ok;
 }
 

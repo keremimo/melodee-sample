@@ -3,6 +3,7 @@
 // The PROPHET engine as the user interface sees it: parameter ranges, Edit
 // pages and the factory sounds (made for this engine, not copied from any
 // instrument's programs).
+#include "melodee/engine/expression.h"
 #include "melodee/engine/prophet_params.h"
 
 namespace melodee::prophet {
@@ -23,11 +24,11 @@ const ParamInfo params[Count] {
     P("LO FREQ", 0, 1, 0, Format::Switch), P("KEYB B", 0, 1, 1, Format::Switch),
     P("LEVEL A", 0, 100, 80), P("LEVEL B", 0, 100, 60), P("NOISE", 0, 100, 0),
     P("CUTOFF", 0, 100, 62), P("RESO", 0, 100, 28), P("ENV AMT", 0, 100, 45),
-    P("KEYBOARD", 0, 2, 1, Format::Choice, key_track), P("VEL > FLT", 0, 100, 20),
+    P("KEYBOARD", 0, 2, 1, Format::Choice, key_track), P("VEL > FLT", 0, 100, 40),
     P("ATTACK", 0, 100, 0, Format::Time), P("DECAY", 0, 100, 45, Format::Time), P("SUSTAIN", 0, 100, 30),
     P("RELEASE", 0, 100, 35, Format::Time),
     P("ATTACK", 0, 100, 0, Format::Time), P("DECAY", 0, 100, 50, Format::Time), P("SUSTAIN", 0, 100, 80),
-    P("RELEASE", 0, 100, 35, Format::Time), P("VEL > AMP", 0, 100, 50),
+    P("RELEASE", 0, 100, 35, Format::Time), P("VEL > AMP", 0, 100, 65),
     P("RATE", 0, 100, 55, Format::Rate), P("SHAPE", 0, 3, 0, Format::Choice, lfo_shapes), P("AMOUNT", 0, 100, 0),
     P("> FREQ", 0, 100, 10), P("> PW", 0, 100, 0), P("> FILTER", 0, 100, 0),
     P("> FREQ", 0, 100, 15), P("> FILTER", 0, 100, 30), P("> LFO", 0, 100, 60),
@@ -35,6 +36,8 @@ const ParamInfo params[Count] {
     P("> PW A", 0, 1, 0, Format::Switch), P("> FILTER", 0, 1, 0, Format::Switch),
     P("GLIDE", 0, 100, 0), P("UNISON", 0, 1, 0, Format::Switch), P("DETUNE", 0, 100, 20), P("VINTAGE", 0, 100, 15),
     P("BEND", 0, 12, 2, Format::Semitones), P("VOICES", 1, 8, 8, Format::Number),
+    P("AT > VIB", 0, 100, expression::default_at_vib), P("AT > BRIGHT", 0, 100, expression::default_at_bright),
+    P("VIB RATE", 0, 100, expression::default_vib_rate, Format::Rate),
 };
 
 constexpr int8_t _ = -1;
@@ -49,6 +52,8 @@ const EditPage pages[] {
     {"Wheel", "WHEEL", Picture::Bars, {{{WheelFreq, WheelFilter, WheelLfo}, {_, _, _}, {_, _, _}}}},
     {"Poly mod", "POLY MOD", Picture::Bars, {{{PolyEnv, PolyOscB, _}, {PolyFreqA, PolyPwA, PolyFilter}, {_, _, _}}}},
     {"Performance", "PERFORM", Picture::Bars, {{{Glide, Unison, Detune}, {Vintage, BendRange, Voices}, {_, _, _}}}},
+    // Velocity and pad pressure together (the velocity ones also sit on Filter and Amp envelope).
+    {"Touch", "TOUCH", Picture::Bars, {{{VelAmp, VelFilter, _}, {AtVib, AtBright, VibRate}, {_, _, _}}}},
 };
 
 // Each sound lists only what differs from the initial values.
@@ -93,7 +98,7 @@ const Sound sounds[] {
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Prophet, "PROPHET", true, params, Count, pages,
                                     sizeof(pages) / sizeof(pages[0]), {Cutoff, Resonance, EnvAmount},
-                                    sounds, sizeof(sounds) / sizeof(sounds[0])};
+                                    sounds, sizeof(sounds) / sizeof(sounds[0]), nullptr, legacy_count};
     return engine;
 }
 

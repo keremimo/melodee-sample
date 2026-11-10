@@ -92,7 +92,7 @@ public:
 
 private:
     struct PendingOff { int16_t key = -1; int32_t samples = 0; };
-    struct PendingOn { int16_t key = -1; int16_t velocity = 0; int32_t samples = 0, length = 0; }; // an arp note swung late
+    struct PendingOn { int16_t key = -1, velocity = 0, from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
     struct Slot {
         EngineKind kind = EngineKind::None;
         ProphetEngine prophet;
@@ -118,9 +118,11 @@ private:
         uint8_t bus = 0;
         Arp arp;
         PendingOn arp_late;
+        int arp_played = -1, arp_from = -1; // the arp's last note and the held key it came from
     };
     void load_track(unsigned t, const Track& track); // a whole track's sound, kit, mix and effects
     void run_late(Slot& slot, unsigned frames);       // a swung arp note, when its time comes
+    void arp_note(Slot& slot, int key, int velocity, int from, int32_t length); // with its pad's pressure
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
     void tick();       // plays whatever falls on this clock tick, then moves on

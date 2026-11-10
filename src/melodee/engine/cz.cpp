@@ -19,7 +19,9 @@ const ParamInfo params[Count] {
     P("DCW ENV", 0, 100, 50), P("ATTACK", 0, 100, 0, Format::Time), P("DECAY", 0, 100, 50, Format::Time), P("SUSTAIN", 0, 100, 30),
     P("RELEASE", 0, 100, 35, Format::Time), P("KEY FOLLOW", 0, 100, 30),
     P("ATTACK", 0, 100, 0, Format::Time), P("DECAY", 0, 100, 60, Format::Time), P("SUSTAIN", 0, 100, 75),
-    P("RELEASE", 0, 100, 40, Format::Time), P("VELOCITY", 0, 100, 50),
+    P("RELEASE", 0, 100, 40, Format::Time), P("VELOCITY", 0, 100, 70),
+    P("AT > VIB", 0, 100, expression::default_at_vib), P("AT > BRIGHT", 0, 100, expression::default_at_bright),
+    P("LFO RATE", 0, 100, expression::default_vib_rate, Format::Rate),
 };
 constexpr int8_t _ = -1;
 const EditPage pages[] {
@@ -27,7 +29,11 @@ const EditPage pages[] {
     {"Lines", "LINES", Picture::Bars, {{{Line, Detune, Octave}, {_, _, _}, {_, _, _}}}},
     {"DCW envelope", "DCW ENV", Picture::Bars, {{{DcwAmount, DcwAttack, DcwDecay}, {DcwSustain, DcwRelease, KeyFollow}, {_, _, _}}}},
     {"DCA envelope", "DCA ENV", Picture::Bars, {{{DcaAttack, DcaDecay, DcaSustain}, {DcaRelease, Velocity, _}, {_, _, _}}}},
+    {"Touch", "TOUCH", Picture::Bars, {{{Velocity, _, _}, {AtVib, AtBright, LfoRate}, {_, _, _}}}},
 };
+// The mod matrix on CZ: brightness is the DCW (fully at full amount), and the two lines' pitches apart.
+const char* const mod_dests[] {"None", "DCW", nullptr, "Amp level", "Pitch", "Line 1 pitch", "Line 2 pitch",
+                               nullptr, "LFO rate", nullptr};
 const Sound sounds[] {
     {"INIT VOICE", {{{-1, 0}}}},
     {"GLASS PAD", {{{Wave1, 5}, {Dcw, 30}, {Line, 2}, {Detune, 12}, {DcwAmount, 40}, {DcwAttack, 65}, {DcaAttack, 60}, {DcaSustain, 90}, {DcaRelease, 70}, {-1, 0}}}},
@@ -75,7 +81,7 @@ float shape(unsigned wave, float phase, float d) {
 
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Cz, "CZ", true, params, Count, pages, sizeof(pages) / sizeof(pages[0]),
-                                    {Dcw, DcwAmount, Wave1}, sounds, sizeof(sounds) / sizeof(sounds[0])};
+                                    {Dcw, DcwAmount, Wave1}, sounds, sizeof(sounds) / sizeof(sounds[0]), mod_dests, legacy_count};
     return engine;
 }
 } // namespace cz
@@ -105,8 +111,10 @@ void CzEngine::note_on(int key, int velocity) {
     if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
     *v = Voice {};
     v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f;
+    v->random = noise.next();
     v->dcw.gate(true); v->dca.gate(true);
 }
+void CzEngine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
 void CzEngine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.dcw.gate(false); v.dca.gate(false); } }
 void CzEngine::all_notes_off() { for (auto& v : voices) if (v.held) { v.held = false; v.dcw.gate(false); v.dca.gate(false); } }
 void CzEngine::silence() { for (auto& v : voices) v = Voice {}; }
@@ -116,17 +124,25 @@ void CzEngine::render(float* out, unsigned frames) {
     if (dirty) update();
     unsigned line = unsigned(p[Line]);
     bool both = line >= 2;
+    lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), frames);
     for (auto& v : voices) {
         if (v.key < 0) continue;
-        float key = v.key + bend * 2;
+        using expression::at;
+        expression::follow(v.touch, v.pressure, frames);
+        auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.dcw.level});
+        // Pitch: the bend, the matrix and pressure's vibrato.
+        float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
         // Line 1 (or 2 alone, a fifth of the detune up); with 1+1' or 1+2' the second line too, detuned.
-        float dt0 = dsp::midi_hz(key + (line == 1 ? p[Octave] * 12 : 0)) / dsp::sample_rate;
-        float dt1 = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f) / dsp::sample_rate;
+        float dt0 = dsp::midi_hz(key + (line == 1 ? p[Octave] * 12 : 0) + at(m, line == 1 ? ModDest::OscBPitch : ModDest::OscAPitch) * 12) / dsp::sample_rate;
+        float dt1 = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate;
         float follow = 1 - p[KeyFollow] / 100.0f * std::clamp((key - 48) / 48.0f, 0.0f, 1.0f); // high notes bend less
-        float gain = (1 - p[Velocity] / 100.0f * (1 - v.velocity)) * (both ? 0.18f : 0.26f);
+        float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel))
+            * (both ? 0.18f : 0.26f);
+        // Brightness: pressure and the matrix open the DCW.
+        float open = v.touch * p[AtBright] / 100.0f * 0.6f + at(m, ModDest::Cutoff);
         for (unsigned f = 0; f < frames; ++f) {
             float env = v.dcw.next(dcw_shape);
-            float d = std::clamp((p[Dcw] / 100.0f + env * p[DcwAmount] / 100.0f + wheel * 0.5f) * follow, 0.0f, 1.0f);
+            float d = std::clamp((p[Dcw] / 100.0f + env * p[DcwAmount] / 100.0f + wheel * 0.5f + open) * follow, 0.0f, 1.0f);
             float sum = 0;
             for (unsigned l = 0; l < (both ? 2u : 1u); ++l) {
                 float dt = l ? dt1 : dt0;

@@ -84,17 +84,47 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   the octave and the view. Push on a note opens the note sheet: accent,
   slide, tie, copy half a bar on, delete.
 - **Edit, page map and mod matrix:** the engine's pages are followed by
-  the mod matrix, which every engine shows (PROPHET: page 11 of 11; only
-  PROPHET hears it until parity phase 1d). B2
+  the mod matrix, which every synth hears (PROPHET: page 12 of 12). B2
   opens the page map: the wheel moves, Push jumps there, Shift + Push or B2
   closes it, and the pots stay on the page underneath. The matrix has
   eight routes a track (`mod_routes`, open question 1), all on one screen;
   the wheel picks the route, Push on an empty row starts one (LFO into
   cutoff, amount 0), K1 source, K2 destination, K3 amount (−100..100,
   centre is none). Sources: LFO, velocity, aftertouch (pad pressure),
-  wheel (the fader), key track, random, filter envelope. Destinations:
+  wheel (the fader), key track, random, filter envelope (FM6: operator 1's,
+  CZ: the DCW's). Destinations:
   cutoff, resonance, amp level, pitch, oscillator A or B pitch, pulse width,
-  LFO rate, noise; each engine decides how far a destination moves.
+  LFO rate, noise; each engine decides how far a destination moves and
+  names them its own way, and K2 skips the ones it has none of (a route
+  kept from another engine is drawn dim and does nothing). FM6: Brightness
+  (every modulator, 2 octaves of index at full), Feedback, Amp level, Pitch,
+  Carrier pitch, Mod pitch, LFO rate. SID: Cutoff, Resonance, Amp level,
+  Pitch, Osc pitch, Osc 2 pitch (the ring / sync partner), Pulse width, LFO
+  rate. CZ: DCW, Amp level, Pitch, Line 1 pitch, Line 2 pitch, LFO rate.
+  `engine/expression.h` sums the routes for all four.
+- **Pad expression (parity phase 1d):** velocity is heard on every synth at
+  its defaults through one squared curve (`velocity_gain`: at depth 70 a
+  hit at 40 plays about 9 dB under a full one): PROPHET VEL > AMP 65 and
+  VEL > FLT 40, FM6 VELOCITY 70 per operator (modulators too, so soft hits
+  are darker), SID VELOCITY 70 (new), CZ VELOCITY 70. Pad pressure does
+  what aftertouch does on synths: **AT > VIB** adds vibrato (100: a
+  semitone each way at full pressure; 35 by default) and **AT > BRIGHT**
+  opens the sound (100: 4 octaves of cutoff on PROPHET and SID, 0.6 of DCW
+  on CZ, 2 octaves of modulator index on FM6; 50 by default). Each voice
+  follows its key's pressure over about 10 ms. The vibrato runs at VIB RATE
+  on PROPHET (its own sine, apart from the LFO) and LFO RATE on the others
+  (their LFO, also the matrix's), about 5.3 Hz. A route from Aftertouch
+  still adds to both. Every synth has a **Touch** page before the mod
+  matrix with these (PROPHET and SID also show velocity there). Pressure
+  goes to every note a pad started (all of a chord) and, with the arp on,
+  to the arp's notes from that pad's keys, octaves up too, while the pad is
+  held (a latched arp plays on without it). Settings' **Pad pressure Off**
+  stops the pads sending pressure at all (synths and Pad Punch, which then
+  uses its depth); AT > VIB and AT > BRIGHT at 0 turn it off for one sound.
+  New parameters sit at the end of each engine's list; project files carry
+  a `PVER` section and sound files a last byte (`params_version`), and
+  older ones load the new parameters at their initial values
+  (`upgrade_params`) instead of zeros.
 - **Clock:** 24 ticks a quarter. Each pattern has its own division (1/8,
   1/8T, 1/16, 1/16T, 1/32); swing (project-wide, 50–75 %) stretches the
   first sixteenth of every eighth.
@@ -315,20 +345,23 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
 - **Engine:** PROPHET, a two-oscillator polysynth written here (saw and
   pulse with hard sync, saw/triangle/pulse B with low-frequency mode,
   noise, a zero-delay four-pole ladder, two ADSRs, LFO, wheel on the fader,
-  poly mod, glide, unison, drift), eight voices a track, ten Edit pages and
-  thirteen factory sounds made for it.
+  poly mod, glide, unison, drift, pressure vibrato and brightness), eight
+  voices a track, eleven Edit pages and thirteen factory sounds made for it.
 - **FM6:** six sine operators (from a table) with ratio, fine, level, an
   ADSR and velocity each; eight algorithms (stack, two stacks, three and
   three, three pairs, stack and two, one to five, pair and four, all heard)
-  with feedback on operator 6; eight voices, seven Edit pages, nine sounds.
+  with feedback on operator 6, an LFO for pressure vibrato and the matrix;
+  eight voices, eight Edit pages, nine sounds.
 - **SID:** a chip voice: triangle, saw, pulse or noise, pulse width with its
   own LFO, ring and sync against a second oscillator, crush, a multimode
-  filter with envelope and key tracking, the 8580 or the grittier 6581;
-  six voices, four pages, nine sounds.
+  filter with envelope and key tracking, the 8580 or the grittier 6581,
+  velocity, an LFO for pressure vibrato and the matrix; six voices, five
+  pages, nine sounds.
 - **CZ:** phase distortion: eight waves bent by the DCW and its envelope (a
   pure sine at no bend), a second wave alternating each cycle, lines 1, 2,
-  1+1' and 1+2' with detune and octave, key follow, DCA envelope; eight
-  voices, four pages, eight sounds.
+  1+1' and 1+2' with detune and octave, key follow, DCA envelope, an LFO
+  for pressure vibrato and the matrix; eight voices, five pages, eight
+  sounds.
   Sounds' K1 steps through all six engines.
 - **909:** a drum kit written here in the shape of the classic machine:
   kick and toms as sines with a falling pitch, snare and clap as tone and
@@ -393,7 +426,8 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
 - **Settings (B2 on Project):** Melodee's own, kept in the `settings` file
   next to the projects (with the project to open at start): palette (NIGHT,
   the one there is), pad response (soft, medium, hard, full level: every hit
-  at 127; Shift + Pad 1 turns full level on and back), pad
+  at 127; Shift + Pad 1 turns full level on and back), pad pressure (on;
+  off: the pads send no pressure), pad
   lights (track colours, white, off), knob pickup (off: values jump to the
   pot), screen brightness (20–100 %; the backlight is left as the stock
   app had it until this asks for less, and the runtime puts it back on
@@ -472,7 +506,7 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   (1 faint, 2 bright) and the lit pads as `melodee_pads=1,3,12`. For
   checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
-  transpose, sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
+  transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
   capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up

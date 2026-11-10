@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine.h"
+#include "melodee/engine/expression.h"
 #include "melodee/engine/prophet_params.h"
 #include "melodee/model/mod_matrix.h"
 #include <array>
@@ -42,15 +43,12 @@ private:
         dsp::Ladder filter;
         dsp::Envelope amp_env, filter_env;
         float dt_a = 0, dt_b = 0, gain = 0;
-        float pressure = 0, random = 0; // mod sources of this voice
+        float pressure = 0, touch = 0, random = 0; // mod sources of this voice; touch follows pressure smoothly
         float noise_mod = 0;            // the matrix's noise level, per control block
         dsp::Oscillator::Mix mix_a, mix_b;
     };
     void update();        // derived values after a parameter change
     void control(Voice&); // per control block: pitch, filter, widths
-    // The mod matrix for one voice: how far each destination moves, in its own units.
-    struct Mods { float cutoff = 0, resonance = 0, amp = 0, pitch = 0, pitch_a = 0, pitch_b = 0, width = 0, noise = 0; };
-    Mods modulation(const Voice& v) const;
     Voice& allocate(int key);
     void start(Voice& v, int key, int velocity, bool retrigger);
 
@@ -62,8 +60,9 @@ private:
     uint32_t clock = 0;
     float wheel = 0, bend = 0;
     dsp::Lfo lfo;
+    expression::Vibrato vibrato; // pressure's own, apart from the LFO
     dsp::Noise noise;
-    float lfo_value = 0;
+    float lfo_value = 0, vibrato_value = 0;
     dsp::Envelope::Shape amp_shape, filter_shape;
     float glide_coefficient = 1;
     bool dirty = true;

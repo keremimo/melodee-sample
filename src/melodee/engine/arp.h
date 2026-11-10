@@ -43,24 +43,30 @@ struct Arp {
     int top = 127;                             // the highest key: a kit's run past 127 (model/sampler.h)
     std::array<int, 16> held {}, order {};     // held sorted by pitch; order as pressed
     std::array<int, 16> velocity {};
+    std::array<float, 16> pressure {};         // each held key's pad pressure, 0..1, as order
     unsigned count = 0, position = 0;
     int sounding = -1;
+    int from = -1;                             // the held key next() played last (before octaves)
     uint32_t seed = 7;
 
     void press(int key, int vel) {
         for (unsigned n = 0; n < count; ++n) if (order[n] == key) return;
         if (count == held.size()) return;
-        order[count] = key; velocity[count] = vel; held[count] = key; ++count;
+        order[count] = key; velocity[count] = vel; pressure[count] = 0; held[count] = key; ++count;
         std::sort(held.begin(), held.begin() + count);
     }
     void release(int key) {
         unsigned w = 0;
-        for (unsigned n = 0; n < count; ++n) if (order[n] != key) { order[w] = order[n]; velocity[w] = velocity[n]; ++w; }
+        for (unsigned n = 0; n < count; ++n)
+            if (order[n] != key) { order[w] = order[n]; velocity[w] = velocity[n]; pressure[w] = pressure[n]; ++w; }
         count = w;
         for (unsigned n = 0; n < count; ++n) held[n] = order[n];
         std::sort(held.begin(), held.begin() + count);
     }
-    void clear() { count = 0; position = 0; }
+    void clear() { count = 0; position = 0; from = -1; }
+    // Pressure follows the pad that holds a key: the arp's notes from it hear it.
+    void press_harder(int key, float value) { for (unsigned n = 0; n < count; ++n) if (order[n] == key) pressure[n] = value; }
+    float pressure_of(int key) const { for (unsigned n = 0; n < count; ++n) if (order[n] == key) return pressure[n]; return 0; }
     // The next key to play, or -1 with nothing held.
     int next(int& vel) {
         if (!count) return -1;
@@ -73,9 +79,10 @@ struct Arp {
         }
         ++position;
         unsigned note = at % count, octave = at / count;
-        int key = (mode == ArpMode::Order ? order[note] : held[note]) + 12 * int(octave);
+        from = mode == ArpMode::Order ? order[note] : held[note];
+        int key = from + 12 * int(octave);
         vel = velocity[0];
-        for (unsigned n = 0; n < count; ++n) if (order[n] == (mode == ArpMode::Order ? order[note] : held[note])) vel = velocity[n];
+        for (unsigned n = 0; n < count; ++n) if (order[n] == from) vel = velocity[n];
         return std::min(key, top);
     }
 };

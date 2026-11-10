@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/project_store.h"
 #include "drivers/platform.h"
+#include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
 #include "runtime/app.h"
 #include <algorithm>
@@ -68,7 +69,10 @@ void ProjectStore::scan_sounds() {
         for (const auto& item : fs::directory_iterator(fs::path(root).parent_path() / "Sounds", error)) {
             if (item.path().extension() != ".mlds") continue;
             UserSound s;
-            if (load_sound_file(read_file(item.path().string()), s)) sounds.push_back(s);
+            unsigned version = 0;
+            if (!load_sound_file(read_file(item.path().string()), s, &version)) continue;
+            upgrade_params(s.engine, version, s.params); // older sounds: pad expression at its defaults
+            sounds.push_back(s);
         }
     std::sort(sounds.begin(), sounds.end(), [](const UserSound& a, const UserSound& b) { return std::strcmp(a.name, b.name) < 0; });
     std::lock_guard<std::mutex> guard(lock);

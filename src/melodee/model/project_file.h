@@ -15,6 +15,7 @@ namespace melodee {
 
 std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns);
 // Empty on success; on failure the targets are left as they were.
-std::string load_project(const std::vector<uint8_t>& data, Project& project, PatternBank& patterns);
+// `version`: the file's params_version (limits.h), 0 when it predates it.
+std::string load_project(const std::vector<uint8_t>& data, Project& project, PatternBank& patterns, unsigned* version = nullptr);
 
 } // namespace melodee

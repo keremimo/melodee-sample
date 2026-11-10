@@ -4,6 +4,7 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/expression.h"
 #include <array>
 
 // SID: a chip voice in the spirit of the C64's, written for sample-base:
@@ -20,8 +21,10 @@ enum Param : int8_t {
     PwmDepth, PwmRate, Crush,
     Cutoff, Resonance, Mode, EnvAmount, KeyTrack,
     Attack, Decay, Sustain, Release,
+    Velocity, AtVib, AtBright, LfoRate, // velocity, pad pressure and the LFO (phase 1d): last, so older files load
     Count
 };
+constexpr unsigned legacy_count = Velocity; // what files from before phase 1d carry
 const EngineInfo& info();
 }
 
@@ -35,6 +38,9 @@ public:
     void silence() override;
     void set_param(int id, int value) override;
     void set_bend(float value) override { bend = value; }
+    void set_wheel(float value) override { wheel = value; }
+    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; }
+    void set_pressure(int key, float value) override;
     void render(float* out, unsigned frames) override;
     bool sounding() const override;
 
@@ -43,15 +49,17 @@ private:
         int key = -1;
         bool held = false;
         uint32_t age = 0;
-        float velocity = 0, phase = 0, phase2 = 0, noise = 0, s1 = 0, s2 = 0;
+        float velocity = 0, pressure = 0, touch = 0, random = 0, phase = 0, phase2 = 0, noise = 0, s1 = 0, s2 = 0;
         dsp::Envelope env;
     };
     void update();
     std::array<int, sid::Count> p {};
     std::array<Voice, max_voices> voices {};
     dsp::Envelope::Shape shape;
+    std::array<ModRoute, mod_routes> mods {};
+    expression::Vibrato vibrato; // the pressure vibrato and the matrix's LFO
     dsp::Noise noise;
-    float lfo = 0, bend = 0;
+    float lfo = 0, bend = 0, wheel = 0, lfo_value = 0; // lfo: the pulse width sweep's phase
     uint32_t clock = 0;
     bool dirty = true;
 };

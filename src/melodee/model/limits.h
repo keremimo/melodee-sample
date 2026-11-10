@@ -13,6 +13,11 @@ constexpr unsigned notes_per_step = 4;   // a chord on one step
 constexpr unsigned motion_events = 256;  // open question 2: per project (as drawn) or per pattern
 constexpr unsigned mod_routes = 8;       // open question 1: 8 drawn, 16 offered
 constexpr unsigned max_params = 96;      // engine parameters a track stores
+// Which engine parameters a file's values cover: 0 before phase 1d added pad
+// expression at the end of each synth's list (AT > VIB and the rest), 1 since.
+// Files of an older version get the newer parameters' initial values when
+// loaded (engine_info.h, upgrade_params), not the zeros they carry.
+constexpr unsigned params_version = 1;
 constexpr unsigned name_length = 24;
 constexpr unsigned ticks_per_quarter = 24, ticks_per_bar = 4 * ticks_per_quarter;
 constexpr unsigned song_clips = 256;    // clips in the arrange view

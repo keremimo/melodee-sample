@@ -7,7 +7,7 @@
 // opens the MPC's audio, display or control surface.
 //   --melodee-preview DIR [PAGE...]  draws pages to DIR/<page>.png at 320 x 240
 //                                    and DIR/<page>@2x.png at the boards' 640 x 480.
-//                                    Pages: stage keys sounds edit soundmap mod mix steps roll
+//                                    Pages: stage keys sounds edit soundmap mod touch mix steps roll
 //                                    notesheet motion patterns song songzoom
 //                                    clipsheet length rack sends bus fxpick
 //                                    pads samples trim chop levels record

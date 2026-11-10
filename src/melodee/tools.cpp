@@ -176,7 +176,12 @@ const Preview previews[] {
          s.ui.page = PageId::Edit; s.ui.edit_page[0] = 3; s.ui.map_open = true; s.ui.map_cursor = 3; s.playing = true;
      }},
     {"mod", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Edit; s.ui.edit_page[0] = 10; s.playing = true;
+         s.ui.page = PageId::Edit; s.ui.edit_page[0] = uint8_t(prophet::info().page_count); s.playing = true;
+     }},
+    {"touch", [](Shell&, Snapshot& s) { // velocity and pad pressure (phase 1d)
+         s.ui.page = PageId::Edit; s.ui.edit_page[0] = uint8_t(prophet::info().page_count - 1); s.ui.edit_row[0] = 1; s.playing = true;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+         s.ui.pots[1] = {50, false, Binding {Binding::Kind::Param, prophet::AtBright, 0, 100, 0}.key(1)};
      }},
     {"mix", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Mix; s.ui.track = 2; s.playing = true;

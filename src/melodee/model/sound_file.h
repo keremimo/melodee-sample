@@ -18,7 +18,8 @@ struct UserSound {
 };
 
 std::vector<uint8_t> save_sound(const UserSound& sound);
-bool load_sound_file(const std::vector<uint8_t>& data, UserSound& out); // false: not a sound file
+// false: not a sound file. `version`: its params_version (limits.h), 0 when it predates it.
+bool load_sound_file(const std::vector<uint8_t>& data, UserSound& out, unsigned* version = nullptr);
 UserSound sound_of(const Track& track, const char* name);               // what Save sound keeps
 
 } // namespace melodee
