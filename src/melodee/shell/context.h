@@ -165,7 +165,16 @@ public:
     struct Gesture { std::unique_ptr<Edit> edit; UndoScope scope; uint32_t key = 0, last = 0; };
     Gesture gesture;
     void touch_gesture(const Binding& binding);  // before a pot changes a value
+    void touch_scope(const UndoScope& scope, uint32_t key); // the same for a control with no card (the fader's nudge)
     void close_gesture();                         // the open gesture kept, if it changed anything
+    // Roll R0: a pad held on Roll, Steps or Step Edit is one step of the pattern from press to release; the
+    // wheel, pots, fader and buttons used meanwhile on the same pattern are part of it. Undo while it is
+    // held keeps it first, so the note just written is what goes.
+    struct Hold { std::unique_ptr<Edit> edit; UndoScope scope; unsigned pad = 0, pushes = 0; };
+    Hold hold;
+    void open_hold(unsigned pad);                 // before a pad's press
+    void close_hold(unsigned pad);                // after its release: kept, if it changed anything
+    bool held(const UndoScope& scope) const { return hold.edit && hold.scope == scope; }
     std::unique_ptr<Edit> scope_edit(const UndoScope& scope, const std::string& what); // what may change, as it is now
     bool finish_scope(Edit& edit);                // as it is after; false when nothing changed
     void restore_mix(const MixState& value);

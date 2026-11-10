@@ -342,7 +342,8 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         context_.play_pad(pad, down ? ui_.settings.velocity(velocity) : 0, down);
         return;
     }
-    if (!down) { hit(pad, velocity, down); return; }
+    if (!down) { hit(pad, velocity, down); context_.close_hold(pad); return; }
+    context_.open_hold(pad); // Roll, Steps, Step Edit: press to release is one step (then PageEdit stands aside)
     PageEdit step(context_, Button::Count, true);
     hit(pad, velocity, down);
     step.finish();

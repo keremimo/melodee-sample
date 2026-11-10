@@ -995,6 +995,7 @@ void Context::apply_edit(const Edit& e, bool after) {
 
 void Context::undo() {
     close_gesture();                        // a pot's turns just made are the step undone
+    close_hold(hold.pad);                   // so is a held pad's note
     if (ui.recording) set_recording(false); // a take in progress ends, and is the edit undone
     Edit* e = edits.undo();
     if (!e) { notice("Nothing to undo"); return; }
@@ -1004,6 +1005,7 @@ void Context::undo() {
 
 void Context::redo() {
     close_gesture();
+    close_hold(hold.pad);
     if (ui.recording) return; // a take in progress would be lost under it
     Edit* e = edits.redo();
     if (!e) { notice("Nothing to redo"); return; }

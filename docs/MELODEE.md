@@ -467,8 +467,12 @@ while following.
 - **Undo** (Shift + −, redo Shift + +): the last 32 steps. A take is one; a
   pot's turns are one per control (closed by another control, a press or
   two seconds still); a press on a page is one step of what the page edits.
-  Mute, solo, mode buttons and the transport are not steps. A load or a new
-  project forgets them.
+  On Roll, Steps and Step Edit a pad is one step of the pattern from press
+  to release: the note it writes, toggles or picks and whatever the wheel,
+  the pots or the fader do to it while it is held (undo while holding takes
+  that step back). The note cards and Step Edit's fader nudge are steps
+  like any pot. Mute, solo, mode buttons and the transport are not steps.
+  A load or a new project forgets them.
 - **Takeover**: a pot drives its value once it meets it (Pickup), moves it
   part of the way (Scaled) or at once (Instant); the card shows the value
   dim with a tick where the pot sits until then.

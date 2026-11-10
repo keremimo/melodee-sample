@@ -3269,6 +3269,17 @@ void projects_and_polish() {
     CHECK(scope_name(project, ui, UndoScope {S::Chain, 0, uint16_t(bus_chain(1))}) == "Bus B FX");
     CHECK(scope_name(project, ui, UndoScope {S::Chain, 0, 4}) == "T5 FX");
     CHECK(scope_name(project, ui, UndoScope {S::Chain, 2, uint16_t(pad_chain(2, 3))}) == "A04 FX");
+    // Roll R0: on Roll, Steps and Step Edit a press keeps the selected track's pattern, and so do the note cards.
+    project.tracks[2].pattern = 3;
+    ui.page = PageId::Roll; CHECK(press_scope(project, ui, B::Count, true) == (UndoScope {S::Pattern, 2, 3}));
+    ui.page = PageId::Steps; CHECK(press_scope(project, ui, B::WheelPush, false).kind == S::Pattern);
+    ui.page = PageId::StepEdit; CHECK(press_scope(project, ui, B::TopRight, false).kind == S::Pattern);
+    CHECK(press_scope(project, ui, B::Play, false).none()); // the transport is not an edit
+    CHECK(scope(K::StepVelocity) == (UndoScope {S::Pattern, 2, 3}) && scope(K::StepLength).kind == S::Pattern);
+    CHECK(scope(K::StepChance).kind == S::Pattern && scope(K::EventVelocity).kind == S::Pattern && scope(K::EventLength).kind == S::Pattern);
+    CHECK(scope(K::Division).none()); // the grid moves no note
+    CHECK(scope_name(project, ui, pattern_scope(project, ui)) == "T3 P4");
+    ui.page = PageId::Patterns; CHECK(press_scope(project, ui, B::Count, true).none()); // a pad there launches, it writes nothing
     // The states compare as they should: mute and Knob FX's targets are left out.
     auto mix = mix_of(project);
     project.tracks[5].mix.mute = true; project.knob_fx.tracks = 3;

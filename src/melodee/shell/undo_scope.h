@@ -15,30 +15,37 @@
 // Context); a button or pad press on a page is one step of what that page
 // edits (PageEdit, around the shell's press), unless the press kept an edit
 // of its own. The song, the mix, a track's or a bus's or the master's chain,
-// a kit pad, a track's sound, the master's performance effects and Chop's
-// slices. Pure: which scope, its name; Context takes and restores them.
+// a kit pad, a track's sound, the master's performance effects, Chop's
+// slices, and the selected track's pattern on Roll, Steps and Step Edit
+// (Roll R0: a pad there is one step from press to release, so what is
+// done while it is held, by the wheel, a pot or the fader, goes with it).
+// Pure: which scope, its name; Context takes and restores them.
 namespace melodee {
 
 class Context;
 
 struct UndoScope {
-    enum class Kind : uint8_t { None, Pad, Mix, Chain, Master, Sound, Song, Chop };
+    enum class Kind : uint8_t { None, Pad, Mix, Chain, Master, Sound, Song, Chop, Pattern };
     Kind kind = Kind::None;
     uint8_t track = 0;
-    uint16_t index = 0; // Pad: the kit pad (0..127); Chain: the chain's number
+    uint16_t index = 0; // Pad: the kit pad (0..127); Chain: the chain's number; Pattern: the track's pattern
     bool none() const { return kind == Kind::None; }
     bool operator==(const UndoScope& o) const { return kind == o.kind && track == o.track && index == o.index; }
     bool operator!=(const UndoScope& o) const { return !(*this == o); }
 };
 
 // What a card's value is part of; None for what is not kept (tempo, patterns' length, a page's cursor ...).
+// The note cards (Steps and Roll's length, velocity, chance; Step Edit's event length and velocity): the pattern.
 UndoScope binding_scope(const Project& project, const UiState& ui, const Binding& binding);
 // What a press of `button` (or a pad, `pad` true) changes on the page in view: Loop, Shift + Loop and
 // Shift + Chop the last kit pad on any page; else by page (Song the song, Mix and Sends the mix, the chain
 // pages their chain, Knob FX / Compressor / Flex Beat / Punch the master's effects, Chop its slices, the
-// sampler pages and Pads the last pad, Edit the track's sound).
+// sampler pages and Pads the last pad, Edit the track's sound, Roll / Steps / Step Edit the pattern).
 UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton button, bool pad);
-// The edit's name, shown on undo: "A01", "Mix", "T3 FX", "Bus A FX", "Master FX", "Knob FX", "T2 sound", "Song", "Chop".
+// The selected track's pattern playing now.
+UndoScope pattern_scope(const Project& project, const UiState& ui);
+// The edit's name, shown on undo: "A01", "Mix", "T3 FX", "Bus A FX", "Master FX", "Knob FX", "T2 sound", "Song", "Chop",
+// "T1 P3".
 std::string scope_name(const Project& project, const UiState& ui, const UndoScope& scope);
 // The states a scope compares and restores (shell/history.h).
 MixState mix_of(const Project& project);

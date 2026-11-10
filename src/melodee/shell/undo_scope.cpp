@@ -62,8 +62,14 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::PadFxParam: case Kind::FlexMode: case Kind::FlexMix: case Kind::PunchDepth: case Kind::PunchSnap: case Kind::PunchTail:
         return of(S::Master, ui);
     case Kind::SongPattern: case Kind::SongLength: return b.id >= 0 ? of(S::Song, ui) : UndoScope {};
+    case Kind::StepLength: case Kind::StepVelocity: case Kind::StepChance: case Kind::EventVelocity: case Kind::EventLength:
+        return pattern_scope(project, ui);
     default: return {};
     }
+}
+
+UndoScope pattern_scope(const Project& project, const UiState& ui) {
+    return of(UndoScope::Kind::Pattern, ui, project.tracks[ui.track % track_count].pattern % pattern_count);
 }
 
 UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton button, bool pad) {
@@ -82,6 +88,7 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
     case PageId::PadFilterPage: case PageId::FilterEnvPage: case PageId::Pads: case PageId::PadPunch:
         return pad_scope(ui, project);
     case PageId::Edit: return of(S::Sound, ui);
+    case PageId::Roll: case PageId::Steps: case PageId::StepEdit: return pattern_scope(project, ui); // notes written, toggled, moved
     case PageId::Stage: { // a kit's TRIM: Shift + B1 Loop Lock and Shift + B2 Normalize, as on the old Trim
         const auto& t = project.tracks[ui.track % track_count];
         bool kit_page = stage_kit_page(stage_page_now(ui, t).kind) != PageId::Count;
@@ -111,6 +118,7 @@ std::string scope_name(const Project& project, const UiState& ui, const UndoScop
     case S::Sound: return "T" + std::to_string(s.track + 1) + " sound";
     case S::Song: return "Song";
     case S::Chop: return "Chop";
+    case S::Pattern: return "T" + std::to_string(s.track + 1) + " P" + std::to_string(s.index + 1);
     default: (void)project; return {};
     }
 }

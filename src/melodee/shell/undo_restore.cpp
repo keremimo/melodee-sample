@@ -17,6 +17,7 @@ bool same(const MixState& a, const MixState& b) { return a == b; }
 bool same(const SoundState& a, const SoundState& b) { return a == b; }
 bool same(const MasterState& a, const MasterState& b) { return a == b; }
 bool same(const ChopState& a, const ChopState& b) { return a == b; }
+bool same(const Pattern& a, const Pattern& b) { return a == b; } // its events are on the heap
 } // namespace
 
 // What the scope holds now, as the edit's before.
@@ -36,6 +37,10 @@ std::unique_ptr<Edit> Context::scope_edit(const UndoScope& s, const std::string&
     case S::Sound: e->sound_before = std::make_unique<SoundState>(sound_of(project.tracks[s.track])); break;
     case S::Song: e->song_before = std::make_unique<Song>(project.song); break;
     case S::Chop: e->chop_before = std::make_unique<ChopState>(chop_of(ui)); break;
+    case S::Pattern:
+        e->pattern = int16_t(s.index);
+        e->pattern_before = std::make_unique<Pattern>(patterns.at[s.track % track_count][s.index % pattern_count]);
+        break;
     case S::None: break;
     }
     return e;
@@ -54,6 +59,7 @@ bool Context::finish_scope(Edit& e) {
         after = std::make_unique<std::decay_t<decltype(now)>>(now);
         changed = true;
     };
+    if (e.pattern >= 0) part(e.pattern_before, e.pattern_after, patterns.at[e.track % track_count][unsigned(e.pattern) % pattern_count]);
     if (e.chain >= 0) part(e.chain_before, e.chain_after, project.chain(unsigned(e.chain)));
     if (e.motion_before) part(e.motion_before, e.motion_after, project.motion);
     part(e.mix_before, e.mix_after, mix_of(project));
@@ -66,13 +72,34 @@ bool Context::finish_scope(Edit& e) {
 
 // A pot is about to change a value: its gesture goes on, or the open one is kept and a new one begins.
 void Context::touch_gesture(const Binding& b) {
-    if (ui.recording) { close_gesture(); return; } // a take keeps its own moves
     auto scope = binding_scope(project, ui, b);
-    uint32_t key = b.key(ui.track) ^ (scope.kind == UndoScope::Kind::Pad ? uint32_t(scope.index) << 16 : 0);
+    touch_scope(scope, b.key(ui.track) ^ (scope.kind == UndoScope::Kind::Pad ? uint32_t(scope.index) << 16 : 0));
+}
+
+void Context::touch_scope(const UndoScope& scope, uint32_t key) {
+    if (ui.recording) { close_gesture(); return; } // a take keeps its own moves
+    if (held(scope)) { close_gesture(); return; }  // the held pad's step takes it in
     if (gesture.edit && gesture.key == key && gesture.scope == scope && now - gesture.last < gesture_quiet_ms) { gesture.last = now; return; }
     close_gesture();
     gesture.edit = scope_edit(scope, scope_name(project, ui, scope));
     gesture.key = key; gesture.scope = scope; gesture.last = now;
+}
+
+void Context::open_hold(unsigned pad) {
+    if (hold.edit || ui.recording || ui.name.open() || ui.exit_open || ui.ask != UiState::Ask::None) return;
+    auto scope = press_scope(project, ui, SurfaceButton::Count, true);
+    if (scope.kind != UndoScope::Kind::Pattern) return;
+    close_gesture();
+    hold.edit = scope_edit(scope, scope_name(project, ui, scope));
+    hold.scope = scope; hold.pad = pad; hold.pushes = edits.pushes;
+}
+
+void Context::close_hold(unsigned pad) {
+    if (!hold.edit || hold.pad != pad) return;
+    auto edit = std::move(hold.edit);
+    // Something kept its own edit meanwhile (Erase + pad, a Shift + pad job) or a take began: that one stands.
+    if (edits.pushes != hold.pushes || ui.recording) return;
+    if (finish_scope(*edit)) { edits.push(std::move(*edit)); dirty = true; }
 }
 
 void Context::close_gesture() {
@@ -142,6 +169,7 @@ PageEdit::PageEdit(Context& context, SurfaceButton button, bool pad) : c(context
     c.close_gesture(); // a pot's turns end with any press
     if (c.ui.recording || c.ui.name.open() || c.ui.exit_open || c.ui.ask != UiState::Ask::None) return;
     auto scope = press_scope(c.project, c.ui, button, pad);
+    if (c.held(scope)) return; // part of the held pad's step
     edit = c.scope_edit(scope, scope_name(c.project, c.ui, scope));
     pushes = c.edits.pushes;
 }
