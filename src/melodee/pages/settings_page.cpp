@@ -5,7 +5,9 @@
 //   it, Push keeps it. Minus / Plus change the value under the cursor
 //   straight away. Palette (NIGHT, the one there is), pad response (soft,
 //   medium, hard, full level), pad pressure (on, off), pad lights (track
-//   colours, white, off), knob pickup, screen brightness.
+//   colours, white, off), how the knobs, Knob FX and the fader take over a
+//   value (Pickup, Scaled, Instant; the MPC keeps these on MIDI Config,
+//   phase 9 shows them there too), screen brightness.
 // ABOUT (B3): what this is and what it is made of.
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/punch.h"
@@ -26,20 +28,21 @@ void settings_draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 1, colour::text}, system_header(s));
     const auto& set = s.ui.settings;
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y + 0.5f;
-    for (unsigned row = 0; row < Settings::Rows; ++row, y += 21) {
+    constexpr float rh = 18; // eight rows in the picture's 148 px
+    for (unsigned row = 0; row < Settings::Rows; ++row, y += rh) {
         bool cursor = row == s.ui.settings_cursor, editing = cursor && s.ui.settings_editing;
-        if (cursor) { p.fill(x, y, w, 20, colour::raised, 4); p.fill(x, y, 3, 20, colour::text); }
-        p.text(Settings::row_name(row), x + 9, y, w / 2, 20, plain(cursor ? colour::text : colour::sec, 12, Weight::Medium));
+        if (cursor) { p.fill(x, y, w, rh - 1, colour::raised, 4); p.fill(x, y, 3, rh - 1, colour::text); }
+        p.text(Settings::row_name(row), x + 9, y, w / 2, rh - 1, plain(cursor ? colour::text : colour::sec, 11.5f, Weight::Medium));
         juce::String value = set.value_text(row);
         auto style = plain(cursor ? colour::text : colour::mid, 11, Weight::Medium);
         float vw = p.width(value, style), vx = x + w - 7 - vw;
         if (editing) { // the open value: framed, with which way the wheel goes
-            p.fill(vx - 6, y + 3, vw + 12, 14, colour::surf, 3);
-            p.ring(vx - 6, y + 3, vw + 12, 14, colour::text, 3, 1);
+            p.fill(vx - 6, y + 2, vw + 12, rh - 5, colour::surf, 3);
+            p.ring(vx - 6, y + 2, vw + 12, rh - 5, colour::text, 3, 1);
         }
-        p.text(value, vx, y, vw, 20, style);
+        p.text(value, vx, y, vw, rh - 1, style);
         if (row == Settings::Palette && cursor) // the palette's first track colours
-            for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 6.5f, 7, 7, track_colour(t), 2);
+            for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 5, 7, 7, track_colour(t), 2);
     }
 }
 void settings_wheel(Context& c, int delta) {

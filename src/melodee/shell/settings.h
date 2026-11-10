@@ -11,13 +11,23 @@
 #include <string>
 
 // Melodee's own settings, not the project's: how the pads respond and
-// light, whether their pressure is used, whether pots pick up, the screen, and the MPC's recording toggles
+// light, whether their pressure is used, how the knobs, Knob FX and the fader take over a value, the screen, and the MPC's recording toggles
 // (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize) and Input Config (Shift + Sample). Kept as key=value lines in the
 // `settings` file next to the projects (with the project to open at start).
 namespace melodee {
 
+// How a knob or the fader takes over a value it does not sit at (the MPC's
+// MIDI Config): Pickup waits until it reaches the value, Scaled moves the
+// value the way the control goes, scaled so the two meet at the end of its
+// travel, Instant jumps to the control (parity phase 8; shell/takeover.h).
+enum class Takeover : uint8_t { Pickup, Scaled, Instant, Count };
+inline const char* takeover_name(Takeover t) {
+    static const char* const names[] {"Pickup", "Scaled", "Instant"};
+    return names[unsigned(t) % unsigned(Takeover::Count)];
+}
+
 struct Settings {
-    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, Pickup, Screen, Rows };
+    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, Screen, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
@@ -30,7 +40,9 @@ struct Settings {
     }
     bool pressure = true;     // off: the pads send no pressure (synths, Pad Punch depth)
     uint8_t pad_lights = 0;   // 0 track colours, 1 white, 2 off
-    bool pickup = true;       // off: a pot's value jumps to where it sits
+    // The MPC's defaults: Scaled for the knobs and Knob FX, Pickup for the fader. Before parity
+    // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.
+    Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
     uint8_t screen = 100;     // brightness, 20..100 %
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
@@ -40,7 +52,8 @@ struct Settings {
     void toggle_favourite(unsigned engine, unsigned sound) { if (engine < engines && sound < sounds) favourites[engine].flip(sound); }
 
     static const char* row_name(unsigned row) {
-        static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob pickup", "Screen"};
+        static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
+                                    "Fader takeover", "Screen"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -51,7 +64,9 @@ struct Settings {
         case PadResponse: return responses[pad_response % 4];
         case PadPressure: return pressure ? "On" : "Off";
         case PadLights: return lights[pad_lights % 3];
-        case Pickup: return pickup ? "On" : "Off";
+        case KnobTakeover: return takeover_name(knob_takeover);
+        case KnobFxTakeover: return takeover_name(knob_fx_takeover);
+        case FaderTakeover: return takeover_name(fader_takeover);
         default: return std::to_string(screen) + " %";
         }
     }
@@ -61,10 +76,16 @@ struct Settings {
         case PadResponse: pad_response = uint8_t((pad_response + 4 + way) % 4); break;
         case PadPressure: pressure = !pressure; break;
         case PadLights: pad_lights = uint8_t((pad_lights + 3 + way) % 3); break;
-        case Pickup: pickup = !pickup; break;
+        case KnobTakeover: knob_takeover = step_takeover(knob_takeover, way); break;
+        case KnobFxTakeover: knob_fx_takeover = step_takeover(knob_fx_takeover, way); break;
+        case FaderTakeover: fader_takeover = step_takeover(fader_takeover, way); break;
         case Screen: screen = uint8_t(std::clamp(int(screen) + way * 10, 20, 100)); break;
         default: break;
         }
+    }
+    static Takeover step_takeover(Takeover t, int way) {
+        int count = int(Takeover::Count);
+        return Takeover((int(t) + count + (way < 0 ? -1 : 1)) % count);
     }
     // A pad's velocity through the response curve.
     uint8_t velocity(uint8_t v) const {
@@ -76,7 +97,10 @@ struct Settings {
 
     std::string text() const {
         std::ostringstream out;
-        out << "pad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npickup=" << int(pickup)
+        // pickup= stays for the builds before parity phase 8, which know only that.
+        out << "pad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights)
+            << "\npickup=" << int(knob_takeover != Takeover::Instant) << "\nknob_takeover=" << int(knob_takeover)
+            << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
@@ -94,6 +118,9 @@ struct Settings {
     void read(const std::string& text) {
         std::istringstream in(text);
         std::string line;
+        int pickup = -1;          // the old row, read only when the file has none of the new ones
+        bool takeovers = false;
+        auto takeover = [&](int value) { takeovers = true; return Takeover(std::clamp(value, 0, int(Takeover::Count) - 1)); };
         while (std::getline(in, line)) {
             auto eq = line.find('=');
             if (eq == std::string::npos) continue;
@@ -102,6 +129,9 @@ struct Settings {
             if (key == "pad_response") pad_response = uint8_t(std::clamp(value, 0, 3));
             else if (key == "pad_lights") pad_lights = uint8_t(std::clamp(value, 0, 2));
             else if (key == "pickup") pickup = value != 0;
+            else if (key == "knob_takeover") knob_takeover = takeover(value);
+            else if (key == "knob_fx_takeover") knob_fx_takeover = takeover(value);
+            else if (key == "fader_takeover") fader_takeover = takeover(value);
             else if (key == "pressure") pressure = value != 0;
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
             else if (key == "count_in") count_in = value != 0;
@@ -123,6 +153,7 @@ struct Settings {
                     if (!item.empty()) { int s = std::atoi(item.c_str()); if (s >= 0 && unsigned(s) < sounds) favourites[e].set(unsigned(s)); }
             }
         }
+        if (!takeovers && pickup == 0) knob_takeover = knob_fx_takeover = fader_takeover = Takeover::Instant; // "Knob pickup Off"
     }
 };
 

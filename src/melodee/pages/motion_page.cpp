@@ -49,7 +49,7 @@ void draw(Paint& p, const Snapshot& s) {
             pad_label(lane_pad(param), label);
             p.text(label, x + 9, y + 1, 52, 9, caps_text(colour::mid, 7));
         }
-        p.text(pi.label, x + 9, y + 9, 52, 10, p.fit(pi.label, caps_text(shade), 56, 5));
+        p.text(pi.label, x + 9, y + 9, 54, 10, p.fit(pi.label, caps_text(shade), 52, 5));
         p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x + 9, y + 20, 56, 15, plain(colour::text, 12, Weight::Medium));
 
         // The lane: the track's own value until the first event, then each event holds.

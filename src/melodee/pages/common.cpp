@@ -5,10 +5,12 @@
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/pad_fx_info.h"
+#include "melodee/engine/sampler.h"
 #include "melodee/model/chords.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/fader_job.h"
 #include "melodee/shell/name_suggest.h"
 #include <algorithm>
 #include <cmath>
@@ -52,10 +54,8 @@ ui::SoftKeys play_keys(const Snapshot& s, int active) {
 }
 
 std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
-    using Kind = Binding::Kind;
     auto bindings = page_bindings(s.project, s.ui, s.pattern);
     auto second = shift_bindings(s.project, s.ui, s.pattern);
-    const auto& track = s.track();
     std::array<ui::KnobCard, 3> cards;
     for (unsigned n = 0; n < 3; ++n) {
         const auto& b = bindings[n];
@@ -76,220 +76,250 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         } else {
             c.state = ui::KnobCard::State::Rest;
         }
-        char text[32];
-        switch (b.kind) {
-        case Kind::Param: {
-            const auto& p = engine_info(track.engine).params[b.id];
-            auto shown = show(p, b.value);
-            c.label = p.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(p);
-            c.fill = gauge_of(p, b.value);
-            break;
-        }
-        case Kind::Level: c.label = "LEVEL"; c.value = juce::String(b.value); break;
-        case Kind::Pan:
-            c.label = "PAN"; c.bipolar = true;
-            c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
-            break;
-        case Kind::Send:
-            c.label = juce::String("SEND ") + char('A' + track.mix.bus % bus_count); c.value = juce::String(b.value); c.unit = "%";
-            break;
-        case Kind::Root: c.label = "ROOT"; c.value = note_letter(unsigned(b.value)); break;
-        case Kind::Scale: c.label = "SCALE"; c.value = scales()[size_t(b.value)].name; break;
-        case Kind::Layout: c.label = "LAYOUT"; c.value = layout_name(PadLayout(b.value)); break;
-        case Kind::Transpose:
-            c.label = "TRANSPOSE"; c.bipolar = true; c.unit = "st";
-            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
-            break;
-        case Kind::Engine: c.label = "ENGINE"; c.value = engine_info(track.engine).name; break;
-        case Kind::Jump:
-            std::snprintf(text, sizeof(text), "%02d", b.value + 1);
-            c.label = "JUMP"; c.value = text; c.unit = "/ " + juce::String(b.max + 1);
-            break;
-        case Kind::Audition: c.label = "AUDITION"; c.value = juce::String(b.value); c.unit = "vel"; break;
-        case Kind::StepLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
-        case Kind::StepVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
-        case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
-        case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
-        case Kind::StepChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::ModSource: c.label = "SOURCE"; c.value = mod_source_name(ModSource(b.value)); break;
-        case Kind::ModDest: {
-            const char* name = mod_dest_label(engine_info(track.engine), ModDest(b.value));
-            c.label = "DEST"; c.value = name ? name : mod_dest_name(ModDest(b.value));
-            break;
-        }
-        case Kind::ModAmount:
-            c.label = "AMOUNT"; c.bipolar = true;
-            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
-            break;
-        case Kind::PatternBars: case Kind::PatternLength: { // by the bar; a length that is not whole bars by the step of Q
-            unsigned bar = s.project.bar_ticks();
-            if (s.pattern.length % bar) { c.label = "LENGTH"; c.value = juce::String(s.pattern.steps()); c.unit = "steps"; break; }
-            unsigned bars = s.pattern.length / bar;
-            c.label = "LENGTH"; c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars";
-            break;
-        }
-        case Kind::Division: c.label = "Q"; c.value = division_name(Division(b.value)); break;
-        case Kind::TimeSignature: {
-            auto sig = time_signatures[unsigned(b.value) % time_signature_count];
-            c.label = "TIME SIG"; c.value = juce::String(sig.beats) + "/" + juce::String(sig.unit);
-            break;
-        }
-        case Kind::TcShift:
-            c.label = "SHIFT"; c.bipolar = true; c.unit = "ticks";
-            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
-            break;
-        case Kind::TcSwing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::Swing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
-        case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
-        case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
-        case Kind::FxParam: {
-            const auto& slot = s.project.chain(unsigned(b.id) / 64).slots[(unsigned(b.id) / 8) % 8];
-            const auto& pi = effect_info(EffectKind(slot.kind)).params[unsigned(b.id) % 8];
-            auto shown = show(pi, b.value);
-            c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
-            break;
-        }
-        case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
-        case Kind::BusReturn: c.label = "RETURN"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PadPitch: c.label = "PITCH"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
-        case Kind::PadLevel: c.label = "VOLUME"; c.value = decibels(b.value); c.unit = b.value > 0 ? "dB" : ""; break;
-        case Kind::PadPan:
-            c.label = "PAN"; c.bipolar = true;
-            c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
-            break;
-        case Kind::PadStart: case Kind::PadEnd: case Kind::ChopStart: case Kind::ChopEnd:
-            c.label = b.kind == Kind::PadEnd || b.kind == Kind::ChopEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
-            break;
-        case Kind::TrimZoom: case Kind::ChopZoom:
-            c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
-        case Kind::PadLoopPoint: c.label = "LOOP"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s"; break;
-        case Kind::PadLoop: c.label = "LOOP"; c.value = b.value ? "On" : "Off"; break;
-        case Kind::PadMono: c.label = "POLY"; c.value = b.value ? "Mono" : "Poly"; break;
-        case Kind::PadLink: {
-            char label[4]; pad_label(track.last_pad / 16 * 16 + unsigned(b.value + 15) % 16, label);
-            c.label = "PAD LINK"; c.value = b.value ? juce::String(label) : juce::String("Off");
-            break;
-        }
-        case Kind::PadOffset: c.label = "OFFSET"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PadVelSense: c.label = "VEL SENS"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PadDecayFrom: c.label = "DECAY FROM"; c.value = b.value ? "End" : "Start"; break;
-        case Kind::PadFilterType: c.label = "TYPE"; c.value = pad_filter_name(PadFilter(b.value)); break;
-        case Kind::PadCutoff: c.label = "CUTOFF"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PadResonance: c.label = "RESO"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PadFAmount: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PadFSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PadFAttack: case Kind::PadFDecay: case Kind::PadFRelease: {
-            c.label = b.kind == Kind::PadFAttack ? "ATTACK" : b.kind == Kind::PadFDecay ? "DECAY" : "RELEASE";
-            float seconds = time_seconds(b.value) * (b.kind == Kind::PadFAttack ? 0.3f : b.kind == Kind::PadFRelease ? 0.5f : 1.0f);
-            if (seconds < 1) { c.value = juce::String(int(seconds * 1000)); c.unit = "ms"; } else { c.value = juce::String(seconds, 1); c.unit = "s"; }
-            break;
-        }
-        case Kind::PadWarp: {
-            auto warp = warp_of_card(b.value);
-            c.label = "WARP";
-            if (warp == warp_seq) c.value = "Seq";
-            else if (warp == warp_off) c.value = "Off";
-            else { c.value = juce::String(int(warp)); c.unit = "%"; }
-            break;
-        }
-        case Kind::PadBeats: c.label = "# BEATS"; c.value = b.value ? juce::String(b.value) : juce::String("Auto"); break;
-        case Kind::ChopMode: c.label = "CHOP TYPE"; c.value = chop_mode_name(ChopMode(b.value)); break;
-        case Kind::ChopAmount: {
-            auto mode = ChopMode(b.id);
-            c.label = mode == ChopMode::Threshold ? "THRESHOLD" : mode == ChopMode::Regions ? "SLICES" : "BEATS";
-            c.value = juce::String(b.value); c.unit = mode == ChopMode::Threshold ? "%" : "";
-            break;
-        }
-        case Kind::FileJump:
-            c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
-            break;
-        case Kind::ProjectJump:
-            c.label = "JUMP"; c.value = juce::String(b.value + 1); c.unit = "/ " + juce::String(b.max + 1);
-            break;
-        case Kind::ProjectSort: c.label = "SORT"; c.value = b.value ? "Name" : "Newest"; break;
-        case Kind::PadFine: c.label = "FINE"; c.value = juce::String(b.value); c.unit = "ct"; c.bipolar = true; break;
-        case Kind::PadPlayMode: c.label = "NOTE ON"; c.value = b.value ? "Off" : "On"; break;
-        case Kind::PadGroup: c.label = "MUTE GROUP"; c.value = b.value ? juce::String(b.value) : juce::String("Off"); break;
-        case Kind::PadReverse: c.label = "REVERSE"; c.value = b.value ? "On" : "Off"; break;
-        case Kind::PadAttack: case Kind::PadDecay: case Kind::PadRelease: {
-            c.label = b.kind == Kind::PadAttack ? "ATTACK" : b.kind == Kind::PadDecay ? "DECAY" : "RELEASE";
-            if (b.kind == Kind::PadDecay && b.value >= 100) { c.value = "Hold"; break; }
-            float seconds = time_seconds(b.value) * (b.kind == Kind::PadAttack ? 0.3f : b.kind == Kind::PadRelease ? 0.5f : 1.0f);
-            if (seconds < 1) { c.value = juce::String(int(seconds * 1000)); c.unit = "ms"; } else { c.value = juce::String(seconds, 1); c.unit = "s"; }
-            break;
-        }
-        case Kind::PadSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(int(s.tempo) / 10); c.unit = "bpm"; break;
-        case Kind::NameSuggest: {
-            std::array<const char*, max_suggestions> names {};
-            unsigned count = name_suggestions(s.ui.name, names);
-            c.label = "SUGGEST"; c.value = count ? juce::String(names[std::min<unsigned>(unsigned(b.value), count - 1)]) : juce::String("None");
-            break;
-        }
-        case Kind::NameChar: {
-            char ch = NameEntry::charset[unsigned(b.value) % NameEntry::charset_size()];
-            c.label = "CHARACTER"; c.value = ch == ' ' ? juce::String("Space") : juce::String::charToString(juce::juce_wchar(ch));
-            break;
-        }
-        case Kind::PunchDepth: case Kind::PadPunchDepth: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::PunchSnap: c.label = "SNAP"; c.value = punch_snaps[b.value % punch_snap_count]; break;
-        case Kind::PadPunchRate: c.label = "RATE"; c.value = punch_snaps[b.value % punch_snap_count]; break;
-        case Kind::PunchTail: c.label = "TAIL"; c.value = punch_tails[b.value % 3]; break;
-        case Kind::PadPunchKind: c.label = "PUNCH"; c.value = b.value ? punch_title(PunchKind(b.value - 1)) : "None"; break;
-        case Kind::ClickLevel: c.label = "CLICK"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::ArpMode: c.label = "MODE"; c.value = arp_mode_name(ArpMode(b.value)); break;
-        case Kind::ArpRate: c.label = "RATE"; c.value = arp_rate_name(unsigned(b.value)); break;
-        case Kind::ArpOctaves: c.label = "OCTAVES"; c.value = juce::String(b.value); break;
-        case Kind::ChordType: c.label = "TYPE"; c.value = chord_type_name(unsigned(b.value)); break;
-        case Kind::ChordVoicing: c.label = "VOICING"; c.value = chord_voicing_name(unsigned(b.value)); break;
-        case Kind::ChordInvert: c.label = "INVERT"; c.value = chord_invert_name(unsigned(b.value)); break;
-        case Kind::CaptureBars: c.label = "BARS"; c.value = juce::String(b.value); c.unit = "of 4"; break;
-        case Kind::CaptureQuantise: c.label = "QUANTISE"; c.value = b.value == 0 ? "Off" : b.value == 1 ? "1/16" : "1/8"; break;
-        case Kind::CaptureInto: c.label = "INTO"; c.value = "P" + juce::String(b.value + 1); break;
-        case Kind::RecThreshold:
-            c.label = "THRESHOLD";
-            if (b.value <= InputConfig::threshold_min) c.value = "At once";
-            else { c.value = (b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value)); c.unit = "dB"; }
-            break;
-        case Kind::RecLength:
-            c.label = "REC LENGTH";
-            if (b.value == int(rec_free)) c.value = "Free";
-            else if (b.value == int(rec_seq)) c.value = "Seq";
-            else { auto bars = rec_bars(unsigned(b.value)); c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars"; }
-            break;
-        case Kind::RecSource: c.label = "SOURCE"; c.value = input_source_name(InputSource(b.value)); break;
-        case Kind::KnobParam: {
-            const auto& pi = effect_info(EffectKind(s.project.knob_fx.kind)).params[unsigned(b.id) % effect_params];
-            auto shown = show(pi, b.value);
-            c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
-            break;
-        }
-        case Kind::PadFxParam: {
-            const auto& pi = mpc_pad_fx(unsigned(b.id) / 4).params[unsigned(b.id) % 4 % punch_params];
-            auto shown = show(pi, b.value);
-            c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.fill = gauge_of(pi, b.value);
-            break;
-        }
-        case Kind::FlexMode: c.label = "MODE"; c.value = b.value ? "Loop" : "One Shot"; break;
-        case Kind::FlexMix: c.label = "MIX"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::CompAttack: case Kind::CompRelease: {
-            float ms = b.kind == Kind::CompAttack ? comp_attack_ms(b.value) : comp_release_ms(b.value);
-            c.label = b.kind == Kind::CompAttack ? "ATTACK" : "RELEASE";
-            c.value = ms < 10 ? juce::String(ms, 1) : juce::String(int(std::lround(ms)));
-            c.unit = "ms";
-            break;
-        }
-        case Kind::CompAmount: c.label = "AMOUNT"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::CompBoost: c.label = "IN BOOST"; c.value = "+" + juce::String(b.value); c.unit = "dB"; break;
-        case Kind::RecGain:
-            c.label = "GAIN"; c.unit = "dB";
-            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
-            break;
-        case Kind::None: break;
-        }
+        describe_card(s, b, c);
     }
     return cards;
+}
+
+// A card's label, value and unit for a Binding (the knob strip, the fader's card).
+void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
+    using Kind = Binding::Kind;
+    const auto& track = s.track();
+    char text[32];
+    switch (b.kind) {
+    case Kind::Param: {
+        const auto& p = engine_info(track.engine).params[b.id];
+        auto shown = show(p, b.value);
+        c.label = p.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(p);
+        c.fill = gauge_of(p, b.value);
+        break;
+    }
+    case Kind::Level: c.label = "LEVEL"; c.value = juce::String(b.value); break;
+    case Kind::Pan:
+        c.label = "PAN"; c.bipolar = true;
+        c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
+        break;
+    case Kind::Send:
+        c.label = juce::String("SEND ") + char('A' + track.mix.bus % bus_count); c.value = juce::String(b.value); c.unit = "%";
+        break;
+    case Kind::Root: c.label = "ROOT"; c.value = note_letter(unsigned(b.value)); break;
+    case Kind::Scale: c.label = "SCALE"; c.value = scales()[size_t(b.value)].name; break;
+    case Kind::Layout: c.label = "LAYOUT"; c.value = layout_name(PadLayout(b.value)); break;
+    case Kind::Transpose:
+        c.label = "TRANSPOSE"; c.bipolar = true; c.unit = "st";
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        break;
+    case Kind::Engine: c.label = "ENGINE"; c.value = engine_info(track.engine).name; break;
+    case Kind::Jump:
+        std::snprintf(text, sizeof(text), "%02d", b.value + 1);
+        c.label = "JUMP"; c.value = text; c.unit = "/ " + juce::String(b.max + 1);
+        break;
+    case Kind::Audition: c.label = "AUDITION"; c.value = juce::String(b.value); c.unit = "vel"; break;
+    case Kind::StepLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
+    case Kind::StepVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
+    case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
+    case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
+    case Kind::StepChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::ModSource: c.label = "SOURCE"; c.value = mod_source_name(ModSource(b.value)); break;
+    case Kind::ModDest: {
+        const char* name = mod_dest_label(engine_info(track.engine), ModDest(b.value));
+        c.label = "DEST"; c.value = name ? name : mod_dest_name(ModDest(b.value));
+        break;
+    }
+    case Kind::ModAmount:
+        c.label = "AMOUNT"; c.bipolar = true;
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        break;
+    case Kind::PatternBars: case Kind::PatternLength: { // by the bar; a length that is not whole bars by the step of Q
+        unsigned bar = s.project.bar_ticks();
+        if (s.pattern.length % bar) { c.label = "LENGTH"; c.value = juce::String(s.pattern.steps()); c.unit = "steps"; break; }
+        unsigned bars = s.pattern.length / bar;
+        c.label = "LENGTH"; c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars";
+        break;
+    }
+    case Kind::Division: c.label = "Q"; c.value = division_name(Division(b.value)); break;
+    case Kind::TimeSignature: {
+        auto sig = time_signatures[unsigned(b.value) % time_signature_count];
+        c.label = "TIME SIG"; c.value = juce::String(sig.beats) + "/" + juce::String(sig.unit);
+        break;
+    }
+    case Kind::TcShift:
+        c.label = "SHIFT"; c.bipolar = true; c.unit = "ticks";
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        break;
+    case Kind::TcSwing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::Swing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
+    case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
+    case Kind::SongLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "bar" : "bars"; break;
+    case Kind::FxParam: {
+        const auto& slot = s.project.chain(unsigned(b.id) / 64).slots[(unsigned(b.id) / 8) % 8];
+        const auto& pi = effect_info(EffectKind(slot.kind)).params[unsigned(b.id) % 8];
+        auto shown = show(pi, b.value);
+        c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
+        break;
+    }
+    case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
+    case Kind::BusReturn: c.label = "RETURN"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadPitch: c.label = "PITCH"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
+    case Kind::PadLevel: c.label = "VOLUME"; c.value = decibels(b.value); c.unit = b.value > 0 ? "dB" : ""; break;
+    case Kind::PadPan:
+        c.label = "PAN"; c.bipolar = true;
+        c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
+        break;
+    case Kind::PadStart: case Kind::PadEnd: case Kind::ChopStart: case Kind::ChopEnd:
+        c.label = b.kind == Kind::PadEnd || b.kind == Kind::ChopEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
+        break;
+    case Kind::TrimZoom: case Kind::ChopZoom:
+        c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
+    case Kind::PadLoopPoint: c.label = "LOOP"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s"; break;
+    case Kind::PadLoop: c.label = "LOOP"; c.value = b.value ? "On" : "Off"; break;
+    case Kind::PadMono: c.label = "POLY"; c.value = b.value ? "Mono" : "Poly"; break;
+    case Kind::PadLink: {
+        char label[4]; pad_label(track.last_pad / 16 * 16 + unsigned(b.value + 15) % 16, label);
+        c.label = "PAD LINK"; c.value = b.value ? juce::String(label) : juce::String("Off");
+        break;
+    }
+    case Kind::PadOffset: c.label = "OFFSET"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadVelSense: c.label = "VEL SENS"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadDecayFrom: c.label = "DECAY FROM"; c.value = b.value ? "End" : "Start"; break;
+    case Kind::PadFilterType: c.label = "TYPE"; c.value = pad_filter_name(PadFilter(b.value)); break;
+    case Kind::PadCutoff: c.label = "CUTOFF"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadResonance: c.label = "RESO"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadFAmount: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadFSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PadFAttack: case Kind::PadFDecay: case Kind::PadFRelease: {
+        c.label = b.kind == Kind::PadFAttack ? "ATTACK" : b.kind == Kind::PadFDecay ? "DECAY" : "RELEASE";
+        float seconds = time_seconds(b.value) * (b.kind == Kind::PadFAttack ? 0.3f : b.kind == Kind::PadFRelease ? 0.5f : 1.0f);
+        if (seconds < 1) { c.value = juce::String(int(seconds * 1000)); c.unit = "ms"; } else { c.value = juce::String(seconds, 1); c.unit = "s"; }
+        break;
+    }
+    case Kind::PadWarp: {
+        auto warp = warp_of_card(b.value);
+        c.label = "WARP";
+        if (warp == warp_seq) c.value = "Seq";
+        else if (warp == warp_off) c.value = "Off";
+        else { c.value = juce::String(int(warp)); c.unit = "%"; }
+        break;
+    }
+    case Kind::PadBeats: c.label = "# BEATS"; c.value = b.value ? juce::String(b.value) : juce::String("Auto"); break;
+    case Kind::ChopMode: c.label = "CHOP TYPE"; c.value = chop_mode_name(ChopMode(b.value)); break;
+    case Kind::ChopAmount: {
+        auto mode = ChopMode(b.id);
+        c.label = mode == ChopMode::Threshold ? "THRESHOLD" : mode == ChopMode::Regions ? "SLICES" : "BEATS";
+        c.value = juce::String(b.value); c.unit = mode == ChopMode::Threshold ? "%" : "";
+        break;
+    }
+    case Kind::FileJump:
+        c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
+        break;
+    case Kind::ProjectJump:
+        c.label = "JUMP"; c.value = juce::String(b.value + 1); c.unit = "/ " + juce::String(b.max + 1);
+        break;
+    case Kind::ProjectSort: c.label = "SORT"; c.value = b.value ? "Name" : "Newest"; break;
+    case Kind::PadFine: c.label = "FINE"; c.value = juce::String(b.value); c.unit = "ct"; c.bipolar = true; break;
+    case Kind::PadPlayMode: c.label = "NOTE ON"; c.value = b.value ? "Off" : "On"; break;
+    case Kind::PadGroup: c.label = "MUTE GROUP"; c.value = b.value ? juce::String(b.value) : juce::String("Off"); break;
+    case Kind::PadReverse: c.label = "REVERSE"; c.value = b.value ? "On" : "Off"; break;
+    case Kind::PadAttack: case Kind::PadDecay: case Kind::PadRelease: {
+        c.label = b.kind == Kind::PadAttack ? "ATTACK" : b.kind == Kind::PadDecay ? "DECAY" : "RELEASE";
+        if (b.kind == Kind::PadDecay && b.value >= 100) { c.value = "Hold"; break; }
+        float seconds = time_seconds(b.value) * (b.kind == Kind::PadAttack ? 0.3f : b.kind == Kind::PadRelease ? 0.5f : 1.0f);
+        if (seconds < 1) { c.value = juce::String(int(seconds * 1000)); c.unit = "ms"; } else { c.value = juce::String(seconds, 1); c.unit = "s"; }
+        break;
+    }
+    case Kind::PadSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(int(s.tempo) / 10); c.unit = "bpm"; break;
+    case Kind::NameSuggest: {
+        std::array<const char*, max_suggestions> names {};
+        unsigned count = name_suggestions(s.ui.name, names);
+        c.label = "SUGGEST"; c.value = count ? juce::String(names[std::min<unsigned>(unsigned(b.value), count - 1)]) : juce::String("None");
+        break;
+    }
+    case Kind::NameChar: {
+        char ch = NameEntry::charset[unsigned(b.value) % NameEntry::charset_size()];
+        c.label = "CHARACTER"; c.value = ch == ' ' ? juce::String("Space") : juce::String::charToString(juce::juce_wchar(ch));
+        break;
+    }
+    case Kind::PunchDepth: case Kind::PadPunchDepth: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PunchSnap: c.label = "SNAP"; c.value = punch_snaps[b.value % punch_snap_count]; break;
+    case Kind::PadPunchRate: c.label = "RATE"; c.value = punch_snaps[b.value % punch_snap_count]; break;
+    case Kind::PunchTail: c.label = "TAIL"; c.value = punch_tails[b.value % 3]; break;
+    case Kind::PadPunchKind: c.label = "PUNCH"; c.value = b.value ? punch_title(PunchKind(b.value - 1)) : "None"; break;
+    case Kind::ClickLevel: c.label = "CLICK"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::ArpMode: c.label = "MODE"; c.value = arp_mode_name(ArpMode(b.value)); break;
+    case Kind::ArpRate: c.label = "RATE"; c.value = arp_rate_name(unsigned(b.value)); break;
+    case Kind::ArpOctaves: c.label = "OCTAVES"; c.value = juce::String(b.value); break;
+    case Kind::ChordType: c.label = "TYPE"; c.value = chord_type_name(unsigned(b.value)); break;
+    case Kind::ChordVoicing: c.label = "VOICING"; c.value = chord_voicing_name(unsigned(b.value)); break;
+    case Kind::ChordInvert: c.label = "INVERT"; c.value = chord_invert_name(unsigned(b.value)); break;
+    case Kind::CaptureBars: c.label = "BARS"; c.value = juce::String(b.value); c.unit = "of 4"; break;
+    case Kind::CaptureQuantise: c.label = "QUANTISE"; c.value = b.value == 0 ? "Off" : b.value == 1 ? "1/16" : "1/8"; break;
+    case Kind::CaptureInto: c.label = "INTO"; c.value = "P" + juce::String(b.value + 1); break;
+    case Kind::RecThreshold:
+        c.label = "THRESHOLD";
+        if (b.value <= InputConfig::threshold_min) c.value = "At once";
+        else { c.value = (b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value)); c.unit = "dB"; }
+        break;
+    case Kind::RecLength:
+        c.label = "REC LENGTH";
+        if (b.value == int(rec_free)) c.value = "Free";
+        else if (b.value == int(rec_seq)) c.value = "Seq";
+        else { auto bars = rec_bars(unsigned(b.value)); c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars"; }
+        break;
+    case Kind::RecSource: c.label = "SOURCE"; c.value = input_source_name(InputSource(b.value)); break;
+    case Kind::KnobParam: {
+        const auto& pi = effect_info(EffectKind(s.project.knob_fx.kind)).params[unsigned(b.id) % effect_params];
+        auto shown = show(pi, b.value);
+        c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
+        break;
+    }
+    case Kind::PadFxParam: {
+        const auto& pi = mpc_pad_fx(unsigned(b.id) / 4).params[unsigned(b.id) % 4 % punch_params];
+        auto shown = show(pi, b.value);
+        c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.fill = gauge_of(pi, b.value);
+        break;
+    }
+    case Kind::FlexMode: c.label = "MODE"; c.value = b.value ? "Loop" : "One Shot"; break;
+    case Kind::FlexMix: c.label = "MIX"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::CompAttack: case Kind::CompRelease: {
+        float ms = b.kind == Kind::CompAttack ? comp_attack_ms(b.value) : comp_release_ms(b.value);
+        c.label = b.kind == Kind::CompAttack ? "ATTACK" : "RELEASE";
+        c.value = ms < 10 ? juce::String(ms, 1) : juce::String(int(std::lround(ms)));
+        c.unit = "ms";
+        break;
+    }
+    case Kind::CompAmount: c.label = "AMOUNT"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::CompBoost: c.label = "IN BOOST"; c.value = "+" + juce::String(b.value); c.unit = "dB"; break;
+    case Kind::RecGain:
+        c.label = "GAIN"; c.unit = "dB";
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        break;
+    case Kind::ModWheel: c.label = "MOD WHEEL"; c.value = juce::String(b.value); break;
+    case Kind::None: break;
+    }
+}
+
+FaderShown fader_shown(const Snapshot& s) {
+    FaderShown out;
+    auto job = fader_job(s.project, s.ui);
+    const auto& t = s.track();
+    if (job.source == FaderJob::Source::None) { out.what = "OFF"; out.off = true; return out; }
+    if (job.source == FaderJob::Source::Nudge) { out.what = "NUDGE"; return out; }
+    char pad[4];
+    pad_label(t.last_pad % sampler_pads, pad);
+    bool kit_pad = job.source == FaderJob::Source::Target && fader_target(t) != FaderTarget::KitVolume && fader_target(t) != FaderTarget::ModWheel;
+    if (!job.binding.bound()) { out.what = kit_pad ? juce::String(pad) + " EMPTY" : juce::String("NOTHING"); return out; }
+    out.value = true;
+    out.card.fill = job.binding.fraction();
+    out.card.track = out.card.shade = colour_of(s);
+    describe_card(s, job.binding, out.card);
+    if (job.binding.kind == Binding::Kind::Param && job.binding.id == sampler::Level && t.engine == EngineKind::Sampler) out.card.label = "KIT VOLUME";
+    out.what = kit_pad ? juce::String(pad) + " " + out.card.label : out.card.label;
+    const auto& f = s.ui.fader;
+    out.waiting = f.position >= 0 && !f.engaged;
+    if (out.waiting) { out.card.state = ui::KnobCard::State::Pickup; out.card.pot = f.position / 127.0f; }
+    return out;
 }
 
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header) {

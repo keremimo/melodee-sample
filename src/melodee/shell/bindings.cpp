@@ -94,9 +94,13 @@ Binding filter_second(const PadSound& pad, bool other) {
 }
 } // namespace
 
+// The mod wheel's lane, as Motion shows it (parity phase 8).
+const ParamInfo wheel_info {"MOD WHEEL", 0, 127, 0, Format::Number};
+
 MotionParam motion_param(const Track& track, int lane) {
     if (lane < 0) return {};
     int param = int(lane_param(lane));
+    if (unsigned(param) == motion_wheel) return {&wheel_info, track.wheel};
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // a kit pad's own value
         auto p = PadParam(which);
         if (track.engine != EngineKind::Sampler) return {};
@@ -126,6 +130,7 @@ std::string lane_name(const Track& track, int lane) {
 
 Binding lane_binding(const Track& track, unsigned t, int lane) {
     int param = int(lane_param(lane));
+    if (unsigned(param) == motion_wheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // the pad's card, as on the sampler pages (they edit the last pad hit)
         auto m = motion_param(track, lane);
         if (!m.info || lane_pad(lane) != track.last_pad % sampler_pads) return {};
@@ -138,6 +143,15 @@ Binding lane_binding(const Track& track, unsigned t, int lane) {
         return {Kind::FxParam, int32_t(t * 64 + slot * 8 + q), m.info->min, m.info->max, m.value};
     }
     return engine_param(track, param);
+}
+
+int binding_lane(const Track& track, const Binding& b) {
+    if (b.kind == Kind::Param) return motion_lane(unsigned(b.id));
+    if (b.kind == Kind::ModWheel) return motion_lane(motion_wheel);
+    if (track.engine != EngineKind::Sampler) return -1;
+    for (unsigned p = 0; p < pad_param_count; ++p) // a kit pad's own value: its lane on the last pad hit
+        if (pad_kind(PadParam(p)) == b.kind) return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads);
+    return -1;
 }
 
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {

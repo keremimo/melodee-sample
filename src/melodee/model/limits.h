@@ -43,4 +43,7 @@ constexpr unsigned motion_fx_param(unsigned slot, unsigned parameter) { return m
 // Then a kit pad's own values (model/pad_params.h), each lane on one pad
 // (MotionEvent::pad): motion_pad_base + PadParam.
 constexpr unsigned motion_pad_base = motion_fx_base + track_slots * 6;
+// Last, the track's mod wheel as the fader moves it (parity phase 8): one
+// lane of its own, kept in the file's MOTW section.
+constexpr unsigned motion_wheel = 255;
 }

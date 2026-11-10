@@ -18,6 +18,7 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     bool sheet = s.ui.name.open() || s.ui.exit_open;
     if (tracks_on_pads(s.ui) && !sheet) draw_track_overlay(p, s);
     if (!sheet && s.ui.ask != UiState::Ask::None) draw_ask_sheet(p, s); // B1 Cancel / B3 Do it before an erase
+    if (!sheet && s.ui.ask == UiState::Ask::None && !tracks_on_pads(s.ui)) draw_fader_card(p, s);
     draw_notice(p, s);
     if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);
@@ -117,6 +118,33 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     for (auto& card : cards) { if (card.shift == 2) any = true; else card.state = KnobCard::State::Idle; }
     if (any) knob_strip(p, cards);
     else p.dim_zone(zone::knobs_y, zone::knobs_h);
+}
+
+// The fader moved (parity phase 8): for a moment, over the picture's bottom
+// right, what it drives on this page and the value, hollow where the fader
+// has not reached it yet (takeover). The Fader page and Step Edit (FADER:
+// NUDGE) say it on the page.
+void draw_fader_card(Paint& p, const Snapshot& s) {
+    if (!s.ui.fader_moved_at || s.now - s.ui.fader_moved_at > 1500) return;
+    if (s.ui.page == PageId::FaderPage || s.ui.page == PageId::StepEdit) return;
+    auto shown = fader_shown(s);
+    constexpr float w = 128, h = 38;
+    float x = zone::width - zone::pad - w, y = zone::knobs_y - h - 3;
+    auto c = colour_of(s);
+    p.fill(x - 1, y - 1, w + 2, h + 2, colour::bg, 6);
+    p.fill(x, y, w, h, colour::raised, 5);
+    p.text("FADER", x + 7, y + 4, 40, 9, caps_text(colour::mid, 6));
+    juce::String what = shown.off ? juce::String::fromUTF8("OFF \xc2\xb7 SHIFT + PAD 9") : shown.what;
+    p.text(what, x + 40, y + 4, w - 47, 9, p.fit(what, caps_text(shown.off ? colour::mid : c, 6), w - 47, 5));
+    if (!shown.value) return;
+    juce::String value = shown.card.value + (shown.card.unit.isNotEmpty() ? " " + shown.card.unit : juce::String());
+    p.text(value, x + 7, y + 14, w - 14, 13, p.fit(value, plain(shown.waiting ? colour::mid : colour::text, 11, Weight::Medium), w - 14, 7));
+    float gx = x + 7, gw = w - 14, gy = y + h - 8, f = std::clamp(shown.card.fill, 0.0f, 1.0f);
+    p.fill(gx, gy, gw, 3, colour::quiet, 1.5f);
+    auto ink = shown.waiting ? colour::mid : c;
+    if (shown.card.bipolar) p.fill(gx + gw * std::min(f, 0.5f), gy, std::max(1.0f, gw * std::abs(f - 0.5f)), 3, ink, 1.5f);
+    else p.fill(gx, gy, gw * f, 3, ink, 1.5f);
+    if (shown.waiting) p.ring(gx + gw * shown.card.pot - 2, gy - 2, 4, 7, colour::text, 1.5f, 1); // where the fader sits
 }
 
 // Over the header: copying a pad (until it is done), or for a moment what

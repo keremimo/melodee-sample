@@ -23,6 +23,10 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/fader_job.h"
+#include "melodee/shell/takeover.h"
+#include "melodee/model/fader.h"
+#include "melodee/engine/effect_info.h"
 #include "melodee/shell/history.h"
 #include "melodee/shell/name_entry.h"
 #include "melodee/shell/name_suggest.h"
@@ -1115,10 +1119,10 @@ void punches() {
 void settings() {
     // Settings survive their text, ignore what they do not know and keep values in range.
     Settings a;
-    a.pad_response = 2; a.pad_lights = 1; a.pickup = false; a.screen = 60;
+    a.pad_response = 2; a.pad_lights = 1; a.knob_takeover = Takeover::Instant; a.screen = 60;
     Settings b;
     b.read("start=/x\n" + a.text() + "colour=pink\nscreen=900\n");
-    CHECK(b.pad_response == 2 && b.pad_lights == 1 && !b.pickup && b.screen == 100);
+    CHECK(b.pad_response == 2 && b.pad_lights == 1 && b.knob_takeover == Takeover::Instant && b.screen == 100);
     b.read(a.text());
     CHECK(b.screen == 60);
     // Pad response: soft lifts a light hit, hard lowers it, fixed is always 100, medium leaves it.
@@ -1271,8 +1275,8 @@ void shift_pads() {
     CHECK(shift_pad_job(12).kind == K::Action);                                // Trim Sample (phase 5)
     CHECK(shift_pad_job(10).kind == K::Action);                                // Resample (phase 6)
     CHECK(shift_pad_job(4).kind == K::Open);                                   // Compressor (phase 7)
-    for (unsigned n : {7u, 8u})
-        CHECK(shift_pad_job(n).kind == K::Later && shift_pad_job(n).phase >= 2);
+    CHECK(shift_pad_job(8).kind == K::Open);                                   // Fader (phase 8)
+    CHECK(shift_pad_job(7).kind == K::Later && shift_pad_job(7).phase == 9);   // MIDI Config
 
     UiState ui;
     CHECK(!ui.settings.full_level() && !ui.settings.count_in && ui.settings.rec_quantize);
@@ -2582,7 +2586,132 @@ void pad_fx_and_flex() {
     }
 }
 
+void fader_and_takeover() {
+    using Kind = Binding::Kind;
+    auto project = std::make_unique<Project>();
+    auto& kit = project->tracks[3];
+    load_sound(kit, EngineKind::Sampler, 0);
+    kit.pads[8].sample = 0; kit.last_pad = 8; kit.pads[8].level = 90; kit.pads[8].pan = 0;
+    auto& synth = project->tracks[2];
+    load_sound(synth, EngineKind::Prophet, 0);
+    // Defaults by engine; a kit target on a synth falls back to the mod wheel.
+    CHECK(fader_target(kit) == FaderTarget::PadVolume && fader_target(synth) == FaderTarget::ModWheel);
+    synth.fader_target = uint8_t(FaderTarget::PadPan);
+    CHECK(fader_target(synth) == FaderTarget::ModWheel);
+    synth.fader_target = fader_by_engine;
+
+    // What it drives: the track's target, or the page's own job.
+    UiState ui; ui.track = 3; ui.page = PageId::Stage;
+    auto job = fader_job(*project, ui);
+    CHECK(job.source == FaderJob::Source::Target && job.binding.kind == Kind::PadLevel && job.binding.value == 90);
+    ui.page = PageId::Mix;
+    job = fader_job(*project, ui);
+    CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::Level);
+    ui.page = PageId::Sends; CHECK(fader_job(*project, ui).binding.kind == Kind::Send);
+    ui.page = PageId::StepEdit; CHECK(fader_job(*project, ui).source == FaderJob::Source::Nudge);
+    ui.page = PageId::Compressor; CHECK(fader_job(*project, ui).binding.kind == Kind::CompAmount);
+    ui.page = PageId::FlexBeat; CHECK(fader_job(*project, ui).binding.kind == Kind::FlexMix);
+    ui.page = PageId::KnobFx; // no effect loaded: the track's target
+    CHECK(fader_job(*project, ui).source == FaderJob::Source::Target);
+    project->knob_fx.kind = uint8_t(EffectKind::Chorus);
+    job = fader_job(*project, ui);
+    CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::KnobParam
+          && std::string(effect_info(EffectKind::Chorus).params[size_t(job.binding.id)].label) == "MIX");
+    project->knob_fx.kind = uint8_t(EffectKind::Filter); // no MIX: K1's, the cutoff
+    CHECK(fader_job(*project, ui).binding.id == 0);
+    // Off: only the page's own jobs remain.
+    ui.page = PageId::Stage; kit.fader_on = false;
+    CHECK(fader_job(*project, ui).source == FaderJob::Source::None && fader_light_level(fader_job(*project, ui)) == 0);
+    ui.page = PageId::Mix; CHECK(fader_job(*project, ui).source == FaderJob::Source::Page);
+    kit.fader_on = true; ui.page = PageId::Stage;
+    // Decay / Release swaps with the pad's play mode; an empty last pad has nothing to drive.
+    kit.fader_target = uint8_t(FaderTarget::PadDecay); kit.pads[8].play = PadPlay::OneShot;
+    CHECK(fader_job(*project, ui).binding.kind == Kind::PadDecay);
+    kit.pads[8].play = PadPlay::Gate;
+    CHECK(fader_job(*project, ui).binding.kind == Kind::PadRelease);
+    kit.last_pad = 9;
+    CHECK(fader_job(*project, ui).source == FaderJob::Source::Target && !fader_job(*project, ui).binding.bound());
+    kit.last_pad = 8;
+    kit.fader_target = uint8_t(FaderTarget::KitVolume);
+    CHECK(fader_job(*project, ui).binding.kind == Kind::Param && fader_job(*project, ui).binding.id == sampler::Level);
+    // The light: the value's place; pan and tune brightest at the middle.
+    kit.fader_target = uint8_t(FaderTarget::PadPan);
+    CHECK(std::fabs(fader_light_level(fader_job(*project, ui)) - 1) < 0.02f);
+    kit.pads[8].pan = -50;
+    CHECK(fader_light_level(fader_job(*project, ui)) < 0.1f);
+    kit.fader_target = uint8_t(FaderTarget::PadVolume); kit.pads[8].level = 127;
+    CHECK(fader_light_level(fader_job(*project, ui)) > 0.99f);
+    kit.pads[8].level = 0;
+    CHECK(fader_light_level(fader_job(*project, ui)) < 0.1f);
+    // Motion lanes: the pad's own on the last pad, the mod wheel's, none for the mix strip.
+    CHECK(binding_lane(kit, Binding {Kind::PadLevel, 0, 0, 127, 0}) == motion_lane(motion_pad_param(PadParam::Level), 8));
+    CHECK(binding_lane(synth, Binding {Kind::ModWheel, 0, 0, 127, 0}) == motion_lane(motion_wheel));
+    CHECK(binding_lane(kit, Binding {Kind::Level, 0, 0, 127, 0}) < 0);
+    CHECK(lane_name(synth, motion_lane(motion_wheel)) == "MOD WHEEL" && lane_binding(synth, 2, motion_lane(motion_wheel)).kind == Kind::ModWheel);
+
+    // Takeover: Pickup waits until the control reaches the value, Instant jumps, Scaled moves along and meets it.
+    Binding b {Kind::Level, 0, 0, 127, 100};
+    Pot pot; int out = -1;
+    pot.engaged = takeover_meets(10, b);
+    CHECK(!pot.engaged && !takeover_move(Takeover::Pickup, pot, 10, 20, b, out) && !pot.engaged);
+    CHECK(takeover_move(Takeover::Pickup, pot, 95, 105, b, out) && pot.engaged && out == 105); // crossed it
+    pot = {};
+    CHECK(takeover_move(Takeover::Instant, pot, 10, 20, b, out) && out == 20 && pot.engaged);
+    pot = {};
+    Binding scaled = b;
+    int position = 10;
+    for (; position < 127; ++position) { // up from 10: the value rises with it and they meet at the top
+        if (takeover_move(Takeover::Scaled, pot, position, position + 1, scaled, out)) { CHECK(out >= scaled.value - 2); scaled.value = out; } // at most a step back where they meet
+    }
+    CHECK(pot.engaged && scaled.value == 127);
+    pot = {}; scaled.value = 50;
+    bool moved = false;
+    for (position = 127; position > 0; --position) { // down from the top: the value falls with it, never past the control
+        if (takeover_move(Takeover::Scaled, pot, position, position - 1, scaled, out)) { CHECK(out <= scaled.value + 2); scaled.value = out; moved = true; }
+        if (pot.engaged) break;
+    }
+    CHECK(moved && pot.engaged && std::abs(position - scaled.value) <= 3);
+
+    // Settings: the MPC's defaults; the old "Knob pickup Off" reads as Instant everywhere, On as the defaults.
+    Settings fresh;
+    CHECK(fresh.knob_takeover == Takeover::Scaled && fresh.knob_fx_takeover == Takeover::Scaled && fresh.fader_takeover == Takeover::Pickup);
+    Settings old_off; old_off.read("pad_response=1\npickup=0\n");
+    CHECK(old_off.knob_takeover == Takeover::Instant && old_off.knob_fx_takeover == Takeover::Instant && old_off.fader_takeover == Takeover::Instant);
+    Settings old_on; old_on.read("pickup=1\n");
+    CHECK(old_on.knob_takeover == Takeover::Scaled && old_on.fader_takeover == Takeover::Pickup);
+    Settings mixed; mixed.knob_takeover = Takeover::Pickup; mixed.knob_fx_takeover = Takeover::Instant; mixed.fader_takeover = Takeover::Scaled;
+    auto text = mixed.text();
+    CHECK(text.find("pickup=1") != std::string::npos); // older builds still read a pickup they know
+    Settings back; back.read(text);
+    CHECK(back.knob_takeover == Takeover::Pickup && back.knob_fx_takeover == Takeover::Instant && back.fader_takeover == Takeover::Scaled);
+    back.step(Settings::FaderTakeover, 1); CHECK(back.fader_takeover == Takeover::Instant);
+    back.step(Settings::FaderTakeover, 1); CHECK(back.fader_takeover == Takeover::Pickup);
+    CHECK(std::string(Settings::row_name(Settings::KnobFxTakeover)) == "Knob FX takeover");
+
+    // The file: the fader's target and on / off per track (FADR), the mod wheel's lane (MOTW); older files load the defaults.
+    {
+        auto patterns = std::make_unique<PatternBank>();
+        kit.fader_target = uint8_t(FaderTarget::PadCutoff); kit.fader_on = false;
+        MotionEvent wheel; wheel.track = 2; wheel.pattern = 0; wheel.step = 4; wheel.param = uint8_t(motion_wheel); wheel.value = 90;
+        MotionEvent cutoff; cutoff.track = 2; cutoff.pattern = 0; cutoff.step = 2; cutoff.param = 3; cutoff.value = 40;
+        project->motion.write(wheel); project->motion.write(cutoff);
+        auto bytes = save_project(*project, *patterns);
+        auto loaded = std::make_unique<Project>();
+        CHECK(load_project(bytes, *loaded, *patterns).empty());
+        CHECK(loaded->tracks[3].fader_target == uint8_t(FaderTarget::PadCutoff) && !loaded->tracks[3].fader_on);
+        CHECK(loaded->tracks[2].fader_target == fader_by_engine && loaded->tracks[2].fader_on);
+        CHECK(loaded->motion.count == 2 && loaded->motion.has(2, 0, uint8_t(motion_wheel), 0) && loaded->motion.has(2, 0, 3, 0));
+        for (size_t n = 0; n + 4 <= bytes.size(); ++n)
+            if (std::memcmp(&bytes[n], "FADR", 4) == 0 || std::memcmp(&bytes[n], "MOTW", 4) == 0) std::memcpy(&bytes[n], "XXXX", 4);
+        auto older = std::make_unique<Project>();
+        CHECK(load_project(bytes, *older, *patterns).empty());
+        CHECK(older->tracks[3].fader_target == fader_by_engine && older->tracks[3].fader_on && fader_target(older->tracks[3]) == FaderTarget::PadVolume);
+        CHECK(older->motion.count == 1 && older->motion.has(2, 0, 3, 0)); // MOT2 never held the wheel
+    }
+}
+
 int main() {
+    fader_and_takeover();
     pad_fx_and_flex();
     performance_effects();
     audio_input_and_rendering();

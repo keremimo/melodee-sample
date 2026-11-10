@@ -60,6 +60,7 @@ private:
     void wheel(int delta);
     void pad(unsigned pad, uint8_t velocity, bool down);
     void check_pickup(unsigned index, const Binding& binding);
+    Takeover pot_takeover(const Binding& binding) const;
     std::string button_text() const; // the button lights for `status`
     std::string lit_pads_text() const; // and the lit pads
     std::string pad_summary() const;   // the last pad's Sample Mode values (phase 4)
@@ -100,12 +101,15 @@ private:
     std::atomic<uint32_t> record_bits {0}; // phase 6: source, monitor, the take's pad + 1, cuts, rendering, pick, threshold
     std::atomic<uint32_t> knob_bits {0}, knob_targets {0}, comp_bits {0}; // phase 7: Knob FX and the master compressor
     std::atomic<uint32_t> padfx_bits {0}, punch_slots_bits {0};            // phase 7b: Pad FX and Flex Beat
+    std::atomic<uint32_t> fader_bits {0}, fader_value {0};                 // phase 8: the fader
+    std::atomic<int> fader_at {-1};                                        // and where it sits
     std::atomic<uint32_t> chop_bits {0}, pad_start_now {0}, pad_end_now {0}, files_bits {0};
     mutable std::mutex text_lock;
     std::string pad_name_text, folder_text; // under text_lock
     std::string input_summary() const;  // phase 6: Input Config, takes, Recall, renders
     std::string fx_summary() const;     // phase 7: Knob FX, the master compressor
     std::string padfx_summary() const;  // phase 7b: Pad FX, Flex Beat
+    std::string fader_summary() const;  // phase 8: the fader and the takeover modes
     std::string sample_summary() const;
 };
 

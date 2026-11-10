@@ -47,7 +47,8 @@ struct Binding {
         KnobParam,                                 // Knob FX (parity phase 7), id: the effect's parameter 0..5
         CompAttack, CompRelease, CompAmount, CompBoost, // the master compressor (parity phase 7)
         PadFxParam,                                // Pad FX (parity phase 7b): id = the MPC's Pad FX * 4 + its K
-        FlexMode, FlexMix                          // Flex Beat
+        FlexMode, FlexMix,                         // Flex Beat
+        ModWheel                                   // the fader's mod wheel (parity phase 8), 0..127
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -105,5 +106,9 @@ inline uint8_t warp_of_card(int value) { return value >= warp_card_seq ? warp_se
 constexpr unsigned song_zooms[] {4, 8, 16, 32, 64};
 // The track's three favourite parameters, for every page without its own.
 std::array<Binding, 3> favourite_bindings(const Track& track);
+// The Motion lane a card's value lands in when it moves during Seq Record
+// (an engine parameter, a kit pad's own value on the last pad, the mod
+// wheel), -1 where it lands in none.
+int binding_lane(const Track& track, const Binding& b);
 
 } // namespace melodee

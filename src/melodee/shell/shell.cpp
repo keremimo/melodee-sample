@@ -8,6 +8,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/fader.h"
+#include "melodee/shell/takeover.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include <cstdio>
@@ -215,14 +216,20 @@ void Shell::button(Button b, bool pressed) {
     end_copy_away(); // left the kit or Patterns: copying ends
 }
 
-// A pot changes its value once it reaches it (pickup); until then the card
-// shows the value dim with a tick where the pot sits.
+// A pot drives its value once it meets it (takeover: shell/takeover.h); until
+// then the card shows the value dim with a tick where the pot sits. Knob FX's
+// cards follow their own mode (Settings), the rest the knobs'.
+Takeover Shell::pot_takeover(const Binding& binding) const {
+    return binding.kind == Binding::Kind::KnobParam ? ui_.settings.knob_fx_takeover : ui_.settings.knob_takeover;
+}
+
 void Shell::check_pickup(unsigned n, const Binding& binding) {
     auto& pot = ui_.pots[n];
     uint32_t key = binding.key(ui_.track);
     if (pot.bound == key) return;
     pot.bound = key;
-    pot.engaged = pot.position >= 0 && std::abs(pot.position - int(binding.fraction() * 127 + 0.5f)) <= 2;
+    pot.scaled = -1;
+    pot.engaged = pot_takeover(binding) == Takeover::Instant || takeover_meets(pot.position, binding);
 }
 
 void Shell::pot(unsigned n, int position, bool syncing) {
@@ -254,15 +261,8 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         pot.engaged = false; pot.bound = 0;
         return;
     }
-    if (!ui_.settings.pickup) pot.engaged = true; // pickup off: the value jumps to the pot
-    if (!pot.engaged) {
-        int target = int(b.fraction() * 127 + 0.5f);
-        bool crossed = before >= 0 && ((before <= target && position >= target) || (before >= target && position <= target));
-        if (before < 0 || crossed || std::abs(position - target) <= 2) pot.engaged = true;
-    }
-    if (!pot.engaged) return;
-    int value = b.at(position);
-    if (value != b.value) context_.apply(b, value);
+    int value = 0;
+    if (takeover_move(pot_takeover(b), pot, before, position, b, value)) context_.apply(b, value);
 }
 
 void Shell::wheel(int delta) {
@@ -344,6 +344,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     auto bindings = page_bindings(*project_, ui_, context_.pattern());
     for (unsigned n = 0; n < 3; ++n) if (bindings[n].bound()) check_pickup(n, bindings[n]);
+    fader_check(context_);
     out.ui = ui_;
     out.project = *project_;
     out.pattern = context_.pattern();
@@ -430,7 +431,19 @@ std::string Shell::fx_summary() const {
          + " melodee_comp=" + std::to_string(c & 1) + " melodee_comp_color=" + std::to_string((c >> 1) & 1)
          + " melodee_comp_boost=" + std::to_string((c >> 2) & 0x3f) + " melodee_comp_attack=" + std::to_string((c >> 8) & 0xff)
          + " melodee_comp_release=" + std::to_string((c >> 16) & 0xff) + " melodee_comp_amount=" + std::to_string(c >> 24)
-         + " melodee_comp_reduction=" + text + padfx_summary();
+         + " melodee_comp_reduction=" + text + padfx_summary() + fader_summary();
+}
+
+// Phase 8: the fader. melodee_fader_job: 0 off, 1 the track's target, 2 the page's own job, 3 Step Edit's nudge;
+// melodee_fader_kind: the card it drives (Binding::Kind), melodee_fader_value its value; takeovers 0 Pickup, 1 Scaled, 2 Instant.
+std::string Shell::fader_summary() const {
+    uint32_t f = fader_bits.load(std::memory_order_relaxed), v = fader_value.load(std::memory_order_relaxed);
+    return " melodee_fader_target=" + std::to_string(f & 0xf) + " melodee_fader_on=" + std::to_string((f >> 4) & 1)
+         + " melodee_fader_job=" + std::to_string((f >> 5) & 3) + " melodee_fader_engaged=" + std::to_string((f >> 7) & 1)
+         + " melodee_fader_kind=" + std::to_string(v >> 16) + " melodee_fader_value=" + std::to_string(int(int16_t(v & 0xffff)))
+         + " melodee_fader_light=" + std::to_string((f >> 16) & 0x7f) + " melodee_wheel=" + std::to_string((f >> 24) & 0x7f)
+         + " melodee_takeover=" + std::to_string((f >> 8) & 3) + "," + std::to_string((f >> 10) & 3) + "," + std::to_string((f >> 12) & 3)
+         + " melodee_fader_at=" + std::to_string(fader_at.load(std::memory_order_relaxed));
 }
 
 // Phase 7b: Pad FX and Flex Beat.

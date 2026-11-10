@@ -50,6 +50,7 @@ const PageSpec& page_spec(PageId page) {
     case PageId::KnobFx: return knob_fx_page;
     case PageId::Compressor: return compressor_page;
     case PageId::FlexBeat: return flex_beat_page;
+    case PageId::FaderPage: return fader_page;
     case PageId::Stage:
     default: return stage_page;
     }

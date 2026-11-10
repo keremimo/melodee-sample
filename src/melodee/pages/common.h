@@ -14,6 +14,19 @@ namespace melodee {
 ui::Header header_of(const Snapshot& s);
 ui::HeaderItem tag_of(const Snapshot& s, unsigned track);
 std::array<ui::KnobCard, 3> cards_of(const Snapshot& s);
+// A card's label, value and unit for one Binding (also the fader's card).
+void describe_card(const Snapshot& s, const struct Binding& b, ui::KnobCard& c);
+// What the fader does here (shell/fader_job.h), for the screen: "A01 VOLUME",
+// "LEVEL", "NUDGE", "OFF"; its value as a card (label set to that), and
+// whether it still has to reach the value (takeover) and where it sits.
+struct FaderShown {
+    juce::String what;
+    ui::KnobCard card;
+    bool value = false;   // there is a value (not off, a nudge or an empty pad)
+    bool off = false;     // the track's target is off and the page has no job for it
+    bool waiting = false; // takeover: the fader has not met the value yet
+};
+FaderShown fader_shown(const Snapshot& s);
 ui::SoftKeys play_keys(const Snapshot& s, int active); // STAGE KEYS MIX
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),

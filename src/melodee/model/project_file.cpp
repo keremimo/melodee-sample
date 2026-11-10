@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/model/project_file.h"
+#include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
 #include <algorithm>
 #include <cstring>
@@ -168,10 +169,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     // counted the pattern's own steps), a kit pad's lanes in MOTP with their
     // pad, so files from before parity phase 3 and the builds that read them
     // never meet a pad lane.
-    unsigned pad_lanes = 0;
-    for (unsigned n = 0; n < project.motion.count; ++n) pad_lanes += project.motion.events[n].param >= motion_pad_base;
+    // The mod wheel's lane (parity phase 8) goes in MOTW the same way.
+    unsigned pad_lanes = 0, wheel_lanes = 0;
+    for (unsigned n = 0; n < project.motion.count; ++n) {
+        const auto& e = project.motion.events[n];
+        pad_lanes += pad_param_of(e.param) >= 0;
+        wheel_lanes += e.param == motion_wheel;
+    }
     at = w.begin("MOT2");
-    w.u16(uint16_t(project.motion.count - pad_lanes));
+    w.u16(uint16_t(project.motion.count - pad_lanes - wheel_lanes));
     for (unsigned n = 0; n < project.motion.count; ++n) {
         const auto& e = project.motion.events[n];
         if (e.param >= motion_pad_base) continue;
@@ -183,8 +189,18 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.u16(uint16_t(pad_lanes));
         for (unsigned n = 0; n < project.motion.count; ++n) {
             const auto& e = project.motion.events[n];
-            if (e.param < motion_pad_base) continue;
+            if (pad_param_of(e.param) < 0) continue;
             w.u8(e.track); w.u8(e.pattern); w.u16(e.step); w.u8(e.pad); w.u8(uint8_t(e.param - motion_pad_base)); w.i16(e.value);
+        }
+        w.end(at);
+    }
+    if (wheel_lanes) {
+        at = w.begin("MOTW"); // the mod wheel: track, pattern, sixteenth, value 0..127
+        w.u16(uint16_t(wheel_lanes));
+        for (unsigned n = 0; n < project.motion.count; ++n) {
+            const auto& e = project.motion.events[n];
+            if (e.param != motion_wheel) continue;
+            w.u8(e.track); w.u8(e.pattern); w.u16(e.step); w.i16(e.value);
         }
         w.end(at);
     }
@@ -273,6 +289,13 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         at = w.begin("PAD4");
         w.u8(t); w.u8(used);
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad4(w, n, tr.pads[n]);
+        w.end(at);
+    }
+    for (unsigned t = 0; t < track_count; ++t) { // the fader's target where one is picked, or it is off (parity phase 8)
+        const auto& tr = project.tracks[t];
+        if (tr.fader_target == fader_by_engine && tr.fader_on) continue;
+        at = w.begin("FADR");
+        w.u8(t); w.u8(tr.fader_target); w.u8(tr.fader_on);
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // muted kit pads, a bit each
@@ -416,6 +439,19 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 e.value = int16_t(r.i16());
                 if (r.ok && which < pad_param_count) { e.param = uint8_t(motion_pad_param(PadParam(which))); project->motion.write(e); }
             }
+        } else if (name == "MOTW") { // the mod wheel's lane (parity phase 8)
+            unsigned count = r.u16();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                MotionEvent e;
+                e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
+                e.param = uint8_t(motion_wheel); e.value = int16_t(std::clamp<int>(r.i16(), 0, 127));
+                if (r.ok) project->motion.write(e);
+            }
+        } else if (name == "FADR") { // the fader's target (parity phase 8); without it each track takes its engine's default
+            unsigned t = r.u8(), target = r.u8(), on = r.u8();
+            if (!r.ok || t >= track_count) continue;
+            project->tracks[t].fader_target = uint8_t(target < fader_targets ? target : fader_by_engine);
+            project->tracks[t].fader_on = on != 0;
         } else if (name == "TIME") {
             project->signature = uint8_t(std::min<unsigned>(r.u8(), time_signature_count - 1));
             project->seq_tempo = r.u8() != 0;

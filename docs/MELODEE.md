@@ -551,8 +551,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   event's length in steps of Q (1–64), **Shift + K2** the time signature.
   The **fader** nudges the event's timing: a tick for each step the fader
   moves, up later, down earlier, inside the pattern (the cursor follows it
-  into the next step); this is its context override until the Fader page
-  (phase 8). **B3** erases the event; **Erase + pad** asks first (B1
+  into the next step); Step Edit's own fader job (Fader, below). **B3** erases the event; **Erase + pad** asks first (B1
   Cancel, B3 Do it) and then erases every event of that pad in the pattern.
   Both erases are one undo, part of the take while Seq Record is on. Hold
   **B1** for the BPM (the wheel; Push whole / tenths), as on Patterns. The
@@ -574,6 +573,36 @@ Steps, Roll and Motion B1–B3 pick those three.
   pan, else the favourites. Pad lanes are saved in their own `MOTP`
   section, so older files and builds see only the rest.
 
+- **Fader** (parity phase 8, as Akai's fader page; `shell/fader.cpp`,
+  `shell/fader_job.cpp`, `model/fader.h`, `pages/fader_page.cpp`): each
+  track has a target, picked on the **Fader page** (Shift + Pad 9; wheel or
+  Minus / Plus move, Push picks, B3 turns the fader off / on for the track,
+  B1 back): Pad Volume, Pad Pan, Pad Tune, Pad Attack, Pad Decay / Release
+  (Decay on a one shot, Release on Note On), Pad Cutoff (each the last pad
+  hit's), Kit Volume, and Melodee's Mod Wheel. Pad and kit targets are for
+  kit tracks; until one is picked a kit takes Pad Volume and a synth the mod
+  wheel (also when a kit's choice meets a synth). Kept per track in the
+  project (`FADR`; older files load the defaults). **Pages with an obvious
+  job keep it** whatever the target (Kerem, open question 2): Mix the
+  selected track's level, Sends its send, Step Edit nudges the event, Knob
+  FX its effect's MIX (an effect without one, its K1 value: a filter's
+  cutoff), the Compressor its amount, Flex Beat its mix; off only frees the
+  target, these stay. The fader takes over a value by **Fader takeover**
+  (Settings; Pickup by default, as on the MPC; a pad's value is picked up
+  afresh on another pad, and a value moved by a knob or an undo too). It
+  goes through the same edits as the knobs, so **Seq Record** writes the
+  lane of what it moves: the pad's own lanes, Kit Volume, and the **mod
+  wheel's own lane** (MOD WHEEL on Motion, played back and put back at the
+  pattern's start; file `MOTW`, so older builds never meet it); Mix level,
+  Sends and the master's values have no lane, as with their knobs. **Erase
+  + fader** asks to erase that lane (B1 Cancel, B3 Do it). For a moment
+  after it moves, a **fader card** over the picture's bottom right says
+  what it drives here ("A09 VOLUME", "LEVEL", "SEND A", "MIX"; "OFF ·
+  SHIFT + PAD 9") with the value, hollow until the fader reaches it; Step
+  Edit says FADER: NUDGE on the page. **The light** shows the value: the
+  brighter the higher, for pan and tune brightest at the middle; dark with
+  nothing to drive, white for the master's values (Compressor, Flex Beat,
+  Knob FX), dim for Step Edit's nudge.
 - **Engine:** PROPHET, a two-oscillator polysynth written here (saw and
   pulse with hard sync, saw/triangle/pulse B with low-frequency mode,
   noise, a zero-delay four-pole ladder, two ADSRs, LFO, wheel on the fader,
@@ -686,8 +715,16 @@ Steps, Roll and Motion B1–B3 pick those three.
   the one there is), pad response (soft, medium, hard, full level: every hit
   at 127; Shift + Pad 1 turns full level on and back), pad pressure (on;
   off: the pads send no pressure), pad
-  lights (track colours, white, off), knob pickup (off: values jump to the
-  pot), screen brightness (20–100 %; the backlight is left as the stock
+  lights (track colours, white, off), **Knob takeover**, **Knob FX
+  takeover** and **Fader takeover** (parity phase 8, the MPC's three from
+  MIDI Config; phase 9 shows them there too): Pickup (the value waits until
+  the control reaches it), Scaled (the value moves the way the control
+  goes, scaled so the two meet where its travel ends) or Instant (the value
+  jumps to the control); the MPC's defaults Scaled, Scaled, Pickup. The
+  card waits dim with a hollow tick where the pot sits until they meet. An
+  older settings file's "Knob pickup Off" (`pickup=0`) reads as Instant for
+  all three, On as the defaults; `pickup=` is still written for older
+  builds. Screen brightness (20–100 %; the backlight is left as the stock
   app had it until this asks for less, and the runtime puts it back on
   leaving). Wheel moves, Push opens a value, wheel changes it, Push keeps
   it; Minus / Plus change it at once. Nothing is written until a value
@@ -716,8 +753,8 @@ Steps, Roll and Motion B1–B3 pick those three.
   Erase + pot to the initial value, Shift + Erase copies, Shift +
   Stop all notes off, Pad Bank held (pad picks a track, Minus / Plus or the
   wheel jump banks, the screen shows the sixteen tracks as the pads sit,
-  bank pill for a kit), mute mode (above), pot pickup, the fader as mod
-  wheel, pad / fader / button lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
+  bank pill for a kit), mute mode (above), takeover (Settings), the fader
+  (Fader, above), pad / fader / button lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
 - **Button lights** (as on the stock MPC): bright when in use (the page's
   button, Play while playing, Seq Record recording, mute mode, Note Repeat
   on, Pad Bank held or a track copy, Erase while copying), faint when the button does something on the
@@ -746,9 +783,9 @@ Steps, Roll and Motion B1–B3 pick those three.
   and motion played twice), 4 Count-In and 10 Rec Quantize (toggles, kept
   in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 13 Trim
   Sample, 14 Time Correct, 15 Warp (Time stretch or Pitch for the kit), 16
-  Project, 11 Resample (then a pad), 5 Compressor. The others (8 MIDI Config, 9 Fader)
-  say which phase brings them
-  ("Fader: phase 8"). The overlay draws the sixteen as the pads
+  Project, 11 Resample (then a pad), 5 Compressor, 9 Fader. The other (8 MIDI Config)
+  says which phase brings it
+  ("MIDI Config: phase 9"). The overlay draws the sixteen as the pads
   sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
   the track's colour, the rest dim with their phase; the pads light the
   same way while Shift is held. **Shift + K1–K3:** a card with a second
@@ -803,7 +840,12 @@ Steps, Roll and Motion B1–B3 pick those three.
   `melodee_comp_release=`, `melodee_comp_amount=` and `melodee_comp_reduction=` (dB); phase 7b `melodee_punch_bank=`
   (0, 1 Melodee, 2 MPC), `melodee_engaged=`, `melodee_latched=`, `melodee_punch_selected=`, `melodee_punch_slots=` (the four
   live slots' PunchKind, -1 empty), `melodee_live=` (a bit a slot sounding), `melodee_flex=` (the Flex Beat pad playing,
-  0 Empty), `melodee_flex_mode=`, `melodee_flex_quantize=`, `melodee_flex_mix=`. For checks without hands on the device.
+  0 Empty), `melodee_flex_mode=`, `melodee_flex_quantize=`, `melodee_flex_mix=`; phase 8 `melodee_fader_target=`
+  (FaderTarget: 0 Pad Volume .. 6 Kit Volume, 7 Mod Wheel), `melodee_fader_on=`, `melodee_fader_job=` (0 off, 1 the
+  track's target, 2 the page's own job, 3 Step Edit's nudge), `melodee_fader_engaged=` (takeover met),
+  `melodee_fader_kind=` (the card it drives, `Binding::Kind`), `melodee_fader_value=`, `melodee_fader_light=` (0..100),
+  `melodee_wheel=` (the track's mod wheel), `melodee_takeover=` (knobs, Knob FX, fader: 0 Pickup, 1 Scaled, 2 Instant),
+  `melodee_fader_at=`. For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, browserinternal, trim, chop, chopmanual, chopshift,
@@ -811,7 +853,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
   levelsfilter, levelssynth, punch, padpunch, padfx, knobfx, knobfxtracks, knobfxbypass, knobfxstage, knobfxshift,
-  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, fader, fadersynth, fadercard, faderpickup, fadersettings, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

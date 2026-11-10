@@ -15,7 +15,7 @@ SOURCES = ["src/melodee/engine/prophet.cpp", "src/melodee/engine/prophet_info.cp
            "src/melodee/engine/fm6.cpp", "src/melodee/engine/sid.cpp",
            "src/melodee/engine/cz.cpp", "src/melodee/engine/punch.cpp", "src/melodee/engine/punch_mpc.cpp", "src/melodee/engine/pad_fx_info.cpp", "src/melodee/model/sound_file.cpp",
            "src/melodee/shell/page_stack.cpp", "src/melodee/shell/button_jobs.cpp",
-           "src/melodee/shell/shift_pad_jobs.cpp"]
+           "src/melodee/shell/shift_pad_jobs.cpp", "src/melodee/shell/fader_job.cpp"]
 
 
 class MelodeeTests(unittest.TestCase):

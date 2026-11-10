@@ -259,6 +259,11 @@ struct Track {
     // Arp (note repeat on a sampler track): held notes in turn at a rate.
     bool arp = false, arp_latch = false;
     uint8_t arp_mode = 0, arp_rate = 4, arp_octaves = 1, arp_gate = 60; // arp_rate: engine/arp.h, 4 is 1/16
+    // The fader (Shift + Pad 9, parity phase 8): its target (model/fader.h; 255
+    // until one is picked: the engine's default) and whether it has one at all.
+    uint8_t fader_target = 255;
+    bool fader_on = true;
+    uint8_t wheel = 0;    // the mod wheel as the fader left it, 0..127 (played, not saved)
     bool used() const { return engine != EngineKind::None; }
     // The note a new step gets on Steps: on a kit the pad hit last, else the last note played.
     uint8_t step_note() const { return engine == EngineKind::Sampler ? uint8_t(sampler_first_note + last_pad % sampler_pads) : last_note; }

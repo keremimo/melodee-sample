@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shift_pads.h"
+#include "melodee/model/fader.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/shift_pad_jobs.h"
 
@@ -56,6 +57,10 @@ void shift_pad(Context& c, unsigned pad) {
     case 4: // Compressor: the master's (parity phase 7)
         c.open(PageId::Compressor);
         break;
+    case 8: // Fader: the selected track's target, on / off (parity phase 8)
+        c.ui.fader_cursor = uint8_t(fader_target(c.track())); // on the target it has
+        c.open(PageId::FaderPage);
+        return;
     case 11: // Song
         c.open(PageId::Song);
         return;

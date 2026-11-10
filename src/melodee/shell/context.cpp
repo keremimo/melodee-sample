@@ -436,6 +436,11 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadDecay: pad().decay = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Decay, value); break;
     case Kind::PadRelease: pad().release = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Release, value); break;
     case Kind::PadSustain: pad().sustain = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Sustain, value); break;
+    case Kind::ModWheel: // the fader's mod wheel, recorded as its own lane
+        t.wheel = uint8_t(value);
+        send({Type::Wheel, ui.track, 0, 0, int16_t(value * 1000 / 127)});
+        record_motion(motion_wheel, value);
+        break;
     case Kind::Tempo: set_tempo(value * 10); break;
     case Kind::NameSuggest: {
         std::array<const char*, max_suggestions> names {};

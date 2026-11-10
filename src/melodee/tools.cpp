@@ -8,6 +8,7 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/scales.h"
 #include "melodee/model/mod_matrix.h"
+#include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
@@ -569,6 +570,35 @@ const Preview previews[] {
     {"flexbeat", [](Shell&, Snapshot& s) { // Loop mode, Backspin playing, quantize on
          s.ui.page = PageId::FlexBeat; s.playing = true; s.project.flex.mode = 1; s.project.flex.mix = 80;
          s.flex_playing = 2; s.ui.flex_chosen = 2; s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    // Parity phase 8: the fader.
+    {"fader", [](Shell&, Snapshot& s) { // Shift + Pad 9 on the kit: Pad Pan on A09, the fader still to reach it (Pickup)
+         s.ui.page = PageId::FaderPage; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3];
+         t.fader_target = uint8_t(FaderTarget::PadPan); t.pads[8].pan = -18;
+         s.ui.fader_cursor = uint8_t(FaderTarget::PadPan);
+         s.ui.fader = {100, false, 1};
+     }},
+    {"fadersynth", [](Shell&, Snapshot& s) { // a synth track with its fader off: the pad targets are for kits
+         s.ui.page = PageId::FaderPage; s.ui.track = 2;
+         auto& t = s.project.tracks[2];
+         t.fader_on = false; t.wheel = 70;
+         s.ui.fader_cursor = 2;
+     }},
+    {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Mix: the selected track's level
+         s.ui.page = PageId::Mix; s.ui.track = 2; s.playing = true;
+         s.ui.fader = {90, true, 1}; s.ui.fader_moved_at = s.now;
+         s.project.tracks[2].mix.level = 90;
+         const float meters[] {0.5f, 0.42f, 0.2f, 0, 0.6f, 0.25f, 0.3f, 0.05f, 0.18f, 0.08f};
+         for (unsigned t = 0; t < 10; ++t) s.meters[t] = meters[t];
+     }},
+    {"faderpickup", [](Shell&, Snapshot& s) { // the fader moved on the kit's Pads page: A09's volume, not reached yet
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         s.project.tracks[3].pads[8].level = 100;
+         s.ui.fader = {40, false, 1}; s.ui.fader_moved_at = s.now;
+     }},
+    {"fadersettings", [](Shell&, Snapshot& s) { // Settings: the three takeover rows, the fader's open
+         s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::FaderTakeover; s.ui.settings_editing = true;
      }},
     {"padpunch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::PadPunch; s.ui.track = 3; s.playing = true; s.sample = break_sample();

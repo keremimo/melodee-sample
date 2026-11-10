@@ -418,7 +418,10 @@ void EngineHost::apply(const Command& c) {
         break;
     }
     case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param, c.motion.pad); break;
-    case Type::Wheel: if (slot.engine) slot.engine->set_wheel(c.value / 1000.0f); break;
+    case Type::Wheel:
+        slot.wheel = std::clamp(c.value / 1000.0f, 0.0f, 1.0f);
+        if (slot.engine) slot.engine->set_wheel(slot.wheel);
+        break;
     case Type::Level: slot.gain = level_gain(c.value); break;
     case Type::Pan: {
         float angle = (std::clamp<int>(c.value, -50, 50) + 50) / 100.0f * dsp::pi / 2;
@@ -547,6 +550,8 @@ void EngineHost::restore(Slot& slot) {
         slot.fx_moved = false;
     }
     if (slot.kind == EngineKind::Sampler) slot.sampler.restore_pads(); // a kit pad's own values, if motion moved them
+    if (slot.wheel_moved && slot.engine) slot.engine->set_wheel(slot.wheel); // the mod wheel, back where the fader left it
+    slot.wheel_moved = false;
     if (!slot.moved || !slot.engine) return;
     for (unsigned p = 0; p < max_params; ++p) slot.engine->set_param(int(p), slot.base[p]);
     slot.moved = false;
@@ -559,6 +564,10 @@ void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
     for (unsigned n = 0; n < motion.count; ++n) {
         const auto& e = motion.events[n];
         if (e.track != t || e.pattern != slot.pattern || e.step != at) continue;
+        if (e.param == motion_wheel) { // the mod wheel's lane (parity phase 8)
+            if (slot.engine) { slot.engine->set_wheel(std::clamp(e.value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
+            continue;
+        }
         if (e.param >= motion_pad_base) { // a kit pad's own value
             if (slot.kind == EngineKind::Sampler) slot.sampler.move_pad(e.pad, PadParam(e.param - motion_pad_base), e.value);
             continue;

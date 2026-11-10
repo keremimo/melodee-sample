@@ -153,6 +153,8 @@ private:
         std::array<std::array<int16_t, effect_params>, max_slots> fx_base {}; // and its effects'
         bool fx_moved = false;
         bool moved = false;                       // motion changed a value since Play
+        float wheel = 0;                          // the mod wheel as the fader left it, 0..1
+        bool wheel_moved = false;                 // and motion moved it since (parity phase 8)
         float buffer[block] {};
         float left[block] {}, right[block] {};
         uint8_t bus = 0;

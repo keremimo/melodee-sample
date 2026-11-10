@@ -9,6 +9,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/button_jobs.h"
+#include "melodee/shell/fader_job.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
@@ -160,6 +161,17 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             for (unsigned n = 0; n < 4; ++n) slots |= uint32_t(uint8_t(ui_.punch_slot[n] + 1)) << (8 * n);
             punch_slots_bits.store(slots, std::memory_order_relaxed);
         }
+        { // phase 8: the fader (its target, on, what drives it here, takeover met; the takeover modes, the light, the
+          // track's mod wheel) and the value it drives with that card's kind
+            auto job = fader_job(*project_, ui_);
+            unsigned light = unsigned(fader_light_level(job) * 100 + 0.5f);
+            fader_bits.store(uint32_t(fader_target(t)) | uint32_t(t.fader_on) << 4 | uint32_t(job.source) << 5 | uint32_t(ui_.fader.engaged) << 7
+                             | uint32_t(ui_.settings.knob_takeover) << 8 | uint32_t(ui_.settings.knob_fx_takeover) << 10
+                             | uint32_t(ui_.settings.fader_takeover) << 12 | uint32_t(light & 0x7f) << 16 | uint32_t(t.wheel & 0x7f) << 24,
+                             std::memory_order_relaxed);
+            fader_value.store(uint32_t(uint16_t(int16_t(job.binding.value))) | uint32_t(job.binding.kind) << 16, std::memory_order_relaxed);
+            fader_at.store(ui_.fader.position, std::memory_order_relaxed);
+        }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;
             for (const auto& ref : project_->samples) used += ref.used();
@@ -282,7 +294,14 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         if (colour.r || colour.g || colour.b) lit |= 1u << pad;
     }
     pads_lit.store(lit, std::memory_order_relaxed);
-    lights.fader(track.used() ? track_light(ui.track, 0.8f) : Rgb {});
+    { // The fader light shows the value it drives (brightest at the middle for pan and tune), dark with nothing to drive;
+      // white where that value is the master's (Compressor, Flex Beat, Knob FX).
+        auto job = fader_job(project, ui);
+        float level = fader_light_level(job);
+        bool master = job.source == FaderJob::Source::Page
+                   && (ui.page == PageId::Compressor || ui.page == PageId::FlexBeat || ui.page == PageId::KnobFx);
+        lights.fader(level <= 0 ? Rgb {} : master ? led_colour::white(level) : track_light(ui.track, level));
+    }
     // Bank lights A-H: the sampler track's bank in view.
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
         lights.bank(bank, track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks);

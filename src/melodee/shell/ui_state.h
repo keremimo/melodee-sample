@@ -17,14 +17,17 @@ namespace melodee {
 
 enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
-                            KnobFx, Compressor, FlexBeat, Count }; // parity phase 7 and 7b
+                            KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
+                            FaderPage, Count };                // parity phase 8: Shift + Pad 9
 
-// Pot pickup: a pot changes its value only once it has reached it, so a
-// page change never makes a value jump.
+// Takeover (shell/takeover.h): a pot or the fader drives its value once it has
+// met it, so a page change never makes a value jump; until then Pickup waits
+// and Scaled moves the value part of the way.
 struct Pot {
-    int16_t position = -1; // 0..127 where the pot sits; -1 until known
+    int16_t position = -1; // 0..127 where the control sits; -1 until known
     bool engaged = false;
     uint32_t bound = 0;    // which binding it was last checked against
+    float scaled = -1;     // Scaled, not met yet: where the value is, unrounded (0..1); -1 none
 };
 
 struct UiState {
@@ -69,7 +72,11 @@ struct UiState {
     uint8_t steps_bar = 0;
     int16_t step_cursor = 0, held_step = -1;
     uint8_t step_event = 0;                   // Step Edit: which of the cursor step's events (shell/step_edit.h)
-    int16_t fader_at = -1;                    // where the fader sits, 0..127; -1 until it moves (Step Edit nudges by how far it went)
+    // The fader (shell/fader.cpp): where it sits (-1 until it moves; Step Edit nudges by how far it went)
+    // and whether it has met the value it drives (takeover), when it last moved (its card shows a moment).
+    Pot fader;
+    uint32_t fader_moved_at = 0;
+    uint8_t fader_cursor = 0;                 // the Fader page: the target under the cursor
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
     bool sheet_open = false;  // the note sheet over Roll
