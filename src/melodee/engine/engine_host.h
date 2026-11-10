@@ -48,7 +48,11 @@ public:
 
     // Audio thread: `frames` interleaved stereo S32 frames, after `volume`;
     // `input` the capture block (silent when there is none), for Record.
-    void render(int32_t* out, unsigned frames, float volume, const int32_t* input = nullptr);
+    // `stems`, when given, gets each track's stem: `track_count` rows of
+    // `block` floats, the track after its chain and fader as you hear it,
+    // summed to mono with its pan law taken back out, before the buses, the
+    // master chain and main volume. Muted (or soloed-out) tracks are silent.
+    void render(int32_t* out, unsigned frames, float volume, const int32_t* input = nullptr, float* stems = nullptr);
     TakeRecorder& recorder() { return take; }
     const TakeRecorder& recorder() const { return take; }
     unsigned record_source() const { return source_now.load(std::memory_order_relaxed); }

@@ -23,7 +23,12 @@ uint32_t MelodeeApp::now_ms() const {
     return uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started).count());
 }
 
-void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) { host.render(output.data(), audio_frames, shell.volume(), input.data()); }
+static_assert(usb_stem_count == melodee::track_count && usb_stem_frames == melodee::EngineHost::block && audio_frames <= usb_stem_frames,
+              "one USB-C stem a track, a block at a time");
+
+void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
+    host.render(output.data(), audio_frames, shell.volume(), input.data(), &stem_block.track[0][0]);
+}
 
 void MelodeeApp::surface(const SurfaceEvent& event) {
     // A remote tool's prompt owns the controls while it is shown.

@@ -70,6 +70,13 @@ into Stage, and Stage, Keys, Mix, Sounds, Edit, Steps, Roll (with its note
 sheet) and Motion work with the Shift layer and the Exit sheet. SEQ steps
 through Steps, Roll and Motion; B1–B3 pick them too.
 
+- **USB-C stems:** a computer recording from the MPC gets the main mix on
+  inputs 1–2 and each track on its own mono input, track 1 on 3 through
+  track 16 on 18. A stem is the track after its chain and fader as you hear
+  it (muted and soloed-out tracks are silent), summed to mono with its pan
+  law taken back out so its level does not follow the pan, before the
+  buses, the master chain and main volume. Sends and returns are only in
+  the main mix. See HARDWARE.md, "Stems".
 - **Roll:** one bar of twelve semitones, the view an octave and a bit above
   the pads' lowest note; the wheel moves the shared step cursor, pads write
   up to four notes on it (or play in live with Seq Record), Minus / Plus move

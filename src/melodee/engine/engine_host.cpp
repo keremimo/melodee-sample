@@ -451,7 +451,7 @@ void EngineHost::tick() {
     tick_count.store(tick_now, std::memory_order_relaxed);
 }
 
-void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input) {
+void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input, float* stems) {
     static thread_local bool flushed = false;
     if (!flushed) { flush_denormals(); flushed = true; }
     Command command;
@@ -502,6 +502,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         float level = 0;
+        float* stem = stems ? stems + size_t(t) * block : nullptr;
+        if (stem) std::fill(stem, stem + frames, 0.0f);
         if (slot.engine) {
             if (slot.engine->stereo()) { // its own stereo picture; the track's pan balances it
                 float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
@@ -522,6 +524,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 }
                 if (slot.send > 0)
                     for (unsigned f = 0; f < frames; ++f) { bus_l[slot.bus][f] += slot.left[f] * slot.send; bus_r[slot.bus][f] += slot.right[f] * slot.send; }
+                if (stem) { // a centred mono track sums to itself, as does one panned hard
+                    float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f);
+                    for (unsigned f = 0; f < frames; ++f) stem[f] = (slot.left[f] + slot.right[f]) * unpan;
+                }
             }
         }
         float shown = meters[t].load(std::memory_order_relaxed) * 0.97f; // a short fall

@@ -6,6 +6,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
+#include "drivers/usb_audio.h"
 #include "runtime/app.h"
 #include <atomic>
 #include <cstdint>
@@ -18,6 +19,7 @@ class MelodeeApp : public App {
 public:
     MelodeeApp();
     void render(const AudioBlock& input, AudioBlock& output) override; // audio thread
+    const UsbStems* stems() const override { return &stem_block; }    // audio thread
     void surface(const SurfaceEvent& event) override;                   // MIDI thread
     void lights(SurfaceLights& lights, Clock::time_point now) override; // MIDI thread
     void draw(juce::Graphics& g) override;                              // screen thread
@@ -33,6 +35,7 @@ private:
     uint32_t now_ms() const;
     Clock::time_point started = Clock::now();
     melodee::EngineHost host;
+    UsbStems stem_block {}; // audio thread: each track's mono stem for USB-C
     melodee::Shell shell;
     melodee::SampleLibrary library; // service thread: files on the card
     melodee::ProjectStore store;    // service thread: projects on the card
