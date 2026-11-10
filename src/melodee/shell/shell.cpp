@@ -174,10 +174,10 @@ void Shell::press(Button b, bool pressed) {
                       : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
         break;
     case Button::Loop: loop_button(context_); break; // the last pad's loop; Shift: reverse (shell/sample_mode.cpp)
-    case Button::Seq: // Patterns; Shift: Step Edit, again Steps -> Roll -> Motion -> Step Edit
+    case Button::Seq: // Patterns; Shift: Step Edit on a kit, Roll on a synth, again round the four
         if (ui.shift) {
-            context_.open(ui.page == PageId::StepEdit ? PageId::Steps : ui.page == PageId::Steps ? PageId::Roll
-                          : ui.page == PageId::Roll ? PageId::Motion : PageId::StepEdit);
+            auto engine = context_.track().engine;
+            context_.open(shift_seq_page(ui.page, engine == EngineKind::Sampler || engine == EngineKind::Kit909));
             break;
         }
         if (ui.sample_held) { seq_sample(context_, true); break; } // Seq + Sample: Patterns, the pads play the kit

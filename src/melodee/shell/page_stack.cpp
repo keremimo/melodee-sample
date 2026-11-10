@@ -35,4 +35,14 @@ void push_back_stack(UiState& ui, PageId page) {
 
 PageId back_target(const UiState& ui) { return ui.back_depth ? ui.back_stack[ui.back_depth - 1u] : PageId::Stage; }
 
+PageId shift_seq_page(PageId page, bool kit) {
+    switch (page) {
+    case PageId::StepEdit: return PageId::Steps;
+    case PageId::Steps: return PageId::Roll;
+    case PageId::Roll: return PageId::Motion;
+    case PageId::Motion: return PageId::StepEdit;
+    default: return kit ? PageId::StepEdit : PageId::Roll;
+    }
+}
+
 } // namespace melodee

@@ -15,5 +15,10 @@ namespace melodee {
 void push_back_stack(UiState& ui, PageId page);
 // Where Back goes from here: the top of the stack, or Stage when it is empty.
 PageId back_target(const UiState& ui);
+// Shift + Seq from `page`: within the group it turns Step Edit -> Steps ->
+// Roll -> Motion -> Step Edit; from outside it opens Step Edit on a kit (the
+// sampler or the 909, the MPC's printed job) and Roll on a synth or MIDI
+// track, whose notes want the piano roll first.
+PageId shift_seq_page(PageId page, bool kit);
 
 } // namespace melodee

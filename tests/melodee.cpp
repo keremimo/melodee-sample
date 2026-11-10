@@ -1358,6 +1358,10 @@ void button_remap() {
     // Opening a page already on the stack goes back to it instead of growing it.
     go(PageId::Sounds); go(PageId::Patterns); go(PageId::Sounds);
     CHECK(nav.back_depth == 1 && nav.back_stack[0] == PageId::Stage);
+    // Shift + Seq: a kit opens Step Edit, a synth Roll; inside the group it turns the four round.
+    CHECK(shift_seq_page(PageId::Stage, true) == PageId::StepEdit && shift_seq_page(PageId::Patterns, false) == PageId::Roll);
+    CHECK(shift_seq_page(PageId::Roll, false) == PageId::Motion && shift_seq_page(PageId::Motion, false) == PageId::StepEdit);
+    CHECK(shift_seq_page(PageId::StepEdit, false) == PageId::Steps && shift_seq_page(PageId::Steps, true) == PageId::Roll);
     // A full stack drops its oldest page.
     for (unsigned n = 0; n < 40; ++n) go(n % 2 ? PageId::Tempo : PageId::Project), go(PageId(unsigned(PageId::Samples) + n % 3));
     CHECK(nav.back_depth <= UiState::back_capacity);
