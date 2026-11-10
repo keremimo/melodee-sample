@@ -7,6 +7,7 @@
 #include "melodee/shell/settings.h"
 #include <array>
 #include <cstdint>
+#include <string>
 
 // What the user interface remembers between controls: the page, the
 // selected track, held buttons, cursors and the pots' pickup. The MIDI
@@ -22,6 +23,15 @@ struct Pot {
     bool engaged = false;
     uint32_t bound = 0;    // which binding it was last checked against
 };
+
+// Whether Samples lists a file under its filter: everything, the takes, or
+// the files the project already holds in its sample slots.
+inline bool sample_file_listed(const Project& project, unsigned filter, const std::string& path) {
+    if (filter == 0) return true;
+    if (filter == 1) return path.find("/Recorded/") != std::string::npos;
+    for (const auto& ref : project.samples) if (ref.used() && path == ref.path) return true;
+    return false;
+}
 
 struct UiState {
     PageId page = PageId::Stage, previous = PageId::Stage;
@@ -68,7 +78,7 @@ struct UiState {
     uint8_t chop_slice = 0;
     int8_t levels_hit = -1;     // Levels: the pad played last, 0..15
     int16_t levels_value = 0;   // and what it played: a velocity or semitones
-    uint8_t files_filter = 0;   // Samples: all, recorded
+    uint8_t files_filter = 0;   // Samples: all, recorded, recent (the files this project uses)
     uint8_t rec_source = 1;     // Record: 0 mic, 1 line, 2 the mix (resample)
     int8_t rec_threshold = -30; // dB; -60 starts at once
     uint8_t rec_bars = 4;       // 0: until stopped

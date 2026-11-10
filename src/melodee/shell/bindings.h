@@ -52,6 +52,13 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
 // The three parameters the Motion page shows as lanes: those holding motion
 // on the track's playing pattern first, then the track's favourites.
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui);
+// What a motion lane's parameter is (an engine parameter, or one of the track
+// chain's effects', see motion_fx_param()): its description and the
+// track's own value; info is nullptr when there is no such parameter.
+struct MotionParam { const struct ParamInfo* info = nullptr; int value = 0; };
+MotionParam motion_param(const Track& track, int param);
+// The card for a lane's parameter on the Motion page.
+Binding lane_binding(const Track& track, unsigned track_index, int param);
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
 // Song's zoom steps, in bars across the view.

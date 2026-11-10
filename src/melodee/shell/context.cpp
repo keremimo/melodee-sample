@@ -280,7 +280,12 @@ void Context::apply(const Binding& b, int value) {
         } else if (b.kind == Kind::SongPattern) ui.song_pattern = uint8_t(value);
         else ui.song_length = uint8_t(value);
         break;
-    case Kind::FxParam: set_effect_param(unsigned(b.id) / 64, (unsigned(b.id) / 8) % 8, unsigned(b.id) % 8, value); break;
+    case Kind::FxParam: {
+        unsigned chain = unsigned(b.id) / 64, slot = (unsigned(b.id) / 8) % 8, q = unsigned(b.id) % 8;
+        set_effect_param(chain, slot, q, value);
+        if (chain == ui.track) record_motion(int(motion_fx_param(slot, q)), value); // the track's own effects land in Motion
+        break;
+    }
     case Kind::SendBus: set_send_bus(ui.track, unsigned(value)); break;
     case Kind::BusReturn: set_return(unsigned(b.id), value); break;
     case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); break;
@@ -667,9 +672,25 @@ void Context::chop_to_pads() {
     }
 }
 
+// A track chain changed shape: motion on its effects named slots that now
+// hold something else, so it goes.
+void Context::clear_fx_motion(unsigned n) {
+    if (n >= track_count) return;
+    auto& motion = project.motion;
+    for (unsigned e = 0; e < motion.count;) {
+        const auto ev = motion.events[e];
+        if (ev.track != n || ev.param < motion_fx_base) { ++e; continue; }
+        motion.clear(ev.track, ev.pattern, ev.param);
+        Command c {Type::MotionClear};
+        c.motion = ev;
+        send(c);
+    }
+}
+
 void Context::set_effect(unsigned n, unsigned slot, EffectKind kind) {
     auto& chain = project.chain(n);
     if (slot >= chain.size) return;
+    clear_fx_motion(n);
     auto& s = chain.slots[slot];
     if (kind == EffectKind::None) { // remove: the rest close up
         for (unsigned k = slot + 1; k < chain.size; ++k) chain.slots[k - 1] = chain.slots[k];
@@ -702,6 +723,7 @@ void Context::move_effect(unsigned n, unsigned slot, int way) {
     auto& chain = project.chain(n);
     int to = int(slot) + way;
     if (to < 0 || unsigned(to) >= chain.count() || slot >= chain.count()) return;
+    clear_fx_motion(n);
     std::swap(chain.slots[slot], chain.slots[size_t(to)]);
     sync_chain(n);
 }

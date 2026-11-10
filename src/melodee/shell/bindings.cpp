@@ -19,6 +19,7 @@ Binding param(const Track& track, int id) {
     const auto& p = info.params[id];
     return {Kind::Param, int16_t(id), p.min, p.max, track.params[size_t(id)]};
 }
+Binding engine_param(const Track& track, int id) { return param(track, id); }
 } // namespace
 
 std::array<Binding, 3> favourite_bindings(const Track& track) {
@@ -33,13 +34,38 @@ unsigned page_chain(const Project& project, const UiState& ui) {
     return ui.track % track_count;
 }
 
+MotionParam motion_param(const Track& track, int param) {
+    if (param < 0) return {};
+    if (unsigned(param) < motion_fx_base) {
+        const auto& info = engine_info(track.engine);
+        if (unsigned(param) >= info.param_count) return {};
+        return {&info.params[param], track.params[size_t(param)]};
+    }
+    unsigned slot = (unsigned(param) - motion_fx_base) / effect_params, q = (unsigned(param) - motion_fx_base) % effect_params;
+    if (slot >= track.fx.count()) return {};
+    const auto& s = track.fx.slots[slot];
+    const auto& pi = effect_info(EffectKind(s.kind)).params[q];
+    if (!pi.label) return {};
+    return {&pi, s.params[q]};
+}
+
+Binding lane_binding(const Track& track, unsigned t, int param) {
+    if (param >= int(motion_fx_base)) {
+        auto m = motion_param(track, param);
+        if (!m.info) return {};
+        unsigned slot = (unsigned(param) - motion_fx_base) / effect_params, q = (unsigned(param) - motion_fx_base) % effect_params;
+        return {Kind::FxParam, int32_t(t * 64 + slot * 8 + q), m.info->min, m.info->max, m.value};
+    }
+    return engine_param(track, param);
+}
+
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
     const auto& track = project.tracks[ui.track % track_count];
     const auto& info = engine_info(track.engine);
     std::array<int, 3> lanes {-1, -1, -1};
     unsigned n = 0;
     auto add = [&](int param) {
-        if (param < 0 || unsigned(param) >= info.param_count || n == lanes.size()) return;
+        if (!motion_param(track, param).info || n == lanes.size()) return;
         for (unsigned k = 0; k < n; ++k) if (lanes[k] == param) return;
         lanes[n++] = param;
     };
@@ -88,7 +114,8 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Motion: {
         auto lanes = motion_lanes(project, ui);
-        return {param(track, lanes[0]), param(track, lanes[1]), param(track, lanes[2])};
+        unsigned t = ui.track % track_count;
+        return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
     case PageId::Length:
         return {Binding {Kind::PatternBars, 0, 1, int(max_steps / bar_steps), int((pattern.length + bar_steps - 1) / bar_steps)},

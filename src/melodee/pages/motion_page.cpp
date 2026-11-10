@@ -3,7 +3,7 @@
 // MOTION (B3 on Steps): pot moves recorded over the pattern, one lane per
 // pot. Seq Record + turn a pot records (here or on any page); Erase + turn a
 // pot clears that lane. The lanes are the parameters holding motion on the
-// track's pattern, then its favourites.
+// track's pattern (its engine's or its effects'), then its favourites.
 #include "melodee/model/limits.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -16,7 +16,6 @@ using namespace ui;
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
-    const auto& info = engine_info(track.engine);
     const auto& motion = s.project.motion;
     auto c = colour_of(s);
     Header h = header_of(s);
@@ -37,9 +36,11 @@ void draw(Paint& p, const Snapshot& s) {
         p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(lh)));
         p.fill(x, y, 8, lh, shade, 4);
         p.g.restoreState();
-        const auto& pi = info.params[param];
-        auto shown = show(pi, track.params[size_t(param)]);
-        p.text(pi.label, x + 9, y + 9, 52, 10, caps_text(shade));
+        auto mp = motion_param(track, param);
+        if (!mp.info) continue;
+        const auto& pi = *mp.info;
+        auto shown = show(pi, mp.value);
+        p.text(pi.label, x + 9, y + 9, 52, 10, p.fit(pi.label, caps_text(shade), 56, 5));
         p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x + 9, y + 20, 56, 15, plain(colour::text, 12, Weight::Medium));
 
         // The lane: the track's own value until the first event, then each event holds.
@@ -47,7 +48,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(gx, gy + gh - 1, gw, 1, colour::line);
         auto y_of = [&](int v) { return gy + gh - 2 - gauge_of(pi, v) * (gh - 4); };
         juce::Path line;
-        int value = track.params[size_t(param)];
+        int value = mp.value;
         line.startNewSubPath(gx, y_of(value));
         for (unsigned step = 0; step < length; ++step) {
             for (unsigned e = 0; e < motion.count; ++e) {

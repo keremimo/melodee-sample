@@ -24,4 +24,8 @@ constexpr unsigned track_slots = 6, bus_slots = 6, master_slots = 6, bus_count =
 constexpr unsigned max_slots = 6;
 constexpr unsigned chain_count = track_count + bus_count + 1; // tracks, buses A-D, master
 constexpr unsigned pad_slots = 4;                              // each sampler pad's own chain (PadFX)
+// Motion lanes name engine parameters (0..max_params-1), then the track
+// chain's effect parameters: motion_fx_base + slot * 6 + parameter.
+constexpr unsigned motion_fx_base = max_params;
+constexpr unsigned motion_fx_param(unsigned slot, unsigned parameter) { return motion_fx_base + slot * 6 + parameter; }
 }

@@ -121,7 +121,7 @@ public:
     void record_press();
     void follow_tempos(); // Follow on: each pad's own tempo, from its length as whole bars
     bool host_recording() const;                                       // a take is armed or running                                               // Sample Record on the Record page: arm, start now, stop
-    bool files_match(const std::string& path) const { return ui.files_filter == 0 || path.find("/Recorded/") != std::string::npos; }
+    bool files_match(const std::string& path) const { return sample_file_listed(project, ui.files_filter, path); }
     // Effects: chain numbers as in model/project.h (tracks, buses, master).
     void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
     void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);
@@ -129,6 +129,7 @@ public:
     void move_effect(unsigned chain, unsigned slot, int way);
     void sync_chain(unsigned chain); // after moving or removing: the whole chain again
     void send_fx(Command::Type type, unsigned chain, unsigned slot, unsigned param, int16_t value);
+    void clear_fx_motion(unsigned chain);
     void set_send_bus(unsigned track, unsigned bus);
     void set_return(unsigned bus, int level);
     // Song: after any change to project.song, send it to the audio thread.

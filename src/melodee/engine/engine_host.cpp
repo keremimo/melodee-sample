@@ -37,6 +37,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
             fx[n][k].set_kind(EffectKind(s.kind), pool);
             for (unsigned q = 0; q < effect_params; ++q) fx[n][k].set_param(q, s.params[q]);
             fx[n][k].set_bypass(s.bypass);
+            if (n < track_count) { slots[n].fx_base[k] = s.params; slots[n].fx_moved = false; }
         }
     }
     for (unsigned t = 0; t < track_count; ++t)
@@ -118,8 +119,21 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::MotionWrite: motion.write(c.motion); break;
     case Type::Mod: if (slot.engine && c.index < mod_routes) slot.engine->set_mod(c.index, c.route); break;
-    case Type::FxKind: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_kind(EffectKind(c.value), pool); break;
-    case Type::FxParam: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_param(c.pattern, c.value); break;
+    case Type::FxKind:
+        if (c.track < chain_count && c.index < max_slots) {
+            fx[c.track][c.index].set_kind(EffectKind(c.value), pool);
+            if (c.track < track_count) { // the track's own values start at the kind's initial ones
+                const auto& info = effect_info(EffectKind(c.value));
+                for (unsigned q = 0; q < effect_params; ++q) slots[c.track].fx_base[c.index][q] = info.params[q].label ? info.params[q].initial : 0;
+            }
+        }
+        break;
+    case Type::FxParam:
+        if (c.track < chain_count && c.index < max_slots) {
+            fx[c.track][c.index].set_param(c.pattern, c.value);
+            if (c.track < track_count && c.pattern < effect_params) slots[c.track].fx_base[c.index][c.pattern] = c.value;
+        }
+        break;
     case Type::FxBypass: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_bypass(c.value != 0); break;
     case Type::PadFxKind: case Type::PadFxParam: case Type::PadFxBypass: {
         unsigned slot = c.index & 0xff, param = c.index >> 8;
@@ -298,6 +312,12 @@ void EngineHost::run_chain(unsigned chain, float* left, float* right, unsigned f
 
 // Back to the track's own values once motion has moved them.
 void EngineHost::restore(Slot& slot) {
+    if (slot.fx_moved) {
+        unsigned t = unsigned(&slot - slots.data());
+        for (unsigned k = 0; k < max_slots; ++k)
+            for (unsigned q = 0; q < effect_params; ++q) fx[t][k].set_param(q, slot.fx_base[k][q]);
+        slot.fx_moved = false;
+    }
     if (!slot.moved || !slot.engine) return;
     for (unsigned p = 0; p < max_params; ++p) slot.engine->set_param(int(p), slot.base[p]);
     slot.moved = false;
@@ -310,6 +330,11 @@ void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
     for (unsigned n = 0; n < motion.count; ++n) {
         const auto& e = motion.events[n];
         if (e.track != t || e.pattern != slot.pattern || e.step != at) continue;
+        if (e.param >= motion_fx_base) { // one of the track's effects
+            unsigned k = (e.param - motion_fx_base) / effect_params, q = (e.param - motion_fx_base) % effect_params;
+            if (k < max_slots) { fx[t][k].set_param(q, e.value); slot.fx_moved = true; }
+            continue;
+        }
         slot.engine->set_param(e.param, e.value);
         slot.moved = true;
     }

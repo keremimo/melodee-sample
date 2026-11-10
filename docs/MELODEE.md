@@ -137,9 +137,11 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Remove; Push on + ADD opens the picker (families left, effects right; Push
   enters a family, B3 adds, B1 backs out). Sends shows the four buses and
   sixteen send strips: K1 send, K2 bus, K3 that bus's return. Bus and Master
-  are the same page in neutral colours. Pot moves on effects are not yet
-  recorded into Motion; the sampler's pad effects (PadFX) come with the
-  sampler.
+  are the same page in neutral colours. With Seq Record on, pot moves on the
+  track's own effects land in Motion like any other parameter (the lanes
+  name them by their effect's labels); adding, changing, moving or
+  removing one of the track's effects clears that motion, since its slots
+  would point elsewhere.
 - **Sampler** (an engine like the others; Stage's track 5 starts as an
   empty kit): 64 pads in four banks, each a region of one of the project's
   samples (64 a project), with pitch, fine, level, pan, gate or one shot,
@@ -157,7 +159,7 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   level, K3 pan. Push opens Trim.
 - **Samples** (Sample Select on a sampler track): the files; Push loads the
   one under the cursor onto the last pad hit, K2 jumps. RECORDED lists the
-  takes; RECENT waits for saved projects.
+  takes; RECENT the files this project already holds.
 - **Trim** (Push on a sampler track, or on Pads): the last pad's region over
   the sample; K1 start, K2 end, K3 zoom (to 16 times closer).
 - **The sampler's seven pages** (B1 / B3 go round them, PAGE n / 7): Trim;

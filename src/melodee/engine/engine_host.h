@@ -94,6 +94,8 @@ private:
         bool silent = false;               // in the song: no clip here
         std::array<PendingOff, 32> offs {};
         std::array<int16_t, max_params> base {}; // the track's own values; motion only borrows them
+        std::array<std::array<int16_t, effect_params>, max_slots> fx_base {}; // and its effects'
+        bool fx_moved = false;
         bool moved = false;                       // motion changed a value since Play
         float buffer[block] {};
         float left[block] {}, right[block] {};

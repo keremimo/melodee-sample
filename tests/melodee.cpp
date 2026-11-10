@@ -611,6 +611,39 @@ void sampler_kit() {
         for (unsigned b = 0; b < 2 * 88200 / 128; ++b) host.render(out.data(), 128, 1);
         CHECK(!host.playing());
     }
+    // Motion on an effect: the track's filter shut at step 8 by a written event, open again from step 0.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        auto& step = bank->at[0][0].steps[0];
+        step.notes[0] = {45, 110}; step.length = 16;
+        auto& slot = project->tracks[0].fx.slots[0];
+        slot.kind = uint8_t(EffectKind::Filter);
+        const auto& info = effect_info(EffectKind::Filter);
+        for (unsigned q = 0; q < effect_params; ++q) slot.params[q] = info.params[q].label ? info.params[q].initial : 0;
+        slot.params[0] = 100;
+        project->motion.write({0, 0, 8, uint8_t(motion_fx_param(0, 0)), 0});
+        CHECK(motion_param(project->tracks[0], int(motion_fx_param(0, 0))).info == &info.params[0]);
+        CHECK(!motion_param(project->tracks[0], int(motion_fx_param(1, 0))).info); // no effect in slot 2
+        UiState ui;
+        auto lanes = motion_lanes(*project, ui);
+        CHECK(lanes[0] == int(motion_fx_param(0, 0)));
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        auto level = [&](unsigned blocks) {
+            float peak = 0;
+            for (unsigned b = 0; b < blocks; ++b) { host.render(out.data(), 128, 1); for (auto v : out) peak = std::max(peak, std::fabs(v / 2147483648.0f)); }
+            return peak;
+        };
+        level(100);                    // into the first half bar (a step is 5512.5 samples)
+        float open = level(100);       // steps 2-4
+        level(150);                    // past step 8
+        float shut = level(100);
+        CHECK(open > 0.01f && shut < open * 0.2f);
+    }
     // Transposed pads: a track's semitones move its pads and survive a save.
     {
         auto project = std::make_unique<Project>();

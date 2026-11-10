@@ -3,7 +3,8 @@
 // SAMPLES (Sample Select on a sampler track): the WAV files in the card's
 // Samples folder. The wheel scrolls, Push loads the file onto the last pad
 // hit (the whole file; Trim or Chop shape it), Shift + Push goes back. K2
-// jumps through the list. B1-B3 filter: all, recorded, recent.
+// jumps through the list. B1-B3 filter: all, recorded, recent (the files
+// this project already holds).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/sample_library.h"
@@ -26,10 +27,10 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{"ALL", "RECORDED", "RECENT"}, s.ui.files_filter, c}, h);
     std::vector<const SampleFile*> files;
-    for (const auto& f : s.files) if (s.ui.files_filter == 0 || f.path.find("/Recorded/") != std::string::npos) files.push_back(&f);
+    for (const auto& f : s.files) if (sample_file_listed(s.project, s.ui.files_filter, f.path)) files.push_back(&f);
     if (files.empty()) {
         juce::String why = s.sample_root.empty() ? "No Samples folder on the card"
-            : s.ui.files_filter ? "Nothing recorded yet" : "No WAV files in Samples";
+            : s.ui.files_filter == 1 ? "Nothing recorded yet" : s.ui.files_filter == 2 ? "No samples in this project yet" : "No WAV files in Samples";
         p.text(why, zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 40, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred);
         return;
     }
@@ -69,8 +70,7 @@ void push(Context& c) {
 }
 
 void soft(Context& c, int key) {
-    if (key == 2) return; // RECENT comes with saved projects
-    c.ui.files_filter = uint8_t(key);
+    c.ui.files_filter = uint8_t(key); // RECENT: the files this project already uses
     c.ui.files_cursor = 0;
     unsigned listed = 0;
     if (c.library) for (const auto& f : c.library->files()) listed += c.files_match(f.path);
