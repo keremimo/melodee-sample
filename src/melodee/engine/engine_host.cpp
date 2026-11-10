@@ -53,7 +53,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
             }
         }
     for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
-    click = project.click; click_level = project.click_level / 100.0f;
+    click = project.click == 1; click_level = project.click_level / 100.0f;
     motion = project.motion;
     song = project.song;
     tempo = project.tempo; swing = project.swing;
@@ -215,6 +215,7 @@ void EngineHost::apply(const Command& c) {
         take.arm(float(c.value), length, record_gain, c.index);
         break;
     }
+    case Type::RecordSource: if (take.state() == TakeRecorder::State::Idle) source_now.store(c.track % 3u, std::memory_order_relaxed); break;
     case Type::RecordGain: record_gain = float(c.value); take.set_gain(record_gain); break;
     case Type::RecordNow: take.start_now(); break;
     case Type::RecordStop: take.stop(); break;

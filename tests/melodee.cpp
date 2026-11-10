@@ -25,6 +25,8 @@
 #include "melodee/shell/name_suggest.h"
 #include "melodee/model/sound_file.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/button_jobs.h"
+#include "melodee/shell/page_stack.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -1091,7 +1093,57 @@ void parity_basics() {
     CHECK(!row2[1].bound() && !row2[2].bound());
 }
 
+// Phase 1a: Patterns' cards, Input Config, Back's stack and which buttons glow.
+void button_remap() {
+    auto project = std::make_unique<Project>();
+    project->tracks[0].engine = EngineKind::Prophet;
+    project->tracks[1].engine = EngineKind::Sampler;
+    Pattern pattern; pattern.length = 40;
+    UiState ui; ui.track = 0;
+    ui.page = PageId::Patterns;
+    auto cards = page_bindings(*project, ui, pattern);
+    CHECK(cards[0].kind == Binding::Kind::PatternBars && cards[0].value == 3);
+    CHECK(cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
+    ui.page = PageId::InputConfig; ui.rec_threshold = -24;
+    cards = page_bindings(*project, ui, pattern);
+    CHECK(cards[0].kind == Binding::Kind::RecThreshold && cards[0].value == -24 && !cards[1].bound() && !cards[2].bound());
+    ui.page = PageId::Record;
+    cards = page_bindings(*project, ui, pattern);
+    CHECK(!cards[0].bound() && cards[1].kind == Binding::Kind::RecBars && cards[2].kind == Binding::Kind::RecGain);
+
+    // Back: Stage -> Sounds -> Steps -> Roll -> Motion -> Song; Back walks Song, Steps group, Sounds, Stage.
+    UiState nav;
+    auto go = [&](PageId page) { push_back_stack(nav, page); nav.page = page; };
+    auto back = [&] { PageId to = back_target(nav); go(to); };
+    go(PageId::Sounds); go(PageId::Steps); go(PageId::Roll); go(PageId::Motion); go(PageId::Song);
+    CHECK(nav.back_depth == 3);
+    back(); CHECK(nav.page == PageId::Motion);
+    back(); CHECK(nav.page == PageId::Sounds); // Steps, Roll and Motion are one stop
+    back(); CHECK(nav.page == PageId::Stage && nav.back_depth == 0);
+    back(); CHECK(nav.page == PageId::Stage);
+    // Opening a page already on the stack goes back to it instead of growing it.
+    go(PageId::Sounds); go(PageId::Patterns); go(PageId::Sounds);
+    CHECK(nav.back_depth == 1 && nav.back_stack[0] == PageId::Stage);
+    // A full stack drops its oldest page.
+    for (unsigned n = 0; n < 40; ++n) go(n % 2 ? PageId::Tempo : PageId::Project), go(PageId(unsigned(PageId::Samples) + n % 3));
+    CHECK(nav.back_depth <= UiState::back_capacity);
+
+    // Faint lights: Chop and Loop only with a kit, Erase where it does something.
+    using B = SurfaceButton;
+    UiState l; l.page = PageId::Stage; l.track = 0;
+    CHECK(button_has_job(*project, l, B::Seq, false, false));
+    CHECK(!button_has_job(*project, l, B::Chop, false, false) && !button_has_job(*project, l, B::Loop, false, false));
+    CHECK(!button_has_job(*project, l, B::Erase, false, false) && button_has_job(*project, l, B::Erase, false, true));
+    l.track = 1;
+    CHECK(button_has_job(*project, l, B::Loop, true, false) && !button_has_job(*project, l, B::Chop, true, false)); // the last pad is empty
+    project->tracks[1].pads[0].sample = 0;
+    CHECK(button_has_job(*project, l, B::Chop, true, false));
+    l.exit_open = true;
+    CHECK(!button_has_job(*project, l, B::Play, true, false));
+}
+
 int main() {
+    button_remap();
     parity_basics();
     history();
     names();

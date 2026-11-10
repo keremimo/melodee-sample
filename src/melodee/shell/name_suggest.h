@@ -19,7 +19,7 @@ inline unsigned name_suggestions(const NameEntry& e, std::array<const char*, max
     switch (e.target) {
     case NameTarget::Marker: add(Song::marker_names, Song::marker_name_count); break;
     case NameTarget::Sound: add(sounds, 7); break;
-    case NameTarget::None: break;
+    case NameTarget::None: case NameTarget::Sample: break; // a sample keeps its own name first
     default: add(projects, 6); break;
     }
     return n;

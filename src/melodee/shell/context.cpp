@@ -78,7 +78,8 @@ void Context::open(PageId page) {
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
     if (page != ui.page) {
         if (page == PageId::Keys) ui.keys_row = 0;
-        ui.previous = ui.page; ui.page = page;
+        push_back_stack(ui, page);
+        ui.page = page;
     }
     if (page == PageId::Sounds) {
         // The cursor starts on the loaded sound.
@@ -92,7 +93,8 @@ void Context::back() {
         ui.sheet_open = ui.map_open = ui.picker_open = ui.move_open = false;
         return;
     }
-    open(ui.previous == ui.page ? PageId::Stage : ui.previous); }
+    open(back_target(ui)); // open() finds it on the stack and drops it and what came after
+}
 
 void Context::select_track(unsigned t) {
     if (ui.page == PageId::Sounds) audition(-1);
@@ -360,7 +362,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadPunchDepth: pad().punch_depth = uint8_t(value); break;
     case Kind::ClickLevel:
         project.click_level = uint8_t(value);
-        send({Type::Click, 0, 0, project.click_level, int16_t(project.click)});
+        send_click();
         break;
     case Kind::ArpMode: t.arp_mode = uint8_t(value); send({Type::Arp, ui.track, 0, 1, int16_t(value)}); break;
     case Kind::ArpRate: t.arp_rate = uint8_t(value); send({Type::Arp, ui.track, 0, 2, int16_t(value)}); break;
@@ -461,6 +463,22 @@ void Context::save_sound() {
     open_name(NameTarget::Sound, t.name, name_length - 1, true);
 }
 
+// Shift + Sample Select on a sampler track: the last pad's region as a WAV
+// file. Writing it lands in phase 5 (MELODEE_PARITY.md); until then the
+// name is asked for and the header says it is not there yet.
+void Context::save_sample() {
+    auto& t = track();
+    const auto& sound = pad();
+    if (t.engine != EngineKind::Sampler || !sound.used()) { notice("Save Sample: no sample"); return; }
+    const auto& ref = project.samples[sound.sample % sample_slots];
+    open_name(NameTarget::Sample, ref.name, name_length - 1, false);
+}
+
+void Context::set_rec_source(unsigned source) {
+    ui.rec_source = uint8_t(source % 3);
+    send({Type::RecordSource, ui.rec_source});
+}
+
 void Context::finish_name() {
     auto& e = ui.name;
     std::string text(e.text, e.length);
@@ -501,6 +519,7 @@ void Context::finish_name() {
         store->save_sound(text, melodee::save_sound(sound_of(t, text.c_str())));
         break;
     }
+    case NameTarget::Sample: notice("Save Sample: not yet"); break; // phase 5
     case NameTarget::None: break;
     }
 }
@@ -1063,8 +1082,14 @@ void Context::set_arp(bool on) {
     send({Type::Arp, ui.track, 0, 0, int16_t(on)});
 }
 
-void Context::set_click(bool on) {
-    project.click = on;
+void Context::set_click(unsigned mode) {
+    project.click = uint8_t(mode % 3);
+    send_click();
+}
+
+// The audio thread only hears on or off: Rec is on while Seq Record is.
+void Context::send_click() {
+    bool on = project.click == 1 || (project.click == 2 && ui.recording);
     send({Type::Click, 0, 0, project.click_level, int16_t(on)});
 }
 
@@ -1107,6 +1132,16 @@ void Context::play_continue() {
     else send({Type::Play});
 }
 
+// Shift + Loop: the last pad plays backwards, or forwards again.
+void Context::toggle_reverse() {
+    auto& t = track();
+    if (t.engine != EngineKind::Sampler || !pad().used()) { notice("Reverse: no sample"); return; }
+    pad().reverse = !pad().reverse;
+    send_pad(ui.track, t.last_pad);
+    dirty = true;
+    notice(pad().reverse ? "Reverse on" : "Reverse off");
+}
+
 void Context::double_length() {
     edit_pattern(ui.track, track().pattern, "Double length", [&] { double_notes(); });
 }
@@ -1138,6 +1173,7 @@ void Context::set_recording(bool on) {
     if (on == ui.recording) return;
     ui.recording = on;
     send({Type::SongRecord, 0, 0, 0, int16_t(on)});
+    if (project.click == 2) send_click(); // the Rec metronome follows Seq Record
     if (on) {
         take_count = 0;
         take_track = ui.track; take_pattern = track().pattern;

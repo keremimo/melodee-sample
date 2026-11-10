@@ -6,6 +6,8 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/scales.h"
+#include "melodee/shell/bindings.h"
+#include "melodee/shell/button_jobs.h"
 #include "melodee/shell/shell.h"
 #include "melodee/ui/tokens.h"
 #include "surface/led_colours.h"
@@ -99,10 +101,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     // Tap Tempo held half a second: the Tempo page.
     if (tap_held && now - tap_down > 500 && ui_.page != PageId::Tempo) { tap_held = false; context_.open(PageId::Tempo); }
-    // Record listens to the mic or the line inputs while its page is open or a take runs.
+    // Record listens to the mic or the line inputs while it or Input Config is open, or a take runs.
     if (library_) {
         bool busy = host.recorder().state() != TakeRecorder::State::Idle;
-        library_->want_input((ui_.page == PageId::Record || busy) && ui_.rec_source < 2 ? int(ui_.rec_source) : -1);
+        library_->want_input((ui_.page == PageId::Record || ui_.page == PageId::InputConfig || busy) && ui_.rec_source < 2 ? int(ui_.rec_source) : -1);
     }
     unsigned presses = power.load(std::memory_order_relaxed);
     if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; }
@@ -177,34 +179,47 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
 
     using B = SurfaceButton;
     using L = ButtonLight;
-    auto on = [&](B button, bool lit) { lights.button(button, lit ? L::Bright : L::Off); };
+    // As on the stock MPC: bright in use, faint where the button has a job here, dark where it has none.
+    bool erase_pots = false;
+    {
+        auto bindings = page_bindings(project, ui, context_.pattern());
+        for (const auto& b : bindings) erase_pots |= b.kind == Binding::Kind::Param;
+    }
+    bool kit = kit_pads();
+    uint64_t levels = 0; // two bits a button, for `status`
+    auto set = [&](B button, L light) {
+        lights.button(button, light);
+        levels |= uint64_t(light) << (2 * unsigned(button));
+    };
+    auto job = [&](B button) { return button_has_job(project, ui, button, kit, erase_pots); };
+    auto on = [&](B button, bool lit) { set(button, lit && job(button) ? L::Bright : job(button) ? L::Dim : L::Off); };
     bool play_group = ui.page == PageId::Stage || ui.page == PageId::Keys || ui.page == PageId::Pads || ui.page == PageId::Mix;
-    on(B::Sample, play_group);
-    on(B::Seq, ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
+    on(B::Sample, play_group || ui.page == PageId::InputConfig);
+    on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.arp);
     {
         auto state = host.recorder().state();
         bool blink = (now / 250) % 2;
-        lights.button(B::SampleRecord, state == TakeRecorder::State::Recording ? ButtonLight::Bright
-                      : state == TakeRecorder::State::Armed ? (blink ? ButtonLight::Bright : ButtonLight::Dim)
-                      : ui.page == PageId::Record ? ButtonLight::Dim : ButtonLight::Off);
+        set(B::SampleRecord, state == TakeRecorder::State::Recording ? L::Bright
+                      : state == TakeRecorder::State::Armed ? (blink ? L::Bright : L::Dim)
+                      : job(B::SampleRecord) ? L::Dim : L::Off);
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);
     on(B::KnobFx, ui.page == PageId::PadFx || ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
-    on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
+    on(B::Loop, ui.page == PageId::PlayPage); // phase 4: the last pad's loop on or off
     // 16 Levels: lit while the pads play levels (a kit pad on all sixteen, or a synth's Levels layout).
     on(B::SixteenLevels, ui.page == PageId::Levels || (track.engine == EngineKind::Sampler ? track.levels : track.layout == PadLayout::Levels));
-    lights.button(B::Play, playing ? L::Bright : L::Dim);
-    lights.button(B::Stop, playing ? L::Dim : L::Off);
-    lights.button(B::SeqRecord, ui.recording ? L::Bright : L::Dim);
+    on(B::Play, playing);
+    on(B::Stop, false);
+    on(B::SeqRecord, ui.recording);
     // Tap Tempo flashes on the beat while playing.
-    bool beat = playing && ticks % ticks_per_quarter < ticks_per_quarter / 3;
-    lights.button(B::TapTempo, beat ? L::Bright : L::Dim);
+    on(B::TapTempo, playing && ticks % ticks_per_quarter < ticks_per_quarter / 3);
     on(B::Mute, ui.mute);
     on(B::PadBank, ui.pad_bank);
-    lights.button(B::Erase, ui.erase || ui.copying != UiState::Copying::Off ? L::Bright : L::Off); // lit while copying
+    on(B::Erase, ui.erase || ui.copying != UiState::Copying::Off); // lit while copying
+    button_levels.store(levels, std::memory_order_relaxed);
 }
 
 } // namespace melodee

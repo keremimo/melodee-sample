@@ -286,7 +286,7 @@ struct Project {
     uint8_t swing = 50;     // percent, 50 is straight
     uint8_t root = 2;       // 0 C .. 11 B
     uint8_t scale = 0;      // index into scales()
-    bool click = false;     // the metronome while playing
+    uint8_t click = 0;      // the metronome: 0 off, 1 on, 2 only while Seq Record (Shift + Tap Tempo)
     uint8_t click_level = 40;
     // Punch (Pad FX): what the punches hit (0 the master, 1 the selected
     // track), the bank in view, and K1-K3: depth, snap grid (0 1/4 .. 3 1/32), tail (cut, fade, ring).

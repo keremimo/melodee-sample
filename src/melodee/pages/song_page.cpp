@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// SONG (B2 on Patterns): an arrange view of our own. One lane per track,
+// SONG (Shift + Pad 12, or B2 on Patterns): an arrange view of our own. One lane per track,
 // time left to right; a clip is a pattern placed on a lane, in the track's
 // colour with its notes in small, notches at each repeat. Markers name the
 // parts, the brace is the loop, the strip at the bottom is the whole song.
@@ -110,7 +110,7 @@ void draw(Paint& p, const Snapshot& s) {
         wide_sheet(p, m, "P" + juce::String(clip.pattern + 1), track_colour(clip.track));
         return;
     }
-    frame(p, s, {{"PATTERNS", "SONG", "LENGTH"}, 1, c}, h);
+    frame(p, s, {{"PATTERNS", "SONG", ""}, 1, c}, h);
 
     // Markers, the ruler and the loop brace.
     float label_every = zoom <= 8 ? 1 : zoom / 4.0f;
@@ -267,8 +267,7 @@ void soft(Context& c, int key) {
         if (key == 2) act(c);
         return;
     }
-    static const PageId pages[] {PageId::Patterns, PageId::Song, PageId::Length};
-    c.open(pages[key % 3]);
+    if (key == 0) c.open(PageId::Patterns);
 }
 
 // Minus / Plus: the previous or next marker, or clip edge while there are no markers.

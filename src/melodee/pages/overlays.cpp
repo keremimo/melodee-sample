@@ -9,15 +9,25 @@ namespace melodee {
 using namespace ui;
 
 void draw_shift_layer(Paint& p, const Snapshot& s) {
-    // Second jobs, as on the Shift board. On Sounds, Save sound stars the
-    // sound under the cursor instead.
-    static const char* const jobs[][2] {
-        {"SAMPLE", "Projects"}, {"PAD BANK", "Previous pad bank"}, {"SAMPLE SELECT", "Save sound"},
-        {"MUTE", "+ pad: solo track"}, {"ERASE", "Copy"}, {"LOOP", "Double length"}, {"SEQ", "Quantise take"},
-        {"PLAY", "Continue"}, {"STOP", "All notes off"},
-        {"SAMPLE RECORD", "Capture last bars"}, {"TAP TEMPO", "Metronome"}, {"\xe2\x88\x92 / +", "Undo / redo"}, {"PUSH", "Back"},
-    };
+    // Second jobs as printed (MELODEE_PARITY.md decisions); some follow the
+    // page or the track's engine. Shift + pad has only 3, 12 and 16 until
+    // phase 1b draws all sixteen.
+    const auto& t = s.track();
+    bool kit = t.engine == EngineKind::Sampler;
+    bool kit_pads = kit && !t.levels && page_spec(s.ui.page).pad == play_pad;
     bool song = s.ui.page == PageId::Song && !s.ui.sheet_open; // there Push names a marker instead
+    const char* copy = kit_pads ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pads, patterns";
+    const char* select = s.ui.page == PageId::Sounds ? "Star sound" : kit ? "Save sample (later)" : "Save sound";
+    static const char* const clicks[] {"Metronome: off", "Metronome: on", "Metronome: rec"};
+    const char* const jobs[][2] {
+        {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"PAD BANK", "Previous pad bank"}, {"ERASE", copy},
+        {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"SAMPLE SELECT", select},
+        {"MUTE", "+ pad: solo track"}, {"TAP TEMPO", clicks[s.project.click % 3]},
+        {"SAMPLE RECORD", "Audio recall (later)"}, {"SEQ RECORD", "Recall last bars"},
+        {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"\xe2\x88\x92 / +", "Undo / redo"},
+        {"PUSH", song ? "Marker at cursor" : "Back"},
+        {"PAD 3 \xc2\xb7 12 \xc2\xb7 16", "Double seq \xc2\xb7 Song \xc2\xb7 Project"},
+    };
     p.dim_zone(zone::soft_y, zone::soft_h);
     p.dim_zone(zone::knobs_y, zone::knobs_h);
     p.fill(0, zone::header_y, zone::width, zone::header_h + zone::picture_h, colour::bg);
@@ -29,16 +39,12 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     p.fill(x, y, w, ph, colour::surf, 6);
     auto c = colour_of(s);
     float cw = (w - 4 - 2) / 2;
-    constexpr unsigned count = sizeof(jobs) / sizeof(jobs[0]);
+    constexpr unsigned count = sizeof(jobs) / sizeof(jobs[0]), rows = 8;
     for (unsigned n = 0; n < count; ++n) {
-        unsigned column = n / 7, row = n % 7;
-        float cx = x + 2 + column * (cw + 2) + 6, cy = y + 5 + row * 19;
+        unsigned column = n / rows, row = n % rows;
+        float cx = x + 2 + column * (cw + 2) + 6, cy = y + 3 + row * 17.5f;
         p.text(juce::String::fromUTF8(jobs[n][0]), cx, cy, cw - 12, 7, caps_text(c, 6));
-        // Erase copies what the pads hold here: kit pads, patterns, or nothing.
-        bool kit = s.track().engine == EngineKind::Sampler && !s.track().levels && page_spec(s.ui.page).pad == play_pad;
-        const char* copy = kit ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pads, patterns";
-        const char* job = song && n == count - 1 ? "Marker at cursor" : n == 4 ? copy : jobs[n][1];
-        p.text(job, cx, cy + 7, cw - 12, 11, plain(colour::text, 9.5f, Weight::Medium));
+        p.text(juce::String::fromUTF8(jobs[n][1]), cx, cy + 7, cw - 12, 11, plain(colour::text, 9.5f, Weight::Medium));
     }
 }
 

@@ -15,7 +15,7 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Motion: return motion_page;
     case PageId::Patterns: return patterns_page;
     case PageId::Song: return song_page;
-    case PageId::Length: return length_page;
+    case PageId::InputConfig: return input_config_page;
     case PageId::Rack: return rack_page;
     case PageId::Sends: return sends_page;
     case PageId::Bus: return bus_page;

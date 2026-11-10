@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// PATTERNS (Loop): tracks down, sixteen patterns across, eight tracks in
-// view; the wheel moves the selected track and the view follows. The pads
+// PATTERNS (Seq, the MPC's Sequence mode): tracks down, sixteen patterns
+// across, eight tracks in view; the wheel moves the selected track and the
+// view follows. K1 the selected pattern's length by the bar (1-16), K2 its
+// Q (division), K3 swing for the whole project. B2 Song. The pads
 // are that track's sixteen patterns: tap to queue (it starts on the next
 // bar), Erase + pad clears, hold a pad and tap another to copy. Shift +
 // Erase copies too: a pad, then (on this or another track) where it goes.
@@ -18,8 +20,12 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill(juce::String(first + 1) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(first + 8) + " OF 16"));
     h.left.push_back(pill("LAUNCH BAR"));
+    {   // the selected pattern's length in steps, while it is not whole bars
+        unsigned length = s.pattern.length;
+        if (length % bar_steps) h.left.push_back(pill(juce::String(length) + " STEPS"));
+    }
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"PATTERNS", "SONG", "LENGTH"}, 0, colour_of(s)}, h);
+    frame(p, s, {{"PATTERNS", "SONG", ""}, 0, colour_of(s)}, h);
 
     constexpr float gap = 2, label_w = 16, head_h = 9, top = zone::picture_y + 1.5f;
     constexpr float cw = (zone::width - 2 * zone::pad - label_w - 16 * gap) / 16;
@@ -106,8 +112,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 void wheel(Context& c, int delta) { c.select_track(unsigned(std::clamp<int>(c.ui.track + delta, 0, int(track_count) - 1))); }
 
 void soft(Context& c, int key) {
-    static const PageId pages[] {PageId::Patterns, PageId::Song, PageId::Length};
-    c.open(pages[key % 3]);
+    if (key == 1) c.open(PageId::Song);
 }
 } // namespace
 

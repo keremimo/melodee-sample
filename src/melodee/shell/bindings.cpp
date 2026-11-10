@@ -125,7 +125,7 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
         unsigned t = ui.track % track_count;
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
-    case PageId::Length:
+    case PageId::Patterns: // the selected track's pattern: K1 length by the bar, K2 Q, K3 swing
         return {Binding {Kind::PatternBars, 0, 1, int(max_steps / bar_steps), int((pattern.length + bar_steps - 1) / bar_steps)},
                 Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
                 Binding {Kind::Swing, 0, 50, 75, project.swing}};
@@ -193,8 +193,9 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::ChopAmount, int16_t(mode), lows[mode], highs[mode], ui.chop_amount[size_t(mode)]}, start};
     }
     case PageId::Record:
-        return {Binding {Kind::RecThreshold, 0, -60, 0, ui.rec_threshold}, Binding {Kind::RecBars, 0, 0, 16, ui.rec_bars},
-                Binding {Kind::RecGain, 0, -12, 24, ui.rec_gain}};
+        return {Binding {}, Binding {Kind::RecBars, 0, 0, 16, ui.rec_bars}, Binding {Kind::RecGain, 0, -12, 24, ui.rec_gain}};
+    case PageId::InputConfig: // the source is on B1-B3
+        return {Binding {Kind::RecThreshold, 0, -60, 0, ui.rec_threshold}, Binding {}, Binding {}};
     case PageId::Project:
         if (ui.sheet_open || ui.move_open) return {};
         return {Binding {}, Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},

@@ -13,7 +13,8 @@ SOURCES = ["src/melodee/engine/prophet.cpp", "src/melodee/engine/prophet_info.cp
            "src/melodee/engine/sampler.cpp", "src/melodee/engine/sample_data.cpp",
            "src/melodee/model/project_file.cpp", "src/melodee/engine/kit909.cpp",
            "src/melodee/engine/fm6.cpp", "src/melodee/engine/sid.cpp",
-           "src/melodee/engine/cz.cpp", "src/melodee/engine/punch.cpp", "src/melodee/model/sound_file.cpp"]
+           "src/melodee/engine/cz.cpp", "src/melodee/engine/punch.cpp", "src/melodee/model/sound_file.cpp",
+           "src/melodee/shell/page_stack.cpp", "src/melodee/shell/button_jobs.cpp"]
 
 
 class MelodeeTests(unittest.TestCase):

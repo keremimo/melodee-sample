@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// PROJECT (Shift + Sample): projects are files on the SD card, as many as it
+// PROJECT (Shift + Pad 16): projects are files on the SD card, as many as it
 // holds, in folders. The wheel moves; Push on New project starts one, Push
 // on a folder goes in (Shift + Push comes back out), Push on a project
 // opens its sheet: on the open one Save, Save as new, Duplicate, New folder

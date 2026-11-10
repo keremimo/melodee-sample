@@ -43,6 +43,7 @@ struct Command {
         PadNote,     // track, index = kit pad, value = velocity, pattern = semitones + 64: 16 Levels
         RecordArm,   // track = source (0 mic, 1 line, 2 the mix), index = sample slot, value = threshold dB, pattern = bars (0: until stopped)
         RecordGain,  // value = dB
+        RecordSource, // track = 0 mic, 1 line, 2 the mix: what the input meter reads before a take
         RecordNow, RecordStop,
         Reload,      // pack: a whole project to switch to; handed back through the host's done queue
         Click,       // value: on; index: level 0..100

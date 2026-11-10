@@ -228,10 +228,6 @@ const Preview previews[] {
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 16; s.ui.sheet_open = true;
          s.playing = true;
      }},
-    {"length", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Length; s.playing = true; s.steps[0] = 34; s.project.swing = 54;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
     {"rack", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 1; s.playing = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
@@ -280,6 +276,10 @@ const Preview previews[] {
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1;
          s.sample.frames = 26460;
          s.ui.levels_hit = 10; s.ui.levels_value = level_velocity(10);
+     }},
+    {"inputconfig", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::InputConfig; s.ui.track = 3; s.ui.rec_source = 0; s.ui.rec_threshold = -24; s.take.level = 0.12f;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"record", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Record; s.ui.track = 3; s.playing = true; s.ui.rec_source = 1; s.ui.rec_bars = 4; s.ui.rec_gain = 6;
@@ -367,6 +367,9 @@ const Preview previews[] {
     {"cloud", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
+    {"shiftkit", [](Shell&, Snapshot& s) { // a kit track on Pads: Save sample, Reverse, Copy pad; metronome on Rec
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.ui.shift = true; s.project.click = 2;
+     }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
     {"name", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Song; s.ui.song_cursor = 16; s.playing = true;

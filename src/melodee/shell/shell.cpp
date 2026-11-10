@@ -5,6 +5,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/page.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/shift_pads.h"
 #include "surface/controls.h"
 #include <algorithm>
 #include <cstdio>
@@ -119,12 +120,7 @@ void Shell::button(Button b, bool pressed) {
     const auto& page = page_spec(ui.page);
     switch (b) {
     case Button::Sample:
-        if (ui.shift) { // the projects on the card
-            context_.open(PageId::Project);
-            if (store_) store_->list(context_.project_folder);
-            ui.project_rows = 64; // until the list arrives
-            break;
-        }
+        if (ui.shift) { context_.open(PageId::InputConfig); break; } // Shift + Sample: Input Config, as printed
         if (play_group(ui.page)) {
             PageId keys = context_.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
             context_.open(ui.page == PageId::Stage ? keys : (ui.page == PageId::Keys || ui.page == PageId::Pads) ? PageId::Mix : PageId::Stage);
@@ -138,18 +134,23 @@ void Shell::button(Button b, bool pressed) {
         context_.open(ui.page == PageId::Rack ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
                       : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
         break;
-    case Button::Loop: // Patterns, then Song, then Length
-        if (ui.shift) { ui.shift_used = true; context_.double_length(); break; }
-        context_.open(ui.page == PageId::Patterns ? PageId::Song : ui.page == PageId::Song ? PageId::Length : PageId::Patterns);
+    case Button::Loop: // the last pad's loop (phase 4); until then its Play page. Shift: reverse
+        if (context_.track().engine != EngineKind::Sampler) { context_.notice("Loop: a kit pad's"); break; }
+        if (ui.shift) context_.toggle_reverse();
+        else context_.open(PageId::PlayPage);
         break;
-    case Button::Seq: // Steps, then Roll, then Motion
-        if (ui.shift) { ui.shift_used = true; context_.quantise_take(); break; }
-        context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
+    case Button::Seq: // Patterns; Shift: Step Edit, again Steps -> Roll -> Motion
+        if (ui.shift) {
+            context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
+            break;
+        }
+        context_.open(PageId::Patterns);
         break;
     case Button::SampleSelect: // on a sampler track it lists samples
-        if (ui.shift) { // on Sounds: a star among the favourites; elsewhere Save sound, named first
-            ui.shift_used = true;
-            if (ui.page == PageId::Sounds) context_.toggle_favourite(); else context_.save_sound();
+        if (ui.shift) { // by engine: on Sounds a star; a kit: Save Sample; a synth: Save sound
+            if (ui.page == PageId::Sounds) context_.toggle_favourite();
+            else if (context_.track().engine == EngineKind::Sampler) context_.save_sample();
+            else context_.save_sound();
             break;
         }
         if (!ui.shift) {
@@ -159,14 +160,8 @@ void Shell::button(Button b, bool pressed) {
         }
         break;
     case Button::SampleRecord: // a sampler track: the Record page; there, arm, start now, stop
-        if (ui.shift) { // Capture: the last bars played, into a pattern
-            ui.capture_into = context_.track().pattern;
-            for (unsigned n = 0; n < pattern_count; ++n)
-                if (patterns_->at[ui.track][n].empty()) { ui.capture_into = uint8_t(n); break; }
-            context_.open(PageId::Capture);
-            break;
-        }
-        if (context_.track().engine != EngineKind::Sampler) break;
+        if (ui.shift) { context_.notice("Audio Recall: not yet"); break; } // the input ring lands in phase 6
+        if (context_.track().engine != EngineKind::Sampler) { context_.notice("Sample Record: kit tracks"); break; }
         if (ui.page != PageId::Record) context_.open(PageId::Record);
         else context_.record_press();
         break;
@@ -190,10 +185,22 @@ void Shell::button(Button b, bool pressed) {
         else context_.stop();
         break;
     case Button::SeqRecord:
+        if (ui.shift) { // Recall: the last bars played, into a pattern (Capture)
+            ui.capture_into = context_.track().pattern;
+            for (unsigned n = 0; n < pattern_count; ++n)
+                if (patterns_->at[ui.track][n].empty()) { ui.capture_into = uint8_t(n); break; }
+            context_.open(PageId::Capture);
+            break;
+        }
         context_.set_recording(!ui.recording); // a take: Shift + Minus undoes it like any edit
         break;
     case Button::TapTempo:
-        if (ui.shift) { context_.set_click(!context_.project.click); break; } // Shift: the metronome
+        if (ui.shift) { // Shift: the metronome, Off -> On -> Rec (only while Seq Record)
+            context_.set_click(context_.project.click + 1u);
+            static const char* const modes[] {"Metronome off", "Metronome on", "Metronome: rec"};
+            context_.notice(modes[context_.project.click % 3]);
+            break;
+        }
         context_.tap_tempo();
         tap_down = context_.now; tap_held = true; // held, it opens the Tempo page
         break;
@@ -315,6 +322,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     }
     if (down && ui_.exit_open) return;
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
+    if (down && ui_.shift && shift_pad(context_, pad)) { ui_.shift_used = true; return; } // printed Shift + pad jobs
     bool copying_pads = ui_.copying == UiState::Copying::Pads;
     if (down && kit_pads() && (copying_pads || ui_.erase)) {
         unsigned kit = context_.track().bank % sampler_banks * 16 + pad;
@@ -404,7 +412,23 @@ std::string Shell::summary() const {
     return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
            " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load()) +
-           " melodee_punch=" + std::to_string(int(host.punching()));
+           " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text();
+}
+
+// Each lit button as name:level (1 faint, 2 bright), in the surface's order.
+std::string Shell::button_text() const {
+    static const char* const names[] {"sample", "seq", "pad-fx", "knob-fx", "shift", "pad-bank", "erase", "note-repeat",
+                                      "b1", "b2", "b3", "chop", "mute", "loop", "16-levels", "sample-select", "tap-tempo",
+                                      "minus", "plus", "sample-record", "seq-record", "stop", "play", "wheel-push"};
+    uint64_t levels = button_levels.load(std::memory_order_relaxed);
+    std::string out;
+    for (unsigned n = 0; n < sizeof(names) / sizeof(names[0]); ++n) {
+        unsigned level = unsigned(levels >> (2 * n)) & 3;
+        if (!level) continue;
+        if (!out.empty()) out += ',';
+        out += names[n]; out += ':'; out += char('0' + level);
+    }
+    return out.empty() ? "none" : out;
 }
 
 void starting_project(Project& project, PatternBank& patterns) {

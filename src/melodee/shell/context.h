@@ -8,6 +8,7 @@
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/history.h"
+#include "melodee/shell/page_stack.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
 #include <vector>
@@ -86,7 +87,8 @@ public:
     void name_project(bool as_new);                         // Save (no file yet) or Save as new: a name first
     void rename_project(const std::string& path, const std::string& name); // Rename on the file sheet
     void name_marker(unsigned bar);                         // Shift + Push on a marker
-    void save_sound();                                      // Shift + Sample Select away from Sounds
+    void save_sound();                                      // Shift + Sample Select away from Sounds, synth tracks
+    void save_sample();                                     // Shift + Sample Select on a kit: a stub until phase 5
     std::string name_path;                                  // Rename: the file being renamed
     unsigned name_bar = 0;                                  // Marker: its bar
     // Sounds of one's own on the card, copied in by the shell; the k-th of an engine's.
@@ -97,8 +99,9 @@ public:
     // next bar, growing a bar at a time; punches land on the song's punch lane.
     void song_tick();                                       // MIDI thread, often: follows the song's bar
     // Shift's second jobs.
-    void double_length();     // Shift + Loop: the pattern twice as long, played twice
-    void quantise_take();     // Shift + Seq: the last take's late notes onto their nearest step
+    void double_length();     // Shift + Pad 3 (Double Seq): the pattern twice as long, played twice
+    void quantise_take();     // the last take's late notes onto their nearest step; off the buttons until Time Correct (phase 2)
+    void toggle_reverse();    // Shift + Loop: the last pad's reverse
     void play_continue();     // Shift + Play: on from where it stopped
     void set_recording(bool on); // Seq Record: a take begins; when it ends it goes into the history
     void sync_punches();
@@ -139,7 +142,7 @@ public:
             if (a.notes[n].key != b.notes[n].key || a.notes[n].velocity != b.notes[n].velocity) return false;
         return a.length == b.length && a.chance == b.chance && a.flags == b.flags;
     }
-    // Patterns and Length
+    // Patterns (their cards: length, Q, swing)
     void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing
     void clear_pattern(unsigned track, unsigned pattern);
     // A pattern onto another of `track`; from_track, when given, is where it comes from.
@@ -165,6 +168,7 @@ public:
     void rechop();                                                     // Chop's markers from its mode and amount
     void chop_to_pads();                                               // the slices onto pads, from the first free one
     void record_press();
+    void set_rec_source(unsigned source);                              // Input Config: B1-B3
     void follow_tempos(); // Follow on: each pad's own tempo, from its length as whole bars
     bool host_recording() const;                                       // a take is armed or running                                               // Sample Record on the Record page: arm, start now, stop
     bool files_match(const std::string& path) const { return sample_file_listed(project, ui.files_filter, path); }
@@ -185,7 +189,8 @@ public:
     std::array<Played, 512> history {};
     unsigned history_at = 0;
     void set_arp(bool on);
-    void set_click(bool on);
+    void set_click(unsigned mode); // the metronome: 0 off, 1 on, 2 only while Seq Record
+    void send_click();
     // Capture: the selected track's last bars from the history into a pattern.
     void capture();
     // Transport

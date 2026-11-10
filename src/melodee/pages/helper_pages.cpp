@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The helpers around playing:
 // TEMPO (hold Tap Tempo): K1 tempo, K2 swing for the whole project, K3 click
-//   level; B1 halves, B3 doubles, B2 the click on or off; the wheel moves the
+//   level; B1 halves, B3 doubles, B2 (or Shift + Tap Tempo anywhere) the
+//   metronome Off -> On -> Rec (only while Seq Record); the wheel moves the
 //   tempo by 0.1. Tapping works from anywhere.
 // ARP (Note Repeat): hold Note Repeat for a momentary arp, tap to keep it
 //   on. K1 mode, K2 rate, K3 octaves; Minus / Plus the gate. B3 Hold latches.
@@ -10,7 +11,7 @@
 // CHORD (B1 there): one pad, one chord from the scale. K1 type, K2 voicing,
 //   K3 inversion. B3 Hold latches the arp the same way. Chords land in Steps
 //   and Roll as up to four notes.
-// CAPTURE (Shift + Sample Record): what the pads just played on this track,
+// CAPTURE (Shift + Seq Record, the MPC's Recall): what the pads just played on this track,
 //   the last bars of it laid into a pattern (the first empty one). K1 bars,
 //   K2 quantise, K3 which pattern; B3 keeps, B1 drops.
 #include "melodee/engine/arp.h"
@@ -40,15 +41,16 @@ void tempo_draw(Paint& p, const Snapshot& s) {
     p.text("TAPS", x, y + 78, 30, 12, caps_text(colour::mid, 7));
     if (s.project.click) {
         auto style = caps_text(colour::text, 7);
-        float cw = p.width("CLICK ON", style) + 9;
+        const char* text = s.project.click == 2 ? "CLICK REC" : "CLICK ON";
+        float cw = p.width(text, style) + 9;
         p.fill(zone::width - zone::pad - 6 - cw, y + 78, cw, 12, colour::surf, 3);
-        p.text("CLICK ON", zone::width - zone::pad - 6 - cw, y + 78, cw, 12, style, juce::Justification::centred);
+        p.text(text, zone::width - zone::pad - 6 - cw, y + 78, cw, 12, style, juce::Justification::centred);
     }
 }
 void tempo_soft(Context& c, int key) {
     if (key == 0) c.set_tempo(c.project.tempo / 2);
     if (key == 2) c.set_tempo(c.project.tempo * 2);
-    if (key == 1) c.set_click(!c.project.click);
+    if (key == 1) c.set_click(c.project.click + 1u);
 }
 void tempo_wheel(Context& c, int delta) { c.set_tempo(int(c.project.tempo) + delta); }
 

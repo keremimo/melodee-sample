@@ -42,7 +42,7 @@ work from memory.
 | Seq | **Patterns** (MPC Sequence Mode: pads pick patterns and queue them; K1 length, K2 Q, K3 swing). |
 | Shift + Seq | **Step Edit**; pressed again it steps through Steps → Roll → Motion. |
 | Loop / Shift + Loop | Loop / reverse the **last pad's playback** (sampler). |
-| Song | Shift + Pad 12. Length moves onto the Patterns cards. |
+| Song | Shift + Pad 12 (B2 on Patterns stays a way in). Length moves onto the Patterns cards; the Length page is dropped (Kerem, 2026-11-10). |
 | Shift + Sample | **Input Config** (source, monitor, threshold, rec length, rec input FX). |
 | Shift + Pad 16 | **Project** (B2 Settings, B3 About stay there). |
 | Shift + Pad 8 | **MIDI Config**, which also holds the takeover modes. |
@@ -80,20 +80,21 @@ work from memory.
 - [x] Pad Bank tap on a non-sampler track: no silent no-op (flash the header or select the next track's bank).
 
 ### Phase 1a: button remap
-- [ ] Seq → Patterns (with K1 length, K2 Q, K3 swing; Length page folded in or kept as B3).
-- [ ] Shift + Seq → Step Edit group (Steps → Roll → Motion); move "quantise take" to Time Correct (phase 2).
-- [ ] Loop / Shift + Loop → pad loop / reverse (loop itself lands in phase 4; until then reverse works and Loop opens the Play page).
-- [ ] Shift + Sample → Input Config page (contents in phase 6; first a page with source / threshold moved from Record).
-- [ ] Shift + Sample Record → Recall stub; Capture → Shift + Seq Record.
-- [ ] Shift + Sample Select by track engine (Save Sample needs phase 5; until then the Name sheet + "not yet").
-- [ ] Shift + Tap Tempo cycles Off / On / Rec (click only while recording).
-- [ ] Back: a real page stack (Shift + Push walks back more than one page).
-- [ ] Update the Shift overlay and MELODEE.md's Shell section.
+- [x] Seq → Patterns (with K1 length, K2 Q, K3 swing; Length page folded in or kept as B3).
+- [x] Shift + Seq → Step Edit group (Steps → Roll → Motion); move "quantise take" to Time Correct (phase 2).
+- [x] Loop / Shift + Loop → pad loop / reverse (loop itself lands in phase 4; until then reverse works and Loop opens the Play page).
+- [x] Shift + Sample → Input Config page (contents in phase 6; first a page with source / threshold moved from Record).
+- [x] Shift + Sample Record → Recall stub; Capture → Shift + Seq Record.
+- [x] Shift + Sample Select by track engine (Save Sample needs phase 5; until then the Name sheet + "not yet").
+- [x] Shift + Tap Tempo cycles Off / On / Rec (click only while recording).
+- [x] Back: a real page stack (Shift + Push walks back more than one page).
+- [x] Update the Shift overlay and MELODEE.md's Shell section.
+- [x] Button lights as on the stock MPC: faint where the button has a job on the page in view, bright in use, dark otherwise (Kerem, 2026-11-10).
 
 ### Phase 1b: Shift + pads and Shift + knobs
 - [ ] Shift + Pad 1–16 dispatch in the shell (pages that use Shift + pad today: Patterns column launch, Punch lock; move those or keep them where the page owns the pads, and decide which wins).
 - [ ] Shift overlay shows the 16 pad jobs as the pads sit (pad 1 bottom left), and lights the pads that do something.
-- [ ] Pads wired now: 12 Song, 16 Project, 1 Full Level (the pad response setting), 4 Count-In and 10 Rec Quantize as toggles (behaviour in phase 2); the rest open a "coming in phase n" notice.
+- [ ] Pads wired now: 12 Song, 16 Project and 3 Double Seq (phase 1a routed these three in `shell/shift_pads.cpp`), 1 Full Level (the pad response setting), 4 Count-In and 10 Rec Quantize as toggles (behaviour in phase 2); the rest open a "coming in phase n" notice.
 - [ ] Shift + K1–K3 second parameters: Binding layer for a Shift row, Shift icon on cards that have one (MPC pattern). Use it for Keys transpose.
 - [ ] −/+ on list pages move the list or change the selected value; octave only on play pages (Stage, Keys, Edit, Chord, Roll).
 
@@ -112,7 +113,7 @@ work from memory.
 - [ ] BPM per pattern or global (B2 on Patterns); hold B1 + wheel for BPM, Push switches whole / tenths.
 - [ ] Count-in (Shift + Pad 4): one bar before recording.
 - [ ] Seq Record arms (flashing) and recording starts on Play; pressed while playing it records at once; Seq Record again stops recording, playback continues.
-- [ ] Half Seq (Shift + Pad 2), Double Seq (Shift + Pad 3, already built), Half / Double Speed (Shift + Pad 6 / 7).
+- [ ] Half Seq (Shift + Pad 2), Double Seq (Shift + Pad 3, routed in phase 1a), Half / Double Speed (Shift + Pad 6 / 7).
 - [ ] Time Correct (Shift + Pad 14): K1 Q, K2 shift, K3 swing, pads choose, B2 all, B3 do it, undoable. Replaces "quantise take".
 - [ ] Wheel moves the playhead on Patterns (by beat; Shift by Q).
 - [ ] Open question 1 decided and done.
@@ -177,3 +178,4 @@ work from memory.
 
 - 2026-11-10: gap list made against the MPC guide; decisions above taken; nothing built yet.
 - 2026-11-10: phase 0 done. Steps writes the kit pad hit last (`Track::step_note()`); 16 Levels lit while the pads play levels; Shift + Erase is Copy (kit pads, patterns on Patterns, also across tracks; elsewhere a notice), pattern clear only by Erase + pad on Patterns; Erase + pad on a kit erases that pad's notes while playing or recording (one undo, folded into an open take); Shift + −/+ undo / redo everywhere, Transpose on Keys row 2 (wheel); 909 pads 12–16 dark with a notice; Pad Bank tap on a track without banks says what Pad Bank + pad does. Previews `transpose`, `patterncopy`. Track copy (Pad Bank held) moved to phase 1c. Checked on the device through `--ctl melodee-press` (which now also takes `erase+pad3`, `pad-bank+pad5`: any button held around a pad): Pad Bank notice, 909 pad 12 notice, Steps writing A03's note, Erase + pad playing / stopped / in a take with undo and redo, pattern copy across tracks, undo on Keys, Transpose on row 2. 16 Levels light seen by Kerem: lit on Levels, dark with levels off. Then (Kerem): every pattern edit on the take's pattern during Seq Record (Erase + pad on Steps, Patterns or a kit, quantise, double, copy) is part of the take, not an undo of its own; checked on the device (Steps erase in a take, one Undo take, then Nothing to undo).
+- 2026-11-10: phase 1a done. Seq opens Patterns, whose cards are K1 length by the bar, K2 Q, K3 swing; the Length page is gone (Kerem: fold it in; B2 Song stays). Shift + Seq is Step Edit (Steps → Roll → Motion); "quantise take" is off the buttons until Time Correct. Loop opens the last pad's Play page on a kit, Shift + Loop flips its reverse. Shift + Sample opens Input Config (`pages/input_config_page.cpp`: source on B1–B3, threshold on K1, the input meter; a `RecordSource` command so the meter follows the source before arming); Record keeps K2 bars and K3 gain, B2 opens Input Config. Shift + Sample Record says Audio Recall is not there yet; Shift + Seq Record opens Recall (Capture). Shift + Sample Select: Sounds star, kit Save Sample (Name sheet, then "not yet"), synth Save sound. Shift + Tap Tempo cycles the metronome Off / On / Rec (`Project::click` is now a mode; Rec follows Seq Record). Back is a 16-deep page stack (`shell/page_stack.cpp`; sibling groups are one stop). Minimal Shift + pad route (`shell/shift_pads.cpp`): 3 Double Seq (was Shift + Loop), 12 Song, 16 Project (was Shift + Sample), except on Patterns and Punch, which keep Shift + pad for now. Button lights faint where the button has a job on the page, bright in use, dark otherwise (`shell/button_jobs.cpp`; Kerem's addition). Previews `inputconfig`, `shiftkit`; `length` dropped. Test `button_remap()`.

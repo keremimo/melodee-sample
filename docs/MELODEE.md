@@ -67,8 +67,9 @@ service are unchanged.
 
 Milestones 1–5 exist, and the sequence group is complete: the app starts
 into Stage, and Stage, Keys, Mix, Sounds, Edit, Steps, Roll (with its note
-sheet) and Motion work with the Shift layer and the Exit sheet. SEQ steps
-through Steps, Roll and Motion; B1–B3 pick them too.
+sheet) and Motion work with the Shift layer and the Exit sheet. Seq opens
+Patterns (the MPC's Sequence mode); Shift + Seq is Step Edit and, pressed
+again, steps through Steps, Roll and Motion; B1–B3 pick them too.
 
 - **USB-C stems:** a computer recording from the MPC gets the main mix on
   inputs 1–2 and each track on its own mono input, track 1 on 3 through
@@ -96,16 +97,17 @@ through Steps, Roll and Motion; B1–B3 pick them too.
 - **Clock:** 24 ticks a quarter. Each pattern has its own division (1/8,
   1/8T, 1/16, 1/16T, 1/32); swing (project-wide, 50–75 %) stretches the
   first sixteenth of every eighth.
-- **Patterns** (LOOP): tracks down, sixteen patterns across, eight tracks
-  in view following the selected one. Pads are its patterns: a tap queues
+- **Patterns** (Seq): tracks down, sixteen patterns across, eight tracks
+  in view following the selected one. K1 the selected pattern's length by
+  the bar (1–16 bars; a length that is not whole bars shows as n STEPS in
+  the header), K2 its Q (division: 1/8, 1/8T, 1/16, 1/16T, 1/32), K3 swing
+  (project-wide). B2 Song. Pads are its patterns: a tap queues
   (it starts on the next bar, or at once when stopped), Erase + pad clears,
   hold one and tap another to copy, Shift + pad launches that column on
   every track (open question 8, built as drawn). Shift + Erase copies too:
   the pattern to copy, then where it goes, on this track or (the wheel moved
   on) another; Shift + Erase again or Erase leaves.
-- **Length** (B3): 1–256 steps; K1 by the bar, the wheel by the step, K2
-  division, K3 swing.
-- **Song** (B2): lanes per track, clips of patterns with their notes in
+- **Song** (Shift + Pad 12, or B2 on Patterns): lanes per track, clips of patterns with their notes in
   small and notches at each repeat, markers, loop brace, cursor, playhead
   and an overview strip; K1 zoom (4–64 bars; at 4 the header says SNAP
   1 BAR), K2 pattern and K3 length for the next clip, or of the clip under
@@ -157,7 +159,8 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   kit (K1–K3 on Stage: TUNE, FILTER, DECAY). Pad Bank tapped (or Minus /
   Plus on Pads) steps the bank; bank lights A–D show it. On a track without
   banks a tap says that Pad Bank + pad picks a track. Steps writes the
-  pad hit last. Samples are WAV
+  pad hit last. Loop opens the last pad's Play page and Shift + Loop flips
+  its reverse (the header says which); pad looping itself is phase 4. Samples are WAV
   files (16, 24 or 32-bit PCM or 32-bit float, any rate, up to 60 s) in the
   card's `Samples` folder and one level of folders under it
   (`$MELODEE_SAMPLES` on a host). The service thread reads a file, makes
@@ -182,8 +185,9 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   into the song, its pot moves on Motion, and every edit of the take's
   pattern meanwhile, Erase + pad among them; Shift + Minus while recording
   ends the take and takes it back); Erase + pad on Steps and Patterns, a
-  kit pad's notes erased, pattern copies, Quantise, Double length and
-  Capture. The header names what came back. A new
+  kit pad's notes erased, pattern copies, Double Seq and Recall (Capture).
+  Quantising the last take is off the buttons until Time Correct (phase 2
+  of MELODEE_PARITY.md). The header names what came back. A new
   project or a load forgets them. Pot moves outside a take and Song page
   edits are not kept.
 - **Samples** (Sample Select on a sampler track): the files; Push loads the
@@ -214,16 +218,21 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   goes back to the kit; until then the pads keep playing the levels on
   every page. Seq Record keeps the velocity of a levels pad, not its pitch
   yet.
-- **Record** (Sample Record on a sampler track): B1–B3 pick the mic, the
-  line inputs or the mix (resample, before main volume). Sample Record or
-  Push arms; the take starts when the level passes K1 (−60 dB: at once) or
-  on a second press, and ends after K2's bars (0: until stopped) or on Stop
-  or a third press. K3 gain. The take is recorded into a 60 s buffer made
+- **Input Config** (Shift + Sample, as printed; B2 on Record): B1–B3 pick
+  where Record takes its sound from: the mic, the line inputs or the mix
+  (resample, before main volume); K1 the threshold a take waits for (−60
+  dB: at once). The input meter moves while the page is open. Monitor,
+  record length and input effects come in phase 6.
+- **Record** (Sample Record on a sampler track; elsewhere the header says
+  it wants a kit): from Input Config's source, shown in the header. Sample
+  Record or Push arms; the take starts when the level passes Input Config's
+  threshold or on a second press, and ends after K2's bars (0: until
+  stopped) or on Stop or a third press. K3 gain. The take is recorded into a 60 s buffer made
   at start; the service thread writes it to `Samples/Recorded/TAKE n.wav`
   (24-bit) on the card and it lands on the first empty pad. The input is
-  routed only while the page is open or a take runs. Samples' RECORDED shows
+  routed only while Record or Input Config is open or a take runs. Samples' RECORDED shows
   those files.
-- **Projects** (Shift + Sample): files (`.mldp`) in `Melodee/Projects` on
+- **Projects** (Shift + Pad 16): files (`.mldp`) in `Melodee/Projects` on
   the card, in folders (`$MELODEE_PROJECTS` on a host). The format is
   tagged sections, so older files stay readable and only what differs from
   empty is written. The page lists New project, the open project while it
@@ -246,8 +255,9 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   if the project has none). Open at start is kept in `Melodee/settings`.
 - **Tempo** (hold Tap Tempo half a second; tapping works anywhere): K1
   tempo, K2 swing, K3 click level; B1 halves, B3 doubles, B2 (or Shift +
-  Tap Tempo anywhere) the metronome, a short blip on each beat while
-  playing, higher on the bar. The wheel moves the tempo by 0.1.
+  Tap Tempo anywhere) turns the metronome Off → On → Rec (Rec: only while
+  Seq Record is on), a short blip on each beat while playing, higher on
+  the bar. The header says which for a moment. The wheel moves the tempo by 0.1.
 - **Arp** (Note Repeat: held, momentary; tapped, it stays on; tapped again
   on its page, off): Up, Down, Up-down, Random, Order; K2 rate 1/4 to 1/32,
   K3 octaves, Minus / Plus the gate. B3 Hold latches the keys. It runs on
@@ -257,7 +267,7 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Triad, Dia 7, Sus2, Sus4, Power, Dia 9; voicing Close, Open, Drop 2,
   Spread; inversions. B1 there switches chords on or off. Chords play
   through the arp too, and record into Steps and Roll as up to four notes.
-- **Capture** (Shift + Sample Record): what the pads played on the track
+- **Recall** (Shift + Seq Record, the Capture page): what the pads played on the track
   lately (a history of the last 512 presses), the last 1–4 bars quantised
   to 1/16 or 1/8 and laid into a pattern (the first empty one); B3 or Push
   keeps it and that pattern plays, B1 drops.
@@ -335,8 +345,9 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   it; an empty name changes nothing. Markers are capitals (11), projects
   31, sounds 23; characters a card refuses in a file name are never
   offered. Play and Stop still work under it.
-- **Sounds of one's own:** Shift + Sample Select away from Sounds is Save
-  sound: the Name sheet with the sound's name, then the engine's values
+- **Sounds of one's own:** Shift + Sample Select away from Sounds on a
+  synth or drum track is Save sound (on a kit it is Save Sample: the Name
+  sheet with the pad's sample name, then "not yet" until phase 5): the Name sheet with the sound's name, then the engine's values
   and mod routes go to `Melodee/Sounds/<name>.mlds` (a few hundred bytes;
   the same name replaces it). They follow the factory sounds in Sounds,
   numbered on, for their engine, and load, audition, star and show under
@@ -361,36 +372,51 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   a sample-accurate step clock with swing, chance, accent and tie, meters
   and a soft-clipped master after main volume. The send is stored, not heard
   (no buses yet).
-- **Shell:** printed buttons (Sample cycles Stage → Keys → Mix, SEQ, Sample
-  Select, 16 Levels, Play, Stop, Seq Record, Tap Tempo, Minus / Plus, Erase),
-  soft keys, wheel and Push, Shift + Push back, Shift + wheel fine edit,
+- **Shell:** printed buttons (Sample cycles Stage → Keys → Mix, Seq
+  Patterns, Loop the last pad's Play page on a kit (its loop in phase 4),
+  Sample Select, 16 Levels, Play, Stop, Seq Record, Tap Tempo, Minus /
+  Plus, Erase), soft keys, wheel and Push, Shift + Push back along a page
+  stack (16 deep; turning through a group such as Steps / Roll / Motion or
+  Stage / Keys / Mix is one stop, and opening a page already on the stack
+  goes back to it), Shift + wheel fine edit,
   Erase + pot to the initial value, Shift + Erase copies, Shift +
   Stop all notes off, Pad Bank + pad picks a track, Mute + pad mutes and with
   Shift solos, pot pickup, the fader as mod wheel, pad / fader / button
   lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
-- **Shift layer:** drawn as on its board, and every second job works:
-  Sample → Projects, Pad Bank → previous bank, Sample Select → Save sound
-  (on Sounds: star the one under the cursor), Mute + pad →
-  solo, Erase → Copy (kit pads, or patterns on Patterns), Loop → double its length (notes and
-  motion played twice), Seq → quantise the last take (notes played past
-  half a step move onto the next), Play → continue from the bar the song
-  stopped in, Stop → all notes off, Sample
-  Record → Capture, Tap Tempo → metronome, Minus / Plus → undo / redo
-  on every page, Push → back. Transpose is a card on Keys (the wheel turns
-  to row 2; K1, −12 to +12 semitones, saved with the track) until Shift + K3
-  on Keys lands (MELODEE_PARITY.md, phase 1b).
+- **Button lights** (as on the stock MPC): bright when in use (the page's
+  button, Play while playing, Seq Record recording, a held Mute or Pad
+  Bank, Erase while copying), faint when the button does something on the
+  page in view, dark when it would do nothing: Chop needs a kit pad with a
+  sample, Loop and Sample Record a kit track, Erase a pad, step, marker or
+  pot it can clear (or Copy); on the Name sheet only Erase, Play and Stop
+  glow, on the Exit sheet none (`shell/button_jobs.cpp`).
+- **Shift layer:** drawn as on its board, every printed second job:
+  Sample → Input Config, Seq → Step Edit, Pad Bank → previous bank, Erase →
+  Copy (kit pads, or patterns on Patterns), Loop → reverse the last pad
+  (kit tracks), Sample Select → by engine (kit: Save Sample, not yet; synth:
+  Save sound; on Sounds: star), Mute + pad → solo, Tap Tempo → metronome
+  Off / On / Rec, Sample Record → Audio Recall (not yet, phase 6), Seq
+  Record → Recall (Capture), Play → continue from the bar the song stopped
+  in, Stop → all notes off, Minus / Plus → undo / redo on every page, Push
+  → back. Shift + Pad has three jobs so far (the rest in phase 1b): 3 Double
+  Seq (the pattern twice as long, notes and motion played twice), 12 Song,
+  16 Project; on Patterns and Punch the page keeps Shift + pad (column
+  launch, punch lock). Transpose is a card on Keys (the wheel turns to row
+  2; K1, −12 to +12 semitones, saved with the track) until Shift + K3 on
+  Keys lands (MELODEE_PARITY.md, phase 1b).
 - **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
   `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad
   (with a button held around it: `shift+pad5`, `erase+pad5`,
   `pad-bank+pad5`, `mute+pad5`) and
   `k1=V`..`k3=V` move a pot to V (0..127).
-  For checks without hands on the device.
+  `status` lists the lit buttons as `melodee_buttons=seq:2,stop:1,...`
+  (1 faint, 2 bright). For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
-  clipsheet, length, rack, sends, bus, fxpick, pads, samples, trim, chop,
-  levels, padcopy, undo, record, project, filesheet, tempo, arp, chord,
-  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift and exit at 1× and 2× (the 2× ones line up
+  clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
+  levels, padcopy, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
+  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

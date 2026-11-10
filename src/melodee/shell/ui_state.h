@@ -15,7 +15,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, Length, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -35,7 +35,13 @@ inline bool sample_file_listed(const Project& project, unsigned filter, const st
 }
 
 struct UiState {
-    PageId page = PageId::Stage, previous = PageId::Stage;
+    PageId page = PageId::Stage;
+    // Back (Shift + Push): the pages opened before this one, oldest first.
+    // Opening a page already in it goes back to it; turning through a
+    // group of sibling pages (Steps, Roll, Motion) replaces the top.
+    static constexpr unsigned back_capacity = 16;
+    std::array<PageId, back_capacity> back_stack {};
+    uint8_t back_depth = 0;
     uint8_t track = 0;
     bool shift = false, shift_used = false; // Shift held; another control used during the hold
     bool pad_bank = false, mute = false, erase = false;
@@ -80,8 +86,8 @@ struct UiState {
     int8_t levels_hit = -1;     // Levels: the pad played last, 0..15
     int16_t levels_value = 0;   // and what it played: a velocity or semitones
     uint8_t files_filter = 0;   // Samples: all, recorded, recent (the files this project uses)
-    uint8_t rec_source = 1;     // Record: 0 mic, 1 line, 2 the mix (resample)
-    int8_t rec_threshold = -30; // dB; -60 starts at once
+    uint8_t rec_source = 1;     // Input Config: 0 mic, 1 line, 2 the mix (resample)
+    int8_t rec_threshold = -30; // Input Config, dB; -60 starts at once
     uint8_t rec_bars = 4;       // 0: until stopped
     int8_t rec_gain = 0;        // dB
     int16_t rec_slot = -1, rec_pad = -1; // where the take in progress will land

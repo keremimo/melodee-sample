@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// RECORD (Sample Record on a sampler track): B1-B3 pick the source: the
-// built-in mic, the line inputs, or the mix itself (resample). Sample
-// Record arms; recording starts when the level passes the line on K1, or
-// at once on a second press. It ends after the bars on K2 or on Stop (or a
+// RECORD (Sample Record on a sampler track): records from the source picked
+// on Input Config (Shift + Sample, or B2 here). Sample Record arms;
+// recording starts when the level passes Input Config's threshold, or at
+// once on a second press. It ends after the bars on K2 or on Stop (or a
 // third press), is saved to Samples/Recorded on the card and lands on the
 // first empty pad. K3 gain.
 #include "melodee/engine/take_recorder.h"
 #include "melodee/pages/common.h"
+#include "melodee/pages/input_meter.h"
 #include "melodee/pages/pages.h"
 #include <cmath>
 
@@ -15,12 +16,6 @@ namespace melodee {
 namespace {
 using namespace ui;
 using State = TakeRecorder::State;
-
-float db_of(float level) { return level > 0 ? 20 * std::log10(level) : -90; }
-juce::String db_text(float db) {
-    int v = int(std::lround(db));
-    return (v < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(v)) + " DB";
-}
 
 void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
@@ -33,8 +28,9 @@ void draw(Paint& p, const Snapshot& s) {
     if (s.ui.rec_pad >= 0) empty = s.ui.rec_pad;
     if (empty >= 0) { char label[4]; pad_label(unsigned(empty), label); h.left.push_back(pill(juce::String("TO PAD ") + juce::String(label), c)); }
     else h.left.push_back(pill("NO EMPTY PAD"));
+    h.left.push_back(pill(juce::String("FROM ") + input_source_name(s.ui.rec_source)));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"MIC", "LINE", "RESAMPLE"}, s.ui.rec_source, c}, h);
+    frame(p, s, {{"", "INPUT", ""}, -1, c}, h);
 
     float x = zone::pad, w = zone::width - 2 * zone::pad;
     const char* title = state == State::Armed ? "Waiting" : state == State::Recording ? "Recording" : state == State::Done ? "Saving" : "Ready";
@@ -63,24 +59,11 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(at, y, 1, wh, colour::rec);
     }
     // The input level, with the line it has to pass.
-    float ly = y + wh + 12;
-    p.text("INPUT LEVEL", x, ly, 120, 9, caps_text(colour::mid, 7));
-    p.text("PEAK " + db_text(std::max(-60.0f, db_of(s.take.level))), x, ly, w, 9, caps_text(colour::mid, 7), juce::Justification::centredRight);
-    auto fraction = [](float db) { return std::clamp((db + 60) / 60, 0.0f, 1.0f); };
-    p.fill(x, ly + 12, w, 6, colour::line, 3);
-    p.fill(x, ly + 12, w * fraction(db_of(s.take.level)), 6, c, 3);
-    if (s.ui.rec_threshold > -60) {
-        float tx = x + w * fraction(float(s.ui.rec_threshold));
-        p.fill(tx, ly + 9, 1, 12, colour::text);
-        p.text("STARTS AT " + db_text(float(s.ui.rec_threshold)), tx - 60, ly + 22, 120, 9, caps_text(c, 7), juce::Justification::centred);
-    } else {
-        p.text("STARTS AT ONCE", x, ly + 22, w, 9, caps_text(c, 7), juce::Justification::centred);
-    }
+    input_meter(p, s, c, x, y + wh + 12, w);
 }
 
 void soft(Context& c, int key) {
-    if (c.host_recording()) return; // the source stays while a take runs
-    c.ui.rec_source = uint8_t(key % 3);
+    if (key == 1) c.open(PageId::InputConfig);
 }
 void push(Context& c) { c.record_press(); }
 } // namespace

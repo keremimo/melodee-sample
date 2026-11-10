@@ -16,7 +16,7 @@ using namespace ui;
 
 void draw_name_sheet(Paint& p, const Snapshot& s) {
     const auto& e = s.ui.name;
-    bool sound = e.target == NameTarget::Sound;
+    bool sound = e.target == NameTarget::Sound || e.target == NameTarget::Sample;
     auto accent = sound ? colour_of(s) : colour::text;
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
     soft_keys(p, {{"CANCEL", e.caps_only ? "" : "Aa", "DONE"}, e.lower ? 1 : 2, accent, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
@@ -28,6 +28,7 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
     case NameTarget::ProjectRename: what = "RENAME PROJECT"; break;
     case NameTarget::Marker: what = "MARKER " + juce::String::fromUTF8("\xc2\xb7 BAR ") + juce::String(s.ui.song_cursor + 1); break;
     case NameTarget::Sound: what = "SAVE SOUND " + juce::String::fromUTF8("\xc2\xb7 ") + engine_info(s.track().engine).name; break;
+    case NameTarget::Sample: what = "SAVE SAMPLE"; break;
     case NameTarget::None: break;
     }
     Header h = header_of(s);
