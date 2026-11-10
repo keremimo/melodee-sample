@@ -173,6 +173,10 @@ void Context::record(int key, int velocity) {
     for (auto& n : step.notes) if (n.velocity && n.key == key) return;
     for (auto& n : step.notes) if (!n.velocity) { n = {uint8_t(key), uint8_t(velocity)}; break; }
     set_step(ui.track, at, step);
+    // Where in the step it fell, for Quantise take: past half way is late.
+    unsigned division = division_ticks(p.division);
+    bool late = host.ticks() % division >= division / 2;
+    if (take_count < take_notes.size()) take_notes[take_count++] = {uint16_t(at), uint8_t(key), late};
 }
 
 void Context::set_param(unsigned t, int id, int value) {
@@ -786,8 +790,90 @@ void Context::capture() {
 }
 
 void Context::play() {
-    if (ui.page == PageId::Song) send({Type::Play, 0, 0, ui.song_cursor, 1});
+    played_song = ui.page == PageId::Song;
+    if (played_song) send({Type::Play, 0, 0, ui.song_cursor, 1});
     else send({Type::Play});
+}
+
+void Context::play_continue() {
+    if (host.playing()) return;
+    if (played_song) send({Type::Play, 0, 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
+    else send({Type::Play});
+}
+
+void Context::double_length() {
+    auto& p = pattern();
+    unsigned length = p.length;
+    if (length * 2 > max_steps) return;
+    for (unsigned s = 0; s < length; ++s)
+        if (!p.steps[s].empty()) set_step(ui.track, s + length, p.steps[s]);
+    // Its motion too, as far as there is room.
+    auto& motion = project.motion;
+    unsigned count = motion.count;
+    for (unsigned n = 0; n < count; ++n) {
+        MotionEvent e = motion.events[n];
+        if (e.track != ui.track || e.pattern != track().pattern || e.step >= length) continue;
+        e.step = uint16_t(e.step + length);
+        if (!motion.write(e)) break;
+        Command c {Type::MotionWrite};
+        c.motion = e;
+        send(c);
+    }
+    set_length(length * 2);
+}
+
+void Context::begin_take() {
+    take_count = 0;
+    take_track = ui.track; take_pattern = track().pattern;
+    if (!before_take) before_take = std::make_unique<Pattern>();
+    if (!song_before_take) song_before_take = std::make_unique<Song>();
+    *before_take = pattern();
+    *song_before_take = project.song;
+}
+
+void Context::undo_take() {
+    if (take_track < 0 || !before_take) return;
+    if (ui.recording) { ui.recording = false; send({Type::SongRecord, 0, 0, 0, 0}); song_tick(); }
+    unsigned t = unsigned(take_track), p = unsigned(take_pattern);
+    auto& now = patterns.at[t][p];
+    for (unsigned s = 0; s < max_steps; ++s) {
+        if (now.steps[s].empty() && before_take->steps[s].empty()) continue;
+        now.steps[s] = before_take->steps[s];
+        Command c {Type::SetStep, uint8_t(t), uint8_t(p), uint16_t(s)};
+        c.step = now.steps[s];
+        send(c);
+    }
+    now.length = before_take->length;
+    send({Type::Length, uint8_t(t), uint8_t(p), 0, int16_t(now.length)});
+    project.song = *song_before_take;
+    sync_song();
+    sync_punches();
+    take_count = 0; take_track = -1;
+}
+
+void Context::quantise_take() {
+    if (take_track < 0 || unsigned(take_track) != ui.track || int(track().pattern) != take_pattern) return;
+    auto& p = pattern();
+    for (unsigned n = 0; n < take_count; ++n) {
+        auto& note = take_notes[n];
+        if (!note.late) continue;
+        unsigned from = note.step % p.length, to = (from + 1) % p.length;
+        Step a = p.steps[from], b = p.steps[to];
+        Note moving {};
+        for (auto& x : a.notes) if (x.velocity && x.key == note.key) { moving = x; x = Note {}; break; }
+        if (!moving.velocity) continue;
+        bool there = false;
+        for (auto& x : b.notes) there |= x.velocity && x.key == note.key;
+        if (!there) for (auto& x : b.notes) if (!x.velocity) { x = moving; there = true; break; }
+        if (!there) continue; // no room: it stays
+        set_step(ui.track, from, a); set_step(ui.track, to, b);
+        note.step = uint16_t(to); note.late = false;
+    }
+}
+
+void Context::transpose(int way) {
+    auto& t = track();
+    t.transpose = int8_t(std::clamp(int(t.transpose) + way, -12, 12));
 }
 void Context::stop() {
     if (!host.playing()) send({Type::AllNotesOff, 255});

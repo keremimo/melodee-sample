@@ -255,6 +255,7 @@ struct Track {
     std::array<ModRoute, mod_routes> mods {};
     Chain fx {{}, track_slots};
     PadChains pad_fx;     // a sampler track: each pad's chain (PadFX)
+    int8_t transpose = 0; // Shift + Minus / Plus: the pads moved by semitones, -12..12
     // A sampler track's kit (unused by the synth engines).
     std::array<PadSound, sampler_pads> pads {};
     uint8_t bank = 0;     // the bank the pads play

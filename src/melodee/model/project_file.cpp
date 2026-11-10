@@ -151,6 +151,9 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     at = w.begin("MSTR");
     write_chain(w, project.master);
     w.end(at);
+    at = w.begin("TRNS"); // each track's transposition
+    for (unsigned t = 0; t < track_count; ++t) w.i16(project.tracks[t].transpose);
+    w.end(at);
     at = w.begin("SPCH"); // punches written into the song
     w.u16(project.song.punch_count);
     for (unsigned n = 0; n < project.song.punch_count; ++n) {
@@ -276,6 +279,8 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             read_chain(r, project->buses[b].fx);
         } else if (name == "MSTR") {
             read_chain(r, project->master);
+        } else if (name == "TRNS") {
+            for (unsigned t = 0; t < track_count && r.ok; ++t) project->tracks[t].transpose = int8_t(std::clamp(r.i16(), -12, 12));
         } else if (name == "SPCH") {
             unsigned count = r.u16();
             for (unsigned k = 0; k < count && r.ok; ++k) {

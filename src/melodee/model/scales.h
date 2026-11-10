@@ -41,7 +41,7 @@ inline unsigned scale_degrees(unsigned scale, std::array<uint8_t, 12>& out) {
 // a root. 16 Levels plays the track's last note on every pad.
 struct PadNote { int key; bool root; };
 inline PadNote pad_note(const Project& project, const Track& track, unsigned pad) {
-    int base = 12 * (track.octave + 1) + project.root;
+    int base = 12 * (track.octave + 1) + project.root + track.transpose;
     switch (track.layout) {
     case PadLayout::Chromatic: return {base + int(pad), pad % 12 == 0};
     case PadLayout::Levels: return {track.last_note, false};

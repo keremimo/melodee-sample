@@ -52,10 +52,13 @@ void Shell::button(Button b, bool pressed) {
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
     if (b == Button::PadBank) {
         // Held with a pad it picks a track; a tap alone moves a sampler track to its next bank.
+        // With Shift, the previous bank.
         if (pressed) pad_bank_used = false;
         else if (!pad_bank_used && ui.page == PageId::Punch) project_->punch_bank ^= 1; // on Punch: the other bank of punches
-        else if (!pad_bank_used && context_.track().engine == EngineKind::Sampler)
-            context_.track().bank = uint8_t((context_.track().bank + 1) % sampler_banks);
+        else if (!pad_bank_used && context_.track().engine == EngineKind::Sampler) {
+            context_.track().bank = uint8_t((context_.track().bank + (ui.shift ? sampler_banks - 1 : 1)) % sampler_banks);
+            if (ui.shift) ui.shift_used = true;
+        }
         ui.pad_bank = pressed;
         return;
     }
@@ -113,9 +116,11 @@ void Shell::button(Button b, bool pressed) {
                       : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
         break;
     case Button::Loop: // Patterns, then Song, then Length
+        if (ui.shift) { ui.shift_used = true; context_.double_length(); break; }
         context_.open(ui.page == PageId::Patterns ? PageId::Song : ui.page == PageId::Song ? PageId::Length : PageId::Patterns);
         break;
     case Button::Seq: // Steps, then Roll, then Motion
+        if (ui.shift) { ui.shift_used = true; context_.quantise_take(); break; }
         context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
         break;
     case Button::SampleSelect: // on a sampler track it lists samples
@@ -151,14 +156,16 @@ void Shell::button(Button b, bool pressed) {
         if (ui.chop_sample != context_.pad().sample) { ui.chop_sample = context_.pad().sample; ui.chop_slice = 0; context_.rechop(); }
         context_.open(PageId::Chop);
         break;
-    case Button::Play: context_.play(); break;
+    case Button::Play: if (ui.shift) context_.play_continue(); else context_.play(); break;
     case Button::Stop:
         if (ui.page == PageId::Record) context_.send({Command::Type::RecordStop});
         if (ui.shift) context_.send({Command::Type::AllNotesOff, 255});
         else context_.stop();
         break;
     case Button::SeqRecord:
+        if (ui.shift) { ui.shift_used = true; context_.undo_take(); break; }
         ui.recording = !ui.recording;
+        if (ui.recording) context_.begin_take();
         context_.send({Command::Type::SongRecord, 0, 0, 0, int16_t(ui.recording)});
         break;
     case Button::TapTempo:
@@ -174,8 +181,8 @@ void Shell::button(Button b, bool pressed) {
         else if (was) context_.set_arp(false); // a tap on the page turns it off
         break;
     }
-    case Button::Minus: page.nudge(context_, -1); break;
-    case Button::Plus: page.nudge(context_, 1); break;
+    case Button::Minus: if (ui.shift && play_group(ui.page)) context_.transpose(-1); else page.nudge(context_, -1); break;
+    case Button::Plus: if (ui.shift && play_group(ui.page)) context_.transpose(1); else page.nudge(context_, 1); break;
     case Button::TopLeft: page.soft(context_, 0); break;
     case Button::TopMiddle: page.soft(context_, 1); break;
     case Button::TopRight: page.soft(context_, 2); break;

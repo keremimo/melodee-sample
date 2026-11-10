@@ -8,6 +8,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
+#include <memory>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -39,6 +40,14 @@ public:
     void begin_punch(unsigned kind, uint8_t target, uint8_t depth);
     void end_punch();
     unsigned song_sixteenth() const;                   // where the song is, in sixteenths
+    // The last take: what it may be undone to, and where each note fell.
+    struct TakeNote { uint16_t step = 0; uint8_t key = 0; bool late = false; };
+    std::array<TakeNote, 256> take_notes {};
+    unsigned take_count = 0;
+    std::unique_ptr<Pattern> before_take;
+    std::unique_ptr<Song> song_before_take;
+    int take_track = -1, take_pattern = -1;
+    bool played_song = false; // the last Play was the song's
     EngineHost& host;
     uint32_t now = 0; // ms, set for each control
 
@@ -69,6 +78,13 @@ public:
     // Seq Record while the song plays: pattern launches become clips from the
     // next bar, growing a bar at a time; punches land on the song's punch lane.
     void song_tick();                                       // MIDI thread, often: follows the song's bar
+    // Shift's second jobs.
+    void double_length();     // Shift + Loop: the pattern twice as long, played twice
+    void quantise_take();     // Shift + Seq: the last take's late notes onto their nearest step
+    void play_continue();     // Shift + Play: on from where it stopped
+    void undo_take();         // Shift + Seq Record: back to before the last take
+    void transpose(int way);  // Shift + Minus / Plus: the pads by a semitone
+    void begin_take();        // Seq Record on: what the take may be undone to
     void sync_punches();
     // Mix
     void set_mute(unsigned track, bool on);

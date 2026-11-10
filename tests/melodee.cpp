@@ -611,6 +611,19 @@ void sampler_kit() {
         for (unsigned b = 0; b < 2 * 88200 / 128; ++b) host.render(out.data(), 128, 1);
         CHECK(!host.playing());
     }
+    // Transposed pads: a track's semitones move its pads and survive a save.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        auto& t = project->tracks[1];
+        load_sound(t, EngineKind::Prophet, 0);
+        int before = pad_note(*project, t, 0).key;
+        t.transpose = 3;
+        CHECK(pad_note(*project, t, 0).key == before + 3);
+        auto bytes = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(bytes, *back, *bank).empty() && back->tracks[1].transpose == 3);
+    }
     // Pad chains survive a save, four slots each.
     {
         auto project = std::make_unique<Project>();

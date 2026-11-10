@@ -317,8 +317,16 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   Stop all notes off, Pad Bank + pad picks a track, Mute + pad mutes and with
   Shift solos, pot pickup, the fader as mod wheel, pad / fader / button
   lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
-- **Shift layer:** drawn as on its board. Of its second jobs, Erase, Stop and
-  Push work; the others wait for their pages.
+- **Shift layer:** drawn as on its board, and every second job works:
+  Sample → Projects, Pad Bank → previous bank, Sample Select → star the
+  sound (Save sound, until a sound of one's own can be named), Mute + pad →
+  solo, Erase → clear the pattern, Loop → double its length (notes and
+  motion played twice), Seq → quantise the last take (notes played past
+  half a step move onto the next), Play → continue from the bar the song
+  stopped in, Stop → all notes off, Seq Record → undo the last take (the
+  pattern and the song as they were when Seq Record went on), Sample
+  Record → Capture, Tap Tempo → metronome, Minus / Plus → transpose the
+  pads by a semitone (saved with the track, shown on Keys), Push → back.
 - **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
   `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad

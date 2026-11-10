@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // KEYS (B2, or 16 Levels): what the pads play, drawn as they sit with the
-// roots filled. K1 root, K2 scale, K3 layout; Minus / Plus the octave.
+// roots filled. K1 root, K2 scale, K3 layout; Minus / Plus the octave,
+// with Shift a semitone (Transpose pads).
 #include "melodee/engine/kit909.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
@@ -16,6 +17,7 @@ void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     Header h = header_of(s);
     h.left.push_back(pill("OCT " + juce::String(track.octave)));
+    if (track.transpose) h.left.push_back(pill((track.transpose > 0 ? "+" : juce::String::fromUTF8("\xe2\x88\x92")) + juce::String(std::abs(track.transpose)) + " ST"));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, play_keys(s, 1), h);
 
