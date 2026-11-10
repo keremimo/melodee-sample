@@ -663,7 +663,15 @@ const Preview previews[] {
          auto& t = s.project.tracks[4];
          load_sound(t, EngineKind::Midi, 0);
          t.params[midi_track::Port] = midi_track::UsbC; t.params[midi_track::Channel] = 10;
+         s.ui.midi_outputs = 1 | 2;
          s.ui.turning = 1; s.ui.turned_at = s.now; s.ui.midi_out_at = s.now;
+     }},
+    {"midiroute", [](Shell&, Snapshot& s) { // the DEVICE picture on All USB with a device plugged in, a note just sent
+         s.ui.page = PageId::Edit; s.ui.track = 4; s.ui.edit_page[4] = 0; s.playing = true;
+         auto& t = s.project.tracks[4];
+         load_sound(t, EngineKind::Midi, 0);
+         t.params[midi_track::Port] = midi_track::AllUsb; t.params[midi_track::Channel] = 2;
+         s.ui.midi_outputs = 1 | 2 | 1 << 8; s.ui.track_out_at[4] = s.now;
      }},
     {"midipanic", [](Shell&, Snapshot& s) { // MIDI Config's MIDI Panic under the cursor
          s.ui.page = PageId::MidiConfig; s.ui.midi_cursor = PanicRow; s.ui.midi_out_at = s.now;

@@ -38,7 +38,8 @@ struct ParamInfo {
 };
 
 // What the picture on an Edit page draws.
-enum class Picture : uint8_t { Bars, Wave, WaveB, Mixer, Filter, Envelope, Lfo, Mod };
+// Route: a MIDI track's notes leaving for its port (docs/MIDI_TRACKS.md).
+enum class Picture : uint8_t { Bars, Wave, WaveB, Mixer, Filter, Envelope, Lfo, Mod, Route };
 
 struct EditPage {
     const char* title; // as the page and the page map name it

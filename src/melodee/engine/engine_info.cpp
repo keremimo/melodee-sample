@@ -40,7 +40,7 @@ const EngineInfo& engine_info(EngineKind kind) {
         {"PORT", 0, midi_track::PortCount - 1, midi_track::External, Format::Choice, midi_ports},
         {"CHANNEL", 1, 16, 1, Format::Number, nullptr},
     };
-    static const EditPage midi_pages[] {{"Device", "DEVICE", Picture::Bars, {{{midi_track::Port, midi_track::Channel, -1}, {-1, -1, -1}, {-1, -1, -1}}}}};
+    static const EditPage midi_pages[] {{"Device", "DEVICE", Picture::Route, {{{midi_track::Port, midi_track::Channel, -1}, {-1, -1, -1}, {-1, -1, -1}}}}};
     static const Sound midi_sounds[] {{"MIDI OUT", {{{-1, 0}}}}};
     static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params, midi_track::Count, midi_pages, 1,
                                   {midi_track::Port, midi_track::Channel, -1}, midi_sounds, 1, nullptr, 0, false};
