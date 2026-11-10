@@ -259,9 +259,12 @@ Steps, Roll and Motion B1–B3 pick those three.
   an arrow for Note On, loop and reverse. **Hold Sample + pad** picks a kit
   pad as the last pad without playing it (Sample alone acts on its
   release). Samples are WAV
-  files (16, 24 or 32-bit PCM or 32-bit float, any rate, up to 60 s) in the
-  card's `Samples` folder and one level of folders under it
-  (`$MELODEE_SAMPLES` on a host). The service thread reads a file, makes
+  files (16, 24 or 32-bit PCM or 32-bit float, any rate, up to 60 s) on the
+  card (from its `Samples` folder, `$MELODEE_SAMPLES` on a host) or on the
+  internal drive, read only (the factory library's categories in
+  `/content/Samples` and the stock app's own samples in
+  `/data/UserContent/Samples`; `$MELODEE_INTERNAL`, folders split by `:`, on
+  a host). Melodee writes only to the card. The service thread reads a file, makes
   its waveform and finds its hits, and hands the audio to the audio thread
   through a lock-free queue; the sample it replaces comes back the same way
   to be freed, so the audio thread never allocates or frees.
@@ -305,15 +308,38 @@ Steps, Roll and Motion B1–B3 pick those three.
   Time Correct, Half Seq, Half / Double Speed. The header names what came back. A new
   project or a load forgets them. Pot moves outside a take and Song page
   edits are not kept.
-- **Samples** (Sample Select on a sampler track): the files; Push loads the
-  one under the cursor onto the last pad hit, K2 jumps. RECORDED lists the
-  takes; RECENT the files this project already holds.
+- **Samples** (Sample Select on a sampler track): the MPC's browser. Folders
+  first, as categories, then the WAV files, each by name; the wheel and
+  Minus / Plus move, Push opens a folder or loads the file onto the last pad
+  hit, B1 goes back out (the cursor lands on the folder it came from), B2
+  picks the drive (CARD, starting in `Samples`, up to the card's top;
+  INTERNAL, the factory categories and the stock app's User folder side by
+  side), B3 PREVIEW plays each file as the cursor lands on it (the first 30
+  s, read into a slot of its own the engine keeps apart from the project;
+  it stops when the cursor moves or the page closes). K2 jumps. A load onto
+  a pad that holds a sample keeps the pad's settings (volume, pan, tune,
+  envelopes, filter, warp, play mode ...; its region, loop point, Normalize
+  and # Beats start again, as they belonged to the old file); onto an empty
+  pad it starts at the defaults; one undo. **Shift + pad** here loads the
+  file onto the kit's next empty pad (after the last pad hit), instead of
+  the printed Shift + pad jobs. A file a pad of this kit plays shows ON A01.
 - **Trim** (Push on a sampler track, or on Pads): the last pad's region over
   the sample; K1 start, K2 end, K3 the loop point (turning it lets go of
   Loop Lock), Shift + K1–K3 zoom in at that handle (to 16 times closer),
   Shift + B1 Loop Lock (the loop point on the start), Shift + B2 Normalize
   (the region's loudest sample to 0 dB as a gain on the pad, the file
   untouched; one undo).
+- **Trim Sample** (Shift + Pad 13, as printed): the last pad's region
+  becomes a file of its own, `Samples/Edits/<NAME>-Trimmed.wav` (" 2", " 3"
+  when the name is taken), in a new sample slot; the pad then plays all of
+  it, its loop point kept where it was in the sound. One undo puts the pad
+  back on the old file and region (the old file is untouched and stays in
+  the project). Without a card the new sample lives in memory for the
+  session (the header says so).
+- **Save Sample** (Shift + Sample Select on a kit, as printed): the Name
+  sheet with the pad's sample name, then the last pad's region as
+  `Samples/<name>.wav` (24-bit, 44.1 kHz; " 2" when taken). The pad is left
+  as it is; the header says "Saved NAME".
 - **The sampler's ten pages** (B1 / B3 go round them, PAGE n / 10), the
   MPC's Sample Mode pages first: Trim; Mix (K1 volume in dB with its meter,
   K3 pan, Shift + K2 the kit's volume); Amp Env (attack, decay on a one
@@ -334,12 +360,30 @@ Steps, Roll and Motion B1–B3 pick those three.
   pitch together; K3 what a pitch change does: Speed, or Stretch to keep
   the length; written here as a two-tap granular stretcher in the voice); Cloud (pads as clouds of grains while held: position,
   grain size 10 ms to 1 s, density, then scan, spread and on / off).
-- **Chop** (Chop on a sampler track): the last pad's sample cut by Hits
-  (sensitivity), Even (2–64 slices) or Beats (1–8 beats a slice at the
-  project's tempo). Pads audition slices, the wheel picks one, K3 moves its
-  start, Push splits it, Erase + pad removes a marker; B3 TO PADS lays the
-  slices on pads from the first free one (regions of the same file), B1
-  DROP goes back.
+- **Chop** (Chop on a sampler track, as the MPC's Chop Mode; Chop again
+  goes back to Trim): the last pad's region, between its start and end, cut
+  into slices that touch (one ends where the next starts). Pads play their
+  slice and pick it (the wheel and Minus / Plus pick too, past 16). K1 the
+  slice's start, K2 its end (the slice before's end or the next one's start
+  move with them; never under 20 ms), K3 the chop type: Threshold (hits at
+  least as strong as Shift + K3's threshold; as on the MPC, the higher, the
+  fewer slices), Regions (Shift + K3 slices,
+  2–64; the MPC's 4 / 8 / 16 among them), Beats (Melodee's: Shift + K3
+  beats a slice at the project's tempo) or Manual. Shift + K1 / K2 zoom in
+  at the slice's start or end (to 16 times closer; the pots then turn
+  across that window). Manual, armed (K3 onto it, or Push): "PAD 1 PLAYS,
+  TAP TO CUT"; pad 1 plays the region and every pad tapped while it plays
+  cuts it there, up to 16 slices, each cut pulled onto the strongest hit
+  from 50 ms before the tap to 10 ms after. Editing a slice (K1, K2, Split,
+  Merge, Erase + pad) makes the chop Manual, as on the MPC. **Shift + B1
+  Extract**: the slice as a file, `Samples/Edits/<NAME>-Slice n.wav`, onto
+  the kit's next empty pad after the chopped one (one undo; the source is
+  untouched). **Shift + B2 Split**: the slice in two halves. **Shift + B3
+  Merge**: the slice into the one before. Erase + pad takes a slice out (it
+  joins the one before). Slice edits are not undo steps (as on the MPC). B3
+  TO PADS lays every slice on pads from the first free one (regions of the
+  same file), B1 DROP goes back. The slices stay while the same region
+  comes back to Chop.
 - **Levels** (16 Levels): on a kit the last pad hit on all sixteen pads,
   on a synth its last note (16 Levels lit while they play levels). The
   type, as the MPC's (Shift + 16 Levels goes round them; B1–B3 pick):
@@ -363,8 +407,8 @@ Steps, Roll and Motion B1–B3 pick those three.
   stopped) or on Stop or a third press. K3 gain. The take is recorded into a 60 s buffer made
   at start; the service thread writes it to `Samples/Recorded/TAKE n.wav`
   (24-bit) on the card and it lands on the first empty pad. The input is
-  routed only while Record or Input Config is open or a take runs. Samples' RECORDED shows
-  those files.
+  routed only while Record or Input Config is open or a take runs. The
+  browser shows them in `Samples/Recorded`.
 - **Projects** (Shift + Pad 16): files (`.mldp`) in `Melodee/Projects` on
   the card, in folders (`$MELODEE_PROJECTS` on a host). The format is
   tagged sections, so older files stay readable and only what differs from
@@ -521,8 +565,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   31, sounds 23; characters a card refuses in a file name are never
   offered. Play and Stop still work under it.
 - **Sounds of one's own:** Shift + Sample Select away from Sounds on a
-  synth or drum track is Save sound (on a kit it is Save Sample: the Name
-  sheet with the pad's sample name, then "not yet" until phase 5): the Name sheet with the sound's name, then the engine's values
+  synth or drum track is Save sound (on a kit it is Save Sample, above): the Name sheet with the sound's name, then the engine's values
   and mod routes go to `Melodee/Sounds/<name>.mlds` (a few hundred bytes;
   the same name replaces it). They follow the factory sounds in Sounds,
   numbered on, for their engine, and load, audition, star and show under
@@ -581,21 +624,22 @@ Steps, Roll and Motion B1–B3 pick those three.
   Sample → Input Config, Seq → Step Edit, Pad Bank → previous bank, Erase →
   Copy (kit pads, patterns on Patterns, a track with Pad Bank held), Loop → reverse the last pad
   (kit tracks; bright while reversed), Chop → Note On (bright while on), 16
-  Levels → its type, Sample Select → by engine (kit: Save Sample, not yet; synth:
+  Levels → its type, Sample Select → by engine (kit: Save Sample; synth:
   Save sound; on Sounds: star), Mute → unmute all (in mute mode, Shift + pad
   solos), Tap Tempo → metronome
   Off / On / Rec, Sample Record → Audio Recall (not yet, phase 6), Seq
   Record → Recall (Capture), Play → continue from the bar the song stopped
   in, Stop → all notes off, Minus / Plus → undo / redo on every page, Push
   → back. **Shift + Pad 1–16** are the jobs printed under the pads, on
-  every page (`shell/shift_pad_jobs.cpp` holds the table, from Akai's
+  every page but the browser (where Shift + pad loads onto the next empty
+  pad; `shell/shift_pad_jobs.cpp` holds the table, from Akai's
   guide): 1 Full Level (every hit at 127, again back to the pad response it
   came from), 2 Half Seq, 3 Double Seq (the pattern twice as long, notes
   and motion played twice), 4 Count-In and 10 Rec Quantize (toggles, kept
-  in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 14 Time
-  Correct, 15 Warp (Time stretch or Pitch for the kit), 16 Project. The
-  others (5 Compressor, 8 MIDI Config, 9 Fader, 11 Resample, 13 Trim
-  Sample) say which phase brings them
+  in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 13 Trim
+  Sample, 14 Time Correct, 15 Warp (Time stretch or Pitch for the kit), 16
+  Project. The others (5 Compressor, 8 MIDI Config, 9 Fader, 11 Resample)
+  say which phase brings them
   ("Compressor: phase 7"). The overlay draws the sixteen as the pads
   sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
   the track's colour, the rest dim with their phase; the pads light the
@@ -629,15 +673,21 @@ Steps, Roll and Motion B1–B3 pick those three.
   `melodee_pad_lock=`, `melodee_pad_note_on=`, `melodee_pad_reverse=`,
   `melodee_pad_mono=`, `melodee_pad_filter=`, `melodee_pad_link=`,
   `melodee_pad_decay_from=`, `melodee_pad_gain=` (hundredths of a dB) and
-  16 Levels' `melodee_levels=` and `melodee_levels_kind=`. For checks
+  16 Levels' `melodee_levels=` and `melodee_levels_kind=`; phase 5 adds
+  Chop's `melodee_chop_type=`, `melodee_chop_slices=`, `melodee_chop_slice=`,
+  `melodee_chop_armed=`, `melodee_chop_taking=`, the sample slots used
+  (`melodee_pad_slots=`), the last pad's `melodee_pad_start=` /
+  `melodee_pad_end=` (frames) and `melodee_pad_name=`, and the browser's
+  `melodee_files=`, `melodee_file_cursor=`, `melodee_drive=`,
+  `melodee_preview=` and `melodee_folder=` (spaces as `_`). For checks
   without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
-  clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
+  clipsheet, rack, sends, bus, fxpick, pads, samples, browserinternal, trim, chop, chopmanual, chopshift,
   levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
-  levelsfilter, levelssynth, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  levelsfilter, levelssynth, punch, padpunch, padfx, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

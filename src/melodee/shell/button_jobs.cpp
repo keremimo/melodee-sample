@@ -34,7 +34,8 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::Loop: return kit;                                                    // reverse the last pad
     case B::Chop: return kit && project.tracks[ui.track % track_count].pads[project.tracks[ui.track % track_count].last_pad % sampler_pads].used(); // Note On
     case B::SixteenLevels: return project.tracks[ui.track % track_count].used(); // the 16 Levels type
-    case B::TopLeft: case B::TopMiddle: return ui.page == PageId::Trim && kit;   // Loop Lock, Normalize
+    case B::TopLeft: case B::TopMiddle: return (ui.page == PageId::Trim || ui.page == PageId::Chop) && kit; // Loop Lock, Normalize; Extract, Split
+    case B::TopRight: return ui.page == PageId::Chop && kit;                     // Merge
     case B::Erase: return kit_pads || ui.pad_bank || ui.page == PageId::Patterns || ui.copying != UiState::Copying::Off; // Copy (tracks with Pad Bank held)
     default: return false; // Sample Record (Audio Recall, phase 6), Pad FX, Knob FX, Note Repeat (none printed): not yet
     }

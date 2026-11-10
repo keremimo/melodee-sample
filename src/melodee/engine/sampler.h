@@ -33,7 +33,7 @@ enum Param : int8_t {
 class SamplerEngine final : public Engine {
 public:
     static constexpr unsigned max_voices = 16;
-    using Table = std::array<const SampleData*, sample_slots>;
+    using Table = std::array<const SampleData*, sample_slots + 1>; // the last: preview_slot
 
     SamplerEngine();
     void set_samples(const Table* table) { samples = table; }

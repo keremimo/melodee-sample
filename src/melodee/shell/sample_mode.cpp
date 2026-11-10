@@ -54,11 +54,20 @@ void loop_button(Context& c) {
     else c.toggle_loop();
 }
 
+// Chop: the last pad's region cut into slices (between its start and end, as
+// the MPC chops); the slices stay while the same region comes back. Chop again
+// goes back to Trim, as on the MPC.
 void chop_button(Context& c) {
     auto& ui = c.ui;
     if (ui.shift) { c.toggle_note_on(); return; } // Note On, as printed
+    if (ui.page == PageId::Chop) { c.open(PageId::Trim); return; }
     if (c.track().engine != EngineKind::Sampler || !c.pad().used()) return;
-    if (ui.chop_sample != c.pad().sample) { ui.chop_sample = c.pad().sample; ui.chop_slice = 0; c.rechop(); }
+    const auto& pad = c.pad();
+    if (ui.chop_sample != pad.sample || ui.chop_from != pad.start || ui.chop_to != pad.end) {
+        ui.chop_sample = pad.sample; ui.chop_from = pad.start; ui.chop_to = pad.end;
+        ui.chop_slice = 0; ui.chop_zoom = 0;
+        c.rechop();
+    }
     c.open(PageId::Chop);
 }
 

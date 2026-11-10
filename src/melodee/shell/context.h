@@ -90,7 +90,7 @@ public:
     void rename_project(const std::string& path, const std::string& name); // Rename on the file sheet
     void name_marker(unsigned bar);                         // Shift + Push on a marker
     void save_sound();                                      // Shift + Sample Select away from Sounds, synth tracks
-    void save_sample();                                     // Shift + Sample Select on a kit: a stub until phase 5
+    void save_sample();                                     // Shift + Sample Select on a kit: the Name sheet for Save Sample
     std::string name_path;                                  // Rename: the file being renamed
     unsigned name_bar = 0;                                  // Marker: its bar
     // Sounds of one's own on the card, copied in by the shell; the k-th of an engine's.
@@ -182,13 +182,31 @@ public:
     PadSound& pad() { return track().pads[track().last_pad % sampler_pads]; }
     void send_pad(unsigned track, unsigned pad);
     int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load
-    void rechop();                                                     // Chop's markers from its mode and amount
+    void rechop();                                                     // Chop's slices from its type and amount
+    void chop_tap(unsigned pad, uint8_t velocity);                     // Chop: a pad (audition, or Manual's taps)
     void chop_to_pads();                                               // the slices onto pads, from the first free one
     void record_press();
     void set_rec_source(unsigned source);                              // Input Config: B1-B3
     void follow_tempos(); // Follow on: each pad's own tempo, from its length as whole bars
     bool host_recording() const;                                       // a take is armed or running                                               // Sample Record on the Record page: arm, start now, stop
-    bool files_match(const std::string& path) const { return sample_file_listed(project, ui.files_filter, path); }
+    // Sample files (parity phase 5, shell/sample_files.cpp): files made from
+    // a pad's audio on the service thread, and the browser's loads.
+    void trim_sample();                                  // Shift + Pad 13: the last pad's region as a file of its own, one undo
+    void extract_slice();                                // Chop, Shift + B1: the slice as a file, onto the next empty pad
+    void save_sample_as(const std::string& name);        // Save Sample's Name sheet, Done: the region as Samples/<name>.wav
+    void load_file(const std::string& path, const std::string& name, bool next_empty); // the browser's Push, Shift + pad
+    void files_landed();                                 // the library changed: made files onto their pads
+    int next_empty_pad(unsigned after) const;            // the kit's next pad without a sample after `after`, -1 none
+    // The browser (Samples): the file under the cursor heard when B3 is on;
+    // a new listing puts the cursor on the folder it came out of; a preview
+    // that has arrived plays, and stops away from the page.
+    void preview_cursor();
+    void browser_tick();
+    std::string files_folder_seen;
+    unsigned previews_seen = 0;
+    int previewing = -1; // the track a preview plays on, -1 none
+    struct PendingFile { int16_t slot = -1; uint8_t track = 0; int16_t pad = -1; bool trim = false; PadSound sound {}; };
+    std::array<PendingFile, 8> pending_files {};
     // Effects: chain numbers as in model/project.h (tracks, buses, master).
     void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
     void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);

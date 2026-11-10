@@ -44,8 +44,10 @@ struct Snapshot {
         float level = 0;
         std::array<uint8_t, 128> peaks {};
     } take;
-    std::vector<SampleFile> files;     // Samples
-    std::string sample_root;
+    std::vector<SampleFile> files;     // Samples: the folder listed
+    std::string sample_root;           // the card's Samples folder; empty: no card
+    std::string files_folder;          // the folder listed (empty: the internal drive's categories)
+    bool files_top = true;             // nothing above it (B1 has no job)
     ProjectStore::View projects;       // Project page and Exit
     std::string project_path, project_folder;
     bool dirty = false;

@@ -15,6 +15,9 @@ namespace melodee {
 constexpr unsigned sampler_banks = 8, sampler_pads = 16 * sampler_banks;
 constexpr unsigned legacy_pads = 64;     // banks A-D: the pads a project file's TRAK section holds
 constexpr unsigned sample_slots = 64;     // samples a project holds
+// One more slot on the engine's side only: the browser's preview of a file
+// (B3 on Samples), never a pad's sample and never in the project.
+constexpr unsigned preview_slot = sample_slots;
 constexpr uint16_t no_sample = 0xffff;
 constexpr unsigned sampler_first_note = 36; // pad 1 of bank A; pad n of the kit is note 36 + n
 // Kit notes run past MIDI's 127 (bank H pad 16 is 163): they stay inside Melodee.

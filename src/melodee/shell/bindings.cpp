@@ -73,6 +73,15 @@ Binding::Kind pad_kind(PadParam p) {
 // The Sample Mode cards of the last pad hit (parity phase 4).
 int ms(uint32_t frames) { return int(uint64_t(frames) * 1000 / 44100); }
 Binding trim_zoom(const UiState& ui, int handle) { return {Kind::TrimZoom, handle, 0, 4, ui.trim_zoom}; }
+// A handle's card in milliseconds between lo and hi: closer in (zoom), the pot
+// turns across a window of the sample that stays put while the handle is inside it.
+Binding handle_card(Kind kind, int id, int value, int lo, int hi, int length, unsigned zoom) {
+    int window = std::max(4, length >> zoom);
+    int from = std::min(value / window * window, std::max(0, length - window));
+    lo = std::max(lo, from); hi = std::min(hi, from + window);
+    if (hi <= lo) { lo = std::min(lo, value); hi = std::max(hi, value + 1); }
+    return {kind, id, lo, hi, std::clamp(value, lo, hi)};
+}
 // Decay on One shot, Release on Note On (Gate), as the MPC swaps them; the other on row 2.
 Binding amp_second(const PadSound& pad, bool other) {
     bool decay = (pad.play == PadPlay::OneShot) != other;
@@ -175,6 +184,13 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     }
     case PageId::Trim: // Shift + K: zoom in at the start, the end or the loop point (as on the MPC)
         return {trim_zoom(ui, 0), trim_zoom(ui, 1), trim_zoom(ui, 2)};
+    case PageId::Chop: { // Shift + K1 / K2 zoom at the slice's start or end; Shift + K3 the type's amount (Threshold as on the MPC)
+        static const int lows[] {0, 2, 1}, highs[] {100, int(max_slices), 8};
+        unsigned mode = unsigned(ui.chop_mode);
+        Binding amount {};
+        if (mode < 3) amount = {Kind::ChopAmount, int32_t(mode), lows[mode], highs[mode], ui.chop_amount[mode]};
+        return {Binding {Kind::ChopZoom, 0, 0, 4, ui.chop_zoom}, Binding {Kind::ChopZoom, 1, 0, 4, ui.chop_zoom}, amount};
+    }
     case PageId::PadMix: // Shift + K2: the kit's volume
         if (track.engine != EngineKind::Sampler) return {};
         return {Binding {}, param(track, sampler::Level), Binding {}};
@@ -334,18 +350,18 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::PadStart, 0, s0, std::min(s1, end - 1), start}, Binding {Kind::PadEnd, 0, std::max(e0, start + 1), e1, end},
                 Binding {Kind::PadLoopPoint, 0, std::max(l0, start), std::min(l1, std::max(start + 1, end - 1)), loop}};
     }
-    case PageId::Chop: {
-        int mode = int(ui.chop_mode);
-        static const int lows[] {0, 2, 1}, highs[] {100, int(max_slices), 8};
-        Binding start {};
+    case PageId::Chop: { // K1 the slice's start, K2 its end (the neighbours' end and start with them), K3 the type
         uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
+        Binding type {Kind::ChopMode, 0, 0, int(ChopMode::Count) - 1, int(ui.chop_mode)};
         unsigned n = ui.chop_slice;
-        if (frames && n > 0 && n < ui.slices.count) {
-            int lo = int(uint64_t(ui.slices.start[n - 1]) * 1000 / 44100) + 1, hi = int(uint64_t(ui.slices.end(n, frames)) * 1000 / 44100) - 1;
-            start = {Kind::ChopStart, int16_t(n), lo, hi, int(uint64_t(ui.slices.start[n]) * 1000 / 44100)};
-        }
-        return {Binding {Kind::ChopMode, 0, 0, int(ChopMode::Count) - 1, mode},
-                Binding {Kind::ChopAmount, int16_t(mode), lows[mode], highs[mode], ui.chop_amount[size_t(mode)]}, start};
+        if (!frames || n >= ui.slices.count) return {Binding {}, Binding {}, type};
+        const auto& sl = ui.slices;
+        int length = ms(frames), gap = ms(min_slice);
+        int start = ms(sl.start[n]), end = ms(sl.end(n, frames));
+        int start_lo = n ? ms(sl.start[n - 1]) + gap : 0;
+        int end_hi = n + 1 < sl.count ? ms(sl.end(n + 1, frames)) - gap : length;
+        return {handle_card(Kind::ChopStart, int(n), start, start_lo, end - gap, length, ui.chop_zoom),
+                handle_card(Kind::ChopEnd, int(n), end, start + gap, end_hi, length, ui.chop_zoom), type};
     }
     case PageId::Record:
         return {Binding {}, Binding {Kind::RecBars, 0, 0, 16, ui.rec_bars}, Binding {Kind::RecGain, 0, -12, 24, ui.rec_gain}};

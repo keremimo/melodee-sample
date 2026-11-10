@@ -33,6 +33,9 @@ void shift_pad(Context& c, unsigned pad) {
     case 6: // Double Speed: every note half as far apart
         c.double_speed();
         return;
+    case 12: // Trim Sample: the last pad's region as a file of its own (one undo)
+        c.trim_sample();
+        return;
     case 13: // Time Correct: the chosen pads' notes onto Q
         c.open(PageId::TimeCorrect);
         return;

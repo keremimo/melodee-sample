@@ -338,22 +338,45 @@ const Preview previews[] {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
          std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Undo Delete A05"); s.ui.notice_at = s.now;
      }},
-    {"samples", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 2; s.sample_root = "/media/card/Samples";
-         const char* files[] {"AMEN TYPE", "DUST BREAK", "FUNK LOOP 04", "RHODES STAB", "TAKE 1", "TAPE HIT", "VINYL CHORD", "WOOD BLOCK"};
-         for (auto name : files) s.files.push_back({std::string("/media/card/Samples/") + name + ".wav", name, 0});
-         s.files[1].path = s.project.samples[4].path;
+    {"samples", [](Shell&, Snapshot& s) { // the browser on the card: folders first, then files
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 3; s.sample_root = "/media/card/Samples";
+         s.files_folder = s.sample_root; s.files_top = false;
+         for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Samples/") + name, name, 0, true});
+         const char* files[] {"AMEN TYPE", "DUST BREAK", "FUNK LOOP 04", "RHODES STAB", "TAPE HIT", "VINYL CHORD"};
+         for (auto name : files) s.files.push_back({std::string("/media/card/Samples/") + name + ".wav", name, 0, false});
+         s.files[4].path = s.project.samples[4].path;
          s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"browserinternal", [](Shell&, Snapshot& s) { // B2: the internal drive's categories, preview on
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_drive = 1; s.ui.preview = true; s.ui.files_cursor = 7;
+         s.sample_root = "/media/card/Samples"; s.files_folder = ""; s.files_top = true;
+         for (auto name : {"808", "BASS", "BREAK", "CLAPS", "CYMBALS", "FX", "HI-HATS", "KICKS", "LOOPS", "MELODIC", "PERC", "PHRASES", "SNARES", "TOMS", "USER", "VOCAL"})
+             s.files.push_back({std::string("/content/Samples/") + name, name, 0, true});
+         s.ui.files_count = uint16_t(s.files.size());
      }},
     {"trim", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Trim; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
-    {"chop", [](Shell&, Snapshot& s) {
+    {"chop", [](Shell&, Snapshot& s) { // Threshold on the pad's region, slice 5 in hand
          s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;
-         s.ui.slices = chop(ChopMode::Even, 12, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.slices = chop(ChopMode::Regions, 12, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.chop_mode = ChopMode::Regions;
          s.ui.chop_slice = 4; s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"chopmanual", [](Shell&, Snapshot& s) { // Manual: pad 1 is playing the region, three cuts tapped so far
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.ui.chop_mode = ChopMode::Manual;
+         s.ui.slices = chop(ChopMode::Manual, 0, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         for (uint32_t at : {28000u, 57000u, 86000u}) s.ui.slices.add(at, s.sample.frames, manual_slices);
+         s.ui.chop_slice = 3; s.ui.chop_take_at = s.now > 2400 ? s.now - 2400 : 1;
+     }},
+    {"chopshift", [](Shell&, Snapshot& s) { // Shift: Extract / Split / Merge, zoomed in at the slice's end
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.ui.slices = chop(ChopMode::Threshold, 40, 20000, 200000, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.chop_slice = 2; s.ui.chop_zoom = 2; s.ui.chop_focus = 1;
+         s.ui.shift = true; s.ui.shift_used = true;
      }},
     {"levels", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
@@ -501,6 +524,10 @@ const Preview previews[] {
          s.ui.page = PageId::Sounds; s.ui.track = 2; s.playing = true;
          s.ui.name.start(NameTarget::Sound, "GLASS PLUCK", name_length - 1, true);
          s.ui.name.digits = true; s.ui.name.insert(' '); s.ui.name.pad(1, s.now - 2000);
+     }},
+    {"savesample", [](Shell&, Snapshot& s) { // Shift + Sample Select on a kit: Save Sample's Name sheet
+         s.ui.page = PageId::Trim; s.ui.track = 3; s.sample = break_sample();
+         s.ui.name.start(NameTarget::Sample, "DUST BREAK", name_length - 1, false);
      }},
     // Parity phase 3. These come last: they write into the shell's patterns, which the previews before them share.
     {"stepedit", [](Shell& shell, Snapshot& s) { // Shift + Seq: the kit's step 5, three events, the second chosen

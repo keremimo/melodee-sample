@@ -36,9 +36,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         library_seen = library_->generation();
         for (unsigned n = 0; n < sample_slots; ++n)
             if (project_->samples[n].used()) project_->samples[n].frames = library_->slot(n).frames;
-        unsigned listed = 0;
-        for (const auto& f : library_->files()) listed += context_.files_match(f.path);
-        ui_.files_count = uint16_t(listed);
+        ui_.files_count = uint16_t(std::min<size_t>(library_->files().size(), 0xffff));
         // A take has landed: it becomes the slot it was armed for, on the pad chosen then.
         if (ui_.rec_slot >= 0) {
             auto take = library_->slot(unsigned(ui_.rec_slot));
@@ -58,6 +56,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
     }
+    context_.files_landed();  // Trim Sample, Extract, Save Sample: done on the service thread
+    context_.browser_tick();  // the browser's listings and previews
     // Projects: a finished pack to free, a loaded project to switch to, a save to leave after.
     {
         const ProjectPack* done = nullptr;
@@ -153,6 +153,20 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             pad_gain.store(pad.gain, std::memory_order_relaxed);
         }
         pad_frames.store(pad.used() ? project_->samples[pad.sample % sample_slots].frames : 0, std::memory_order_relaxed);
+        { // phase 5: Chop, the region and its file, the browser
+            unsigned used = 0;
+            for (const auto& ref : project_->samples) used += ref.used();
+            bool taking = ui_.chop_take_at && now - ui_.chop_take_at < 60000;
+            chop_bits.store(uint32_t(ui_.chop_mode) | uint32_t(ui_.chop_armed) << 2 | uint32_t(taking) << 3 | uint32_t(ui_.slices.count & 0xff) << 8
+                            | uint32_t(ui_.chop_slice) << 16 | uint32_t(used) << 24, std::memory_order_relaxed);
+            pad_start_now.store(pad.start, std::memory_order_relaxed); pad_end_now.store(pad.end, std::memory_order_relaxed);
+            files_bits.store(uint32_t(ui_.files_count) | uint32_t(ui_.files_cursor & 0x3fff) << 16 | uint32_t(ui_.files_drive & 1) << 30
+                             | uint32_t(ui_.preview) << 31, std::memory_order_relaxed);
+            std::string folder = library_ ? library_->folder() : std::string();
+            std::lock_guard<std::mutex> guard(text_lock);
+            pad_name_text = pad.used() ? project_->samples[pad.sample % sample_slots].name : "";
+            folder_text = folder.empty() ? folder : folder.substr(folder.find_last_of('/') + 1);
+        }
     }
     const auto& project = *project_;
     const auto& track = project.tracks[ui.track];

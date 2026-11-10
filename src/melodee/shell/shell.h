@@ -93,6 +93,12 @@ private:
     std::atomic<uint32_t> step_now {0}, event_now {0}, step_events_now {0}, event_tick {0}, ask_now {0}, motion_now {0}; // Step Edit, a question, Motion
     std::atomic<uint32_t> pad_bits {0}; // phase 4: the last pad's loop, lock, Note On, reverse, mono, filter, link; 16 Levels (summary())
     std::atomic<int32_t> pad_gain {0};
+    // Phase 5: Chop (type, slices, the slice in hand, armed), the last pad's region and file, slots
+    // used, the browser (rows, cursor, drive, preview) and its folder.
+    std::atomic<uint32_t> chop_bits {0}, pad_start_now {0}, pad_end_now {0}, files_bits {0};
+    mutable std::mutex text_lock;
+    std::string pad_name_text, folder_text; // under text_lock
+    std::string sample_summary() const;
 };
 
 // The project Melodee starts with: four tracks with sounds and a bass line.

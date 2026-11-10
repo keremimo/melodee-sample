@@ -626,16 +626,18 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     static thread_local bool flushed = false;
     if (!flushed) { flush_denormals(); flushed = true; }
     for (auto& q : limbo) if (q && retired_patterns.push(q)) q = nullptr; // retired copies the queue had no room for
-    Command command;
-    for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
+    // Samples first: a command sent after a sample was offered (the browser's
+    // preview, played as soon as it is in) must find the new one, not be cut by it.
     Offer offer;
     while (offers.pop(offer)) {
-        if (offer.slot >= sample_slots) continue;
+        if (offer.slot > preview_slot) continue;
         for (auto& slot : slots) slot.sampler.sample_gone(offer.slot); // nothing may play the old one past here
         const SampleData* old = samples[offer.slot];
         samples[offer.slot] = offer.sample;
         if (old && !retired.push(old)) samples[offer.slot] = old; // no room to give it back: keep it, try later
     }
+    Command command;
+    for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
     frames = std::min(frames, block);
     // The arps' clock, at the block's start (within 3 ms of the beat).
     until_arp -= frames;

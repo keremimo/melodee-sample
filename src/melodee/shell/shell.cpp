@@ -284,7 +284,11 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
     if (down && ui_.mute_mode()) { mute_pad(context_, pad, kit_pads()); return; } // mute mode: mute; with Shift, solo
     if (down && sample_pad(context_, pad)) return; // Sample held: the pad becomes the last pad, unheard
-    if (down && ui_.shift) { ui_.shift_used = true; shift_pad(context_, pad); return; } // the printed Shift + pad jobs, on every page
+    if (down && ui_.shift) { // the printed Shift + pad jobs, on every page but the browser (its next empty pad)
+        ui_.shift_used = true;
+        if (!samples_shift_pad(context_)) shift_pad(context_, pad);
+        return;
+    }
     bool copying_pads = ui_.copying == UiState::Copying::Pads;
     if (down && kit_pads() && (copying_pads || ui_.erase)) {
         unsigned kit = context_.track().bank % sampler_banks * 16 + pad;
@@ -352,7 +356,9 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         const auto& t = project_->tracks[ui_.track];
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
         out.sample = slot < sample_slots ? library_->slot(slot) : LoadedSample {};
-        if (ui_.page == PageId::Samples) { out.files = library_->files(); out.sample_root = library_->root(); }
+        if (ui_.page == PageId::Samples) {
+            out.files = library_->files(); out.sample_root = library_->root(); out.files_folder = library_->folder(); out.files_top = library_->top();
+        }
     }
     for (unsigned t = 0; t < track_count; ++t)
         for (unsigned n = 0; n < pattern_count; ++n) {
@@ -385,7 +391,7 @@ std::string Shell::summary() const {
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
-           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary();
+           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary();
 }
 
 // Phase 4: the last pad's Sample Mode values, for remote checks.
@@ -399,6 +405,22 @@ std::string Shell::pad_summary() const {
            " melodee_pad_decay_from=" + ((b >> 25) & 1 ? "start" : "end") +
            " melodee_pad_gain=" + std::to_string(pad_gain.load(std::memory_order_relaxed)) +
            " melodee_levels=" + std::to_string((b >> 5) & 1) + " melodee_levels_kind=" + kinds[(b >> 6) & 3];
+}
+
+// Phase 5: Chop, the last pad's region and file, the browser.
+std::string Shell::sample_summary() const {
+    uint32_t c = chop_bits.load(std::memory_order_relaxed), f = files_bits.load(std::memory_order_relaxed);
+    std::string name, folder;
+    { std::lock_guard<std::mutex> guard(text_lock); name = pad_name_text; folder = folder_text; }
+    for (auto& ch : name) if (ch == ' ') ch = '_';
+    for (auto& ch : folder) if (ch == ' ') ch = '_';
+    return " melodee_chop_type=" + std::string(chop_mode_name(ChopMode(c & 3))) + " melodee_chop_slices=" + std::to_string((c >> 8) & 0xff) +
+           " melodee_chop_slice=" + std::to_string(((c >> 16) & 0xff) + 1) + " melodee_chop_armed=" + std::to_string((c >> 2) & 1) +
+           " melodee_chop_taking=" + std::to_string((c >> 3) & 1) + " melodee_pad_slots=" + std::to_string(c >> 24) +
+           " melodee_pad_start=" + std::to_string(pad_start_now.load()) + " melodee_pad_end=" + std::to_string(pad_end_now.load()) +
+           " melodee_pad_name=" + (name.empty() ? "-" : name) + " melodee_files=" + std::to_string(f & 0xffff) +
+           " melodee_file_cursor=" + std::to_string(((f >> 16) & 0x3fff) + 1) + " melodee_drive=" + ((f >> 30) & 1 ? "internal" : "card") +
+           " melodee_preview=" + std::to_string(f >> 31) + " melodee_folder=" + (folder.empty() ? "-" : folder);
 }
 
 // The lit pads by number, 1-16.

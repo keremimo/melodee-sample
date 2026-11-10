@@ -149,10 +149,11 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.label = "PAN"; c.bipolar = true;
             c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
             break;
-        case Kind::PadStart: case Kind::PadEnd: case Kind::ChopStart:
-            c.label = b.kind == Kind::PadEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
+        case Kind::PadStart: case Kind::PadEnd: case Kind::ChopStart: case Kind::ChopEnd:
+            c.label = b.kind == Kind::PadEnd || b.kind == Kind::ChopEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
             break;
-        case Kind::TrimZoom: c.label = "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
+        case Kind::TrimZoom: case Kind::ChopZoom:
+            c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
         case Kind::PadLoopPoint: c.label = "LOOP"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s"; break;
         case Kind::PadLoop: c.label = "LOOP"; c.value = b.value ? "On" : "Off"; break;
         case Kind::PadMono: c.label = "POLY"; c.value = b.value ? "Mono" : "Poly"; break;
@@ -184,11 +185,11 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             break;
         }
         case Kind::PadBeats: c.label = "# BEATS"; c.value = b.value ? juce::String(b.value) : juce::String("Auto"); break;
-        case Kind::ChopMode: c.label = "MODE"; c.value = chop_mode_name(ChopMode(b.value)); break;
+        case Kind::ChopMode: c.label = "CHOP TYPE"; c.value = chop_mode_name(ChopMode(b.value)); break;
         case Kind::ChopAmount: {
             auto mode = ChopMode(b.id);
-            c.label = mode == ChopMode::Hits ? "HITS" : mode == ChopMode::Even ? "SLICES" : "BEATS";
-            c.value = juce::String(b.value); c.unit = mode == ChopMode::Hits ? "%" : "";
+            c.label = mode == ChopMode::Threshold ? "THRESHOLD" : mode == ChopMode::Regions ? "SLICES" : "BEATS";
+            c.value = juce::String(b.value); c.unit = mode == ChopMode::Threshold ? "%" : "";
             break;
         }
         case Kind::FileJump:

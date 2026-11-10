@@ -24,7 +24,7 @@ struct Binding {
         SendBus, BusReturn,                // Sends; BusReturn id: the bus
         PadPitch, PadLevel, PadPan,        // the last pad hit on a sampler track
         PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
-        ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds
+        ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds (id: the slice)
         FileJump,                          // Samples
         RecThreshold, RecBars, RecGain,    // Record
         ProjectJump, ProjectSort,          // Project
@@ -41,7 +41,8 @@ struct Binding {
         // Sample Mode (parity phase 4), the last pad hit; TrimZoom's id is the handle it closes in on (0 start, 1 end, 2 loop)
         PadLoopPoint, PadLoop, PadMono, PadLink, PadOffset, PadVelSense, PadDecayFrom,
         PadFilterType, PadCutoff, PadResonance, PadFAttack, PadFDecay, PadFSustain, PadFRelease, PadFAmount,
-        PadWarp, PadBeats                          // PadWarp: 0 Off, 1..151 50..200 %, 152 Seq
+        PadWarp, PadBeats,                         // PadWarp: 0 Off, 1..151 50..200 %, 152 Seq
+        ChopEnd, ChopZoom                          // Chop (parity phase 5): K2 the slice's end (ms); Shift + K1 / K2 zoom (id 0 start, 1 end)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

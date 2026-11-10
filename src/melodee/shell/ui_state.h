@@ -26,15 +26,6 @@ struct Pot {
     uint32_t bound = 0;    // which binding it was last checked against
 };
 
-// Whether Samples lists a file under its filter: everything, the takes, or
-// the files the project already holds in its sample slots.
-inline bool sample_file_listed(const Project& project, unsigned filter, const std::string& path) {
-    if (filter == 0) return true;
-    if (filter == 1) return path.find("/Recorded/") != std::string::npos;
-    for (const auto& ref : project.samples) if (ref.used() && path == ref.path) return true;
-    return false;
-}
-
 struct UiState {
     PageId page = PageId::Stage;
     // Back (Shift + Push): the pages opened before this one, oldest first.
@@ -99,21 +90,28 @@ struct UiState {
     bool picker_open = false, picker_items = false;           // the effect picker; focus on its effects column
     uint8_t picker_family = 0, picker_item = 0;
     bool picker_replaces = false;                              // Change on a device, not + ADD
-    uint16_t files_cursor = 0;  // Samples
-    uint16_t files_count = 0;   // files the library lists, copied in by the shell
+    uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
+    uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
+    uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)
+    bool preview = false;       // B3: each file plays as the cursor lands on it
     uint8_t trim_zoom = 0;      // Trim: 0 whole sample .. 4 sixteen times closer
     uint8_t trim_focus = 0;     // and where it closes in: 0 the start, 1 the end, 2 the loop point (Shift + K1-K3)
     bool sample_held = false;   // Sample held: a pad picks a kit pad without playing it (as on the MPC)
     bool sample_used = false;   // a pad was picked meanwhile, so letting go opens no page
     uint8_t warp_stretch = 0;   // Shift + Pad 15: the Follow how (Beats or Tones) Time stretch goes back to
-    ChopMode chop_mode = ChopMode::Hits;
-    std::array<int, 3> chop_amount {{60, 16, 1}}; // per mode: sensitivity, slice count, beats a slice
-    Slices slices;              // Chop's markers on the sample in hand
+    // Chop (parity phase 5): the last pad's region cut into slices.
+    ChopMode chop_mode = ChopMode::Threshold;
+    std::array<int, 4> chop_amount {{50, 8, 1, 0}}; // per mode: threshold, slice count, beats a slice (Manual: none)
+    Slices slices;              // Chop's slices of the sample in hand
     uint16_t chop_sample = no_sample;
+    uint32_t chop_from = 0, chop_to = 0; // the pad's region it chops (to 0: the end)
     uint8_t chop_slice = 0;
+    uint8_t chop_zoom = 0;      // Shift + K1 / K2: 0 the whole region .. 4 sixteen times closer
+    uint8_t chop_focus = 0;     // and where: 0 the slice's start, 1 its end
+    bool chop_armed = false;    // Manual: pad 1 plays the region and the pads tapped meanwhile cut it
+    uint32_t chop_take_at = 0;  // ms when pad 1 started that take, 0 none
     int8_t levels_hit = -1;     // Levels: the pad played last, 0..15
     int16_t levels_value = 0;   // and what it played: a velocity or semitones
-    uint8_t files_filter = 0;   // Samples: all, recorded, recent (the files this project uses)
     uint8_t rec_source = 1;     // Input Config: 0 mic, 1 line, 2 the mix (resample)
     int8_t rec_threshold = -30; // Input Config, dB; -60 starts at once
     uint8_t rec_bars = 4;       // 0: until stopped

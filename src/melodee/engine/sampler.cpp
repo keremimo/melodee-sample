@@ -32,7 +32,7 @@ SamplerEngine::Voice& SamplerEngine::free_voice() {
 }
 
 void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
-    if (!samples || !sound.used() || sound.sample >= sample_slots) return;
+    if (!samples || !sound.used() || sound.sample > preview_slot) return;
     const SampleData* data = (*samples)[sound.sample];
     if (!data || !data->frames) return;
     // A pad in a mute group cuts the others in it; a mono pad cuts what it played before.
@@ -166,12 +166,13 @@ void SamplerEngine::audition(uint16_t sample, uint32_t from, uint32_t to, int ve
     PadSound sound;
     sound.sample = sample; sound.start = from; sound.end = to;
     for (auto& v : voices) if (v.pad == int(sampler_pads)) v.choked = true; // one audition at a time
+    if (sample == no_sample) return; // only that: the audition stops
     start(free_voice(), sound, int(sampler_pads), velocity);
 }
 
 void SamplerEngine::sample_gone(uint16_t slot) {
     for (auto& v : voices) if (v.slot == slot) v = Voice {};
-    if (samples && slot < sample_slots)
+    if (samples && slot <= preview_slot)
         for (auto& g : grains) if (g.sample == (*samples)[slot]) g.sample = nullptr;
 }
 

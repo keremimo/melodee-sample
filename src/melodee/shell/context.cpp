@@ -415,8 +415,15 @@ void Context::apply(const Binding& b, int value) {
         break;
     }
     case Kind::ChopMode: ui.chop_mode = ChopMode(value); rechop(); break;
-    case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode)] = value; rechop(); break;
-    case Kind::ChopStart: ui.slices.start[size_t(b.id) % max_slices] = uint32_t(uint64_t(value) * 44100 / 1000); break;
+    case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] = value; rechop(); break;
+    case Kind::ChopStart: case Kind::ChopEnd: { // editing a slice makes the chop Manual, as on the MPC
+        uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0, at = uint32_t(uint64_t(value) * 44100 / 1000);
+        if (b.kind == Kind::ChopStart) ui.slices.move_start(unsigned(b.id), at, frames);
+        else ui.slices.move_end(unsigned(b.id), at, frames);
+        ui.chop_mode = ChopMode::Manual; ui.chop_armed = false;
+        break;
+    }
+    case Kind::ChopZoom: ui.chop_zoom = uint8_t(value); ui.chop_focus = uint8_t(b.id % 2); break;
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
@@ -550,14 +557,13 @@ void Context::save_sound() {
 }
 
 // Shift + Sample Select on a sampler track: the last pad's region as a WAV
-// file. Writing it lands in phase 5 (MELODEE_PARITY.md); until then the
-// name is asked for and the header says it is not there yet.
+// file under the card's Samples, named on the Name sheet (save_sample_as()).
 void Context::save_sample() {
     auto& t = track();
     const auto& sound = pad();
     if (t.engine != EngineKind::Sampler || !sound.used()) { notice("Save Sample: no sample"); return; }
     const auto& ref = project.samples[sound.sample % sample_slots];
-    open_name(NameTarget::Sample, ref.name, name_length - 1, false);
+    open_name(NameTarget::Sample, ref.name, sizeof(project.name) - 1, false); // a file's name may run as long as a project's
 }
 
 void Context::set_rec_source(unsigned source) {
@@ -605,7 +611,7 @@ void Context::finish_name() {
         store->save_sound(text, melodee::save_sound(sound_of(t, text.c_str())));
         break;
     }
-    case NameTarget::Sample: notice("Save Sample: not yet"); break; // phase 5
+    case NameTarget::Sample: save_sample_as(text); break;
     case NameTarget::None: break;
     }
 }
@@ -1034,11 +1040,17 @@ int Context::sample_slot(const std::string& path, const std::string& name) {
     return free;
 }
 
+// Chop's slices of the region it holds, by its type. Manual starts as one
+// slice, the whole region, armed: pad 1 plays it and the pads tapped
+// meanwhile cut it (chop_tap()).
 void Context::rechop() {
     if (!library || ui.chop_sample >= sample_slots) { ui.slices = {}; return; }
     auto loaded = library->slot(ui.chop_sample);
-    ui.slices = chop(ui.chop_mode, ui.chop_amount[size_t(ui.chop_mode)], loaded.frames, loaded.hits, loaded.hit_count, project.tempo);
+    ui.slices = chop(ui.chop_mode, ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()], ui.chop_from, ui.chop_to, loaded.frames,
+                     loaded.hits, loaded.hit_count, project.tempo);
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
+    ui.chop_armed = ui.chop_mode == ChopMode::Manual;
+    ui.chop_take_at = 0;
 }
 
 // Arms a take for the first free sample slot and the first empty pad; a

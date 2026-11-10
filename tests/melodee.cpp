@@ -571,15 +571,15 @@ void sampler_kit() {
     unsigned found = find_hits(data, hits);
     CHECK(found >= 4 && hits[0].frame == 0);
     // Chop: hits at the clicks, even parts, beats at 120 BPM (22050 frames each).
-    auto even = chop(ChopMode::Even, 4, data.frames, hits, found, 1200);
+    auto even = chop(ChopMode::Regions, 4, data.frames, hits, found, 1200);
     CHECK(even.count == 4 && even.start[2] == 22050);
     auto beats = chop(ChopMode::Beats, 1, data.frames, hits, found, 1200);
     CHECK(beats.count == 2 && beats.start[1] == 22050);
-    auto clicks = chop(ChopMode::Hits, 100, data.frames, hits, found, 1200);
+    auto clicks = chop(ChopMode::Threshold, 0, data.frames, hits, found, 1200);
     CHECK(clicks.count >= 4);
     for (unsigned n = 1; n < 4; ++n) CHECK(std::abs(int(clicks.start[n]) - int(n * 11024)) < 600);
     Slices edited = even;
-    CHECK(edited.add(1000) && edited.count == 5 && edited.start[1] == 1000);
+    CHECK(edited.add(1000, data.frames) && edited.count == 5 && edited.start[1] == 1000);
     edited.remove(1);
     CHECK(edited.count == 4 && edited.start[1] == 11025);
 
@@ -1262,7 +1262,8 @@ void shift_pads() {
     for (unsigned n : {1u, 5u, 6u}) CHECK(shift_pad_job(n).kind == K::Action); // Half Seq, Half / Double Speed (phase 2)
     CHECK(shift_pad_job(13).kind == K::Open);                                  // Time Correct (phase 2)
     CHECK(shift_pad_job(14).kind == K::Action);                                // Warp: Time stretch / Pitch (phase 4)
-    for (unsigned n : {4u, 7u, 8u, 10u, 12u})
+    CHECK(shift_pad_job(12).kind == K::Action);                                // Trim Sample (phase 5)
+    for (unsigned n : {4u, 7u, 8u, 10u})
         CHECK(shift_pad_job(n).kind == K::Later && shift_pad_job(n).phase >= 2);
 
     UiState ui;
@@ -1987,7 +1988,98 @@ void sample_mode() {
     CHECK(back->tracks[4].pads[2].decay_from_start && !back->tracks[4].pads[2].loop && back->tracks[4].pads[2].used());
 }
 
+// Parity phase 5: Chop on a region (types, slice start / end, Split, Merge,
+// Manual's limit and its taps pulled onto hits), the cards and their zoom,
+// the preview slot in the engine, Trim Sample as a Shift + pad action.
+void chop_and_browser() {
+    std::array<Hit, max_hits> hits {};
+    unsigned found = 0;
+    for (uint32_t at : {0u, 10000u, 20000u, 30000u, 40000u, 50000u}) hits[found++] = {at, uint8_t(at == 30000 ? 80 : 200)};
+    const uint32_t frames = 60000;
+    // Regions between a pad's start and end; slices touch, the last ends at the region's end.
+    auto regions = chop(ChopMode::Regions, 4, 8000, 48000, frames, hits, found, 1200);
+    CHECK(regions.count == 4 && regions.start[0] == 8000 && regions.start[1] == 18000 && regions.end(3, frames) == 48000);
+    // Threshold: hits inside the region at least as strong as it asks (30000 is faint).
+    auto strong = chop(ChopMode::Threshold, 70, 5000, 0, frames, hits, found, 1200);
+    CHECK(strong.count == 5 && strong.start[0] == 5000 && strong.start[1] == 10000 && strong.start[3] == 40000);
+    CHECK(chop(ChopMode::Threshold, 0, 5000, 0, frames, hits, found, 1200).count == 6);
+    CHECK(chop(ChopMode::Threshold, 100, 5000, 0, frames, hits, found, 1200).count == 1); // higher, fewer (as on the MPC)
+    // Beats at 120 BPM: a slice a beat (22050 frames) from the region's start.
+    auto beats = chop(ChopMode::Beats, 1, 1000, 0, frames, hits, found, 1200);
+    CHECK(beats.count == 3 && beats.start[1] == 23050 && beats.start[2] == 45100);
+    // Manual starts as one slice, the whole region; up to 16 cuts.
+    auto manual = chop(ChopMode::Manual, 0, 2000, 50000, frames, hits, found, 1200);
+    CHECK(manual.count == 1 && manual.end(0, frames) == 50000);
+    for (uint32_t at = 3000; at < 49000; at += 1000) manual.add(at, frames, manual_slices);
+    CHECK(manual.count == manual_slices);
+    // K1 / K2: a slice's start is the slice before's end; its end the next one's start; never under 20 ms.
+    auto s = regions;
+    s.move_end(1, 30000, frames);
+    CHECK(s.start[2] == 30000 && s.end(1, frames) == 30000);
+    s.move_start(1, 0, frames);
+    CHECK(s.start[1] == 8000 + min_slice);
+    s.move_end(3, 59000, frames);
+    CHECK(s.end(3, frames) == 59000);
+    s.move_end(2, 59500, frames); // up against the last slice: it keeps 20 ms
+    CHECK(s.start[3] == 59000 - min_slice);
+    // Split and Merge.
+    auto m = regions;
+    CHECK(m.split(1, frames) && m.count == 5 && m.start[2] == 23000);
+    m.remove(2); // Merge slice 3 into slice 2
+    CHECK(m.count == 4 && m.end(1, frames) == 28000);
+    m.remove(3); // the last: the slice before now ends where it did
+    CHECK(m.count == 3 && m.end(2, frames) == 48000);
+    CHECK(!m.add(28100, frames)); // too close to a cut
+    Slices tiny = chop(ChopMode::Manual, 0, 0, 1500, frames, hits, found, 1200);
+    CHECK(!tiny.split(0, frames));
+    // A tap a little after a hit lands on it; one far from any stays put.
+    CHECK(snap_to_hit(41200, hits, found) == 40000);
+    CHECK(snap_to_hit(45000, hits, found) == 45000);
+    CHECK(snap_to_hit(39800, hits, found) == 40000); // up to 10 ms early
+
+    // The cards: K1 start, K2 end, K3 type; Shift: zoom at each, the type's amount (none for Manual).
+    Project project;
+    load_sound(project.tracks[0], EngineKind::Sampler, 0);
+    project.samples[0].frames = 441000; std::snprintf(project.samples[0].path, sizeof(project.samples[0].path), "/x.wav");
+    UiState ui;
+    Pattern pattern;
+    ui.page = PageId::Chop; ui.chop_sample = 0;
+    ui.slices = chop(ChopMode::Regions, 4, 0, 0, 441000, hits, 0, 1200);
+    ui.chop_mode = ChopMode::Regions; ui.chop_slice = 1;
+    auto cards = page_bindings(project, ui, pattern);
+    CHECK(cards[0].kind == Binding::Kind::ChopStart && cards[0].value == 2500 && cards[0].min == 20 && cards[0].max == 4980);
+    CHECK(cards[1].kind == Binding::Kind::ChopEnd && cards[1].value == 5000 && cards[1].max == 7480);
+    CHECK(cards[2].kind == Binding::Kind::ChopMode && cards[2].max == 3);
+    ui.chop_zoom = 3; // an eighth of the sample (1250 ms) round each handle
+    cards = page_bindings(project, ui, pattern);
+    CHECK(cards[0].min == 2500 && cards[0].max == 3750 && cards[1].min == 5000 && cards[1].max == 6250);
+    auto shifted = page_bindings(project, ui, pattern, true);
+    CHECK(shifted[0].kind == Binding::Kind::ChopZoom && shifted[0].id == 0 && shifted[1].id == 1);
+    CHECK(shifted[2].kind == Binding::Kind::ChopAmount && shifted[2].max == int(max_slices));
+    ui.chop_mode = ChopMode::Manual;
+    CHECK(!shift_bindings(project, ui, pattern)[2].bound() && page_bindings(project, ui, pattern, true)[2].kind == Binding::Kind::ChopMode);
+
+    // The preview slot: the engine plays a file no pad holds; a stop ends it.
+    SampleData data;
+    data.frames = 44100; data.left.assign(44100, 0.5f); data.right.assign(44100, 0.5f);
+    SamplerEngine::Table table {};
+    table[preview_slot] = &data;
+    SamplerEngine engine;
+    engine.set_samples(&table);
+    engine.audition(uint16_t(preview_slot), 0, 0, 100);
+    std::vector<float> l(128, 0), r(128, 0);
+    engine.render_stereo(l.data(), r.data(), 128);
+    CHECK(engine.sounding());
+    engine.audition(no_sample, 0, 0, 0);
+    for (unsigned b = 0; b < 40; ++b) engine.render_stereo(l.data(), r.data(), 128);
+    CHECK(!engine.sounding());
+
+    // Trim Sample is a Shift + pad action now.
+    CHECK(shift_pad_job(12).kind == ShiftPadJob::Kind::Action && std::string(shift_pad_job(12).name) == "Trim Sample");
+}
+
 int main() {
+    chop_and_browser();
     sample_mode();
     step_edit_and_pad_motion();
     timing();
