@@ -258,8 +258,18 @@ struct Track {
     int8_t transpose = 0; // Shift + Minus / Plus: the pads moved by semitones, -12..12
     // A sampler track's kit (unused by the synth engines).
     std::array<PadSound, sampler_pads> pads {};
-    uint8_t bank = 0;     // the bank the pads play
-    uint8_t last_pad = 0; // the kit pad hit last (0..63): what the pots and Trim edit
+    uint8_t bank = 0;     // the bank the pads play, 0..7: A-H
+    uint8_t last_pad = 0; // the kit pad hit last (0..127): what the pots and Trim edit
+    // Mute (mode) on a kit page: kit pads muted, a bit each. A muted pad is not
+    // heard, played or sequenced, and keeps its notes.
+    std::array<uint64_t, (sampler_pads + 63) / 64> pad_mutes {};
+    bool pad_muted(unsigned pad) const { pad %= sampler_pads; return (pad_mutes[pad / 64] >> (pad % 64)) & 1; }
+    void set_pad_muted(unsigned pad, bool on) {
+        pad %= sampler_pads;
+        uint64_t bit = uint64_t(1) << (pad % 64);
+        pad_mutes[pad / 64] = on ? pad_mutes[pad / 64] | bit : pad_mutes[pad / 64] & ~bit;
+    }
+    bool any_pad_muted() const { for (auto m : pad_mutes) if (m) return true; return false; }
     // 16 Levels on a sampler track: one kit pad on all sixteen pads.
     bool levels = false;
     uint8_t levels_pad = 0;
@@ -269,7 +279,7 @@ struct Track {
     uint8_t chord_type = 1, chord_voicing = 0, chord_invert = 0;
     // Arp (note repeat on a sampler track): held notes in turn at a rate.
     bool arp = false, arp_latch = false;
-    uint8_t arp_mode = 0, arp_rate = 3, arp_octaves = 1, arp_gate = 60;
+    uint8_t arp_mode = 0, arp_rate = 4, arp_octaves = 1, arp_gate = 60; // arp_rate: engine/arp.h, 4 is 1/16
     bool used() const { return engine != EngineKind::None; }
     // The note a new step gets on Steps: on a kit the pad hit last, else the last note played.
     uint8_t step_note() const { return engine == EngineKind::Sampler ? uint8_t(sampler_first_note + last_pad % sampler_pads) : last_note; }

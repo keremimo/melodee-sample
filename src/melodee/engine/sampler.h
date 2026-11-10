@@ -9,11 +9,11 @@
 #include "melodee/model/sampler.h"
 #include <array>
 
-// SAMPLER: a kit of 64 pads, each a region of a sample, written for
+// SAMPLER: a kit of 128 pads, each a region of a sample, written for
 // sample-base after the melodee-ios sampler's behaviour: gate or one shot,
 // reverse, mute groups (pads in a group cut each other), its own pitch,
-// level, pan and envelope, and one filter on the whole kit. Notes 36..99
-// play pads 1..64 (bank A first). Stereo. Audio thread only; the sample
+// level, pan and envelope, and one filter on the whole kit. Notes 36..163
+// play pads 1..128 (bank A first). A muted pad is not heard. Stereo. Audio thread only; the sample
 // table belongs to the engine host.
 namespace melodee {
 
@@ -35,6 +35,10 @@ public:
     SamplerEngine();
     void set_samples(const Table* table) { samples = table; }
     void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) pads[pad] = sound; }
+    // Mute: a muted pad does not start and what it plays fades out now.
+    void set_pad_mute(unsigned pad, bool on);
+    void set_pad_mutes(const std::array<uint64_t, (sampler_pads + 63) / 64>& bits);
+    bool pad_muted(unsigned pad) const { return pad < sampler_pads && ((muted[pad / 64] >> (pad % 64)) & 1); }
     // A region of a sample on no pad, for Chop's audition (plays one shot).
     void audition(uint16_t sample, uint32_t start, uint32_t end, int velocity);
     // A sample is about to change: whatever plays it stops now.
@@ -103,6 +107,7 @@ private:
     uint32_t seed = 99;
     const Table* samples = nullptr;
     std::array<PadSound, sampler_pads> pads {};
+    std::array<uint64_t, (sampler_pads + 63) / 64> muted {};
     std::array<Voice, max_voices> voices {};
     std::array<int, sampler::Count> p {};
     uint32_t clock = 0;

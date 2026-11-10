@@ -250,6 +250,26 @@ const Preview previews[] {
     {"padcopy", [](Shell&, Snapshot& s) { // Shift + Erase, then a pad: where does it go
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.copying = UiState::Copying::Pads; s.ui.copy_from = 2;
      }},
+    {"mutepads", [](Shell&, Snapshot& s) { // mute mode latched on a kit page: two pads muted
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.mute_latch = true; s.playing = true;
+         s.project.tracks[3].set_pad_muted(1, true); s.project.tracks[3].set_pad_muted(6, true);
+     }},
+    {"padbank", [](Shell&, Snapshot& s) { // Pad Bank held on a kit in bank F: the sixteen tracks
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.pad_bank = true; s.playing = true;
+         s.project.tracks[3].bank = 5;
+     }},
+    {"copytrack", [](Shell&, Snapshot& s) { // Pad Bank held, Shift + Erase, track 2 picked: where does it go
+         s.ui.page = PageId::Stage; s.ui.track = 1; s.ui.pad_bank = true;
+         s.ui.copying = UiState::Copying::Tracks; s.ui.copy_from = 1;
+     }},
+    {"repeat", [](Shell&, Snapshot& s) { // Note Repeat on, on Keys: 1/8, 1/16, 1/32 on B1-B3
+         s.ui.page = PageId::Keys; s.playing = true; s.project.tracks[0].arp = true; s.project.tracks[0].arp_rate = 4;
+         s.ui.held_pads = 1u << 4;
+     }},
+    {"repeattriplets", [](Shell&, Snapshot& s) { // and with Shift held: the triplets
+         s.ui.page = PageId::Keys; s.playing = true; s.project.tracks[0].arp = true; s.project.tracks[0].arp_rate = 5;
+         s.ui.shift = true; s.ui.shift_used = true;
+     }},
     {"undo", [](Shell&, Snapshot& s) { // Shift + Minus: what came back
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();
          std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Undo Delete A05"); s.ui.notice_at = s.now;
@@ -392,10 +412,7 @@ void draw(juce::Graphics& g, const Snapshot& s) {
     ui::Paint p(g);
     g.fillAll(ui::colour::bg);
     page_spec(s.ui.page).draw(p, s);
-    draw_notice(p, s);
-    if (s.ui.name.open()) draw_name_sheet(p, s);
-    if (s.ui.exit_open) draw_exit_sheet(p, s);
-    else if (s.ui.shift && !s.ui.shift_used && !s.ui.name.open()) draw_shift_layer(p, s);
+    draw_overlays(p, s);
 }
 
 int preview(const std::string& folder, const std::vector<std::string>& names) {

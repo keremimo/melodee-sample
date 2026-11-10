@@ -8,6 +8,9 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/button_jobs.h"
+#include "melodee/shell/mute_mode.h"
+#include "melodee/shell/note_repeat.h"
+#include "melodee/shell/pad_bank.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/ui/tokens.h"
@@ -57,6 +60,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     {
         const ProjectPack* done = nullptr;
         while (host.take_done_pack(done)) delete done;
+        const TrackPack* track_done = nullptr; // a track copy, or its undo
+        while (host.take_done_track(track_done)) delete track_done;
     }
     if (store_) {
         if (auto loaded = store_->take_loaded()) {
@@ -124,17 +129,26 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     bool playing = host.playing();
     int step_now = host.step_of(ui.track);
     uint32_t ticks = host.ticks();
-    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !ui.pad_bank && !ui.mute;
+    bool tracks = tracks_on_pads(ui), muting = ui.mute_mode() && !ui.name.open() && !tracks;
+    bool mute_kit = muting && mute_on_kit(ui, kit_pads());
+    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !tracks && !muting;
+    const Rgb muted_red = led_colour::rgb(1, 0, 0, 0.35f); // muted, as the MPC lights it
     uint32_t lit = 0; // for `status`
     for (unsigned pad = 0; pad < 16; ++pad) {
         bool held = ui.held_pads & (1u << pad);
         Rgb colour {};
-        if (ui.pad_bank || ui.mute || ui.page == PageId::Stage || ui.page == PageId::Mix || ui.page == PageId::Song) {
+        if (mute_kit) {
+            // Mute mode on a kit: the bank's pads, muted red, soloed white, the rest in the track's colour.
+            unsigned kit = track.bank % sampler_banks * 16 + pad;
+            colour = !track.pads[kit].used() ? Rgb {} : track.pad_muted(kit) ? muted_red
+                   : pad_soloed(track, kit) ? led_colour::white(0.8f) : track_light(ui.track, 0.6f);
+        } else if (tracks || muting || ui.page == PageId::Stage || ui.page == PageId::Mix || ui.page == PageId::Song) {
             // The pads are the tracks.
             const auto& t = project.tracks[pad];
             float level = !t.used() ? 0 : pad == ui.track ? 1.0f : t.mix.mute ? 0.08f : 0.35f;
             colour = track_light(pad, level);
-            if (ui.mute && t.used()) colour = t.mix.mute ? Rgb {} : (t.mix.solo ? led_colour::white(0.8f) : track_light(pad, 0.6f));
+            if (muting && t.used()) colour = t.mix.mute ? muted_red : (t.mix.solo ? led_colour::white(0.8f) : track_light(pad, 0.6f));
+            if (ui.copying == UiState::Copying::Tracks && ui.copy_from == int(pad)) colour = led_colour::white(1); // the track being copied
         } else if (ui.page == PageId::Patterns) {
             // The pads are the selected track's sixteen patterns: playing bright, queued
             // blinking, holding notes dim, empty dark.
@@ -171,7 +185,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             unsigned level = shift_pad_level(ui, pad);
             colour = level ? track_light(ui.track, level == 2 ? 1.0f : 0.3f) : Rgb {};
         }
-        if (held && ui.page != PageId::Steps && !ui.pad_bank && !ui.mute) colour = led_colour::white(1);
+        if (held && ui.page != PageId::Steps && !tracks && !muting) colour = led_colour::white(1);
         if (ui.settings.pad_lights == 1) { // white, as bright as the colour was
             float full = std::max<float>(led_colour::white(1).r, 1);
             colour = led_colour::white(std::max({colour.r, colour.g, colour.b}) / full);
@@ -182,7 +196,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     pads_lit.store(lit, std::memory_order_relaxed);
     lights.fader(track.used() ? track_light(ui.track, 0.8f) : Rgb {});
-    // Bank lights A-D: the sampler track's bank in view.
+    // Bank lights A-H: the sampler track's bank in view.
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
         lights.bank(bank, track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks);
 
@@ -207,7 +221,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                          B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord, B::SeqRecord,
                          B::Stop, B::Play, B::WheelPush}) {
             bool shift_job = button_has_shift_job(project, ui, button, kit);
-            bool lit = button == B::Shift || (button == B::TapTempo && project.click) || (button == B::Erase && ui.copying != UiState::Copying::Off);
+            bool lit = button == B::Shift || (button == B::TapTempo && project.click) || (button == B::Erase && ui.copying != UiState::Copying::Off)
+                    || (button == B::NoteRepeat && track.arp) || (button == B::Mute && ui.mute_mode());
             set(button, !shift_job ? L::Off : lit ? L::Bright : L::Dim);
         }
         button_levels.store(levels, std::memory_order_relaxed);
@@ -236,8 +251,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::SeqRecord, ui.recording);
     // Tap Tempo flashes on the beat while playing.
     on(B::TapTempo, playing && ticks % ticks_per_quarter < ticks_per_quarter / 3);
-    on(B::Mute, ui.mute);
-    on(B::PadBank, ui.pad_bank);
+    on(B::Mute, ui.mute_mode());           // bright while mute mode is on, latched or held
+    on(B::PadBank, tracks_on_pads(ui));    // held, or a track copy under way
     on(B::Erase, ui.erase || ui.copying != UiState::Copying::Off); // lit while copying
     button_levels.store(levels, std::memory_order_relaxed);
 }

@@ -30,8 +30,8 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::SeqRecord: case B::Play: case B::Stop: case B::Minus: case B::Plus: case B::WheelPush: case B::Shift:
         return true;
     case B::Loop: return kit;                                                    // reverse the last pad
-    case B::Erase: return kit_pads || ui.page == PageId::Patterns || ui.copying != UiState::Copying::Off; // Copy
-    default: return false; // Sample Record (Audio Recall, phase 6), Chop, 16 Levels, Pad FX, Knob FX: not yet
+    case B::Erase: return kit_pads || ui.pad_bank || ui.page == PageId::Patterns || ui.copying != UiState::Copying::Off; // Copy (tracks with Pad Bank held)
+    default: return false; // Sample Record (Audio Recall, phase 6), Chop, 16 Levels, Pad FX, Knob FX, Note Repeat (none printed): not yet
     }
 }
 

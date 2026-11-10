@@ -16,14 +16,31 @@ inline const char* arp_mode_name(ArpMode m) {
     static const char* names[] {"Up", "Down", "Up-down", "Random", "Order"};
     return names[unsigned(m) % unsigned(ArpMode::Count)];
 }
-// Rates in ticks, with their names: 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32.
-inline unsigned arp_rate_ticks(unsigned rate) { static const unsigned t[] {24, 12, 8, 6, 4, 3}; return t[rate % 6]; }
-inline const char* arp_rate_name(unsigned rate) { static const char* n[] {"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}; return n[rate % 6]; }
+// Rates in ticks, slowest first, each straight rate followed by its triplet:
+// 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T. Note Repeat's B1-B3 pick
+// 1/8, 1/16, 1/32 and, with Shift, their triplets (MELODEE_PARITY.md).
+constexpr unsigned arp_rates = 8;
+inline unsigned arp_rate_ticks(unsigned rate) { static const unsigned t[] {24, 16, 12, 8, 6, 4, 3, 2}; return t[rate % arp_rates]; }
+inline const char* arp_rate_name(unsigned rate) {
+    static const char* n[] {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T"};
+    return n[rate % arp_rates];
+}
+inline bool arp_rate_triplet(unsigned rate) { return rate % 2 == 1; }
+constexpr unsigned arp_default_rate = 4; // 1/16
+// Swing on the repeats, as the project's swing moves the sequencer's off
+// sixteenths: every second note of a straight rate comes late by this many
+// ticks (fractional), so a pair of notes splits swing : 100 - swing. Triplets
+// stay even. `step` counts the rate's notes from the bar.
+inline double arp_swing_ticks(unsigned rate, unsigned step, unsigned swing) {
+    if (arp_rate_triplet(rate) || step % 2 == 0 || swing <= 50) return 0;
+    return arp_rate_ticks(rate) * (double(swing) - 50) / 50;
+}
 
 struct Arp {
     bool on = false;
     ArpMode mode = ArpMode::Up;
-    unsigned rate = 3, octaves = 1, gate = 60; // gate: percent of a step
+    unsigned rate = arp_default_rate, octaves = 1, gate = 60; // gate: percent of a step
+    int top = 127;                             // the highest key: a kit's run past 127 (model/sampler.h)
     std::array<int, 16> held {}, order {};     // held sorted by pitch; order as pressed
     std::array<int, 16> velocity {};
     unsigned count = 0, position = 0;
@@ -59,7 +76,7 @@ struct Arp {
         int key = (mode == ArpMode::Order ? order[note] : held[note]) + 12 * int(octave);
         vel = velocity[0];
         for (unsigned n = 0; n < count; ++n) if (order[n] == (mode == ArpMode::Order ? order[note] : held[note])) vel = velocity[n];
-        return std::min(key, 127);
+        return std::min(key, top);
     }
 };
 

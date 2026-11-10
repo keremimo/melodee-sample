@@ -1,13 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// Drawn over any page: the Shift layer while Shift is held, and the Exit
-// sheet after a short press of Power.
+// Drawn over any page: the tracks while Pad Bank is held, Note Repeat's
+// rates, the Shift layer while Shift is held, and the Exit sheet after a
+// short press of Power.
+#include "melodee/engine/arp.h"
 #include "melodee/pages/common.h"
+#include "melodee/shell/mute_mode.h"
+#include "melodee/shell/note_repeat.h"
+#include "melodee/shell/pad_bank.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/ui/widgets.h"
 
 namespace melodee {
 using namespace ui;
+
+void draw_overlays(Paint& p, const Snapshot& s) {
+    bool sheet = s.ui.name.open() || s.ui.exit_open;
+    if (tracks_on_pads(s.ui) && !sheet) draw_track_overlay(p, s);
+    draw_notice(p, s);
+    if (s.ui.name.open()) draw_name_sheet(p, s);
+    if (s.ui.exit_open) draw_exit_sheet(p, s);
+    else if (s.ui.shift && !s.ui.shift_used && !s.ui.name.open()) draw_shift_layer(p, s);
+    if (!sheet && !tracks_on_pads(s.ui) && repeat_keys(s.project, s.ui)) draw_repeat_keys(p, s);
+}
+
+// Note Repeat on: B1-B3 are its rate, 1/8, 1/16, 1/32, and with Shift held their triplets.
+void draw_repeat_keys(Paint& p, const Snapshot& s) {
+    bool shift = s.ui.shift;
+    std::array<juce::String, 3> labels;
+    int active = -1;
+    for (int k = 0; k < 3; ++k) {
+        unsigned rate = repeat_rate(k, shift);
+        labels[size_t(k)] = arp_rate_name(rate);
+        if (s.track().arp_rate == rate) active = k;
+    }
+    p.fill(0, zone::soft_y, zone::width, zone::soft_h, colour::bg);
+    soft_keys(p, {labels, active, colour_of(s)});
+}
 
 void draw_shift_layer(Paint& p, const Snapshot& s) {
     // Second jobs as printed (MELODEE_PARITY.md decisions); some follow the
@@ -18,13 +47,13 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     bool kit = t.engine == EngineKind::Sampler;
     bool kit_pads = kit && !t.levels && page_spec(s.ui.page).pad == play_pad;
     bool song = s.ui.page == PageId::Song && !s.ui.sheet_open; // there Push names a marker instead
-    const char* copy = kit_pads ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pads, patterns";
+    const char* copy = s.ui.pad_bank ? "Copy track" : kit_pads ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pad, pattern, track";
     const char* select = s.ui.page == PageId::Sounds ? "Star sound" : kit ? "Save sample (later)" : "Save sound";
     static const char* const clicks[] {"Metronome: off", "Metronome: on", "Metronome: rec"};
     const char* const jobs[][2] {
         {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"PAD BANK", "Previous bank"}, {"ERASE", copy},
         {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"SAMPLE SELECT", select},
-        {"MUTE", "+ pad: solo track"}, {"TAP TEMPO", clicks[s.project.click % 3]},
+        {"MUTE", "Unmute all; mute + pad: solo"}, {"TAP TEMPO", clicks[s.project.click % 3]},
         {"SAMPLE RECORD", "Audio recall (later)"}, {"SEQ RECORD", "Recall last bars"},
         {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"\xe2\x88\x92 / +", "Undo / redo"},
         {"PUSH", song ? "Marker at cursor" : "Back"},
@@ -93,8 +122,15 @@ void draw_notice(Paint& p, const Snapshot& s) {
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pad") : "Copy " + juce::String(label) + ": pick where";
     } else if (s.ui.copying == UiState::Copying::Patterns) {
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pattern") : "Copy P" + juce::String(s.ui.copy_from + 1) + ": pick where";
+    } else if (s.ui.copying == UiState::Copying::Tracks) {
+        text = s.ui.copy_from < 0 ? juce::String("Copy: pick a track") : "Copy track " + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.notice[0] && s.now - s.ui.notice_at < 1500) {
         text = juce::String(s.ui.notice);
+    } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here
+        const auto& t = s.track();
+        bool kit = mute_on_kit(s.ui, t.engine == EngineKind::Sampler && !t.levels && page_spec(s.ui.page).pad == play_pad);
+        text = kit ? "Mute: pads" : "Mute: tracks";
+        copying = true; // in the track's colour, as a mode
     } else {
         return;
     }

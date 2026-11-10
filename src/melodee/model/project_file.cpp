@@ -69,6 +69,23 @@ void read_chain(Reader& r, Chain& chain) {
         for (auto& v : s.params) v = int16_t(r.i16());
     }
 }
+// One kit pad's sound: the same record in TRAK (banks A-D) and KITX (E-H).
+void write_pad(Writer& w, unsigned n, const PadSound& pad) {
+    w.u8(n); w.u16(pad.sample); w.u32(pad.start); w.u32(pad.end); w.i16(pad.pitch); w.i16(pad.fine); w.u8(pad.level);
+    w.i16(pad.pan); w.u8(unsigned(pad.play)); w.u8(pad.reverse); w.u8(pad.group);
+    w.u8(pad.attack); w.u8(pad.decay); w.u8(pad.sustain); w.u8(pad.release); w.u16(pad.own_tempo);
+}
+void read_pad(Reader& r, Track& tr) {
+    unsigned n = r.u8() % sampler_pads;
+    auto& pad = tr.pads[n];
+    pad.sample = uint16_t(r.u16()); pad.start = r.u32(); pad.end = r.u32();
+    pad.pitch = int8_t(std::clamp(r.i16(), -24, 24)); pad.fine = int8_t(std::clamp(r.i16(), -50, 50));
+    pad.level = uint8_t(std::min(127u, r.u8())); pad.pan = int8_t(std::clamp(r.i16(), -50, 50));
+    pad.play = PadPlay(r.u8() & 1); pad.reverse = r.u8() != 0; pad.group = uint8_t(r.u8() % 9);
+    pad.attack = uint8_t(r.u8()); pad.decay = uint8_t(r.u8()); pad.sustain = uint8_t(r.u8()); pad.release = uint8_t(r.u8());
+    pad.own_tempo = uint16_t(r.u16());
+    if (pad.sample >= sample_slots) pad.sample = no_sample;
+}
 void write_step(Writer& w, const Step& s) {
     unsigned notes = 0;
     for (auto n : s.notes) notes += n.velocity != 0;
@@ -79,7 +96,8 @@ void write_step(Writer& w, const Step& s) {
 void read_step(Reader& r, Step& s) {
     s = Step {};
     unsigned notes = std::min<unsigned>(r.u8(), notes_per_step);
-    for (unsigned k = 0; k < notes; ++k) { s.notes[k].key = uint8_t(r.u8() & 127); s.notes[k].velocity = uint8_t(r.u8() & 127); }
+    // Keys keep the whole byte: kit pads in banks F-H are notes past 127 (model/sampler.h).
+    for (unsigned k = 0; k < notes; ++k) { s.notes[k].key = uint8_t(r.u8()); s.notes[k].velocity = uint8_t(r.u8() & 127); }
     s.length = uint8_t(std::max(1u, r.u8())); s.chance = uint8_t(std::min(100u, r.u8())); s.flags = uint8_t(r.u8());
 }
 } // namespace
@@ -100,16 +118,10 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.u8(mod_routes); for (auto m : tr.mods) { w.u8(m.source); w.u8(m.destination); w.i16(m.amount); }
         write_chain(w, tr.fx);
         w.u8(tr.bank); w.u8(tr.last_pad); w.u8(tr.levels); w.u8(tr.levels_pad); w.u8(tr.levels_kind);
-        unsigned used = 0;
-        for (const auto& pad : tr.pads) used += pad.used();
+        unsigned used = 0; // banks A-D here, as before; E-H in KITX
+        for (unsigned n = 0; n < legacy_pads; ++n) used += tr.pads[n].used();
         w.u8(used);
-        for (unsigned n = 0; n < sampler_pads; ++n) {
-            const auto& pad = tr.pads[n];
-            if (!pad.used()) continue;
-            w.u8(n); w.u16(pad.sample); w.u32(pad.start); w.u32(pad.end); w.i16(pad.pitch); w.i16(pad.fine); w.u8(pad.level);
-            w.i16(pad.pan); w.u8(unsigned(pad.play)); w.u8(pad.reverse); w.u8(pad.group);
-            w.u8(pad.attack); w.u8(pad.decay); w.u8(pad.sustain); w.u8(pad.release); w.u16(pad.own_tempo);
-        }
+        for (unsigned n = 0; n < legacy_pads; ++n) if (tr.pads[n].used()) write_pad(w, n, tr.pads[n]);
         w.end(at);
         for (unsigned p = 0; p < pattern_count; ++p) {
             const auto& pattern = patterns.at[t][p];
@@ -178,6 +190,24 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         }
     w.u8(255);
     w.end(at);
+    for (unsigned t = 0; t < track_count; ++t) { // kit pads in banks E-H (parity phase 1c)
+        const auto& tr = project.tracks[t];
+        unsigned used = 0;
+        for (unsigned n = legacy_pads; n < sampler_pads; ++n) used += tr.pads[n].used();
+        if (!used) continue;
+        at = w.begin("KITX");
+        w.u8(t); w.u8(used);
+        for (unsigned n = legacy_pads; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad(w, n, tr.pads[n]);
+        w.end(at);
+    }
+    for (unsigned t = 0; t < track_count; ++t) { // muted kit pads, a bit each
+        const auto& tr = project.tracks[t];
+        if (!tr.any_pad_muted()) continue;
+        at = w.begin("PMUT");
+        w.u8(t); w.u8(unsigned(tr.pad_mutes.size()));
+        for (auto bits : tr.pad_mutes) { w.u32(uint32_t(bits)); w.u32(uint32_t(bits >> 32)); }
+        w.end(at);
+    }
     for (unsigned n = 0; n < sample_slots; ++n) {
         const auto& s = project.samples[n];
         if (!s.used()) continue;
@@ -224,16 +254,20 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             tr.bank = uint8_t(r.u8() % sampler_banks); tr.last_pad = uint8_t(r.u8() % sampler_pads);
             tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 3);
             unsigned used = r.u8();
-            for (unsigned k = 0; k < used && r.ok; ++k) {
-                unsigned n = r.u8() % sampler_pads;
-                auto& pad = tr.pads[n];
-                pad.sample = uint16_t(r.u16()); pad.start = r.u32(); pad.end = r.u32();
-                pad.pitch = int8_t(std::clamp(r.i16(), -24, 24)); pad.fine = int8_t(std::clamp(r.i16(), -50, 50));
-                pad.level = uint8_t(std::min(127u, r.u8())); pad.pan = int8_t(std::clamp(r.i16(), -50, 50));
-                pad.play = PadPlay(r.u8() & 1); pad.reverse = r.u8() != 0; pad.group = uint8_t(r.u8() % 9);
-                pad.attack = uint8_t(r.u8()); pad.decay = uint8_t(r.u8()); pad.sustain = uint8_t(r.u8()); pad.release = uint8_t(r.u8());
-                pad.own_tempo = uint16_t(r.u16());
-                if (pad.sample >= sample_slots) pad.sample = no_sample;
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, tr);
+        } else if (name == "KITX") {
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, project->tracks[t]);
+        } else if (name == "PMUT") {
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            unsigned words = r.u8();
+            for (unsigned k = 0; k < words && r.ok; ++k) {
+                uint64_t bits = r.u32();
+                bits |= uint64_t(r.u32()) << 32;
+                if (k < project->tracks[t].pad_mutes.size()) project->tracks[t].pad_mutes[k] = bits;
             }
         } else if (name == "PATT") {
             unsigned t = r.u8(), p = r.u8();

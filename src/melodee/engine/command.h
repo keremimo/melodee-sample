@@ -58,7 +58,9 @@ struct Command {
         PadFxKind, PadFxParam, PadFxBypass,
         SongPunchSet,   // index, song_punch
         SongPunchCount, // value = punches in use
-        SongRecord      // value: Seq Record on (a song playing on past its end keeps going, for launches written into it)
+        SongRecord,     // value: Seq Record on (a song playing on past its end keeps going, for launches written into it)
+        PadMute,        // track, index = kit pad (0xffff: every pad), value: muted
+        TrackLoad       // track_pack: one whole track (sound, kit, patterns) and the motion; handed back like Reload's
     };
     Command() = default;
     Command(Type type, uint8_t track = 0, uint8_t pattern = 0, uint16_t index = 0, int16_t value = 0)
@@ -74,6 +76,7 @@ struct Command {
     PadSound pad {};
     SongPunch song_punch {};
     const struct ProjectPack* pack = nullptr;
+    const struct TrackPack* track_pack = nullptr;
 };
 
 } // namespace melodee

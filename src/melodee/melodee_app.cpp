@@ -163,10 +163,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
     ui::Paint p(g);
     g.fillAll(ui::colour::bg);
     page_spec(frame->ui.page).draw(p, *frame);
-    draw_notice(p, *frame);
-    if (frame->ui.name.open()) draw_name_sheet(p, *frame);
-    if (frame->ui.exit_open) draw_exit_sheet(p, *frame);
-    else if (frame->ui.shift && !frame->ui.shift_used && !frame->ui.name.open()) draw_shift_layer(p, *frame);
+    draw_overlays(p, *frame);
 }
 
 // The speaker plays while neither headphones nor line out is plugged in. The

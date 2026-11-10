@@ -81,12 +81,23 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
 
 void SamplerEngine::note_on(int key, int velocity) {
     int pad = key - int(sampler_first_note);
-    if (pad < 0 || pad >= int(sampler_pads)) return;
+    if (pad < 0 || pad >= int(sampler_pads) || pad_muted(unsigned(pad))) return;
     start(free_voice(), pads[size_t(pad)], pad, velocity);
 }
 
 void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones) {
-    if (pad < sampler_pads) start(free_voice(), pads[pad], int(pad), velocity, semitones);
+    if (pad < sampler_pads && !pad_muted(pad)) start(free_voice(), pads[pad], int(pad), velocity, semitones);
+}
+
+void SamplerEngine::set_pad_mute(unsigned pad, bool on) {
+    if (pad >= sampler_pads) return;
+    uint64_t bit = uint64_t(1) << (pad % 64);
+    muted[pad / 64] = on ? muted[pad / 64] | bit : muted[pad / 64] & ~bit;
+    if (on) for (auto& v : voices) if (v.pad == int(pad)) v.choked = true; // fades out over a few milliseconds
+}
+
+void SamplerEngine::set_pad_mutes(const std::array<uint64_t, (sampler_pads + 63) / 64>& bits) {
+    for (unsigned pad = 0; pad < sampler_pads; ++pad) set_pad_mute(pad, (bits[pad / 64] >> (pad % 64)) & 1);
 }
 
 void SamplerEngine::note_off(int key) {

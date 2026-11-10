@@ -20,6 +20,10 @@ juce::Colour colour_of(const Snapshot& s);              // the selected track's 
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
 juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
 
+// The sixteen tracks as the pads sit, pad 1 bottom left, in the picture
+// zone: Stage's picture, and the screen while Pad Bank is held.
+void track_grid(ui::Paint& p, const Snapshot& s);
+
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
 

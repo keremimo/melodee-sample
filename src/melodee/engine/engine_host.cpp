@@ -30,51 +30,66 @@ EngineHost::EngineHost() : patterns(std::make_unique<PatternBank>()) {
 
 void EngineHost::load(const Project& project, const PatternBank& bank) {
     *patterns = bank;
-    for (unsigned n = 0; n < chain_count; ++n) {
+    for (unsigned n = track_count; n < chain_count; ++n) { // the buses and the master; each track's in load_track()
         const auto& chain = project.chain(n);
         for (unsigned k = 0; k < max_slots; ++k) {
             const auto& s = chain.slots[k];
             fx[n][k].set_kind(EffectKind(s.kind), pool);
             for (unsigned q = 0; q < effect_params; ++q) fx[n][k].set_param(q, s.params[q]);
             fx[n][k].set_bypass(s.bypass);
-            if (n < track_count) { slots[n].fx_base[k] = s.params; slots[n].fx_moved = false; }
         }
     }
-    for (unsigned t = 0; t < track_count; ++t)
-        for (unsigned pad = 0; pad < sampler_pads; ++pad) {
-            const auto& chain = project.tracks[t].pad_fx.at[pad];
-            for (unsigned k = 0; k < pad_slots; ++k) {
-                auto& effect = (*pad_fx)[t][pad][k];
-                const auto& s = chain.slots[k];
-                if (!s.kind && effect.kind() == EffectKind::None) continue; // most pads have none
-                effect.set_kind(EffectKind(s.kind), pool);
-                for (unsigned q = 0; q < effect_params; ++q) effect.set_param(q, s.params[q]);
-                effect.set_bypass(s.bypass);
-            }
-        }
     for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
     click = project.click == 1; click_level = project.click_level / 100.0f;
     motion = project.motion;
     song = project.song;
     tempo = project.tempo; swing = project.swing;
     for (auto& s : slots) s.sampler.set_tempo(tempo);
-    for (unsigned t = 0; t < track_count; ++t) {
-        const auto& track = project.tracks[t];
-        auto& slot = slots[t];
-        select_engine(slot, track.engine);
-        const auto& info = engine_info(track.engine);
-        slot.base = track.params;
-        if (slot.engine) for (unsigned r = 0; r < mod_routes; ++r) slot.engine->set_mod(r, track.mods[r]);
-        for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad(pad, track.pads[pad]);
-        if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
-        apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
-        apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
-        slot.send = track.mix.send / 100.0f;
-        slot.bus = track.mix.bus;
-        slot.mute = track.mix.mute; slot.solo = track.mix.solo;
-        slot.pattern = track.pattern;
-        patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
+    for (unsigned t = 0; t < track_count; ++t) load_track(t, project.tracks[t]);
+}
+
+// Everything of one track but its patterns: engine and sound, kit, mix, its
+// chain and its pads' chains, the arp. Effects take their delay memory from
+// the pool made at start, so this allocates nothing (audio thread for TrackLoad).
+void EngineHost::load_track(unsigned t, const Track& track) {
+    auto& slot = slots[t % track_count];
+    select_engine(slot, track.engine);
+    const auto& info = engine_info(track.engine);
+    slot.base = track.params;
+    if (slot.engine) for (unsigned r = 0; r < mod_routes; ++r) slot.engine->set_mod(r, track.mods[r]);
+    for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad(pad, track.pads[pad]);
+    slot.sampler.set_pad_mutes(track.pad_mutes);
+    if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
+    apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
+    apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
+    slot.send = track.mix.send / 100.0f;
+    slot.bus = track.mix.bus;
+    slot.mute = track.mix.mute; slot.solo = track.mix.solo;
+    slot.pattern = track.pattern;
+    patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
+    for (unsigned k = 0; k < max_slots; ++k) {
+        const auto& s = track.fx.slots[k];
+        fx[t][k].set_kind(EffectKind(s.kind), pool);
+        for (unsigned q = 0; q < effect_params; ++q) fx[t][k].set_param(q, s.params[q]);
+        fx[t][k].set_bypass(s.bypass);
+        slot.fx_base[k] = s.params;
     }
+    slot.fx_moved = false;
+    for (unsigned pad = 0; pad < sampler_pads; ++pad) {
+        const auto& chain = track.pad_fx.at[pad];
+        for (unsigned k = 0; k < pad_slots; ++k) {
+            auto& effect = (*pad_fx)[t][pad][k];
+            const auto& s = chain.slots[k];
+            if (!s.kind && effect.kind() == EffectKind::None) continue; // most pads have none
+            effect.set_kind(EffectKind(s.kind), pool);
+            for (unsigned q = 0; q < effect_params; ++q) effect.set_param(q, s.params[q]);
+            effect.set_bypass(s.bypass);
+        }
+    }
+    auto& a = slot.arp;
+    a.clear(); a.sounding = -1; slot.arp_late.key = -1;
+    a.on = track.arp; a.mode = ArpMode(track.arp_mode % unsigned(ArpMode::Count)); a.rate = track.arp_rate % arp_rates;
+    a.octaves = track.engine == EngineKind::Sampler ? 1 : std::clamp<unsigned>(track.arp_octaves, 1, 4); a.gate = std::clamp<unsigned>(track.arp_gate, 5, 100);
 }
 
 void EngineHost::select_engine(Slot& slot, EngineKind kind) {
@@ -87,6 +102,7 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
                 : kind == EngineKind::Sid ? static_cast<Engine*>(&slot.sid)
                 : kind == EngineKind::Cz ? static_cast<Engine*>(&slot.cz) : nullptr;
     slot.sampler.set_samples(&samples);
+    slot.arp.top = kind == EngineKind::Sampler ? int(sampler_last_key) : 127; // a kit's notes run past 127
     for (auto& off : slot.offs) off.key = -1;
 }
 
@@ -94,8 +110,8 @@ void EngineHost::apply(const Command& c) {
     using Type = Command::Type;
     auto& slot = slots[c.track % track_count];
     switch (c.type) {
-    case Type::NoteOn: if (slot.engine) slot.engine->note_on(c.index, c.value); break;
-    case Type::NoteOff: if (slot.engine) slot.engine->note_off(c.index); break;
+    case Type::NoteOn: if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value); break;
+    case Type::NoteOff: if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_off(c.index); break;
     case Type::AllNotesOff:
         for (unsigned t = 0; t < track_count; ++t)
             if ((c.track == 255 || t == c.track) && slots[t].engine) {
@@ -147,6 +163,21 @@ void EngineHost::apply(const Command& c) {
     case Type::SendBus: slot.bus = uint8_t(c.value % bus_count); break;
     case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
     case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;
+    case Type::PadMute:
+        if (c.index == 0xffff) for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad_mute(pad, c.value != 0);
+        else slot.sampler.set_pad_mute(c.index, c.value != 0);
+        break;
+    case Type::TrackLoad:
+        if (c.track_pack) {
+            const auto& pack = *c.track_pack;
+            auto& target = slots[pack.track % track_count];
+            if (target.engine) target.engine->all_notes_off();
+            load_track(pack.track, pack.value);
+            patterns->at[pack.track % track_count] = pack.patterns; // a plain copy, no allocation
+            motion = pack.motion;
+            if (!done_tracks.push(c.track_pack)) {} // the MIDI thread frees it; a full queue only leaks one
+        }
+        break;
     case Type::Reload:
         if (c.pack) {
             apply({Type::Stop});
@@ -196,10 +227,10 @@ void EngineHost::apply(const Command& c) {
         switch (c.index) {
         case 0:
             a.on = c.value != 0;
-            if (!a.on) { a.clear(); if (a.sounding >= 0 && slot.engine) slot.engine->note_off(a.sounding); a.sounding = -1; }
+            if (!a.on) { a.clear(); if (a.sounding >= 0 && slot.engine) slot.engine->note_off(a.sounding); a.sounding = -1; slot.arp_late.key = -1; }
             break;
         case 1: a.mode = ArpMode(c.value % int(ArpMode::Count)); break;
-        case 2: a.rate = unsigned(c.value) % 6; break;
+        case 2: a.rate = unsigned(c.value) % arp_rates; break;
         case 3: a.octaves = unsigned(std::clamp<int>(c.value, 1, 4)); break;
         case 4: a.gate = unsigned(std::clamp<int>(c.value, 5, 100)); break;
         }
@@ -257,6 +288,7 @@ void EngineHost::apply(const Command& c) {
     case Type::Play:
         if (running) break;
         running = true; tick_now = 0; until_tick = 0;
+        arp_ticks = 0; until_arp = 0; // the repeats line up with the bar, so their swing falls with the sequencer's
         song_mode = c.value == 1; song_bar_now = c.index;
         for (auto& s : slots) {
             s.start = 0; s.clip = -1; s.silent = song_mode;
@@ -389,10 +421,22 @@ void EngineHost::arp_tick() {
         if (arp_ticks % rate) continue;
         int velocity = 0, key = a.next(velocity);
         if (key < 0) continue;
+        auto length = std::max<int32_t>(64, int32_t(quarter_tick() * rate * a.gate / 100.0));
+        double late = arp_swing_ticks(a.rate, (arp_ticks % ticks_per_bar) / rate, swing); // every second straight note, as the project swings
+        if (late > 0) { slot.arp_late = {int16_t(key), int16_t(velocity), int32_t(quarter_tick() * late), length}; continue; }
         slot.engine->note_on(key, velocity);
-        schedule_off(slot, key, std::max<int32_t>(64, int32_t(quarter_tick() * rate * a.gate / 100.0)));
+        schedule_off(slot, key, length);
     }
     ++arp_ticks;
+}
+
+void EngineHost::run_late(Slot& slot, unsigned frames) {
+    auto& late = slot.arp_late;
+    if (late.key < 0) return;
+    late.samples -= int32_t(frames);
+    if (late.samples > 0) return;
+    if (slot.engine && slot.arp.on) { slot.engine->note_on(late.key, late.velocity); schedule_off(slot, late.key, late.length); }
+    late.key = -1;
 }
 
 void EngineHost::start_punch(const PendingPunch& p) {
@@ -441,7 +485,7 @@ void EngineHost::tick() {
         double length = quarter_tick() * division;
         auto samples = int32_t(length * s.length - (s.flags & step_tie ? 0 : length * 0.1));
         for (const auto& note : s.notes) {
-            if (!note.velocity) continue;
+            if (!note.velocity || (note.key > 127 && slot.kind != EngineKind::Sampler)) continue; // past 127: kit pads only
             int velocity = s.flags & step_accent ? std::min(127, note.velocity + 24) : note.velocity;
             slot.engine->note_on(note.key, velocity);
             schedule_off(slot, note.key, std::max<int32_t>(samples, 64));
@@ -487,6 +531,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         for (auto& slot : slots) {
             if (!slot.engine) continue;
             run_offs(slot, n);
+            run_late(slot, n);
             if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
             else slot.engine->render(slot.buffer + done, n);
         }

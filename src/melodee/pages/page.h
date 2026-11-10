@@ -20,7 +20,11 @@ struct PageSpec {
 };
 const PageSpec& page_spec(PageId page);
 
-// Overlays drawn over any page.
+// Overlays drawn over any page. draw_overlays() draws whichever are open,
+// after the page (the app and the previews both call it).
+void draw_overlays(ui::Paint& p, const Snapshot& s);
+void draw_track_overlay(ui::Paint& p, const Snapshot& s); // Pad Bank held, or a track copy: the sixteen tracks
+void draw_repeat_keys(ui::Paint& p, const Snapshot& s);   // Note Repeat on: its rates on B1-B3
 void draw_shift_layer(ui::Paint& p, const Snapshot& s);
 void draw_exit_sheet(ui::Paint& p, const Snapshot& s);
 void draw_notice(ui::Paint& p, const Snapshot& s);     // copying a pad, or what an undo did

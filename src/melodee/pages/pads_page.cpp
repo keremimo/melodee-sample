@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // PADS (B2 on a sampler track): one sound a pad, drawn as the pads sit,
-// four banks of sixteen; Pad Bank (or Minus / Plus) steps through them and
-// bank lights A-D show which. The pots follow the last pad hit: pitch,
+// eight banks of sixteen; Pad Bank (or Minus / Plus) steps through them and
+// bank lights A-H show which. Muted pads (mute mode) are drawn dim. The pots follow the last pad hit: pitch,
 // level, pan. Push opens Trim for that pad.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -30,10 +30,14 @@ void draw(Paint& p, const Snapshot& s) {
         bool last = kit == track.last_pad, held = s.ui.held_pads & (1u << n);
         p.fill(x, y, w, ch, last ? c : held ? c.withAlpha(0.35f) : colour::surf, 4);
         char label[4]; pad_label(kit, label);
-        p.text(label, x + 4, y + 3, w - 8, 8, plain(last ? colour::bg : colour::dim, 6, Weight::SemiBold));
+        bool muted = track.pad_muted(kit) && track.pads[kit].used();
+        juce::String tag = muted ? juce::String(label) + " MUTE" : juce::String(label); // mute mode muted it
+        auto tag_style = plain(last ? colour::bg : muted ? colour::sec : colour::dim, 6, Weight::SemiBold);
+        p.text(tag, x + 4, y + 3, w - 8, 8, p.fit(tag, tag_style, w - 8, 4.5f));
         auto name = pad_name(s, kit, true);
         if (name.isNotEmpty())
             p.text(name, x + 4, y + ch - 15, w - 8, 12, p.fit(name, plain(last ? colour::bg : colour::text, 9, Weight::Medium), w - 8, 6));
+        if (muted) p.fill(x, y, w, ch, colour::bg.withAlpha(0.45f), 4);
     }
     // The pad in hand.
     const auto& pad = track.pads[track.last_pad % sampler_pads];
@@ -56,8 +60,8 @@ void draw(Paint& p, const Snapshot& s) {
         p.text("Sample Select puts a sound here", x, y + 41, iw, 12, plain(colour::dim, 9));
     }
     p.text("BANK", x, y + 92, 30, 12, caps_text(colour::mid, 7));
-    for (unsigned b = 0; b < sampler_banks; ++b) {
-        float bx = x + 30 + b * 16;
+    for (unsigned b = 0; b < sampler_banks; ++b) { // A-H fit beside the label
+        float bx = x + 30 + b * (iw - 30) / sampler_banks;
         if (b == bank) p.fill(bx, y + 92, 12, 12, c, 3);
         p.text(juce::String::charToString(juce::juce_wchar('A' + b)), bx, y + 92, 12, 12,
                plain(b == bank ? colour::bg : colour::dim, 8, Weight::SemiBold), juce::Justification::centred);

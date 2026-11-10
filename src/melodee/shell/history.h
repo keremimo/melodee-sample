@@ -9,7 +9,7 @@
 // Undo and redo (Shift + Minus / Shift + Plus), the one history for every
 // edit: what a press (or a whole Seq Record take) changed, before and after.
 // A kit pad (its sound and its own effect chain), a pattern, the song, the
-// motion; only the parts that changed are kept. Plain data on the MIDI
+// motion, a whole track; only the parts that changed are kept. Plain data on the MIDI
 // thread; Context sends what an undo or redo changes to the audio thread.
 namespace melodee {
 
@@ -23,6 +23,12 @@ inline void set_pad_state(Track& t, unsigned pad, const PadState& s) {
     t.pad_fx.at[pad % sampler_pads] = s.chain;
 }
 
+// A whole track and its sixteen patterns, for a track copy (Shift + Erase with Pad Bank held).
+struct TrackState {
+    Track track;
+    std::array<Pattern, pattern_count> patterns;
+};
+
 struct Edit {
     std::string what;             // shown on undo and redo: "Delete A01"
     uint8_t track = 0;
@@ -32,6 +38,7 @@ struct Edit {
     std::unique_ptr<Pattern> pattern_before, pattern_after;
     std::unique_ptr<Song> song_before, song_after;       // a take into the song
     std::unique_ptr<Motion> motion_before, motion_after; // pot moves recorded, or doubled
+    std::unique_ptr<TrackState> track_before, track_after; // a track copied onto this one (`track`)
 };
 
 class History {

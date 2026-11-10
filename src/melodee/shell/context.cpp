@@ -12,6 +12,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/track_copy.h"
 #include "melodee/shell/name_suggest.h"
 #include <filesystem>
 #include <cstdio>
@@ -103,7 +104,8 @@ void Context::select_track(unsigned t) {
 }
 
 void Context::note(unsigned t, int key, int velocity) {
-    if (key < 0 || key > 127) return;
+    int top = project.tracks[t % track_count].engine == EngineKind::Sampler ? int(sampler_last_key) : 127; // kit pads in banks F-H
+    if (key < 0 || key > top) return;
     Command c {velocity ? Type::NoteOn : Type::NoteOff, uint8_t(t), 0, uint16_t(key), int16_t(velocity)};
     send(c);
 }
@@ -857,6 +859,8 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (song) restore_song(*song);
     const auto& motion = after ? e.motion_after : e.motion_before;
     if (motion) restore_motion(*motion);
+    const auto& whole = after ? e.track_after : e.track_before;
+    if (whole) restore_track(*this, e.track, *whole); // last: its pack carries the motion as restored
     take_count = 0; take_track = -1; // Quantise has no take to work on any more
 }
 

@@ -33,6 +33,16 @@ struct ProjectPack {
     PatternBank patterns;
 };
 
+// One track for the audio thread to take whole, without stopping (a track
+// copy, or its undo): the track, its sixteen patterns and the project's
+// motion after the change. The MIDI thread makes it, the audio thread hands it back.
+struct TrackPack {
+    uint8_t track = 0;
+    Track value;
+    std::array<Pattern, pattern_count> patterns;
+    Motion motion;
+};
+
 class EngineHost {
 public:
     EngineHost();
@@ -76,11 +86,13 @@ public:
     bool take_retired(const SampleData*& sample) { return retired.pop(sample); }
     // MIDI thread: a ProjectPack the audio thread has finished with, to free.
     bool take_done_pack(const ProjectPack*& pack) { return done_packs.pop(pack); }
+    bool take_done_track(const TrackPack*& pack) { return done_tracks.pop(pack); }
 
     static constexpr unsigned block = 128;
 
 private:
     struct PendingOff { int16_t key = -1; int32_t samples = 0; };
+    struct PendingOn { int16_t key = -1; int16_t velocity = 0; int32_t samples = 0, length = 0; }; // an arp note swung late
     struct Slot {
         EngineKind kind = EngineKind::None;
         ProphetEngine prophet;
@@ -105,7 +117,10 @@ private:
         float left[block] {}, right[block] {};
         uint8_t bus = 0;
         Arp arp;
+        PendingOn arp_late;
     };
+    void load_track(unsigned t, const Track& track); // a whole track's sound, kit, mix and effects
+    void run_late(Slot& slot, unsigned frames);       // a swung arp note, when its time comes
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
     void tick();       // plays whatever falls on this clock tick, then moves on
@@ -123,6 +138,7 @@ private:
     MidiQueue<64, Offer> offers;
     MidiQueue<128, const SampleData*> retired;
     MidiQueue<8, const ProjectPack*> done_packs;
+    MidiQueue<8, const TrackPack*> done_tracks;
     SamplerEngine::Table samples {};
     TakeRecorder take;
     std::atomic<unsigned> source_now {0};

@@ -20,7 +20,7 @@ for what each engine does, not code that is built.
 | `src/melodee/engine/` | Audio: the DSP pieces, each engine, the engine host (16 tracks, mixer, sequencer clock) and the command queue that feeds it. |
 | `src/melodee/ui/` | The design system: tokens, the Rubik typeface, and the components every page is built from (soft keys, header, pill, chip, track tag, knob strip, page dots, list row, sheet). |
 | `src/melodee/pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
-| `src/melodee/shell/` | The page router and the control grammar: printed buttons, Shift layer, Pad Bank and Mute holds, pot pickup, lights, and the snapshot handed to the screen. |
+| `src/melodee/shell/` | The page router and the control grammar: printed buttons, Shift layer, Pad Bank (`pad_bank`, `track_copy`), mute mode (`mute_mode`), Note Repeat (`note_repeat`), pot pickup, lights, and the snapshot handed to the screen. |
 | `src/melodee/tools.*` | `--melodee-preview DIR [PAGE]`: draws named pages to PNG on the host. |
 
 The design boards (`.local/melodee-design/`, not in git) are the reference
@@ -156,12 +156,16 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   removing one of the track's effects clears that motion, since its slots
   would point elsewhere.
 - **Sampler** (an engine like the others; Stage's track 5 starts as an
-  empty kit): 64 pads in four banks, each a region of one of the project's
+  empty kit): 128 pads in eight banks, A–H, each a region of one of the project's
   samples (64 a project), with pitch, fine, level, pan, gate or one shot,
   reverse, a mute group and an envelope; one low-pass filter on the whole
-  kit (K1–K3 on Stage: TUNE, FILTER, DECAY). Pad Bank tapped (or Minus /
-  Plus on Pads) steps the bank; bank lights A–D show it. On a track without
-  banks a tap says that Pad Bank + pad picks a track. Steps writes the
+  kit (K1–K3 on Stage: TUNE, FILTER, DECAY). Pad Bank tapped steps the bank
+  round A–H (Shift: back; Minus / Plus on Pads too), held with Minus / Plus
+  or the wheel it jumps; the eight bank lights show it, the header names it
+  for a moment. On a track without banks a tap says that Pad Bank + pad
+  picks a track. Kit notes are 36 + pad, so banks F–H run past MIDI's 127
+  (to 163); they stay inside Melodee. Pads of banks E–H go in the project
+  file's `KITX` section, so older files load as they were. Steps writes the
   pad hit last. Loop opens the last pad's Play page and Shift + Loop flips
   its reverse (the header says which); pad looping itself is phase 4. Samples are WAV
   files (16, 24 or 32-bit PCM or 32-bit float, any rate, up to 60 s) in the
@@ -170,9 +174,10 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   its waveform and finds its hits, and hands the audio to the audio thread
   through a lock-free queue; the sample it replaces comes back the same way
   to be freed, so the audio thread never allocates or frees.
-- **Pads** (B2 on a sampler track, or 16 Levels): the bank as the pads sit,
-  the last pad hit with its length, play mode and waveform; K1 pitch, K2
-  level, K3 pan. Push opens Trim.
+- **Pads** (B2 on a sampler track, or 16 Levels): the bank as the pads sit
+  (muted pads dim, marked MUTE), the last pad hit with its length, play
+  mode and waveform, the banks A–H; K1 pitch, K2 level, K3 pan. Push opens
+  Trim.
 - **Delete and copy pads** (on every page where the pads play the kit,
   not on Levels): Erase + pad, stopped, empties that pad, its sound and its
   own effects; while playing or with Seq Record on it takes that pad's notes
@@ -180,8 +185,25 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   Shift + Erase is Copy, as printed (Erase lit, the header says so): the
   first pad is the one copied, the next one where it goes (Pad Bank in
   between reaches the other banks); Shift + Erase again or Erase leaves.
-  On Patterns it copies patterns; elsewhere the header says what it copies.
-  Clearing a pattern is Erase + pad on Patterns.
+  On Patterns it copies patterns; with Pad Bank held it copies a **track**:
+  the pads are the sixteen tracks, the first is the one copied, the next
+  where it goes. The copy takes the sound (engine, sound, mod routes,
+  effects, keys, arp and chord), the kit (pads, their chains and mutes, the
+  bank) and all sixteen patterns with their motion; the target keeps its
+  own mix strip. One undo. The audio thread takes the track whole
+  (`TrackLoad`), so the song plays on. Elsewhere the header says what Copy
+  copies. Clearing a pattern is Erase + pad on Patterns.
+- **Mute** (as printed): a tap latches mute mode, a hold lasts while Mute
+  is held, Shift + Mute unmutes everything (tracks, solos, every kit pad).
+  In mute mode the pads mute instead of playing: on a page where they play
+  a kit (Pads, Edit, Keys, the sampler pages, ...) they mute **kit pads** of
+  the bank in view; on Stage, Mix and every other page they mute
+  **tracks**. Shift + pad solos: a track, or a kit pad (every other used pad
+  of the kit muted; again on the soloed pad brings the kit back). Mute is
+  bright and the header says "Mute: pads" or "Mute: tracks" while it is on;
+  the pads light muted red, soloed white, the rest in the colour. A muted
+  kit pad is not heard, played or sequenced (its notes stay) and what it
+  was playing fades out; mutes are saved with the project (`PMUT`).
 - **Undo and redo** (Shift + Minus, Shift + Plus, on every page), one
   history for every edit it keeps, the last 32: pad deletes and copies; a
   Seq Record take as a whole (its notes, the clips and punches it wrote
@@ -262,11 +284,19 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   Seq Record is on), a short blip on each beat while playing, higher on
   the bar. The header says which for a moment. The wheel moves the tempo by
   0.1, Minus / Plus by a whole BPM.
-- **Arp** (Note Repeat: held, momentary; tapped, it stays on; tapped again
-  on its page, off): Up, Down, Up-down, Random, Order; K2 rate 1/4 to 1/32,
-  K3 octaves, Minus / Plus the gate. B3 Hold latches the keys. It runs on
-  its own clock at the tempo, so it plays with the song stopped too. On a
-  sampler track it is note repeat: the held pad at the rate.
+- **Note Repeat** stays on the page, as on the MPC: a tap latches it (a
+  tap again turns it off), a hold lasts while held, a double tap opens the
+  Arp page. While it is on, B1–B3 are its rate, 1/8, 1/16, 1/32, and with
+  Shift held their triplets (the soft keys say which, the one in use
+  marked; on Arp and Chord their own keys stay). Every second note of a
+  straight rate comes late by the project's swing, as the sequencer's off
+  sixteenths do; triplets stay even. The repeats line up with the bar from
+  Play. Note Repeat is lit while on. It is the track's arp: a kit repeats
+  the held pad.
+- **Arp** (double tap on Note Repeat): Up, Down, Up-down, Random, Order;
+  K2 rate 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, K3 octaves, Minus
+  / Plus the gate. B3 Hold latches the keys. It runs on its own clock at the
+  tempo, so it plays with the song stopped too.
 - **Chord** (B1 on Arp): one pad, one chord from the scale's own degrees:
   Triad, Dia 7, Sus2, Sus4, Power, Dia 9; voicing Close, Open, Drop 2,
   Spread; inversions. B1 there switches chords on or off. Chords play
@@ -317,7 +347,7 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   Punches held or locked meanwhile land on the song's punch lane (under the
   lanes, in the target's colour) with their sixteenth and length, and play
   back there; a punch held by hand wins over a written one.
-- **Pad effects (B1 from Track, sampler tracks):** each of a kit's 64
+- **Pad effects (B1 from Track, sampler tracks):** each of a kit's 128
   pads has its own chain of four effects, ahead of the track's; the page
   shows the last pad hit, with PAD first on the signal strip. The sampler
   plays a pad with a chain on a lane of its own (eight at once; a lane
@@ -390,12 +420,13 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   Stage / Keys / Mix is one stop, and opening a page already on the stack
   goes back to it), Shift + wheel fine edit,
   Erase + pot to the initial value, Shift + Erase copies, Shift +
-  Stop all notes off, Pad Bank + pad picks a track, Mute + pad mutes and with
-  Shift solos, pot pickup, the fader as mod wheel, pad / fader / button
-  lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
+  Stop all notes off, Pad Bank held (pad picks a track, Minus / Plus or the
+  wheel jump banks, the screen shows the sixteen tracks as the pads sit,
+  bank pill for a kit), mute mode (above), pot pickup, the fader as mod
+  wheel, pad / fader / button lights. Power (short) opens the Exit sheet; LEAVE returns to stock.
 - **Button lights** (as on the stock MPC): bright when in use (the page's
-  button, Play while playing, Seq Record recording, a held Mute or Pad
-  Bank, Erase while copying), faint when the button does something on the
+  button, Play while playing, Seq Record recording, mute mode, Note Repeat
+  on, Pad Bank held or a track copy, Erase while copying), faint when the button does something on the
   page in view, dark when it would do nothing: Chop needs a kit pad with a
   sample, Loop and Sample Record a kit track, Erase a pad, step, marker or
   pot it can clear (or Copy); on the Name sheet only Erase, Play and Stop
@@ -405,9 +436,10 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   Shift itself bright) and the rest go dark.
 - **Shift layer:** drawn as on its board, every printed second job:
   Sample → Input Config, Seq → Step Edit, Pad Bank → previous bank, Erase →
-  Copy (kit pads, or patterns on Patterns), Loop → reverse the last pad
+  Copy (kit pads, patterns on Patterns, a track with Pad Bank held), Loop → reverse the last pad
   (kit tracks), Sample Select → by engine (kit: Save Sample, not yet; synth:
-  Save sound; on Sounds: star), Mute + pad → solo, Tap Tempo → metronome
+  Save sound; on Sounds: star), Mute → unmute all (in mute mode, Shift + pad
+  solos), Tap Tempo → metronome
   Off / On / Rec, Sample Record → Audio Recall (not yet, phase 6), Seq
   Record → Recall (Capture), Play → continue from the bar the song stopped
   in, Stop → all notes off, Minus / Plus → undo / redo on every page, Push
@@ -431,7 +463,7 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
   `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad
   (with a button held around it: `shift+pad5`, `erase+pad5`,
-  `pad-bank+pad5`, `mute+pad5`),
+  `pad-bank+pad5`, `mute+pad5`: a held Mute, mute mode for that pad),
   `k1=V`..`k3=V` move a pot to V (0..127), `shift+k3=V` with Shift held
   (the card's second parameter), and `hold-shift` ... `release-shift`
   keep any button (or `hold-pad5` a pad) down across other presses (the
@@ -442,7 +474,7 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
-  levels, padcopy, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
+  levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
   capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
@@ -452,5 +484,5 @@ Installed on the card with `python3 device.py install-sd --app melodee`
 the next one.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
-events are single constants in `model/limits.h`; the Pad Bank and Mute holds
-are built as drawn (question 3).
+events are single constants in `model/limits.h`; the Pad Bank hold is built
+as drawn (question 3); Mute became the MPC's mute mode in parity phase 1c.

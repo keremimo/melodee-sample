@@ -15,8 +15,9 @@
 // The page router and the control grammar. It owns the project and the UI
 // state on the MIDI thread: printed buttons open their pages, B1-B3 are the
 // page's soft keys, the wheel moves the cursor and Push opens or confirms
-// (Shift + Push goes back), pots edit through pickup, Pad Bank or Mute held
-// with a pad picks, mutes or solos a track. The screen reads it through
+// (Shift + Push goes back), pots edit through pickup, Pad Bank held with a
+// pad picks a track, mute mode mutes or solos tracks or kit pads, Note
+// Repeat latches (shell/pad_bank, mute_mode, note_repeat). The screen reads it through
 // snapshot(); the audio thread only ever sees Commands.
 namespace melodee {
 
@@ -78,9 +79,8 @@ private:
     std::atomic<bool> leave {false};
     SampleLibrary* library_ = nullptr;
     unsigned library_seen = ~0u;
-    bool pad_bank_used = false;
-    uint32_t tap_down = 0, repeat_down = 0;
-    bool tap_held = false, repeat_turned_on = false;
+    uint32_t tap_down = 0;
+    bool tap_held = false;
     ProjectStore* store_ = nullptr;
     unsigned store_seen = ~0u, settings_seen = ~0u, sounds_seen = ~0u;
     bool settings_loaded = false;

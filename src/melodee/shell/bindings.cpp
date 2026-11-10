@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/engine/engine_info.h"
@@ -226,7 +227,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::Tempo, 0, 30, 300, project.tempo / 10}, Binding {Kind::Swing, 0, 50, 75, project.swing},
                 Binding {Kind::ClickLevel, 0, 0, 100, project.click_level}};
     case PageId::Arp:
-        return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, 5, track.arp_rate},
+        return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},
                 Binding {Kind::ArpOctaves, 0, 1, 4, track.arp_octaves}};
     case PageId::Chord:
         return {Binding {Kind::ChordType, 0, 0, 5, track.chord_type}, Binding {Kind::ChordVoicing, 0, 0, 3, track.chord_voicing},

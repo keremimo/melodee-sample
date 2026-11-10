@@ -28,6 +28,10 @@
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/shift_pad_jobs.h"
+#include "melodee/shell/mute_mode.h"
+#include "melodee/shell/note_repeat.h"
+#include "melodee/shell/pad_bank.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -1187,7 +1191,130 @@ void button_remap() {
     CHECK(!button_has_job(*project, l, B::Play, true, false));
 }
 
+// Phase 1c: Mute (kit pads), Note Repeat's rates and swing, eight banks,
+// a whole track handed to the audio thread.
+void parity_1c() {
+    // Eight banks of sixteen: labels A01 .. H16, keys past 127 for the last banks.
+    CHECK(sampler_banks == 8 && sampler_pads == 128 && sampler_last_key == 163);
+    CHECK(pad_text("Copy", 127) == "Copy H16" && pad_text("Copy", 64) == "Copy E01");
+
+    // Note Repeat: B1-B3 1/8, 1/16, 1/32; Shift: triplets. Swing on every second straight note.
+    CHECK(std::string(arp_rate_name(repeat_rate(0, false))) == "1/8" && std::string(arp_rate_name(repeat_rate(2, false))) == "1/32");
+    CHECK(std::string(arp_rate_name(repeat_rate(1, true))) == "1/16T" && arp_rate_ticks(repeat_rate(2, true)) == 2);
+    for (unsigned r = 1; r < arp_rates; ++r) CHECK(arp_rate_ticks(r) < arp_rate_ticks(r - 1)); // slowest first, as K2 turns
+    CHECK(arp_swing_ticks(4, 1, 75) == 3.0 && arp_swing_ticks(4, 2, 75) == 0 && arp_swing_ticks(5, 1, 75) == 0 && arp_swing_ticks(4, 1, 50) == 0);
+    auto project = std::make_unique<Project>();
+    UiState ui;
+    CHECK(!repeat_keys(*project, ui));
+    project->tracks[0].arp = true;
+    CHECK(repeat_keys(*project, ui));
+    ui.page = PageId::Arp;
+    CHECK(!repeat_keys(*project, ui)); // its own keys stay on Arp
+    Arp arp; arp.top = int(sampler_last_key);
+    arp.press(150, 90);
+    int velocity = 0;
+    CHECK(arp.next(velocity) == 150 && velocity == 90); // a kit pad in bank H repeats as itself
+
+    // Mute mode: kit pads where the pads play the kit, tracks on Stage and Mix.
+    ui.page = PageId::Pads;
+    CHECK(mute_on_kit(ui, true) && !mute_on_kit(ui, false));
+    ui.page = PageId::Stage;
+    CHECK(!mute_on_kit(ui, true));
+    ui.mute_latch = true;
+    CHECK(ui.mute_mode());
+    Track kit; kit.engine = EngineKind::Sampler;
+    kit.pads[3].sample = 0; kit.pads[100].sample = 0;
+    kit.set_pad_muted(100, true);
+    CHECK(kit.pad_muted(100) && !kit.pad_muted(3) && kit.any_pad_muted() && pad_soloed(kit, 3) && !pad_soloed(kit, 100));
+    kit.set_pad_muted(100, false);
+    CHECK(!kit.any_pad_muted() && !pad_soloed(kit, 3));
+
+    // Pad Bank held or a track copy: the pads are the tracks; Shift + Erase there copies.
+    UiState held; held.pad_bank = true;
+    CHECK(tracks_on_pads(held));
+    project->tracks[1].engine = EngineKind::Prophet;
+    held.track = 1;
+    CHECK(button_has_shift_job(*project, held, SurfaceButton::Erase, false));
+    held.pad_bank = false; held.copying = UiState::Copying::Tracks;
+    CHECK(tracks_on_pads(held));
+
+    // The project file: banks E-H, pad mutes and kit keys past 127 come back; TRAK still holds A-D alone.
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[4], EngineKind::Sampler, 0);
+    auto& t4 = project->tracks[4];
+    t4.pads[5].sample = 1; t4.pads[70].sample = 2; t4.pads[70].pitch = -7; t4.pads[127].sample = 3; t4.bank = 7; t4.last_pad = 127;
+    t4.set_pad_muted(70, true); t4.set_pad_muted(5, true);
+    bank->at[4][0].steps[2].notes[0] = {uint8_t(sampler_first_note + 127), 100};
+    auto data = save_project(*project, *bank);
+    auto copy = std::make_unique<Project>();
+    auto copy_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(data, *copy, *copy_bank).empty());
+    const auto& c4 = copy->tracks[4];
+    CHECK(c4.pads[5].sample == 1 && c4.pads[70].sample == 2 && c4.pads[70].pitch == -7 && c4.pads[127].sample == 3);
+    CHECK(c4.bank == 7 && c4.last_pad == 127 && c4.pad_muted(70) && c4.pad_muted(5) && !c4.pad_muted(6));
+    CHECK(copy_bank->at[4][0].steps[2].notes[0].key == sampler_first_note + 127);
+    for (const char* tag : {"KITX", "PMUT"}) CHECK(std::search(data.begin(), data.end(), tag, tag + 4) != data.end());
+
+    // The engine: a pad in bank H plays from its key; muted, it is not heard, and what it played fades.
+    SampleData sound;
+    sound.frames = 44100; sound.left.assign(44100, 0.5f); sound.right.assign(44100, 0.5f);
+    SamplerEngine::Table table {};
+    table[0] = &sound;
+    SamplerEngine engine;
+    engine.set_samples(&table);
+    PadSound pad; pad.sample = 0; pad.play = PadPlay::OneShot;
+    engine.set_pad(120, pad);
+    std::vector<float> l(128), r(128);
+    auto loud = [&] {
+        float peak = 0;
+        for (unsigned b = 0; b < 4; ++b) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            engine.render_stereo(l.data(), r.data(), 128);
+            for (float v : l) peak = std::max(peak, std::fabs(v));
+        }
+        return peak;
+    };
+    engine.note_on(int(sampler_first_note) + 120, 100);
+    CHECK(loud() > 0.05f);
+    engine.set_pad_mute(120, true);
+    loud();
+    CHECK(loud() == 0 && !engine.sounding());
+    engine.note_on(int(sampler_first_note) + 120, 100);
+    CHECK(loud() == 0);
+    engine.set_pad_mute(120, false);
+    engine.note_on(int(sampler_first_note) + 120, 100);
+    CHECK(loud() > 0.05f);
+
+    // The host: a TrackLoad swaps a whole track in (its patterns play) and hands the pack back;
+    // a synth never hears a key past 127.
+    auto host = std::make_unique<EngineHost>();
+    auto start = std::make_unique<Project>();
+    auto start_bank = std::make_unique<PatternBank>();
+    load_sound(start->tracks[0], EngineKind::Prophet, 1);
+    host->load(*start, *start_bank);
+    std::vector<int32_t> out(256);
+    auto pack = std::make_unique<TrackPack>();
+    pack->track = 2;
+    load_sound(pack->value, EngineKind::Prophet, 1);
+    pack->patterns[0].steps[0].notes[0] = {48, 110};
+    Command load {Command::Type::TrackLoad, 2};
+    load.track_pack = pack.get();
+    CHECK(host->send(load));
+    host->send({Command::Type::NoteOn, 0, 0, 140, 100}); // ignored: a synth's keys stop at 127
+    host->send({Command::Type::Play});
+    float peak = 0;
+    for (unsigned n = 0; n < 20; ++n) {
+        host->render(out.data(), 128, 1);
+        for (auto v : out) peak = std::max(peak, std::fabs(v / 2147483648.0f));
+    }
+    CHECK(peak > 0.005f);
+    const TrackPack* back = nullptr;
+    CHECK(host->take_done_track(back) && back == pack.get());
+    CHECK(host->dropped() == 0);
+}
+
 int main() {
+    parity_1c();
     shift_pads();
     button_remap();
     parity_basics();

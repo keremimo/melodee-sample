@@ -5,8 +5,9 @@
 //   level; B1 halves, B3 doubles, B2 (or Shift + Tap Tempo anywhere) the
 //   metronome Off -> On -> Rec (only while Seq Record); the wheel moves the
 //   tempo by 0.1. Tapping works from anywhere.
-// ARP (Note Repeat): hold Note Repeat for a momentary arp, tap to keep it
-//   on. K1 mode, K2 rate, K3 octaves; Minus / Plus the gate. B3 Hold latches.
+// ARP (double tap on Note Repeat; shell/note_repeat.cpp turns it on and off
+//   on any page). K1 mode, K2 rate (1/4 to 1/32T), K3 octaves; Minus / Plus
+//   the gate. B3 Hold latches.
 //   On a sampler track it is note repeat: the held pad at the rate.
 // CHORD (B1 there): one pad, one chord from the scale. K1 type, K2 voicing,
 //   K3 inversion. B3 Hold latches the arp the same way. Chords land in Steps
@@ -77,7 +78,7 @@ void arp_draw(Paint& p, const Snapshot& s) {
     p.text(gate_text(t.arp_gate), x, py, gw, 12, caps_text(colour::mid, 7), juce::Justification::centred);
     // What it would play: the keys held now, else the chord on pad 1, sixteen steps on.
     Arp a;
-    a.mode = ArpMode(t.arp_mode); a.octaves = kit ? 1 : t.arp_octaves;
+    a.mode = ArpMode(t.arp_mode); a.octaves = kit ? 1 : t.arp_octaves; a.top = kit ? int(sampler_last_key) : 127;
     for (auto k : s.held_keys) if (k >= 0) a.press(k, 100);
     if (!a.count) {
         std::array<int, notes_per_step> keys {};

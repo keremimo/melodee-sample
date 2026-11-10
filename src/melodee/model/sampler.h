@@ -5,15 +5,19 @@
 #include <cstdint>
 #include <cstring>
 
-// A sampler track's kit: sixty-four pads in four banks of sixteen, each a
-// region of one of the project's samples (pads share files; nothing is
-// copied when a sound is chopped). Plain data, like the rest of the model.
+// A sampler track's kit: 128 pads in eight banks of sixteen (A-H, as the
+// MPC's Pad Bank steps them), each a region of one of the project's samples
+// (pads share files; nothing is copied when a sound is chopped). Plain data,
+// like the rest of the model.
 namespace melodee {
 
-constexpr unsigned sampler_banks = 4, sampler_pads = 16 * sampler_banks;
+constexpr unsigned sampler_banks = 8, sampler_pads = 16 * sampler_banks;
+constexpr unsigned legacy_pads = 64;     // banks A-D: the pads a project file's TRAK section holds
 constexpr unsigned sample_slots = 64;     // samples a project holds
 constexpr uint16_t no_sample = 0xffff;
 constexpr unsigned sampler_first_note = 36; // pad 1 of bank A; pad n of the kit is note 36 + n
+// Kit notes run past MIDI's 127 (bank H pad 16 is 163): they stay inside Melodee.
+constexpr unsigned sampler_last_key = sampler_first_note + sampler_pads - 1;
 
 constexpr unsigned punch_kinds = 27;       // PunchKind::Count (engine/punch.h)
 

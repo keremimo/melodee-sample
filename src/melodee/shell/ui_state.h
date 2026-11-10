@@ -44,7 +44,15 @@ struct UiState {
     uint8_t back_depth = 0;
     uint8_t track = 0;
     bool shift = false, shift_used = false; // Shift held; another control used during the hold
-    bool pad_bank = false, mute = false, erase = false;
+    bool pad_bank = false, mute = false, erase = false; // held
+    bool pad_bank_used = false;  // Pad Bank held did something (a pad, -/+, the wheel): its release steps no bank
+    // Mute mode (shell/mute_mode.cpp): a tap latches it, a hold lasts while held.
+    bool mute_latch = false, mute_used = false;
+    uint32_t mute_down = 0;
+    bool mute_mode() const { return mute || mute_latch; }
+    // Note Repeat (shell/note_repeat.cpp): a tap latches, a hold lasts while held, a double tap opens Arp.
+    bool repeat_held = false, repeat_turned_on = false;
+    uint32_t repeat_down = 0, repeat_tap_at = 0;
     bool exit_open = false, recording = false;
     std::array<uint8_t, track_count> edit_page {}, edit_row {};
     uint16_t sounds_cursor = 0;
@@ -116,10 +124,11 @@ struct UiState {
     bool last_pot_shift = false; // and whether it turned its Shift card
     uint32_t held_pads = 0;
     // Shift + Erase: copy one kit pad onto another, or (on Patterns) one
-    // pattern onto another. Armed, then the source, then the target.
-    enum class Copying : uint8_t { Off, Pads, Patterns };
+    // pattern onto another, or (Pad Bank held) one track onto another.
+    // Armed, then the source, then the target.
+    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks };
     Copying copying = Copying::Off;
-    int8_t copy_from = -1;    // the kit pad or pattern picked first, -1 until then
+    int8_t copy_from = -1;    // the kit pad, pattern or track picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns: the track the pattern is copied from
     void stop_copying() { copying = Copying::Off; copy_from = -1; }
     // A word over the header for a moment: what an undo, redo, delete or copy did.
