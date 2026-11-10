@@ -86,13 +86,7 @@ void read_pad(Reader& r, Track& tr) {
     pad.own_tempo = uint16_t(r.u16());
     if (pad.sample >= sample_slots) pad.sample = no_sample;
 }
-void write_step(Writer& w, const Step& s) {
-    unsigned notes = 0;
-    for (auto n : s.notes) notes += n.velocity != 0;
-    w.u8(notes);
-    for (auto n : s.notes) if (n.velocity) { w.u8(n.key); w.u8(n.velocity); }
-    w.u8(s.length); w.u8(s.chance); w.u8(s.flags);
-}
+// A step as files before parity phase 2 kept it (PATT).
 void read_step(Reader& r, Step& s) {
     s = Step {};
     unsigned notes = std::min<unsigned>(r.u8(), notes_per_step);
@@ -126,21 +120,22 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.u8(used);
         for (unsigned n = 0; n < legacy_pads; ++n) if (tr.pads[n].used()) write_pad(w, n, tr.pads[n]);
         w.end(at);
-        for (unsigned p = 0; p < pattern_count; ++p) {
+        for (unsigned p = 0; p < pattern_count; ++p) { // each pattern's notes, on the 96-a-quarter clock
             const auto& pattern = patterns.at[t][p];
-            bool plain = pattern.length == 16 && pattern.division == Division::Sixteenth && pattern.empty();
+            bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty();
             if (plain) continue;
-            at = w.begin("PATT");
-            w.u8(t); w.u8(p); w.u16(pattern.length); w.u8(unsigned(pattern.division));
-            unsigned steps = 0;
-            for (const auto& s : pattern.steps) steps += !s.empty();
-            w.u16(steps);
-            for (unsigned s = 0; s < max_steps; ++s)
-                if (!pattern.steps[s].empty()) { w.u16(s); write_step(w, pattern.steps[s]); }
+            at = w.begin("EVNT");
+            w.u8(t); w.u8(p); w.u32(pattern.length); w.u8(unsigned(pattern.division));
+            w.u32(uint32_t(pattern.events.size()));
+            for (const auto& e : pattern.events) { w.u32(e.tick); w.u16(e.length); w.u8(e.key); w.u8(e.velocity); w.u8(e.chance); w.u8(e.flags); }
             w.end(at);
         }
     }
-    at = w.begin("MOTN");
+    at = w.begin("TIME"); // time signature, BPM per pattern
+    w.u8(project.signature); w.u8(project.seq_tempo);
+    for (auto v : project.pattern_tempo) w.u16(v);
+    w.end(at);
+    at = w.begin("MOT2"); // steps in sixteenths (MOTN counted the pattern's own steps)
     w.u16(project.motion.count);
     for (unsigned n = 0; n < project.motion.count; ++n) {
         const auto& e = project.motion.events[n];
@@ -226,6 +221,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     if (data.size() < 8 || std::memcmp(data.data(), magic, 8)) return "not a Melodee project";
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
+    std::vector<MotionEvent> legacy_motion; // MOTN: steps of each pattern's division, turned into sixteenths at the end
     Reader file(data.data() + 8, data.size() - 8);
     while (!file.done() && file.ok) {
         char tag[5];
@@ -275,27 +271,60 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 bits |= uint64_t(r.u32()) << 32;
                 if (k < project->tracks[t].pad_mutes.size()) project->tracks[t].pad_mutes[k] = bits;
             }
-        } else if (name == "PATT") {
+        } else if (name == "PATT") { // before parity phase 2: steps of the pattern's division, 24 ticks a quarter
             unsigned t = r.u8(), p = r.u8();
             if (t >= track_count || p >= pattern_count) continue;
             auto& pattern = patterns->at[t][p];
-            pattern.length = uint16_t(std::clamp<unsigned>(r.u16(), 1, max_steps));
-            pattern.division = Division(std::min<unsigned>(r.u8(), unsigned(Division::Count) - 1));
-            unsigned steps = r.u16();
-            for (unsigned k = 0; k < steps && r.ok; ++k) {
+            unsigned steps = std::clamp<unsigned>(r.u16(), 1, 256);
+            pattern.division = legacy_division(r.u8());
+            unsigned q = pattern.q();
+            pattern.length = steps * q;
+            pattern.events.clear();
+            unsigned count = r.u16();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
                 unsigned s = r.u16();
                 Step step;
                 read_step(r, step);
-                if (s < max_steps) pattern.steps[s] = step;
+                if (s >= steps) continue;
+                for (const auto& n : step.notes) {
+                    if (!n.velocity) continue;
+                    Event e;
+                    e.tick = s * q; e.length = uint16_t(step.length * q);
+                    e.key = n.key; e.velocity = n.velocity; e.chance = step.chance; e.flags = step.flags;
+                    pattern.add(e);
+                }
             }
-        } else if (name == "MOTN") {
+        } else if (name == "EVNT") {
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            pattern.length = std::clamp<uint32_t>(r.u32(), 1, max_bars * 16 * ticks_per_quarter);
+            pattern.division = Division(std::min<unsigned>(r.u8(), unsigned(Division::Count) - 1));
+            uint32_t count = std::min<uint32_t>(r.u32(), max_pattern_events);
+            pattern.events.clear();
+            pattern.events.reserve(count);
+            for (uint32_t k = 0; k < count && r.ok; ++k) {
+                Event e;
+                e.tick = r.u32(); e.length = uint16_t(std::max(1u, r.u16()));
+                e.key = uint8_t(r.u8()); e.velocity = uint8_t(std::clamp(r.u8(), 1u, 127u));
+                e.chance = uint8_t(std::min(100u, r.u8())); e.flags = uint8_t(r.u8());
+                if (r.ok) pattern.events.push_back(e);
+            }
+            pattern.sort();
+        } else if (name == "MOTN" || name == "MOT2") {
+            bool legacy = name == "MOTN";
             unsigned count = r.u16();
             for (unsigned k = 0; k < count && r.ok; ++k) {
                 MotionEvent e;
-                e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16() % max_steps);
+                e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
                 e.param = uint8_t(r.u8()); e.value = int16_t(r.i16());
-                project->motion.write(e);
+                if (legacy) legacy_motion.push_back(e);
+                else project->motion.write(e);
             }
+        } else if (name == "TIME") {
+            project->signature = uint8_t(std::min<unsigned>(r.u8(), time_signature_count - 1));
+            project->seq_tempo = r.u8() != 0;
+            for (auto& v : project->pattern_tempo) { unsigned bpm = r.u16(); v = uint16_t(bpm ? std::clamp<unsigned>(bpm, 300, 3000) : 0); }
         } else if (name == "SONG") {
             auto& song = project->song;
             unsigned count = r.u16();
@@ -357,6 +386,11 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
         if (!r.ok) return "damaged section " + name;
     }
     if (!file.ok) return "damaged file";
+    for (auto e : legacy_motion) { // the pattern's own steps into sixteenths
+        unsigned q = patterns->at[e.track][e.pattern].q();
+        e.step = uint16_t((e.step * q + sixteenth_ticks / 2) / sixteenth_ticks);
+        project->motion.write(e);
+    }
     target = *project;
     target_patterns = *patterns;
     if (version) *version = file_version;

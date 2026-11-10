@@ -20,16 +20,46 @@ void flush_denormals() {
 float level_gain(int level) { float x = std::clamp(level, 0, 127) / 100.0f; return x * x; }
 } // namespace
 
-EngineHost::EngineHost() : patterns(std::make_unique<PatternBank>()) {
-    for (auto& s : steps_now) s.store(-1);
+PlayPatterns copy_patterns(const std::array<Pattern, pattern_count>& from) {
+    PlayPatterns out {};
+    for (unsigned p = 0; p < pattern_count; ++p) out[p] = new Pattern(from[p]);
+    return out;
+}
+void free_patterns(PlayPatterns& patterns) { for (auto& p : patterns) { delete p; p = nullptr; } }
+
+ProjectPack::ProjectPack(const Project& project, const PatternBank& bank) : project(project) {
+    for (unsigned t = 0; t < track_count; ++t) patterns[t] = copy_patterns(bank.at[t]);
+}
+ProjectPack::~ProjectPack() { for (auto& t : patterns) free_patterns(t); }
+TrackPack::TrackPack(unsigned track, const Track& value, const std::array<Pattern, pattern_count>& from, const Motion& motion)
+    : track(uint8_t(track)), value(value), patterns(copy_patterns(from)), motion(motion) {}
+TrackPack::~TrackPack() { free_patterns(patterns); }
+
+EngineHost::EngineHost() {
+    for (auto& t : patterns) for (auto& p : t) p = new Pattern;
+    for (auto& s : positions_now) s.store(-1);
     pad_fx = std::make_unique<std::array<SamplerEngine::PadEffects, track_count>>();
     for (unsigned t = 0; t < track_count; ++t) slots[t].sampler.set_pad_effects(&(*pad_fx)[t]);
     // Build every engine's static tables now, not on the audio thread.
     for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) (void)engine_info(EngineKind(k));
 }
 
+EngineHost::~EngineHost() {
+    for (auto& t : patterns) free_patterns(t);
+    Pattern* p = nullptr;
+    while (retired_patterns.pop(p)) delete p;
+    for (auto& q : limbo) delete q;
+}
+
+// Before the audio thread runs: copies into the patterns it already holds.
 void EngineHost::load(const Project& project, const PatternBank& bank) {
-    *patterns = bank;
+    for (unsigned t = 0; t < track_count; ++t)
+        for (unsigned p = 0; p < pattern_count; ++p) *patterns[t][p] = bank.at[t][p];
+    load_state(project);
+}
+
+// Everything of a project but its patterns (Reload swaps those in by pointer).
+void EngineHost::load_state(const Project& project) {
     for (unsigned n = track_count; n < chain_count; ++n) { // the buses and the master; each track's in load_track()
         const auto& chain = project.chain(n);
         for (unsigned k = 0; k < max_slots; ++k) {
@@ -43,9 +73,38 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
     click = project.click == 1; click_level = project.click_level / 100.0f;
     motion = project.motion;
     song = project.song;
-    tempo = project.tempo; swing = project.swing;
-    for (auto& s : slots) s.sampler.set_tempo(tempo);
+    global_tempo = project.tempo; swing = project.swing;
+    seq_tempo = project.seq_tempo; pattern_tempo = project.pattern_tempo;
+    bar = project.bar_ticks(); beat = project.beat_ticks();
     for (unsigned t = 0; t < track_count; ++t) load_track(t, project.tracks[t]);
+    lead = project.tracks[0].pattern;
+    tempo = 0;
+    follow_tempo();
+}
+
+void EngineHost::follow_tempo() {
+    unsigned own = pattern_tempo[lead % pattern_count];
+    uint16_t now = uint16_t(seq_tempo && own ? own : global_tempo);
+    if (now == tempo) return;
+    tempo = now;
+    for (auto& s : slots) s.sampler.set_tempo(tempo);
+    tempo_shown.store(tempo, std::memory_order_relaxed);
+}
+
+void EngineHost::retire(Pattern* pattern) {
+    if (!pattern || retired_patterns.push(pattern)) return;
+    for (auto& q : limbo) if (!q) { q = pattern; return; } // tried again each block
+    // No room anywhere: it is leaked rather than freed here.
+}
+
+// A note Seq Record wrote just ahead of the playhead was heard as it was played: once, not twice.
+bool EngineHost::skipped(Slot& slot, unsigned key, uint32_t tick) {
+    for (auto& s : slot.skips) {
+        if (s.key < 0) continue;
+        if (tick_now > s.until) { s.key = -1; continue; }
+        if (s.key == int(key) && s.tick == tick && s.pattern == slot.pattern) { s.key = -1; return true; }
+    }
+    return false;
 }
 
 // Everything of one track but its patterns: engine and sound, kit, mix, its
@@ -173,7 +232,7 @@ void EngineHost::apply(const Command& c) {
             auto& target = slots[pack.track % track_count];
             if (target.engine) target.engine->all_notes_off();
             load_track(pack.track, pack.value);
-            patterns->at[pack.track % track_count] = pack.patterns; // a plain copy, no allocation
+            std::swap(patterns[pack.track % track_count], c.track_pack->patterns); // the pack takes the old ones back to be freed
             motion = pack.motion;
             if (!done_tracks.push(c.track_pack)) {} // the MIDI thread frees it; a full queue only leaks one
         }
@@ -183,7 +242,8 @@ void EngineHost::apply(const Command& c) {
             apply({Type::Stop});
             for (auto& s : slots) if (s.engine) s.engine->silence();
             pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
-            load(c.pack->project, c.pack->patterns); // a one-off copy, while stopped
+            load_state(c.pack->project);
+            std::swap(patterns, c.pack->patterns); // the pack takes the old ones back to be freed
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
         }
         break;
@@ -279,28 +339,30 @@ void EngineHost::apply(const Command& c) {
     case Type::Send: slot.send = c.value / 100.0f; break;
     case Type::Mute: slot.mute = c.value != 0; break;
     case Type::Solo: slot.solo = c.value != 0; break;
-    case Type::SetStep:
-        if (c.index < max_steps) patterns->at[c.track % track_count][c.pattern % pattern_count].steps[c.index] = c.step;
-        break;
-    case Type::Length:
-        patterns->at[c.track % track_count][c.pattern % pattern_count].length = uint16_t(std::clamp<int>(c.value, 1, max_steps));
+    case Type::PatternData:
+        if (c.data) {
+            auto& at = patterns[c.track % track_count][c.pattern % pattern_count];
+            Pattern* old = at;
+            at = c.data;
+            retire(old);
+        }
         break;
     case Type::Pattern:
         if (running && !song_mode) slot.queued = uint8_t(c.value % pattern_count);
-        else if (!song_mode) { slot.pattern = uint8_t(c.value % pattern_count); slot.queued = 255; }
+        else if (!song_mode) { slot.pattern = uint8_t(c.value % pattern_count); slot.queued = 255; lead = slot.pattern; follow_tempo(); }
         patterns_now[c.track % track_count].store(slot.pattern, std::memory_order_relaxed);
-        break;
-    case Type::Division:
-        patterns->at[c.track % track_count][c.pattern % pattern_count].division = Division(c.value % int(Division::Count));
         break;
     case Type::SongClip: if (c.index < song_clips) song.clips[c.index] = c.clip; break;
     case Type::SongCount: song.count = uint16_t(std::clamp<int>(c.value, 0, song_clips)); break;
     case Type::SongLoop: song.loop_start = c.index; song.loop_end = uint16_t(c.value); break;
     case Type::Play:
         if (running) break;
-        running = true; tick_now = 0; until_tick = 0;
+        running = true; until_tick = 0;
+        tick_now = c.value == 1 ? 0 : c.position;
         arp_ticks = 0; until_arp = 0; // the repeats line up with the bar, so their swing falls with the sequencer's
         song_mode = c.value == 1; song_bar_now = c.index;
+        count_left = c.track == 1 ? bar : 0;
+        count_beat.store(count_left ? 1 : 0, std::memory_order_relaxed);
         for (auto& s : slots) {
             s.start = 0; s.clip = -1; s.silent = song_mode;
             if (s.queued != 255) { s.pattern = s.queued; s.queued = 255; }
@@ -309,11 +371,13 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Stop:
         running = false;
+        count_left = 0; count_beat.store(0, std::memory_order_relaxed);
         if (punch_from_song) { punch.stop(); punch_from_song = false; }
         song_mode = false;
         in_song.store(false, std::memory_order_relaxed);
         for (unsigned t = 0; t < track_count; ++t) {
-            steps_now[t].store(-1, std::memory_order_relaxed);
+            positions_now[t].store(-1, std::memory_order_relaxed);
+            for (auto& skip : slots[t].skips) skip.key = -1;
             if (slots[t].queued != 255) { slots[t].pattern = slots[t].queued; slots[t].queued = 255; }
             slots[t].silent = false; slots[t].clip = -1;
             patterns_now[t].store(slots[t].pattern, std::memory_order_relaxed);
@@ -324,8 +388,32 @@ void EngineHost::apply(const Command& c) {
         }
         break;
     case Type::Tempo:
-        tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
-        for (auto& s : slots) s.sampler.set_tempo(tempo);
+        global_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
+        follow_tempo();
+        break;
+    case Type::PatternTempo:
+        pattern_tempo[c.index % pattern_count] = uint16_t(c.value ? std::clamp<int>(c.value, 300, 3000) : 0);
+        follow_tempo();
+        break;
+    case Type::SeqTempo:
+        seq_tempo = c.value != 0; lead = uint8_t(c.index % pattern_count);
+        follow_tempo();
+        break;
+    case Type::Signature:
+        beat = std::max<unsigned>(c.index, 1); bar = std::max<unsigned>(uint16_t(c.value), beat);
+        break;
+    case Type::Locate:
+        if (!running || song_mode) break;
+        tick_now = c.position; until_tick = 0; // the new place plays at once
+        for (auto& s : slots) { s.start = 0; for (auto& skip : s.skips) skip.key = -1; }
+        tick_count.store(tick_now, std::memory_order_relaxed);
+        break;
+    case Type::Recorded:
+        for (auto& skip : slot.skips)
+            if (skip.key < 0 || tick_now > skip.until) {
+                skip = {int16_t(c.index), c.pattern, c.position, tick_now + 2 * ticks_per_quarter};
+                break;
+            }
         break;
     case Type::Swing: swing = uint8_t(std::clamp<int>(c.value, 50, 75)); break;
     }
@@ -367,8 +455,8 @@ void EngineHost::restore(Slot& slot) {
     slot.moved = false;
 }
 
-// Motion at step `at` of the track's pattern: each lane starts the pattern
-// at the track's own value, then follows its events.
+// Motion at sixteenth `at` of the track's pattern: each lane starts the
+// pattern at the track's own value, then follows its events.
 void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
     if (at == 0) restore(slot);
     for (unsigned n = 0; n < motion.count; ++n) {
@@ -386,8 +474,8 @@ void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
 
 // Swing stretches the first sixteenth of every eighth and shortens the second.
 double EngineHost::tick_samples(uint32_t at) const {
-    double base = quarter_tick();
-    return (at % 12) < 6 ? base * swing / 50.0 : base * (100 - swing) / 50.0;
+    double base = tick_length();
+    return (at % (2 * sixteenth_ticks)) < sixteenth_ticks ? base * swing / 50.0 : base * (100 - swing) / 50.0;
 }
 
 void EngineHost::bar_start() {
@@ -397,7 +485,9 @@ void EngineHost::bar_start() {
             if (slot.queued == 255) continue;
             slot.pattern = slot.queued; slot.queued = 255; slot.start = tick_now;
             patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
+            lead = slot.pattern;
         }
+        follow_tempo(); // BPM per pattern: the one launched last leads
         return;
     }
     if (tick_now) ++song_bar_now;
@@ -412,13 +502,13 @@ void EngineHost::bar_start() {
         auto& slot = slots[t];
         int index = song.clip_at(t, song_bar_now);
         slot.silent = index < 0 || song.clips[size_t(index)].muted;
-        if (slot.silent) { slot.clip = -1; steps_now[t].store(-1, std::memory_order_relaxed); continue; }
+        if (slot.silent) { slot.clip = -1; positions_now[t].store(-1, std::memory_order_relaxed); continue; }
         const auto& clip = song.clips[size_t(index)];
         if (index != slot.clip || song_bar_now == clip.bar) {
             // A clip starts (or the loop came back into it): its pattern from where the clip says.
             slot.clip = index;
             slot.pattern = clip.pattern;
-            slot.start = tick_now - (song_bar_now - clip.bar) * ticks_per_bar;
+            slot.start = tick_now - (song_bar_now - clip.bar) * bar;
             patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
         }
     }
@@ -432,9 +522,9 @@ void EngineHost::arp_tick() {
         if (arp_ticks % rate) continue;
         int velocity = 0, key = a.next(velocity);
         if (key < 0) continue;
-        auto length = std::max<int32_t>(64, int32_t(quarter_tick() * rate * a.gate / 100.0));
-        double late = arp_swing_ticks(a.rate, (arp_ticks % ticks_per_bar) / rate, swing); // every second straight note, as the project swings
-        if (late > 0) { slot.arp_late = {int16_t(key), int16_t(velocity), int16_t(a.from), int32_t(quarter_tick() * late), length}; continue; }
+        auto length = std::max<int32_t>(64, int32_t(arp_tick_length() * rate * a.gate / 100.0));
+        double late = arp_swing_ticks(a.rate, (arp_ticks % (4 * arp_ticks_per_quarter)) / rate, swing); // every second straight note, as the project swings
+        if (late > 0) { slot.arp_late = {int16_t(key), int16_t(velocity), int16_t(a.from), int32_t(arp_tick_length() * late), length}; continue; }
         arp_note(slot, key, velocity, a.from, length);
     }
     ++arp_ticks;
@@ -465,48 +555,61 @@ void EngineHost::start_punch(const PendingPunch& p) {
 void EngineHost::play_song_punches() {
     if (punch_from_song && tick_now >= song_punch_until) { punch.stop(); punch_from_song = false; }
     if (live_punch) return; // a punch held by hand wins
-    unsigned step = (tick_now % ticks_per_bar) / (ticks_per_bar / 16);
+    unsigned step = (tick_now % bar) / sixteenth_ticks;
     for (unsigned n = 0; n < song.punch_count; ++n) {
         const auto& e = song.punches[n];
         if (e.bar != song_bar_now || e.step != step) continue;
         start_punch({false, e.target, PunchKind(e.kind % punch_count), e.depth / 100.0f, 2, 1});
         punch_from_song = true;
-        song_punch_until = tick_now + std::max<uint32_t>(1, e.length) * (ticks_per_bar / 16);
+        song_punch_until = tick_now + std::max<uint32_t>(1, e.length) * sixteenth_ticks;
     }
 }
 
 void EngineHost::tick() {
-    // A punch waiting for its grid.
-    if (pending.waiting && tick_now % (ticks_per_bar / (4u << pending.snap)) == 0) { pending.waiting = false; start_punch(pending); }
-    // The metronome: every quarter while playing, higher on the bar.
-    if (click && tick_now % ticks_per_quarter == 0) {
-        click_env = 1; click_phase = 0;
-        click_step = (tick_now % ticks_per_bar == 0 ? 1568.0f : 1046.0f) / 44100.0f;
+    // Count-In: a bar of the metronome before the song starts.
+    if (count_left) {
+        unsigned done = bar - count_left;
+        if (done % beat == 0) {
+            click_env = 1; click_phase = 0;
+            click_step = (done == 0 ? 1568.0f : 1046.0f) / 44100.0f;
+            count_beat.store(done / beat + 1, std::memory_order_relaxed);
+        }
+        --count_left;
+        if (!count_left) count_beat.store(0, std::memory_order_relaxed);
+        until_tick += tick_length();
+        return;
     }
-    if (tick_now % ticks_per_bar == 0) bar_start();
+    // A punch waiting for its grid.
+    if (pending.waiting && tick_now % (4 * ticks_per_quarter / (4u << pending.snap)) == 0) { pending.waiting = false; start_punch(pending); }
+    // The metronome: every beat while playing, higher on the bar.
+    if (click && tick_now % beat == 0) {
+        click_env = 1; click_phase = 0;
+        click_step = (tick_now % bar == 0 ? 1568.0f : 1046.0f) / 44100.0f;
+    }
+    if (tick_now % bar == 0) bar_start();
     if (!running) return;
-    if (song_mode && tick_now % (ticks_per_bar / 16) == 0) play_song_punches();
+    if (song_mode && tick_now % sixteenth_ticks == 0) play_song_punches();
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         if (!slot.engine || slot.silent) continue;
-        const auto& pattern = patterns->at[t][slot.pattern];
-        unsigned division = division_ticks(pattern.division), relative = tick_now - slot.start;
-        if (relative % division) continue;
-        unsigned at = (relative / division) % pattern.length;
-        steps_now[t].store(int(at), std::memory_order_relaxed);
-        if (motion.count) play_motion(t, slot, at);
-        const auto& s = pattern.steps[at];
-        if (s.empty()) continue;
-        random = random * 1664525u + 1013904223u;
-        if (s.chance < 100 && (random >> 8) % 100 >= s.chance) continue;
-        // Held for its length, a touch short of the next step unless tied.
-        double length = quarter_tick() * division;
-        auto samples = int32_t(length * s.length - (s.flags & step_tie ? 0 : length * 0.1));
-        for (const auto& note : s.notes) {
-            if (!note.velocity || (note.key > 127 && slot.kind != EngineKind::Sampler)) continue; // past 127: kit pads only
-            int velocity = s.flags & step_accent ? std::min(127, note.velocity + 24) : note.velocity;
-            slot.engine->note_on(note.key, velocity);
-            schedule_off(slot, note.key, std::max<int32_t>(samples, 64));
+        const auto& pattern = *patterns[t][slot.pattern];
+        uint32_t length = std::max<uint32_t>(pattern.length, 1);
+        uint32_t at = (tick_now - slot.start) % length;
+        positions_now[t].store(int(at), std::memory_order_relaxed);
+        if (motion.count && at % sixteenth_ticks == 0) play_motion(t, slot, at / sixteenth_ticks);
+        const auto& events = pattern.events;
+        for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n) {
+            const auto& e = events[n];
+            if (e.key > 127 && slot.kind != EngineKind::Sampler) continue; // past 127: kit pads only
+            if (skipped(slot, e.key, at)) continue;
+            random = random * 1664525u + 1013904223u;
+            if (e.chance < 100 && (random >> 8) % 100 >= e.chance) continue;
+            // Held for its length, a touch short unless tied.
+            double gap = e.flags & step_tie ? 0 : std::min<unsigned>(pattern.q(), e.length) * 0.1;
+            auto samples = int32_t(tick_length() * (e.length - gap));
+            int velocity = e.flags & step_accent ? std::min(127, e.velocity + 24) : e.velocity;
+            slot.engine->note_on(e.key, velocity);
+            schedule_off(slot, e.key, std::max<int32_t>(samples, 64));
         }
     }
     until_tick += tick_samples(tick_now);
@@ -517,6 +620,7 @@ void EngineHost::tick() {
 void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input, float* stems) {
     static thread_local bool flushed = false;
     if (!flushed) { flush_denormals(); flushed = true; }
+    for (auto& q : limbo) if (q && retired_patterns.push(q)) q = nullptr; // retired copies the queue had no room for
     Command command;
     for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
     Offer offer;
@@ -530,7 +634,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     frames = std::min(frames, block);
     // The arps' clock, at the block's start (within 3 ms of the beat).
     until_arp -= frames;
-    while (until_arp <= 0) { arp_tick(); until_arp += quarter_tick(); }
+    while (until_arp <= 0) { arp_tick(); until_arp += arp_tick_length(); }
     bool solo = false;
     for (auto& slot : slots) {
         solo |= slot.solo;

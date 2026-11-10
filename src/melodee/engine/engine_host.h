@@ -26,26 +26,45 @@
 // meters) is published as atomics.
 namespace melodee {
 
+// One track's sixteen patterns as the audio thread plays them: copies made
+// on the MIDI thread, swapped in by pointer and handed back to be freed
+// there, so the audio thread never allocates or frees.
+using PlayPatterns = std::array<Pattern*, pattern_count>;
+PlayPatterns copy_patterns(const std::array<Pattern, pattern_count>& patterns);
+void free_patterns(PlayPatterns& patterns);
+
 // A whole project for the audio thread to switch to at once (a load or a new
-// project). The MIDI thread makes it, the audio thread hands it back.
+// project). The MIDI thread makes it, the audio thread swaps its patterns
+// for the ones it played and hands it back, to be freed with those.
 struct ProjectPack {
+    ProjectPack(const Project& project, const PatternBank& bank);
+    ~ProjectPack();
+    ProjectPack(const ProjectPack&) = delete;
+    ProjectPack& operator=(const ProjectPack&) = delete;
     Project project;
-    PatternBank patterns;
+    std::array<PlayPatterns, track_count> patterns {};
 };
 
 // One track for the audio thread to take whole, without stopping (a track
 // copy, or its undo): the track, its sixteen patterns and the project's
-// motion after the change. The MIDI thread makes it, the audio thread hands it back.
+// motion after the change. Made and freed like a ProjectPack.
 struct TrackPack {
+    TrackPack(unsigned track, const Track& value, const std::array<Pattern, pattern_count>& patterns, const Motion& motion);
+    ~TrackPack();
+    TrackPack(const TrackPack&) = delete;
+    TrackPack& operator=(const TrackPack&) = delete;
     uint8_t track = 0;
     Track value;
-    std::array<Pattern, pattern_count> patterns;
+    PlayPatterns patterns {};
     Motion motion;
 };
 
 class EngineHost {
 public:
     EngineHost();
+    ~EngineHost();
+    EngineHost(const EngineHost&) = delete;
+    EngineHost& operator=(const EngineHost&) = delete;
     // Before the audio thread starts: the whole project and its patterns.
     void load(const Project& project, const PatternBank& patterns);
 
@@ -69,8 +88,11 @@ public:
 
     // Feedback, any thread.
     bool playing() const { return is_playing.load(std::memory_order_relaxed); }
-    uint32_t ticks() const { return tick_count.load(std::memory_order_relaxed); } // clock ticks since Play, 24 a quarter
-    int step_of(unsigned track) const { return steps_now[track % track_count].load(std::memory_order_relaxed); } // -1: none
+    uint32_t ticks() const { return tick_count.load(std::memory_order_relaxed); } // clock ticks since Play, 96 a quarter
+    // Where a track is in its pattern, in ticks; -1 while it plays none.
+    int position_of(unsigned track) const { return positions_now[track % track_count].load(std::memory_order_relaxed); }
+    unsigned count_in() const { return count_beat.load(std::memory_order_relaxed); } // the count-in's beat now, 1..; 0 none
+    unsigned tempo_now() const { return tempo_shown.load(std::memory_order_relaxed); } // tenths of a BPM, as it plays
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
     bool punching() const { return punch_on.load(std::memory_order_relaxed); }
     bool song_playing() const { return in_song.load(std::memory_order_relaxed); }
@@ -87,6 +109,8 @@ public:
     // MIDI thread: a ProjectPack the audio thread has finished with, to free.
     bool take_done_pack(const ProjectPack*& pack) { return done_packs.pop(pack); }
     bool take_done_track(const TrackPack*& pack) { return done_tracks.pop(pack); }
+    // MIDI thread: a pattern copy the audio thread played until a newer one came (PatternData), to free.
+    bool take_retired_pattern(Pattern*& pattern) { return retired_patterns.pop(pattern); }
 
     static constexpr unsigned block = 128;
 
@@ -119,8 +143,12 @@ private:
         Arp arp;
         PendingOn arp_late;
         int arp_played = -1, arp_from = -1; // the arp's last note and the held key it came from
+        // Notes Seq Record just wrote ahead of the playhead (Rec Quantize), already heard live: skipped once.
+        struct Skip { int16_t key = -1; uint8_t pattern = 0; uint32_t tick = 0, until = 0; };
+        std::array<Skip, 8> skips {};
     };
     void load_track(unsigned t, const Track& track); // a whole track's sound, kit, mix and effects
+    void load_state(const Project& project);         // all but the patterns
     void run_late(Slot& slot, unsigned frames);       // a swung arp note, when its time comes
     void arp_note(Slot& slot, int key, int velocity, int from, int32_t length); // with its pad's pressure
     void apply(const Command& command);
@@ -133,7 +161,10 @@ private:
     void restore(Slot& slot);
     void schedule_off(Slot& slot, int key, int32_t samples);
     void run_offs(Slot& slot, unsigned frames);
-    double quarter_tick() const { return 44100.0 * 60.0 / (tempo / 10.0) / ticks_per_quarter; }
+    double tick_length() const { return 44100.0 * 60.0 / (tempo / 10.0) / ticks_per_quarter; } // samples a clock tick
+    double arp_tick_length() const { return tick_length() * (ticks_per_quarter / arp_ticks_per_quarter); }
+    void follow_tempo();  // the tempo now: the global one, or the lead pattern's own (BPM per pattern)
+    bool skipped(Slot& slot, unsigned key, uint32_t tick);
 
     MidiQueue<4096, Command> queue;
     struct Offer { uint16_t slot = 0; const SampleData* sample = nullptr; };
@@ -141,6 +172,9 @@ private:
     MidiQueue<128, const SampleData*> retired;
     MidiQueue<8, const ProjectPack*> done_packs;
     MidiQueue<8, const TrackPack*> done_tracks;
+    MidiQueue<1024, Pattern*> retired_patterns;
+    std::array<Pattern*, 64> limbo {}; // retired ones the queue had no room for yet
+    void retire(Pattern* pattern);
     SamplerEngine::Table samples {};
     TakeRecorder take;
     std::atomic<unsigned> source_now {0};
@@ -161,7 +195,7 @@ private:
     uint32_t song_punch_until = 0; // the tick a song punch lets go
     void play_song_punches();      // on each sixteenth of the song: punches written there
     void start_punch(const PendingPunch& p);
-    double bar_length() const { return quarter_tick() * ticks_per_bar; }
+    double bar_length() const { return tick_length() * bar; }
     std::array<Slot, track_count> slots;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;
@@ -169,12 +203,18 @@ private:
     std::array<float, bus_count> returns {0.7f, 0.7f, 0.7f, 0.7f};
     float bus_l[bus_count][block] {}, bus_r[bus_count][block] {}, master_l[block] {}, master_r[block] {};
     void run_chain(unsigned chain, float* left, float* right, unsigned frames);
-    std::unique_ptr<PatternBank> patterns;
+    std::array<PlayPatterns, track_count> patterns {};
     Motion motion;
     Song song;
     bool song_mode = false;
     unsigned song_bar_now = 0;
-    uint16_t tempo = 1200;
+    uint16_t tempo = 1200, global_tempo = 1200;
+    // BPM per pattern: the tempo of the pattern launched last (`lead`), when set.
+    bool seq_tempo = false;
+    std::array<uint16_t, pattern_count> pattern_tempo {};
+    uint8_t lead = 0;
+    unsigned bar = 4 * ticks_per_quarter, beat = ticks_per_quarter; // the time signature, in ticks
+    uint32_t count_left = 0; // Count-In: ticks of the bar counted before the song starts
     uint8_t swing = 50;
     bool running = false;
     uint32_t tick_now = 0;
@@ -183,7 +223,9 @@ private:
 
     std::atomic<bool> is_playing {false};
     std::atomic<uint32_t> tick_count {0};
-    std::array<std::atomic<int>, track_count> steps_now {};
+    std::array<std::atomic<int>, track_count> positions_now {};
+    std::atomic<unsigned> count_beat {0};
+    std::atomic<unsigned> tempo_shown {1200};
     std::array<std::atomic<unsigned>, track_count> patterns_now {};
     std::atomic<bool> in_song {false};
     std::atomic<unsigned> bar_now {0};

@@ -31,8 +31,8 @@ unsigned view_of(const UiState& ui) {
     if (ui.song_cursor >= view + zoom) view = ui.song_cursor - zoom + 1;
     return view;
 }
-juce::String clock_of(unsigned bar, unsigned tempo_tenths) {
-    unsigned seconds = unsigned(bar * 4 * 600.0 / tempo_tenths + 0.5);
+juce::String clock_of(unsigned bar, unsigned tempo_tenths, unsigned bar_ticks) {
+    unsigned seconds = unsigned(bar * (double(bar_ticks) / ticks_per_quarter) * 600.0 / tempo_tenths + 0.5);
     char text[16];
     std::snprintf(text, sizeof(text), "%u:%02u", seconds / 60, seconds % 60);
     return text;
@@ -49,12 +49,13 @@ void draw_clip(Paint& p, const Snapshot& s, const Clip& clip, float y, unsigned 
     p.fill(cx + 0.5f, y, cw - 1, lane_h, selected ? c : c.withAlpha(clip.muted ? 0.12f : 0.38f), 2.5f);
     const auto& sketch = s.sketches[clip.track][clip.pattern];
     // Its notes in small: the pattern repeated across the clip.
-    unsigned division = division_ticks(sketch.division), length = std::max<unsigned>(sketch.length, 1);
-    float step_w = bw * division / ticks_per_bar;
+    // In sixteenths: the sketch keeps the first note of each.
+    unsigned bar = s.project.bar_ticks(), length = std::max<unsigned>((sketch.length + sixteenth_ticks - 1) / sixteenth_ticks, 1);
+    float step_w = bw * sixteenth_ticks / bar;
     int lo = 127, hi = 0;
     for (unsigned k = 0; k < std::min<unsigned>(length, 64); ++k)
         if (sketch.keys[k]) { lo = std::min<int>(lo, sketch.keys[k]); hi = std::max<int>(hi, sketch.keys[k]); }
-    unsigned steps = unsigned(clip.bars * ticks_per_bar / division);
+    unsigned steps = unsigned(clip.bars * bar / sixteenth_ticks);
     auto note = selected ? colour::bg : c;
     if (hi >= lo && step_w >= 0.6f && !clip.muted)
         for (unsigned k = 0; k < steps; ++k) {
@@ -80,7 +81,7 @@ void draw(Paint& p, const Snapshot& s) {
     float bw = (x1 - x0) / zoom;
     int selected_clip = song.clip_at(s.ui.track, cursor);
     Header h = header_of(s);
-    h.left.push_back(pill("BAR " + juce::String(cursor + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + clock_of(cursor, s.project.tempo)));
+    h.left.push_back(pill("BAR " + juce::String(cursor + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + clock_of(cursor, s.project.tempo, s.project.bar_ticks())));
     if (zoom == song_zooms[0]) h.left.push_back(pill("SNAP 1 BAR"));
     else if (song.looping()) h.left.push_back(pill("LOOP " + juce::String(song.loop_start + 1) + dash() + juce::String(song.loop_end), colour::text));
     h.right.push_back(tag_of(s, s.ui.track));
@@ -153,7 +154,8 @@ void draw(Paint& p, const Snapshot& s) {
     p.fill(cx, zone::picture_y + 9, 1, bottom - zone::picture_y - 9, c);
     p.fill(cx - 2, zone::picture_y + 8, 5, 5, c, 1);
     if (s.song_playing) {
-        float at = float(s.song_bar) + float(s.ticks % ticks_per_bar) / ticks_per_bar;
+        unsigned bar = s.project.bar_ticks();
+        float at = float(s.song_bar) + float(s.ticks % bar) / bar;
         if (at >= view && at < view + zoom) {
             float px = x0 + (at - view) * bw;
             p.fill(px, zone::picture_y + 12, 1, bottom - zone::picture_y - 12, colour::text);

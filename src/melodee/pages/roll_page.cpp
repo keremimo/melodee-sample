@@ -20,8 +20,8 @@ constexpr float gutter = 23, ruler = 11, row_h = 11, column = 18.5f;
 constexpr unsigned rows = 12, sheet_rows = 5;
 constexpr unsigned copy_ahead = 8; // Copy to: half a bar on, as on the board (step 23 to 31)
 
-unsigned bars_of(const Pattern& p) { return std::max(1u, (unsigned(p.length) + bar_steps - 1) / bar_steps); }
-unsigned cursor_of(const UiState& ui, const Pattern& p) { return unsigned(std::max<int>(ui.step_cursor, 0)) % p.length; }
+unsigned bars_of(const Pattern& p) { return std::max(1u, (p.steps() + bar_steps - 1) / bar_steps); } // pages of sixteen steps
+unsigned cursor_of(const UiState& ui, const Pattern& p) { return unsigned(std::max<int>(ui.step_cursor, 0)) % p.steps(); }
 // The top row's key: three semitones above the pads' top octave, so the
 // pads' range sits in view (D2 pads show F#2 to F3).
 int top_key(const Project& project, const Track& track) { return pad_note(project, track, 0).key + 15; }
@@ -43,7 +43,7 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
     auto c = colour_of(s);
     unsigned cursor = cursor_of(s.ui, pattern), bar = cursor / bar_steps, first = bar * bar_steps;
-    const auto& cur = pattern.steps[cursor];
+    const auto& cur = pattern.step(cursor);
     const Note* note = selected(cur, s.ui.roll_note);
     Header h = header_of(s);
     if (!s.ui.recording) h.left.push_back(pill("BAR " + juce::String(bar + 1) + " / " + juce::String(bars_of(pattern))));
@@ -70,21 +70,21 @@ void draw(Paint& p, const Snapshot& s) {
     for (unsigned k = 1; k < bar_steps; ++k)
         p.fill(gutter + k * column, top, k % 4 ? 0.5f : 1, rows * row_h, k % 4 ? colour::bg : colour::line);
     p.fill(gutter + (cursor - first) * column, top, column, rows * row_h, c.withAlpha(0.12f));
-    for (unsigned k = 0; k < bar_steps && first + k < pattern.length; ++k) {
-        const auto& step = pattern.steps[first + k];
+    for (unsigned k = 0; k < bar_steps && first + k < pattern.steps(); ++k) {
+        const auto& step = pattern.step(first + k);
         for (const auto& n : step.notes) {
             if (!n.velocity) continue;
             int r = key_top - n.key;
             if (r < 0 || r >= int(rows)) continue;
-            float x = gutter + k * column + 1, y = top + r * row_h + 1;
+            float x = gutter + (k + float(n.offset) / pattern.q()) * column + 1, y = top + r * row_h + 1; // where in the step it was played
             float w = std::min<float>(step.length, float(bar_steps - k)) * column - 2;
-            bool on = first + k == cursor && &n == note;
+            bool on = first + k == cursor && note && n.key == note->key; // the step is a copy: the same note by its key
             p.fill(x, y, w, row_h - 2.5f, on ? c : c.withAlpha(0.45f + n.velocity / 127.0f * 0.55f), 2.5f);
             if (on) p.ring(x - 1, y - 1, w + 2, row_h - 0.5f, colour::text, 3);
         }
     }
     if (s.playing) {
-        unsigned at = s.position % pattern.length;
+        unsigned at = (s.position % pattern.length) / pattern.q();
         if (at >= first && at < first + bar_steps) p.fill(gutter + (at - first) * column, top - 3, 1, rows * row_h + 3, colour::text);
     }
     // Where the view sits: time along the bottom, pitch along the right edge.
@@ -99,7 +99,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
         MenuSheet m;
         m.title = "NOTE"; m.detail = step_label(cursor, note); m.accent = c;
-        unsigned target = (cursor + copy_ahead) % pattern.length;
+        unsigned target = (cursor + copy_ahead) % pattern.steps();
         m.rows[0] = {"Accent", cur.flags & step_accent ? "On" : "Off", bool(cur.flags & step_accent), false, false};
         m.rows[1] = {"Slide", cur.flags & step_slide ? "On" : "Off", bool(cur.flags & step_slide), false, false};
         m.rows[2] = {"Tie to next", cur.flags & step_tie ? "On" : "Off", bool(cur.flags & step_tie), false, false};
@@ -118,7 +118,7 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     unsigned at = cursor_of(c.ui, pattern);
     int key = pad_note(c.project, c.track(), pad).key;
     int v = c.track().layout == PadLayout::Levels ? level_velocity(pad) : velocity;
-    Step step = pattern.steps[at];
+    Step step = pattern.step(at);
     unsigned index = 0;
     for (auto& n : step.notes) {
         if (n.velocity && n.key == key) { c.ui.roll_note = uint8_t(index); return; } // already there
@@ -139,7 +139,7 @@ void wheel(Context& c, int delta) {
         return;
     }
     auto& pattern = c.pattern();
-    c.ui.step_cursor = int16_t(std::clamp<int>(c.ui.step_cursor + delta, 0, pattern.length - 1));
+    c.ui.step_cursor = int16_t(std::clamp<int>(c.ui.step_cursor + delta, 0, int(pattern.steps()) - 1));
     c.ui.steps_bar = uint8_t(c.ui.step_cursor / bar_steps);
     c.ui.roll_note = 0;
 }
@@ -147,14 +147,14 @@ void wheel(Context& c, int delta) {
 void push(Context& c) {
     auto& pattern = c.pattern();
     unsigned at = cursor_of(c.ui, pattern);
-    Step step = pattern.steps[at];
+    Step step = pattern.step(at);
     if (step.empty()) return;
     if (!c.ui.sheet_open) { c.ui.sheet_open = true; c.ui.sheet_row = 0; return; }
     switch (c.ui.sheet_row) {
     case 0: step.flags ^= step_accent; break;
     case 1: step.flags ^= step_slide; break;
     case 2: step.flags ^= step_tie; break;
-    case 3: c.set_step(c.ui.track, (at + copy_ahead) % pattern.length, step); return;
+    case 3: c.set_step(c.ui.track, (at + copy_ahead) % pattern.steps(), step); return;
     case 4: {
         // Delete the selected note; the others close up.
         Step left {};

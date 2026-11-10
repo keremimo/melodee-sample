@@ -125,21 +125,65 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   a `PVER` section and sound files a last byte (`params_version`), and
   older ones load the new parameters at their initial values
   (`upgrade_params`) instead of zeros.
-- **Clock:** 24 ticks a quarter. Each pattern has its own division (1/8,
-  1/8T, 1/16, 1/16T, 1/32); swing (project-wide, 50–75 %) stretches the
-  first sixteenth of every eighth.
+- **Clock and patterns (parity phase 2):** 96 ticks a quarter, as the
+  MPC60 counted. A pattern is a list of note events (tick, length in ticks,
+  key, velocity, chance, accent / slide / tie), up to 128 bars of the
+  project's time signature (`model/pattern.h`); a note sits on any tick.
+  Each pattern has a **Q**: 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T,
+  1/64. Q is only the grid: Steps and Roll show the pattern in steps of it
+  (a note played off the grid is drawn where it fell in its step and keeps
+  that place when a step is edited), Rec Quantize and Time Correct snap to
+  it; changing Q moves no note. Swing (project-wide, 50–75 %) stretches the
+  first sixteenth of every eighth as it plays. The **time signature** is
+  the project's (Shift + K2 on Patterns): 1/4 to 9/4, 3/8 to 15/8, 5/16 to
+  15/16; a pattern of whole bars keeps its bar count when it changes. The
+  audio thread plays copies of the patterns: each edit makes a copy on the
+  MIDI thread (`Command::PatternData`), the audio thread swaps it in by
+  pointer and hands the old one back to be freed there, so it never
+  allocates. Older project files (24 ticks a quarter, a fixed array of
+  steps, `PATT`, motion by the pattern's own steps in `MOTN`) load into
+  events and sixteenths; new files write `EVNT`, `MOT2` and `TIME`.
 - **Patterns** (Seq): tracks down, sixteen patterns across, eight tracks
-  in view following the selected one. K1 the selected pattern's length by
-  the bar (1–16 bars; a length that is not whole bars shows as n STEPS in
-  the header), K2 its Q (division: 1/8, 1/8T, 1/16, 1/16T, 1/32), K3 swing
-  (project-wide). B2 Song. Pads are its patterns: a tap queues
-  (it starts on the next bar, or at once when stopped), Erase + pad clears,
-  hold one and tap another to copy. B3 COLUMN latches column launch (the
-  header says LAUNCH COLUMN): a tap then launches that column on every track (open
-  question 8; it was Shift + pad until Shift + pad became the printed jobs).
-  Minus / Plus move the track, as the wheel. Shift + Erase copies too:
-  the pattern to copy, then where it goes, on this track or (the wheel moved
+  in view following the selected one. K1 the selected pattern's length, 1,
+  2, 4, 8, 16, 32, 64 or 128 bars (Shift + K1: any count from 1 to 128); K2
+  its Q (Shift + K2: the time signature); K3 swing (project-wide; Shift +
+  K3 the metronome's level). The **wheel moves the playhead** by a beat
+  (Shift + wheel: by Q); stopped, it sets where Shift + Play carries on
+  from. The header shows where it is (bar.beat.tick), the time signature
+  and Rec Quantize (REC Q 1/16, or REC Q OFF). **Hold B1** for the BPM
+  window: the wheel sets the BPM, Push switches whole BPM / tenths. **B2**
+  switches **BPM per pattern (SEQ) or global (GBL)**: with SEQ on, each
+  pattern number has a tempo of its own, and the one launched last (on any
+  track, or the column) leads; until a pattern's tempo is set it plays at
+  the global one (a dot over a column's number marks one that is set).
+  Tap Tempo and the Tempo page set the leading pattern's tempo then. Song is
+  Shift + Pad 12 (B2 was a second way in until phase 2 gave it the BPM, as
+  on the MPC). Pads are the track's patterns: a tap queues (it starts on
+  the next bar, or at once when stopped), Erase + pad clears, hold one and
+  tap another to copy. B3 COLUMN latches column launch (the header says
+  LAUNCH COLUMN): a tap then launches that column on every track (open
+  question 8). Minus / Plus move the track. Shift + Erase copies too: the
+  pattern to copy, then where it goes, on this track or (Minus / Plus moved
   on) another; Shift + Erase again or Erase leaves.
+- **Seq Record** (as on the MPC): pressed while stopped it arms (its light
+  flashes, the header says REC ARMED) and Play starts the take; pressed
+  while playing it records at once; pressed while recording it stops
+  recording and playback goes on; Stop ends both. **Count-In** (Shift + Pad
+  4) plays a bar of the metronome first (the header counts the beats, Seq
+  Record flashes); nothing is recorded meanwhile. Notes keep the time they
+  were played, to the tick, and their held length; with **Rec Quantize**
+  (Shift + Pad 10, on by default) they land on the nearest step of Q, and a
+  note moved ahead of the playhead is not played again on that pass (it was
+  heard as it was played). Overdub: what the pattern holds stays.
+- **Time Correct** (Shift + Pad 14): the selected track's pattern onto its
+  Q. The pads choose whose notes move (kit pads of the bank in view, the
+  909's drums, or the notes a synth's pads play; lit on the page), B2 all
+  of them; K1 Q, K2 shift (−48 to +48 ticks), K3 swing (every second step of
+  a straight Q late by it). B3 DO IT, one undo; B1 CANCEL goes back.
+- **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):
+  the selected pattern half as long (what lies past the end goes), twice
+  as long with its notes and motion twice, its notes twice as far apart or
+  half (the length stays; what falls past the end goes). Each is one undo.
 - **Song** (Shift + Pad 12, or B2 on Patterns): lanes per track, clips of patterns with their notes in
   small and notches at each repeat, markers, loop brace, cursor, playhead
   and an overview strip; K1 zoom (4–64 bars; at 4 the header says SNAP
@@ -241,8 +285,7 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   pattern meanwhile, Erase + pad among them; Shift + Minus while recording
   ends the take and takes it back); Erase + pad on Steps and Patterns, a
   kit pad's notes erased, pattern copies, Double Seq and Recall (Capture).
-  Quantising the last take is off the buttons until Time Correct (phase 2
-  of MELODEE_PARITY.md). The header names what came back. A new
+  Time Correct, Half Seq, Half / Double Speed. The header names what came back. A new
   project or a load forgets them. Pot moves outside a take and Song page
   edits are not kept.
 - **Samples** (Sample Select on a sampler track): the files; Push loads the
@@ -313,7 +356,9 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   Tap Tempo anywhere) turns the metronome Off → On → Rec (Rec: only while
   Seq Record is on), a short blip on each beat while playing, higher on
   the bar. The header says which for a moment. The wheel moves the tempo by
-  0.1, Minus / Plus by a whole BPM.
+  0.1, Minus / Plus by a whole BPM. With BPM per pattern on (B2 on
+  Patterns) the tempo here, tapped or turned, is the leading pattern's.
+  The beat lights follow the time signature.
 - **Note Repeat** stays on the page, as on the MPC: a tap latches it (a
   tap again turns it off), a hold lasts while held, a double tap opens the
   Arp page. While it is on, B1–B3 are its rate, 1/8, 1/16, 1/32, and with
@@ -336,8 +381,8 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   to 1/16 or 1/8 and laid into a pattern (the first empty one); B3 or Push
   keeps it and that pattern plays, B1 drops.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
-  step (256 for the project, `model/limits.h`). The audio thread plays them
-  step by step, each lane starting the pattern at the track's own value, and
+  sixteenth of the pattern, whatever its Q (256 for the project,
+  `model/limits.h`). The audio thread plays them sixteenth by sixteenth, each lane starting the pattern at the track's own value, and
   gives the track its own values back on Stop. Erase + pot on Motion clears
   that lane. The lanes are the parameters holding motion, then the
   favourites.
@@ -438,8 +483,9 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   left out: Melodee has no MIDI input path yet and the outputs follow the
   jacks: the built-in speaker plays while neither headphones nor line out
   is plugged in.
-- **Host:** sixteen track slots, level / pan / mute / solo, a pattern mirror,
-  a sample-accurate step clock with swing, chance, accent and tie, meters
+- **Host:** sixteen track slots, level / pan / mute / solo, the patterns'
+  copies, a sample-accurate tick clock (96 a quarter) with swing, the time
+  signature, count-in, locate and BPM per pattern; chance, accent and tie, meters
   and a soft-clipped master after main volume. The send is stored, not heard
   (no buses yet).
 - **Shell:** printed buttons (Sample cycles Stage → Keys → Mix, Seq
@@ -480,12 +526,12 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   → back. **Shift + Pad 1–16** are the jobs printed under the pads, on
   every page (`shell/shift_pad_jobs.cpp` holds the table, from Akai's
   guide): 1 Full Level (every hit at 127, again back to the pad response it
-  came from), 3 Double Seq (the pattern twice as long, notes and motion
-  played twice), 4 Count-In and 10 Rec Quantize (toggles, kept in the
-  settings file; they act on recording from phase 2), 12 Song, 16 Project.
-  The others (2 Half Seq, 5 Compressor, 6 Half Speed, 7 Double Speed, 8
-  MIDI Config, 9 Fader, 11 Resample, 13 Trim Sample, 14 Time Correct, 15
-  Warp) say which phase brings them ("Time Correct: phase 2"). The overlay draws the sixteen as the pads
+  came from), 2 Half Seq, 3 Double Seq (the pattern twice as long, notes
+  and motion played twice), 4 Count-In and 10 Rec Quantize (toggles, kept
+  in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 14 Time
+  Correct, 16 Project. The others (5 Compressor, 8 MIDI Config, 9 Fader, 11
+  Resample, 13 Trim Sample, 15 Warp) say which phase brings them
+  ("Compressor: phase 7"). The overlay draws the sixteen as the pads
   sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
   the track's colour, the rest dim with their phase; the pads light the
   same way while Shift is held. **Shift + K1–K3:** a card with a second
@@ -497,18 +543,25 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
   `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad
   (with a button held around it: `shift+pad5`, `erase+pad5`,
-  `pad-bank+pad5`, `mute+pad5`: a held Mute, mute mode for that pad),
+  `pad-bank+pad5`, `mute+pad5`: a held Mute, mute mode for that pad;
+  struck and let go at once, so a recorded note is a tick long: `hold-pad5`
+  ... `release-pad5` holds it),
   `k1=V`..`k3=V` move a pot to V (0..127), `shift+k3=V` with Shift held
   (the card's second parameter), and `hold-shift` ... `release-shift`
   keep any button (or `hold-pad5` a pad) down across other presses (the
   Shift overlay and its lights, a held punch).
   `status` lists the lit buttons as `melodee_buttons=seq:2,stop:1,...`
-  (1 faint, 2 bright) and the lit pads as `melodee_pads=1,3,12`. For
-  checks without hands on the device.
+  (1 faint, 2 bright) and the lit pads as `melodee_pads=1,3,12`; for the
+  sequencer `melodee_rec=` (0 off, 1 armed, 2 recording),
+  `melodee_count_in=` (the beat, 0 none), `melodee_position=` (the selected
+  track's tick in its pattern, −1 none), `melodee_pattern_ticks=`,
+  `melodee_events=`, `melodee_q=` (ticks), `melodee_first_tick=` and
+  `melodee_signature=`. For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
+  bpm, countin, recarmed, timecorrect,
   capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.

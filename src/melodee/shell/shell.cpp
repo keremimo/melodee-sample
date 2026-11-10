@@ -55,6 +55,7 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
 void Shell::button(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
+    if (b == Button::TopLeft) ui.b1_held = pressed && ui.page == PageId::Patterns; // B1 held on Patterns: the wheel sets the BPM
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
         if (!pressed) return;
         switch (b) {
@@ -183,7 +184,7 @@ void Shell::button(Button b, bool pressed) {
             context_.open(PageId::Capture);
             break;
         }
-        context_.set_recording(!ui.recording); // a take: Shift + Minus undoes it like any edit
+        context_.seq_record(); // arm, record now, or stop recording; a take is undone like any edit (Shift + Minus)
         break;
     case Button::TapTempo:
         if (ui.shift) { // Shift: the metronome, Off -> On -> Rec (only while Seq Record)
@@ -275,7 +276,7 @@ void Shell::wheel(int delta) {
         return;
     }
     if (pad_bank_move(context_, delta)) return; // Pad Bank held: the wheel jumps banks
-    if (ui_.shift && ui_.last_pot >= 0) {
+    if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns) { // on Patterns Shift + wheel locates by Q
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
         ui_.shift_used = true;
         auto bindings = page_bindings(*project_, ui_, context_.pattern(), ui_.last_pot_shift);
@@ -345,11 +346,13 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         out.has_notes[t] = !patterns_->at[t][project_->tracks[t].pattern].empty();
     out.playing = host.playing();
     for (unsigned t = 0; t < track_count; ++t) {
-        out.steps[t] = host.step_of(t);
+        out.positions[t] = host.position_of(t);
         out.playing_patterns[t] = uint8_t(host.pattern_of(t));
     }
-    out.position = unsigned(std::max(out.steps[ui_.track], 0));
+    out.position = unsigned(std::max(out.positions[ui_.track], 0));
     out.ticks = host.ticks();
+    out.count_in = host.count_in();
+    out.tempo = context_.tempo_now();
     {
         const auto& r = host.recorder();
         out.take.state = uint8_t(r.state()); out.take.frames = r.frames(); out.take.length = r.length(); out.take.level = r.level();
@@ -369,13 +372,13 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         for (unsigned n = 0; n < pattern_count; ++n) {
             const auto& pattern = patterns_->at[t][n];
             auto& sketch = out.sketches[t][n];
-            sketch.length = pattern.length; sketch.division = pattern.division; sketch.notes = false;
-            for (unsigned k = 0; k < sketch.keys.size(); ++k) {
-                const Note* note = k < pattern.length ? pattern.steps[k].first() : nullptr;
-                sketch.keys[k] = note ? note->key : 0;
-                sketch.notes |= note != nullptr;
+            sketch.length = pattern.length; sketch.keys.fill(0);
+            sketch.notes = !pattern.empty();
+            for (const auto& e : pattern.events) { // the first note of each of the first 64 sixteenths
+                unsigned k = e.tick / sixteenth_ticks;
+                if (k >= sketch.keys.size() || e.tick >= pattern.length) break;
+                if (!sketch.keys[k]) sketch.keys[k] = e.key;
             }
-            if (!sketch.notes) sketch.notes = !pattern.empty(); // notes beyond step 64
         }
     out.song_playing = host.song_playing();
     out.song_bar = host.song_bar();
@@ -388,7 +391,12 @@ std::string Shell::summary() const {
     return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
            " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load()) +
-           " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text() + " melodee_pads=" + lit_pads_text();
+           " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text() + " melodee_pads=" + lit_pads_text() +
+           " melodee_rec=" + std::to_string(rec_state.load()) + " melodee_count_in=" + std::to_string(host.count_in()) +
+           " melodee_position=" + std::to_string(host.position_of(pt >> 8)) +
+           " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
+           " melodee_q=" + std::to_string(pattern_q.load()) + " melodee_first_tick=" + std::to_string(first_tick.load()) +
+           " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100);
 }
 
 // The lit pads by number, 1-16.
@@ -434,16 +442,17 @@ void starting_project(Project& project, PatternBank& patterns) {
         {0, 38, 2, 110}, {3, 38, 1, 70}, {4, 41, 1, 96}, {6, 36, 2, 96}, {8, 33, 3, 120},
         {11, 36, 1, 64}, {12, 38, 2, 104}, {14, 31, 2, 88},
     };
-    for (auto& n : line) {
-        auto& step = patterns.at[0][0].steps[n.step];
-        step.notes[0] = {n.key, n.velocity};
-        step.length = n.length;
-    }
+    auto note = [](Pattern& p, unsigned step, uint8_t key, uint8_t velocity, unsigned length) {
+        Event e;
+        e.tick = step * sixteenth_ticks; e.length = uint16_t(length * sixteenth_ticks); e.key = key; e.velocity = velocity;
+        p.add(e);
+    };
+    for (auto& n : line) note(patterns.at[0][0], n.step, n.key, n.velocity, n.length);
     // Track 6: kick on the beat, snare on two and four, closed hats on the off-beats.
     auto& beat = patterns.at[5][0];
-    for (unsigned st = 0; st < 16; st += 4) beat.steps[st].notes[0] = {36, 120};
-    for (unsigned st : {4u, 12u}) beat.steps[st].notes[1] = {37, 110};
-    for (unsigned st = 2; st < 16; st += 4) beat.steps[st].notes[0] = {43, 90};
+    for (unsigned st = 0; st < 16; st += 4) note(beat, st, 36, 120, 1);
+    for (unsigned st : {4u, 12u}) note(beat, st, 37, 110, 1);
+    for (unsigned st = 2; st < 16; st += 4) note(beat, st, 43, 90, 1);
 }
 
 } // namespace melodee

@@ -21,15 +21,26 @@ void shift_pad(Context& c, unsigned pad) {
         settings.toggle_full_level();
         toggled(c, job.name, settings.full_level());
         return;
+    case 1: // Half Seq: the first half of the pattern
+        c.half_length();
+        return;
     case 2: // Double Seq: the pattern twice as long, played twice
         c.double_length();
-        c.notice(job.name);
         return;
-    case 3: // Count-In: a bar before recording (it counts in from phase 2)
+    case 5: // Half Speed: every note twice as far apart
+        c.half_speed();
+        return;
+    case 6: // Double Speed: every note half as far apart
+        c.double_speed();
+        return;
+    case 13: // Time Correct: the chosen pads' notes onto Q
+        c.open(PageId::TimeCorrect);
+        return;
+    case 3: // Count-In: a bar of the metronome before Play starts a take
         settings.count_in = !settings.count_in;
         toggled(c, job.name, settings.count_in);
         return;
-    case 9: // Rec Quantize: recorded notes onto the grid (recording off the grid comes in phase 2)
+    case 9: // Rec Quantize: recorded notes onto the nearest step of Q; off, they keep the time played
         settings.rec_quantize = !settings.rec_quantize;
         toggled(c, job.name, settings.rec_quantize);
         return;

@@ -86,6 +86,9 @@ private:
     bool settings_loaded = false;
     int leave_after_save = -1; // the saves count to wait for before leaving
     std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}, tempo_now {0}; // copies for summary()
+    // Phase 2, for remote checks: Seq Record (0 off, 1 armed, 2 recording), the selected pattern's
+    // length in ticks, its notes, its Q and the first note's tick, and the time signature.
+    std::atomic<uint32_t> rec_state {0}, pattern_ticks {0}, pattern_events {0}, pattern_q {0}, first_tick {0}, signature_now {0};
 };
 
 // The project Melodee starts with: four tracks with sounds and a bass line.

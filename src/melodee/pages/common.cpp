@@ -21,10 +21,13 @@ ui::Header header_of(const Snapshot& s) {
     h.playing = s.playing;
     h.recording = s.ui.recording;
     char bpm[16];
-    int tempo = s.project.tempo;
+    int tempo = int(s.tempo);
     if (tempo % 10) std::snprintf(bpm, sizeof(bpm), "%d.%d", tempo / 10, tempo % 10);
     else std::snprintf(bpm, sizeof(bpm), "%d", tempo / 10);
     h.bpm = bpm;
+    // Count-In: the beat counted before the take; Seq Record armed: Play starts it.
+    if (s.count_in) h.left.push_back(ui::chip("COUNT " + juce::String(s.count_in), ui::colour::rec));
+    else if (s.ui.rec_armed) h.left.push_back(ui::chip("REC ARMED", ui::colour::rec));
     return h;
 }
 
@@ -107,10 +110,24 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             c.label = "AMOUNT"; c.bipolar = true;
             c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
             break;
-        case Kind::PatternBars: // turned by the bar, shown by the step
-            c.label = "LENGTH"; c.value = juce::String(s.pattern.length); c.unit = s.pattern.length == 1 ? "step" : "steps";
+        case Kind::PatternBars: case Kind::PatternLength: { // by the bar; a length that is not whole bars by the step of Q
+            unsigned bar = s.project.bar_ticks();
+            if (s.pattern.length % bar) { c.label = "LENGTH"; c.value = juce::String(s.pattern.steps()); c.unit = "steps"; break; }
+            unsigned bars = s.pattern.length / bar;
+            c.label = "LENGTH"; c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars";
             break;
-        case Kind::Division: c.label = "DIVISION"; c.value = division_name(Division(b.value)); break;
+        }
+        case Kind::Division: c.label = "Q"; c.value = division_name(Division(b.value)); break;
+        case Kind::TimeSignature: {
+            auto sig = time_signatures[unsigned(b.value) % time_signature_count];
+            c.label = "TIME SIG"; c.value = juce::String(sig.beats) + "/" + juce::String(sig.unit);
+            break;
+        }
+        case Kind::TcShift:
+            c.label = "SHIFT"; c.bipolar = true; c.unit = "ticks";
+            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+            break;
+        case Kind::TcSwing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::Swing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::SongZoom: c.label = "ZOOM"; c.value = juce::String(song_zooms[b.value]); c.unit = "bars"; break;
         case Kind::SongPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
@@ -160,7 +177,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
             break;
         }
         case Kind::PadSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
-        case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(s.project.tempo / 10); c.unit = "bpm"; break;
+        case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(int(s.tempo) / 10); c.unit = "bpm"; break;
         case Kind::NameSuggest: {
             std::array<const char*, max_suggestions> names {};
             unsigned count = name_suggestions(s.ui.name, names);

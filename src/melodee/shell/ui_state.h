@@ -15,7 +15,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -54,6 +54,18 @@ struct UiState {
     bool repeat_held = false, repeat_turned_on = false;
     uint32_t repeat_down = 0, repeat_tap_at = 0;
     bool exit_open = false, recording = false;
+    bool rec_armed = false;        // Seq Record pressed while stopped: Play starts the take (its light flashes)
+    uint8_t lead_pattern = 0;      // the pattern launched last: whose tempo plays with BPM per pattern on
+    uint32_t locate = 0;           // Patterns: where Shift + Play carries on from, ticks (the wheel moves it)
+    bool b1_held = false;          // Patterns: B1 held, the wheel sets the BPM
+    bool bpm_tenths = false;       // and Push while it is held: whole BPM or tenths
+    // Time Correct (Shift + Pad 14): shift in ticks and swing for the notes moved, and the keys chosen.
+    int16_t tc_shift = 0;
+    uint8_t tc_swing = 50;
+    std::array<uint64_t, 3> tc_keys {}; // a bit a key, 0..191 (kit keys run to 163)
+    bool tc_all = true;                 // B2: every note of the pattern, whatever the pads chose
+    bool tc_key(unsigned key) const { return key < 192 && ((tc_keys[key / 64] >> (key % 64)) & 1); }
+    void tc_toggle(unsigned key) { if (key < 192) tc_keys[key / 64] ^= uint64_t(1) << (key % 64); }
     std::array<uint8_t, track_count> edit_page {}, edit_row {};
     uint16_t sounds_cursor = 0;
     uint8_t sounds_filter = 0;       // all, favourites, recent

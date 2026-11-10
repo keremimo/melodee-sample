@@ -61,6 +61,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     {
         const ProjectPack* done = nullptr;
         while (host.take_done_pack(done)) delete done;
+        context_.free_retired(); // pattern copies played until a newer one came
         const TrackPack* track_done = nullptr; // a track copy, or its undo
         while (host.take_done_track(track_done)) delete track_done;
     }
@@ -124,14 +125,22 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const auto& t = project_->tracks[ui_.track];
         const auto& pad = t.pads[t.last_pad % sampler_pads];
         page_track.store(uint32_t(ui_.page) | uint32_t(ui_.track) << 8, std::memory_order_relaxed);
-        tempo_now.store(project_->tempo, std::memory_order_relaxed);
+        tempo_now.store(context_.tempo_now(), std::memory_order_relaxed);
+        const auto& shown = context_.pattern();
+        rec_state.store(ui_.recording ? 2 : ui_.rec_armed ? 1 : 0, std::memory_order_relaxed);
+        pattern_ticks.store(shown.length, std::memory_order_relaxed);
+        pattern_events.store(uint32_t(shown.events.size()), std::memory_order_relaxed);
+        pattern_q.store(shown.q(), std::memory_order_relaxed);
+        first_tick.store(shown.events.empty() ? 0 : shown.events.front().tick, std::memory_order_relaxed);
+        auto sig = project_->time_signature();
+        signature_now.store(sig.beats * 100u + sig.unit, std::memory_order_relaxed);
         pad_sample.store(pad.sample, std::memory_order_relaxed);
         pad_frames.store(pad.used() ? project_->samples[pad.sample % sample_slots].frames : 0, std::memory_order_relaxed);
     }
     const auto& project = *project_;
     const auto& track = project.tracks[ui.track];
     bool playing = host.playing();
-    int step_now = host.step_of(ui.track);
+    int position = host.position_of(ui.track);
     uint32_t ticks = host.ticks();
     bool tracks = tracks_on_pads(ui), muting = ui.mute_mode() && !ui.name.open() && !tracks;
     bool mute_kit = muting && mute_on_kit(ui, kit_pads());
@@ -163,9 +172,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         } else if (ui.page == PageId::Steps) {
             const auto& pattern = context_.pattern();
             unsigned step = ui.steps_bar * bar_steps + pad;
-            bool inside = step < pattern.length, on = inside && !pattern.steps[step].empty();
-            colour = on ? track_light(ui.track, 0.8f) : inside ? Rgb {} : Rgb {};
-            if (playing && inside && step_now == int(step)) colour = led_colour::white(0.7f);
+            bool inside = step < pattern.steps(), on = inside && !pattern.step(step).empty();
+            colour = on ? track_light(ui.track, 0.8f) : Rgb {};
+            if (playing && inside && position >= 0 && unsigned(position) / pattern.q() == step) colour = led_colour::white(0.7f);
             if (int(step) == ui.held_step) colour = led_colour::white(1);
         } else if (ui.page == PageId::Punch) {
             // The bank's punches: held or locked bright, in white on the master.
@@ -252,9 +261,12 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::SixteenLevels, ui.page == PageId::Levels || (track.engine == EngineKind::Sampler ? track.levels : track.layout == PadLayout::Levels));
     on(B::Play, playing);
     on(B::Stop, false);
-    on(B::SeqRecord, ui.recording);
+    // Seq Record: bright while recording, flashing while armed (Play starts the take) or counting in.
+    if (ui.rec_armed || (ui.recording && host.count_in())) set(B::SeqRecord, (now / 250) % 2 ? L::Bright : L::Dim);
+    else on(B::SeqRecord, ui.recording);
     // Tap Tempo flashes on the beat while playing.
-    on(B::TapTempo, playing && ticks % ticks_per_quarter < ticks_per_quarter / 3);
+    unsigned beat = project.beat_ticks();
+    on(B::TapTempo, playing && ticks % beat < beat / 3);
     on(B::Mute, ui.mute_mode());           // bright while mute mode is on, latched or held
     on(B::PadBank, tracks_on_pads(ui));    // held, or a track copy under way
     on(B::Erase, ui.erase || ui.copying != UiState::Copying::Off); // lit while copying

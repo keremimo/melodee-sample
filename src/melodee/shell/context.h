@@ -44,12 +44,11 @@ public:
     void begin_punch(unsigned kind, uint8_t target, uint8_t depth);
     void end_punch();
     unsigned song_sixteenth() const;                   // where the song is, in sixteenths
-    // The last take: where each note fell (for Quantise), and while Seq
-    // Record is on, the edit it becomes in the history when it goes off.
-    struct TakeNote { uint16_t step = 0; uint8_t key = 0; bool late = false; };
-    std::array<TakeNote, 256> take_notes {};
-    unsigned take_count = 0;
+    // While Seq Record is on: the edit the take becomes in the history when it goes off.
     std::unique_ptr<Edit> take_edit;
+    // Notes the take wrote that are still held: their length is what was played.
+    struct Held { int16_t key = -1; uint8_t track = 0, pattern = 0; uint32_t tick = 0, since = 0; };
+    std::array<Held, 16> held_notes {};
     int take_track = -1, take_pattern = -1;
     bool in_take(unsigned t, unsigned p) const { return take_edit && take_track == int(t) && take_pattern == int(p); } // Seq Record on this pattern
     bool played_song = false; // the last Play was the song's
@@ -102,16 +101,23 @@ public:
     void song_tick();                                       // MIDI thread, often: follows the song's bar
     // Shift's second jobs.
     void double_length();     // Shift + Pad 3 (Double Seq): the pattern twice as long, played twice
-    void quantise_take();     // the last take's late notes onto their nearest step; off the buttons until Time Correct (phase 2)
+    void half_length();       // Shift + Pad 2 (Half Seq): the first half only
+    void half_speed();        // Shift + Pad 6: every note twice as far apart (what falls past the end goes)
+    void double_speed();      // Shift + Pad 7: every note half as far apart
+    void time_correct();      // Time Correct's B3: the chosen notes onto Q, swung and shifted; one undo
     void toggle_reverse();    // Shift + Loop: the last pad's reverse
     void play_continue();     // Shift + Play: on from where it stopped
-    void set_recording(bool on); // Seq Record: a take begins; when it ends it goes into the history
+    void set_recording(bool on); // a take begins; when it ends it goes into the history
+    void seq_record();           // Seq Record: stopped, arm (Play starts the take); playing, record at once; recording, stop recording
     void sync_punches();
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);
     // Steps
     void set_step(unsigned track, unsigned step, const Step& value);
+    // The pattern's notes changed in the model: the audio thread gets a copy to play.
+    void sync_pattern(unsigned track, unsigned pattern);
+    void free_retired();           // pattern copies the audio thread is done with
     // Motion: a pot move while recording and playing; Erase + pot on Motion.
     void record_motion(int param, int value);
     void clear_lane(int param);
@@ -139,18 +145,17 @@ public:
         change();
         commit_edit(std::move(edit));
     }
-    static bool same_step(const Step& a, const Step& b) {
-        for (unsigned n = 0; n < notes_per_step; ++n)
-            if (a.notes[n].key != b.notes[n].key || a.notes[n].velocity != b.notes[n].velocity) return false;
-        return a.length == b.length && a.chance == b.chance && a.flags == b.flags;
-    }
-    // Patterns (their cards: length, Q, swing)
+    // Patterns (their cards: length, Q, swing; Shift: any bars, time signature, click)
     void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing
     void clear_pattern(unsigned track, unsigned pattern);
     // A pattern onto another of `track`; from_track, when given, is where it comes from.
     void copy_pattern(unsigned track, unsigned from, unsigned to, int from_track = -1);
-    void set_length(unsigned steps);                         // the selected track's pattern
+    void set_length(uint32_t ticks);                         // the selected track's pattern
     void set_division(Division division);
+    void set_signature(unsigned index);                      // the project's; patterns of whole bars keep their bar count
+    void set_seq_tempo(bool on);                             // B2 on Patterns: BPM per pattern (SEQ) or global (GBL)
+    void locate(int way);                                    // the wheel on Patterns: by a beat (Shift: by Q)
+    unsigned tempo_now() const { return project.tempo_of(ui.lead_pattern); }
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     // Projects on the card
@@ -210,13 +215,15 @@ public:
     void key(int key, int velocity, bool down);
 
 private:
-    void quantise_notes();
     void double_notes();
+    void scale_notes(bool slower);
     void capture_notes();
     unsigned held_pads() const { unsigned n = 0; for (auto& pad : pad_keys) n += pad[0] >= 0; return n; }
     std::array<uint32_t, 4> taps {};
     unsigned tap_count = 0;
     void record(int key, int velocity);
+    void record_release(int key);
+    void erase_motion_from(unsigned track, unsigned pattern, unsigned step); // motion at and past a sixteenth
 };
 
 } // namespace melodee

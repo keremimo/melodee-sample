@@ -14,7 +14,7 @@ namespace {
 using namespace ui;
 constexpr uint32_t tap_ms = 300;
 
-unsigned bars_of(const Pattern& p) { return std::max(1u, (unsigned(p.length) + bar_steps - 1) / bar_steps); }
+unsigned bars_of(const Pattern& p) { return std::max(1u, (p.steps() + bar_steps - 1) / bar_steps); } // pages of sixteen steps
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& pattern = s.pattern;
@@ -26,7 +26,7 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"STEPS", "ROLL", "MOTION"}, 0, c}, h);
 
     int cursor = s.ui.step_cursor;
-    const auto& cur = pattern.steps[size_t(std::max(cursor, 0)) % max_steps];
+    const auto& cur = pattern.step(unsigned(std::max(cursor, 0)) % pattern.steps());
     float x0 = zone::pad, top = zone::picture_y;
     float tw = p.text("Step " + juce::String(cursor + 1), x0, top, 140, 22, plain(colour::text, type::title, Weight::SemiBold));
     if (const Note* n = cur.first()) p.text(note_name(n->key), x0 + tw + 6, top + 1, 60, 22, plain(c, 12, Weight::Medium));
@@ -44,8 +44,8 @@ void draw(Paint& p, const Snapshot& s) {
         return best;
     };
     int lo = 1000, hi = -1;
-    for (unsigned st = first; st < first + bar_steps && st < pattern.length; ++st)
-        for (auto& n : pattern.steps[st].notes)
+    for (unsigned st = first; st < first + bar_steps && st < pattern.steps(); ++st)
+        for (auto& n : pattern.step(st).notes)
             if (n.velocity) { lo = std::min(lo, index_of(n.key)); hi = std::max(hi, index_of(n.key)); }
     if (hi < 0) lo = hi = index_of(s.track().step_note());
     int top_row = std::max(hi, (lo + hi) / 2 + 4);
@@ -57,13 +57,13 @@ void draw(Paint& p, const Snapshot& s) {
     int highlight = held ? s.ui.held_step : cursor;
     if (highlight >= int(first) && highlight < int(first + bar_steps))
         p.fill(rx + (highlight - first) * cw, ry, cw, 8 * rh, c.withAlpha(0.14f));
-    for (unsigned st = first; st < first + bar_steps && st < pattern.length; ++st) {
-        const auto& step = pattern.steps[st];
+    for (unsigned st = first; st < first + bar_steps && st < pattern.steps(); ++st) {
+        const auto& step = pattern.step(st);
         for (auto& n : step.notes) {
             if (!n.velocity) continue;
             int row = top_row - index_of(n.key);
             if (row < 0 || row > 7) continue;
-            float nx = rx + (st - first) * cw + 1, ny = ry + row * rh + 1.5f;
+            float nx = rx + (st - first + float(n.offset) / pattern.q()) * cw + 1, ny = ry + row * rh + 1.5f; // played off the grid: where
             float nw = std::min<float>(step.length, float(first + bar_steps - st)) * cw - 2;
             p.fill(nx, ny, nw, rh - 3, c, 2);
             if (int(st) == highlight) p.ring(nx - 1, ny - 1, nw + 2, rh - 1, colour::text, 2.5f);
@@ -71,12 +71,12 @@ void draw(Paint& p, const Snapshot& s) {
     }
     // Velocity bars and the step row, the playing step in white.
     float vy = ry + 8 * rh + 4;
-    int playing_step = s.playing ? int(s.position % pattern.length) : -1;
+    int playing_step = s.playing ? int((s.position % pattern.length) / pattern.q()) : -1;
     for (unsigned k = 0; k < bar_steps; ++k) {
         unsigned st = first + k;
         float x = rx + 1 + k * cw;
-        bool inside = st < pattern.length;
-        const Note* n = inside ? pattern.steps[st].first() : nullptr;
+        bool inside = st < pattern.steps();
+        const Note* n = inside ? pattern.step(st).first() : nullptr;
         bool head = int(st) == playing_step || int(st) == highlight;
         auto col = head ? colour::text : c;
         if (n) {
@@ -101,7 +101,7 @@ void draw(Paint& p, const Snapshot& s) {
     float gy = y + 13, gh = 70, gc = (w - 6) / 4, gr = (gh - 6) / 4;
     for (unsigned pad = 0; pad < 16; ++pad) {
         unsigned st = first + pad, row = 3 - pad / 4, column = pad % 4;
-        bool on = st < pattern.length && !pattern.steps[st].empty();
+        bool on = st < pattern.steps() && !pattern.step(st).empty();
         bool white = int(st) == highlight && held;
         float cx = x + column * (gc + 2), cy = gy + row * (gr + 2);
         p.fill(cx, cy, gc, gr, white ? colour::text : on ? c : colour::surf, 3);
@@ -120,14 +120,14 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     auto& pattern = c.pattern();
     unsigned st = unsigned(c.ui.steps_bar) * bar_steps + pad % 16;
-    if (st >= pattern.length) return;
+    if (st >= pattern.steps()) return;
     if (down) {
         if (c.ui.erase) { c.edit_pattern(c.ui.track, c.track().pattern, "Erase step", [&] { c.set_step(c.ui.track, st, Step {}); }); return; }
         c.ui.step_cursor = int16_t(st);
         c.ui.held_step = int16_t(st);
         c.ui.held_since = c.now;
         c.ui.held_edited = false;
-        c.ui.held_created = pattern.steps[st].empty();
+        c.ui.held_created = pattern.step(st).empty();
         if (c.ui.held_created) {
             Step step;
             step.notes[0] = {c.track().step_note(), uint8_t(std::max<int>(velocity, 64))};
@@ -145,7 +145,7 @@ void wheel(Context& c, int delta) {
     auto& pattern = c.pattern();
     if (c.ui.held_step >= 0) {
         // The held step's notes move together, one semitone a detent.
-        Step step = pattern.steps[size_t(c.ui.held_step)];
+        Step step = pattern.step(unsigned(c.ui.held_step));
         for (auto& n : step.notes) if (n.velocity) n.key = uint8_t(std::clamp(n.key + delta, 0, 127));
         if (const Note* n = step.first()) {
             auto& t = c.track();
@@ -157,7 +157,7 @@ void wheel(Context& c, int delta) {
         c.ui.held_edited = true;
         return;
     }
-    c.ui.step_cursor = int16_t(std::clamp<int>(c.ui.step_cursor + delta, 0, pattern.length - 1));
+    c.ui.step_cursor = int16_t(std::clamp<int>(c.ui.step_cursor + delta, 0, int(pattern.steps()) - 1));
     c.ui.steps_bar = uint8_t(c.ui.step_cursor / bar_steps);
 }
 

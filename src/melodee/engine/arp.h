@@ -20,6 +20,7 @@ inline const char* arp_mode_name(ArpMode m) {
 // 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T. Note Repeat's B1-B3 pick
 // 1/8, 1/16, 1/32 and, with Shift, their triplets (MELODEE_PARITY.md).
 constexpr unsigned arp_rates = 8;
+constexpr unsigned arp_ticks_per_quarter = 24; // the arp's own clock, apart from the sequencer's 96
 inline unsigned arp_rate_ticks(unsigned rate) { static const unsigned t[] {24, 16, 12, 8, 6, 4, 3, 2}; return t[rate % arp_rates]; }
 inline const char* arp_rate_name(unsigned rate) {
     static const char* n[] {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T"};

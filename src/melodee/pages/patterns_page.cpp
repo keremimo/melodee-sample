@@ -1,34 +1,53 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // PATTERNS (Seq, the MPC's Sequence mode): tracks down, sixteen patterns
-// across, eight tracks in view; the wheel moves the selected track and the
-// view follows. K1 the selected pattern's length by the bar (1-16), K2 its
-// Q (division), K3 swing for the whole project. B2 Song. The pads
-// are that track's sixteen patterns: tap to queue (it starts on the next
-// bar), Erase + pad clears, hold a pad and tap another to copy. Shift +
-// Erase copies too: a pad, then (on this or another track) where it goes.
-// B3 COLUMN latches column launch: a pad then launches that column on every
-// track (open question 8; it was Shift + pad until Shift + pad became the
-// printed jobs in parity phase 1b). Minus / Plus move the track, as the wheel.
+// across, eight tracks in view following the selected one. K1 the selected
+// pattern's length (1, 2, 4 .. 128 bars; Shift + K1 any bar count), K2 its
+// Q (Shift + K2 the project's time signature), K3 swing (Shift + K3 the
+// metronome's level). The wheel moves the playhead by a beat (Shift: by Q);
+// stopped, it sets where Shift + Play carries on from. Hold B1 and turn the
+// wheel for the BPM (Push: whole BPM or tenths); B2 switches BPM per pattern
+// (SEQ) and global (GBL). The header shows where the playhead is, the time
+// signature and Rec Quantize (Shift + Pad 10). The pads are that track's
+// sixteen patterns: tap to queue (it starts on the next bar), Erase + pad
+// clears, hold a pad and tap another to copy. Shift + Erase copies too: a
+// pad, then (on this or another track) where it goes. B3 COLUMN latches
+// column launch: a pad then launches that column on every track. Minus /
+// Plus move the track. Song is Shift + Pad 12 (B2 moved to the BPM in
+// parity phase 2, as on the MPC).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/ui/widgets.h"
 
 namespace melodee {
 namespace {
 using namespace ui;
 
+// Bar.beat.tick of a position in the pattern, as the MPC counts (from 1).
+juce::String where(const Snapshot& s, uint32_t ticks) {
+    unsigned bar = s.project.bar_ticks(), beat = s.project.beat_ticks();
+    char text[24];
+    std::snprintf(text, sizeof(text), "%u.%u.%02u", ticks / bar + 1, ticks % bar / beat + 1, ticks % beat);
+    return text;
+}
+
+juce::String bpm_text(unsigned tenths) { return juce::String(tenths / 10) + "." + juce::String(tenths % 10); }
+
 void draw(Paint& p, const Snapshot& s) {
     unsigned first = s.ui.track / 8 * 8;
     Header h = header_of(s);
-    h.left.push_back(pill(juce::String(first + 1) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(first + 8) + " OF 16"));
-    // B3 COLUMN on: a tap launches the whole column (in place of the plain pill, so the header fits)
-    h.left.push_back(s.ui.launch_column ? pill("LAUNCH COLUMN", colour_of(s)) : pill("LAUNCH BAR"));
-    {   // the selected pattern's length in steps, while it is not whole bars
-        unsigned length = s.pattern.length;
-        if (length % bar_steps) h.left.push_back(pill(juce::String(length) + " STEPS"));
-    }
-    h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"PATTERNS", "SONG", "COLUMN"}, 0, colour_of(s)}, h);
+    // B3 COLUMN on: a tap launches the whole column. Counting in or armed, the header's chip takes its room.
+    bool chip = !h.left.empty();
+    if (!chip) h.left.push_back(s.ui.launch_column ? pill("LAUNCH COLUMN", colour_of(s)) : pill("LAUNCH BAR"));
+    uint32_t length = std::max<uint32_t>(s.pattern.length, 1);
+    uint32_t at = s.playing && s.positions[s.ui.track] >= 0 ? uint32_t(s.positions[s.ui.track]) : s.ui.locate % length;
+    h.left.push_back(pill(where(s, at), s.playing ? colour::text : colour::mid));
+    auto sig = s.project.time_signature();
+    h.left.push_back(pill(juce::String(sig.beats) + "/" + juce::String(sig.unit)));
+    h.left.push_back(pill(s.ui.settings.rec_quantize ? "REC Q " + juce::String(division_name(s.pattern.division)) : juce::String("REC Q OFF"),
+                          s.ui.settings.rec_quantize ? colour::mid : colour::dim));
+    // No track tag: the grid marks the selected track, and the header needs the room.
+    frame(p, s, {{"BPM", s.project.seq_tempo ? "SEQ BPM" : "GBL BPM", "COLUMN"}, s.ui.launch_column ? 2 : 0, colour_of(s)}, h);
 
     constexpr float gap = 2, label_w = 16, head_h = 9, top = zone::picture_y + 1.5f;
     constexpr float cw = (zone::width - 2 * zone::pad - label_w - 16 * gap) / 16;
@@ -55,8 +74,10 @@ void draw(Paint& p, const Snapshot& s) {
             bool queued = track.used() && s.playing && n == track.pattern && n != live;
             if (playing) {
                 p.fill(x, y, cw, rh, c, 3);
-                if (s.playing && s.steps[t] >= 0) { // how far through the pattern
-                    float done = float(s.steps[t] + 1) / pattern.length;
+                int position = s.positions[t];
+                bool here = s.playing ? position >= 0 : selected; // the playhead, or where Shift + Play carries on from
+                if (here) {
+                    float done = float((s.playing ? uint32_t(position) : s.ui.locate) % std::max<uint32_t>(pattern.length, 1) + 1) / pattern.length;
                     p.g.saveState();
                     p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), int(cw + 1), int(rh)));
                     p.fill(x, y + rh - 2.5f, cw * done, 2.5f, colour::bg.withAlpha(0.5f));
@@ -72,7 +93,21 @@ void draw(Paint& p, const Snapshot& s) {
             } else {
                 p.fill(x, y, cw, rh, colour::quiet, 3);
             }
+            // BPM per pattern: a pattern with a tempo of its own carries a dot.
+            if (s.project.seq_tempo && s.project.pattern_tempo[n] && row == 0)
+                p.fill(x + cw / 2 - 1, top + head_h - 1.5f, 2, 2, colour::text, 1);
         }
+    }
+    if (s.ui.b1_held) { // the BPM window while B1 is held: the wheel sets it, Push whole / tenths
+        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
+        float w = 150, hgt = 70, x = (zone::width - w) / 2, y = zone::picture_y + (zone::picture_h - hgt) / 2;
+        p.fill(x, y, w, hgt, colour::panel, 6);
+        p.ring(x, y, w, hgt, colour_of(s), 6);
+        juce::String title = s.project.seq_tempo ? "P" + juce::String(s.ui.lead_pattern + 1) + " BPM" : juce::String("GLOBAL BPM");
+        p.text(title, x, y + 6, w, 10, caps_text(colour::mid, 7), juce::Justification::centred);
+        p.text(bpm_text(s.tempo), x, y + 18, w, 30, plain(colour::text, 26, Weight::SemiBold), juce::Justification::centred);
+        p.text(s.ui.bpm_tenths ? "WHEEL: 0.1  PUSH: 1" : "WHEEL: 1  PUSH: 0.1", x, y + 52, w, 10, caps_text(colour::dim, 7),
+               juce::Justification::centred);
     }
 }
 
@@ -110,14 +145,22 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
     ui.pattern_held = -1;
 }
 
-void wheel(Context& c, int delta) { c.select_track(unsigned(std::clamp<int>(c.ui.track + delta, 0, int(track_count) - 1))); }
+// B1 held: the BPM, by a whole one or a tenth; else the playhead.
+void wheel(Context& c, int delta) {
+    if (c.ui.b1_held) { c.set_tempo(int(c.tempo_now()) + delta * (c.ui.bpm_tenths ? 1 : 10)); return; }
+    c.locate(delta);
+}
+
+void push(Context& c) { if (c.ui.b1_held) c.ui.bpm_tenths = !c.ui.bpm_tenths; }
+
+void nudge(Context& c, int way) { c.select_track(unsigned(std::clamp<int>(c.ui.track + way, 0, int(track_count) - 1))); }
 
 void soft(Context& c, int key) {
-    if (key == 1) c.open(PageId::Song);
+    if (key == 1) c.set_seq_tempo(!c.project.seq_tempo);
     if (key == 2) c.ui.launch_column = !c.ui.launch_column;
 }
 } // namespace
 
-const PageSpec patterns_page {draw, pad, wheel, no_push, soft, wheel};
+const PageSpec patterns_page {draw, pad, wheel, push, soft, nudge};
 
 } // namespace melodee

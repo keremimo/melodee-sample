@@ -16,7 +16,8 @@ void restore_track(Context& c, unsigned t, const TrackState& state) {
     t %= track_count;
     c.project.tracks[t] = state.track;
     c.patterns.at[t] = state.patterns;
-    auto* pack = new TrackPack {uint8_t(t), state.track, state.patterns, c.project.motion};
+    c.free_retired();
+    auto* pack = new TrackPack(t, state.track, state.patterns, c.project.motion);
     Command load {Command::Type::TrackLoad, uint8_t(t)};
     load.track_pack = pack;
     if (!c.host.send(load)) delete pack;

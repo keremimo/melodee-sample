@@ -42,6 +42,7 @@ const PageSpec& page_spec(PageId page) {
     case PageId::SettingsPage: return settings_page;
     case PageId::About: return about_page;
     case PageId::PadFx: return pad_fx_page;
+    case PageId::TimeCorrect: return time_correct_page;
     case PageId::Stage:
     default: return stage_page;
     }

@@ -27,6 +27,14 @@ namespace {
 
 // The boards' sample content, close enough to compare page by page. Names
 // and numbers are placeholders, as on the boards.
+// One note on a step of a pattern's Q, in place of what the step held.
+void put(Pattern& p, unsigned step, uint8_t key, uint8_t velocity, uint8_t length = 1, uint8_t flags = 0) {
+    Step s;
+    s.notes[0] = {key, velocity};
+    s.length = length; s.flags = flags;
+    p.set_step(step, s);
+}
+
 void board_project(Shell& shell) {
     auto& project = shell.project();
     std::snprintf(project.name, sizeof(project.name), "Night drive");
@@ -42,18 +50,19 @@ void board_project(Shell& shell) {
     project.tracks[0].pattern = 1;
     project.tracks[0].set_name("FUNK BASS II");
     for (unsigned t = 1; t < 7; ++t) {
-        auto& p = shell.patterns().at[t][0];
-        p.steps[0].notes[0] = {48, 100};
+        put(shell.patterns().at[t][0], 0, 48, 100);
     }
     // Track 1's pattern 2: the bass line of the Steps board, in each of its four bars.
     auto& line = shell.patterns().at[0][1];
     line = shell.patterns().at[0][0];
-    line.length = 64;
+    line.length = 64 * sixteenth_ticks;
     for (unsigned s = 16; s < 64; ++s) {
-        line.steps[s] = line.steps[s % 16];
-        for (auto& n : line.steps[s].notes) if (n.velocity) n.key = uint8_t(n.key + 12); // as on the Roll board
+        Step step = line.step(s % 16);
+        for (auto& n : step.notes) if (n.velocity) n.key = uint8_t(n.key + 12); // as on the Roll board
+        line.set_step(s, step);
     }
-    line.steps[22].notes[0] = {48, 96}; line.steps[22].length = 2; line.steps[22].flags = step_accent;
+    put(line, 22, 48, 96, 2, step_accent);
+    { Step played = line.step(26); for (auto& n : played.notes) if (n.velocity) n.offset = 7; line.set_step(26, played); } // played late, Rec Quantize off
     // The Patterns board: which patterns hold notes, a small tune in each.
     const char* state[] {"dpdeeeeedeeeeeee", "pdeeeeeeeeeeeeee", "pqddeeeedeeeeeee", "ddpeeeeeeeeeeeee",
                          "dpddeeeeeeeeeeee", "pdeeeeeeeeeeeeee", "pdeeeeeeeeeeeeee", "deeeeeeeeeeeeeee"};
@@ -63,7 +72,7 @@ void board_project(Shell& shell) {
         for (unsigned n = 0; n < 16; ++n) {
             if (state[t][n] == 'e' || (t == 0 && n == 1)) continue;
             auto& pattern = shell.patterns().at[t][n];
-            for (unsigned k = 0; k < 6; ++k) pattern.steps[at[k] + (n % 2)].notes[0] = {uint8_t(48 + tune[(k + n + t) % 6]), 100};
+            for (unsigned k = 0; k < 6; ++k) put(pattern, at[k] + (n % 2), uint8_t(48 + tune[(k + n + t) % 6]), 100);
         }
     // The Song board: markers, clips and the loop.
     auto& song = project.song;
@@ -191,25 +200,42 @@ const Preview previews[] {
          for (unsigned t = 0; t < 10; ++t) s.meters[t] = meters[t];
      }},
     {"steps", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9;
+         s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"roll", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26; s.ui.recording = true;
+         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26 * sixteenth_ticks; s.ui.recording = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"notesheet", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26; s.ui.sheet_open = true;
+         s.ui.page = PageId::Roll; s.ui.step_cursor = 22; s.playing = true; s.position = 26 * sixteenth_ticks; s.ui.sheet_open = true;
      }},
     {"motion", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Motion; s.playing = true; s.position = 40; s.ui.recording = true;
+         s.ui.page = PageId::Motion; s.playing = true; s.position = 40 * sixteenth_ticks; s.ui.recording = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"patterns", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true; s.ui.launch_column = true; // B3: whole columns
          const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
-         for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.steps[t] = int(4 + t); }
+         for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
          s.project.tracks[2].pattern = 1;
+     }},
+    {"bpm", [](Shell&, Snapshot& s) { // B1 held on Patterns, BPM per pattern: pattern 2's own tempo
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.b1_held = true; s.project.seq_tempo = true;
+         s.project.pattern_tempo[1] = 985; s.ui.lead_pattern = 1; s.tempo = 985; s.ui.bpm_tenths = true;
+     }},
+    {"countin", [](Shell&, Snapshot& s) { // Seq Record with Count-In: the third beat of the bar before the take
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.playing = true; s.ui.recording = true; s.count_in = 3;
+         s.project.signature = 2; // 3/4
+         s.ui.settings.rec_quantize = false;
+     }},
+    {"recarmed", [](Shell&, Snapshot& s) { // Seq Record pressed while stopped: Play starts the take
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.rec_armed = true; s.ui.locate = 5 * ticks_per_quarter + 12;
+     }},
+    {"timecorrect", [](Shell&, Snapshot& s) { // Shift + Pad 14: the chosen pads' notes onto Q
+         s.ui.page = PageId::TimeCorrect; s.ui.track = 0; s.ui.tc_all = false; s.ui.tc_swing = 62; s.ui.tc_shift = -6;
+         for (unsigned pad : {0u, 2u, 4u, 7u}) s.ui.tc_toggle(unsigned(pad_note(s.project, s.track(), pad).key));
+         s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
     {"patterncopy", [](Shell&, Snapshot& s) { // Shift + Erase on Patterns, then a pattern: where does it go
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.copying = UiState::Copying::Patterns; s.ui.copy_from = 0;
@@ -217,7 +243,7 @@ const Preview previews[] {
     {"song", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 24; s.ui.song_view = 16; s.ui.song_zoom = 2;
          s.ui.song_pattern = 2; s.ui.song_length = 4;
-         s.playing = s.song_playing = true; s.song_bar = 20; s.ticks = 48;
+         s.playing = s.song_playing = true; s.song_bar = 20; s.ticks = 48 * 4;
          // Punches written with Seq Record: a stutter on the master, a low pass on track 3.
          s.project.song.add_punch({23, 12, 4, 4, 255, 100});
          s.project.song.add_punch({27, 0, 16, 8, 2, 80});
@@ -226,7 +252,7 @@ const Preview previews[] {
      }},
     {"songzoom", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 24; s.ui.song_zoom = 0;
-         s.playing = s.song_playing = true; s.song_bar = 25; s.ticks = 40;
+         s.playing = s.song_playing = true; s.song_bar = 25; s.ticks = 40 * 4;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"clipsheet", [](Shell&, Snapshot& s) {
@@ -327,7 +353,7 @@ const Preview previews[] {
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 3; s.ui.move_open = true; s.ui.move_cursor = 1;
          preview_projects(s);
      }},
-    {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = 24; s.project.click = true; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+    {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.project.click = true; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"arp", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Arp; s.ui.track = 2; s.playing = true;
          auto& t = s.project.tracks[2]; t.arp = true; t.chord = true; t.arp_octaves = 2; t.chord_type = 1;

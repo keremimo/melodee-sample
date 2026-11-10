@@ -18,12 +18,15 @@ struct Command {
         Param,       // track, index = parameter, value
         Wheel,       // track, value 0..1000
         Level, Pan, Send, Mute, Solo, // track, value
-        SetStep,     // track, pattern, index = step, step
-        Length,      // track, pattern, value = steps
+        PatternData, // track, pattern, data: the pattern's new copy (the one it replaces goes back to be freed)
         Pattern,     // track, value = pattern to play (on the next bar while playing patterns)
-        Division,    // track, pattern, value = Division
-        Play,        // value 1: the song from bar `index`; 0: the patterns
+        Play,        // value 1: the song from bar `index`; 0: the patterns from tick `position`. track 1: a bar's count-in first
         Stop,
+        Locate,      // position: the patterns playing jump there (the wheel on Patterns)
+        Signature,   // index = ticks a beat, value = ticks a bar
+        PatternTempo, // index = pattern, value = its tempo (0: the global one)
+        SeqTempo,    // value: BPM per pattern on; index = the pattern that leads
+        Recorded,    // track, pattern, index = key, position = tick: written just ahead of the playhead, heard live already
         SongClip,    // index, clip
         SongCount,   // value = clips in use
         SongLoop,    // index = first bar, value = bar after the last (equal: no loop)
@@ -69,14 +72,15 @@ struct Command {
     uint8_t track = 0, pattern = 0;
     uint16_t index = 0;
     int16_t value = 0;
-    Step step {};
+    uint32_t position = 0;
+    Pattern* data = nullptr;
     MotionEvent motion {};
     ModRoute route {};
     Clip clip {};
     PadSound pad {};
     SongPunch song_punch {};
-    const struct ProjectPack* pack = nullptr;
-    const struct TrackPack* track_pack = nullptr;
+    struct ProjectPack* pack = nullptr;
+    struct TrackPack* track_pack = nullptr;
 };
 
 } // namespace melodee

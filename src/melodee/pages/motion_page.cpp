@@ -24,7 +24,7 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"STEPS", "ROLL", "MOTION"}, 2, c}, h);
 
     auto lanes = motion_lanes(s.project, s.ui);
-    unsigned length = s.pattern.length;
+    unsigned length = std::max<unsigned>(s.pattern.length, 1); // ticks
     for (unsigned lane = 0; lane < 3; ++lane) {
         int param = lanes[lane];
         float x = zone::pad, y = zone::picture_y + 1.5f + lane * 49, w = zone::width - 2 * zone::pad, lh = 46;
@@ -50,15 +50,21 @@ void draw(Paint& p, const Snapshot& s) {
         juce::Path line;
         int value = mp.value;
         line.startNewSubPath(gx, y_of(value));
-        for (unsigned step = 0; step < length; ++step) {
-            for (unsigned e = 0; e < motion.count; ++e) {
-                const auto& ev = motion.events[e];
-                if (ev.track == s.ui.track && ev.pattern == track.pattern && ev.param == param && ev.step == step) value = ev.value;
-            }
-            float x0 = gx + gw * step / length, x1 = gx + gw * (step + 1) / length;
-            line.lineTo(x0, y_of(value));
-            line.lineTo(x1, y_of(value));
+        // The lane's events by sixteenth (patterns run to 128 bars: walk the events, not the steps).
+        std::array<std::pair<uint16_t, int16_t>, motion_events> at {};
+        unsigned count = 0, sixteenths = std::max(1u, (length + sixteenth_ticks - 1) / sixteenth_ticks);
+        for (unsigned e = 0; e < motion.count; ++e) {
+            const auto& ev = motion.events[e];
+            if (ev.track == s.ui.track && ev.pattern == track.pattern && ev.param == param && ev.step < sixteenths) at[count++] = {ev.step, ev.value};
         }
+        std::sort(at.begin(), at.begin() + count);
+        for (unsigned k = 0; k < count; ++k) {
+            float ex = gx + gw * at[k].first / sixteenths;
+            line.lineTo(ex, y_of(value));
+            value = at[k].second;
+            line.lineTo(ex, y_of(value));
+        }
+        line.lineTo(gx + gw, y_of(value));
         p.g.setColour(shade);
         p.g.strokePath(line, juce::PathStrokeType(1.5f, juce::PathStrokeType::mitered, juce::PathStrokeType::butt));
         if (s.playing) p.fill(gx + gw * (s.position % length) / length, y, 1, lh, colour::text);

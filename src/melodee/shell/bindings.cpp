@@ -78,10 +78,14 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
     return lanes;
 }
 
-std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern&) {
+std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
     if (ui.name.open()) return {};
     switch (ui.page) {
+    case PageId::Patterns: // Shift: any bar count, the time signature, the metronome's level (as on the MPC)
+        return {Binding {Kind::PatternBars, 0, 1, int(max_bars), int(pattern_bars(project, pattern))},
+                Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
+                Binding {Kind::ClickLevel, 0, 0, 100, project.click_level}};
     case PageId::Keys: // Shift + K3: the pads by semitones
         if (track.engine == EngineKind::Kit909) return {};
         return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
@@ -149,9 +153,17 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
     case PageId::Patterns: // the selected track's pattern: K1 length by the bar, K2 Q, K3 swing
-        return {Binding {Kind::PatternBars, 0, 1, int(max_steps / bar_steps), int((pattern.length + bar_steps - 1) / bar_steps)},
+    {
+        unsigned bars = pattern_bars(project, pattern), index = 0;
+        while (index + 1 < pattern_length_count && pattern_lengths[index + 1] <= bars) ++index;
+        return {Binding {Kind::PatternLength, 0, 0, int(pattern_length_count) - 1, int(index)},
                 Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
                 Binding {Kind::Swing, 0, 50, 75, project.swing}};
+    }
+    case PageId::TimeCorrect: // Q (the pattern's, as on Patterns), shift and swing for the notes moved
+        return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
+                Binding {Kind::TcShift, 0, -int(ticks_per_quarter / 2), int(ticks_per_quarter / 2), ui.tc_shift},
+                Binding {Kind::TcSwing, 0, 50, 75, ui.tc_swing}};
     case PageId::Song: {
         int clip = project.song.clip_at(ui.track, ui.song_cursor);
         int pattern_value = clip >= 0 ? project.song.clips[size_t(clip)].pattern : ui.song_pattern;
@@ -224,7 +236,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {}, Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},
                 Binding {Kind::ProjectSort, 0, 0, 1, ui.project_sort}};
     case PageId::Tempo:
-        return {Binding {Kind::Tempo, 0, 30, 300, project.tempo / 10}, Binding {Kind::Swing, 0, 50, 75, project.swing},
+        return {Binding {Kind::Tempo, 0, 30, 300, int(project.tempo_of(ui.lead_pattern) / 10)}, Binding {Kind::Swing, 0, 50, 75, project.swing},
                 Binding {Kind::ClickLevel, 0, 0, 100, project.click_level}};
     case PageId::Arp:
         return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},
@@ -268,8 +280,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
     case PageId::Roll:
     case PageId::Steps: {
-        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % max_steps;
-        const auto& step = pattern.steps[at];
+        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
+        const auto step = pattern.step(at);
         if (step.empty()) return {};
         const Note* note = step.first();
         return {Binding {Kind::StepLength, 0, 1, 16, step.length}, Binding {Kind::StepVelocity, 0, 1, 127, note->velocity},

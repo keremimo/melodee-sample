@@ -13,11 +13,10 @@
 // drawing itself never holds up the MIDI thread.
 namespace melodee {
 
-// A pattern in small, for the Patterns grid and the Song's clips: its length,
-// division and the first note of each of its first 64 steps (0: none).
+// A pattern in small, for the Patterns grid and the Song's clips: its length
+// in ticks and the first note of each of its first 64 sixteenths (0: none).
 struct PatternSketch {
-    uint16_t length = 16;
-    Division division = Division::Sixteenth;
+    uint32_t length = 16 * sixteenth_ticks;
     bool notes = false;
     std::array<uint8_t, 64> keys {};
 };
@@ -28,10 +27,12 @@ struct Snapshot {
     Pattern pattern;                         // the selected track's pattern playing
     std::array<bool, track_count> has_notes {}; // the playing pattern of each track holds notes
     bool playing = false;
-    uint32_t position = 0;                   // the selected track's step playing
-    std::array<int, track_count> steps {};   // each track's step playing, -1 none
+    uint32_t position = 0;                   // where the selected track is in its pattern, ticks
+    std::array<int, track_count> positions {}; // each track's, -1 none
+    unsigned count_in = 0;                   // the Count-In's beat, 0 none
+    unsigned tempo = 1200;                   // tenths of a BPM, as it plays (BPM per pattern or global)
     std::array<uint8_t, track_count> playing_patterns {};
-    uint32_t ticks = 0;                      // 24 a quarter since Play
+    uint32_t ticks = 0;                      // 96 a quarter since Play
     bool song_playing = false;
     unsigned song_bar = 0;
     std::array<float, track_count> meters {};

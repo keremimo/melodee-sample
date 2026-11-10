@@ -15,7 +15,9 @@ struct Binding {
     enum class Kind : uint8_t {
         None, Param, Level, Pan, Send, Root, Scale, Layout, Engine, Jump, Audition, StepLength, StepVelocity, StepChance,
         ModSource, ModDest, ModAmount, // id: the route
-        PatternBars, Division, Swing,  // Length
+        PatternBars, Division, Swing,  // Patterns: PatternBars any count (Shift + K1)
+        PatternLength, TimeSignature,  // Patterns: K1 1, 2, 4 .. 128 bars; Shift + K2 the project's signature
+        TcShift, TcSwing,              // Time Correct (Division is its Q)
         SongZoom, SongPattern, SongLength, // Song; id: the clip under the cursor, or -1
         FxParam,                           // id: chain * 64 + slot * 8 + parameter
         SendBus, BusReturn,                // Sends; BusReturn id: the bus
@@ -69,6 +71,13 @@ MotionParam motion_param(const Track& track, int param);
 Binding lane_binding(const Track& track, unsigned track_index, int param);
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
+// Patterns' K1: lengths in bars, as on the MPC (Shift + K1 any bar count).
+constexpr unsigned pattern_lengths[] {1, 2, 4, 8, 16, 32, 64, 128};
+constexpr unsigned pattern_length_count = sizeof(pattern_lengths) / sizeof(pattern_lengths[0]);
+// A pattern's length in whole bars of the project's signature, rounded up.
+inline unsigned pattern_bars(const Project& project, const Pattern& pattern) {
+    return std::max(1u, unsigned((pattern.length + project.bar_ticks() - 1) / project.bar_ticks()));
+}
 // Song's zoom steps, in bars across the view.
 constexpr unsigned song_zooms[] {4, 8, 16, 32, 64};
 // The track's three favourite parameters, for every page without its own.

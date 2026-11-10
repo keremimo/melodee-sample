@@ -14,7 +14,7 @@ extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, s
     pads_page, samples_page, trim_page, chop_page,
     levels_page, record_page, project_page, tempo_page, arp_page, chord_page, capture_page,
     pad_edit_page, play_edit_page, envelope_page, filter_page, follow_page, cloud_page,
-    punch_page, pad_punch_page, settings_page, about_page, pad_fx_page;
+    punch_page, pad_punch_page, settings_page, about_page, pad_fx_page, time_correct_page;
 // The sampler's seven pages share their soft keys: the neighbours and PAGE n / 7.
 ui::SoftKeys sampler_keys(PageId page, juce::Colour colour);
 void sampler_soft(Context& c, int key);

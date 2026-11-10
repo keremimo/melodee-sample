@@ -54,6 +54,13 @@ float peak_of(const std::vector<float>& v, size_t from = 0, size_t to = SIZE_MAX
     for (size_t n = from; n < std::min(to, v.size()); ++n) { CHECK(std::isfinite(v[n])); peak = std::max(peak, std::fabs(v[n])); }
     return peak;
 }
+// One note on step `step` of the pattern's Q, in place of what the step held.
+void put(Pattern& p, unsigned step, uint8_t key, uint8_t velocity, uint8_t length = 1, uint8_t flags = 0) {
+    Step s;
+    s.notes[0] = {key, velocity};
+    s.length = length; s.flags = flags;
+    p.set_step(step, s);
+}
 std::vector<float> run(Engine& engine, unsigned frames) {
     std::vector<float> out(frames, 0.0f);
     for (unsigned done = 0; done < frames; done += 128) engine.render(out.data() + done, std::min(128u, frames - done));
@@ -90,7 +97,7 @@ void bindings() {
     CHECK(mix[1].kind == Binding::Kind::Pan && mix[1].at(0) == -50 && mix[1].at(127) == 50);
     ui.page = PageId::Steps;
     CHECK(!page_bindings(project, ui, pattern)[0].bound()); // an empty step has nothing on the cards
-    pattern.steps[0].notes[0] = {50, 90};
+    put(pattern, 0, 50, 90);
     CHECK(page_bindings(project, ui, pattern)[1].value == 90);
     ui.page = PageId::Edit; ui.edit_page[0] = 4; ui.edit_row[0] = 1;
     CHECK(page_bindings(project, ui, pattern)[0].id == prophet::FilterRelease);
@@ -131,7 +138,7 @@ void host_sequencer() {
     auto bank = std::make_unique<PatternBank>();
     load_sound(project->tracks[0], EngineKind::Prophet, 1);
     project->tempo = 1200;
-    bank->at[0][0].steps[4].notes[0] = {45, 100};
+    put(bank->at[0][0], 4, 45, 100);
     EngineHost host;
     host.load(*project, *bank);
     std::vector<int32_t> out(256);
@@ -156,9 +163,10 @@ void host_sequencer() {
     CHECK(!host.playing());
     // A step written while running lands in the mirror and plays.
     host.send({Command::Type::Mute, 0, 0, 0, 0});
-    Command write {Command::Type::SetStep, 0, 0, 0, 0};
-    write.step.notes[0] = {60, 120};
-    host.send(write);
+    Command write {Command::Type::PatternData, 0, 0};
+    write.data = new Pattern;
+    put(*write.data, 0, 60, 120);
+    host.send(write); // the copy it replaces goes back to be freed (here, by the host when it goes)
     host.send({Command::Type::Play});
     float peak = 0;
     for (unsigned n = 0; n < 40; ++n) {
@@ -186,7 +194,7 @@ void motion() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         load_sound(project->tracks[0], EngineKind::Prophet, 0);
-        for (unsigned s = 0; s < 16; ++s) bank->at[0][0].steps[s].notes[0] = {57, 100};
+        for (unsigned s = 0; s < 16; ++s) put(bank->at[0][0], s, 57, 100);
         if (closed) project->motion.write({0, 0, 0, prophet::Cutoff, 0});
         EngineHost host;
         host.load(*project, *bank);
@@ -385,8 +393,8 @@ void arrange() {
     auto setup = [](Project& project, PatternBank& bank) {
         load_sound(project.tracks[0], EngineKind::Prophet, 0);
         project.tempo = 1200;
-        bank.at[0][0].steps[0].notes[0] = {57, 100}; // pattern 1: a note on its first step only
-        bank.at[0][1].steps[0].notes[0] = {69, 100};
+        put(bank.at[0][0], 0, 57, 100); // pattern 1: a note on its first step only
+        put(bank.at[0][1], 0, 69, 100);
     };
     // One bar at 120 BPM is 88200 samples; render `bars` and say in which bars track 1 sounded.
     auto sounding = [](EngineHost& host, unsigned bars) {
@@ -416,20 +424,19 @@ void arrange() {
         CHECK(!bars[0] && bars[1]);
         CHECK(!host.playing()); // past the song's end
     }
-    // Patterns: a launch waits for the next bar; 1/8 steps take twice as long as 1/16.
+    // Patterns: a launch waits for the next bar; the position counts ticks (96 a quarter, 229.7 samples each at 120 BPM).
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         setup(*project, *bank);
-        bank->at[0][0].division = Division::Eighth;
         EngineHost host;
         host.load(*project, *bank);
         host.send({Command::Type::Play});
         std::vector<int32_t> block(256);
-        for (unsigned n = 0; n < 80; ++n) host.render(block.data(), 128, 1); // 10240 samples: before the second eighth (11025)
-        CHECK(host.step_of(0) == 0 && host.pattern_of(0) == 0);
-        for (unsigned n = 0; n < 10; ++n) host.render(block.data(), 128, 1); // 11520: past it
-        CHECK(host.step_of(0) == 1);
+        for (unsigned n = 0; n < 80; ++n) host.render(block.data(), 128, 1); // 10240 samples: tick 44
+        CHECK(host.position_of(0) == 44 && host.pattern_of(0) == 0);
+        for (unsigned n = 0; n < 10; ++n) host.render(block.data(), 128, 1); // 11520: tick 50
+        CHECK(host.position_of(0) == 50);
         host.send({Command::Type::Pattern, 0, 0, 0, 1});
         host.render(block.data(), 128, 1);
         CHECK(host.pattern_of(0) == 0); // still the old one until the bar ends
@@ -763,8 +770,7 @@ void sampler_kit() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         load_sound(project->tracks[0], EngineKind::Prophet, 1);
-        auto& step = bank->at[0][0].steps[0];
-        step.notes[0] = {45, 110}; step.length = 16;
+        put(bank->at[0][0], 0, 45, 110, 16);
         auto& slot = project->tracks[0].fx.slots[0];
         slot.kind = uint8_t(EffectKind::Filter);
         const auto& info = effect_info(EffectKind::Filter);
@@ -877,8 +883,8 @@ void project_files() {
     load_sound(project->tracks[4], EngineKind::Sampler, 0);
     project->tracks[4].pads[9].sample = 2; project->tracks[4].pads[9].start = 1234; project->tracks[4].pads[9].group = 3;
     std::snprintf(project->samples[2].path, sizeof(project->samples[2].path), "/media/card/Samples/Kick.wav");
-    bank->at[0][3].length = 96; bank->at[0][3].division = Division::Eighth;
-    bank->at[0][3].steps[95].notes[1] = {64, 77}; bank->at[0][3].steps[95].flags = step_tie;
+    bank->at[0][3].length = 96 * 48; bank->at[0][3].division = Division::Eighth;
+    bank->at[0][3].add({95 * 48 + 5, 40, 64, 77, 100, step_tie}); // five ticks late, Rec Quantize off
     project->motion.write({0, 3, 7, prophet::Resonance, 61});
     project->song.place({0, 3, 8, 4, true});
     project->song.step_marker(8);
@@ -897,8 +903,9 @@ void project_files() {
     CHECK(copy->tracks[4].engine == EngineKind::Sampler && copy->tracks[4].pads[9].start == 1234 && copy->tracks[4].pads[9].group == 3);
     CHECK(!copy->tracks[4].pads[8].used());
     CHECK(std::string(copy->samples[2].path) == "/media/card/Samples/Kick.wav");
-    CHECK(copy_bank->at[0][3].length == 96 && copy_bank->at[0][3].division == Division::Eighth);
-    CHECK(copy_bank->at[0][3].steps[95].notes[0].key == 64 && copy_bank->at[0][3].steps[95].flags == step_tie);
+    CHECK(copy_bank->at[0][3].length == 96 * 48 && copy_bank->at[0][3].division == Division::Eighth);
+    CHECK(copy_bank->at[0][3].events.size() == 1 && copy_bank->at[0][3].events[0] == Event({95 * 48 + 5, 40, 64, 77, 100, step_tie}));
+    CHECK(copy_bank->at[0][3].step(95).notes[0].key == 64 && copy_bank->at[0][3].step(95).notes[0].offset == 5);
     CHECK(copy->motion.count == 1 && copy->motion.events[0].value == 61);
     CHECK(copy->song.count == 1 && copy->song.clips[0].muted && copy->song.marker_count == 1 && copy->song.loop_end == 12);
     CHECK(copy->buses[1].level == 33 && copy->buses[1].fx.slots[0].kind == uint8_t(EffectKind::Room));
@@ -1250,12 +1257,14 @@ void shift_pads() {
     using K = ShiftPadJob::Kind;
     for (unsigned n : {0u, 3u, 9u}) CHECK(shift_pad_job(n).kind == K::Toggle);
     CHECK(shift_pad_job(2).kind == K::Action && shift_pad_job(11).kind == K::Open && shift_pad_job(15).kind == K::Open);
-    for (unsigned n : {1u, 4u, 5u, 6u, 7u, 8u, 10u, 12u, 13u, 14u})
+    for (unsigned n : {1u, 5u, 6u}) CHECK(shift_pad_job(n).kind == K::Action); // Half Seq, Half / Double Speed (phase 2)
+    CHECK(shift_pad_job(13).kind == K::Open);                                  // Time Correct (phase 2)
+    for (unsigned n : {4u, 7u, 8u, 10u, 12u, 14u})
         CHECK(shift_pad_job(n).kind == K::Later && shift_pad_job(n).phase >= 2);
 
     UiState ui;
     CHECK(!ui.settings.full_level() && !ui.settings.count_in && ui.settings.rec_quantize);
-    CHECK(shift_pad_level(ui, 0) == 1 && shift_pad_level(ui, 9) == 2 && shift_pad_level(ui, 1) == 0 && shift_pad_level(ui, 11) == 1);
+    CHECK(shift_pad_level(ui, 0) == 1 && shift_pad_level(ui, 9) == 2 && shift_pad_level(ui, 4) == 0 && shift_pad_level(ui, 11) == 1);
     ui.settings.pad_response = 2;
     ui.settings.toggle_full_level();
     CHECK(ui.settings.full_level() && ui.settings.velocity(5) == 127 && shift_pad_level(ui, 0) == 2);
@@ -1283,11 +1292,11 @@ void button_remap() {
     auto project = std::make_unique<Project>();
     project->tracks[0].engine = EngineKind::Prophet;
     project->tracks[1].engine = EngineKind::Sampler;
-    Pattern pattern; pattern.length = 40;
+    Pattern pattern; pattern.length = 3 * project->bar_ticks();
     UiState ui; ui.track = 0;
     ui.page = PageId::Patterns;
     auto cards = page_bindings(*project, ui, pattern);
-    CHECK(cards[0].kind == Binding::Kind::PatternBars && cards[0].value == 3);
+    CHECK(cards[0].kind == Binding::Kind::PatternLength && pattern_lengths[cards[0].value] == 2); // 1, 2, 4 ..: 3 bars sits on 2
     CHECK(cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
     ui.page = PageId::InputConfig; ui.rec_threshold = -24;
     cards = page_bindings(*project, ui, pattern);
@@ -1380,7 +1389,7 @@ void parity_1c() {
     auto& t4 = project->tracks[4];
     t4.pads[5].sample = 1; t4.pads[70].sample = 2; t4.pads[70].pitch = -7; t4.pads[127].sample = 3; t4.bank = 7; t4.last_pad = 127;
     t4.set_pad_muted(70, true); t4.set_pad_muted(5, true);
-    bank->at[4][0].steps[2].notes[0] = {uint8_t(sampler_first_note + 127), 100};
+    put(bank->at[4][0], 2, uint8_t(sampler_first_note + 127), 100);
     auto data = save_project(*project, *bank);
     auto copy = std::make_unique<Project>();
     auto copy_bank = std::make_unique<PatternBank>();
@@ -1388,7 +1397,7 @@ void parity_1c() {
     const auto& c4 = copy->tracks[4];
     CHECK(c4.pads[5].sample == 1 && c4.pads[70].sample == 2 && c4.pads[70].pitch == -7 && c4.pads[127].sample == 3);
     CHECK(c4.bank == 7 && c4.last_pad == 127 && c4.pad_muted(70) && c4.pad_muted(5) && !c4.pad_muted(6));
-    CHECK(copy_bank->at[4][0].steps[2].notes[0].key == sampler_first_note + 127);
+    CHECK(copy_bank->at[4][0].step(2).notes[0].key == sampler_first_note + 127);
     for (const char* tag : {"KITX", "PMUT"}) CHECK(std::search(data.begin(), data.end(), tag, tag + 4) != data.end());
 
     // The engine: a pad in bank H plays from its key; muted, it is not heard, and what it played fades.
@@ -1429,10 +1438,11 @@ void parity_1c() {
     load_sound(start->tracks[0], EngineKind::Prophet, 1);
     host->load(*start, *start_bank);
     std::vector<int32_t> out(256);
-    auto pack = std::make_unique<TrackPack>();
-    pack->track = 2;
-    load_sound(pack->value, EngineKind::Prophet, 1);
-    pack->patterns[0].steps[0].notes[0] = {48, 110};
+    Track synth;
+    load_sound(synth, EngineKind::Prophet, 1);
+    std::array<Pattern, pattern_count> patterns {};
+    put(patterns[0], 0, 48, 110);
+    auto pack = std::make_unique<TrackPack>(2, synth, patterns, Motion {});
     Command load {Command::Type::TrackLoad, 2};
     load.track_pack = pack.get();
     CHECK(host->send(load));
@@ -1449,7 +1459,225 @@ void parity_1c() {
     CHECK(host->dropped() == 0);
 }
 
+// Parity phase 2: notes on any tick, patterns as event lists up to 128 bars,
+// older files, the pattern edits, count-in, time signature, BPM per pattern.
+void timing() {
+    // The step view: notes keep where in the step they fell, and their own length while the step's is unchanged.
+    Pattern p;
+    p.add({30, 40, 60, 100, 100, 0}); // step 1 of 1/16, six ticks late, held 40 ticks
+    p.add({31, 24, 62, 90, 100, 0});
+    for (uint8_t k = 0; k < 5; ++k) p.add({24 * 3, 24, uint8_t(70 + k), 100, 100, 0}); // five notes on one step
+    Step one = p.step(1);
+    CHECK(one.notes[0].key == 60 && one.notes[0].offset == 6 && one.notes[1].offset == 7 && one.length == 2);
+    one.notes[1].velocity = 50; // a velocity changed on Steps: places and lengths stay
+    p.set_step(1, one);
+    CHECK(p.events[0] == Event({30, 40, 60, 100, 100, 0}) && p.events[1].velocity == 50 && p.events[1].tick == 31);
+    Step three = p.step(3);
+    CHECK(three.notes[3].key == 73);
+    p.set_step(3, Step {}); // the four shown go; the fifth stays
+    CHECK(p.events.size() == 3 && p.events.back().key == 74);
+    CHECK(p.steps() == 16 && !p.empty());
+    // Q is only the grid: a coarser one sees the same notes in fewer, longer steps.
+    p.division = Division::Quarter;
+    CHECK(p.steps() == 4 && p.step(0).notes[0].offset == 30);
+    p.division = Division::Sixteenth;
+    CHECK(division_ticks(Division::SixtyFourth) == 6 && division_ticks(Division::QuarterTriplet) == 64 && std::string(division_name(Division::ThirtySecondTriplet)) == "1/32T");
+
+    // Rec Quantize: the nearest step, the last step's second half onto the first.
+    Pattern q;
+    q.length = 384;
+    CHECK(quantise_tick(q, 11) == 0 && quantise_tick(q, 13) == 24 && quantise_tick(q, 380) == 0);
+    q.division = Division::EighthTriplet;
+    CHECK(quantise_tick(q, 40) == 32);
+
+    // Double / Half Seq, Half / Double Speed.
+    Pattern d;
+    d.add({0, 24, 36, 100, 100, 0}); d.add({100, 24, 38, 100, 100, 0}); d.add({384, 24, 40, 100, 100, 0}); // the last is past the end
+    CHECK(double_pattern(d, 128 * 384) && d.length == 768 && d.events.size() == 4 && d.events[2].tick == 384 && d.events[3].tick == 484);
+    CHECK(!double_pattern(d, 768 + 1));
+    half_pattern(d);
+    CHECK(d.length == 384 && d.events.size() == 2);
+    scale_pattern(d, true); // half speed: twice as far apart; 100 -> 200
+    CHECK(d.events.size() == 2 && d.events[1].tick == 200 && d.events[1].length == 48 && d.length == 384);
+    scale_pattern(d, true); // again: 400 falls past the end
+    CHECK(d.events.size() == 1);
+    d.add({300, 48, 38, 100, 100, 0});
+    scale_pattern(d, false); // double speed
+    CHECK(d.events.size() == 2 && d.events[1].tick == 150 && d.events[1].length == 24);
+
+    // Time Correct: the chosen keys onto Q, the second sixteenth of each eighth late by the swing, then shifted.
+    Pattern t;
+    t.length = 384;
+    t.add({5, 24, 36, 100, 100, 0}); t.add({27, 24, 36, 100, 100, 0}); t.add({27, 24, 42, 100, 100, 0}); t.add({370, 24, 36, 100, 100, 0}); // step 15 (370 + 12 rounds down), swung to 372
+    std::array<uint64_t, 3> keys {};
+    keys[0] |= uint64_t(1) << 36;
+    time_correct_all(t, &keys, 75, 0); // 75 %: half a sixteenth late on the off sixteenths
+    CHECK(t.events.size() == 4 && t.events[0].tick == 0 && t.events[0].key == 36);
+    CHECK(t.events[1].tick == 27 && t.events[1].key == 42); // not chosen: where it was
+    CHECK(t.events[2].tick == 36 && t.events[2].key == 36); // step 1 + 12 of swing
+    time_correct_all(t, nullptr, 50, -2); // every note, two ticks early; the first wraps to the end
+    CHECK(t.events.back().tick == 382 && t.events.front().tick == 22);
+
+    // A file from before phase 2: steps at 24 a quarter and their motion become ticks and sixteenths.
+    {
+        std::vector<uint8_t> bytes {'M', 'E', 'L', 'O', 'D', 'E', 'E', '1'};
+        auto section = [&](const char* tag, std::vector<uint8_t> body) {
+            bytes.insert(bytes.end(), tag, tag + 4);
+            uint32_t n = uint32_t(body.size());
+            for (int k = 0; k < 4; ++k) bytes.push_back(uint8_t(n >> (8 * k)));
+            bytes.insert(bytes.end(), body.begin(), body.end());
+        };
+        // Track 1, pattern 4: 32 steps of 1/8 (old division 0), one note of two steps on step 5.
+        section("PATT", {0, 3, 32, 0, 0, 1, 0, 5, 0, 1, 60, 100, 2, 100, step_accent});
+        section("MOTN", {1, 0, 0, 3, 5, 0, uint8_t(prophet::Cutoff), 20, 0});
+        Project project; auto bank = std::make_unique<PatternBank>();
+        CHECK(load_project(bytes, project, *bank).empty());
+        const auto& old = bank->at[0][3];
+        CHECK(old.length == 32 * 48 && old.division == Division::Eighth && old.events.size() == 1);
+        CHECK(old.events[0] == Event({5 * 48, 2 * 48, 60, 100, 100, step_accent}));
+        CHECK(project.motion.count == 1 && project.motion.events[0].step == 10); // eighth 5 is sixteenth 10
+        // Saved again it is an event list (EVNT), and loads the same.
+        project.signature = 12; project.seq_tempo = true; project.pattern_tempo[3] = 905;
+        auto data = save_project(project, *bank);
+        for (const char* tag : {"EVNT", "MOT2", "TIME"}) CHECK(std::search(data.begin(), data.end(), tag, tag + 4) != data.end());
+        const char* patt = "PATT";
+        CHECK(std::search(data.begin(), data.end(), patt, patt + 4) == data.end());
+        Project again; auto again_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, again, *again_bank).empty());
+        CHECK(again_bank->at[0][3] == old && again.motion.events[0].step == 10);
+        CHECK(again.signature == 12 && again.time_signature().beats == 7 && again.bar_ticks() == 336 && again.seq_tempo && again.pattern_tempo[3] == 905);
+        CHECK(again.tempo_of(3) == 905 && again.tempo_of(2) == again.tempo);
+    }
+    // 128 bars of sixteenths: 2048 notes, saved and loaded whole.
+    {
+        Project project; auto bank = std::make_unique<PatternBank>();
+        auto& big = bank->at[2][0];
+        big.length = project.max_length();
+        for (unsigned n = 0; n < 2048; ++n) big.events.push_back({n * 24, 12, uint8_t(36 + n % 24), 100, 100, 0});
+        auto data = save_project(project, *bank);
+        Project copy; auto copy_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, copy, *copy_bank).empty() && copy_bank->at[2][0] == big && big.length == 128 * 384);
+    }
+
+    // The engine: a note six ticks off the grid sounds six ticks late.
+    auto host_with = [](Pattern pattern, Project* settings = nullptr) {
+        auto project = std::make_unique<Project>();
+        if (settings) *project = *settings;
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        project->tempo = 1200;
+        bank->at[0][0] = pattern;
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        return host;
+    };
+    auto render = [](EngineHost& host, unsigned blocks) {
+        std::vector<int32_t> out(256);
+        std::vector<float> left;
+        for (unsigned n = 0; n < blocks; ++n) {
+            host.render(out.data(), 128, 1);
+            for (unsigned f = 0; f < 128; ++f) left.push_back(out[2 * f] / 2147483648.0f);
+        }
+        return left;
+    };
+    {
+        Pattern late;
+        late.add({4 * 24 + 6, 24, 45, 110, 100, 0}); // tick 102: 23428 samples at 120 BPM
+        auto host = host_with(late);
+        host->send({Command::Type::Play});
+        auto left = render(*host, 240);
+        CHECK(peak_of(left, 0, 23300) == 0 && peak_of(left, 23500, 30000) > 0.005f);
+    }
+    // Count-In: a bar of clicks first, the pattern from its start after it.
+    {
+        Pattern first;
+        first.add({0, 24, 45, 110, 100, 0});
+        auto host = host_with(first);
+        host->send({Command::Type::Play, 1});
+        render(*host, 2);
+        CHECK(host->count_in() == 1 && host->position_of(0) < 0);
+        render(*host, 22050 / 128 + 2); // the second beat
+        CHECK(host->count_in() == 2);
+        render(*host, 3 * 22050 / 128); // past the bar
+        CHECK(host->count_in() == 0 && host->position_of(0) >= 0);
+    }
+    // Time signature 3/4: a queued pattern starts after three beats, not four.
+    {
+        auto host = host_with(Pattern {});
+        host->send({Command::Type::Signature, 0, 0, 96, 288});
+        host->send({Command::Type::Play});
+        render(*host, 10);
+        host->send({Command::Type::Pattern, 0, 0, 0, 1});
+        render(*host, 3 * 22050 / 128 - 20);
+        CHECK(host->pattern_of(0) == 0);
+        render(*host, 40);
+        CHECK(host->pattern_of(0) == 1);
+    }
+    // BPM per pattern: launching pattern 2 brings its own tempo; global again, the project's.
+    {
+        Project settings;
+        settings.seq_tempo = true; settings.pattern_tempo[1] = 905;
+        auto host = host_with(Pattern {}, &settings);
+        CHECK(host->tempo_now() == 1200);
+        host->send({Command::Type::Pattern, 0, 0, 0, 1});
+        render(*host, 1);
+        CHECK(host->tempo_now() == 905);
+        host->send({Command::Type::SeqTempo, 0, 0, 1, 0});
+        render(*host, 1);
+        CHECK(host->tempo_now() == 1200);
+    }
+    // Locate: the wheel moves the playhead while it plays; Play from a position starts there.
+    {
+        Pattern four; four.length = 4 * 384;
+        auto host = host_with(four);
+        host->send({Command::Type::Play});
+        render(*host, 4);
+        Command to {Command::Type::Locate};
+        to.position = 2 * 384;
+        host->send(to);
+        render(*host, 1);
+        CHECK(host->position_of(0) >= 2 * 384 && host->position_of(0) < 2 * 384 + 4);
+        host->send({Command::Type::Stop});
+        Command from {Command::Type::Play};
+        from.position = 384 + 96;
+        host->send(from);
+        render(*host, 1);
+        CHECK(host->position_of(0) >= 384 + 96 && host->position_of(0) < 384 + 100);
+    }
+    // A note written just ahead of the playhead (Rec Quantize) was heard live: skipped once, then played.
+    {
+        Pattern ahead;
+        ahead.add({0, 24, 45, 110, 100, 0});
+        auto host = host_with(ahead);
+        Command wrote {Command::Type::Recorded, 0, 0, 45};
+        wrote.position = 0;
+        host->send(wrote);
+        host->send({Command::Type::Play});
+        auto first_bar = render(*host, 88200 / 128 - 30);
+        auto second = render(*host, 100);
+        CHECK(peak_of(first_bar, 0, 40000) == 0 && peak_of(second) > 0.005f);
+    }
+
+    // Patterns' cards: K1 by 1, 2, 4 .. 128 bars, Shift + K1 any count, Shift + K2 the time signature.
+    {
+        Project project;
+        UiState ui; ui.page = PageId::Patterns;
+        Pattern five; five.length = 5 * 384;
+        auto base = page_bindings(project, ui, five, false);
+        CHECK(base[0].kind == Binding::Kind::PatternLength && base[0].max == 7 && pattern_lengths[base[0].value] == 4);
+        auto shifted = page_bindings(project, ui, five, true);
+        CHECK(shifted[0].kind == Binding::Kind::PatternBars && shifted[0].value == 5 && shifted[0].max == 128);
+        CHECK(shifted[1].kind == Binding::Kind::TimeSignature && shifted[1].value == int(common_time));
+        CHECK(shifted[2].kind == Binding::Kind::ClickLevel);
+        ui.page = PageId::TimeCorrect; ui.tc_swing = 60;
+        auto tc = page_bindings(project, ui, five, false);
+        CHECK(tc[0].kind == Binding::Kind::Division && tc[1].kind == Binding::Kind::TcShift && tc[2].kind == Binding::Kind::TcSwing && tc[2].value == 60);
+        CHECK(shift_pad_job(1).kind == ShiftPadJob::Kind::Action && shift_pad_job(13).kind == ShiftPadJob::Kind::Open);
+    }
+}
+
 int main() {
+    timing();
     pad_expression();
     parity_1c();
     shift_pads();

@@ -27,7 +27,7 @@ void Context::send(const Command& command) {
     switch (command.type) {
     case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Pressure:
     case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
-    case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: break;
+    case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::Locate: case Type::Recorded: break;
     default: dirty = true;
     }
     host.send(command);
@@ -60,8 +60,11 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     ui.pots = keep;
     for (auto& pot : ui.pots) pot.bound = 0; // pick the new values up again
     edits.clear();                            // its edits were made to another project
-    take_edit.reset(); take_count = 0; take_track = -1;
-    auto* pack = new ProjectPack {project, patterns};
+    take_edit.reset(); take_track = -1;
+    for (auto& h : held_notes) h.key = -1;
+    ui.lead_pattern = project.tracks[0].pattern; // as the audio thread starts it
+    free_retired();
+    auto* pack = new ProjectPack(project, patterns);
     Command c {Type::Reload};
     c.pack = pack;
     if (!host.send(c)) delete pack;
@@ -119,6 +122,7 @@ void Context::key(int k, int velocity, bool down) {
     } else {
         note(ui.track, k, down ? velocity : 0);
     }
+    if (!down) record_release(k);
     if (down) {
         record(k, velocity);
         history[history_at % history.size()] = {ui.track, uint8_t(k), uint8_t(velocity), now, 0};
@@ -182,19 +186,45 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
     ui.chord_pad = int8_t(pad);
 }
 
-// Seq Record while playing: the note lands on the step playing now.
+// Seq Record while playing: the note lands where it was played, or with Rec
+// Quantize on (Shift + Pad 10) on the nearest step of Q. A note moved ahead of
+// the playhead is skipped once by the audio thread, as it was heard live.
 void Context::record(int key, int velocity) {
-    if (!ui.recording || !host.playing()) return;
+    if (!ui.recording || !host.playing() || host.count_in()) return;
     auto& p = pattern();
-    unsigned at = unsigned(std::max(host.step_of(ui.track), 0)) % p.length;
-    Step step = p.steps[at];
-    for (auto& n : step.notes) if (n.velocity && n.key == key) return;
-    for (auto& n : step.notes) if (!n.velocity) { n = {uint8_t(key), uint8_t(velocity)}; break; }
-    set_step(ui.track, at, step);
-    // Where in the step it fell, for Quantise take: past half way is late.
-    unsigned division = division_ticks(p.division);
-    bool late = host.ticks() % division >= division / 2;
-    if (take_count < take_notes.size()) take_notes[take_count++] = {uint16_t(at), uint8_t(key), late};
+    int position = host.position_of(ui.track);
+    if (position < 0) return;
+    uint32_t at = uint32_t(position) % p.length;
+    bool ahead = false;
+    if (ui.settings.rec_quantize) {
+        uint32_t snapped = quantise_tick(p, at); // past the last step: the first, next time round
+        ahead = snapped > at || (snapped == 0 && at > 0);
+        at = snapped;
+    }
+    Event e;
+    e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
+    if (!p.add(e)) { notice("Pattern full"); return; }
+    sync_pattern(ui.track, track().pattern);
+    if (ahead) { Command c {Type::Recorded, ui.track, track().pattern, uint16_t(key)}; c.position = at; send(c); }
+    for (auto& h : held_notes)
+        if (h.key < 0) { h = {int16_t(key), ui.track, track().pattern, at, host.ticks()}; break; }
+}
+
+// A recorded note let go: it is as long as it was held.
+void Context::record_release(int key) {
+    for (auto& h : held_notes) {
+        if (h.key != key) continue;
+        h.key = -1;
+        auto& p = patterns.at[h.track % track_count][h.pattern % pattern_count];
+        uint32_t held = host.ticks() - h.since;
+        for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
+            if (p.events[n].key == key) {
+                p.events[n].length = uint16_t(std::clamp<uint32_t>(held, 1, 65535));
+                sync_pattern(h.track, h.pattern);
+                break;
+            }
+        return;
+    }
 }
 
 void Context::set_param(unsigned t, int id, int value) {
@@ -278,8 +308,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::StepLength:
     case Kind::StepVelocity:
     case Kind::StepChance: {
-        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % max_steps;
-        Step step = pattern().steps[at];
+        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern().steps();
+        Step step = pattern().step(at);
         if (step.empty()) break;
         if (b.kind == Kind::StepLength) step.length = uint8_t(value);
         else if (b.kind == Kind::StepChance) step.chance = uint8_t(value);
@@ -304,7 +334,11 @@ void Context::apply(const Binding& b, int value) {
         set_route(unsigned(b.id), route);
         break;
     }
-    case Kind::PatternBars: set_length(unsigned(value) * bar_steps); break;
+    case Kind::PatternBars: set_length(uint32_t(value) * project.bar_ticks()); break;
+    case Kind::PatternLength: set_length(pattern_lengths[unsigned(value) % pattern_length_count] * project.bar_ticks()); break;
+    case Kind::TimeSignature: set_signature(unsigned(value)); break;
+    case Kind::TcShift: ui.tc_shift = int16_t(value); break;
+    case Kind::TcSwing: ui.tc_swing = uint8_t(value); break;
     case Kind::Division: set_division(Division(value)); break;
     case Kind::Swing:
         project.swing = uint8_t(value);
@@ -574,18 +608,31 @@ void Context::set_solo(unsigned t, bool on) {
 
 void Context::set_step(unsigned t, unsigned at, const Step& value) {
     auto& tr = project.tracks[t % track_count];
-    patterns.at[t % track_count][tr.pattern].steps[at % max_steps] = value;
-    Command c {Type::SetStep, uint8_t(t), tr.pattern, uint16_t(at % max_steps), 0};
-    c.step = value;
-    send(c);
+    auto& p = patterns.at[t % track_count][tr.pattern];
+    if (at >= p.steps()) return;
+    p.set_step(at, value);
+    sync_pattern(t, tr.pattern);
+}
+
+void Context::free_retired() {
+    Pattern* old = nullptr;
+    while (host.take_retired_pattern(old)) delete old;
+}
+
+void Context::sync_pattern(unsigned t, unsigned p) {
+    free_retired();
+    Command c {Type::PatternData, uint8_t(t % track_count), uint8_t(p % pattern_count)};
+    c.data = new Pattern(patterns.at[t % track_count][p % pattern_count]);
+    if (!host.send(c)) delete c.data;
+    dirty = true;
 }
 
 void Context::record_motion(int param, int value) {
-    if (!ui.recording || !host.playing() || param < 0) return;
+    if (!ui.recording || !host.playing() || host.count_in() || param < 0) return;
     auto& t = track();
     MotionEvent e;
     e.track = ui.track; e.pattern = t.pattern; e.param = uint8_t(param); e.value = int16_t(value);
-    e.step = uint16_t(unsigned(std::max(host.step_of(ui.track), 0)) % pattern().length);
+    e.step = uint16_t(uint32_t(std::max(host.position_of(ui.track), 0)) % pattern().length / sixteenth_ticks);
     if (!project.motion.write(e)) return; // full: the move still sounds, it is just not kept
     Command c {Type::MotionWrite};
     c.motion = e;
@@ -604,11 +651,12 @@ void Context::clear_lane(int param) {
 void Context::launch(unsigned t, unsigned p) {
     auto& tr = project.tracks[t % track_count];
     tr.pattern = uint8_t(p % pattern_count);
+    ui.lead_pattern = tr.pattern; // BPM per pattern: the one launched last leads
     send({Type::Pattern, uint8_t(t), 0, 0, int16_t(tr.pattern)});
     if (ui.recording && host.song_playing()) record_launch(t % track_count, tr.pattern);
 }
 
-unsigned Context::song_sixteenth() const { return host.song_bar() * 16 + (host.ticks() % ticks_per_bar) / (ticks_per_bar / 16); }
+unsigned Context::song_sixteenth() const { return host.song_bar() * 16 + (host.ticks() % project.bar_ticks()) / sixteenth_ticks; }
 
 void Context::record_launch(unsigned t, unsigned p) {
     unsigned bar = host.song_bar() + 1; // like a launch, on the next bar
@@ -702,29 +750,16 @@ void Context::sync_punches() {
 
 void Context::clear_pattern(unsigned t, unsigned p) {
     auto& pattern = patterns.at[t % track_count][p % pattern_count];
-    for (unsigned s = 0; s < max_steps; ++s) {
-        if (pattern.steps[s].empty()) continue;
-        pattern.steps[s] = Step {};
-        Command c {Type::SetStep, uint8_t(t), uint8_t(p), uint16_t(s)};
-        send(c);
-    }
+    if (pattern.events.empty()) return;
+    pattern.events.clear();
+    sync_pattern(t, p);
 }
 
 void Context::copy_pattern(unsigned t, unsigned from, unsigned to, int from_track) {
     unsigned source_track = from_track < 0 ? t % track_count : unsigned(from_track) % track_count;
     if (from == to && source_track == t % track_count) return;
-    const auto source = patterns.at[source_track][from % pattern_count];
-    auto& target = patterns.at[t % track_count][to % pattern_count];
-    for (unsigned s = 0; s < max_steps; ++s) {
-        if (target.steps[s].empty() && source.steps[s].empty()) continue;
-        target.steps[s] = source.steps[s];
-        Command c {Type::SetStep, uint8_t(t), uint8_t(to), uint16_t(s)};
-        c.step = source.steps[s];
-        send(c);
-    }
-    target.length = source.length; target.division = source.division;
-    send({Type::Length, uint8_t(t), uint8_t(to), 0, int16_t(target.length)});
-    send({Type::Division, uint8_t(t), uint8_t(to), 0, int16_t(target.division)});
+    patterns.at[t % track_count][to % pattern_count] = patterns.at[source_track][from % pattern_count];
+    sync_pattern(t, to);
 }
 
 // Undo and redo. ----------------------------------------------------------
@@ -736,17 +771,9 @@ void Context::notice(const std::string& text) {
 
 void Context::restore_pattern(unsigned t, unsigned p, const Pattern& value) {
     t %= track_count; p %= pattern_count;
-    auto& target = patterns.at[t][p];
-    for (unsigned s = 0; s < max_steps; ++s) {
-        if (same_step(target.steps[s], value.steps[s])) continue;
-        target.steps[s] = value.steps[s];
-        Command c {Type::SetStep, uint8_t(t), uint8_t(p), uint16_t(s)};
-        c.step = value.steps[s];
-        send(c);
-    }
-    target.length = value.length; target.division = value.division;
-    send({Type::Length, uint8_t(t), uint8_t(p), 0, int16_t(target.length)});
-    send({Type::Division, uint8_t(t), uint8_t(p), 0, int16_t(target.division)});
+    if (patterns.at[t][p] == value) return;
+    patterns.at[t][p] = value;
+    sync_pattern(t, p);
 }
 
 void Context::restore_pad(unsigned t, unsigned kit, const PadState& value) {
@@ -777,18 +804,11 @@ void Context::erase_pad_notes(unsigned kit) {
     bool found = false;
     auto erase = [&] {
         auto& p = pattern();
-        for (unsigned s = 0; s < p.length; ++s) {
-            Step after = p.steps[s];
-            unsigned kept = 0, gone = 0;
-            for (const auto& n : p.steps[s].notes) {
-                if (!n.velocity) continue;
-                if (n.key == key) ++gone; else after.notes[kept++] = n; // the rest close up
-            }
-            if (!gone) continue;
-            for (unsigned n = kept; n < notes_per_step; ++n) after.notes[n] = Note {};
-            set_step(ui.track, s, kept ? after : Step {});
-            found = true;
-        }
+        auto before = p.events.size();
+        p.events.erase(std::remove_if(p.events.begin(), p.events.end(), [&](const Event& e) { return e.key == key; }), p.events.end());
+        if (p.events.size() == before) return;
+        sync_pattern(ui.track, track().pattern);
+        found = true;
     };
     edit_pattern(ui.track, track().pattern, what.c_str(), erase); // inside a take, part of it
     notice(found ? what : pad_text("No notes on", kit));
@@ -822,8 +842,7 @@ void Context::commit_edit(Edit&& edit) {
     bool changed = false;
     if (edit.pattern_before) {
         const auto& now = patterns.at[edit.track][unsigned(edit.pattern)];
-        bool differs = now.length != edit.pattern_before->length || now.division != edit.pattern_before->division;
-        for (unsigned s = 0; s < max_steps && !differs; ++s) differs = !same_step(now.steps[s], edit.pattern_before->steps[s]);
+        bool differs = now != *edit.pattern_before;
         if (differs) edit.pattern_after = std::make_unique<Pattern>(now);
         else { edit.pattern_before.reset(); edit.pattern = -1; }
         changed |= differs;
@@ -871,7 +890,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (motion) restore_motion(*motion);
     const auto& whole = after ? e.track_after : e.track_before;
     if (whole) restore_track(*this, e.track, *whole); // last: its pack carries the motion as restored
-    take_count = 0; take_track = -1; // Quantise has no take to work on any more
+    take_track = -1;
 }
 
 void Context::undo() {
@@ -890,15 +909,54 @@ void Context::redo() {
     notice("Redo " + e->what);
 }
 
-void Context::set_length(unsigned steps) {
+void Context::set_length(uint32_t ticks) {
     auto& p = pattern();
-    p.length = uint16_t(std::clamp<unsigned>(steps, 1, max_steps));
-    send({Type::Length, ui.track, track().pattern, 0, int16_t(p.length)});
+    ticks = std::clamp<uint32_t>(ticks, 1, project.max_length());
+    if (p.length == ticks) return;
+    p.length = ticks;
+    sync_pattern(ui.track, track().pattern);
 }
 
 void Context::set_division(Division division) {
+    if (pattern().division == division) return;
     pattern().division = division;
-    send({Type::Division, ui.track, track().pattern, 0, int16_t(division)});
+    sync_pattern(ui.track, track().pattern);
+}
+
+// Every pattern shares the time signature; one of whole bars keeps its bar count.
+void Context::set_signature(unsigned index) {
+    index %= time_signature_count;
+    if (index == project.signature) return;
+    unsigned before = project.bar_ticks();
+    project.signature = uint8_t(index);
+    unsigned after = project.bar_ticks();
+    for (unsigned t = 0; t < track_count; ++t)
+        for (unsigned p = 0; p < pattern_count; ++p) {
+            auto& pattern = patterns.at[t][p];
+            if (pattern.length % before) continue;
+            pattern.length = std::min<uint32_t>(pattern.length / before * after, project.max_length());
+            sync_pattern(t, p);
+        }
+    send({Type::Signature, 0, 0, uint16_t(project.beat_ticks()), int16_t(after)});
+    auto sig = project.time_signature();
+    notice("Time signature " + std::to_string(sig.beats) + "/" + std::to_string(sig.unit));
+}
+
+void Context::set_seq_tempo(bool on) {
+    project.seq_tempo = on;
+    send({Type::SeqTempo, 0, 0, ui.lead_pattern, int16_t(on)});
+    notice(on ? "BPM per pattern" : "BPM global");
+}
+
+// The wheel on Patterns: the playhead by a beat, or with Shift by Q. Stopped,
+// it sets where Shift + Play carries on from.
+void Context::locate(int way) {
+    const auto& p = pattern();
+    unsigned step = ui.shift ? p.q() : project.beat_ticks();
+    uint32_t from = host.playing() ? host.ticks() : ui.locate;
+    int64_t at = int64_t(from / step * step) + int64_t(way) * step;
+    ui.locate = uint32_t(std::max<int64_t>(at, 0)) % std::max<uint32_t>(p.length, 1);
+    if (host.playing() && !host.song_playing()) { Command c {Type::Locate}; c.position = ui.locate; send(c); }
 }
 
 void Context::send_pad(unsigned t, unsigned n) {
@@ -1111,37 +1169,50 @@ void Context::capture() {
 
 void Context::capture_notes() {
     auto& t = track();
-    double step_ms = 60000.0 / (project.tempo / 10.0) / 4;
-    double window = step_ms * bar_steps * ui.capture_bars, start = double(now) - window;
+    double step_ms = 60000.0 / (tempo_now() / 10.0) / 4;
+    double window = step_ms * bar_steps * ui.capture_bars, start = double(now) - window; // in sixteenths of 4/4
     auto& p = patterns.at[ui.track][ui.capture_into % pattern_count];
-    clear_pattern(ui.track, ui.capture_into);
-    p.length = uint16_t(bar_steps * ui.capture_bars);
-    send({Type::Length, ui.track, ui.capture_into, 0, int16_t(p.length)});
+    p.events.clear();
+    p.division = Division::Sixteenth;
+    p.length = uint32_t(bar_steps * ui.capture_bars) * sixteenth_ticks;
     unsigned grid = ui.capture_quantise == 2 ? 2 : 1; // 1/16, or 1/8 (every other step)
+    unsigned steps = bar_steps * ui.capture_bars;
     for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()); ++n) {
         const auto& h = history[n];
         if (h.track != ui.track || h.at < start || h.at > now) continue;
         unsigned at = unsigned(std::lround((h.at - start) / step_ms / grid)) * grid;
-        if (at >= p.length) at = p.length - grid; // a note right at the end belongs to the last step
-        Step s = p.steps[at];
-        for (auto& note : s.notes) if (!note.velocity) { note = {h.key, h.velocity}; break; }
-        s.length = uint8_t(std::clamp<long>(std::lround((h.length ? h.length : step_ms) / step_ms), 1, 16));
-        set_step(ui.track, at, s);
+        if (at >= steps) at = steps - grid; // a note right at the end belongs to the last step
+        Event e;
+        e.tick = at * sixteenth_ticks; e.key = h.key; e.velocity = h.velocity;
+        e.length = uint16_t(std::clamp<long>(std::lround((h.length ? h.length : step_ms) / step_ms), 1, 16) * sixteenth_ticks);
+        p.add(e);
     }
+    sync_pattern(ui.track, ui.capture_into);
     t.pattern = ui.capture_into; // and it plays from here
+    ui.lead_pattern = t.pattern;
     send({Type::Pattern, ui.track, 0, 0, int16_t(t.pattern)});
 }
 
+// Play: from the start (on Song, the arrangement from the cursor). Seq Record
+// armed, the take begins, after a bar's count when Count-In is on.
 void Context::play() {
+    if (host.playing()) return;
     played_song = ui.page == PageId::Song;
-    if (played_song) send({Type::Play, 0, 0, ui.song_cursor, 1});
-    else send({Type::Play});
+    if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
+    bool count = ui.recording && ui.settings.count_in;
+    if (played_song) send({Type::Play, uint8_t(count), 0, ui.song_cursor, 1});
+    else send({Type::Play, uint8_t(count)});
 }
 
+// Shift + Play: on from where it stopped (or where the wheel moved it on Patterns).
 void Context::play_continue() {
     if (host.playing()) return;
-    if (played_song) send({Type::Play, 0, 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
-    else send({Type::Play});
+    if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
+    bool count = ui.recording && ui.settings.count_in;
+    if (played_song) { send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); return; } // from the bar it stopped in
+    Command c {Type::Play, uint8_t(count)};
+    c.position = ui.locate;
+    send(c);
 }
 
 // Shift + Loop: the last pad plays backwards, or forwards again.
@@ -1155,28 +1226,94 @@ void Context::toggle_reverse() {
 }
 
 void Context::double_length() {
-    edit_pattern(ui.track, track().pattern, "Double length", [&] { double_notes(); });
+    if (pattern().length * 2 > project.max_length()) { notice("Double Seq: " + std::to_string(max_bars) + " bars at most"); return; }
+    edit_pattern(ui.track, track().pattern, "Double Seq", [&] { double_notes(); });
+    notice("Double Seq");
 }
 
 void Context::double_notes() {
     auto& p = pattern();
-    unsigned length = p.length;
-    if (length * 2 > max_steps) return;
-    for (unsigned s = 0; s < length; ++s)
-        if (!p.steps[s].empty()) set_step(ui.track, s + length, p.steps[s]);
+    uint32_t length = p.length;
+    if (!double_pattern(p, project.max_length())) return;
+    sync_pattern(ui.track, track().pattern);
     // Its motion too, as far as there is room.
     auto& motion = project.motion;
-    unsigned count = motion.count;
-    for (unsigned n = 0; n < count; ++n) {
+    unsigned sixteenths = length / sixteenth_ticks, events = motion.count;
+    for (unsigned n = 0; n < events; ++n) {
         MotionEvent e = motion.events[n];
-        if (e.track != ui.track || e.pattern != track().pattern || e.step >= length) continue;
-        e.step = uint16_t(e.step + length);
+        if (e.track != ui.track || e.pattern != track().pattern || e.step >= sixteenths) continue;
+        e.step = uint16_t(e.step + sixteenths);
         if (!motion.write(e)) break;
         Command c {Type::MotionWrite};
         c.motion = e;
         send(c);
     }
-    set_length(length * 2);
+}
+
+// Motion of a pattern at and past a sixteenth goes (Half Seq, Half Speed).
+void Context::erase_motion_from(unsigned t, unsigned p, unsigned step) {
+    auto& motion = project.motion;
+    Motion kept;
+    bool gone = false;
+    for (unsigned n = 0; n < motion.count; ++n) {
+        const auto& e = motion.events[n];
+        if (e.track == t && e.pattern == p && e.step >= step) gone = true;
+        else kept.write(e);
+    }
+    if (gone) restore_motion(kept);
+}
+
+void Context::half_length() {
+    auto& p = pattern();
+    uint32_t half = std::max<uint32_t>(p.length / 2, 1);
+    if (half == p.length) return;
+    edit_pattern(ui.track, track().pattern, "Half Seq", [&] {
+        half_pattern(p);
+        sync_pattern(ui.track, track().pattern);
+        erase_motion_from(ui.track, track().pattern, (half + sixteenth_ticks - 1) / sixteenth_ticks);
+    });
+    notice("Half Seq");
+}
+
+void Context::half_speed() {
+    edit_pattern(ui.track, track().pattern, "Half Speed", [&] { scale_notes(true); });
+    notice("Half Speed");
+}
+
+void Context::double_speed() {
+    edit_pattern(ui.track, track().pattern, "Double Speed", [&] { scale_notes(false); });
+    notice("Double Speed");
+}
+
+// Every note (and its motion) twice as far from the start and twice as long,
+// or half; the pattern keeps its length, and what falls past its end goes.
+void Context::scale_notes(bool slower) {
+    auto& p = pattern();
+    scale_pattern(p, slower);
+    sync_pattern(ui.track, track().pattern);
+    auto& motion = project.motion;
+    Motion kept;
+    unsigned end = (p.length + sixteenth_ticks - 1) / sixteenth_ticks;
+    for (unsigned n = 0; n < motion.count; ++n) {
+        MotionEvent e = motion.events[n];
+        if (e.track == ui.track && e.pattern == track().pattern) {
+            e.step = uint16_t(slower ? e.step * 2 : e.step / 2);
+            if (e.step >= end) continue;
+        }
+        kept.write(e);
+    }
+    restore_motion(kept);
+}
+
+// Time Correct's Do It: the chosen notes onto the nearest step of Q, every
+// second step of a straight Q late by the swing, then moved by the shift.
+void Context::time_correct() {
+    const auto& t = track();
+    edit_pattern(ui.track, t.pattern, "Time Correct", [&] {
+        time_correct_all(pattern(), ui.tc_all ? nullptr : &ui.tc_keys, ui.tc_swing, ui.tc_shift);
+        sync_pattern(ui.track, t.pattern);
+    });
+    notice("Time Correct");
 }
 
 // Seq Record on: the take begins, with what it may change as it is now.
@@ -1187,47 +1324,43 @@ void Context::set_recording(bool on) {
     send({Type::SongRecord, 0, 0, 0, int16_t(on)});
     if (project.click == 2) send_click(); // the Rec metronome follows Seq Record
     if (on) {
-        take_count = 0;
+        ui.rec_armed = false;
         take_track = ui.track; take_pattern = track().pattern;
         take_edit = std::make_unique<Edit>(begin_edit("Take", ui.track, track().pattern, true));
         return;
     }
+    for (auto& h : held_notes) h.key = -1; // notes held on keep the length they were written with
     song_tick(); // finishes the clips and the punch being written
     if (take_edit) commit_edit(std::move(*take_edit));
     take_edit.reset();
 }
 
-void Context::quantise_take() {
-    if (take_track < 0 || unsigned(take_track) != ui.track || int(track().pattern) != take_pattern) return;
-    edit_pattern(ui.track, track().pattern, "Quantise", [&] { quantise_notes(); });
+// Seq Record, as on the MPC: stopped it arms (Play starts the take); playing
+// it records at once; recording, it stops recording and playback goes on.
+void Context::seq_record() {
+    if (ui.recording) { set_recording(false); return; }
+    if (host.playing()) { set_recording(true); return; }
+    ui.rec_armed = !ui.rec_armed;
 }
 
-void Context::quantise_notes() {
-    auto& p = pattern();
-    for (unsigned n = 0; n < take_count; ++n) {
-        auto& note = take_notes[n];
-        if (!note.late) continue;
-        unsigned from = note.step % p.length, to = (from + 1) % p.length;
-        Step a = p.steps[from], b = p.steps[to];
-        Note moving {};
-        for (auto& x : a.notes) if (x.velocity && x.key == note.key) { moving = x; x = Note {}; break; }
-        if (!moving.velocity) continue;
-        bool there = false;
-        for (auto& x : b.notes) there |= x.velocity && x.key == note.key;
-        if (!there) for (auto& x : b.notes) if (!x.velocity) { x = moving; there = true; break; }
-        if (!there) continue; // no room: it stays
-        set_step(ui.track, from, a); set_step(ui.track, to, b);
-        note.step = uint16_t(to); note.late = false;
-    }
-}
-
+// Stop ends playback and recording together; Shift + Play carries on from here.
 void Context::stop() {
     if (!host.playing()) send({Type::AllNotesOff, 255});
+    else if (!host.song_playing()) ui.locate = uint32_t(std::max(host.position_of(ui.track), 0));
+    ui.rec_armed = false;
+    if (ui.recording) set_recording(false);
     send({Type::Stop});
 }
 
+// The tempo in play: the global one, or with BPM per pattern the lead pattern's own.
 void Context::set_tempo(int tenths) {
-    project.tempo = uint16_t(std::clamp(tenths, 300, 3000));
+    tenths = std::clamp(tenths, 300, 3000);
+    if (project.seq_tempo) {
+        project.pattern_tempo[ui.lead_pattern % pattern_count] = uint16_t(tenths);
+        send({Type::PatternTempo, 0, 0, ui.lead_pattern, int16_t(tenths)});
+        return;
+    }
+    project.tempo = uint16_t(tenths);
     send({Type::Tempo, 0, 0, 0, int16_t(project.tempo)});
 }
 

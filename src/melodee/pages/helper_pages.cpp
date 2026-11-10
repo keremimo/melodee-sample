@@ -31,14 +31,15 @@ void tempo_draw(Paint& p, const Snapshot& s) {
     h.right.push_back(label(s.project.name));
     frame(p, s, {{"HALF", "CLICK", "DOUBLE"}, -1, colour::text}, h);
     char text[16];
-    std::snprintf(text, sizeof(text), "%d.%d", s.project.tempo / 10, s.project.tempo % 10);
+    std::snprintf(text, sizeof(text), "%u.%u", s.tempo / 10, s.tempo % 10);
     float x = zone::pad + 6, y = zone::picture_y + 10;
     float w = p.text(text, x, y, 160, 40, plain(colour::text, 34, Weight::SemiBold));
     p.text("BPM", x + w + 6, y + 14, 40, 20, plain(colour::mid, 12));
     // The beat in the bar.
-    unsigned beat = s.playing ? (s.ticks / ticks_per_quarter) % 4 : 99;
-    float bw = (zone::width - 2 * zone::pad - 12 - 3 * 5) / 4;
-    for (unsigned b = 0; b < 4; ++b) p.fill(x + b * (bw + 5), y + 52, bw, 6, b == beat ? colour::text : colour::line, 3);
+    unsigned beats = std::min<unsigned>(s.project.time_signature().beats, 16);
+    unsigned beat = s.playing ? (s.ticks % s.project.bar_ticks()) / s.project.beat_ticks() : 99;
+    float bw = (zone::width - 2 * zone::pad - 12 - (beats - 1) * 5.0f) / beats;
+    for (unsigned b = 0; b < beats; ++b) p.fill(x + b * (bw + 5), y + 52, bw, 6, b == beat ? colour::text : colour::line, 3);
     p.text("TAPS", x, y + 78, 30, 12, caps_text(colour::mid, 7));
     if (s.project.click) {
         auto style = caps_text(colour::text, 7);
@@ -49,11 +50,11 @@ void tempo_draw(Paint& p, const Snapshot& s) {
     }
 }
 void tempo_soft(Context& c, int key) {
-    if (key == 0) c.set_tempo(c.project.tempo / 2);
-    if (key == 2) c.set_tempo(c.project.tempo * 2);
+    if (key == 0) c.set_tempo(int(c.tempo_now()) / 2);
+    if (key == 2) c.set_tempo(int(c.tempo_now()) * 2);
     if (key == 1) c.set_click(c.project.click + 1u);
 }
-void tempo_wheel(Context& c, int delta) { c.set_tempo(int(c.project.tempo) + delta); }
+void tempo_wheel(Context& c, int delta) { c.set_tempo(int(c.tempo_now()) + delta); }
 
 // ---------- Arp ----------
 juce::String gate_text(unsigned gate) { return "GATE " + juce::String(gate) + " %"; }
@@ -178,7 +179,7 @@ void capture_draw(Paint& p, const Snapshot& s) {
     p.text("Keep the last " + juce::String(bars) + (bars == 1 ? " bar" : " bars"), x, y, 300, 22, plain(colour::text, type::title, Weight::SemiBold));
     bool empty = true;
     // The picture: four bars of what the pads played, the kept ones bright.
-    double step_ms = 60000.0 / (s.project.tempo / 10.0) / 4, shown = step_ms * 64, start = double(s.now) - shown;
+    double step_ms = 60000.0 / (s.tempo / 10.0) / 4, shown = step_ms * 64, start = double(s.now) - shown;
     float gx = x, gy = y + 36, gw = zone::width - 2 * zone::pad, gh = 68;
     p.fill(gx, gy, gw, gh, colour::panel, 3);
     for (unsigned b = 1; b < 4; ++b) p.fill(gx + gw * b / 4, gy, 0.5f, gh, colour::line);
@@ -214,7 +215,7 @@ void capture_soft(Context& c, int key) {
 } // namespace
 
 const PageSpec tempo_page {tempo_draw, play_pad, tempo_wheel, no_push, tempo_soft,
-                           [](Context& c, int way) { c.set_tempo(int(c.project.tempo) + way * 10); }}; // Minus / Plus: a whole BPM
+                           [](Context& c, int way) { c.set_tempo(int(c.tempo_now()) + way * 10); }}; // Minus / Plus: a whole BPM
 const PageSpec arp_page {arp_draw, play_pad, no_wheel, no_push, arp_soft, arp_nudge};
 const PageSpec chord_page {chord_draw, play_pad, no_wheel, no_push, chord_soft, octave};
 const PageSpec capture_page {capture_draw, play_pad, no_wheel, [](Context& c) { c.capture(); c.open(PageId::Steps); }, capture_soft, [](Context&, int) {}};

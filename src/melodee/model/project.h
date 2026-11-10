@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include "melodee/model/pattern.h"
 #include "melodee/model/sampler.h"
 #include <algorithm>
 #include <array>
@@ -18,36 +19,7 @@ namespace melodee {
 // EngineInfo can be picked yet.
 enum class EngineKind : uint8_t { None, Prophet, Fm6, Cz, Sid, Kit909, Sampler, Count };
 
-struct Note {
-    uint8_t key = 0, velocity = 0; // velocity 0: no note
-};
-enum StepFlag : uint8_t { step_accent = 1, step_slide = 2, step_tie = 4 };
-struct Step {
-    std::array<Note, notes_per_step> notes {};
-    uint8_t length = 1;    // in steps, 1..max_steps
-    uint8_t chance = 100;  // percent
-    uint8_t flags = 0;
-    bool empty() const { for (auto n : notes) if (n.velocity) return false; return true; }
-    const Note* first() const { for (auto& n : notes) if (n.velocity) return &n; return nullptr; }
-};
-// Step divisions a pattern can run at, in clock ticks (24 a quarter note).
-enum class Division : uint8_t { Eighth, EighthTriplet, Sixteenth, SixteenthTriplet, ThirtySecond, Count };
-inline unsigned division_ticks(Division d) {
-    static const unsigned ticks[] {12, 8, 6, 4, 3};
-    return ticks[unsigned(d) < unsigned(Division::Count) ? unsigned(d) : 2];
-}
-inline const char* division_name(Division d) {
-    static const char* names[] {"1/8", "1/8T", "1/16", "1/16T", "1/32"};
-    return names[unsigned(d) < unsigned(Division::Count) ? unsigned(d) : 2];
-}
-
-struct Pattern {
-    uint16_t length = 16; // steps, 1..max_steps
-    Division division = Division::Sixteenth;
-    std::array<Step, max_steps> steps {};
-    bool empty() const { for (unsigned s = 0; s < length; ++s) if (!steps[s].empty()) return false; return true; }
-};
-// Every pattern of every track: big, so it lives on the heap.
+// Every pattern of every track (their events on the heap).
 struct PatternBank {
     std::array<std::array<Pattern, pattern_count>, track_count> at;
 };
@@ -95,11 +67,12 @@ struct Mix {
     bool mute = false, solo = false;
 };
 
-// A pot move recorded over a pattern: from `step` on, `param` holds `value`
-// on that track while that pattern plays.
+// A pot move recorded over a pattern: from `step` on (a sixteenth of the
+// pattern, whatever its Q), `param` holds `value` on that track while that
+// pattern plays.
 struct MotionEvent {
     uint8_t track = 0, pattern = 0;
-    uint16_t step = 0;
+    uint16_t step = 0; // sixteenths from the pattern's start
     uint8_t param = 0;
     int16_t value = 0;
 };
@@ -290,9 +263,27 @@ struct Track {
     }
 };
 
+// Time signatures the project can take (Shift + K2 on Patterns), as on the
+// MPC: every pattern shares it.
+struct TimeSignature { uint8_t beats = 4, unit = 4; };
+constexpr TimeSignature time_signatures[] {
+    {1, 4}, {2, 4}, {3, 4}, {4, 4}, {5, 4}, {6, 4}, {7, 4}, {8, 4}, {9, 4},
+    {3, 8}, {5, 8}, {6, 8}, {7, 8}, {9, 8}, {11, 8}, {12, 8}, {13, 8}, {15, 8},
+    {5, 16}, {7, 16}, {9, 16}, {11, 16}, {13, 16}, {15, 16},
+};
+constexpr unsigned time_signature_count = sizeof(time_signatures) / sizeof(time_signatures[0]);
+constexpr unsigned common_time = 3; // 4/4
+constexpr unsigned bar_ticks_of(TimeSignature t) { return t.beats * ticks_per_quarter * 4 / t.unit; }
+
 struct Project {
     char name[32] = "Untitled";
-    uint16_t tempo = 1200;  // tenths of a BPM
+    uint16_t tempo = 1200;  // tenths of a BPM; the global tempo
+    // BPM per pattern (B2 on Patterns): with seq_tempo on, launching pattern n
+    // (any track, or the column) plays at pattern_tempo[n]; 0 is not set yet,
+    // which plays at the global tempo.
+    bool seq_tempo = false;
+    std::array<uint16_t, pattern_count> pattern_tempo {};
+    uint8_t signature = common_time; // index into time_signatures
     uint8_t swing = 50;     // percent, 50 is straight
     uint8_t root = 2;       // 0 C .. 11 B
     uint8_t scale = 0;      // index into scales()
@@ -313,6 +304,15 @@ struct Project {
     }
     const Chain& chain(unsigned n) const { return const_cast<Project*>(this)->chain(n); }
     unsigned used_tracks() const { unsigned n = 0; for (auto& t : tracks) n += t.used(); return n; }
+    TimeSignature time_signature() const { return time_signatures[signature % time_signature_count]; }
+    unsigned bar_ticks() const { return bar_ticks_of(time_signature()); }
+    unsigned beat_ticks() const { return ticks_per_quarter * 4 / time_signature().unit; }
+    uint32_t max_length() const { return max_bars * bar_ticks(); }
+    // The tempo pattern n plays at (tenths of a BPM).
+    unsigned tempo_of(unsigned pattern) const {
+        unsigned own = pattern_tempo[pattern % pattern_count];
+        return seq_tempo && own ? own : tempo;
+    }
 };
 
 } // namespace melodee
