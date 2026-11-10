@@ -35,8 +35,8 @@ void picker(Paint& p, const Snapshot& s, juce::Colour c) {
         bool on = f == s.ui.picker_family;
         float fy = y + 6 + f * 22;
         if (on) p.fill(x + 6, fy, 100, 20, colour::raised, 4);
-        p.text(family_name(Family(f)), x + 12, fy, 70, 20, plain(on ? colour::text : colour::mid, 10, on ? Weight::SemiBold : Weight::Medium));
-        p.text(juce::String(count), x + 12, fy, 88, 20, caps_text(on ? c : colour::dim, 7), juce::Justification::centredRight);
+        p.text(family_name(Family(f)), x + 12, fy, 70, 20, plain(on ? colour::text : colour::mid, type::small, on ? Weight::SemiBold : Weight::Medium));
+        p.text(juce::String(count), x + 12, fy, 88, 20, caps_text(on ? c : colour::dim), juce::Justification::centredRight);
     }
     p.fill(x + 112, y + 6, 1, h - 12, colour::line);
     FamilyList list {};
@@ -48,7 +48,7 @@ void picker(Paint& p, const Snapshot& s, juce::Colour c) {
         float ix = x + 118 + (n / 6) * (cw + 3), iy = y + 6 + (n % 6) * 22;
         if (on) p.fill(ix, iy, cw, 20, info.built ? c : colour::raised, 4);
         p.text(info.name, ix + 7, iy, cw - 10, 20,
-               plain(on && info.built ? colour::bg : info.built ? colour::sec : colour::dim, 10.5f, Weight::Medium));
+               plain(on && info.built ? colour::bg : info.built ? colour::sec : colour::dim, type::small, Weight::Medium));
     }
 }
 
@@ -56,10 +56,10 @@ void device_card(Paint& p, const Snapshot& s, const EffectSlot& slot, unsigned i
     p.fill(x, y, w, h, on ? colour::raised : colour::quiet, 4);
     const auto& info = effect_info(EffectKind(slot.kind));
     juce::String head = juce::String(index + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(family_name(info.family)).toUpperCase();
-    p.text(head, x + 6, y + 5, w - 12, 9, caps_text(on ? c : colour::mid, 6.5f));
-    auto name = p.fit(info.name, plain(slot.bypass ? colour::dim : on ? colour::text : colour::sec, 12, Weight::SemiBold), w - 12, 8);
-    p.text(info.name, x + 6, y + 15, w - 12, 16, name);
-    if (slot.bypass) p.text("BYPASS", x + 6, y + 31, w - 12, 9, caps_text(colour::dim, 6.5f));
+    p.text(head, x + 6, y + 4, w - 12, 14, p.fit(head, caps_text(on ? c : colour::mid), w - 12, type::floor));
+    auto name = p.fit(info.name, plain(slot.bypass ? colour::dim : on ? colour::text : colour::sec, type::body, Weight::SemiBold), w - 12, type::floor);
+    p.text(info.name, x + 6, y + 19, w - 12, 17, name);
+    if (slot.bypass) p.text("BYPASS", x + 6, y + 37, w - 12, 14, caps_text(colour::dim));
     float bx = x + 6, bottom = y + h - 6, bw = (w - 12 - 10 * 2.5f) / 11;
     for (unsigned n = 0; n < 11; ++n) {
         float bh = std::max(2.0f, info.picture[n] * 0.31f);
@@ -80,7 +80,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (pad && !kit) {
         frame(p, s, {{"", "PAD", "TRACK" + on}, 1, c}, h);
         p.text("Pad effects are for a sampler track", zone::pad, zone::picture_y + 60, zone::width - 2 * zone::pad, 16,
-               plain(colour::dim, 11), juce::Justification::centred);
+               plain(colour::dim, type::small), juce::Justification::centred);
         return;
     }
     if (pad) {
@@ -111,10 +111,10 @@ void draw(Paint& p, const Snapshot& s) {
     if (s.ui.picker_open) { picker(p, s, c); return; }
     signal_flow(p, pad ? Stop::Pad : track ? Stop::Track : s.ui.page == PageId::Bus ? Stop::Bus : Stop::Master, c, kit);
 
-    // Four cards across; the window follows the cursor through six slots and + ADD.
-    unsigned shown = std::min<unsigned>(chain.size, count + 1), first = cursor > 3 ? cursor - 3 : 0;
-    float y = zone::picture_y + 18, ch = 100, gap = 4, cw = (zone::width - 2 * zone::pad - 3 * gap) / 4;
-    for (unsigned k = 0; k < 4; ++k) {
+    // Three cards across; the window follows the cursor through six slots and + ADD.
+    unsigned shown = std::min<unsigned>(chain.size, count + 1), first = cursor > 2 ? cursor - 2 : 0;
+    float y = zone::picture_y + 20, ch = 96, gap = 4, cw = (zone::width - 2 * zone::pad - 2 * gap) / 3;
+    for (unsigned k = 0; k < 3; ++k) {
         unsigned slot = first + k;
         float x = zone::pad + k * (cw + gap);
         if (slot < count) { device_card(p, s, chain.slots[slot], slot, x, y, cw, ch, slot == cursor, c); continue; }
@@ -122,28 +122,28 @@ void draw(Paint& p, const Snapshot& s) {
         if (slot < shown) { // + ADD
             auto style = plain(slot == cursor ? colour::text : colour::dim, 22);
             p.text("+", x, y + 30, cw, 24, style, juce::Justification::centred);
-            p.text("ADD", x, y + 55, cw, 9, caps_text(slot == cursor ? colour::text : colour::dim, 6.5f), juce::Justification::centred);
+            p.text("ADD", x, y + 55, cw, 14, caps_text(slot == cursor ? colour::text : colour::dim), juce::Justification::centred);
         }
     }
     // The device in view, its row of parameters, and how full the chain is.
     float fy = y + ch + 5;
     juce::String name = cursor < count ? juce::String(effect_info(EffectKind(chain.slots[cursor].kind)).name)
                                        : count < chain.size ? juce::String("Add an effect") : juce::String("Chain full");
-    float nw = p.text(name, zone::pad, fy, 160, 20, plain(colour::text, 14, Weight::SemiBold));
+    float nw = p.text(name, zone::pad, fy, 160, 20, plain(colour::text, type::list, Weight::SemiBold));
     if (cursor < count) {
         unsigned row = s.ui.fx_row[UiState::cursor_of(n)] % 2;
         const auto& info = effect_info(EffectKind(chain.slots[cursor].kind));
         bool second = info.params[3].label != nullptr;
         if (second) {
-            float lw = p.text("ROW " + juce::String(row + 1) + " / 2", zone::pad + nw + 8, fy, 70, 20, caps_text(colour::mid, 7));
+            float lw = p.text("ROW " + juce::String(row + 1) + " / 2", zone::pad + nw + 8, fy, 80, 20, caps_text(colour::mid));
             page_dots(p, zone::pad + nw + 8 + lw + 6, fy + 10, 2, int(row), c);
         }
     }
     juce::String slots = juce::String(count) + " OF " + juce::String(chain.size) + " SLOTS";
     auto style = caps_text(colour::mid);
     float pw = p.width(slots, style) + 9;
-    p.fill(zone::width - zone::pad - pw, fy + 3.5f, pw, 12.5f, colour::surf, 3);
-    p.text(slots, zone::width - zone::pad - pw, fy + 3.5f, pw, 12.5f, style, juce::Justification::centred);
+    p.fill(zone::width - zone::pad - pw, fy + 2.5f, pw, 15, colour::surf, 3);
+    p.text(slots, zone::width - zone::pad - pw, fy + 2.5f, pw, 15, style, juce::Justification::centred);
 
     if (s.ui.sheet_open && cursor < count) {
         const auto& slot = chain.slots[cursor];

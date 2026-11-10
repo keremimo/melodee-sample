@@ -47,10 +47,11 @@ void draw(Paint& p, const Snapshot& s) {
         if (pad_lane) { // whose lane: the kit pad, over the value's name
             char label[4];
             pad_label(lane_pad(param), label);
-            p.text(label, x + 9, y + 1, 52, 9, caps_text(colour::mid, 7));
+            p.text(label, x + 9, y + 1, 56, 13, caps_text(colour::mid));
         }
-        p.text(pi.label, x + 9, y + 9, 54, 10, p.fit(pi.label, caps_text(shade), 52, 5));
-        p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x + 9, y + 20, 56, 15, plain(colour::text, 12, Weight::Medium));
+        float ly = pad_lane ? y + 13 : y + 5;
+        p.text(pi.label, x + 9, ly, 56, 13, p.fit(pi.label, caps_text(shade), 56, type::floor));
+        p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x + 9, ly + 14, 56, 16, plain(colour::text, type::body, Weight::Medium));
 
         // The lane: the track's own value until the first event, then each event holds.
         float gx = x + 69, gw = w - 69 - 6, gy = y + 5, gh = 37;

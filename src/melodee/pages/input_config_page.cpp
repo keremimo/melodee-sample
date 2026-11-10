@@ -30,13 +30,6 @@ const char* detail_of(InputSource source) {
     }
 }
 
-juce::String length_text(const Snapshot& s) {
-    unsigned length = s.ui.settings.input.length;
-    if (length == rec_free) return "FREE";
-    if (length == rec_seq) return "SEQ";
-    unsigned bars = rec_bars(length);
-    return juce::String(bars) + (bars == 1 ? " BAR" : " BARS");
-}
 
 void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
@@ -58,25 +51,24 @@ void draw(Paint& p, const Snapshot& s) {
                : usb == UsbStreamState::Failed ? juce::String("USB-C: could not be opened.")
                : juce::String("USB-C: waiting for the computer to play.");
     }
-    p.text(detail, x, y + 24, w, 14, plain(colour::sec, 10));
+    p.text(detail, x, y + 23, w, 15, plain(colour::sec, type::small));
 
     struct Row { const char* name; juce::String value; };
     juce::String monitor = juce::String(monitor_name(in.monitor)).toUpperCase();
     if (in.source == InputSource::Resample) monitor += " (THE MIX IS HEARD)";
     else if (s.monitoring) monitor += juce::String::fromUTF8(" \xc2\xb7 HEARD NOW");
+    // Source, rec length and threshold are the knob cards' (K1-K3): the rows
+    // hold what the cards do not.
     const Row rows[] {
-        {"SOURCE", juce::String(input_source_name(in.source)).toUpperCase()},
         {"MONITOR", monitor},
-        {"THRESHOLD", in.at_once() ? juce::String("AT ONCE") : db_text(float(in.threshold))},
-        {"REC LENGTH", length_text(s)},
         {"REC INPUT FX", in.fx ? juce::String::fromUTF8("ON \xc2\xb7 KNOB FX: PHASE 7") : juce::String("OFF")},
         {"GAIN", (in.gain > 0 ? "+" : "") + db_text(float(in.gain))},
     };
-    float ry = y + 44;
+    float ry = y + 42;
     for (const auto& r : rows) {
-        p.text(r.name, x, ry, 100, 11, caps_text(colour::mid, 7));
-        p.text(r.value, x + 100, ry, w - 100, 11, caps_text(colour::text, 7), juce::Justification::centredRight);
-        ry += 12;
+        float nw = p.text(r.name, x, ry, 110, 15, caps_text(colour::mid)) + 8;
+        p.text(r.value, x + nw, ry, w - nw, 15, p.fit(r.value, caps_text(colour::text), w - nw, type::floor), juce::Justification::centredRight);
+        ry += 16;
     }
     input_meter(p, s, c, x, ry + 2, w);
 }

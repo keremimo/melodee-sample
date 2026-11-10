@@ -34,15 +34,15 @@ void tempo_draw(Paint& p, const Snapshot& s) {
     std::snprintf(text, sizeof(text), "%u.%u", s.tempo / 10, s.tempo % 10);
     float x = zone::pad + 6, y = zone::picture_y + 10;
     float w = p.text(text, x, y, 160, 40, plain(colour::text, 34, Weight::SemiBold));
-    p.text("BPM", x + w + 6, y + 14, 40, 20, plain(colour::mid, 12));
+    p.text("BPM", x + w + 6, y + 14, 40, 20, plain(colour::mid, type::body));
     // The beat in the bar.
     unsigned beats = std::min<unsigned>(s.project.time_signature().beats, 16);
     unsigned beat = s.playing ? (s.ticks % s.project.bar_ticks()) / s.project.beat_ticks() : 99;
     float bw = (zone::width - 2 * zone::pad - 12 - (beats - 1) * 5.0f) / beats;
     for (unsigned b = 0; b < beats; ++b) p.fill(x + b * (bw + 5), y + 52, bw, 6, b == beat ? colour::text : colour::line, 3);
-    p.text("TAPS", x, y + 78, 30, 12, caps_text(colour::mid, 7));
+    p.text("TAPS", x, y + 78, 40, 14, caps_text(colour::mid));
     if (s.project.click) {
-        auto style = caps_text(colour::text, 7);
+        auto style = caps_text(colour::text);
         const char* text = s.project.click == 2 ? "CLICK REC" : "CLICK ON";
         float cw = p.width(text, style) + 9;
         p.fill(zone::width - zone::pad - 6 - cw, y + 78, cw, 12, colour::surf, 3);
@@ -72,11 +72,11 @@ void arp_draw(Paint& p, const Snapshot& s) {
     float w = p.text(arp_mode_name(ArpMode(t.arp_mode)), x, y - 2, 120, 30, plain(colour::text, 28, Weight::SemiBold));
     juce::String detail = juce::String(arp_rate_name(t.arp_rate)) + juce::String::fromUTF8(" \xc2\xb7 ")
         + (kit ? juce::String("the held pad") : juce::String(t.arp_octaves) + (t.arp_octaves == 1 ? " octave" : " octaves"));
-    p.text(detail, x + w + 8, y + 6, zone::width - x - w - 14, 20, plain(c, 12, Weight::Medium));
+    p.text(detail, x + w + 8, y + 6, zone::width - x - w - 14, 20, plain(c, type::body, Weight::Medium));
     float py = y + 31;
-    float gw = p.width(gate_text(t.arp_gate), caps_text(colour::mid, 7)) + 9;
+    float gw = p.width(gate_text(t.arp_gate), caps_text(colour::mid)) + 9;
     p.fill(x, py, gw, 12, colour::surf, 3);
-    p.text(gate_text(t.arp_gate), x, py, gw, 12, caps_text(colour::mid, 7), juce::Justification::centred);
+    p.text(gate_text(t.arp_gate), x, py, gw, 12, caps_text(colour::mid), juce::Justification::centred);
     // What it would play: the keys held now, else the chord on pad 1, sixteen steps on.
     Arp a;
     a.mode = ArpMode(t.arp_mode); a.octaves = kit ? 1 : t.arp_octaves; a.top = kit ? int(sampler_last_key) : 127;
@@ -126,7 +126,7 @@ void chord_draw(Paint& p, const Snapshot& s) {
     float w = p.text(chord_name(s.project, t, pad), x, y - 2, 150, 32, plain(colour::text, 28, Weight::SemiBold));
     juce::String notes;
     for (unsigned k = 0; k < n; ++k) notes += (k ? " " : "") + juce::String(note_name(keys[k]));
-    p.text(notes, x + w + 8, y + 6, zone::width - x - w - 14, 20, plain(c, 12, Weight::Medium));
+    p.text(notes, x + w + 8, y + 6, zone::width - x - w - 14, 20, plain(c, type::body, Weight::Medium));
     // Pills: the pad, the degree in the key, how many notes.
     static const char* numerals[] {"I", "II", "III", "IV", "V", "VI", "VII"};
     std::array<uint8_t, 12> degrees {};
@@ -135,7 +135,7 @@ void chord_draw(Paint& p, const Snapshot& s) {
         + juce::String(note_letter(s.project.root)) + " " + juce::String(scales()[s.project.scale % scales().size()].name).toUpperCase();
     float px = x, py = y + 31;
     for (auto text : {juce::String("PAD ") + juce::String(pad + 1), where, juce::String(n) + " NOTES"}) {
-        auto style = caps_text(colour::mid, 7);
+        auto style = caps_text(colour::mid);
         float pw = p.width(text, style) + 9;
         p.fill(px, py, pw, 12, colour::surf, 3);
         p.text(text, px, py, pw, 12, style, juce::Justification::centred);
@@ -150,7 +150,7 @@ void chord_draw(Paint& p, const Snapshot& s) {
         int key = from + 12 * int(k / 7) + whites[k % 7];
         float kx = x + k * ww;
         p.fill(kx + 0.5f, ky, ww - 1, kh, lit(key) ? c : colour::sec, 2);
-        if (whites[k % 7] == 0 || lit(key)) p.text(note_name(key), kx, ky + kh - 10, ww, 9, plain(colour::bg, 6, Weight::SemiBold), juce::Justification::centred);
+        if (whites[k % 7] == 0 || lit(key)) p.text(note_name(key), kx, ky + kh - 10, ww, 9, plain(colour::bg, type::small, Weight::SemiBold), juce::Justification::centred);
     }
     for (unsigned k = 0; k < 14; ++k) {
         int white = whites[k % 7];
@@ -202,11 +202,11 @@ void capture_draw(Paint& p, const Snapshot& s) {
     unsigned track_number = s.ui.track + 1;
     p.text("into pattern P" + juce::String(s.ui.capture_into + 1) + " of track " + juce::String(track_number)
                + (s.sketches[s.ui.track][s.ui.capture_into].notes ? ", replacing what is there" : ", empty until now"),
-           x, y + 21, 300, 12, plain(colour::sec, 10));
-    p.text("HEARD EARLIER", gx, gy + gh + 6, 120, 9, caps_text(colour::dim, 7));
+           x, y + 21, 300, 12, plain(colour::sec, type::small));
+    p.text("HEARD EARLIER", gx, gy + gh + 6, 120, 9, caps_text(colour::dim));
     p.fill(kept_from, gy + gh + 3, gx + gw - kept_from, 2, colour::text, 1);
-    p.text("KEPT", kept_from, gy + gh + 6, 60, 9, caps_text(colour::text, 7));
-    if (empty) p.text("Play something on the pads first", gx, gy, gw, gh, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred);
+    p.text("KEPT", kept_from, gy + gh + 6, 60, 9, caps_text(colour::text));
+    if (empty) p.text("Play something on the pads first", gx, gy, gw, gh, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
 }
 void capture_soft(Context& c, int key) {
     if (key == 0) c.back();

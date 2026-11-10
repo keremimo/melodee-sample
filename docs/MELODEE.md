@@ -61,9 +61,9 @@ runtime's.
 ## The panel
 
 Left column top to bottom, then right, as on the device (pad 1 is bottom
-left). "Shift" is the job printed under the button; the Shift overlay
-(hold Shift) shows the same list for the page in view, and the buttons
-with a Shift job glow while it is held.
+left). "Shift" is the job printed under the button; while Shift is held
+the buttons with a Shift job glow and the knob strip shows the Shift + K
+cards.
 
 | Control | Press | With Shift |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ with a Shift job glow while it is held.
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the screen shows the sixteen tracks, a pad picks one, −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks | Previous bank |
+| Pad Bank | Next bank of the kit, A–H round. Held: the screen shows the tracks, eight at a time (the half with the selected track), a pad picks one, −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks | Previous bank |
 | Fader | The track's target (Fader page), or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below) | Copy: kit pads, patterns on Patterns, tracks with Pad Bank held |
 | Note Repeat | A tap latches, a hold lasts; double tap opens Arp | |
@@ -98,7 +98,7 @@ with a Shift job glow while it is held.
 
 As printed, on every page but the sample browser (where Shift + pad loads
 the file under the cursor onto the next empty pad). `shell/shift_pad_jobs.cpp`
-holds the table the dispatch, the overlay and the lights share.
+holds the table the dispatch and the lights share.
 
 | Pad | Job | Pad | Job |
 | --- | --- | --- | --- |
@@ -112,7 +112,9 @@ holds the table the dispatch, the overlay and the lights share.
 | 8 | MIDI Config | 16 | Project |
 
 Toggles (1, 4, 10) are kept in the settings file. While Shift is held the
-pads light: a toggle that is on bright, a job faint.
+pads light: a toggle that is on bright, a job faint. The screen draws no
+Shift layer, since the jobs are printed on the MPC: the page stays, and
+the knob strip shows only the Shift + K cards.
 
 ### Lights
 
@@ -130,7 +132,8 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
 
 ### Playing
 
-- **Stage** (Sample): the sixteen tracks as the pads sit; pads play the
+- **Stage** (Sample): the tracks as the pads sit, eight at a time (tracks
+  1–8 or 9–16, whichever half holds the selected track); pads play the
   selected track, K1–K3 its favourite parameters (on a kit TUNE, FILTER,
   DECAY). Track 1 starts as a PROPHET, track 5 an empty kit, track 6 a 909
   with a beat.
@@ -140,7 +143,8 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
 - **Pads** (Sample again on a kit): the bank as the pads sit, the last pad
   with its length, play mode and waveform; K1 pitch, K2 level, K3 pan; Push
   opens Trim.
-- **Mix** (Sample a third time): sixteen strips, level, pan, mute and solo,
+- **Mix** (Sample a third time): eight strips at a time (the half with the
+  selected track), level, pan, mute and solo,
   the send and its bus, meters. The fader is the selected track's level here.
 - **Sounds** (Sample Select on a synth or 909): the factory sounds and one's
   own for the engine; K1 steps the engine (six), the wheel walks, Push
@@ -424,6 +428,12 @@ while following.
 - **Pad expression**: velocity is heard on every synth through one curve;
   pad pressure adds vibrato and brightness (AT > VIB, AT > BRIGHT) and
   reaches every note a pad started; off in Settings.
+- **Text size**: nothing on screen is drawn under 11 px (`ui::type::floor`
+  in `ui/tokens.h`; labels 11, body 13, lists 15, knob values 22), so the
+  320 × 240 panel reads at arm's length. Text is never cut: where a page
+  runs out of room it shows fewer things at a time (Stage, Mix and Sends
+  eight tracks, Song six lanes, FX chains three devices), or a long
+  capitalised name turns to title case in a narrow cell.
 
 ## Sound engines
 
@@ -527,7 +537,9 @@ card access (`melodee_card` 0 home, 1 lending, 2 lent, 3 returning;
 `cardlocked`, `cardnocomputer`, `cardnone`, `miditrack` and `midipanic`
 among them).
 `--melodee-sound FILE.wav` renders two bars of the starting project and
-checks the level. `./build.sh` runs both.
+checks the level. `./build.sh` runs both. The preview also checks text:
+anything asked for under 11 px, wider than its box, or a header whose two
+sides meet prints a `MELODEE_TEXT` line, and any such line fails the run.
 
 ## Installing
 

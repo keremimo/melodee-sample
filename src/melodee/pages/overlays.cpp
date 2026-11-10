@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Drawn over any page: the tracks while Pad Bank is held, Note Repeat's
-// rates, the Shift layer while Shift is held, and the Exit sheet after a
+// rates, the Shift + K cards while Shift is held, and the Exit sheet after a
 // short press of Power.
 #include "melodee/engine/arp.h"
 #include "melodee/pages/common.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
-#include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/ui/widgets.h"
 
 namespace melodee {
@@ -42,78 +41,9 @@ void draw_repeat_keys(Paint& p, const Snapshot& s) {
 }
 
 void draw_shift_layer(Paint& p, const Snapshot& s) {
-    // Second jobs as printed (MELODEE_PARITY.md decisions); some follow the
-    // page or the track's engine. Left: Shift + pad as the pads sit (pad 1
-    // bottom left), lit where the pad does something; right: the buttons.
-    // The knob strip shows the cards Shift turns (Shift + K) and nothing else.
-    const auto& t = s.track();
-    bool kit = t.engine == EngineKind::Sampler;
-    bool kit_pads = kit && !t.levels && pad_job(s.ui) == play_pad;
-    bool song = s.ui.page == PageId::Song && !s.ui.sheet_open; // there Push names a marker instead
-    const char* copy = s.ui.pad_bank ? "Copy track" : kit_pads ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pad, pattern, track";
-    const char* select = s.ui.page == PageId::Sounds ? "Star sound" : kit ? "Save sample" : "Save sound";
-    static const char* const clicks[] {"Metronome: off", "Metronome: on", "Metronome: rec"};
-    const char* levels = !t.used() ? "Type (a sound first)" : !kit ? "Type: velocity, tune, scale" : "Type: velocity, filter, tune";
-    // The page's own Shift + B1-B3, last: Trim's and Chop's (as on the MPC).
-    bool trim = s.ui.page == PageId::Trim && kit, chop = s.ui.page == PageId::Chop && kit, browser = s.ui.page == PageId::Samples && kit;
-    const char* const jobs[][2] {
-        {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"PAD FX", "Flex Beat"}, {"KNOB FX", "FX select: chains"}, {"PAD BANK", "Previous bank"}, {"ERASE", copy},
-        {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"CHOP", kit ? "Note On / One shot" : "Note On (kit pads)"},
-        {"16 LEVELS", levels}, {"SAMPLE SELECT", select},
-        {"MUTE", "Unmute all; mute + pad: solo"}, {"TAP TEMPO", clicks[s.project.click % 3]},
-        {"SAMPLE RECORD", kit ? "Audio recall (25 s)" : "Audio recall (kit tracks)"}, {"SEQ RECORD", "Recall last bars"},
-        {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"\xe2\x88\x92 / +", "Undo / redo"},
-        {"PUSH", song ? "Marker at cursor" : "Back"},
-        {trim ? "B1 / B2" : chop ? "B1 / B2 / B3" : browser ? "PADS" : "",
-         trim ? "Loop lock / Normalize" : chop ? "Extract / Split / Merge" : browser ? "Load to next empty pad" : ""},
-    };
-    p.dim_zone(zone::soft_y, zone::soft_h);
-    p.fill(0, zone::header_y, zone::width, zone::header_h + zone::picture_h, colour::bg);
-    Header h = header_of(s);
-    h.left.push_back(chip("SHIFT", colour::text));
-    h.right.push_back(tag_of(s, s.ui.track));
-    header(p, h);
-    auto c = colour_of(s);
-
-    // Shift + pad: the sixteen printed jobs in a 4 x 4 grid.
-    constexpr float gap = 3, top = zone::picture_y + 2, grid_w = 162, grid_h = 144;
-    constexpr float pw = (grid_w - 3 * gap) / 4, ph = (grid_h - 3 * gap) / 4;
-    for (unsigned pad = 0; pad < 16; ++pad) {
-        unsigned row = 3 - pad / 4, column = pad % 4, level = shift_pad_level(s.ui, pad);
-        const auto& job = shift_pad_job(pad);
-        float x = zone::pad + column * (pw + gap), y = top + row * (ph + gap);
-        p.fill(x, y, pw, ph, level == 2 ? c : level == 1 ? colour::surf : colour::quiet, 4);
-        auto ink = level == 2 ? colour::bg : level == 1 ? colour::text : colour::dim;
-        p.text(juce::String(pad + 1), x + 3.5f, y + 2.5f, 12, 8, plain(level == 2 ? colour::bg : colour::dim, 6, Weight::SemiBold));
-        juce::String corner = job.kind == ShiftPadJob::Kind::Later ? "P" + juce::String(job.phase)
-                            : job.kind == ShiftPadJob::Kind::Toggle ? juce::String(level == 2 ? "ON" : "OFF") : juce::String();
-        if (corner.isNotEmpty())
-            p.text(corner, x + pw - 21, y + 2.5f, 18, 8, caps_text(level == 2 ? colour::bg : level ? c : colour::dim, 5.5f),
-                   juce::Justification::right);
-        juce::StringArray words; // the name on two lines, as printed under the pad
-        words.addTokens(job.name, " ", "");
-        juce::String first = words[0], second = words.size() > 1 ? words[1] : juce::String();
-        for (int k = 2; k < words.size(); ++k) second += " " + words[k];
-        float ty = second.isEmpty() ? y + ph - 13 : y + ph - 20;
-        auto style = plain(ink, 7.5f, Weight::Medium);
-        p.text(first, x + 3, ty, pw - 5, 9, p.fit(first, style, pw - 5, 5));
-        if (second.isNotEmpty()) p.text(second, x + 3, ty + 8, pw - 5, 9, p.fit(second, style, pw - 5, 5));
-    }
-
-    // The buttons' second jobs, one line each.
-    float x = zone::pad + grid_w + 5, w = zone::width - zone::pad - x, name_w = 46;
-    p.fill(x, top, w, grid_h, colour::surf, 6);
-    const unsigned count = sizeof(jobs) / sizeof(jobs[0]) - (trim || chop || browser ? 0 : 1); // the page's own last
-    float rh = (grid_h - 4) / count;
-    for (unsigned n = 0; n < count; ++n) {
-        float y = top + 2 + n * rh;
-        juce::String name = juce::String::fromUTF8(jobs[n][0]), job = juce::String::fromUTF8(jobs[n][1]);
-        p.text(name, x + 5, y, name_w, rh, p.fit(name, caps_text(c, 5.5f), name_w, 4.5f));
-        auto style = plain(colour::text, 7.5f, Weight::Medium);
-        p.text(job, x + 5 + name_w, y, w - name_w - 9, rh, p.fit(job, style, w - name_w - 9, 6));
-    }
-
-    // Shift + K: only the cards Shift turns; none, the strip stays dim.
+    // The Shift jobs are printed on the MPC: the page stays as it is, and
+    // the knob strip shows the cards Shift turns (Shift + K), or dims when
+    // there are none.
     auto cards = cards_of(s);
     bool any = false;
     for (auto& card : cards) { if (card.shift == 2) any = true; else card.state = KnobCard::State::Idle; }
@@ -129,17 +59,18 @@ void draw_fader_card(Paint& p, const Snapshot& s) {
     if (!s.ui.fader_moved_at || s.now - s.ui.fader_moved_at > 1500) return;
     if (s.ui.page == PageId::FaderPage || s.ui.page == PageId::StepEdit) return;
     auto shown = fader_shown(s);
-    constexpr float w = 128, h = 38;
+    constexpr float w = 176, h = 50;
     float x = zone::width - zone::pad - w, y = zone::knobs_y - h - 3;
     auto c = colour_of(s);
     p.fill(x - 1, y - 1, w + 2, h + 2, colour::bg, 6);
     p.fill(x, y, w, h, colour::raised, 5);
-    p.text("FADER", x + 7, y + 4, 40, 9, caps_text(colour::mid, 6));
+    auto label = caps_text(colour::mid);
+    float lw = p.text("FADER", x + 7, y + 3, 50, 14, label) + 6;
     juce::String what = shown.off ? juce::String::fromUTF8("OFF \xc2\xb7 SHIFT + PAD 9") : shown.what;
-    p.text(what, x + 40, y + 4, w - 47, 9, p.fit(what, caps_text(shown.off ? colour::mid : c, 6), w - 47, 5));
+    p.text(what, x + 7 + lw, y + 3, w - 14 - lw, 14, p.fit(what, caps_text(shown.off ? colour::mid : c), w - 14 - lw, type::floor));
     if (!shown.value) return;
     juce::String value = shown.card.value + (shown.card.unit.isNotEmpty() ? " " + shown.card.unit : juce::String());
-    p.text(value, x + 7, y + 14, w - 14, 13, p.fit(value, plain(shown.waiting ? colour::mid : colour::text, 11, Weight::Medium), w - 14, 7));
+    p.text(value, x + 7, y + 17, w - 14, 20, p.fit(value, plain(shown.waiting ? colour::mid : colour::text, 17, Weight::Medium), w - 14, type::floor));
     float gx = x + 7, gw = w - 14, gy = y + h - 8, f = std::clamp(shown.card.fill, 0.0f, 1.0f);
     p.fill(gx, gy, gw, 3, colour::quiet, 1.5f);
     auto ink = shown.waiting ? colour::mid : c;
@@ -188,7 +119,7 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
     h.right.push_back(label(s.project.name));
     header(p, h);
     for (unsigned n = 0; n < 4; ++n)
-        p.fill(zone::pad, zone::picture_y + 1.5f + n * 37, zone::width - 2 * zone::pad, 34, colour::quiet.interpolatedWith(colour::bg, 0.5f), 4);
+        p.fill(zone::pad, zone::picture_y + 1.5f + n * 36, zone::width - 2 * zone::pad, 33, colour::quiet.interpolatedWith(colour::bg, 0.5f), 4);
     juce::String body = s.projects.root.empty()
         ? juce::String("Notes stop and the MPC app starts again. There is no card to save this project on.")
         : juce::String(s.project_path.empty() ? "It is saved as a new project." : (juce::String(s.project.name) + " is saved."))

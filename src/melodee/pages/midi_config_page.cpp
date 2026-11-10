@@ -43,12 +43,12 @@ void draw(Paint& p, const Snapshot& s) {
         bool here = row == cursor, editing = here && s.ui.midi_editing;
         if (here) { p.fill(x, y, w, rh - 1, colour::raised, 4); p.fill(x, y, 3, rh - 1, row == ResetRow ? colour::rec : c); }
         auto ink = here ? colour::text : colour::sec;
-        p.text(midi_row_name(row), x + 9, y, w * 0.62f, rh - 1, plain(row == ResetRow && here ? colour::rec : ink, 11.5f, Weight::Medium));
+        p.text(midi_row_name(row), x + 9, y, w * 0.62f, rh - 1, plain(row == ResetRow && here ? colour::rec : ink, type::body, Weight::Medium));
         juce::String value = midi_row_value(s.ui.settings, track, row);
         if (row == TrackChannelRow) value = "T" + juce::String(s.ui.track + 1) + "  " + value;
         if (row == CvDivisionRow && s.ui.settings.midi.cv_out) value += "  (" + juce::String(s.ui.settings.midi.cv_ppqn()) + " PPQN)";
         if (row == ResetRow || row == PanicRow) value = here ? "PUSH" : "";
-        auto style = plain(here ? colour::text : colour::mid, 11, Weight::Medium);
+        auto style = plain(here ? colour::text : colour::mid, type::small, Weight::Medium);
         float vw = p.width(value, style), vx = x + w - 7 - vw;
         if (editing) { // the open value: framed
             p.fill(vx - 6, y + 2, vw + 12, rh - 5, colour::surf, 3);

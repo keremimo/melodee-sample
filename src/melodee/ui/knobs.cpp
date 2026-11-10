@@ -18,8 +18,8 @@ void shift_mark(Paint& p, float x, float y, juce::Colour c, bool filled) {
 }
 
 void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
-    // 4 px above and below, 6 px at the sides, 4 px between: 100 x 42 cards.
-    constexpr float top = zone::knobs_y + 4, h = 42, gap = 4;
+    // 3 px above, 3 below, 6 px at the sides, 4 px between: 100 x 46 cards.
+    constexpr float top = zone::knobs_y + 3, h = 46, gap = 4;
     constexpr float w = (zone::width - 2 * zone::pad - 2 * gap) / 3.0f;
     for (size_t n = 0; n < cards.size(); ++n) {
         const auto& c = cards[n];
@@ -34,15 +34,17 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
             p.fill(x, top, w, h, colour::surf, 3);
         }
         float inner = x + 6, iw = w - 12;
-        p.text(c.label, inner, top + 4.5f, iw - (c.shift ? 10 : 0), 10, caps_text(c.shade));
-        if (c.shift) shift_mark(p, x + w - 11, top + 4.5f, c.shift == 2 ? c.shade : colour::mid, c.shift == 2);
+        p.text(c.label, inner, top + 3, iw - (c.shift ? 9 : 0), 13, caps_text(c.shade));
+        if (c.shift) shift_mark(p, x + w - 12, top + 5.5f, c.shift == 2 ? c.shade : colour::mid, c.shift == 2);
         auto value = plain(c.state == State::Pickup ? colour::dim : colour::text, type::value, Weight::Medium);
-        float room = iw - (c.unit.isNotEmpty() ? p.width(c.unit, plain(colour::mid, 9)) + 3 : 0.0f);
-        float vw = p.text(c.value, inner, top + 14, iw, 20, p.fit(c.value, value, room, 9)); // a long name shrinks to fit
+        auto unit = plain(colour::mid, type::body);
+        float room = iw - (c.unit.isNotEmpty() ? p.width(c.unit, unit) + 3 : 0.0f);
+        auto shown = p.fit(c.value, value, room, type::floor); // a long name shrinks to fit
+        float vw = p.text(c.value, inner, top + 15, room, 22, shown);
         if (c.unit.isNotEmpty())
-            p.text(c.unit, inner + vw + 2.5f, top + 15.5f, iw - vw, 20, plain(colour::mid, 9));
+            p.text(c.unit, inner + vw + 3, top + 18, iw - vw - 3, 20, unit);
         // The gauge: a 2 px track with the value filled in the knob's shade.
-        float gy = top + 37.5f, fill = std::clamp(c.fill, 0.0f, 1.0f);
+        float gy = top + 40, fill = std::clamp(c.fill, 0.0f, 1.0f);
         p.fill(inner, gy, iw, 2, colour::line, 1);
         if (c.bipolar) {
             float from = std::min(0.5f, fill), to = std::max(0.5f, fill);

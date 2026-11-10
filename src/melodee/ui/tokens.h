@@ -32,19 +32,22 @@ constexpr std::array<std::array<uint32_t, 3>, 16> track_shades {{
 inline juce::Colour track_colour(unsigned track) { return hex(track_shades[track % 16][0]); }
 inline juce::Colour knob_shade(unsigned track, unsigned knob) { return hex(track_shades[track % 16][knob % 3]); }
 
-// Zones, top to bottom, at device size (2x on the boards: 44, 40, 296, 100).
+// Zones, top to bottom, at device size.
 namespace zone {
 constexpr int width = 320, height = 240, pad = 6;
 constexpr int soft_y = 0, soft_h = 22;
-constexpr int header_y = 22, header_h = 20;
-constexpr int picture_y = 42, picture_h = 148;
-constexpr int knobs_y = 190, knobs_h = 50;
+constexpr int header_y = 22, header_h = 22;
+constexpr int picture_y = 44, picture_h = 144;
+constexpr int knobs_y = 188, knobs_h = 52;
 }
 
-// Type sizes in device pixels (CSS px on the boards, halved).
+// Type sizes in device pixels. Readable at arm's length on the 320 x 240
+// panel: nothing is drawn under `floor`, and Paint::fit never shrinks below
+// it. Where a page runs out of room it shows fewer things at a time instead.
 namespace type {
-constexpr float caps = 8, soft = 9, small = 7, body = 10, value = 16, title = 18, list = 12, bpm = 11;
-constexpr float caps_tracking = 0.08f; // letter spacing of capitals, in em
+constexpr float floor = 11;
+constexpr float caps = 11, soft = 11, small = 11, body = 13, value = 22, title = 20, list = 15, bpm = 15;
+constexpr float caps_tracking = 0.06f; // letter spacing of capitals, in em
 }
 
 // How strongly something sits behind an overlay: CSS opacity .35 over BG.

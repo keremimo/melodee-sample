@@ -789,7 +789,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     EngineHost host;
     Shell shell(host);
     board_project(shell);
-    unsigned written = 0;
+    unsigned written = 0, text_issues = 0;
     for (const auto& preview : previews) {
         if (!names.empty() && std::find(names.begin(), names.end(), preview.name) == names.end()) continue;
         auto snapshot = std::make_unique<Snapshot>();
@@ -802,18 +802,27 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         snapshot->pattern = shell.patterns().at[snapshot->ui.track][track.pattern];
         for (int scale : {1, 2}) {
             juce::Image image(juce::Image::ARGB, screen_width * scale, screen_height * scale, true);
+            std::vector<ui::TextIssue> issues;
+            ui::audit_text(scale == 1 ? &issues : nullptr);
             {
                 juce::Graphics g(image);
                 g.addTransform(juce::AffineTransform::scale(float(scale)));
                 draw(g, *snapshot);
+            }
+            ui::audit_text(nullptr);
+            for (const auto& i : issues) {
+                std::printf("MELODEE_TEXT %s \"%s\" size %.1f width %.0f in %.0f\n", preview.name,
+                            i.text.toRawUTF8(), double(i.size), double(i.needed), double(i.box));
+                ++text_issues;
             }
             save_png(image, folder + "/" + preview.name + (scale == 2 ? "@2x" : "") + ".png");
         }
         ++written;
     }
     require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit");
-    std::cout << "MELODEE_PREVIEW pages=" << written << '\n';
-    return 0;
+    std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
+    // Text under the floor or cut by its box fails the build check.
+    return text_issues ? 1 : 0;
 }
 
 // Draws every preview page `rounds` times at 320 x 240 and prints the mean

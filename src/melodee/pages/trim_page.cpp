@@ -35,7 +35,7 @@ void draw(Paint& p, const Snapshot& s) {
     uint32_t frames = s.sample.frames;
     if (!pad.used() || !frames) {
         p.text(pad.used() ? (s.sample.error.empty() ? "Loading" : juce::String(s.sample.error)) : juce::String("No sample on this pad"),
-               zone::pad, zone::picture_y + 40, zone::width - 12, 40, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred);
+               zone::pad, zone::picture_y + 40, zone::width - 12, 40, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
         return;
     }
     uint32_t end = pad.end ? pad.end : frames, start = std::min(pad.start, end);
@@ -64,14 +64,18 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(lx, y + h2 - 5, 6, 5, lc, 1);
     }
     p.g.restoreState();
-    auto axis = caps_text(colour::dim, 7);
+    auto axis = caps_text(colour::dim);
     float ay = y + h2 + 6;
-    p.text(seconds(uint32_t(from * frames)), x, ay, 80, 9, axis);
+    p.text(seconds(uint32_t(from * frames)), x, ay, 80, 14, axis);
     juce::String kept = "KEPT " + seconds(end - start);
     if (pad.loop) kept += pad.loop_lock ? juce::String::fromUTF8(" \xc2\xb7 LOOP LOCKED") : juce::String::fromUTF8(" \xc2\xb7 LOOP ") + seconds(loop);
     if (pad.gain) kept += juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(pad.gain / 100.0, 1) + " DB";
-    p.text(kept, x + w / 2 - 90, ay, 180, 9, caps_text(colour::sec, 7), juce::Justification::centred);
-    p.text(seconds(uint32_t(to * frames)), x + w - 80, ay, 80, 9, axis, juce::Justification::centredRight);
+    // The ends' times sit at the sides; a long middle line takes a line of its own below.
+    auto kept_style = caps_text(colour::sec);
+    float kw = p.width(kept, kept_style), side = std::max(p.width(seconds(uint32_t(from * frames)), axis), p.width(seconds(uint32_t(to * frames)), axis));
+    bool own_line = kw > w - 2 * side - 16;
+    p.text(kept, x, own_line ? ay + 15 : ay, w, 14, kept_style, juce::Justification::centred);
+    p.text(seconds(uint32_t(to * frames)), x + w - 80, ay, 80, 14, axis, juce::Justification::centredRight);
 }
 
 void soft(Context& c, int key) {

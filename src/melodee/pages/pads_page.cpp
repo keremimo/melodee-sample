@@ -22,8 +22,8 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, play_keys(s, 1), h);
 
-    constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 150;
-    constexpr float w = (grid_w - 3 * gap) / 4, ch = (143.5f - 1.5f - 3 * gap) / 4;
+    constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 196;
+    constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 2.0f - 3 * gap) / 4;
     for (unsigned n = 0; n < 16; ++n) {
         unsigned kit = bank * 16 + n, row = 3 - n / 4, column = n % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
@@ -31,40 +31,46 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(x, y, w, ch, last ? c : held ? c.withAlpha(0.35f) : colour::surf, 4);
         char label[4]; pad_label(kit, label);
         bool muted = track.pad_muted(kit) && track.pads[kit].used();
-        juce::String tag = muted ? juce::String(label) + " MUTE" : juce::String(label); // mute mode muted it
-        auto tag_style = plain(last ? colour::bg : muted ? colour::sec : colour::dim, 6, Weight::SemiBold);
-        p.text(tag, x + 4, y + 3, w - 8, 8, p.fit(tag, tag_style, w - 8, 4.5f));
+        juce::String tag = muted ? juce::String("MUTE") : juce::String(label); // mute mode muted it
+        auto tag_style = plain(last ? colour::bg : muted ? colour::sec : colour::dim, type::small, Weight::SemiBold);
+        p.text(tag, x + 4, y + 2, w - 8, 14, tag_style);
         auto name = pad_name(s, kit, true);
         if (name.isNotEmpty())
-            p.text(name, x + 4, y + ch - 15, w - 8, 12, p.fit(name, plain(last ? colour::bg : colour::text, 9, Weight::Medium), w - 8, 6));
+            p.text(name, x + 4, y + ch - 16, w - 8, 14, p.fit(name, plain(last ? colour::bg : colour::text, type::small, Weight::Medium), w - 8, type::floor));
         if (muted) p.fill(x, y, w, ch, colour::bg.withAlpha(0.45f), 4);
     }
     // The pad in hand.
     const auto& pad = track.pads[track.last_pad % sampler_pads];
-    float x = zone::pad + grid_w + 10, y = zone::picture_y + 4.5f, iw = zone::width - zone::pad - x;
+    float x = zone::pad + grid_w + 8, y = zone::picture_y + 3, iw = zone::width - zone::pad - x;
     char label[4]; pad_label(track.last_pad, label);
-    p.text(juce::String("PAD ") + juce::String(label), x, y, iw, 10, caps_text(colour::mid));
+    p.text(juce::String("PAD ") + juce::String(label), x, y, iw, 14, caps_text(colour::mid));
     auto name = pad.used() ? pad_name(s, track.last_pad % sampler_pads, false) : juce::String("Empty");
-    p.text(name, x, y + 11, iw, 29, p.fit(name, plain(pad.used() ? colour::text : colour::dim, 26, Weight::SemiBold), iw, 12));
+    auto name_style = p.fit(name, plain(pad.used() ? colour::text : colour::dim, 22, Weight::SemiBold), iw, type::floor);
+    auto lines = p.wrap(name, name_style, iw, 2);
+    for (int l = 0; l < lines.size(); ++l) p.text(lines[l], x, y + 15 + l * 24, iw, 26, name_style);
+    y += (lines.size() > 1 ? 24 : 0);
     if (pad.used() && s.sample.frames) {
         uint32_t end = pad.end ? pad.end : s.sample.frames;
         char text[48];
         std::snprintf(text, sizeof(text), "%.3f s", (end - std::min(end, pad.start)) / 44100.0);
         p.text(juce::String(text) + juce::String::fromUTF8(" \xc2\xb7 ") + (pad.play == PadPlay::Gate ? "gate" : "one shot"),
-               x, y + 41, iw, 12, plain(colour::sec, 10));
+               x, y + 41, iw, 14, plain(colour::sec, type::small));
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
-        waveform(p, x, y + 60, iw, 14, s.sample.overview, from, to, from, to, c, 1);
+        waveform(p, x, y + 58, iw, 14, s.sample.overview, from, to, from, to, c, 1);
     } else if (pad.used()) {
-        p.text(s.sample.error.empty() ? "Loading" : juce::String(s.sample.error), x, y + 41, iw, 12, plain(colour::dim, 10));
+        p.text(s.sample.error.empty() ? "Loading" : juce::String(s.sample.error), x, y + 41, iw, 14, plain(colour::dim, type::small));
     } else {
-        p.text("Sample Select puts a sound here", x, y + 41, iw, 12, plain(colour::dim, 9));
+        auto hint = plain(colour::dim, type::small);
+        auto hint_lines = p.wrap("Sample Select puts a sound here", hint, iw, 3);
+        for (int l = 0; l < hint_lines.size(); ++l) p.text(hint_lines[l], x, y + 41 + l * 13, iw, 14, hint);
     }
-    p.text("BANK", x, y + 92, 30, 12, caps_text(colour::mid, 7));
-    for (unsigned b = 0; b < sampler_banks; ++b) { // A-H fit beside the label
-        float bx = x + 30 + b * (iw - 30) / sampler_banks;
-        if (b == bank) p.fill(bx, y + 92, 12, 12, c, 3);
-        p.text(juce::String::charToString(juce::juce_wchar('A' + b)), bx, y + 92, 12, 12,
-               plain(b == bank ? colour::bg : colour::dim, 8, Weight::SemiBold), juce::Justification::centred);
+    float by = zone::picture_y + zone::picture_h - 34;
+    p.text("BANK", x, by, iw, 14, caps_text(colour::mid));
+    for (unsigned b = 0; b < sampler_banks; ++b) { // A-H under the label
+        float bx = x + b * iw / sampler_banks, bw = iw / sampler_banks - 1;
+        if (b == bank) p.fill(bx, by + 15, bw, 15, c, 3);
+        p.text(juce::String::charToString(juce::juce_wchar('A' + b)), bx, by + 15, bw, 15,
+               plain(b == bank ? colour::bg : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
     }
 }
 

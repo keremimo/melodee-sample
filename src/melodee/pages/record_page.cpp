@@ -52,12 +52,12 @@ void draw(Paint& p, const Snapshot& s) {
     else if (going) where = juce::String(s.take.frames / 44100.0, 1) + " S";
     else if (in.length == rec_seq) where = "SEQ LENGTH";
     else where = bars ? juce::String(bars) + (bars == 1 ? " BAR" : " BARS") : juce::String("FREE");
-    p.text(where, x + 160, zone::picture_y, w - 160, 22, caps_text(colour::text, 7), juce::Justification::centredRight);
+    p.text(where, x + 160, zone::picture_y, w - 160, 22, caps_text(colour::text), juce::Justification::centredRight);
 
     // The take so far, against its bars, with the cuts the pads made. A take
     // without a length (Free, up to 60 s) is drawn as far as it has come, an
     // eighth of the way at least, so it grows across the picture.
-    float y = zone::picture_y + 26, wh = 56, mid = y + wh / 2;
+    float y = zone::picture_y + 26, wh = 48, mid = y + wh / 2;
     uint32_t length = std::max<uint32_t>(s.take.length, 1);
     unsigned shown = TakeRecorder::columns;
     if (length >= TakeRecorder::max_frames)
@@ -75,7 +75,7 @@ void draw(Paint& p, const Snapshot& s) {
             float at = x + w * std::min(1.0f, float(s.ui.rec_chop_at[n]) / span);
             p.fill(at, y - 2, 1, wh + 4, colour::text);
             pad_label(s.ui.rec_chop_pad[n], label);
-            p.text(juce::String(label), at + 2, y - 2, 30, 9, caps_text(colour::text, 6));
+            p.text(juce::String(label), at + 2, y - 3, 30, 13, caps_text(colour::text));
         }
     if (state == State::Recording) {
         float at = x + w * std::min(1.0f, float(s.take.frames) / span);
@@ -84,10 +84,10 @@ void draw(Paint& p, const Snapshot& s) {
     // The input level, with the line it has to pass.
     input_meter(p, s, c, x, y + wh + 10, w);
     // What the pads do now.
-    const char* hint = state == State::Recording ? "PAD AGAIN, STOP OR PUSH: DONE \xc2\xb7 OTHER PADS: CUT"
-                     : state == State::Armed || state == State::Cued ? "THE PAD AGAIN: AT ONCE \xc2\xb7 STOP: CANCEL"
-                     : "TAP A PAD TO RECORD ONTO IT";
-    p.text(juce::String::fromUTF8(hint), x, y + wh + 44, w, 9, caps_text(colour::mid, 6), juce::Justification::centred);
+    const char* hint = state == State::Recording ? "Pad again, Stop or Push: done \xc2\xb7 other pads: cut"
+                     : state == State::Armed || state == State::Cued ? "The pad again: at once \xc2\xb7 Stop: cancel"
+                     : "Tap a pad to record onto it";
+    p.text(juce::String::fromUTF8(hint), x, y + wh + 50, w, 14, plain(colour::mid, type::small, Weight::Medium), juce::Justification::centred);
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {

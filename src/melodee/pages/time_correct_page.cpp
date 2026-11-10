@@ -35,7 +35,7 @@ void draw(Paint& p, const Snapshot& s) {
     float x = zone::pad, y = zone::picture_y + 2, w = 150;
     p.text("Notes onto Q", x, y, w, 20, plain(colour::text, type::title, Weight::SemiBold));
     juce::String detail = s.ui.tc_all ? "Every note of the pattern." : "The notes of the pads lit.";
-    p.text(detail, x, y + 22, w + 20, 12, plain(colour::sec, 9));
+    p.text(detail, x, y + 22, w + 20, 12, plain(colour::sec, type::small));
     // What moves where: the steps of Q over one beat, the swung ones late.
     const auto& pattern = s.pattern;
     unsigned q = pattern.q(), beat = s.project.beat_ticks();
@@ -48,7 +48,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (px < bx || px > bx + bw - 2) continue;
         p.fill(px, by + 3, 2, 12, k % 2 ? c.withAlpha(0.6f) : c, 1);
     }
-    p.text(juce::String(division_name(pattern.division)) + " GRID, 2 BEATS", bx, by + 21, bw, 10, caps_text(colour::dim, 7));
+    p.text(juce::String(division_name(pattern.division)) + " GRID, 2 BEATS", bx, by + 21, bw, 10, caps_text(colour::dim));
 
     // The pads as they sit, the chosen ones lit.
     float gx = x + w + 18, gw = zone::width - zone::pad - gx, gh = zone::picture_h - 8;
@@ -59,7 +59,7 @@ void draw(Paint& p, const Snapshot& s) {
         bool on = key >= 0 && (s.ui.tc_all || s.ui.tc_key(unsigned(key)));
         float cx = gx + column * (cw + 2), cy = zone::picture_y + 2 + row * (ch + 2);
         p.fill(cx, cy, cw, ch, on ? c : key >= 0 ? colour::surf : colour::quiet, 3);
-        p.text(pad_caption(s, pad, key), cx, cy, cw, ch, plain(on ? colour::bg : colour::dim, 7, Weight::SemiBold), juce::Justification::centred);
+        p.text(pad_caption(s, pad, key), cx, cy, cw, ch, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
     }
 }
 

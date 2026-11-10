@@ -26,7 +26,7 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr unsigned visible = 7;
+constexpr unsigned visible = list_rows;
 const juce::Colour amber = colour::amber;
 
 enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete, LoadKit };
@@ -134,14 +134,16 @@ void draw_demos(Paint& p, const Snapshot& s) {
         }
         const auto& meta = demo_meta(n);
         juce::String text = juce::String(meta.tracks) + " TRACKS" + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(meta.tempo / 10) + " BPM";
-        auto meta_style = caps_text(colour::mid, 7);
+        auto meta_style = caps_text(colour::mid);
         float mw = p.width(text, meta_style), right = x + w - 7 - mw;
         p.text(text, right, y, mw + 1, list_row_h, meta_style);
         p.circle(x + 15, cy, 2.5f, current ? colour::text : colour::mid);
-        p.text(demo_name(n), x + 27, y, right - x - 31, list_row_h, plain(current ? colour::text : colour::sec, 12, Weight::Medium));
+        p.text(demo_name(n), x + 27, y, right - x - 31, list_row_h, plain(current ? colour::text : colour::sec, type::body, Weight::Medium));
     }
-    p.text("Made in Melodee: they open unsaved, Save gives them a name", x, zone::picture_y + 132, w, 12, caps_text(colour::dim, 7),
-           juce::Justification::centredRight);
+    auto note = plain(colour::dim, type::small);
+    auto note_lines = p.wrap("Made in Melodee: they open unsaved, and Save gives them a name.", note, w, 2);
+    for (int l = 0; l < note_lines.size(); ++l)
+        p.text(note_lines[l], x, zone::picture_y + zone::picture_h - 30 + l * 14, w, 14, note);
     if (sheet) {
         MenuSheet m;
         m.title = demo_name(cursor); m.accent = colour::text;
@@ -184,35 +186,35 @@ void draw(Paint& p, const Snapshot& s) {
         if (on_demos(n, s.project_path, s.project_folder)) { // the demos, as a folder
             folder_icon(p, x + 10, cy);
             juce::String meta = juce::String(demo_count) + " PROJECTS" + juce::String::fromUTF8(" \xc2\xb7 ") + "BUILT IN";
-            auto meta_style = caps_text(colour::mid, 7);
+            auto meta_style = caps_text(colour::mid);
             float mw = p.width(meta, meta_style);
             p.text(meta, x + w - 7 - mw, y, mw + 1, list_row_h, meta_style);
-            p.text("Demos", tx, y, w - mw - 40, list_row_h, plain(colour::sec, 12, Weight::Medium));
+            p.text("Demos", tx, y, w - mw - 40, list_row_h, plain(colour::sec, type::body, Weight::Medium));
             continue;
         }
         if (on_card(n, s.project_path, s.project_folder)) { // the card, to a computer over USB-C
             card_icon(p, x + 10, cy, colour::mid);
-            auto meta_style = caps_text(colour::mid, 7);
+            auto meta_style = caps_text(colour::mid);
             float mw = p.width("USB-C", meta_style);
             p.text("USB-C", x + w - 7 - mw, y, mw + 1, list_row_h, meta_style);
-            p.text("SD card access", tx, y, w - mw - 40, list_row_h, plain(colour::sec, 12, Weight::Medium));
+            p.text("SD card access", tx, y, w - mw - 40, list_row_h, plain(colour::sec, type::body, Weight::Medium));
             continue;
         }
         if (on_unsaved(n, s.project_path)) { // the open project, not on the card yet
-            auto chip_style = caps_text(colour::bg, 7);
+            auto chip_style = caps_text(colour::bg);
             float cw = p.width("OPEN", chip_style) + 8, right = x + w - 7 - cw;
-            p.fill(right, cy - 5.5f, cw, 11, colour::text, 3);
-            p.text("OPEN", right, cy - 5.5f, cw, 11, chip_style, juce::Justification::centred);
-            auto style = caps_text(amber, 7);
+            p.fill(right, cy - 7.5f, cw, 15, colour::text, 3);
+            p.text("OPEN", right, cy - 7.5f, cw, 15, chip_style, juce::Justification::centred);
+            auto style = caps_text(amber);
             float uw = p.width("NOT SAVED", style);
             p.text("NOT SAVED", right - uw - 6, y, uw + 1, list_row_h, style);
             p.circle(right - uw - 11, cy, 2, amber);
-            p.text(s.project.name, tx, y, right - uw - 20 - tx, list_row_h, plain(colour::text, 12, Weight::Medium));
+            p.text(s.project.name, tx, y, right - uw - 20 - tx, list_row_h, plain(colour::text, type::body, Weight::Medium));
             continue;
         }
         if (!e) { // New project
             p.fill(x + 11, cy - 0.75f, 9, 1.5f, colour::mid); p.fill(x + 14.75f, cy - 4.5f, 1.5f, 9, colour::mid);
-            p.text("New project", tx, y, w - 40, list_row_h, plain(colour::mid, 12, Weight::Medium));
+            p.text("New project", tx, y, w - 40, list_row_h, plain(colour::mid, type::body, Weight::Medium));
             continue;
         }
         juce::String meta;
@@ -222,18 +224,19 @@ void draw(Paint& p, const Snapshot& s) {
         } else {
             meta = juce::String(e->tracks) + (e->tracks == 1 ? " TRACK" : " TRACKS") + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(e->tempo / 10) + " BPM";
         }
-        auto meta_style = caps_text(open ? colour::text : colour::mid, 7);
-        float mw = p.width(meta, meta_style);
+        if (open) meta = {}; // the header and Stage say what the open project holds; its row says OPEN
+        auto meta_style = caps_text(open ? colour::text : colour::mid);
+        float mw = meta.isEmpty() ? 0 : p.width(meta, meta_style);
         float right = x + w - 7 - mw;
-        p.text(meta, right, y, mw + 1, list_row_h, meta_style);
+        if (mw > 0) p.text(meta, right, y, mw + 1, list_row_h, meta_style);
         if (open) {
-            auto chip_style = caps_text(colour::bg, 7);
+            auto chip_style = caps_text(colour::bg);
             float cw = p.width("OPEN", chip_style) + 8;
-            right -= cw + 6;
-            p.fill(right, cy - 5.5f, cw, 11, colour::text, 3);
-            p.text("OPEN", right, cy - 5.5f, cw, 11, chip_style, juce::Justification::centred);
+            right -= cw + (mw > 0 ? 6 : 0);
+            p.fill(right, cy - 7.5f, cw, 15, colour::text, 3);
+            p.text("OPEN", right, cy - 7.5f, cw, 15, chip_style, juce::Justification::centred);
             if (s.dirty) {
-                auto style = caps_text(amber, 7);
+                auto style = caps_text(amber);
                 float uw = p.width("UNSAVED", style);
                 right -= uw + 6;
                 p.text("UNSAVED", right, y, uw + 1, list_row_h, style);
@@ -241,7 +244,7 @@ void draw(Paint& p, const Snapshot& s) {
                 p.circle(right + 2, cy, 2, amber);
             }
         }
-        p.text(e->name, tx, y, right - tx - 4, list_row_h, p.fit(e->name, plain(open ? colour::text : colour::sec, 12, Weight::Medium), right - tx - 4, 8));
+        p.text(e->name, tx, y, right - tx - 4, list_row_h, p.fit(e->name, plain(open ? colour::text : colour::sec, type::body, Weight::Medium), right - tx - 4, type::floor));
     }
     if (s.ui.move_open) { // the folder picker over the list
         const auto* e = entry_at(v, cursor, s.project_path, s.project_folder);
@@ -252,9 +255,9 @@ void draw(Paint& p, const Snapshot& s) {
         float px = zone::pad + 6, pw = zone::width - 2 * zone::pad - 12, py = zone::picture_y + 3, ph = zone::picture_h - 6;
         p.fill(px, py, pw, ph, colour::surf, 6);
         p.ring(px, py, pw, ph, colour::line, 6);
-        p.text("MOVE " + juce::String(e->name).toUpperCase() + " TO", px + 9, py + 5, pw - 18, 10, p.fit("MOVE " + juce::String(e->name).toUpperCase() + " TO", caps_text(colour::mid, 7), pw - 18, 5));
+        p.text("MOVE " + juce::String(e->name).toUpperCase() + " TO", px + 9, py + 5, pw - 18, 10, p.fit("MOVE " + juce::String(e->name).toUpperCase() + " TO", caps_text(colour::mid), pw - 18, type::floor));
         if (list.empty()) {
-            p.text("No other folder: New folder here makes one", px, py + 50, pw, 14, plain(colour::dim, 10), juce::Justification::centred);
+            p.text("No other folder: New folder here makes one", px, py + 50, pw, 14, plain(colour::dim, type::small), juce::Justification::centred);
             return;
         }
         constexpr unsigned shown = 6;
@@ -271,12 +274,12 @@ void draw(Paint& p, const Snapshot& s) {
             }
             folder_icon(p, rx + 6, ry + 9.5f);
             juce::String name = list[n].empty() ? juce::String("Projects (the top)") : juce::String(list[n]).replace("/", juce::String::fromUTF8(" \xe2\x80\xba "));
-            p.text(name, rx + 22, ry, rw - 28, 19, p.fit(name, plain(on ? colour::text : colour::sec, 11, Weight::Medium), rw - 28, 7));
+            p.text(name, rx + 22, ry, rw - 28, 19, p.fit(name, plain(on ? colour::text : colour::sec, type::small, Weight::Medium), rw - 28, type::floor));
         }
         return;
     }
     if (!v.message.empty() && !sheet)
-        p.text(v.message, x, zone::picture_y + 132, w, 12, caps_text(colour::rec, 7), juce::Justification::centredRight);
+        p.text(v.message, x, zone::picture_y + 132, w, 12, caps_text(colour::rec), juce::Justification::centredRight);
 
     if (sheet) {
         const auto* e = entry_at(v, cursor, s.project_path, s.project_folder);

@@ -16,7 +16,7 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr float gutter = 23, ruler = 11, row_h = 11, column = 18.5f;
+constexpr float gutter = 23, ruler = 13, row_h = 10.5f, column = 18.5f;
 constexpr unsigned rows = 12, sheet_rows = 5;
 constexpr unsigned copy_ahead = 8; // Copy to: half a bar on, as on the board (step 23 to 31)
 
@@ -54,15 +54,24 @@ void draw(Paint& p, const Snapshot& s) {
     float top = zone::picture_y + ruler;
     int key_top = top_key(s.project, track);
     for (unsigned b = 0; b < 4; ++b)
-        p.text(juce::String(bar + 1) + "." + juce::String(b + 1), gutter + b * 4 * column + 2, zone::picture_y + 1, 30, 9,
-               plain(colour::mid, 7, Weight::SemiBold));
+        p.text(juce::String(bar + 1) + "." + juce::String(b + 1), gutter + b * 4 * column + 2, zone::picture_y, 30, 13,
+               plain(colour::mid, type::small, Weight::SemiBold));
     for (unsigned r = 0; r < rows; ++r) {
         int key = key_top - int(r);
         float y = top + r * row_h;
         p.fill(0, y, zone::width, row_h - 0.5f, black(key) ? colour::quiet : colour::panel);
-        if (!black(key)) {
-            bool root = (key % 12) == s.project.root;
-            p.text(note_name(key), 0, y, gutter - 4, row_h - 0.5f, plain(root ? c : colour::dim, 7, Weight::SemiBold),
+    }
+    // Names on C, D, F, G and A (and the root): no two side by side, so each
+    // has room at the floor size; drawn over the rows, a little taller than one.
+    for (unsigned r = 0; r < rows; ++r) {
+        int key = key_top - int(r);
+        float y = top + r * row_h;
+        int pitch = key % 12, root_pitch = int(s.project.root % 12);
+        bool root = pitch == root_pitch;
+        bool beside_root = (root_pitch == 4 && pitch == 5) || (root_pitch == 11 && pitch == 0) || (root_pitch == 5 && pitch == 4) || (root_pitch == 0 && pitch == 11);
+        bool named = root || (!beside_root && (pitch == 0 || pitch == 2 || pitch == 5 || pitch == 7 || pitch == 9));
+        if (!black(key) && named) {
+            p.text(note_name(key), 0, y - 2, gutter - 4, row_h + 3, plain(root ? c : colour::dim, type::small, Weight::SemiBold),
                    juce::Justification::centredRight);
         }
     }

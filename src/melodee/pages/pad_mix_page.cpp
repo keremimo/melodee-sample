@@ -16,7 +16,7 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& pad = sampler_pad(s);
     auto c = colour_of(s);
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y + 30, h = 80;
-    if (!pad.used()) { p.text("No sample on this pad", x, y + 20, w, 20, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred); return; }
+    if (!pad.used()) { p.text("No sample on this pad", x, y + 20, w, 20, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred); return; }
     // The volume meter: -74 dB at the foot, +6 at the top, 0 dB marked.
     auto meter_y = [&](int level) {
         if (level <= 0) return y + h;

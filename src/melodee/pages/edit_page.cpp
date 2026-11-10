@@ -33,7 +33,7 @@ juce::Colour shade_of(const Snapshot& s, const EditPage& page, int id) {
 }
 
 void axis(Paint& p, const juce::String& left, const juce::String& middle, const juce::String& right) {
-    auto style = caps_text(colour::dim, 7);
+    auto style = caps_text(colour::dim);
     float y = py + ph + 2;
     p.text(left, px, y, 100, 9, style);
     p.text(middle, px + pw / 2 - 50, y, 100, 9, style, juce::Justification::centred);
@@ -186,7 +186,7 @@ void bars_picture(Paint& p, const Snapshot& s, const EditPage& page) {
             float x = px + n * (cw + 8), y = py + r * row_h;
             auto shown = show(param, v[size_t(id)]);
             p.text(param.label, x, y, cw, 10, caps_text(shade_of(s, page, id)));
-            p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x, y + 10, cw, 13, plain(colour::sec, 11, Weight::Medium));
+            p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x, y + 10, cw, 13, plain(colour::sec, type::small, Weight::Medium));
             gauge(p, x, y + 25, cw, gauge_of(param, v[size_t(id)]), shade_of(s, page, id));
         }
 }
@@ -210,10 +210,10 @@ void mod_picture(Paint& p, const Snapshot& s) {
             p.fill(x, y, 8, rh, c, 4);
             p.g.restoreState();
         }
-        p.text(juce::String(r + 1), x + 9, y, 10, rh, plain(route.used() ? c : colour::dim, 8, Weight::Bold));
-        if (!route.used()) { p.text("Empty", x + 24, y, 100, rh, plain(colour::dim, 10.5f, Weight::Medium)); continue; }
+        p.text(juce::String(r + 1), x + 9, y, 10, rh, plain(route.used() ? c : colour::dim, type::small, Weight::Bold));
+        if (!route.used()) { p.text("Empty", x + 24, y, 100, rh, plain(colour::dim, type::small, Weight::Medium)); continue; }
         p.text(mod_source_name(ModSource(route.source)), x + 24, y, 75, rh,
-               plain(on ? knob_shade(s.ui.track, 0) : colour::sec, 10.5f, Weight::Medium));
+               plain(on ? knob_shade(s.ui.track, 0) : colour::sec, type::small, Weight::Medium));
         juce::Path arrow;
         float ax = x + 107, ay = y + rh / 2;
         arrow.startNewSubPath(ax, ay); arrow.lineTo(ax + 10, ay);
@@ -223,7 +223,7 @@ void mod_picture(Paint& p, const Snapshot& s) {
         // A destination this engine has none of (a route kept from another engine) is drawn dim; it does nothing.
         const char* dest = mod_dest_label(engine_info(s.track().engine), ModDest(route.destination));
         p.text(dest ? dest : mod_dest_name(ModDest(route.destination)), x + 123, y, 90, rh,
-               plain(!dest ? colour::dim : on ? knob_shade(s.ui.track, 1) : colour::sec, 10.5f, Weight::Medium));
+               plain(!dest ? colour::dim : on ? knob_shade(s.ui.track, 1) : colour::sec, type::small, Weight::Medium));
         float bx = x + 214, bw = 55, amount = route.amount / float(mod_amount_max);
         p.fill(bx, ay - 1, bw, 2, colour::line, 1);
         float from = std::min(0.0f, amount), to = std::max(0.0f, amount);
@@ -231,7 +231,7 @@ void mod_picture(Paint& p, const Snapshot& s) {
         p.fill(bx + bw / 2 - 0.5f, ay - 2.5f, 1, 5, colour::mid);
         juce::String value = (route.amount > 0 ? "+" : route.amount < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String())
             + juce::String(std::abs(int(route.amount)));
-        p.text(value, x + 270, y, zone::width - 2 * zone::pad - 277, rh, plain(on ? colour::text : colour::sec, 10, Weight::Medium),
+        p.text(value, x + 270, y, zone::width - 2 * zone::pad - 277, rh, plain(on ? colour::text : colour::sec, type::small, Weight::Medium),
                juce::Justification::centredRight);
     }
 }
@@ -245,8 +245,8 @@ void page_map(Paint& p, const Snapshot& s, const EngineInfo& info) {
         float x = zone::pad + (n / per_column) * (cw + 4), y = zone::picture_y + 1 + (n % per_column) * (rh + 2);
         bool on = n == s.ui.map_cursor;
         if (on) p.fill(x, y, cw, rh, c, 4);
-        p.text(juce::String(n + 1), x + 6, y, 11, rh, plain(on ? colour::bg : colour::dim, 7.5f, Weight::SemiBold));
-        p.text(edit_page_at(info, n).title, x + 23, y, cw - 26, rh, plain(on ? colour::bg : colour::sec, 11, Weight::Medium));
+        p.text(juce::String(n + 1), x + 4, y, 14, rh, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold));
+        p.text(edit_page_at(info, n).title, x + 23, y, cw - 26, rh, plain(on ? colour::bg : colour::sec, type::small, Weight::Medium));
     }
 }
 
@@ -257,7 +257,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (!info.page_count) {
         h.right.push_back(tag_of(s, s.ui.track));
         frame(p, s, {{"", "", ""}, -1, c}, h);
-        p.text("Nothing to edit yet", zone::pad, zone::picture_y, zone::width - 12, 40, plain(colour::dim, 11, Weight::Medium),
+        p.text("Nothing to edit yet", zone::pad, zone::picture_y, zone::width - 12, 40, plain(colour::dim, type::small, Weight::Medium),
                juce::Justification::centred);
         return;
     }

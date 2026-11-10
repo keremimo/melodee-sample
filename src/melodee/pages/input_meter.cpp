@@ -16,18 +16,18 @@ juce::String db_text(float db) {
 }
 
 void input_meter(Paint& p, const Snapshot& s, juce::Colour c, float x, float y, float w) {
-    p.text("INPUT LEVEL", x, y, 120, 9, caps_text(colour::mid, 7));
-    p.text("PEAK " + db_text(std::max(-96.0f, db_of(s.take.level))), x, y, w, 9, caps_text(colour::mid, 7), juce::Justification::centredRight);
+    p.text("INPUT LEVEL", x, y, 120, 14, caps_text(colour::mid));
+    p.text("PEAK " + db_text(std::max(-96.0f, db_of(s.take.level))), x, y, w, 14, caps_text(colour::mid), juce::Justification::centredRight);
     auto fraction = [](float db) { return std::clamp((db + 96) / 96, 0.0f, 1.0f); };
-    p.fill(x, y + 12, w, 6, colour::line, 3);
-    p.fill(x, y + 12, w * fraction(db_of(s.take.level)), 6, c, 3);
+    p.fill(x, y + 15, w, 6, colour::line, 3);
+    p.fill(x, y + 15, w * fraction(db_of(s.take.level)), 6, c, 3);
     const auto& in = s.ui.settings.input;
     if (!in.at_once()) {
         float tx = x + w * fraction(float(in.threshold));
-        p.fill(tx, y + 9, 1, 12, colour::text);
-        p.text("STARTS AT " + db_text(float(in.threshold)), std::clamp(tx - 60, x, x + w - 120), y + 22, 120, 9, caps_text(c, 7), juce::Justification::centred);
+        p.fill(tx, y + 12, 1, 12, colour::text);
+        p.text("STARTS AT " + db_text(float(in.threshold)), std::clamp(tx - 70, x, x + w - 140), y + 24, 140, 14, caps_text(c), juce::Justification::centred);
     } else {
-        p.text("STARTS AT ONCE", x, y + 22, w, 9, caps_text(c, 7), juce::Justification::centred);
+        p.text("STARTS AT ONCE", x, y + 24, w, 14, caps_text(c), juce::Justification::centred);
     }
 }
 

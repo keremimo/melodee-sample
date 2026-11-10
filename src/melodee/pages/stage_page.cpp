@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// STAGE (Sample): sixteen tracks drawn as the pads sit, pad 1 bottom left
-// (pages/track_grid.cpp). Each cell shows engine, sound, the pattern playing and level. The wheel
+// STAGE (Sample): the tracks drawn as the pads sit, pad 1 bottom left, eight
+// at a time (pages/track_grid.cpp). Each cell shows engine, sound, the pattern playing and level. The wheel
 // picks the track, Push opens its sound (or, on an empty cell, starts one).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -12,7 +12,8 @@ using namespace ui;
 
 void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
-    h.left.push_back(pill(juce::String(s.project.used_tracks()) + " OF 16 TRACKS"));
+    h.left.push_back(track_half_pill(s));
+    h.left.push_back(pill(juce::String(s.project.used_tracks()) + " USED"));
     h.right.push_back(label(s.project.name));
     frame(p, s, play_keys(s, 0), h);
 

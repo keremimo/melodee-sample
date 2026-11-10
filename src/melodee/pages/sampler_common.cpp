@@ -61,15 +61,15 @@ void draw_sampler_map(Paint& p, const Snapshot& s) {
     unsigned here = sampler_index(s.ui.page);
     for (unsigned g = 0; g < sampler_groups; ++g) {
         float x = px + 5 + g * (cw + 3);
-        p.text(names[g], x + 4, py + 4, cw - 8, 11, caps_text(colour::mid, 7));
+        p.text(names[g], x + 4, py + 3, cw - 8, 14, caps_text(colour::mid));
         for (unsigned k = 0; k < sampler_group_size(g); ++k) {
             unsigned n = sampler_group_first(g) + k;
             float y = py + 18 + k * (rh + 2);
             bool on = n == s.ui.map_cursor;
             if (on) p.fill(x, y, cw, rh, c, 4);
             else if (n == here) p.ring(x, y, cw, rh, colour::line, 4);
-            p.text(juce::String(n + 1), x + 5, y, 12, rh, plain(on ? colour::bg : colour::dim, 7.5f, Weight::SemiBold));
-            p.text(titles[n], x + 19, y, cw - 22, rh, p.fit(titles[n], plain(on ? colour::bg : colour::sec, 11, Weight::Medium), cw - 22, 8));
+            p.text(juce::String(n + 1), x + 4, y, 15, rh, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold));
+            p.text(titles[n], x + 20, y, cw - 22, rh, p.fit(titles[n], plain(on ? colour::bg : colour::sec, type::small, Weight::Medium), cw - 22, type::floor));
         }
     }
 }
@@ -132,10 +132,11 @@ void sampler_pills(Paint& p, float y, std::initializer_list<juce::String> texts,
     float x = zone::pad;
     bool lead = true;
     for (const auto& t : texts) {
-        auto style = caps_text(lead ? first : colour::mid, 7);
-        float w = p.width(t, style) + 9;
-        p.fill(x, y, w, 12, colour::surf, 3);
-        p.text(t, x, y, w, 12, style, juce::Justification::centred);
+        auto style = caps_text(lead ? first : colour::mid);
+        float w = p.width(t, style) + 8;
+        if (x + w > zone::width - zone::pad) report_text_issue({t, style.size, x + w - zone::pad, zone::width - 2.0f * zone::pad}); // the row runs off the screen
+        p.fill(x, y, w, 15, colour::surf, 3);
+        p.text(t, x, y, w, 15, style, juce::Justification::centred);
         x += w + 4; lead = false;
     }
 }
@@ -159,7 +160,7 @@ void draw_filter_curve(Paint& p, float x, float y, float w, float h, unsigned sh
     p.g.setColour(c.withAlpha(0.14f)); p.g.fillPath(area);
     p.g.setColour(c); p.g.strokePath(line, juce::PathStrokeType(1.5f));
     p.fill(cx, y, 1, h, marker);
-    auto axis = caps_text(colour::dim, 7);
+    auto axis = caps_text(colour::dim);
     p.text("20 HZ", x, y + h + 3, 40, 9, axis); p.text("200", x + w / 3 - 10, y + h + 3, 40, 9, axis);
     p.text("2 K", x + 2 * w / 3 - 10, y + h + 3, 40, 9, axis); p.text("20 K", x + w - 40, y + h + 3, 40, 9, axis, juce::Justification::centredRight);
 }

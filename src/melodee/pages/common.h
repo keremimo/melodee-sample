@@ -33,9 +33,16 @@ juce::Colour colour_of(const Snapshot& s);              // the selected track's 
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
 juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
 
-// The sixteen tracks as the pads sit, pad 1 bottom left, in the picture
-// zone: Stage's picture, and the screen while Pad Bank is held.
+// The tracks as the pads sit, pad 1 bottom left, in the picture zone, eight
+// at a time (the half with the selected track): Stage's picture, and the
+// screen while Pad Bank is held. The pill names the half in the header.
 void track_grid(ui::Paint& p, const Snapshot& s);
+unsigned track_half(const Snapshot& s);
+ui::HeaderItem track_half_pill(const Snapshot& s);
+
+// A name in capitals ("BEAT REPEAT") for a narrow cell: as it is when it
+// fits `w` in `style`, else in title case ("Beat Repeat"), which is narrower.
+juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::Paint::Text& style, float w);
 
 // B1 held on Patterns or Step Edit: the BPM window over the picture.
 void draw_bpm_window(ui::Paint& p, const Snapshot& s);

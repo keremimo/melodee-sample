@@ -39,9 +39,9 @@ void settings_draw(Paint& p, const Snapshot& s) {
     for (unsigned row = first; row < first + shown; ++row, y += rh) {
         bool cursor = row == s.ui.settings_cursor, editing = cursor && s.ui.settings_editing;
         if (cursor) { p.fill(x, y, w, rh - 1, colour::raised, 4); p.fill(x, y, 3, rh - 1, colour::text); }
-        p.text(Settings::row_name(row), x + 9, y, w / 2, rh - 1, plain(cursor ? colour::text : colour::sec, 11.5f, Weight::Medium));
+        p.text(Settings::row_name(row), x + 9, y, w / 2, rh - 1, plain(cursor ? colour::text : colour::sec, type::body, Weight::Medium));
         juce::String value = set.value_text(row);
-        auto style = plain(cursor ? colour::text : colour::mid, 11, Weight::Medium);
+        auto style = plain(cursor ? colour::text : colour::mid, type::small, Weight::Medium);
         float vw = p.width(value, style), vx = x + w - 7 - vw;
         if (editing) { // the open value: framed, with which way the wheel goes
             p.fill(vx - 6, y + 2, vw + 12, rh - 5, colour::surf, 3);
@@ -54,10 +54,10 @@ void settings_draw(Paint& p, const Snapshot& s) {
     // What runs now: a change shows here once the device has reopened.
     juce::String rate = s.audio_rate == 44100 ? "44.1" : juce::String(s.audio_rate / 1000);
     unsigned frames = 128 * s.audio_periods;
-    juce::String now = "RUNNING " + rate + " KHZ  " + juce::String(frames) + " FRAMES  " +
-                       juce::String(1000.0 * frames / std::max(1u, s.audio_rate), 1) + " MS  " +
-                       juce::String(s.audio_xruns) + (s.audio_xruns == 1 ? " DROPOUT" : " DROPOUTS");
-    p.text(now, x + 9, y + 4, w - 18, 13, caps_text(s.audio_xruns ? colour::text : colour::mid, 7));
+    juce::String now = "Running " + rate + " kHz, " + juce::String(frames) + " frames, " +
+                       juce::String(1000.0 * frames / std::max(1u, s.audio_rate), 1) + " ms, " +
+                       juce::String(s.audio_xruns) + (s.audio_xruns == 1 ? " dropout" : " dropouts");
+    p.text(now, x + 9, y + 2, w - 18, 15, plain(s.audio_xruns ? colour::text : colour::mid, type::small, Weight::Medium));
 }
 void settings_wheel(Context& c, int delta) {
     if (c.ui.settings_editing) { c.change_setting(c.ui.settings_cursor, delta > 0 ? 1 : -1); return; }
@@ -74,7 +74,7 @@ void about_draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 2, colour::text}, system_header(s));
     float x = zone::pad + 6, w = zone::width - 2 * zone::pad - 12, y = zone::picture_y + 4;
     p.text("Melodee", x, y, w, 30, plain(colour::text, 26, Weight::SemiBold));
-    p.text("for the MPC Sample, written on sample-base", x, y + 30, w, 14, plain(colour::sec, 10));
+    p.text("for the MPC Sample, written on sample-base", x, y + 30, w, 14, plain(colour::sec, type::small));
     unsigned effects = unsigned(EffectKind::Count) - 1;
     juce::String juce_version = juce::String(JUCE_MAJOR_VERSION) + "." + juce::String(JUCE_MINOR_VERSION) + "." + juce::String(JUCE_BUILDNUMBER);
     const std::pair<const char*, juce::String> rows[] {
@@ -87,8 +87,8 @@ void about_draw(Paint& p, const Snapshot& s) {
     };
     float ry = y + 54;
     for (const auto& row : rows) {
-        p.text(row.first, x, ry, 64, 13, caps_text(colour::mid, 7));
-        p.text(row.second, x + 66, ry, w - 66, 13, p.fit(row.second, plain(colour::text, 10, Weight::Medium), w - 66, 7));
+        p.text(row.first, x, ry, 64, 13, caps_text(colour::mid));
+        p.text(row.second, x + 66, ry, w - 66, 13, p.fit(row.second, plain(colour::text, type::small, Weight::Medium), w - 66, type::floor));
         ry += 14.5f;
     }
 }

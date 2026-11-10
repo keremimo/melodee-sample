@@ -33,22 +33,22 @@ void draw(Paint& p, const Snapshot& s) {
 
     // The targets, one row each.
     constexpr float rh = 18;
-    float x = zone::pad, w = 196, y = zone::picture_y + 1.5f;
+    float x = zone::pad, w = 176, y = zone::picture_y + 1.5f;
     for (unsigned n = 0; n < fader_targets; ++n, y += rh) {
         auto target = FaderTarget(n);
         bool cursor = n == s.ui.fader_cursor, here = n == chosen && on, usable = kit || !fader_needs_kit(target);
         if (cursor) { p.fill(x, y, w, rh - 1, colour::raised, 4); p.fill(x, y, 3, rh - 1, c); }
         auto ink = !usable ? colour::dim : cursor ? colour::text : colour::sec;
-        p.text(fader_target_name(target), x + 9, y, w - 50, rh - 1, plain(ink, 11, Weight::Medium));
+        p.text(fader_target_name(target), x + 9, y, w - 50, rh - 1, plain(ink, type::small, Weight::Medium));
         if (here) p.fill(x + w - 16, y + rh / 2 - 4, 7, 7, c, 3.5f);  // the one the fader moves
-        else if (!usable) p.text("KIT", x + w - 40, y, 32, rh - 1, caps_text(colour::dim, 6.5f), juce::Justification::right);
+        else if (!usable) p.text("KIT", x + w - 40, y, 32, rh - 1, caps_text(colour::dim), juce::Justification::right);
     }
 
     // The fader as it stands: a slot, the value's level, what it is.
     auto shown = fader_shown(s);
-    float fx = x + w + 10, fw = zone::width - zone::pad - fx, top = zone::picture_y + 4, slot_h = 100;
+    float fx = x + w + 8, fw = zone::width - zone::pad - fx, top = zone::picture_y + 4, slot_h = 100;
     p.fill(fx, top - 2.5f, fw, zone::picture_h - 3, colour::panel, 6);
-    float sx = fx + 12, sw = 10;
+    float sw = 10, sx = fx + fw - 12 - sw; // the slot on the right, the words beside it
     p.fill(sx, top + 4, sw, slot_h, colour::quiet, 3);
     if (shown.value) {
         float level = std::clamp(shown.card.fill, 0.0f, 1.0f);
@@ -64,20 +64,29 @@ void draw(Paint& p, const Snapshot& s) {
             p.ring(sx - 4, py - 2, sw + 8, 4, colour::text, 2, 1);
         }
     }
-    float tx = sx + sw + 8, tw = fx + fw - tx - 4;
-    p.text("FADER", tx, top + 2, tw, 10, caps_text(colour::mid, 6.5f));
+    float tx = fx + 8, tw = sx - 8 - tx;
+    p.text("FADER", tx, top + 1, tw, 14, caps_text(colour::mid));
     juce::String what = shown.off ? juce::String("Off") : shown.value ? shown.what : juce::String("Fader");
-    p.text(what, tx, top + 14, tw, 12, p.fit(what, plain(colour::text, 9, Weight::SemiBold), tw, 6));
+    auto what_style = plain(colour::text, type::small, Weight::SemiBold);
+    auto what_lines = p.wrap(what, what_style, tw, 2);
+    float ty = top + 16;
+    for (int l = 0; l < what_lines.size(); ++l, ty += 13) p.text(what_lines[l], tx, ty, tw, 14, what_style);
+    ty += 3;
     if (shown.value) {
         juce::String value = shown.card.value + (shown.card.unit.isNotEmpty() ? " " + shown.card.unit : juce::String());
-        p.text(value, tx, top + 28, tw, 14, p.fit(value, plain(shown.waiting ? colour::mid : colour::text, 12, Weight::Medium), tw, 7));
-        if (shown.waiting) p.text("MOVE TO PICK UP", tx, top + 44, tw, 10, p.fit("MOVE TO PICK UP", caps_text(colour::mid, 5.5f), tw, 4.5f));
+        p.text(value, tx, ty, tw, 18, p.fit(value, plain(shown.waiting ? colour::mid : colour::text, type::list, Weight::Medium), tw, type::floor));
+        ty += 20;
+        auto wait = caps_text(colour::mid);
+        if (shown.waiting)
+            for (auto& line : p.wrap("MOVE TO PICK UP", wait, tw, 2)) { p.text(line, tx, ty, tw, 14, wait); ty += 13; }
     } else if (!shown.off) {
-        p.text(shown.what, tx, top + 28, tw, 12, p.fit(shown.what, plain(colour::mid, 9), tw, 6));
+        p.text(shown.what, tx, ty, tw, 14, p.fit(shown.what, plain(colour::mid, type::small), tw, type::floor));
     }
-    juce::String takeover = juce::String("TAKEOVER ") + juce::String(takeover_name(s.ui.settings.fader_takeover)).toUpperCase();
-    p.text(takeover, fx + 6, top + slot_h + 12, fw - 12, 10, p.fit(takeover, caps_text(colour::dim, 5.5f), fw - 12, 4.5f));
-    p.text("SETTINGS", fx + 6, top + slot_h + 22, fw - 12, 10, caps_text(colour::dim, 5.5f));
+    // How the fader takes over, set in Settings.
+    auto dim = caps_text(colour::dim);
+    auto takeover = p.wrap("TAKEOVER " + juce::String(takeover_name(s.ui.settings.fader_takeover)).toUpperCase() + " IN SETTINGS", dim, fw - 16, 3);
+    float by = top - 2.5f + zone::picture_h - 3 - 6 - takeover.size() * 13;
+    for (int l = 0; l < takeover.size(); ++l) p.text(takeover[l], fx + 8, by + l * 13, fw - 16, 14, dim);
 }
 
 void move(Context& c, int delta) {

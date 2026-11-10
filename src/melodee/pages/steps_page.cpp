@@ -29,7 +29,7 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& cur = pattern.step(unsigned(std::max(cursor, 0)) % pattern.steps());
     float x0 = zone::pad, top = zone::picture_y;
     float tw = p.text("Step " + juce::String(cursor + 1), x0, top, 140, 22, plain(colour::text, type::title, Weight::SemiBold));
-    if (const Note* n = cur.first()) p.text(note_name(n->key), x0 + tw + 6, top + 1, 60, 22, plain(c, 12, Weight::Medium));
+    if (const Note* n = cur.first()) p.text(note_name(n->key), x0 + tw + 6, top + 1, 60, 22, plain(c, type::body, Weight::Medium));
 
     // A small roll of the bar: eight rows of the scale around its notes.
     std::array<uint8_t, 12> degrees {};
@@ -97,7 +97,7 @@ void draw(Paint& p, const Snapshot& s) {
 
     // Right column: the pads as steps, the bars and the pattern.
     float x = rx + rw + 7, w = zone::width - zone::pad - x, y = zone::picture_y + 3;
-    p.text("PADS", x, y, w, 9, caps_text(colour::mid, 7));
+    p.text("PADS", x, y, w, 9, caps_text(colour::mid));
     float gy = y + 13, gh = 70, gc = (w - 6) / 4, gr = (gh - 6) / 4;
     for (unsigned pad = 0; pad < 16; ++pad) {
         unsigned st = first + pad, row = 3 - pad / 4, column = pad % 4;
@@ -105,16 +105,16 @@ void draw(Paint& p, const Snapshot& s) {
         bool white = int(st) == highlight && held;
         float cx = x + column * (gc + 2), cy = gy + row * (gr + 2);
         p.fill(cx, cy, gc, gr, white ? colour::text : on ? c : colour::surf, 3);
-        p.text(juce::String(pad + 1), cx, cy, gc, gr, plain(on || white ? colour::bg : colour::dim, 6.5f, Weight::SemiBold),
+        p.text(juce::String(pad + 1), cx, cy, gc, gr, plain(on || white ? colour::bg : colour::dim, type::small, Weight::SemiBold),
                juce::Justification::centred);
     }
     float by = gy + gh + 8;
-    p.text("BAR " + juce::String(bar + 1) + " / " + juce::String(bars), x, by, w, 9, caps_text(colour::mid, 7));
+    p.text("BAR " + juce::String(bar + 1) + " / " + juce::String(bars), x, by, w, 9, caps_text(colour::mid));
     float bw = (w - 2 * std::min(bars, 4u) + 2) / std::min(bars, 4u);
     for (unsigned b = 0; b < std::min(bars, 4u); ++b)
         p.fill(x + b * (bw + 2), by + 12, bw, 4, b == bar % 4 ? c : colour::line, 2);
-    p.text("PATTERN", x, by + 22, w, 9, caps_text(colour::mid, 7));
-    p.text("P" + juce::String(s.track().pattern + 1), x, by + 31, w, 15, plain(c, 13, Weight::Medium));
+    p.text("PATTERN", x, by + 22, w, 9, caps_text(colour::mid));
+    p.text("P" + juce::String(s.track().pattern + 1), x, by + 31, w, 15, plain(c, type::body, Weight::Medium));
 }
 
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {

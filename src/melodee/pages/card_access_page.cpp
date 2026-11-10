@@ -49,10 +49,10 @@ void draw(Paint& p, const Snapshot& s) {
     float y = zone::picture_y + 14, mid = zone::width / 2.0f;
     bool none = !away && card.note == CardNote::NoCard;
     juce::Colour here = away || none ? colour::dim : colour::text, there = lent ? colour::text : colour::dim;
-    p.text("MPC", mid - 110, y + 46, 60, 10, caps_text(here, 7), juce::Justification::centred);
+    p.text("MPC", mid - 120, y + 46, 80, 14, caps_text(here), juce::Justification::centred);
     card_glyph(p, mid - 96, y, 32, 40, here, !away && !none);
     computer_glyph(p, mid + 80, y + 2, there, lent);
-    p.text("COMPUTER", mid + 50, y + 46, 60, 10, caps_text(there, 7), juce::Justification::centred);
+    p.text("COMPUTER", mid + 40, y + 46, 80, 14, caps_text(there), juce::Justification::centred);
     // The cable: dotted while it is moving, solid once lent.
     float cy = y + 20;
     for (float x = mid - 54; x < mid + 46; x += busy ? 7 : 1) p.fill(x, cy - 0.75f, busy ? 3.5f : 1.5f, 1.5f, lent ? colour::text : colour::dim);
@@ -62,12 +62,17 @@ void draw(Paint& p, const Snapshot& s) {
     float ty = zone::picture_y + 80, x = zone::pad + 10, w = zone::width - 2 * zone::pad - 20;
     p.text(card_title(card), x, ty, w, 20, plain(colour::text, 15, Weight::Medium), juce::Justification::centred);
     juce::Colour detail = card.locked && !card.ejected ? colour::amber : colour::sec;
-    p.text(card_detail(card), x, ty + 22, w, 28, plain(detail, 10), juce::Justification::centredTop);
+    auto detail_style = plain(detail, type::small);
+    auto lines = p.wrap(card_detail(card), detail_style, w, 3);
+    for (int l = 0; l < lines.size(); ++l) p.text(lines[l], x, ty + 22 + l * 14, w, 14, detail_style, juce::Justification::centred);
 
     // The knobs' zone: why nothing else answers.
-    if (away)
-        p.text("Other modes wait while the card is away. The pads still play.", zone::pad, zone::knobs_y + 18, zone::width - 2 * zone::pad, 12,
-               caps_text(colour::dim, 7), juce::Justification::centred);
+    if (away) {
+        auto note = plain(colour::dim, type::small);
+        auto note_lines = p.wrap("Other modes wait while the card is away. The pads still play.", note, zone::width - 2 * zone::pad, 2);
+        for (int l = 0; l < note_lines.size(); ++l)
+            p.text(note_lines[l], zone::pad, zone::knobs_y + 12 + l * 14, zone::width - 2 * zone::pad, 14, note, juce::Justification::centred);
+    }
 }
 } // namespace
 

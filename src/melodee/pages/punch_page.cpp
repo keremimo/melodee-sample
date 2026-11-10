@@ -51,7 +51,7 @@ void punch_draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"LATCH", master ? "MASTER" : "TRACK", kit(s) ? "PAD" : ""}, latched ? 0 : -1, c}, h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f;
-    constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (145 - 1.5f - 3 * gap) / 4;
+    constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (zone::picture_h - 1.5f - 3 * gap) / 4;
     for (unsigned n = 0; n < 16; ++n) {
         int kind = punch_on_pad(bank, n);
         unsigned row = 3 - n / 4, column = n % 4;
@@ -61,12 +61,13 @@ void punch_draw(Paint& p, const Snapshot& s) {
         bool on = s.ui.punch_sounding(kind), waiting = e >= 0 && !on, latch = e >= 0 && s.ui.engaged[size_t(e)].latched;
         p.fill(x, y, w, ch, on ? c : waiting ? colour::raised : colour::surf, 4);
         if (latch || kind == selected) p.ring(x, y, w, ch, on ? colour::bg : c, 4, kind == selected ? 1.5f : 1);
-        p.text(juce::String(n + 1), x + 6, y + 4, 20, 8, plain(on ? colour::bg : colour::dim, 6.5f, Weight::SemiBold));
+        float nw = p.text(juce::String(n + 1), x + 5, y + 2, 20, 14, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold));
         juce::String mark = latch ? "LATCH" : waiting ? "BYPASS" : on ? "ON" : "";
         if (mark.isNotEmpty())
-            p.text(mark, x + w - 40, y + 4, 34, 8, caps_text(on ? colour::bg : c, 6), juce::Justification::right);
-        juce::String name = punch_name(PunchKind(kind));
-        p.text(name, x + 6, y + ch - 16, w - 12, 13, p.fit(name, plain(on ? colour::bg : c, 11, Weight::SemiBold), w - 12, 6.5f));
+            p.text(mark, x + 5 + nw + 4, y + 2, w - 14 - nw, 14, caps_text(on ? colour::bg : c), juce::Justification::right);
+        auto style = plain(on ? colour::bg : c, type::small, Weight::SemiBold);
+        juce::String name = cell_name(p, punch_name(PunchKind(kind)), style, w - 8);
+        p.text(name, x + 4, y + ch - 17, w - 8, 14, style);
     }
 }
 void punch_pad(Context& c, unsigned pad, uint8_t, bool down) { c.punch_pad(pad, down); }
@@ -84,7 +85,7 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
     if (!kit(s)) {
         frame(p, s, punch_keys(s, 2), header_of(s));
         p.text("Pad Punch is for a sampler track", zone::pad, zone::picture_y + 60, zone::width - 2 * zone::pad, 16,
-               plain(colour::dim, 11), juce::Justification::centred);
+               plain(colour::dim, type::small), juce::Justification::centred);
         return;
     }
     unsigned bank = track.bank % sampler_banks, with = 0;
@@ -94,8 +95,8 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, punch_keys(s, 2), h);
 
-    constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 165;
-    constexpr float w = (grid_w - 3 * gap) / 4, ch = (145 - 1.5f - 3 * gap) / 4;
+    constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 204;
+    constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 1.5f - 3 * gap) / 4;
     for (unsigned n = 0; n < 16; ++n) {
         unsigned k = bank * 16 + n, row = 3 - n / 4, column = n % 4;
         const auto& pad = track.pads[k];
@@ -109,33 +110,34 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
         float press = held ? (s.ui.pad_punch_pressure ? s.ui.pad_punch_pressure / 127.0f : pad.punch_depth / 100.0f) : 0;
         juce::String name = pad_name(s, k, true);
         if (name.isNotEmpty())
-            p.text(name, x + 3.5f, y + 3, w - 7, 8, p.fit(name, plain(press > 0.85f ? colour::bg : colour::mid, 6.5f, Weight::SemiBold), w - 7, 5));
+            p.text(name, x + 4, y + 2, w - 8, 14, p.fit(name, plain(press > 0.85f ? colour::bg : colour::mid, type::small, Weight::SemiBold), w - 8, type::floor));
         if (pad.used() && pad.punch) {
-            juce::String fx = punch_name(PunchKind(pad.punch - 1));
-            p.text(fx, x + 3.5f, y + ch - 11, w - 7, 8, p.fit(fx, caps_text(held ? colour::bg : c, 6), w - 7, 4.5f));
+            auto style = plain(held ? colour::bg : c, type::small, Weight::Medium);
+            juce::String fx = cell_name(p, punch_name(PunchKind(pad.punch - 1)), style, w - 6);
+            p.text(fx, x + 3, y + ch - 16, w - 6, 14, style);
         }
     }
     // The last pad hit, and its punch.
     const auto& pad = track.pads[track.last_pad % sampler_pads];
-    float x = zone::pad + grid_w + 10, y = zone::picture_y + 3, iw = zone::width - zone::pad - x;
+    float x = zone::pad + grid_w + 8, y = zone::picture_y + 2, iw = zone::width - zone::pad - x;
     char label[4]; pad_label(track.last_pad, label);
     juce::String title = juce::String("PAD ") + juce::String(label);
-    if (pad.used()) title += juce::String::fromUTF8(" \xc2\xb7 ") + pad_name(s, track.last_pad % sampler_pads, false).toUpperCase();
-    p.text(title, x, y, iw, 10, p.fit(title, caps_text(colour::mid), iw, 6));
+    p.text(title, x, y, iw, 14, caps_text(colour::mid));
+    if (pad.used()) p.text(pad_name(s, track.last_pad % sampler_pads, false), x, y + 14, iw, 16, p.fit(pad_name(s, track.last_pad % sampler_pads, false), plain(colour::sec, type::body, Weight::Medium), iw, type::floor));
     juce::String fx = !pad.used() ? juce::String("Empty") : pad.punch ? juce::String(punch_title(PunchKind(pad.punch - 1))) : juce::String("No punch");
-    p.text(fx, x, y + 11, iw, 28, p.fit(fx, plain(pad.used() && pad.punch ? colour::text : colour::dim, 24, Weight::SemiBold), iw, 12));
-    p.text(pad.punch ? "on this pad alone" : "K1 gives it one", x, y + 40, iw, 12, plain(colour::sec, 10));
+    p.text(fx, x, y + 31, iw, 24, p.fit(fx, plain(pad.used() && pad.punch ? colour::text : colour::dim, 20, Weight::SemiBold), iw, type::floor));
+    p.text(pad.punch ? "this pad alone" : "K1 gives it one", x, y + 55, iw, 14, plain(colour::sec, type::small));
     if (pad.used() && s.sample.frames) {
         uint32_t end = pad.end ? pad.end : s.sample.frames;
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
-        waveform(p, x, y + 58, iw, 26, s.sample.overview, from, to, from, to, c, 1);
+        waveform(p, x, y + 71, iw, 20, s.sample.overview, from, to, from, to, c, 1);
     }
     bool pressing = s.ui.pad_punch_held >= 0 && s.ui.pad_punch_pressure;
     int depth = pressing ? s.ui.pad_punch_pressure * 100 / 127 : pad.punch_depth;
-    p.text("PRESSURE", x, y + 98, iw / 2, 10, caps_text(colour::mid, 7));
-    p.text("DEPTH " + juce::String(depth) + " %", x + iw / 2, y + 98, iw / 2, 10, caps_text(colour::sec, 7), juce::Justification::right);
-    p.fill(x, y + 112, iw, 4, colour::line, 2);
-    p.fill(x, y + 112, iw * depth / 100.0f, 4, knob_shade(s.ui.track, 2), 2);
+    p.text("PRESSURE", x, y + 94, iw, 14, caps_text(colour::mid));
+    p.text("DEPTH " + juce::String(depth) + " %", x, y + 108, iw, 14, caps_text(colour::sec));
+    p.fill(x, y + 126, iw, 4, colour::line, 2);
+    p.fill(x, y + 126, iw * depth / 100.0f, 4, knob_shade(s.ui.track, 2), 2);
 }
 void pad_punch_pad(Context& c, unsigned pad, uint8_t velocity, bool down) { c.pad_punch(pad, velocity, down); }
 void pad_punch_soft(Context& c, int key) {

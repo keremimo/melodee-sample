@@ -38,8 +38,8 @@ void pad_draw(Paint& p, const Snapshot& s) { // Tune
     auto c = colour_of(s);
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y + 30;
     // Pitch on a line from -12 to +12 (beyond, it sits at the end).
-    p.text("PITCH", x, y, 60, 9, caps_text(colour::mid, 7));
-    p.text((pad.pitch >= 0 ? "+" : "") + juce::String(pad.pitch) + " ST", x, y, w, 9, caps_text(colour::text, 7), juce::Justification::centredRight);
+    p.text("PITCH", x, y, 60, 9, caps_text(colour::mid));
+    p.text((pad.pitch >= 0 ? "+" : "") + juce::String(pad.pitch) + " ST", x, y, w, 9, caps_text(colour::text), juce::Justification::centredRight);
     p.fill(x, y + 18, w, 1, colour::line);
     for (int st = -12; st <= 12; ++st) p.fill(x + w * (st + 12) / 24.0f, y + (st % 12 ? 15 : 12), 0.5f, st % 12 ? 6 : 12, colour::dim);
     float px = x + w * (std::clamp<int>(pad.pitch, -12, 12) + 12) / 24.0f;
@@ -47,7 +47,7 @@ void pad_draw(Paint& p, const Snapshot& s) { // Tune
     p.fill(px - 3, y + 7, 6, 6, c, 1.5f);
     // Fine, and the length as it plays: pitch, warp.
     float fy = y + 44;
-    p.text("FINE", x, fy, 40, 9, caps_text(colour::mid, 7));
+    p.text("FINE", x, fy, 40, 14, caps_text(colour::mid));
     p.fill(x, fy + 16, w * 0.32f, 1, colour::line);
     p.fill(x + w * 0.32f * (pad.fine + 50) / 100.0f - 0.5f, fy + 11, 1.5f, 10, knob_shade(s.ui.track, 1));
     bool pitch_mode = s.track().params[sampler::FollowHow] == 2;
@@ -60,13 +60,13 @@ void pad_draw(Paint& p, const Snapshot& s) { // Tune
             double own = pad.beats ? pad.beats * 60.0 / seconds : pad.own_tempo / 10.0, now = s.project.tempo / 10.0;
             if (own > 0) { played = seconds * own / now; warp += " " + juce::String(own, 1) + " BPM"; }
         }
-        p.text(warp, x + w * 0.4f, fy, w * 0.3f, 9, caps_text(colour::mid, 7));
-        p.text(juce::String(played, 3) + " S AS IT PLAYS", x, fy, w, 9, caps_text(colour::mid, 7), juce::Justification::centredRight);
+        p.text(warp, x + w * 0.4f, fy, w * 0.6f, 14, caps_text(colour::mid));
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
-        waveform(p, x + w * 0.4f, fy + 13, w * 0.6f, 14, s.sample.overview, from, to, from, to, c, 1);
+        waveform(p, x + w * 0.4f, fy + 16, w * 0.6f, 14, s.sample.overview, from, to, from, to, c, 1);
+        p.text(juce::String(played, 3) + " S AS IT PLAYS", x + w * 0.4f, fy + 32, w * 0.6f, 14, caps_text(colour::mid), juce::Justification::centredRight);
     }
-    juce::String beats = pad.beats ? juce::String(pad.beats) + " BEATS" : juce::String("BEATS FROM ITS LENGTH");
-    sampler_pills(p, y + 82, {pitch_mode ? "WARP BY PITCH" : "WARP BY TIME STRETCH", beats}, c);
+    juce::String beats = pad.beats ? juce::String(pad.beats) + " BEATS" : juce::String("BEATS FROM LENGTH");
+    sampler_pills(p, y + 96, {pitch_mode ? "WARP BY PITCH" : "WARP BY TIME STRETCH", beats}, c);
 }
 
 void play_draw(Paint& p, const Snapshot& s) {
@@ -75,16 +75,16 @@ void play_draw(Paint& p, const Snapshot& s) {
     const auto& pad = sampler_pad(s);
     auto c = colour_of(s);
     float x = zone::pad, y = zone::picture_y + 30;
-    p.text("POLYPHONY", x, y, 100, 9, caps_text(colour::mid, 7));
+    p.text("POLYPHONY", x, y, 100, 14, caps_text(colour::mid));
     const char* modes[] {"Poly", "Mono"};
     for (unsigned n = 0; n < 2; ++n) {
         bool on = unsigned(pad.mono) == n;
         if (on) p.circle(x + 2, y + 21 + n * 16, 2, c);
-        p.text(modes[n], x + 8, y + 15 + n * 16, 120, 12, plain(on ? colour::text : colour::dim, 11, Weight::Medium));
+        p.text(modes[n], x + 8, y + 15 + n * 16, 120, 12, plain(on ? colour::text : colour::dim, type::small, Weight::Medium));
     }
     auto line = [&](float ly, const juce::String& name, const juce::String& value, bool lit) {
-        p.text(name, x, ly, 60, 12, caps_text(colour::mid, 7));
-        p.text(value, x + 60, ly, 90, 12, plain(lit ? colour::text : colour::dim, 10, Weight::Medium));
+        p.text(name, x, ly, 66, 14, caps_text(colour::mid));
+        p.text(value, x + 68, ly, 84, 14, p.fit(value, plain(lit ? colour::text : colour::dim, type::small, Weight::Medium), 84, type::floor));
     };
     char label[4];
     pad_label(t.last_pad / 16 * 16 + (pad.link + 15) % 16, label);
@@ -93,7 +93,7 @@ void play_draw(Paint& p, const Snapshot& s) {
     line(y + 80, "PLAYS", juce::String(pad.play == PadPlay::Gate ? "Note On" : "One shot") + (pad.loop ? ", loop" : "") + (pad.reverse ? ", reversed" : ""), true);
     // The pads of its mute group, as they sit, with their names.
     float gx = x + 158, gw = 72, cell = (gw - 9) / 4;
-    p.text(pad.group ? "GROUP " + juce::String(pad.group) + " CUTS EACH OTHER" : juce::String("IN NO GROUP"), gx, y, 160, 9, caps_text(colour::mid, 7));
+    p.text(pad.group ? "MUTE GROUP " + juce::String(pad.group) : juce::String("NO MUTE GROUP"), gx, y, zone::width - zone::pad - gx, 14, caps_text(colour::mid));
     unsigned bank = t.last_pad / 16, listed = 0;
     for (unsigned n = 0; n < 16; ++n) {
         unsigned kit = bank * 16 + n, row = 3 - n / 4, column = n % 4;
@@ -103,10 +103,10 @@ void play_draw(Paint& p, const Snapshot& s) {
         if (linked) p.ring(gx + column * (cell + 3), y + 14 + row * (cell + 3), cell, cell, colour::text, 2, 1);
         if (same && listed < 4) {
             char name[4]; pad_label(kit, name);
-            float ly = y + 16 + listed * 14;
-            p.fill(gx + gw + 8, ly + 3, 5, 5, c, 1);
-            p.text(juce::String(name), gx + gw + 16, ly, 22, 11, caps_text(colour::mid, 6));
-            p.text(s.project.samples[t.pads[kit].sample % sample_slots].name, gx + gw + 38, ly, 60, 11, plain(colour::text, 9, Weight::Medium));
+            float ly = y + 16 + listed * 15, nx = gx + gw + 6;
+            juce::String sample = s.project.samples[t.pads[kit].sample % sample_slots].name;
+            p.text(juce::String(name), nx, ly, 28, 14, caps_text(colour::mid));
+            p.text(sample, nx, ly + 0, zone::width - zone::pad - nx, 14, plain(colour::text, type::small, Weight::Medium), juce::Justification::centredRight);
             ++listed;
         }
     }
@@ -127,7 +127,7 @@ void envelope_draw(Paint& p, const Snapshot& s) { // Amp env
     draw_envelope(p, x, y, w, h, length, time_seconds(pad.attack) * 0.3, hold ? length : decay, hold ? 1.0f : pad.sustain / 100.0f,
                   time_seconds(pad.release) * 0.5, from_end && !hold, s.ui.track);
     juce::String how = gate ? juce::String("NOTE ON: RELEASE") : from_end ? juce::String("DECAY FROM END") : juce::String("DECAY FROM START");
-    sampler_pills(p, y + h + 6, {how, "VEL SENS " + juce::String(pad.velocity_sense) + " %", "THIS PAD ONLY"}, colour_of(s));
+    sampler_pills(p, y + h + 6, {how, "THIS PAD ONLY"}, colour_of(s)); // velocity sense is K3's card
 }
 
 void filter_draw(Paint& p, const Snapshot& s) { // the kit's filter
@@ -148,14 +148,14 @@ void follow_draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     bool on = s.track().params[sampler::Follow] != 0;
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y + 28;
-    if (!pad.used() || !s.sample.frames) { p.text("Hit a pad with a loop on it", x, y + 20, w, 20, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred); return; }
+    if (!pad.used() || !s.sample.frames) { p.text("Hit a pad with a loop on it", x, y + 20, w, 20, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred); return; }
     uint32_t end = pad.end ? pad.end : s.sample.frames;
     double length = (end - pad.start) / 44100.0, own = pad.own_tempo / 10.0, project = s.project.tempo / 10.0;
     double played = on && own > 0 ? length * own / project : length;
     float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
     auto line = [&](float ly, const juce::String& left, double seconds, float width) {
-        p.text(left, x, ly, w, 9, caps_text(colour::mid, 7));
-        p.text(juce::String(seconds, 3) + " S", x, ly, w, 9, caps_text(colour::text, 7), juce::Justification::centredRight);
+        p.text(left, x, ly, w, 9, caps_text(colour::mid));
+        p.text(juce::String(seconds, 3) + " S", x, ly, w, 9, caps_text(colour::text), juce::Justification::centredRight);
         waveform(p, x, ly + 11, w * width, 26, s.sample.overview, from, to, from, to, c, 1);
     };
     double longest = std::max(length, played);
@@ -186,7 +186,7 @@ void cloud_draw(Paint& p, const Snapshot& s) {
         p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1), 1.5f);
     }
     double centre = (pad.start + (end - pad.start) * v[sampler::Position] / 100.0) / 44100.0;
-    p.text("GRAINS AROUND " + juce::String(centre, 3) + " S", x, y + h + 3, w, 9, caps_text(colour::sec, 7), juce::Justification::centred);
+    p.text("GRAINS AROUND " + juce::String(centre, 3) + " S", x, y + h + 3, w, 9, caps_text(colour::sec), juce::Justification::centred);
     juce::String scan = v[sampler::Scan] == 50 ? juce::String("SCAN STILL") : "SCAN " + juce::String((v[sampler::Scan] - 50) / 50.0, 2);
     sampler_pills(p, y + h + 16, {scan, "SPREAD " + juce::String(v[sampler::Spread]) + " CT"}, colour::mid);
 }

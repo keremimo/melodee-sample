@@ -15,7 +15,7 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr unsigned rows = 6;
+constexpr unsigned rows = 5;
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& k = s.project.knob_fx;
@@ -40,18 +40,18 @@ void draw(Paint& p, const Snapshot& s) {
         bool current = e == cursor, melodee = e >= knob_fx_mpc_count();
         float ry = y + n * (list_row_h + list_row_gap);
         if (current) { p.fill(x, ry, w, list_row_h, colour::raised, 4); p.fill(x, ry, 3, list_row_h, c, 1); }
-        p.text(juce::String(e + 1).paddedLeft('0', 2), x + 9, ry, 13, list_row_h, plain(colour::dim, 8, Weight::Medium));
+        p.text(juce::String(e + 1).paddedLeft('0', 2), x + 8, ry, 18, list_row_h, plain(colour::dim, type::small, Weight::Medium));
         juce::String tag = e == k.choice ? "LOADED" : melodee ? "MELODEE" : "";
-        auto tag_style = caps_text(e == k.choice ? c : colour::dim, 6.5f);
+        auto tag_style = caps_text(e == k.choice ? c : colour::dim);
         float tw = tag.isEmpty() ? 0 : p.width(tag, tag_style) + 6;
         if (tw > 0) p.text(tag, x + w - 6 - tw, ry, tw, list_row_h, tag_style, juce::Justification::centredRight);
         juce::String name = knob_fx_entry(e).name;
         auto style = plain(current ? colour::text : melodee ? colour::dim : colour::sec, type::list, Weight::Medium);
         float nw = w - 28 - tw - 6;
-        p.text(name, x + 28, ry, nw, list_row_h, p.fit(name, style, nw, 8));
+        p.text(name, x + 28, ry, nw, list_row_h, p.fit(name, style, nw, type::floor));
     }
-    p.text(juce::String(cursor + 1) + " / " + juce::String(count) + "  PUSH LOADS", x, y + rows * (list_row_h + list_row_gap) + 2, w, 10,
-           caps_text(colour::dim, 6.5f), juce::Justification::centredRight);
+    p.text(juce::String(cursor + 1) + " / " + juce::String(count) + "  PUSH LOADS", x, y + rows * (list_row_h + list_row_gap) + 2, w, 14,
+           caps_text(colour::dim), juce::Justification::centredRight);
 
     // The pads as they sit (pad 1 bottom left): kit pads of the bank, or tracks.
     float gx = x + w + 10, gw = zone::width - zone::pad - gx, gh = zone::picture_h - 8;
@@ -75,7 +75,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (k.bypass) fill = fill.withAlpha(0.45f);
         float cx = gx + column * (cw + 2), cy = zone::picture_y + 2 + row * (ch + 2);
         p.fill(cx, cy, cw, ch, on ? fill : colour::surf, 3);
-        p.text(caption, cx, cy, cw, ch, plain(on ? colour::bg : colour::dim, 7, Weight::SemiBold), juce::Justification::centred);
+        p.text(caption, cx, cy, cw, ch, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
     }
 }
 

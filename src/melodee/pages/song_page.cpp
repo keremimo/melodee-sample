@@ -21,7 +21,10 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr float x0 = 34, x1 = zone::width - zone::pad, lane_top = zone::picture_y + 21, lane_h = 13.5f, lane_gap = 1;
+// Six lanes at a time, tall enough for the clips' names; the window follows
+// the selected track.
+constexpr unsigned lanes = 6;
+constexpr float x0 = 34, x1 = zone::width - zone::pad, lane_top = zone::picture_y + 29, lane_h = 15, lane_gap = 1;
 constexpr unsigned clip_actions = 8;
 
 unsigned zoom_of(const UiState& ui) { return song_zooms[ui.song_zoom % (sizeof(song_zooms) / sizeof(song_zooms[0]))]; }
@@ -70,7 +73,7 @@ void draw_clip(Paint& p, const Snapshot& s, const Clip& clip, float y, unsigned 
     float repeat = length * step_w;
     if (repeat >= 4)
         for (float rx = cx + repeat; rx < cx + cw - 1; rx += repeat) p.fill(rx, y, 0.5f, lane_h, colour::bg);
-    p.text("P" + juce::String(clip.pattern + 1), cx + 3, y, 20, 8, plain(selected ? colour::bg : c, 6.5f, Weight::Bold));
+    p.text("P" + juce::String(clip.pattern + 1), cx + 3, y, 24, lane_h, plain(selected ? colour::bg : c, type::small, Weight::Bold));
     if (selected) p.ring(cx + 0.5f, y, cw - 1, lane_h, colour::text, 2.5f);
     p.g.restoreState();
 }
@@ -134,12 +137,12 @@ void draw(Paint& p, const Snapshot& s) {
         const auto& marker = song.markers[m];
         if (marker.bar < view || marker.bar >= view + zoom) continue;
         float mx = x0 + (marker.bar - view) * bw;
-        p.text(marker.name, mx + 2, zone::picture_y, 80, 8, caps_text(colour::mid, 6.5f));
-        p.fill(mx, zone::picture_y, 0.5f, lane_top - zone::picture_y + 8 * (lane_h + lane_gap), colour::line);
+        p.text(marker.name, mx + 2, zone::picture_y, 80, 13, caps_text(colour::mid));
+        p.fill(mx, zone::picture_y, 0.5f, lane_top - zone::picture_y + lanes * (lane_h + lane_gap), colour::line);
     }
     for (unsigned b = view; b < view + zoom; ++b)
         if (unsigned(b - view) % unsigned(label_every) == 0)
-            p.text(juce::String(b + 1), x0 + (b - view) * bw + 2, zone::picture_y + 8, 30, 9, plain(colour::mid, 7, Weight::SemiBold));
+            p.text(juce::String(b + 1), x0 + (b - view) * bw + 2, zone::picture_y + 13, 30, 13, plain(colour::mid, type::small, Weight::SemiBold));
     if (song.looping()) {
         float lx = x0 + (float(song.loop_start) - float(view)) * bw, rx = x0 + (float(song.loop_end) - float(view)) * bw;
         lx = std::max(lx, x0); rx = std::min(rx, x1);
@@ -149,39 +152,39 @@ void draw(Paint& p, const Snapshot& s) {
             p.fill(rx - 1, lane_top - 4, 1, 3, colour::sec);
         }
     }
-    // Lanes: eight tracks in view, the selected one among them.
-    unsigned first = s.ui.track / 8 * 8;
-    for (unsigned row = 0; row < 8; ++row) {
+    // Lanes: six tracks in view, the selected one among them.
+    unsigned first = std::min<unsigned>(s.ui.track >= 2 ? s.ui.track - 2 : 0, track_count - lanes);
+    for (unsigned row = 0; row < lanes; ++row) {
         unsigned t = first + row;
         float y = lane_top + row * (lane_h + lane_gap);
         auto tc = track_colour(t);
         bool selected = t == s.ui.track;
         if (selected) p.fill(zone::pad, y, 22, lane_h, tc, 3);
-        p.text(juce::String(t + 1), zone::pad, y, 22, lane_h, plain(selected ? colour::bg : s.project.tracks[t].used() ? tc : colour::dim, 8.5f, Weight::Bold),
+        p.text(juce::String(t + 1), zone::pad, y, 22, lane_h, plain(selected ? colour::bg : s.project.tracks[t].used() ? tc : colour::dim, type::small, Weight::Bold),
                juce::Justification::centred);
         for (unsigned n = 0; n < song.count; ++n)
             if (song.clips[n].track == t) draw_clip(p, s, song.clips[n], y, view, bw, int(n) == selected_clip);
     }
-    float bottom = lane_top + 8 * (lane_h + lane_gap);
+    float bottom = lane_top + lanes * (lane_h + lane_gap);
     p.fill(x0 - 1, lane_top - 2, 0.5f, bottom - lane_top + 2, colour::line);
     // The cursor, and the playhead when the song plays.
     float cx = x0 + (float(cursor) - float(view)) * bw;
-    p.fill(cx, zone::picture_y + 9, 1, bottom - zone::picture_y - 9, c);
-    p.fill(cx - 2, zone::picture_y + 8, 5, 5, c, 1);
+    p.fill(cx, zone::picture_y + 14, 1, bottom - zone::picture_y - 14, c);
+    p.fill(cx - 2, zone::picture_y + 13, 5, 5, c, 1);
     if (s.song_playing) {
         unsigned bar = s.project.bar_ticks();
         float at = float(s.song_bar) + float(s.ticks % bar) / bar;
         if (at >= view && at < view + zoom) {
             float px = x0 + (at - view) * bw;
-            p.fill(px, zone::picture_y + 12, 1, bottom - zone::picture_y - 12, colour::text);
+            p.fill(px, zone::picture_y + 17, 1, bottom - zone::picture_y - 17, colour::text);
             juce::Path tri;
-            tri.addTriangle(px - 3, zone::picture_y + 8, px + 4, zone::picture_y + 8, px + 0.5f, zone::picture_y + 13);
+            tri.addTriangle(px - 3, zone::picture_y + 13, px + 4, zone::picture_y + 13, px + 0.5f, zone::picture_y + 18);
             p.g.setColour(colour::text); p.g.fillPath(tri);
         }
     }
     // The punch lane: punches written into the song, in their target's colour.
     if (song.punch_count) {
-        p.text("P", zone::pad, bottom - 1, 22, 6, caps_text(colour::dim, 5.5f), juce::Justification::centred);
+        p.text("P", zone::pad, bottom - 3, 22, 11, caps_text(colour::dim), juce::Justification::centred);
         for (unsigned n = 0; n < song.punch_count; ++n) {
             const auto& e = song.punches[n];
             float from = float(e.bar) + e.step / 16.0f, to = from + e.length / 16.0f;
@@ -192,8 +195,8 @@ void draw(Paint& p, const Snapshot& s) {
     }
     // The whole song, with the window on it.
     unsigned total = std::max({song.length(), view + zoom, 16u});
-    float oy = bottom + 5, ow = x1 - x0;
-    p.text(juce::String(song.length()), zone::pad, oy - 3, 22, 9, plain(colour::dim, 6.5f, Weight::SemiBold), juce::Justification::centred);
+    float oy = bottom + (song.punch_count ? 13 : 6), ow = x1 - x0;
+    p.text(juce::String(song.length()), zone::pad, oy - 5.5f, 22, 11, plain(colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
     p.fill(x0, oy, ow, 2, colour::line, 1);
     p.fill(x0 + ow * view / total, oy - 1, std::max(4.0f, ow * zoom / total), 4, colour::mid, 2);
 }

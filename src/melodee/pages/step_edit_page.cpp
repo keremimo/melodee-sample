@@ -50,13 +50,13 @@ void draw(Paint& p, const Snapshot& s) {
     // Left: the step, and its events as a list (the selected one raised).
     float x = zone::pad, y = zone::picture_y + 2, w = 196;
     float tw = p.text("Step " + juce::String(step + 1), x, y, 120, 22, plain(colour::text, type::title, Weight::SemiBold));
-    p.text("/ " + juce::String(pattern.steps()), x + tw + 5, y + 5, 60, 14, plain(colour::dim, 10));
+    p.text("/ " + juce::String(pattern.steps()), x + tw + 5, y + 5, 60, 14, plain(colour::dim, type::small));
     constexpr float row_h = 20;
     float ly = y + 26;
     constexpr unsigned shown_rows = 5;
     if (!in.count) {
         p.fill(x, ly, w, row_h, colour::quiet, 4);
-        p.text("No events on this step", x + 8, ly, w - 16, row_h, plain(colour::dim, 9));
+        p.text("No events on this step", x + 8, ly, w - 16, row_h, plain(colour::dim, type::small));
     }
     unsigned top = index >= shown_rows ? index + 1 - shown_rows : 0;
     for (unsigned k = top; k < in.count && k < top + shown_rows; ++k) {
@@ -66,24 +66,24 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(x, ry, w, row_h, on ? colour::raised : colour::quiet, 4);
         if (on) p.fill(x, ry + 3, 2.5f, row_h - 6, c, 1);
         auto name = key_label(s.track(), e.key);
-        p.text(name, x + 8, ry, 40, row_h, plain(on ? colour::text : colour::sec, 11, Weight::Medium));
+        p.text(name, x + 8, ry, 40, row_h, plain(on ? colour::text : colour::sec, type::small, Weight::Medium));
         int offset = int(e.tick) - int(step * q);
-        p.text(offset ? "+" + juce::String(offset) : juce::String("on Q"), x + 50, ry, 40, row_h, plain(offset ? c : colour::dim, 9));
+        p.text(offset ? "+" + juce::String(offset) : juce::String("on Q"), x + 50, ry, 40, row_h, plain(offset ? c : colour::dim, type::small));
         juce::String length = juce::String(e.length) + " t";
-        p.text(length, x + 92, ry, 46, row_h, plain(colour::sec, 9));
+        p.text(length, x + 92, ry, 46, row_h, plain(colour::sec, type::small));
         // Velocity as a small bar and its number.
         float vx = x + 140, vw = 30;
         p.fill(vx, ry + row_h / 2 - 1.5f, vw, 3, colour::line, 1.5f);
         p.fill(vx, ry + row_h / 2 - 1.5f, vw * e.velocity / 127.0f, 3, on ? c : colour::mid, 1.5f);
-        p.text(juce::String(e.velocity), vx + vw + 2, ry, 24, row_h, plain(on ? colour::text : colour::sec, 9), juce::Justification::centredRight);
+        p.text(juce::String(e.velocity), vx + vw + 2, ry, 24, row_h, plain(on ? colour::text : colour::sec, type::small), juce::Justification::centredRight);
     }
     if (in.count > shown_rows)
-        p.text(juce::String(in.count - shown_rows) + " more: Minus / Plus", x, ly + shown_rows * (row_h + 2), w, 10, caps_text(colour::dim, 7));
+        p.text(juce::String(in.count - shown_rows) + " more: Minus / Plus", x, ly + shown_rows * (row_h + 2), w, 10, caps_text(colour::dim));
 
     // Right: the steps around this one, each event a tick where it starts and
     // a bar as long as it is held; the selected one in white.
     float gx = x + w + 10, gw = zone::width - zone::pad - gx, gy = y + 4;
-    p.text("AROUND", gx, gy, gw, 9, caps_text(colour::mid, 7));
+    p.text("AROUND", gx, gy, gw, 9, caps_text(colour::mid));
     constexpr unsigned around = 4; // steps shown: this one in the middle
     unsigned first = step >= around / 2 ? step - around / 2 : 0;
     uint32_t from = first * q, span = around * q;
@@ -106,9 +106,10 @@ void draw(Paint& p, const Snapshot& s) {
     }
     if (chosen >= 0) {
         const auto& e = pattern.events[size_t(chosen)];
-        p.text("AT " + where(s, e.tick), gx, sy + sh + 6, gw, 10, caps_text(colour::sec, 7));
-        p.text("LENGTH " + ticks_text(e.length).toUpperCase(), gx, sy + sh + 18, gw, 10, caps_text(colour::sec, 7));
-        p.text("FADER: NUDGE", gx, sy + sh + 30, gw, 10, caps_text(colour::dim, 7));
+        auto line = plain(colour::sec, type::small, Weight::Medium);
+        p.text("At " + where(s, e.tick), gx, sy + sh + 4, gw, 14, line);
+        p.text("Length " + ticks_text(e.length), gx, sy + sh + 17, gw, 14, line);
+        p.text("Fader: nudge", gx, sy + sh + 30, gw, 14, plain(colour::dim, type::small, Weight::Medium));
     }
     if (s.ui.b1_held) draw_bpm_window(p, s);
 }

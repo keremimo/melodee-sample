@@ -30,7 +30,7 @@ const std::array<juce::Typeface::Ptr, 4>& faces() {
 
 juce::Font make_font(float size, Weight weight, bool caps) {
     // JUCE's kerning factor is a share of the font height (ascent + descent,
-    // about 1.185 em for Rubik); the boards space capitals by 0.08 em.
+    // about 1.185 em for Rubik); capitals get type::caps_tracking.
     auto options = juce::FontOptions(faces()[size_t(weight)]).withPointHeight(size);
     if (caps) options = options.withKerningFactor(type::caps_tracking / 1.185f);
     return juce::Font(options);
@@ -70,6 +70,8 @@ struct LayoutHash {
     }
 };
 
+std::vector<TextIssue>* audit = nullptr;
+
 template <typename Map> void bound(Map& map, size_t most) { if (map.size() >= most) map.clear(); }
 
 const juce::Font& cached_font(float size, Weight weight, bool caps) {
@@ -108,19 +110,50 @@ const juce::GlyphArrangement& cached_layout(const juce::String& value, float siz
 }
 } // namespace
 
-juce::Font font(float size, Weight weight, bool caps) { return cached_font(size, weight, caps); }
+juce::Font font(float size, Weight weight, bool caps) { return cached_font(std::max(size, type::floor), weight, caps); }
+
+void audit_text(std::vector<TextIssue>* sink) { audit = sink; }
+void report_text_issue(const TextIssue& issue) { if (audit) audit->push_back(issue); }
 
 float Paint::width(const juce::String& value, const Text& style) const {
-    return cached_width(value, style.size, style.weight, style.caps);
+    return cached_width(value, std::max(style.size, type::floor), style.weight, style.caps);
 }
 
 Paint::Text Paint::fit(const juce::String& value, Text style, float w, float smallest) const {
+    smallest = std::max(smallest, type::floor);
+    style.size = std::max(style.size, type::floor);
     while (style.size > smallest && width(value, style) > w) style.size = std::max(smallest, style.size - 0.5f);
     return style;
 }
 
-float Paint::text(const juce::String& value, float x, float y, float w, float h, const Text& style,
+juce::StringArray Paint::wrap(const juce::String& value, Text& style, float w, int most) const {
+    juce::StringArray words;
+    words.addTokens(value, " ", "");
+    words.removeEmptyStrings();
+    style.size = std::max(style.size, type::floor);
+    for (;;) {
+        juce::StringArray lines;
+        for (const auto& word : words) {
+            if (lines.isEmpty()) { lines.add(word); continue; }
+            auto joined = lines[lines.size() - 1] + " " + word;
+            if (width(joined, style) <= w || lines.size() >= most) lines.set(lines.size() - 1, joined);
+            else lines.add(word);
+        }
+        bool fits = true;
+        for (const auto& line : lines) fits = fits && width(line, style) <= w;
+        if (fits || style.size <= type::floor) return lines;
+        style.size = std::max(type::floor, style.size - 0.5f);
+    }
+}
+
+float Paint::text(const juce::String& value, float x, float y, float w, float h, const Text& asked,
                   juce::Justification justify) {
+    Text style = asked;
+    style.size = std::max(style.size, type::floor);
+    if (audit && value.isNotEmpty()) {
+        float needed = width(value, style);
+        if (asked.size < type::floor || needed > w + 0.5f) audit->push_back({value, asked.size, needed, w});
+    }
     // Colour and font stay set on g, as drawText() callers expect.
     g.setColour(style.colour);
     g.setFont(cached_font(style.size, style.weight, style.caps));

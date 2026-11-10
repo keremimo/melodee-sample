@@ -37,12 +37,11 @@ void draw(Paint& p, const Snapshot& s) {
     // B3 COLUMN on: a tap launches the whole column. Counting in or armed, the header's chip takes its room.
     bool chip = !h.left.empty();
     if (!chip) h.left.push_back(s.ui.seq_sample ? pill(s.track().engine == EngineKind::Sampler ? "PADS PLAY KIT" : "PADS PLAY", colour_of(s))
-                                : s.ui.launch_column ? pill("LAUNCH COLUMN", colour_of(s)) : pill("LAUNCH BAR"));
+                                : s.ui.launch_column ? pill("COLUMN", colour_of(s)) : pill("LAUNCH BAR")); // B3 COLUMN is lit: the pill can be short
     uint32_t length = std::max<uint32_t>(s.pattern.length, 1);
     uint32_t at = s.playing && s.positions[s.ui.track] >= 0 ? uint32_t(s.positions[s.ui.track]) : s.ui.locate % length;
-    h.left.push_back(pill(where(s, at), s.playing ? colour::text : colour::mid));
-    auto sig = s.project.time_signature();
-    h.left.push_back(pill(juce::String(sig.beats) + "/" + juce::String(sig.unit)));
+    auto sig = s.project.time_signature(); // where, in which time signature: one pill for the room
+    h.left.push_back(pill(where(s, at) + "  " + juce::String(sig.beats) + "/" + juce::String(sig.unit), s.playing ? colour::text : colour::mid));
     h.left.push_back(pill(s.ui.settings.rec_quantize ? "REC Q " + juce::String(division_name(s.pattern.division)) : juce::String("REC Q OFF"),
                           s.ui.settings.rec_quantize ? colour::mid : colour::dim));
     // No track tag: the grid marks the selected track, and the header needs the room.
@@ -50,11 +49,11 @@ void draw(Paint& p, const Snapshot& s) {
 
     constexpr float gap = 2, label_w = 16, head_h = 9, top = zone::picture_y + 1.5f;
     constexpr float cw = (zone::width - 2 * zone::pad - label_w - 16 * gap) / 16;
-    constexpr float rh = (143.5f - 1.5f - head_h - 8 * gap) / 8;
+    constexpr float rh = (zone::picture_h - 2.0f - head_h - 8 * gap) / 8;
     unsigned shown = s.playing ? s.playing_patterns[s.ui.track] : s.track().pattern;
     for (unsigned n = 0; n < pattern_count; ++n)
         p.text(juce::String(n + 1), zone::pad + label_w + gap + n * (cw + gap), top, cw, head_h,
-               plain(n == shown ? colour::text : colour::dim, 7, Weight::SemiBold), juce::Justification::centred);
+               plain(n == shown ? colour::text : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
     for (unsigned row = 0; row < 8; ++row) {
         unsigned t = first + row;
         const auto& track = s.project.tracks[t];
@@ -62,7 +61,7 @@ void draw(Paint& p, const Snapshot& s) {
         float y = top + head_h + gap + row * (rh + gap);
         bool selected = t == s.ui.track;
         if (selected) p.fill(zone::pad, y, label_w, rh, c, 3);
-        p.text(juce::String(t + 1), zone::pad, y, label_w, rh, plain(selected ? colour::bg : c, 9, Weight::Bold),
+        p.text(juce::String(t + 1), zone::pad, y, label_w, rh, plain(selected ? colour::bg : c, type::small, Weight::Bold),
                juce::Justification::centred);
         unsigned live = s.playing ? s.playing_patterns[t] : track.pattern;
         for (unsigned n = 0; n < pattern_count; ++n) {

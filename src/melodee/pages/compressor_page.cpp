@@ -48,15 +48,15 @@ void draw(Paint& p, const Snapshot& s) {
 
     // What it takes off now, and the settings in words.
     float gx = x + side + 16, gw = zone::width - zone::pad - gx;
-    p.text("Gain reduction", gx, y, gw, 14, plain(colour::sec, 10));
+    p.text("Gain reduction", gx, y, gw, 14, plain(colour::sec, type::small));
     float reduce = std::round(std::clamp(s.compression, 0.0f, 20.0f) * 2) / 2; // half a dB a step: the screen redraws only on a change
     p.fill(gx, y + 18, gw, 10, colour::panel, 3);
     p.fill(gx, y + 18, gw * reduce / 20.0f, 10, c.on ? accent : colour::mid, 3);
-    p.text(juce::String(-reduce, 1) + " dB", gx, y + 30, gw, 12, caps_text(colour::mid, 7));
-    p.text(c.on ? "Engaged on the master" : "Bypassed", gx, y + 56, gw, 14, plain(c.on ? colour::text : colour::dim, 10, Weight::SemiBold));
-    p.text(juce::String("Threshold ") + juce::String(int(std::lround(threshold))) + " dB", gx, y + 74, gw, 12, plain(colour::sec, 9));
-    p.text(juce::String("Ratio ") + juce::String(ratio, 1) + ":1", gx, y + 88, gw, 12, plain(colour::sec, 9));
-    p.text(c.color ? "Color: tape warmth" : "Color off", gx, y + 102, gw, 12, plain(colour::sec, 9));
+    p.text(juce::String(-reduce, 1) + " dB", gx, y + 30, gw, 12, caps_text(colour::mid));
+    p.text(c.on ? "Engaged on the master" : "Bypassed", gx, y + 56, gw, 14, plain(c.on ? colour::text : colour::dim, type::small, Weight::SemiBold));
+    p.text(juce::String("Threshold ") + juce::String(int(std::lround(threshold))) + " dB", gx, y + 74, gw, 12, plain(colour::sec, type::small));
+    p.text(juce::String("Ratio ") + juce::String(ratio, 1) + ":1", gx, y + 88, gw, 12, plain(colour::sec, type::small));
+    p.text(c.color ? "Color: tape warmth" : "Color off", gx, y + 102, gw, 12, plain(colour::sec, type::small));
 }
 
 void soft(Context& c, int key) {

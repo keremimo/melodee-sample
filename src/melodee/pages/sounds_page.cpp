@@ -14,7 +14,7 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr unsigned visible = 7;
+constexpr unsigned visible = list_rows;
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
@@ -29,7 +29,7 @@ void draw(Paint& p, const Snapshot& s) {
     unsigned count = sound_list(track, s.ui, list);
     if (!count) {
         p.text(s.ui.sounds_filter == 1 ? "No favourites yet" : "Nothing loaded yet", zone::pad, zone::picture_y,
-               zone::width - 2 * zone::pad, 40, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred);
+               zone::width - 2 * zone::pad, 40, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
         return;
     }
     unsigned cursor = std::min<unsigned>(s.ui.sounds_cursor, count - 1);

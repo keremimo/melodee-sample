@@ -43,10 +43,10 @@ void draw(Paint& p, const Snapshot& s) {
     p.text(juce::String(slices.count) + (slices.count == 1 ? " slice" : " slices"), x, zone::picture_y, 150, 22,
            plain(colour::text, type::title, Weight::SemiBold));
     p.text(juce::String(s.sample.name) + juce::String::fromUTF8(" \xc2\xb7 ") + seconds(frames), x + 150, zone::picture_y, w - 150, 22,
-           caps_text(colour::mid, 7), juce::Justification::centredRight);
+           caps_text(colour::mid), juce::Justification::centredRight);
     if (!frames || !slices.count) {
         p.text(s.sample.error.empty() ? "Loading" : juce::String(s.sample.error), x, zone::picture_y + 40, w, 40,
-               plain(colour::dim, 11, Weight::Medium), juce::Justification::centred);
+               plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
         return;
     }
     unsigned selected = std::min<unsigned>(s.ui.chop_slice, slices.count - 1);
@@ -69,7 +69,7 @@ void draw(Paint& p, const Snapshot& s) {
         float sx = x_of(float(slices.start[n]) / frames);
         bool edge = n == selected || n == selected + 1;
         if (n) p.fill(sx, y, 1, wh, edge ? colour::text : colour::line);
-        p.text(juce::String(n + 1), sx + 1, y + wh + 2, 16, 9, plain(n == selected ? colour::text : colour::mid, 7, n == selected ? Weight::Bold : Weight::SemiBold));
+        p.text(juce::String(n + 1), sx + 1, y + wh + 2, 16, 9, plain(n == selected ? colour::text : colour::mid, type::small, n == selected ? Weight::Bold : Weight::SemiBold));
     }
     p.fill(x_of(a), y, 1, wh, knob_shade(s.ui.track, 0));            // K1's handle
     p.fill(x_of(b) - 1, y, 1, wh, knob_shade(s.ui.track, 1));        // K2's
@@ -81,10 +81,10 @@ void draw(Paint& p, const Snapshot& s) {
     // The slice in hand, and what Manual waits for.
     float fy = y + wh + 14;
     p.fill(x, fy, w, 15, colour::quiet, 4);
-    float lw = p.text("SLICE " + juce::String(selected + 1), x + 7, fy, 60, 15, caps_text(colour::mid, 7));
+    float lw = p.text("SLICE " + juce::String(selected + 1), x + 7, fy, 60, 15, caps_text(colour::mid));
     char text[24];
     std::snprintf(text, sizeof(text), "%.3f s", (slices.end(selected, frames) - slices.start[selected]) / 44100.0);
-    p.text(text, x + 7 + lw + 6, fy, 80, 15, plain(colour::text, 11, Weight::Medium));
+    p.text(text, x + 7 + lw + 6, fy, 80, 15, plain(colour::text, type::small, Weight::Medium));
     juce::String hint;
     if (taking) hint = "TAP PADS TO CUT";
     else if (s.ui.chop_mode == ChopMode::Manual && s.ui.chop_armed) hint = "PAD 1 PLAYS, TAP TO CUT";
@@ -94,7 +94,7 @@ void draw(Paint& p, const Snapshot& s) {
         for (; pad < sampler_pads; ++pad) if (!track.pads[pad].used() && n++ == selected) break;
         if (pad < sampler_pads) { char label[4]; pad_label(pad, label); hint = juce::String("LANDS ON PAD ") + juce::String(label); }
     }
-    p.text(hint, x, fy, w - 7, 15, caps_text(c, 7), juce::Justification::centredRight);
+    p.text(hint, x, fy, w - 7, 15, caps_text(c), juce::Justification::centredRight);
 }
 
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {

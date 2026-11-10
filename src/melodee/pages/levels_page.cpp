@@ -39,7 +39,7 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"VELOCITY", kit ? "FILTER" : "SCALE", kind == LevelsKind::Scale && kit ? "SCALE" : "TUNE"}, active, c}, h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 150;
-    constexpr float w = (grid_w - 3 * gap) / 4, ch = (143.5f - 1.5f - 3 * gap) / 4;
+    constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 2.0f - 3 * gap) / 4;
     for (unsigned n = 0; n < 16; ++n) {
         unsigned row = 3 - n / 4, column = n % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
@@ -50,23 +50,23 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(x, y, w, ch, hit ? colour::text : c.withAlpha(0.2f + 0.6f * n / 15.0f), 4);
         if (original && !hit) p.ring(x, y, w, ch, colour::text, 4, 1);
         auto fg = hit ? colour::bg : colour::text;
-        p.text(juce::String(n + 1), x + 4, y + 3, w - 8, 8, plain(hit ? colour::bg : n < 4 ? colour::dim : colour::bg.withAlpha(0.8f), 6, Weight::SemiBold));
-        p.text(value_of(s, n), x + 4, y + ch - 16, w - 8, 13, plain(fg, 11, Weight::Medium));
+        p.text(juce::String(n + 1), x + 4, y + 2, w - 8, 14, plain(hit ? colour::bg : n < 4 ? colour::dim : colour::bg.withAlpha(0.8f), type::small, Weight::SemiBold));
+        p.text(value_of(s, n), x + 4, y + ch - 16, w - 8, 14, plain(fg, type::small, Weight::Medium));
     }
-    float x = zone::pad + grid_w + 10, y = zone::picture_y + 4.5f, iw = zone::width - zone::pad - x;
+    float x = zone::pad + grid_w + 10, y = zone::picture_y + 3, iw = zone::width - zone::pad - x;
     juce::String name;
     const PadSound* pad = nullptr;
     if (kit) {
         char label[4]; pad_label(t.levels_pad, label);
-        p.text(juce::String("PAD ") + juce::String(label) + " ON ALL 16", x, y, iw, 10, caps_text(colour::mid));
+        p.text(juce::String("PAD ") + juce::String(label) + " ON ALL 16", x, y, iw, 14, caps_text(colour::mid));
         pad = &t.pads[t.levels_pad % sampler_pads];
         name = pad->used() ? juce::String(s.project.samples[pad->sample % sample_slots].name) : juce::String("Empty");
     } else {
-        p.text("THE LAST NOTE ON ALL 16", x, y, iw, 10, caps_text(colour::mid));
+        p.text("LAST NOTE ON ALL 16", x, y, iw, 14, caps_text(colour::mid));
         name = juce::String(note_name(t.last_note));
     }
     bool lit = kit ? pad->used() : true;
-    p.text(name, x, y + 11, iw, 29, p.fit(name, plain(lit ? colour::text : colour::dim, 26, Weight::SemiBold), iw, 12));
+    p.text(name, x, y + 14, iw, 28, p.fit(name, plain(lit ? colour::text : colour::dim, 24, Weight::SemiBold), iw, type::floor));
     juce::String range;
     switch (kind) {
     case LevelsKind::Velocity: range = juce::String::fromUTF8("soft to loud \xc2\xb7 8 to 127"); break;
@@ -75,16 +75,19 @@ void draw(Paint& p, const Snapshot& s) {
     case LevelsKind::Tune: range = juce::String::fromUTF8("by semitones \xc2\xb7 pad 4 as it is"); break;
     default: range = juce::String::fromUTF8("up the scale \xc2\xb7 0 to +") + value_of(s, 15).substring(1); break;
     }
-    p.text(range, x, y + 41, iw, 12, plain(colour::sec, 10));
+    auto range_style = plain(colour::sec, type::small);
+    auto range_lines = p.wrap(range, range_style, iw, 2);
+    for (int l = 0; l < range_lines.size(); ++l) p.text(range_lines[l], x, y + 43 + l * 13, iw, 14, range_style);
     if (pad && pad->used() && s.sample.frames) {
         uint32_t end = pad->end ? pad->end : s.sample.frames;
         float from = float(pad->start) / s.sample.frames, to = float(end) / s.sample.frames;
-        waveform(p, x, y + 62, iw, 26, s.sample.overview, from, to, from, to, c, 1);
+        waveform(p, x, y + 72, iw, 22, s.sample.overview, from, to, from, to, c, 1);
     }
     if (s.ui.levels_hit >= 0) {
-        float lw = p.text("PLAYING", x, y + 100, 50, 12, caps_text(colour::mid, 7));
+        auto playing = caps_text(colour::mid);
+        float lw = p.text("PLAYING", x, y + 104, p.width("PLAYING", playing) + 1, 14, playing);
         p.text("Pad " + juce::String(s.ui.levels_hit + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + value_of(s, unsigned(s.ui.levels_hit)),
-               x + lw + 6, y + 100, iw - lw - 6, 12, plain(colour::text, 10, Weight::Medium));
+               x + lw + 6, y + 104, iw - lw - 6, 14, plain(colour::text, type::small, Weight::Medium));
     }
 }
 

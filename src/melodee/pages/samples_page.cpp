@@ -19,7 +19,7 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr unsigned visible = 7;
+constexpr unsigned visible = list_rows;
 
 juce::String folder_title(const Snapshot& s) {
     if (s.ui.files_drive == unsigned(Drive::Internal) && s.files_top) return "CATEGORIES";
@@ -41,7 +41,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (s.files.empty()) {
         juce::String why = drive == Drive::Card && s.sample_root.empty() ? "No Samples folder on the card"
                          : drive == Drive::Internal && s.files_top ? "No internal samples" : "No folders or WAV files here";
-        p.text(why, zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 40, plain(colour::dim, 11, Weight::Medium), juce::Justification::centred);
+        p.text(why, zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 40, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
         return;
     }
     unsigned count = unsigned(s.files.size()), cursor = std::min<unsigned>(s.ui.files_cursor, count - 1);

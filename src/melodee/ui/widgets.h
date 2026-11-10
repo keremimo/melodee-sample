@@ -19,7 +19,8 @@ struct ListRow {
     juce::Colour accent = colour::text;
 };
 void list_row(Paint& p, float x, float y, float w, const ListRow& row);
-constexpr float list_row_h = 20, list_row_gap = 1;
+constexpr float list_row_h = 23, list_row_gap = 1;
+constexpr int list_rows = 6; // rows in the picture zone
 
 // A thin level bar, horizontal: track LINE, `fill` 0..1 in `c`.
 void gauge(Paint& p, float x, float y, float w, float fill, juce::Colour c, float thickness = 2);

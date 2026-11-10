@@ -26,7 +26,7 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{"", "", "QUANTIZE"}, f.quantize ? 2 : -1, c}, h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f;
-    constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (145 - 1.5f - 3 * gap) / 4;
+    constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (zone::picture_h - 1.5f - 3 * gap) / 4;
     unsigned playing = s.flex_playing;
     for (unsigned n = 0; n < flex_pads; ++n) {
         unsigned row = 3 - n / 4, column = n % 4;
@@ -34,10 +34,11 @@ void draw(Paint& p, const Snapshot& s) {
         bool on = n == playing, chosen = n == s.ui.flex_chosen && !on && n;
         p.fill(x, y, w, ch, on ? c : n == 0 ? colour::quiet : colour::surf, 4);
         if (chosen) p.ring(x, y, w, ch, c, 4, 1); // waiting for its sixteenth
-        p.text(juce::String(n + 1), x + 6, y + 4, 20, 8, plain(on ? colour::bg : colour::dim, 6.5f, Weight::SemiBold));
-        if (on && n) p.text(f.mode ? "LOOP" : "ON", x + w - 36, y + 4, 30, 8, caps_text(colour::bg, 6), juce::Justification::right);
-        juce::String name = juce::String(flex_beat(n).name).toUpperCase();
-        p.text(name, x + 6, y + ch - 16, w - 12, 13, p.fit(name, plain(on ? colour::bg : n ? c : colour::mid, 11, Weight::SemiBold), w - 12, 6.5f));
+        float nw = p.text(juce::String(n + 1), x + 5, y + 2, 20, 14, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold));
+        if (on && n) p.text(f.mode ? "LOOP" : "ON", x + 5 + nw + 4, y + 2, w - 14 - nw, 14, caps_text(colour::bg), juce::Justification::right);
+        auto style = plain(on ? colour::bg : n ? c : colour::mid, type::small, Weight::SemiBold);
+        juce::String name = cell_name(p, juce::String(flex_beat(n).name).toUpperCase(), style, w - 8);
+        p.text(name, x + 4, y + ch - 17, w - 8, 14, style);
     }
 }
 

@@ -43,12 +43,12 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
     p.fill(fx, fy, fw, fh, colour::surf, 5);
     p.ring(fx, fy, fw, fh, colour::line, 5);
     juce::String text = juce::String::fromUTF8(e.text, int(e.length));
-    auto style = p.fit(text.isEmpty() ? "M" : text, plain(colour::text, 18, Weight::SemiBold), fw - 20, 10);
+    auto style = p.fit(text.isEmpty() ? "M" : text, plain(colour::text, 18, Weight::SemiBold), fw - 20, type::floor);
     float tx = fx + 9, ty = fy + 3;
     p.text(text, tx, ty, fw - 18, 24, style);
     float cx = tx + p.width(text.substring(0, e.cursor), style);
     p.fill(cx, fy + 6, 1.5f, fh - 12, accent);
-    if (text.isEmpty()) p.text("Type on the pads", tx + 6, ty, fw - 24, 24, plain(colour::dim, 12));
+    if (text.isEmpty()) p.text("Type on the pads", tx + 6, ty, fw - 24, 24, plain(colour::dim, type::body));
 
     // The pads as they sit: what each types, the one just hit lit.
     constexpr float gap = 2, top = zone::picture_y + 35;
@@ -65,7 +65,7 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
         } else {
             label = n == 13 ? "SPACE" : n == 14 ? (e.digits ? "ABC" : "123") : "DEL";
         }
-        auto ls = n < 13 ? plain(lit ? colour::bg : colour::text, 12, Weight::SemiBold) : caps_text(lit ? colour::bg : colour::mid, 7);
+        auto ls = n < 13 ? plain(lit ? colour::bg : colour::text, type::body, Weight::SemiBold) : caps_text(lit ? colour::bg : colour::mid);
         p.text(label, x, y, cw, ch, ls, juce::Justification::centred);
         if (lit && n < 13 && e.pad_choices(n) > 1) // which of its letters is in
             p.fill(x + cw / 2 - 7 + 8 * e.taps, y + ch - 4, 6, 1.5f, colour::bg);

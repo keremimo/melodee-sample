@@ -13,6 +13,8 @@
 //                                    pads samples trim chop levels record
 //                                    project filesheet tempo arp chord capture
 //                                    pad play envelope filter follow cloud shift exit
+//                                    Fails when text is drawn under 11 px, wider than
+//                                    its box, or a header's two sides meet.
 //   --melodee-sound FILE.wav         plays the starting project for two bars and
 //                                    checks it sounds and stays inside full scale
 //   --melodee-bench ROUNDS [PAGE...] times drawing each page, ROUNDS draws apiece
