@@ -281,6 +281,11 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   apart). Pressure is depth. K1 punch of the last pad hit, K2 rate, K3
   depth. Punch settings and the pads' punches are saved with the project.
   Not recorded into the Song yet.
+- **Favourites:** Shift + Sample Select ("Save sound" on the Shift layer)
+  stars the sound under the cursor on Sounds, elsewhere the track's loaded
+  sound; again unstars it. Sounds' FAVOURITES lists the starred ones, with
+  a star on each in ALL. Kept by engine in the settings file. Saving a
+  sound of one's own waits for typed names.
 - **Settings (B2 on Project):** Melodee's own, kept in the `settings` file
   next to the projects (with the project to open at start): palette (NIGHT,
   the one there is), pad response (soft, medium, hard, fixed velocity), pad
@@ -321,7 +326,7 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   the starting project and checks the level. `./build.sh` runs both.
 
 Not yet: typed names (markers, projects), Seq
-Record writing launches and punches into the song, favourites.
+Record writing launches and punches into the song.
 
 Open questions from the handoff stay as drawn: 8 mod routes and 256 motion
 events are single constants in `model/limits.h`; the Pad Bank and Mute holds

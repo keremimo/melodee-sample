@@ -157,6 +157,8 @@ const Preview previews[] {
      }},
     {"sounds", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Sounds; s.ui.track = 2; s.ui.sounds_cursor = 2; s.playing = true;
+         auto engine = unsigned(s.project.tracks[2].engine);
+         s.ui.settings.toggle_favourite(engine, 1); s.ui.settings.toggle_favourite(engine, 4);
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"edit", [](Shell&, Snapshot& s) {

@@ -119,6 +119,7 @@ void Shell::button(Button b, bool pressed) {
         context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
         break;
     case Button::SampleSelect: // on a sampler track it lists samples
+        if (ui.shift) { context_.toggle_favourite(); break; } // Save sound: a star among the favourites
         if (!ui.shift) {
             bool kit = context_.track().engine == EngineKind::Sampler;
             context_.open(kit ? PageId::Samples : PageId::Sounds);

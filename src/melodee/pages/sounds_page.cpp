@@ -3,7 +3,8 @@
 // SOUNDS (Sample Select): the selected track's engine sounds. The wheel
 // scrolls, pads audition the sound under the cursor, Push loads it, Shift +
 // Push goes back. B1-B3 filter: all, favourites, recent. K1 engine, K2 jumps
-// through the list, K3 audition velocity.
+// through the list, K3 audition velocity. Shift + Sample Select stars the
+// sound under the cursor (elsewhere, the track's loaded sound).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/sound_list.h"
@@ -41,7 +42,7 @@ void draw(Paint& p, const Snapshot& s) {
         r.number = number; r.name = info.sounds[sound].name; r.accent = c;
         r.current = first + row == cursor;
         r.tag = sound == track.preset ? "LOADED" : "";
-        r.starred = false;
+        r.starred = s.ui.settings.favourite(unsigned(track.engine), sound);
         p.g.saveState();
         list_row(p, zone::pad, zone::picture_y + 0.5f + row * (list_row_h + list_row_gap), zone::width - 2 * zone::pad, r);
         p.g.restoreState();

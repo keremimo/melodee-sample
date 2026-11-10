@@ -6,7 +6,7 @@
 #include <array>
 
 // The sounds the Sounds page lists for the selected track: every factory
-// sound of its engine, the favourites (none can be starred yet) or the
+// sound of its engine, the starred ones (Shift + Sample Select stars) or the
 // recently loaded ones.
 namespace melodee {
 
@@ -16,6 +16,8 @@ inline unsigned sound_list(const Track& track, const UiState& ui, std::array<uin
     unsigned n = 0;
     if (ui.sounds_filter == 0)
         for (unsigned s = 0; s < info.sound_count && n < max_listed; ++s) out[n++] = uint16_t(s);
+    else if (ui.sounds_filter == 1)
+        for (unsigned s = 0; s < info.sound_count && n < max_listed; ++s) { if (ui.settings.favourite(unsigned(track.engine), s)) out[n++] = uint16_t(s); }
     else if (ui.sounds_filter == 2)
         for (unsigned r = 0; r < ui.recent_count; ++r) if (ui.recent[r] < info.sound_count) out[n++] = ui.recent[r];
     return n;

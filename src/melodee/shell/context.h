@@ -54,6 +54,7 @@ public:
     void pad_punch(unsigned pad, uint8_t velocity, bool down);
     void punch_release();                                   // let go of every punch a pad holds
     void change_setting(unsigned row, int way);             // one step along a Settings row, kept on the card
+    void toggle_favourite();                                // the sound under the Sounds cursor, else the loaded one
     // Mix
     void set_mute(unsigned track, bool on);
     void set_solo(unsigned track, bool on);

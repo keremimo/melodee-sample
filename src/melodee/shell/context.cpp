@@ -11,6 +11,7 @@
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
+#include "melodee/shell/sound_list.h"
 #include <filesystem>
 #include <cstring>
 #include <algorithm>
@@ -373,6 +374,20 @@ void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {
 
 void Context::change_setting(unsigned row, int way) {
     ui.settings.step(row, way);
+    if (store) store->save_settings(ui.settings.text());
+}
+
+void Context::toggle_favourite() {
+    auto& t = track();
+    if (t.engine == EngineKind::Sampler || t.engine == EngineKind::None) return;
+    unsigned sound = t.preset;
+    if (ui.page == PageId::Sounds) {
+        std::array<uint16_t, max_listed> list {};
+        unsigned count = sound_list(t, ui, list);
+        if (!count) return;
+        sound = list[std::min<unsigned>(ui.sounds_cursor, count - 1)];
+    }
+    ui.settings.toggle_favourite(unsigned(t.engine), sound);
     if (store) store->save_settings(ui.settings.text());
 }
 

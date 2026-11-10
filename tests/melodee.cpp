@@ -20,6 +20,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/sound_list.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -882,6 +883,20 @@ void settings() {
     CHECK(c.screen == 20);
     c.step(Settings::PadLights, -1); CHECK(c.pad_lights == 2);
     c.step(Settings::Palette, 1); CHECK(c.value_text(Settings::Palette) == "NIGHT");
+    // Favourites: starred sounds by engine, kept in the text; the Sounds page's FAVOURITES lists them.
+    static_assert(Settings::engines == unsigned(EngineKind::Count), "a favourites row per engine");
+    Settings f;
+    f.toggle_favourite(unsigned(EngineKind::Prophet), 3); f.toggle_favourite(unsigned(EngineKind::Prophet), 9);
+    f.toggle_favourite(unsigned(EngineKind::Cz), 2); f.toggle_favourite(unsigned(EngineKind::Cz), 2);
+    Settings g;
+    g.read(f.text());
+    CHECK(g.favourite(unsigned(EngineKind::Prophet), 3) && g.favourite(unsigned(EngineKind::Prophet), 9) && !g.favourite(unsigned(EngineKind::Cz), 2));
+    auto track = std::make_unique<Track>();
+    load_sound(*track, EngineKind::Prophet, 0);
+    UiState ui;
+    ui.settings = g; ui.sounds_filter = 1;
+    std::array<uint16_t, max_listed> list {};
+    CHECK(sound_list(*track, ui, list) == 2 && list[0] == 3 && list[1] == 9);
 }
 } // namespace
 

@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include <algorithm>
+#include <array>
+#include <bitset>
 #include <cmath>
 #include <cstdint>
 #include <sstream>
@@ -18,6 +20,11 @@ struct Settings {
     uint8_t pad_lights = 0;   // 0 track colours, 1 white, 2 off
     bool pickup = true;       // off: a pot's value jumps to where it sits
     uint8_t screen = 100;     // brightness, 20..100 %
+    // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
+    static constexpr unsigned engines = 7, sounds = 256;
+    std::array<std::bitset<sounds>, engines> favourites {};
+    bool favourite(unsigned engine, unsigned sound) const { return engine < engines && sound < sounds && favourites[engine][sound]; }
+    void toggle_favourite(unsigned engine, unsigned sound) { if (engine < engines && sound < sounds) favourites[engine].flip(sound); }
 
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad lights", "Knob pickup", "Screen"};
@@ -56,6 +63,14 @@ struct Settings {
         std::ostringstream out;
         out << "pad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npickup=" << int(pickup)
             << "\nscreen=" << int(screen) << '\n';
+        for (unsigned e = 0; e < engines; ++e) {
+            if (favourites[e].none()) continue;
+            out << "favourites" << e << '=';
+            bool first = true;
+            for (unsigned s = 0; s < sounds; ++s)
+                if (favourites[e][s]) { out << (first ? "" : ",") << s; first = false; }
+            out << '\n';
+        }
         return out.str();
     }
     void read(const std::string& text) {
@@ -70,6 +85,15 @@ struct Settings {
             else if (key == "pad_lights") pad_lights = uint8_t(std::clamp(value, 0, 2));
             else if (key == "pickup") pickup = value != 0;
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
+            else if (key.rfind("favourites", 0) == 0) { // favourites3=0,4,12
+                unsigned e = unsigned(std::atoi(key.c_str() + 10));
+                if (e >= engines) continue;
+                favourites[e].reset();
+                std::istringstream list(line.substr(eq + 1));
+                std::string item;
+                while (std::getline(list, item, ','))
+                    if (!item.empty()) { int s = std::atoi(item.c_str()); if (s >= 0 && unsigned(s) < sounds) favourites[e].set(unsigned(s)); }
+            }
         }
     }
 };
