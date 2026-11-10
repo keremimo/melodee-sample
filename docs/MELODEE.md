@@ -324,7 +324,8 @@ through Steps, Roll and Motion; B1–B3 pick them too.
   changes. **About (B3):** engines, effects, punches, limits, JUCE version,
   font and licence. Audio out and MIDI in from the board's first guess are
   left out: Melodee has no MIDI input path yet and the outputs follow the
-  jacks.
+  jacks: the built-in speaker plays while neither headphones nor line out
+  is plugged in.
 - **Host:** sixteen track slots, level / pan / mute / solo, a pattern mirror,
   a sample-accurate step clock with swing, chance, accent and tie, meters
   and a soft-clipped master after main volume. The send is stored, not heard

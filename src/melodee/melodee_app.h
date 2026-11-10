@@ -22,6 +22,7 @@ public:
     void lights(SurfaceLights& lights, Clock::time_point now) override; // MIDI thread
     void draw(juce::Graphics& g) override;                              // screen thread
     void service(Hardware& hardware) override;                          // service thread
+    void jack(const JackEvent& event, Hardware& hardware) override;     // service thread
     std::string command(const std::string& action, const std::string& argument, Hardware&) override;
     std::string command_names() const override { return "melodee-press"; }
     std::string status() const override;

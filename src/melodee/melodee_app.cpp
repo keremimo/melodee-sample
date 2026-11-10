@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/melodee_app.h"
+#include "drivers/mixer.h"
 #include "drivers/platform.h"
 #include "surface/pads.h"
 #include "drivers/power_button.h"
@@ -115,6 +116,13 @@ void MelodeeApp::draw(juce::Graphics& g) {
     if (frame->ui.name.open()) draw_name_sheet(p, *frame);
     if (frame->ui.exit_open) draw_exit_sheet(p, *frame);
     else if (frame->ui.shift && !frame->ui.shift_used && !frame->ui.name.open()) draw_shift_layer(p, *frame);
+}
+
+// The speaker plays while neither headphones nor line out is plugged in. The
+// runtime leaves it as the stock app did, which is often off.
+void MelodeeApp::jack(const JackEvent&, Hardware& hardware) {
+    bool plugged = session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1;
+    hardware.mixer.speaker(!plugged);
 }
 
 void MelodeeApp::service(Hardware& hardware) {
