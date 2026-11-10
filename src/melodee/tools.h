@@ -15,6 +15,7 @@
 //                                    pad play envelope filter follow cloud shift exit
 //   --melodee-sound FILE.wav         plays the starting project for two bars and
 //                                    checks it sounds and stays inside full scale
+//   --melodee-bench ROUNDS [PAGE...] times drawing each page, ROUNDS draws apiece
 // Returns the exit code, or nothing when argv names neither.
 namespace melodee {
 std::optional<int> run_tool(int argc, char** argv);

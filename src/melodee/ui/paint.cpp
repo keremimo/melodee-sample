@@ -4,7 +4,9 @@
 #include "melodee/ui/rubik_data.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace melodee::ui {
 namespace {
@@ -25,9 +27,8 @@ const std::array<juce::Typeface::Ptr, 4>& faces() {
     }();
     return loaded;
 }
-} // namespace
 
-juce::Font font(float size, Weight weight, bool caps) {
+juce::Font make_font(float size, Weight weight, bool caps) {
     // JUCE's kerning factor is a share of the font height (ascent + descent,
     // about 1.185 em for Rubik); the boards space capitals by 0.08 em.
     auto options = juce::FontOptions(faces()[size_t(weight)]).withPointHeight(size);
@@ -35,8 +36,82 @@ juce::Font font(float size, Weight weight, bool caps) {
     return juce::Font(options);
 }
 
+// Text costs most of a frame: JUCE shapes each string with HarfBuzz, and its
+// own layout cache compares whole Fonts (names, features, variations) on every
+// lookup. These caches key on plain values instead. They hold fonts, string
+// widths and justified layouts, are used from one thread at a time (the screen
+// thread, or a host tool) and are dropped whole when they grow past `most`,
+// since a page reuses the same few hundred strings frame after frame.
+struct Style {
+    int size_hundredths; Weight weight; bool caps;
+    bool operator==(const Style& o) const { return size_hundredths == o.size_hundredths && weight == o.weight && caps == o.caps; }
+    size_t hash() const { return size_t(size_hundredths) * 31u + size_t(weight) * 7u + size_t(caps); }
+};
+Style style_of(float size, Weight weight, bool caps) { return {int(std::lround(size * 100)), weight, caps}; }
+
+struct FontHash { size_t operator()(const Style& s) const { return s.hash(); } };
+
+struct WidthKey {
+    juce::String text; Style style;
+    bool operator==(const WidthKey& o) const { return style == o.style && text == o.text; }
+};
+struct WidthHash { size_t operator()(const WidthKey& k) const { return size_t(k.text.hashCode64()) ^ (k.style.hash() << 1); } };
+
+struct LayoutKey {
+    juce::String text; Style style; float w, h; int justify;
+    bool operator==(const LayoutKey& o) const {
+        return style == o.style && w == o.w && h == o.h && justify == o.justify && text == o.text;
+    }
+};
+struct LayoutHash {
+    size_t operator()(const LayoutKey& k) const {
+        return size_t(k.text.hashCode64()) ^ (k.style.hash() << 1) ^ (std::hash<float>()(k.w) << 3)
+             ^ (std::hash<float>()(k.h) << 5) ^ (size_t(k.justify) << 7);
+    }
+};
+
+template <typename Map> void bound(Map& map, size_t most) { if (map.size() >= most) map.clear(); }
+
+const juce::Font& cached_font(float size, Weight weight, bool caps) {
+    static std::unordered_map<Style, juce::Font, FontHash> fonts;
+    auto key = style_of(size, weight, caps);
+    auto found = fonts.find(key);
+    if (found != fonts.end()) return found->second;
+    bound(fonts, 256);
+    return fonts.emplace(key, make_font(size, weight, caps)).first->second;
+}
+
+float cached_width(const juce::String& value, float size, Weight weight, bool caps) {
+    static std::unordered_map<WidthKey, float, WidthHash> widths;
+    WidthKey key {value, style_of(size, weight, caps)};
+    auto found = widths.find(key);
+    if (found != widths.end()) return found->second;
+    bound(widths, 4096);
+    float w = juce::GlyphArrangement::getStringWidth(cached_font(size, weight, caps), value);
+    widths.emplace(std::move(key), w);
+    return w;
+}
+
+// The layout juce::Graphics::drawText() builds, laid out once per string,
+// style and box size.
+const juce::GlyphArrangement& cached_layout(const juce::String& value, float size, Weight weight, bool caps,
+                                            float w, float h, juce::Justification justify) {
+    static std::unordered_map<LayoutKey, juce::GlyphArrangement, LayoutHash> layouts;
+    LayoutKey key {value, style_of(size, weight, caps), w, h, justify.getFlags()};
+    auto found = layouts.find(key);
+    if (found != layouts.end()) return found->second;
+    bound(layouts, 2048);
+    juce::GlyphArrangement arrangement;
+    arrangement.addCurtailedLineOfText(cached_font(size, weight, caps), value, 0, 0, w, false);
+    arrangement.justifyGlyphs(0, arrangement.getNumGlyphs(), 0, 0, w, h, justify);
+    return layouts.emplace(std::move(key), std::move(arrangement)).first->second;
+}
+} // namespace
+
+juce::Font font(float size, Weight weight, bool caps) { return cached_font(size, weight, caps); }
+
 float Paint::width(const juce::String& value, const Text& style) const {
-    return juce::GlyphArrangement::getStringWidth(font(style.size, style.weight, style.caps), value);
+    return cached_width(value, style.size, style.weight, style.caps);
 }
 
 Paint::Text Paint::fit(const juce::String& value, Text style, float w, float smallest) const {
@@ -46,9 +121,13 @@ Paint::Text Paint::fit(const juce::String& value, Text style, float w, float sma
 
 float Paint::text(const juce::String& value, float x, float y, float w, float h, const Text& style,
                   juce::Justification justify) {
+    // Colour and font stay set on g, as drawText() callers expect.
     g.setColour(style.colour);
-    g.setFont(font(style.size, style.weight, style.caps));
-    g.drawText(value, juce::Rectangle<float>(x, y, w, h), justify, false);
+    g.setFont(cached_font(style.size, style.weight, style.caps));
+    if (value.isEmpty()) return 0;
+    juce::Rectangle<float> area(x, y, w, h);
+    if (g.clipRegionIntersects(area.getSmallestIntegerContainer()))
+        cached_layout(value, style.size, style.weight, style.caps, w, h, justify).draw(g, juce::AffineTransform::translation(x, y));
     return width(value, style);
 }
 

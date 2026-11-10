@@ -13,6 +13,7 @@
 #include "runtime/screen.h"
 #include "runtime/util.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -406,6 +407,36 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     return 0;
 }
 
+// Draws every preview page `rounds` times at 320 x 240 and prints the mean
+// time per draw, for comparing drawing cost before and after a change.
+int bench(unsigned rounds, const std::vector<std::string>& names) {
+    EngineHost host;
+    Shell shell(host);
+    board_project(shell);
+    juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
+    double total = 0;
+    unsigned pages = 0;
+    for (const auto& preview : previews) {
+        if (!names.empty() && std::find(names.begin(), names.end(), preview.name) == names.end()) continue;
+        auto snapshot = std::make_unique<Snapshot>();
+        shell.snapshot(*snapshot, 100000);
+        snapshot->ui = UiState {};
+        snapshot->now = 100000;
+        preview.set(shell, *snapshot);
+        const auto& track = snapshot->project.tracks[snapshot->ui.track];
+        snapshot->pattern = shell.patterns().at[snapshot->ui.track][track.pattern];
+        { juce::Graphics g(image); draw(g, *snapshot); } // warm caches
+        auto start = std::chrono::steady_clock::now();
+        for (unsigned n = 0; n < rounds; ++n) { juce::Graphics g(image); draw(g, *snapshot); }
+        double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / rounds;
+        std::printf("MELODEE_BENCH %-10s %8.0f us\n", preview.name, us);
+        total += us; ++pages;
+    }
+    require(pages > 0, "Unknown Melodee page");
+    std::printf("MELODEE_BENCH mean       %8.0f us over %u pages\n", total / pages, pages);
+    return 0;
+}
+
 void little(std::ofstream& file, uint32_t value, unsigned bytes) {
     for (unsigned n = 0; n < bytes; ++n) file.put(char((value >> (n * 8)) & 255));
 }
@@ -452,6 +483,10 @@ std::optional<int> run_tool(int argc, char** argv) {
         return preview(argv[2], names);
     }
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-sound")) return sound(argv[2]);
+    if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
+        std::vector<std::string> names(argv + 3, argv + argc);
+        return bench(unsigned(std::max(1, std::atoi(argv[2]))), names);
+    }
     return std::nullopt;
 }
 
