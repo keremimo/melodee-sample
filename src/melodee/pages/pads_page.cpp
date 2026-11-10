@@ -3,9 +3,10 @@
 // PADS (B2 on a sampler track): one sound a pad, drawn as the pads sit,
 // eight banks of sixteen; Pad Bank (or Minus / Plus) steps through them and
 // bank lights A-H show which. Muted pads (mute mode) are drawn dim. The pots follow the last pad hit: pitch,
-// level, pan. Push opens Trim for that pad.
+// level, pan. Push opens the map of the sampler's pages for that pad.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/sampler_map.h"
 #include "melodee/ui/waveform.h"
 #include <cstdio>
 
@@ -75,7 +76,12 @@ void draw(Paint& p, const Snapshot& s) {
 }
 
 void bank(Context& c, int way) { c.track().bank = uint8_t((c.track().bank + sampler_banks + way) % sampler_banks); }
-void push(Context& c) { if (c.pad().used()) c.open(PageId::Trim); }
+// Push: the sampler's ten pages as a map (Stage holds the MPC's own; Follow, Cloud, Kit filter and the second rows are here).
+void push(Context& c) {
+    c.open(PageId::PadMix);
+    c.ui.map_open = true;
+    c.ui.map_cursor = uint8_t(sampler_index(PageId::PadMix));
+}
 } // namespace
 
 const PageSpec pads_page {draw, play_pad, no_wheel, push, play_soft, bank};

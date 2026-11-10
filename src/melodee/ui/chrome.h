@@ -19,6 +19,8 @@ struct SoftKeys {
     int active = -1;                    // the page's own key gets a short bar at the top edge
     juce::Colour accent = colour::text; // the bar's colour, usually the track's
     std::array<KeyIcon, 3> icons {};
+    // Stage: a button with a cycle of pages shows a dot for each under its label, the page in view lit.
+    std::array<uint8_t, 3> dots {}, dot_at {};
 };
 void soft_keys(Paint& p, const SoftKeys& keys);
 

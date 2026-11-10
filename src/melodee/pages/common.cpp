@@ -12,6 +12,8 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/fader_job.h"
 #include "melodee/shell/name_suggest.h"
+#include "melodee/engine/midi_engine.h"
+#include "melodee/shell/stage_map.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -63,6 +65,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         auto& c = cards[n];
         if (!b.bound()) continue;
         if (second[n].bound()) c.shift = s.ui.shift ? 2 : 1;
+        if (s.ui.page == PageId::Stage) c.focus = int(n) == stage_focus(s.ui); // the wheel's card
         // A bus or the master belongs to no track: its cards are neutral.
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
         c.shade = neutral ? ui::colour::text : ui::knob_shade(s.ui.track, n);
@@ -93,6 +96,9 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         auto shown = show(p, b.value);
         c.label = p.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(p);
         c.fill = gauge_of(p, b.value);
+        if (track.engine == EngineKind::Midi && midi_track::is_cc(b.id)) // a controller by its number: "CC 74"
+            c.label = "CC " + juce::String(track.params[size_t(midi_track::CcNumber1 + (b.id - midi_track::Cc1))]);
+        if (track.engine == EngineKind::Sampler && b.id == sampler::Level) c.label = "KIT VOLUME";
         break;
     }
     case Kind::Level: c.label = "LEVEL"; c.value = juce::String(b.value); break;
@@ -297,6 +303,31 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
         break;
     case Kind::ModWheel: c.label = "MOD WHEEL"; c.value = juce::String(b.value); break;
+    case Kind::StageSound:
+        std::snprintf(text, sizeof(text), "%02d", b.value + 1);
+        c.label = "SOUND"; c.value = text; c.unit = "/ " + juce::String(b.max + 1);
+        break;
+    case Kind::SoundList: { static const char* lists[] {"All", "Starred", "Recent"}; c.label = "LIST"; c.value = lists[b.value % 3]; break; }
+    case Kind::ArpGate: c.label = "GATE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::ArpHold: c.label = "HOLD"; c.value = b.value ? "On" : "Off"; break;
+    case Kind::NewEngine: {
+        std::array<EngineKind, size_t(EngineKind::Count)> engines {};
+        unsigned count = new_engines(engines);
+        c.label = "ENGINE"; c.value = count ? engine_info(engines[unsigned(b.value) % count]).name : "";
+        break;
+    }
+    case Kind::NewSound:
+        std::snprintf(text, sizeof(text), "%02d", b.value + 1);
+        c.label = "SOUND"; c.value = text; c.unit = "/ " + juce::String(b.max + 1);
+        break;
+    case Kind::NewSource: { static const char* sources[] {"Card", "Input", "Recall", "Resample"}; c.label = "SOURCE"; c.value = sources[unsigned(b.value) % 4]; break; }
+    case Kind::NewPort: { static const char* ports[] {"External", "USB-C", "All USB"}; c.label = "PORT"; c.value = ports[unsigned(b.value) % 3]; break; }
+    case Kind::NewChannel: c.label = "CHANNEL"; c.value = juce::String(b.value); break;
+    case Kind::TrackPick:
+        std::snprintf(text, sizeof(text), "%02d", b.value + 1);
+        c.label = "TRACK"; c.value = text;
+        break;
+    case Kind::TrackPattern: c.label = "PATTERN"; c.value = "P" + juce::String(b.value + 1); break;
     case Kind::None: break;
     }
 }

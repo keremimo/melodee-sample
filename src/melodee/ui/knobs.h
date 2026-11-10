@@ -20,6 +20,7 @@ struct KnobCard {
     // The MPC's Shift icon: 1 Shift + this pot turns a second parameter,
     // 2 Shift is held and the card shows that parameter.
     uint8_t shift = 0;
+    bool focus = false;    // Stage: the card the wheel fine-edits (Push moves it), ringed
     juce::Colour shade = colour::text, track = colour::text;
 };
 void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards);

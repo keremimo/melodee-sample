@@ -61,7 +61,16 @@ void soft_keys(Paint& p, const SoftKeys& keys) {
         }
         const auto& text = keys.labels[size_t(n)];
         auto style = caps_text(on ? colour::text : colour::mid, type::soft);
-        if (text.isNotEmpty()) p.text(text, x, zone::soft_y, column, zone::soft_h, style, juce::Justification::centred);
+        unsigned dots = keys.dots[size_t(n)];
+        float label_y = dots > 1 ? zone::soft_y - 3.0f : float(zone::soft_y); // room under it for the dots
+        if (text.isNotEmpty()) p.text(text, x, label_y, column, zone::soft_h, style, juce::Justification::centred);
+        if (dots > 1) { // 3 px dots, 3 px apart, the page in view in the accent
+            float dw = dots * 3.0f + (dots - 1) * 3.0f, dx = x + column / 2 - dw / 2;
+            for (unsigned d = 0; d < dots; ++d) {
+                auto c = on && d == keys.dot_at[size_t(n)] ? keys.accent : on ? colour::mid : colour::dim;
+                p.fill(dx + d * 6.0f, zone::soft_h - 6.0f, 3, 3, c, 1.5f);
+            }
+        }
         auto icon = keys.icons[size_t(n)];
         if (icon == KeyIcon::None) continue;
         float left = x + column / 2 - p.width(text, style) / 2, mid = zone::soft_h / 2.0f;

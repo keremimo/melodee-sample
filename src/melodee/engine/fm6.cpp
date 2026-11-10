@@ -87,6 +87,18 @@ const Sound sounds[] {
                    {OP(0, Sustain), 90}, {-1, 0}}}},
 };
 #undef OP
+// Stage: B1 SOUND (preset, algorithm and feedback, mix), B2 SHAPE (the first two operators' envelopes, touch),
+// B3 PLAY (arp, the first three ratios with the last three on Shift, effects).
+using K = StageKind;
+using S = StagePicture;
+constexpr int8_t op(unsigned n, OpParam k) { return int8_t(op_param(n, k)); }
+const StageGroups stage {{{
+    {{{stage_preset, {"TONE", K::Params, S::Bars, {{Algorithm, Feedback, op(1, Level)}}}, stage_mix}}, 3},
+    {{{{"OP 1 ENV", K::Params, S::Envelope, {{op(0, Attack), op(0, Decay), op(0, Sustain)}}, {{op(0, Release), op(0, Velocity), op(0, Level)}}},
+       {"OP 2 ENV", K::Params, S::Envelope, {{op(1, Attack), op(1, Decay), op(1, Sustain)}}, {{op(1, Release), op(1, Velocity), op(1, Level)}}},
+       {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},
+    {{{stage_arp, {"RATIOS", K::Params, S::ShiftRows, {{op(0, Ratio), op(1, Ratio), op(2, Ratio)}}, {{op(3, Ratio), op(4, Ratio), op(5, Ratio)}}}, stage_fx}}, 3},
+}}};
 } // namespace
 
 const char* algorithm_name(unsigned a) { return algorithm_names[a % algorithms]; }
@@ -97,7 +109,7 @@ float ratio_of(int value) { return value <= 0 ? 0.5f : float(value); }
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Fm6, "FM6", true, params.data(), Count, pages, sizeof(pages) / sizeof(pages[0]),
                                     {Algorithm, Feedback, int8_t(op_param(1, Level))}, sounds, sizeof(sounds) / sizeof(sounds[0]),
-                                    mod_dests, legacy_count};
+                                    mod_dests, legacy_count, true, &stage};
     return engine;
 }
 } // namespace fm6

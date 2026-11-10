@@ -11,7 +11,9 @@
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/model/scales.h"
+#include "melodee/engine/midi_engine.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/step_edit.h"
 #include <algorithm>
 
@@ -206,7 +208,149 @@ std::array<Binding, 3> knob_bindings(const Project& project, bool shift) {
     return out;
 }
 bool knob_owns(const Project& project, const UiState& ui) { return project.knob_fx.on && project.knob_fx.kind && !ui.name.open(); }
+
+// A kit's Sample Mode cards on the last pad hit, as `page` (a sampler page) has them; row 2 where it has one.
+// The sampler pages and Stage's kit pages share them.
+std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& track, const UiState& ui, PageId page, bool row2) {
+    const auto& pad = track.pads[track.last_pad % sampler_pads];
+    if (page == PageId::Trim) { // K1 start, K2 end, K3 the loop point (Shift: zoom at each)
+        uint32_t frames = pad.used() ? project.samples[pad.sample % sample_slots].frames : 0;
+        if (!frames) return {};
+        int length = ms(frames), window = std::max(4, length >> ui.trim_zoom);
+        int start = ms(pad.start), end = pad.end ? ms(pad.end) : length;
+        // Closer in, each pot turns across a window of the sample that stays put while the handle is inside it.
+        auto range = [&](int value) { int lo = std::min(value / window * window, std::max(0, length - window)); return std::pair<int, int>(lo, std::min(length, lo + window)); };
+        auto [s0, s1] = range(start);
+        auto [e0, e1] = range(end);
+        int loop = std::clamp(ms(pad.loop_point()), start, std::max(start, end - 1));
+        auto [l0, l1] = range(loop);
+        return {Binding {Kind::PadStart, 0, s0, std::min(s1, end - 1), start}, Binding {Kind::PadEnd, 0, std::max(e0, start + 1), e1, end},
+                Binding {Kind::PadLoopPoint, 0, std::max(l0, start), std::min(l1, std::max(start + 1, end - 1)), loop}};
+    }
+    if (track.engine != EngineKind::Sampler || !pad.used()) return {};
+    switch (page) {
+    case PageId::PadMix: // K1 volume, K3 pan (Shift + K2 the kit's volume)
+        return {Binding {Kind::PadLevel, 0, 0, 127, pad.level}, Binding {}, Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
+    case PageId::PadPage: // Tune: semitones, cents, Warp (Shift + K3 # Beats)
+        return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadFine, 0, -50, 50, pad.fine},
+                Binding {Kind::PadWarp, 0, 0, warp_card_seq, warp_card(pad.warp)}};
+    case PageId::PlayPage: // Mono / Poly, mute group, offset (Shift + K2 Pad Link); row 2 Note On, reverse, loop
+        if (row2) return {Binding {Kind::PadPlayMode, 0, 0, 1, int(pad.play)}, Binding {Kind::PadReverse, 0, 0, 1, pad.reverse},
+                          Binding {Kind::PadLoop, 0, 0, 1, pad.loop}};
+        return {Binding {Kind::PadMono, 0, 0, 1, pad.mono}, Binding {Kind::PadGroup, 0, 0, 16, pad.group},
+                Binding {Kind::PadOffset, 0, 0, 100, pad.offset}};
+    case PageId::EnvelopePage: // Amp Env: attack, decay (One shot) or release (Note On), velocity sensitivity; row 2 sustain and the other
+        if (row2) return {Binding {Kind::PadSustain, 0, 0, 100, pad.sustain}, amp_second(pad, true), Binding {}};
+        return {Binding {Kind::PadAttack, 0, 0, 100, pad.attack}, amp_second(pad, false), Binding {Kind::PadVelSense, 0, 0, 100, pad.velocity_sense}};
+    case PageId::PadFilterPage: // the pad's filter: cutoff, resonance, type
+        return {Binding {Kind::PadCutoff, 0, 0, 100, pad.cutoff}, Binding {Kind::PadResonance, 0, 0, 100, pad.resonance},
+                Binding {Kind::PadFilterType, 0, 0, int(pad_filter_count) - 1, int(pad.filter)}};
+    case PageId::FilterEnvPage: // Filt Env: attack, decay or release, depth; row 2 sustain and the other
+        if (row2) return {Binding {Kind::PadFSustain, 0, 0, 100, pad.filter_sustain}, filter_second(pad, true), Binding {}};
+        return {Binding {Kind::PadFAttack, 0, 0, 100, pad.filter_attack}, filter_second(pad, false),
+                Binding {Kind::PadFAmount, 0, 0, 100, pad.filter_amount}};
+    default: return {};
+    }
+}
+
+// Their Shift + K cards, as on the MPC: zoom on Trim, the kit's volume on Mix, Decay From on the envelopes,
+// # Beats on Tune, Pad Link on Play.
+std::array<Binding, 3> pad_page_shift(const Track& track, const UiState& ui, PageId page) {
+    if (page == PageId::Trim) return {trim_zoom(ui, 0), trim_zoom(ui, 1), trim_zoom(ui, 2)};
+    const auto& pad = track.pads[track.last_pad % sampler_pads];
+    if (track.engine != EngineKind::Sampler) return {};
+    switch (page) {
+    case PageId::PadMix: return {Binding {}, param(track, sampler::Level), Binding {}};
+    case PageId::EnvelopePage: case PageId::FilterEnvPage:
+        if (!pad.used()) return {};
+        return {Binding {}, Binding {Kind::PadDecayFrom, 0, 0, 1, pad.decay_from_start ? 0 : 1}, Binding {}};
+    case PageId::PadPage:
+        if (!pad.used()) return {};
+        return {Binding {}, Binding {}, Binding {Kind::PadBeats, 0, 0, int(max_pad_beats), pad.beats}};
+    case PageId::PlayPage:
+        if (!pad.used() || ui.sampler_row) return {};
+        return {Binding {}, Binding {Kind::PadLink, 0, 0, 16, pad.link}, Binding {}};
+    default: return {};
+    }
+}
+
+// The sound PRESET's K1 sits on: where the cursor is while a turn waits to load, else the loaded sound.
+int preset_position(const Track& track, const UiState& ui, unsigned& listed) {
+    std::array<uint16_t, max_listed> list {};
+    listed = sound_list(track, ui, list);
+    if (ui.preset_due) return std::min<int>(ui.preset_cursor, int(listed) - 1);
+    for (unsigned n = 0; n < listed; ++n) if (list[n] == track.preset) return int(n);
+    return 0;
+}
 } // namespace
+
+unsigned new_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out) {
+    std::array<EngineKind, size_t(EngineKind::Count)> all {};
+    unsigned count = available_engines(all), n = 0;
+    for (unsigned k = 0; k < count; ++k) // the synths and the 909: a kit and MIDI have buttons of their own
+        if (all[k] != EngineKind::Sampler && all[k] != EngineKind::Midi) out[n++] = all[k];
+    return n;
+}
+
+std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui, bool shift_row) {
+    const auto& track = project.tracks[ui.track % track_count];
+    const auto& page = stage_page_now(ui, track);
+    using SK = StageKind;
+    if (PageId kit = stage_kit_page(page.kind); kit != PageId::Count) {
+        if (shift_row) return page.kind == SK::PadMix ? std::array<Binding, 3> {} : pad_page_shift(track, ui, kit);
+        auto cards = pad_page_bindings(project, track, ui, kit, false);
+        if (page.kind == SK::PadMix && track.pads[track.last_pad % sampler_pads].used()) cards[1] = param(track, sampler::Level); // K2 the kit's volume
+        return cards;
+    }
+    unsigned t = ui.track % track_count;
+    switch (page.kind) {
+    case SK::Params:
+    case SK::Voice: {
+        const auto& ids = shift_row ? page.shift : page.params;
+        return {param(track, ids[0]), param(track, ids[1]), param(track, ids[2])};
+    }
+    case SK::Preset: {
+        if (shift_row) return {};
+        unsigned listed = 0;
+        int at = preset_position(track, ui, listed);
+        std::array<EngineKind, size_t(EngineKind::Count)> engines {};
+        unsigned count = available_engines(engines), here = 0;
+        for (unsigned n = 0; n < count; ++n) if (engines[n] == track.engine) here = n;
+        return {Binding {Kind::StageSound, 0, 0, int(std::max(listed, 2u)) - 1, at}, Binding {Kind::SoundList, 0, 0, 2, ui.sounds_filter},
+                Binding {Kind::Engine, 0, 0, int(std::max(count, 2u)) - 1, int(here)}};
+    }
+    case SK::Mix:
+        if (shift_row) return {Binding {}, Binding {}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(track.mix.bus % bus_count)}};
+        return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
+                Binding {Kind::Send, 0, 0, 100, track.mix.send}};
+    case SK::Arp:
+        if (shift_row) return {Binding {Kind::ArpGate, 0, 5, 100, track.arp_gate}, Binding {}, Binding {Kind::ArpHold, 0, 0, 1, track.arp_latch}};
+        return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},
+                Binding {Kind::ArpOctaves, 0, 1, 4, track.arp_octaves}};
+    case SK::Fx: {
+        unsigned slot = ui.fx_cursor[UiState::cursor_of(t)];
+        if (slot >= track.fx.count()) return {};
+        return effect_row(t * 64 + slot * 8, track.fx.slots[slot], shift_row ? 1 : 0);
+    }
+    case SK::NewSynth: {
+        if (shift_row) return {};
+        std::array<EngineKind, size_t(EngineKind::Count)> engines {};
+        unsigned count = new_engines(engines);
+        if (!count) return {};
+        unsigned sounds = engine_info(engines[ui.new_engine % count]).sound_count;
+        return {Binding {Kind::NewEngine, 0, 0, int(std::max(count, 2u)) - 1, int(ui.new_engine % count)},
+                Binding {Kind::NewSound, 0, 0, int(std::max(sounds, 2u)) - 1, int(std::min<unsigned>(ui.new_sound, sounds - 1))}, Binding {}};
+    }
+    case SK::NewKit:
+        if (shift_row) return {};
+        return {Binding {Kind::NewSource, 0, 0, int(new_sources) - 1, ui.new_source % int(new_sources)}, Binding {}, Binding {}};
+    case SK::NewMidi:
+        if (shift_row) return {};
+        return {Binding {Kind::NewPort, 0, 0, midi_track::PortCount - 1, ui.new_port % midi_track::PortCount},
+                Binding {Kind::NewChannel, 0, 1, 16, std::clamp<int>(ui.new_channel, 1, 16)}, Binding {}};
+    default: return {};
+    }
+}
 
 std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
@@ -228,33 +372,14 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         }
         return {length, Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature}, Binding {}};
     }
-    case PageId::Trim: // Shift + K: zoom in at the start, the end or the loop point (as on the MPC)
-        return {trim_zoom(ui, 0), trim_zoom(ui, 1), trim_zoom(ui, 2)};
+    case PageId::Trim: case PageId::PadMix: case PageId::EnvelopePage: case PageId::FilterEnvPage: case PageId::PadPage: case PageId::PlayPage:
+        return pad_page_shift(track, ui, ui.page);
     case PageId::Chop: { // Shift + K1 / K2 zoom at the slice's start or end; Shift + K3 the type's amount (Threshold as on the MPC)
         static const int lows[] {0, 2, 1}, highs[] {100, int(max_slices), 8};
         unsigned mode = unsigned(ui.chop_mode);
         Binding amount {};
         if (mode < 3) amount = {Kind::ChopAmount, int32_t(mode), lows[mode], highs[mode], ui.chop_amount[mode]};
         return {Binding {Kind::ChopZoom, 0, 0, 4, ui.chop_zoom}, Binding {Kind::ChopZoom, 1, 0, 4, ui.chop_zoom}, amount};
-    }
-    case PageId::PadMix: // Shift + K2: the kit's volume
-        if (track.engine != EngineKind::Sampler) return {};
-        return {Binding {}, param(track, sampler::Level), Binding {}};
-    case PageId::EnvelopePage:
-    case PageId::FilterEnvPage: { // Shift + K2: decay from the start or the end
-        const auto& pad = track.pads[track.last_pad % sampler_pads];
-        if (track.engine != EngineKind::Sampler || !pad.used()) return {};
-        return {Binding {}, Binding {Kind::PadDecayFrom, 0, 0, 1, pad.decay_from_start ? 0 : 1}, Binding {}};
-    }
-    case PageId::PadPage: { // Tune: Shift + K3 # Beats
-        const auto& pad = track.pads[track.last_pad % sampler_pads];
-        if (track.engine != EngineKind::Sampler || !pad.used()) return {};
-        return {Binding {}, Binding {}, Binding {Kind::PadBeats, 0, 0, int(max_pad_beats), pad.beats}};
-    }
-    case PageId::PlayPage: { // Shift + K2: Pad Link
-        const auto& pad = track.pads[track.last_pad % sampler_pads];
-        if (track.engine != EngineKind::Sampler || !pad.used() || ui.sampler_row) return {};
-        return {Binding {}, Binding {Kind::PadLink, 0, 0, 16, pad.link}, Binding {}};
     }
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: { // Shift + K: the device's other row (as Knob FX's Shift + K on the MPC)
         unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
@@ -268,6 +393,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
                 Binding {Kind::PunchTail, 0, 0, 2, project.punch_tail}};
     case PageId::Compressor: // Shift + K3: In Boost
         return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, project.compressor.boost}};
+    case PageId::Stage: return stage_bindings(project, ui, true);
     case PageId::Keys: // Shift + K3: the pads by semitones
         if (track.engine == EngineKind::Kit909) return {};
         return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
@@ -389,21 +515,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level},
                 Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
     }
-    case PageId::Trim: { // K1 start, K2 end, K3 the loop point (Shift: zoom at each)
-        const auto& pad = track.pads[track.last_pad % sampler_pads];
-        uint32_t frames = pad.used() ? project.samples[pad.sample % sample_slots].frames : 0;
-        if (!frames) return {};
-        int length = ms(frames), window = std::max(4, length >> ui.trim_zoom);
-        int start = ms(pad.start), end = pad.end ? ms(pad.end) : length;
-        // Closer in, each pot turns across a window of the sample that stays put while the handle is inside it.
-        auto range = [&](int value) { int lo = std::min(value / window * window, std::max(0, length - window)); return std::pair<int, int>(lo, std::min(length, lo + window)); };
-        auto [s0, s1] = range(start);
-        auto [e0, e1] = range(end);
-        int loop = std::clamp(ms(pad.loop_point()), start, std::max(start, end - 1));
-        auto [l0, l1] = range(loop);
-        return {Binding {Kind::PadStart, 0, s0, std::min(s1, end - 1), start}, Binding {Kind::PadEnd, 0, std::max(e0, start + 1), e1, end},
-                Binding {Kind::PadLoopPoint, 0, std::max(l0, start), std::min(l1, std::max(start + 1, end - 1)), loop}};
-    }
+    case PageId::Trim: // K1 start, K2 end, K3 the loop point (Shift: zoom at each)
+        return pad_page_bindings(project, track, ui, ui.page, false);
     case PageId::Chop: { // K1 the slice's start, K2 its end (the neighbours' end and start with them), K3 the type
         uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
         Binding type {Kind::ChopMode, 0, 0, int(ChopMode::Count) - 1, int(ui.chop_mode)};
@@ -450,33 +563,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::PlayPage:
     case PageId::EnvelopePage:
     case PageId::PadFilterPage:
-    case PageId::FilterEnvPage: {
-        const auto& pad = track.pads[track.last_pad % sampler_pads];
-        if (track.engine != EngineKind::Sampler || !pad.used()) return {};
-        bool row2 = ui.sampler_row != 0;
-        switch (ui.page) {
-        case PageId::PadMix: // K1 volume, K3 pan (Shift + K2 the kit's volume)
-            return {Binding {Kind::PadLevel, 0, 0, 127, pad.level}, Binding {}, Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
-        case PageId::PadPage: // Tune: semitones, cents, Warp (Shift + K3 # Beats)
-            return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadFine, 0, -50, 50, pad.fine},
-                    Binding {Kind::PadWarp, 0, 0, warp_card_seq, warp_card(pad.warp)}};
-        case PageId::PlayPage: // Mono / Poly, mute group, offset (Shift + K2 Pad Link); row 2 Note On, reverse, loop
-            if (row2) return {Binding {Kind::PadPlayMode, 0, 0, 1, int(pad.play)}, Binding {Kind::PadReverse, 0, 0, 1, pad.reverse},
-                              Binding {Kind::PadLoop, 0, 0, 1, pad.loop}};
-            return {Binding {Kind::PadMono, 0, 0, 1, pad.mono}, Binding {Kind::PadGroup, 0, 0, 16, pad.group},
-                    Binding {Kind::PadOffset, 0, 0, 100, pad.offset}};
-        case PageId::EnvelopePage: // Amp Env: attack, decay (One shot) or release (Note On), velocity sensitivity; row 2 sustain and the other
-            if (row2) return {Binding {Kind::PadSustain, 0, 0, 100, pad.sustain}, amp_second(pad, true), Binding {}};
-            return {Binding {Kind::PadAttack, 0, 0, 100, pad.attack}, amp_second(pad, false), Binding {Kind::PadVelSense, 0, 0, 100, pad.velocity_sense}};
-        case PageId::PadFilterPage: // the pad's filter: cutoff, resonance, type
-            return {Binding {Kind::PadCutoff, 0, 0, 100, pad.cutoff}, Binding {Kind::PadResonance, 0, 0, 100, pad.resonance},
-                    Binding {Kind::PadFilterType, 0, 0, int(pad_filter_count) - 1, int(pad.filter)}};
-        default: // Filt Env: attack, decay or release, depth; row 2 sustain and the other
-            if (row2) return {Binding {Kind::PadFSustain, 0, 0, 100, pad.filter_sustain}, filter_second(pad, true), Binding {}};
-            return {Binding {Kind::PadFAttack, 0, 0, 100, pad.filter_attack}, filter_second(pad, false),
-                    Binding {Kind::PadFAmount, 0, 0, 100, pad.filter_amount}};
-        }
-    }
+    case PageId::FilterEnvPage:
+        return pad_page_bindings(project, track, ui, ui.page, ui.sampler_row != 0);
     case PageId::FilterPage: return {param(track, sampler::Filter), param(track, sampler::Resonance), param(track, sampler::FilterType)};
     case PageId::FollowPage: return {param(track, sampler::Follow), param(track, sampler::FollowHow), param(track, sampler::PitchHow)};
     case PageId::CloudPage:
@@ -514,7 +602,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::StepLength, 0, 1, 16, step.length}, Binding {Kind::StepVelocity, 0, 1, 127, note->velocity},
                 Binding {Kind::StepChance, 0, 0, 100, step.chance}};
     }
-    case PageId::Stage:
+    case PageId::Stage: return stage_bindings(project, ui, false);
+    case PageId::Tracks: // K1 the track, K2 its level, K3 its pattern
+        return {Binding {Kind::TrackPick, 0, 0, int(track_count) - 1, ui.track % int(track_count)},
+                Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::TrackPattern, 0, 0, int(pattern_count) - 1, track.pattern}};
     default: return favourite_bindings(track);
     }
 }

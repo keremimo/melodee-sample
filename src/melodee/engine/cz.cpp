@@ -45,6 +45,17 @@ const Sound sounds[] {
     {"PULSE ORGAN", {{{Wave1, 2}, {Wave2, 4}, {Dcw, 60}, {DcwAmount, 0}, {DcaSustain, 100}, {DcaRelease, 25}, {-1, 0}}}},
 };
 
+// Stage: B1 SOUND (preset, the DCW, mix), B2 SHAPE (DCW and DCA envelopes, touch), B3 PLAY (arp, lines, effects).
+using K = StageKind;
+using S = StagePicture;
+const StageGroups stage {{{
+    {{{stage_preset, {"TONE", K::Params, S::Bars, {{Dcw, DcwAmount, Wave1}}}, stage_mix}}, 3},
+    {{{{"DCW ENV", K::Params, S::Envelope, {{DcwAttack, DcwDecay, DcwSustain}}, {{DcwRelease, DcwAmount, KeyFollow}}},
+       {"DCA ENV", K::Params, S::Envelope, {{DcaAttack, DcaDecay, DcaSustain}}, {{DcaRelease, Velocity, _}}},
+       {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},
+    {{{stage_arp, {"LINES", K::Params, S::ShiftRows, {{Line, Detune, Octave}}, {{Wave1, Wave2, _}}}, stage_fx}}, 3},
+}}};
+
 float knee(float phase, float m) { return phase < m ? phase * 0.5f / m : 0.5f + (phase - m) * 0.5f / (1 - m); }
 } // namespace
 
@@ -81,7 +92,7 @@ float shape(unsigned wave, float phase, float d) {
 
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Cz, "CZ", true, params, Count, pages, sizeof(pages) / sizeof(pages[0]),
-                                    {Dcw, DcwAmount, Wave1}, sounds, sizeof(sounds) / sizeof(sounds[0]), mod_dests, legacy_count};
+                                    {Dcw, DcwAmount, Wave1}, sounds, sizeof(sounds) / sizeof(sounds[0]), mod_dests, legacy_count, true, &stage};
     return engine;
 }
 } // namespace cz

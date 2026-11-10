@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/button_jobs.h"
+#include "melodee/shell/stage_map.h"
 
 namespace melodee {
 
@@ -39,7 +40,8 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::Loop: return kit;                                                    // reverse the last pad
     case B::Chop: return kit && project.tracks[ui.track % track_count].pads[project.tracks[ui.track % track_count].last_pad % sampler_pads].used(); // Note On
     case B::SixteenLevels: return project.tracks[ui.track % track_count].used(); // the 16 Levels type
-    case B::TopLeft: case B::TopMiddle: return (ui.page == PageId::Trim || ui.page == PageId::Chop) && kit; // Loop Lock, Normalize; Extract, Split
+    case B::TopLeft: case B::TopMiddle: // Loop Lock, Normalize on a kit's Stage TRIM; Extract, Split on Chop
+        return kit && (ui.page == PageId::Chop || (ui.page == PageId::Stage && stage_page_now(ui, project.tracks[ui.track % track_count]).kind == StageKind::Trim));
     case B::TopRight: return ui.page == PageId::Chop && kit;                     // Merge
     case B::SampleRecord: return kit;                                            // Audio Recall
     case B::Erase: return kit_pads || ui.pad_bank || ui.page == PageId::Patterns || ui.copying != UiState::Copying::Off; // Copy (tracks with Pad Bank held)

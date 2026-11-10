@@ -74,11 +74,11 @@ cards.
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the screen shows the tracks, eight at a time (the half with the selected track), a pad picks one, −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks | Previous bank |
+| Pad Bank | Next bank of the kit, A–H round. Held: the screen shows the tracks, eight at a time (the half with the selected track), a pad picks one, −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. Tapped twice (within 450 ms): the Tracks screen, latched; on a kit the first tap's bank step is undone, and a tap on Tracks goes back to Stage | Previous bank |
 | Fader | The track's target (Fader page), or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below) | Copy: kit pads, patterns on Patterns, tracks with Pad Bank held |
 | Note Repeat | A tap latches, a hold lasts; double tap opens Arp | |
-| Chop | Chop on the last pad's region; again back to Trim | Note On (the last pad plays while held), or One shot |
+| Chop | Chop on the last pad's region; again back to Stage's TRIM | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
 | Loop | The last kit pad's loop on or off, lit while it loops | Reverse the last pad |
 | 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back | The type: Velocity, Filter (kits), Tune, Scale |
@@ -87,11 +87,11 @@ cards.
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
 | − / + | Lists move as the wheel does; on play pages the octave; Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
-| Sample Record | Record (kit tracks); on Record it ends the take and opens the pad's Trim | Audio Recall: the last 25 s onto the next empty pad |
+| Sample Record | Record (kit tracks); on Record it ends the take and opens Stage's TRIM on the pad | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into a pattern |
 | Stop | Stop (on Record, ends the take) | All notes off |
 | Play | Play from the start (on Song from the cursor) | Continue from where it stopped or the wheel put it |
-| B1–B3 | The page's soft keys, named above them; with Note Repeat on, its rate | Page jobs (Trim, Chop) |
+| B1–B3 | The page's soft keys, named above them; with Note Repeat on, its rate (on Stage only while Note Repeat is held) | Page jobs (Stage's TRIM on a kit, Chop) |
 | K1–K3 | The cards above them; Knob FX mode takes them for its effect | The card's second parameter (cards with the Shift icon) |
 | Pads | The page's job (most pages play the selected track) | The jobs printed under the pads |
 
@@ -133,24 +133,67 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
 
 ### Playing
 
-- **Stage** (Sample): the tracks as the pads sit, eight at a time (tracks
-  1–8 or 9–16, whichever half holds the selected track); pads play the
-  selected track, K1–K3 its favourite parameters (on a kit TUNE, FILTER,
-  DECAY). Track 1 starts as a PROPHET, track 5 an empty kit, track 6 a 909
+- **Stage** (Sample): the selected track's quick pages, as the MPC's Sample
+  mode. **B1–B3** each hold a cycle of up to three pages: the lit one again
+  steps to the next, another jumps to its first; the soft keys name each
+  button's page, with a dot a page under a cycle. Each track keeps its own
+  button and page. The pads play the track (a kit's pad played is the pad
+  edited), the **wheel** fine-edits the card touched last (ringed), **Push**
+  moves to the next card, Shift + Push is Back, −/+ the octave (a kit's
+  bank). Track 1 starts as a PROPHET, track 5 an empty kit, track 6 a 909
   with a beat.
+  - **A synth** (PROPHET, FM6, CZ, SID): B1 **PRESET → TONE → MIX**, B2
+    **SHAPE**, B3 **ARP → its own page → FX**. PRESET: the sound before,
+    the one in hand with its star, the one after, where it sits; K1 or the
+    wheel walks the sounds and the one turned to loads once the turning
+    has stopped 250 ms; K2 the list (all, starred, recent), K3 the engine;
+    Push opens Sounds. TONE: the engine's three favourites (PROPHET and SID
+    draw the filter). MIX: level, pan, send; Shift + K3 the bus the send
+    goes to (Melodee has one send a track). SHAPE on PROPHET: FILTER ENV →
+    AMP ENV → LFO (Shift + K1 release); FM6: OP 1 ENV → OP 2 ENV → TOUCH;
+    CZ: DCW ENV → DCA ENV → TOUCH; SID: ENVELOPE → PWM → TOUCH. ARP: mode,
+    rate, octaves, Shift + K1 gate, Shift + K3 hold. The own page (PERFORM,
+    RATIOS, LINES, OSC) draws its Shift row. FX: the slot of the track's
+    chain the cards edit (Push the next one; Shift + Knob FX adds effects).
+  - **A kit**: Akai's pages in Akai's order on the last pad hit, B1 **TRIM →
+    MIX → AMP ENV**, B2 **TUNE → PLAY**, B3 **FILTER → FILT ENV**: the pad's
+    waveform with its volume on the left and pan on the right, chips for
+    how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
+    + B1 Loop Lock, Shift + B2 Normalize), the envelopes and the filter lie
+    over the region. MIX: volume, kit volume, pan; Shift + K2 on AMP ENV and
+    FILT ENV decay from start or end, Shift + K3 on TUNE # Beats, Shift + K2
+    on PLAY Pad Link.
+  - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 MIX, B3 FX. VOICE edits
+    the drum the last pad played (Snare, Clap and Rim share a page) and the
+    B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the
+    toms, hats and cymbals on Shift.
+  - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 ARP. PROGRAM:
+    bank MSB, bank LSB and program (each Off until set), sent on a change
+    and when the track loads. CC: three controllers on K1–K3 with their
+    General MIDI names (74 Brightness, 71 Resonance, 1 Mod wheel at first),
+    Shift + K picks a controller's number; they go out on a turn and record
+    as Motion.
+  - **An empty track**: B1 **SYNTH** (K1 engine, K2 sound), B2 **KIT** (K1:
+    samples on the card, record the input, Audio Recall, Resample), B3
+    **MIDI** (K1 port, K2 channel); Push makes the track that.
+- **Tracks** (Pad Bank tapped twice): the sixteen tracks as the pads sit,
+  eight at a time, each cell engine, sound, the pattern playing and level.
+  B1 tracks 1–8, B2 tracks 9–16, B3 back to Stage; a pad picks its track
+  and goes back to Stage; K1 the track, K2 its level, K3 its pattern; the
+  wheel the track. Pad Bank held + pad still picks a track from any page.
 - **Keys** (Sample again on a synth): the pads in the project's scale
   (layouts, octave on −/+); Shift + K3 transposes the pads −12..+12 (kept
-  with the track).
+  with the track). Push opens Edit.
 - **Pads** (Sample again on a kit): the bank as the pads sit, the last pad
   with its length, play mode and waveform; K1 pitch, K2 level, K3 pan; Push
-  opens Trim.
+  opens the map of the ten sample pages.
 - **Mix** (Sample a third time): eight strips at a time (the half with the
   selected track), level, pan, mute and solo,
   the send and its bus, meters. The fader is the selected track's level here.
 - **Sounds** (Sample Select on a synth or 909): the factory sounds and one's
   own for the engine; K1 steps the engine (six), the wheel walks, Push
   loads; FAVOURITES lists the starred (Shift + Sample Select).
-- **Edit** (from Sounds or Stage): the engine's pages, then **Touch**
+- **Edit** (Push on Keys): the engine's pages, then **Touch**
   (velocity and pressure: AT > VIB adds vibrato, AT > BRIGHT opens the
   sound), then the **mod matrix**: eight routes a track, source (LFO,
   velocity, aftertouch, wheel, key track, random, filter envelope),
@@ -237,8 +280,11 @@ thread.
 - **The ten sample pages**, in the MPC's groups: **B1** Trim → Mix → Amp
   Env, **B2** Tune → Play → Follow → Cloud, **B3** Filter → Filt Env → Kit
   filter. A B key goes round its group, or opens its first page from
-  elsewhere; the keys read "MIX 2/3". **Push** opens the page map (three
-  columns; wheel, Push jumps, a B key or Shift + Push closes).
+  elsewhere; a dot a page under each key, as on Stage. **Push** opens the
+  page map (three columns; wheel, Push jumps, a B key or Shift + Push
+  closes); Push on Pads opens it too. Trim itself lives on Stage (a kit's
+  B1 TRIM): every way to Trim (B1 here, Chop again, Sample Record on
+  Record, Shift + Pad 13) lands there.
   - Trim: K1 start, K2 end, K3 loop point; Shift + K1–K3 zoom at that
     handle; Shift + B1 Loop Lock; Shift + B2 Normalize (a gain, one undo).
   - Mix: K1 volume in dB (−inf, −74..+6) with its meter, K3 pan, Shift + K2
@@ -265,7 +311,7 @@ thread.
   takes a slice out. B3 TO PADS lays the slices on pads, B1 DROP back.
 - **Trim Sample** (Shift + Pad 13): the region as
   `Samples/Edits/<NAME>-Trimmed.wav` in a new slot, the pad onto all of it;
-  one undo. **Save Sample** (Shift + Sample Select on a kit): the Name
+  one undo; then Stage's TRIM. **Save Sample** (Shift + Sample Select on a kit): the Name
   sheet, then `Samples/<name>.wav`; the pad unchanged.
 - **Input Config** (Shift + Sample; B2 on Record): K1 source (Mic, Rear,
   Rear L, Rear R, Resample, USB, USB L, USB R), K2 rec length (Free, Seq,
@@ -277,7 +323,7 @@ thread.
   record onto it (from the threshold, or with Seq where the pattern comes
   round); other pads tapped during the take cut it there. The pad again,
   Stop or Push ends it and Record stays; Sample Record ends it and opens
-  Trim. `Samples/Recorded/TAKE n.wav`, up to 60 s.
+  Stage's TRIM. `Samples/Recorded/TAKE n.wav`, up to 60 s.
 - **Audio Recall** (Shift + Sample Record): the source always fills a 25 s
   ring; this copies it out from the first sound as
   `Samples/Recorded/RECALL n.wav` onto the next empty pad. One undo.
@@ -432,7 +478,7 @@ while following.
 - **Text size**: nothing on screen is drawn under 11 px (`ui::type::floor`
   in `ui/tokens.h`; labels 11, body 13, lists 15, knob values 22), so the
   320 × 240 panel reads at arm's length. Text is never cut: where a page
-  runs out of room it shows fewer things at a time (Stage, Mix and Sends
+  runs out of room it shows fewer things at a time (Tracks, Mix and Sends
   eight tracks, Song six lanes, FX chains three devices), or a long
   capitalised name turns to title case in a narrow cell.
 

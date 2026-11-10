@@ -34,15 +34,24 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const Sound kits[] {{"NEW KIT", {{{-1, 0}}}}};
     static const EngineInfo sampler {EngineKind::Sampler, "SAMPLER", true, kit_params, sampler::Count, nullptr, 0,
                                      {sampler::Tune, sampler::Filter, sampler::Decay}, kits, 1};
-    // MIDI (docs/MIDI_TRACKS.md, phase M1): where the track's notes go out.
+    // MIDI (docs/MIDI_TRACKS.md, phase M1): where the track's notes go out; bank and
+    // program (Off sends none), three controllers for Stage's CC page.
     static const char* const midi_ports[] {"External", "USB-C", "All USB"};
     static const ParamInfo midi_params[] {
         {"PORT", 0, midi_track::PortCount - 1, midi_track::External, Format::Choice, midi_ports},
         {"CHANNEL", 1, 16, 1, Format::Number, nullptr},
+        {"BANK MSB", 0, 128, 0, Format::Bank, nullptr}, {"BANK LSB", 0, 128, 0, Format::Bank, nullptr},
+        {"PROGRAM", 0, 128, 0, Format::Program, nullptr},
+        {"CC NUMBER", 0, 127, 74, Format::CcNumber, nullptr}, {"CC NUMBER", 0, 127, 71, Format::CcNumber, nullptr},
+        {"CC NUMBER", 0, 127, 1, Format::CcNumber, nullptr},
+        {"CC", 0, 127, 64, Format::Number, nullptr}, {"CC", 0, 127, 64, Format::Number, nullptr}, {"CC", 0, 127, 0, Format::Number, nullptr},
     };
-    static const EditPage midi_pages[] {{"Device", "DEVICE", Picture::Route, {{{midi_track::Port, midi_track::Channel, -1}, {-1, -1, -1}, {-1, -1, -1}}}}};
+    static const EditPage midi_pages[] {
+        {"Device", "DEVICE", Picture::Route, {{{midi_track::Port, midi_track::Channel, -1}, {-1, -1, -1}, {-1, -1, -1}}}},
+        {"Program", "PROGRAM", Picture::Bars, {{{midi_track::BankMsb, midi_track::BankLsb, midi_track::Program}, {-1, -1, -1}, {-1, -1, -1}}}},
+    };
     static const Sound midi_sounds[] {{"MIDI OUT", {{{-1, 0}}}}};
-    static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params, midi_track::Count, midi_pages, 1,
+    static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params, midi_track::Count, midi_pages, 2,
                                   {midi_track::Port, midi_track::Channel, -1}, midi_sounds, 1, nullptr, 0, false};
     switch (kind) {
     case EngineKind::Midi: return midi;
@@ -53,6 +62,47 @@ const EngineInfo& engine_info(EngineKind kind) {
     case EngineKind::Kit909: return kit909::info();
     case EngineKind::Sampler: return sampler;
     default: return none;
+    }
+}
+
+const StageGroups& stage_groups(EngineKind kind) {
+    using K = StageKind;
+    using P = StagePicture;
+    constexpr int8_t _ = -1;
+    // A kit: the MPC's Sample Mode pages in Akai's order, on the last pad hit.
+    static const StageGroups kit {{{
+        {{{{"TRIM", K::Trim, P::Wave}, {"MIX", K::PadMix, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}}}, 3},
+        {{{{"TUNE", K::Tune, P::Wave}, {"PLAY", K::Play, P::Wave}, {}}}, 2},
+        {{{{"FILTER", K::Filter, P::Wave}, {"FILT ENV", K::FiltEnv, P::Wave}, {}}}, 2},
+    }}};
+    // MIDI: where the notes go, bank and program; three controllers; the arp.
+    using namespace midi_track;
+    static const StageGroups midi {{{
+        {{{{"DEVICE", K::Params, P::Route, {{Port, Channel, _}}},
+           {"PROGRAM", K::Params, P::Program, {{BankMsb, BankLsb, Program}}}, {}}}, 2},
+        {{{{"CC", K::Params, P::Cc, {{Cc1, Cc2, Cc3}}, {{CcNumber1, CcNumber2, CcNumber3}}}, {}, {}}}, 1},
+        {{{stage_arp, {}, {}}}, 1},
+    }}};
+    // An empty track: what it becomes.
+    static const StageGroups empty {{{
+        {{{{"SYNTH", K::NewSynth, P::Engines}, {}, {}}}, 1},
+        {{{{"KIT", K::NewKit, P::Sources}, {}, {}}}, 1},
+        {{{{"MIDI", K::NewMidi, P::Ports}, {}, {}}}, 1},
+    }}};
+    // An engine that states none: its sounds and mix, the arp, its effects.
+    static const StageGroups plain {{{
+        {{{stage_preset, stage_mix, {}}}, 2},
+        {{{stage_arp, {}, {}}}, 1},
+        {{{stage_fx, {}, {}}}, 1},
+    }}};
+    switch (kind) {
+    case EngineKind::None: return empty;
+    case EngineKind::Sampler: return kit;
+    case EngineKind::Midi: return midi;
+    default: {
+        const auto* own = engine_info(kind).stage;
+        return own ? *own : plain;
+    }
     }
 }
 
@@ -147,6 +197,9 @@ Shown show(const ParamInfo& p, int v) {
     case Format::Seconds: return {number("%.1f", v / 10.0), "s"};
     case Format::Hertz: return v >= 1000 ? Shown {number("%.1f", v / 1000.0), "kHz"} : Shown {std::to_string(v), "Hz"};
     case Format::CentiHz: return {number(v < 1000 ? "%.2f" : "%.1f", v / 100.0), "Hz"};
+    case Format::Bank: return {v ? std::to_string(v - 1) : "Off", ""};
+    case Format::Program: return {v ? std::to_string(v) : "Off", ""};
+    case Format::CcNumber: return {std::to_string(v), ""};
     case Format::Number:
     default: return {std::to_string(v), ""};
     }

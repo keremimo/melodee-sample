@@ -15,6 +15,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/name_suggest.h"
 #include <filesystem>
@@ -88,6 +89,10 @@ bool Context::reformat() {
 }
 
 void Context::open(PageId page) {
+    if (page == PageId::Trim) { // Trim lives on Stage now: a kit's B1 TRIM (the sampler pages' B1 and Chop come here)
+        if (track().engine == EngineKind::Sampler) stage_go(ui, 0, 0);
+        page = PageId::Stage;
+    }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
     if (page != PageId::Patterns) ui.seq_sample = false; // Seq + Sample lives on Patterns
     if (page != PageId::Project) ui.project_demos = false;
@@ -118,6 +123,7 @@ void Context::back() {
 
 void Context::select_track(unsigned t) {
     if (ui.page == PageId::Sounds) audition(-1);
+    stage_tick(UINT32_MAX); // a sound still waiting to load lands on the track it was turned on
     ui.track = uint8_t(t % track_count);
     ui.held_step = -1;
     if (ui.page == PageId::Sounds) ui.sounds_cursor = track().preset;
@@ -315,7 +321,7 @@ void Context::apply(const Binding& b, int value) {
     switch (b.kind) {
     case Kind::Param:
         set_param(ui.track, b.id, value);
-        if (t.engine != EngineKind::Midi || b.id >= midi_track::Count) record_motion(b.id, value); // a MIDI track's port and channel are no lane
+        if (t.engine != EngineKind::Midi || midi_track::is_cc(b.id)) record_motion(b.id, value); // of a MIDI track's own, only its CCs are lanes
         if (t.engine == EngineKind::Sampler && b.id == sampler::Follow && value) follow_tempos();
         break;
     case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); break;
@@ -502,6 +508,20 @@ void Context::apply(const Binding& b, int value) {
     case Kind::RecGain: ui.settings.input.gain = int8_t(value); input_changed(); break;
     case Kind::EventVelocity: set_event_velocity(*this, value); break;
     case Kind::EventLength: set_event_length(*this, value); break;
+    case Kind::StageSound: preset_turn(value); break;
+    case Kind::SoundList: ui.sounds_filter = uint8_t(value); ui.preset_due = 0; break;
+    case Kind::ArpGate: t.arp_gate = uint8_t(value); send({Type::Arp, ui.track, 0, 4, int16_t(value)}); break;
+    case Kind::ArpHold: // Hold, as Arp's B3: let go of it and the held keys go
+        t.arp_latch = value != 0;
+        if (!t.arp_latch) { send({Type::Arp, ui.track, 0, 0, 0}); if (t.arp) send({Type::Arp, ui.track, 0, 0, 1}); }
+        break;
+    case Kind::NewEngine: ui.new_engine = uint8_t(value); ui.new_sound = 0; break;
+    case Kind::NewSound: ui.new_sound = uint8_t(value); break;
+    case Kind::NewSource: ui.new_source = uint8_t(value); break;
+    case Kind::NewPort: ui.new_port = uint8_t(value); break;
+    case Kind::NewChannel: ui.new_channel = uint8_t(value); break;
+    case Kind::TrackPick: select_track(unsigned(value)); ui.tracks_half = uint8_t(ui.track / 8); break;
+    case Kind::TrackPattern: launch(ui.track, unsigned(value)); break;
     case Kind::None: break;
     }
 }

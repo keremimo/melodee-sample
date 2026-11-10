@@ -12,7 +12,25 @@
 namespace melodee {
 
 namespace midi_track {
-enum Param : int { Port, Channel, Count };
+// Port and channel; bank and program (sent on a change and when the track
+// loads); three controllers on Stage's CC page, their numbers and values
+// (sent on a change, and as Motion plays them).
+enum Param : int { Port, Channel, BankMsb, BankLsb, Program, CcNumber1, CcNumber2, CcNumber3, Cc1, Cc2, Cc3, Count };
+constexpr int routing_params = 2; // Port and Channel: what decides where notes go (no Motion lane)
+constexpr bool is_cc(int id) { return id >= Cc1 && id <= Cc3; }
+constexpr bool is_program(int id) { return id >= BankMsb && id <= Program; }
+// The General MIDI name of a controller, for the CC page ("Brightness"), or nullptr.
+inline const char* cc_name(unsigned cc) {
+    switch (cc) {
+    case 1: return "Mod wheel"; case 2: return "Breath"; case 4: return "Foot"; case 5: return "Glide time";
+    case 7: return "Volume"; case 8: return "Balance"; case 10: return "Pan"; case 11: return "Expression";
+    case 64: return "Sustain"; case 65: return "Glide"; case 66: return "Sostenuto"; case 67: return "Soft";
+    case 71: return "Resonance"; case 72: return "Release"; case 73: return "Attack"; case 74: return "Brightness";
+    case 75: return "Decay"; case 76: return "Vibrato rate"; case 77: return "Vibrato depth"; case 78: return "Vibrato delay";
+    case 91: return "Reverb"; case 93: return "Chorus"; case 94: return "Detune"; case 95: return "Phaser";
+    default: return nullptr;
+    }
+}
 // Port's values, in the order Edit shows them (the file keeps the number).
 enum PortChoice : int { External, UsbC, AllUsb, PortCount };
 inline MidiDest dest_of(int port) {

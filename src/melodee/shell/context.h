@@ -69,6 +69,12 @@ public:
     void open(PageId page);
     void back();
     void select_track(unsigned track);
+    // Stage (pages/stage_page.cpp): PRESET's sound turned to `at` (its place in sound_list()), loading once the
+    // turning has stopped stage_preset_ms; stage_tick() loads it then. Push on an empty track: it becomes what
+    // the page in view says (SYNTH, KIT, MIDI).
+    void preset_turn(int at);
+    void stage_tick(uint32_t at); // often (ms); UINT32_MAX loads a waiting sound now
+    void stage_new();
     // Sound
     void play_pad(unsigned pad, uint8_t velocity, bool down); // the selected track, through its layout
     void note(unsigned track, int key, int velocity);         // velocity 0: off

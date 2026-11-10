@@ -249,6 +249,15 @@ port wait behind it, with a warning if Play is pressed meanwhile.
 Each phase passes `./build.sh`, the tests and a device check, then commits
 and fast-forwards `feat/melodee-app` (standing rule).
 
+**Stage (2026-11-10): program and CC. Built.** Stage's MIDI pages: DEVICE
+(port, channel), PROGRAM (bank MSB, bank LSB, program as the engine's
+parameters 2-4, each Off until set; bank selects and the program go out on a
+change and when the track loads), CC (three controllers, values on K1-K3 and
+their numbers on Shift + K, General MIDI names; sent on a turn and as Motion
+plays, recorded as Motion lanes). `MidiOutEvent::Control` / `Program`; the
+`MIDT` section's version 2 (version 1 files get the new parameters' initial
+values). Edit gained a PROGRAM page.
+
 **M1: MIDI track, notes out. Built.** `EngineKind::Midi` (K1 on Sounds
 picks it, sound MIDI OUT), `engine/midi_engine.h` (a silent `Engine`, so
 the arp, note lengths and motion reach it as they reach a synth), port and

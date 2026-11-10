@@ -28,6 +28,9 @@ enum class Format : uint8_t {
     Seconds,   // tenths of a second (Spring's TIME 1.0-10.0 s)
     Hertz,     // Hz as they are, kHz from 1000
     CentiHz,   // hundredths of a Hz (Pad FX's rates: 0.02-10.00 Hz)
+    Bank,      // a MIDI bank select: 0 Off (not sent), 1..128 as 0..127
+    Program,   // a MIDI program: 0 Off (not sent), 1..128 as numbered
+    CcNumber,  // a MIDI controller number 0..127, "CC 74"
 };
 
 struct ParamInfo {
@@ -47,6 +50,49 @@ struct EditPage {
     Picture picture;
     std::array<std::array<int8_t, 3>, 3> rows; // parameter ids, -1 empty; rows of three
     unsigned row_count() const { unsigned n = 0; for (auto& r : rows) if (r[0] >= 0 || r[1] >= 0 || r[2] >= 0) ++n; return n; }
+};
+
+// Stage (pages/stage_page.cpp, docs/MELODEE.md): the selected track's quick
+// pages, as the MPC's Sample Mode has them. B1-B3 each hold a cycle of up to
+// three pages; pressing the lit button again steps to the next, another
+// button jumps to the first of its own. Each engine states its pages here as
+// data; StageKind says where a page's cards come from.
+enum class StageKind : uint8_t {
+    Params,     // engine parameters: `params` on K1-K3, `shift` on Shift + K1-K3
+    Preset,     // the engine's sounds: K1 the sound (it loads once the turning stops), K2 the list, K3 the engine
+    Mix,        // the track's level, pan and send; Shift + K3 the bus the send goes to
+    Arp,        // the track's arp: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold
+    Fx,         // a slot of the track's chain: its first row (Shift: the second); Push the next slot
+    Voice,      // the drum the last pad played: its page of `voices` (pad_voice says which)
+    Trim, PadMix, AmpEnv, Tune, Play, Filter, FiltEnv, // a kit: the last pad's Sample Mode values
+    NewSynth, NewKit, NewMidi,                         // an empty track: what it becomes (Push)
+};
+// What the picture over the knobs draws.
+enum class StagePicture : uint8_t {
+    Bars,      // the cards' parameters as rows
+    Preset,    // the sound before, the one loaded, the one after
+    Filter,    // a filter curve: params[0] cutoff, params[1] resonance (0-100)
+    Envelope,  // params[0..2] attack, decay, sustain; shift[0] release
+    Lfo,       // params[0] rate, params[1] shape (Triangle, Saw, Square, Random), params[2] amount
+    ShiftRows, // the Shift row as rows: what Shift + K1-K3 reach
+    Mix, Arp, Fx, Wave, Voice, Levels, Route, Program, Cc, Engines, Sources, Ports,
+};
+struct StagePage {
+    const char* key; // as the soft key names it: "AMP ENV"
+    StageKind kind;
+    StagePicture picture;
+    std::array<int8_t, 3> params {{-1, -1, -1}};
+    std::array<int8_t, 3> shift {{-1, -1, -1}};
+};
+struct StageGroup {
+    std::array<StagePage, 3> pages;
+    uint8_t count;
+};
+struct StageGroups {
+    std::array<StageGroup, 3> groups; // B1, B2, B3
+    // Voice pages (StageKind::Voice): one per voice, and which a pad (0-15) plays, -1 none.
+    const StagePage* voices = nullptr;
+    const int8_t* pad_voice = nullptr;
 };
 
 struct Sound {
@@ -76,9 +122,19 @@ struct EngineInfo {
     unsigned legacy_params = 0;
     // Edit ends with the mod matrix page (MIDI has nothing to modulate yet).
     bool mod_matrix = true;
+    // Stage's pages for a track of this engine; nullptr: a synth's default.
+    const StageGroups* stage = nullptr;
 };
 
 const EngineInfo& engine_info(EngineKind kind);
+// Stage's pages for an engine (None: the empty track's chooser).
+const StageGroups& stage_groups(EngineKind kind);
+// Stage's three synth engines' shared first and last pages: B1 SOUND
+// (PRESET, TONE, MIX) and B3 PLAY (ARP, the engine's own, FX).
+constexpr StagePage stage_preset {"PRESET", StageKind::Preset, StagePicture::Preset};
+constexpr StagePage stage_mix {"MIX", StageKind::Mix, StagePicture::Mix};
+constexpr StagePage stage_arp {"ARP", StageKind::Arp, StagePicture::Arp};
+constexpr StagePage stage_fx {"FX", StageKind::Fx, StagePicture::Fx};
 // Edit's pages for an engine: its own, then the mod matrix, which every
 // engine shares ("a page like any other").
 unsigned edit_page_count(const EngineInfo& info);

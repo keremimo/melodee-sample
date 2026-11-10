@@ -24,6 +24,7 @@ struct MidiOutEvent {
         MtcQuarter,          // a = piece 0..7, b = its nibble
         MtcFull,             // value = frames at 25 fps since 0:00:00:00 (a full-frame SysEx)
         CvHigh, CvLow,       // SYNC OUT (CV_CLK_OUT)
+        Control, Program,    // a MIDI track's (Stage's CC and PROGRAM pages): a = controller, b = value; a = program
     };
     Kind kind = Kind::NoteOn;
     uint8_t channel = 1, a = 0, b = 0;

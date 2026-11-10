@@ -4,6 +4,8 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/prophet_params.h"
+#include "melodee/engine/kit909.h"
+#include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/scales.h"
@@ -200,13 +202,90 @@ void load_knob(KnobFx& k, unsigned entry) {
     if (e.param >= 0) k.params[size_t(e.param)] = e.value;
 }
 
+// Stage on `track`, on button `group`'s page `sub` (shell/stage_map.h).
+void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
+    s.ui.page = PageId::Stage; s.ui.track = uint8_t(track);
+    s.ui.stage_group[track] = uint8_t(group); s.ui.stage_sub[track] = uint8_t(sub);
+}
+// Stage on track 11, a 909 (BOOM KIT), its snare and clap last hit.
+void stage_909(Snapshot& s, unsigned group, unsigned sub) {
+    auto& t = s.project.tracks[10];
+    load_sound(t, EngineKind::Kit909, 2);
+    t.last_note = 36 + kit909::Clap; t.mix.level = 96; t.mix.send = 20;
+    on_stage(s, 10, group, sub); s.playing = true;
+}
+// Stage on track 12, a MIDI track to a synth on USB-C, channel 3.
+void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
+    auto& t = s.project.tracks[11];
+    load_sound(t, EngineKind::Midi, 0);
+    t.set_name("JUNO-60");
+    t.params[midi_track::Port] = midi_track::UsbC; t.params[midi_track::Channel] = 3;
+    t.params[midi_track::Program] = 12; t.params[midi_track::Cc2] = 20; t.params[midi_track::Cc3] = 0;
+    s.ui.midi_outputs = 1 | 2;
+    on_stage(s, 11, group, sub); s.playing = true;
+}
+
 struct Preview {
     const char* name;
     void (*set)(Shell&, Snapshot&);
 };
 
 const Preview previews[] {
-    {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }},
+    {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }}, // track 1: B1 PRESET
+    // Stage, context aware: each track type's pages (pages/stage_page.cpp).
+    {"stagepreset", [](Shell&, Snapshot& s) { // a sound turned to, waiting to load; starred
+         on_stage(s, 0, 0, 0); s.playing = true; s.ui.preset_due = s.now + 100; s.ui.preset_cursor = 4;
+         s.ui.settings.toggle_favourite(unsigned(EngineKind::Prophet), 4); s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"stagetone", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 1); s.playing = true; s.ui.last_pot = 1; }},
+    {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 2); s.playing = true; }},
+    {"stagefilterenv", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 0); s.playing = true; }},
+    {"stageampenv", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.playing = true; s.ui.turning = 2; s.ui.turned_at = s.now; }},
+    {"stagelfo", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 2); s.playing = true; s.project.tracks[0].params[prophet::LfoAmount] = 40; }},
+    {"stagearp", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 0); s.playing = true; s.project.tracks[0].arp_octaves = 2; }},
+    {"stagearpheld", [](Shell&, Snapshot& s) { // keys held: the notes it plays from them, up and down
+         on_stage(s, 0, 2, 0); s.playing = true; auto& t = s.project.tracks[0]; t.arp = true; t.arp_mode = 2;
+         s.held_keys.fill(-1); s.held_keys[0] = 50; s.held_keys[4] = 53; s.held_keys[9] = 57;
+     }},
+    {"stageperform", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 1); s.playing = true; }},
+    {"stagefx", [](Shell&, Snapshot& s) { on_stage(s, 2, 2, 2); s.playing = true; s.ui.fx_cursor[2] = 1; }},
+    {"stagefxempty", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 2); s.playing = true; }},
+    {"stageshift", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.ui.shift = true; }}, // AMP ENV's Shift row
+    {"stagefm6", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[5], EngineKind::Fm6, 1); on_stage(s, 5, 1, 0); s.playing = true; }},
+    {"stagecz", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 1, 0); s.playing = true; }},
+    {"stagesid", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[7], EngineKind::Sid, 1); on_stage(s, 7, 0, 1); s.playing = true; }},
+    {"stagecztone", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 2, 1); s.playing = true; }},
+    {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
+    {"stagekitampenv", [](Shell&, Snapshot& s) {
+         on_stage(s, 3, 0, 2); s.sample = break_sample(); s.playing = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.attack = 20; pad.decay = 70; pad.velocity_sense = 60;
+     }},
+    {"stagekittune", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 0); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pitch = -2; }},
+    {"stagekitplay", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 1); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].group = 2; }},
+    {"stagekitfilter", [](Shell&, Snapshot& s) {
+         on_stage(s, 3, 2, 0); s.sample = break_sample(); s.playing = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Lpf4; pad.cutoff = 45; pad.resonance = 40;
+     }},
+    {"stagekitfiltenv", [](Shell&, Snapshot& s) {
+         on_stage(s, 3, 2, 1); s.sample = break_sample(); s.playing = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Classic; pad.filter_attack = 30; pad.filter_decay = 70; pad.filter_amount = 60;
+     }},
+    {"stagekitempty", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 0); s.project.tracks[3].last_pad = 20; s.playing = true; }}, // B05: no sample
+    {"stage909", [](Shell&, Snapshot& s) { stage_909(s, 0, 0); }},
+    {"stage909voice", [](Shell&, Snapshot& s) { stage_909(s, 0, 1); s.ui.turning = 0; s.ui.turned_at = s.now; }},
+    {"stage909levels", [](Shell&, Snapshot& s) { stage_909(s, 0, 2); }},
+    {"stage909mix", [](Shell&, Snapshot& s) { stage_909(s, 1, 0); }},
+    {"stage909fx", [](Shell&, Snapshot& s) { stage_909(s, 2, 0); }},
+    {"stagemidi", [](Shell&, Snapshot& s) { stage_midi(s, 0, 0); s.ui.track_out_at[11] = s.now; }},
+    {"stagemidiprogram", [](Shell&, Snapshot& s) { stage_midi(s, 0, 1); s.ui.turning = 2; s.ui.turned_at = s.now; }},
+    {"stagemidicc", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); }},
+    {"stagemidiccshift", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); s.ui.shift = true; }},
+    {"stagemidiarp", [](Shell&, Snapshot& s) { stage_midi(s, 2, 0); }},
+    {"stageemptysynth", [](Shell&, Snapshot& s) { on_stage(s, 12, 0, 0); s.ui.new_sound = 3; }},
+    {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); }},
+    {"stageemptymidi", [](Shell&, Snapshot& s) { on_stage(s, 12, 2, 0); s.ui.new_channel = 3; }},
+    {"tracks", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; }}, // Pad Bank tapped twice
+    {"tracks2", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.ui.tracks_half = 1; }},
     {"keys", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
@@ -366,8 +445,8 @@ const Preview previews[] {
              s.files.push_back({std::string("/content/Samples/") + name, name, 0, true});
          s.ui.files_count = uint16_t(s.files.size());
      }},
-    {"trim", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Trim; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+    {"trim", [](Shell&, Snapshot& s) { // Stage on a kit: B1 TRIM, the last pad's region
+         on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
@@ -722,12 +801,12 @@ const Preview previews[] {
          auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Classic; pad.cutoff = 35; pad.filter_amount = 60;
          pad.filter_attack = 30; pad.filter_decay = 70; pad.filter_sustain = 30; pad.decay_from_start = true; s.ui.turning = 2; s.ui.turned_at = s.now; }},
     {"trimloop", [](Shell&, Snapshot& s) { // a loop with its own point, normalized, Note On and reversed (the icons)
-         s.ui.page = PageId::Trim; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000; pad.loop = true; pad.loop_lock = false; pad.loop_start = 60000;
          pad.gain = 420; pad.play = PadPlay::Gate; pad.reverse = true; s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
     {"trimshift", [](Shell&, Snapshot& s) { // Shift on Trim: Loop Lock and Normalize on B1 / B2, zoom on K1-K3
-         s.ui.page = PageId::Trim; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.shift = true;
+         on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample(); s.ui.shift = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000; pad.loop = true;
      }},
     {"ampenv", [](Shell&, Snapshot& s) { s.ui.page = PageId::EnvelopePage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
@@ -764,7 +843,7 @@ const Preview previews[] {
          s.ui.name.digits = true; s.ui.name.insert(' '); s.ui.name.pad(1, s.now - 2000);
      }},
     {"savesample", [](Shell&, Snapshot& s) { // Shift + Sample Select on a kit: Save Sample's Name sheet
-         s.ui.page = PageId::Trim; s.ui.track = 3; s.sample = break_sample();
+         on_stage(s, 3, 0, 0); s.sample = break_sample();
          s.ui.name.start(NameTarget::Sample, "DUST BREAK", name_length - 1, false);
      }},
     // Parity phase 3. These come last: they write into the shell's patterns, which the previews before them share.
@@ -827,7 +906,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit");
+    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
     // Text under the floor or cut by its box fails the build check.
     return text_issues ? 1 : 0;

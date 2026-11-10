@@ -46,11 +46,21 @@ const Sound sounds[] {
     {"NOISE HIT", {{{Wave, 3}, {Mode, 2}, {Cutoff, 60}, {Decay, 25}, {Sustain, 0}, {Release, 15}, {-1, 0}}}},
     {"LO-FI KEYS", {{{Wave, 0}, {Crush, 70}, {Cutoff, 70}, {Decay, 55}, {Sustain, 40}, {-1, 0}}}},
 };
+// Stage: B1 SOUND (preset, the filter, mix), B2 SHAPE (envelope, pulse and grit, touch), B3 PLAY (arp, oscillator, effects).
+using K = StageKind;
+using S = StagePicture;
+const StageGroups stage {{{
+    {{{stage_preset, {"TONE", K::Params, S::Filter, {{Cutoff, Resonance, PulseWidth}}}, stage_mix}}, 3},
+    {{{{"ENVELOPE", K::Params, S::Envelope, {{Attack, Decay, Sustain}}, {{Release, Velocity, _}}},
+       {"PWM", K::Params, S::Bars, {{PwmDepth, PwmRate, Crush}}},
+       {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},
+    {{{stage_arp, {"OSC", K::Params, S::ShiftRows, {{Wave, PulseWidth, Detune}}, {{Ring, Sync, Model}}}, stage_fx}}, 3},
+}}};
 } // namespace
 
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Sid, "SID", true, params, Count, pages, sizeof(pages) / sizeof(pages[0]),
-                                    {Cutoff, Resonance, PulseWidth}, sounds, sizeof(sounds) / sizeof(sounds[0]), mod_dests, legacy_count};
+                                    {Cutoff, Resonance, PulseWidth}, sounds, sizeof(sounds) / sizeof(sounds[0]), mod_dests, legacy_count, true, &stage};
     return engine;
 }
 } // namespace sid

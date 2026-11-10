@@ -32,6 +32,7 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
             p.ring(x, top, w, h, c.shade, 3);
         } else {
             p.fill(x, top, w, h, colour::surf, 3);
+            if (c.focus && c.state == State::Rest) p.ring(x + 0.5f, top + 0.5f, w - 1, h - 1, c.shade.withAlpha(0.6f), 3); // the wheel's card
         }
         float inner = x + 6, iw = w - 12;
         p.text(c.label, inner, top + 3, iw - (c.shift ? 9 : 0), 13, caps_text(c.shade));

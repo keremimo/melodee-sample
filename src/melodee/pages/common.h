@@ -37,6 +37,7 @@ juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
 // at a time (the half with the selected track): Stage's picture, and the
 // screen while Pad Bank is held. The pill names the half in the header.
 void track_grid(ui::Paint& p, const Snapshot& s);
+void track_grid(ui::Paint& p, const Snapshot& s, unsigned half); // the Tracks screen: the half its B1 / B2 chose
 unsigned track_half(const Snapshot& s);
 ui::HeaderItem track_half_pill(const Snapshot& s);
 

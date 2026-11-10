@@ -28,7 +28,6 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Master: return master_page;
     case PageId::Pads: return pads_page;
     case PageId::Samples: return samples_page;
-    case PageId::Trim: return trim_page;
     case PageId::Chop: return chop_page;
     case PageId::Levels: return levels_page;
     case PageId::Record: return record_page;
@@ -59,6 +58,8 @@ const PageSpec& page_spec(PageId page) {
     case PageId::FaderPage: return fader_page;
     case PageId::MidiConfig: return midi_config_page;
     case PageId::CardAccess: return card_access_page;
+    case PageId::Tracks: return tracks_page;
+    case PageId::Trim: // lives on Stage now (Context::open lands there)
     case PageId::Stage:
     default: return stage_page;
     }

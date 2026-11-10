@@ -35,6 +35,24 @@ const Sound sounds[] {
     {"BRIGHT KIT", {{{KickTune, 55}, {SnareTone, 70}, {HatTone, 85}, {CrashTune, 70}, {RideTune, 70}, {-1, 0}}}},
     {"DIRTY KIT", {{{Drive, 85}, {KickDecay, 60}, {SnareSnappy, 85}, {ClapDecay, 70}, {-1, 0}}}},
 };
+// Stage: B1 SOUND (preset, the voice the last pad played, levels), B2 MIX, B3 FX. VOICE's
+// pages follow the drums (pads 1-11): Snare, Clap and Rim share one, as on Edit.
+using K = StageKind;
+using S = StagePicture;
+const StagePage voices[] {
+    {"KICK", K::Params, S::Voice, {{KickTune, KickDecay, KickAttack}}},
+    {"SNARE", K::Params, S::Voice, {{SnareTune, SnareTone, SnareSnappy}}, {{ClapDecay, RimLevel, _}}},
+    {"TOMS", K::Params, S::Voice, {{LowTune, MidTune, HighTune}}, {{TomDecay, _, _}}},
+    {"HATS", K::Params, S::Voice, {{ClosedDecay, OpenDecay, HatTone}}},
+    {"CYMBALS", K::Params, S::Voice, {{CrashTune, CrashDecay, RideTune}}, {{_, _, RideDecay}}},
+};
+const int8_t pad_voice[16] {0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, -1, -1, -1, -1, -1};
+const StageGroups stage {{{
+    {{{stage_preset, {"VOICE", K::Voice, S::Voice},
+       {"LEVELS", K::Params, S::Levels, {{KickLevel, SnareLevel, ClapLevel}}, {{TomLevel, HatLevel, CymbalLevel}}}}}, 3},
+    {{{stage_mix, {}, {}}}, 1},
+    {{{stage_fx, {}, {}}}, 1},
+}}, voices, pad_voice};
 } // namespace
 
 const char* drum_name(unsigned drum) {
@@ -44,7 +62,8 @@ const char* drum_name(unsigned drum) {
 
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Kit909, "909", true, params, Count, pages, sizeof(pages) / sizeof(pages[0]),
-                                    {KickTune, SnareTone, ClosedDecay}, sounds, sizeof(sounds) / sizeof(sounds[0])};
+                                    {KickTune, SnareTone, ClosedDecay}, sounds, sizeof(sounds) / sizeof(sounds[0]),
+                                    nullptr, 0, true, &stage};
     return engine;
 }
 } // namespace kit909

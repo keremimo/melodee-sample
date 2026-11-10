@@ -176,6 +176,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
     a.clear(); a.sounding = -1; slot.arp_late.key = -1; slot.arp_played = slot.arp_from = -1;
     a.on = track.arp; a.mode = ArpMode(track.arp_mode % unsigned(ArpMode::Count)); a.rate = track.arp_rate % arp_rates;
     a.octaves = track.engine == EngineKind::Sampler ? 1 : std::clamp<unsigned>(track.arp_octaves, 1, 4); a.gate = std::clamp<unsigned>(track.arp_gate, 5, 100);
+    if (slot.kind == EngineKind::Midi) midi_program(t, frame_now); // the device gets the track's sound as it loads
 }
 
 void EngineHost::select_engine(Slot& slot, EngineKind kind) {
@@ -226,9 +227,10 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Param:
         // A MIDI track's port or channel: what went out on the old one ends there.
-        if (slot.kind == EngineKind::Midi && c.index < midi_track::Count && slot.base[c.index] != c.value) midi_all_off(c.track, frame_now);
+        if (slot.kind == EngineKind::Midi && c.index < midi_track::routing_params && slot.base[c.index] != c.value) midi_all_off(c.track, frame_now);
         if (c.index < max_params) slot.base[c.index] = c.value;
         if (slot.engine) slot.engine->set_param(c.index, c.value);
+        if (slot.kind == EngineKind::Midi) midi_param(c.track % track_count, c.index, c.value, frame_now);
         break;
     case Type::MotionWrite: motion.write(c.motion); break;
     case Type::Mod: if (slot.engine && c.index < mod_routes) slot.engine->set_mod(c.index, c.route); break;
@@ -660,6 +662,7 @@ void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
             continue;
         }
         slot.engine->set_param(e.param, e.value);
+        if (slot.kind == EngineKind::Midi) midi_param(t, e.param, e.value, frame_now + block_at); // a CC lane plays out
         slot.moved = true;
     }
 }
@@ -835,6 +838,35 @@ void EngineHost::midi_note(unsigned t, int key, int velocity, uint64_t at, int64
     for (auto& off : midi_offs)
         if (!off.on) { off = {true, channel, uint8_t(key), uint8_t(t), length >= 0 ? at + uint64_t(length) : ~uint64_t(0), dest}; return; }
     if (length >= 0) event(MidiOutEvent::Kind::NoteOff, 0, at + uint64_t(length)); // no room: its off now, timed
+}
+
+void EngineHost::midi_param(unsigned t, int id, int value, uint64_t at) {
+    using namespace midi_track;
+    t %= track_count;
+    if (!is_midi(t)) return;
+    const auto& base = slots[t].base;
+    if (is_program(id)) { midi_program(t, at); return; }
+    if (!is_cc(id)) return;
+    MidiOutEvent e {MidiOutEvent::Kind::Control, uint8_t(std::clamp<int>(base[Channel], 1, 16)),
+                    uint8_t(std::clamp<int>(base[CcNumber1 + (id - Cc1)], 0, 127)), uint8_t(std::clamp(value, 0, 127)), 0, at};
+    e.dest = dest_of(base[Port]); e.track = uint8_t(t);
+    emit(e);
+}
+
+void EngineHost::midi_program(unsigned t, uint64_t at) {
+    using namespace midi_track;
+    t %= track_count;
+    const auto& base = slots[t].base;
+    if (!base[Program]) return; // Off: the device keeps its own
+    uint8_t channel = uint8_t(std::clamp<int>(base[Channel], 1, 16));
+    auto out = [&](MidiOutEvent::Kind kind, int a, int b) {
+        MidiOutEvent e {kind, channel, uint8_t(a), uint8_t(b), 0, at};
+        e.dest = dest_of(base[Port]); e.track = uint8_t(t);
+        emit(e);
+    };
+    if (base[BankMsb]) out(MidiOutEvent::Kind::Control, 0, std::clamp<int>(base[BankMsb] - 1, 0, 127));
+    if (base[BankLsb]) out(MidiOutEvent::Kind::Control, 32, std::clamp<int>(base[BankLsb] - 1, 0, 127));
+    out(MidiOutEvent::Kind::Program, std::clamp<int>(base[Program] - 1, 0, 127), 0);
 }
 
 void EngineHost::midi_note_off(unsigned t, int key, uint64_t at) {

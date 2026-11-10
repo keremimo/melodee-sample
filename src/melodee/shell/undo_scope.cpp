@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/undo_scope.h"
+#include "melodee/shell/stage_map.h"
 
 namespace melodee {
 using Kind = Binding::Kind;
@@ -81,6 +82,11 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
     case PageId::PadFilterPage: case PageId::FilterEnvPage: case PageId::Pads: case PageId::PadPunch:
         return pad_scope(ui, project);
     case PageId::Edit: return of(S::Sound, ui);
+    case PageId::Stage: { // a kit's TRIM: Shift + B1 Loop Lock and Shift + B2 Normalize, as on the old Trim
+        const auto& t = project.tracks[ui.track % track_count];
+        bool kit_page = stage_kit_page(stage_page_now(ui, t).kind) != PageId::Count;
+        return kit_page && ui.shift && !pad ? pad_scope(ui, project) : UndoScope {};
+    }
     default: return {};
     }
 }

@@ -3,6 +3,7 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/track_copy.h"
+#include <algorithm>
 
 namespace melodee {
 namespace {
@@ -16,13 +17,31 @@ void step_bank(Context& c, int way) {
 
 void pad_bank_button(Context& c, bool pressed) {
     auto& ui = c.ui;
-    if (pressed) { ui.pad_bank = true; ui.pad_bank_used = false; return; }
+    if (pressed) {
+        if (ui.pad_bank_tap_at && c.now - ui.pad_bank_tap_at <= pad_bank_double_ms && !ui.shift) { // tapped twice: the Tracks screen
+            if (ui.pad_bank_stepped) { step_bank(c, -1); ui.notice[0] = 0; } // the first tap's step undone, and its word
+            ui.pad_bank_tap_at = 0; ui.pad_bank_stepped = false;
+            ui.tracks_half = uint8_t(ui.track / 8);
+            c.open(PageId::Tracks);
+            ui.pad_bank = true; ui.pad_bank_used = true; // held on, it picks tracks as ever; its release steps nothing
+            return;
+        }
+        ui.pad_bank = true; ui.pad_bank_used = false; ui.pad_bank_down = c.now;
+        return;
+    }
     ui.pad_bank = false;
+    ui.pad_bank_tap_at = 0; ui.pad_bank_stepped = false;
     if (ui.pad_bank_used) return; // held for a pad, a jump or a copy: no step
     if (ui.shift) ui.shift_used = true;
+    else ui.pad_bank_tap_at = std::max<uint32_t>(ui.pad_bank_down, 1); // a tap: a second one soon is a double tap
+    if (ui.page == PageId::Tracks) { ui.pad_bank_tap_at = 0; c.open(PageId::Stage); return; } // a tap on Tracks: back
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
-    if (c.track().engine == EngineKind::Sampler) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
-    c.notice("Pad Bank + pad: track"); // no banks on this track: say what the button does here
+    if (c.track().engine == EngineKind::Sampler) {
+        step_bank(c, ui.shift ? -1 : 1); say_bank(c);
+        ui.pad_bank_stepped = !ui.shift;
+        return;
+    }
+    c.notice("Pad Bank twice: tracks"); // no banks on this track: say what the button does here
 }
 
 bool pad_bank_move(Context& c, int way) {

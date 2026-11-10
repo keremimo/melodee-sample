@@ -209,6 +209,10 @@ private:
     void midi_note_off(unsigned t, int key, uint64_t at);
     void midi_offs_due(uint64_t until);                                      // offs before `until`, at their frames
     void midi_all_off(unsigned track, uint64_t at);                         // 255: every track's
+    // A MIDI track's own parameter beyond port and channel: a controller value goes out as a CC; bank and
+    // program (any of the three) as the bank selects that are on, then the program, when it is on.
+    void midi_param(unsigned t, int id, int value, uint64_t at);
+    void midi_program(unsigned t, uint64_t at);
     void sync_stop(uint64_t at);
     void ext_release(uint64_t at);                                           // clock pulses whose frame has come
     std::atomic<unsigned> format_serial {0};

@@ -3,6 +3,8 @@
 #include "melodee/model/project_file.h"
 #include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
+#include "melodee/engine/engine_info.h"
+#include "melodee/engine/midi_engine.h"
 #include <algorithm>
 #include <cstring>
 #include <memory>
@@ -302,7 +304,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     for (unsigned t = 0; t < track_count; ++t) { // a MIDI track (docs/MIDI_TRACKS.md): its port and channel are in TRAK's params
         if (project.tracks[t].engine != EngineKind::Midi) continue;
         at = w.begin("MIDT");
-        w.u8(t); w.u8(1); // the section's version: later phases add the device's name, slots and the rest after it
+        w.u8(t); w.u8(2); // the section's version: 2 has bank, program and the CCs in TRAK's params; later ones add more after it
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // a track's own MIDI channel (parity phase 9)
@@ -467,7 +469,13 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             project->tracks[t].fader_on = on != 0;
         } else if (name == "MIDT") { // a MIDI track; TRAK, before it, said None
             unsigned t = r.u8(), version = r.u8();
-            if (r.ok && t < track_count && version >= 1) project->tracks[t].engine = EngineKind::Midi;
+            if (r.ok && t < track_count && version >= 1) {
+                auto& tr = project->tracks[t];
+                tr.engine = EngineKind::Midi;
+                const auto& info = engine_info(EngineKind::Midi);
+                if (version < 2) // before Stage: bank, program and the CCs at their initial values, not the zeros the file holds
+                    for (unsigned p = midi_track::routing_params; p < info.param_count; ++p) tr.params[p] = info.params[p].initial;
+            }
         } else if (name == "MIDC") { // a track's own MIDI channel; without it none
             unsigned t = r.u8(), channel = r.u8();
             if (r.ok && t < track_count) project->tracks[t].midi_channel = uint8_t(channel <= 16 ? channel : 0);

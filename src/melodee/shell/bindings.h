@@ -48,7 +48,12 @@ struct Binding {
         CompAttack, CompRelease, CompAmount, CompBoost, // the master compressor (parity phase 7)
         PadFxParam,                                // Pad FX (parity phase 7b): id = the MPC's Pad FX * 4 + its K
         FlexMode, FlexMix,                         // Flex Beat
-        ModWheel                                   // the fader's mod wheel (parity phase 8), 0..127
+        ModWheel,                                  // the fader's mod wheel (parity phase 8), 0..127
+        // Stage (shell/stage_map.h): PRESET's sound (its place in sound_list()) and list, the arp's gate and hold,
+        // an empty track's choosers; the Tracks screen's track and its pattern.
+        StageSound, SoundList, ArpGate, ArpHold,
+        NewEngine, NewSound, NewSource, NewPort, NewChannel, // NewEngine: index into new_engines()
+        TrackPick, TrackPattern
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -104,6 +109,10 @@ inline int warp_card(uint8_t warp) { return warp == warp_seq ? warp_card_seq : w
 inline uint8_t warp_of_card(int value) { return value >= warp_card_seq ? warp_seq : value <= 0 ? warp_off : uint8_t(value + warp_min - 1); }
 // Song's zoom steps, in bars across the view.
 constexpr unsigned song_zooms[] {4, 8, 16, 32, 64};
+// Stage's cards for the selected track's page (shell/stage_map.h), and its Shift row.
+std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui, bool shift_row);
+// The engines an empty track can become on Stage's SYNTH page, in K1's order.
+unsigned new_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out);
 // The track's three favourite parameters, for every page without its own.
 std::array<Binding, 3> favourite_bindings(const Track& track);
 // The Motion lane a card's value lands in when it moves during Seq Record

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// The sixteen tracks as the pads sit: Stage's picture, and the screen while
-// Pad Bank is held (its pads pick a track) or a track copy picks its tracks.
+// The sixteen tracks as the pads sit: the Tracks screen (Pad Bank tapped
+// twice), and the screen while Pad Bank is held (its pads pick a track) or a
+// track copy picks its tracks.
 #include "melodee/pages/common.h"
 #include "melodee/shell/pad_bank.h"
 
@@ -10,11 +11,13 @@ using namespace ui;
 
 // Eight tracks at a time, the half holding the selected track: tracks 1-8
 // sit as pads 1-8, tracks 9-16 as pads 9-16, two rows of four.
-void track_grid(Paint& p, const Snapshot& s) {
+void track_grid(Paint& p, const Snapshot& s) { track_grid(p, s, track_half(s)); }
+
+void track_grid(Paint& p, const Snapshot& s, unsigned half) {
     int copying = s.ui.copying == UiState::Copying::Tracks ? s.ui.copy_from : -1;
     constexpr float gap = 4, top = zone::picture_y + 2;
     constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (zone::picture_h - 4 - gap) / 2;
-    unsigned first = track_half(s) * 8;
+    unsigned first = (half % 2) * 8;
     for (unsigned n = 0; n < 8; ++n) {
         unsigned t = first + n, row = 1 - n / 4, column = n % 4; // pad 1 bottom left
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap), inner = w - 12;

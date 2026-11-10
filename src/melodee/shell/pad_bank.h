@@ -7,10 +7,14 @@
 // its next bank, A-H round (Shift: the previous one; on Punch the other bank
 // of punches). Held: a pad picks that track, Minus / Plus or the wheel jump
 // banks, and the screen shows the sixteen tracks; Shift + Erase then copies a
-// whole track (shell/track_copy.cpp). MIDI thread.
+// whole track (shell/track_copy.cpp). Tapped twice, as Note Repeat's double
+// tap opens Arp: the Tracks screen latches (pages/tracks_page.cpp), and the
+// first tap's bank step on a kit is undone; a tap there goes back to Stage.
+// MIDI thread.
 namespace melodee {
 
 class Context;
+constexpr uint32_t pad_bank_double_ms = 450; // two taps this close: the Tracks screen
 
 void pad_bank_button(Context& c, bool pressed);
 // Minus / Plus or the wheel while Pad Bank is held: the bank jumps. False when it is not held.

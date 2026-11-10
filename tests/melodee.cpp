@@ -41,6 +41,7 @@
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/demo_projects.h"
 #include "melodee/shell/sampler_map.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/mute_mode.h"
@@ -110,6 +111,7 @@ void bindings() {
     load_sound(project.tracks[0], EngineKind::Prophet, 1);
     UiState ui;
     Pattern pattern;
+    ui.stage_sub[0] = 1; // Stage's TONE: the favourites
     auto stage = page_bindings(project, ui, pattern);
     CHECK(stage[0].kind == Binding::Kind::Param && stage[0].id == prophet::Cutoff);
     CHECK(stage[0].at(0) == 0 && stage[0].at(127) == 100 && stage[0].at(64) == 50);
@@ -1388,9 +1390,13 @@ void parity_1c() {
     CHECK(arp_swing_ticks(4, 1, 75) == 3.0 && arp_swing_ticks(4, 2, 75) == 0 && arp_swing_ticks(5, 1, 75) == 0 && arp_swing_ticks(4, 1, 50) == 0);
     auto project = std::make_unique<Project>();
     UiState ui;
+    ui.page = PageId::Keys;
     CHECK(!repeat_keys(*project, ui));
     project->tracks[0].arp = true;
     CHECK(repeat_keys(*project, ui));
+    ui.page = PageId::Stage; // latched, Stage keeps its buttons; held, they are the rates
+    CHECK(!repeat_keys(*project, ui));
+    ui.repeat_held = true; CHECK(repeat_keys(*project, ui)); ui.repeat_held = false;
     ui.page = PageId::Arp;
     CHECK(!repeat_keys(*project, ui)); // its own keys stay on Arp
     Arp arp; arp.top = int(sampler_last_key);
@@ -1398,10 +1404,14 @@ void parity_1c() {
     int velocity = 0;
     CHECK(arp.next(velocity) == 150 && velocity == 90); // a kit pad in bank H repeats as itself
 
-    // Mute mode: kit pads where the pads play the kit, tracks on Stage and Mix.
+    // Mute mode: kit pads where the pads play the kit (Stage too), tracks on Mix and Tracks.
     ui.page = PageId::Pads;
     CHECK(mute_on_kit(ui, true) && !mute_on_kit(ui, false));
     ui.page = PageId::Stage;
+    CHECK(mute_on_kit(ui, true));
+    ui.page = PageId::Tracks;
+    CHECK(!mute_on_kit(ui, true));
+    ui.page = PageId::Mix;
     CHECK(!mute_on_kit(ui, true));
     ui.mute_latch = true;
     CHECK(ui.mute_mode());
@@ -3444,7 +3454,7 @@ void midi_tracks() {
     {
         const auto& info = engine_info(EngineKind::Midi);
         CHECK(info.available && std::string(info.name) == "MIDI" && info.param_count == midi_track::Count);
-        CHECK(edit_page_count(info) == 1 && !is_mod_page(info, 0) && edit_page_count(engine_info(EngineKind::Prophet)) == prophet::info().page_count + 1);
+        CHECK(edit_page_count(info) == 2 && !is_mod_page(info, 0) && !is_mod_page(info, 1) && edit_page_count(engine_info(EngineKind::Prophet)) == prophet::info().page_count + 1);
         Track t;
         load_sound(t, EngineKind::Midi, 0);
         CHECK(t.engine == EngineKind::Midi && t.params[midi_track::Port] == midi_track::External && t.params[midi_track::Channel] == 1 &&
@@ -3605,7 +3615,206 @@ void midi_tracks() {
     }
 }
 
+// Stage, context aware (shell/stage_map.h, the engines' stage tables, bindings.cpp).
+void stage() {
+    using K = Binding::Kind;
+    // Every engine's table: three buttons of one to three pages, each named, its parameters the engine's own.
+    for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) {
+        const auto& g = stage_groups(EngineKind(k));
+        const auto& info = engine_info(EngineKind(k));
+        for (const auto& group : g.groups) {
+            CHECK(group.count >= 1 && group.count <= 3);
+            for (unsigned n = 0; n < group.count; ++n) {
+                const auto& page = group.pages[n];
+                CHECK(page.key && std::strlen(page.key) > 0);
+                for (unsigned c = 0; c < 3; ++c) CHECK(page.params[c] < int(info.param_count) && page.shift[c] < int(info.param_count));
+                if (page.picture == StagePicture::Envelope) CHECK(page.params[0] >= 0 && page.params[1] >= 0 && page.params[2] >= 0 && page.shift[0] >= 0);
+                if (page.kind == StageKind::Voice) CHECK(g.voices && g.pad_voice);
+            }
+        }
+    }
+    CHECK(stage_groups(EngineKind::Prophet).groups[0].pages[0].kind == StageKind::Preset);
+    CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 2);
+    CHECK(stage_groups(EngineKind::None).groups[2].pages[0].kind == StageKind::NewMidi);
+
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[0], EngineKind::Prophet, 1);
+    load_sound(project->tracks[1], EngineKind::Sampler, 0);
+    load_sound(project->tracks[2], EngineKind::Kit909, 0);
+    load_sound(project->tracks[3], EngineKind::Midi, 0);
+    const Pattern& pattern = bank->at[0][0];
+    UiState ui;
+    ui.page = PageId::Stage;
+    auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track]).key); };
+    auto cards = [&](bool shift) { return page_bindings(*project, ui, pattern, shift); };
+
+    // B1 on a synth: PRESET -> TONE -> MIX -> PRESET; B2 jumps to its own first page; each track keeps its own.
+    CHECK(key() == "PRESET");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "TONE");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "MIX");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "PRESET");
+    stage_press(ui, project->tracks[0], 1); CHECK(key() == "FILTER ENV");
+    stage_press(ui, project->tracks[0], 1); CHECK(key() == "AMP ENV");
+    ui.track = 1; CHECK(key() == "TRIM");
+    stage_press(ui, project->tracks[1], 2); CHECK(key() == "FILTER");
+    ui.track = 0; CHECK(key() == "AMP ENV");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "PRESET"); // another button: its first page
+
+    // TONE: the favourites; AMP ENV: attack, decay, sustain, Shift + K1 release, Shift + K2 velocity; K3 has no Shift card.
+    stage_go(ui, 0, 1);
+    auto tone = cards(false);
+    CHECK(tone[0].kind == K::Param && tone[0].id == prophet::Cutoff && tone[2].id == prophet::EnvAmount);
+    stage_go(ui, 1, 1);
+    auto amp = cards(false), amp_shift = cards(true);
+    CHECK(amp[0].id == prophet::AmpAttack && amp[1].id == prophet::AmpDecay && amp[2].id == prophet::AmpSustain);
+    CHECK(amp_shift[0].id == prophet::AmpRelease && amp_shift[1].id == prophet::VelAmp && amp_shift[2].id == prophet::AmpSustain);
+    CHECK(shift_bindings(*project, ui, pattern)[0].bound() && !shift_bindings(*project, ui, pattern)[2].bound());
+    // PERFORM: glide, unison, detune; the Shift row vintage, bend, voices.
+    stage_go(ui, 2, 1);
+    CHECK(cards(false)[0].id == prophet::Glide && cards(true)[2].id == prophet::Voices);
+    // MIX: level, pan, send; Shift + K3 the bus.
+    stage_go(ui, 0, 2);
+    CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send && cards(true)[2].kind == K::SendBus);
+    // ARP: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold.
+    stage_go(ui, 2, 0);
+    CHECK(cards(false)[0].kind == K::ArpMode && cards(false)[1].kind == K::ArpRate && cards(true)[0].kind == K::ArpGate && cards(true)[2].kind == K::ArpHold);
+    // FX: nothing without effects; with one, its first row and (Shift) its second.
+    stage_go(ui, 2, 2);
+    CHECK(!cards(false)[0].bound());
+    project->tracks[0].fx.slots[0].kind = uint8_t(EffectKind::Echo);
+    CHECK(cards(false)[0].kind == K::FxParam && cards(false)[0].id == 0 * 64 + 0 * 8 + 0);
+    CHECK(!cards(true)[0].bound() || cards(true)[0].id == 3);
+    // PRESET: K1 the loaded sound's place in the list, or the one turned to while it waits; K2 the list, K3 the engine.
+    stage_go(ui, 0, 0);
+    auto preset = cards(false);
+    CHECK(preset[0].kind == K::StageSound && preset[0].value == 1 && preset[0].max == int(prophet::info().sound_count) - 1);
+    CHECK(preset[1].kind == K::SoundList && preset[2].kind == K::Engine);
+    ui.preset_due = 5; ui.preset_cursor = 4;
+    CHECK(cards(false)[0].value == 4);
+    ui.preset_due = 0;
+    CHECK(stage_preset_ms == 250);
+
+    // A kit: Akai's pages on the last pad hit. TRIM start, end, loop, zoom on Shift; MIX K2 the kit's volume;
+    // AMP ENV Shift + K2 Decay From; TUNE Shift + K3 # Beats; PLAY Shift + K2 Pad Link.
+    ui.track = 1;
+    auto& kit = project->tracks[1];
+    kit.pads[5].sample = 0; project->samples[0].frames = 44100; kit.last_pad = 5;
+    stage_go(ui, 0, 0);
+    CHECK(cards(false)[0].kind == K::PadStart && cards(false)[1].kind == K::PadEnd && cards(false)[2].kind == K::PadLoopPoint);
+    CHECK(cards(true)[0].kind == K::TrimZoom);
+    stage_go(ui, 0, 1);
+    CHECK(cards(false)[0].kind == K::PadLevel && cards(false)[1].kind == K::Param && cards(false)[1].id == sampler::Level && cards(false)[2].kind == K::PadPan);
+    stage_go(ui, 0, 2);
+    CHECK(cards(false)[0].kind == K::PadAttack && cards(true)[1].kind == K::PadDecayFrom);
+    stage_go(ui, 1, 0);
+    CHECK(cards(false)[0].kind == K::PadPitch && cards(true)[2].kind == K::PadBeats);
+    stage_go(ui, 1, 1);
+    CHECK(cards(false)[0].kind == K::PadMono && cards(true)[1].kind == K::PadLink);
+    stage_go(ui, 2, 0);
+    CHECK(cards(false)[2].kind == K::PadFilterType);
+    stage_go(ui, 2, 1);
+    CHECK(cards(false)[2].kind == K::PadFAmount);
+    kit.last_pad = 6; // a pad without a sample: nothing to turn
+    CHECK(!cards(false)[0].bound());
+    CHECK(stage_kit_page(StageKind::AmpEnv) == PageId::EnvelopePage && stage_kit_page(StageKind::Preset) == PageId::Count);
+
+    // A 909: VOICE follows the last pad: a clap is the snare and clap page, its Shift row clap decay and rim.
+    ui.track = 2;
+    auto& drums = project->tracks[2];
+    stage_go(ui, 0, 1);
+    CHECK(key() == "KICK"); // before any pad
+    drums.last_note = 36 + kit909::Clap;
+    CHECK(key() == "SNARE" && cards(false)[2].id == kit909::SnareSnappy && cards(true)[0].id == kit909::ClapDecay);
+    drums.last_note = 36 + kit909::OpenHat;
+    CHECK(key() == "HATS");
+    drums.last_note = 36 + kit909::Ride;
+    CHECK(key() == "CYMBALS" && cards(true)[2].id == kit909::RideDecay);
+    stage_go(ui, 0, 2);
+    CHECK(key() == "LEVELS" && cards(false)[0].id == kit909::KickLevel && cards(true)[2].id == kit909::CymbalLevel);
+    stage_press(ui, drums, 1); CHECK(key() == "MIX");
+    stage_press(ui, drums, 1); CHECK(key() == "MIX"); // one page: it stays
+
+    // MIDI: DEVICE, PROGRAM (bank and program, Off at first), CC (values; their numbers on Shift).
+    ui.track = 3;
+    auto& midi = project->tracks[3];
+    stage_go(ui, 0, 1);
+    CHECK(key() == "PROGRAM" && cards(false)[2].id == midi_track::Program && midi.params[midi_track::Program] == 0);
+    CHECK(show(engine_info(EngineKind::Midi).params[midi_track::Program], 0).value == "Off" && show(engine_info(EngineKind::Midi).params[midi_track::BankMsb], 1).value == "0");
+    stage_go(ui, 1, 0);
+    CHECK(cards(false)[0].id == midi_track::Cc1 && cards(true)[0].id == midi_track::CcNumber1 && midi.params[midi_track::CcNumber1] == 74);
+    CHECK(std::string(midi_track::cc_name(74)) == "Brightness" && !midi_track::cc_name(3));
+    CHECK(binding_lane(midi, cards(false)[0]) == motion_lane(midi_track::Cc1)); // a CC records as motion
+
+    // An empty track: SYNTH (engines, not a kit or MIDI), KIT (where its sample comes from), MIDI (port, channel).
+    ui.track = 9;
+    CHECK(key() == "SYNTH");
+    std::array<EngineKind, size_t(EngineKind::Count)> engines {};
+    unsigned count = new_engines(engines);
+    CHECK(count >= 5);
+    for (unsigned n = 0; n < count; ++n) CHECK(engines[n] != EngineKind::Sampler && engines[n] != EngineKind::Midi && engines[n] != EngineKind::None);
+    CHECK(cards(false)[0].kind == K::NewEngine && cards(false)[1].kind == K::NewSound);
+    stage_press(ui, project->tracks[9], 1); CHECK(key() == "KIT" && cards(false)[0].kind == K::NewSource && cards(false)[0].max == int(new_sources) - 1);
+    stage_press(ui, project->tracks[9], 2); CHECK(key() == "MIDI" && cards(false)[0].kind == K::NewPort && cards(false)[1].kind == K::NewChannel);
+
+    // Tracks: K1 the track, K2 its level, K3 its pattern.
+    ui.page = PageId::Tracks; ui.track = 0;
+    CHECK(cards(false)[0].kind == K::TrackPick && cards(false)[1].kind == K::Level && cards(false)[2].kind == K::TrackPattern);
+    CHECK(pad_bank_double_ms == 450);
+
+    // Undo: Shift + B1 / B2 on a kit's TRIM (Loop Lock, Normalize) are the pad's; B1 alone on Stage keeps nothing.
+    ui.page = PageId::Stage; ui.track = 1; stage_go(ui, 0, 0); kit.last_pad = 5;
+    ui.shift = true;
+    CHECK(press_scope(*project, ui, SurfaceButton::TopLeft, false).kind == UndoScope::Kind::Pad);
+    CHECK(button_has_shift_job(*project, ui, SurfaceButton::TopMiddle, true));
+    ui.shift = false;
+    CHECK(press_scope(*project, ui, SurfaceButton::TopLeft, false).none());
+
+    // The file: bank, program and the CCs stay; a MIDT of version 1 (before Stage) gets their initial values.
+    midi.params[midi_track::Program] = 12; midi.params[midi_track::BankMsb] = 3; midi.params[midi_track::Cc2] = 20; midi.params[midi_track::CcNumber3] = 7;
+    auto bytes = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    CHECK(load_project(bytes, *back, *bank).empty());
+    CHECK(back->tracks[3].params[midi_track::Program] == 12 && back->tracks[3].params[midi_track::BankMsb] == 3 &&
+          back->tracks[3].params[midi_track::Cc2] == 20 && back->tracks[3].params[midi_track::CcNumber3] == 7);
+    auto tag = std::search(bytes.begin(), bytes.end(), "MIDT", "MIDT" + 4);
+    CHECK(tag != bytes.end() && tag[8] == 3 && tag[9] == 2);
+    tag[9] = 1; // as a file from before Stage: its zeros are no CC 0s
+    auto older = std::make_unique<Project>();
+    CHECK(load_project(bytes, *older, *bank).empty());
+    CHECK(older->tracks[3].params[midi_track::CcNumber1] == 74 && older->tracks[3].params[midi_track::Program] == 0 &&
+          older->tracks[3].params[midi_track::Port] == midi.params[midi_track::Port]);
+
+    // The engine host: a CC turned goes out on the track's channel and port; a program with its bank selects, and again as the track loads.
+    {
+        using E = MidiOutEvent::Kind;
+        auto p2 = std::make_unique<Project>();
+        load_sound(p2->tracks[0], EngineKind::Midi, 0);
+        p2->tracks[0].params[midi_track::Port] = midi_track::UsbC; p2->tracks[0].params[midi_track::Channel] = 3;
+        p2->tracks[0].params[midi_track::Program] = 6; p2->tracks[0].params[midi_track::BankLsb] = 2;
+        EngineHost host;
+        host.load(*p2, *bank);
+        host.set_audio_format(44100, 384);
+        std::vector<int32_t> out(256);
+        auto block = [&] { host.render(out.data(), 128, 1); std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
+        auto loaded = block();
+        CHECK(loaded.size() == 2 && loaded[0].kind == E::Control && loaded[0].a == 32 && loaded[0].b == 1 && loaded[0].channel == 3 &&
+              loaded[1].kind == E::Program && loaded[1].a == 5 && loaded[1].dest == MidiDest::UsbC && loaded[1].track == 0);
+        host.send({Command::Type::Param, 0, 0, midi_track::Cc1, 99});
+        auto cc = block();
+        CHECK(cc.size() == 1 && cc[0].kind == E::Control && cc[0].a == 74 && cc[0].b == 99 && cc[0].channel == 3);
+        host.send({Command::Type::Param, 0, 0, midi_track::CcNumber1, 10}); // a number alone sends nothing
+        CHECK(block().empty());
+        host.send({Command::Type::Param, 0, 0, midi_track::Program, 0}); // Off: nothing
+        CHECK(block().empty());
+        host.send({Command::Type::Param, 0, 0, midi_track::Program, 9});
+        auto program = block();
+        CHECK(program.size() == 2 && program.back().kind == E::Program && program.back().a == 8);
+    }
+}
+
 int main() {
+    stage();
     midi_tracks();
     device_rates();
     card_access();

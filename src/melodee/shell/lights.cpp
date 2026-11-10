@@ -13,6 +13,7 @@
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/shell.h"
 #include <filesystem>
 #include "melodee/shell/shift_pad_jobs.h"
@@ -79,6 +80,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save) leave.store(true);
     }
     context_.song_tick();
+    context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
     // Sounds of one's own, when the card's list changes.
     if (store_ && store_->generation() != sounds_seen) {
         sounds_seen = store_->generation();
@@ -122,6 +124,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const auto& t = project_->tracks[ui_.track];
         const auto& pad = t.pads[t.last_pad % sampler_pads];
         page_track.store(uint32_t(ui_.page) | uint32_t(ui_.track) << 8, std::memory_order_relaxed);
+        { // Stage: the button and page in view, the card the wheel edits, a sound waiting to load
+            const auto& t = project_->tracks[ui_.track];
+            auto at = stage_at(ui_, t);
+            stage_bits.store(at.group | at.sub << 4 | unsigned(stage_focus(ui_)) << 8 | unsigned(ui_.preset_due != 0) << 12
+                             | unsigned(ui_.tracks_half) << 13 | unsigned(t.preset & 0x3ff) << 16 | unsigned(t.bank % sampler_banks) << 26,
+                             std::memory_order_relaxed);
+            std::lock_guard<std::mutex> text(text_lock);
+            stage_key_text = stage_page_now(ui_, t).key;
+        }
         // The tempo in play: MIDI clock in's while it leads (Sync In), else the project's.
         tempo_now.store(ui_.settings.midi.sync_in == MidiSync::Clock && midi_io.tempo_in() ? host.tempo_now() : context_.tempo_now(),
                         std::memory_order_relaxed);
@@ -252,7 +263,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 colour = state == TakeRecorder::State::Recording || (now / 250) % 2 ? led_colour::rgb(1, 0, 0, 1) : led_colour::rgb(1, 0, 0, 0.2f);
             else if (cut) colour = led_colour::white(0.9f);
             else colour = track_light(ui.track, track.pads[kit].used() ? 0.3f : 0.07f);
-        } else if (tracks || muting || ui.page == PageId::Stage || ui.page == PageId::Mix || ui.page == PageId::Song) {
+        } else if (tracks || muting || ui.page == PageId::Tracks || ui.page == PageId::Mix || ui.page == PageId::Song) {
             // The pads are the tracks.
             const auto& t = project.tracks[pad];
             float level = !t.used() ? 0 : pad == ui.track ? 1.0f : t.mix.mute ? 0.08f : 0.35f;

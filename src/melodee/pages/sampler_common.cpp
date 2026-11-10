@@ -16,15 +16,18 @@ const char* keys[sampler_page_count] {"TRIM", "MIX", "AMP ENV", "TUNE", "PLAY", 
 const char* titles[sampler_page_count] {"Trim", "Mix", "Amp env", "Tune", "Play", "Follow", "Cloud", "Filter", "Filter env", "Kit filter"};
 } // namespace
 
-// A group's key: the page in view and where it is in the group ("MIX 2/3"), else the group's first page.
+// A group's key: the page in view, else the group's first page; a dot a page under it, as on Stage.
 SoftKeys sampler_keys(PageId page, juce::Colour c) {
     unsigned n = sampler_index(page), here = sampler_group(n);
     std::array<juce::String, 3> labels;
+    SoftKeys out {labels, int(here), c};
     for (unsigned g = 0; g < sampler_groups; ++g) {
         unsigned first = sampler_group_first(g), size = sampler_group_size(g);
-        labels[g] = g == here ? juce::String(keys[n]) + " " + juce::String(n - first + 1) + "/" + juce::String(size) : juce::String(keys[first]);
+        out.labels[g] = keys[g == here ? n : first];
+        out.dots[g] = uint8_t(size);
+        out.dot_at[g] = uint8_t(g == here ? n - first : 0);
     }
-    return {labels, int(here), c};
+    return out;
 }
 
 void sampler_soft(Context& c, int key) {

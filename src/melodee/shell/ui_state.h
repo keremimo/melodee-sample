@@ -20,7 +20,9 @@ enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motio
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
                             MidiConfig,                        // parity phase 9: Shift + Pad 8
-                            CardAccess, Count };               // parity phase 10b: Project's SD card access
+                            CardAccess,                        // parity phase 10b: Project's SD card access
+                            Tracks,                            // Pad Bank tapped twice: the sixteen tracks, eight at a time
+                            Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
 // met it, so a page change never makes a value jump; until then Pickup waits
@@ -75,6 +77,16 @@ struct UiState {
     bool tc_key(unsigned key) const { return key < 192 && ((tc_keys[key / 64] >> (key % 64)) & 1); }
     void tc_toggle(unsigned key) { if (key < 192) tc_keys[key / 64] ^= uint64_t(1) << (key % 64); }
     std::array<uint8_t, track_count> edit_page {}, edit_row {};
+    // Stage (pages/stage_page.cpp, shell/stage_map.h): each track's button (B1-B3) and the page of its cycle.
+    std::array<uint8_t, track_count> stage_group {}, stage_sub {};
+    uint32_t preset_due = 0;  // ms: PRESET's sound stopped turning; the sound under the cursor loads then (0 none)
+    uint16_t preset_cursor = 0; // and where it is in the list (sound_list())
+    // An empty track's choosers: the engine and its sound (SYNTH), the source (KIT), port and channel (MIDI).
+    uint8_t new_engine = 0, new_sound = 0, new_source = 0, new_port = 1, new_channel = 1;
+    // Pad Bank tapped twice (shell/pad_bank.cpp): the first tap's time, and whether it stepped a kit's bank.
+    uint32_t pad_bank_tap_at = 0, pad_bank_down = 0;
+    bool pad_bank_stepped = false;
+    uint8_t tracks_half = 0; // the Tracks screen: 0 tracks 1-8, 1 tracks 9-16
     uint16_t sounds_cursor = 0;
     uint8_t sounds_filter = 0;       // all, favourites, recent
     uint8_t audition_velocity = 100;

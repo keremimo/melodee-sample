@@ -3,6 +3,7 @@
 // KEYS (B2): what the pads play, drawn as they sit with the roots filled.
 // K1 root, K2 scale, K3 layout; Shift + K3 transposes the pads by
 // semitones (the card's Shift mark says so). Minus / Plus the octave.
+// Push opens Edit, the engine's every page.
 #include "melodee/engine/kit909.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
@@ -73,6 +74,7 @@ void draw(Paint& p, const Snapshot& s) {
 }
 } // namespace
 
-const PageSpec keys_page {draw, play_pad, no_wheel, no_push, play_soft, octave};
+void push(Context& c) { if (c.track().used()) c.open(PageId::Edit); } // the engine's every page (Stage holds the quick ones)
+const PageSpec keys_page {draw, play_pad, no_wheel, push, play_soft, octave};
 
 } // namespace melodee

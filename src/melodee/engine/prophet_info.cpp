@@ -93,12 +93,22 @@ const Sound sounds[] {
     {"NOISE HAT", {{{LevelA, 0}, {LevelB, 0}, {Noise, 100}, {Cutoff, 88}, {Resonance, 30}, {KeyTrack, 0},
                     {EnvAmount, 0}, {AmpDecay, 22}, {AmpSustain, 0}, {AmpRelease, 20}, {-1, 0}}}},
 };
+// Stage: B1 SOUND (preset, the filter, mix), B2 SHAPE (the envelopes, the LFO), B3 PLAY (arp, performance, effects).
+using K = StageKind;
+using S = StagePicture;
+const StageGroups stage {{{
+    {{{stage_preset, {"TONE", K::Params, S::Filter, {{Cutoff, Resonance, EnvAmount}}}, stage_mix}}, 3},
+    {{{{"FILTER ENV", K::Params, S::Envelope, {{FilterAttack, FilterDecay, FilterSustain}}, {{FilterRelease, _, _}}},
+       {"AMP ENV", K::Params, S::Envelope, {{AmpAttack, AmpDecay, AmpSustain}}, {{AmpRelease, VelAmp, _}}},
+       {"LFO", K::Params, S::Lfo, {{LfoRate, LfoShape, LfoAmount}}, {{LfoFreq, LfoPw, LfoFilter}}}}}, 3},
+    {{{stage_arp, {"PERFORM", K::Params, S::ShiftRows, {{Glide, Unison, Detune}}, {{Vintage, BendRange, Voices}}}, stage_fx}}, 3},
+}}};
 } // namespace
 
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Prophet, "PROPHET", true, params, Count, pages,
                                     sizeof(pages) / sizeof(pages[0]), {Cutoff, Resonance, EnvAmount},
-                                    sounds, sizeof(sounds) / sizeof(sounds[0]), nullptr, legacy_count};
+                                    sounds, sizeof(sounds) / sizeof(sounds[0]), nullptr, legacy_count, true, &stage};
     return engine;
 }
 

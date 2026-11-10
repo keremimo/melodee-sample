@@ -14,6 +14,7 @@
 #include "melodee/shell/note_repeat.h"
 #include <cstdio>
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/shift_pads.h"
 #include "surface/controls.h"
@@ -467,7 +468,15 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
 
 std::string Shell::summary() const {
     uint32_t pt = page_track.load(std::memory_order_relaxed);
+    uint32_t st = stage_bits.load(std::memory_order_relaxed);
+    std::string key;
+    { std::lock_guard<std::mutex> guard(text_lock); key = stage_key_text; }
+    for (auto& ch : key) if (ch == ' ') ch = '_';
     return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
+           " melodee_stage=" + std::to_string((st & 0xf) + 1) + "." + std::to_string(((st >> 4) & 0xf) + 1) + " melodee_stage_key=" + key +
+           " melodee_stage_card=" + std::to_string(((st >> 8) & 0xf) + 1) + " melodee_preset_due=" + std::to_string((st >> 12) & 1) +
+           " melodee_tracks_half=" + std::to_string((st >> 13) & 1) + " melodee_preset=" + std::to_string(((st >> 16) & 0x3ff) + 1) +
+           " melodee_bank=" + std::string(1, char('A' + ((st >> 26) & 7))) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
            " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load()) +
            " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text() + " melodee_pads=" + lit_pads_text() +

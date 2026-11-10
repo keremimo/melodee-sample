@@ -34,8 +34,9 @@ void shift_pad(Context& c, unsigned pad) {
     case 6: // Double Speed: every note half as far apart
         c.double_speed();
         return;
-    case 12: // Trim Sample: the last pad's region as a file of its own (one undo)
+    case 12: // Trim Sample: the last pad's region as a file of its own (one undo); then Stage's TRIM, as the MPC lands on Trim
         c.trim_sample();
+        if (c.track().engine == EngineKind::Sampler) c.open(PageId::Trim);
         return;
     case 13: // Time Correct: the chosen pads' notes onto Q
         c.open(PageId::TimeCorrect);

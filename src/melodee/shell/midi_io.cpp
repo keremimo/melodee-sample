@@ -337,6 +337,14 @@ void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
             c.ui.track_out_at[e.track] = c.now;
         break;
     case K::NoteOff: send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest); break;
+    case K::Control: // a MIDI track's CC or bank select (Stage)
+        if (send_all(c, out, packet_of(juce::MidiMessage::controllerEvent(e.channel, e.a, e.b)), e.dest) && e.track < track_count)
+            c.ui.track_out_at[e.track] = c.now;
+        break;
+    case K::Program:
+        if (send_all(c, out, packet_of(juce::MidiMessage::programChange(e.channel, e.a)), e.dest) && e.track < track_count)
+            c.ui.track_out_at[e.track] = c.now;
+        break;
     case K::Clock: send_all(c, out, packet_of(juce::MidiMessage::midiClock())); break;
     case K::Start: send_all(c, out, packet_of(juce::MidiMessage::midiStart())); break;
     case K::Stop: send_all(c, out, packet_of(juce::MidiMessage::midiStop())); break;
