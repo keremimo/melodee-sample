@@ -47,7 +47,7 @@ void draw(Paint& p, const Snapshot& s) {
     for (unsigned st = first; st < first + bar_steps && st < pattern.length; ++st)
         for (auto& n : pattern.steps[st].notes)
             if (n.velocity) { lo = std::min(lo, index_of(n.key)); hi = std::max(hi, index_of(n.key)); }
-    if (hi < 0) lo = hi = index_of(s.track().last_note);
+    if (hi < 0) lo = hi = index_of(s.track().step_note());
     int top_row = std::max(hi, (lo + hi) / 2 + 4);
     constexpr float cw = 14.5f, rh = 8, rx = zone::pad, ry = zone::picture_y + 25, rw = 232;
     p.fill(rx, ry, rw, 8 * rh, colour::panel, 3);
@@ -130,7 +130,7 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
         c.ui.held_created = pattern.steps[st].empty();
         if (c.ui.held_created) {
             Step step;
-            step.notes[0] = {c.track().last_note, uint8_t(std::max<int>(velocity, 64))};
+            step.notes[0] = {c.track().step_note(), uint8_t(std::max<int>(velocity, 64))};
             c.set_step(c.ui.track, st, step);
         }
         return;
@@ -147,7 +147,12 @@ void wheel(Context& c, int delta) {
         // The held step's notes move together, one semitone a detent.
         Step step = pattern.steps[size_t(c.ui.held_step)];
         for (auto& n : step.notes) if (n.velocity) n.key = uint8_t(std::clamp(n.key + delta, 0, 127));
-        if (const Note* n = step.first()) c.track().last_note = n->key;
+        if (const Note* n = step.first()) {
+            auto& t = c.track();
+            t.last_note = n->key;
+            if (t.engine == EngineKind::Sampler && n->key >= sampler_first_note && n->key < sampler_first_note + sampler_pads)
+                t.last_pad = uint8_t(n->key - sampler_first_note); // on a kit the note is a pad
+        }
         c.set_step(c.ui.track, unsigned(c.ui.held_step), step);
         c.ui.held_edited = true;
         return;

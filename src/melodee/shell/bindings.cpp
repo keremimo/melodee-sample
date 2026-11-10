@@ -87,6 +87,7 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
     }
     switch (ui.page) {
     case PageId::Keys:
+        if (ui.keys_row) return {Binding {Kind::Transpose, 0, -12, 12, track.transpose}, Binding {}, Binding {}};
         return {Binding {Kind::Root, 0, 0, 11, project.root},
                 Binding {Kind::Scale, 0, 0, int(scales().size()) - 1, project.scale},
                 Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)}};

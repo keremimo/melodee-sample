@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// KEYS (B2, or 16 Levels): what the pads play, drawn as they sit with the
-// roots filled. K1 root, K2 scale, K3 layout; Minus / Plus the octave,
-// with Shift a semitone (Transpose pads).
+// KEYS (B2): what the pads play, drawn as they sit with the roots filled.
+// K1 root, K2 scale, K3 layout; the wheel turns to row 2, where K1
+// transposes the pads by semitones. Minus / Plus the octave.
 #include "melodee/engine/kit909.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/ui/widgets.h"
 
 namespace melodee {
 namespace {
@@ -47,6 +48,7 @@ void draw(Paint& p, const Snapshot& s) {
     }
 
     float x = zone::pad + grid_w + 10, y = zone::picture_y + 4.5f, iw = zone::width - zone::pad - x;
+    page_dots(p, zone::width - zone::pad, y + 5, 2, s.ui.keys_row, c, true); // row 1 / 2 (wheel)
     if (track.engine == EngineKind::Kit909) {
         p.text("PADS PLAY", x, y, iw, 10, caps_text(colour::mid));
         p.text("Drums", x, y + 11, iw, 29, plain(colour::text, 26, Weight::SemiBold));
@@ -70,8 +72,9 @@ void draw(Paint& p, const Snapshot& s) {
         ly += 15.5f;
     }
 }
+void rows(Context& c, int delta) { c.ui.keys_row = uint8_t(std::clamp(c.ui.keys_row + delta, 0, 1)); }
 } // namespace
 
-const PageSpec keys_page {draw, play_pad, no_wheel, no_push, play_soft, octave};
+const PageSpec keys_page {draw, play_pad, rows, no_push, play_soft, octave};
 
 } // namespace melodee

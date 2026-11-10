@@ -32,7 +32,8 @@ struct Binding {
         PadFine, PadPlayMode, PadGroup, PadReverse, PadAttack, PadDecay, PadRelease, PadSustain, // sampler pages
         PunchDepth, PunchSnap, PunchTail,          // Punch
         PadPunchKind, PadPunchRate, PadPunchDepth, // Pad Punch: the last pad hit
-        NameSuggest, NameChar                      // the Name sheet
+        NameSuggest, NameChar,                     // the Name sheet
+        Transpose                                  // Keys, row 2: the pads by semitones
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

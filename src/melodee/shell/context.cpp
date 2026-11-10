@@ -76,7 +76,10 @@ void Context::open(PageId page) {
     ui.map_open = false;
     ui.picker_open = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
-    if (page != ui.page) { ui.previous = ui.page; ui.page = page; }
+    if (page != ui.page) {
+        if (page == PageId::Keys) ui.keys_row = 0;
+        ui.previous = ui.page; ui.page = page;
+    }
     if (page == PageId::Sounds) {
         // The cursor starts on the loaded sound.
         ui.sounds_filter = 0;
@@ -152,7 +155,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
     }
     if (!t.used()) return;
     if (t.engine == EngineKind::Kit909) { // the pads are the drums
-        if (pad >= 11) return;
+        if (pad >= 11) { notice("909: drums on pads 1-11"); return; } // dark, and says why
         pad_keys[pad][0] = int16_t(36 + pad);
         t.last_note = uint8_t(36 + pad);
         key(pad_keys[pad][0], velocity, true);
@@ -256,6 +259,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::Root: project.root = uint8_t(value); break;
     case Kind::Scale: project.scale = uint8_t(value); break;
     case Kind::Layout: t.layout = PadLayout(value); break;
+    case Kind::Transpose: t.transpose = int8_t(std::clamp(value, -12, 12)); break;
     case Kind::Engine: {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = available_engines(engines);
@@ -677,9 +681,10 @@ void Context::clear_pattern(unsigned t, unsigned p) {
     }
 }
 
-void Context::copy_pattern(unsigned t, unsigned from, unsigned to) {
-    if (from == to) return;
-    const auto source = patterns.at[t % track_count][from % pattern_count];
+void Context::copy_pattern(unsigned t, unsigned from, unsigned to, int from_track) {
+    unsigned source_track = from_track < 0 ? t % track_count : unsigned(from_track) % track_count;
+    if (from == to && source_track == t % track_count) return;
+    const auto source = patterns.at[source_track][from % pattern_count];
     auto& target = patterns.at[t % track_count][to % pattern_count];
     for (unsigned s = 0; s < max_steps; ++s) {
         if (target.steps[s].empty() && source.steps[s].empty()) continue;
@@ -734,6 +739,30 @@ void Context::delete_pad(unsigned kit) {
     restore_pad(ui.track, kit, edit.pad_after);
     notice(edit.what);
     edits.push(std::move(edit));
+}
+
+void Context::erase_pad_notes(unsigned kit) {
+    kit %= sampler_pads;
+    const int key = int(sampler_first_note + kit);
+    std::string what = pad_text("Erase", kit) + " notes";
+    bool found = false;
+    auto erase = [&] {
+        auto& p = pattern();
+        for (unsigned s = 0; s < p.length; ++s) {
+            Step after = p.steps[s];
+            unsigned kept = 0, gone = 0;
+            for (const auto& n : p.steps[s].notes) {
+                if (!n.velocity) continue;
+                if (n.key == key) ++gone; else after.notes[kept++] = n; // the rest close up
+            }
+            if (!gone) continue;
+            for (unsigned n = kept; n < notes_per_step; ++n) after.notes[n] = Note {};
+            set_step(ui.track, s, kept ? after : Step {});
+            found = true;
+        }
+    };
+    edit_pattern(ui.track, track().pattern, what.c_str(), erase); // inside a take, part of it
+    notice(found ? what : pad_text("No notes on", kit));
 }
 
 void Context::copy_pad(unsigned from, unsigned to) {
@@ -1144,10 +1173,6 @@ void Context::quantise_notes() {
     }
 }
 
-void Context::transpose(int way) {
-    auto& t = track();
-    t.transpose = int8_t(std::clamp(int(t.transpose) + way, -12, 12));
-}
 void Context::stop() {
     if (!host.playing()) send({Type::AllNotesOff, 255});
     send({Type::Stop});

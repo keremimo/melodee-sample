@@ -157,6 +157,10 @@ const Preview previews[] {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"transpose", [](Shell&, Snapshot& s) { // Keys, row 2: Transpose on K1
+         s.ui.page = PageId::Keys; s.ui.keys_row = 1; s.project.tracks[0].transpose = -3; s.playing = true;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"sounds", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Sounds; s.ui.track = 2; s.ui.sounds_cursor = 2; s.playing = true;
          auto engine = unsigned(s.project.tracks[2].engine);
@@ -202,6 +206,9 @@ const Preview previews[] {
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.steps[t] = int(4 + t); }
          s.project.tracks[2].pattern = 1;
      }},
+    {"patterncopy", [](Shell&, Snapshot& s) { // Shift + Erase on Patterns, then a pattern: where does it go
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.copying = UiState::Copying::Patterns; s.ui.copy_from = 0;
+     }},
     {"song", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 24; s.ui.song_view = 16; s.ui.song_zoom = 2;
          s.ui.song_pattern = 2; s.ui.song_length = 4;
@@ -245,7 +252,7 @@ const Preview previews[] {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"padcopy", [](Shell&, Snapshot& s) { // Shift + Erase, then a pad: where does it go
-         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.pad_copy = true; s.ui.copy_from = 2;
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.copying = UiState::Copying::Pads; s.ui.copy_from = 2;
      }},
     {"undo", [](Shell&, Snapshot& s) { // Shift + Minus: what came back
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample();

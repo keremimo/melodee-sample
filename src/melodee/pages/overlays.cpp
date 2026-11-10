@@ -13,7 +13,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     // sound under the cursor instead.
     static const char* const jobs[][2] {
         {"SAMPLE", "Projects"}, {"PAD BANK", "Previous pad bank"}, {"SAMPLE SELECT", "Save sound"},
-        {"MUTE", "+ pad: solo track"}, {"ERASE", "Clear pattern"}, {"LOOP", "Double length"}, {"SEQ", "Quantise take"},
+        {"MUTE", "+ pad: solo track"}, {"ERASE", "Copy"}, {"LOOP", "Double length"}, {"SEQ", "Quantise take"},
         {"PLAY", "Continue"}, {"STOP", "All notes off"},
         {"SAMPLE RECORD", "Capture last bars"}, {"TAP TEMPO", "Metronome"}, {"\xe2\x88\x92 / +", "Undo / redo"}, {"PUSH", "Back"},
     };
@@ -34,10 +34,10 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
         unsigned column = n / 7, row = n % 7;
         float cx = x + 2 + column * (cw + 2) + 6, cy = y + 5 + row * 19;
         p.text(juce::String::fromUTF8(jobs[n][0]), cx, cy, cw - 12, 7, caps_text(c, 6));
-        bool keys = s.ui.page == PageId::Keys; // there Minus / Plus transpose the pads instead
-        bool kit = s.track().engine == EngineKind::Sampler && !s.track().levels && page_spec(s.ui.page).pad == play_pad; // there Erase copies a pad
-        const char* job = song && n == count - 1 ? "Marker at cursor" : keys && n == 11 ? "Transpose pads"
-                        : kit && n == 4 ? "Copy pad" : jobs[n][1];
+        // Erase copies what the pads hold here: kit pads, patterns, or nothing.
+        bool kit = s.track().engine == EngineKind::Sampler && !s.track().levels && page_spec(s.ui.page).pad == play_pad;
+        const char* copy = kit ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pads, patterns";
+        const char* job = song && n == count - 1 ? "Marker at cursor" : n == 4 ? copy : jobs[n][1];
         p.text(job, cx, cy + 7, cw - 12, 11, plain(colour::text, 9.5f, Weight::Medium));
     }
 }
@@ -46,9 +46,12 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
 // an undo, redo, delete or copy did.
 void draw_notice(Paint& p, const Snapshot& s) {
     juce::String text;
-    if (s.ui.pad_copy) {
+    bool copying = s.ui.copying != UiState::Copying::Off;
+    if (s.ui.copying == UiState::Copying::Pads) {
         char label[4]; pad_label(unsigned(std::max<int>(s.ui.copy_from, 0)), label);
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pad") : "Copy " + juce::String(label) + ": pick where";
+    } else if (s.ui.copying == UiState::Copying::Patterns) {
+        text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pattern") : "Copy P" + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.notice[0] && s.now - s.ui.notice_at < 1500) {
         text = juce::String(s.ui.notice);
     } else {
@@ -56,7 +59,7 @@ void draw_notice(Paint& p, const Snapshot& s) {
     }
     p.fill(0, zone::header_y, zone::width, zone::header_h, colour::bg);
     Header h = header_of(s);
-    h.left.push_back(chip(text.toUpperCase(), s.ui.pad_copy ? colour_of(s) : colour::text));
+    h.left.push_back(chip(text.toUpperCase(), copying ? colour_of(s) : colour::text));
     h.right.push_back(tag_of(s, s.ui.track));
     header(p, h);
 }

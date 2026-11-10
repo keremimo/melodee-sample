@@ -1072,7 +1072,27 @@ void history() {
     CHECK(!h.can_redo() && h.undo()->pad == 99 && h.undo()->pad == 8 && !h.can_undo());
 }
 
+// Parity phase 0: a step written on a kit gets the pad hit last, and
+// Keys keeps Transpose on its second row.
+void parity_basics() {
+    Track kit; kit.engine = EngineKind::Sampler; kit.last_pad = 21; kit.last_note = 50;
+    CHECK(kit.step_note() == sampler_first_note + 21);
+    Track synth; synth.engine = EngineKind::Prophet; synth.last_note = 62;
+    CHECK(synth.step_note() == 62);
+
+    auto project = std::make_unique<Project>();
+    project->tracks[0].engine = EngineKind::Prophet; project->tracks[0].transpose = -3;
+    UiState ui; ui.page = PageId::Keys; ui.track = 0;
+    Pattern pattern;
+    CHECK(page_bindings(*project, ui, pattern)[0].kind == Binding::Kind::Root);
+    ui.keys_row = 1;
+    auto row2 = page_bindings(*project, ui, pattern);
+    CHECK(row2[0].kind == Binding::Kind::Transpose && row2[0].value == -3 && row2[0].min == -12 && row2[0].max == 12);
+    CHECK(!row2[1].bound() && !row2[2].bound());
+}
+
 int main() {
+    parity_basics();
     history();
     names();
     settings();

@@ -271,6 +271,8 @@ struct Track {
     bool arp = false, arp_latch = false;
     uint8_t arp_mode = 0, arp_rate = 3, arp_octaves = 1, arp_gate = 60;
     bool used() const { return engine != EngineKind::None; }
+    // The note a new step gets on Steps: on a kit the pad hit last, else the last note played.
+    uint8_t step_note() const { return engine == EngineKind::Sampler ? uint8_t(sampler_first_note + last_pad % sampler_pads) : last_note; }
     void set_name(const char* text) {
         unsigned n = 0;
         for (; n + 1 < name_length && text[n]; ++n) name[n] = text[n];

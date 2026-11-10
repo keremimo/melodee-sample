@@ -194,7 +194,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch);
     on(B::KnobFx, ui.page == PageId::PadFx || ui.page == PageId::Rack || ui.page == PageId::Sends || ui.page == PageId::Bus || ui.page == PageId::Master);
     on(B::Loop, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Length);
-    on(B::SixteenLevels, ui.page == PageId::Keys);
+    // 16 Levels: lit while the pads play levels (a kit pad on all sixteen, or a synth's Levels layout).
+    on(B::SixteenLevels, ui.page == PageId::Levels || (track.engine == EngineKind::Sampler ? track.levels : track.layout == PadLayout::Levels));
     lights.button(B::Play, playing ? L::Bright : L::Dim);
     lights.button(B::Stop, playing ? L::Dim : L::Off);
     lights.button(B::SeqRecord, ui.recording ? L::Bright : L::Dim);
@@ -203,7 +204,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     lights.button(B::TapTempo, beat ? L::Bright : L::Dim);
     on(B::Mute, ui.mute);
     on(B::PadBank, ui.pad_bank);
-    lights.button(B::Erase, ui.erase || ui.pad_copy ? L::Bright : L::Off); // lit while copying a pad
+    lights.button(B::Erase, ui.erase || ui.copying != UiState::Copying::Off ? L::Bright : L::Off); // lit while copying
 }
 
 } // namespace melodee

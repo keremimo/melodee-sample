@@ -82,6 +82,10 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::Root: c.label = "ROOT"; c.value = note_letter(unsigned(b.value)); break;
         case Kind::Scale: c.label = "SCALE"; c.value = scales()[size_t(b.value)].name; break;
         case Kind::Layout: c.label = "LAYOUT"; c.value = layout_name(PadLayout(b.value)); break;
+        case Kind::Transpose:
+            c.label = "TRANSPOSE"; c.bipolar = true; c.unit = "st";
+            c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+            break;
         case Kind::Engine: c.label = "ENGINE"; c.value = engine_info(track.engine).name; break;
         case Kind::Jump:
             std::snprintf(text, sizeof(text), "%02d", b.value + 1);

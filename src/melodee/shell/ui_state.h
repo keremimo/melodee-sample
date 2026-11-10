@@ -90,6 +90,7 @@ struct UiState {
     uint8_t project_sort = 0;     // 0 newest first, 1 by name
     int8_t chord_pad = -1;        // Chord: the pad played last
     uint8_t sampler_row = 0;      // Envelope and Cloud: their second row
+    uint8_t keys_row = 0;         // Keys: row 2 holds Transpose
     uint8_t capture_bars = 2, capture_quantise = 1, capture_into = 0; // Capture
     uint16_t project_rows = 1;    // rows on the Project page, copied in by the shell
     int8_t punch_held = -1, punch_locked = -1; // Punch: the punch a pad holds, the one Shift + pad locked on
@@ -107,9 +108,13 @@ struct UiState {
     uint32_t turned_at = 0;   // when, in ms
     int8_t last_pot = -1;     // for Shift + wheel fine edits
     uint32_t held_pads = 0;
-    // Shift + Erase on a kit: copy one pad onto another. Armed, then the source, then the target.
-    bool pad_copy = false;
-    int8_t copy_from = -1;    // the kit pad picked first, -1 until then
+    // Shift + Erase: copy one kit pad onto another, or (on Patterns) one
+    // pattern onto another. Armed, then the source, then the target.
+    enum class Copying : uint8_t { Off, Pads, Patterns };
+    Copying copying = Copying::Off;
+    int8_t copy_from = -1;    // the kit pad or pattern picked first, -1 until then
+    uint8_t copy_track = 0;   // Patterns: the track the pattern is copied from
+    void stop_copying() { copying = Copying::Off; copy_from = -1; }
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms

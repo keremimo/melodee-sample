@@ -50,6 +50,7 @@ public:
     unsigned take_count = 0;
     std::unique_ptr<Edit> take_edit;
     int take_track = -1, take_pattern = -1;
+    bool in_take(unsigned t, unsigned p) const { return take_edit && take_track == int(t) && take_pattern == int(p); } // Seq Record on this pattern
     bool played_song = false; // the last Play was the song's
     EngineHost& host;
     uint32_t now = 0; // ms, set for each control
@@ -99,7 +100,6 @@ public:
     void double_length();     // Shift + Loop: the pattern twice as long, played twice
     void quantise_take();     // Shift + Seq: the last take's late notes onto their nearest step
     void play_continue();     // Shift + Play: on from where it stopped
-    void transpose(int way);  // Shift + Minus / Plus on Keys: the pads by a semitone
     void set_recording(bool on); // Seq Record: a take begins; when it ends it goes into the history
     void sync_punches();
     // Mix
@@ -121,12 +121,15 @@ public:
     void undo();
     void redo();
     void notice(const std::string& text);                    // a word over the header for a moment
-    void delete_pad(unsigned kit);                           // Erase + pad on a kit: the pad empty
+    void delete_pad(unsigned kit);                           // Erase + pad on a kit, stopped: the pad empty
+    void erase_pad_notes(unsigned kit);                      // playing or recording: its notes out of the pattern, one edit
     void copy_pad(unsigned from, unsigned to);               // Shift + Erase, pad, pad: sound and effects
     void restore_pattern(unsigned track, unsigned pattern, const Pattern& value);
     void restore_pad(unsigned track, unsigned kit, const PadState& value);
     // Runs `change` on a pattern of a track (and its motion) and keeps it as one edit, if it changed anything.
+    // During a take on that same pattern it is part of the take instead: one undo for both.
     template <class Change> void edit_pattern(unsigned t, unsigned p, const char* what, Change&& change) {
+        if (in_take(t, p)) { change(); return; }
         Edit edit = begin_edit(what, t, int(p), false);
         change();
         commit_edit(std::move(edit));
@@ -139,7 +142,8 @@ public:
     // Patterns and Length
     void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing
     void clear_pattern(unsigned track, unsigned pattern);
-    void copy_pattern(unsigned track, unsigned from, unsigned to);
+    // A pattern onto another of `track`; from_track, when given, is where it comes from.
+    void copy_pattern(unsigned track, unsigned from, unsigned to, int from_track = -1);
     void set_length(unsigned steps);                         // the selected track's pattern
     void set_division(Division division);
     // Sampler tracks

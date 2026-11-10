@@ -72,6 +72,9 @@ void Shell::button(Button b, bool pressed) {
         else if (!pad_bank_used && context_.track().engine == EngineKind::Sampler) {
             context_.track().bank = uint8_t((context_.track().bank + (ui.shift ? sampler_banks - 1 : 1)) % sampler_banks);
             if (ui.shift) ui.shift_used = true;
+        } else if (!pad_bank_used) { // no banks to step on this track: say what the button does here
+            context_.notice("Pad Bank + pad: track");
+            if (ui.shift) ui.shift_used = true;
         }
         ui.pad_bank = pressed;
         return;
@@ -80,18 +83,14 @@ void Shell::button(Button b, bool pressed) {
     if (b == Button::Erase) {
         ui.erase = pressed;
         if (!pressed) return;
-        if (ui.shift && kit_pads()) { // Shift + Erase on a kit: copy a pad (again: off)
+        if (ui.shift) { // Shift + Erase: Copy, as printed: kit pads on a kit, patterns on Patterns (again: off)
             ui.shift_used = true;
-            ui.pad_copy = !ui.pad_copy; ui.copy_from = -1;
-            if (!ui.pad_copy) context_.notice("Copy off");
-        } else if (ui.shift) { // Shift + Erase: clear the pattern in view
-            ui.shift_used = true;
-            context_.edit_pattern(ui.track, context_.track().pattern, "Clear pattern", [&] {
-                auto& pattern = context_.pattern();
-                for (unsigned s = 0; s < pattern.length; ++s) if (!pattern.steps[s].empty()) context_.set_step(ui.track, s, Step {});
-            });
-        } else if (ui.pad_copy) { // Erase alone leaves copying
-            ui.pad_copy = false; ui.copy_from = -1;
+            auto kind = kit_pads() ? UiState::Copying::Pads : ui.page == PageId::Patterns ? UiState::Copying::Patterns : UiState::Copying::Off;
+            if (ui.copying != UiState::Copying::Off) { ui.stop_copying(); context_.notice("Copy off"); }
+            else if (kind == UiState::Copying::Off) context_.notice("Copy: kit pads or patterns");
+            else { ui.copying = kind; ui.copy_from = -1; }
+        } else if (ui.copying != UiState::Copying::Off) { // Erase alone leaves copying
+            ui.stop_copying();
             context_.notice("Copy off");
         }
         return;
@@ -206,15 +205,13 @@ void Shell::button(Button b, bool pressed) {
         else if (was) context_.set_arp(false); // a tap on the page turns it off
         break;
     }
-    // Shift + Minus / Plus: undo and redo, as printed; on Keys they transpose the pads.
+    // Shift + Minus / Plus: undo and redo, as printed, on every page.
     case Button::Minus:
-        if (ui.shift && ui.page == PageId::Keys) context_.transpose(-1);
-        else if (ui.shift) context_.undo();
+        if (ui.shift) context_.undo();
         else page.nudge(context_, -1);
         break;
     case Button::Plus:
-        if (ui.shift && ui.page == PageId::Keys) context_.transpose(1);
-        else if (ui.shift) context_.redo();
+        if (ui.shift) context_.redo();
         else page.nudge(context_, 1);
         break;
     case Button::TopLeft: page.soft(context_, 0); break;
@@ -235,7 +232,7 @@ void Shell::button(Button b, bool pressed) {
         break;
     default: break;
     }
-    if (ui.pad_copy && !kit_pads()) { ui.pad_copy = false; ui.copy_from = -1; } // left the kit: copying ends
+    end_copy_away(); // left the kit or Patterns: copying ends
 }
 
 // A pot changes its value once it reaches it (pickup); until then the card
@@ -306,7 +303,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     if (down && !ui_.exit_open) {
         if (ui_.pad_bank) { // Pad Bank + pad: pick that track
             pad_bank_used = true; context_.select_track(pad);
-            if (ui_.pad_copy && !kit_pads()) { ui_.pad_copy = false; ui_.copy_from = -1; }
+            end_copy_away();
             return;
         }
         if (ui_.mute) {                                           // Mute + pad: mute; with Shift, solo
@@ -318,9 +315,14 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     }
     if (down && ui_.exit_open) return;
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
-    if (down && kit_pads() && (ui_.pad_copy || ui_.erase)) {
+    bool copying_pads = ui_.copying == UiState::Copying::Pads;
+    if (down && kit_pads() && (copying_pads || ui_.erase)) {
         unsigned kit = context_.track().bank % sampler_banks * 16 + pad;
-        if (!ui_.pad_copy) { context_.delete_pad(kit); return; } // Erase + pad: the pad empty
+        if (!copying_pads) { // Erase + pad: stopped, the pad empty; playing or recording, its notes out of the pattern
+            if (host.playing() || ui_.recording) context_.erase_pad_notes(kit);
+            else context_.delete_pad(kit);
+            return;
+        }
         if (ui_.copy_from < 0) {                                    // copying: first the pad to copy
             if (context_.track().pads[kit].used()) { ui_.copy_from = int8_t(kit); context_.track().last_pad = uint8_t(kit); }
             else context_.notice(pad_text("Empty", kit));
@@ -329,7 +331,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         if (unsigned(ui_.copy_from) == kit) return;                // then where it goes
         context_.copy_pad(unsigned(ui_.copy_from), kit);
         context_.track().last_pad = uint8_t(kit);
-        ui_.pad_copy = false; ui_.copy_from = -1;
+        ui_.stop_copying();
         return;
     }
     page_spec(ui_.page).pad(context_, pad, velocity, down);
@@ -340,6 +342,12 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
 bool Shell::kit_pads() const {
     const auto& t = project_->tracks[ui_.track % track_count];
     return t.engine == EngineKind::Sampler && !t.levels && page_spec(ui_.page).pad == play_pad;
+}
+
+// Copying ends once its pads are gone: pads away from a kit, patterns away from Patterns.
+void Shell::end_copy_away() {
+    bool here = ui_.copying == UiState::Copying::Pads ? kit_pads() : ui_.page == PageId::Patterns;
+    if (ui_.copying != UiState::Copying::Off && !here) ui_.stop_copying();
 }
 
 void Shell::snapshot(Snapshot& out, uint32_t now) {

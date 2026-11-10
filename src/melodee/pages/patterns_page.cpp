@@ -3,8 +3,9 @@
 // PATTERNS (Loop): tracks down, sixteen patterns across, eight tracks in
 // view; the wheel moves the selected track and the view follows. The pads
 // are that track's sixteen patterns: tap to queue (it starts on the next
-// bar), Erase + pad clears, hold a pad and tap another to copy. Shift + pad
-// launches that column on every track (open question 8, built as drawn).
+// bar), Erase + pad clears, hold a pad and tap another to copy. Shift +
+// Erase copies too: a pad, then (on this or another track) where it goes.
+// Shift + pad launches that column on every track (open question 8).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 
@@ -68,6 +69,19 @@ void draw(Paint& p, const Snapshot& s) {
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     auto& ui = c.ui;
+    if (down && ui.copying == UiState::Copying::Patterns) { // Shift + Erase: the pattern to copy, then where
+        if (ui.copy_from < 0) {
+            if (c.patterns.at[ui.track][pad].empty()) { c.notice("P" + std::to_string(pad + 1) + " is empty"); return; }
+            ui.copy_from = int8_t(pad); ui.copy_track = ui.track;
+            return;
+        }
+        if (ui.copy_track == ui.track && unsigned(ui.copy_from) == pad) return;
+        std::string what = "Copy P" + std::to_string(ui.copy_from + 1) + " to P" + std::to_string(pad + 1);
+        c.edit_pattern(ui.track, pad, what.c_str(), [&] { c.copy_pattern(ui.track, unsigned(ui.copy_from), pad, ui.copy_track); });
+        c.notice(what);
+        ui.stop_copying();
+        return;
+    }
     if (down) {
         if (ui.erase) { c.edit_pattern(ui.track, pad, "Clear pattern", [&] { c.clear_pattern(ui.track, pad); }); return; }
         if (ui.shift) { // Shift + pad: that column on every track
