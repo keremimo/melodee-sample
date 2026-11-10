@@ -78,7 +78,16 @@ struct Command {
         // 0..15, pattern = which of its K1-K3, value. FlexBeat: index 0 the pad (0 Empty, 1..15), 1 mode (0 One Shot,
         // 1 Loop), 2 mix 0..100, 3 quantize; value.
         PunchParam,
-        FlexBeat
+        FlexBeat,
+        // Parity phase 9, MIDI and sync. MidiTrack: track, index = the channel its notes go out on (0 none), value = when
+        // (PadMidiOut: 0 never, 1 always, 2 only notes with no sound). MidiSync: index 0 MIDI clock out, 1 MTC out,
+        // 2 the CV clock out, 3 its pulses a quarter; value. ExtSync (MIDI clock in): index 0 following on / off (value),
+        // 1 a clock pulse (position: the frame it lets the sequencer through, low 32 bits), 2 its tempo (value, tenths),
+        // 3 Start / Continue came: the next ticks wait for the clock, 4 it stopped. NoteOn / NoteOff with pattern = 1 came
+        // in by MIDI and never go out again.
+        MidiTrack,
+        MidiSync,
+        ExtSync
 
     };
     Command() = default;

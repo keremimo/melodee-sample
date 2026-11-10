@@ -57,6 +57,10 @@ void shift_pad(Context& c, unsigned pad) {
     case 4: // Compressor: the master's (parity phase 7)
         c.open(PageId::Compressor);
         break;
+    case 7: // MIDI Config (parity phase 9)
+        c.ui.midi_editing = false;
+        c.open(PageId::MidiConfig);
+        return;
     case 8: // Fader: the selected track's target, on / off (parity phase 8)
         c.ui.fader_cursor = uint8_t(fader_target(c.track())); // on the target it has
         c.open(PageId::FaderPage);

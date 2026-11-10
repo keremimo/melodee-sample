@@ -31,6 +31,23 @@ Shell::Shell(EngineHost& host)
     starting_project(*project_, *patterns_);
 }
 
+void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now) {
+    std::lock_guard<std::mutex> guard(lock);
+    context_.now = now;
+    midi_io.receive(context_, port, packet);
+}
+
+void Shell::midi_lost() {
+    std::lock_guard<std::mutex> guard(lock);
+    midi_io.lost(context_);
+}
+
+void Shell::midi_output(MidiOutput& out, MidiIo::Clock::time_point at, uint32_t now) {
+    std::lock_guard<std::mutex> guard(lock);
+    context_.now = now;
+    midi_io.pump(context_, out, at);
+}
+
 void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;
@@ -359,6 +376,9 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.ticks = host.ticks();
     out.count_in = host.count_in();
     out.tempo = context_.tempo_now();
+    // MIDI clock in leads the tempo while Sync In is on and a clock comes.
+    out.following = midi_io.following();
+    if (ui_.settings.midi.sync_in == MidiSync::Clock && midi_io.tempo_in()) out.tempo = host.tempo_now();
     {
         const auto& r = host.recorder();
         out.take.state = uint8_t(r.state()); out.take.frames = r.frames(); out.take.length = r.length(); out.take.level = r.level();
@@ -415,7 +435,19 @@ std::string Shell::summary() const {
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
            " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary()
-           + input_summary() + fx_summary();
+           + input_summary() + fx_summary() + midi_io.summary() + midi_config_summary();
+}
+
+// Phase 9: MIDI Config as set (the settings are the MIDI thread's; these are copies taken in lights()).
+std::string Shell::midi_config_summary() const {
+    uint32_t m = midi_bits.load(std::memory_order_relaxed);
+    return " melodee_midi_port=" + std::to_string(m & 1) + " melodee_midi_in_ch=" + std::to_string((m >> 1) & 31)
+         + " melodee_midi_out_ch=" + std::to_string((m >> 6) & 31) + " melodee_pad_in=" + std::to_string((m >> 11) & 1)
+         + " melodee_pad_out=" + std::to_string((m >> 12) & 3) + " melodee_sync_in=" + std::to_string((m >> 14) & 3)
+         + " melodee_sync_out=" + std::to_string((m >> 16) & 3) + " melodee_thru=" + std::to_string((m >> 18) & 1)
+         + " melodee_program_change=" + std::to_string((m >> 19) & 1) + " melodee_cv_out=" + std::to_string((m >> 20) & 1)
+         + " melodee_cv_ppqn=" + std::to_string((m >> 21) & 255) + " melodee_track_ch=" + std::to_string(track_channel.load(std::memory_order_relaxed))
+         + " melodee_midi_row=" + std::to_string(midi_row.load(std::memory_order_relaxed));
 }
 
 // Phase 7: Knob FX and the master compressor.

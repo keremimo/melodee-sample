@@ -30,7 +30,8 @@ struct Snapshot {
     uint32_t position = 0;                   // where the selected track is in its pattern, ticks
     std::array<int, track_count> positions {}; // each track's, -1 none
     unsigned count_in = 0;                   // the Count-In's beat, 0 none
-    unsigned tempo = 1200;                   // tenths of a BPM, as it plays (BPM per pattern or global)
+    unsigned tempo = 1200;                   // tenths of a BPM, as it plays (BPM per pattern or global, or MIDI clock in's)
+    bool following = false;                  // MIDI clock in leads the transport (parity phase 9)
     std::array<uint8_t, track_count> playing_patterns {};
     uint32_t ticks = 0;                      // 96 a quarter since Play
     bool song_playing = false;

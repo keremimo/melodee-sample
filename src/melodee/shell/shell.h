@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/project.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/midi_io.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/snapshot.h"
@@ -31,6 +32,10 @@ public:
     // MIDI thread.
     void surface(const SurfaceEvent& event, uint32_t now_ms);
     void lights(SurfaceLights& lights, uint32_t now_ms);
+    // MIDI thread (parity phase 9, shell/midi_io.cpp): MIDI in from an external port, its loss, and the timed output.
+    void midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now_ms);
+    void midi_lost();
+    void midi_output(MidiOutput& out, MidiIo::Clock::time_point now, uint32_t now_ms);
     float volume() const { return main_volume.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
 
@@ -86,6 +91,7 @@ private:
     bool tap_held = false;
     ProjectStore* store_ = nullptr;
     InputRoute* input_ = nullptr;
+    MidiIo midi_io;
     unsigned store_seen = ~0u, settings_seen = ~0u, sounds_seen = ~0u;
     bool settings_loaded = false;
     int leave_after_save = -1; // the saves count to wait for before leaving
@@ -110,6 +116,8 @@ private:
     std::string fx_summary() const;     // phase 7: Knob FX, the master compressor
     std::string padfx_summary() const;  // phase 7b: Pad FX, Flex Beat
     std::string fader_summary() const;  // phase 8: the fader and the takeover modes
+    std::string midi_config_summary() const; // phase 9: MIDI Config
+    std::atomic<uint32_t> midi_bits {0}, track_channel {0}, midi_row {0};
     std::string sample_summary() const;
 };
 

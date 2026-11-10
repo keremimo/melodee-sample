@@ -16,6 +16,7 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/engine/bounce.h"
 #include "melodee/engine/recall_ring.h"
+#include "melodee/engine/midi_out.h"
 #include "melodee/model/input_config.h"
 #include "melodee/model/project.h"
 #include "surface/midi.h"
@@ -125,6 +126,16 @@ public:
     // MIDI thread: a ProjectPack the audio thread has finished with, to free.
     bool take_done_pack(const ProjectPack*& pack) { return done_packs.pop(pack); }
     bool take_done_track(const TrackPack*& pack) { return done_tracks.pop(pack); }
+    // MIDI thread (parity phase 9): what goes out, each at its frame, and the clock that says when that frame is heard.
+    bool take_midi(MidiOutEvent& event) { return midi_events.pop(event); }
+    const AudioClock& audio_clock() const { return clock; }
+    // Before the audio thread starts: the device's frames a second and the frames it holds queued (MIDI out lines up with them).
+    void set_audio_format(double frames_a_second, uint64_t latency_frames) {
+        clock.set_format(frames_a_second, latency_frames);
+        sync.set_rate(frames_a_second);
+    }
+    unsigned midi_dropped() const { return midi_lost.load(std::memory_order_relaxed); }
+    bool following() const { return ext_now.load(std::memory_order_relaxed); } // the sequencer waits for MIDI clock in
     // MIDI thread: a pattern copy the audio thread played until a newer one came (PatternData), to free.
     bool take_retired_pattern(Pattern*& pattern) { return retired_patterns.pop(pattern); }
 
@@ -181,6 +192,33 @@ private:
     void run_offs(Slot& slot, unsigned frames);
     double tick_length() const { return 44100.0 * 60.0 / (tempo / 10.0) / ticks_per_quarter; } // samples a clock tick
     double arp_tick_length() const { return tick_length() * (ticks_per_quarter / arp_ticks_per_quarter); }
+    // MIDI out and sync (parity phase 9).
+    void emit(const MidiOutEvent& e) { if (!midi_events.push(e)) midi_lost.fetch_add(1, std::memory_order_relaxed); }
+    bool out_wanted(unsigned t, int key) const;                              // this note of this track goes out
+    void midi_note(unsigned t, int key, int velocity, uint64_t at, int64_t length); // and its off after `length` frames (-1 none)
+    void midi_note_off(unsigned t, int key, uint64_t at);
+    void midi_offs_due(uint64_t until);                                      // offs before `until`, at their frames
+    void midi_all_off(unsigned track, uint64_t at);                         // 255: every track's
+    void sync_stop(uint64_t at);
+    void ext_release(uint64_t at);                                           // clock pulses whose frame has come
+    MidiQueue<1024, MidiOutEvent> midi_events;
+    std::atomic<unsigned> midi_lost {0};
+    AudioClock clock;
+    uint64_t frame_now = 0;                                                  // frames rendered before this block
+    std::array<uint8_t, track_count> out_channel {}, out_mode {};
+    struct MidiOff { bool on = false; uint8_t channel = 1, key = 0, track = 0; uint64_t at = 0; };
+    std::array<MidiOff, 128> midi_offs {};
+    SyncOut sync;
+    bool sync_started = false;                                                // the song's clocks are going (after any count-in)
+    bool sync_clock = false, sync_mtc = false, sync_cv = false;
+    unsigned sync_ppqn = 2;
+    bool ext_on = false, ext_gate = false;                                    // MIDI clock in: followed; the sequencer waits for it
+    uint32_t ext_clocks = 0, ext_base = 0;                                   // pulses let through since Start; the tick it began on
+    uint16_t ext_tempo = 0;
+    std::array<uint32_t, 64> ext_ring {};                                     // pulses not let through yet: their frames
+    unsigned ext_head = 0, ext_tail = 0;
+    std::atomic<bool> ext_now {false};
+    double quarter_samples() const { return tick_length() * ticks_per_quarter; }
     void follow_tempo();  // the tempo now: the global one, or the lead pattern's own (BPM per pattern)
     bool skipped(Slot& slot, unsigned key, uint32_t tick);
 

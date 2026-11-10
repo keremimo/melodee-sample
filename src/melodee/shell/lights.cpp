@@ -106,7 +106,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         const auto& t = project_->tracks[ui_.track];
         const auto& pad = t.pads[t.last_pad % sampler_pads];
         page_track.store(uint32_t(ui_.page) | uint32_t(ui_.track) << 8, std::memory_order_relaxed);
-        tempo_now.store(context_.tempo_now(), std::memory_order_relaxed);
+        // The tempo in play: MIDI clock in's while it leads (Sync In), else the project's.
+        tempo_now.store(ui_.settings.midi.sync_in == MidiSync::Clock && midi_io.tempo_in() ? host.tempo_now() : context_.tempo_now(),
+                        std::memory_order_relaxed);
         const auto& shown = context_.pattern();
         rec_state.store(ui_.recording ? 2 : ui_.rec_armed ? 1 : 0, std::memory_order_relaxed);
         pattern_ticks.store(shown.length, std::memory_order_relaxed);
@@ -171,6 +173,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                              std::memory_order_relaxed);
             fader_value.store(uint32_t(uint16_t(int16_t(job.binding.value))) | uint32_t(job.binding.kind) << 16, std::memory_order_relaxed);
             fader_at.store(ui_.fader.position, std::memory_order_relaxed);
+        }
+        { // phase 9: MIDI Config, the track's own channel, the row under the cursor
+            const auto& m = ui_.settings.midi;
+            midi_bits.store(uint32_t(m.port) | uint32_t(m.in_channel) << 1 | uint32_t(m.out_channel) << 6 | uint32_t(m.pad_in) << 11
+                            | uint32_t(m.pad_out) << 12 | uint32_t(m.sync_in) << 14 | uint32_t(m.sync_out) << 16 | uint32_t(m.thru) << 18
+                            | uint32_t(m.program_change) << 19 | uint32_t(m.cv_out) << 20 | uint32_t(m.cv_ppqn() & 255) << 21,
+                            std::memory_order_relaxed);
+            track_channel.store(t.midi_channel, std::memory_order_relaxed);
+            midi_row.store(ui_.midi_cursor, std::memory_order_relaxed);
         }
         { // phase 5: Chop, the region and its file, the browser
             unsigned used = 0;

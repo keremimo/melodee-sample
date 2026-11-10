@@ -18,6 +18,8 @@ MelodeeApp::MelodeeApp()
     shell.set_store(&store);
     shell.set_input(&input_route);
     host.load(shell.project(), shell.patterns());
+    // MIDI out and sync are timed on the device's own clock: its rate and the frames it keeps queued.
+    host.set_audio_format(audio_rate, uint64_t(audio_frames) * audio_queued_periods);
 }
 
 uint32_t MelodeeApp::now_ms() const {
@@ -35,6 +37,20 @@ void MelodeeApp::surface(const SurfaceEvent& event) {
     // A remote tool's prompt owns the controls while it is shown.
     if (session().prompting.load() && event.input.kind == SurfaceInput::Kind::Button) return;
     shell.surface(event, now_ms());
+}
+
+void MelodeeApp::midi(const MidiPortInfo& port, const MidiPacket& packet) { shell.midi(port, packet, now_ms()); }
+void MelodeeApp::midi_lost() { shell.midi_lost(); }
+void MelodeeApp::midi_output(MidiOutput& out, Clock::time_point now) {
+    RemoteMidi injected;
+    while (remote_midi.pop(injected)) {
+        MidiPortInfo port;
+        port.address = "remote"; port.name = "melodee-midi"; port.input = true;
+        port.driver = injected.usb ? "MIDI Gadget" : "SerialMIDI";
+        injected.packet.timestamp_ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
+        shell.midi(port, injected.packet, now_ms());
+    }
+    shell.midi_output(out, now, now_ms());
 }
 
 void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
@@ -103,6 +119,23 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
 }
 
 std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
+    if (action == "melodee-midi") { // melodee-midi [usb] 90 3c 64
+        RemoteMidi m;
+        std::string rest = argument;
+        if (rest.rfind("usb ", 0) == 0) { m.usb = true; rest = rest.substr(4); }
+        size_t at = 0;
+        while (at < rest.size() && m.packet.size < 32) {
+            while (at < rest.size() && rest[at] == ' ') ++at;
+            if (at >= rest.size()) break;
+            char* end = nullptr;
+            long byte = std::strtol(rest.c_str() + at, &end, 16);
+            if (end == rest.c_str() + at || byte < 0 || byte > 255) return "ERR melodee-midi takes hex bytes: [usb] 90 3c 64";
+            m.packet.bytes[m.packet.size++] = uint8_t(byte);
+            at = size_t(end - rest.c_str());
+        }
+        if (!m.packet.size) return "ERR melodee-midi takes hex bytes: [usb] 90 3c 64";
+        return remote_midi.push(m) ? "OK melodee-midi " + argument : "ERR busy";
+    }
     if (action != "melodee-press") return {};
     if (argument.rfind("wheel", 0) == 0 && argument.size() > 6 && (argument[5] == '+' || argument[5] == '-') &&
         std::isdigit(static_cast<unsigned char>(argument[6]))) { // wheel+N, wheel-N (not wheel-push)

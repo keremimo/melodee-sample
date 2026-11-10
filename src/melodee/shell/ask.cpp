@@ -23,6 +23,7 @@ bool ask_button(Context& c, SurfaceButton button) {
     ui.ask = UiState::Ask::None;                                              // Do it
     if (kind == UiState::Ask::EraseKeyEvents) erase_key_events(c, int(ui.ask_target));
     else if (kind == UiState::Ask::EraseLane) c.clear_lane(int(ui.ask_target));
+    else if (kind == UiState::Ask::ResetSettings) c.reset_settings();
     return true;
 }
 
@@ -31,6 +32,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     switch (ui.ask) {
     case UiState::Ask::EraseKeyEvents: return "Erase " + key_label(t, int(ui.ask_target)) + " events?";
     case UiState::Ask::EraseLane: return "Erase " + lane_name(t, int(ui.ask_target)) + " motion?";
+    case UiState::Ask::ResetSettings: return "Reset factory settings?";
     default: return {};
     }
 }
@@ -41,14 +43,15 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     unsigned count = 0;
     if (ui.ask == UiState::Ask::EraseKeyEvents) {
         for (const auto& e : pattern.events) count += e.key == ui.ask_target;
-        return std::to_string(count) + (count == 1 ? " event" : " events") + where;
+        return std::to_string(count) + (count == 1 ? " event" : " events") + where + " go.";
     }
     if (ui.ask == UiState::Ask::EraseLane) {
         const auto& m = project.motion;
         for (unsigned n = 0; n < m.count; ++n)
             count += m.events[n].same_lane(uint8_t(ui.track), t.pattern, uint8_t(lane_param(int(ui.ask_target))), uint8_t(lane_pad(int(ui.ask_target))));
-        return std::to_string(count) + (count == 1 ? " move" : " moves") + where;
+        return std::to_string(count) + (count == 1 ? " move" : " moves") + where + " go.";
     }
+    if (ui.ask == UiState::Ask::ResetSettings) return "Every setting as Melodee comes; projects stay.";
     return {};
 }
 

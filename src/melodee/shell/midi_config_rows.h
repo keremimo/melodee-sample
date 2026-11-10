@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#pragma once
+#include "melodee/model/midi_config.h"
+#include "melodee/model/project.h"
+#include "melodee/shell/settings.h"
+#include <string>
+
+// MIDI Config's rows (Shift + Pad 8, parity phase 9) in the MPC's order, with
+// Melodee's track channel after Out channel and the three takeover rows the
+// MPC keeps here (they are Settings' rows too), then Reset Factory Settings.
+namespace melodee {
+
+enum MidiRow : uint8_t {
+    MidiPortRow, InChannelRow, OutChannelRow, TrackChannelRow, PadInRow, PadOutRow, SyncInRow, SyncOutRow, ThruRow,
+    ProgramChangeRow, CvOutRow, CvBaseRow, CvDivisionRow, KnobTakeoverRow, KnobFxTakeoverRow, FaderTakeoverRow, ResetRow,
+    MidiRows
+};
+
+inline const char* midi_row_name(unsigned row) {
+    static const char* const names[] {"MIDI Port", "MIDI In Channel", "MIDI Out Channel", "Track Channel", "Pad MIDI In",
+                                      "Pad MIDI Out", "MIDI Sync In", "MIDI Sync Out", "MIDI Thru", "Receive Program Change",
+                                      "CV/Sync Out", "CV/Sync Base", "CV/Sync Division", "Parameter Takeover",
+                                      "Knob FX Takeover", "Fader Takeover", "Reset Factory Settings"};
+    return names[row % MidiRows];
+}
+
+inline std::string midi_row_value(const Settings& s, const Track& track, unsigned row) {
+    const auto& m = s.midi;
+    switch (row) {
+    case MidiPortRow: return midi_port_name(m.port);
+    case InChannelRow: return midi_channel_text(m.in_channel, "All");
+    case OutChannelRow: return std::to_string(m.out_channel);
+    case TrackChannelRow: return midi_channel_text(track.midi_channel, "Off");
+    case PadInRow: return m.pad_in ? "On" : "Off";
+    case PadOutRow: return pad_midi_out_name(m.pad_out);
+    case SyncInRow: return midi_sync_name(m.sync_in);
+    case SyncOutRow: return midi_sync_name(m.sync_out);
+    case ThruRow: return m.thru ? "On" : "Off";
+    case ProgramChangeRow: return m.program_change ? "Sequence" : "Off";
+    case CvOutRow: return m.cv_out ? "On" : "Off";
+    case CvBaseRow: return std::to_string(m.cv_base);
+    case CvDivisionRow: return std::to_string(m.cv_division);
+    case KnobTakeoverRow: return takeover_name(s.knob_takeover);
+    case KnobFxTakeoverRow: return takeover_name(s.knob_fx_takeover);
+    case FaderTakeoverRow: return takeover_name(s.fader_takeover);
+    default: return "";
+    }
+}
+
+// One step along a row (lists go round, numbers stop at their ends). The
+// takeover rows go through Settings::step, so both pages agree.
+inline void midi_row_step(Settings& s, Track& track, unsigned row, int way) {
+    auto& m = s.midi;
+    int w = way < 0 ? -1 : 1;
+    auto round = [w](int value, int count) { return (value + count + w) % count; };
+    auto stop = [w](int value, int lo, int hi) { return std::clamp(value + w, lo, hi); };
+    switch (row) {
+    case MidiPortRow: m.port = MidiPort(round(int(m.port), int(MidiPort::Count))); break;
+    case InChannelRow: m.in_channel = uint8_t(stop(m.in_channel, 0, 16)); break;
+    case OutChannelRow: m.out_channel = uint8_t(stop(m.out_channel, 1, 16)); break;
+    case TrackChannelRow: track.midi_channel = uint8_t(stop(track.midi_channel, 0, 16)); break;
+    case PadInRow: m.pad_in = !m.pad_in; break;
+    case PadOutRow: m.pad_out = PadMidiOut(round(int(m.pad_out), int(PadMidiOut::Count))); break;
+    case SyncInRow: m.sync_in = MidiSync(round(int(m.sync_in), int(MidiSync::Count))); break;
+    case SyncOutRow: m.sync_out = MidiSync(round(int(m.sync_out), int(MidiSync::Count))); break;
+    case ThruRow: m.thru = !m.thru; break;
+    case ProgramChangeRow: m.program_change = !m.program_change; break;
+    case CvOutRow: m.cv_out = !m.cv_out; break;
+    case CvBaseRow: m.cv_base = uint8_t(stop(m.cv_base, 1, 8)); break;
+    case CvDivisionRow: m.cv_division = uint8_t(stop(m.cv_division, 1, 24)); break;
+    case KnobTakeoverRow: s.step(Settings::KnobTakeover, way); break;
+    case KnobFxTakeoverRow: s.step(Settings::KnobFxTakeover, way); break;
+    case FaderTakeoverRow: s.step(Settings::FaderTakeover, way); break;
+    default: break;
+    }
+}
+
+} // namespace melodee

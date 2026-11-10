@@ -38,6 +38,7 @@ public:
     SamplerEngine();
     void set_samples(const Table* table) { samples = table; }
     void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) pads[pad] = base[pad] = sound; }
+    bool pad_used(unsigned pad) const { return pad < sampler_pads && pads[pad].used(); } // a sample on it
     // Motion on a pad's own values (model/pad_params.h): the value plays
     // until the pad's lane moves again or restore_pads() gives every pad its
     // own values back (the pattern's start, Stop). Hits after it hear it.

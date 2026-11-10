@@ -5,6 +5,7 @@
 #include <array>
 #include <bitset>
 #include "melodee/model/input_config.h"
+#include "melodee/model/midi_config.h"
 #include <cmath>
 #include <cstdint>
 #include <sstream>
@@ -45,11 +46,19 @@ struct Settings {
     Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
     uint8_t screen = 100;     // brightness, 20..100 %
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
+    MidiConfig midi;          // MIDI Config (Shift + Pad 8, parity phase 9)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
     static constexpr unsigned engines = 7, sounds = 256;
     std::array<std::bitset<sounds>, engines> favourites {};
     bool favourite(unsigned engine, unsigned sound) const { return engine < engines && sound < sounds && favourites[engine][sound]; }
     void toggle_favourite(unsigned engine, unsigned sound) { if (engine < engines && sound < sounds) favourites[engine].flip(sound); }
+
+    // MIDI Config's Reset Factory Settings: every setting back to how Melodee comes, the starred sounds kept.
+    void reset_factory() {
+        auto kept = favourites;
+        *this = Settings {};
+        favourites = kept;
+    }
 
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
@@ -105,6 +114,7 @@ struct Settings {
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain) << '\n';
+        write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
             out << "favourites" << e << '=';
@@ -143,6 +153,7 @@ struct Settings {
             else if (key == "rec_length") input.length = uint8_t(std::clamp(value, 0, int(rec_lengths) - 1));
             else if (key == "rec_fx") input.fx = value != 0;
             else if (key == "rec_gain") input.gain = int8_t(std::clamp(value, -12, 24));
+            else if (read_midi_config(midi, key, value)) {}
             else if (key.rfind("favourites", 0) == 0) { // favourites3=0,4,12
                 unsigned e = unsigned(std::atoi(key.c_str() + 10));
                 if (e >= engines) continue;

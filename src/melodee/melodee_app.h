@@ -23,11 +23,14 @@ public:
     const UsbStems* stems() const override { return &stem_block; }    // audio thread
     void surface(const SurfaceEvent& event) override;                   // MIDI thread
     void lights(SurfaceLights& lights, Clock::time_point now) override; // MIDI thread
+    void midi(const MidiPortInfo& port, const MidiPacket& packet) override; // MIDI thread: external MIDI in (parity phase 9)
+    void midi_lost() override;                                             // MIDI thread
+    void midi_output(MidiOutput& out, Clock::time_point now) override;   // MIDI thread: MIDI out and the sync jack, timed
     void draw(juce::Graphics& g) override;                              // screen thread
     void service(Hardware& hardware) override;                          // service thread
     void jack(const JackEvent& event, Hardware& hardware) override;     // service thread
     std::string command(const std::string& action, const std::string& argument, Hardware&) override;
-    std::string command_names() const override { return "melodee-press"; }
+    std::string command_names() const override { return "melodee-press, melodee-midi"; }
     std::string status() const override;
     bool claims_wheel_push() const override { return true; }
     bool finished() const override { return shell.leaving(); }
@@ -47,6 +50,9 @@ private:
     // queues, the MIDI thread acts it out as if by hand.
     struct Remote { uint8_t kind = 0, index = 0; int8_t delta = 0; }; // kind 0 button (index | 0x80 Shift), 1 wheel, 2 pad (delta: held button + 1), 3 pot (index | 0x80 Shift, delta: 0..127), 4 hold (delta 1) or release a button, 5 the same for a pad
     MidiQueue<16, Remote> presses;
+    // `melodee-midi [usb] HEX...`: one message as if it came in on the External (or USB) port, for checks without a cable.
+    struct RemoteMidi { bool usb = false; MidiPacket packet; };
+    MidiQueue<16, RemoteMidi> remote_midi;
     bool power_known = false;
     unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)
 };

@@ -264,6 +264,7 @@ struct Track {
     uint8_t fader_target = 255;
     bool fader_on = true;
     uint8_t wheel = 0;    // the mod wheel as the fader left it, 0..127 (played, not saved)
+    uint8_t midi_channel = 0; // MIDI Config: 0 none, 1..16 notes on it play this track; its notes go out on it (parity phase 9)
     bool used() const { return engine != EngineKind::None; }
     // The note a new step gets on Steps: on a kit the pad hit last, else the last note played.
     uint8_t step_note() const { return engine == EngineKind::Sampler ? uint8_t(sampler_first_note + last_pad % sampler_pads) : last_note; }

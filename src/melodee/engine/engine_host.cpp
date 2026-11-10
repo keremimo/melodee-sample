@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/engine_host.h"
+#include <chrono>
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_info.h"
 #include <algorithm>
@@ -98,7 +99,7 @@ void EngineHost::load_state(const Project& project) {
 
 void EngineHost::follow_tempo() {
     unsigned own = pattern_tempo[lead % pattern_count];
-    uint16_t now = uint16_t(seq_tempo && own ? own : global_tempo);
+    uint16_t now = uint16_t(ext_on && ext_tempo ? ext_tempo : seq_tempo && own ? own : global_tempo); // MIDI clock in leads
     if (now == tempo) return;
     tempo = now;
     for (auto& s : slots) s.sampler.set_tempo(tempo);
@@ -183,9 +184,16 @@ void EngineHost::apply(const Command& c) {
     using Type = Command::Type;
     auto& slot = slots[c.track % track_count];
     switch (c.type) {
-    case Type::NoteOn: if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value); break;
-    case Type::NoteOff: if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_off(c.index); break;
+    case Type::NoteOn:
+        if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value);
+        if (c.pattern != 1) midi_note(c.track % track_count, c.index, c.value, frame_now, -1); // a pad's note (not one from MIDI in)
+        break;
+    case Type::NoteOff:
+        if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_off(c.index);
+        if (c.pattern != 1) midi_note_off(c.track % track_count, c.index, frame_now);
+        break;
     case Type::AllNotesOff:
+        midi_all_off(c.track, frame_now);
         for (unsigned t = 0; t < track_count; ++t)
             if ((c.track == 255 || t == c.track) && slots[t].engine) {
                 slots[t].engine->all_notes_off();
@@ -401,6 +409,38 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::PadNote:
         if (slot.engine == &slot.sampler) slot.sampler.play_pad(c.index, c.value, int(c.pattern) - 64, int(c.position) - 1);
+        midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now, -1); // 16 Levels: the pad's note
+        break;
+    case Type::MidiTrack:
+        midi_all_off(c.track, frame_now); // what went out on the old channel ends there
+        out_channel[c.track % track_count] = uint8_t(std::min<unsigned>(c.index, 16));
+        out_mode[c.track % track_count] = uint8_t(c.value);
+        break;
+    case Type::MidiSync:
+        if (c.index == 0) sync_clock = c.value != 0;
+        else if (c.index == 1) sync_mtc = c.value != 0;
+        else if (c.index == 2) { sync_cv = c.value != 0; if (!sync_cv) emit({MidiOutEvent::Kind::CvLow, 1, 0, 0, 0, frame_now}); }
+        else if (c.index == 3) sync_ppqn = unsigned(std::max<int>(c.value, 1));
+        sync.set(sync_clock, sync_mtc, sync_cv, sync_ppqn);
+        break;
+    case Type::ExtSync:
+        if (c.index == 0) {
+            ext_on = c.value != 0;
+            if (!ext_on) { ext_gate = false; ext_tempo = 0; ext_head = ext_tail = 0; }
+            follow_tempo();
+        } else if (c.index == 1) {
+            if (ext_gate && (ext_head + 1) % ext_ring.size() != ext_tail) { ext_ring[ext_head] = c.position; ext_head = (ext_head + 1) % ext_ring.size(); }
+        } else if (c.index == 2) {
+            ext_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
+            follow_tempo();
+        } else if (c.index == 3) {
+            ext_gate = ext_on; ext_clocks = 0; ext_base = tick_now; ext_head = ext_tail = 0;
+            sync.allow(0);
+        } else if (c.index == 4) {
+            ext_gate = false; ext_head = ext_tail = 0;
+        }
+        sync.set_external(ext_gate);
+        ext_now.store(ext_gate, std::memory_order_relaxed);
         break;
     case Type::Audition:
         if (slot.engine == &slot.sampler) slot.sampler.audition(c.pad.sample, c.pad.start, c.pad.end, c.value);
@@ -467,6 +507,8 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Stop:
         running = false;
+        sync_stop(frame_now);
+        midi_all_off(255, frame_now);
         render_out.cancel(); // a render stopped by hand is dropped; one in its tail ends there
         if (take.state() == TakeRecorder::State::Cued) take.stop();
         cue_track = -1;
@@ -503,6 +545,7 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Locate:
         if (!running || song_mode) break;
+        sync_stop(frame_now); // the clocks go on from the new place: Song Position and Continue
         tick_now = c.position; until_tick = 0; // the new place plays at once
         for (auto& s : slots) { s.start = 0; for (auto& skip : s.skips) skip.key = -1; }
         tick_count.store(tick_now, std::memory_order_relaxed);
@@ -657,6 +700,71 @@ void EngineHost::arp_note(Slot& slot, int key, int velocity, int from, int32_t l
     if (pressure > 0) slot.engine->set_pressure(key, pressure);
     slot.arp_played = key; slot.arp_from = from;
     schedule_off(slot, key, length);
+    midi_note(unsigned(&slot - slots.data()), key, velocity, frame_now, length);
+}
+
+// --- MIDI out and sync (parity phase 9) ---
+
+// Pad MIDI Out: Always, or Empty for a note nothing here would sound (a kit
+// pad without a sample, a track without an engine). Past 127 is no MIDI note.
+bool EngineHost::out_wanted(unsigned t, int key) const {
+    t %= track_count;
+    if (!out_channel[t] || !out_mode[t] || key < 0 || key > 127) return false;
+    if (out_mode[t] == 1) return true;
+    const auto& slot = slots[t];
+    if (!slot.engine) return true;
+    if (slot.kind == EngineKind::Sampler) return key < int(sampler_first_note) || !slot.sampler.pad_used(unsigned(key) - sampler_first_note);
+    return false;
+}
+
+void EngineHost::midi_note(unsigned t, int key, int velocity, uint64_t at, int64_t length) {
+    if (!out_wanted(t, key)) return;
+    uint8_t channel = out_channel[t % track_count];
+    for (auto& off : midi_offs) // a retrigger ends the note it replaces first
+        if (off.on && off.channel == channel && off.key == key) { emit({MidiOutEvent::Kind::NoteOff, channel, uint8_t(key), 0, 0, at}); off.on = false; }
+    emit({MidiOutEvent::Kind::NoteOn, channel, uint8_t(key), uint8_t(std::clamp(velocity, 1, 127)), 0, at});
+    for (auto& off : midi_offs)
+        if (!off.on) { off = {true, channel, uint8_t(key), uint8_t(t), length >= 0 ? at + uint64_t(length) : ~uint64_t(0)}; return; }
+    if (length >= 0) emit({MidiOutEvent::Kind::NoteOff, channel, uint8_t(key), 0, 0, at + uint64_t(length)}); // no room: its off now, timed
+}
+
+void EngineHost::midi_note_off(unsigned t, int key, uint64_t at) {
+    for (auto& off : midi_offs)
+        if (off.on && off.track == t % track_count && off.key == key) {
+            emit({MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, at});
+            off.on = false;
+        }
+}
+
+void EngineHost::midi_offs_due(uint64_t until) {
+    for (auto& off : midi_offs)
+        if (off.on && off.at < until) { emit({MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, off.at}); off.on = false; }
+}
+
+void EngineHost::midi_all_off(unsigned track, uint64_t at) {
+    for (auto& off : midi_offs)
+        if (off.on && (track == 255 || off.track == track % track_count)) {
+            emit({MidiOutEvent::Kind::NoteOff, off.channel, off.key, 0, 0, at});
+            off.on = false;
+        }
+}
+
+void EngineHost::sync_stop(uint64_t at) {
+    if (sync_started) sync.stop(at, [&](const MidiOutEvent& e) { emit(e); });
+    sync_started = false;
+}
+
+// MIDI clock in: each pulse lets the sequencer through four more ticks once
+// its frame comes (a block after it arrived, to the frame: no block jitter).
+void EngineHost::ext_release(uint64_t at) {
+    while (ext_tail != ext_head && int32_t(ext_ring[ext_tail] - uint32_t(at)) <= 0) {
+        ext_tail = (ext_tail + 1) % ext_ring.size();
+        ++ext_clocks;
+        sync.allow(ext_clocks);
+        // Far behind the clock (a tempo jump): catch up at once, allowing for swing's late sixteenths.
+        uint32_t allowed = ext_base + (ext_clocks - 1) * 4;
+        if (running && !count_left && tick_now + 16 < allowed) until_tick = std::min(until_tick, -double(allowed - tick_now) * tick_length());
+    }
 }
 
 void EngineHost::start_live(unsigned s, const PendingPunch& p) {
@@ -709,6 +817,13 @@ void EngineHost::tick() {
         until_tick += tick_length();
         return;
     }
+    // The song's clocks start with its first tick, after any count-in: Start from the top, else Song Position and Continue.
+    if (!sync_started) {
+        sync_started = true;
+        uint32_t from = song_mode ? song_bar_now * bar + tick_now % bar : tick_now;
+        sync.start(frame_now + block_at, double(from) / ticks_per_quarter, from * tick_length() / clock.frames_a_second(), quarter_samples(),
+                   [&](const MidiOutEvent& e) { emit(e); });
+    }
     // Punches waiting for their grid, and Flex Beat for its sixteenth.
     for (unsigned s = 0; s < live_slots; ++s) {
         auto& p = live[s].pending;
@@ -727,13 +842,14 @@ void EngineHost::tick() {
     if (song_mode && tick_now % sixteenth_ticks == 0) play_song_punches();
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
-        if (!slot.engine || slot.silent) continue;
+        bool sound = slot.engine != nullptr, midi = out_channel[t] && out_mode[t]; // an empty track may still play MIDI out
+        if ((!sound && !midi) || slot.silent) continue;
         const auto& pattern = *patterns[t][slot.pattern];
         uint32_t length = std::max<uint32_t>(pattern.length, 1);
         uint32_t at = (tick_now - slot.start) % length;
         positions_now[t].store(int(at), std::memory_order_relaxed);
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
-        if (motion.count && at % sixteenth_ticks == 0) play_motion(t, slot, at / sixteenth_ticks);
+        if (sound && motion.count && at % sixteenth_ticks == 0) play_motion(t, slot, at / sixteenth_ticks);
         const auto& events = pattern.events;
         for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n) {
             const auto& e = events[n];
@@ -745,8 +861,11 @@ void EngineHost::tick() {
             double gap = e.flags & step_tie ? 0 : std::min<unsigned>(pattern.q(), e.length) * 0.1;
             auto samples = int32_t(tick_length() * (e.length - gap));
             int velocity = e.flags & step_accent ? std::min(127, e.velocity + 24) : e.velocity;
-            slot.engine->note_on(e.key, velocity);
-            schedule_off(slot, e.key, std::max<int32_t>(samples, 64));
+            if (sound) {
+                slot.engine->note_on(e.key, velocity);
+                schedule_off(slot, e.key, std::max<int32_t>(samples, 64));
+            }
+            midi_note(t, e.key, velocity, frame_now + block_at, std::max<int32_t>(samples, 64));
         }
     }
     until_tick += tick_samples(tick_now);
@@ -810,6 +929,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         samples[offer.slot] = offer.sample;
         if (old && !retired.push(old)) samples[offer.slot] = old; // no room to give it back: keep it, try later
     }
+    // Where this block sits against CLOCK_MONOTONIC, for MIDI out and in.
+    clock.stamp(int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()), frame_now);
     Command command;
     for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
     frames = std::min(frames, block);
@@ -830,9 +951,16 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     unsigned done = 0;
     while (done < frames) {
         unsigned n = frames - done;
+        bool held = false; // following MIDI clock in: the next tick waits for its pulse
         if (running) {
-            if (until_tick <= 0) { block_at = done; tick(); continue; }
-            n = std::min<unsigned>(n, unsigned(std::ceil(until_tick)));
+            ext_release(frame_now + done);
+            if (until_tick <= 0) { // a tick is due: it plays, unless MIDI clock in has not let it through yet
+                held = ext_gate && !count_left && tick_now >= ext_base + ext_clocks * 4;
+                if (!held) { block_at = done; tick(); continue; }
+                if (ext_tail != ext_head) n = std::clamp<unsigned>(unsigned(int32_t(ext_ring[ext_tail] - uint32_t(frame_now + done))), 1, n);
+            } else {
+                n = std::min<unsigned>(n, unsigned(std::ceil(until_tick)));
+            }
         }
         for (auto& slot : slots) {
             if (!slot.engine) continue;
@@ -841,9 +969,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
             else slot.engine->render(slot.buffer + done, n);
         }
-        if (running) until_tick -= n;
+        sync.run(frame_now + done, n, quarter_samples(), [&](const MidiOutEvent& e) { emit(e); });
+        if (running && !held) until_tick -= n;
         done += n;
     }
+    midi_offs_due(frame_now + frames);
+    if (!running && sync_started) sync_stop(frame_now + frames); // the song came to its end
     is_playing.store(running, std::memory_order_relaxed);
 
     // The signal: each track panned, through its chain, into the master and
@@ -958,6 +1089,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     }
     output_peak.store(peak, std::memory_order_relaxed);
     if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
+    frame_now += frames;
 }
 
 } // namespace melodee

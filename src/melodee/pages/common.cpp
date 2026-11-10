@@ -30,6 +30,7 @@ ui::Header header_of(const Snapshot& s) {
     else std::snprintf(bpm, sizeof(bpm), "%d", tempo / 10);
     h.bpm = bpm;
     // Count-In: the beat counted before the take; Seq Record armed: Play starts it.
+    if (s.following) h.left.push_back(ui::chip("EXT CLOCK", ui::colour::text)); // MIDI clock in leads (parity phase 9)
     if (s.count_in) h.left.push_back(ui::chip("COUNT " + juce::String(s.count_in), ui::colour::rec));
     else if (s.ui.rec_armed) h.left.push_back(ui::chip("REC ARMED", ui::colour::rec));
     // A render as it plays (Resample, the song's mixdown), or Resample waiting for its pad.

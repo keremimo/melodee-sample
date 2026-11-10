@@ -112,7 +112,7 @@ void Context::select_track(unsigned t) {
 void Context::note(unsigned t, int key, int velocity) {
     int top = project.tracks[t % track_count].engine == EngineKind::Sampler ? int(sampler_last_key) : 127; // kit pads in banks F-H
     if (key < 0 || key > top) return;
-    Command c {velocity ? Type::NoteOn : Type::NoteOff, uint8_t(t), 0, uint16_t(key), int16_t(velocity)};
+    Command c {velocity ? Type::NoteOn : Type::NoteOff, uint8_t(t), uint8_t(from_midi ? 1 : 0), uint16_t(key), int16_t(velocity)};
     send(c);
 }
 
@@ -1237,24 +1237,24 @@ void Context::capture_notes() {
 
 // Play: from the start (on Song, the arrangement from the cursor). Seq Record
 // armed, the take begins, after a bar's count when Count-In is on.
-void Context::play() {
+void Context::play(bool external) {
     if (host.playing()) return;
     played_song = ui.page == PageId::Song;
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
-    bool count = ui.recording && ui.settings.count_in;
+    bool count = ui.recording && ui.settings.count_in && !external;
     if (played_song) send({Type::Play, uint8_t(count), 0, ui.song_cursor, 1});
     else send({Type::Play, uint8_t(count)});
+    if (external) send({Type::ExtSync, 0, 0, 3}); // the ticks wait for the clock's pulses
 }
 
 // Shift + Play: on from where it stopped (or where the wheel moved it on Patterns).
-void Context::play_continue() {
+void Context::play_continue(bool external) {
     if (host.playing()) return;
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
-    bool count = ui.recording && ui.settings.count_in;
-    if (played_song) { send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); return; } // from the bar it stopped in
-    Command c {Type::Play, uint8_t(count)};
-    c.position = ui.locate;
-    send(c);
+    bool count = ui.recording && ui.settings.count_in && !external;
+    if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in
+    else { Command c {Type::Play, uint8_t(count)}; c.position = ui.locate; send(c); }
+    if (external) send({Type::ExtSync, 0, 0, 3});
 }
 
 // Shift + Loop: the last pad plays backwards, or forwards again.

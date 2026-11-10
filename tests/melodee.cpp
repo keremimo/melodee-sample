@@ -24,6 +24,9 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/fader_job.h"
+#include "melodee/shell/midi_route.h"
+#include "melodee/shell/midi_config_rows.h"
+#include "melodee/engine/midi_out.h"
 #include "melodee/shell/takeover.h"
 #include "melodee/model/fader.h"
 #include "melodee/engine/effect_info.h"
@@ -1276,11 +1279,11 @@ void shift_pads() {
     CHECK(shift_pad_job(10).kind == K::Action);                                // Resample (phase 6)
     CHECK(shift_pad_job(4).kind == K::Open);                                   // Compressor (phase 7)
     CHECK(shift_pad_job(8).kind == K::Open);                                   // Fader (phase 8)
-    CHECK(shift_pad_job(7).kind == K::Later && shift_pad_job(7).phase == 9);   // MIDI Config
+    CHECK(shift_pad_job(7).kind == K::Open);                                   // MIDI Config (phase 9): all sixteen built
 
     UiState ui;
     CHECK(!ui.settings.full_level() && !ui.settings.count_in && ui.settings.rec_quantize);
-    CHECK(shift_pad_level(ui, 0) == 1 && shift_pad_level(ui, 9) == 2 && shift_pad_level(ui, 7) == 0 && shift_pad_level(ui, 11) == 1);
+    CHECK(shift_pad_level(ui, 0) == 1 && shift_pad_level(ui, 9) == 2 && shift_pad_level(ui, 7) == 1 && shift_pad_level(ui, 11) == 1);
     ui.settings.pad_response = 2;
     ui.settings.toggle_full_level();
     CHECK(ui.settings.full_level() && ui.settings.velocity(5) == 127 && shift_pad_level(ui, 0) == 2);
@@ -2710,7 +2713,227 @@ void fader_and_takeover() {
     }
 }
 
+// Parity phase 9: MIDI Config, where MIDI in goes, the clocks out and the engine's MIDI out and clock in.
+void midi_and_sync() {
+    // Settings: new keys only; a file without them gets the defaults; Reset keeps the starred sounds.
+    {
+        Settings set;
+        CHECK(set.midi.port == MidiPort::External && set.midi.in_channel == 0 && set.midi.out_channel == 1 && set.midi.pad_in &&
+              set.midi.pad_out == PadMidiOut::Never && set.midi.sync_in == MidiSync::Off && !set.midi.cv_out && set.midi.cv_ppqn() == 2);
+        set.midi.port = MidiPort::Usb; set.midi.in_channel = 10; set.midi.out_channel = 16; set.midi.pad_out = PadMidiOut::Empty;
+        set.midi.sync_in = MidiSync::Clock; set.midi.sync_out = MidiSync::Mtc; set.midi.thru = true; set.midi.program_change = true;
+        set.midi.cv_out = true; set.midi.cv_base = 4; set.midi.cv_division = 24; set.midi.pad_in = false;
+        Settings back; back.read(set.text());
+        CHECK(back.midi == set.midi && back.midi.cv_ppqn() == 96);
+        Settings older; older.read("pad_response=2\nscreen=80\n");
+        CHECK(older.midi == MidiConfig {} && older.pad_response == 2);
+        Settings bad; bad.read("cv_base=40\ncv_division=0\nmidi_out_channel=0\nmidi_in_channel=99\n");
+        CHECK(bad.midi.cv_base == 8 && bad.midi.cv_division == 1 && bad.midi.out_channel == 1 && bad.midi.in_channel == 16);
+        set.toggle_favourite(0, 3); set.screen = 50;
+        set.reset_factory();
+        CHECK(set.midi == MidiConfig {} && set.screen == 100 && set.favourite(0, 3));
+    }
+    // The page's rows: channels stop at their ends, lists go round, takeovers through Settings.
+    {
+        Settings set; Track track;
+        midi_row_step(set, track, InChannelRow, -1); CHECK(set.midi.in_channel == 0);
+        for (int n = 0; n < 20; ++n) midi_row_step(set, track, InChannelRow, 1);
+        CHECK(set.midi.in_channel == 16 && midi_row_value(set, track, InChannelRow) == "16");
+        midi_row_step(set, track, TrackChannelRow, 1); CHECK(track.midi_channel == 1 && midi_row_value(set, track, TrackChannelRow) == "1");
+        midi_row_step(set, track, TrackChannelRow, -1); CHECK(midi_row_value(set, track, TrackChannelRow) == "Off");
+        midi_row_step(set, track, PadOutRow, -1); CHECK(set.midi.pad_out == PadMidiOut::Empty);
+        midi_row_step(set, track, SyncOutRow, 1); CHECK(midi_row_value(set, track, SyncOutRow) == "MIDI Clock");
+        midi_row_step(set, track, FaderTakeoverRow, 1); CHECK(set.fader_takeover == Takeover::Scaled);
+        CHECK(midi_row_value(set, track, ProgramChangeRow) == "Off" && std::string(midi_row_name(ResetRow)) == "Reset Factory Settings");
+    }
+    // Where notes go: a track's own channel wins; the In channel (All or one) plays the selected track.
+    {
+        MidiConfig config;
+        std::array<uint8_t, track_count> own {};
+        own[5] = 3; own[9] = 3;
+        CHECK(note_tracks(config, own, 2, 3) == ((1u << 5) | (1u << 9)));
+        CHECK(note_tracks(config, own, 2, 1) == (1u << 2));
+        config.in_channel = 7;
+        CHECK(note_tracks(config, own, 2, 1) == 0 && note_tracks(config, own, 2, 7) == (1u << 2));
+        Track kit; kit.engine = EngineKind::Sampler;
+        Track synth; synth.engine = EngineKind::Prophet;
+        Track drums; drums.engine = EngineKind::Kit909;
+        CHECK(note_key(kit, 35) == -1 && note_key(kit, 36) == 36 && note_key(kit, 127) == 127);
+        CHECK(note_key(synth, 12) == 12 && note_key(drums, 35) == -1 && note_key(drums, 46) == 46 && note_key(drums, 47) == -1);
+        CHECK(port_is(MidiPort::External, "SerialMIDI", false) && !port_is(MidiPort::External, "SerialMIDI", true));
+        CHECK(port_is(MidiPort::Usb, "MIDI Gadget", false) && port_is(MidiPort::Usb, "USB-Audio", false) && !port_is(MidiPort::Usb, "SerialMIDI", false));
+        Track own_channel; own_channel.midi_channel = 9;
+        CHECK(out_channel_of(config, own_channel) == 9 && out_channel_of(config, synth) == 1);
+    }
+    // MIDI clock in: the tempo from the pulses' stamps, steady through jitter; a pause starts over.
+    {
+        ClockFollower f;
+        CHECK(f.tempo_tenths() == 0);
+        uint64_t at = 1000000000ull;
+        uint32_t noise = 12345;
+        for (unsigned n = 0; n < 96; ++n) {
+            noise = noise * 1664525u + 1013904223u;
+            f.pulse(at + n * 20833333ull + (noise >> 16) % 100000); // 120 BPM, up to 0.1 ms of jitter
+        }
+        CHECK(f.tempo_tenths() >= 1199 && f.tempo_tenths() <= 1201);
+        CHECK(f.jitter_us() > 5 && f.jitter_us() < 60); // up to 0.1 ms each way: about 29 us
+        f.pulse(at + 96 * 20833333ull + 500000000ull);
+        CHECK(f.tempo_tenths() == 0);
+        for (unsigned n = 1; n < 30; ++n) f.pulse(at + 96 * 20833333ull + 500000000ull + n * 15625000ull); // 160 BPM
+        CHECK(f.tempo_tenths() >= 1599 && f.tempo_tenths() <= 1601);
+    }
+    // The clocks out, from the tempo (not the swung ticks), to the frame.
+    {
+        using K = MidiOutEvent::Kind;
+        std::vector<MidiOutEvent> got;
+        auto keep = [&](const MidiOutEvent& e) { got.push_back(e); };
+        SyncOut sync;
+        sync.set(true, true, true, 2);
+        double quarter = 22050; // 120 BPM at 44.1 kHz
+        sync.start(1000, 0, 0, quarter, keep);
+        for (unsigned b = 0; b < 200; ++b) sync.run(1000 + b * 128, 128, quarter, keep);
+        CHECK(got[0].kind == K::Start && got[0].frame == 1000 && got[1].kind == K::MtcFull && got[1].value == 0);
+        std::vector<uint64_t> clocks, highs, lows, quarters;
+        for (auto& e : got) {
+            if (e.kind == K::Clock) clocks.push_back(e.frame);
+            if (e.kind == K::CvHigh) highs.push_back(e.frame);
+            if (e.kind == K::CvLow) lows.push_back(e.frame);
+            if (e.kind == K::MtcQuarter) quarters.push_back(e.frame);
+        }
+        CHECK(clocks.size() == 28 && clocks[0] == 1000 && clocks[24] == 1000 + 22050); // 25600 frames: pulses 0..27
+        for (size_t n = 1; n < clocks.size(); ++n) CHECK(clocks[n] - clocks[n - 1] >= 918 && clocks[n] - clocks[n - 1] <= 919);
+        CHECK(highs.size() == 3 && highs[1] - highs[0] == 11025 && lows[0] - highs[0] >= 220 && lows[0] - highs[0] <= 221); // 2 PPQN, 5 ms high
+        CHECK(quarters.size() == 59 && quarters[1] - quarters[0] == 441);
+        CHECK(SyncOut::mtc_nibble(25 * 61 + 3, 0) == 3 && SyncOut::mtc_nibble(25 * 61 + 3, 2) == 1 && SyncOut::mtc_nibble(25 * 61 + 3, 4) == 1 &&
+              SyncOut::mtc_nibble(0, 7) == 2); // 0:01:01:03; 25 fps in the hours piece
+        got.clear();
+        sync.stop(30000, keep);
+        CHECK(got.size() == 2 && got[0].kind == K::Stop && got[1].kind == K::CvLow);
+        // Continue from 1.3 quarters: Song Position 6 (the next sixteenth), clocks from pulse 36 there.
+        got.clear();
+        sync.set(true, false, false, 2);
+        sync.start(0, 1.3, 0.65, quarter, keep);
+        sync.run(0, 8192, quarter, keep);
+        CHECK(got.size() >= 2 && got[0].kind == K::Continue && got[0].value == 6 && got[0].frame == 4410);
+        CHECK(got[1].kind == K::Clock && got[1].frame == got[0].frame);
+        // Following clock in: the clock out never runs ahead of the pulses let through, and catches up a pulse behind.
+        got.clear();
+        SyncOut follow; follow.set(true, false, false, 2);
+        follow.start(0, 0, 0, quarter, keep);
+        follow.set_external(true);
+        follow.allow(0);
+        follow.run(0, 4096, quarter, keep);
+        CHECK(got.size() == 1 && got[0].kind == K::Start); // nothing yet
+        follow.allow(3);
+        follow.run(4096, 128, quarter, keep);
+        CHECK(got.size() == 2); // three pulses behind (beats ran on): one now, the rest at twice the pace
+        follow.allow(10);
+        follow.run(4224, 8192, quarter, keep);
+        std::vector<uint64_t> out_pulses;
+        for (auto& e : got) if (e.kind == K::Clock) out_pulses.push_back(e.frame);
+        CHECK(out_pulses.size() == 10);
+        for (size_t n = 1; n < out_pulses.size(); ++n) CHECK(out_pulses[n] - out_pulses[n - 1] >= 459); // never closer than half a pulse
+        // Another rate (48 or 96 kHz later): MTC's quarter frames follow it.
+        got.clear();
+        SyncOut fast; fast.set_rate(96000); fast.set(false, true, false, 2);
+        fast.start(0, 0, 0, 48000, keep);
+        fast.run(0, 2000, 48000, keep);
+        CHECK(got.size() == 4 && got[2].frame == 960 && got[3].frame == 1920);
+    }
+    // The audio clock: frames to CLOCK_MONOTONIC and back, at the device's rate.
+    {
+        AudioClock clock;
+        clock.set_format(48000, 384);
+        clock.stamp(1000000000, 0);
+        CHECK(clock.heard_at(0) == 1000000000 + 8000000); // 384 frames at 48 kHz
+        CHECK(clock.frame_at(1000000000 + 10000000) == 480);
+        clock.stamp(1000000000 + 2666666 + 1000000, 128); // a block a millisecond late barely moves it
+        CHECK(std::llabs(clock.heard_at(0) - 1008000000) < 10000);
+    }
+    // The engine host: patterns and pads out on their channel, Empty, the clocks, and following MIDI clock in.
+    {
+        using K = MidiOutEvent::Kind;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        project->tempo = 1200;
+        put(bank->at[0][0], 4, 45, 100);
+        put(bank->at[1][0], 0, 60, 90); // track 2 has no engine: a MIDI track under Empty
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        std::vector<int32_t> out(256);
+        auto drain = [&] { std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
+        host.send({Command::Type::MidiTrack, 0, 0, 5, 1}); // track 1: channel 5, always
+        host.send({Command::Type::MidiTrack, 1, 0, 2, 2}); // track 2: channel 2, empty
+        host.send({Command::Type::MidiSync, 0, 0, 0, 1});  // MIDI clock out
+        host.render(out.data(), 128, 1);
+        CHECK(drain().empty());
+        host.send({Command::Type::NoteOn, 0, 0, 50, 99});  // a pad
+        host.send({Command::Type::NoteOn, 0, 1, 51, 99});  // a note from MIDI in: never echoed
+        host.render(out.data(), 128, 1);
+        auto pads = drain();
+        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOn && pads[0].channel == 5 && pads[0].a == 50 && pads[0].b == 99 && pads[0].frame == 128);
+        host.send({Command::Type::NoteOff, 0, 0, 50});
+        host.render(out.data(), 128, 1);
+        pads = drain();
+        CHECK(pads.size() == 1 && pads[0].kind == K::NoteOff && pads[0].a == 50 && pads[0].frame == 256);
+        host.send({Command::Type::Play});
+        std::vector<MidiOutEvent> all;
+        for (unsigned n = 0; n < 240; ++n) { host.render(out.data(), 128, 1); for (auto& e : drain()) all.push_back(e); }
+        uint64_t start = 384; // Play came with the fourth block
+        int empty_on = -1, synth_on = -1, synth_off = -1, clocks = 0;
+        bool started = false;
+        for (auto& e : all) {
+            if (e.kind == K::Start) { started = true; CHECK(e.frame == start); }
+            if (e.kind == K::Clock) ++clocks;
+            if (e.kind == K::NoteOn && e.channel == 2) empty_on = int(e.frame - start);
+            if (e.kind == K::NoteOn && e.channel == 5 && e.a == 45) synth_on = int(e.frame - start);
+            if (e.kind == K::NoteOff && e.channel == 5 && e.a == 45) synth_off = int(e.frame - start);
+        }
+        CHECK(started && empty_on == 0 && synth_on >= 22050 && synth_on <= 22051 && synth_off > synth_on && synth_off < synth_on + 5513);
+        CHECK(clocks >= 33 && clocks <= 34); // 30720 frames at 918.75 a pulse
+        host.send({Command::Type::Stop});
+        host.render(out.data(), 128, 1);
+        auto stopped = drain();
+        CHECK(!stopped.empty() && stopped[0].kind == K::Stop);
+        // MIDI clock in: Play waits for the first pulse, then four ticks a pulse, each let through at its frame.
+        host.send({Command::Type::ExtSync, 0, 0, 0, 1});
+        host.send({Command::Type::Play});
+        host.send({Command::Type::ExtSync, 0, 0, 3});
+        for (unsigned n = 0; n < 20; ++n) host.render(out.data(), 128, 1);
+        CHECK(host.playing() && host.following() && host.position_of(0) == -1); // not a tick yet
+        uint64_t now = 128 * (1 + 1 + 1 + 240 + 1 + 20);
+        Command pulse {Command::Type::ExtSync, 0, 0, 1};
+        pulse.position = uint32_t(now + 64);
+        host.send(pulse);
+        host.render(out.data(), 128, 1);
+        CHECK(host.ticks() >= 1 && host.ticks() <= 4);
+        for (unsigned n = 0; n < 20; ++n) host.render(out.data(), 128, 1);
+        CHECK(host.ticks() == 4); // no more pulses: it waits
+        host.send({Command::Type::ExtSync, 0, 0, 4});
+        host.send({Command::Type::Stop});
+        host.render(out.data(), 128, 1);
+        CHECK(!host.following() && host.midi_dropped() == 0 && host.dropped() == 0);
+    }
+    // The file: a track's own channel (MIDC); older files have none.
+    {
+        auto project = std::make_unique<Project>();
+        auto patterns = std::make_unique<PatternBank>();
+        project->tracks[4].midi_channel = 11;
+        auto bytes = save_project(*project, *patterns);
+        auto loaded = std::make_unique<Project>();
+        CHECK(load_project(bytes, *loaded, *patterns).empty());
+        CHECK(loaded->tracks[4].midi_channel == 11 && loaded->tracks[3].midi_channel == 0);
+        for (size_t n = 0; n + 4 <= bytes.size(); ++n) if (std::memcmp(&bytes[n], "MIDC", 4) == 0) std::memcpy(&bytes[n], "XXXX", 4);
+        auto older = std::make_unique<Project>();
+        CHECK(load_project(bytes, *older, *patterns).empty());
+        CHECK(older->tracks[4].midi_channel == 0);
+    }
+}
+
 int main() {
+    midi_and_sync();
     fader_and_takeover();
     pad_fx_and_flex();
     performance_effects();

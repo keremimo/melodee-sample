@@ -18,7 +18,8 @@ namespace melodee {
 enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
-                            FaderPage, Count };                // parity phase 8: Shift + Pad 9
+                            FaderPage,                         // parity phase 8: Shift + Pad 9
+                            MidiConfig, Count };               // parity phase 9: Shift + Pad 8
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
 // met it, so a page change never makes a value jump; until then Pickup waits
@@ -77,6 +78,9 @@ struct UiState {
     Pot fader;
     uint32_t fader_moved_at = 0;
     uint8_t fader_cursor = 0;                 // the Fader page: the target under the cursor
+    uint8_t midi_cursor = 0;                  // MIDI Config: the row under the cursor (shell/midi_config_rows.h)
+    bool midi_editing = false;                // and its value open (the wheel changes it)
+    uint32_t midi_in_at = 0, midi_out_at = 0; // ms: MIDI last came in, went out (the page's lights)
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
     bool sheet_open = false;  // the note sheet over Roll
@@ -181,7 +185,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane };
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings };
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // A word over the header for a moment: what an undo, redo, delete or copy did.

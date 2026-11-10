@@ -12,6 +12,7 @@
 #include "melodee/model/pad_params.h"
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
+#include "melodee/shell/midi_config_rows.h"
 #include "drivers/usb_audio.h"
 #include "runtime/screen.h"
 #include "runtime/util.h"
@@ -599,6 +600,27 @@ const Preview previews[] {
      }},
     {"fadersettings", [](Shell&, Snapshot& s) { // Settings: the three takeover rows, the fader's open
          s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::FaderTakeover; s.ui.settings_editing = true;
+     }},
+    // Parity phase 9: MIDI and sync.
+    {"midiconfig", [](Shell&, Snapshot& s) { // Shift + Pad 8: Sync In open on MIDI Clock, MIDI just came in
+         s.ui.page = PageId::MidiConfig; s.ui.track = 2; s.playing = true;
+         auto& m = s.ui.settings.midi;
+         m.sync_in = MidiSync::Clock; m.pad_out = PadMidiOut::Empty; m.in_channel = 1;
+         s.project.tracks[2].midi_channel = 3;
+         s.ui.midi_cursor = SyncInRow; s.ui.midi_editing = true; s.ui.midi_in_at = s.now;
+     }},
+    {"midiconfigcv", [](Shell&, Snapshot& s) { // further down: CV/Sync Out on, 24 PPQN, the takeover rows
+         s.ui.page = PageId::MidiConfig; s.ui.track = 0;
+         auto& m = s.ui.settings.midi;
+         m.cv_out = true; m.cv_base = 1; m.cv_division = 24; m.sync_out = MidiSync::Clock;
+         s.ui.midi_cursor = CvDivisionRow; s.ui.midi_out_at = s.now;
+     }},
+    {"midireset", [](Shell&, Snapshot& s) { // Reset Factory Settings asks first: B1 NO, B3 YES
+         s.ui.page = PageId::MidiConfig; s.ui.midi_cursor = ResetRow; s.ui.ask = UiState::Ask::ResetSettings;
+     }},
+    {"extclock", [](Shell&, Snapshot& s) { // Patterns while MIDI clock in leads: EXT CLOCK, its tempo
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.playing = true; s.following = true; s.tempo = 1284;
+         s.ui.settings.midi.sync_in = MidiSync::Clock;
      }},
     {"padpunch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::PadPunch; s.ui.track = 3; s.playing = true; s.sample = break_sample();

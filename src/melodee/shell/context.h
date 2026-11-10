@@ -12,6 +12,7 @@
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
+#include <bitset>
 #include <vector>
 #include <memory>
 #include <cstdint>
@@ -124,7 +125,6 @@ public:
     void toggle_loop_lock();  // Shift + B1 on Trim: the loop point back on the start, or free
     void normalize();         // Shift + B2 on Trim: the region's loudest point to 0 dB, one undo
     void toggle_warp_mode();  // Shift + Pad 15: Warp by Time stretch or Pitch (the kit's Follow how)
-    void play_continue();     // Shift + Play: on from where it stopped
     void set_recording(bool on); // a take begins; when it ends it goes into the history
     void seq_record();           // Seq Record: stopped, arm (Play starts the take); playing, record at once; recording, stop recording
     void sync_punches();
@@ -280,7 +280,8 @@ public:
     // Capture: the selected track's last bars from the history into a pattern.
     void capture();
     // Transport
-    void play();
+    void play(bool external = false);          // external: MIDI clock in's Start (no count-in; the clock leads)
+    void play_continue(bool external = false); // Shift + Play: on from where it stopped; external: MIDI Continue, from Song Position
     void stop();
     void tap_tempo();
     void set_tempo(int tenths);
@@ -292,6 +293,15 @@ public:
         return keys;
     }();
     void key(int key, int velocity, bool down);
+
+    // MIDI in (parity phase 9, shell/midi_io.cpp): a note on track `t` as its pads would play it, but straight (no chord,
+    // layout or response curve) and never sent out again; on the selected track it records as a pad does under Seq Record.
+    void midi_key(unsigned t, int note, int velocity, bool down);
+    void midi_release_all();                                // the input went away: every note it holds ends
+    std::array<std::bitset<128>, track_count> midi_held {};  // keys MIDI in holds, by track
+    bool from_midi = false;                                 // note() is playing what came in: not echoed out
+    void change_midi(unsigned row, int way);                // one step along a MIDI Config row (shell/midi_config_rows.h)
+    void reset_settings();                                  // MIDI Config's Reset Factory Settings, after B3
 
 private:
     void double_notes();

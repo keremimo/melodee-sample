@@ -710,6 +710,51 @@ Steps, Roll and Motion B1–B3 pick those three.
 - **Favourites:** on Sounds, Shift + Sample Select stars the sound under
   the cursor; again unstars it. FAVOURITES lists the starred ones, with a
   star on each in ALL. Kept by engine in the settings file.
+- **MIDI and sync** (parity phase 9, as Akai's midi_configuration page;
+  `pages/midi_config_page.cpp`, `shell/midi_config_rows.h`,
+  `shell/midi_io.cpp`, `shell/midi_route.cpp`, `engine/midi_out.h`,
+  `model/midi_config.h`): **MIDI Config** (Shift + Pad 8; wheel moves,
+  Push opens a value, wheel changes it, Push keeps it; Minus / Plus change
+  it at once; B1 back) holds MIDI Port (External: the 1/8" jacks; USB:
+  USB-C, the gadget's f_midi, and any USB host device), MIDI In Channel
+  (All, 1–16: what plays the selected track), MIDI Out Channel, **Track
+  Channel** (Melodee's: the selected track's own channel, Off by default;
+  notes on it play that track whichever is selected, and its notes go out
+  on it), Pad MIDI In (Off / On), Pad MIDI Out (Never, Always, Empty: only
+  notes with no sound of their own, a kit pad without a sample or a track
+  without an engine, whose pattern then plays MIDI only), MIDI Sync In and
+  Out (Off, MIDI Clock, MTC; MTC in is phase 9b), MIDI Thru, Receive
+  Program Change (Sequence: program 1–16 launches that pattern on every
+  track), CV/Sync Out (SYNC OUT) with its Base 1–8 and Division 1–24
+  (pulses a quarter: base × division, 2 by default as Volcas and Pocket
+  Operators take; 5 ms high, or half the pulse when faster), the three
+  takeover rows (as on Settings) and Reset Factory Settings (Push, then B3
+  YES or B1 NO; the starred sounds stay). IN and OUT light in the header as
+  MIDI passes; the pads play. Kept with the settings (`midi_port` …
+  `cv_division`; older files load the defaults); a track's channel goes in
+  the project (`MIDC`). **In:** from the chosen port only; notes and
+  pressure (poly and channel), CC 1 as the mod wheel, All Notes Off; a kit
+  hears note 36 as A01 (its pads' own keys), a 909 its drums from 36, a
+  synth the note itself, played straight (no chord, layout or curve); on
+  the selected track a note records under Seq Record as a pad does (Rec
+  Quantize included, one undo with the take); notes from MIDI in never go
+  out again. With Sync In MIDI Clock, Start plays from the top, Continue
+  from Song Position, Stop stops (no count-in), the tempo comes from the
+  pulses (the header says EXT CLOCK) and each pulse lets the sequencer
+  through four ticks, at the frame a block after it came. **Out:** the
+  engine host decides on the audio thread what goes out at which of its
+  frames (pads, 16 Levels, the arp, patterns' notes with their lengths,
+  the clocks); the MIDI thread makes each a `juce::MidiMessage` and sends
+  it when that frame is heard (`AudioClock`: the audio clock against
+  CLOCK_MONOTONIC from each block's stamp, following the earliest, plus
+  the frames the PCM holds queued), the runtime waking it for that
+  (`MidiOutput::wake_at`). MIDI clock (24 a quarter, with Start, Continue
+  after Song Position, Stop), MTC (25 fps quarter frames, a full frame at
+  Start) and the CV clock come from the tempo, not the swung ticks, while
+  playing; following clock in, the clock out stays smooth on the measured
+  tempo but never runs ahead of the pulses received. Remote: `--ctl
+  melodee-midi [usb] 90 3c 64` feeds one message into the input path as if
+  from the External (or USB) port.
 - **Settings (B2 on Project):** Melodee's own, kept in the `settings` file
   next to the projects (with the project to open at start): palette (NIGHT,
   the one there is), pad response (soft, medium, hard, full level: every hit
@@ -729,10 +774,10 @@ Steps, Roll and Motion B1–B3 pick those three.
   leaving). Wheel moves, Push opens a value, wheel changes it, Push keeps
   it; Minus / Plus change it at once. Nothing is written until a value
   changes. **About (B3):** engines, effects, punches, limits, JUCE version,
-  font and licence. Audio out and MIDI in from the board's first guess are
-  left out: Melodee has no MIDI input path yet and the outputs follow the
-  jacks: the built-in speaker plays while neither headphones nor line out
-  is plugged in.
+  font and licence. Audio out from the board's first guess is left out:
+  the outputs follow the jacks (the built-in speaker plays while neither
+  headphones nor line out is plugged in); MIDI is MIDI Config's (Shift +
+  Pad 8).
 - **Host:** sixteen track slots, level / pan / mute / solo, the patterns'
   copies, a sample-accurate tick clock (96 a quarter) with swing, the time
   signature, count-in, locate and BPM per pattern; chance, accent and tie, meters
@@ -783,9 +828,8 @@ Steps, Roll and Motion B1–B3 pick those three.
   and motion played twice), 4 Count-In and 10 Rec Quantize (toggles, kept
   in the settings file), 6 Half Speed, 7 Double Speed, 12 Song, 13 Trim
   Sample, 14 Time Correct, 15 Warp (Time stretch or Pitch for the kit), 16
-  Project, 11 Resample (then a pad), 5 Compressor, 9 Fader. The other (8 MIDI Config)
-  says which phase brings it
-  ("MIDI Config: phase 9"). The overlay draws the sixteen as the pads
+  Project, 11 Resample (then a pad), 5 Compressor, 9 Fader, 8 MIDI Config: all
+  sixteen built. The overlay draws the sixteen as the pads
   sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
   the track's colour, the rest dim with their phase; the pads light the
   same way while Shift is held. **Shift + K1–K3:** a card with a second
@@ -845,7 +889,14 @@ Steps, Roll and Motion B1–B3 pick those three.
   track's target, 2 the page's own job, 3 Step Edit's nudge), `melodee_fader_engaged=` (takeover met),
   `melodee_fader_kind=` (the card it drives, `Binding::Kind`), `melodee_fader_value=`, `melodee_fader_light=` (0..100),
   `melodee_wheel=` (the track's mod wheel), `melodee_takeover=` (knobs, Knob FX, fader: 0 Pickup, 1 Scaled, 2 Instant),
-  `melodee_fader_at=`. For checks without hands on the device.
+  `melodee_fader_at=`; phase 9 `melodee_midi_in=` / `melodee_midi_out=` (messages), `melodee_midi_last=` (the last in,
+  hex), `melodee_clock_in=` (pulses), `melodee_clock_jitter_us=` (their spread by the kernel's stamps),
+  `melodee_clock_bunched=` (pulses under 2 ms apart), `melodee_ext=` (clock in leads), `melodee_ext_tempo=`,
+  `melodee_cv_pulses=`, `melodee_cv_ok=`, `melodee_mtc_in=`, `melodee_midi_late_us=avg/max` (how late the MIDI thread
+  sends against the frame heard, per 200 messages), and MIDI Config's `melodee_midi_port=` (0 External, 1 USB),
+  `melodee_midi_in_ch=`, `melodee_midi_out_ch=`, `melodee_pad_in=`, `melodee_pad_out=`, `melodee_sync_in=`,
+  `melodee_sync_out=` (0 Off, 1 Clock, 2 MTC), `melodee_thru=`, `melodee_program_change=`, `melodee_cv_out=`,
+  `melodee_cv_ppqn=`, `melodee_track_ch=`, `melodee_midi_row=`. For checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, browserinternal, trim, chop, chopmanual, chopshift,
@@ -853,7 +904,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
   levelsfilter, levelssynth, punch, padpunch, padfx, knobfx, knobfxtracks, knobfxbypass, knobfxstage, knobfxshift,
-  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, fader, fadersynth, fadercard, faderpickup, fadersettings, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, fader, fadersynth, fadercard, faderpickup, fadersettings, midiconfig, midiconfigcv, midireset, extclock, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 
