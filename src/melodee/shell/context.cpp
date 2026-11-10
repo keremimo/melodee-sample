@@ -951,6 +951,8 @@ void Context::restore_motion(const Motion& value) {
 
 void Context::apply_edit(const Edit& e, bool after) {
     if (e.pad >= 0) restore_pad(e.track, unsigned(e.pad), after ? e.pad_after : e.pad_before);
+    if (after) for (const auto& [kit, value] : e.pads_after) restore_pad(e.track, kit, value);
+    else for (auto p = e.pads_before.rbegin(); p != e.pads_before.rend(); ++p) restore_pad(e.track, p->first, p->second);
     const auto& pattern = after ? e.pattern_after : e.pattern_before;
     if (e.pattern >= 0 && pattern) restore_pattern(e.track, unsigned(e.pattern), *pattern);
     const auto& song = after ? e.song_after : e.song_before;

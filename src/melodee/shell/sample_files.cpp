@@ -239,17 +239,24 @@ void Context::files_landed() {
 
 // Sample Record's take: onto its pad, and the pads cut during it each from
 // their cut (pulled onto the strongest hit up to 50 ms before the tap) to
-// the next. Not an undo step, as takes never were.
+// the next. One undo, which puts every pad it filled back as it was.
 void Context::take_landed(unsigned t, unsigned kit, unsigned slot, const LoadedSample& loaded) {
+    close_gesture(); // a pot's turns came before the take
     auto& track = project.tracks[t % track_count];
     std::array<uint32_t, UiState::rec_chop_capacity> at {};
     unsigned cuts = ui.rec_track == t ? ui.rec_chops : 0;
     for (unsigned n = 0; n < cuts; ++n) at[n] = std::min(snap_to_hit(ui.rec_chop_at[n], loaded.hits, loaded.hit_count), loaded.frames ? loaded.frames - 1 : 0);
+    Edit edit;
+    edit.track = uint8_t(t % track_count);
+    edit.what = pad_text("Take on", kit);
     auto place = [&](unsigned pad, uint32_t start, uint32_t end) {
-        auto& sound = track.pads[pad % sampler_pads];
+        pad %= sampler_pads;
+        edit.pads_before.emplace_back(uint8_t(pad), pad_state(track, pad));
+        auto& sound = track.pads[pad];
         sound = PadSound {};
         sound.sample = uint16_t(slot); sound.start = start; sound.end = end;
-        send_pad(t, pad % sampler_pads);
+        send_pad(t, pad);
+        edit.pads_after.emplace_back(uint8_t(pad), pad_state(track, pad));
     };
     // Cuts in the order they fall; a cut pulled onto an earlier one's place is dropped.
     std::array<unsigned, UiState::rec_chop_capacity> order {};
@@ -267,6 +274,7 @@ void Context::take_landed(unsigned t, unsigned kit, unsigned slot, const LoadedS
     }
     track.last_pad = uint8_t(kit);
     if (ui.rec_slot == int(slot)) { ui.rec_slot = ui.rec_pad = -1; ui.rec_chops = 0; }
+    edits.push(std::move(edit));
     dirty = true;
     notice(placed ? pad_text("Take on", kit) + ", " + std::to_string(placed) + (placed == 1 ? " cut" : " cuts") : pad_text("Take on", kit));
 }

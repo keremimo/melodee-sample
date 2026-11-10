@@ -1241,6 +1241,17 @@ void history() {
     Edit fresh; fresh.pad = 99;
     h.push(std::move(fresh));          // a new edit: nothing to redo
     CHECK(!h.can_redo() && h.undo()->pad == 99 && h.undo()->pad == 8 && !h.can_undo());
+
+    // A Sample Record take: one edit for its pad and the pads cut during it, kept whole through undo and redo.
+    History takes;
+    Edit take; take.what = pad_text("Take on", 0);
+    take.pads_before = {{0, PadState {}}, {5, copied}};
+    take.pads_after = {{0, copied}, {5, PadState {}}};
+    takes.push(std::move(take));
+    Edit* undone_take = takes.undo();
+    CHECK(undone_take && undone_take->pads_before.size() == 2 && undone_take->pads_before[1].first == 5 && undone_take->pads_before[1].second.sound.sample == 7);
+    Edit* redone_take = takes.redo();
+    CHECK(redone_take && redone_take->what == "Take on A01" && redone_take->pads_after[0].second.sound.pitch == 5);
 }
 
 // Parity phase 0: a step written on a kit gets the pad hit last, and

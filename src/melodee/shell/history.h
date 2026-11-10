@@ -89,6 +89,8 @@ struct Edit {
     uint8_t track = 0;
     int16_t pad = -1;             // a kit pad, or -1
     PadState pad_before, pad_after;
+    // Several kit pads of `track` at once: a Sample Record take's pad and the pads cut during it.
+    std::vector<std::pair<uint8_t, PadState>> pads_before, pads_after;
     int16_t pattern = -1;         // a pattern of the track, or -1
     std::unique_ptr<Pattern> pattern_before, pattern_after;
     std::unique_ptr<Song> song_before, song_after;       // a take into the song

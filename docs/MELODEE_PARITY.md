@@ -225,7 +225,8 @@ left on by phase 1b's device checks for a while, which plays every hit at 127.
 - [x] Resample (Shift + Pad 11): render the pattern (or song) to a sample, then pick the pad.
 - [x] Song: audio mixdown to WAV (Name sheet), and Song → new pattern.
 - [x] Later (from phase 6): Rec Input FX acts once Knob FX exists (phase 7): Knob FX on the input before the take when On. Built in phase 7.
-- [ ] Later (from phase 6): a take (and its cut pads) as one undo step; Resample of the song onto a pad (the mixdown covers the song today).
+- [x] Later (from phase 6): a take (and its cut pads) as one undo step ("Take on A01": every pad it filled back as it was; the take's file stays in its slot for redo).
+- [ ] Later (from phase 6): Resample of the song onto a pad (the mixdown covers the song today).
 
 ### Phase 7: performance effects (Knob FX, effects, compressor)
 Split in its session (too big for one): the knob side and the master here,
