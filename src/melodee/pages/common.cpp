@@ -99,6 +99,8 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         case Kind::Audition: c.label = "AUDITION"; c.value = juce::String(b.value); c.unit = "vel"; break;
         case Kind::StepLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
         case Kind::StepVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
+        case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
+        case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
         case Kind::StepChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
         case Kind::ModSource: c.label = "SOURCE"; c.value = mod_source_name(ModSource(b.value)); break;
         case Kind::ModDest: {
@@ -268,5 +270,20 @@ juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form) {
     return word + " " + juce::String(index);
 }
 
+
+// B1 held on Patterns or Step Edit: the BPM the wheel sets (Push: whole BPM or tenths), as on the MPC.
+void draw_bpm_window(ui::Paint& p, const Snapshot& s) {
+    using namespace ui;
+    p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
+    float w = 150, hgt = 70, x = (zone::width - w) / 2, y = zone::picture_y + (zone::picture_h - hgt) / 2;
+    p.fill(x, y, w, hgt, colour::panel, 6);
+    p.ring(x, y, w, hgt, colour_of(s), 6);
+    juce::String title = s.project.seq_tempo ? "P" + juce::String(s.ui.lead_pattern + 1) + " BPM" : juce::String("GLOBAL BPM");
+    p.text(title, x, y + 6, w, 10, caps_text(colour::mid, 7), juce::Justification::centred);
+    p.text(juce::String(s.tempo / 10) + "." + juce::String(s.tempo % 10), x, y + 18, w, 30, plain(colour::text, 26, Weight::SemiBold),
+           juce::Justification::centred);
+    p.text(s.ui.bpm_tenths ? "WHEEL: 0.1  PUSH: 1" : "WHEEL: 1  PUSH: 0.1", x, y + 52, w, 10, caps_text(colour::dim, 7),
+           juce::Justification::centred);
+}
 
 } // namespace melodee

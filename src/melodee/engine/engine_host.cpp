@@ -328,7 +328,7 @@ void EngineHost::apply(const Command& c) {
         }
         break;
     }
-    case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param); break;
+    case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param, c.motion.pad); break;
     case Type::Wheel: if (slot.engine) slot.engine->set_wheel(c.value / 1000.0f); break;
     case Type::Level: slot.gain = level_gain(c.value); break;
     case Type::Pan: {
@@ -450,6 +450,7 @@ void EngineHost::restore(Slot& slot) {
             for (unsigned q = 0; q < effect_params; ++q) fx[t][k].set_param(q, slot.fx_base[k][q]);
         slot.fx_moved = false;
     }
+    if (slot.kind == EngineKind::Sampler) slot.sampler.restore_pads(); // a kit pad's own values, if motion moved them
     if (!slot.moved || !slot.engine) return;
     for (unsigned p = 0; p < max_params; ++p) slot.engine->set_param(int(p), slot.base[p]);
     slot.moved = false;
@@ -462,6 +463,10 @@ void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
     for (unsigned n = 0; n < motion.count; ++n) {
         const auto& e = motion.events[n];
         if (e.track != t || e.pattern != slot.pattern || e.step != at) continue;
+        if (e.param >= motion_pad_base) { // a kit pad's own value
+            if (slot.kind == EngineKind::Sampler) slot.sampler.move_pad(e.pad, PadParam(e.param - motion_pad_base), e.value);
+            continue;
+        }
         if (e.param >= motion_fx_base) { // one of the track's effects
             unsigned k = (e.param - motion_fx_base) / effect_params, q = (e.param - motion_fx_base) % effect_params;
             if (k < max_slots) { fx[t][k].set_param(q, e.value); slot.fx_moved = true; }

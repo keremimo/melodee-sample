@@ -39,4 +39,7 @@ constexpr unsigned pad_slots = 4;                              // each sampler p
 // chain's effect parameters: motion_fx_base + slot * 6 + parameter.
 constexpr unsigned motion_fx_base = max_params;
 constexpr unsigned motion_fx_param(unsigned slot, unsigned parameter) { return motion_fx_base + slot * 6 + parameter; }
+// Then a kit pad's own values (model/pad_params.h), each lane on one pad
+// (MotionEvent::pad): motion_pad_base + PadParam.
+constexpr unsigned motion_pad_base = motion_fx_base + track_slots * 6;
 }

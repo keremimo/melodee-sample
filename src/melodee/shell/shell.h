@@ -89,6 +89,7 @@ private:
     // Phase 2, for remote checks: Seq Record (0 off, 1 armed, 2 recording), the selected pattern's
     // length in ticks, its notes, its Q and the first note's tick, and the time signature.
     std::atomic<uint32_t> rec_state {0}, pattern_ticks {0}, pattern_events {0}, pattern_q {0}, first_tick {0}, signature_now {0};
+    std::atomic<uint32_t> step_now {0}, event_now {0}, step_events_now {0}, event_tick {0}, ask_now {0}, motion_now {0}; // Step Edit, a question, Motion
 };
 
 // The project Melodee starts with: four tracks with sounds and a bass line.

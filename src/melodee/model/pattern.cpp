@@ -101,4 +101,14 @@ void time_correct_all(Pattern& p, const std::array<uint64_t, 3>* keys, unsigned 
     time_correct(p, [keys](unsigned key) { return !keys || (key < 192 && (((*keys)[key / 64] >> (key % 64)) & 1)); }, swing, shift);
 }
 
+StepEvents step_events(const Pattern& pattern, unsigned step) {
+    uint32_t from = step * pattern.q(), to = std::min<uint32_t>(from + pattern.q(), pattern.length);
+    StepEvents out;
+    out.first = pattern.lower(from);
+    size_t end = out.first;
+    while (end < pattern.events.size() && pattern.events[end].tick < to) ++end;
+    out.count = unsigned(end - out.first);
+    return out;
+}
+
 } // namespace melodee

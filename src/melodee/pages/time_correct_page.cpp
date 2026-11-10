@@ -10,17 +10,11 @@
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/step_edit.h" // pad_key
 
 namespace melodee {
 namespace {
 using namespace ui;
-
-// The key a pad stands for on this track.
-int pad_key(const Project& project, const Track& t, unsigned pad) {
-    if (t.engine == EngineKind::Sampler) return int(sampler_first_note + t.bank % sampler_banks * 16 + pad % 16);
-    if (t.engine == EngineKind::Kit909) return pad < 11 ? int(36 + pad) : -1;
-    return t.used() ? pad_note(project, t, pad).key : -1;
-}
 
 juce::String pad_caption(const Snapshot& s, unsigned, int key) {
     const auto& t = s.track();

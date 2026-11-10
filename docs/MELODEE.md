@@ -69,7 +69,8 @@ Milestones 1–5 exist, and the sequence group is complete: the app starts
 into Stage, and Stage, Keys, Mix, Sounds, Edit, Steps, Roll (with its note
 sheet) and Motion work with the Shift layer and the Exit sheet. Seq opens
 Patterns (the MPC's Sequence mode); Shift + Seq is Step Edit and, pressed
-again, steps through Steps, Roll and Motion; B1–B3 pick them too.
+again, steps through Steps, Roll and Motion and back to Step Edit; on
+Steps, Roll and Motion B1–B3 pick those three.
 
 - **USB-C stems:** a computer recording from the MPC gets the main mix on
   inputs 1–2 and each track on its own mono input, track 1 on 3 through
@@ -380,12 +381,39 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   lately (a history of the last 512 presses), the last 1–4 bars quantised
   to 1/16 or 1/8 and laid into a pattern (the first empty one); B3 or Push
   keeps it and that pattern plays, B1 drops.
+- **Step Edit** (Shift + Seq, parity phase 3, as Akai's step_edit page
+  has it): the selected track's pattern one step of Q at a time and the
+  events that start in it, listed (pad or note, ticks after the step, length
+  in ticks, velocity). The **wheel** moves a step of Q (the step's first
+  event chosen), **Minus / Plus** go through the step's events, a **pad**
+  plays as anywhere (and records with Seq Record) and chooses its event on
+  the step. **K1** the pattern's length (1, 2, 4 .. 128 bars, as on
+  Patterns), **K2** Q, **K3** the event's velocity; **Shift + K1** the
+  event's length in steps of Q (1–64), **Shift + K2** the time signature.
+  The **fader** nudges the event's timing: a tick for each step the fader
+  moves, up later, down earlier, inside the pattern (the cursor follows it
+  into the next step); this is its context override until the Fader page
+  (phase 8). **B3** erases the event; **Erase + pad** asks first (B1
+  Cancel, B3 Do it) and then erases every event of that pad in the pattern.
+  Both erases are one undo, part of the take while Seq Record is on. Hold
+  **B1** for the BPM (the wheel; Push whole / tenths), as on Patterns. The
+  pads light where the step has an event of theirs, white for the chosen
+  one. The cursor is the same as Steps' and Roll's.
 - **Motion:** Seq Record + a pot on any page writes an event at the playing
   sixteenth of the pattern, whatever its Q (256 for the project,
   `model/limits.h`). The audio thread plays them sixteenth by sixteenth, each lane starting the pattern at the track's own value, and
-  gives the track its own values back on Stop. Erase + pot on Motion clears
-  that lane. The lanes are the parameters holding motion, then the
-  favourites.
+  gives the track its own values back on Stop. On a kit, a pad's own values
+  are lanes of that pad (parity phase 3, the MPC's pad automation): level,
+  tune, fine, pan and the amp envelope (attack, decay, sustain, release),
+  turned on Pads, the sampler pages or Motion with Seq Record on; a hit
+  hears the value its lane holds when it starts. Velocity sensitivity,
+  offset and the per-pad filter envelope have their places
+  (`model/pad_params.h`) and are recorded once phase 4 gives pads those
+  values. Erase + pot on Motion asks first (B1 Cancel, B3 Do it), then
+  clears that lane, one undo. The lanes are the parameters holding motion
+  (on a kit, the last pad hit's), then on a kit that pad's tune, level and
+  pan, else the favourites. Pad lanes are saved in their own `MOTP`
+  section, so older files and builds see only the rest.
 
 - **Engine:** PROPHET, a two-oscillator polysynth written here (saw and
   pulse with hard sync, saw/triangle/pulse B with low-frequency mode,
@@ -546,7 +574,7 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   `pad-bank+pad5`, `mute+pad5`: a held Mute, mute mode for that pad;
   struck and let go at once, so a recorded note is a tick long: `hold-pad5`
   ... `release-pad5` holds it),
-  `k1=V`..`k3=V` move a pot to V (0..127), `shift+k3=V` with Shift held
+  `k1=V`..`k3=V` move a pot to V (0..127), `fader=V` the fader, `shift+k3=V` with Shift held
   (the card's second parameter), and `hold-shift` ... `release-shift`
   keep any button (or `hold-pad5` a pad) down across other presses (the
   Shift overlay and its lights, a held punch).
@@ -556,12 +584,16 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   `melodee_count_in=` (the beat, 0 none), `melodee_position=` (the selected
   track's tick in its pattern, −1 none), `melodee_pattern_ticks=`,
   `melodee_events=`, `melodee_q=` (ticks), `melodee_first_tick=` and
-  `melodee_signature=`. For checks without hands on the device.
+  `melodee_signature=`; Step Edit's `melodee_step=` (from 1),
+  `melodee_event=n/count` (0 none) and `melodee_event_tick=`;
+  `melodee_ask=` (0 none, 1 erase a pad's events, 2 erase a lane) and
+  `melodee_motion=` (the project's motion events). For checks without
+  hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, padcopy, mutepads, padbank, copytrack, repeat, repeattriplets, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
-  bpm, countin, recarmed, timecorrect,
+  bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.

@@ -7,8 +7,10 @@
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/model/mod_matrix.h"
+#include "melodee/model/pad_params.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/step_edit.h"
 #include <algorithm>
 
 namespace melodee {
@@ -36,8 +38,38 @@ unsigned page_chain(const Project& project, const UiState& ui) {
     return ui.track % track_count;
 }
 
-MotionParam motion_param(const Track& track, int param) {
-    if (param < 0) return {};
+namespace {
+// A kit pad's values as Motion lanes describe them (model/pad_params.h order).
+const ParamInfo pad_infos[pad_param_count] {
+    {"LEVEL", 0, 127, 100, Format::Number}, {"PITCH", -24, 24, 0, Format::Semitones}, {"FINE", -50, 50, 0, Format::Cents},
+    {"PAN", -50, 50, 0, Format::Number}, {"ATTACK", 0, 100, 0}, {"DECAY", 0, 100, 100}, {"SUSTAIN", 0, 100, 100},
+    {"RELEASE", 0, 100, 20}, {"VEL SENS", 0, 100, 100}, {"OFFSET", 0, 100, 0}, {"F ATTACK", 0, 100, 0},
+    {"F DECAY", 0, 100, 50}, {"F SUSTAIN", 0, 100, 0}, {"F RELEASE", 0, 100, 20}, {"F AMOUNT", 0, 100, 0},
+};
+Binding::Kind pad_kind(PadParam p) {
+    using K = Binding::Kind;
+    switch (p) {
+    case PadParam::Level: return K::PadLevel;
+    case PadParam::Pitch: return K::PadPitch;
+    case PadParam::Fine: return K::PadFine;
+    case PadParam::Pan: return K::PadPan;
+    case PadParam::Attack: return K::PadAttack;
+    case PadParam::Decay: return K::PadDecay;
+    case PadParam::Sustain: return K::PadSustain;
+    case PadParam::Release: return K::PadRelease;
+    default: return K::None; // phase 4
+    }
+}
+} // namespace
+
+MotionParam motion_param(const Track& track, int lane) {
+    if (lane < 0) return {};
+    int param = int(lane_param(lane));
+    if (int which = pad_param_of(unsigned(param)); which >= 0) { // a kit pad's own value
+        auto p = PadParam(which);
+        if (track.engine != EngineKind::Sampler || !pad_param_built(p)) return {};
+        return {&pad_infos[which], pad_param_value(track.pads[lane_pad(lane) % sampler_pads], p)};
+    }
     if (unsigned(param) < motion_fx_base) {
         const auto& info = engine_info(track.engine);
         if (unsigned(param) >= info.param_count) return {};
@@ -51,7 +83,22 @@ MotionParam motion_param(const Track& track, int param) {
     return {&pi, s.params[q]};
 }
 
-Binding lane_binding(const Track& track, unsigned t, int param) {
+std::string lane_name(const Track& track, int lane) {
+    auto m = motion_param(track, lane);
+    if (!m.info) return "lane";
+    if (pad_param_of(lane_param(lane)) < 0) return m.info->label;
+    char label[4];
+    pad_label(lane_pad(lane), label);
+    return std::string(label) + " " + m.info->label;
+}
+
+Binding lane_binding(const Track& track, unsigned t, int lane) {
+    int param = int(lane_param(lane));
+    if (int which = pad_param_of(unsigned(param)); which >= 0) { // the pad's card, as on the sampler pages (they edit the last pad hit)
+        auto m = motion_param(track, lane);
+        if (!m.info || lane_pad(lane) != track.last_pad % sampler_pads) return {};
+        return {pad_kind(PadParam(which)), 0, m.info->min, m.info->max, m.value};
+    }
     if (param >= int(motion_fx_base)) {
         auto m = motion_param(track, param);
         if (!m.info) return {};
@@ -72,8 +119,17 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
         lanes[n++] = param;
     };
     const auto& motion = project.motion;
-    for (unsigned e = 0; e < motion.count; ++e)
-        if (motion.events[e].track == ui.track && motion.events[e].pattern == track.pattern) add(motion.events[e].param);
+    bool kit = track.engine == EngineKind::Sampler;
+    unsigned pad = track.last_pad % sampler_pads;
+    for (unsigned e = 0; e < motion.count; ++e) {
+        const auto& ev = motion.events[e];
+        if (ev.track != ui.track || ev.pattern != track.pattern) continue;
+        bool pad_lane = pad_param_of(ev.param) >= 0;
+        if (pad_lane && ev.pad != pad) continue; // another pad's lane: shown when that pad is the last hit
+        add(motion_lane(ev.param, pad_lane ? ev.pad : 0));
+    }
+    if (kit && track.pads[pad].used()) // a kit: the last pad's tune, level and pan, as on Pads
+        for (auto p : {PadParam::Pitch, PadParam::Level, PadParam::Pan}) add(motion_lane(motion_pad_param(p), pad));
     for (auto f : info.favourites) add(f);
     return lanes;
 }
@@ -86,6 +142,15 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {Binding {Kind::PatternBars, 0, 1, int(max_bars), int(pattern_bars(project, pattern))},
                 Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
                 Binding {Kind::ClickLevel, 0, 0, 100, project.click_level}};
+    case PageId::StepEdit: { // Shift + K1 the selected event's length (in steps of Q), Shift + K2 the time signature (as on the MPC)
+        int at = selected_event(pattern, ui);
+        Binding length {};
+        if (at >= 0) {
+            unsigned q = pattern.q(), steps = std::max(1u, (pattern.events[size_t(at)].length + q / 2) / q);
+            length = {Kind::EventLength, 0, 1, 64, int(std::min(steps, 64u))};
+        }
+        return {length, Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature}, Binding {}};
+    }
     case PageId::Keys: // Shift + K3: the pads by semitones
         if (track.engine == EngineKind::Kit909) return {};
         return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
@@ -159,6 +224,15 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::PatternLength, 0, 0, int(pattern_length_count) - 1, int(index)},
                 Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
                 Binding {Kind::Swing, 0, 50, 75, project.swing}};
+    }
+    case PageId::StepEdit: { // as on the MPC: K1 the pattern's length (as on Patterns), K2 Q, K3 the selected event's velocity
+        unsigned bars = pattern_bars(project, pattern), index = 0;
+        while (index + 1 < pattern_length_count && pattern_lengths[index + 1] <= bars) ++index;
+        int at = selected_event(pattern, ui);
+        Binding velocity {};
+        if (at >= 0) velocity = {Kind::EventVelocity, 0, 1, 127, pattern.events[size_t(at)].velocity};
+        return {Binding {Kind::PatternLength, 0, 0, int(pattern_length_count) - 1, int(index)},
+                Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)}, velocity};
     }
     case PageId::TimeCorrect: // Q (the pattern's, as on Patterns), shift and swing for the notes moved
         return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},

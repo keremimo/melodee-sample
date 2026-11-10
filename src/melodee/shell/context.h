@@ -5,6 +5,7 @@
 #include "melodee/model/sound_file.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/model/pad_params.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/history.h"
@@ -118,9 +119,12 @@ public:
     // The pattern's notes changed in the model: the audio thread gets a copy to play.
     void sync_pattern(unsigned track, unsigned pattern);
     void free_retired();           // pattern copies the audio thread is done with
-    // Motion: a pot move while recording and playing; Erase + pot on Motion.
-    void record_motion(int param, int value);
-    void clear_lane(int param);
+    // Motion: a pot move while recording and playing (`lane` as in
+    // bindings.h: a parameter, or a kit pad's value on one pad); Erase + pot
+    // on Motion, once B3 says so (one undo).
+    void record_motion(int lane, int value);
+    void record_pad_motion(PadParam which, int value);
+    void clear_lane(int lane);
     // Undo and redo (Shift + Minus / Plus): pad deletes and copies, takes,
     // and pattern edits made through edit_pattern() go into the one history.
     History edits;

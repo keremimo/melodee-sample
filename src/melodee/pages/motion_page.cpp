@@ -2,9 +2,12 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // MOTION (B3 on Steps): pot moves recorded over the pattern, one lane per
 // pot. Seq Record + turn a pot records (here or on any page); Erase + turn a
-// pot clears that lane. The lanes are the parameters holding motion on the
-// track's pattern (its engine's or its effects'), then its favourites.
+// pot asks, then (B3) clears that lane. The lanes are the parameters holding
+// motion on the track's pattern (its engine's, its effects', or on a kit the
+// last pad's own: level, tune, pan, envelope), then on a kit that pad's
+// tune, level and pan, else the track's favourites.
 #include "melodee/model/limits.h"
+#include "melodee/model/pad_params.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
@@ -26,7 +29,7 @@ void draw(Paint& p, const Snapshot& s) {
     auto lanes = motion_lanes(s.project, s.ui);
     unsigned length = std::max<unsigned>(s.pattern.length, 1); // ticks
     for (unsigned lane = 0; lane < 3; ++lane) {
-        int param = lanes[lane];
+        int param = lanes[lane]; // a lane: a parameter, or a kit pad's value on one pad (bindings.h)
         float x = zone::pad, y = zone::picture_y + 1.5f + lane * 49, w = zone::width - 2 * zone::pad, lh = 46;
         bool current = s.ui.turning == int(lane) && s.now - s.ui.turned_at < 1500;
         p.fill(x, y, w, lh, current ? colour::raised : colour::quiet, 4);
@@ -40,6 +43,12 @@ void draw(Paint& p, const Snapshot& s) {
         if (!mp.info) continue;
         const auto& pi = *mp.info;
         auto shown = show(pi, mp.value);
+        bool pad_lane = pad_param_of(lane_param(param)) >= 0;
+        if (pad_lane) { // whose lane: the kit pad, over the value's name
+            char label[4];
+            pad_label(lane_pad(param), label);
+            p.text(label, x + 9, y + 1, 52, 9, caps_text(colour::mid, 7));
+        }
         p.text(pi.label, x + 9, y + 9, 52, 10, p.fit(pi.label, caps_text(shade), 56, 5));
         p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x + 9, y + 20, 56, 15, plain(colour::text, 12, Weight::Medium));
 
@@ -55,7 +64,8 @@ void draw(Paint& p, const Snapshot& s) {
         unsigned count = 0, sixteenths = std::max(1u, (length + sixteenth_ticks - 1) / sixteenth_ticks);
         for (unsigned e = 0; e < motion.count; ++e) {
             const auto& ev = motion.events[e];
-            if (ev.track == s.ui.track && ev.pattern == track.pattern && ev.param == param && ev.step < sixteenths) at[count++] = {ev.step, ev.value};
+            if (ev.same_lane(s.ui.track, track.pattern, uint8_t(lane_param(param)), uint8_t(lane_pad(param))) && ev.step < sixteenths)
+                at[count++] = {ev.step, ev.value};
         }
         std::sort(at.begin(), at.begin() + count);
         for (unsigned k = 0; k < count; ++k) {

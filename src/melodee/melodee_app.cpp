@@ -117,6 +117,10 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
             return presses.push({3, uint8_t(pot | (shift_pot ? 0x80 : 0)), int8_t(value)}) ? "OK melodee-press " + argument : "ERR busy";
         }
     }
+    if (argument.rfind("fader=", 0) == 0 && argument.size() > 6) { // fader=V: the fader to V (0..127), as if moved there
+        int value = std::clamp(std::atoi(argument.c_str() + 6), 0, 127);
+        return presses.push({3, uint8_t(SurfaceControl::Fader), int8_t(value)}) ? "OK melodee-press " + argument : "ERR busy";
+    }
     auto button_named = [](const std::string& wanted) {
         for (unsigned n = 0; n < surface_buttons.size(); ++n) {
             std::string name = surface_buttons[n].name;

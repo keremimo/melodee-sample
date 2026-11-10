@@ -6,6 +6,7 @@
 #include "melodee/engine/engine.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/sample_data.h"
+#include "melodee/model/pad_params.h"
 #include "melodee/model/sampler.h"
 #include <array>
 
@@ -34,7 +35,16 @@ public:
 
     SamplerEngine();
     void set_samples(const Table* table) { samples = table; }
-    void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) pads[pad] = sound; }
+    void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) pads[pad] = base[pad] = sound; }
+    // Motion on a pad's own values (model/pad_params.h): the value plays
+    // until the pad's lane moves again or restore_pads() gives every pad its
+    // own values back (the pattern's start, Stop). Hits after it hear it.
+    void move_pad(unsigned pad, PadParam which, int value) {
+        if (pad >= sampler_pads || !pad_param_built(which)) return;
+        set_pad_param(pads[pad], which, value);
+        moved = true;
+    }
+    void restore_pads() { if (moved) { pads = base; moved = false; } }
     // Mute: a muted pad does not start and what it plays fades out now.
     void set_pad_mute(unsigned pad, bool on);
     void set_pad_mutes(const std::array<uint64_t, (sampler_pads + 63) / 64>& bits);
@@ -106,7 +116,8 @@ private:
     unsigned tempo = 1200;
     uint32_t seed = 99;
     const Table* samples = nullptr;
-    std::array<PadSound, sampler_pads> pads {};
+    std::array<PadSound, sampler_pads> pads {}, base {}; // as they play (motion), and as the kit holds them
+    bool moved = false;
     std::array<uint64_t, (sampler_pads + 63) / 64> muted {};
     std::array<Voice, max_voices> voices {};
     std::array<int, sampler::Count> p {};

@@ -9,7 +9,7 @@ namespace {
 int page_group(PageId page) {
     switch (page) {
     case PageId::Stage: case PageId::Keys: case PageId::Pads: case PageId::Mix: return 1;
-    case PageId::Steps: case PageId::Roll: case PageId::Motion: return 2;
+    case PageId::StepEdit: case PageId::Steps: case PageId::Roll: case PageId::Motion: return 2;
     case PageId::Rack: case PageId::Sends: case PageId::Bus: case PageId::Master: case PageId::PadFx: return 3;
     case PageId::Trim: case PageId::PadPage: case PageId::PlayPage: case PageId::EnvelopePage:
     case PageId::FilterPage: case PageId::FollowPage: case PageId::CloudPage: return 4;

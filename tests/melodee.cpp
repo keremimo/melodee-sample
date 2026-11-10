@@ -32,6 +32,8 @@
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/step_edit.h"
+#include "melodee/model/pad_params.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1676,7 +1678,109 @@ void timing() {
     }
 }
 
+// Parity phase 3: Step Edit's view of a step, and Motion on a kit pad's own values.
+void step_edit_and_pad_motion() {
+    // The events starting in a step of Q, and the selection kept inside it.
+    Pattern p;
+    p.length = 4 * ticks_per_quarter;
+    for (auto e : {Event {0, 24, 36, 100, 100, 0}, Event {24, 24, 38, 90, 100, 0}, Event {24, 12, 37, 80, 100, 0}, Event {31, 6, 40, 70, 100, 0}, Event {48, 24, 36, 60, 100, 0}})
+        p.add(e);
+    auto in = step_events(p, 1);
+    CHECK(in.first == 1 && in.count == 3 && p.events[1].key == 37 && p.events[3].tick == 31);
+    CHECK(step_events(p, 3).count == 0 && step_events(p, 2).count == 1);
+    UiState ui;
+    ui.step_cursor = 1; ui.step_event = 9; // past the step's last: its last
+    CHECK(selected_event(p, ui) == 3);
+    ui.step_cursor = 3;
+    CHECK(selected_event(p, ui) == -1);
+    p.division = Division::Eighth; // Q 48: step 0 holds four
+    ui.step_cursor = 0; ui.step_event = 0;
+    CHECK(step_events(p, 0).count == 4 && selected_event(p, ui) == 0);
+
+    // Pad lanes: one lane per pad, apart from the same value on another pad and from engine lanes.
+    unsigned level = motion_pad_param(PadParam::Level), tune = motion_pad_param(PadParam::Pitch);
+    CHECK(level >= motion_fx_base + track_slots * 6 && pad_param_of(level) == int(PadParam::Level) && pad_param_of(prophet::Cutoff) < 0);
+    Motion m;
+    CHECK(m.write({4, 0, 0, uint8_t(level), 20, 9}) && m.write({4, 0, 0, uint8_t(level), 90, 2}) && m.write({4, 0, 8, uint8_t(level), 64, 9}));
+    CHECK(m.write({4, 0, 0, uint8_t(level), 30, 9}) && m.count == 3 && m.events[0].value == 30); // the same place: replaced
+    CHECK(m.has(4, 0, uint8_t(level), 9) && m.has(4, 0, uint8_t(level), 2) && !m.has(4, 0, uint8_t(level), 3) && !m.has(4, 0, uint8_t(tune), 9));
+    m.clear(4, 0, uint8_t(level), 9);
+    CHECK(m.count == 1 && m.events[0].pad == 2);
+
+    // The kit's lanes on Motion: the last pad's recorded ones first, then its tune, level and pan.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[4], EngineKind::Sampler, 0);
+    auto& kit = project->tracks[4];
+    kit.pads[9].sample = 0; kit.pads[9].level = 100; kit.pads[2].sample = 0;
+    kit.last_pad = 9;
+    project->motion.write({4, 0, 4, uint8_t(level), 0, 9});
+    project->motion.write({4, 0, 2, uint8_t(motion_pad_param(PadParam::Attack)), 50, 2}); // pad 3's: not shown while pad 10 is the last
+    UiState kit_ui;
+    kit_ui.track = 4;
+    auto lanes = motion_lanes(*project, kit_ui);
+    CHECK(lanes[0] == motion_lane(level, 9) && lanes[1] == motion_lane(tune, 9) && lanes[2] == motion_lane(motion_pad_param(PadParam::Pan), 9));
+    CHECK(lane_name(kit, lanes[0]) == "A10 LEVEL" && motion_param(kit, lanes[0]).value == 100);
+    auto card = lane_binding(kit, 4, lanes[0]);
+    CHECK(card.kind == Binding::Kind::PadLevel && card.max == 127 && card.value == 100);
+    CHECK(!motion_param(kit, motion_lane(motion_pad_param(PadParam::VelocitySense), 9)).info); // phase 4 brings it
+    CHECK(!motion_param(project->tracks[0], motion_lane(level, 9)).info);                      // not a kit
+    kit.last_pad = 2;
+    CHECK(motion_lanes(*project, kit_ui)[0] == motion_lane(motion_pad_param(PadParam::Attack), 2));
+    kit.last_pad = 9;
+
+    // The file: pad lanes in their own MOTP section, so a file without it (or an older build) keeps the rest.
+    project->motion.write({0, 0, 3, uint8_t(prophet::Cutoff), 77});
+    auto data = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(data, *back, *back_bank).empty() && back->motion.count == 3);
+    CHECK(back->motion.has(4, 0, uint8_t(level), 9) && back->motion.has(4, 0, uint8_t(motion_pad_param(PadParam::Attack)), 2));
+    CHECK(back->motion.has(0, 0, uint8_t(prophet::Cutoff)));
+    auto older = data;
+    bool renamed = false;
+    for (size_t n = 0; n + 4 <= older.size() && !renamed; ++n)
+        if (std::memcmp(&older[n], "MOTP", 4) == 0) { std::memcpy(&older[n], "XXXX", 4); renamed = true; }
+    CHECK(renamed && load_project(older, *back, *back_bank).empty() && back->motion.count == 1 && back->motion.events[0].param == prophet::Cutoff);
+
+    // The audio side: pad 10's level held at 0 from step 4 silences its hits there, and Stop gives it back.
+    SampleData data_wav;
+    data_wav.frames = 44100;
+    data_wav.left.assign(44100, 0.5f); data_wav.right.assign(44100, 0.5f);
+    for (unsigned n = 0; n < 44100; ++n) data_wav.left[n] = data_wav.right[n] = float(std::sin(n * 0.05) * 0.5);
+    auto quiet = std::make_unique<Project>(*project);
+    quiet->motion = Motion {};
+    quiet->motion.write({4, 0, 4, uint8_t(level), 0, 9});
+    quiet->tracks[4].pads[9].end = 2000; quiet->tracks[4].pads[9].play = PadPlay::OneShot;
+    auto& beat = bank->at[4][0];
+    beat = Pattern {};
+    for (unsigned st : {0u, 8u}) beat.add({st * sixteenth_ticks, uint16_t(sixteenth_ticks), uint8_t(sampler_first_note + 9), 120, 100, 0});
+    EngineHost host;
+    host.load(*quiet, *bank);
+    CHECK(host.offer_sample(0, &data_wav));
+    host.send({Command::Type::Play});
+    std::vector<int32_t> out(256);
+    auto peak = [&](double from, double to) {
+        static double done = 0;
+        float most = 0;
+        while (done < to) {
+            host.render(out.data(), 128, 1);
+            if (done >= from) for (auto v : out) most = std::max(most, std::fabs(v / 2147483648.0f));
+            done += 128;
+        }
+        return most;
+    };
+    double step = 5512.5; // a sixteenth at 120 BPM
+    float first = peak(0, step), second = peak(8 * step, 9 * step);
+    CHECK(first > 0.01f && second < first * 0.05f);
+    float again = peak(16 * step, 17 * step); // the pattern's start: its own level back
+    CHECK(again > first * 0.5f);
+    const SampleData* gone = nullptr;
+    while (host.take_retired(gone)) {}
+}
+
 int main() {
+    step_edit_and_pad_motion();
     timing();
     pad_expression();
     parity_1c();

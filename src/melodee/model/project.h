@@ -69,12 +69,15 @@ struct Mix {
 
 // A pot move recorded over a pattern: from `step` on (a sixteenth of the
 // pattern, whatever its Q), `param` holds `value` on that track while that
-// pattern plays.
+// pattern plays. A kit pad's own values (param from motion_pad_base on,
+// model/pad_params.h) are a lane per pad: `pad` says which (0 otherwise).
 struct MotionEvent {
     uint8_t track = 0, pattern = 0;
     uint16_t step = 0; // sixteenths from the pattern's start
     uint8_t param = 0;
     int16_t value = 0;
+    uint8_t pad = 0;   // a pad lane's kit pad, 0..127
+    bool same_lane(uint8_t t, uint8_t p, uint8_t q, uint8_t k) const { return track == t && pattern == p && param == q && pad == k; }
 };
 // Every motion event of the project, at most motion_events (open question 2:
 // per project, as the FM-1 counts them). Both the shell and the engine host
@@ -86,24 +89,24 @@ struct Motion {
     bool write(const MotionEvent& e) {
         for (unsigned n = 0; n < count; ++n) {
             auto& o = events[n];
-            if (o.track == e.track && o.pattern == e.pattern && o.step == e.step && o.param == e.param) { o.value = e.value; return true; }
+            if (o.same_lane(e.track, e.pattern, e.param, e.pad) && o.step == e.step) { o.value = e.value; return true; }
         }
         if (count == events.size()) return false;
         events[count++] = e;
         return true;
     }
-    // Removes one lane: a parameter's events on a track's pattern.
-    void clear(uint8_t track, uint8_t pattern, uint8_t param) {
+    // Removes one lane: a parameter's events on a track's pattern (a pad lane's on that pad).
+    void clear(uint8_t track, uint8_t pattern, uint8_t param, uint8_t pad = 0) {
         unsigned w = 0;
         for (unsigned n = 0; n < count; ++n) {
             const auto& o = events[n];
-            if (!(o.track == track && o.pattern == pattern && o.param == param)) events[w++] = o;
+            if (!o.same_lane(track, pattern, param, pad)) events[w++] = o;
         }
         count = uint16_t(w);
     }
-    bool has(uint8_t track, uint8_t pattern, uint8_t param) const {
+    bool has(uint8_t track, uint8_t pattern, uint8_t param, uint8_t pad = 0) const {
         for (unsigned n = 0; n < count; ++n)
-            if (events[n].track == track && events[n].pattern == pattern && events[n].param == param) return true;
+            if (events[n].same_lane(track, pattern, param, pad)) return true;
         return false;
     }
 };

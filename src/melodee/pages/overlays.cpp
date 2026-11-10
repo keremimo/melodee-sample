@@ -17,6 +17,7 @@ using namespace ui;
 void draw_overlays(Paint& p, const Snapshot& s) {
     bool sheet = s.ui.name.open() || s.ui.exit_open;
     if (tracks_on_pads(s.ui) && !sheet) draw_track_overlay(p, s);
+    if (!sheet && s.ui.ask != UiState::Ask::None) draw_ask_sheet(p, s); // B1 Cancel / B3 Do it before an erase
     draw_notice(p, s);
     if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);

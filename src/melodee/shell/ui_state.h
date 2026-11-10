@@ -15,7 +15,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, Count };
+enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit, Count };
 
 // Pot pickup: a pot changes its value only once it has reached it, so a
 // page change never makes a value jump.
@@ -75,6 +75,8 @@ struct UiState {
     uint8_t recent_count = 0;
     uint8_t steps_bar = 0;
     int16_t step_cursor = 0, held_step = -1;
+    uint8_t step_event = 0;                   // Step Edit: which of the cursor step's events (shell/step_edit.h)
+    int16_t fader_at = -1;                    // where the fader sits, 0..127; -1 until it moves (Step Edit nudges by how far it went)
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
     bool sheet_open = false;  // the note sheet over Roll
@@ -143,6 +145,12 @@ struct UiState {
     int8_t copy_from = -1;    // the kit pad, pattern or track picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns: the track the pattern is copied from
     void stop_copying() { copying = Copying::Off; copy_from = -1; }
+    // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
+    // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
+    // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane };
+    Ask ask = Ask::None;
+    int32_t ask_target = 0;
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms

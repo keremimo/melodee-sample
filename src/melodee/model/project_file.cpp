@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/model/project_file.h"
+#include "melodee/model/pad_params.h"
 #include <algorithm>
 #include <cstring>
 #include <memory>
@@ -135,13 +136,30 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     w.u8(project.signature); w.u8(project.seq_tempo);
     for (auto v : project.pattern_tempo) w.u16(v);
     w.end(at);
-    at = w.begin("MOT2"); // steps in sixteenths (MOTN counted the pattern's own steps)
-    w.u16(project.motion.count);
+    // Motion: engine and effect lanes in MOT2 (steps in sixteenths; MOTN
+    // counted the pattern's own steps), a kit pad's lanes in MOTP with their
+    // pad, so files from before parity phase 3 and the builds that read them
+    // never meet a pad lane.
+    unsigned pad_lanes = 0;
+    for (unsigned n = 0; n < project.motion.count; ++n) pad_lanes += project.motion.events[n].param >= motion_pad_base;
+    at = w.begin("MOT2");
+    w.u16(uint16_t(project.motion.count - pad_lanes));
     for (unsigned n = 0; n < project.motion.count; ++n) {
         const auto& e = project.motion.events[n];
+        if (e.param >= motion_pad_base) continue;
         w.u8(e.track); w.u8(e.pattern); w.u16(e.step); w.u8(e.param); w.i16(e.value);
     }
     w.end(at);
+    if (pad_lanes) {
+        at = w.begin("MOTP"); // pad lanes: track, pattern, sixteenth, kit pad, which value (PadParam), value
+        w.u16(uint16_t(pad_lanes));
+        for (unsigned n = 0; n < project.motion.count; ++n) {
+            const auto& e = project.motion.events[n];
+            if (e.param < motion_pad_base) continue;
+            w.u8(e.track); w.u8(e.pattern); w.u16(e.step); w.u8(e.pad); w.u8(uint8_t(e.param - motion_pad_base)); w.i16(e.value);
+        }
+        w.end(at);
+    }
     at = w.begin("SONG");
     const auto& song = project.song;
     w.u16(song.count);
@@ -318,8 +336,19 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 MotionEvent e;
                 e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
                 e.param = uint8_t(r.u8()); e.value = int16_t(r.i16());
+                if (e.param >= motion_pad_base) continue; // pad lanes live in MOTP
                 if (legacy) legacy_motion.push_back(e);
                 else project->motion.write(e);
+            }
+        } else if (name == "MOTP") { // a kit pad's lanes (parity phase 3)
+            unsigned count = r.u16();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                MotionEvent e;
+                e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
+                e.pad = uint8_t(r.u8() % sampler_pads);
+                unsigned which = r.u8();
+                e.value = int16_t(r.i16());
+                if (r.ok && which < pad_param_count) { e.param = uint8_t(motion_pad_param(PadParam(which))); project->motion.write(e); }
             }
         } else if (name == "TIME") {
             project->signature = uint8_t(std::min<unsigned>(r.u8(), time_signature_count - 1));

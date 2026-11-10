@@ -5,6 +5,8 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/page.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/ask.h"
+#include "melodee/shell/fader.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
@@ -44,9 +46,7 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     case SurfaceControl::K1: pot(0, input.value, event.syncing); break;
     case SurfaceControl::K2: pot(1, input.value, event.syncing); break;
     case SurfaceControl::K3: pot(2, input.value, event.syncing); break;
-    case SurfaceControl::Fader: // the mod wheel of the selected track
-        context_.send({Command::Type::Wheel, ui_.track, 0, 0, int16_t(input.value * 1000 / 127)});
-        break;
+    case SurfaceControl::Fader: fader_move(context_, input.value, event.syncing); break; // shell/fader.cpp: mod wheel, or the page's own job
     case SurfaceControl::Wheel: if (input.delta) wheel(input.delta); break;
     default: break;
     }
@@ -55,7 +55,8 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
 void Shell::button(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
-    if (b == Button::TopLeft) ui.b1_held = pressed && ui.page == PageId::Patterns; // B1 held on Patterns: the wheel sets the BPM
+    if (b == Button::TopLeft) ui.b1_held = pressed && ui.ask == UiState::Ask::None && (ui.page == PageId::Patterns || ui.page == PageId::StepEdit); // B1 held: the wheel sets the BPM
+    if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
         if (!pressed) return;
         switch (b) {
@@ -131,9 +132,10 @@ void Shell::button(Button b, bool pressed) {
         if (ui.shift) context_.toggle_reverse();
         else context_.open(PageId::PlayPage);
         break;
-    case Button::Seq: // Patterns; Shift: Step Edit, again Steps -> Roll -> Motion
+    case Button::Seq: // Patterns; Shift: Step Edit, again Steps -> Roll -> Motion -> Step Edit
         if (ui.shift) {
-            context_.open(ui.page == PageId::Steps ? PageId::Roll : ui.page == PageId::Roll ? PageId::Motion : PageId::Steps);
+            context_.open(ui.page == PageId::StepEdit ? PageId::Steps : ui.page == PageId::Steps ? PageId::Roll
+                          : ui.page == PageId::Roll ? PageId::Motion : PageId::StepEdit);
             break;
         }
         context_.open(PageId::Patterns);
@@ -249,8 +251,12 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     check_pickup(n, b);
     ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n); ui_.last_pot_shift = ui_.shift;
     if (ui_.shift) ui_.shift_used = true;
-    if (ui_.erase && b.kind == Binding::Kind::Param && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane
-        context_.clear_lane(b.id);
+    if (ui_.ask != UiState::Ask::None) return; // a question open: the pots wait
+    if (ui_.erase && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane, once B3 says so (as on the MPC)
+        int lane = motion_lanes(*project_, ui_)[n];
+        uint8_t param = uint8_t(lane_param(lane)), kit = uint8_t(lane_pad(lane) % sampler_pads);
+        if (lane >= 0 && project_->motion.has(ui_.track, context_.track().pattern, param, kit)) ask(context_, UiState::Ask::EraseLane, lane);
+        else context_.notice("No motion on " + lane_name(context_.track(), lane));
         return;
     }
     if (ui_.erase && b.kind == Binding::Kind::Param) { // Erase + pot: back to the initial value
@@ -270,7 +276,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
 }
 
 void Shell::wheel(int delta) {
-    if (ui_.exit_open) return;
+    if (ui_.exit_open || ui_.ask != UiState::Ask::None) return;
     if (ui_.name.open()) { // Shift: the character under the cursor; else the cursor
         if (ui_.shift) { ui_.shift_used = true; ui_.name.step_char(delta); } else ui_.name.move(delta);
         return;
@@ -294,7 +300,7 @@ void Shell::wheel(int delta) {
 void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     if (down) velocity = ui_.settings.velocity(velocity); // the pad response
     if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
-    if (down && ui_.exit_open) return;
+    if (down && (ui_.exit_open || ui_.ask != UiState::Ask::None)) return; // a sheet or a question over the page
     if (down && track_pad(context_, pad)) { end_copy_away(); return; } // Pad Bank + pad: that track (or a track copy's)
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
     if (down && ui_.mute_mode()) { mute_pad(context_, pad, kit_pads()); return; } // mute mode: mute; with Shift, solo
@@ -396,7 +402,10 @@ std::string Shell::summary() const {
            " melodee_position=" + std::to_string(host.position_of(pt >> 8)) +
            " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
            " melodee_q=" + std::to_string(pattern_q.load()) + " melodee_first_tick=" + std::to_string(first_tick.load()) +
-           " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100);
+           " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +
+           " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
+           std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
+           " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load());
 }
 
 // The lit pads by number, 1-16.

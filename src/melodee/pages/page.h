@@ -27,6 +27,7 @@ void draw_track_overlay(ui::Paint& p, const Snapshot& s); // Pad Bank held, or a
 void draw_repeat_keys(ui::Paint& p, const Snapshot& s);   // Note Repeat on: its rates on B1-B3
 void draw_shift_layer(ui::Paint& p, const Snapshot& s);
 void draw_exit_sheet(ui::Paint& p, const Snapshot& s);
+void draw_ask_sheet(ui::Paint& p, const Snapshot& s);  // a question before an erase (shell/ask.cpp)
 void draw_notice(ui::Paint& p, const Snapshot& s);     // copying a pad, or what an undo did
 void draw_name_sheet(ui::Paint& p, const Snapshot& s); // while ui.name is open
 

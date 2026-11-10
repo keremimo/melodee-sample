@@ -8,6 +8,7 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/model/scales.h"
 #include "melodee/model/mod_matrix.h"
+#include "melodee/model/pad_params.h"
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
 #include "runtime/screen.h"
@@ -153,6 +154,38 @@ void preview_projects(Snapshot& s) {
     v.folders = {"Live sets", "Live sets/Spring tour", "Sketches", "Sketches/2026"};
     s.project_path = v.root + "/Night drive.mldp";
     s.dirty = true;
+}
+
+// Step Edit on the kit (track 4): step 5 of pattern 1 holds a kick, a hat and
+// a snare played a little late; the hat is chosen.
+void step_edit_kit(Shell& shell, Snapshot& s) {
+    s.ui.page = PageId::StepEdit; s.ui.track = 3; s.playing = true; s.position = 4 * sixteenth_ticks + 9;
+    auto& pattern = shell.patterns().at[3][0];
+    pattern = Pattern {};
+    pattern.length = 2 * 4 * ticks_per_quarter;
+    const struct { unsigned tick; uint8_t pad, velocity; uint16_t length; } hits[] {
+        {0, 0, 118, 24}, {48, 2, 70, 12}, {96, 0, 112, 24}, {96, 2, 84, 12}, {103, 1, 104, 36}, {144, 2, 66, 12}, {192, 1, 110, 24},
+    };
+    for (const auto& h : hits) {
+        Event e;
+        e.tick = h.tick; e.key = uint8_t(sampler_first_note + h.pad); e.velocity = h.velocity; e.length = h.length;
+        pattern.add(e);
+    }
+    s.project.tracks[3].pattern = 0;
+    s.ui.step_cursor = 4; s.ui.step_event = 1;
+}
+
+// Motion on the kit: pad A09's level and tune recorded over pattern 1, and
+// A01's level (not shown: A09 is the last pad hit).
+void pad_motion_kit(Shell&, Snapshot& s) {
+    s.ui.page = PageId::Motion; s.ui.track = 3; s.playing = true; s.position = 9 * sixteenth_ticks; s.ui.recording = true;
+    auto& t = s.project.tracks[3];
+    t.pattern = 0; t.last_pad = 8;
+    const int level[] {100, 84, 62, 50, 70, 96, 110, 120};
+    for (unsigned n = 0; n < 8; ++n) s.project.motion.write({3, 0, uint16_t(n * 2), uint8_t(motion_pad_param(PadParam::Level)), int16_t(level[n]), 8});
+    const int tune[] {0, 0, 5, 7, -5, 0};
+    for (unsigned n = 0; n < 6; ++n) s.project.motion.write({3, 0, uint16_t(2 + n * 2), uint8_t(motion_pad_param(PadParam::Pitch)), int16_t(tune[n]), 8});
+    s.project.motion.write({3, 0, 4, uint8_t(motion_pad_param(PadParam::Level)), 40, 0});
 }
 
 struct Preview {
@@ -436,6 +469,23 @@ const Preview previews[] {
          s.ui.page = PageId::Sounds; s.ui.track = 2; s.playing = true;
          s.ui.name.start(NameTarget::Sound, "GLASS PLUCK", name_length - 1, true);
          s.ui.name.digits = true; s.ui.name.insert(' '); s.ui.name.pad(1, s.now - 2000);
+     }},
+    // Parity phase 3. These come last: they write into the shell's patterns, which the previews before them share.
+    {"stepedit", [](Shell& shell, Snapshot& s) { // Shift + Seq: the kit's step 5, three events, the second chosen
+         step_edit_kit(shell, s);
+         s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"erasepad", [](Shell& shell, Snapshot& s) { // Erase + pad 1 on Step Edit: B1 Cancel, B3 Do it
+         step_edit_kit(shell, s);
+         s.ui.ask = UiState::Ask::EraseKeyEvents; s.ui.ask_target = int(sampler_first_note);
+     }},
+    {"padmotion", [](Shell& shell, Snapshot& s) { // Motion on a kit: the last pad's level and tune, recorded per pad
+         pad_motion_kit(shell, s);
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"eraselane", [](Shell& shell, Snapshot& s) { // Erase + K1 on Motion: the pad lane goes once B3 says so
+         pad_motion_kit(shell, s);
+         s.ui.ask = UiState::Ask::EraseLane; s.ui.ask_target = motion_lane(motion_pad_param(PadParam::Level), 8);
      }},
 };
 

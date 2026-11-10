@@ -8,6 +8,8 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
     using B = SurfaceButton;
     if (ui.exit_open) return false; // only B1 and B3 answer, and they have no lights
     if (ui.name.open()) return button == B::Erase || button == B::Play || button == B::Stop; // the Name sheet
+    if (ui.ask != UiState::Ask::None) // a question: B1 Cancel, B3 Do it, and the transport
+        return button == B::TopLeft || button == B::TopRight || button == B::Play || button == B::Stop;
     const auto& track = project.tracks[ui.track % track_count];
     bool kit = track.engine == EngineKind::Sampler;
     switch (button) {
@@ -15,7 +17,7 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
     case B::Loop: return kit;          // the last pad's loop (its Play page until phase 4); Shift reverse
     case B::SampleRecord: return kit;  // Record; elsewhere it only says it wants a kit
     case B::Erase: // pads that clear, steps, chop markers, a pot with a parameter, or Copy on kit pads and Patterns
-        return kit_pads || erase_pots || ui.page == PageId::Patterns || ui.page == PageId::Steps || ui.page == PageId::Chop
+        return kit_pads || erase_pots || ui.page == PageId::Patterns || ui.page == PageId::Steps || ui.page == PageId::StepEdit || ui.page == PageId::Chop
             || ui.page == PageId::Motion || ui.copying != UiState::Copying::Off;
     default: return true; // the page buttons, Pad Bank, Mute, Note Repeat, 16 Levels, transport: everywhere
     }
@@ -23,7 +25,7 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
 
 bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads) {
     using B = SurfaceButton;
-    if (ui.exit_open || ui.name.open()) return false; // the sheets keep their own lights
+    if (ui.exit_open || ui.name.open() || ui.ask != UiState::Ask::None) return false; // the sheets keep their own lights
     bool kit = project.tracks[ui.track % track_count].engine == EngineKind::Sampler;
     switch (button) {
     case B::Sample: case B::Seq: case B::PadBank: case B::SampleSelect: case B::Mute: case B::TapTempo:

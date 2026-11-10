@@ -33,7 +33,7 @@ struct Command {
         Tempo,       // value = tenths of a BPM
         Swing,       // value = percent
         MotionWrite, // motion: Motion::write(motion)
-        MotionClear, // motion: Motion::clear(track, pattern, param)
+        MotionClear, // motion: Motion::clear(track, pattern, param, pad)
         Mod,         // track, index = route, route
         FxKind,      // track = chain, index = slot, value = EffectKind (its initial values come with it)
         FxParam,     // track = chain, index = slot, pattern = parameter, value

@@ -31,8 +31,6 @@ juce::String where(const Snapshot& s, uint32_t ticks) {
     return text;
 }
 
-juce::String bpm_text(unsigned tenths) { return juce::String(tenths / 10) + "." + juce::String(tenths % 10); }
-
 void draw(Paint& p, const Snapshot& s) {
     unsigned first = s.ui.track / 8 * 8;
     Header h = header_of(s);
@@ -98,17 +96,7 @@ void draw(Paint& p, const Snapshot& s) {
                 p.fill(x + cw / 2 - 1, top + head_h - 1.5f, 2, 2, colour::text, 1);
         }
     }
-    if (s.ui.b1_held) { // the BPM window while B1 is held: the wheel sets it, Push whole / tenths
-        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
-        float w = 150, hgt = 70, x = (zone::width - w) / 2, y = zone::picture_y + (zone::picture_h - hgt) / 2;
-        p.fill(x, y, w, hgt, colour::panel, 6);
-        p.ring(x, y, w, hgt, colour_of(s), 6);
-        juce::String title = s.project.seq_tempo ? "P" + juce::String(s.ui.lead_pattern + 1) + " BPM" : juce::String("GLOBAL BPM");
-        p.text(title, x, y + 6, w, 10, caps_text(colour::mid, 7), juce::Justification::centred);
-        p.text(bpm_text(s.tempo), x, y + 18, w, 30, plain(colour::text, 26, Weight::SemiBold), juce::Justification::centred);
-        p.text(s.ui.bpm_tenths ? "WHEEL: 0.1  PUSH: 1" : "WHEEL: 1  PUSH: 0.1", x, y + 52, w, 10, caps_text(colour::dim, 7),
-               juce::Justification::centred);
-    }
+    if (s.ui.b1_held) draw_bpm_window(p, s); // B1 held: the wheel sets the BPM, Push whole / tenths
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {

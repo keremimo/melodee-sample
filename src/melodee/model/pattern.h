@@ -92,6 +92,10 @@ struct Pattern {
     void cut(uint32_t tick);
 };
 
+// The events starting in step `step` of a pattern's Q: events[first, first + count) (Step Edit lists them).
+struct StepEvents { size_t first = 0; unsigned count = 0; };
+StepEvents step_events(const Pattern& pattern, unsigned step);
+
 // Edits of a whole pattern (Shift + Pad 2, 3, 6, 7 and Time Correct). Each
 // keeps the pattern's notes in order; two notes landing on the same tick
 // with the same key become one.

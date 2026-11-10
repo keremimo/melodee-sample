@@ -14,6 +14,7 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/shift_pad_jobs.h"
+#include "melodee/shell/step_edit.h"
 #include "melodee/ui/tokens.h"
 #include "surface/led_colours.h"
 #include <algorithm>
@@ -132,6 +133,16 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         pattern_events.store(uint32_t(shown.events.size()), std::memory_order_relaxed);
         pattern_q.store(shown.q(), std::memory_order_relaxed);
         first_tick.store(shown.events.empty() ? 0 : shown.events.front().tick, std::memory_order_relaxed);
+        { // Step Edit: the step, the selected event and how many the step holds; the open question; motion events
+            auto in = step_events(shown, unsigned(std::max<int>(ui_.step_cursor, 0)) % shown.steps());
+            int chosen = selected_event(shown, ui_);
+            step_now.store(uint32_t(std::max<int>(ui_.step_cursor, 0)), std::memory_order_relaxed);
+            event_now.store(chosen >= 0 ? uint32_t(chosen) - uint32_t(in.first) + 1 : 0, std::memory_order_relaxed);
+            step_events_now.store(in.count, std::memory_order_relaxed);
+            event_tick.store(chosen >= 0 ? shown.events[size_t(chosen)].tick : 0, std::memory_order_relaxed);
+            ask_now.store(uint32_t(ui_.ask), std::memory_order_relaxed);
+            motion_now.store(project_->motion.count, std::memory_order_relaxed);
+        }
         auto sig = project_->time_signature();
         signature_now.store(sig.beats * 100u + sig.unit, std::memory_order_relaxed);
         pad_sample.store(pad.sample, std::memory_order_relaxed);
@@ -176,6 +187,16 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             colour = on ? track_light(ui.track, 0.8f) : Rgb {};
             if (playing && inside && position >= 0 && unsigned(position) / pattern.q() == step) colour = led_colour::white(0.7f);
             if (int(step) == ui.held_step) colour = led_colour::white(1);
+        } else if (ui.page == PageId::StepEdit) {
+            // The pads with an event on the step bright, the selected event's white, the rest faint.
+            const auto& pattern = context_.pattern();
+            int key = pad_key(project, track, pad), chosen = selected_event(pattern, ui);
+            auto in = step_events(pattern, unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps());
+            bool here = false;
+            for (unsigned n = 0; n < in.count; ++n) here |= pattern.events[in.first + n].key == key;
+            bool empty_pad = track.engine == EngineKind::Sampler && !track.pads[(unsigned(key) - sampler_first_note) % sampler_pads].used();
+            colour = key < 0 ? Rgb {} : chosen >= 0 && pattern.events[size_t(chosen)].key == key ? led_colour::white(1)
+                   : here ? track_light(ui.track, 1.0f) : empty_pad ? Rgb {} : track_light(ui.track, 0.12f);
         } else if (ui.page == PageId::Punch) {
             // The bank's punches: held or locked bright, in white on the master.
             unsigned kind = project.punch_bank % 2 * 16 + pad;
@@ -243,7 +264,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     bool play_group = ui.page == PageId::Stage || ui.page == PageId::Keys || ui.page == PageId::Pads || ui.page == PageId::Mix;
     on(B::Sample, play_group || ui.page == PageId::InputConfig);
-    on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);
+    on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::StepEdit || ui.page == PageId::Steps
+                   || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.arp);

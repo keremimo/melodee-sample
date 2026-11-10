@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/context.h"
+#include "melodee/model/pad_params.h"
+#include "melodee/shell/step_edit.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/sampler.h"
 #include <cmath>
@@ -363,9 +365,9 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::SendBus: set_send_bus(ui.track, unsigned(value)); break;
     case Kind::BusReturn: set_return(unsigned(b.id), value); break;
-    case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadLevel: pad().level = uint8_t(value); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadPan: pad().pan = int8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pitch, value); break;
+    case Kind::PadLevel: pad().level = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Level, value); break;
+    case Kind::PadPan: pad().pan = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pan, value); break;
     case Kind::PadStart: pad().start = uint32_t(uint64_t(value) * 44100 / 1000); send_pad(ui.track, t.last_pad); break;
     case Kind::PadEnd: {
         uint32_t frames = project.samples[pad().sample % sample_slots].frames, at = uint32_t(uint64_t(value) * 44100 / 1000);
@@ -380,14 +382,14 @@ void Context::apply(const Binding& b, int value) {
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
-    case Kind::PadFine: pad().fine = int8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadFine: pad().fine = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Fine, value); break;
     case Kind::PadPlayMode: pad().play = PadPlay(value); send_pad(ui.track, t.last_pad); break;
     case Kind::PadGroup: pad().group = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::PadReverse: pad().reverse = value != 0; send_pad(ui.track, t.last_pad); break;
-    case Kind::PadAttack: pad().attack = uint8_t(value); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadDecay: pad().decay = uint8_t(value); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadRelease: pad().release = uint8_t(value); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadSustain: pad().sustain = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadAttack: pad().attack = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Attack, value); break;
+    case Kind::PadDecay: pad().decay = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Decay, value); break;
+    case Kind::PadRelease: pad().release = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Release, value); break;
+    case Kind::PadSustain: pad().sustain = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Sustain, value); break;
     case Kind::Tempo: set_tempo(value * 10); break;
     case Kind::NameSuggest: {
         std::array<const char*, max_suggestions> names {};
@@ -421,6 +423,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::RecThreshold: ui.rec_threshold = int8_t(value); break;
     case Kind::RecBars: ui.rec_bars = uint8_t(value); break;
     case Kind::RecGain: ui.rec_gain = int8_t(value); send({Type::RecordGain, 0, 0, 0, int16_t(value)}); break;
+    case Kind::EventVelocity: set_event_velocity(*this, value); break;
+    case Kind::EventLength: set_event_length(*this, value); break;
     case Kind::None: break;
     }
 }
@@ -627,11 +631,12 @@ void Context::sync_pattern(unsigned t, unsigned p) {
     dirty = true;
 }
 
-void Context::record_motion(int param, int value) {
-    if (!ui.recording || !host.playing() || host.count_in() || param < 0) return;
+void Context::record_motion(int lane, int value) {
+    if (!ui.recording || !host.playing() || host.count_in() || lane < 0) return;
     auto& t = track();
     MotionEvent e;
-    e.track = ui.track; e.pattern = t.pattern; e.param = uint8_t(param); e.value = int16_t(value);
+    e.track = ui.track; e.pattern = t.pattern; e.param = uint8_t(lane_param(lane)); e.value = int16_t(value);
+    e.pad = uint8_t(lane_pad(lane) % sampler_pads);
     e.step = uint16_t(uint32_t(std::max(host.position_of(ui.track), 0)) % pattern().length / sixteenth_ticks);
     if (!project.motion.write(e)) return; // full: the move still sounds, it is just not kept
     Command c {Type::MotionWrite};
@@ -639,13 +644,24 @@ void Context::record_motion(int param, int value) {
     send(c);
 }
 
-void Context::clear_lane(int param) {
-    if (param < 0) return;
+// A kit pad's own value turned while recording: a lane of that pad (the last hit).
+void Context::record_pad_motion(PadParam which, int value) {
+    if (track().engine != EngineKind::Sampler) return;
+    record_motion(motion_lane(motion_pad_param(which), track().last_pad % sampler_pads), value);
+}
+
+void Context::clear_lane(int lane) {
+    if (lane < 0) return;
     auto& t = track();
-    project.motion.clear(ui.track, t.pattern, uint8_t(param));
-    Command c {Type::MotionClear};
-    c.motion.track = ui.track; c.motion.pattern = t.pattern; c.motion.param = uint8_t(param);
-    send(c);
+    std::string what = "Erase " + lane_name(t, lane) + " motion";
+    edit_pattern(ui.track, t.pattern, what.c_str(), [&] { // one undo (the motion is in every edit), or part of a take
+        uint8_t param = uint8_t(lane_param(lane)), pad = uint8_t(lane_pad(lane) % sampler_pads);
+        project.motion.clear(ui.track, t.pattern, param, pad);
+        Command c {Type::MotionClear};
+        c.motion.track = ui.track; c.motion.pattern = t.pattern; c.motion.param = param; c.motion.pad = pad;
+        send(c);
+    });
+    notice(what);
 }
 
 void Context::launch(unsigned t, unsigned p) {
@@ -1048,8 +1064,8 @@ void Context::clear_fx_motion(unsigned n) {
     auto& motion = project.motion;
     for (unsigned e = 0; e < motion.count;) {
         const auto ev = motion.events[e];
-        if (ev.track != n || ev.param < motion_fx_base) { ++e; continue; }
-        motion.clear(ev.track, ev.pattern, ev.param);
+        if (ev.track != n || ev.param < motion_fx_base || ev.param >= motion_pad_base) { ++e; continue; } // pad lanes stay
+        motion.clear(ev.track, ev.pattern, ev.param, ev.pad);
         Command c {Type::MotionClear};
         c.motion = ev;
         send(c);

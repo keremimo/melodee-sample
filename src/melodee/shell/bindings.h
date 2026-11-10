@@ -5,6 +5,7 @@
 #include "melodee/shell/ui_state.h"
 #include <array>
 #include <cstdint>
+#include <string>
 
 // What K1-K3 hold on the page in view. Every page states its three cards as
 // Bindings; the shell turns pot moves into values through them and the
@@ -35,7 +36,8 @@ struct Binding {
         PunchDepth, PunchSnap, PunchTail,          // Punch
         PadPunchKind, PadPunchRate, PadPunchDepth, // Pad Punch: the last pad hit
         NameSuggest, NameChar,                     // the Name sheet
-        Transpose                                  // Keys, Shift + K3: the pads by semitones
+        Transpose,                                 // Keys, Shift + K3: the pads by semitones
+        EventVelocity, EventLength                 // Step Edit: the selected event (length in steps of Q)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -59,16 +61,23 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
 // The page's own cards, and its Shift row (unbound where a card has none).
 std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, const Pattern& pattern);
 std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern& pattern);
-// The three parameters the Motion page shows as lanes: those holding motion
-// on the track's playing pattern first, then the track's favourites.
+// A Motion lane: an engine parameter, one of the track chain's effects'
+// (motion_fx_param()), or a kit pad's own value on one pad
+// (model/pad_params.h): param | pad << 8.
+constexpr int motion_lane(unsigned param, unsigned pad = 0) { return int(param | pad << 8); }
+constexpr unsigned lane_param(int lane) { return unsigned(lane) & 0xff; }
+constexpr unsigned lane_pad(int lane) { return unsigned(lane) >> 8; }
+// The three lanes the Motion page shows: those holding motion on the
+// track's playing pattern first (a kit's pad lanes of the last pad hit),
+// then on a kit the last pad's tune, level and pan, else the favourites.
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui);
-// What a motion lane's parameter is (an engine parameter, or one of the track
-// chain's effects', see motion_fx_param()): its description and the
-// track's own value; info is nullptr when there is no such parameter.
+// What a lane is: its description and the track's own value; info is
+// nullptr when there is no such parameter (or a pad value phase 4 brings).
 struct MotionParam { const struct ParamInfo* info = nullptr; int value = 0; };
-MotionParam motion_param(const Track& track, int param);
-// The card for a lane's parameter on the Motion page.
-Binding lane_binding(const Track& track, unsigned track_index, int param);
+MotionParam motion_param(const Track& track, int lane);
+std::string lane_name(const Track& track, int lane); // "CUTOFF", "A03 LEVEL"
+// The card for a lane on the Motion page.
+Binding lane_binding(const Track& track, unsigned track_index, int lane);
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
 // Patterns' K1: lengths in bars, as on the MPC (Shift + K1 any bar count).
