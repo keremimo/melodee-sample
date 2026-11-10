@@ -12,7 +12,8 @@
 // IT, B1 CANCEL); DEMOS, at the top, holds the projects made in code
 // (shell/demo_projects.h), opened unsaved; Load kit on another project's
 // sheet takes only its kit (pads and samples, no patterns) onto the
-// selected track.
+// selected track. Parity phase 10b: SD card access, under DEMOS, lends the
+// card to a computer (pages/card_access_page.cpp).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/demo_projects.h"
@@ -47,13 +48,15 @@ const char* action_name(Action a) {
 bool unsaved_row(const std::string& path) { return path.empty(); }
 unsigned demos_row(const std::string& path) { return unsaved_row(path) ? 2 : 1; }
 bool has_demos_row(const std::string& folder) { return folder.empty(); }
-unsigned first_entry(const std::string& path, const std::string& folder) { return demos_row(path) + (has_demos_row(folder) ? 1 : 0); }
+unsigned first_entry(const std::string& path, const std::string& folder) { return demos_row(path) + (has_demos_row(folder) ? 2 : 0); }
 const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const std::string& path, const std::string& folder) {
     unsigned first = first_entry(path, folder);
     return row >= first && row - first < v.entries.size() ? &v.entries[row - first] : nullptr;
 }
 bool on_unsaved(unsigned row, const std::string& path) { return unsaved_row(path) && row == 1; }
 bool on_demos(unsigned row, const std::string& path, const std::string& folder) { return has_demos_row(folder) && row == demos_row(path); }
+// SD card access (parity phase 10b), under DEMOS at the top, as the MPC's Project menu ends with it.
+bool on_card(unsigned row, const std::string& path, const std::string& folder) { return has_demos_row(folder) && row == demos_row(path) + 1; }
 // A demo's tracks and tempo, made once.
 struct DemoMeta { unsigned tracks = 0, tempo = 0; };
 const DemoMeta& demo_meta(unsigned n) {
@@ -86,6 +89,16 @@ void folder_icon(Paint& p, float x, float cy) {
     icon.addRoundedRectangle(x, cy - 4, 12, 9, 1.5f);
     icon.addRoundedRectangle(x, cy - 5.5f, 5, 3, 1);
     p.g.setColour(colour::mid); p.g.fillPath(icon);
+}
+
+// A microSD card: the cut corner and its contacts.
+void card_icon(Paint& p, float x, float cy, juce::Colour c) {
+    juce::Path card;
+    card.startNewSubPath(x + 3, cy - 6);
+    card.lineTo(x + 10, cy - 6); card.lineTo(x + 10, cy + 6); card.lineTo(x, cy + 6); card.lineTo(x, cy - 3);
+    card.closeSubPath();
+    p.g.setColour(c); p.g.strokePath(card, juce::PathStrokeType(1.2f));
+    for (int k = 0; k < 3; ++k) p.fill(x + 3 + k * 2.2f, cy - 4, 1.1f, 3, c);
 }
 
 juce::String free_text(uint64_t bytes) {
@@ -175,6 +188,14 @@ void draw(Paint& p, const Snapshot& s) {
             float mw = p.width(meta, meta_style);
             p.text(meta, x + w - 7 - mw, y, mw + 1, list_row_h, meta_style);
             p.text("Demos", tx, y, w - mw - 40, list_row_h, plain(colour::sec, 12, Weight::Medium));
+            continue;
+        }
+        if (on_card(n, s.project_path, s.project_folder)) { // the card, to a computer over USB-C
+            card_icon(p, x + 10, cy, colour::mid);
+            auto meta_style = caps_text(colour::mid, 7);
+            float mw = p.width("USB-C", meta_style);
+            p.text("USB-C", x + w - 7 - mw, y, mw + 1, list_row_h, meta_style);
+            p.text("SD card access", tx, y, w - mw - 40, list_row_h, plain(colour::sec, 12, Weight::Medium));
             continue;
         }
         if (on_unsaved(n, s.project_path)) { // the open project, not on the card yet
@@ -376,6 +397,7 @@ void push(Context& c) {
     auto v = view_of(c);
     if (on_unsaved(c.ui.project_cursor, c.project_path)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false; return; }
     if (on_demos(c.ui.project_cursor, c.project_path, c.project_folder)) { c.ui.project_demos = true; c.ui.project_cursor = 0; return; }
+    if (on_card(c.ui.project_cursor, c.project_path, c.project_folder)) { c.card_access(); return; }
     const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
     if (!e) { // New project: asks first, as the MPC does (B3 DO IT, B1 CANCEL); the open one is saved first if it has a file
         c.ask_new_project();

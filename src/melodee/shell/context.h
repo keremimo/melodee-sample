@@ -29,6 +29,7 @@ class EngineHost;
 class SampleLibrary;
 class ProjectStore;
 class InputRoute;
+struct CardLink;
 struct LoadedSample;
 
 class Context {
@@ -195,6 +196,8 @@ public:
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     // Projects on the card
     ProjectStore* store = nullptr;
+    CardLink* card = nullptr;          // SD card access (shell/card_access.h): set by the shell
+    void card_access();                // Project's SD card access row: lend the card, open its page
     std::string project_path;         // the file this project came from or went to; empty when new
     std::string project_folder;       // the Project page's folder, relative to the root
     bool dirty = false;               // changed since it was saved or loaded

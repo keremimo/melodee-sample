@@ -101,4 +101,8 @@ void SampleLibrary::drain_render() {
     land(render_job.slot, std::move(render_data), "Recorded", "RESAMPLE", "Resample");
 }
 
+bool SampleLibrary::busy() const {
+    return rendering || host.recorder().state() != TakeRecorder::State::Idle;
+}
+
 } // namespace melodee

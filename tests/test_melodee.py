@@ -16,7 +16,7 @@ SOURCES = ["src/melodee/engine/prophet.cpp", "src/melodee/engine/prophet_info.cp
            "src/melodee/engine/cz.cpp", "src/melodee/engine/punch.cpp", "src/melodee/engine/punch_mpc.cpp", "src/melodee/engine/pad_fx_info.cpp", "src/melodee/model/sound_file.cpp",
            "src/melodee/shell/page_stack.cpp", "src/melodee/shell/button_jobs.cpp",
            "src/melodee/shell/shift_pad_jobs.cpp", "src/melodee/shell/fader_job.cpp", "src/melodee/shell/midi_route.cpp", "src/melodee/shell/mtc_in.cpp",
-           "src/melodee/shell/undo_scope.cpp", "src/melodee/shell/demo_projects.cpp"]
+           "src/melodee/shell/undo_scope.cpp", "src/melodee/shell/demo_projects.cpp", "src/melodee/shell/card_access.cpp"]
 
 
 class MelodeeTests(unittest.TestCase):

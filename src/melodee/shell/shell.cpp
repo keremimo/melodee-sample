@@ -7,6 +7,7 @@
 #include "melodee/pages/page.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
+#include "melodee/shell/card_access.h"
 #include "melodee/shell/fader.h"
 #include "melodee/shell/takeover.h"
 #include "melodee/shell/mute_mode.h"
@@ -29,6 +30,7 @@ Shell::Shell(EngineHost& host)
     : host(host), project_(std::make_unique<Project>()), patterns_(std::make_unique<PatternBank>()),
       context_(*project_, *patterns_, ui_, host) {
     starting_project(*project_, *patterns_);
+    context_.card = &card_link;
 }
 
 void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now) {
@@ -61,6 +63,8 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     }
     if (input.kind == SurfaceInput::Kind::Button) { button(Button(input.index), input.pressed); return; }
     if (input.kind != SurfaceInput::Kind::Control) return;
+    // SD card access: the card is on a computer; only the main volume still turns (as the MPC, other modes wait).
+    if (card_owns_controls(ui_) && SurfaceControl(input.index) != SurfaceControl::MainVolume) return;
     switch (SurfaceControl(input.index)) {
     case SurfaceControl::MainVolume: main_volume.store(main_volume_gain(input.value), std::memory_order_relaxed); break;
     case SurfaceControl::K1: pot(0, input.value, event.syncing); break;
@@ -75,6 +79,14 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
 // Each press on a page is one undo step of what the page edits, unless it kept
 // an edit of its own (parity phase 10); Shift and undo / redo themselves are not.
 void Shell::button(Button b, bool pressed) {
+    if (card_owns_controls(ui_)) { // SD card access (shell/card_access.h): B1, the question's B3, Play and Stop
+        if (!pressed) { if (b == Button::Shift) ui_.shift = false; if (b == Button::Play || b == Button::Stop) press(b, pressed); return; }
+        auto r = card_press(ui_, b);
+        if (r.request != CardRequest::None) card_link.request.store(uint8_t(r.request));
+        if (r.leave) context_.open(PageId::Project);
+        if (!r.taken) press(b, pressed);
+        return;
+    }
     if (!pressed || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
     PageEdit step(context_, b, false);
     press(b, pressed);
@@ -318,6 +330,11 @@ void Shell::wheel(int delta) {
 }
 
 void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
+    if (card_owns_controls(ui_)) { // the pads only play the selected track's sound
+        if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
+        context_.play_pad(pad, down ? ui_.settings.velocity(velocity) : 0, down);
+        return;
+    }
     if (!down) { hit(pad, velocity, down); return; }
     PageEdit step(context_, Button::Count, true);
     hit(pad, velocity, down);
@@ -456,7 +473,10 @@ std::string Shell::summary() const {
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
            " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary()
-           + input_summary() + fx_summary() + midi_io.summary(host) + midi_config_summary() + phase10_summary();
+           + input_summary() + fx_summary() + midi_io.summary(host) + midi_config_summary() + phase10_summary() +
+           // Phase 10b: SD card access (0 home, 1 lending, 2 lent, 3 returning; the note shell/card_access.h's CardNote).
+           " melodee_card=" + std::to_string(card_link.state.load()) + " melodee_card_note=" + std::to_string(card_link.note.load()) +
+           " melodee_card_ejected=" + std::to_string(int(card_link.ejected.load())) + " melodee_card_locked=" + std::to_string(int(card_link.locked.load()));
 }
 
 // Phase 10: undo (depth, redo waiting, the last step's name), Seq + Sample, the sampler map, DEMOS, a pot gesture open.

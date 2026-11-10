@@ -6,6 +6,7 @@
 // project's kit (pads, samples, their effects; no patterns) onto the
 // selected track as one undo.
 #include "melodee/shell/ask.h"
+#include "melodee/shell/card_access.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/demo_projects.h"
 #include "melodee/shell/project_store.h"
@@ -55,6 +56,15 @@ void Context::load_kit(const Project& from, const std::string& name) {
     edits.push(std::move(edit));
     notice(result.missing ? what + ": " + std::to_string(result.missing) + " pads without a slot" : what);
     if (ui.page == PageId::Project) open(PageId::Pads);
+}
+
+// SD card access (parity phase 10b): the service thread lends the card; the
+// page shows how it goes and owns the controls until it is back.
+void Context::card_access() {
+    if (!card || card_away(ui.card)) return;
+    ui.sheet_open = false; ui.move_open = false;
+    card->request.store(uint8_t(CardRequest::Lend));
+    open(PageId::CardAccess);
 }
 
 } // namespace melodee

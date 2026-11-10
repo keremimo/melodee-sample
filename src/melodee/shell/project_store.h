@@ -58,6 +58,8 @@ public:
 
     // Service thread.
     void service(Hardware& hardware);
+    // Service thread: the card came back from a computer (SD card access): look for it and list it again.
+    void rescan() { root.clear(); ticks = 0; }
 
     // Any thread but audio.
     struct View {

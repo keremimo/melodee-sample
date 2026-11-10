@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/melodee_app.h"
+#include "drivers/card_share.h"
 #include "drivers/mixer.h"
 #include "drivers/platform.h"
 #include "surface/pads.h"
@@ -214,8 +215,12 @@ void MelodeeApp::jack(const JackEvent&, Hardware& hardware) {
 
 void MelodeeApp::service(Hardware& hardware) {
     input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
-    library.service(hardware);
-    store.service(hardware);
+    card_access(hardware);
+    // The card is Melodee's only while the base has it home: nothing reads or writes it meanwhile.
+    if (hardware.card.status().state == CardShareState::Home) {
+        library.service(hardware);
+        store.service(hardware);
+    }
     // A short press of Power opens the Exit sheet.
     uint64_t presses = hardware.power.presses();
     if (power_known && presses > power_presses && !hardware.power.pressed()) shell.power_pressed();
@@ -227,6 +232,44 @@ void MelodeeApp::service(Hardware& hardware) {
         if (backlight.maximum > 0) hardware.platform.brightness(unsigned(std::max(1L, backlight.maximum * long(screen) / 100)));
         screen_applied = screen;
     }
+}
+
+// SD card access (shell/card_access.h): what the shell asked, done through the
+// base's CardShare, and what came of it copied back for the shell.
+void MelodeeApp::card_access(Hardware& hardware) {
+    using melodee::CardNote;
+    using melodee::CardRequest;
+    auto& link = shell.card();
+    auto& card = hardware.card;
+    switch (CardRequest(link.request.exchange(0))) {
+    case CardRequest::Lend:
+        card_note = CardNote::None;
+        if (library.busy()) card_note = CardNote::Writing; // a take or a render still writes to it
+        else if (!card.lend()) card_note = card.status().message == "no card" ? CardNote::NoCard : CardNote::Failed;
+        break;
+    case CardRequest::Return: card.take_back(false); break;
+    case CardRequest::Force: card.take_back(true); break;
+    default: break;
+    }
+    const auto& now = card.status();
+    if (now.returns != card_returns) { // back: its projects and samples read again
+        card_returns = now.returns;
+        library.rescan();
+        store.rescan();
+    }
+    CardNote note = card_note;
+    if (note == CardNote::None && !now.message.empty()) {
+        const auto& m = now.message;
+        note = m == "no card" ? CardNote::NoCard : m == "the card is in use" || m == "the card is still mounted" ? CardNote::InUse
+             : m == "the card came back with nothing to mount" ? CardNote::Empty : now.locked ? CardNote::Locked : CardNote::Failed;
+    }
+    if (now.state != CardShareState::Home) card_note = CardNote::None; // a note of Melodee's own lasts until the next try
+    link.state.store(uint8_t(now.state));
+    link.connected.store(now.connected);
+    link.ejected.store(now.ejected);
+    link.locked.store(now.locked);
+    link.note.store(uint8_t(note));
+    link.returns.store(now.returns);
 }
 
 std::string MelodeeApp::status() const {

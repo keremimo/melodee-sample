@@ -448,28 +448,49 @@ const Preview previews[] {
          s.ui.name.start(NameTarget::Mixdown, "Night drive", 31, false);
      }},
     {"project", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5;
          preview_projects(s);
      }},
     {"filesheet", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4; s.ui.sheet_open = true;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5; s.ui.sheet_open = true;
          preview_projects(s);
      }},
     // Parity phase 10: another project's sheet with Load kit, the demos, New project asking first.
     {"loadkit", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.ui.project_cursor = 5; s.ui.sheet_open = true; s.ui.sheet_row = 1;
+         s.ui.page = PageId::Project; s.ui.project_cursor = 6; s.ui.sheet_open = true; s.ui.sheet_row = 1;
          preview_projects(s);
      }},
     {"demos", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Project; s.ui.project_demos = true; s.ui.project_cursor = 1;
          preview_projects(s);
      }},
+    // Parity phase 10b: SD card access, its row on Project, then the card on a computer, ejected, held, and none to lend.
+    {"cardrow", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.project_cursor = 2;
+         preview_projects(s);
+     }},
+    {"cardaccess", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::CardAccess; s.ui.card.state = 2; s.ui.card.connected = true;
+     }},
+    {"cardejected", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::CardAccess; s.ui.card.state = 2; s.ui.card.connected = true; s.ui.card.ejected = true;
+     }},
+    {"cardlocked", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::CardAccess; s.ui.card.state = 2; s.ui.card.connected = true; s.ui.card.locked = true;
+         s.ui.ask = UiState::Ask::TakeCardBack;
+     }},
+    {"cardnocomputer", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::CardAccess; s.ui.card.state = 2; s.playing = true;
+     }},
+    {"cardnone", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::CardAccess; s.ui.card.note = CardNote::NoCard;
+     }},
     {"newproject", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Project; s.ui.project_cursor = 0; s.ui.ask = UiState::Ask::NewProject; s.ui.ask_target = 1;
          preview_projects(s);
      }},
     {"movefolder", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4; s.ui.move_open = true; s.ui.move_cursor = 1;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5; s.ui.move_open = true; s.ui.move_cursor = 1;
          preview_projects(s);
      }},
     {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.project.click = true; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},

@@ -276,6 +276,8 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
 }
 
 std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern, bool shift) {
+    // SD card access: the card is away, every mode waits (shell/card_access.h).
+    if (ui.page == PageId::CardAccess || ui.card.state != 0) return {};
     // Knob FX on: the pots are its, on every page (as on the MPC), but for the Name sheet.
     if (knob_owns(project, ui)) return knob_bindings(project, shift);
     auto cards = base_bindings(project, ui, pattern);

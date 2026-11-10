@@ -65,6 +65,8 @@ public:
     // MIDI thread: ask for `path` in project slot `slot`; ask for a fresh list.
     bool load(unsigned slot, const std::string& path);
     void rescan() { scan_wanted.store(true); }
+    // Service thread: a take or a render is writing to the card (SD card access waits for it).
+    bool busy() const;
     // MIDI thread: the browser. A folder to list (empty: the drive's start),
     // up one folder, or the other drive.
     void browse(Drive drive, const std::string& folder);

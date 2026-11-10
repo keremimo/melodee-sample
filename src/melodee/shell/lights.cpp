@@ -32,6 +32,15 @@ Rgb track_light(unsigned track, float level) {
 
 void Shell::lights(SurfaceLights& lights, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock); // the screen thread may be copying the state
+    { // SD card access: the service thread's view of the card. Lent from anywhere (the remote too): the page
+      // opens and owns the controls; back: Project again, its lists read anew.
+        CardView view;
+        view.state = card_link.state.load(); view.connected = card_link.connected.load(); view.ejected = card_link.ejected.load();
+        view.locked = card_link.locked.load(); view.note = CardNote(card_link.note.load()); view.returns = card_link.returns.load();
+        auto change = card_follow(ui_, view);
+        if (change.left && ui_.page != PageId::CardAccess) { ui_.shift = false; ui_.ask = UiState::Ask::None; context_.open(PageId::CardAccess); }
+        if (change.back && ui_.page == PageId::CardAccess) { context_.open(PageId::Project); context_.notice("Card back"); }
+    }
     // Power was pressed: the Exit sheet opens (the service thread only counts presses).
     // The library found files or finished a sample: the lengths go into the project.
     if (library_ && library_->generation() != library_seen) {
@@ -91,7 +100,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         store_seen = store_->generation();
         ProjectStore::View v;
         store_->view(v);
-        ui_.project_rows = uint16_t(v.entries.size() + (context_.project_path.empty() ? 2 : 1));
+        ui_.project_rows = uint16_t(v.entries.size() + (context_.project_path.empty() ? 2 : 1) + (context_.project_folder.empty() ? 2 : 0)); // + DEMOS, SD card access
     }
     // After a switch, every sample slot loads again (or empties), a few each pass.
     while (library_ && context_.samples_to_load < sample_slots) {
@@ -345,6 +354,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     };
     auto job = [&](B button) { return button_has_job(project, ui, button, kit, erase_pots); };
     auto on = [&](B button, bool lit) { set(button, lit && job(button) ? L::Bright : job(button) ? L::Dim : L::Off); };
+    if (card_owns_controls(ui)) { // SD card access: every mode waits; only the transport answers (B1-B3 have no lights)
+        for (B button : {B::Sample, B::Seq, B::PadFx, B::KnobFx, B::Shift, B::PadBank, B::Erase, B::NoteRepeat, B::Chop, B::Mute,
+                         B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord, B::SeqRecord, B::WheelPush})
+            set(button, L::Off);
+        set(B::Play, playing ? L::Bright : L::Dim);
+        set(B::Stop, L::Dim);
+        button_levels.store(levels, std::memory_order_relaxed);
+        return;
+    }
     if (ui.shift && !ui.name.open() && !ui.exit_open) { // as Akai's guide has it: the Shift jobs faint, bright while on
         for (B button : {B::Sample, B::Seq, B::PadFx, B::KnobFx, B::Shift, B::PadBank, B::Erase, B::NoteRepeat, B::Chop, B::Mute,
                          B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord, B::SeqRecord,

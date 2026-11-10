@@ -43,6 +43,7 @@
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/mute_mode.h"
+#include "melodee/shell/card_access.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/step_edit.h"
@@ -3139,6 +3140,51 @@ void mtc_in() {
 }
 
 // Parity phase 10: the sampler's page groups, undo scopes, demos and Load Kit.
+// Parity phase 10b: SD card access. While the card is away (or its page is open) only B1, the question's B3,
+// Play and Stop answer; B1 takes the card back, or asks first while the computer holds it; the shell follows the
+// service thread's view: the card leaving opens the page, coming back leaves it.
+void card_access() {
+    using B = SurfaceButton;
+    UiState ui;
+    ui.page = PageId::CardAccess; // Project's row opened it; the lend not answered yet (state home)
+    CHECK(card_owns_controls(ui));
+    auto r = card_press(ui, B::Seq);
+    CHECK(r.taken && !r.leave && r.request == CardRequest::None);       // other modes wait
+    CHECK(!card_press(ui, B::Play).taken && !card_press(ui, B::Stop).taken); // the transport still works
+    r = card_press(ui, B::TopLeft);
+    CHECK(r.taken && r.leave && r.request == CardRequest::None);        // nothing lent: B1 is back
+
+    CardView lent; lent.state = 2; lent.connected = true;
+    ui.page = PageId::Stage; // lent from anywhere (the remote): the shell opens the page
+    auto change = card_follow(ui, lent);
+    CHECK(change.left && !change.back && card_owns_controls(ui));
+    CHECK(card_press(ui, B::Shift).taken && card_press(ui, B::TopRight).request == CardRequest::None);
+    CHECK(card_press(ui, B::TopLeft).request == CardRequest::Return);   // B1: take it back
+    lent.locked = true; card_follow(ui, lent);                         // ... but the computer still holds it
+    r = card_press(ui, B::TopLeft);
+    CHECK(r.request == CardRequest::None && ui.ask == UiState::Ask::TakeCardBack); // B1 again: asks
+    CHECK(card_press(ui, B::TopLeft).request == CardRequest::None && ui.ask == UiState::Ask::None); // Cancel: stays lent
+    card_press(ui, B::TopLeft);
+    CHECK(card_press(ui, B::TopRight).request == CardRequest::Force && ui.ask == UiState::Ask::None); // B3: take it anyway
+    lent.ejected = true; card_follow(ui, lent);                        // ejected on the computer: B1 simply returns it
+    CHECK(card_press(ui, B::TopLeft).request == CardRequest::Return);
+    CHECK(std::string(card_title(ui.card)) == "Ejected");
+
+    CardView back; back.returns = 1;
+    ui.ask = UiState::Ask::TakeCardBack;
+    change = card_follow(ui, back);
+    CHECK(change.back && !change.left && ui.ask == UiState::Ask::None && !card_away(ui.card));
+    CHECK(!card_follow(ui, back).back); // once
+
+    // The lights: only the transport (and B1, unlit) has a job while the card is away; no Shift jobs.
+    Project project;
+    ui.page = PageId::CardAccess; ui.card = lent;
+    CHECK(!button_has_job(project, ui, B::Seq, false, false) && button_has_job(project, ui, B::Play, false, false));
+    CHECK(!button_has_shift_job(project, ui, B::Seq, false));
+    CardView none; none.note = CardNote::NoCard;
+    CHECK(std::string(card_title(none)) == "No card");
+}
+
 void projects_and_polish() {
     // B1 Trim -> Mix -> Amp Env, B2 Tune -> Play -> Follow -> Cloud, B3 Filter -> Filt Env -> Kit filter; another group's key: its first.
     CHECK(sampler_next(PageId::Trim, 0) == PageId::PadMix && sampler_next(PageId::PadMix, 0) == PageId::EnvelopePage);
@@ -3266,6 +3312,7 @@ void projects_and_polish() {
 }
 
 int main() {
+    card_access();
     projects_and_polish();
     midi_and_sync();
     mtc_in();

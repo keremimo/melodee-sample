@@ -8,6 +8,10 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
     using B = SurfaceButton;
     if (ui.exit_open) return false; // only B1 and B3 answer, and they have no lights
     if (ui.name.open()) return button == B::Erase || button == B::Play || button == B::Stop; // the Name sheet
+    if (ui.page == PageId::CardAccess || ui.card.state != 0) { // SD card access: everything else waits (shell/card_access.h)
+        if (ui.ask != UiState::Ask::None) return button == B::TopLeft || button == B::TopRight || button == B::Play || button == B::Stop;
+        return button == B::Play || button == B::Stop || (button == B::TopLeft && (ui.card.state == 0 || ui.card.state == 2));
+    }
     if (ui.ask != UiState::Ask::None) // a question: B1 Cancel, B3 Do it, and the transport
         return button == B::TopLeft || button == B::TopRight || button == B::Play || button == B::Stop;
     const auto& track = project.tracks[ui.track % track_count];
@@ -26,6 +30,7 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
 bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads) {
     using B = SurfaceButton;
     if (ui.exit_open || ui.name.open() || ui.ask != UiState::Ask::None) return false; // the sheets keep their own lights
+    if (ui.page == PageId::CardAccess || ui.card.state != 0) return false;             // SD card access: Shift does nothing
     bool kit = project.tracks[ui.track % track_count].engine == EngineKind::Sampler;
     switch (button) {
     case B::Sample: case B::Seq: case B::PadBank: case B::SampleSelect: case B::Mute: case B::TapTempo:

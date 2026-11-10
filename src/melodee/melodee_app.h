@@ -37,6 +37,7 @@ public:
 
 private:
     uint32_t now_ms() const;
+    void card_access(Hardware& hardware); // service thread: SD card access (parity phase 10b)
     Clock::time_point started = Clock::now();
     melodee::EngineHost host;
     UsbStems stem_block {}; // audio thread: each track's mono stem for USB-C
@@ -54,5 +55,7 @@ private:
     struct RemoteMidi { bool usb = false; MidiPacket packet; };
     MidiQueue<16, RemoteMidi> remote_midi;
     bool power_known = false;
+    melodee::CardNote card_note = melodee::CardNote::None; // service thread: why the last lend did not start
+    uint64_t card_returns = 0;
     unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)
 };

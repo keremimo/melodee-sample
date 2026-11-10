@@ -19,7 +19,8 @@ enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motio
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
-                            MidiConfig, Count };               // parity phase 9: Shift + Pad 8
+                            MidiConfig,                        // parity phase 9: Shift + Pad 8
+                            CardAccess, Count };               // parity phase 10b: Project's SD card access
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
 // met it, so a page change never makes a value jump; until then Pickup waits
@@ -29,6 +30,16 @@ struct Pot {
     bool engaged = false;
     uint32_t bound = 0;    // which binding it was last checked against
     float scaled = -1;     // Scaled, not met yet: where the value is, unrounded (0..1); -1 none
+};
+
+// SD card access (parity phase 10b, shell/card_access.h): what the page shows.
+// `state` is the base's CardShareState (0 home, 1 lending, 2 lent, 3 returning).
+enum class CardNote : uint8_t { None, NoCard, InUse, Writing, Locked, Empty, Failed };
+struct CardView {
+    uint8_t state = 0;
+    bool connected = false, ejected = false, locked = false;
+    CardNote note = CardNote::None;
+    uint64_t returns = 0;
 };
 
 struct UiState {
@@ -190,9 +201,12 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject }; // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack }; // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
+    // SD card access (shell/card_access.h): the card as the service thread
+    // last saw it, copied in on the MIDI thread.
+    CardView card;
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms
