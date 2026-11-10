@@ -32,6 +32,9 @@ Install
 
 Projects are saved on the card in Melodee/Projects.
 
+New to Melodee? The quickstart, with pictures of each screen:
+https://github.com/keremimo/melodee-sample/blob/main/docs/QUICKSTART.md
+
 
 Back to the stock app
 ---------------------

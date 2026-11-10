@@ -5,7 +5,8 @@ Melodee is a sixteen-track groovebox for the **Akai MPC Sample (firmware
 patterns and a song, mixer and effects. It runs in place of the stock app
 on [sample-base](https://github.com/keremimo/sample-base), a standalone
 JUCE runtime for the MPC Sample, and returns to the stock app on exit, a
-crash or any failure. What it does, page by page:
+crash or any failure. New to it? Start with the illustrated
+[quickstart](docs/QUICKSTART.md). What it does, page by page:
 [docs/MELODEE.md](docs/MELODEE.md).
 
 ## Layout

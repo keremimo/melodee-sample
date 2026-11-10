@@ -846,6 +846,11 @@ const Preview previews[] {
          on_stage(s, 3, 0, 0); s.sample = break_sample();
          s.ui.name.start(NameTarget::Sample, "DUST BREAK", name_length - 1, false);
      }},
+    {"nameproject", [](Shell&, Snapshot& s) { // Save on a project with no file yet: a name first (QUICKSTART.md)
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5;
+         preview_projects(s);
+         s.ui.name.start(NameTarget::ProjectSave, "Project 1", sizeof(s.project.name) - 1, false);
+     }},
     // Parity phase 3. These come last: they write into the shell's patterns, which the previews before them share.
     {"stepedit", [](Shell& shell, Snapshot& s) { // Shift + Seq: the kit's step 5, three events, the second chosen
          step_edit_kit(shell, s);
