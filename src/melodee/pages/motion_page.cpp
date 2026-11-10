@@ -71,6 +71,6 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec motion_page {draw, play_pad, no_wheel, no_push, soft, octave};
+const PageSpec motion_page {draw, play_pad, no_wheel, no_push, soft, [](Context&, int) {}}; // octave only on play pages
 
 } // namespace melodee

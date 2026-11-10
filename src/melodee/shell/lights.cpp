@@ -9,6 +9,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/shell.h"
+#include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/ui/tokens.h"
 #include "surface/led_colours.h"
 #include <algorithm>
@@ -123,6 +124,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     bool playing = host.playing();
     int step_now = host.step_of(ui.track);
     uint32_t ticks = host.ticks();
+    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !ui.pad_bank && !ui.mute;
+    uint32_t lit = 0; // for `status`
     for (unsigned pad = 0; pad < 16; ++pad) {
         bool held = ui.held_pads & (1u << pad);
         Rgb colour {};
@@ -164,6 +167,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             auto note = pad_note(project, track, pad);
             colour = track_light(ui.track, note.root ? 0.9f : 0.22f);
         }
+        if (shift_pads) { // Shift held: the pads with a printed job glow, a toggle that is on brightly
+            unsigned level = shift_pad_level(ui, pad);
+            colour = level ? track_light(ui.track, level == 2 ? 1.0f : 0.3f) : Rgb {};
+        }
         if (held && ui.page != PageId::Steps && !ui.pad_bank && !ui.mute) colour = led_colour::white(1);
         if (ui.settings.pad_lights == 1) { // white, as bright as the colour was
             float full = std::max<float>(led_colour::white(1).r, 1);
@@ -171,7 +178,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         if (ui.settings.pad_lights == 2) colour = {};
         lights.pad(pad, colour);
+        if (colour.r || colour.g || colour.b) lit |= 1u << pad;
     }
+    pads_lit.store(lit, std::memory_order_relaxed);
     lights.fader(track.used() ? track_light(ui.track, 0.8f) : Rgb {});
     // Bank lights A-D: the sampler track's bank in view.
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
@@ -193,6 +202,17 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     };
     auto job = [&](B button) { return button_has_job(project, ui, button, kit, erase_pots); };
     auto on = [&](B button, bool lit) { set(button, lit && job(button) ? L::Bright : job(button) ? L::Dim : L::Off); };
+    if (ui.shift && !ui.name.open() && !ui.exit_open) { // as Akai's guide has it: the Shift jobs faint, bright while on
+        for (B button : {B::Sample, B::Seq, B::PadFx, B::KnobFx, B::Shift, B::PadBank, B::Erase, B::NoteRepeat, B::Chop, B::Mute,
+                         B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord, B::SeqRecord,
+                         B::Stop, B::Play, B::WheelPush}) {
+            bool shift_job = button_has_shift_job(project, ui, button, kit);
+            bool lit = button == B::Shift || (button == B::TapTempo && project.click) || (button == B::Erase && ui.copying != UiState::Copying::Off);
+            set(button, !shift_job ? L::Off : lit ? L::Bright : L::Dim);
+        }
+        button_levels.store(levels, std::memory_order_relaxed);
+        return;
+    }
     bool play_group = ui.page == PageId::Stage || ui.page == PageId::Keys || ui.page == PageId::Pads || ui.page == PageId::Mix;
     on(B::Sample, play_group || ui.page == PageId::InputConfig);
     on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion);

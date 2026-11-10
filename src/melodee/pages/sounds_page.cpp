@@ -81,6 +81,6 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
 }
 } // namespace
 
-const PageSpec sounds_page {draw, pad, wheel, push, soft, octave};
+const PageSpec sounds_page {draw, pad, wheel, push, soft, wheel}; // Minus / Plus move the list
 
 } // namespace melodee

@@ -45,9 +45,26 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
             shell.surface(event, now_ms());
             continue;
         }
-        if (remote.kind == 3) { // a pot moved to a position
+        auto press = [&](uint8_t index, bool down) {
             SurfaceEvent event;
-            event.input.kind = SurfaceInput::Kind::Control; event.input.index = remote.index; event.input.value = uint8_t(remote.delta);
+            event.input.kind = SurfaceInput::Kind::Button; event.input.index = index; event.input.pressed = down;
+            shell.surface(event, now_ms());
+        };
+        if (remote.kind == 3) { // a pot moved to a position; the top bit holds Shift around it
+            bool shifted = remote.index & 0x80;
+            if (shifted) press(uint8_t(SurfaceButton::Shift), true);
+            SurfaceEvent event;
+            event.input.kind = SurfaceInput::Kind::Control; event.input.index = remote.index & 0x7f; event.input.value = uint8_t(remote.delta);
+            shell.surface(event, now_ms());
+            if (shifted) press(uint8_t(SurfaceButton::Shift), false);
+            continue;
+        }
+        if (remote.kind == 4) { press(remote.index, remote.delta != 0); continue; } // hold-BUTTON, release-BUTTON
+        if (remote.kind == 5) { // hold-padN, release-padN
+            SurfaceEvent event;
+            bool down = remote.delta != 0;
+            event.pad = remote.index;
+            event.midi = {uint8_t(down ? 0x99 : 0x89), surface_pad_notes[remote.index % 16], uint8_t(down ? 100 : 0)};
             shell.surface(event, now_ms());
             continue;
         }
@@ -91,10 +108,14 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         int delta = std::atoi(argument.c_str() + 5);
         return presses.push({1, 0, int8_t(std::clamp(delta, -64, 63))}) ? "OK melodee-press " + argument : "ERR busy";
     }
-    if (argument.size() > 3 && argument[0] == 'k' && argument[1] >= '1' && argument[1] <= '3' && argument[2] == '=') { // k1=64
-        int value = std::clamp(std::atoi(argument.c_str() + 3), 0, 127);
-        auto pot = SurfaceControl(unsigned(SurfaceControl::K1) + unsigned(argument[1] - '1'));
-        return presses.push({3, uint8_t(pot), int8_t(value)}) ? "OK melodee-press " + argument : "ERR busy";
+    {   // k1=64, or shift+k3=64 (Shift held around the move: the card's second parameter)
+        bool shift_pot = argument.rfind("shift+", 0) == 0;
+        std::string pot_text = shift_pot ? argument.substr(6) : argument;
+        if (pot_text.size() > 3 && pot_text[0] == 'k' && pot_text[1] >= '1' && pot_text[1] <= '3' && pot_text[2] == '=') {
+            int value = std::clamp(std::atoi(pot_text.c_str() + 3), 0, 127);
+            auto pot = unsigned(SurfaceControl::K1) + unsigned(pot_text[1] - '1');
+            return presses.push({3, uint8_t(pot | (shift_pot ? 0x80 : 0)), int8_t(value)}) ? "OK melodee-press " + argument : "ERR busy";
+        }
     }
     auto button_named = [](const std::string& wanted) {
         for (unsigned n = 0; n < surface_buttons.size(); ++n) {
@@ -115,6 +136,20 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         int pad = std::atoi(argument.c_str() + at);
         if (pad < 1 || pad > 16) return "ERR pads are pad1 to pad16";
         return presses.push({2, uint8_t(pad - 1), int8_t(held + 1)}) ? "OK melodee-press " + argument : "ERR busy";
+    }
+    // hold-shift ... release-shift: a button (or hold-pad5: a pad) held down across other presses
+    for (const char* verb : {"hold-", "release-"}) {
+        std::string prefix = verb;
+        if (argument.rfind(prefix, 0) != 0) continue;
+        std::string what = argument.substr(prefix.size());
+        if (what.rfind("pad", 0) == 0 && what.size() > 3 && std::isdigit(static_cast<unsigned char>(what[3]))) {
+            int pad = std::atoi(what.c_str() + 3);
+            if (pad < 1 || pad > 16) return "ERR pads are pad1 to pad16";
+            return presses.push({5, uint8_t(pad - 1), int8_t(prefix == "hold-")}) ? "OK melodee-press " + argument : "ERR busy";
+        }
+        int n = button_named(what);
+        if (n < 0) return "ERR no button " + argument.substr(prefix.size());
+        return presses.push({4, uint8_t(n), int8_t(prefix == "hold-")}) ? "OK melodee-press " + argument : "ERR busy";
     }
     bool shifted = argument.rfind("shift+", 0) == 0;
     std::string wanted = shifted ? argument.substr(6) : argument;

@@ -321,6 +321,6 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec project_page {draw, play_pad, wheel, push, soft, [](Context&, int) {}};
+const PageSpec project_page {draw, play_pad, wheel, push, soft, wheel}; // Minus / Plus move the list
 
 } // namespace melodee

@@ -3,7 +3,8 @@
 // PUNCH (Pad FX): sixteen punches on the pads, two banks, 27 in all; Pad
 //   Bank (or Minus / Plus) changes bank. B1 aims them at the master, B2 at
 //   the selected track; B3 opens Pad Punch on a sampler track. Hold a pad to
-//   punch, the last pressed wins; Shift + pad locks one on (and off again).
+//   punch, the last pressed wins; Push while holding it locks it on, Push
+//   again lets it go (Shift + pad is the printed jobs since parity phase 1b).
 //   While playing a punch waits for the next step of its snap grid.
 //   K1 depth, K2 snap grid, K3 tail (cut, fade, ring) on release.
 // PAD PUNCH (Pad FX again, or B3): each kit pad carries a punch of its own;
@@ -134,7 +135,7 @@ void pad_punch_bank(Context& c, int way) {
 }
 } // namespace
 
-const PageSpec punch_page {punch_draw, punch_pad, no_wheel, no_push, punch_soft, punch_bank};
+const PageSpec punch_page {punch_draw, punch_pad, no_wheel, [](Context& c) { c.lock_punch(); }, punch_soft, punch_bank};
 const PageSpec pad_punch_page {pad_punch_draw, pad_punch_pad, no_wheel, no_push, pad_punch_soft, pad_punch_bank};
 
 } // namespace melodee

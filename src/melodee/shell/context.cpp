@@ -77,7 +77,6 @@ void Context::open(PageId page) {
     ui.picker_open = false;
     if (ui.page == PageId::Sounds && page != PageId::Sounds) audition(-1);
     if (page != ui.page) {
-        if (page == PageId::Keys) ui.keys_row = 0;
         push_back_stack(ui, page);
         ui.page = page;
     }
@@ -396,14 +395,13 @@ void Context::punch_pad(unsigned pad, bool down) {
               uint16_t(kind), int16_t(project.punch_depth)});
     };
     uint8_t target = uint8_t(project.punch_target ? ui.track : 255);
-    if (down && ui.shift) { // lock on, or off again
-        ui.shift_used = true;
-        if (ui.punch_locked == int(kind)) { send({Type::PunchOff, 254}); ui.punch_locked = -1; end_punch(); }
-        else { on(); ui.punch_locked = int8_t(kind); ui.punch_held = -1; begin_punch(kind, target, project.punch_depth); }
-        return;
-    }
     if (down) { on(); ui.punch_held = int8_t(kind); ui.punch_locked = -1; begin_punch(kind, target, project.punch_depth); return; } // the last pressed wins
     if (ui.punch_held == int(kind)) { send({Type::PunchOff, 254}); ui.punch_held = -1; end_punch(); }
+}
+
+void Context::lock_punch() {
+    if (ui.punch_held >= 0) { ui.punch_locked = ui.punch_held; ui.punch_held = -1; return; } // it plays on after the pad lets go
+    if (ui.punch_locked >= 0) { send({Type::PunchOff, 254}); ui.punch_locked = -1; end_punch(); }
 }
 
 void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {

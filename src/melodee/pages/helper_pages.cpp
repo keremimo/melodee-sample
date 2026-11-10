@@ -212,7 +212,8 @@ void capture_soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec tempo_page {tempo_draw, play_pad, tempo_wheel, no_push, tempo_soft, [](Context&, int) {}};
+const PageSpec tempo_page {tempo_draw, play_pad, tempo_wheel, no_push, tempo_soft,
+                           [](Context& c, int way) { c.set_tempo(int(c.project.tempo) + way * 10); }}; // Minus / Plus: a whole BPM
 const PageSpec arp_page {arp_draw, play_pad, no_wheel, no_push, arp_soft, arp_nudge};
 const PageSpec chord_page {chord_draw, play_pad, no_wheel, no_push, chord_soft, octave};
 const PageSpec capture_page {capture_draw, play_pad, no_wheel, [](Context& c) { c.capture(); c.open(PageId::Steps); }, capture_soft, [](Context&, int) {}};

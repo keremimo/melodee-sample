@@ -33,7 +33,7 @@ struct Binding {
         PunchDepth, PunchSnap, PunchTail,          // Punch
         PadPunchKind, PadPunchRate, PadPunchDepth, // Pad Punch: the last pad hit
         NameSuggest, NameChar,                     // the Name sheet
-        Transpose                                  // Keys, row 2: the pads by semitones
+        Transpose                                  // Keys, Shift + K3: the pads by semitones
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -50,7 +50,13 @@ struct Binding {
 };
 
 // The cards for a page; `pattern` is the selected track's playing pattern.
+// While Shift is held a card with a second parameter (shift_bindings())
+// turns that one instead, as on the MPC; the card shows a Shift mark.
 std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern);
+std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern, bool shift);
+// The page's own cards, and its Shift row (unbound where a card has none).
+std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, const Pattern& pattern);
+std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern& pattern);
 // The three parameters the Motion page shows as lanes: those holding motion
 // on the track's playing pattern first, then the track's favourites.
 std::array<int, 3> motion_lanes(const Project& project, const UiState& ui);

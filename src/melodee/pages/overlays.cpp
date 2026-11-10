@@ -3,6 +3,7 @@
 // Drawn over any page: the Shift layer while Shift is held, and the Exit
 // sheet after a short press of Power.
 #include "melodee/pages/common.h"
+#include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/ui/widgets.h"
 
 namespace melodee {
@@ -10,8 +11,9 @@ using namespace ui;
 
 void draw_shift_layer(Paint& p, const Snapshot& s) {
     // Second jobs as printed (MELODEE_PARITY.md decisions); some follow the
-    // page or the track's engine. Shift + pad has only 3, 12 and 16 until
-    // phase 1b draws all sixteen.
+    // page or the track's engine. Left: Shift + pad as the pads sit (pad 1
+    // bottom left), lit where the pad does something; right: the buttons.
+    // The knob strip shows the cards Shift turns (Shift + K) and nothing else.
     const auto& t = s.track();
     bool kit = t.engine == EngineKind::Sampler;
     bool kit_pads = kit && !t.levels && page_spec(s.ui.page).pad == play_pad;
@@ -20,32 +22,65 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     const char* select = s.ui.page == PageId::Sounds ? "Star sound" : kit ? "Save sample (later)" : "Save sound";
     static const char* const clicks[] {"Metronome: off", "Metronome: on", "Metronome: rec"};
     const char* const jobs[][2] {
-        {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"PAD BANK", "Previous pad bank"}, {"ERASE", copy},
+        {"SAMPLE", "Input config"}, {"SEQ", "Step edit"}, {"PAD BANK", "Previous bank"}, {"ERASE", copy},
         {"LOOP", kit ? "Reverse last pad" : "Reverse (kit pads)"}, {"SAMPLE SELECT", select},
         {"MUTE", "+ pad: solo track"}, {"TAP TEMPO", clicks[s.project.click % 3]},
         {"SAMPLE RECORD", "Audio recall (later)"}, {"SEQ RECORD", "Recall last bars"},
         {"PLAY", "Continue"}, {"STOP", "All notes off"}, {"\xe2\x88\x92 / +", "Undo / redo"},
         {"PUSH", song ? "Marker at cursor" : "Back"},
-        {"PAD 3 \xc2\xb7 12 \xc2\xb7 16", "Double seq \xc2\xb7 Song \xc2\xb7 Project"},
     };
     p.dim_zone(zone::soft_y, zone::soft_h);
-    p.dim_zone(zone::knobs_y, zone::knobs_h);
     p.fill(0, zone::header_y, zone::width, zone::header_h + zone::picture_h, colour::bg);
     Header h = header_of(s);
     h.left.push_back(chip("SHIFT", colour::text));
     h.right.push_back(tag_of(s, s.ui.track));
     header(p, h);
-    float x = zone::pad, y = zone::picture_y + 2, w = zone::width - 2 * zone::pad, ph = 144;
-    p.fill(x, y, w, ph, colour::surf, 6);
     auto c = colour_of(s);
-    float cw = (w - 4 - 2) / 2;
-    constexpr unsigned count = sizeof(jobs) / sizeof(jobs[0]), rows = 8;
-    for (unsigned n = 0; n < count; ++n) {
-        unsigned column = n / rows, row = n % rows;
-        float cx = x + 2 + column * (cw + 2) + 6, cy = y + 3 + row * 17.5f;
-        p.text(juce::String::fromUTF8(jobs[n][0]), cx, cy, cw - 12, 7, caps_text(c, 6));
-        p.text(juce::String::fromUTF8(jobs[n][1]), cx, cy + 7, cw - 12, 11, plain(colour::text, 9.5f, Weight::Medium));
+
+    // Shift + pad: the sixteen printed jobs in a 4 x 4 grid.
+    constexpr float gap = 3, top = zone::picture_y + 2, grid_w = 162, grid_h = 144;
+    constexpr float pw = (grid_w - 3 * gap) / 4, ph = (grid_h - 3 * gap) / 4;
+    for (unsigned pad = 0; pad < 16; ++pad) {
+        unsigned row = 3 - pad / 4, column = pad % 4, level = shift_pad_level(s.ui, pad);
+        const auto& job = shift_pad_job(pad);
+        float x = zone::pad + column * (pw + gap), y = top + row * (ph + gap);
+        p.fill(x, y, pw, ph, level == 2 ? c : level == 1 ? colour::surf : colour::quiet, 4);
+        auto ink = level == 2 ? colour::bg : level == 1 ? colour::text : colour::dim;
+        p.text(juce::String(pad + 1), x + 3.5f, y + 2.5f, 12, 8, plain(level == 2 ? colour::bg : colour::dim, 6, Weight::SemiBold));
+        juce::String corner = job.kind == ShiftPadJob::Kind::Later ? "P" + juce::String(job.phase)
+                            : job.kind == ShiftPadJob::Kind::Toggle ? juce::String(level == 2 ? "ON" : "OFF") : juce::String();
+        if (corner.isNotEmpty())
+            p.text(corner, x + pw - 21, y + 2.5f, 18, 8, caps_text(level == 2 ? colour::bg : level ? c : colour::dim, 5.5f),
+                   juce::Justification::right);
+        juce::StringArray words; // the name on two lines, as printed under the pad
+        words.addTokens(job.name, " ", "");
+        juce::String first = words[0], second = words.size() > 1 ? words[1] : juce::String();
+        for (int k = 2; k < words.size(); ++k) second += " " + words[k];
+        float ty = second.isEmpty() ? y + ph - 13 : y + ph - 20;
+        auto style = plain(ink, 7.5f, Weight::Medium);
+        p.text(first, x + 3, ty, pw - 5, 9, p.fit(first, style, pw - 5, 5));
+        if (second.isNotEmpty()) p.text(second, x + 3, ty + 8, pw - 5, 9, p.fit(second, style, pw - 5, 5));
     }
+
+    // The buttons' second jobs, one line each.
+    float x = zone::pad + grid_w + 5, w = zone::width - zone::pad - x, name_w = 46;
+    p.fill(x, top, w, grid_h, colour::surf, 6);
+    constexpr unsigned count = sizeof(jobs) / sizeof(jobs[0]);
+    float rh = (grid_h - 4) / count;
+    for (unsigned n = 0; n < count; ++n) {
+        float y = top + 2 + n * rh;
+        juce::String name = juce::String::fromUTF8(jobs[n][0]), job = juce::String::fromUTF8(jobs[n][1]);
+        p.text(name, x + 5, y, name_w, rh, p.fit(name, caps_text(c, 5.5f), name_w, 4.5f));
+        auto style = plain(colour::text, 7.5f, Weight::Medium);
+        p.text(job, x + 5 + name_w, y, w - name_w - 9, rh, p.fit(job, style, w - name_w - 9, 6));
+    }
+
+    // Shift + K: only the cards Shift turns; none, the strip stays dim.
+    auto cards = cards_of(s);
+    bool any = false;
+    for (auto& card : cards) { if (card.shift == 2) any = true; else card.state = KnobCard::State::Idle; }
+    if (any) knob_strip(p, cards);
+    else p.dim_zone(zone::knobs_y, zone::knobs_h);
 }
 
 // Over the header: copying a pad (until it is done), or for a moment what

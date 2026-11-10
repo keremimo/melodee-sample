@@ -103,8 +103,10 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   the header), K2 its Q (division: 1/8, 1/8T, 1/16, 1/16T, 1/32), K3 swing
   (project-wide). B2 Song. Pads are its patterns: a tap queues
   (it starts on the next bar, or at once when stopped), Erase + pad clears,
-  hold one and tap another to copy, Shift + pad launches that column on
-  every track (open question 8, built as drawn). Shift + Erase copies too:
+  hold one and tap another to copy. B3 COLUMN latches column launch (the
+  header says LAUNCH COLUMN): a tap then launches that column on every track (open
+  question 8; it was Shift + pad until Shift + pad became the printed jobs).
+  Minus / Plus move the track, as the wheel. Shift + Erase copies too:
   the pattern to copy, then where it goes, on this track or (the wheel moved
   on) another; Shift + Erase again or Erase leaves.
 - **Song** (Shift + Pad 12, or B2 on Patterns): lanes per track, clips of patterns with their notes in
@@ -257,7 +259,8 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   tempo, K2 swing, K3 click level; B1 halves, B3 doubles, B2 (or Shift +
   Tap Tempo anywhere) turns the metronome Off → On → Rec (Rec: only while
   Seq Record is on), a short blip on each beat while playing, higher on
-  the bar. The header says which for a moment. The wheel moves the tempo by 0.1.
+  the bar. The header says which for a moment. The wheel moves the tempo by
+  0.1, Minus / Plus by a whole BPM.
 - **Arp** (Note Repeat: held, momentary; tapped, it stays on; tapped again
   on its page, off): Up, Down, Up-down, Random, Order; K2 rate 1/4 to 1/32,
   K3 octaves, Minus / Plus the gate. B3 Hold latches the keys. It runs on
@@ -325,7 +328,8 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   scratch, low, high, phone, sweeps down and up, crush, alias, gate,
   tremolo, pan, echo, ring, flange, drive, vinyl. B1 aims them at the
   master, B2 at the selected track. Hold a pad to punch, the last pressed
-  wins; Shift + pad locks one on and off. While playing a punch waits for
+  wins; Push while holding one locks it on, Push again lets it go (it was
+  Shift + pad until Shift + pad became the printed jobs). While playing a punch waits for
   the next step of its snap grid. Repeats let one slice through, then
   freeze the punch's two-second history and play it again. K1 depth, K2
   snap, K3 tail (cut, fade, a long ring). Pad lights show the bank, held
@@ -357,7 +361,8 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   star on each in ALL. Kept by engine in the settings file.
 - **Settings (B2 on Project):** Melodee's own, kept in the `settings` file
   next to the projects (with the project to open at start): palette (NIGHT,
-  the one there is), pad response (soft, medium, hard, fixed velocity), pad
+  the one there is), pad response (soft, medium, hard, full level: every hit
+  at 127; Shift + Pad 1 turns full level on and back), pad
   lights (track colours, white, off), knob pickup (off: values jump to the
   pot), screen brightness (20–100 %; the backlight is left as the stock
   app had it until this asks for less, and the runtime puts it back on
@@ -375,7 +380,11 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
 - **Shell:** printed buttons (Sample cycles Stage → Keys → Mix, Seq
   Patterns, Loop the last pad's Play page on a kit (its loop in phase 4),
   Sample Select, 16 Levels, Play, Stop, Seq Record, Tap Tempo, Minus /
-  Plus, Erase), soft keys, wheel and Push, Shift + Push back along a page
+  Plus, Erase), soft keys, wheel and Push, Minus / Plus (the octave on the
+  play pages Stage, Keys, Edit, Chord and Roll; on the lists Sounds,
+  Samples, Project, Patterns, Mix and Sends they move the list as the wheel
+  does; Settings and Tempo change the value, Song jumps markers, Steps
+  nudges, the sampler pages and Punch step the bank), Shift + Push back along a page
   stack (16 deep; turning through a group such as Steps / Roll / Motion or
   Stage / Keys / Mix is one stop, and opening a page already on the stack
   goes back to it), Shift + wheel fine edit,
@@ -389,7 +398,10 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   page in view, dark when it would do nothing: Chop needs a kit pad with a
   sample, Loop and Sample Record a kit track, Erase a pad, step, marker or
   pot it can clear (or Copy); on the Name sheet only Erase, Play and Stop
-  glow, on the Exit sheet none (`shell/button_jobs.cpp`).
+  glow, on the Exit sheet none (`shell/button_jobs.cpp`). While Shift is
+  held, as Akai's guide has it, the buttons with a Shift job built here glow
+  faintly (Tap Tempo bright with the metronome on, Erase while copying,
+  Shift itself bright) and the rest go dark.
 - **Shift layer:** drawn as on its board, every printed second job:
   Sample → Input Config, Seq → Step Edit, Pad Bank → previous bank, Erase →
   Copy (kit pads, or patterns on Patterns), Loop → reverse the last pad
@@ -398,25 +410,39 @@ again, steps through Steps, Roll and Motion; B1–B3 pick them too.
   Off / On / Rec, Sample Record → Audio Recall (not yet, phase 6), Seq
   Record → Recall (Capture), Play → continue from the bar the song stopped
   in, Stop → all notes off, Minus / Plus → undo / redo on every page, Push
-  → back. Shift + Pad has three jobs so far (the rest in phase 1b): 3 Double
-  Seq (the pattern twice as long, notes and motion played twice), 12 Song,
-  16 Project; on Patterns and Punch the page keeps Shift + pad (column
-  launch, punch lock). Transpose is a card on Keys (the wheel turns to row
-  2; K1, −12 to +12 semitones, saved with the track) until Shift + K3 on
-  Keys lands (MELODEE_PARITY.md, phase 1b).
+  → back. **Shift + Pad 1–16** are the jobs printed under the pads, on
+  every page (`shell/shift_pad_jobs.cpp` holds the table, from Akai's
+  guide): 1 Full Level (every hit at 127, again back to the pad response it
+  came from), 3 Double Seq (the pattern twice as long, notes and motion
+  played twice), 4 Count-In and 10 Rec Quantize (toggles, kept in the
+  settings file; they act on recording from phase 2), 12 Song, 16 Project.
+  The others (2 Half Seq, 5 Compressor, 6 Half Speed, 7 Double Speed, 8
+  MIDI Config, 9 Fader, 11 Resample, 13 Trim Sample, 14 Time Correct, 15
+  Warp) say which phase brings them ("Time Correct: phase 2"). The overlay draws the sixteen as the pads
+  sit (pad 1 bottom left): a job on a surface card, a toggle that is on in
+  the track's colour, the rest dim with their phase; the pads light the
+  same way while Shift is held. **Shift + K1–K3:** a card with a second
+  parameter carries the Shift icon (an up arrow); with Shift held the pot
+  turns that one and the card shows it (filled icon), and the overlay's knob
+  strip shows only those cards. Keys: Shift + K3 transposes the pads, −12
+  to +12 semitones, saved with the track (not on a 909 track).
 - **Remote:** `--ctl melodee-press [shift+]BUTTON` presses a button (lower
   case, spaces as dashes: `play`, `seq`, `wheel-push`, `shift+wheel-push`);
   `wheel+N` / `wheel-N` turn the wheel, `pad1`..`pad16` strike a pad
   (with a button held around it: `shift+pad5`, `erase+pad5`,
-  `pad-bank+pad5`, `mute+pad5`) and
-  `k1=V`..`k3=V` move a pot to V (0..127).
+  `pad-bank+pad5`, `mute+pad5`),
+  `k1=V`..`k3=V` move a pot to V (0..127), `shift+k3=V` with Shift held
+  (the card's second parameter), and `hold-shift` ... `release-shift`
+  keep any button (or `hold-pad5` a pad) down across other presses (the
+  Shift overlay and its lights, a held punch).
   `status` lists the lit buttons as `melodee_buttons=seq:2,stop:1,...`
-  (1 faint, 2 bright). For checks without hands on the device.
+  (1 faint, 2 bright) and the lit pads as `melodee_pads=1,3,12`. For
+  checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, trim, chop,
   levels, padcopy, undo, inputconfig, record, project, filesheet, tempo, arp, chord,
-  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkit and exit at 1× and 2× (the 2× ones line up
+  capture, pad, play, envelope, filter, follow, cloud, punch, padpunch, padfx, settings, about, name, namesound, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

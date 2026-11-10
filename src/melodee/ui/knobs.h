@@ -17,8 +17,12 @@ struct KnobCard {
     float fill = 0;        // 0..1 along the gauge
     bool bipolar = false;  // filled from the centre, with a centre mark
     float pot = -1;        // Pickup: where the pot sits, 0..1
+    // The MPC's Shift icon: 1 Shift + this pot turns a second parameter,
+    // 2 Shift is held and the card shows that parameter.
+    uint8_t shift = 0;
     juce::Colour shade = colour::text, track = colour::text;
 };
 void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards);
+void shift_mark(Paint& p, float x, float y, juce::Colour c, bool filled); // the Shift icon, 7 x 8
 
 } // namespace melodee::ui

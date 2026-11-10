@@ -42,12 +42,14 @@ ui::SoftKeys play_keys(const Snapshot& s, int active) {
 std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
     using Kind = Binding::Kind;
     auto bindings = page_bindings(s.project, s.ui, s.pattern);
+    auto second = shift_bindings(s.project, s.ui, s.pattern);
     const auto& track = s.track();
     std::array<ui::KnobCard, 3> cards;
     for (unsigned n = 0; n < 3; ++n) {
         const auto& b = bindings[n];
         auto& c = cards[n];
         if (!b.bound()) continue;
+        if (second[n].bound()) c.shift = s.ui.shift ? 2 : 1;
         // A bus or the master belongs to no track: its cards are neutral.
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
         c.shade = neutral ? ui::colour::text : ui::knob_shade(s.ui.track, n);

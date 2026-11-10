@@ -62,6 +62,6 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec sends_page {draw, play_pad, wheel, no_push, soft, octave};
+const PageSpec sends_page {draw, play_pad, wheel, no_push, soft, wheel}; // Minus / Plus: the track, as the wheel
 
 } // namespace melodee

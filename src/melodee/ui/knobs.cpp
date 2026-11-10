@@ -5,6 +5,18 @@
 
 namespace melodee::ui {
 
+// The Shift icon: an up arrow 7 px wide, hollow, or filled while Shift is held.
+void shift_mark(Paint& p, float x, float y, juce::Colour c, bool filled) {
+    juce::Path arrow;
+    arrow.startNewSubPath(x + 3.5f, y + 0.5f);
+    arrow.lineTo(x + 7, y + 4); arrow.lineTo(x + 5, y + 4); arrow.lineTo(x + 5, y + 7.5f);
+    arrow.lineTo(x + 2, y + 7.5f); arrow.lineTo(x + 2, y + 4); arrow.lineTo(x, y + 4);
+    arrow.closeSubPath();
+    p.g.setColour(c);
+    if (filled) p.g.fillPath(arrow);
+    else p.g.strokePath(arrow, juce::PathStrokeType(1));
+}
+
 void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
     // 4 px above and below, 6 px at the sides, 4 px between: 100 x 42 cards.
     constexpr float top = zone::knobs_y + 4, h = 42, gap = 4;
@@ -22,7 +34,8 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
             p.fill(x, top, w, h, colour::surf, 3);
         }
         float inner = x + 6, iw = w - 12;
-        p.text(c.label, inner, top + 4.5f, iw, 10, caps_text(c.shade));
+        p.text(c.label, inner, top + 4.5f, iw - (c.shift ? 10 : 0), 10, caps_text(c.shade));
+        if (c.shift) shift_mark(p, x + w - 11, top + 4.5f, c.shift == 2 ? c.shade : colour::mid, c.shift == 2);
         auto value = plain(c.state == State::Pickup ? colour::dim : colour::text, type::value, Weight::Medium);
         float room = iw - (c.unit.isNotEmpty() ? p.width(c.unit, plain(colour::mid, 9)) + 3 : 0.0f);
         float vw = p.text(c.value, inner, top + 14, iw, 20, p.fit(c.value, value, room, 9)); // a long name shrinks to fit

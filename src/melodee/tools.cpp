@@ -157,9 +157,9 @@ const Preview previews[] {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"transpose", [](Shell&, Snapshot& s) { // Keys, row 2: Transpose on K1
-         s.ui.page = PageId::Keys; s.ui.keys_row = 1; s.project.tracks[0].transpose = -3; s.playing = true;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
+    {"transpose", [](Shell&, Snapshot& s) { // Keys, Shift + K3 turning: Transpose on the Shift card
+         s.ui.page = PageId::Keys; s.ui.shift = true; s.ui.shift_used = true; s.project.tracks[0].transpose = -3; s.playing = true;
+         s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
     {"sounds", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Sounds; s.ui.track = 2; s.ui.sounds_cursor = 2; s.playing = true;
@@ -201,7 +201,7 @@ const Preview previews[] {
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"patterns", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true;
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true; s.ui.launch_column = true; // B3: whole columns
          const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.steps[t] = int(4 + t); }
          s.project.tracks[2].pattern = 1;
@@ -367,6 +367,10 @@ const Preview previews[] {
     {"cloud", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
+    {"shiftkeys", [](Shell&, Snapshot& s) { // Shift held on Keys: the Transpose card; Full Level and Rec Quantize on
+         s.ui.page = PageId::Keys; s.ui.shift = true; s.project.tracks[0].transpose = 2;
+         s.ui.settings.toggle_full_level(); s.ui.settings.rec_quantize = true;
+     }},
     {"shiftkit", [](Shell&, Snapshot& s) { // a kit track on Pads: Save sample, Reverse, Copy pad; metronome on Rec
          s.ui.page = PageId::Pads; s.ui.track = 3; s.ui.shift = true; s.project.click = 2;
      }},

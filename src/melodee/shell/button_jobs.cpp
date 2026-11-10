@@ -21,4 +21,18 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
     }
 }
 
+bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads) {
+    using B = SurfaceButton;
+    if (ui.exit_open || ui.name.open()) return false; // the sheets keep their own lights
+    bool kit = project.tracks[ui.track % track_count].engine == EngineKind::Sampler;
+    switch (button) {
+    case B::Sample: case B::Seq: case B::PadBank: case B::SampleSelect: case B::Mute: case B::TapTempo:
+    case B::SeqRecord: case B::Play: case B::Stop: case B::Minus: case B::Plus: case B::WheelPush: case B::Shift:
+        return true;
+    case B::Loop: return kit;                                                    // reverse the last pad
+    case B::Erase: return kit_pads || ui.page == PageId::Patterns || ui.copying != UiState::Copying::Off; // Copy
+    default: return false; // Sample Record (Audio Recall, phase 6), Chop, 16 Levels, Pad FX, Knob FX: not yet
+    }
+}
+
 } // namespace melodee

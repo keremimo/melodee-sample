@@ -48,6 +48,6 @@ void draw(Paint& p, const Snapshot& s) {
 void wheel(Context& c, int delta) { c.select_track(unsigned(int(c.ui.track) + delta + 16) % 16); }
 } // namespace
 
-const PageSpec mix_page {draw, play_pad, wheel, no_push, play_soft, octave};
+const PageSpec mix_page {draw, play_pad, wheel, no_push, play_soft, wheel}; // Minus / Plus: the track, as the wheel
 
 } // namespace melodee

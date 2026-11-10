@@ -27,6 +27,7 @@
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/page_stack.h"
+#include "melodee/shell/shift_pad_jobs.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -968,7 +969,7 @@ void settings() {
     // Pad response: soft lifts a light hit, hard lowers it, fixed is always 100, medium leaves it.
     Settings soft, medium, hard, fixed;
     soft.pad_response = 0; hard.pad_response = 2; fixed.pad_response = 3;
-    CHECK(soft.velocity(40) > 40 && hard.velocity(40) < 40 && medium.velocity(40) == 40 && fixed.velocity(7) == 100);
+    CHECK(soft.velocity(40) > 40 && hard.velocity(40) < 40 && medium.velocity(40) == 40 && fixed.velocity(7) == 127);
     CHECK(soft.velocity(127) == 127 && hard.velocity(127) == 127 && hard.velocity(1) >= 1);
     // Rows step and wrap; the screen stays between 20 and 100.
     Settings c;
@@ -1075,7 +1076,7 @@ void history() {
 }
 
 // Parity phase 0: a step written on a kit gets the pad hit last, and
-// Keys keeps Transpose on its second row.
+// Keys has Transpose on Shift + K3 (phase 1b; it was row 2).
 void parity_basics() {
     Track kit; kit.engine = EngineKind::Sampler; kit.last_pad = 21; kit.last_note = 50;
     CHECK(kit.step_note() == sampler_first_note + 21);
@@ -1087,10 +1088,54 @@ void parity_basics() {
     UiState ui; ui.page = PageId::Keys; ui.track = 0;
     Pattern pattern;
     CHECK(page_bindings(*project, ui, pattern)[0].kind == Binding::Kind::Root);
-    ui.keys_row = 1;
-    auto row2 = page_bindings(*project, ui, pattern);
-    CHECK(row2[0].kind == Binding::Kind::Transpose && row2[0].value == -3 && row2[0].min == -12 && row2[0].max == 12);
-    CHECK(!row2[1].bound() && !row2[2].bound());
+    CHECK(page_bindings(*project, ui, pattern)[2].kind == Binding::Kind::Layout);
+    ui.shift = true;
+    auto shifted = page_bindings(*project, ui, pattern);
+    CHECK(shifted[2].kind == Binding::Kind::Transpose && shifted[2].value == -3 && shifted[2].min == -12 && shifted[2].max == 12);
+    CHECK(shifted[0].kind == Binding::Kind::Root && shifted[1].kind == Binding::Kind::Scale); // no Shift card: as without
+    CHECK(page_bindings(*project, ui, pattern, false)[2].kind == Binding::Kind::Layout);    // Shift + wheel after a plain turn
+    auto second = shift_bindings(*project, ui, pattern);
+    CHECK(!second[0].bound() && !second[1].bound() && second[2].bound());
+    project->tracks[0].engine = EngineKind::Kit909; // drums have no transpose
+    CHECK(!shift_bindings(*project, ui, pattern)[2].bound());
+}
+
+// Phase 1b: Shift + Pad 1-16 as printed, their toggles and lights, and the
+// buttons that glow while Shift is held.
+void shift_pads() {
+    const char* const printed[16] {"Full Level", "Half Seq", "Double Seq", "Count-In", "Compressor", "Half Speed",
+                                   "Double Speed", "MIDI Config", "Fader", "Rec Quantize", "Resample", "Song",
+                                   "Trim Sample", "Time Correct", "Warp", "Project"};
+    for (unsigned n = 0; n < 16; ++n) CHECK(std::string(shift_pad_job(n).name) == printed[n]);
+    using K = ShiftPadJob::Kind;
+    for (unsigned n : {0u, 3u, 9u}) CHECK(shift_pad_job(n).kind == K::Toggle);
+    CHECK(shift_pad_job(2).kind == K::Action && shift_pad_job(11).kind == K::Open && shift_pad_job(15).kind == K::Open);
+    for (unsigned n : {1u, 4u, 5u, 6u, 7u, 8u, 10u, 12u, 13u, 14u})
+        CHECK(shift_pad_job(n).kind == K::Later && shift_pad_job(n).phase >= 2);
+
+    UiState ui;
+    CHECK(!ui.settings.full_level() && !ui.settings.count_in && ui.settings.rec_quantize);
+    CHECK(shift_pad_level(ui, 0) == 1 && shift_pad_level(ui, 9) == 2 && shift_pad_level(ui, 1) == 0 && shift_pad_level(ui, 11) == 1);
+    ui.settings.pad_response = 2;
+    ui.settings.toggle_full_level();
+    CHECK(ui.settings.full_level() && ui.settings.velocity(5) == 127 && shift_pad_level(ui, 0) == 2);
+    ui.settings.count_in = true; ui.settings.rec_quantize = false;
+    Settings kept; kept.read(ui.settings.text()); // the toggles live in Melodee's settings file
+    CHECK(kept.full_level() && kept.count_in && !kept.rec_quantize);
+    kept.toggle_full_level();
+    CHECK(kept.pad_response == 2); // back to the curve it came from
+
+    auto project = std::make_unique<Project>();
+    project->tracks[0].engine = EngineKind::Prophet;
+    ui.track = 0; ui.page = PageId::Stage; ui.shift = true;
+    using B = SurfaceButton;
+    CHECK(button_has_shift_job(*project, ui, B::Sample, false) && button_has_shift_job(*project, ui, B::Minus, false));
+    CHECK(!button_has_shift_job(*project, ui, B::Loop, false) && !button_has_shift_job(*project, ui, B::Erase, false));
+    CHECK(!button_has_shift_job(*project, ui, B::SampleRecord, false) && !button_has_shift_job(*project, ui, B::Chop, false));
+    project->tracks[0].engine = EngineKind::Sampler;
+    CHECK(button_has_shift_job(*project, ui, B::Loop, true) && button_has_shift_job(*project, ui, B::Erase, true));
+    ui.name.start(NameTarget::Marker, "A", 11, true);
+    CHECK(!button_has_shift_job(*project, ui, B::Sample, true));
 }
 
 // Phase 1a: Patterns' cards, Input Config, Back's stack and which buttons glow.
@@ -1143,6 +1188,7 @@ void button_remap() {
 }
 
 int main() {
+    shift_pads();
     button_remap();
     parity_basics();
     history();

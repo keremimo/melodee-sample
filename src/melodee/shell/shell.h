@@ -59,7 +59,9 @@ private:
     void pad(unsigned pad, uint8_t velocity, bool down);
     void check_pickup(unsigned index, const Binding& binding);
     std::string button_text() const; // the button lights for `status`
+    std::string lit_pads_text() const; // and the lit pads
     std::atomic<uint64_t> button_levels {0};
+    std::atomic<uint32_t> pads_lit {0}; // the pads lit, a bit each, for `status`
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
     void end_copy_away();  // copying stops away from the pads it copies
 

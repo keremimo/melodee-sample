@@ -7,7 +7,9 @@
 // are that track's sixteen patterns: tap to queue (it starts on the next
 // bar), Erase + pad clears, hold a pad and tap another to copy. Shift +
 // Erase copies too: a pad, then (on this or another track) where it goes.
-// Shift + pad launches that column on every track (open question 8).
+// B3 COLUMN latches column launch: a pad then launches that column on every
+// track (open question 8; it was Shift + pad until Shift + pad became the
+// printed jobs in parity phase 1b). Minus / Plus move the track, as the wheel.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 
@@ -19,13 +21,14 @@ void draw(Paint& p, const Snapshot& s) {
     unsigned first = s.ui.track / 8 * 8;
     Header h = header_of(s);
     h.left.push_back(pill(juce::String(first + 1) + juce::String::fromUTF8("\xe2\x80\x93") + juce::String(first + 8) + " OF 16"));
-    h.left.push_back(pill("LAUNCH BAR"));
+    // B3 COLUMN on: a tap launches the whole column (in place of the plain pill, so the header fits)
+    h.left.push_back(s.ui.launch_column ? pill("LAUNCH COLUMN", colour_of(s)) : pill("LAUNCH BAR"));
     {   // the selected pattern's length in steps, while it is not whole bars
         unsigned length = s.pattern.length;
         if (length % bar_steps) h.left.push_back(pill(juce::String(length) + " STEPS"));
     }
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"PATTERNS", "SONG", ""}, 0, colour_of(s)}, h);
+    frame(p, s, {{"PATTERNS", "SONG", "COLUMN"}, 0, colour_of(s)}, h);
 
     constexpr float gap = 2, label_w = 16, head_h = 9, top = zone::picture_y + 1.5f;
     constexpr float cw = (zone::width - 2 * zone::pad - label_w - 16 * gap) / 16;
@@ -90,11 +93,6 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
     }
     if (down) {
         if (ui.erase) { c.edit_pattern(ui.track, pad, "Clear pattern", [&] { c.clear_pattern(ui.track, pad); }); return; }
-        if (ui.shift) { // Shift + pad: that column on every track
-            for (unsigned t = 0; t < track_count; ++t) if (c.project.tracks[t].used()) c.launch(t, pad);
-            ui.shift_used = true;
-            return;
-        }
         if (ui.pattern_held >= 0 && ui.pattern_held != int(pad)) { // hold one, tap another: copy
             c.edit_pattern(ui.track, pad, "Copy pattern", [&] { c.copy_pattern(ui.track, unsigned(ui.pattern_held), pad); });
             ui.pattern_copied = true;
@@ -105,7 +103,10 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
         return;
     }
     if (ui.pattern_held != int(pad)) return;
-    if (!ui.pattern_copied) c.launch(ui.track, pad); // a tap queues it
+    if (!ui.pattern_copied) { // a tap queues it; with COLUMN on, that column on every track
+        if (!ui.launch_column) c.launch(ui.track, pad);
+        else for (unsigned t = 0; t < track_count; ++t) if (c.project.tracks[t].used()) c.launch(t, pad);
+    }
     ui.pattern_held = -1;
 }
 
@@ -113,9 +114,10 @@ void wheel(Context& c, int delta) { c.select_track(unsigned(std::clamp<int>(c.ui
 
 void soft(Context& c, int key) {
     if (key == 1) c.open(PageId::Song);
+    if (key == 2) c.ui.launch_column = !c.ui.launch_column;
 }
 } // namespace
 
-const PageSpec patterns_page {draw, pad, wheel, no_push, soft, octave};
+const PageSpec patterns_page {draw, pad, wheel, no_push, soft, wheel};
 
 } // namespace melodee

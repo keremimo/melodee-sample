@@ -64,6 +64,7 @@ struct UiState {
     uint8_t map_cursor = 0;
     int8_t pattern_held = -1; // Patterns: a pad held, so the next one copies it
     bool pattern_copied = false;
+    bool launch_column = false; // Patterns, B3: a pad launches that column on every track
     uint16_t song_cursor = 0;   // bar
     uint16_t song_view = 0;     // first bar in view
     uint8_t song_zoom = 2;      // index into song_zooms
@@ -96,7 +97,6 @@ struct UiState {
     uint8_t project_sort = 0;     // 0 newest first, 1 by name
     int8_t chord_pad = -1;        // Chord: the pad played last
     uint8_t sampler_row = 0;      // Envelope and Cloud: their second row
-    uint8_t keys_row = 0;         // Keys: row 2 holds Transpose
     uint8_t capture_bars = 2, capture_quantise = 1, capture_into = 0; // Capture
     uint16_t project_rows = 1;    // rows on the Project page, copied in by the shell
     int8_t punch_held = -1, punch_locked = -1; // Punch: the punch a pad holds, the one Shift + pad locked on
@@ -113,6 +113,7 @@ struct UiState {
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms
     int8_t last_pot = -1;     // for Shift + wheel fine edits
+    bool last_pot_shift = false; // and whether it turned its Shift card
     uint32_t held_pads = 0;
     // Shift + Erase: copy one kit pad onto another, or (on Patterns) one
     // pattern onto another. Armed, then the source, then the target.

@@ -78,6 +78,6 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec samples_page {draw, play_pad, wheel, push, soft, octave};
+const PageSpec samples_page {draw, play_pad, wheel, push, soft, wheel}; // Minus / Plus move the list
 
 } // namespace melodee

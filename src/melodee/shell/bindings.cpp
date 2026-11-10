@@ -77,7 +77,30 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
     return lanes;
 }
 
+std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern&) {
+    const auto& track = project.tracks[ui.track % track_count];
+    if (ui.name.open()) return {};
+    switch (ui.page) {
+    case PageId::Keys: // Shift + K3: the pads by semitones
+        if (track.engine == EngineKind::Kit909) return {};
+        return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
+    default: return {};
+    }
+}
+
+std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern, bool shift) {
+    auto cards = base_bindings(project, ui, pattern);
+    if (!shift) return cards;
+    auto second = shift_bindings(project, ui, pattern);
+    for (unsigned n = 0; n < 3; ++n) if (second[n].bound()) cards[n] = second[n];
+    return cards;
+}
+
 std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
+    return page_bindings(project, ui, pattern, ui.shift);
+}
+
+std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
     if (ui.name.open()) { // the Name sheet over the page: ready names, the character at the cursor
         std::array<const char*, max_suggestions> names {};
@@ -87,7 +110,6 @@ std::array<Binding, 3> page_bindings(const Project& project, const UiState& ui, 
     }
     switch (ui.page) {
     case PageId::Keys:
-        if (ui.keys_row) return {Binding {Kind::Transpose, 0, -12, 12, track.transpose}, Binding {}, Binding {}};
         return {Binding {Kind::Root, 0, 0, 11, project.root},
                 Binding {Kind::Scale, 0, 0, int(scales().size()) - 1, project.scale},
                 Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)}};

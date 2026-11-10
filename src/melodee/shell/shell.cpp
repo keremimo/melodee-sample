@@ -261,7 +261,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     if (syncing) { pot.bound = 0; check_pickup(n, b); return; }
     if (!b.bound()) return;
     check_pickup(n, b);
-    ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n);
+    ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n); ui_.last_pot_shift = ui_.shift;
     if (ui_.shift) ui_.shift_used = true;
     if (ui_.erase && b.kind == Binding::Kind::Param && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane
         context_.clear_lane(b.id);
@@ -292,7 +292,7 @@ void Shell::wheel(int delta) {
     if (ui_.shift && ui_.last_pot >= 0) {
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
         ui_.shift_used = true;
-        auto bindings = page_bindings(*project_, ui_, context_.pattern());
+        auto bindings = page_bindings(*project_, ui_, context_.pattern(), ui_.last_pot_shift);
         const auto& b = bindings[size_t(ui_.last_pot)];
         if (!b.bound()) return;
         context_.apply(b, b.value + delta);
@@ -322,7 +322,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
     }
     if (down && ui_.exit_open) return;
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
-    if (down && ui_.shift && shift_pad(context_, pad)) { ui_.shift_used = true; return; } // printed Shift + pad jobs
+    if (down && ui_.shift) { ui_.shift_used = true; shift_pad(context_, pad); return; } // the printed Shift + pad jobs, on every page
     bool copying_pads = ui_.copying == UiState::Copying::Pads;
     if (down && kit_pads() && (copying_pads || ui_.erase)) {
         unsigned kit = context_.track().bank % sampler_banks * 16 + pad;
@@ -412,7 +412,16 @@ std::string Shell::summary() const {
     return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
            " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load()) +
-           " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text();
+           " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text() + " melodee_pads=" + lit_pads_text();
+}
+
+// The lit pads by number, 1-16.
+std::string Shell::lit_pads_text() const {
+    uint32_t lit = pads_lit.load(std::memory_order_relaxed);
+    std::string out;
+    for (unsigned n = 0; n < 16; ++n)
+        if (lit & (1u << n)) { if (!out.empty()) out += ','; out += std::to_string(n + 1); }
+    return out.empty() ? "none" : out;
 }
 
 // Each lit button as name:level (1 faint, 2 bright), in the surface's order.
