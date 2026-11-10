@@ -6,6 +6,7 @@
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/midi_engine.h"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 
@@ -79,16 +80,16 @@ void write_pad(Writer& w, unsigned n, const PadSound& pad) {
     w.i16(pad.pan); w.u8(unsigned(pad.play)); w.u8(pad.reverse); w.u8(pad.group);
     w.u8(pad.attack); w.u8(pad.decay); w.u8(pad.sustain); w.u8(pad.release); w.u16(pad.own_tempo);
 }
-void read_pad(Reader& r, Track& tr) {
-    unsigned n = r.u8() % sampler_pads;
-    auto& pad = tr.pads[n];
+// Into `pads` (`count` of them; a project's kit or a bank file), `samples` the slots its sample may name.
+void read_pad(Reader& r, PadSound* pads, unsigned count, unsigned samples = sample_slots) {
+    auto& pad = pads[r.u8() % count];
     pad.sample = uint16_t(r.u16()); pad.start = r.u32(); pad.end = r.u32();
     pad.pitch = int8_t(std::clamp(r.i16(), -24, 24)); pad.fine = int8_t(std::clamp(r.i16(), -50, 50));
     pad.level = uint8_t(std::min(127u, r.u8())); pad.pan = int8_t(std::clamp(r.i16(), -50, 50));
     pad.play = PadPlay(r.u8() & 1); pad.reverse = r.u8() != 0; pad.group = uint8_t(r.u8() % 17);
     pad.attack = uint8_t(r.u8()); pad.decay = uint8_t(r.u8()); pad.sustain = uint8_t(r.u8()); pad.release = uint8_t(r.u8());
     pad.own_tempo = uint16_t(r.u16());
-    if (pad.sample >= sample_slots) pad.sample = no_sample;
+    if (pad.sample >= samples) pad.sample = no_sample;
 }
 
 // A kit pad's Sample Mode values (parity phase 4), in PAD4: older builds
@@ -102,8 +103,8 @@ void write_pad4(Writer& w, unsigned n, const PadSound& pad) {
     w.u8(pad.filter_attack); w.u8(pad.filter_decay); w.u8(pad.filter_sustain); w.u8(pad.filter_release); w.u8(pad.filter_amount);
     w.u8(pad.warp); w.u8(pad.beats); w.i16(pad.gain);
 }
-void read_pad4(Reader& r, Track& tr) {
-    auto& pad = tr.pads[r.u8() % sampler_pads];
+void read_pad4(Reader& r, PadSound* pads, unsigned count) {
+    auto& pad = pads[r.u8() % count];
     unsigned flags = r.u8();
     pad.loop = flags & 1; pad.loop_lock = (flags >> 1) & 1; pad.mono = (flags >> 2) & 1; pad.decay_from_start = (flags >> 3) & 1;
     pad.loop_start = r.u32(); pad.link = uint8_t(r.u8() % 17); pad.offset = uint8_t(std::min(100u, r.u8()));
@@ -370,20 +371,20 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             tr.bank = uint8_t(r.u8() % sampler_banks); tr.last_pad = uint8_t(r.u8() % sampler_pads);
             tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 4);
             unsigned used = r.u8();
-            for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, tr);
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, tr.pads.data(), sampler_pads);
         } else if (name == "PVER") {
             file_version = r.u8();
         } else if (name == "KITX") {
             unsigned t = r.u8();
             if (t >= track_count) continue;
             unsigned used = r.u8();
-            for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, project->tracks[t]);
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, project->tracks[t].pads.data(), sampler_pads);
         } else if (name == "PAD4") {
             unsigned t = r.u8();
             if (t >= track_count) continue;
             pad4[t] = true;
             unsigned used = r.u8();
-            for (unsigned k = 0; k < used && r.ok; ++k) read_pad4(r, project->tracks[t]);
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad4(r, project->tracks[t].pads.data(), sampler_pads);
         } else if (name == "PMUT") {
             unsigned t = r.u8();
             if (t >= track_count) continue;
@@ -576,6 +577,113 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     target_patterns = *patterns;
     if (version) *version = file_version;
     return {};
+}
+
+// A kit bank as a file: "MLDBANK1", then sections as a project's. BNAM its
+// name, BSMP the files its pads play, BPAD / BPD4 the pads (the records of
+// TRAK and PAD4, numbered 0-15 and naming BSMP's entries), BPFX their chains.
+namespace {
+constexpr char bank_magic[8] {'M', 'L', 'D', 'B', 'A', 'N', 'K', '1'};
+}
+
+unsigned BankFile::used() const {
+    unsigned n = 0;
+    for (const auto& pad : pads) n += pad.used();
+    return n;
+}
+
+std::vector<uint8_t> save_bank(const BankFile& bank) {
+    Writer w;
+    w.out.assign(bank_magic, bank_magic + 8);
+    size_t at = w.begin("BNAM");
+    w.text(bank.name);
+    w.end(at);
+    at = w.begin("BSMP");
+    unsigned files = 0;
+    for (const auto& ref : bank.samples) files += ref.used();
+    w.u8(files);
+    for (unsigned k = 0; k < bank_pads; ++k)
+        if (bank.samples[k].used()) { w.u8(k); w.text(bank.samples[k].path); w.text(bank.samples[k].name); w.u32(bank.samples[k].frames); }
+    w.end(at);
+    at = w.begin("BPAD");
+    w.u8(bank.used());
+    for (unsigned k = 0; k < bank_pads; ++k) if (bank.pads[k].used()) write_pad(w, k, bank.pads[k]);
+    w.end(at);
+    at = w.begin("BPD4");
+    w.u8(bank.used());
+    for (unsigned k = 0; k < bank_pads; ++k) if (bank.pads[k].used()) write_pad4(w, k, bank.pads[k]);
+    w.end(at);
+    at = w.begin("BPFX");
+    for (unsigned k = 0; k < bank_pads; ++k)
+        if (bank.chains[k].count()) { w.u8(k); write_chain(w, bank.chains[k]); }
+    w.u8(255);
+    w.end(at);
+    return std::move(w.out);
+}
+
+bool load_bank(const std::vector<uint8_t>& data, BankFile& out) {
+    if (data.size() < 8 || std::memcmp(data.data(), bank_magic, 8)) return false;
+    BankFile bank;
+    Reader file(data.data() + 8, data.size() - 8);
+    while (!file.done() && file.ok) {
+        char tag[5];
+        Reader r = file.section(tag);
+        if (!file.ok) return false;
+        std::string name(tag);
+        if (name == "BNAM") {
+            r.text(bank.name, sizeof(bank.name));
+        } else if (name == "BSMP") {
+            unsigned files = r.u8();
+            for (unsigned k = 0; k < files && r.ok; ++k) {
+                auto& ref = bank.samples[r.u8() % bank_pads];
+                r.text(ref.path, sizeof(ref.path)); r.text(ref.name, sizeof(ref.name)); ref.frames = r.u32();
+            }
+        } else if (name == "BPAD") {
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, bank.pads.data(), bank_pads, bank_pads);
+        } else if (name == "BPD4") {
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) read_pad4(r, bank.pads.data(), bank_pads);
+        } else if (name == "BPFX") {
+            while (r.ok && !r.done()) {
+                unsigned k = r.u8();
+                if (k >= bank_pads) break;
+                auto& chain = bank.chains[k];
+                read_chain(r, chain);
+                for (unsigned n = pad_slots; n < max_slots; ++n) chain.slots[n] = EffectSlot {};
+                chain.size = pad_slots;
+            }
+        }
+        if (!r.ok) return false;
+    }
+    for (auto& pad : bank.pads) // a pad whose file is not listed plays nothing
+        if (pad.used() && !bank.samples[pad.sample % bank_pads].used()) pad = PadSound {};
+    out = bank;
+    return true;
+}
+
+BankFile bank_of(const Project& project, unsigned track, unsigned bank, const char* name) {
+    BankFile out;
+    const auto& tr = project.tracks[track % track_count];
+    std::snprintf(out.name, sizeof(out.name), "%s", name);
+    std::array<int, sample_slots> mapped;
+    mapped.fill(-1);
+    unsigned files = 0;
+    for (unsigned k = 0; k < bank_pads; ++k) {
+        unsigned n = (bank % sampler_banks) * bank_pads + k;
+        PadSound pad = tr.pads[n];
+        if (pad.used()) {
+            unsigned s = pad.sample % sample_slots;
+            if (!project.samples[s].used()) pad = PadSound {};
+            else {
+                if (mapped[s] < 0) { mapped[s] = int(files); out.samples[files++] = project.samples[s]; }
+                pad.sample = uint16_t(mapped[s]);
+            }
+        }
+        out.pads[k] = pad;
+        if (pad.used()) out.chains[k] = tr.pad_fx.at[n];
+    }
+    return out;
 }
 
 } // namespace melodee

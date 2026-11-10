@@ -13,7 +13,7 @@
 // Only characters a card takes in a file name are offered.
 namespace melodee {
 
-enum class NameTarget : uint8_t { None, ProjectSave, ProjectSaveAs, ProjectRename, Marker, Sound, Sample, Mixdown };
+enum class NameTarget : uint8_t { None, ProjectSave, ProjectSaveAs, ProjectRename, Marker, Sound, Sample, Mixdown, Bank };
 
 struct NameEntry {
     static constexpr unsigned capacity = 32;

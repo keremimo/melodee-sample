@@ -438,6 +438,18 @@ const Preview previews[] {
          s.files[4].path = s.project.samples[4].path;
          s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"banks", [](Shell&, Snapshot& s) { // the card's Samples/Banks: bank files, Push loads one into the bank in view
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 1; s.sample_root = "/media/card/Samples";
+         s.files_folder = s.sample_root + "/Banks"; s.files_top = false; s.project.tracks[3].bank = 2;
+         for (auto name : {"BREAKS C", "DUSTY KIT A", "VOX CHOPS"}) s.files.push_back({s.files_folder + "/" + name + ".mldb", name, 0, false, true});
+         s.ui.files_count = uint16_t(s.files.size());
+         std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Bank C: DUSTY KIT A"); s.ui.notice_at = s.now;
+     }},
+    {"savebank", [](Shell&, Snapshot& s) { // Shift + Sample Select on Samples: Save Bank's Name sheet
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.sample_root = "/media/card/Samples"; s.files_folder = s.sample_root;
+         s.project.tracks[3].bank = 1; s.sample = break_sample();
+         s.ui.name.start(NameTarget::Bank, "KIT B", name_length - 1, true);
+     }},
     {"browserinternal", [](Shell&, Snapshot& s) { // B2: the internal drive's categories, preview on
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_drive = 1; s.ui.preview = true; s.ui.files_cursor = 7;
          s.sample_root = "/media/card/Samples"; s.files_folder = ""; s.files_top = true;

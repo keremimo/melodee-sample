@@ -36,6 +36,7 @@ struct SampleFile {
     std::string path, name; // name: the stem in capitals, or the folder's
     uint64_t bytes = 0;
     bool folder = false;
+    bool bank = false;      // a kit bank file (".mldb", model/project_file.h), listed with the WAV files
 };
 struct LoadedSample {
     std::string name, path, error;
@@ -80,6 +81,12 @@ public:
     bool write(const SampleJob& job) { return jobs.push(job); }
     struct Done { char text[32] {}; int16_t failed = -1; }; // failed: the Derive target slot that got nothing
     bool done(Done& out) { return finished.pop(out); }
+    // MIDI thread: kit bank files. Save Bank writes `bytes` as Samples/Banks/<name>.mldb (a free
+    // name; done() tells how it went); a bank file to read, whose bytes take_bank() hands back.
+    void write_bank(const std::string& name, std::vector<uint8_t> bytes);
+    void read_bank(const std::string& path);
+    struct BankBytes { std::string path, error; std::vector<uint8_t> bytes; };
+    bool take_bank(BankBytes& out);
     // Changes each time the list or a loaded sample changes.
     unsigned generation() const { return changes.load(std::memory_order_acquire); }
 
@@ -129,7 +136,8 @@ private:
     void make(const SampleJob& job);
     void hear(const std::string& path);
     void finish(const std::string& text, int failed = -1);
-    std::string free_name(const std::string& folder, const std::string& name) const;
+    std::string free_name(const std::string& folder, const std::string& name, const char* extension = ".wav") const;
+    void bank_files(); // the bank writes and reads asked for
 
     EngineHost& host;
     MidiQueue<16, Request> requests; // MIDI thread produces, service thread consumes
@@ -163,6 +171,9 @@ private:
     // Under `lock`: what the MIDI thread asked of the browser.
     struct Wanted { bool pending = false, up = false; Drive drive = Drive::Card; std::string folder; } wanted;
     std::string preview_wanted, preview_heard; // under `lock`
+    std::vector<std::pair<std::string, std::vector<uint8_t>>> bank_writes; // under `lock`: name, bytes
+    std::vector<std::string> bank_reads;  // under `lock`: paths
+    std::vector<BankBytes> banks_read;    // under `lock`: what came of them
     bool preview_pending = false;
 };
 

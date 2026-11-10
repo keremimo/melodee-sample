@@ -185,8 +185,9 @@ void Shell::press(Button b, bool pressed) {
         context_.open(PageId::Patterns);
         break;
     case Button::SampleSelect: // on a sampler track it lists samples
-        if (ui.shift) { // by engine: on Sounds a star; a kit: Save Sample; a synth: Save sound
+        if (ui.shift) { // by engine: on Sounds a star; on Samples Save Bank; a kit: Save Sample; a synth: Save sound
             if (ui.page == PageId::Sounds) context_.toggle_favourite();
+            else if (ui.page == PageId::Samples && context_.track().engine == EngineKind::Sampler) context_.save_bank();
             else if (context_.track().engine == EngineKind::Sampler) context_.save_sample();
             else context_.save_sound();
             break;

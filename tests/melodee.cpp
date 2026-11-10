@@ -3346,6 +3346,42 @@ void projects_and_polish() {
     CHECK(into.engine == EngineKind::Sampler && into.pads[0].sample == 20 && into.pads[1].sample == 20 && into.pads[2].sample == 21);
     CHECK(into.pads[2].pitch == 7 && into.pad_fx.at[2].slots[0].kind == uint8_t(EffectKind::Drive) && !into.pads[40].used());
     CHECK(into.params[sampler::Filter] == 33 && into.mix.level == 55); // the kit's own values; the track keeps its strip
+
+    // Bank files: bank C of a kit as a file, every pad value and chain kept, its files listed once.
+    kit.pads[32].sample = 5; kit.pads[32].pitch = -3; kit.pads[32].loop = true; kit.pads[32].filter = PadFilter::Bpf2;
+    kit.pads[32].link = 4; kit.pad_fx.at[32].slots[0].kind = uint8_t(EffectKind::Drive);
+    kit.pads[33].sample = 5; kit.pads[47].sample = 0; kit.pads[47].group = 3;
+    kit.pads[34].sample = 7; // a slot with no file: left out
+    kit.pads[40] = PadSound {};
+    auto saved = bank_of(*from, 6, 2, "BREAKS C");
+    CHECK(saved.used() == 3 && saved.pads[0].sample == 0 && saved.pads[1].sample == 0 && saved.pads[15].sample == 1);
+    CHECK(std::string(saved.samples[0].name) == "SNARE" && std::string(saved.samples[1].name) == "KICK" && !saved.samples[2].used());
+    CHECK(!bank_of(*from, 6, 7, "EMPTY").used());
+    BankFile loaded;
+    CHECK(load_bank(save_bank(saved), loaded));
+    CHECK(std::string(loaded.name) == "BREAKS C" && loaded.used() == 3);
+    CHECK(loaded.pads[0].pitch == -3 && loaded.pads[0].loop && loaded.pads[0].filter == PadFilter::Bpf2 && loaded.pads[0].link == 4);
+    CHECK(loaded.pads[15].group == 3 && loaded.pads[15].sample == 1 && !loaded.pads[2].used());
+    CHECK(loaded.chains[0].slots[0].kind == uint8_t(EffectKind::Drive) && loaded.chains[0].size == pad_slots && !loaded.chains[1].count());
+    CHECK(std::string(loaded.samples[1].path) == "/card/Samples/KICK.wav");
+    CHECK(!load_bank(save_project(*from, *std::make_unique<PatternBank>()), loaded)); // a project is not a bank
+    auto cut = save_bank(saved);
+    cut.resize(cut.size() - 5);
+    BankFile damaged;
+    CHECK(!load_bank(cut, damaged));
+    // Into bank B of another kit: only its sixteen pads change (and their mutes); each file asked for once.
+    Track other = into;
+    other.pads[16].sample = 30; other.pads[20].sample = 31; other.set_pad_muted(17, true);
+    other.pads[3].sample = 32; other.pad_fx.at[20].slots[0].kind = uint8_t(EffectKind::Drive);
+    asked = 0;
+    auto put = import_bank(loaded, 1, other, [&](const SampleRef& r) { ++asked; return std::string(r.name) == "KICK" ? 40 : 41; });
+    CHECK(asked == 2 && put.pads == 3 && put.missing == 0);
+    CHECK(other.pads[16].sample == 41 && other.pads[16].pitch == -3 && other.pads[17].sample == 41 && other.pads[31].sample == 40);
+    CHECK(!other.pads[20].used() && !other.pad_fx.at[20].count() && other.pad_fx.at[16].slots[0].kind == uint8_t(EffectKind::Drive));
+    CHECK(!other.pad_muted(17) && other.pads[3].sample == 32 && other.params[sampler::Filter] == 33);
+    asked = 0;
+    put = import_bank(loaded, 7, other, [&](const SampleRef&) { ++asked; return -1; }); // no free slot
+    CHECK(asked == 2 && put.pads == 0 && put.missing == 3 && !other.pads[112].used());
 }
 
 // Settings' sample rate (44.1 / 48 / 96 kHz): the engine follows the device's rate, so a project plays at the same

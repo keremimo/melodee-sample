@@ -2,13 +2,15 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/project.h"
+#include "melodee/model/project_file.h"
 #include <functional>
 #include <string>
 
 // Projects made in code (parity phase 10), the MPC's Demos: the one Melodee
 // starts with and a few more, listed in the Project page's DEMOS folder and
 // opened unsaved (Save asks a name). Load Kit takes a project's kit onto the
-// selected track: its pads, their samples and effects, no patterns. Pure.
+// selected track: its pads, their samples and effects, no patterns; a bank
+// file takes one bank of it. Pure.
 namespace melodee {
 
 // The project Melodee starts with: four tracks with sounds and a bass line (demo 0).
@@ -25,5 +27,8 @@ int kit_track(const Project& from);
 // project's sample slot for a file (-1: none free, the pad stays empty).
 struct KitImport { unsigned pads = 0, missing = 0; };
 KitImport import_kit(const Project& from, unsigned track, Track& into, const std::function<int(const SampleRef&)>& slot_for);
+// A bank file onto bank `bank` (0-7) of the kit `into`: its sixteen pads and their chains replace that
+// bank's, their mutes cleared; the other banks, the kit's own values and its patterns stay.
+KitImport import_bank(const BankFile& from, unsigned bank, Track& into, const std::function<int(const SampleRef&)>& slot_for);
 
 } // namespace melodee

@@ -12,6 +12,8 @@
 #include <cstring>
 #include <cstdio>
 #include <filesystem>
+#include <iterator>
+#include <fstream>
 
 namespace melodee {
 namespace fs = std::filesystem;
@@ -81,7 +83,8 @@ std::string upper(std::string text) {
     return text;
 }
 bool is_wav(const fs::path& path) { return upper(path.extension().string()) == ".WAV"; }
-// A folder's folders and WAV files, appended; hidden ones and lost+found left out.
+bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
+// A folder's folders, WAV files and bank files, appended; hidden ones and lost+found left out.
 void list_into(const std::string& folder, std::vector<SampleFile>& out) {
     std::error_code error;
     if (folder.empty() || !fs::is_directory(folder, error)) return;
@@ -90,9 +93,10 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out) {
         auto name = it->path().filename().string();
         if (name.empty() || name[0] == '.' || name == "lost+found") continue;
         bool folder_here = it->is_directory(error);
-        if (!folder_here && !(it->is_regular_file(error) && is_wav(it->path()))) continue;
+        bool bank = !folder_here && is_bank(it->path());
+        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank))) continue;
         SampleFile f;
-        f.path = it->path().string(); f.folder = folder_here;
+        f.path = it->path().string(); f.folder = folder_here; f.bank = bank;
         f.name = upper(folder_here ? name : it->path().stem().string()).substr(0, 26);
         if (!folder_here) f.bytes = it->file_size(error);
         out.push_back(std::move(f));
@@ -117,6 +121,7 @@ void SampleLibrary::service(Hardware& hardware) {
     }
     Request request;
     SampleJob job;
+    bank_files();
     if (requests.pop(request)) read(request); // one file per pass keeps the thread answering
     else if (jobs.pop(job)) make(job);
     else {
@@ -198,17 +203,75 @@ void SampleLibrary::finish(const std::string& text, int failed) {
 }
 
 // A name free in `folder`: the name, else "name 2", "name 3" ... (as Projects do).
-std::string SampleLibrary::free_name(const std::string& folder, const std::string& name) const {
+std::string SampleLibrary::free_name(const std::string& folder, const std::string& name, const char* extension) const {
     std::string clean;
     for (char ch : name) clean += (ch == '/' || ch == '\\' || ch == ':' || ch == '"' || ch == '*' || ch == '?' || ch == '<' || ch == '>' || ch == '|') ? '-' : ch;
     while (!clean.empty() && (clean.back() == ' ' || clean.back() == '.')) clean.pop_back();
     if (clean.empty()) clean = "Sample";
     std::error_code error;
     for (unsigned n = 1; n < 1000; ++n) {
-        auto path = folder + "/" + clean + (n > 1 ? " " + std::to_string(n) : std::string()) + ".wav";
+        auto path = folder + "/" + clean + (n > 1 ? " " + std::to_string(n) : std::string()) + extension;
         if (!fs::exists(path, error)) return path;
     }
     return {};
+}
+
+void SampleLibrary::write_bank(const std::string& name, std::vector<uint8_t> bytes) {
+    std::lock_guard<std::mutex> guard(lock);
+    bank_writes.emplace_back(name, std::move(bytes));
+}
+void SampleLibrary::read_bank(const std::string& path) {
+    std::lock_guard<std::mutex> guard(lock);
+    bank_reads.push_back(path);
+}
+bool SampleLibrary::take_bank(BankBytes& out) {
+    std::lock_guard<std::mutex> guard(lock);
+    if (banks_read.empty()) return false;
+    out = std::move(banks_read.front());
+    banks_read.erase(banks_read.begin());
+    return true;
+}
+
+// Kit bank files: a few kilobytes each, written and read whole. They go
+// in the card's Samples/Banks, so the browser lists them with the samples.
+void SampleLibrary::bank_files() {
+    decltype(bank_writes) writes;
+    decltype(bank_reads) reads;
+    std::string root;
+    {
+        std::lock_guard<std::mutex> guard(lock);
+        if (bank_writes.empty() && bank_reads.empty()) return;
+        std::swap(writes, bank_writes); std::swap(reads, bank_reads);
+        root = known.root;
+    }
+    for (auto& [name, bytes] : writes) {
+        if (root.empty()) { finish("Save Bank: no card"); continue; }
+        std::error_code error;
+        auto folder = root + "/Banks";
+        fs::create_directories(folder, error);
+        auto path = free_name(folder, name, ".mldb");
+        if (path.empty()) { finish("Save Bank: no free name"); continue; }
+        auto temporary = path + ".new";
+        bool wrote;
+        {
+            std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+            file.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+            wrote = bool(file);
+        }
+        if (wrote) fs::rename(temporary, path, error);
+        if (!wrote || error) { fs::remove(temporary, error); finish("Save Bank: could not write"); continue; }
+        finish("Saved " + fs::path(path).stem().string());
+        scan_wanted.store(true); // the Banks folder, if the browser is in it
+    }
+    for (auto& path : reads) {
+        BankBytes got;
+        got.path = path;
+        std::ifstream file(path, std::ios::binary);
+        if (!file) got.error = "could not read";
+        else got.bytes.assign(std::istreambuf_iterator<char>(file), {});
+        std::lock_guard<std::mutex> guard(lock);
+        banks_read.push_back(std::move(got));
+    }
 }
 
 // Save Sample, Trim Sample, Extract: a slot's region as a WAV file on the

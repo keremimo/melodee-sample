@@ -15,10 +15,12 @@ inline unsigned name_suggestions(const NameEntry& e, std::array<const char*, max
     if (e.first_suggestion[0]) out[n++] = e.first_suggestion;
     static const char* const projects[] {"Sketch", "Demo", "Beat", "Jam", "Live set", "Idea"};
     static const char* const sounds[] {"BASS", "LEAD", "PAD", "KEYS", "PLUCK", "BRASS", "FX"};
+    static const char* const banks[] {"DRUMS", "BREAK", "PERC", "CHOPS", "VOX", "FX"};
     auto add = [&](const char* const* list, unsigned count) { for (unsigned k = 0; k < count && n < max_suggestions; ++k) out[n++] = list[k]; };
     switch (e.target) {
     case NameTarget::Marker: add(Song::marker_names, Song::marker_name_count); break;
     case NameTarget::Sound: add(sounds, 7); break;
+    case NameTarget::Bank: add(banks, 6); break;
     case NameTarget::None: case NameTarget::Sample: break; // a sample keeps its own name first
     default: add(projects, 6); break;
     }

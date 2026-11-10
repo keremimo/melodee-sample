@@ -23,6 +23,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/sample_library.h"
 #include <cstdio>
+#include <filesystem>
 #include <cstring>
 #include <algorithm>
 
@@ -180,6 +181,16 @@ void Context::files_landed() {
                 project.samples[size_t(p.slot)] = SampleRef {}; p = PendingFile {};
             }
     }
+    SampleLibrary::BankBytes bank_bytes;
+    while (library->take_bank(bank_bytes)) { // Load Bank: the file asked for last, onto the bank in view
+        if (bank_bytes.path != bank_from) continue;
+        bank_from.clear();
+        auto name = std::filesystem::path(bank_bytes.path).stem().string();
+        BankFile bank;
+        if (!bank_bytes.error.empty()) notice("Load Bank: " + bank_bytes.error);
+        else if (!melodee::load_bank(bank_bytes.bytes, bank)) notice("Load Bank: not a bank file");
+        else load_bank(bank, name);
+    }
     for (auto& p : pending_files) {
         if (p.slot < 0) continue;
         auto loaded = library->slot(unsigned(p.slot));
@@ -283,7 +294,7 @@ void Context::preview_cursor() {
     if (!library) return;
     auto files = library->files();
     const SampleFile* file = ui.files_cursor < files.size() ? &files[ui.files_cursor] : nullptr;
-    std::string path = ui.preview && file && !file->folder ? file->path : std::string();
+    std::string path = ui.preview && file && !file->folder && !file->bank ? file->path : std::string();
     if (previewing >= 0) { // what played stops as the cursor moves on
         Command stop {Command::Type::Audition, uint8_t(previewing)};
         stop.pad.sample = no_sample;

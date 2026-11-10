@@ -18,4 +18,21 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
 // `version`: the file's params_version (limits.h), 0 when it predates it.
 std::string load_project(const std::vector<uint8_t>& data, Project& project, PatternBank& patterns, unsigned* version = nullptr);
 
+// A kit bank as a file (".mldb", in the card's Samples/Banks): sixteen pads,
+// their chains and the files they play, so one bank of a kit loads into any
+// bank of another. The files are named by path; nothing is copied.
+constexpr unsigned bank_pads = 16;
+struct BankFile {
+    char name[name_length] {};
+    std::array<PadSound, bank_pads> pads {};      // .sample: an entry of `samples`, or no_sample
+    std::array<Chain, bank_pads> chains;          // each pad's own (PadFX)
+    std::array<SampleRef, bank_pads> samples {};  // the files, at most one a pad
+    BankFile() { for (auto& c : chains) c.size = pad_slots; }
+    unsigned used() const;                        // pads with a sound
+};
+std::vector<uint8_t> save_bank(const BankFile& bank);
+bool load_bank(const std::vector<uint8_t>& data, BankFile& out); // false: not a bank file, or damaged
+// Bank `bank` (0-7, A-H) of track `track`'s kit as a bank file named `name`.
+BankFile bank_of(const Project& project, unsigned track, unsigned bank, const char* name);
+
 } // namespace melodee

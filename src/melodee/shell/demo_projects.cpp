@@ -173,4 +173,26 @@ KitImport import_kit(const Project& from, unsigned track, Track& into, const std
     return result;
 }
 
+KitImport import_bank(const BankFile& from, unsigned bank, Track& into, const std::function<int(const SampleRef&)>& slot_for) {
+    KitImport result;
+    std::array<int, bank_pads> mapped;
+    mapped.fill(-2); // -2 not asked yet
+    for (unsigned k = 0; k < bank_pads; ++k) {
+        unsigned n = (bank % sampler_banks) * bank_pads + k;
+        PadSound pad = from.pads[k];
+        Chain chain = from.chains[k];
+        if (pad.used()) {
+            unsigned s = pad.sample % bank_pads;
+            if (mapped[s] == -2) mapped[s] = from.samples[s].used() ? slot_for(from.samples[s]) : -1;
+            if (mapped[s] < 0) { pad = PadSound {}; ++result.missing; }
+            else { pad.sample = uint16_t(mapped[s]); ++result.pads; }
+        }
+        if (!pad.used()) chain = Chain {{}, pad_slots};
+        into.pads[n] = pad;
+        into.pad_fx.at[n] = chain;
+        into.set_pad_muted(n, false);
+    }
+    return result;
+}
+
 } // namespace melodee

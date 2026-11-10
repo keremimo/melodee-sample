@@ -4,12 +4,13 @@
 // New project asks first (B3 DO IT, B1 CANCEL), the demos made in code
 // (shell/demo_projects.h) open unsaved, and Load Kit takes another
 // project's kit (pads, samples, their effects; no patterns) onto the
-// selected track as one undo.
+// selected track as one undo; a bank file loads into one bank of it.
 #include "melodee/shell/ask.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/demo_projects.h"
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/sample_library.h"
 #include "melodee/shell/track_copy.h"
 #include <memory>
 
@@ -56,6 +57,34 @@ void Context::load_kit(const Project& from, const std::string& name) {
     edits.push(std::move(edit));
     notice(result.missing ? what + ": " + std::to_string(result.missing) + " pads without a slot" : what);
     if (ui.page == PageId::Project) open(PageId::Pads);
+}
+
+// A kit bank file (Push on one in the Samples browser): read on the service
+// thread, then into the bank in view of the selected kit (files_landed()).
+void Context::load_bank_file(const std::string& path, const std::string& name) {
+    if (!library) return;
+    if (track().engine != EngineKind::Sampler) { notice("Load Bank: kit tracks"); return; }
+    bank_from = path;
+    library->read_bank(path);
+    notice("Loading " + name);
+}
+
+void Context::load_bank(const BankFile& bank, const std::string& name) {
+    auto& t = track();
+    if (t.engine != EngineKind::Sampler) { notice("Load Bank: kit tracks"); return; }
+    if (ui.recording) { notice("Load Bank: not in a take"); return; }
+    unsigned into = t.bank % sampler_banks;
+    std::string bank_name = std::string("Bank ") + char('A' + into), what = "Load " + bank_name; // the notice holds 31 characters
+    Edit edit = begin_edit(what.c_str(), ui.track, -1, false);
+    edit.motion_before.reset(); // a bank brings no motion
+    edit.track_before = std::make_unique<TrackState>(track_state(*this, ui.track));
+    auto next = std::make_unique<TrackState>(*edit.track_before);
+    auto result = import_bank(bank, into, next->track, [&](const SampleRef& ref) { return sample_slot(ref.path, ref.name); });
+    restore_track(*this, ui.track, *next);
+    edit.track_after = std::move(next);
+    edits.push(std::move(edit));
+    dirty = true;
+    notice(result.missing ? bank_name + ": " + std::to_string(result.missing) + " pads had no slot" : bank_name + ": " + name);
 }
 
 // SD card access (parity phase 10b): the service thread lends the card; the

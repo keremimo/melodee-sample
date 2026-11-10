@@ -7,6 +7,7 @@
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/model/project.h"
+#include "melodee/model/project_file.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/history.h"
 #include "melodee/shell/page_stack.h"
@@ -111,6 +112,7 @@ public:
     void name_marker(unsigned bar);                         // Shift + Push on a marker
     void save_sound();                                      // Shift + Sample Select away from Sounds, synth tracks
     void save_sample();                                     // Shift + Sample Select on a kit: the Name sheet for Save Sample
+    void save_bank();                                       // Shift + Sample Select on Samples: the Name sheet for Save Bank
     std::string name_path;                                  // Rename: the file being renamed
     unsigned name_bar = 0;                                  // Marker: its bar
     // Sounds of one's own on the card, copied in by the shell; the k-th of an engine's.
@@ -226,6 +228,11 @@ public:
     void load_kit_file(const std::string& path, const std::string& name); // a project's kit onto the selected track, once loaded
     void load_kit(const Project& from, const std::string& name);          // that kit onto the selected track, one undo
     std::string kit_from;                     // the file Load Kit waits for
+    // Kit bank files (shell/project_jobs.cpp, model/project_file.h): Push on one in the Samples browser
+    // loads it into the selected kit's bank in view, once the service thread has read it.
+    void load_bank_file(const std::string& path, const std::string& name);
+    void load_bank(const BankFile& bank, const std::string& name); // into the bank in view, one undo
+    std::string bank_from;                    // the file Load Bank waits for
     // Switches the whole app to `project`: the audio thread gets a copy, samples reload.
     void switch_to(const Project& project, const PatternBank& patterns, const std::string& path);
     // The device's rate changed (Settings' SAMPLE RATE): the same project again, so the audio thread works out every

@@ -601,6 +601,16 @@ void Context::save_sample() {
     open_name(NameTarget::Sample, ref.name, sizeof(project.name) - 1, false); // a file's name may run as long as a project's
 }
 
+// Shift + Sample Select on the Samples browser: the kit's bank in view as a
+// bank file, named on the Name sheet (finish_name()).
+void Context::save_bank() {
+    auto& t = track();
+    if (t.engine != EngineKind::Sampler || !library) return;
+    char letter = char('A' + t.bank % sampler_banks);
+    if (!bank_of(project, ui.track, t.bank, "").used()) { notice(std::string("Save Bank: bank ") + letter + " is empty"); return; }
+    std::string name = t.name[0] ? std::string(t.name) + " " + letter : std::string("BANK ") + letter;
+    open_name(NameTarget::Bank, name, name_length - 1, true);
+}
 
 void Context::finish_name() {
     auto& e = ui.name;
@@ -643,6 +653,12 @@ void Context::finish_name() {
         break;
     }
     case NameTarget::Sample: save_sample_as(text); break;
+    case NameTarget::Bank: {
+        auto& t = track();
+        if (!library || t.engine != EngineKind::Sampler) break;
+        library->write_bank(text, melodee::save_bank(bank_of(project, ui.track, t.bank, text.c_str())));
+        break;
+    }
     case NameTarget::Mixdown: mixdown(text); break;
     case NameTarget::None: break;
     }

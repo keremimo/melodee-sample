@@ -6,7 +6,8 @@
 // cursor, Shift + wheel or K2 turns the character under it, Erase deletes
 // (with Shift, everything), K1 fills in a ready name. B1 cancels, B2 is
 // Aa, B3 or Push keeps it. Opens for Save and Rename on Project, Shift +
-// Push on a Song marker, and Save sound (Shift + Sample Select).
+// Push on a Song marker, Save sound, Save Sample and Save Bank (Shift +
+// Sample Select).
 #include "melodee/engine/engine_info.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/page.h"
@@ -16,7 +17,7 @@ using namespace ui;
 
 void draw_name_sheet(Paint& p, const Snapshot& s) {
     const auto& e = s.ui.name;
-    bool sound = e.target == NameTarget::Sound || e.target == NameTarget::Sample;
+    bool sound = e.target == NameTarget::Sound || e.target == NameTarget::Sample || e.target == NameTarget::Bank;
     auto accent = sound ? colour_of(s) : colour::text;
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
     soft_keys(p, {{"CANCEL", e.caps_only ? "" : "Aa", "DONE"}, e.lower ? 1 : 2, accent, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
@@ -29,6 +30,7 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
     case NameTarget::Marker: what = "MARKER " + juce::String::fromUTF8("\xc2\xb7 BAR ") + juce::String(s.ui.song_cursor + 1); break;
     case NameTarget::Sound: what = "SAVE SOUND " + juce::String::fromUTF8("\xc2\xb7 ") + engine_info(s.track().engine).name; break;
     case NameTarget::Sample: what = "SAVE SAMPLE"; break;
+    case NameTarget::Bank: what = "SAVE BANK " + juce::String::fromUTF8("\xc2\xb7 ") + juce::String::charToString(juce::juce_wchar('A' + s.track().bank % sampler_banks)); break;
     case NameTarget::Mixdown: what = "AUDIO MIXDOWN"; break;
     case NameTarget::None: break;
     }

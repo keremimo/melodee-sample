@@ -82,7 +82,7 @@ cards.
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
 | Loop | The last kit pad's loop on or off, lit while it loops | Reverse the last pad |
 | 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back | The type: Velocity, Filter (kits), Tune, Scale |
-| Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample. Synth or 909: Save sound. On Sounds: star |
+| Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. Synth or 909: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
@@ -277,6 +277,15 @@ thread.
   or INTERNAL: the factory categories and the stock app's User folder, read
   only), B3 PREVIEW plays each file as the cursor lands; Shift + pad loads
   onto the next empty pad. Melodee writes only to the card.
+- **Banks** (kit tracks only): one bank of a kit's sixteen pads as a file.
+  **Save Bank** is Shift + Sample Select on Samples: the Name sheet (the kit's
+  name and bank letter first), then `Samples/Banks/<name>.mldb` with every
+  pad's values, its own chain and the paths of the files it plays (nothing
+  is copied). Bank files show in the browser tagged BANK; **Push** on one
+  loads it into the bank in view (Pad Bank picks it): its sixteen pads and
+  their chains replace that bank's, their mutes cleared; the other banks,
+  the kit's own values and the patterns stay. Each file takes a sample slot
+  once; a pad without a free slot stays empty and is counted. One undo.
 - **The ten sample pages**, in the MPC's groups: **B1** Trim → Mix → Amp
   Env, **B2** Tune → Play → Follow → Cloud, **B3** Filter → Filt Env → Kit
   filter. A B key goes round its group, or opens its first page from
@@ -519,8 +528,8 @@ voices or the engine's own count; tracks render in one block of 128 frames.
 - `Melodee/settings`: Melodee's settings, MIDI Config, Input Config, the
   favourites and the project to open at start.
 - `Samples/`: loaded from anywhere under it; Melodee writes `Recorded/`,
-  `Edits/` and saved samples there. `Melodee/Mixdowns/` holds song
-  mixdowns.
+  `Edits/` and saved samples there, and bank files in `Banks/`.
+  `Melodee/Mixdowns/` holds song mixdowns.
 
 Nothing is created on the card until something is saved. On a host,
 `$MELODEE_PROJECTS`, `$MELODEE_SAMPLES` and `$MELODEE_INTERNAL` stand in

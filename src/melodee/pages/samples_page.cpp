@@ -3,7 +3,9 @@
 // SAMPLES (Sample Select on a sampler track): the MPC's sample browser.
 // Folders first, as categories, then the WAV files. The wheel and Minus /
 // Plus move, Push opens a folder or loads the file onto the last pad hit
-// (keeping the pad's settings; the whole file, Trim or Chop shape it), B1
+// (keeping the pad's settings; the whole file, Trim or Chop shape it), or a
+// bank file (BANK, Samples/Banks) into the kit's bank in view; Shift +
+// Sample Select here saves that bank as a bank file (Save Bank). B1
 // goes back out, B2 picks the drive (the card, or the internal one: the
 // factory categories and the stock app's samples, read only), B3 hears each
 // file as the cursor lands on it. Shift + pad loads the file onto the
@@ -51,6 +53,7 @@ void draw(Paint& p, const Snapshot& s) {
         ListRow r;
         r.name = file.name; r.accent = c; r.current = first + row == cursor;
         if (file.folder) r.tag = juce::String::fromUTF8("FOLDER \xe2\x80\xba");
+        else if (file.bank) r.tag = "BANK";
         else // which pads of this kit play it
             for (unsigned n = 0; n < sample_slots && r.tag.isEmpty(); ++n)
                 if (file.path == s.project.samples[n].path)
@@ -74,6 +77,7 @@ void push(Context& c) {
     if (c.ui.files_cursor >= files.size()) return;
     const auto& file = files[c.ui.files_cursor];
     if (file.folder) c.library->browse(Drive(c.ui.files_drive), file.path);
+    else if (file.bank) c.load_bank_file(file.path, file.name);
     else c.load_file(file.path, file.name, false);
 }
 
@@ -92,6 +96,7 @@ bool samples_shift_pad(Context& c) {
     auto files = c.library->files();
     if (c.ui.files_cursor >= files.size() || files[c.ui.files_cursor].folder) { c.notice("Shift + pad: a file first"); return true; }
     const auto& file = files[c.ui.files_cursor];
+    if (file.bank) { c.notice("Push loads a bank"); return true; }
     c.load_file(file.path, file.name, true);
     return true;
 }
