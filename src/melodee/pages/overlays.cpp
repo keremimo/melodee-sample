@@ -16,6 +16,7 @@ using namespace ui;
 
 void draw_overlays(Paint& p, const Snapshot& s) {
     bool sheet = s.ui.name.open() || s.ui.exit_open;
+    if (!sheet && !tracks_on_pads(s.ui)) draw_sampler_map(p, s); // under the notice and the cards
     if (tracks_on_pads(s.ui) && !sheet) draw_track_overlay(p, s);
     if (!sheet && s.ui.ask != UiState::Ask::None) draw_ask_sheet(p, s); // B1 Cancel / B3 Do it before an erase
     if (!sheet && s.ui.ask == UiState::Ask::None && !tracks_on_pads(s.ui)) draw_fader_card(p, s);
@@ -47,7 +48,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
     // The knob strip shows the cards Shift turns (Shift + K) and nothing else.
     const auto& t = s.track();
     bool kit = t.engine == EngineKind::Sampler;
-    bool kit_pads = kit && !t.levels && page_spec(s.ui.page).pad == play_pad;
+    bool kit_pads = kit && !t.levels && pad_job(s.ui) == play_pad;
     bool song = s.ui.page == PageId::Song && !s.ui.sheet_open; // there Push names a marker instead
     const char* copy = s.ui.pad_bank ? "Copy track" : kit_pads ? "Copy pad" : s.ui.page == PageId::Patterns ? "Copy pattern" : "Copy pad, pattern, track";
     const char* select = s.ui.page == PageId::Sounds ? "Star sound" : kit ? "Save sample" : "Save sound";
@@ -163,7 +164,7 @@ void draw_notice(Paint& p, const Snapshot& s) {
         text = juce::String(s.ui.notice);
     } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here
         const auto& t = s.track();
-        bool kit = mute_on_kit(s.ui, t.engine == EngineKind::Sampler && !t.levels && page_spec(s.ui.page).pad == play_pad);
+        bool kit = mute_on_kit(s.ui, t.engine == EngineKind::Sampler && !t.levels && pad_job(s.ui) == play_pad);
         text = kit ? "Mute: pads" : "Mute: tracks";
         copying = true; // in the track's colour, as a mode
     } else {

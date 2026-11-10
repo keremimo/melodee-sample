@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/demo_projects.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/pad_fx_info.h"
@@ -427,6 +428,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Project:
         if (ui.sheet_open || ui.move_open) return {};
+        if (ui.project_demos) return {Binding {}, Binding {Kind::ProjectJump, 0, 0, int(demo_count) - 1, ui.project_cursor}, Binding {}}; // DEMOS
         return {Binding {}, Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},
                 Binding {Kind::ProjectSort, 0, 0, 1, ui.project_sort}};
     case PageId::Tempo:

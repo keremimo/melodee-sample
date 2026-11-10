@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 
 namespace melodee {
+
+PadJob pad_job(const UiState& ui) {
+    if (ui.seq_sample && ui.page == PageId::Patterns) return play_pad;
+    return page_spec(ui.page).pad;
+}
 
 const PageSpec& page_spec(PageId page) {
     switch (page) {

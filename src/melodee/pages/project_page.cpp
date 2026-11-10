@@ -8,8 +8,14 @@
 // once more. Save (with no file yet), Save as new and Rename open the Name
 // sheet; Move to folder opens a picker of every folder (the wheel picks,
 // Push or B3 moves, B1 backs out). The amber dot marks unsaved changes.
+// Parity phase 10, as the MPC's project page: New project asks first (B3 DO
+// IT, B1 CANCEL); DEMOS, at the top, holds the projects made in code
+// (shell/demo_projects.h), opened unsaved; Load kit on another project's
+// sheet takes only its kit (pads and samples, no patterns) onto the
+// selected track.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/demo_projects.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/ui/widgets.h"
 #include <cstdio>
@@ -22,27 +28,47 @@ using namespace ui;
 constexpr unsigned visible = 7;
 const juce::Colour amber = colour::amber;
 
-enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete };
+enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete, LoadKit };
 
 // The sheet's rows for an entry: the open project's, or another's with Load first.
 unsigned actions(bool open, std::array<Action, 8>& out) {
     if (open) { out = {Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete}; return 8; }
-    out = {Load, Duplicate, Rename, MoveTo, NewFolder, OpenAtStart, Delete, Delete};
-    return 7;
+    out = {Load, LoadKit, Duplicate, Rename, MoveTo, NewFolder, OpenAtStart, Delete};
+    return 8;
 }
 const char* action_name(Action a) {
-    static const char* names[] {"Load", "Save", "Save as new", "Rename", "Duplicate", "Move to folder", "New folder here", "Open at start", "Delete"};
+    static const char* names[] {"Load", "Save", "Save as new", "Rename", "Duplicate", "Move to folder", "New folder here", "Open at start", "Delete",
+                                "Load kit (no patterns)"};
     return names[a];
 }
 
-// The rows: New project, the open project when it has no file yet, then the folder's entries.
+// The rows: New project, the open project when it has no file yet, DEMOS (at the top folder), then the
+// folder's entries. In DEMOS the rows are the demos.
 bool unsaved_row(const std::string& path) { return path.empty(); }
-unsigned first_entry(const std::string& path) { return unsaved_row(path) ? 2 : 1; }
-const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const std::string& path) {
-    unsigned first = first_entry(path);
+unsigned demos_row(const std::string& path) { return unsaved_row(path) ? 2 : 1; }
+bool has_demos_row(const std::string& folder) { return folder.empty(); }
+unsigned first_entry(const std::string& path, const std::string& folder) { return demos_row(path) + (has_demos_row(folder) ? 1 : 0); }
+const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const std::string& path, const std::string& folder) {
+    unsigned first = first_entry(path, folder);
     return row >= first && row - first < v.entries.size() ? &v.entries[row - first] : nullptr;
 }
 bool on_unsaved(unsigned row, const std::string& path) { return unsaved_row(path) && row == 1; }
+bool on_demos(unsigned row, const std::string& path, const std::string& folder) { return has_demos_row(folder) && row == demos_row(path); }
+// A demo's tracks and tempo, made once.
+struct DemoMeta { unsigned tracks = 0, tempo = 0; };
+const DemoMeta& demo_meta(unsigned n) {
+    static const auto metas = [] {
+        std::array<DemoMeta, demo_count> out {};
+        for (unsigned k = 0; k < demo_count; ++k) {
+            auto project = std::make_unique<Project>();
+            auto bank = std::make_unique<PatternBank>();
+            make_demo(k, *project, *bank);
+            out[k] = {project->used_tracks(), project->tempo};
+        }
+        return out;
+    }();
+    return metas[n % demo_count];
+}
 
 // Move to folder: where a project can go (the top, then every folder by
 // name), all but the folder it is in.
@@ -76,7 +102,47 @@ void sort_view(ProjectStore::View& v, unsigned by_name) {
         return a.modified > b.modified;
     });
 }
+// DEMOS: the projects made in code; Push opens one's sheet (Load), Shift + Push or B1 comes back out.
+void draw_demos(Paint& p, const Snapshot& s) {
+    Header h = header_of(s);
+    h.left.push_back(pill("DEMOS"));
+    bool sheet = s.ui.sheet_open;
+    frame(p, s, sheet ? SoftKeys {{"BACK", "", "LOAD"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}
+                      : SoftKeys {{"BACK", "SETTINGS", "ABOUT"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
+    unsigned cursor = std::min<unsigned>(s.ui.project_cursor, demo_count - 1);
+    float x = zone::pad, w = zone::width - 2 * zone::pad;
+    for (unsigned n = 0; n < demo_count; ++n) {
+        float y = zone::picture_y + 0.5f + n * (list_row_h + list_row_gap), cy = y + list_row_h / 2;
+        bool current = n == cursor;
+        if (current) {
+            p.fill(x, y, w, list_row_h, colour::raised, 4);
+            p.g.saveState(); p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(list_row_h)));
+            p.fill(x, y, 8, list_row_h, colour::text, 4); p.g.restoreState();
+        }
+        const auto& meta = demo_meta(n);
+        juce::String text = juce::String(meta.tracks) + " TRACKS" + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(meta.tempo / 10) + " BPM";
+        auto meta_style = caps_text(colour::mid, 7);
+        float mw = p.width(text, meta_style), right = x + w - 7 - mw;
+        p.text(text, right, y, mw + 1, list_row_h, meta_style);
+        p.circle(x + 15, cy, 2.5f, current ? colour::text : colour::mid);
+        p.text(demo_name(n), x + 27, y, right - x - 31, list_row_h, plain(current ? colour::text : colour::sec, 12, Weight::Medium));
+    }
+    p.text("Made in Melodee: they open unsaved, Save gives them a name", x, zone::picture_y + 132, w, 12, caps_text(colour::dim, 7),
+           juce::Justification::centredRight);
+    if (sheet) {
+        MenuSheet m;
+        m.title = demo_name(cursor); m.accent = colour::text;
+        m.detail = s.dirty ? "UNSAVED CHANGES CLOSE" : "DEMO"; m.detail_colour = s.dirty ? amber : colour::mid;
+        m.rows[0] = {"Load", "", false, false, false};
+        m.count = 1; m.current = 0;
+        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
+        p.dim_zone(zone::knobs_y, zone::knobs_h);
+        wide_sheet(p, m, "DEMO", colour::text);
+    }
+}
+
 void draw(Paint& p, const Snapshot& s) {
+    if (s.ui.project_demos) { draw_demos(p, s); return; }
     auto v = s.projects;
     sort_view(v, s.ui.project_sort);
     Header h = header_of(s);
@@ -88,13 +154,13 @@ void draw(Paint& p, const Snapshot& s) {
     else if (sheet) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
     else frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 0, colour::text}, h);
 
-    unsigned count = unsigned(v.entries.size()) + first_entry(s.project_path), cursor = std::min<unsigned>(s.ui.project_cursor, count - 1);
+    unsigned count = unsigned(v.entries.size()) + first_entry(s.project_path, s.project_folder), cursor = std::min<unsigned>(s.ui.project_cursor, count - 1);
     unsigned first = cursor < 3 ? 0 : std::min(cursor - 3, count > visible ? count - visible : 0);
     float x = zone::pad, w = zone::width - 2 * zone::pad;
     for (unsigned row = 0; row < visible && first + row < count; ++row) {
         unsigned n = first + row;
         float y = zone::picture_y + 0.5f + row * (list_row_h + list_row_gap);
-        const auto* e = entry_at(v, n, s.project_path);
+        const auto* e = entry_at(v, n, s.project_path, s.project_folder);
         bool current = n == cursor, open = e && e->kind == ProjectEntry::Kind::Project && e->path == s.project_path;
         if (current) {
             p.fill(x, y, w, list_row_h, colour::raised, 4);
@@ -102,6 +168,15 @@ void draw(Paint& p, const Snapshot& s) {
             p.fill(x, y, 8, list_row_h, colour::text, 4); p.g.restoreState();
         }
         float tx = x + 27, cy = y + list_row_h / 2;
+        if (on_demos(n, s.project_path, s.project_folder)) { // the demos, as a folder
+            folder_icon(p, x + 10, cy);
+            juce::String meta = juce::String(demo_count) + " PROJECTS" + juce::String::fromUTF8(" \xc2\xb7 ") + "BUILT IN";
+            auto meta_style = caps_text(colour::mid, 7);
+            float mw = p.width(meta, meta_style);
+            p.text(meta, x + w - 7 - mw, y, mw + 1, list_row_h, meta_style);
+            p.text("Demos", tx, y, w - mw - 40, list_row_h, plain(colour::sec, 12, Weight::Medium));
+            continue;
+        }
         if (on_unsaved(n, s.project_path)) { // the open project, not on the card yet
             auto chip_style = caps_text(colour::bg, 7);
             float cw = p.width("OPEN", chip_style) + 8, right = x + w - 7 - cw;
@@ -148,7 +223,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(e->name, tx, y, right - tx - 4, list_row_h, p.fit(e->name, plain(open ? colour::text : colour::sec, 12, Weight::Medium), right - tx - 4, 8));
     }
     if (s.ui.move_open) { // the folder picker over the list
-        const auto* e = entry_at(v, cursor, s.project_path);
+        const auto* e = entry_at(v, cursor, s.project_path, s.project_folder);
         if (!e) return;
         auto list = destinations(v, e->path);
         p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
@@ -183,7 +258,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(v.message, x, zone::picture_y + 132, w, 12, caps_text(colour::rec, 7), juce::Justification::centredRight);
 
     if (sheet) {
-        const auto* e = entry_at(v, cursor, s.project_path);
+        const auto* e = entry_at(v, cursor, s.project_path, s.project_folder);
         bool unsaved = on_unsaved(cursor, s.project_path);
         if (!unsaved && (!e || e->kind != ProjectEntry::Kind::Project)) return;
         bool open = unsaved || e->path == s.project_path;
@@ -213,13 +288,13 @@ ProjectStore::View view_of(Context& c) {
     ProjectStore::View v;
     if (c.store) c.store->view(v);
     sort_view(v, c.ui.project_sort);
-    c.ui.project_rows = uint16_t(v.entries.size() + first_entry(c.project_path));
+    c.ui.project_rows = uint16_t(v.entries.size() + first_entry(c.project_path, c.project_folder));
     return v;
 }
 
 void act(Context& c) {
     auto v = view_of(c);
-    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
     bool unsaved = on_unsaved(c.ui.project_cursor, c.project_path);
     if ((!e && !unsaved) || !c.store) return;
     bool open = unsaved || e->path == c.project_path;
@@ -230,6 +305,7 @@ void act(Context& c) {
     if (unsaved && (action == Duplicate || action == OpenAtStart || action == Delete || action == MoveTo)) return;
     switch (action) {
     case Load: c.store->load(e->path); break;
+    case LoadKit: c.ui.sheet_open = false; c.load_kit_file(e->path, e->name); return;
     case Save:
         if (unsaved) { c.name_project(false); return; } // a name first
         c.save_project_to(e->path);
@@ -254,7 +330,7 @@ void act(Context& c) {
 // The picker: Push or B3 moves the project there, B1 backs out.
 void move_here(Context& c) {
     auto v = view_of(c);
-    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
     c.ui.move_open = false;
     if (!e || !c.store) return;
     auto list = destinations(v, e->path);
@@ -264,16 +340,20 @@ void move_here(Context& c) {
 }
 
 void wheel(Context& c, int delta) {
+    if (c.ui.project_demos) {
+        if (!c.ui.sheet_open) c.ui.project_cursor = uint16_t(std::clamp<int>(c.ui.project_cursor + delta, 0, int(demo_count) - 1));
+        return;
+    }
     if (c.ui.move_open) {
         auto v = view_of(c);
-        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
         size_t n = e ? destinations(v, e->path).size() : 0;
         c.ui.move_cursor = uint16_t(std::clamp<int>(c.ui.move_cursor + delta, 0, std::max(int(n) - 1, 0)));
         return;
     }
     if (c.ui.sheet_open) {
         auto v = view_of(c);
-        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
+        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
         std::array<Action, 8> list {};
         unsigned n = actions(on_unsaved(c.ui.project_cursor, c.project_path) || (e && e->path == c.project_path), list);
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(n) - 1));
@@ -281,19 +361,24 @@ void wheel(Context& c, int delta) {
         return;
     }
     auto v = view_of(c);
-    c.ui.project_cursor = uint16_t(std::clamp<int>(c.ui.project_cursor + delta, 0, int(v.entries.size() + first_entry(c.project_path)) - 1));
+    c.ui.project_cursor = uint16_t(std::clamp<int>(c.ui.project_cursor + delta, 0, int(v.entries.size() + first_entry(c.project_path, c.project_folder)) - 1));
 }
 
 void push(Context& c) {
+    if (c.ui.project_demos) { // a demo's sheet, then Load
+        if (!c.ui.sheet_open) { c.ui.sheet_open = true; c.ui.sheet_row = 0; return; }
+        c.ui.sheet_open = false; c.ui.project_demos = false;
+        c.open_demo(c.ui.project_cursor % demo_count);
+        return;
+    }
     if (c.ui.move_open) { move_here(c); return; }
     if (c.ui.sheet_open) { act(c); return; }
     auto v = view_of(c);
     if (on_unsaved(c.ui.project_cursor, c.project_path)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false; return; }
-    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path);
-    if (!e) { // New project: the open one is saved first if it has a file
-        if (c.dirty && !c.project_path.empty()) c.save_project();
-        c.new_project();
-        c.open(PageId::Stage);
+    if (on_demos(c.ui.project_cursor, c.project_path, c.project_folder)) { c.ui.project_demos = true; c.ui.project_cursor = 0; return; }
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
+    if (!e) { // New project: asks first, as the MPC does (B3 DO IT, B1 CANCEL); the open one is saved first if it has a file
+        c.ask_new_project();
         return;
     }
     if (e->kind == ProjectEntry::Kind::Folder) {
@@ -306,6 +391,10 @@ void push(Context& c) {
 }
 
 void soft(Context& c, int key) {
+    if (c.ui.project_demos) {
+        if (c.ui.sheet_open) { if (key == 0) c.ui.sheet_open = false; if (key == 2) push(c); return; }
+        if (key == 0) { c.ui.project_demos = false; c.ui.project_cursor = uint16_t(demos_row(c.project_path)); return; }
+    }
     if (c.ui.move_open) {
         if (key == 0) c.ui.move_open = false;
         if (key == 2) move_here(c);

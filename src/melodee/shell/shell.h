@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/project.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/demo_projects.h"
 #include "melodee/shell/midi_io.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
@@ -61,9 +62,11 @@ public:
 
 private:
     void button(SurfaceButton button, bool pressed);
+    void press(SurfaceButton button, bool pressed); // button() inside its undo step (shell/undo_scope.h)
     void pot(unsigned index, int position, bool syncing);
     void wheel(int delta);
     void pad(unsigned pad, uint8_t velocity, bool down);
+    void hit(unsigned pad, uint8_t velocity, bool down); // pad() inside its undo step
     void check_pickup(unsigned index, const Binding& binding);
     Takeover pot_takeover(const Binding& binding) const;
     std::string button_text() const; // the button lights for `status`
@@ -112,6 +115,10 @@ private:
     std::atomic<uint32_t> chop_bits {0}, pad_start_now {0}, pad_end_now {0}, files_bits {0};
     mutable std::mutex text_lock;
     std::string pad_name_text, folder_text; // under text_lock
+    // Phase 10: undo depth, Seq + Sample / the sampler map / DEMOS / a gesture open, the last step's name (under text_lock).
+    std::atomic<uint32_t> phase10_bits {0};
+    std::string undo_text;
+    std::string phase10_summary() const;
     std::string input_summary() const;  // phase 6: Input Config, takes, Recall, renders
     std::string fx_summary() const;     // phase 7: Knob FX, the master compressor
     std::string padfx_summary() const;  // phase 7b: Pad FX, Flex Beat
@@ -121,7 +128,5 @@ private:
     std::string sample_summary() const;
 };
 
-// The project Melodee starts with: four tracks with sounds and a bass line.
-void starting_project(Project& project, PatternBank& patterns);
 
 } // namespace melodee

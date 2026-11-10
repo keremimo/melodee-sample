@@ -7,7 +7,7 @@
 // smaller stretch, and Shift + wheel moves the last one by a millisecond.
 // Shift + B1 Loop Lock (the loop point on the start), Shift + B2 Normalize
 // (the region's loudest point to 0 dB, undoable). The handles wear the
-// colours of the pots that move them. B1 and B3 go round the sampler's pages.
+// colours of the pots that move them. B1 / B2 / B3 go round the sampler page groups; Push opens their map.
 #include "melodee/pages/sampler_common.h"
 #include "melodee/ui/waveform.h"
 #include <cstdio>
@@ -81,6 +81,6 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec trim_page {draw, play_pad, no_wheel, no_push, soft, sampler_bank};
+const PageSpec trim_page {draw, play_pad, sampler_wheel, sampler_push, soft, sampler_bank};
 
 } // namespace melodee

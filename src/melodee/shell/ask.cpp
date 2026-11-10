@@ -24,6 +24,7 @@ bool ask_button(Context& c, SurfaceButton button) {
     if (kind == UiState::Ask::EraseKeyEvents) erase_key_events(c, int(ui.ask_target));
     else if (kind == UiState::Ask::EraseLane) c.clear_lane(int(ui.ask_target));
     else if (kind == UiState::Ask::ResetSettings) c.reset_settings();
+    else if (kind == UiState::Ask::NewProject) c.start_new_project();
     return true;
 }
 
@@ -33,6 +34,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::EraseKeyEvents: return "Erase " + key_label(t, int(ui.ask_target)) + " events?";
     case UiState::Ask::EraseLane: return "Erase " + lane_name(t, int(ui.ask_target)) + " motion?";
     case UiState::Ask::ResetSettings: return "Reset factory settings?";
+    case UiState::Ask::NewProject: return "New project?";
     default: return {};
     }
 }
@@ -52,6 +54,8 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
         return std::to_string(count) + (count == 1 ? " move" : " moves") + where + " go.";
     }
     if (ui.ask == UiState::Ask::ResetSettings) return "Every setting as Melodee comes; projects stay.";
+    if (ui.ask == UiState::Ask::NewProject)
+        return ui.ask_target == 1 ? "Changes are saved first." : ui.ask_target == 2 ? "Unsaved changes are lost." : "The open project closes.";
     return {};
 }
 

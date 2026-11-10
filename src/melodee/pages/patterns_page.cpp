@@ -36,7 +36,8 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     // B3 COLUMN on: a tap launches the whole column. Counting in or armed, the header's chip takes its room.
     bool chip = !h.left.empty();
-    if (!chip) h.left.push_back(s.ui.launch_column ? pill("LAUNCH COLUMN", colour_of(s)) : pill("LAUNCH BAR"));
+    if (!chip) h.left.push_back(s.ui.seq_sample ? pill(s.track().engine == EngineKind::Sampler ? "PADS PLAY KIT" : "PADS PLAY", colour_of(s))
+                                : s.ui.launch_column ? pill("LAUNCH COLUMN", colour_of(s)) : pill("LAUNCH BAR"));
     uint32_t length = std::max<uint32_t>(s.pattern.length, 1);
     uint32_t at = s.playing && s.positions[s.ui.track] >= 0 ? uint32_t(s.positions[s.ui.track]) : s.ui.locate % length;
     h.left.push_back(pill(where(s, at), s.playing ? colour::text : colour::mid));

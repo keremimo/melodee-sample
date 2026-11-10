@@ -111,6 +111,11 @@ struct UiState {
     uint8_t trim_focus = 0;     // and where it closes in: 0 the start, 1 the end, 2 the loop point (Shift + K1-K3)
     bool sample_held = false;   // Sample held: a pad picks a kit pad without playing it (as on the MPC)
     bool sample_used = false;   // a pad was picked meanwhile, so letting go opens no page
+    bool seq_held = false;      // Seq held (for Seq + Sample)
+    bool project_demos = false; // Project: in the DEMOS folder (parity phase 10)
+    // Seq + Sample pressed together (parity phase 10): Patterns on screen while the pads play the selected
+    // track (a kit's pads), both lights blinking; Seq or Sample again, or another page, ends it.
+    bool seq_sample = false;
     uint8_t warp_stretch = 0;   // Shift + Pad 15: the Follow how (Beats or Tones) Time stretch goes back to
     // Chop (parity phase 5): the last pad's region cut into slices.
     ChopMode chop_mode = ChopMode::Threshold;
@@ -185,7 +190,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings };
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject }; // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // A word over the header for a moment: what an undo, redo, delete or copy did.

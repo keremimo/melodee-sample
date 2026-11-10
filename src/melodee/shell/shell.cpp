@@ -72,9 +72,19 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     }
 }
 
+// Each press on a page is one undo step of what the page edits, unless it kept
+// an edit of its own (parity phase 10); Shift and undo / redo themselves are not.
 void Shell::button(Button b, bool pressed) {
+    if (!pressed || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
+    PageEdit step(context_, b, false);
+    press(b, pressed);
+    step.finish();
+}
+
+void Shell::press(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
+    if (b == Button::Seq) ui.seq_held = pressed && !ui.shift; // Seq + Sample
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (b == Button::TopLeft) ui.b1_held = pressed && ui.ask == UiState::Ask::None && (ui.page == PageId::Patterns || ui.page == PageId::StepEdit); // B1 held: the wheel sets the BPM
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
@@ -151,6 +161,8 @@ void Shell::button(Button b, bool pressed) {
                           : ui.page == PageId::Roll ? PageId::Motion : PageId::StepEdit);
             break;
         }
+        if (ui.sample_held) { seq_sample(context_, true); break; } // Seq + Sample: Patterns, the pads play the kit
+        if (ui.seq_sample) { seq_sample(context_, false); break; }  // again: the pads pick patterns
         context_.open(PageId::Patterns);
         break;
     case Button::SampleSelect: // on a sampler track it lists samples
@@ -217,6 +229,7 @@ void Shell::button(Button b, bool pressed) {
     case Button::TopRight: if (!repeat_soft(context_, 2)) page.soft(context_, 2); break;
     case Button::WheelPush:
         if (ui.shift && ui.page == PageId::Song && !ui.sheet_open) song_marker(context_);
+        else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && ui.project_demos) { ui.project_demos = false; ui.project_cursor = 0; } // out of DEMOS
         else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
             // up a folder
             auto& f = context_.project_folder;
@@ -305,6 +318,13 @@ void Shell::wheel(int delta) {
 }
 
 void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
+    if (!down) { hit(pad, velocity, down); return; }
+    PageEdit step(context_, Button::Count, true);
+    hit(pad, velocity, down);
+    step.finish();
+}
+
+void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down) velocity = ui_.settings.velocity(velocity); // the pad response
     if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
     if (down && (ui_.exit_open || ui_.ask != UiState::Ask::None)) return; // a sheet or a question over the page
@@ -340,14 +360,14 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         ui_.stop_copying();
         return;
     }
-    page_spec(ui_.page).pad(context_, pad, velocity, down);
+    pad_job(ui_)(context_, pad, velocity, down);
 }
 
 // Whether the pads play the selected track's kit on this page, one pad each:
 // there Erase + pad deletes a pad and Shift + Erase copies one.
 bool Shell::kit_pads() const {
     const auto& t = project_->tracks[ui_.track % track_count];
-    return t.engine == EngineKind::Sampler && !t.levels && page_spec(ui_.page).pad == play_pad;
+    return t.engine == EngineKind::Sampler && !t.levels && pad_job(ui_) == play_pad;
 }
 
 // Copying ends once its pads are gone: pads away from a kit, patterns away from Patterns.
@@ -436,7 +456,20 @@ std::string Shell::summary() const {
            " melodee_step=" + std::to_string(step_now.load() + 1) + " melodee_event=" + std::to_string(event_now.load()) + "/" +
            std::to_string(step_events_now.load()) + " melodee_event_tick=" + std::to_string(event_tick.load()) +
            " melodee_ask=" + std::to_string(ask_now.load()) + " melodee_motion=" + std::to_string(motion_now.load()) + pad_summary() + sample_summary()
-           + input_summary() + fx_summary() + midi_io.summary(host) + midi_config_summary();
+           + input_summary() + fx_summary() + midi_io.summary(host) + midi_config_summary() + phase10_summary();
+}
+
+// Phase 10: undo (depth, redo waiting, the last step's name), Seq + Sample, the sampler map, DEMOS, a pot gesture open.
+std::string Shell::phase10_summary() const {
+    uint32_t b = phase10_bits.load(std::memory_order_relaxed);
+    std::string what;
+    { std::lock_guard<std::mutex> guard(text_lock); what = undo_text; }
+    for (auto& ch : what) if (ch == ' ') ch = '_';
+    return " melodee_undo=" + std::to_string(b & 0xff) + " melodee_redo=" + std::to_string((b >> 8) & 1) +
+           " melodee_undo_last=" + (what.empty() ? std::string("none") : what) + " melodee_seq_sample=" + std::to_string((b >> 9) & 1) +
+           " melodee_map=" + std::to_string((b >> 10) & 1) + " melodee_demos=" + std::to_string((b >> 11) & 1) +
+           " melodee_gesture=" + std::to_string((b >> 12) & 1) + " melodee_song_clips=" + std::to_string((b >> 16) & 0xfff) +
+           " melodee_engine=" + std::to_string(b >> 28);
 }
 
 // Phase 9: MIDI Config as set (the settings are the MIDI thread's; these are copies taken in lights()).
@@ -557,37 +590,6 @@ std::string Shell::button_text() const {
         out += names[n]; out += ':'; out += char('0' + level);
     }
     return out.empty() ? "none" : out;
-}
-
-void starting_project(Project& project, PatternBank& patterns) {
-    project = Project {};
-    std::snprintf(project.name, sizeof(project.name), "Untitled");
-    project.tempo = 1200;
-    load_sound(project.tracks[0], EngineKind::Prophet, 1);  // FUNK BASS II
-    load_sound(project.tracks[1], EngineKind::Prophet, 5);  // SOFT PAD
-    load_sound(project.tracks[2], EngineKind::Prophet, 6);  // GLASS PLUCK
-    load_sound(project.tracks[3], EngineKind::Prophet, 3);  // SYNC LEAD
-    load_sound(project.tracks[4], EngineKind::Sampler, 0); // an empty kit: Sample Select fills its pads
-    load_sound(project.tracks[5], EngineKind::Kit909, 0);  // drums, with a beat
-    project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
-    project.tracks[2].octave = 4; project.tracks[3].octave = 4;
-    patterns = PatternBank {};
-    // A bass line in D for track 1, so Play has something to play.
-    struct { unsigned step; uint8_t key, length, velocity; } line[] {
-        {0, 38, 2, 110}, {3, 38, 1, 70}, {4, 41, 1, 96}, {6, 36, 2, 96}, {8, 33, 3, 120},
-        {11, 36, 1, 64}, {12, 38, 2, 104}, {14, 31, 2, 88},
-    };
-    auto note = [](Pattern& p, unsigned step, uint8_t key, uint8_t velocity, unsigned length) {
-        Event e;
-        e.tick = step * sixteenth_ticks; e.length = uint16_t(length * sixteenth_ticks); e.key = key; e.velocity = velocity;
-        p.add(e);
-    };
-    for (auto& n : line) note(patterns.at[0][0], n.step, n.key, n.velocity, n.length);
-    // Track 6: kick on the beat, snare on two and four, closed hats on the off-beats.
-    auto& beat = patterns.at[5][0];
-    for (unsigned st = 0; st < 16; st += 4) note(beat, st, 36, 120, 1);
-    for (unsigned st : {4u, 12u}) note(beat, st, 37, 110, 1);
-    for (unsigned st = 2; st < 16; st += 4) note(beat, st, 43, 90, 1);
 }
 
 } // namespace melodee

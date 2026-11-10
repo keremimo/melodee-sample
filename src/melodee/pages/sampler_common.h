@@ -3,16 +3,18 @@
 #pragma once
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/sampler_map.h"
 
 // What the sampler's ten pages share (Trim, Mix, Amp Env, Tune, Play,
 // Filter, Filt Env as the MPC has them, then Melodee's Kit filter, Follow and
-// Cloud): their order, title row, the last pad's pill and its icons (Note
+// Cloud): their order and B1 / B2 / B3 groups, the page map (Push), title row, the last pad's pill and its icons (Note
 // On, loop, reverse, as the MPC marks them), a row of small pills, and the
-// wheel on pages with a second row. B1 and B3 go round them.
+// wheel on pages with a second row.
 namespace melodee {
 
-constexpr unsigned sampler_page_count = 10;
-unsigned sampler_index(PageId page);
+void sampler_push(Context& c);                  // Push: the page map, or the page under its cursor
+bool sampler_map_wheel(Context& c, int delta);  // the wheel while the map is open
+void sampler_wheel(Context& c, int delta);      // a page without rows: only the map's
 // The header with `pill_text`, the soft keys, the title with the pad's icons,
 // and, with `rows`, ROW n / 2.
 void sampler_top(ui::Paint& p, const Snapshot& s, const juce::String& pill_text, bool rows);

@@ -38,6 +38,6 @@ void draw(Paint& p, const Snapshot& s) {
 }
 } // namespace
 
-const PageSpec filter_env_page {draw, play_pad, sampler_rows_wheel, no_push, sampler_soft, sampler_bank};
+const PageSpec filter_env_page {draw, play_pad, sampler_rows_wheel, sampler_push, sampler_soft, sampler_bank};
 
 } // namespace melodee

@@ -19,6 +19,9 @@ struct PageSpec {
     void (*nudge)(Context&, int way); // Minus -1, Plus +1
 };
 const PageSpec& page_spec(PageId page);
+// What the pads do on the page in view: the page's own, or with Seq + Sample on Patterns the track's sound (play_pad).
+using PadJob = void (*)(Context&, unsigned pad, uint8_t velocity, bool down);
+PadJob pad_job(const UiState& ui);
 
 // Overlays drawn over any page. draw_overlays() draws whichever are open,
 // after the page (the app and the previews both call it).
@@ -31,5 +34,6 @@ void draw_ask_sheet(ui::Paint& p, const Snapshot& s);  // a question before an e
 void draw_notice(ui::Paint& p, const Snapshot& s);     // copying a pad, or what an undo did
 void draw_fader_card(ui::Paint& p, const Snapshot& s); // for a moment after the fader moves: what it drives here
 void draw_name_sheet(ui::Paint& p, const Snapshot& s); // while ui.name is open
+void draw_sampler_map(ui::Paint& p, const Snapshot& s); // the sampler pages' map (Push), parity phase 10
 
 } // namespace melodee

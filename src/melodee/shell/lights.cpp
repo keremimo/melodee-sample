@@ -14,6 +14,7 @@
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/shell.h"
+#include <filesystem>
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/ui/tokens.h"
@@ -58,8 +59,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             unsigned version = 0;
             if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version).empty()) {
                 for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
-                context_.switch_to(*project, *bank, loaded->path);
+                if (!context_.kit_from.empty() && context_.kit_from == loaded->path) // Load Kit: only its kit, onto the selected track
+                    context_.load_kit(*project, std::filesystem::path(loaded->path).stem().string());
+                else context_.switch_to(*project, *bank, loaded->path);
             }
+            if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save) leave.store(true);
     }
@@ -196,7 +200,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             std::lock_guard<std::mutex> guard(text_lock);
             pad_name_text = pad.used() ? project_->samples[pad.sample % sample_slots].name : "";
             folder_text = folder.empty() ? folder : folder.substr(folder.find_last_of('/') + 1);
+            const auto* last = context_.edits.last();
+            undo_text = last ? last->what : std::string();
         }
+        // phase 10: the undo history's depth and the redo side, Seq + Sample, the sampler map, DEMOS, a gesture open
+        phase10_bits.store(uint32_t(context_.edits.size()) | uint32_t(context_.edits.can_redo()) << 8 | uint32_t(ui_.seq_sample) << 9
+                           | uint32_t(ui_.map_open) << 10 | uint32_t(ui_.project_demos) << 11 | uint32_t(bool(context_.gesture.edit)) << 12
+                           | uint32_t(project_->song.count & 0xfff) << 16 | uint32_t(project_->tracks[ui_.track].engine) << 28,
+                           std::memory_order_relaxed);
+        if (context_.gesture.edit && now - context_.gesture.last >= gesture_quiet_ms) context_.close_gesture(); // a pot left still
     }
     const auto& project = *project_;
     const auto& track = project.tracks[ui.track];
@@ -235,7 +247,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             colour = track_light(pad, level);
             if (muting && t.used()) colour = t.mix.mute ? muted_red : (t.mix.solo ? led_colour::white(0.8f) : track_light(pad, 0.6f));
             if (ui.copying == UiState::Copying::Tracks && ui.copy_from == int(pad)) colour = led_colour::white(1); // the track being copied
-        } else if (ui.page == PageId::Patterns) {
+        } else if (ui.page == PageId::Patterns && !ui.seq_sample) {
             // The pads are the selected track's sixteen patterns: playing bright, queued
             // blinking, holding notes dim, empty dark.
             bool notes = !patterns_->at[ui.track][pad].empty();
@@ -329,7 +341,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     uint64_t levels = 0; // two bits a button, for `status`
     auto set = [&](B button, L light) {
         lights.button(button, light);
-        levels |= uint64_t(light) << (2 * unsigned(button));
+        levels = (levels & ~(uint64_t(3) << (2 * unsigned(button)))) | uint64_t(light) << (2 * unsigned(button)); // the last set wins
     };
     auto job = [&](B button) { return button_has_job(project, ui, button, kit, erase_pots); };
     auto on = [&](B button, bool lit) { set(button, lit && job(button) ? L::Bright : job(button) ? L::Dim : L::Off); };
@@ -351,6 +363,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::Sample, play_group || ui.page == PageId::InputConfig);
     on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::StepEdit || ui.page == PageId::Steps
                    || ui.page == PageId::Roll || ui.page == PageId::Motion);
+    if (ui.seq_sample) { // Seq + Sample: both blink while the pads play the kit on Patterns
+        L blink = (now / 250) % 2 ? L::Bright : L::Dim;
+        set(B::Seq, blink); set(B::Sample, blink);
+    }
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.arp);

@@ -10,6 +10,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/history.h"
 #include "melodee/shell/page_stack.h"
+#include "melodee/shell/undo_scope.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
 #include <bitset>
@@ -152,6 +153,19 @@ public:
     void restore_motion(const Motion& value);
     void undo();
     void redo();
+    // Parity phase 10 (shell/undo_scope.cpp): a pot's turns are one step per control, closed by another control, any
+    // press, or gesture_quiet_ms still; a press on a page is one step of what the page edits (PageEdit).
+    struct Gesture { std::unique_ptr<Edit> edit; UndoScope scope; uint32_t key = 0, last = 0; };
+    Gesture gesture;
+    void touch_gesture(const Binding& binding);  // before a pot changes a value
+    void close_gesture();                         // the open gesture kept, if it changed anything
+    std::unique_ptr<Edit> scope_edit(const UndoScope& scope, const std::string& what); // what may change, as it is now
+    bool finish_scope(Edit& edit);                // as it is after; false when nothing changed
+    void restore_mix(const MixState& value);
+    void restore_sound(unsigned track, const SoundState& value);
+    void restore_master(const MasterState& value);
+    void restore_chain(unsigned chain, const Chain& value);
+    void restore_chop(const ChopState& value);
     void notice(const std::string& text);                    // a word over the header for a moment
     void delete_pad(unsigned kit);                           // Erase + pad on a kit, stopped: the pad empty
     void erase_pad_notes(unsigned kit);                      // playing or recording: its notes out of the pattern, one edit
@@ -187,6 +201,13 @@ public:
     void save_project_to(const std::string& path);
     void save_project();              // to its file, or a new one
     void new_project();
+    // Parity phase 10 (shell/project_jobs.cpp): New project asks first (B3 / B1); demos made in code; Load Kit.
+    void ask_new_project();                   // the question, with what happens to unsaved changes
+    void start_new_project();                 // its B3: saved first if it has a file, then a new one, Stage
+    void open_demo(unsigned n);               // a demo, unsaved
+    void load_kit_file(const std::string& path, const std::string& name); // a project's kit onto the selected track, once loaded
+    void load_kit(const Project& from, const std::string& name);          // that kit onto the selected track, one undo
+    std::string kit_from;                     // the file Load Kit waits for
     // Switches the whole app to `project`: the audio thread gets a copy, samples reload.
     void switch_to(const Project& project, const PatternBank& patterns, const std::string& path);
     unsigned samples_to_load = sample_slots; // next sample slot to (re)load after a switch

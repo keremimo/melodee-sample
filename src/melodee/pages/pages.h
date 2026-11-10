@@ -19,7 +19,7 @@ extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, s
     fader_page, midi_config_page;
 // Shift + pad on Samples: the file under the cursor onto the next empty pad (false elsewhere).
 bool samples_shift_pad(Context& c);
-// The sampler's ten pages share their soft keys: the neighbours and PAGE n / 10 (sampler_common.cpp).
+// The sampler's ten pages share their soft keys: B1 / B2 / B3 their groups, as the MPC (sampler_common.cpp, shell/sampler_map.h).
 ui::SoftKeys sampler_keys(PageId page, juce::Colour colour);
 void sampler_soft(Context& c, int key);
 }

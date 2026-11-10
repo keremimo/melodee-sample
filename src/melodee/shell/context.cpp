@@ -77,6 +77,8 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
 
 void Context::open(PageId page) {
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
+    if (page != PageId::Patterns) ui.seq_sample = false; // Seq + Sample lives on Patterns
+    if (page != PageId::Project) ui.project_demos = false;
     ui.sheet_open = false;
     ui.move_open = false;
     ui.map_open = false;
@@ -296,6 +298,7 @@ void Context::audition(int sound) {
 void Context::apply(const Binding& b, int value) {
     using Kind = Binding::Kind;
     value = std::clamp(value, b.min, b.max);
+    touch_gesture(b); // one undo step per control's turns (shell/undo_scope.cpp)
     auto& t = track();
     switch (b.kind) {
     case Kind::Param:
@@ -881,6 +884,7 @@ void Context::copy_pad(unsigned from, unsigned to) {
 }
 
 Edit Context::begin_edit(const char* what, unsigned t, int p, bool song) {
+    close_gesture(); // kept before this edit, as it came first
     Edit edit;
     edit.what = what; edit.track = uint8_t(t % track_count);
     if (p >= 0) { edit.pattern = int16_t(unsigned(p) % pattern_count); edit.pattern_before = std::make_unique<Pattern>(patterns.at[edit.track][edit.pattern]); }
@@ -944,10 +948,18 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (whole) restore_track(*this, e.track, *whole); // last: its pack carries the motion as restored
     if (e.column >= 0)
         for (const auto& [t, value] : after ? e.column_after : e.column_before) restore_pattern(t, unsigned(e.column), value);
+    const auto& chain = after ? e.chain_after : e.chain_before;
+    if (e.chain >= 0 && chain) restore_chain(unsigned(e.chain), *chain);
+    if (const auto& m = after ? e.mix_after : e.mix_before) restore_mix(*m);
+    if (const auto& m = after ? e.sound_after : e.sound_before) restore_sound(e.track, *m);
+    if (const auto& m = after ? e.master_after : e.master_before) restore_master(*m);
+    if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
+    dirty = true;
     take_track = -1;
 }
 
 void Context::undo() {
+    close_gesture();                        // a pot's turns just made are the step undone
     if (ui.recording) set_recording(false); // a take in progress ends, and is the edit undone
     Edit* e = edits.undo();
     if (!e) { notice("Nothing to undo"); return; }
@@ -956,6 +968,7 @@ void Context::undo() {
 }
 
 void Context::redo() {
+    close_gesture();
     if (ui.recording) return; // a take in progress would be lost under it
     Edit* e = edits.redo();
     if (!e) { notice("Nothing to redo"); return; }

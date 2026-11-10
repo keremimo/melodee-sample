@@ -349,9 +349,24 @@ Steps, Roll and Motion B1–B3 pick those three.
   pattern meanwhile, Erase + pad among them; Shift + Minus while recording
   ends the take and takes it back); Erase + pad on Steps and Patterns, a
   kit pad's notes erased, pattern copies, Double Seq and Recall (Capture).
-  Time Correct, Half Seq, Half / Double Speed. The header names what came back. A new
-  project or a load forgets them. Pot moves outside a take and Song page
-  edits are not kept.
+  Time Correct, Half Seq, Half / Double Speed, Load Kit. The header names what came back. A new
+  project or a load forgets them. **Parity phase 10** (`shell/undo_scope.*`,
+  `shell/undo_restore.cpp`): every pot move outside a take is kept too, one
+  step per control's turns (another control, any press, or two seconds still
+  closes it): a kit pad's values (Trim's start, end and loop point, the
+  sampler pages), the mix (level, pan, send and its bus, the buses'
+  returns; mute and solo are performance, left out), an effect's values in
+  any chain, a track's sound and mod routes, Knob FX's effect, the
+  compressor, the MPC Pad FX's K1–K3, Flex Beat, the punches' depth / snap
+  / tail, Chop's slices and the song's clips. And every press or pad on a
+  page is one step of what that page edits, unless it kept an edit of its
+  own: the Song page's placing, clip sheet, markers and loop; an effect
+  added, changed, moved, bypassed or removed (Rack, Bus, Master, a pad's
+  chain), with the motion lanes it cleared; Knob FX's Push load and B3, the
+  compressor's B1 / B3, Flex Beat's mode and quantize; Chop's Split,
+  Merge, Erase + pad and type (Manual's taps while armed are not a step
+  each); Loop, Shift + Loop and Shift + Chop on the last pad, Trim's Loop
+  Lock. A take keeps its own (pot moves in a take are its motion).
 - **Samples** (Sample Select on a sampler track): the MPC's browser. Folders
   first, as categories, then the WAV files, each by name; the wheel and
   Minus / Plus move, Push opens a folder or loads the file onto the last pad
@@ -384,8 +399,14 @@ Steps, Roll and Motion B1–B3 pick those three.
   sheet with the pad's sample name, then the last pad's region as
   `Samples/<name>.wav` (24-bit, 44.1 kHz; " 2" when taken). The pad is left
   as it is; the header says "Saved NAME".
-- **The sampler's ten pages** (B1 / B3 go round them, PAGE n / 10), the
-  MPC's Sample Mode pages first: Trim; Mix (K1 volume in dB with its meter,
+- **The sampler's ten pages** in the MPC's Sample Mode groups (parity phase
+  10, `shell/sampler_map.h`): **B1** Trim → Mix → Amp Env, **B2** Tune →
+  Play → Melodee's Follow → Cloud, **B3** Filter → Filt Env → Melodee's Kit
+  filter. A B key goes round its group on a page of it, and opens the
+  group's first page from anywhere else; the keys name the page in view
+  and its place ("MIX 2/3") and the other groups' first. **Push** opens the
+  page map, the ten in three columns under B1 / B2 / B3: the wheel moves,
+  Push jumps there, a B key or Shift + Push closes it. The pages: Trim; Mix (K1 volume in dB with its meter,
   K3 pan, Shift + K2 the kit's volume); Amp Env (attack, decay on a one
   shot or release on Note On, velocity sensitivity; Shift + K2 decay from
   the start or the end; row 2 sustain and the other); Tune (semitones,
@@ -490,7 +511,17 @@ Steps, Roll and Motion B1–B3 pick those three.
   second core pinned beside the live one; it takes as long as the music.
   The engine host hands each block of the mix to a 12 s ring the service
   thread drains, so renders (and the song's mixdown) may be any length.
-- **Projects** (Shift + Pad 16): files (`.mldp`) in `Melodee/Projects` on
+- **Projects** (Shift + Pad 16; parity phase 10 from Akai's project page:
+  New project asks first, B3 DO IT / B1 CANCEL, saying whether unsaved
+  changes are saved first or lost; **DEMOS** heads the top folder: Melodee
+  Starter (what Melodee opens with), Night Drive and Broken Tape, made in
+  code (`shell/demo_projects.cpp`), each opened unsaved from its sheet's
+  Load (Save then asks a name), B1 or Shift + Push back out; another
+  project's sheet has **Load kit (no patterns)**: its first kit with a
+  sample comes onto the selected track, its pads, their effects and the
+  kit's own values, each sample file into this project's slots once (a pad
+  without a free slot stays empty and the header says how many), the
+  track's patterns, mix strip and chain kept; one undo, then Pads): files (`.mldp`) in `Melodee/Projects` on
   the card, in folders (`$MELODEE_PROJECTS` on a host). The format is
   tagged sections, so older files stay readable and only what differs from
   empty is written. The page lists New project, the open project while it
@@ -808,7 +839,10 @@ Steps, Roll and Motion B1–B3 pick those three.
   and a soft-clipped master after main volume. The send is stored, not heard
   (no buses yet).
 - **Shell:** printed buttons (Sample cycles Stage → Keys → Mix, Seq
-  Patterns, Loop the last pad's loop on a kit, Chop, Sample held + pad
+  Patterns, **Seq + Sample** pressed together (either first; parity phase
+  10) Patterns with the pads playing the selected track, a kit's pads (the
+  header says PADS PLAY KIT, Seq and Sample blink; Erase + pad and mute mode
+  act on the kit pads), Seq or Sample again or another page ends it, Loop the last pad's loop on a kit, Chop, Sample held + pad
   picks a kit pad,
   Sample Select, 16 Levels, Play, Stop, Seq Record, Tap Tempo, Minus /
   Plus, Erase), soft keys, wheel and Push, Minus / Plus (the octave on the
@@ -924,7 +958,11 @@ Steps, Roll and Motion B1–B3 pick those three.
   sends against the frame heard, per 200 messages), and MIDI Config's `melodee_midi_port=` (0 External, 1 USB),
   `melodee_midi_in_ch=`, `melodee_midi_out_ch=`, `melodee_pad_in=`, `melodee_pad_out=`, `melodee_sync_in=`,
   `melodee_sync_out=` (0 Off, 1 Clock, 2 MTC), `melodee_thru=`, `melodee_program_change=`, `melodee_cv_out=`,
-  `melodee_cv_ppqn=`, `melodee_track_ch=`, `melodee_midi_row=`. For checks without hands on the device.
+  `melodee_cv_ppqn=`, `melodee_track_ch=`, `melodee_midi_row=`; phase 10 `melodee_undo=` (steps kept), `melodee_redo=`
+  (1 a redo waits), `melodee_undo_last=` (the last step's name, spaces as `_`), `melodee_seq_sample=`, `melodee_map=`
+  (the sampler map open), `melodee_demos=` (Project in DEMOS), `melodee_gesture=` (a pot's turns not kept yet), `melodee_song_clips=` and `melodee_engine=`
+  (the selected track's EngineKind). For
+  checks without hands on the device.
 - **Previews:** `build/sample-base --melodee-preview DIR` draws stage, keys,
   transpose, sounds, edit, mix, steps, soundmap, mod, touch, roll, notesheet, motion, patterns, patterncopy, song, songzoom,
   clipsheet, rack, sends, bus, fxpick, pads, samples, browserinternal, trim, chop, chopmanual, chopshift,
@@ -932,7 +970,7 @@ Steps, Roll and Motion B1–B3 pick those three.
   bpm, countin, recarmed, timecorrect, stepedit, erasepad, padmotion, eraselane,
   capture, pad, play, envelope, filter, follow, cloud, padmix, padfilter, filterenv, trimloop, trimshift, ampenv, tune,
   levelsfilter, levelssynth, punch, padpunch, padfx, knobfx, knobfxtracks, knobfxbypass, knobfxstage, knobfxshift,
-  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, fader, fadersynth, fadercard, faderpickup, fadersettings, midiconfig, midiconfigcv, midireset, extclock, extmtc, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
+  compressor, pickerdirt, rackspring, padfxmpc, flexbeat, fader, fadersynth, fadercard, faderpickup, fadersettings, midiconfig, midiconfigcv, midireset, extclock, extmtc, samplermap, seqsample, loadkit, demos, newproject, settings, about, name, namesound, savesample, movefolder, shift, shiftkeys, shiftkit and exit at 1× and 2× (the 2× ones line up
   with the 640 × 480 boards). `--melodee-sound FILE.wav` renders two bars of
   the starting project and checks the level. `./build.sh` runs both.
 

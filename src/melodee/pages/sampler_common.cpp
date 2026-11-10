@@ -9,28 +9,69 @@
 namespace melodee {
 namespace {
 using namespace ui;
-const PageId order[sampler_page_count] {PageId::Trim, PageId::PadMix, PageId::EnvelopePage, PageId::PadPage, PageId::PlayPage,
-                                        PageId::PadFilterPage, PageId::FilterEnvPage, PageId::FilterPage, PageId::FollowPage, PageId::CloudPage};
-const char* keys[sampler_page_count] {"TRIM", "MIX", "AMP ENV", "TUNE", "PLAY", "FILTER", "FILT ENV", "KIT FILTER", "FOLLOW", "CLOUD"};
-const char* titles[sampler_page_count] {"Trim", "Mix", "Amp env", "Tune", "Play", "Filter", "Filter env", "Kit filter", "Follow", "Cloud"};
+// The MPC's Sample Mode groups (parity phase 10): B1 Trim / Mix / Amp Env, B2 Tune / Play, B3 Filter / Filt Env;
+// Melodee's own pages join the group they belong with: Follow and Cloud B2's, Kit filter B3's.
+constexpr const PageId* order = sampler_order;
+const char* keys[sampler_page_count] {"TRIM", "MIX", "AMP ENV", "TUNE", "PLAY", "FOLLOW", "CLOUD", "FILTER", "FILT ENV", "KIT FILT"};
+const char* titles[sampler_page_count] {"Trim", "Mix", "Amp env", "Tune", "Play", "Follow", "Cloud", "Filter", "Filter env", "Kit filter"};
 } // namespace
 
-unsigned sampler_index(PageId page) {
-    for (unsigned n = 0; n < sampler_page_count; ++n) if (order[n] == page) return n;
-    return 0;
-}
-
+// A group's key: the page in view and where it is in the group ("MIX 2/3"), else the group's first page.
 SoftKeys sampler_keys(PageId page, juce::Colour c) {
-    unsigned n = sampler_index(page), count = sampler_page_count;
-    return {{juce::String::fromUTF8("\xe2\x80\xb9 ") + keys[(n + count - 1) % count], "PAGE " + juce::String(n + 1) + " / " + juce::String(count),
-             juce::String(keys[(n + 1) % count]) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c};
+    unsigned n = sampler_index(page), here = sampler_group(n);
+    std::array<juce::String, 3> labels;
+    for (unsigned g = 0; g < sampler_groups; ++g) {
+        unsigned first = sampler_group_first(g), size = sampler_group_size(g);
+        labels[g] = g == here ? juce::String(keys[n]) + " " + juce::String(n - first + 1) + "/" + juce::String(size) : juce::String(keys[first]);
+    }
+    return {labels, int(here), c};
 }
 
 void sampler_soft(Context& c, int key) {
-    unsigned n = sampler_index(c.ui.page), count = sampler_page_count;
-    if (key == 0) c.open(order[(n + count - 1) % count]);
-    if (key == 2) c.open(order[(n + 1) % count]);
+    c.open(sampler_next(c.ui.page, unsigned(key)));
     c.ui.sampler_row = 0;
+}
+
+// Push: the page map of all ten (as Edit's), the wheel moves, Push jumps; Shift + Push or a B key closes it.
+void sampler_push(Context& c) {
+    if (!c.ui.map_open) { c.ui.map_open = true; c.ui.map_cursor = uint8_t(sampler_index(c.ui.page)); return; }
+    c.ui.map_open = false;
+    c.open(order[c.ui.map_cursor % sampler_page_count]);
+    c.ui.sampler_row = 0;
+}
+
+bool sampler_map_wheel(Context& c, int delta) {
+    if (!c.ui.map_open) return false;
+    c.ui.map_cursor = uint8_t(std::clamp<int>(c.ui.map_cursor + delta, 0, int(sampler_page_count) - 1));
+    return true;
+}
+
+void sampler_wheel(Context& c, int delta) { sampler_map_wheel(c, delta); }
+
+// The map over the picture: three columns, one a B key, its pages under it.
+void draw_sampler_map(Paint& p, const Snapshot& s) {
+    if (!s.ui.map_open || !is_sampler_page(s.ui.page)) return;
+    auto c = colour_of(s);
+    p.dim_zone(zone::picture_y, zone::picture_h, 0.75f);
+    float px = zone::pad, pw = zone::width - 2 * zone::pad, py = zone::picture_y + 2, ph = zone::picture_h - 4;
+    p.fill(px, py, pw, ph, colour::surf, 6);
+    p.ring(px, py, pw, ph, colour::line, 6);
+    float cw = (pw - 16) / 3, rh = 19;
+    static const char* names[sampler_groups] {"B1", "B2", "B3"};
+    unsigned here = sampler_index(s.ui.page);
+    for (unsigned g = 0; g < sampler_groups; ++g) {
+        float x = px + 5 + g * (cw + 3);
+        p.text(names[g], x + 4, py + 4, cw - 8, 11, caps_text(colour::mid, 7));
+        for (unsigned k = 0; k < sampler_group_size(g); ++k) {
+            unsigned n = sampler_group_first(g) + k;
+            float y = py + 18 + k * (rh + 2);
+            bool on = n == s.ui.map_cursor;
+            if (on) p.fill(x, y, cw, rh, c, 4);
+            else if (n == here) p.ring(x, y, cw, rh, colour::line, 4);
+            p.text(juce::String(n + 1), x + 5, y, 12, rh, plain(on ? colour::bg : colour::dim, 7.5f, Weight::SemiBold));
+            p.text(titles[n], x + 19, y, cw - 22, rh, p.fit(titles[n], plain(on ? colour::bg : colour::sec, 11, Weight::Medium), cw - 22, 8));
+        }
+    }
 }
 
 const PadSound& sampler_pad(const Snapshot& s) { return s.track().pads[s.track().last_pad % sampler_pads]; }
@@ -145,7 +186,10 @@ void draw_envelope(Paint& p, float x, float y, float w, float h, double length, 
     }
 }
 
-void sampler_rows_wheel(Context& c, int delta) { c.ui.sampler_row = uint8_t(std::clamp(c.ui.sampler_row + delta, 0, 1)); }
+void sampler_rows_wheel(Context& c, int delta) {
+    if (sampler_map_wheel(c, delta)) return;
+    c.ui.sampler_row = uint8_t(std::clamp(c.ui.sampler_row + delta, 0, 1));
+}
 void sampler_bank(Context& c, int way) { c.track().bank = uint8_t((c.track().bank + sampler_banks + way) % sampler_banks); }
 
 } // namespace melodee

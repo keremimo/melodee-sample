@@ -38,6 +38,9 @@
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/page_stack.h"
+#include "melodee/shell/demo_projects.h"
+#include "melodee/shell/sampler_map.h"
+#include "melodee/shell/undo_scope.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
@@ -3135,7 +3138,135 @@ void mtc_in() {
     }
 }
 
+// Parity phase 10: the sampler's page groups, undo scopes, demos and Load Kit.
+void projects_and_polish() {
+    // B1 Trim -> Mix -> Amp Env, B2 Tune -> Play -> Follow -> Cloud, B3 Filter -> Filt Env -> Kit filter; another group's key: its first.
+    CHECK(sampler_next(PageId::Trim, 0) == PageId::PadMix && sampler_next(PageId::PadMix, 0) == PageId::EnvelopePage);
+    CHECK(sampler_next(PageId::EnvelopePage, 0) == PageId::Trim);
+    CHECK(sampler_next(PageId::Trim, 1) == PageId::PadPage && sampler_next(PageId::PadPage, 1) == PageId::PlayPage);
+    CHECK(sampler_next(PageId::PlayPage, 1) == PageId::FollowPage && sampler_next(PageId::CloudPage, 1) == PageId::PadPage);
+    CHECK(sampler_next(PageId::PadMix, 2) == PageId::PadFilterPage && sampler_next(PageId::PadFilterPage, 2) == PageId::FilterEnvPage);
+    CHECK(sampler_next(PageId::FilterEnvPage, 2) == PageId::FilterPage && sampler_next(PageId::FilterPage, 2) == PageId::PadFilterPage);
+    CHECK(sampler_next(PageId::Pads, 1) == PageId::PadPage); // from outside the ten: the group's first
+    CHECK(is_sampler_page(PageId::CloudPage) && !is_sampler_page(PageId::Chop) && !is_sampler_page(PageId::Pads));
+    unsigned covered = 0;
+    for (unsigned g = 0; g < sampler_groups; ++g) {
+        CHECK(sampler_group_size(g) >= 2);
+        for (unsigned k = 0; k < sampler_group_size(g); ++k) { CHECK(sampler_group(sampler_group_first(g) + k) == g); ++covered; }
+    }
+    CHECK(covered == sampler_page_count);
+
+    // Undo scopes: what a card or a press is part of.
+    Project project;
+    load_sound(project.tracks[0], EngineKind::Prophet, 1);
+    load_sound(project.tracks[2], EngineKind::Sampler, 0);
+    project.tracks[2].last_pad = 17;
+    UiState ui;
+    ui.track = 2;
+    using K = Binding::Kind;
+    using S = UndoScope::Kind;
+    auto scope = [&](K kind, int id = 0) { Binding b; b.kind = kind; b.id = id; b.max = 100; return binding_scope(project, ui, b); };
+    CHECK(scope(K::PadCutoff) == (UndoScope {S::Pad, 2, 17}) && scope(K::PadStart).kind == S::Pad && scope(K::PadWarp).kind == S::Pad);
+    CHECK(scope(K::Level).kind == S::Mix && scope(K::BusReturn).kind == S::Mix && scope(K::Send).kind == S::Mix);
+    CHECK(scope(K::FxParam, 3 * 64 + 1 * 8 + 2) == (UndoScope {S::Chain, 2, 3}));
+    CHECK(scope(K::KnobParam).kind == S::Master && scope(K::CompAmount).kind == S::Master && scope(K::FlexMix).kind == S::Master);
+    CHECK(scope(K::ChopStart).kind == S::Chop && scope(K::ChopMode).kind == S::Chop);
+    CHECK(scope(K::Param).kind == S::Sound && scope(K::ModAmount).kind == S::Sound);
+    CHECK(scope(K::SongLength, 2).kind == S::Song && scope(K::SongLength, -1).none());
+    CHECK(scope(K::Tempo).none() && scope(K::PatternLength).none() && scope(K::FileJump).none());
+    ui.track = 0; // a synth track has no kit pad
+    CHECK(scope(K::PadLevel).none());
+    using B = SurfaceButton;
+    ui.track = 2; ui.page = PageId::Stage;
+    CHECK(press_scope(project, ui, B::Loop, false) == (UndoScope {S::Pad, 2, 17}));
+    ui.shift = true;
+    CHECK(press_scope(project, ui, B::Chop, false).kind == S::Pad);
+    ui.shift = false;
+    CHECK(press_scope(project, ui, B::TopLeft, false).none()); // Stage keeps nothing
+    ui.page = PageId::Compressor; CHECK(press_scope(project, ui, B::KnobFx, false).none()); // a mode, not an edit
+    ui.page = PageId::Stage;
+    ui.page = PageId::Song; CHECK(press_scope(project, ui, B::WheelPush, false).kind == S::Song);
+    ui.page = PageId::Rack; CHECK(press_scope(project, ui, B::TopRight, false) == (UndoScope {S::Chain, 2, 2}));
+    ui.page = PageId::Master; CHECK(press_scope(project, ui, B::TopRight, false).index == master_chain);
+    ui.page = PageId::Compressor; CHECK(press_scope(project, ui, B::TopLeft, false).kind == S::Master);
+    CHECK(scope_name(project, ui, press_scope(project, ui, B::TopLeft, false)) == "Compressor");
+    ui.page = PageId::Chop; CHECK(press_scope(project, ui, B::TopMiddle, false).kind == S::Chop);
+    ui.chop_armed = true; CHECK(press_scope(project, ui, B::Count, true).none()); // Manual's taps
+    ui.page = PageId::PlayPage; CHECK(press_scope(project, ui, B::Count, true).kind == S::Pad);
+    CHECK(scope_name(project, ui, UndoScope {S::Pad, 2, 17}) == "B02");
+    CHECK(scope_name(project, ui, UndoScope {S::Chain, 0, uint16_t(bus_chain(1))}) == "Bus B FX");
+    CHECK(scope_name(project, ui, UndoScope {S::Chain, 0, 4}) == "T5 FX");
+    CHECK(scope_name(project, ui, UndoScope {S::Chain, 2, uint16_t(pad_chain(2, 3))}) == "A04 FX");
+    // The states compare as they should: mute and Knob FX's targets are left out.
+    auto mix = mix_of(project);
+    project.tracks[5].mix.mute = true; project.knob_fx.tracks = 3;
+    auto mix1 = mix_of(project);
+    CHECK(mix == mix1);
+    auto master = master_of(project);
+    auto master1 = master_of(project);
+    CHECK(master == master1);
+    project.tracks[5].mix.pan = -20; project.compressor.amount = 77;
+    auto mix2 = mix_of(project); auto master2 = master_of(project);
+    CHECK(!(mix == mix2) && mix2.pan[5] == -20);
+    CHECK(!(master == master2) && master2.compressor.amount == 77);
+    History h;
+    unsigned before = h.pushes;
+    h.push(Edit {});
+    CHECK(h.pushes == before + 1 && h.size() == 1 && h.last());
+
+    // Demos: each has sounds, notes and a name; Night Drive a song with markers; the first is the project Melodee starts with.
+    for (unsigned n = 0; n < demo_count; ++n) {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        make_demo(n, *p, *bank);
+        CHECK(p->used_tracks() >= 4 && std::string(p->name) == demo_name(n));
+        unsigned notes = 0;
+        for (unsigned t = 0; t < track_count; ++t) for (unsigned q = 0; q < pattern_count; ++q) notes += unsigned(bank->at[t][q].events.size());
+        CHECK(notes >= 18);
+    }
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        make_demo(1, *p, *bank);
+        CHECK(p->song.count >= 10 && p->song.marker_count == 3 && p->song.length() == 24 && p->tempo == 1040);
+        make_demo(0, *p, *bank);
+        CHECK(p->tracks[0].engine == EngineKind::Prophet && p->tracks[0].preset == 1 && p->tracks[4].engine == EngineKind::Sampler);
+        CHECK(kit_track(*p) == -1); // its kit is empty
+        make_demo(2, *p, *bank);
+        CHECK(p->master.slots[0].kind == uint8_t(EffectKind::Tape) && p->swing == 60);
+    }
+
+    // Load Kit: the first kit with a sample, onto a synth track; each file asked for once, a pad without a slot left empty.
+    auto from = std::make_unique<Project>();
+    load_sound(from->tracks[1], EngineKind::Prophet, 2);
+    load_sound(from->tracks[3], EngineKind::Sampler, 0);
+    load_sound(from->tracks[6], EngineKind::Sampler, 0);
+    auto ref = [&](unsigned slot, const char* name) {
+        std::snprintf(from->samples[slot].path, sizeof(from->samples[slot].path), "/card/Samples/%s.wav", name);
+        std::snprintf(from->samples[slot].name, sizeof(from->samples[slot].name), "%s", name);
+    };
+    ref(0, "KICK"); ref(5, "SNARE"); ref(9, "GONE");
+    auto& kit = from->tracks[6];
+    kit.pads[0].sample = 0; kit.pads[1].sample = 0; kit.pads[2].sample = 5; kit.pads[40].sample = 9;
+    kit.pads[2].pitch = 7; kit.pad_fx.at[2].slots[0].kind = uint8_t(EffectKind::Drive);
+    kit.params[sampler::Filter] = 33;
+    CHECK(kit_track(*from) == 6);
+    Track into = project.tracks[0]; // a PROPHET
+    into.mix.level = 55;
+    unsigned asked = 0;
+    auto result = import_kit(*from, 6, into, [&](const SampleRef& r) {
+        ++asked;
+        if (std::string(r.name) == "GONE") return -1;
+        return std::string(r.name) == "KICK" ? 20 : 21;
+    });
+    CHECK(asked == 3 && result.pads == 3 && result.missing == 1);
+    CHECK(into.engine == EngineKind::Sampler && into.pads[0].sample == 20 && into.pads[1].sample == 20 && into.pads[2].sample == 21);
+    CHECK(into.pads[2].pitch == 7 && into.pad_fx.at[2].slots[0].kind == uint8_t(EffectKind::Drive) && !into.pads[40].used());
+    CHECK(into.params[sampler::Filter] == 33 && into.mix.level == 55); // the kit's own values; the track keeps its strip
+}
+
 int main() {
+    projects_and_polish();
     midi_and_sync();
     mtc_in();
     fader_and_takeover();

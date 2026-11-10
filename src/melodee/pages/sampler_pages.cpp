@@ -192,11 +192,11 @@ void cloud_draw(Paint& p, const Snapshot& s) {
 }
 } // namespace
 
-const PageSpec pad_edit_page {pad_draw, play_pad, no_wheel, no_push, sampler_soft, sampler_bank};
-const PageSpec play_edit_page {play_draw, play_pad, sampler_rows_wheel, no_push, sampler_soft, sampler_bank};
-const PageSpec envelope_page {envelope_draw, play_pad, sampler_rows_wheel, no_push, sampler_soft, sampler_bank};
-const PageSpec filter_page {filter_draw, play_pad, no_wheel, no_push, sampler_soft, sampler_bank};
-const PageSpec follow_page {follow_draw, play_pad, no_wheel, no_push, sampler_soft, sampler_bank};
-const PageSpec cloud_page {cloud_draw, play_pad, sampler_rows_wheel, no_push, sampler_soft, sampler_bank};
+const PageSpec pad_edit_page {pad_draw, play_pad, sampler_wheel, sampler_push, sampler_soft, sampler_bank};
+const PageSpec play_edit_page {play_draw, play_pad, sampler_rows_wheel, sampler_push, sampler_soft, sampler_bank};
+const PageSpec envelope_page {envelope_draw, play_pad, sampler_rows_wheel, sampler_push, sampler_soft, sampler_bank};
+const PageSpec filter_page {filter_draw, play_pad, sampler_wheel, sampler_push, sampler_soft, sampler_bank};
+const PageSpec follow_page {follow_draw, play_pad, sampler_wheel, sampler_push, sampler_soft, sampler_bank};
+const PageSpec cloud_page {cloud_draw, play_pad, sampler_rows_wheel, sampler_push, sampler_soft, sampler_bank};
 
 } // namespace melodee
