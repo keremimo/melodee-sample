@@ -126,11 +126,11 @@ std::string upper(std::string text) {
 }
 bool is_wav(const fs::path& path) { return upper(path.extension().string()) == ".WAV"; }
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
-bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm, .xty), or a pad of an MPC program or project
+bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm, .xty), an EXS24 instrument, or a pad of an MPC program or project
     std::string file, which;
     if (split_program_pad(path.string(), file, which)) return true;
     const auto kind = upper(path.extension().string());
-    return kind == ".SFZ" || kind == ".XPM" || kind == ".XTY";
+    return kind == ".SFZ" || kind == ".XPM" || kind == ".XTY" || kind == ".EXS";
 }
 // "<name>_[TrackData]" beside <name>.xty (and an .xpj's, an .xpm's data folder beside its file).
 bool owned_data(const fs::path& dir) {

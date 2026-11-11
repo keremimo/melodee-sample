@@ -65,8 +65,10 @@ void draw(Paint& p, const Snapshot& s) {
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)
                         if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.tag = juce::String("ON ") + juce::String(label); break; }
-        if (file.instrument && r.tag.isEmpty())
-            r.tag = juce::String(file.path).endsWithIgnoreCase(".xpm") ? "XPM" : juce::String(file.path).endsWithIgnoreCase(".xty") ? "XTY" : "SFZ";
+        if (file.instrument && r.tag.isEmpty()) {
+            const juce::String path(file.path);
+            r.tag = path.endsWithIgnoreCase(".xpm") ? "XPM" : path.endsWithIgnoreCase(".xty") ? "XTY" : path.endsWithIgnoreCase(".exs") ? "EXS" : "SFZ";
+        }
         if (file.kit && r.tag.isEmpty()) r.tag = "KIT";
         if (file.expansion && r.tag.isEmpty()) r.tag = "INSTALL";
         if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length, in place of the tag

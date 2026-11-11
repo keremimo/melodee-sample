@@ -5,6 +5,7 @@
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/sample_library.h"
 #include "melodee/shell/seq_layer.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
@@ -1469,6 +1470,26 @@ int sound(const std::string& path) {
 
 } // namespace
 
+// A multisampled instrument as the sample library reads it, its samples found on the card or disk.
+static int instrument_read(const char* path) {
+    std::string error;
+    auto read = read_instrument(path, &error);
+    if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
+    std::string ignored, left_by;
+    for (const auto& i : read.ignored) ignored += i + ",";
+    for (const auto& i : read.left_by) left_by += i + ",";
+    const auto& e = read.envelope;
+    std::printf("zones=%zu left=%u left_by=%s velocity=%.0f ignored=%s attack=%.3f decay=%.3f sustain=%.1f release=%.3f\n", read.regions.size(), read.left,
+                left_by.c_str(), read.velocity, ignored.c_str(), e.attack.value_or(-1), e.decay.value_or(-1), e.sustain.value_or(-1), e.release.value_or(-1));
+    for (const auto& r : read.regions) {
+        const auto& z = r.zone;
+        std::printf("  keys %u-%u root %u vel %u-%u tune %d track %d gain %.1f pan %.2f from %lld to %lld loop %d %u-%u one_shot %d seq %u/%u choke %u %s\n", z.low_key,
+                    z.high_key, z.root, z.low_velocity, z.high_velocity, z.tune, z.keytrack, z.gain, z.pan, (long long)r.offset, (long long)r.end, int(z.loop),
+                    z.loop_start, z.loop_end, z.one_shot, z.sequence, z.sequence_length, z.off_by, r.sample.c_str());
+    }
+    return 0;
+}
+
 // What an MPC Sample project or an MPC drum program becomes, for the build's checks and a look at a real file.
 static int mpc_import(const char* path) {
     std::ifstream file(path, std::ios::binary);
@@ -1548,6 +1569,7 @@ std::optional<int> run_tool(int argc, char** argv) {
     // --self-test is what device.py and the SD boot run before stopping the stock app.
     if (argc == 3 && (!std::strcmp(argv[1], "--melodee-sound") || !std::strcmp(argv[1], "--self-test"))) return sound(argv[2]);
     if (argc == 3 && !std::strcmp(argv[1], "--mpc-import")) return mpc_import(argv[2]);
+    if (argc == 3 && !std::strcmp(argv[1], "--instrument-read")) return instrument_read(argv[2]);
     if (argc == 4 && !std::strcmp(argv[1], "--mpc-install")) { // an expansion into DIR/<its title>, as Push on one does
         ExpansionInstall install;
         auto error = install.open(argv[2], argv[3]);

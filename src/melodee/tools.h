@@ -22,6 +22,8 @@
 //   --melodee-bench ROUNDS [PAGE...] times drawing each page, ROUNDS draws apiece
 //   --mpc-import FILE.xpj|.xpm|.xty  reads an MPC Sample project or an MPC program and prints what came across
 //   --mpc-install FILE.xpn DIR       installs an MPC expansion into DIR/<its title>
+//   --instrument-read FILE           reads an .sfz, .xpm, .xty or .exs as the sample library does
+//                                    and prints its zones, their samples found
 // Returns the exit code, or nothing when argv names neither.
 namespace melodee {
 std::optional<int> run_tool(int argc, char** argv);

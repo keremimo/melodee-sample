@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// Multisampled instruments in the sample library: an .sfz or an MPC keygroup
-// program (.xpm) read, then its files brought in one a pass so the service
-// thread keeps answering. The zones reach the audio thread at once; each is
-// silent until its file has landed. Either kind streams from the card alike.
+// Multisampled instruments in the sample library: an .sfz, an MPC keygroup
+// program (.xpm) or a Logic EXS24 instrument (.exs) read, then its files
+// brought in one a pass so the service thread keeps answering. The zones reach
+// the audio thread at once; each is silent until its file has landed. Every
+// kind streams from the card alike.
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/exs.h"
 #include "melodee/engine/keygroup.h"
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/sample_decode.h"
@@ -114,6 +116,71 @@ SfzRead found_only(SfzRead read, const std::string& path, std::string* error) {
     return read;
 }
 
+// Where an EXS instrument's sample is on this card, as Logic looks: beside it,
+// in the folder it was saved from (that path's last parts, under the instrument's
+// folder or the two above it), else by its name anywhere under those. The
+// search by name walks the folders once, the first miss building its index.
+class ExsFinder {
+public:
+    explicit ExsFinder(fs::path folder) : folder(std::move(folder)) {}
+    std::string operator()(const std::string& name, const std::string& saved_in) {
+        if (name.empty() || name.find('/') != std::string::npos) return {};
+        std::vector<fs::path> roots {folder};
+        if (folder.has_parent_path() && folder.parent_path() != folder) roots.push_back(folder.parent_path());
+        if (roots.back().has_parent_path() && roots.back().parent_path() != roots.back()) roots.push_back(roots.back().parent_path());
+        std::vector<std::string> tails {""}; // "", "Samples", "Strings/Samples", ...
+        std::vector<std::string> parts;
+        std::stringstream saved(saved_in);
+        for (std::string part; std::getline(saved, part, '/');) if (!part.empty()) parts.push_back(part);
+        for (size_t take = 1; take <= std::min<size_t>(parts.size(), 3); ++take) {
+            std::string tail;
+            for (size_t n = parts.size() - take; n < parts.size(); ++n) tail += parts[n] + "/";
+            tails.push_back(tail);
+        }
+        for (const auto& root : roots)
+            for (const auto& tail : tails) {
+                const auto wanted = (root.lexically_relative(folder) / tail / name).lexically_normal().generic_string();
+                if (!find_beside(folder, wanted).empty()) return wanted;
+            }
+        if (!indexed) {
+            indexed = true;
+            unsigned budget = 20000; // entries looked at, whatever the card holds above the instrument
+            for (const auto& root : roots) index(root, 0, budget);
+        }
+        auto it = by_name.find(lowered(name));
+        return it == by_name.end() ? std::string() : it->second.lexically_relative(folder).generic_string();
+    }
+
+private:
+    void index(const fs::path& at, unsigned depth, unsigned& budget) {
+        std::error_code error;
+        std::vector<fs::path> below;
+        for (auto it = fs::directory_iterator(at, fs::directory_options::skip_permission_denied, error);
+             !error && it != fs::directory_iterator() && budget; it.increment(error), --budget) {
+            const auto name = it->path().filename().string();
+            if (name.empty() || name[0] == '.') continue;
+            if (it->is_directory(error)) { if (depth < 5) below.push_back(it->path()); continue; }
+            by_name.emplace(lowered(name), it->path()); // the nearest root's first
+        }
+        for (const auto& folder_below : below) index(folder_below, depth + 1, budget);
+    }
+    fs::path folder;
+    bool indexed = false;
+    std::map<std::string, fs::path> by_name;
+};
+
+bool is_exs(const std::string& path) { return lowered(fs::path(path).extension().string()) == ".exs"; }
+
+SfzRead read_exs_file(const std::string& path, const std::string& bytes, std::string* error) {
+    ExsFinder finder(fs::path(path).parent_path());
+    std::string why;
+    auto read = read_exs(bytes, std::ref(finder), &why);
+    if (!why.empty()) { if (error) *error = why; return {}; }
+    if (read.regions.empty() && read.left_by.count("missing files") && error) *error = "Files missing";
+    return read;
+}
+} // namespace
+
 SfzRead read_instrument(const std::string& path, std::string* error) {
     std::string file, which;
     if (split_program_pad(path, file, which)) { // one pad of a drum program or an MPC Sample project, its layers as zones
@@ -126,6 +193,7 @@ SfzRead read_instrument(const std::string& path, std::string* error) {
     auto text = read_text(path);
     if (!text) { if (error) *error = "cannot read it"; return {}; }
     if (is_mpc_program(path)) return found_only(read_keygroup_file(path, *text, error), path, error);
+    if (is_exs(path)) return read_exs_file(path, *text, error);
     const fs::path folder = fs::path(path).parent_path();
     return read_sfz(*text, [&](const std::string& name) -> std::optional<std::string> {
         auto found = find_beside(folder, name);
@@ -133,7 +201,6 @@ SfzRead read_instrument(const std::string& path, std::string* error) {
         return read_text(found);
     });
 }
-} // namespace
 
 void SampleLibrary::cancel_landing(unsigned slot) {
     landings.erase(std::remove_if(landings.begin(), landings.end(), [&](const Landing& l) { return l.slot == slot; }), landings.end());

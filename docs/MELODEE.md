@@ -442,6 +442,21 @@ thread.
 - **MPC 3 programs** (`.xty`, an MPC 3 track, tagged XTY; and an `.xpm`
   MPC 3 saved, gzip around JSON): read as `.xpm` ones are, keygroup or drum,
   their samples in `<name>_[TrackData]` beside them.
+- **EXS24 instruments** (`.exs`, Logic's EXS24 and Sampler, little- or
+  big-endian, tagged EXS): load and stream as an SFZ does. Each zone is a key
+  and velocity range playing one sample. Its samples are found as Logic finds
+  them: beside it, then in the folder it was saved from (that path's last
+  parts under the instrument's folder or the two above), then by name
+  anywhere under those. Carried over: root, coarse and fine tune, Pitch off
+  (keytrack off), volume and pan (the zone's and its group's), start, end,
+  forward loop (Play to End on Release looping while held), one shot, the
+  group's velocity and key ranges, exclusive groups as chokes, round robin
+  chains, the instrument's volume, transpose and tune, ENV1 as the amp
+  envelope and Level via Vel as velocity. Groups picked by something held (a
+  keyswitch, a controller, a channel, an articulation, a tempo) keep those at
+  rest, the lowest of each kind. Left out and counted on TRIM: muted and
+  release-trigger groups, missing samples. Named, not played: the filter,
+  reverse, backwards loops, loop crossfades, random sample select.
 - **MPC drum programs** (`.xpm` or `.xty` of type Drum, tagged KIT): Push loads the
   program as the selected kit track's kit, as Load Kit does (one undo), each
   instrument onto its pad (1 is A01, 17 is B01). A pad of one layer plays its

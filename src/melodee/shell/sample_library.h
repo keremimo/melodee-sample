@@ -42,7 +42,7 @@ struct SampleFile {
     uint64_t bytes = 0;
     bool folder = false;
     bool bank = false;      // a kit bank file (".mldb", model/project_file.h), listed with the WAV files
-    bool instrument = false; // a multisampled instrument (".sfz", ".xpm"), loaded onto a pad as a WAV file is
+    bool instrument = false; // a multisampled instrument (".sfz", ".xpm", ".exs"), loaded onto a pad as a WAV file is
     bool kit = false;        // an MPC drum program (".xpm", ".xty"): Push loads it onto the track as Load Kit does
     bool expansion = false;  // an MPC expansion (".xpn"): Push installs it onto the card
 };
@@ -62,6 +62,11 @@ struct LoadedSample {
     std::array<int8_t, 4> stages {{-1, -1, -1, -1}}; // the pad's attack, decay, sustain, release, -1: none named
     int8_t velocity = 100;   // the pad's Velocity Sense
 };
+
+// A multisampled instrument's zones as the library loads them (".sfz", an MPC
+// keygroup program, a pad of an MPC program or project, ".exs"), its samples
+// found on the card. `error` names why where it gives nothing.
+SfzRead read_instrument(const std::string& path, std::string* error);
 
 // A file Melodee makes from a slot's audio, on the service thread.
 struct SampleJob {

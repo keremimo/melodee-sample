@@ -13,6 +13,7 @@
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/sfz.h"
 #include "melodee/engine/keygroup.h"
+#include "melodee/engine/exs.h"
 #include "melodee/shell/expansion_install.h"
 #include "melodee/engine/stream_pager.h"
 #include "melodee/shell/sample_cache.h"
@@ -5138,6 +5139,139 @@ void keygroup_reader() {
     }
 }
 
+// A Logic EXS24 instrument's blocks, in either byte order, as Logic lays them out.
+struct ExsBytes {
+    bool big = false;
+    std::string out;
+    void put(std::string& c, size_t at, uint32_t v, unsigned width = 4) const {
+        for (unsigned n = 0; n < width; ++n) c[at + n] = char(big ? v >> (8 * (width - 1 - n)) : v >> (8 * n));
+    }
+    void block(int kind, const std::string& name, const std::string& content) {
+        std::string h(84, '\0');
+        h[0] = char(big ? 0 : 1); h[1] = 1; h[3] = char(kind);
+        put(h, 4, uint32_t(content.size()));
+        std::memcpy(&h[16], big ? "SOBT" : "TBOS", 4);
+        std::memcpy(&h[20], name.data(), std::min<size_t>(name.size(), 63));
+        out += h + content;
+    }
+    struct Zone { int opts = 0, key = 60, fine = 0, pan = 0, volume = 0, low = 0, high = 127, vlow = 0, vhigh = 127, coarse = 0;
+                  uint32_t start = 0, end = 0, ls = 0, le = 0; int lopts = 0, dir = 0; int32_t group = 0, sample = 0; };
+    void zone(const Zone& z) {
+        std::string c(136, '\0');
+        c[0] = char(z.opts); c[1] = char(z.key); c[2] = char(z.fine); c[3] = char(z.pan); c[4] = char(z.volume);
+        c[6] = char(z.low); c[7] = char(z.high); c[9] = char(z.vlow); c[10] = char(z.vhigh);
+        put(c, 12, z.start); put(c, 16, z.end); put(c, 20, z.ls); put(c, 24, z.le);
+        c[33] = char(z.lopts); c[34] = char(z.dir); c[80] = char(z.coarse);
+        put(c, 88, uint32_t(z.group)); put(c, 92, uint32_t(z.sample));
+        block(1, "zone", c);
+    }
+    struct Group { int volume = 0, pan = 0, options = 0, exclusive = 0, note = 0, select = 0, high_key = 127; int32_t after = -2; };
+    void group(const Group& g) {
+        std::string c(132, '\0');
+        c[0] = char(g.volume); c[1] = char(g.pan); c[3] = char(g.options); c[4] = char(g.exclusive); c[6] = char(127);
+        c[75] = char(g.note); put(c, 80, uint32_t(g.after)); c[84] = char(g.select); c[87] = char(127); c[89] = char(g.high_key);
+        block(2, "group", c);
+    }
+    void sample(const std::string& name, const std::string& folder, bool named = true) {
+        std::string c(named ? 592 : 336, '\0');
+        std::memcpy(&c[80], folder.data(), folder.size());
+        if (named) std::memcpy(&c[336], name.data(), name.size());
+        block(3, name, c);
+    }
+    void parameters(const std::map<int, int>& old_ones, const std::map<int, int>& new_ones) {
+        std::string c(4 + 300 + 4 + 4 * new_ones.size(), '\0');
+        put(c, 0, 100);
+        unsigned n = 0;
+        for (const auto& [id, value] : old_ones) { c[4 + n] = char(id); put(c, 4 + 100 + 2 * n, uint16_t(int16_t(value)), 2); ++n; }
+        put(c, 304, uint32_t(new_ones.size()));
+        n = 0;
+        for (const auto& [id, value] : new_ones) { put(c, 308 + 4 * n, uint32_t(id), 2); put(c, 310 + 4 * n, uint32_t(value), 2); ++n; }
+        block(4, "Default Param", c);
+    }
+};
+
+std::string exs_instrument(bool big) {
+    ExsBytes b;
+    b.big = big;
+    b.block(0, "Test", std::string(80, '\0'));
+    ExsBytes::Zone a; // velocity range on, tuned, panned, trimmed, looped
+    a.opts = 8; a.key = 60; a.low = 0; a.high = 63; a.vlow = 0; a.vhigh = 63; a.fine = 10; a.coarse = 1; a.volume = -3; a.pan = 25;
+    a.start = 100; a.end = 5000; a.lopts = 1; a.ls = 1000; a.le = 4000; a.group = 0; a.sample = 0;
+    b.zone(a);
+    ExsBytes::Zone one; // one shot, pitch off, no velocity range (its numbers unused), a loop one shot leaves alone
+    one.opts = 1 | 2; one.key = 72; one.low = 64; one.high = 127; one.vlow = 20; one.vhigh = 30; one.lopts = 1; one.le = 10; one.group = 1; one.sample = 1;
+    b.zone(one);
+    ExsBytes::Zone first; // round robin, a loop to the end played to its end on release, backwards
+    first.group = 2; first.sample = 2; first.lopts = 1 | 4; first.dir = 1;
+    b.zone(first);
+    ExsBytes::Zone second = first;
+    second.group = 3; second.lopts = 0;
+    b.zone(second);
+    ExsBytes::Zone keyed; keyed.group = 4; keyed.sample = 0; b.zone(keyed);
+    ExsBytes::Zone other_key; other_key.group = 5; b.zone(other_key);
+    ExsBytes::Zone muted; muted.group = 6; b.zone(muted);
+    ExsBytes::Zone nowhere; nowhere.group = -1; nowhere.sample = 9; b.zone(nowhere);
+    ExsBytes::Zone gone; gone.group = -1; gone.sample = 3; b.zone(gone);
+    ExsBytes::Group g0; g0.volume = -2; g0.pan = -10; g0.high_key = 60; b.group(g0);
+    ExsBytes::Group g1; g1.exclusive = 3; b.group(g1);
+    ExsBytes::Group g2; g2.select = 2; g2.after = -1; b.group(g2);
+    ExsBytes::Group g3; g3.select = 2; g3.after = 2; b.group(g3);
+    ExsBytes::Group g4; g4.select = 1; g4.note = 24; b.group(g4);
+    ExsBytes::Group g5; g5.select = 1; g5.note = 25; b.group(g5);
+    ExsBytes::Group g6; g6.options = 16; b.group(g6);
+    b.sample("a.aif", "/Volumes/Library/Samples");
+    b.sample("b.wav", "/Volumes/Library/Samples", false); // an older block: its name is the file's
+    b.sample("c.wav", "/Volumes/Library/Samples");
+    b.sample("gone.wav", "/Volumes/Library/Samples");
+    b.parameters({{0x07, -6}, {0x0e, 1}, {0x0f, -5}, {0x51, 127}, {0x55, 64}, {0x5a, -30}}, {{0x16d, 0}});
+    return b.out;
+}
+
+// A Logic EXS24 instrument's zones, groups, samples and parameters as the SFZ reader's zones.
+void exs_reader() {
+    std::string error;
+    CHECK(read_exs("not an instrument at all, though long enough to hold a head of eighty-four bytes, surely", {}, &error).regions.empty() &&
+          error == "Not an EXS instrument");
+    CHECK(std::fabs(exs_seconds(127) - 10) < 1e-9 && exs_seconds(0) == 0);
+    for (bool big : {false, true}) {
+        const auto bytes = exs_instrument(big);
+        CHECK(exs_magic(bytes));
+        std::set<std::string> asked;
+        auto read = read_exs(bytes, [&](const std::string& name, const std::string& folder) -> std::string {
+            CHECK(folder == "/Volumes/Library/Samples");
+            asked.insert(name);
+            return name == "gone.wav" ? "" : "Samples/" + name;
+        });
+        CHECK(asked == std::set<std::string>({"a.aif", "b.wav", "c.wav", "gone.wav"}));
+        CHECK(read.regions.size() == 5);
+        CHECK(read.left == 4 && read.left_by == std::set<std::string>({"keyswitch", "muted group", "missing files"}));
+        CHECK(read.ignored == std::set<std::string>({"loop direction"}));
+        CHECK(std::fabs(read.velocity - 50) < 1e-9);
+        CHECK(read.envelope.release && std::fabs(*read.envelope.release - exs_seconds(64)) < 1e-9 && read.envelope.sustain == 100.0);
+        if (read.regions.size() != 5) continue;
+        const auto& a = read.regions[0];
+        CHECK(a.sample == "Samples/a.aif" && a.zone.low_key == 0 && a.zone.high_key == 60 && a.zone.root == 60);
+        CHECK(a.zone.low_velocity == 1 && a.zone.high_velocity == 63 && a.zone.keytrack == 100);
+        CHECK(a.zone.tune == 100 + 10 + 100 - 5 && std::fabs(a.zone.gain + 11) < 1e-6 && std::fabs(a.zone.pan - 0.3f) < 1e-6);
+        CHECK(a.offset == 100 && a.end == 5000 && a.loop_named && a.loop_asked);
+        CHECK(a.zone.loop == ZoneLoop::On && a.zone.loop_start == 1000 && a.zone.loop_end == 4000);
+        const auto& one = read.regions[1];
+        CHECK(one.sample == "Samples/b.wav" && one.zone.low_key == 64 && one.zone.low_velocity == 1 && one.zone.high_velocity == 127);
+        CHECK(one.zone.one_shot && one.zone.keytrack == 0 && one.zone.loop == ZoneLoop::Off && !one.loop_asked && one.loop_named);
+        CHECK(one.zone.group == 3 && one.zone.off_by == 3 && one.offset == -1 && one.end == -1 && one.zone.tune == 95);
+        const auto& first = read.regions[2];
+        const auto& second = read.regions[3];
+        CHECK(first.zone.sequence == 1 && first.zone.sequence_length == 2 && second.zone.sequence == 2 && second.zone.sequence_length == 2);
+        CHECK(first.zone.loop == ZoneLoop::UntilReleased && first.zone.loop_end == 0x7fffffff && second.zone.loop == ZoneLoop::Off);
+        CHECK(read.regions[4].zone.sequence_length == 0 && read.regions[4].sample == "Samples/a.aif");
+    }
+    // Cut short: the blocks that came whole are read.
+    auto whole = exs_instrument(false);
+    auto cut = read_exs(whole.substr(0, whole.size() - 500), {});
+    CHECK(cut.regions.size() == 5 && cut.envelope.release == std::nullopt);
+}
+
+
 // An expansion's zip entries stay inside its folder.
 void expansion_paths() {
     CHECK(expansion_entry_path("Expansion.xml") == "Expansion.xml");
@@ -6410,6 +6544,7 @@ int main() {
     song_buttons();
     sfz_reader();
     keygroup_reader();
+    exs_reader();
     drum_program_pads();
     expansion_paths();
     sample_cache();
