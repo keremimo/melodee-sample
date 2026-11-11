@@ -6,6 +6,7 @@
 #include "melodee/engine/engine.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/sample_data.h"
+#include "melodee/engine/stream_pager.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/model/sampler.h"
 #include <array>
@@ -17,7 +18,9 @@
 // offset, velocity sensitivity, its own pitch, level, pan, envelope, filter
 // and filter envelope, warp, and one filter on the whole kit. Notes 36..163
 // play pads 1..128 (bank A first). A muted pad is not heard. Stereo. Audio thread only; the sample
-// table belongs to the engine host.
+// table belongs to the engine host. A pad may hold a multisampled instrument
+// (engine/multisample.h): its note and velocity pick zones, read through the
+// stream pager, everything else about the pad staying the pad's.
 namespace melodee {
 
 namespace sampler {
@@ -32,11 +35,12 @@ enum Param : int8_t {
 
 class SamplerEngine final : public Engine {
 public:
-    static constexpr unsigned max_voices = 16;
+    static constexpr unsigned max_voices = 32;
     using Table = std::array<const SampleData*, sample_slots + 1>; // the last: preview_slot
 
     SamplerEngine();
     void set_samples(const Table* table) { samples = table; }
+    void set_pager(StreamPager* streams) { pager = streams; } // nullptr: instruments' frames are all safe to read (tests)
     void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) pads[pad] = base[pad] = sound; }
     bool pad_used(unsigned pad) const { return pad < sampler_pads && pads[pad].used(); } // a sample on it
     // Motion on a pad's own values (model/pad_params.h): the value plays
@@ -93,6 +97,8 @@ private:
         int pad = -1; // -1 free; sampler_pads: the audition voice's region
         int trigger = -1; // the pad whose hit started it: its own, or one linked to it (its note off releases it)
         const SampleData* sample = nullptr;
+        const float* l = nullptr;
+        const float* r = nullptr;
         uint16_t slot = no_sample;
         double position = 0, step = 1;
         uint32_t start = 0, end = 0;
@@ -119,6 +125,11 @@ private:
         // A one shot's region edges inside the file (a chop's slices, a trimmed
         // pad): faded over slice_edge so a cut mid-wave does not click.
         bool edge_in = false, edge_out = false;
+        // A zone of an instrument: its note, what cuts it, its loop's ends, and its stream.
+        bool zone = false, loop_held = false, capped = false, starved = false, played = false;
+        int key = 0, semis = 0, stream = -1;
+        uint32_t off_by = 0, loop_hi = 0, head_end = 0;
+        float duck = 1, duck_to = 1;        // a gap's short fades
         uint32_t wait = 0;                  // Offset: frames before it starts
         float tail = 0, filter_tail = 0;    // Decay from the end: frames of output it fades (and the filter closes) over
         // The pad's filter: two state-variable stages a side, and its envelope.
@@ -131,7 +142,15 @@ private:
         dsp::Envelope::Shape filter_shape;
     };
     void hit(int pad, int velocity, int semitones, int cutoff);
-    void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0, int cutoff = -1, int trigger = -1);
+    void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0, int cutoff = -1, int trigger = -1,
+               const SampleZone* zone = nullptr, Multisample* multi = nullptr, int key = 60);
+    void play(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
+    void zones_on(Multisample& multi, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
+    Multisample* multi_of(const PadSound& sound) const;
+    void end_stream(Voice& v);
+    void came_round(Voice& v);          // a zone's loop went back to its start
+    bool admit(Voice& v, unsigned frames); // whether its next frames are safe to read
+    void play_zone(Voice& v, float* to_l, float* to_r, unsigned from, unsigned frames);
     float frames_left(const Voice& v, double at, double speed) const; // output frames to the end, for the fades
     static float edge_gain(const Voice& v, double at);                // the region edges' fades, 0..1
     void voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f);
@@ -142,12 +161,17 @@ private:
         double position = 0, step = 1;
         uint32_t age = 0, length = 0;
         float gain = 0, left = 0.7071f, right = 0.7071f;
+        const float* l = nullptr;
+        const float* r = nullptr;
+        uint32_t frames = 1;
+        uint32_t low = 0, top = 0;      // an instrument's: stays inside what is held (top 0: anywhere)
     };
     void spawn(Voice& v);
     std::array<Grain, 48> grains {};
     unsigned tempo = 1200;
     uint32_t seed = 99;
     const Table* samples = nullptr;
+    StreamPager* pager = nullptr;
     std::array<PadSound, sampler_pads> pads {}, base {}; // as they play (motion), and as the kit holds them
     bool moved = false;
     std::array<uint64_t, (sampler_pads + 63) / 64> muted {};

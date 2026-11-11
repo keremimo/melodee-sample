@@ -5,6 +5,8 @@
 #include <fstream>
 #include <filesystem>
 #include <functional>
+#include <limits>
+#include <memory>
 #include <map>
 #include <unistd.h>
 #include "melodee/engine/sample_data.h"
@@ -4738,7 +4740,8 @@ void stream_pager() {
     ZonePart part;
     part.left = part.right = side.data();
     part.pins.assign(10, 0);
-    part.frames.store(stream_chunk * 10);
+    part.total = stream_chunk * 10;
+    part.frames.store(part.total);
     const auto c = stream_chunk;
     int s = pager.open(part, 0, false, 1.0f);
     CHECK(s >= 0);
@@ -4828,10 +4831,324 @@ void stream_pager() {
     pin_log = nullptr;
 }
 
+// A pad holding an instrument: zones by key and velocity, as the pad's own sound in every other way.
+struct ZoneRig {
+    std::vector<std::vector<float>> audio;
+    std::shared_ptr<Multisample> multi = std::make_shared<Multisample>();
+    SampleData data;
+    SamplerEngine::Table table {};
+    std::unique_ptr<SamplerEngine> engine = std::make_unique<SamplerEngine>();
+    PadSound pad;
+    void part(std::vector<float> frames) { audio.push_back(std::move(frames)); }
+    SampleZone& zone(uint16_t which = 0) { multi->zones.emplace_back(); multi->zones.back().part = which; return multi->zones.back(); }
+    void build(PadPlay play = PadPlay::OneShot) {
+        multi->parts = std::make_unique<ZonePart[]>(audio.size());
+        multi->part_count = unsigned(audio.size());
+        for (size_t n = 0; n < audio.size(); ++n) {
+            auto& p = multi->parts[n];
+            p.left = p.right = audio[n].data();
+            p.total = uint32_t(audio[n].size());
+            p.pins.assign((p.total - 1) / stream_chunk + 1, 0);
+            p.frames.store(p.total);
+        }
+        multi->turns.assign(multi->zones.size(), 0);
+        data.multi = multi;
+        table[3] = &data;
+        engine->set_samples(&table);
+        pad.sample = 3; pad.play = play;
+        engine->set_pad(0, pad);
+    }
+    std::vector<float> run(unsigned frames) {
+        std::vector<float> out(frames);
+        std::vector<float> right(frames);
+        for (unsigned done = 0; done < frames; done += 128) {
+            unsigned n = std::min(128u, frames - done);
+            std::fill(out.begin() + done, out.begin() + done + n, 0.0f);
+            std::fill(right.begin() + done, right.begin() + done + n, 0.0f);
+            engine->render_stereo(out.data() + done, right.data() + done, n);
+        }
+        return out;
+    }
+    void key(int semitones, int velocity = 100) { engine->note_on(int(sampler_first_note) | (uint8_t(int8_t(semitones)) << 8), velocity); }
+    void off(int semitones) { engine->note_off(int(sampler_first_note) | (uint8_t(int8_t(semitones)) << 8)); }
+};
+
+std::vector<float> zone_tone(double hz, float level, unsigned frames) {
+    std::vector<float> out(frames);
+    for (unsigned n = 0; n < frames; ++n) out[n] = level * float(std::sin(2 * 3.14159265358979 * hz * n / dsp::model_rate));
+    return out;
+}
+double zone_rms(const std::vector<float>& x, size_t from, size_t to) {
+    double sum = 0;
+    for (size_t n = from; n < to; ++n) sum += double(x[n]) * x[n];
+    return std::sqrt(sum / double(std::max<size_t>(to - from, 1)));
+}
+double zone_hz(const std::vector<float>& x, size_t from, size_t to) {
+    unsigned rises = 0;
+    for (size_t n = from + 1; n < to; ++n) rises += x[n - 1] < 0 && x[n] >= 0;
+    return rises * double(dsp::model_rate) / double(to - from);
+}
+
+void sampler_zones() {
+    { // a key plays its zone in tune, whichever zone it is
+        ZoneRig r;
+        r.part(zone_tone(220, 0.5f, 44100)); r.part(zone_tone(880, 0.5f, 44100));
+        auto& low = r.zone(0); low.low_key = 0; low.high_key = 65; low.root = 60;
+        auto& high = r.zone(1); high.low_key = 66; high.high_key = 127; high.root = 72;
+        r.build();
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 220) < 8);
+        r.engine->silence();
+        r.key(5); // key 65, up five semitones from its root
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 220 * std::pow(2.0, 5 / 12.0)) < 8);
+        r.engine->silence();
+        r.key(12); // key 72: the other zone, at its own pitch
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 880) < 12);
+    }
+    { // the pad's Semi moves the key, its Fine tunes every zone
+        ZoneRig r;
+        r.part(zone_tone(440, 0.5f, 44100));
+        r.zone(0).root = 60;
+        r.pad.pitch = 12;
+        r.build();
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 880) < 12);
+    }
+    { // a keytrack of nothing stays at its pitch; a zone's tune is its own
+        ZoneRig r;
+        r.part(zone_tone(440, 0.5f, 44100));
+        auto& z = r.zone(0); z.keytrack = 0; z.tune = 1200;
+        r.build();
+        r.key(7);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 880) < 12);
+    }
+    { // a velocity plays its layer
+        ZoneRig r;
+        r.part(zone_tone(440, 0.1f, 44100)); r.part(zone_tone(440, 0.8f, 44100));
+        auto& soft = r.zone(0); soft.high_velocity = 64;
+        auto& loud = r.zone(1); loud.low_velocity = 65;
+        r.pad.velocity_sense = 0;
+        r.build();
+        r.key(0, 40); auto a = r.run(4000); r.engine->silence();
+        r.key(0, 100); auto b = r.run(4000);
+        CHECK(zone_rms(b, 500, 4000) > 6 * zone_rms(a, 500, 4000));
+    }
+    { // round robin takes turns; every zone a press reaches plays
+        ZoneRig r;
+        r.part(zone_tone(440, 0.1f, 44100)); r.part(zone_tone(440, 0.8f, 44100));
+        auto& one = r.zone(0); one.sequence_length = 2; one.sequence = 1;
+        auto& two = r.zone(1); two.sequence_length = 2; two.sequence = 2;
+        r.pad.velocity_sense = 0;
+        r.build();
+        std::vector<double> levels;
+        for (unsigned n = 0; n < 4; ++n) { r.key(0); levels.push_back(zone_rms(r.run(3000), 500, 3000)); r.engine->silence(); }
+        CHECK(levels[1] > 5 * levels[0] && levels[3] > 5 * levels[2] && std::fabs(levels[0] - levels[2]) < 1e-3);
+    }
+    { // layers add
+        ZoneRig r;
+        r.part(zone_tone(440, 0.3f, 44100));
+        r.zone(0); r.zone(0);
+        r.pad.velocity_sense = 0;
+        r.build();
+        r.key(0); auto both = r.run(3000); r.engine->silence();
+        ZoneRig one;
+        one.part(zone_tone(440, 0.3f, 44100));
+        one.zone(0);
+        one.pad.velocity_sense = 0;
+        one.build();
+        one.key(0); auto alone = one.run(3000);
+        CHECK(std::fabs(zone_rms(both, 500, 3000) / zone_rms(alone, 500, 3000) - 2.0) < 0.05);
+    }
+    { // a press of a group cuts what is off by it
+        ZoneRig r;
+        r.part(zone_tone(440, 0.5f, 44100)); r.part(zone_tone(880, 0.5f, 44100));
+        auto& open = r.zone(0); open.low_key = 60; open.high_key = 60; open.root = 60; open.off_by = 1;
+        auto& shut = r.zone(1); shut.low_key = 61; shut.high_key = 61; shut.root = 61; shut.group = 1;
+        r.build();
+        r.key(0); r.run(2000);
+        r.key(1);
+        auto after = r.run(6000);
+        CHECK(std::fabs(zone_hz(after, 2000, 6000) - 880) < 15);
+    }
+    { // a loop holds while the note does, and until let go goes on to the end after
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, 4410));
+        auto& z = r.zone(0); z.loop = ZoneLoop::On; z.loop_start = 1000; z.loop_end = 3000;
+        r.pad.release = 0;
+        r.build(PadPlay::Gate);
+        r.key(0);
+        CHECK(zone_rms(r.run(44100), 40000, 44100) > 0.2); // long past the sample's length
+        r.off(0);
+        CHECK(zone_rms(r.run(8000), 6000, 8000) < 1e-3);
+        ZoneRig held;
+        held.part(zone_tone(441, 0.5f, 8820));
+        auto& h = held.zone(0); h.loop = ZoneLoop::UntilReleased; h.loop_start = 1000; h.loop_end = 3000;
+        held.pad.decay = 100; held.pad.sustain = 100; held.pad.release = 100;
+        held.build(PadPlay::Gate);
+        held.key(0);
+        held.run(44100);
+        held.off(0);
+        auto tail = held.run(44100);
+        CHECK(zone_rms(tail, 0, 2000) > 0.1); // sounding through the release...
+        CHECK(!held.engine->sounding() || zone_rms(tail, 12000, 13000) == 0.0); // ...and gone once past the sample's end
+    }
+    { // the seam: a loop of whole cycles at any pitch has no step at the join
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, 8000));
+        auto& z = r.zone(0); z.loop = ZoneLoop::On; z.loop_start = 1000; z.loop_end = 1000 + 1000; // ten cycles
+        r.build(PadPlay::Gate);
+        r.key(7); // a fifth up: the position lands between frames at every join
+        auto out = r.run(40000);
+        double jump = 0;
+        for (size_t n = 2000; n < out.size(); ++n) jump = std::max(jump, double(std::fabs(out[n] - out[n - 1])));
+        double expected = 0.5 * 0.7071 * 2 * 3.14159265 * 441 * std::pow(2.0, 7 / 12.0) / 44100;
+        CHECK(jump < expected * 1.15);
+    }
+    { // a zone's own envelope is off the pad's
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, 44100 * 2));
+        auto& z = r.zone(0); z.release = 60;
+        r.pad.release = 10;
+        r.build(PadPlay::Gate);
+        r.key(0); r.run(2000); r.off(0);
+        auto slow = r.run(8000);
+        ZoneRig fast;
+        fast.part(zone_tone(441, 0.5f, 44100 * 2));
+        fast.zone(0);
+        fast.pad.release = 10;
+        fast.build(PadPlay::Gate);
+        fast.key(0); fast.run(2000); fast.off(0);
+        auto quick = fast.run(8000);
+        CHECK(zone_rms(slow, 4000, 8000) > 5 * zone_rms(quick, 4000, 8000));
+    }
+    { // a zone's filter is its own, and the pad's cutoff still moves it
+        auto heard = [](int cutoff, float hz) {
+            ZoneRig r;
+            r.part(zone_tone(4000, 0.5f, 44100));
+            auto& z = r.zone(0);
+            if (hz > 0) { z.filter = PadFilter::Lpf2; z.cutoff = hz; }
+            r.pad.cutoff = uint8_t(cutoff);
+            r.build();
+            r.key(0);
+            return zone_rms(r.run(8000), 2000, 8000);
+        };
+        CHECK(heard(100, 400) < 0.2 * heard(100, 0));
+        CHECK(heard(100, 16000) > 0.8 * heard(100, 0));
+        CHECK(heard(50, 16000) < 0.5 * heard(100, 16000));
+    }
+    { // one note of a chord ends alone
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, 44100 * 3));
+        r.zone(0);
+        r.pad.release = 0;
+        r.pad.velocity_sense = 0;
+        r.build(PadPlay::Gate);
+        r.key(4); r.key(7);
+        auto both = r.run(4000);
+        r.off(7);
+        r.run(4000);
+        auto one = r.run(4000);
+        CHECK(zone_rms(one, 0, 4000) > 0.2 && zone_rms(one, 0, 4000) < 0.85 * zone_rms(both, 1000, 4000));
+        CHECK(std::fabs(zone_hz(one, 0, 4000) - 441 * std::pow(2.0, 4 / 12.0)) < 8);
+    }
+    { // silent until its file lands
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, 44100));
+        r.zone(0);
+        r.build();
+        r.multi->parts[0].frames.store(0);
+        r.key(0);
+        CHECK(zone_rms(r.run(4000), 0, 4000) == 0.0 && !r.engine->sounding());
+    }
+    { // a muted pad, and the pad's level, as any pad
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, 44100));
+        r.zone(0);
+        r.pad.velocity_sense = 0;
+        r.build();
+        r.engine->set_pad_mute(0, true);
+        r.key(0);
+        CHECK(zone_rms(r.run(2000), 0, 2000) == 0.0);
+        r.engine->set_pad_mute(0, false);
+        r.key(0);
+        double full = zone_rms(r.run(2000), 500, 2000);
+        r.engine->silence();
+        PadSound quiet = r.pad; quiet.level = 50;
+        r.engine->set_pad(0, quiet);
+        r.key(0);
+        CHECK(zone_rms(r.run(2000), 500, 2000) < 0.5 * full);
+    }
+    { // streamed, it is the same frames as held; starved, a gap with nothing read past what is safe
+        pin_log = nullptr; pin_fails = false;
+        const unsigned frames = stream_chunk * 6;
+        auto held = [&](ZoneRig& r) { r.part(zone_tone(441, 0.5f, frames)); auto& z = r.zone(0); z.start = 100; r.build(); };
+        ZoneRig a, b;
+        held(a); held(b);
+        StreamPager pager(logged_pin);
+        b.engine->set_pager(&pager);
+        a.key(0); b.key(0);
+        while (pager.pump()) {}
+        for (unsigned n = 0; n < frames / 128; ++n) {
+            auto x = a.run(128), y = b.run(128);
+            for (unsigned f = 0; f < 128; ++f) CHECK(x[f] == y[f]);
+            while (pager.pump()) {}
+        }
+        CHECK(!b.engine->sounding() && pager.underruns() == 0); // and its stream was let go at its end
+        for (unsigned n = 0; n < StreamPager::stream_count; ++n) CHECK(pager.open(b.multi->parts[0], 0, false, 1.0f) >= 0);
+
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, frames));
+        for (size_t n = stream_chunk; n < frames; ++n) r.audio[0][n] = std::numeric_limits<float>::quiet_NaN(); // what must not be read
+        r.zone(0);
+        r.build();
+        StreamPager slow(logged_pin);
+        r.engine->set_pager(&slow);
+        r.key(0);
+        auto out = r.run(stream_chunk * 3); // never pumped
+        double tail = 0;
+        for (auto x : out) { CHECK(std::isfinite(x)); }
+        tail = zone_rms(out, stream_chunk * 2, stream_chunk * 3);
+        CHECK(tail == 0.0 && zone_rms(out, 1000, stream_chunk - 1000) > 0.2);
+        CHECK(slow.underruns() == 1);
+        for (size_t n = stream_chunk; n < frames; ++n) r.audio[0][n] = 0.25f; // the card catches up
+        while (slow.pump()) {}
+        CHECK(zone_rms(r.run(4000), 500, 4000) > 0.05);
+    }
+    { // a card gone: the voice stops and the note is not stuck
+        pin_fails = true;
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, stream_chunk * 4));
+        r.zone(0);
+        r.build();
+        StreamPager gone(logged_pin);
+        r.engine->set_pager(&gone);
+        r.key(0);
+        while (gone.pump()) {}
+        r.run(stream_chunk * 2);
+        CHECK(!r.engine->sounding());
+        pin_fails = false;
+    }
+    { // more voices than streams: what is held plays, and nothing else is read
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, stream_chunk * 3));
+        for (size_t n = stream_chunk; n < r.audio[0].size(); ++n) r.audio[0][n] = std::numeric_limits<float>::quiet_NaN();
+        r.zone(0);
+        r.build();
+        StreamPager full(logged_pin);
+        for (unsigned n = 0; n < StreamPager::stream_count; ++n) full.open(r.multi->parts[0], 0, false, 1.0f);
+        r.engine->set_pager(&full);
+        r.key(0);
+        auto out = r.run(stream_chunk * 2);
+        for (auto x : out) CHECK(std::isfinite(x));
+        CHECK(zone_rms(out, 1000, stream_chunk - 1000) > 0.2 && !r.engine->sounding());
+    }
+}
+
 int main() {
     sfz_reader();
     sample_cache();
     stream_pager();
+    sampler_zones();
     track_source();
     zero_snap();
     looper_engine();

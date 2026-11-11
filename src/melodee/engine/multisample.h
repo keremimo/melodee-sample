@@ -57,7 +57,8 @@ struct ZonePart {
     ~ZonePart(); // the mapping goes, and its pins with it (engine/stream_pager.cpp)
     const float* left = nullptr;
     const float* right = nullptr;     // == left: one side
-    std::atomic<uint32_t> frames {0};
+    uint32_t total = 0;               // its length, known before it is published
+    std::atomic<uint32_t> frames {0}; // its length once landed: what the audio thread goes by
     std::vector<uint16_t> pins;       // a count a chunk; the landing thread's, then the pager's
     void* mapping = nullptr;
     size_t mapping_bytes = 0;

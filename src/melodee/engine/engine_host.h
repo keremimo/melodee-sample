@@ -130,6 +130,7 @@ public:
     // audio thread swaps it in at its next block and hands the one it replaced
     // back through take_retired(), to be freed there.
     bool offer_sample(unsigned slot, const SampleData* sample) { return offers.push({uint16_t(slot), sample}); }
+    StreamPager& streams() { return pager; } // multisampled instruments' reading from the card
     bool take_retired(const SampleData*& sample) { return retired.pop(sample); }
     // MIDI thread: a ProjectPack the audio thread has finished with, to free.
     bool take_done_pack(const ProjectPack*& pack) { return done_packs.pop(pack); }
@@ -155,7 +156,7 @@ public:
     static constexpr unsigned block = 128;
 
 private:
-    struct PendingOff { int16_t key = -1; int32_t samples = 0; };
+    struct PendingOff { int32_t key = -1; int32_t samples = 0; }; // a pad's key, with an instrument's semitones over it
     struct PendingOn { int16_t key = -1, velocity = 0, from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
     struct Slot {
         EngineKind kind = EngineKind::None;
@@ -274,6 +275,7 @@ private:
     std::array<Pattern*, 64> limbo {}; // retired ones the queue had no room for yet
     void retire(Pattern* pattern);
     SamplerEngine::Table samples {};
+    StreamPager pager;
     TakeRecorder take;
     RecallRing recall_ring; // Audio Recall: the source, always
     Bounce render_out;      // Resample and the song's mixdown

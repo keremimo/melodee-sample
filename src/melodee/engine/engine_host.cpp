@@ -40,7 +40,7 @@ EngineHost::EngineHost() {
     for (auto& t : patterns) for (auto& p : t) p = new Pattern;
     for (auto& s : positions_now) s.store(-1);
     pad_fx = std::make_unique<std::array<SamplerEngine::PadEffects, track_count>>();
-    for (unsigned t = 0; t < track_count; ++t) slots[t].sampler.set_pad_effects(&(*pad_fx)[t]);
+    for (unsigned t = 0; t < track_count; ++t) { slots[t].sampler.set_pad_effects(&(*pad_fx)[t]); slots[t].sampler.set_pager(&pager); }
     // Build every engine's static tables now, not on the audio thread.
     for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) (void)engine_info(EngineKind(k));
 }
@@ -646,7 +646,7 @@ void EngineHost::schedule_off(Slot& slot, int key, int32_t samples) {
     for (auto& off : slot.offs)
         if (off.key == key) { off.samples = samples; return; } // a retrigger moves its end
     for (auto& off : slot.offs)
-        if (off.key < 0) { off.key = int16_t(key); off.samples = samples; return; }
+        if (off.key < 0) { off.key = key; off.samples = samples; return; }
     slot.engine->note_off(key); // no room: end it now rather than hang
 }
 
@@ -1101,6 +1101,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     static thread_local bool flushed = false;
     if (!flushed) { flush_denormals(); flushed = true; }
     for (auto& q : limbo) if (q && retired_patterns.push(q)) q = nullptr; // retired copies the queue had no room for
+    pager.block();
     // Samples first: a command sent after a sample was offered (the browser's
     // preview, played as soon as it is in) must find the new one, not be cut by it.
     Offer offer;

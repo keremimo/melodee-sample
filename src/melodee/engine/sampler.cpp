@@ -31,31 +31,52 @@ SamplerEngine::Voice& SamplerEngine::free_voice() {
     return *oldest;
 }
 
-void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
+void SamplerEngine::end_stream(Voice& v) {
+    if (v.stream >= 0 && pager) pager->close(v.stream);
+    v.stream = -1;
+}
+
+void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger,
+                          const SampleZone* zone, Multisample* multi, int key) {
     if (!samples || !sound.used() || sound.sample > preview_slot) return;
     const SampleData* data = (*samples)[sound.sample];
-    if (!data || !data->frames) return;
+    ZonePart* part = zone && multi ? &multi->parts[zone->part] : nullptr;
+    if (!data || (!part && !data->frames)) return;
     // A pad in a mute group cuts the others in it; a mono pad cuts what it played before.
     if (sound.group)
         for (auto& o : voices) if (o.pad >= 0 && o.group == sound.group && o.pad != pad) o.choked = true;
-    if (sound.mono)
+    if (sound.mono && !zone) // an instrument's press has cut these already: its layers must not cut each other
         for (auto& o : voices) if (o.pad == pad && &o != &v) o.choked = true;
+    end_stream(v);
     v = Voice {};
     v.pad = pad; v.trigger = trigger >= 0 ? trigger : pad; v.sample = data; v.slot = sound.sample;
-    v.start = std::min(sound.start, data->frames - 1);
-    v.end = sound.end && sound.end <= data->frames ? sound.end : data->frames;
+    const uint32_t total = part ? part->total : data->frames;
+    v.start = std::min(zone ? zone->start : sound.start, total - 1);
+    uint32_t end = zone ? zone->end : sound.end;
+    v.end = end && end <= total ? end : total;
     if (v.end <= v.start + 1) { v.pad = -1; return; }
+    v.l = part ? part->left : data->left.data();
+    v.r = part ? part->right : data->right.data();
     v.reverse = sound.reverse;
     v.position = v.reverse ? v.end - 1 : v.start;
-    v.loop = sound.loop && pad < int(sampler_pads);
-    v.loop_at = std::clamp(sound.loop_point(), v.start, v.end - 2);
-    v.edge_in = !v.loop && v.start > 0;              // the file's own start and end need no fade
-    v.edge_out = !v.loop && v.end < data->frames;
+    if (zone) {
+        v.zone = true; v.key = key; v.semis = semitones; v.off_by = zone->off_by;
+        v.loop = !zone->one_shot && !v.reverse && zone->loop != ZoneLoop::Off && zone->loop_end > zone->loop_start + 16 && zone->loop_end <= v.end;
+        v.loop_at = zone->loop_start; v.loop_hi = zone->loop_end;
+        v.loop_held = zone->loop == ZoneLoop::UntilReleased;
+    } else {
+        v.loop = sound.loop && pad < int(sampler_pads);
+        v.loop_at = std::clamp(sound.loop_point(), v.start, v.end - 2);
+        v.edge_in = !v.loop && v.start > 0;              // the file's own start and end need no fade
+        v.edge_out = !v.loop && v.end < data->frames;
+    }
     // Warp's mode is the kit's FollowHow: Tape is Pitch, the others Time stretch.
     // Warp on by Pitch leaves the pad's Semi and Fine out, as the MPC does.
-    const bool tape = p[FollowHow] == 2, warped = sound.warped();
-    const double own_tune = warped && tape ? 0.0 : sound.pitch + sound.fine / 100.0;
-    v.step = std::exp2((own_tune + semitones + p[Tune]) / 12.0);
+    const bool tape = p[FollowHow] == 2, warped = !zone && sound.warped();
+    // A zone is in tune by its key from its root; the key has the pad's Semi and the note in it.
+    const double own_tune = zone ? (key - int(zone->root)) * zone->keytrack / 100.0 + zone->tune / 100.0 + sound.fine / 100.0
+                          : warped && tape ? 0.0 : sound.pitch + sound.fine / 100.0;
+    v.step = std::exp2((own_tune + (zone ? 0 : semitones) + p[Tune]) / 12.0);
     v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
     // Warp, else Follow: the speed the region moves at. Warp's Seq plays it at
     // the project's tempo from its own (by # Beats, else worked out from its
@@ -64,7 +85,8 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     // A pitch change leaves the length alone under PITCH Stretch, and under
     // Warp by Time stretch; Warp Off plays it by speed, so tuned pads stay clean.
     double rate = 1.0, frames = double(v.end - v.start);
-    if (sound.warp == warp_seq) {
+    if (zone) {} // no tempo of its own, and no Warp: a zone is one note of many
+    else if (sound.warp == warp_seq) {
         double own = sound.beats ? sound.beats * 60.0 * dsp::model_rate / frames * 10.0 : double(sound.own_tempo);
         if (own > 0) rate = tempo / own;
     } else if (sound.warp >= warp_min) rate = 100.0 / sound.warp;
@@ -87,7 +109,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.hop = v.beats ? v.window : v.window / 2;
         v.since_hop = v.hop; // a tap at once
     }
-    v.held = true; v.gate = sound.play == PadPlay::Gate; v.group = sound.group;
+    v.held = true; v.gate = sound.play == PadPlay::Gate && !(zone && zone->one_shot); v.group = sound.group;
     v.age = ++clock;
     // Offset: up to a sixteenth of the project's tempo after the hit.
     v.wait = pad < int(sampler_pads) ? uint32_t(sound.offset * (dsp::sample_rate() * 15 / (tempo / 10.0)) / 100) : 0;
@@ -95,29 +117,41 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     float sense = sound.velocity_sense / 100.0f, curve = 0.25f + 0.75f * std::clamp(velocity, 0, 127) / 127.0f;
     float velocity_gain = 1.0f - sense * (1.0f - curve);
     v.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f);
-    float angle = (std::clamp<int>(sound.pan, -50, 50) + 50) / 100.0f * dsp::pi / 2;
+    if (zone) v.gain *= std::pow(10.0f, zone->gain / 20.0f);
+    float angle = (std::clamp<float>(float(sound.pan) + (zone ? zone->pan * 50.0f : 0.0f), -50.0f, 50.0f) + 50) / 100.0f * dsp::pi / 2;
     v.left = std::cos(angle); v.right = std::sin(angle); // constant power: centre is -3 dB a side, as the stock MPC plays it
     // The pad's envelope; the kit's DECAY scales every pad's decay. A one shot
     // that decays from the end plays whole and fades over its decay before the end.
-    float decay_s = time_seconds(sound.decay) * (p[Decay] / 100.0f) + 0.005f;
+    // A zone's stages are off the pad's, so the pad's controls still move every zone.
+    const int attack = zone ? std::clamp(sound.attack + zone->attack, 0, 100) : sound.attack;
+    const int decay = zone ? std::clamp(sound.decay + zone->decay, 0, 100) : sound.decay;
+    const int sustain = zone ? std::clamp(sound.sustain + zone->sustain, 0, 100) : sound.sustain;
+    const int release = zone ? std::clamp(sound.release + zone->release, 0, 100) : sound.release;
+    float decay_s = time_seconds(decay) * (p[Decay] / 100.0f) + 0.005f;
     bool from_end = !v.gate && !sound.decay_from_start;
-    bool hold = sound.decay >= 100 || from_end;
-    v.shape = {dsp::Envelope::coefficient(time_seconds(sound.attack) * 0.3f), dsp::Envelope::coefficient(hold ? 1000.0f : decay_s),
-               dsp::Envelope::coefficient(time_seconds(sound.release) * 0.5f + 0.003f), hold ? 1.0f : sound.sustain / 100.0f};
-    if (from_end && sound.decay < 100 && !v.loop) v.tail = decay_s * dsp::sample_rate();
+    bool hold = decay >= 100 || from_end;
+    v.shape = {dsp::Envelope::coefficient(time_seconds(attack) * 0.3f), dsp::Envelope::coefficient(hold ? 1000.0f : decay_s),
+               dsp::Envelope::coefficient(time_seconds(release) * 0.5f + 0.003f), hold ? 1.0f : sustain / 100.0f};
+    if (from_end && decay < 100 && !v.loop) v.tail = decay_s * dsp::sample_rate();
     v.env.gate(true);
     // The pad's filter, or 16 Levels' cutoff (Classic when the pad has none).
     v.filter = sound.filter;
     int at = sound.cutoff;
     if (cutoff >= 0) { at = cutoff; if (v.filter == PadFilter::Off) v.filter = PadFilter::Classic; }
+    const bool zone_filter = zone && zone->filter != PadFilter::Off && zone->cutoff > 0;
+    if (zone_filter) v.filter = zone->filter;
     if (v.filter != PadFilter::Off) {
         float res = sound.resonance / 100.0f;
         v.cutoff = at / 100.0f * 9.97f;
+        if (zone_filter) // its own Hz, off the pad's CUTOFF wide open, so that control still moves it
+            v.cutoff = std::log2(zone->cutoff / 20.0f) + (zone->cutoff_velocity * std::clamp(velocity, 0, 127) / 127.0f + zone->cutoff_key * float(key - int(zone->cutoff_center))) / 1200.0f
+                     + (at / 100.0f - 1.0f) * 9.97f;
         v.depth = sound.filter_amount / 100.0f * 7.0f; // up to seven octaves open
         bool four = v.filter == PadFilter::Lpf4 || v.filter == PadFilter::Hpf4 || v.filter == PadFilter::Bpf4;
         if (v.filter == PadFilter::Classic) v.k1 = 2.0f - 1.97f * res;
         else if (four) { v.k1 = 1.848f; v.k2 = std::max(0.05f, 0.765f - 0.715f * res); } // Butterworth pairs, the resonance on the second
         else v.k1 = std::max(0.05f, 1.414f - 1.364f * res);
+        if (zone_filter) v.k1 = std::max(0.05f, std::pow(10.0f, -zone->resonance / 20.0f)); // the dB its peak has
         float f_decay = time_seconds(sound.filter_decay);
         bool f_hold = from_end;
         v.filter_shape = {dsp::Envelope::coefficient(time_seconds(sound.filter_attack) * 0.3f), dsp::Envelope::coefficient(f_hold ? 1000.0f : f_decay),
@@ -126,6 +160,54 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.filter_env.gate(true);
         v.since_tune = 1u << 30; // tune on the first frame
     }
+    if (part && pager) {
+        v.stream = pager->open(*part, uint32_t(v.position), v.reverse, float(std::max(advance, pitch)));
+        if (v.stream < 0) { // no stream free: what is held plays, then it ends
+            if (v.reverse) { v.pad = -1; return; }
+            v.capped = true;
+            v.head_end = std::min(v.start + stream_chunk, v.end);
+        }
+    }
+}
+
+Multisample* SamplerEngine::multi_of(const PadSound& sound) const {
+    if (!samples || !sound.used() || sound.sample > preview_slot) return nullptr;
+    const SampleData* data = (*samples)[sound.sample];
+    return data ? data->multi.get() : nullptr;
+}
+
+// A press of an instrument: which zones it reaches, each counted; what they cut;
+// then a voice on each. As a pad, it may be cut, muted and linked as any other.
+void SamplerEngine::zones_on(Multisample& multi, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
+    const int key = std::clamp(60 + int(sound.pitch) + semitones, 0, 127);
+    const int vel = std::clamp(velocity, 1, 127);
+    const int owner = trigger >= 0 ? trigger : pad;
+    for (auto& v : voices)
+        if (v.zone && v.pad == pad && v.trigger == owner && v.key == key && v.held) { v.held = false; if (v.gate) { v.env.gate(false); v.filter_env.gate(false); } }
+    if (sound.mono) for (auto& v : voices) if (v.pad == pad) v.choked = true;
+    seed = seed * 1664525u + 1013904223u;
+    const float dice = 0.5f * (int32_t(seed) / 2147483648.0f + 1.0f); // one roll for a press
+    std::array<uint16_t, max_voices> reached;
+    unsigned count = 0;
+    for (size_t n = 0; n < multi.zones.size(); ++n) {
+        const auto& z = multi.zones[n];
+        if (key < z.low_key || key > z.high_key || vel < z.low_velocity || vel > z.high_velocity) continue;
+        uint32_t turn = multi.turns[n]++;
+        if (z.sequence_length > 1 && turn % z.sequence_length != z.sequence - 1) continue;
+        if (dice < z.low_random || (dice >= z.high_random && z.high_random < 1.0f)) continue;
+        if (!multi.parts[z.part].frames.load(std::memory_order_acquire)) continue; // silent until its file lands
+        if (count < max_voices) reached[count++] = uint16_t(n);
+    }
+    for (unsigned r = 0; r < count; ++r) {
+        uint32_t group = multi.zones[reached[r]].group;
+        if (group) for (auto& v : voices) if (v.pad >= 0 && v.off_by == group) v.choked = true;
+    }
+    for (unsigned r = 0; r < count; ++r) start(free_voice(), sound, pad, velocity, semitones, cutoff, trigger, &multi.zones[reached[r]], &multi, key);
+}
+
+void SamplerEngine::play(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
+    if (auto* multi = multi_of(sound)) zones_on(*multi, sound, pad, velocity, semitones, cutoff, trigger);
+    else start(free_voice(), sound, pad, velocity, semitones, cutoff, trigger);
 }
 
 // A kit pad hit: a one shot that loops stops instead when it is playing;
@@ -141,14 +223,15 @@ void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff) {
             }
         if (stopped) return;
     }
-    start(free_voice(), sound, pad, velocity, semitones, cutoff);
+    play(sound, pad, velocity, semitones, cutoff, -1);
     if (sound.link) {
         int linked = pad / 16 * 16 + (sound.link - 1) % 16;
-        if (linked != pad && !pad_muted(unsigned(linked))) start(free_voice(), pads[size_t(linked)], linked, velocity, 0, -1, pad);
+        if (linked != pad && !pad_muted(unsigned(linked))) play(pads[size_t(linked)], linked, velocity, 0, -1, pad);
     }
 }
 
-void SamplerEngine::note_on(int key, int velocity) { hit(key - int(sampler_first_note), velocity, 0, -1); }
+// A note is a pad's key, and over it the semitones from the pad's root it plays at (an instrument's).
+void SamplerEngine::note_on(int key, int velocity) { hit((key & 0xff) - int(sampler_first_note), velocity, int8_t(key >> 8), -1); }
 
 void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones, int cutoff) { hit(int(pad), velocity, semitones, cutoff); }
 
@@ -164,9 +247,9 @@ void SamplerEngine::set_pad_mutes(const std::array<uint64_t, (sampler_pads + 63)
 }
 
 void SamplerEngine::note_off(int key) {
-    int pad = key - int(sampler_first_note);
+    int pad = (key & 0xff) - int(sampler_first_note), semis = int8_t(key >> 8);
     for (auto& v : voices)
-        if (v.trigger == pad && v.pad >= 0 && v.held) { // a one shot plays on to its end (a loop until hit again)
+        if (v.trigger == pad && v.pad >= 0 && v.held && (!v.zone || v.semis == semis)) { // a one shot plays on to its end (a loop until hit again)
             v.held = false;
             if (v.gate) { v.env.gate(false); v.filter_env.gate(false); }
         }
@@ -181,7 +264,7 @@ void SamplerEngine::audition(uint16_t sample, uint32_t from, uint32_t to, int ve
 }
 
 void SamplerEngine::sample_gone(uint16_t slot) {
-    for (auto& v : voices) if (v.slot == slot) v = Voice {};
+    for (auto& v : voices) if (v.slot == slot) { end_stream(v); v = Voice {}; }
     if (samples && slot <= preview_slot)
         for (auto& g : grains) if (g.sample == (*samples)[slot]) g.sample = nullptr;
 }
@@ -190,7 +273,7 @@ void SamplerEngine::all_notes_off() {
     for (auto& v : voices) if (v.pad >= 0) { v.held = false; v.env.gate(false); v.filter_env.gate(false); }
 }
 void SamplerEngine::silence() {
-    for (auto& v : voices) v = Voice {};
+    for (auto& v : voices) { end_stream(v); v = Voice {}; }
     for (auto& g : grains) g.sample = nullptr;
     s1[0] = s1[1] = s2[0] = s2[1] = 0;
 }
@@ -217,13 +300,14 @@ void SamplerEngine::spawn(Voice& v) {
     if (!g) return;
     seed = seed * 1664525u + 1013904223u;
     float random = int32_t(seed) / 2147483648.0f;
-    double span = v.end - v.start;
+    double span = v.zone ? std::min(v.end - v.start, stream_chunk) : v.end - v.start; // an instrument's clouds stay in what is held
     double at = v.start + span * (p[Position] / 100.0) + v.scan + random * span * 0.05;
     at = std::fmod(std::fmod(at - v.start, span) + span, span) + v.start;
     seed = seed * 1664525u + 1013904223u;
     float detune = int32_t(seed) / 2147483648.0f * p[Spread] / 100.0f; // up to a semitone either way per 100 cents
     *g = Grain {v.sample, at, v.step * std::exp2(detune / 12.0), 0,
-                uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate()), v.gain * v.env.level, v.left, v.right};
+                uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate()), v.gain * v.env.level, v.left, v.right,
+                v.l, v.r, v.end, v.zone ? v.start : 0, v.zone ? v.start + uint32_t(span) : 0};
 }
 
 // Output frames left before the region's end (reversed: its start), for
@@ -298,11 +382,13 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
     const double way = v.reverse ? -1.0 : 1.0;
     constexpr uint32_t edge = 88;
     for (unsigned f = from; f < frames; ++f) {
-        bool past = v.reverse ? v.place < (v.loop ? v.loop_at : v.start) : v.place >= v.end - 1;
+        const bool round = v.zone && v.loop && (!v.loop_held || v.held);
+        bool past = v.reverse ? v.place < (v.loop ? v.loop_at : v.start) : v.place >= (round ? v.loop_hi : v.end - 1);
         if (past) {
-            if (!v.loop) { v.pad = -1; return; }
+            if (v.zone ? !round : !v.loop) { v.pad = -1; return; }
             v.place = v.reverse ? v.end - 1 : v.loop_at;
             v.since_hop = v.hop; // a fresh tap from the loop point
+            if (v.zone) came_round(v);
         }
         if (v.since_hop >= v.hop) { // a new tap from here
             v.since_hop = 0;
@@ -311,6 +397,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
         }
         ++v.since_hop;
         float a = v.env.next(v.shape) * v.gain * v.fade;
+        if (v.zone) { v.duck += std::clamp(v.duck_to - v.duck, -1.0f / 64, 1.0f / 64); a *= v.duck; }
         if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; return; } }
         float sum_l = 0, sum_r = 0;
         for (unsigned t = 0; t < 2; ++t) {
@@ -340,6 +427,75 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
     }
 }
 
+// A zone's loop went round: a loop held whole needs no stream any more; a longer one starts a new run.
+void SamplerEngine::came_round(Voice& v) {
+    if (v.loop_hi <= v.loop_at + stream_chunk) { end_stream(v); v.capped = false; return; }
+    if (v.stream >= 0) pager->restart(v.stream, v.loop_at);
+    else v.head_end = v.loop_at + stream_chunk;
+}
+
+// Whether a streamed voice may read its next block. Short of what it needs it
+// ducks out over this block; with none safe it holds its place, silent, and
+// comes back when the pager catches up: a gap on the audio, never a wait on the card.
+bool SamplerEngine::admit(Voice& v, unsigned frames) {
+    if (v.stream < 0 && !v.capped) { v.duck_to = 1; v.played = true; return true; }
+    const double at = v.stretch ? v.place : v.position;
+    const double speed = v.stretch ? std::max(v.advance, v.step) : v.step;
+    const double extra = (v.stretch ? v.window * v.step : 0.0) + 2.0;
+    const double one = frames * speed + extra, two = 2.0 * frames * speed + extra;
+    const uint32_t limit = v.stream >= 0 ? pager->limit(v.stream) : v.head_end;
+    bool enough = false, plenty = false;
+    if (v.reverse) {
+        const bool all = limit != UINT32_MAX && limit <= v.start; // pinned down to where it ends
+        enough = all || (limit != UINT32_MAX && at - one >= limit);
+        plenty = all || (limit != UINT32_MAX && at - two >= limit);
+    } else {
+        const bool round = v.loop && (!v.loop_held || v.held);
+        const bool all = limit >= (round ? v.loop_hi : v.end);
+        enough = all || at + one < limit;
+        plenty = all || at + two < limit;
+    }
+    if (!enough) {
+        if (v.capped || (v.stream >= 0 && pager->dead(v.stream))) { v.pad = -1; return false; } // no more to come
+        if (v.played && !v.starved && pager) pager->underrun();
+        v.starved = true;
+        v.duck = 0;
+        for (unsigned f = 0; f < frames; ++f) { v.env.next(v.shape); if (v.filter != PadFilter::Off) v.filter_env.next(v.filter_shape); }
+        if (!v.env.active() || v.choked) v.pad = -1;
+        return false;
+    }
+    v.starved = false; v.played = true;
+    v.duck_to = plenty ? 1.0f : 0.0f;
+    return true;
+}
+
+// A zone's frames: as a pad's, but round a loop of its own, the fraction kept
+// and the seam read across, so a loop in tune at any pitch does not click.
+void SamplerEngine::play_zone(Voice& v, float* to_l, float* to_r, unsigned from, unsigned frames) {
+    const float* l = v.l;
+    const float* r = v.r;
+    for (unsigned f = from; f < frames; ++f) {
+        const bool round = v.loop && (!v.loop_held || v.held);
+        if (round && v.position >= v.loop_hi) {
+            while (v.position >= v.loop_hi) v.position -= double(v.loop_hi - v.loop_at);
+            came_round(v);
+        }
+        if (v.reverse ? v.position < v.start : v.position >= v.end - 1) { v.pad = -1; return; }
+        unsigned i = unsigned(v.position);
+        float frac = float(v.position - i);
+        unsigned j = i + 1;
+        if (round && j >= v.loop_hi) j = v.loop_at;
+        else j = std::min(j, v.end - 1);
+        float a = v.env.next(v.shape) * v.gain * v.fade;
+        v.duck += std::clamp(v.duck_to - v.duck, -1.0f / 64, 1.0f / 64);
+        a *= v.duck;
+        if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; return; } }
+        voice_out(v, l[i] + (l[j] - l[i]) * frac, r[i] + (r[j] - r[i]) * frac, a, frames_left(v, v.position, v.step), to_l, to_r, f);
+        v.position += v.reverse ? -v.step : v.step;
+        if (!v.env.active()) { v.pad = -1; return; }
+    }
+}
+
 SamplerEngine::Lane* SamplerEngine::lane_for(int pad) {
     Lane* free = nullptr;
     for (auto& l : lane) {
@@ -363,10 +519,11 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     }
     for (auto& g : grains) {
         if (!g.sample) continue;
-        const float* l = g.sample->left.data();
-        const float* r = g.sample->right.data();
+        const float* l = g.l;
+        const float* r = g.r;
         for (unsigned f = 0; f < frames && g.age < g.length; ++f, ++g.age) {
-            unsigned i = unsigned(g.position) % g.sample->frames;
+            if (g.top && g.position >= g.top) g.position -= double(g.top - g.low);
+            unsigned i = unsigned(g.position) % g.frames;
             float w = std::sin(dsp::pi * float(g.age) / float(g.length)) * g.gain * 0.5f; // a smooth window
             left[f] += l[i] * w * g.left; right[f] += r[i] * w * g.right;
             g.position += g.step;
@@ -393,14 +550,21 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
                 if (!l->fed) { l->fed = true; l->tail = uint32_t(3 * dsp::sample_rate()); }
                 to_l = l->l; to_r = l->r;
             }
-        const float* l = v.sample->left.data();
-        const float* r = v.sample->right.data();
+        const float* l = v.l;
+        const float* r = v.r;
         unsigned from = 0;
         if (v.wait) { // Offset: it starts later in this block, or in a later one
             from = std::min(v.wait, frames);
             v.wait -= from;
             if (v.choked) { v.pad = -1; continue; }
             if (from == frames) continue;
+        }
+        if (v.zone) {
+            if (!admit(v, frames - from)) continue;
+            if (v.stretch) stretch(v, l, r, to_l, to_r, from, frames);
+            else play_zone(v, to_l, to_r, from, frames);
+            if (v.stream >= 0 && v.pad >= 0) pager->place(v.stream, uint32_t(v.stretch ? v.place : v.position));
+            continue;
         }
         if (v.stretch) { stretch(v, l, r, to_l, to_r, from, frames); continue; }
         const uint32_t low = v.reverse && v.loop ? v.loop_at : v.start;
@@ -437,6 +601,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         float* into_r = out_r(aside_pad);
         for (unsigned f = 0; f < frames; ++f) { into_l[f] += aside_l[f]; into_r[f] += aside_r[f]; }
     }
+    for (auto& v : voices) if (v.stream >= 0 && v.pad < 0) end_stream(v); // what ended this block lets its stream go
     if (!filtered) return;
     float* io[2] {left, right};
     for (unsigned side = 0; side < 2; ++side)

@@ -46,7 +46,7 @@ int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed)
         s.closing = false;
         s.dead.store(false, std::memory_order_relaxed);
         s.reverse = reverse;
-        s.head = std::min(frame + stream_chunk, part.frames.load(std::memory_order_acquire));
+        s.head = std::min(frame + stream_chunk, part.total);
         s.at.store(frame, std::memory_order_relaxed);
         Message m;
         m.kind = Message::Open; m.stream = int16_t(n); m.reverse = reverse; m.part = &part; m.frame = frame; m.speed = speed;
@@ -94,8 +94,7 @@ void StreamPager::flush() {
 
 bool StreamPager::pin_chunk(ZonePart& part, uint32_t chunk) {
     if (part.pins[chunk]) { ++part.pins[chunk]; return true; }
-    uint32_t frames = part.frames.load(std::memory_order_relaxed);
-    size_t bytes = chunk_bytes(frames, chunk);
+    size_t bytes = chunk_bytes(part.total, chunk);
     if (!pin_fn(part.left + chunk * stream_chunk, bytes, true)) return false;
     if (part.right != part.left && !pin_fn(part.right + chunk * stream_chunk, bytes, true)) {
         pin_fn(part.left + chunk * stream_chunk, bytes, false);
@@ -107,14 +106,13 @@ bool StreamPager::pin_chunk(ZonePart& part, uint32_t chunk) {
 
 void StreamPager::unpin_chunk(ZonePart& part, uint32_t chunk) {
     if (--part.pins[chunk]) return;
-    uint32_t frames = part.frames.load(std::memory_order_relaxed);
-    size_t bytes = chunk_bytes(frames, chunk);
+    size_t bytes = chunk_bytes(part.total, chunk);
     pin_fn(part.left + chunk * stream_chunk, bytes, false);
     if (part.right != part.left) pin_fn(part.right + chunk * stream_chunk, bytes, false);
 }
 
 bool StreamPager::hold(ZonePart& part, uint32_t frame, uint32_t frames) {
-    uint32_t total = part.frames.load(std::memory_order_relaxed);
+    const uint32_t total = part.total;
     if (!total || frame >= total) return true;
     uint32_t last = std::min(frame + std::max(frames, 1u), total) - 1;
     for (uint32_t chunk = frame / stream_chunk; chunk <= last / stream_chunk; ++chunk)
@@ -143,7 +141,7 @@ bool StreamPager::step(unsigned n) {
     auto& w = work[n];
     if (!w.part || w.dead) return false;
     auto& slot = slots[n];
-    const uint32_t frames = w.part->frames.load(std::memory_order_relaxed), chunks = chunk_count(frames);
+    const uint32_t frames = w.part->total, chunks = chunk_count(frames);
     const uint32_t at = slot.at.load(std::memory_order_relaxed);
     const uint32_t ahead = uint32_t(stream_chunk * std::max(1.0f, w.speed) * 2);
     auto publish = [&](uint32_t limit) { slot.ready.store(uint64_t(w.serial) << 32 | limit, std::memory_order_release); };
