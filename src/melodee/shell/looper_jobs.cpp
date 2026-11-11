@@ -5,6 +5,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/input_route.h"
 #include "melodee/shell/sample_mode.h"
 #include <algorithm>
 #include <cstdlib>
@@ -42,7 +43,36 @@ std::string loop_source_name(uint8_t source) {
     if (source == looper::source_mix) return "Mix";
     if (looper::source_is_track(source)) return "Track " + std::to_string(source);
     if (looper::source_is_loop(source)) return loop_name(source - looper::source_loop(0));
+    if (looper::source_is_direct(source)) return input_source_name(looper::direct_input(source));
     return "Input";
+}
+
+namespace {
+// The ADC route a loop's own input needs: 1 line, 2 mic, 0 none.
+unsigned adc_of(uint8_t source) {
+    if (!looper::source_is_direct(source)) return 0;
+    auto in = looper::direct_input(source);
+    return from_rear(in) ? InputRoute::need_line : in == InputSource::Mic ? InputRoute::need_mic : 0;
+}
+} // namespace
+
+bool loop_source_clashes(const LooperSettings& lp, unsigned loop, uint8_t source) {
+    unsigned adc = adc_of(source);
+    if (!adc) return false;
+    for (unsigned n = 0; n < loop_tracks; ++n)
+        if (n != loop % loop_tracks && adc_of(lp.loops[n].source) && adc_of(lp.loops[n].source) != adc) return true;
+    return false;
+}
+
+unsigned loop_input_needs(const LooperSettings& lp) {
+    if (!lp.on) return 0;
+    unsigned needs = 0;
+    for (const auto& l : lp.loops) {
+        needs |= adc_of(l.source);
+        if (looper::source_is_direct(l.source) && from_usb(looper::direct_input(l.source))) needs |= InputRoute::need_usb;
+    }
+    if ((needs & InputRoute::need_line) && (needs & InputRoute::need_mic)) needs &= ~InputRoute::need_mic; // never both (a file from elsewhere)
+    return needs;
 }
 
 std::string loop_length_name(unsigned bars) {
@@ -55,6 +85,7 @@ uint8_t next_loop_source(const Project& project, unsigned loop, uint8_t source) 
         source = uint8_t((source + 1) % looper::source_count);
         if (looper::source_is_track(source) && !project.tracks[source - 1].used()) continue;
         if (source == looper::source_loop(loop)) continue;
+        if (loop_source_clashes(project.looper, loop, source)) continue;
         return source;
     }
     return looper::source_input;
@@ -74,6 +105,8 @@ void looper_do(Context& c, Do what, unsigned loop, int value, uint32_t position)
     case Do::Feedback: lp.loops[loop].feedback = uint8_t(std::clamp(value, 0, 100)); break;
     case Do::Source:
         if (taking) { c.notice(loop_name(loop) + ": source between takes"); return; }
+        if (value < 0 || value >= int(looper::source_count)) return;
+        if (loop_source_clashes(lp, loop, uint8_t(value))) { c.notice("Mic and Rear share one input: one at a time"); return; }
         lp.loops[loop].source = uint8_t(value);
         break;
     case Do::Quantize: lp.quantize = uint8_t(std::clamp(value, 0, int(looper::Quantize::Count) - 1)); break;
@@ -293,12 +326,19 @@ bool parse_looper(const std::string& argument, LooperAsk& out, std::string& erro
         else if (b == "mix") out.value = looper::source_mix;
         else if (b == "track" && m >= 1 && m <= int(track_count)) out.value = looper::source_track(unsigned(m - 1));
         else if (b == "loop" && m >= 1 && m <= int(loop_tracks) && m - 1 != out.loop) out.value = looper::source_loop(unsigned(m - 1));
-        else { error = "source input, track 1-16, loop 1-4 (another) or mix"; return false; }
+        else {
+            // A hardware input of its own: rear, rear l, rear r, usb, usb l, usb r, mic (or run together: rearl).
+            std::string asked = b + d;
+            out.value = -1;
+            for (unsigned i = 0; i < looper::direct_inputs.size(); ++i)
+                if (asked == source_word(looper::source_direct(i))) out.value = looper::source_direct(i);
+            if (out.value < 0) { error = "source input, track 1-16, loop 1-4 (another), mix, rear [l|r], usb [l|r] or mic"; return false; }
+        }
         return true;
     }
     if (verb == "commit") { if (!loop_of(a)) return false; out.op = Op::Commit; out.value = b == "note"; return true; }
     error = "melodee-looper status | on | off | rec|toggle|halt|now|undo|clear N | length N 1-16|free | feedback N 0-1 | "
-            "level|pan|send|bus N V | mute|solo N 0|1 | quantize bar|beat|off | then play|overdub|stop | source N input|track M|loop M|mix | "
+            "level|pan|send|bus N V | mute|solo N 0|1 | quantize bar|beat|off | then play|overdub|stop | source N input|track M|loop M|mix|rear [l|r]|usb [l|r]|mic | "
             "latency FRAMES|auto | transport follow|free | commit N [note]";
     return false;
 }

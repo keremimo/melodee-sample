@@ -130,6 +130,12 @@ public:
     // block before written where it belongs.
     void run(const Clock& clock, const Sources& sources, unsigned frames, float (*out_l)[looper::block], float (*out_r)[looper::block]);
     bool on() const { return enabled; }
+    uint8_t source(unsigned loop) const { return loops[loop % loop_tracks].source; }
+    // It waits for or records a take, or overdubs: a hardware input it records is heard meanwhile (Monitor Auto).
+    bool listening(unsigned loop) const {
+        auto s = loops[loop % loop_tracks].state;
+        return enabled && (s == State::Armed || s == State::Recording || s == State::Overdub);
+    }
     uint32_t sources_used() const; // a bit for each source some loop may record (the host copies only those)
 
     // Service thread.

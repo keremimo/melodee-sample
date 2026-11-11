@@ -45,9 +45,14 @@ void load_loop_files(Context& c, const std::string& path);
 // The sheet (B3 MORE): its rows, and Push on the one under the cursor.
 enum class LoopRow : uint8_t { Source, Toggle, Stop, Undo, Commit, CommitNote, Clear, Off, Count };
 void loop_sheet_push(Context& c);
-// The next source a loop can record after `source`: the input, the tracks that exist, the other loops, the mix.
+// The next source a loop can record after `source`: the input, the tracks that exist, the other loops, the mix,
+// then the hardware inputs of its own (Rear, Rear L/R, USB, USB L/R, Mic) that do not clash with another loop's.
 uint8_t next_loop_source(const Project& project, unsigned loop, uint8_t source);
-std::string loop_source_name(uint8_t source);  // "Input", "Track 3", "L2", "Mix"
+// The mic and the rear line inputs share one ADC: one loop on each can never record at once.
+bool loop_source_clashes(const LooperSettings& looper, unsigned loop, uint8_t source);
+// What the loops' own hardware inputs need routed (InputRoute::need_*); none while the Looper is off.
+unsigned loop_input_needs(const LooperSettings& looper);
+std::string loop_source_name(uint8_t source);  // "Input", "Track 3", "L2", "Mix", "Rear L", "USB"
 std::string loop_length_name(unsigned bars);   // "Free", "1 bar", "4 bars"
 // The remote's `melodee-looper` (docs/LOOPER.md): parsed where the command arrives (an error is said at once),
 // done on the MIDI thread. status is read straight from the engine's views.

@@ -47,12 +47,22 @@ Each loop is in one state: **Empty**, **Armed** (waits for its boundary),
 - **Source**, changed between takes: **Input** (Input Config's source after
   its gain, as Sample Record hears it), **Track 1–16** (after its chain, before
   mute), **L1–L4** (another loop's track) or **Mix** (the master before main
-  volume, as Resample hears it). A loop never records itself; overdubbing
-  from Mix replaces instead of adding (the mix holds the loop already): a
-  bounce.
-- **Lag**: Input arrives a converter round trip late; the loop writes it
-  that far behind its play head (`looper latency FRAMES`, the audio delay
-  by default). Tracks, loops and the mix arrive in the same block: no lag.
+  volume, as Resample hears it), or a hardware input of its own: **Rear**,
+  **Rear L**, **Rear R**, **USB**, **USB L**, **USB R** or **Mic** (after
+  Input Config's gain; one side is copied to both, centred). Each loop picks
+  its own, so L1 on Rear L, L2 on Rear R and L3 on USB-C record at once. The
+  mic and the rear inputs share one converter pair, so one loop on each is
+  refused ("Mic and Rear share one input") and the picker skips the other;
+  a loop's pick routes it whatever Input Config says, and USB-C stays open
+  while a loop uses it. A loop on its own input hears it through its track
+  as Input Config's **Monitor** says: Off never, On always, Auto while it
+  is armed, records or overdubs (a block after Monitor). A loop never
+  records itself; overdubbing from Mix replaces instead of adding (the mix
+  holds the loop already): a bounce.
+- **Lag**: Input and the hardware inputs arrive a converter round trip late;
+  the loop writes them that far behind its play head (`looper latency
+  FRAMES`, the audio delay by default). Tracks, loops and the mix arrive in
+  the same block: no lag.
 - **Transport** (Follow, the default): Stop closes a take in progress, ends
   an overdub and silences every loop, which keeps its place; while stopped a
   press arms and plays queue, and nothing starts until Play. **Play** lines

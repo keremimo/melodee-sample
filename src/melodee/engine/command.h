@@ -70,6 +70,7 @@ struct Command {
         PadMute,        // track, index = kit pad (0xffff: every pad), value: muted
         TrackLoad,      // track_pack: one whole track (sound, kit, patterns) and the motion; handed back like Reload's
         Monitor,        // value: the input source heard with the mix (not the mix itself)
+        LoopMonitor,    // value: Monitor (Input Config's): when a loop on a hardware input of its own hears it
         BounceArm,      // the next Play renders: value 0 the patterns for `position` ticks, 1 the song to its end and its tail
         // Knob FX (parity phase 7): index 0 the effect (value = EffectKind, its initial values with it), 1 a parameter
         // (pattern = which, value), 2 the state (value: 1 heard now, 2 Rec Input FX on the input), 3 the tracks (position: a bit

@@ -4590,6 +4590,46 @@ void looper_engine() {
     loud = 0;
     for (unsigned n = 0; n < 50; ++n) { render(1); for (auto x : out) loud = std::max(loud, std::fabs(x / 2147483648.0f)); }
     CHECK(loud < 1e-4f);
+    // Loops on hardware inputs of their own, at once: L2 the rear right input, L3 USB-C's left. Monitor On hears
+    // them through their tracks; then both takes play back with Monitor Off.
+    {
+        std::vector<int32_t> adc(256);
+        std::vector<float> usb(256);
+        for (unsigned f = 0; f < 128; ++f) { adc[2 * f] = int32_t(0.25 * 2147483648.0); adc[2 * f + 1] = int32_t(0.5 * 2147483648.0); usb[2 * f] = 0.125f; usb[2 * f + 1] = 0.75f; }
+        auto heard = [&](unsigned blocks) {
+            float most = 0;
+            for (unsigned n = 0; n < blocks; ++n) {
+                host->render(out.data(), 128, 1, adc.data(), nullptr, usb.data());
+                host->looper().service();
+                if (n + 8 >= blocks) for (auto x : out) most = std::max(most, std::fabs(x / 2147483648.0f));
+            }
+            return most;
+        };
+        CHECK(looper::source_of(InputSource::RearR) == looper::source_direct(2) && looper::direct_input(looper::source_of(InputSource::UsbL)) == InputSource::UsbL);
+        host->send({Command::Type::Looper, 1, 0, uint16_t(looper::Do::Source), int16_t(looper::source_of(InputSource::RearR))});
+        host->send({Command::Type::Looper, 2, 0, uint16_t(looper::Do::Source), int16_t(looper::source_of(InputSource::UsbL))});
+        host->send({Command::Type::Looper, 1, 0, uint16_t(looper::Do::Length), 1});
+        host->send({Command::Type::Looper, 2, 0, uint16_t(looper::Do::Length), 1});
+        host->send({Command::Type::LoopMonitor, 0, 0, 0, int16_t(Monitor::On)});
+        loud = heard(16);
+        CHECK(loud > 0.55f && loud < 0.7f); // 0.5 and 0.125, each centred
+        host->send({Command::Type::LoopMonitor, 0, 0, 0, int16_t(Monitor::Off)});
+        CHECK(heard(16) < 1e-4f);
+        host->send({Command::Type::LoopMonitor, 0, 0, 0, int16_t(Monitor::Auto)});
+        host->send({Command::Type::Looper, 1, 0, uint16_t(looper::Do::Primary)});
+        host->send({Command::Type::Looper, 2, 0, uint16_t(looper::Do::Primary)});
+        heard(1);
+        CHECK(host->looper().view(1).state == Looper::State::Armed && host->looper().view(2).state == Looper::State::Armed);
+        loud = heard(8);
+        CHECK(loud > 0.55f); // Auto: heard while armed
+        heard(3 * bar_frames / 128);
+        auto two = host->looper().view(1), three = host->looper().view(2);
+        CHECK(two.state == Looper::State::Playing && two.length == bar_frames && three.state == Looper::State::Playing && three.length == bar_frames);
+        host->send({Command::Type::LoopMonitor, 0, 0, 0, int16_t(Monitor::Off)});
+        std::fill(adc.begin(), adc.end(), 0); std::fill(usb.begin(), usb.end(), 0.0f);
+        loud = heard(bar_frames / 128 / 2);
+        CHECK(loud > 0.55f && loud < 0.7f); // what each took, played back
+    }
     // The project keeps the Looper: its settings, each loop's values and saved audio's length, L1-L4's strips and chains.
     {
         Project saved;

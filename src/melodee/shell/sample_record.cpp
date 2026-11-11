@@ -26,6 +26,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/input_route.h"
+#include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include <algorithm>
@@ -221,7 +222,11 @@ void Context::record_tick(uint32_t at) {
         send({Type::Monitor, 0, 0, 0, int16_t(monitoring)});
         monitor_sent = monitoring; monitor_known = true;
     }
-    if (input) input->want(in.source, in.mutes_speaker(page));
+    // Loops on a hardware input of their own: routed too, heard as Monitor says (the mic quiets the speaker then).
+    if (loop_monitor_sent != int(in.monitor)) { send({Type::LoopMonitor, 0, 0, 0, int16_t(in.monitor)}); loop_monitor_sent = int(in.monitor); }
+    unsigned loops = loop_input_needs(project.looper);
+    bool loop_mic = (loops & InputRoute::need_mic) && in.monitor != Monitor::Off;
+    if (input) input->want(in.source, in.mutes_speaker(page) || loop_mic, loops);
     // The engine hears the settings as loaded from the card (and after a take, a source changed meanwhile).
     if (host.recorder().state() == State::Idle
         && (host.record_source() != unsigned(in.source)

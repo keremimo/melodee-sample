@@ -294,6 +294,7 @@ private:
     uint32_t auto_quiet = 0;       // RecordAutoEnd: a Free take ends after this long quiet (frames at the model rate; 0 never)
     float auto_silence_db = -60;   // and what quiet is
     std::atomic<bool> monitor_on {false};
+    std::atomic<uint8_t> loop_monitor {uint8_t(Monitor::Auto)}; // Input Config's Monitor, for loops on a hardware input
     float record_gain = 1;  // linear
     int cue_track = -1;     // a take cued for Rec length Seq starts where this track's pattern comes round
     uint32_t bounce_ticks = 0; // a pattern render ends after this many ticks; 0 with bounce_song
@@ -370,7 +371,7 @@ private:
     double loop_tick = 0;      // the sequencer's place at this block's first frame (the tick it plays next, less what is left)
     bool loop_strip_command(const Command& c); // Level, Pan, Send, Mute, Solo, SendBus for L1-L4 (track 16-19)
     void run_loops(unsigned frames, bool solo); // the loops into their tracks, and those into the master and buses
-    void keep_sources(unsigned frames);         // this block's sources for the loops' next one
+    void keep_sources(const int32_t* input, const float* usb, unsigned frames); // this block's sources for the loops' next one
     void publish_taps(unsigned frames);         // the watched track's voices, for the screen
     std::array<PlayPatterns, track_count> patterns {};
     Motion motion;

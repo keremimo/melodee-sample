@@ -140,7 +140,7 @@ void Looper::queue(Loop& l, Pending p, double now) {
 
 unsigned Looper::lag_of(const Loop& l, unsigned frames) const {
     unsigned lag = frames; // every source comes from the block before
-    if (l.source == looper::source_input) lag += unsigned(input_latency >= 0 ? input_latency : int(default_lag));
+    if (looper::source_from_outside(l.source)) lag += unsigned(input_latency >= 0 ? input_latency : int(default_lag));
     return lag;
 }
 

@@ -271,6 +271,7 @@ public:
     uint32_t settings_save_at = 0;                        // ms; 0 nothing waiting
     uint32_t rec_armed_at = 0;                            // ms
     bool monitor_sent = false, monitor_known = false;
+    int loop_monitor_sent = -1;
     int gain_sent = 0;
     uint16_t record_key_pads = 0;                         // pads playing through record_key()
     // Renders of the mix (parity phase 6, shell/render.cpp): Resample (Shift + Pad 11, then a pad) and the song's mixdown.

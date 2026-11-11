@@ -712,7 +712,8 @@ and Melodee's:
 - `melodee-looper status | on | off | rec|toggle|halt|now|undo|clear N |
   length N 1-16|free | feedback N 0-1 | level|pan|send|bus N V | mute|solo N
   0|1 | quantize bar|beat|off | then play|overdub|stop | source N
-  input|track M|loop M|mix | latency FRAMES|auto | transport follow|free |
+  input|track M|loop M|mix|rear [l|r]|usb [l|r]|mic | latency FRAMES|auto |
+  transport follow|free |
   commit N [note]` (docs/LOOPER.md).
 - `melodee-midi [usb] HEX...`: one message into the input path, as if from
   the External (or USB) port. `melodee-midi panic`: MIDI Config's MIDI

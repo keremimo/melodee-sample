@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/input_config.h"
 #include "melodee/model/limits.h"
 #include <array>
 #include <cstdint>
@@ -18,14 +19,26 @@ constexpr std::array<uint8_t, 6> lengths {0, 1, 2, 4, 8, 16};
 enum class Quantize : uint8_t { Bar, Beat, Off, Count };
 enum class Then : uint8_t { Play, Overdub, Stop, Count };     // after the first take
 enum class Transport : uint8_t { Follow, Free, Count };     // stopped: the loops hold, or keep time on their own
-// What a loop records: the input, a track (1-16), another loop's track or the mix.
+// What a loop records: the input (Input Config's source), a track (1-16), another loop's track, the mix, or a
+// hardware input of its own (the rear line inputs, USB-C or the mic), so loops can each take a different one at once.
 constexpr uint8_t source_input = 0;
 constexpr uint8_t source_track(unsigned t) { return uint8_t(1 + t); }
 constexpr uint8_t source_loop(unsigned l) { return uint8_t(1 + track_count + l); }
 constexpr uint8_t source_mix = uint8_t(1 + track_count + loop_tracks);
-constexpr unsigned source_count = source_mix + 1u;
+constexpr std::array<InputSource, 7> direct_inputs {InputSource::Rear, InputSource::RearL, InputSource::RearR,
+                                                    InputSource::Usb, InputSource::UsbL, InputSource::UsbR, InputSource::Mic};
+constexpr uint8_t source_direct(unsigned i) { return uint8_t(source_mix + 1 + i); }
+constexpr unsigned source_count = source_mix + 1u + unsigned(direct_inputs.size());
 constexpr bool source_is_track(uint8_t s) { return s >= 1 && s <= track_count; }
 constexpr bool source_is_loop(uint8_t s) { return s > track_count && s < source_mix; }
+constexpr bool source_is_direct(uint8_t s) { return s > source_mix && s < source_count; }
+constexpr InputSource direct_input(uint8_t s) { return direct_inputs[(s - source_direct(0)) % direct_inputs.size()]; } // source_is_direct(s)
+constexpr uint8_t source_of(InputSource in) {
+    for (unsigned i = 0; i < direct_inputs.size(); ++i) if (direct_inputs[i] == in) return source_direct(i);
+    return source_input;
+}
+// A hardware input heard by the loop as it comes in (anything but the mix and Melodee's own tracks).
+constexpr bool source_from_outside(uint8_t s) { return s == source_input || source_is_direct(s); }
 inline const char* quantize_name(unsigned q) { static const char* const n[] {"Bar", "Beat", "Off"}; return n[q % 3]; }
 inline const char* then_name(unsigned t) { static const char* const n[] {"Play", "Overdub", "Stop"}; return n[t % 3]; }
 } // namespace looper

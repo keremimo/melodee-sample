@@ -445,6 +445,7 @@ void EngineHost::apply(const Command& c) {
     case Type::RecordNow: take.start_now(); break;
     case Type::RecordStop: take.stop(); cue_track = -1; break;
     case Type::Monitor: monitor_on.store(c.value != 0, std::memory_order_relaxed); break;
+    case Type::LoopMonitor: loop_monitor.store(uint8_t(std::clamp<int>(c.value, 0, int(Monitor::Count) - 1)), std::memory_order_relaxed); break;
     case Type::KnobFx: knob_command(c); break;
     case Type::Compressor: {
         MasterComp settings = comp_settings;
@@ -1330,7 +1331,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         knob_in.process(record_l, record_r, frames);
     take.process(record_l, record_r, frames);
     recall_ring.write(record_l, record_r, frames);
-    keep_sources(frames);
+    keep_sources(input, usb, frames);
     render_out.process(master_l, master_r, frames);
     // Monitor: the source heard with the mix (never the mix itself, heard already).
     if (monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample))
@@ -1385,6 +1386,14 @@ void EngineHost::run_loops(unsigned frames, bool solo) {
     float out_l[loop_tracks][looper::block], out_r[loop_tracks][looper::block];
     loops.run(time, sources, frames, out_l, out_r);
     if (!loops.on()) { for (auto& m : loop_meters) m.store(0, std::memory_order_relaxed); return; }
+    // A loop on a hardware input of its own hears it through its track, as Input Config's Monitor says (Auto: while
+    // it waits for or records a take, or overdubs). What came in the block before: one block later than Monitor.
+    auto monitor = Monitor(loop_monitor.load(std::memory_order_relaxed));
+    for (unsigned n = 0; n < loop_tracks && monitor != Monitor::Off; ++n) {
+        uint8_t s = loops.source(n);
+        if (!looper::source_is_direct(s) || (monitor == Monitor::Auto && !loops.listening(n))) continue;
+        for (unsigned f = 0; f < std::min(frames, source_frames); ++f) { out_l[n][f] += source_l[s][f]; out_r[n][f] += source_r[s][f]; }
+    }
     for (unsigned n = 0; n < loop_tracks; ++n) {
         auto& strip = loop_strips[n];
         float level = 0;
@@ -1406,7 +1415,9 @@ void EngineHost::run_loops(unsigned frames, bool solo) {
 }
 
 // What each source played this block, for the loops to write in the next (the mix was kept after the compressor).
-void EngineHost::keep_sources(unsigned frames) {
+// The hardware inputs a loop takes on its own: the ADC (the rear line inputs or the mic, as routed) and USB-C,
+// each after Input Config's gain as the input is.
+void EngineHost::keep_sources(const int32_t* input, const float* usb, unsigned frames) {
     source_frames = 0;
     if (!loops.on()) return;
     uint32_t used = loops.sources_used();
@@ -1420,6 +1431,21 @@ void EngineHost::keep_sources(unsigned frames) {
         else if ((used >> looper::source_track(t)) & 1) { std::fill(source_l[looper::source_track(t)], source_l[looper::source_track(t)] + frames, 0.0f); std::fill(source_r[looper::source_track(t)], source_r[looper::source_track(t)] + frames, 0.0f); }
     }
     for (unsigned n = 0; n < loop_tracks; ++n) keep(looper::source_loop(n), loop_strips[n].left, loop_strips[n].right);
+    constexpr float scale = 1.0f / 2147483648.0f;
+    for (unsigned i = 0; i < looper::direct_inputs.size(); ++i) {
+        uint8_t s = looper::source_direct(i);
+        if (!((used >> s) & 1)) continue;
+        auto in = looper::direct_inputs[i];
+        for (unsigned f = 0; f < frames; ++f) {
+            float l = 0, r = 0;
+            if (from_usb(in)) { if (usb) { l = usb[2 * f]; r = usb[2 * f + 1]; } }
+            else if (input) { l = input[2 * f] * scale; r = input[2 * f + 1] * scale; }
+            if (in == InputSource::Mic) l = r = (l + r) * 0.5f;
+            else if (in == InputSource::RearL || in == InputSource::UsbL) r = l;
+            else if (in == InputSource::RearR || in == InputSource::UsbR) l = r;
+            source_l[s][f] = l * record_gain; source_r[s][f] = r * record_gain;
+        }
+    }
     source_frames = frames;
 }
 
