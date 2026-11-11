@@ -125,9 +125,11 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
     juce::String saved = !card ? juce::String("There is no card to save this project on.")
                        : s.project_path.empty() ? juce::String("It is saved as a new project.")
                        : juce::String(s.project.name) + " is saved.";
-    if (s.ui.exit_off) { // POWER OFF chosen: the save on its way, then the MPC goes dark
-        sheet(p, {"Turning off", card ? juce::String("Saving, then the MPC turns off. It opens this project when you turn it on.")
-                                      : juce::String("The MPC turns off."), true});
+    if (s.ui.exit_off) { // POWER OFF chosen: the save on its way, then a second saying it landed, then the MPC goes dark
+        juce::String body = !card ? juce::String("There is no card to save this project on. The MPC turns off now.")
+                          : !s.ui.exit_saved ? juce::String("Saving, then the MPC turns off.")
+                          : juce::String(s.project.name) + " is saved. It opens again when you turn the MPC on.";
+        sheet(p, {s.ui.exit_saved ? "Turning off" : "Saving", body, true});
         return;
     }
     sheet(p, {"Leave Melodee?", saved + " Leave starts the MPC app; Power off turns the MPC off.", true});

@@ -124,9 +124,12 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
-        if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) // loop files too
-            (off_after_save ? power_off : leave).store(true);
+        if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) { // loop files too
+            if (!off_after_save) leave.store(true);
+            else if (!ui_.exit_saved) { ui_.exit_saved = true; off_saved_at = now; } // the sheet says it is saved, then off
+        }
     }
+    if (ui_.exit_saved && now - off_saved_at >= 1000) power_off.store(true); // a second to read that it is saved
     context_.song_tick();
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
     // Sounds of one's own, when the card's list changes.

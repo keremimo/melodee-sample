@@ -118,6 +118,7 @@ private:
     bool settings_loaded = false;
     int leave_after_save = -1; // the saves count to wait for before leaving
     bool off_after_save = false; // and then turn the MPC off instead of starting the stock app
+    uint32_t off_saved_at = 0;   // when the save to turn off after landed (ms): the MPC turns off a second later
     std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}, tempo_now {0}; // copies for summary()
     std::atomic<uint32_t> stage_bits {0};
     std::string stage_key_text; // under text_lock
