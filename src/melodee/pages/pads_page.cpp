@@ -58,6 +58,11 @@ void draw(Paint& p, const Snapshot& s) {
                x, y + 41, iw, 14, plain(colour::sec, type::small));
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
         waveform(p, x, y + 58, iw, 14, s.sample.overview, from, to, from, to, c, 1);
+    } else if (pad.used() && s.sample.instrument) {
+        juce::String what = juce::String(s.sample.zones) + " zones";
+        if (s.sample.parts_ready + s.sample.parts_failed < s.sample.parts) what = "Reading " + juce::String(s.sample.parts_ready) + " / " + juce::String(s.sample.parts);
+        else if (!s.sample.error.empty()) what = s.sample.error;
+        p.text(what, x, y + 41, iw, 14, plain(colour::sec, type::small));
     } else if (pad.used()) {
         p.text(s.sample.error.empty() ? "Loading" : juce::String(s.sample.error), x, y + 41, iw, 14, plain(colour::dim, type::small));
     } else {

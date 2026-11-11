@@ -368,6 +368,7 @@ public:
     struct LandingPad { uint8_t track = 0; uint8_t pad = 0; uint16_t slot = 0; };
     std::vector<LandingPad> landing_pads;
     void land_instruments();
+    bool refuse_instrument(const char* job);                 // true, and says so, when the last pad holds one
     bool from_midi = false;                                 // note() is playing what came in: not echoed out
     void change_midi(unsigned row, int way);                // one step along a MIDI Config row (shell/midi_config_rows.h)
     void reset_settings();                                  // MIDI Config's Reset Factory Settings, after B3

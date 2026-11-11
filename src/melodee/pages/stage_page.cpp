@@ -292,6 +292,7 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     float wx = px + 13, ww = pw - 26, wy = top + 20, wh = zone::picture_h - 40;
     char label[4];
     pad_label(t.last_pad, label);
+    if (pad.used() && s.sample.instrument) { instrument_picture(p, s, wx, wy, ww, wh); return; }
     if (!pad.used() || !s.sample.frames) {
         p.text(label, px, wy + 14, pw, 26, plain(colour::text, type::title, Weight::SemiBold), juce::Justification::centred);
         juce::String why = !pad.used() ? juce::String("No sample on this pad") : s.sample.error.empty() ? juce::String("Loading") : juce::String(s.sample.error);

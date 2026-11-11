@@ -92,6 +92,7 @@ void Context::trim_sample() {
     unsigned kit = t.last_pad % sampler_pads;
     const auto& pad = t.pads[kit];
     if (t.engine != EngineKind::Sampler || !pad.used()) { notice("Trim Sample: no sample"); return; }
+    if (refuse_instrument("Trim Sample")) return;
     if (!library) return;
     const auto& ref = project.samples[pad.sample % sample_slots];
     uint32_t frames = ref.frames, end = pad.end && pad.end < frames ? pad.end : frames;

@@ -55,6 +55,7 @@ struct LoadedSample {
     unsigned zones = 0, parts = 0, parts_ready = 0, parts_failed = 0, left = 0;
     uint8_t low_key = 127, high_key = 0;
     std::string ignored;     // what it asked for and is not played, named
+    std::array<uint16_t, 128> map {}; // for each key, the velocities it has (a bit for each 8)
     std::array<int8_t, 4> stages {{-1, -1, -1, -1}}; // the pad's attack, decay, sustain, release, -1: none named
     int8_t velocity = 100;   // the pad's Velocity Sense
 };

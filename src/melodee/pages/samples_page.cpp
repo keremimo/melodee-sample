@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // SAMPLES (Sample Select on a sampler track): the MPC's sample browser.
-// Folders first, as categories, then the WAV files. The wheel and Minus /
+// Folders first, as categories, then the WAV files and SFZ instruments. The wheel and Minus /
 // Plus move, Push opens a folder or loads the file onto the last pad hit
 // (keeping the pad's settings; the whole file, Trim or Chop shape it), or a
 // bank file (BANK, Samples/Banks) into the kit's bank in view; Shift +
@@ -59,6 +59,7 @@ void draw(Paint& p, const Snapshot& s) {
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)
                         if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.tag = juce::String("ON ") + juce::String(label); break; }
+        if (file.instrument && r.tag.isEmpty()) r.tag = "SFZ";
         p.g.saveState();
         list_row(p, zone::pad, zone::picture_y + 0.5f + row * (list_row_h + list_row_gap), zone::width - 2 * zone::pad, r);
         p.g.restoreState();

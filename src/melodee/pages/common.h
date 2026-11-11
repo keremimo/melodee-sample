@@ -32,6 +32,7 @@ juce::Colour colour_of(const Snapshot& s);              // the selected track's 
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
 juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
+void instrument_picture(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h); // an SFZ on the pad: its keys and velocities
 // The input source as Record and Input Config name it: "Rear", or a track's "Track 3 Prophet" (with_tap: "Track 3 Post").
 juce::String input_name(const Snapshot& s, bool with_tap);
 juce::String engine_word(EngineKind kind); // "Prophet", "FM6"

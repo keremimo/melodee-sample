@@ -74,6 +74,7 @@ void chop_button(Context& c) {
     if (ui.shift) { c.toggle_note_on(); return; } // Note On, as printed
     if (ui.page == PageId::Chop) { c.open(PageId::Trim); return; }
     if (c.track().engine != EngineKind::Sampler || !c.pad().used()) return;
+    if (c.refuse_instrument("Chop")) return;
     const auto& pad = c.pad();
     if (ui.chop_sample != pad.sample || ui.chop_from != pad.start || ui.chop_to != pad.end) {
         ui.chop_sample = pad.sample; ui.chop_from = pad.start; ui.chop_to = pad.end;
@@ -149,7 +150,7 @@ void Context::toggle_loop_lock() {
 // touched), one undo.
 void Context::normalize() {
     auto* pad = kit_pad(*this, "Normalize");
-    if (!pad) return;
+    if (!pad || refuse_instrument("Normalize")) return;
     float peak = library ? library->peak(pad->sample, pad->start, pad->end) : -1.0f;
     if (peak < 0) { notice("Normalize: still loading"); return; }
     if (peak < 1e-5f) { notice("Normalize: silent"); return; }
@@ -172,6 +173,7 @@ void Context::normalize() {
 // Tape); Time stretch keeps the pitch (Follow by Beats or Tones, the one used last).
 void Context::toggle_warp_mode() {
     if (track().engine != EngineKind::Sampler) { notice("Warp: kit pads"); return; }
+    if (refuse_instrument("Warp")) return;
     int how = track().params[sampler::FollowHow];
     if (how == 2) set_param(ui.track, sampler::FollowHow, ui.warp_stretch % 2);
     else { ui.warp_stretch = uint8_t(how); set_param(ui.track, sampler::FollowHow, 2); }

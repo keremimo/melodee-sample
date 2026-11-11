@@ -138,6 +138,9 @@ void SampleLibrary::begin_instrument(const Request& request) {
         multi->zones.push_back(region.zone);
         loaded.low_key = std::min(loaded.low_key, region.zone.low_key);
         loaded.high_key = std::max(loaded.high_key, region.zone.high_key);
+        for (unsigned key = region.zone.low_key; key <= region.zone.high_key; ++key)
+            for (unsigned band = (region.zone.low_velocity - 1u) / 8; band <= (region.zone.high_velocity - 1u) / 8; ++band)
+                loaded.map[key] = uint16_t(loaded.map[key] | (1u << band));
     }
     multi->parts = std::make_unique<ZonePart[]>(l.names.size());
     multi->part_count = unsigned(l.names.size());
