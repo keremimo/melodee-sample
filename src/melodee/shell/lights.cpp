@@ -141,7 +141,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         settings_seen = store_->generation();
         ProjectStore::View v;
         store_->view(v);
-        if (v.settings_read) { ui_.settings.read(v.settings); settings_loaded = true; }
+        if (v.settings_read) { ui_.settings.read(v.settings); settings_loaded = true; context_.send_click(); }
     }
     // The backlight stays as the stock app left it until Screen asks for less (and then follows it).
     if (ui_.settings.screen != 100 || screen_wanted.load(std::memory_order_relaxed)) screen_wanted.store(ui_.settings.screen, std::memory_order_relaxed);
@@ -452,7 +452,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                          B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord, B::SeqRecord,
                          B::Stop, B::Play, B::WheelPush}) {
             bool shift_job = button_has_shift_job(project, ui, button, kit);
-            bool lit = button == B::Shift || (button == B::TapTempo && project.click) || (button == B::Erase && ui.copying != UiState::Copying::Off)
+            bool lit = button == B::Shift || (button == B::TapTempo && ui.settings.click) || (button == B::Erase && ui.copying != UiState::Copying::Off)
                     || (button == B::NoteRepeat && track.arp) || (button == B::Mute && ui.mute_mode())
                     || (track.engine == EngineKind::Sampler && button == B::Loop && track.pads[track.last_pad % sampler_pads].reverse)            // reverse on
                     || (track.engine == EngineKind::Sampler && button == B::Chop && track.pads[track.last_pad % sampler_pads].play == PadPlay::Gate); // Note On

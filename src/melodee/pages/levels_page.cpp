@@ -6,7 +6,8 @@
 // from the bottom up to the pad's own over pads 1-8 and on to the top over
 // 9-16; Tune by semitones, the original on pad 4; and Melodee's Scale, up
 // the project's scale (B3 again on Tune, or a synth's B2). Pad 1 is bottom
-// left. The pots stay on that pad. 16 Levels again goes back.
+// left. The pots stay on that pad; of type Scale, K1 and K2 are the project's
+// key, elsewhere on this page Shift + K1 and K2. 16 Levels again goes back.
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -36,7 +37,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(chip("16 LEVELS", c));
     h.right.push_back(tag_of(s, s.ui.track));
     int active = kind == LevelsKind::Velocity ? 0 : kind == LevelsKind::Tune ? 2 : kind == LevelsKind::Filter ? 1 : kit ? 2 : 1;
-    frame(p, s, {{"VELOCITY", kit ? "FILTER" : "SCALE", kind == LevelsKind::Scale && kit ? "SCALE" : "TUNE"}, active, c}, h);
+    frame(p, s, {{"VELOCITY", kit ? "FILTER" : "SCALE", kit ? "TUNE / SCALE" : "TUNE"}, active, c}, h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 150;
     constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 2.0f - 3 * gap) / 4;
@@ -73,7 +74,8 @@ void draw(Paint& p, const Snapshot& s) {
     case LevelsKind::Filter: range = kit ? juce::String::fromUTF8("its cutoff swept \xc2\xb7 pad 8 its own")
                                          : juce::String::fromUTF8("soft to loud \xc2\xb7 8 to 127"); break;
     case LevelsKind::Tune: range = juce::String::fromUTF8("by semitones \xc2\xb7 pad 4 as it is"); break;
-    default: range = juce::String::fromUTF8("up the scale \xc2\xb7 0 to +") + value_of(s, 15).substring(1); break;
+    default: range = juce::String("up ") + note_letter(s.project.root) + " " + scales()[s.project.scale % scales().size()].name
+                     + juce::String::fromUTF8(" \xc2\xb7 0 to +") + value_of(s, 15).substring(1); break;
     }
     auto range_style = plain(colour::sec, type::small);
     auto range_lines = p.wrap(range, range_style, iw, 2);

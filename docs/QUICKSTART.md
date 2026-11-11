@@ -60,8 +60,9 @@ selected track. What you see depends on what the track is.
   **Push** moves the ring to the next card.
 - The pads play the track. −/+ change the octave (a kit's bank).
 
-On a new project, track 1 is a PROPHET synth, track 5 an empty kit and
-track 6 a 909 with a beat.
+A new project has one empty kit on track 1, in C Chromatic; the other tracks
+are empty until you give them an engine. The Melodee Starter demo has synths
+and a 909 ready to play.
 
 **A synth: PRESET (B1).** K1 or the wheel walks the sounds; the one you
 stop on loads a moment later. K2 picks the list (all, starred, recent), K3
@@ -139,7 +140,7 @@ Rec Quantize (notes land on the grid).
 
 ## 6. Samples
 
-Samples live on a kit track (track 5 on a new project). Put WAV files in a
+Samples live on a kit track (track 1 on a new project). Put WAV files in a
 `Samples` folder on the card; 16, 24 or 32-bit, any rate, up to 60 s.
 
 **Load: Sample Select.** On a kit, Sample Select opens the browser. The

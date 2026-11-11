@@ -27,11 +27,18 @@ inline unsigned chord_notes(const Project& project, const Track& track, unsigned
     std::array<uint8_t, 12> degrees {};
     unsigned count = scale_degrees(project.scale, degrees);
     int base = 12 * (track.octave + 1) + project.root;
-    auto degree = [&](unsigned i) { return base + 12 * int(i / count) + degrees[i % count]; };
+    // Chromatic has no thirds to stack: each pad is its own root with the major scale above it.
+    std::array<uint8_t, 12> major {};
+    unsigned major_count = count == 12 ? scale_degrees(0, major) : 0;
+    auto degree = [&](unsigned step) {
+        if (major_count) return base + int(pad) + 12 * int(step / major_count) + major[step % major_count];
+        unsigned i = pad + step;
+        return base + 12 * int(i / count) + degrees[i % count];
+    };
     static const std::array<std::array<int, 4>, 6> stacks {{{0, 2, 4, -1}, {0, 2, 4, 6}, {0, 1, 4, -1}, {0, 3, 4, -1}, {0, 4, 7, -1}, {0, 2, 4, 8}}};
     const auto& stack = stacks[track.chord_type % 6];
     unsigned n = 0;
-    for (int step : stack) if (step >= 0) out[n++] = degree(pad + unsigned(step));
+    for (int step : stack) if (step >= 0) out[n++] = degree(unsigned(step));
     if (track.chord_type % 6 == 4) out[2] = out[0] + 12; // power: root, fifth, octave
     switch (track.chord_voicing % 4) {
     case 1: if (n > 2) out[1] += 12; break;                       // open: the second note up

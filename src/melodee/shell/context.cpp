@@ -63,8 +63,10 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     project = next;
     patterns = bank;
     auto keep = ui.pots;
+    auto settings = ui.settings; // Melodee's own: they belong to no project
     ui = UiState {};
     ui.pots = keep;
+    ui.settings = settings;
     for (auto& pot : ui.pots) pot.bound = 0; // pick the new values up again
     edits.clear();                            // its edits were made to another project
     take_edit.reset(); take_track = -1;
@@ -75,6 +77,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     Command c {Type::Reload};
     c.pack = pack;
     if (!host.send(c)) delete pack;
+    send_click(); // the metronome is Melodee's, and no take is running now
     project_path = path;
     dirty = false;
     samples_to_load = 0; // every sample slot again, a few each tick
@@ -490,8 +493,9 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadPunchRate: pad().punch_rate = uint8_t(value); break;
     case Kind::PadPunchDepth: pad().punch_depth = uint8_t(value); break;
     case Kind::ClickLevel:
-        project.click_level = uint8_t(value);
+        ui.settings.click_level = uint8_t(value);
         send_click();
+        settings_save_at = std::max<uint32_t>(now, 1) + 1000; // pots move in many steps: the card gets the last
         break;
     case Kind::ArpMode: t.arp_mode = uint8_t(value); send({Type::Arp, ui.track, 0, 1, int16_t(value)}); break;
     case Kind::ArpRate: t.arp_rate = uint8_t(value); send({Type::Arp, ui.track, 0, 2, int16_t(value)}); break;
@@ -1286,14 +1290,16 @@ void Context::set_arp(bool on) {
 }
 
 void Context::set_click(unsigned mode) {
-    project.click = uint8_t(mode % 3);
+    ui.settings.click = uint8_t(mode % 3);
     send_click();
+    if (store) store->save_settings(ui.settings.text());
 }
 
 // The audio thread only hears on or off: Rec is on while Seq Record is.
 void Context::send_click() {
-    bool on = project.click == 1 || (project.click == 2 && (ui.recording || loop_click)); // a loop recording counts (docs/LOOPER.md)
-    send({Type::Click, 0, 0, project.click_level, int16_t(on)});
+    const auto& set = ui.settings;
+    bool on = set.click == 1 || (set.click == 2 && (ui.recording || loop_click)); // a loop recording counts (docs/LOOPER.md)
+    send({Type::Click, 0, 0, set.click_level, int16_t(on)});
 }
 
 void Context::capture() {
@@ -1456,7 +1462,7 @@ void Context::set_recording(bool on) {
     if (on == ui.recording) return;
     ui.recording = on;
     send({Type::SongRecord, 0, 0, 0, int16_t(on)});
-    if (project.click == 2) send_click(); // the Rec metronome follows Seq Record
+    if (ui.settings.click == 2) send_click(); // the Rec metronome follows Seq Record
     if (on) {
         ui.rec_armed = false;
         take_track = ui.track; take_pattern = track().pattern;

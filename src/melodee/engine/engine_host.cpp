@@ -84,7 +84,6 @@ void EngineHost::load_state(const Project& project, bool keep_loops) {
     // Pad FX's K1-K3 and Flex Beat's settings.
     mpc_params = project.pad_fx_params;
     flex_mode = project.flex.mode; flex_mix = project.flex.mix; flex_quantize = project.flex.quantize;
-    click = project.click == 1; click_level = project.click_level / 100.0f;
     motion = project.motion;
     song = project.song;
     global_tempo = project.tempo; swing = project.swing;

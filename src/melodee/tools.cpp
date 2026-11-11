@@ -13,6 +13,7 @@
 #include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/pages/page.h"
+#include "melodee/shell/demo_projects.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "drivers/usb_audio.h"
@@ -42,6 +43,7 @@ void put(Pattern& p, unsigned step, uint8_t key, uint8_t velocity, uint8_t lengt
 }
 
 void board_project(Shell& shell) {
+    make_demo(0, shell.project(), shell.patterns()); // the previews show a full project, not a new one
     auto& project = shell.project();
     std::snprintf(project.name, sizeof(project.name), "Night drive");
     project.tempo = 1240;
@@ -657,7 +659,7 @@ const Preview previews[] {
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5; s.ui.move_open = true; s.ui.move_cursor = 1;
          preview_projects(s);
      }},
-    {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.project.click = true; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+    {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.ui.settings.click = 1; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"arp", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Arp; s.ui.track = 2; s.playing = true;
          auto& t = s.project.tracks[2]; t.arp = true; t.chord = true; t.arp_octaves = 2; t.chord_type = 1;
@@ -916,7 +918,15 @@ const Preview previews[] {
          s.ui.settings.toggle_full_level(); s.ui.settings.rec_quantize = true;
      }},
     {"shiftkit", [](Shell&, Snapshot& s) { // a kit track on Pads: Save sample, Reverse, Copy pad; metronome on Rec
-         s.ui.page = PageId::Pads; s.ui.track = 3; s.ui.shift = true; s.project.click = 2;
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.ui.shift = true; s.ui.settings.click = 2;
+     }},
+    {"shifttempo", [](Shell&, Snapshot& s) { // Shift held on Tempo: the project's key
+         s.ui.page = PageId::Tempo; s.ui.shift = true; s.project.root = 0; s.project.scale = chromatic_scale;
+     }},
+    {"levelsscale", [](Shell&, Snapshot& s) { // 16 Levels up the scale on a kit: K1 and K2 are the key
+         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1; t.levels_kind = uint8_t(LevelsKind::Scale);
+         s.project.root = 0; s.project.scale = 7; s.ui.levels_hit = 5;
      }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
     {"name", [](Shell&, Snapshot& s) {
@@ -1052,11 +1062,12 @@ void little(std::ofstream& file, uint32_t value, unsigned bytes) {
     for (unsigned n = 0; n < bytes; ++n) file.put(char((value >> (n * 8)) & 255));
 }
 
-// Two bars of the starting project at 120 BPM (4 s), then two seconds of
+// Two bars of the Melodee Starter demo at 120 BPM (4 s), then two seconds of
 // tail: the bass line must sound, stay below full scale and end in silence.
 int sound(const std::string& path) {
     EngineHost host;
     Shell shell(host);
+    make_demo(0, shell.project(), shell.patterns());
     host.load(shell.project(), shell.patterns());
     host.send({Command::Type::Play});
     constexpr unsigned rate = 44100, frames = rate * 6, block = EngineHost::block;

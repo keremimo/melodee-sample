@@ -3342,7 +3342,62 @@ void projects_and_polish() {
     h.push(Edit {});
     CHECK(h.pushes == before + 1 && h.size() == 1 && h.last());
 
-    // Demos: each has sounds, notes and a name; Night Drive a song with markers; the first is the project Melodee starts with.
+    // A new project: one empty kit on track 1, C Chromatic, no notes; every pad its own semitone.
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        starting_project(*p, *bank);
+        CHECK(p->used_tracks() == 1 && p->tracks[0].engine == EngineKind::Sampler && kit_track(*p) == -1);
+        CHECK(p->root == 0 && std::string(scales()[p->scale].name) == "Chromatic");
+        unsigned notes = 0;
+        for (unsigned t = 0; t < track_count; ++t) for (unsigned q = 0; q < pattern_count; ++q) notes += unsigned(bank->at[t][q].events.size());
+        CHECK(notes == 0);
+        auto& t = p->tracks[1];
+        t.octave = 4; // C4
+        CHECK(pad_note(*p, t, 0).key == 60 && pad_note(*p, t, 0).root && pad_note(*p, t, 7).key == 67 && !pad_note(*p, t, 7).root);
+        CHECK(pad_note(*p, t, 12).key == 72 && pad_note(*p, t, 12).root);
+        CHECK(levels_of(*p, t, 15).semitones == 0); // Velocity until asked
+        t.levels_kind = uint8_t(LevelsKind::Scale);
+        CHECK(levels_of(*p, t, 15).semitones == 15);
+        // Chords in Chromatic: a major triad on each pad's own semitone, not a cluster.
+        std::array<int, notes_per_step> keys {};
+        t.chord_type = 0; t.chord_voicing = 0; t.chord_invert = 0;
+        CHECK(chord_notes(*p, t, 1, keys) == 3 && keys[0] == 61 && keys[1] == 65 && keys[2] == 68);
+        CHECK(chord_name(*p, t, 1) == "C#");
+        t.chord_type = 5;
+        CHECK(chord_notes(*p, t, 0, keys) == 4 && keys[3] == 74); // Dia 9
+    }
+    // The project's key on a kit: Shift + K1 / K2 on Pads, Tempo and 16 Levels; of type Scale plain K1 / K2, even on an empty pad.
+    {
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        starting_project(*p, *bank);
+        UiState ui;
+        Pattern pattern;
+        using K = Binding::Kind;
+        for (PageId page : {PageId::Pads, PageId::Tempo, PageId::Levels}) {
+            ui.page = page;
+            auto shifted = page_bindings(*p, ui, pattern, true);
+            CHECK(shifted[0].kind == K::Root && shifted[1].kind == K::Scale && shifted[1].max == 12);
+        }
+        ui.page = PageId::Levels;
+        CHECK(!page_bindings(*p, ui, pattern, false)[0].bound());
+        p->tracks[0].levels_kind = uint8_t(LevelsKind::Scale);
+        CHECK(page_bindings(*p, ui, pattern, false)[0].kind == K::Root && page_bindings(*p, ui, pattern, false)[1].kind == K::Scale);
+    }
+    // The metronome is Melodee's, not the project's: kept in the settings file; older files read Off at 40.
+    {
+        Settings a;
+        a.click = 2; a.click_level = 75;
+        Settings b;
+        b.read(a.text());
+        CHECK(b.click == 2 && b.click_level == 75);
+        Settings old;
+        old.read("screen=50\n");
+        CHECK(old.click == 0 && old.click_level == 40);
+    }
+
+    // Demos: each has sounds, notes and a name; Night Drive a song with markers; the first is Melodee Starter, the full band.
     for (unsigned n = 0; n < demo_count; ++n) {
         auto p = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();

@@ -357,6 +357,17 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
     }
 }
 
+namespace {
+// The project's key: K1 and K2 wherever the pads can play in it.
+std::array<Binding, 3> project_key(const Project& project, Binding third = {}) {
+    return {Binding {Binding::Kind::Root, 0, 0, 11, project.root},
+            Binding {Binding::Kind::Scale, 0, 0, int(scales().size()) - 1, project.scale}, third};
+}
+bool levels_in_scale(const UiState& ui, const Track& track) {
+    return ui.page == PageId::Levels && LevelsKind(track.levels_kind % unsigned(LevelsKind::Count)) == LevelsKind::Scale;
+}
+} // namespace
+
 std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
     if (ui.name.open()) return {};
@@ -378,7 +389,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     case PageId::Patterns: // Shift: any bar count, the time signature, the metronome's level (as on the MPC)
         return {Binding {Kind::PatternBars, 0, 1, int(max_bars), int(pattern_bars(project, pattern))},
                 Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
-                Binding {Kind::ClickLevel, 0, 0, 100, project.click_level}};
+                Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
     case PageId::StepEdit: { // Shift + K1 the selected event's length (in steps of Q), Shift + K2 the time signature (as on the MPC)
         int at = selected_event(pattern, ui);
         Binding length {};
@@ -410,6 +421,10 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     case PageId::Compressor: // Shift + K3: In Boost
         return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, project.compressor.boost}};
     case PageId::Stage: return stage_bindings(project, ui, true);
+    case PageId::Levels: // of type Scale the key is on K1 and K2 already
+        if (levels_in_scale(ui, track)) return {};
+        return project_key(project);
+    case PageId::Pads: case PageId::Tempo: return project_key(project); // Shift + K1 / K2: the project's key, no synth track needed
     case PageId::Keys: // Shift + K3: the pads by semitones
         if (track.engine == EngineKind::Kit909) return {};
         return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
@@ -456,9 +471,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     switch (ui.page) {
     case PageId::Keys:
-        return {Binding {Kind::Root, 0, 0, 11, project.root},
-                Binding {Kind::Scale, 0, 0, int(scales().size()) - 1, project.scale},
-                Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)}};
+        return project_key(project, Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)});
     case PageId::Mix:
         return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
                 Binding {Kind::Send, 0, 0, 100, track.mix.send}};
@@ -538,8 +551,13 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Levels:
     case PageId::Pads: {
-        if (track.engine != EngineKind::Sampler) return favourite_bindings(track); // 16 Levels on a synth: its own three
+        bool in_scale = levels_in_scale(ui, track); // 16 Levels up the scale: K1 and K2 pick it
+        if (track.engine != EngineKind::Sampler) { // 16 Levels on a synth: its own three
+            auto own = favourite_bindings(track);
+            return in_scale ? project_key(project, own[2]) : own;
+        }
         const auto& pad = track.pads[(ui.page == PageId::Levels ? track.levels_pad : track.last_pad) % sampler_pads];
+        if (in_scale) return project_key(project, pad.used() ? Binding {Kind::PadPan, 0, -50, 50, pad.pan} : Binding {});
         if (!pad.used()) return {};
         return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level},
                 Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
@@ -578,7 +596,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::ProjectSort, 0, 0, 1, ui.project_sort}};
     case PageId::Tempo:
         return {Binding {Kind::Tempo, 0, 30, 300, int(project.tempo_of(ui.lead_pattern) / 10)}, Binding {Kind::Swing, 0, 50, 75, project.swing},
-                Binding {Kind::ClickLevel, 0, 0, 100, project.click_level}};
+                Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
     case PageId::Arp:
         return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},
                 Binding {Kind::ArpOctaves, 0, 1, 4, track.arp_octaves}};

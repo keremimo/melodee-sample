@@ -239,9 +239,9 @@ void Shell::press(Button b, bool pressed) {
         break;
     case Button::TapTempo:
         if (ui.shift) { // Shift: the metronome, Off -> On -> Rec (only while Seq Record)
-            context_.set_click(context_.project.click + 1u);
+            context_.set_click(context_.ui.settings.click + 1u);
             static const char* const modes[] {"Metronome off", "Metronome on", "Metronome: rec"};
-            context_.notice(modes[context_.project.click % 3]);
+            context_.notice(modes[context_.ui.settings.click % 3]);
             break;
         }
         context_.tap_tempo();

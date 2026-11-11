@@ -41,9 +41,9 @@ void tempo_draw(Paint& p, const Snapshot& s) {
     float bw = (zone::width - 2 * zone::pad - 12 - (beats - 1) * 5.0f) / beats;
     for (unsigned b = 0; b < beats; ++b) p.fill(x + b * (bw + 5), y + 52, bw, 6, b == beat ? colour::text : colour::line, 3);
     p.text("TAPS", x, y + 78, 40, 14, caps_text(colour::mid));
-    if (s.project.click) {
+    if (s.ui.settings.click) {
         auto style = caps_text(colour::text);
-        const char* text = s.project.click == 2 ? "CLICK REC" : "CLICK ON";
+        const char* text = s.ui.settings.click == 2 ? "CLICK REC" : "CLICK ON";
         float cw = p.width(text, style) + 9;
         p.fill(zone::width - zone::pad - 6 - cw, y + 78, cw, 12, colour::surf, 3);
         p.text(text, zone::width - zone::pad - 6 - cw, y + 78, cw, 12, style, juce::Justification::centred);
@@ -52,7 +52,7 @@ void tempo_draw(Paint& p, const Snapshot& s) {
 void tempo_soft(Context& c, int key) {
     if (key == 0) c.set_tempo(int(c.tempo_now()) / 2);
     if (key == 2) c.set_tempo(int(c.tempo_now()) * 2);
-    if (key == 1) c.set_click(c.project.click + 1u);
+    if (key == 1) c.set_click(c.ui.settings.click + 1u);
 }
 void tempo_wheel(Context& c, int delta) { c.set_tempo(int(c.tempo_now()) + delta); }
 

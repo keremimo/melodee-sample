@@ -32,7 +32,9 @@ Header system_header(const Snapshot& s) {
 }
 
 void settings_draw(Paint& p, const Snapshot& s) {
-    frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 1, colour::text}, system_header(s));
+    Header header = header_of(s);
+    header.right.push_back(label("ALL PROJECTS")); // not the open project's: they stay when another loads
+    frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 1, colour::text}, header);
     const auto& set = s.ui.settings;
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y + 0.5f;
     constexpr float rh = 18;      // seven rows and the audio line in the picture's 148 px

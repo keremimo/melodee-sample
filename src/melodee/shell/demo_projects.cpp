@@ -3,6 +3,7 @@
 #include "melodee/shell/demo_projects.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/model/scales.h"
 #include <cstdio>
 #include <cstring>
 
@@ -100,9 +101,19 @@ void broken_tape(Project& project, PatternBank& patterns) {
 }
 } // namespace
 
+// A new project: one empty kit on track 1, every note in reach.
 void starting_project(Project& project, PatternBank& patterns) {
     project = Project {};
     std::snprintf(project.name, sizeof(project.name), "Untitled");
+    project.tempo = 1200;
+    project.root = 0; project.scale = chromatic_scale; // C Chromatic
+    load_sound(project.tracks[0], EngineKind::Sampler, 0); // Sample Select fills its pads
+    patterns = PatternBank {};
+}
+
+namespace {
+void melodee_starter(Project& project, PatternBank& patterns) {
+    project = Project {};
     project.tempo = 1200;
     load_sound(project.tracks[0], EngineKind::Prophet, 1);  // FUNK BASS II
     load_sound(project.tracks[1], EngineKind::Prophet, 5);  // SOFT PAD
@@ -125,6 +136,7 @@ void starting_project(Project& project, PatternBank& patterns) {
     for (unsigned st : {4u, 12u}) note(beat, st, snare, 110, 1);
     for (unsigned st = 2; st < 16; st += 4) note(beat, st, closed, 90, 1);
 }
+} // namespace
 
 const char* demo_name(unsigned n) {
     static const char* names[demo_count] {"Melodee Starter", "Night Drive", "Broken Tape"};
@@ -135,7 +147,7 @@ void make_demo(unsigned n, Project& project, PatternBank& patterns) {
     switch (n % demo_count) {
     case 1: night_drive(project, patterns); break;
     case 2: broken_tape(project, patterns); break;
-    default: starting_project(project, patterns); std::snprintf(project.name, sizeof(project.name), "Melodee Starter"); break;
+    default: melodee_starter(project, patterns); std::snprintf(project.name, sizeof(project.name), "Melodee Starter"); break;
     }
 }
 

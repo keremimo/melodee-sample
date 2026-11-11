@@ -185,8 +185,9 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
   (layouts, octave on −/+); Shift + K3 transposes the pads −12..+12 (kept
   with the track). Push opens Edit.
 - **Pads** (Sample again on a kit): the bank as the pads sit, the last pad
-  with its length, play mode and waveform; K1 pitch, K2 level, K3 pan; Push
-  opens the map of the ten sample pages.
+  with its length, play mode and waveform; K1 pitch, K2 level, K3 pan;
+  Shift + K1 and K2 the project's root and scale; Push opens the map of the
+  ten sample pages.
 - **Mix** (Sample a third time): eight strips at a time (the half with the
   selected track), level, pan, mute and solo,
   the send and its bus, meters. The fader is the selected track's level here.
@@ -202,7 +203,8 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
 - **16 Levels**: on a kit the last pad on all sixteen pads, on a synth its
   last note. Velocity (8–127), Filter (kit pads: pads 1–8 up to the pad's
   cutoff, 9–16 on to the top), Tune (the original on pad 4), and Melodee's
-  Scale. Shift + 16 Levels or B1–B3 pick the type.
+  Scale, whose K1 and K2 are the project's root and scale (elsewhere on this
+  page Shift + K1 and K2). Shift + 16 Levels or B1–B3 pick the type.
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
   (Shift: their triplets); straight rates swing with the project. It is the
   track's arp; a kit repeats the held pad.
@@ -210,7 +212,8 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
   rate 1/4 .. 1/32T, K3 octaves, −/+ gate, B3 Hold. **Chord** (B1 on Arp):
   one pad a chord from the scale (Triad, Dia 7, Sus2, Sus4, Power, Dia 9;
   Close, Open, Drop 2, Spread; inversions).
-- **Tempo** (hold Tap Tempo): K1 tempo, K2 swing, K3 click level; B1 halves,
+- **Tempo** (hold Tap Tempo): K1 tempo, K2 swing, K3 click level, Shift + K1
+  and K2 the project's root and scale from any track; B1 halves,
   B3 doubles, B2 the metronome Off / On / Rec; the wheel by 0.1, −/+ by 1.
 
 ### Looper
@@ -525,7 +528,8 @@ while following.
   The base does the lending (`drivers/card_share.h`, HARDWARE.md "SD card
   access"); the page is `pages/card_access_page.cpp`, the controls
   `shell/card_access.*`.
-- **Settings** (B2 on Project): palette, pad response (soft, medium, hard,
+- **Settings** (B2 on Project; Melodee's, the same for every project, as is
+  the metronome): palette, pad response (soft, medium, hard,
   full level), pad pressure on / off, pad lights, Knob / Knob FX / Fader
   takeover (Pickup, Scaled, Instant; Scaled, Scaled, Pickup by default),
   screen brightness, sample rate (44.1, 48, 96 kHz) and audio buffer (256,
@@ -699,7 +703,7 @@ tempo, stretched, fitting, pending). The runtime's own
 `src/melodee/tools.cpp` (`cardrow`, `cardaccess`, `cardejected`,
 `cardlocked`, `cardnocomputer`, `cardnone`, `miditrack` and `midipanic`
 among them).
-`--melodee-sound FILE.wav` renders two bars of the starting project and
+`--melodee-sound FILE.wav` renders two bars of the Melodee Starter demo and
 checks the level. `./build.sh` runs both. The preview also checks text:
 anything asked for under 11 px, wider than its box, or a header whose two
 sides meet prints a `MELODEE_TEXT` line, and any such line fails the run.

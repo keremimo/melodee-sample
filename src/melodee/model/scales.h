@@ -10,14 +10,16 @@
 namespace melodee {
 
 struct Scale { const char* name; uint16_t mask; }; // bit n: n semitones above the root
-inline const std::array<Scale, 12>& scales() {
-    static const std::array<Scale, 12> list {{
+// New scales go on the end: project files keep the index.
+inline const std::array<Scale, 13>& scales() {
+    static const std::array<Scale, 13> list {{
         {"Major", 0xAB5}, {"Minor", 0x5AD}, {"Dorian", 0x6AD}, {"Phrygian", 0x5AB}, {"Lydian", 0xAD5},
         {"Mixolydian", 0x6B5}, {"Locrian", 0x56B}, {"Harm minor", 0x9AD}, {"Mel minor", 0xAAD},
-        {"Major pent", 0x295}, {"Minor pent", 0x4A9}, {"Blues", 0x4E9},
+        {"Major pent", 0x295}, {"Minor pent", 0x4A9}, {"Blues", 0x4E9}, {"Chromatic", 0xFFF},
     }};
     return list;
 }
+constexpr uint8_t chromatic_scale = 12; // scales()'s index; what a new project starts in
 inline const char* note_letter(unsigned pitch_class) {
     static const char* names[] {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
     return names[pitch_class % 12];
