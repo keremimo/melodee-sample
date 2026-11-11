@@ -729,6 +729,21 @@ void sampler_kit() {
         for (unsigned b = 0; b < 400; ++b) cloud.render_stereo(l.data(), r.data(), 128);
         CHECK(!cloud.sounding());
     }
+    // A one shot's cloud: one press sounds about as long as the pad plays, then stops, without a release.
+    {
+        SamplerEngine cloud;
+        cloud.set_samples(&table);
+        PadSound pad; pad.sample = 3; pad.start = 0; pad.end = 4410; pad.play = PadPlay::OneShot;
+        cloud.set_pad(2, pad);
+        cloud.set_param(sampler::Cloud, 1); cloud.set_param(sampler::Density, 60);
+        cloud.note_on(int(sampler_first_note) + 2, 120);
+        cloud.note_off(int(sampler_first_note) + 2);
+        std::vector<float> l(128, 0), r(128, 0);
+        cloud.render_stereo(l.data(), r.data(), 128);
+        CHECK(cloud.sounding());
+        for (unsigned b = 0; b < 400; ++b) cloud.render_stereo(l.data(), r.data(), 128);
+        CHECK(!cloud.sounding());
+    }
     // Level: a centred pad plays -3 dB a side (constant power, as the stock MPC measured over USB);
     // hard left is the whole sample on the left. Mono and stereo files alike.
     {

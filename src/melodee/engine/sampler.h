@@ -105,6 +105,7 @@ private:
         uint32_t start = 0, end = 0;
         bool reverse = false, held = false, gate = false, choked = false, cloud = false;
         double next_grain = 0, scan = 0; // Cloud: samples to the next grain; how far the place has moved
+        double life = 0; // Cloud, a one shot: output frames left of the time the pad would play for (0: until let go or hit again)
         // Stretch (Follow by Beats or Tones, or a pitch kept to length): `place`
         // moves through the sample at `advance`; taps read from where they
         // began at `step` (the pitch), each faded over `window`, a new one every `hop`.

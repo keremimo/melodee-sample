@@ -110,6 +110,9 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.since_hop = v.hop; // a tap at once
     }
     v.held = true; v.gate = sound.play == PadPlay::Gate && !(zone && zone->one_shot); v.group = sound.group;
+    // A cloud never reads to its region's end, so a one shot's cloud lasts as
+    // long as the pad would play, then lets go; a gate ends on release, a loop when hit again.
+    if (v.cloud && !v.gate && !v.loop) v.life = std::max(1.0, frames / std::max(advance, 1e-6));
     v.age = ++clock;
     // Offset: up to a sixteenth of the project's tempo after the hit.
     v.wait = pad < int(sampler_pads) ? uint32_t(sound.offset * (dsp::sample_rate() * 15 / (tempo / 10.0)) / 100) : 0;
@@ -511,6 +514,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     for (auto& v : voices) {
         if (v.pad < 0 || !v.cloud) continue;
         for (unsigned f = 0; f < frames; ++f) v.env.next(v.shape);
+        if (v.life > 0 && (v.life -= frames) <= 0) { v.env.gate(false); v.filter_env.gate(false); }
         if (!v.env.active() || (v.choked && (v.fade -= 0.25f) <= 0)) { v.pad = -1; continue; }
         v.scan += (p[Scan] - 50) / 50.0 * v.step * frames; // forwards or backwards at up to its own speed
         v.next_grain -= frames;
