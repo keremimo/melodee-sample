@@ -119,8 +119,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
                 if (!context_.kit_from.empty() && context_.kit_from == loaded->path) // Load Kit: only its kit, onto the selected track
                     context_.load_kit(*project, std::filesystem::path(loaded->path).stem().string());
+                else if (loaded->imported) { context_.switch_to(*project, *bank, {}); context_.dirty = true; context_.notice(loaded->note); } // not saved yet: the .xpj stays as it is
                 else context_.switch_to(*project, *bank, loaded->path);
-            }
+            } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
         if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) leave.store(true); // loop files too
@@ -175,7 +176,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         { // Stage: the button and page in view, the card the wheel edits, a sound waiting to load
             const auto& t = project_->tracks[ui_.track];
             auto at = stage_at(ui_, t);
-            stage_bits.store(at.group | at.sub << 4 | unsigned(stage_focus(ui_)) << 8 | unsigned(ui_.preset_due != 0) << 12
+            stage_bits.store(at.group | at.sub << 4 | unsigned(stage_focus(ui_, t)) << 8 | unsigned(ui_.preset_due != 0) << 12
                              | unsigned(ui_.tracks_half) << 13 | unsigned(t.preset & 0x3ff) << 16 | unsigned(t.bank % sampler_banks) << 26,
                              std::memory_order_relaxed);
             std::lock_guard<std::mutex> text(text_lock);

@@ -4,6 +4,7 @@
 #include "drivers/platform.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
+#include "melodee/shell/mpc_project.h"
 #include "runtime/app.h"
 #include <algorithm>
 #include <cstdlib>
@@ -17,6 +18,12 @@ namespace melodee {
 namespace fs = std::filesystem;
 namespace {
 constexpr const char* extension = ".mldp";
+// The row at the top folder that shows the stock app's own folder on the card. Nothing is ever written there.
+constexpr const char* stock_folder = "MPC Sample";
+
+std::string stock_projects(const std::string& root) { return (fs::path(root).parent_path().parent_path() / "MPC-Sample" / "Projects").string(); }
+// Where a project or folder made while `folder` is in view goes.
+std::string write_dir(const std::string& root, const std::string& folder) { return folder.empty() || folder == stock_folder ? root : root + "/" + folder; }
 
 std::vector<uint8_t> read_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
@@ -51,7 +58,7 @@ void ProjectStore::save_sound(const std::string& name, std::vector<uint8_t> byte
 
 std::string ProjectStore::named_path(const std::string& name) const {
     std::string dir;
-    { std::lock_guard<std::mutex> guard(lock); dir = known.root.empty() ? std::string() : known.root + (known.folder.empty() ? "" : "/" + known.folder); }
+    { std::lock_guard<std::mutex> guard(lock); dir = known.root.empty() ? std::string() : write_dir(known.root, known.folder); }
     if (dir.empty() || name.empty()) return {};
     std::error_code error;
     for (unsigned n = 1; n < 1000; ++n) {
@@ -89,7 +96,7 @@ void ProjectStore::view(View& out) const { std::lock_guard<std::mutex> guard(loc
 
 std::string ProjectStore::free_path(const std::string& base) const {
     std::string dir;
-    { std::lock_guard<std::mutex> guard(lock); dir = known.root.empty() ? std::string() : known.root + (known.folder.empty() ? "" : "/" + known.folder); }
+    { std::lock_guard<std::mutex> guard(lock); dir = known.root.empty() ? std::string() : write_dir(known.root, known.folder); }
     if (dir.empty()) return {};
     std::error_code error;
     for (unsigned n = 1; n < 1000; ++n) {
@@ -141,7 +148,7 @@ void ProjectStore::service(Hardware& hardware) {
             scan_sounds();
             scan();
             if (!started && !start.empty() && fs::exists(start, error)) {
-                auto* l = new LoadedProject {start, {}, read_file(start)};
+                auto* l = new LoadedProject {start, {}, read_file(start), false, {}};
                 if (!loaded.push(l)) delete l;
             }
             started = true;
@@ -167,6 +174,31 @@ bool is_loops_folder(const fs::path& dir, const char* extension) {
     if (name.size() <= tail.size() || name.compare(name.size() - tail.size(), tail.size(), tail)) return false;
     std::error_code error;
     return fs::exists(dir.parent_path() / (name.substr(0, name.size() - tail.size()) + extension), error);
+}
+// An MPC project's samples, beside its .xpj: not a folder of projects.
+bool is_hidden_folder(const fs::path& dir, const char* extension) {
+    const std::string tail = "_[ProjectData]", name = dir.filename().string();
+    return is_loops_folder(dir, extension) || (name.size() > tail.size() && !name.compare(name.size() - tail.size(), tail.size(), tail));
+}
+unsigned projects_in(const fs::path& dir, const char* extension) {
+    unsigned count = 0;
+    std::error_code error;
+    for (const auto& inner : fs::directory_iterator(dir, error)) count += inner.path().extension() == extension || is_mpc_project(inner.path().string());
+    return count;
+}
+// An MPC project read and turned into a Melodee project's bytes (on the service thread: it takes a moment).
+void import_mpc(LoadedProject& l) {
+    auto project = std::make_unique<Project>();
+    auto patterns = std::make_unique<PatternBank>();
+    MpcImport report;
+    l.error = import_mpc_project(l.bytes, l.path, *project, *patterns, report);
+    l.bytes.clear();
+    if (!l.error.empty()) { l.note = l.error; return; }
+    l.bytes = save_project(*project, *patterns);
+    l.imported = true;
+    l.note = "Opened a copy of " + fs::path(l.path).stem().string();
+    if (report.missing) l.note = std::to_string(report.missing) + " samples missing";
+    else if (report.over_limit) l.note += ", some left out";
 }
 void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
     std::error_code error;
@@ -200,8 +232,9 @@ void ProjectStore::run(Request& r) {
         break;
     }
     case Request::Kind::Load: {
-        auto* l = new LoadedProject {r.path, {}, read_file(r.path)};
+        auto* l = new LoadedProject {r.path, {}, read_file(r.path), false, {}};
         if (l->bytes.empty()) l->error = "Could not read";
+        else if (is_mpc_project(r.path)) import_mpc(*l);
         if (!loaded.push(l)) delete l;
         return;
     }
@@ -216,7 +249,7 @@ void ProjectStore::run(Request& r) {
         fs::remove_all(loops_of(r.path), error);
         break;
     case Request::Kind::NewFolder: {
-        auto dir = root + (folder.empty() ? "" : "/" + folder);
+        auto dir = write_dir(root, folder);
         fs::create_directories(dir, error);
         for (unsigned n = 1; n < 1000; ++n)
             if (!fs::exists(dir + "/Folder " + std::to_string(n), error)) { fs::create_directory(dir + "/Folder " + std::to_string(n), error); break; }
@@ -289,25 +322,35 @@ void ProjectStore::write_settings(std::error_code& error) {
 void ProjectStore::scan() {
     std::vector<ProjectEntry> entries;
     std::error_code error;
-    auto dir = root + (folder.empty() ? "" : "/" + folder);
+    auto dir = folder == stock_folder ? stock_projects(root) : root + (folder.empty() ? "" : "/" + folder);
     if (!root.empty() && fs::is_directory(dir, error)) {
         for (const auto& item : fs::directory_iterator(dir, error)) {
             ProjectEntry e;
             e.path = item.path().string();
             e.name = item.path().stem().string();
             if (item.is_directory(error)) {
-                if (is_loops_folder(item.path(), extension)) continue; // a project's loops
+                if (is_hidden_folder(item.path(), extension)) continue; // a project's loops or samples
                 e.kind = ProjectEntry::Kind::Folder;
-                for (const auto& inner : fs::directory_iterator(item.path(), error)) e.projects += inner.path().extension() == extension;
+                e.projects = projects_in(item.path(), extension);
             } else if (item.path().extension() == extension) {
                 e.modified = int64_t(fs::last_write_time(item.path(), error).time_since_epoch().count());
                 // Its size in tracks and its tempo, read from the file itself.
                 auto project = std::make_unique<Project>();
                 auto patterns = std::make_unique<PatternBank>();
                 if (load_project(read_file(e.path), *project, *patterns).empty()) { e.tracks = project->used_tracks(); e.tempo = project->tempo; }
+            } else if (is_mpc_project(e.path)) {
+                e.modified = int64_t(fs::last_write_time(item.path(), error).time_since_epoch().count()); // read only when opened: 10 MB of JSON
             } else {
                 continue;
             }
+            entries.push_back(std::move(e));
+        }
+        if (folder.empty() && projects_in(stock_projects(root), extension)) {
+            ProjectEntry e;
+            e.kind = ProjectEntry::Kind::Folder;
+            e.name = stock_folder;
+            e.path = stock_projects(root);
+            e.projects = projects_in(e.path, extension);
             entries.push_back(std::move(e));
         }
         std::sort(entries.begin(), entries.end(), [](const ProjectEntry& a, const ProjectEntry& b) {
@@ -320,7 +363,7 @@ void ProjectStore::scan() {
     if (!root.empty()) {
         std::function<void(const fs::path&, const std::string&, unsigned)> walk = [&](const fs::path& at, const std::string& rel, unsigned depth) {
             for (const auto& item : fs::directory_iterator(at, error)) {
-                if (!item.is_directory(error) || folders.size() >= 128 || is_loops_folder(item.path(), extension)) continue;
+                if (!item.is_directory(error) || folders.size() >= 128 || is_hidden_folder(item.path(), extension)) continue;
                 auto name = rel.empty() ? item.path().filename().string() : rel + "/" + item.path().filename().string();
                 folders.push_back(name);
                 if (depth < 4) walk(item.path(), name, depth + 1);

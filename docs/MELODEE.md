@@ -536,6 +536,17 @@ while following.
   Duplicate, Move to folder, New folder here, Open at start, Delete (asks
   again); on another Load and **Load kit (no patterns)** first (its first
   kit onto the selected track, one undo). B2 Settings, B3 About.
+- **MPC Sample projects** (`.xpj`): listed beside Melodee's, wherever they
+  sit under `Melodee/Projects`; the row **MPC Sample** at the top opens the
+  stock app's own `MPC-Sample/Projects`. Their sheet has Load and Load kit
+  only, and the `.xpj` and its `_[ProjectData]` folder are only read: Load
+  opens a copy, unsaved, and Save makes a `.mldp` that plays the samples
+  from where they are. Each Drum track becomes a kit track and each
+  sequence that numbered pattern, with its tempo. Carried over: pad regions,
+  tune, volume, pan, play type, mono, mute group, envelope, loop, Warp, and
+  the filter types stock's Sample Mode offers. Not carried over: Pad FX and
+  inserts, sends, velocity layers past the first, and Songs. A project past
+  16 tracks, 16 sequences or 64 samples loses the rest and says so.
 - **SD card access** (Project, under Demos; as the MPC's): the card goes to
   a computer over USB-C as a drive. The page shows where the card is (the
   MPC or the computer) and what to do: connect, then eject the drive on the

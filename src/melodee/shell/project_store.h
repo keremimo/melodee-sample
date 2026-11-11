@@ -25,11 +25,14 @@ struct ProjectEntry {
     std::string name, path;
     unsigned tracks = 0, tempo = 0, projects = 0; // a project's tracks and tempo (tenths); a folder's projects
     int64_t modified = 0;
+    bool mpc() const { return kind == Kind::Project && path.size() > 4 && !path.compare(path.size() - 4, 4, ".xpj"); } // the MPC's own (shell/mpc_project.h)
 };
 
 struct LoadedProject {
     std::string path, error;
     std::vector<uint8_t> bytes;
+    bool imported = false; // from an MPC project: the bytes are a Melodee project, with no file of its own yet
+    std::string note;      // what the import did, or why it could not
 };
 
 class ProjectStore {

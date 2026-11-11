@@ -32,7 +32,8 @@ const juce::Colour amber = colour::amber;
 enum Action { Load, Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete, LoadKit };
 
 // The sheet's rows for an entry: the open project's, or another's with Load first.
-unsigned actions(bool open, std::array<Action, 8>& out) {
+unsigned actions(bool open, std::array<Action, 8>& out, bool mpc = false) {
+    if (mpc) { out[0] = Load; out[1] = LoadKit; return 2; } // the MPC's own file is only ever read
     if (open) { out = {Save, SaveAsNew, Rename, Duplicate, MoveTo, NewFolder, OpenAtStart, Delete}; return 8; }
     out = {Load, LoadKit, Duplicate, Rename, MoveTo, NewFolder, OpenAtStart, Delete};
     return 8;
@@ -222,7 +223,7 @@ void draw(Paint& p, const Snapshot& s) {
             folder_icon(p, x + 10, cy);
             meta = juce::String(e->projects) + (e->projects == 1 ? " PROJECT" : " PROJECTS");
         } else {
-            meta = juce::String(e->tracks) + (e->tracks == 1 ? " TRACK" : " TRACKS") + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(e->tempo / 10) + " BPM";
+            meta = e->mpc() ? juce::String("MPC") : juce::String(e->tracks) + (e->tracks == 1 ? " TRACK" : " TRACKS") + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(e->tempo / 10) + " BPM";
         }
         if (open) meta = {}; // the header and Stage say what the open project holds; its row says OPEN
         auto meta_style = caps_text(open ? colour::text : colour::mid);
@@ -288,11 +289,12 @@ void draw(Paint& p, const Snapshot& s) {
         bool open = unsaved || e->path == s.project_path;
         juce::String title = unsaved ? juce::String(s.project.name) : juce::String(e->name);
         std::array<Action, 8> list {};
-        unsigned n = actions(open, list);
+        unsigned n = actions(open, list, e && e->mpc());
         MenuSheet m;
         m.title = title; m.accent = colour::text;
         if (unsaved) { m.detail = "NOT SAVED"; m.detail_colour = amber; }
         else if (open && s.dirty) { m.detail = "UNSAVED CHANGES"; m.detail_colour = amber; }
+        else if (e && e->mpc()) { m.detail = "OPENS AS A COPY"; m.detail_colour = colour::mid; }
         for (unsigned k = 0; k < n; ++k) {
             bool off = false;
             juce::String name = action_name(list[k]);
@@ -323,12 +325,15 @@ void act(Context& c) {
     if ((!e && !unsaved) || !c.store) return;
     bool open = unsaved || e->path == c.project_path;
     std::array<Action, 8> list {};
-    unsigned n = actions(open, list);
+    unsigned n = actions(open, list, !unsaved && e && e->mpc());
     auto action = list[c.ui.sheet_row % n];
     if (action != Delete) c.ui.delete_armed = false;
     if (unsaved && (action == Duplicate || action == OpenAtStart || action == Delete || action == MoveTo)) return;
     switch (action) {
-    case Load: c.store->load(e->path); break;
+    case Load:
+        if (e->mpc()) c.notice("Opening " + e->name);
+        c.store->load(e->path);
+        break;
     case LoadKit: c.ui.sheet_open = false; c.load_kit_file(e->path, e->name); return;
     case Save:
         if (unsaved) { c.name_project(false); return; } // a name first
@@ -379,7 +384,7 @@ void wheel(Context& c, int delta) {
         auto v = view_of(c);
         const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
         std::array<Action, 8> list {};
-        unsigned n = actions(on_unsaved(c.ui.project_cursor, c.project_path) || (e && e->path == c.project_path), list);
+        unsigned n = actions(on_unsaved(c.ui.project_cursor, c.project_path) || (e && e->path == c.project_path), list, e && e->mpc());
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(n) - 1));
         c.ui.delete_armed = false;
         return;

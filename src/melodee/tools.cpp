@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/shell/mpc_project.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/prophet_params.h"
@@ -1102,6 +1103,41 @@ int sound(const std::string& path) {
 
 } // namespace
 
+// What an MPC Sample project becomes, for the build's checks and a look at a real file.
+static int mpc_import(const char* path) {
+    std::ifstream file(path, std::ios::binary);
+    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
+    auto project = std::make_unique<Project>();
+    auto patterns = std::make_unique<PatternBank>();
+    MpcImport report;
+    auto began = std::chrono::steady_clock::now();
+    auto error = import_mpc_project(bytes, path, *project, *patterns, report);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
+    if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
+    std::printf("name=%s tracks=%u sequences=%u pads=%u notes=%u over_limit=%u missing=%u tempo=%u seq_tempo=%d signature=%u/%u ms=%lld\n", project->name, report.tracks,
+                report.sequences, report.pads, report.notes, report.over_limit, report.missing, project->tempo, project->seq_tempo,
+                project->time_signature().beats, project->time_signature().unit, (long long)ms);
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& track = project->tracks[t];
+        if (!track.used()) continue;
+        std::printf("track %u name=%s level=%u pan=%d mute=%d pattern=%u\n", t, track.name, track.mix.level, track.mix.pan, track.mix.mute, track.pattern);
+        for (unsigned n = 0; n < sampler_pads; ++n) {
+            const auto& pad = track.pads[n];
+            if (!pad.used()) continue;
+            char label[4];
+            pad_label(n, label);
+            std::printf("pad %s file=%s start=%u end=%u level=%u pan=%d pitch=%d play=%d mono=%d group=%u filter=%s cutoff=%u warp=%u attack=%u decay=%u loop=%d\n", label, project->samples[pad.sample].name,
+                        pad.start, pad.end, pad.level, pad.pan, pad.pitch, int(pad.play), pad.mono, pad.group, pad_filter_name(pad.filter), pad.cutoff, pad.warp, pad.attack, pad.decay, pad.loop);
+        }
+        for (unsigned p = 0; p < pattern_count; ++p) {
+            const auto& pattern = patterns->at[t][p];
+            if (pattern.events.empty()) continue;
+            std::printf("pattern %u %u length=%u notes=%zu first=%u:%u:%u\n", t, p, pattern.length, pattern.events.size(), pattern.events[0].tick, pattern.events[0].key, pattern.events[0].velocity);
+        }
+    }
+    return 0;
+}
+
 std::optional<int> run_tool(int argc, char** argv) {
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-preview")) {
         std::vector<std::string> names(argv + 3, argv + argc);
@@ -1109,6 +1145,7 @@ std::optional<int> run_tool(int argc, char** argv) {
     }
     // --self-test is what device.py and the SD boot run before stopping the stock app.
     if (argc == 3 && (!std::strcmp(argv[1], "--melodee-sound") || !std::strcmp(argv[1], "--self-test"))) return sound(argv[2]);
+    if (argc == 3 && !std::strcmp(argv[1], "--mpc-import")) return mpc_import(argv[2]);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return bench(unsigned(std::max(1, std::atoi(argv[2]))), names);
