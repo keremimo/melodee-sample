@@ -61,8 +61,7 @@ selected track. What you see depends on what the track is.
 - The pads play the track. −/+ change the octave (a kit's bank).
 
 A new project has one empty kit on track 1, in C Chromatic; the other tracks
-are empty until you give them an engine. The Melodee Starter demo has synths
-and a 909 ready to play.
+are empty until you give them an engine.
 
 **A synth: PRESET (B1).** K1 or the wheel walks the sounds; the one you
 stop on loads a moment later. K2 picks the list (all, starred, recent), K3

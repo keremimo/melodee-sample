@@ -618,9 +618,8 @@ while following.
 
 - **Project** (Shift + Pad 16): files (`.mldp`) in `Melodee/Projects` on
   the card, in folders. Rows: New project (asks first: B3 DO IT, B1
-  CANCEL), the open project while it has no file, then at the top **Demos**
-  (Melodee Starter, Night Drive, Broken Tape, made in code, opened unsaved)
-  and **SD card access**, then folders (Push in, Shift + Push out) and
+  CANCEL), the open project while it has no file, then at the top **SD card
+  access**, then folders (Push in, Shift + Push out) and
   projects with their tracks and tempo. K2 jumps, K3 sorts. Push on a
   project opens its sheet: on the open one Save, Save as new, Rename,
   Duplicate, Move to folder, New folder here, Open at start, Delete (asks
@@ -637,7 +636,7 @@ while following.
   the filter types stock's Sample Mode offers. Not carried over: Pad FX and
   inserts, sends, velocity layers past the first, and Songs. A project past
   16 tracks, 16 sequences or 64 samples loses the rest and says so.
-- **SD card access** (Project, under Demos; as the MPC's): the card goes to
+- **SD card access** (Project, at the top; as the MPC's): the card goes to
   a computer over USB-C as a drive. The page shows where the card is (the
   MPC or the computer) and what to do: connect, then eject the drive on the
   computer, then **B1** brings it back (Projects and Samples are read again,
@@ -883,7 +882,7 @@ Chop (`melodee_chop_*`); the browser (`melodee_files`,
 `melodee_midi_panics`; MIDI Config's rows
 `melodee_midi_port` .. `melodee_midi_row`); undo and projects
 (`melodee_undo`, `melodee_redo`, `melodee_undo_last`, `melodee_seq_held`,
-`melodee_map`, `melodee_demos`, `melodee_gesture`, `melodee_engine`); SD
+`melodee_map`, `melodee_gesture`, `melodee_engine`); SD
 card access (`melodee_card` 0 home, 1 lending, 2 lent, 3 returning;
 `melodee_card_note`, the reason a lend did not start, `CardNote`;
 `melodee_card_ejected`, `melodee_card_locked`); the Looper (`melodee_looper`,
@@ -902,7 +901,8 @@ percent of a block, `none` when there are none). The runtime's own
 `src/melodee/tools.cpp` (`cardrow`, `cardaccess`, `cardejected`,
 `cardlocked`, `cardnocomputer`, `cardnone`, `miditrack` and `midipanic`
 among them).
-`--melodee-sound FILE.wav` renders two bars of the Melodee Starter demo and
+`--melodee-sound FILE.wav` renders two bars of a starter project (synths, a
+bass line, a 909 beat) and
 checks the level. `./build.sh` runs both. The preview also checks text:
 anything asked for under 11 px, wider than its box, or a header whose two
 sides meet prints a `MELODEE_TEXT` line, and any such line fails the run.

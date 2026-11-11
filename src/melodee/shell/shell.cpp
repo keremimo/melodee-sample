@@ -268,7 +268,6 @@ void Shell::press(Button b, bool pressed) {
     case Button::TopRight: if (!repeat_soft(context_, 2)) page.soft(context_, 2); break;
     case Button::WheelPush:
         if (ui.shift && ui.page == PageId::Song) song_marker(context_);
-        else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && ui.project_demos) { ui.project_demos = false; ui.project_cursor = 0; } // out of DEMOS
         else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
             // up a folder
             auto& f = context_.project_folder;
@@ -575,7 +574,7 @@ std::string Shell::summary() const {
            " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none"));
 }
 
-// Phase 10: undo (depth, redo waiting, the last step's name), Seq held, the sampler map, DEMOS, a pot gesture open.
+// Phase 10: undo (depth, redo waiting, the last step's name), Seq held, the sampler map, a pot gesture open.
 std::string Shell::phase10_summary() const {
     uint32_t b = phase10_bits.load(std::memory_order_relaxed);
     std::string what;
@@ -583,7 +582,7 @@ std::string Shell::phase10_summary() const {
     for (auto& ch : what) if (ch == ' ') ch = '_';
     return " melodee_undo=" + std::to_string(b & 0xff) + " melodee_redo=" + std::to_string((b >> 8) & 1) +
            " melodee_undo_last=" + (what.empty() ? std::string("none") : what) + " melodee_seq_held=" + std::to_string((b >> 9) & 1) +
-           " melodee_map=" + std::to_string((b >> 10) & 1) + " melodee_demos=" + std::to_string((b >> 11) & 1) +
+           " melodee_map=" + std::to_string((b >> 10) & 1) +
            " melodee_gesture=" + std::to_string((b >> 12) & 1) + " melodee_song_clips=" + std::to_string((b >> 16) & 0xfff) +
            " melodee_engine=" + std::to_string(b >> 28);
 }

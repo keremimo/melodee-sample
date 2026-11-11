@@ -93,7 +93,7 @@ Things the remote cannot hear or move. Tick them off here when tried.
 - [ ] Phase 10b: by hand: the pads playing the selected track while the card is away; the USB cable pulled while lent and B1 pressed after (the card comes back); B1 again → B3 "Take the card back anyway?" while the computer still has the drive (the computer complains, the card mounts on the MPC).
 - [ ] Phase 10: Seq + Sample by hand and eye: both pressed together (either first) light Seq and Sample blinking, the pads play the kit on Patterns by ear, Seq or Sample again goes back to launching patterns.
 - [ ] Phase 10: undo of pot turns by hand: a turn, a pause of under two seconds and another turn of the same pot is one step, a longer pause two; say if two seconds is too short or long, and if a step per press on the Song, chain, Knob FX and Chop pages is too fine.
-- [ ] Phase 10: the demos by ear (Night Drive's song through its markers, Broken Tape's swing and tape), and Load Kit's pads heard on a demo's track. "Project 3" (phase 10's scratch copy) was already gone from the card at phase 10b.
+- [ ] Phase 10: Load Kit's pads heard on the selected track (the demos are gone, 2026-11-11). "Project 3" (phase 10's scratch copy) was already gone from the card at phase 10b.
 - [ ] Phase 9: External MIDI (the 1/8" jacks) both ways with a cable or a device: notes in playing the selected track and a track by its own channel, notes and clock out (MIDI Config's Port External). Only USB-C was looped back (to the Mac).
 - [ ] Phase 9: SYNC OUT (CV/Sync Out) into a Volca / Pocket Operator / modular at 2 PPQN (Base 2, Division 1) and 24 PPQN: in time, and the pulse long enough (5 ms, or half the pulse at fast rates). The line was driven and counted (2092 pulses at 192 PPQN) but its voltage not seen.
 - [ ] Phase 9: Melodee following another device's MIDI clock by ear: in time, no drift over minutes, and how late against the master (about 9 ms of audio latency plus 3 ms by design; say if it should play early to make up for it).
@@ -282,7 +282,7 @@ wants a session of its own with the card unmounted and the link kept.
 - [x] Undo covers Song edits, mix, trim, chop and effect changes.
 - [x] Direct jumps to the sampler pages (page map like Edit's) instead of B1 / B3 one by one.
 - [x] Hold Seq + Sample: Patterns on screen, pads play the kit (both lights blink).
-- [ ] Later (from phase 10): a demo with a sampler kit (the demos are made in code, so they use the synths and the 909; a kit needs samples the build may ship).
+- [x] Demos removed (2026-11-11, Kerem): no DEMOS folder on Project, no `open_demo`, no `melodee_demos`; `shell/demo_projects.*` is now `shell/project_kits.*` (the starting project and Load Kit). Previews and `--melodee-sound` build their own starter project in `tools.cpp`.
 - [ ] Later (from phase 10): Load Kit from a project with more than one kit takes the first; a picker if Kerem wants the others.
 
 ### Phase 10b: SD card access, MELODEE.md

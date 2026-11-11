@@ -160,7 +160,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         store_seen = store_->generation();
         ProjectStore::View v;
         store_->view(v);
-        ui_.project_rows = uint16_t(v.entries.size() + (context_.project_path.empty() ? 2 : 1) + (context_.project_folder.empty() ? 2 : 0)); // + DEMOS, SD card access
+        ui_.project_rows = uint16_t(v.entries.size() + (context_.project_path.empty() ? 2 : 1) + (context_.project_folder.empty() ? 1 : 0)); // + SD card access
     }
     // After a switch, every sample slot loads again (or empties), a few each pass.
     while (library_ && context_.samples_to_load < sample_slots) {
@@ -293,9 +293,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             const auto* last = context_.edits.last();
             undo_text = last ? last->what : std::string();
         }
-        // phase 10: the undo history's depth and the redo side, Seq held, the sampler map, DEMOS, a gesture open
+        // phase 10: the undo history's depth and the redo side, Seq held, the sampler map, a gesture open
         phase10_bits.store(uint32_t(context_.edits.size()) | uint32_t(context_.edits.can_redo()) << 8 | uint32_t(ui_.seq_held) << 9
-                           | uint32_t(ui_.map_open) << 10 | uint32_t(ui_.project_demos) << 11 | uint32_t(bool(context_.gesture.edit)) << 12
+                           | uint32_t(ui_.map_open) << 10 | uint32_t(bool(context_.gesture.edit)) << 12
                            | uint32_t(project_->song.count & 0xfff) << 16 | uint32_t(project_->tracks[ui_.track].engine) << 28,
                            std::memory_order_relaxed);
         if (context_.gesture.edit && now - context_.gesture.last >= gesture_quiet_ms) context_.close_gesture(); // a pot left still

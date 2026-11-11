@@ -9,14 +9,11 @@
 // sheet; Move to folder opens a picker of every folder (the wheel picks,
 // Push or B3 moves, B1 backs out). The amber dot marks unsaved changes.
 // Parity phase 10, as the MPC's project page: New project asks first (B3 DO
-// IT, B1 CANCEL); DEMOS, at the top, holds the projects made in code
-// (shell/demo_projects.h), opened unsaved; Load kit on another project's
-// sheet takes only its kit (pads and samples, no patterns) onto the
-// selected track. Parity phase 10b: SD card access, under DEMOS, lends the
-// card to a computer (pages/card_access_page.cpp).
+// IT, B1 CANCEL); Load kit on another project's sheet takes only its kit
+// (pads and samples, no patterns) onto the selected track. Parity phase
+// 10b: SD card access, at the top, lends the card to a computer (pages/card_access_page.cpp).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
-#include "melodee/shell/demo_projects.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/ui/widgets.h"
 #include <cstdio>
@@ -44,35 +41,19 @@ const char* action_name(Action a) {
     return names[a];
 }
 
-// The rows: New project, the open project when it has no file yet, DEMOS (at the top folder), then the
-// folder's entries. In DEMOS the rows are the demos.
+// The rows: New project, the open project when it has no file yet, SD card access (at the top folder),
+// then the folder's entries.
 bool unsaved_row(const std::string& path) { return path.empty(); }
-unsigned demos_row(const std::string& path) { return unsaved_row(path) ? 2 : 1; }
-bool has_demos_row(const std::string& folder) { return folder.empty(); }
-unsigned first_entry(const std::string& path, const std::string& folder) { return demos_row(path) + (has_demos_row(folder) ? 2 : 0); }
+unsigned card_row(const std::string& path) { return unsaved_row(path) ? 2 : 1; }
+bool has_card_row(const std::string& folder) { return folder.empty(); }
+unsigned first_entry(const std::string& path, const std::string& folder) { return card_row(path) + (has_card_row(folder) ? 1 : 0); }
 const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const std::string& path, const std::string& folder) {
     unsigned first = first_entry(path, folder);
     return row >= first && row - first < v.entries.size() ? &v.entries[row - first] : nullptr;
 }
 bool on_unsaved(unsigned row, const std::string& path) { return unsaved_row(path) && row == 1; }
-bool on_demos(unsigned row, const std::string& path, const std::string& folder) { return has_demos_row(folder) && row == demos_row(path); }
-// SD card access (parity phase 10b), under DEMOS at the top, as the MPC's Project menu ends with it.
-bool on_card(unsigned row, const std::string& path, const std::string& folder) { return has_demos_row(folder) && row == demos_row(path) + 1; }
-// A demo's tracks and tempo, made once.
-struct DemoMeta { unsigned tracks = 0, tempo = 0; };
-const DemoMeta& demo_meta(unsigned n) {
-    static const auto metas = [] {
-        std::array<DemoMeta, demo_count> out {};
-        for (unsigned k = 0; k < demo_count; ++k) {
-            auto project = std::make_unique<Project>();
-            auto bank = std::make_unique<PatternBank>();
-            make_demo(k, *project, *bank);
-            out[k] = {project->used_tracks(), project->tempo};
-        }
-        return out;
-    }();
-    return metas[n % demo_count];
-}
+// SD card access (parity phase 10b), at the top, as the MPC's Project menu ends with it.
+bool on_card(unsigned row, const std::string& path, const std::string& folder) { return has_card_row(folder) && row == card_row(path); }
 
 // Move to folder: where a project can go (the top, then every folder by
 // name), all but the folder it is in.
@@ -116,49 +97,7 @@ void sort_view(ProjectStore::View& v, unsigned by_name) {
         return a.modified > b.modified;
     });
 }
-// DEMOS: the projects made in code; Push opens one's sheet (Load), Shift + Push or B1 comes back out.
-void draw_demos(Paint& p, const Snapshot& s) {
-    Header h = header_of(s);
-    h.left.push_back(pill("DEMOS"));
-    bool sheet = s.ui.sheet_open;
-    frame(p, s, sheet ? SoftKeys {{"BACK", "", "LOAD"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}
-                      : SoftKeys {{"BACK", "SETTINGS", "ABOUT"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
-    unsigned cursor = std::min<unsigned>(s.ui.project_cursor, demo_count - 1);
-    float x = zone::pad, w = zone::width - 2 * zone::pad;
-    for (unsigned n = 0; n < demo_count; ++n) {
-        float y = zone::picture_y + 0.5f + n * (list_row_h + list_row_gap), cy = y + list_row_h / 2;
-        bool current = n == cursor;
-        if (current) {
-            p.fill(x, y, w, list_row_h, colour::raised, 4);
-            p.g.saveState(); p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(list_row_h)));
-            p.fill(x, y, 8, list_row_h, colour::text, 4); p.g.restoreState();
-        }
-        const auto& meta = demo_meta(n);
-        juce::String text = juce::String(meta.tracks) + " TRACKS" + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(meta.tempo / 10) + " BPM";
-        auto meta_style = caps_text(colour::mid);
-        float mw = p.width(text, meta_style), right = x + w - 7 - mw;
-        p.text(text, right, y, mw + 1, list_row_h, meta_style);
-        p.circle(x + 15, cy, 2.5f, current ? colour::text : colour::mid);
-        p.text(demo_name(n), x + 27, y, right - x - 31, list_row_h, plain(current ? colour::text : colour::sec, type::body, Weight::Medium));
-    }
-    auto note = plain(colour::dim, type::small);
-    auto note_lines = p.wrap("Made in Melodee: they open unsaved, and Save gives them a name.", note, w, 2);
-    for (int l = 0; l < note_lines.size(); ++l)
-        p.text(note_lines[l], x, zone::picture_y + zone::picture_h - 30 + l * 14, w, 14, note);
-    if (sheet) {
-        MenuSheet m;
-        m.title = demo_name(cursor); m.accent = colour::text;
-        m.detail = s.dirty ? "UNSAVED CHANGES CLOSE" : "DEMO"; m.detail_colour = s.dirty ? amber : colour::mid;
-        m.rows[0] = {"Load", "", false, false, false};
-        m.count = 1; m.current = 0;
-        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
-        p.dim_zone(zone::knobs_y, zone::knobs_h);
-        wide_sheet(p, m, "DEMO", colour::text);
-    }
-}
-
 void draw(Paint& p, const Snapshot& s) {
-    if (s.ui.project_demos) { draw_demos(p, s); return; }
     auto v = s.projects;
     sort_view(v, s.ui.project_sort);
     Header h = header_of(s);
@@ -184,15 +123,6 @@ void draw(Paint& p, const Snapshot& s) {
             p.fill(x, y, 8, list_row_h, colour::text, 4); p.g.restoreState();
         }
         float tx = x + 27, cy = y + list_row_h / 2;
-        if (on_demos(n, s.project_path, s.project_folder)) { // the demos, as a folder
-            folder_icon(p, x + 10, cy);
-            juce::String meta = juce::String(demo_count) + " PROJECTS" + juce::String::fromUTF8(" \xc2\xb7 ") + "BUILT IN";
-            auto meta_style = caps_text(colour::mid);
-            float mw = p.width(meta, meta_style);
-            p.text(meta, x + w - 7 - mw, y, mw + 1, list_row_h, meta_style);
-            p.text("Demos", tx, y, w - mw - 40, list_row_h, plain(colour::sec, type::body, Weight::Medium));
-            continue;
-        }
         if (on_card(n, s.project_path, s.project_folder)) { // the card, to a computer over USB-C
             card_icon(p, x + 10, cy, colour::mid);
             auto meta_style = caps_text(colour::mid);
@@ -369,10 +299,6 @@ void move_here(Context& c) {
 }
 
 void wheel(Context& c, int delta) {
-    if (c.ui.project_demos) {
-        if (!c.ui.sheet_open) c.ui.project_cursor = uint16_t(std::clamp<int>(c.ui.project_cursor + delta, 0, int(demo_count) - 1));
-        return;
-    }
     if (c.ui.move_open) {
         auto v = view_of(c);
         const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
@@ -394,17 +320,10 @@ void wheel(Context& c, int delta) {
 }
 
 void push(Context& c) {
-    if (c.ui.project_demos) { // a demo's sheet, then Load
-        if (!c.ui.sheet_open) { c.ui.sheet_open = true; c.ui.sheet_row = 0; return; }
-        c.ui.sheet_open = false; c.ui.project_demos = false;
-        c.open_demo(c.ui.project_cursor % demo_count);
-        return;
-    }
     if (c.ui.move_open) { move_here(c); return; }
     if (c.ui.sheet_open) { act(c); return; }
     auto v = view_of(c);
     if (on_unsaved(c.ui.project_cursor, c.project_path)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false; return; }
-    if (on_demos(c.ui.project_cursor, c.project_path, c.project_folder)) { c.ui.project_demos = true; c.ui.project_cursor = 0; return; }
     if (on_card(c.ui.project_cursor, c.project_path, c.project_folder)) { c.card_access(); return; }
     const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
     if (!e) { // New project: asks first, as the MPC does (B3 DO IT, B1 CANCEL); the open one is saved first if it has a file
@@ -421,10 +340,6 @@ void push(Context& c) {
 }
 
 void soft(Context& c, int key) {
-    if (c.ui.project_demos) {
-        if (c.ui.sheet_open) { if (key == 0) c.ui.sheet_open = false; if (key == 2) push(c); return; }
-        if (key == 0) { c.ui.project_demos = false; c.ui.project_cursor = uint16_t(demos_row(c.project_path)); return; }
-    }
     if (c.ui.move_open) {
         if (key == 0) c.ui.move_open = false;
         if (key == 2) move_here(c);

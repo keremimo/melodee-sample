@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The Project page's jobs from the MPC's project page (parity phase 10):
-// New project asks first (B3 DO IT, B1 CANCEL), the demos made in code
-// (shell/demo_projects.h) open unsaved, and Load Kit takes another
+// New project asks first (B3 DO IT, B1 CANCEL), and Load Kit takes another
 // project's kit (pads, samples, their effects; no patterns) onto the
 // selected track as one undo; a bank file loads into one bank of it.
 #include "melodee/shell/ask.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/context.h"
-#include "melodee/shell/demo_projects.h"
+#include "melodee/shell/project_kits.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/track_copy.h"
@@ -25,14 +24,6 @@ void Context::start_new_project() {
     new_project();
     open(PageId::Stage);
     notice("New project");
-}
-
-void Context::open_demo(unsigned n) {
-    auto fresh = std::make_unique<Project>();
-    auto bank = std::make_unique<PatternBank>();
-    make_demo(n, *fresh, *bank);
-    switch_to(*fresh, *bank, {});
-    notice(std::string("Demo: ") + demo_name(n));
 }
 
 void Context::load_kit_file(const std::string& path, const std::string& name) {

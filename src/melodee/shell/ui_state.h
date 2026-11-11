@@ -164,7 +164,6 @@ struct UiState {
     bool seq_held = false, seq_used = false, seq_left = false;
     uint32_t seq_down = 0;
     std::array<uint8_t, track_count> seq_editor {};
-    bool project_demos = false; // Project: in the DEMOS folder (parity phase 10)
     uint8_t warp_stretch = 0;   // Shift + Pad 15: the Follow how (Beats or Tones) Time stretch goes back to
     // Chop (parity phase 5): the last pad's region cut into slices.
     ChopMode chop_mode = ChopMode::Threshold;

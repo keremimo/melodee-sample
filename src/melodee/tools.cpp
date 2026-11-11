@@ -16,7 +16,6 @@
 #include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/pages/page.h"
-#include "melodee/shell/demo_projects.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "drivers/usb_audio.h"
@@ -45,8 +44,40 @@ void put(Pattern& p, unsigned step, uint8_t key, uint8_t velocity, uint8_t lengt
     p.set_step(step, s);
 }
 
+// A full band for the previews and the sound check: four Prophet tracks, an
+// empty kit and a 909, a bass line in D and a beat.
+void starter_project(Project& project, PatternBank& patterns) {
+    project = Project {};
+    std::snprintf(project.name, sizeof(project.name), "Starter");
+    project.tempo = 1200;
+    load_sound(project.tracks[0], EngineKind::Prophet, 1);  // FUNK BASS II
+    load_sound(project.tracks[1], EngineKind::Prophet, 5);  // SOFT PAD
+    load_sound(project.tracks[2], EngineKind::Prophet, 6);  // GLASS PLUCK
+    load_sound(project.tracks[3], EngineKind::Prophet, 3);  // SYNC LEAD
+    load_sound(project.tracks[4], EngineKind::Sampler, 0); // an empty kit
+    load_sound(project.tracks[5], EngineKind::Kit909, 0);  // drums, with a beat
+    project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
+    project.tracks[2].octave = 4; project.tracks[3].octave = 4;
+    patterns = PatternBank {};
+    auto note = [](Pattern& p, unsigned step, uint8_t key, uint8_t velocity, unsigned length) {
+        Event e;
+        e.tick = step * sixteenth_ticks; e.length = uint16_t(length * sixteenth_ticks); e.key = key; e.velocity = velocity;
+        p.add(e);
+    };
+    struct { unsigned step; uint8_t key, length, velocity; } line[] {
+        {0, 38, 2, 110}, {3, 38, 1, 70}, {4, 41, 1, 96}, {6, 36, 2, 96}, {8, 33, 3, 120},
+        {11, 36, 1, 64}, {12, 38, 2, 104}, {14, 31, 2, 88},
+    };
+    for (auto& n : line) note(patterns.at[0][0], n.step, n.key, n.velocity, n.length);
+    // 909 keys (engine/kit909.h): 36 kick, 37 snare, 43 closed hat.
+    auto& beat = patterns.at[5][0];
+    for (unsigned st = 0; st < 16; st += 4) note(beat, st, 36, 120, 1);
+    for (unsigned st : {4u, 12u}) note(beat, st, 37, 110, 1);
+    for (unsigned st = 2; st < 16; st += 4) note(beat, st, 43, 90, 1);
+}
+
 void board_project(Shell& shell) {
-    make_demo(0, shell.project(), shell.patterns()); // the previews show a full project, not a new one
+    starter_project(shell.project(), shell.patterns()); // the previews show a full project, not a new one
     auto& project = shell.project();
     std::snprintf(project.name, sizeof(project.name), "Night drive");
     project.tempo = 1240;
@@ -913,25 +944,21 @@ const Preview previews[] {
          s.ui.name.start(NameTarget::Mixdown, "Night drive", 31, false);
      }},
     {"project", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4;
          preview_projects(s);
      }},
     {"filesheet", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5; s.ui.sheet_open = true;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4; s.ui.sheet_open = true;
          preview_projects(s);
      }},
-    // Parity phase 10: another project's sheet with Load kit, the demos, New project asking first.
+    // Parity phase 10: another project's sheet with Load kit, New project asking first.
     {"loadkit", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.ui.project_cursor = 6; s.ui.sheet_open = true; s.ui.sheet_row = 1;
-         preview_projects(s);
-     }},
-    {"demos", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.ui.project_demos = true; s.ui.project_cursor = 1;
+         s.ui.page = PageId::Project; s.ui.project_cursor = 5; s.ui.sheet_open = true; s.ui.sheet_row = 1;
          preview_projects(s);
      }},
     // Parity phase 10b: SD card access, its row on Project, then the card on a computer, ejected, held, and none to lend.
     {"cardrow", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.ui.project_cursor = 2;
+         s.ui.page = PageId::Project; s.ui.project_cursor = 1;
          preview_projects(s);
      }},
     {"cardaccess", [](Shell&, Snapshot& s) {
@@ -955,7 +982,7 @@ const Preview previews[] {
          preview_projects(s);
      }},
     {"movefolder", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5; s.ui.move_open = true; s.ui.move_cursor = 1;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4; s.ui.move_open = true; s.ui.move_cursor = 1;
          preview_projects(s);
      }},
     {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.ui.settings.click = 1; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
@@ -1281,7 +1308,7 @@ const Preview previews[] {
          s.ui.name.start(NameTarget::Sample, "DUST BREAK", name_length - 1, false);
      }},
     {"nameproject", [](Shell&, Snapshot& s) { // Save on a project with no file yet: a name first (QUICKSTART.md)
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 5;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4;
          preview_projects(s);
          s.ui.name.start(NameTarget::ProjectSave, "Project 1", sizeof(s.project.name) - 1, false);
      }},
@@ -1402,12 +1429,12 @@ void little(std::ofstream& file, uint32_t value, unsigned bytes) {
     for (unsigned n = 0; n < bytes; ++n) file.put(char((value >> (n * 8)) & 255));
 }
 
-// Two bars of the Melodee Starter demo at 120 BPM (4 s), then two seconds of
+// Two bars of the starter project at 120 BPM (4 s), then two seconds of
 // tail: the bass line must sound, stay below full scale and end in silence.
 int sound(const std::string& path) {
     EngineHost host;
     Shell shell(host);
-    make_demo(0, shell.project(), shell.patterns());
+    starter_project(shell.project(), shell.patterns());
     host.load(shell.project(), shell.patterns());
     host.send({Command::Type::Play});
     constexpr unsigned rate = 44100, frames = rate * 6, block = EngineHost::block;

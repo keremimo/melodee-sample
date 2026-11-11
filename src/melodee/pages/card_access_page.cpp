@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// SD CARD ACCESS (Project, under DEMOS; parity phase 10b), as the MPC's: the
+// SD CARD ACCESS (Project, at the top; parity phase 10b), as the MPC's: the
 // card on a computer over USB-C as a drive. The picture shows where the card
 // is (the MPC or the computer) and what to do; B1 leaves once the computer
 // has ejected it, and asks first if the computer still holds it. Meanwhile

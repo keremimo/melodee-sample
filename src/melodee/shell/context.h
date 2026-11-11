@@ -236,10 +236,9 @@ public:
     void save_project_to(const std::string& path);
     void save_project();              // to its file, or a new one
     void new_project();
-    // Parity phase 10 (shell/project_jobs.cpp): New project asks first (B3 / B1); demos made in code; Load Kit.
+    // Parity phase 10 (shell/project_jobs.cpp): New project asks first (B3 / B1); Load Kit.
     void ask_new_project();                   // the question, with what happens to unsaved changes
     void start_new_project();                 // its B3: saved first if it has a file, then a new one, Stage
-    void open_demo(unsigned n);               // a demo, unsaved
     void load_kit_file(const std::string& path, const std::string& name); // a project's kit onto the selected track, once loaded
     void load_kit(const Project& from, const std::string& name);          // that kit onto the selected track, one undo
     std::string kit_from;                     // the file Load Kit waits for

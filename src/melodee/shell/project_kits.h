@@ -6,19 +6,13 @@
 #include <functional>
 #include <string>
 
-// Projects made in code (parity phase 10), the MPC's Demos: the one Melodee
-// starts with and a few more, listed in the Project page's DEMOS folder and
-// opened unsaved (Save asks a name). Load Kit takes a project's kit onto the
-// selected track: its pads, their samples and effects, no patterns; a bank
-// file takes one bank of it. Pure.
+// The project Melodee starts with, and Load Kit (parity phase 10): a
+// project's kit onto the selected track, its pads, their samples and effects,
+// no patterns; a bank file takes one bank of it. Pure.
 namespace melodee {
 
-// The project Melodee starts with: four tracks with sounds and a bass line (demo 0).
+// The project Melodee starts with: one empty kit on track 1, C Chromatic.
 void starting_project(Project& project, PatternBank& patterns);
-
-constexpr unsigned demo_count = 3;
-const char* demo_name(unsigned n);
-void make_demo(unsigned n, Project& project, PatternBank& patterns);
 
 // Load Kit: the track of `from` whose kit is taken (the first kit with a sample on a pad), -1 none.
 int kit_track(const Project& from);

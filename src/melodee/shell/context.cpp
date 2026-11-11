@@ -112,7 +112,6 @@ void Context::open(PageId page) {
         page = PageId::Stage;
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
-    if (page != PageId::Project) ui.project_demos = false;
     ui.sheet_open = false;
     ui.move_open = false;
     ui.map_open = false;

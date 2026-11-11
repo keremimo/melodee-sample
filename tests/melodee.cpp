@@ -53,7 +53,7 @@
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/page_stack.h"
-#include "melodee/shell/demo_projects.h"
+#include "melodee/shell/project_kits.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/undo_scope.h"
@@ -3486,7 +3486,7 @@ void mtc_in() {
     }
 }
 
-// Parity phase 10: the sampler's page groups, undo scopes, demos and Load Kit.
+// Parity phase 10: the sampler's page groups, undo scopes and Load Kit.
 // Parity phase 10b: SD card access. While the card is away (or its page is open) only B1, the question's B3,
 // Play and Stop answer; B1 takes the card back, or asks first while the computer holds it; the shell follows the
 // service thread's view: the card leaving opens the page, coming back leaves it.
@@ -3674,28 +3674,6 @@ void projects_and_polish() {
         Settings old;
         old.read("screen=50\n");
         CHECK(old.click == 0 && old.click_level == 40);
-    }
-
-    // Demos: each has sounds, notes and a name; Night Drive a song with markers; the first is Melodee Starter, the full band.
-    for (unsigned n = 0; n < demo_count; ++n) {
-        auto p = std::make_unique<Project>();
-        auto bank = std::make_unique<PatternBank>();
-        make_demo(n, *p, *bank);
-        CHECK(p->used_tracks() >= 4 && std::string(p->name) == demo_name(n));
-        unsigned notes = 0;
-        for (unsigned t = 0; t < track_count; ++t) for (unsigned q = 0; q < pattern_count; ++q) notes += unsigned(bank->at[t][q].events.size());
-        CHECK(notes >= 18);
-    }
-    {
-        auto p = std::make_unique<Project>();
-        auto bank = std::make_unique<PatternBank>();
-        make_demo(1, *p, *bank);
-        CHECK(p->song.count >= 10 && p->song.marker_count == 3 && p->song.length() == 24 && p->tempo == 1040);
-        make_demo(0, *p, *bank);
-        CHECK(p->tracks[0].engine == EngineKind::Prophet && p->tracks[0].preset == 1 && p->tracks[4].engine == EngineKind::Sampler);
-        CHECK(kit_track(*p) == -1); // its kit is empty
-        make_demo(2, *p, *bank);
-        CHECK(p->master.slots[0].kind == uint8_t(EffectKind::Tape) && p->swing == 60);
     }
 
     // Load Kit: the first kit with a sample, onto a synth track; each file asked for once, a pad without a slot left empty.
