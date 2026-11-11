@@ -20,6 +20,7 @@
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/shell/looper_jobs.h"
+#include "melodee/shell/page_stack.h"
 #include <filesystem>
 #include <cstdio>
 #include <cstring>
@@ -104,7 +105,6 @@ void Context::open(PageId page) {
         page = PageId::Stage;
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
-    if (page != PageId::Patterns) ui.seq_sample = false; // Seq + Sample lives on Patterns
     if (page != PageId::Project) ui.project_demos = false;
     ui.sheet_open = false;
     ui.move_open = false;
@@ -117,6 +117,16 @@ void Context::open(PageId page) {
     if (page != ui.page) {
         push_back_stack(ui, page);
         ui.page = page;
+    }
+    remember_editor(ui, page); // Seq on Patterns comes back to it (shell/page_stack.h)
+    if (page == PageId::Roll) { // a kit's Roll opens on its pads' rows: the bank in view, the last pad's row
+        const auto& t = track();
+        if (t.engine == EngineKind::Sampler) {
+            unsigned low = sampler_first_note + t.bank % sampler_banks * 16;
+            if (ui.roll_key < low || ui.roll_key >= low + 16) ui.roll_key = uint8_t(sampler_first_note + t.last_pad % sampler_pads);
+        } else if (t.engine == EngineKind::Kit909 && (ui.roll_key < 36 || ui.roll_key > 47)) {
+            ui.roll_key = uint8_t(t.last_note >= 36 && t.last_note <= 47 ? t.last_note : 36);
+        }
     }
     if (page == PageId::Sounds) {
         // The cursor starts on the loaded sound.

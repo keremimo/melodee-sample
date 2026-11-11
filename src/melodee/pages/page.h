@@ -19,7 +19,7 @@ struct PageSpec {
     void (*nudge)(Context&, int way); // Minus -1, Plus +1
 };
 const PageSpec& page_spec(PageId page);
-// What the pads do on the page in view: the page's own, or with Seq + Sample on Patterns the track's sound (play_pad).
+// What the pads do on the page in view (Seq held, Pad Bank held and the like come first: shell/shell.cpp).
 using PadJob = void (*)(Context&, unsigned pad, uint8_t velocity, bool down);
 PadJob pad_job(const UiState& ui);
 
@@ -27,6 +27,7 @@ PadJob pad_job(const UiState& ui);
 // after the page (the app and the previews both call it).
 void draw_overlays(ui::Paint& p, const Snapshot& s);
 void draw_track_overlay(ui::Paint& p, const Snapshot& s); // Pad Bank held, or a track copy: eight tracks at a time
+void draw_seq_sheet(ui::Paint& p, const Snapshot& s);     // Seq held a moment: the track's patterns (pages/seq_sheet.cpp)
 void draw_repeat_keys(ui::Paint& p, const Snapshot& s);   // Note Repeat on: its rates on B1-B3
 void draw_shift_layer(ui::Paint& p, const Snapshot& s);  // Shift held: the Shift + K cards in the knob strip
 void draw_exit_sheet(ui::Paint& p, const Snapshot& s);

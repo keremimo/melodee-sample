@@ -19,6 +19,7 @@
 #include "melodee/shell/roll.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/sample_mode.h"
+#include "melodee/shell/seq_layer.h"
 #include "melodee/shell/shift_pads.h"
 #include "surface/controls.h"
 #include <algorithm>
@@ -112,9 +113,7 @@ void Shell::button(Button b, bool pressed) {
 void Shell::press(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
-    if (b == Button::Seq) ui.seq_held = pressed && !ui.shift; // Seq + Sample
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
-    if (b == Button::TopLeft) ui.b1_held = pressed && ui.ask == UiState::Ask::None && (ui.page == PageId::Patterns || ui.page == PageId::StepEdit); // B1 held: the wheel sets the BPM
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
         if (!pressed) return;
@@ -129,6 +128,8 @@ void Shell::press(Button b, bool pressed) {
         default: return;
         }
     }
+    if (b == Button::Seq && (!ui.exit_open || !pressed)) { seq_press(context_, pressed); return; } // tap, hold or Shift (shell/seq_layer.cpp)
+    if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Seq Record, Push
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp
     if (b == Button::Mute) { mute_button(context_, pressed); return; }         // shell/mute_mode.cpp
     if (b == Button::NoteRepeat && !ui.exit_open) { // shell/note_repeat.cpp; on Song the pads play nothing: it repeats the clip
@@ -145,13 +146,14 @@ void Shell::press(Button b, bool pressed) {
             return;
         }
         ui.erase_used = ui.shift || ui.copying != UiState::Copying::Off; // Copy, or leaving it, is the press's job
-        if (ui.shift) { // Shift + Erase: Copy, as printed: tracks with Pad Bank held, kit pads on a kit, patterns on Patterns (again: off)
+        if (ui.shift) { // Shift + Erase: Copy, as printed: tracks with Pad Bank held, patterns with Seq held, kit pads on a kit (again: off)
             ui.shift_used = true;
             if (ui.pad_bank) ui.pad_bank_used = true;
-            auto kind = ui.pad_bank ? UiState::Copying::Tracks : kit_pads() ? UiState::Copying::Pads
-                      : ui.page == PageId::Patterns ? UiState::Copying::Patterns : UiState::Copying::Off;
+            if (ui.seq_held) ui.seq_used = true;
+            auto kind = ui.pad_bank ? UiState::Copying::Tracks : ui.seq_held ? UiState::Copying::Patterns
+                      : kit_pads() ? UiState::Copying::Pads : UiState::Copying::Off;
             if (ui.copying != UiState::Copying::Off) { ui.stop_copying(); context_.notice("Copy off"); }
-            else if (kind == UiState::Copying::Off) context_.notice("Copy: pads, patterns, tracks");
+            else if (kind == UiState::Copying::Off) context_.notice("Copy: hold Seq or Pad Bank");
             else { ui.copying = kind; ui.copy_from = -1; }
         } else if (ui.copying != UiState::Copying::Off) { // Erase alone leaves copying
             ui.stop_copying();
@@ -197,16 +199,6 @@ void Shell::press(Button b, bool pressed) {
         if (ui.page == PageId::Looper && context_.project.looper.on) { int8_t l = int8_t(ui.loop % loop_tracks); context_.open(PageId::Rack); ui.fx_loop = l; break; }
         context_.open(ui.page == PageId::Rack && ui.fx_loop < 0 ? PageId::Sends : ui.page == PageId::Sends ? PageId::Bus
                       : ui.page == PageId::Bus ? PageId::Master : PageId::Rack);
-        break;
-    case Button::Seq: // Patterns; Shift: Step Edit on a kit, Roll on a synth, again round the four
-        if (ui.shift) {
-            auto engine = context_.track().engine;
-            context_.open(shift_seq_page(ui.page, engine == EngineKind::Sampler || engine == EngineKind::Kit909));
-            break;
-        }
-        if (ui.sample_held) { seq_sample(context_, true); break; } // Seq + Sample: Patterns, the pads play the kit
-        if (ui.seq_sample) { seq_sample(context_, false); break; }  // again: the pads pick patterns
-        context_.open(PageId::Patterns);
         break;
     case Button::SampleSelect: // on a sampler track it lists samples
         if (ui.shift) { // by engine: on Sounds a star; on Samples Save Bank; a kit: Save Sample; a synth: Save sound
@@ -315,6 +307,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     int before = pot.position;
     pot.position = int16_t(position);
     if (syncing) { pot.bound = 0; check_pickup(n, b); return; }
+    if (ui_.seq_held) ui_.seq_used = true; // Seq + pot: the pattern's length, Q or swing; its release goes nowhere
     if (ui_.erase) ui_.erase_used = true; // Erase + pot: its release deletes nothing
     if (ui_.sheet_open && ui_.page == PageId::Roll) ui_.sheet_open = false; // a pot leaves Roll's sheet and does its job
     if (!b.bound()) return;
@@ -349,6 +342,7 @@ void Shell::wheel(int delta) {
         if (ui_.shift) { ui_.shift_used = true; ui_.name.step_char(delta); } else ui_.name.move(delta);
         return;
     }
+    if (seq_wheel(context_, delta)) return;     // Seq held: the tempo
     if (pad_bank_move(context_, delta)) return; // Pad Bank held: the wheel jumps banks
     if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns && ui_.page != PageId::Roll) { // Patterns: locates by Q; Roll: note to note
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
@@ -386,6 +380,8 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down && track_pad(context_, pad)) { end_copy_away(); return; } // Pad Bank + pad: that track (or a track copy's)
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
     if (loop_held_pad(context_, pad, down)) return; // Loop held: the loop grid on any page
+    if (down && pattern_copy_pad(context_, pad)) return; // a pattern copy (Shift + Erase with Seq held): from, then to
+    if (seq_pad(context_, pad, down)) return;            // Seq held: the selected track's patterns (shell/seq_layer.cpp)
     // A Record take of Melodee's own sound: the pads play the instrument until it ends (Shift + pad jobs stay).
     if (!(down && ui_.shift) && (context_.record_keys() || (!down && context_.record_key_held(pad)))) {
         context_.record_key(pad, velocity, down);
@@ -446,7 +442,7 @@ bool Shell::kit_pads() const {
 // Copying ends once its pads are gone: pads away from a kit, patterns away from Patterns.
 void Shell::end_copy_away() {
     bool here = ui_.copying == UiState::Copying::Pads ? kit_pads()
-              : ui_.copying == UiState::Copying::Tracks || ui_.page == PageId::Patterns; // tracks: on any page
+              : ui_.copying == UiState::Copying::Tracks || ui_.copying == UiState::Copying::Patterns; // tracks, patterns: on any page
     if (ui_.copying != UiState::Copying::Off && !here) ui_.stop_copying();
 }
 
@@ -570,14 +566,14 @@ std::string Shell::summary() const {
            " " + looper_status(host.looper());
 }
 
-// Phase 10: undo (depth, redo waiting, the last step's name), Seq + Sample, the sampler map, DEMOS, a pot gesture open.
+// Phase 10: undo (depth, redo waiting, the last step's name), Seq held, the sampler map, DEMOS, a pot gesture open.
 std::string Shell::phase10_summary() const {
     uint32_t b = phase10_bits.load(std::memory_order_relaxed);
     std::string what;
     { std::lock_guard<std::mutex> guard(text_lock); what = undo_text; }
     for (auto& ch : what) if (ch == ' ') ch = '_';
     return " melodee_undo=" + std::to_string(b & 0xff) + " melodee_redo=" + std::to_string((b >> 8) & 1) +
-           " melodee_undo_last=" + (what.empty() ? std::string("none") : what) + " melodee_seq_sample=" + std::to_string((b >> 9) & 1) +
+           " melodee_undo_last=" + (what.empty() ? std::string("none") : what) + " melodee_seq_held=" + std::to_string((b >> 9) & 1) +
            " melodee_map=" + std::to_string((b >> 10) & 1) + " melodee_demos=" + std::to_string((b >> 11) & 1) +
            " melodee_gesture=" + std::to_string((b >> 12) & 1) + " melodee_song_clips=" + std::to_string((b >> 16) & 0xfff) +
            " melodee_engine=" + std::to_string(b >> 28);

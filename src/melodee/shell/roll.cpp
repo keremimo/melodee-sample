@@ -51,7 +51,7 @@ void roll_follow(const Pattern& pattern, UiState& ui) {
     int top = ui.roll_top, key = ui.roll_key, rows = int(roll_rows);
     if (key > top - 1) top = key + 1;              // a row above the cursor's key
     if (key < top - (rows - 2)) top = key + rows - 2; // and one below
-    ui.roll_top = uint8_t(std::clamp(top, rows - 1, 127));
+    ui.roll_top = uint8_t(std::clamp(top, rows - 1, std::max(127, key + 1))); // a kit's keys run past 127
 }
 
 void roll_select(const Pattern& pattern, UiState& ui) {

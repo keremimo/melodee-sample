@@ -140,7 +140,7 @@ private:
     std::atomic<uint32_t> chop_bits {0}, pad_start_now {0}, pad_end_now {0}, files_bits {0};
     mutable std::mutex text_lock;
     std::string pad_name_text, folder_text; // under text_lock
-    // Phase 10: undo depth, Seq + Sample / the sampler map / DEMOS / a gesture open, the last step's name (under text_lock).
+    // Phase 10: undo depth, Seq held / the sampler map / DEMOS / a gesture open, the last step's name (under text_lock).
     std::atomic<uint32_t> phase10_bits {0};
     std::string undo_text;
     std::string phase10_summary() const;

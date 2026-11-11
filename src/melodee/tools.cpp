@@ -3,6 +3,7 @@
 #include "melodee/tools.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/seq_layer.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/prophet_params.h"
@@ -497,14 +498,27 @@ const Preview previews[] {
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"patterns", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true; s.ui.launch_column = true; // B3: whole columns
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true; // the pads play track 3; B1-B3 the editors
          const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
          s.project.tracks[2].pattern = 1;
      }},
-    {"bpm", [](Shell&, Snapshot& s) { // B1 held on Patterns, BPM per pattern: pattern 2's own tempo
-         s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.b1_held = true; s.project.seq_tempo = true;
+    {"seqsheet", [](Shell&, Snapshot& s) { // Seq held over Stage: track 3 plays P2, P4 waits for the bar
+         s.ui.page = PageId::Stage; s.ui.track = 2; s.playing = true;
+         const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
+         for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
+         s.project.tracks[2].pattern = 3;
+         s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; // held a moment: the sheet is up
+     }},
+    {"seqbpm", [](Shell&, Snapshot& s) { // Seq held, the wheel by tenths, BPM per pattern: pattern 2's own tempo
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.project.seq_tempo = true;
          s.project.pattern_tempo[1] = 985; s.ui.lead_pattern = 1; s.tempo = 985; s.ui.bpm_tenths = true;
+         s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
+     }},
+    {"seqclear", [](Shell&, Snapshot& s) { // Seq held + Erase + pad 2: B1 Cancel, B3 Do it
+         s.ui.page = PageId::Mix; s.ui.track = 2; s.ui.erase = true;
+         s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
+         s.ui.ask = UiState::Ask::ClearPattern; s.ui.ask_target = 1;
      }},
     {"countin", [](Shell&, Snapshot& s) { // Seq Record with Count-In: the third beat of the bar before the take
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.playing = true; s.ui.recording = true; s.count_in = 3;
@@ -1063,10 +1077,9 @@ const Preview previews[] {
      }},
     {"cloud", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
-    // Parity phase 10: the sampler's page map (Push) over Play, and Seq + Sample on Patterns.
+    // Parity phase 10: the sampler's page map (Push) over Play.
     {"samplermap", [](Shell&, Snapshot& s) { s.ui.page = PageId::PlayPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          s.ui.map_open = true; s.ui.map_cursor = 7; }},
-    {"seqsample", [](Shell&, Snapshot& s) { s.ui.page = PageId::Patterns; s.ui.track = 3; s.playing = true; s.ui.seq_sample = true; }},
     // Parity phase 4: Sample Mode.
     {"padmix", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadMix; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.pads[8].level = 88; t.pads[8].pan = -18; t.params[sampler::Level] = 110; s.ui.turning = 0; s.ui.turned_at = s.now; }},
@@ -1139,6 +1152,10 @@ const Preview previews[] {
          s.ui.name.start(NameTarget::ProjectSave, "Project 1", sizeof(s.project.name) - 1, false);
      }},
     // Parity phase 3. These come last: they write into the shell's patterns, which the previews before them share.
+    {"rollkit", [](Shell& shell, Snapshot& s) { // Roll on a kit: a lane per pad, pad 3's hit at 1.2.1 in focus
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Roll; s.ui.roll_key = uint8_t(sampler_first_note + 2); s.ui.roll_top = uint8_t(sampler_first_note + 11);
+     }},
     {"stepedit", [](Shell& shell, Snapshot& s) { // Shift + Seq: the kit's step 5, three events, the second chosen
          step_edit_kit(shell, s);
          s.ui.turning = 2; s.ui.turned_at = s.now;
@@ -1211,7 +1228,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
+    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns seqsheet seqbpm seqclear rollkit song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
     // Text under the floor or cut by its box fails the build check.
     return text_issues ? 1 : 0;

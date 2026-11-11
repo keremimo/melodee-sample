@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// MOTION (B3 on Steps): pot moves recorded over the pattern, one lane per
+// MOTION (B3 on a sequence page, or Seq held + B3): pot moves recorded over the pattern, one lane per
 // pot. Seq Record + turn a pot records (here or on any page); Erase + turn a
 // pot asks, then (B3) clears that lane. The lanes are the parameters holding
 // motion on the track's pattern (its engine's, its effects', or on a kit the

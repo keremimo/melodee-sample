@@ -444,21 +444,6 @@ juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::P
     return words.joinIntoString(" ");
 }
 
-// B1 held on Patterns or Step Edit: the BPM the wheel sets (Push: whole BPM or tenths), as on the MPC.
-void draw_bpm_window(ui::Paint& p, const Snapshot& s) {
-    using namespace ui;
-    p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
-    float w = 210, hgt = 92, x = (zone::width - w) / 2, y = zone::picture_y + (zone::picture_h - hgt) / 2;
-    p.fill(x, y, w, hgt, colour::panel, 6);
-    p.ring(x, y, w, hgt, colour_of(s), 6);
-    juce::String title = s.project.seq_tempo ? "P" + juce::String(s.ui.lead_pattern + 1) + " BPM" : juce::String("GLOBAL BPM");
-    p.text(title, x, y + 7, w, 14, caps_text(colour::mid), juce::Justification::centred);
-    p.text(juce::String(s.tempo / 10) + "." + juce::String(s.tempo % 10), x, y + 24, w, 38, plain(colour::text, 34, Weight::SemiBold),
-           juce::Justification::centred);
-    p.text(s.ui.bpm_tenths ? "WHEEL 0.1   PUSH 1" : "WHEEL 1   PUSH 0.1", x, y + 68, w, 14, caps_text(colour::dim),
-           juce::Justification::centred);
-}
-
 } // namespace melodee
 
 namespace melodee {

@@ -15,8 +15,6 @@ void sample_button(Context& c, bool pressed);
 // A pad while Sample is held: on a kit it becomes the last pad, silently.
 // False when Sample is not held there.
 bool sample_pad(Context& c, unsigned pad);
-// Seq + Sample (parity phase 10): on, Patterns with the pads playing the selected track; off, the pads pick patterns again.
-void seq_sample(Context& c, bool on);
 void loop_button(Context& c);   // Loop: the last pad loops or not; Shift reverse
 void chop_button(Context& c);   // Chop opens Chop; Shift: Note On
 void levels_button(Context& c); // 16 Levels on and off (kit or synth); Shift: its type

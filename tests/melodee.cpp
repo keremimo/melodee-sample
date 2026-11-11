@@ -1478,6 +1478,17 @@ void button_remap() {
     auto record_cards = page_bindings(*project, ui, pattern);
     for (unsigned n = 0; n < 3; ++n) CHECK(record_cards[n].kind == cards[n].kind && record_cards[n].value == cards[n].value);
     CHECK(page_bindings(*project, ui, pattern, true)[2].kind == Binding::Kind::RecGain);
+    // Seq held, on any page: K1-K3 the pattern's length, Q and swing; Shift as on Patterns; before Knob FX's.
+    ui.page = PageId::Mix; ui.seq_held = true;
+    cards = page_bindings(*project, ui, pattern);
+    CHECK(cards[0].kind == Binding::Kind::PatternLength && cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
+    cards = page_bindings(*project, ui, pattern, true);
+    CHECK(cards[0].kind == Binding::Kind::PatternBars && cards[1].kind == Binding::Kind::TimeSignature && cards[2].kind == Binding::Kind::ClickLevel);
+    project->knob_fx.on = true; project->knob_fx.kind = 1;
+    CHECK(page_bindings(*project, ui, pattern)[0].kind == Binding::Kind::PatternLength);
+    ui.seq_held = false;
+    CHECK(page_bindings(*project, ui, pattern)[0].kind != Binding::Kind::PatternLength); // Knob FX's again
+    project->knob_fx.on = false; project->knob_fx.kind = 0;
 
     // Back: Stage -> Sounds -> Steps -> Roll -> Motion -> Song; Back walks Song, Steps group, Sounds, Stage.
     UiState nav;
@@ -1492,10 +1503,22 @@ void button_remap() {
     // Opening a page already on the stack goes back to it instead of growing it.
     go(PageId::Sounds); go(PageId::Patterns); go(PageId::Sounds);
     CHECK(nav.back_depth == 1 && nav.back_stack[0] == PageId::Stage);
-    // Shift + Seq: a kit opens Step Edit, a synth Roll; inside the group it turns the four round.
-    CHECK(shift_seq_page(PageId::Stage, true) == PageId::StepEdit && shift_seq_page(PageId::Patterns, false) == PageId::Roll);
-    CHECK(shift_seq_page(PageId::Roll, false) == PageId::Motion && shift_seq_page(PageId::Motion, false) == PageId::StepEdit);
-    CHECK(shift_seq_page(PageId::StepEdit, false) == PageId::Steps && shift_seq_page(PageId::Steps, true) == PageId::Roll);
+    // Seq's levels: a tap opens Patterns from anywhere; on Patterns the track's editor (Steps on a kit, Roll on a
+    // synth until one is opened, then that one, per track); on an editor back to Patterns; Step Edit goes up to its editor.
+    {
+        UiState q; q.track = 0;
+        q.page = PageId::Stage; CHECK(seq_tap_page(q, false) == PageId::Patterns);
+        q.page = PageId::Song; CHECK(seq_tap_page(q, true) == PageId::Patterns);
+        q.page = PageId::Patterns; CHECK(seq_tap_page(q, false) == PageId::Roll && seq_tap_page(q, true) == PageId::Steps);
+        remember_editor(q, PageId::Motion);
+        CHECK(seq_tap_page(q, false) == PageId::Motion && seq_tap_page(q, true) == PageId::Motion);
+        q.track = 1; CHECK(seq_tap_page(q, false) == PageId::Roll); // each track its own
+        q.track = 0; remember_editor(q, PageId::Stage); CHECK(seq_editor_page(q, false) == PageId::Motion); // only editors count
+        q.page = PageId::Motion; CHECK(seq_tap_page(q, false) == PageId::Patterns);
+        q.page = PageId::Steps; CHECK(seq_tap_page(q, true) == PageId::Patterns);
+        q.page = PageId::StepEdit; CHECK(seq_tap_page(q, false) == PageId::Motion);
+        CHECK(seq_editor(PageId::Roll) && !seq_editor(PageId::StepEdit) && !seq_editor(PageId::Patterns));
+    }
     // A full stack drops its oldest page.
     for (unsigned n = 0; n < 40; ++n) go(n % 2 ? PageId::Tempo : PageId::Project), go(PageId(unsigned(PageId::Samples) + n % 3));
     CHECK(nav.back_depth <= UiState::back_capacity);
@@ -1506,6 +1529,12 @@ void button_remap() {
     CHECK(button_has_job(*project, l, B::Seq, false, false));
     CHECK(!button_has_job(*project, l, B::Chop, false, false) && button_has_job(*project, l, B::Loop, false, false));
     CHECK(!button_has_job(*project, l, B::Erase, false, false) && button_has_job(*project, l, B::Erase, false, true));
+    l.page = PageId::Patterns; // the pads play here now: Erase has nothing of its own on a synth track
+    CHECK(!button_has_job(*project, l, B::Erase, false, false) && !button_has_shift_job(*project, l, B::Erase, false));
+    l.seq_held = true; // Seq held: Erase + pad clears a pattern, Shift + Erase copies one, on any page
+    l.page = PageId::Stage;
+    CHECK(button_has_job(*project, l, B::Erase, false, false) && button_has_shift_job(*project, l, B::Erase, false));
+    l.seq_held = false;
     l.track = 1;
     CHECK(button_has_job(*project, l, B::Loop, true, false) && !button_has_job(*project, l, B::Chop, true, false)); // the last pad is empty
     project->tracks[1].pads[0].sample = 0;
@@ -3420,7 +3449,10 @@ void projects_and_polish() {
     CHECK(scope(K::StepChance).kind == S::Pattern && scope(K::EventVelocity).kind == S::Pattern && scope(K::EventLength).kind == S::Pattern);
     CHECK(scope(K::Division).none()); // the grid moves no note
     CHECK(scope_name(project, ui, pattern_scope(project, ui)) == "T3 P4");
-    ui.page = PageId::Patterns; CHECK(press_scope(project, ui, B::Count, true).none()); // a pad there launches, it writes nothing
+    ui.page = PageId::Patterns; CHECK(press_scope(project, ui, B::Count, true).none()); // a pad there plays, it writes nothing
+    ui.page = PageId::Roll; ui.seq_held = true; // Seq held: a pad launches, B1-B3 open editors; nothing is written
+    CHECK(press_scope(project, ui, B::Count, true).none() && press_scope(project, ui, B::TopMiddle, false).none());
+    ui.seq_held = false;
     // The states compare as they should: mute and Knob FX's targets are left out.
     auto mix = mix_of(project);
     project.tracks[5].mix.mute = true; project.knob_fx.tracks = 3;
@@ -5660,6 +5692,45 @@ void voice_taps() {
     }
 }
 
+// Mock 4 and 7 (shell/playheads.h): a line along each sounding pad of the bank in view, its newest voice's; and the
+// Samples row of the file previewing, how far, the time heard of its length, nothing once the cursor cut it.
+void head_lines() {
+    auto head = [](int pad, uint32_t serial, double at, float level, float step = 1) {
+        PlayHead h;
+        h.serial = serial; h.pad = int16_t(pad); h.slot = 3; h.from = 1000; h.to = 5000; h.loop_at = 1000;
+        h.at = at; h.step = step; h.level = level; h.wake = 1;
+        return h;
+    };
+    CHECK(std::abs(head_through(head(0, 1, 2000, 1)) - 0.25f) < 1e-6f);
+    CHECK(std::abs(head_through(head(0, 1, 2000, 1, -1)) - 0.75f) < 1e-6f); // reversed: from the end
+    CHECK(head_through(head(0, 1, 9000, 1)) == 1 && head_through(head(0, 1, 0, 1)) == 0);
+    std::array<PlayHead, HeadTrail::size> heads {};
+    heads[0] = head(18, 9, 3000, 0.8f);  // bank B, pad 3: newest
+    heads[1] = head(18, 4, 4800, 0.2f);  // the same pad, older: not shown
+    heads[2] = head(2, 3, 1400, 1);      // bank A: not in view
+    heads[3] = head(16, 2, 1000, 0.5f);  // bank B pad 1, just begun: no length yet
+    heads[4] = head(31, 1, 3000, 0.0f);  // gone silent, its wake still fading: no line
+    heads[4].wake = 0.5f;
+    auto lines = bank_lines(heads, 1);
+    CHECK(std::abs(lines[2].through - 0.5f) < 1e-6f && std::abs(lines[2].strength - 0.8f) < 1e-6f);
+    CHECK(lines[0].through == 0 && std::abs(lines[0].strength - 0.5f) < 1e-6f);
+    CHECK(lines[15].strength == 0 && lines[1].strength == 0);
+    CHECK(bank_lines(heads, 0)[2].strength == 1 && bank_lines(heads, 0)[2].through > 0);
+    // The preview: the audition voice on the preview slot only.
+    std::array<PlayHead, HeadTrail::size> pv {};
+    pv[0] = head(128, 7, 1000 + 52920, 0.9f); pv[0].from = 1000; pv[0].to = 1000 + 137592; pv[0].slot = 64;
+    pv[1] = head(128, 6, 2000, 1);           // another audition (Chop's): another slot
+    PreviewPlace at = preview_place(pv, 128, 64, 44100);
+    CHECK(at.shown && at.sounding && std::abs(at.heard - 1.2) < 1e-3 && std::abs(at.length - 3.12) < 1e-3);
+    CHECK(std::abs(at.through - 52920.0f / 137592.0f) < 1e-5f && std::abs(at.strength - 0.9f) < 1e-6f);
+    pv[0].level = 0; pv[0].wake = 0.4f; // ended: the row still fades, B3 no longer lit
+    at = preview_place(pv, 128, 64, 44100);
+    CHECK(at.shown && !at.sounding && std::abs(at.wake - 0.4f) < 1e-6f);
+    pv[0].flags = tap::Choked; // the cursor moved on: nothing for the row
+    CHECK(!preview_place(pv, 128, 64, 44100).shown);
+    CHECK(!preview_place(std::array<PlayHead, HeadTrail::size> {}, 128, 64, 44100).shown);
+}
+
 // Mocks 2 and 3 (shell/playheads.h): a cut voice's head fades over its 60 ms choke and goes on moving, one run out
 // at its end is no cut; a loop going round as heard leaves a ghost for 0.2 s; Stage takes the four newest voices of a
 // pad, counting only those heard.
@@ -5902,45 +5973,6 @@ void place_bar() {
     CHECK(b.position == 5 * bar + beat && b.notch == bar && b.tone == Tone::Playing);
     s->song_playing = false;
     // The Looper page: the loop selected, its bars, red while it overdubs, amber while armed.
-// Mock 4 and 7 (shell/playheads.h): a line along each sounding pad of the bank in view, its newest voice's; and the
-// Samples row of the file previewing, how far, the time heard of its length, nothing once the cursor cut it.
-void head_lines() {
-    auto head = [](int pad, uint32_t serial, double at, float level, float step = 1) {
-        PlayHead h;
-        h.serial = serial; h.pad = int16_t(pad); h.slot = 3; h.from = 1000; h.to = 5000; h.loop_at = 1000;
-        h.at = at; h.step = step; h.level = level; h.wake = 1;
-        return h;
-    };
-    CHECK(std::abs(head_through(head(0, 1, 2000, 1)) - 0.25f) < 1e-6f);
-    CHECK(std::abs(head_through(head(0, 1, 2000, 1, -1)) - 0.75f) < 1e-6f); // reversed: from the end
-    CHECK(head_through(head(0, 1, 9000, 1)) == 1 && head_through(head(0, 1, 0, 1)) == 0);
-    std::array<PlayHead, HeadTrail::size> heads {};
-    heads[0] = head(18, 9, 3000, 0.8f);  // bank B, pad 3: newest
-    heads[1] = head(18, 4, 4800, 0.2f);  // the same pad, older: not shown
-    heads[2] = head(2, 3, 1400, 1);      // bank A: not in view
-    heads[3] = head(16, 2, 1000, 0.5f);  // bank B pad 1, just begun: no length yet
-    heads[4] = head(31, 1, 3000, 0.0f);  // gone silent, its wake still fading: no line
-    heads[4].wake = 0.5f;
-    auto lines = bank_lines(heads, 1);
-    CHECK(std::abs(lines[2].through - 0.5f) < 1e-6f && std::abs(lines[2].strength - 0.8f) < 1e-6f);
-    CHECK(lines[0].through == 0 && std::abs(lines[0].strength - 0.5f) < 1e-6f);
-    CHECK(lines[15].strength == 0 && lines[1].strength == 0);
-    CHECK(bank_lines(heads, 0)[2].strength == 1 && bank_lines(heads, 0)[2].through > 0);
-    // The preview: the audition voice on the preview slot only.
-    std::array<PlayHead, HeadTrail::size> pv {};
-    pv[0] = head(128, 7, 1000 + 52920, 0.9f); pv[0].from = 1000; pv[0].to = 1000 + 137592; pv[0].slot = 64;
-    pv[1] = head(128, 6, 2000, 1);           // another audition (Chop's): another slot
-    PreviewPlace at = preview_place(pv, 128, 64, 44100);
-    CHECK(at.shown && at.sounding && std::abs(at.heard - 1.2) < 1e-3 && std::abs(at.length - 3.12) < 1e-3);
-    CHECK(std::abs(at.through - 52920.0f / 137592.0f) < 1e-5f && std::abs(at.strength - 0.9f) < 1e-6f);
-    pv[0].level = 0; pv[0].wake = 0.4f; // ended: the row still fades, B3 no longer lit
-    at = preview_place(pv, 128, 64, 44100);
-    CHECK(at.shown && !at.sounding && std::abs(at.wake - 0.4f) < 1e-6f);
-    pv[0].flags = tap::Choked; // the cursor moved on: nothing for the row
-    CHECK(!preview_place(pv, 128, 64, 44100).shown);
-    CHECK(!preview_place(std::array<PlayHead, HeadTrail::size> {}, 128, 64, 44100).shown);
-}
-
     s->ui.page = PageId::Looper; s->ui.loop = 1;
     auto& v = s->loops[1].view;
     v.state = looper::State::Overdub; v.ticks = 2 * bar; v.length = 1000; v.position = 750;
@@ -5964,6 +5996,7 @@ int main() {
     voice_heads();
     chop_heads();
     cloud_grains();
+    head_lines();
     place_bar();
     song_buttons();
     sfz_reader();
@@ -6004,7 +6037,6 @@ int main() {
     helpers();
     project_files();
     recording();
-    head_lines();
     sampler_kit();
     effects();
     arrange();

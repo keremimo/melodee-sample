@@ -32,26 +32,14 @@ void sample_button(Context& c, bool pressed) {
     if (pressed) {
         if (ui.shift) { ui.shift_used = true; ui.sample_held = false; c.open(PageId::InputConfig); return; } // as printed
         ui.sample_held = true; ui.sample_used = false;
-        if (ui.seq_held) seq_sample(c, true); // Seq held: Patterns with the pads playing the kit
-        else if (ui.seq_sample) { ui.seq_sample = false; ui.sample_used = true; c.notice("Pads: patterns"); } // again: back to patterns
         return;
     }
     if (ui.sample_held && !ui.sample_used) open_sample_page(c);
     ui.sample_held = false;
 }
 
-void seq_sample(Context& c, bool on) {
-    auto& ui = c.ui;
-    if (!on) { if (ui.seq_sample) c.notice("Pads: patterns"); ui.seq_sample = false; return; }
-    c.open(PageId::Patterns);
-    ui.seq_sample = true;
-    ui.sample_used = true; // letting go of Sample opens no page
-    c.notice(c.track().engine == EngineKind::Sampler ? "Pads: the kit" : "Pads: the track");
-}
-
 bool sample_pad(Context& c, unsigned pad) {
     auto& t = c.track();
-    if (c.ui.seq_sample) return false; // Seq + Sample: the pads play
     if (!c.ui.sample_held || t.engine != EngineKind::Sampler || t.levels) return false;
     unsigned kit = t.bank % sampler_banks * 16 + pad % 16;
     t.last_pad = uint8_t(kit);

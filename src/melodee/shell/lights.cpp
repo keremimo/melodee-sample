@@ -15,6 +15,7 @@
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/seq_layer.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/shell.h"
 #include <filesystem>
@@ -288,8 +289,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             const auto* last = context_.edits.last();
             undo_text = last ? last->what : std::string();
         }
-        // phase 10: the undo history's depth and the redo side, Seq + Sample, the sampler map, DEMOS, a gesture open
-        phase10_bits.store(uint32_t(context_.edits.size()) | uint32_t(context_.edits.can_redo()) << 8 | uint32_t(ui_.seq_sample) << 9
+        // phase 10: the undo history's depth and the redo side, Seq held, the sampler map, DEMOS, a gesture open
+        phase10_bits.store(uint32_t(context_.edits.size()) | uint32_t(context_.edits.can_redo()) << 8 | uint32_t(ui_.seq_held) << 9
                            | uint32_t(ui_.map_open) << 10 | uint32_t(ui_.project_demos) << 11 | uint32_t(bool(context_.gesture.edit)) << 12
                            | uint32_t(project_->song.count & 0xfff) << 16 | uint32_t(project_->tracks[ui_.track].engine) << 28,
                            std::memory_order_relaxed);
@@ -303,7 +304,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     bool tracks = tracks_on_pads(ui), muting = ui.mute_mode() && !ui.name.open() && !tracks;
     bool mute_kit = muting && mute_on_kit(ui, kit_pads());
     bool loop_grid = (ui.page == PageId::Looper || ui.loop_held) && !tracks; // Loop held: the grid on any page
-    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !tracks && !muting && !(ui.loop_held && ui.page != PageId::Looper);
+    bool pattern_pads = patterns_on_pads(ui) && !tracks && !loop_grid; // Seq held, or a pattern copy: the track's patterns
+    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !tracks && !muting && !pattern_pads && !(ui.loop_held && ui.page != PageId::Looper);
     const Rgb muted_red = led_colour::rgb(1, 0, 0, 0.35f); // muted, as the MPC lights it
     uint32_t lit = 0; // for `status`
     for (unsigned pad = 0; pad < 16; ++pad) {
@@ -311,6 +313,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         Rgb colour {};
         if (loop_grid) {
             colour = loop_light(pad, now, muting && ui.page == PageId::Looper);
+        } else if (pattern_pads) {
+            // The pads are the selected track's sixteen patterns: playing bright, queued blinking, holding
+            // notes dim, empty dark; a copy's first pattern white.
+            bool notes = !patterns_->at[ui.track][pad].empty();
+            bool live = host.pattern_of(ui.track) == pad, queued = playing && track.pattern == pad && !live;
+            bool now_on = playing ? live : track.pattern == pad;
+            float level = now_on ? 1.0f : queued ? ((now / 150) % 2 ? 0.8f : 0.15f) : notes ? 0.25f : 0;
+            colour = track_light(ui.track, level);
+            if (ui.copying == UiState::Copying::Patterns && ui.copy_track == ui.track && ui.copy_from == int(pad)) colour = led_colour::white(1);
         } else if (mute_kit) {
             // Mute mode on a kit: the bank's pads, muted red, soloed white, the rest in the track's colour.
             unsigned kit = track.bank % sampler_banks * 16 + pad;
@@ -346,13 +357,6 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             colour = track_light(pad, level);
             if (muting && t.used()) colour = t.mix.mute ? muted_red : (t.mix.solo ? led_colour::white(0.8f) : track_light(pad, 0.6f));
             if (ui.copying == UiState::Copying::Tracks && ui.copy_from == int(pad)) colour = led_colour::white(1); // the track being copied
-        } else if (ui.page == PageId::Patterns && !ui.seq_sample) {
-            // The pads are the selected track's sixteen patterns: playing bright, queued
-            // blinking, holding notes dim, empty dark.
-            bool notes = !patterns_->at[ui.track][pad].empty();
-            bool live = host.pattern_of(ui.track) == pad, queued = playing && track.pattern == pad && !live;
-            float level = live ? 1.0f : queued ? ((now / 150) % 2 ? 0.8f : 0.15f) : notes ? 0.25f : 0;
-            colour = track_light(ui.track, level);
         } else if (ui.page == PageId::Steps) {
             const auto& pattern = context_.pattern();
             unsigned step = ui.steps_bar * bar_steps + pad;
@@ -406,7 +410,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             unsigned level = shift_pad_level(ui, pad);
             colour = level ? track_light(ui.track, level == 2 ? 1.0f : 0.3f) : Rgb {};
         }
-        if (held && ui.page != PageId::Steps && !loop_grid && !tracks && !muting) colour = led_colour::white(1);
+        if (held && ui.page != PageId::Steps && !loop_grid && !tracks && !muting && !pattern_pads) colour = led_colour::white(1);
         if (ui.settings.pad_lights == 1) { // white, as bright as the colour was
             float full = std::max<float>(led_colour::white(1).r, 1);
             colour = led_colour::white(std::max({colour.r, colour.g, colour.b}) / full);
@@ -453,6 +457,22 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         button_levels.store(levels, std::memory_order_relaxed);
         return;
     }
+    if (ui.seq_held && !ui.name.open() && !ui.exit_open && ui.ask == UiState::Ask::None) {
+        // Seq held (shell/seq_layer.h): Seq bright, the buttons with a job in its layer faint (B1-B3, Shift and
+        // Minus / Plus have no lights), the transport as ever.
+        for (B button : {B::Sample, B::PadFx, B::KnobFx, B::Shift, B::PadBank, B::NoteRepeat, B::Chop, B::Mute,
+                         B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord})
+            set(button, L::Off);
+        set(B::Seq, L::Bright);
+        set(B::Erase, ui.erase || ui.copying == UiState::Copying::Patterns ? L::Bright : L::Dim);
+        set(B::WheelPush, L::Dim);
+        if (ui.rec_armed || (ui.recording && host.count_in())) set(B::SeqRecord, (now / 250) % 2 ? L::Bright : L::Dim);
+        else set(B::SeqRecord, ui.recording ? L::Bright : L::Dim);
+        set(B::Play, playing ? L::Bright : L::Dim);
+        set(B::Stop, L::Dim);
+        button_levels.store(levels, std::memory_order_relaxed);
+        return;
+    }
     if (ui.shift && !ui.name.open() && !ui.exit_open) { // as Akai's guide has it: the Shift jobs faint, bright while on
         for (B button : {B::Sample, B::Seq, B::PadFx, B::KnobFx, B::Shift, B::PadBank, B::Erase, B::NoteRepeat, B::Chop, B::Mute,
                          B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord, B::SeqRecord,
@@ -471,10 +491,6 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::Sample, play_group || ui.page == PageId::InputConfig);
     on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::StepEdit || ui.page == PageId::Steps
                    || ui.page == PageId::Roll || ui.page == PageId::Motion);
-    if (ui.seq_sample) { // Seq + Sample: both blink while the pads play the kit on Patterns
-        L blink = (now / 250) % 2 ? L::Bright : L::Dim;
-        set(B::Seq, blink); set(B::Sample, blink);
-    }
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.arp && ui.page != PageId::Song); // on Song it repeats the clip

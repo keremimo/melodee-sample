@@ -35,14 +35,23 @@ void push_back_stack(UiState& ui, PageId page) {
 
 PageId back_target(const UiState& ui) { return ui.back_depth ? ui.back_stack[ui.back_depth - 1u] : PageId::Stage; }
 
-PageId shift_seq_page(PageId page, bool kit) {
-    switch (page) {
-    case PageId::StepEdit: return PageId::Steps;
-    case PageId::Steps: return PageId::Roll;
-    case PageId::Roll: return PageId::Motion;
-    case PageId::Motion: return PageId::StepEdit;
-    default: return kit ? PageId::StepEdit : PageId::Roll;
-    }
+bool seq_editor(PageId page) { return page == PageId::Steps || page == PageId::Roll || page == PageId::Motion; }
+
+PageId seq_editor_page(const UiState& ui, bool kit) {
+    static const PageId editors[] {PageId::Steps, PageId::Roll, PageId::Motion};
+    unsigned kept = ui.seq_editor[ui.track % track_count];
+    if (kept >= 1 && kept <= 3) return editors[kept - 1];
+    return kit ? PageId::Steps : PageId::Roll;
+}
+
+void remember_editor(UiState& ui, PageId page) {
+    if (!seq_editor(page)) return;
+    ui.seq_editor[ui.track % track_count] = uint8_t(page == PageId::Steps ? 1 : page == PageId::Roll ? 2 : 3);
+}
+
+PageId seq_tap_page(const UiState& ui, bool kit) {
+    if (ui.page == PageId::Patterns || ui.page == PageId::StepEdit) return seq_editor_page(ui, kit);
+    return PageId::Patterns; // from an editor, Song or any other page
 }
 
 } // namespace melodee

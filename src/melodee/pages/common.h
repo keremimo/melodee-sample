@@ -51,9 +51,6 @@ ui::HeaderItem track_half_pill(const Snapshot& s);
 // fits `w` in `style`, else in title case ("Beat Repeat"), which is narrower.
 juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::Paint::Text& style, float w);
 
-// B1 held on Patterns or Step Edit: the BPM window over the picture.
-void draw_bpm_window(ui::Paint& p, const Snapshot& s);
-
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
 

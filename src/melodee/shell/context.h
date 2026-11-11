@@ -206,7 +206,7 @@ public:
     void set_length(uint32_t ticks);                         // the selected track's pattern
     void set_division(Division division);
     void set_signature(unsigned index);                      // the project's; patterns of whole bars keep their bar count
-    void set_seq_tempo(bool on);                             // B2 on Patterns: BPM per pattern (SEQ) or global (GBL)
+    void set_seq_tempo(bool on);                             // Push on Tempo: BPM per pattern (SEQ) or global (GBL)
     void locate(int way);                                    // the wheel on Patterns: by a beat (Shift: by Q)
     unsigned tempo_now() const { return project.tempo_of(ui.lead_pattern); }
     // Sampler tracks

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// ROLL (Shift + Seq on a synth; again Motion, Step Edit, Steps): a piano roll
-// of the selected track's pattern, read from its events (shell/roll.h). Each
+// ROLL (B2 on a sequence page, or Seq held + B2): a piano roll of the
+// selected track's pattern, read from its events (shell/roll.h); on a kit a
+// lane per pad, numbered as the pads are (the kit's bank in view). Each
 // note sits at its own tick for its own length, over bar lines, any number
 // to a step. The cursor is a step of Q (the wheel; Shift + wheel note to
 // note) and a pitch (Minus / Plus: the chord in the step, then a semitone);
@@ -18,6 +19,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/step_edit.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 
@@ -45,9 +47,11 @@ void draw(Paint& p, const Snapshot& s) {
     int focus = roll_focus(pattern, ui), top_key = ui.roll_top;
     const Event* focused = focus >= 0 ? &pattern.events[size_t(focus)] : nullptr;
 
+    const auto& track = s.track();
+    bool kit = track.engine == EngineKind::Sampler || track.engine == EngineKind::Kit909; // lanes of pads, not keys
     Header h = header_of(s);
     if (!ui.recording) {
-        if (focused) h.left.push_back(chip(where(s, focused->tick) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(note_name(focused->key)), c));
+        if (focused) h.left.push_back(chip(where(s, focused->tick) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(key_label(track, focused->key)), c));
         else h.left.push_back(pill("BAR " + juce::String(cursor * q / bar + 1) + " / " + juce::String((pattern.length + bar - 1) / bar)));
     }
     h.right.push_back(tag_of(s, ui.track));
@@ -67,11 +71,20 @@ void draw(Paint& p, const Snapshot& s) {
     }
     for (unsigned r = 0; r < rows; ++r) {
         int key = top_key - int(r);
-        p.fill(0, top + r * row_h, zone::width, row_h - 0.5f, key >= 0 && black(key) ? colour::quiet : colour::panel);
+        bool shade = kit ? (key - int(sampler_first_note)) / 4 % 2 != 0 : key >= 0 && black(key); // a kit: pads in fours
+        p.fill(0, top + r * row_h, zone::width, row_h - 0.5f, shade ? colour::quiet : colour::panel);
+    }
+    if (kit) { // the pads' numbers in their bank, every other lane so each has room, the cursor's always
+        for (unsigned r = 0; r < rows; ++r) {
+            int key = top_key - int(r), pad = key - int(sampler_first_note);
+            if (pad < 0 || (key - int(ui.roll_key)) % 2) continue;
+            p.text(juce::String(pad % 16 + 1), 0, top + r * row_h - 2, gutter - 4, row_h + 3,
+                   plain(key == int(ui.roll_key) ? c : colour::dim, type::small, Weight::SemiBold), juce::Justification::centredRight);
+        }
     }
     // Names on C, F, G and A and the root: never two side by side, so each has room at the floor size.
     int root = int(s.project.root % 12);
-    for (unsigned r = 0; r < rows; ++r) {
+    for (unsigned r = 0; r < rows && !kit; ++r) {
         int key = top_key - int(r);
         if (key < 0) break;
         int pitch = key % 12;

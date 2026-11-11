@@ -15,10 +15,16 @@ namespace melodee {
 void push_back_stack(UiState& ui, PageId page);
 // Where Back goes from here: the top of the stack, or Stage when it is empty.
 PageId back_target(const UiState& ui);
-// Shift + Seq from `page`: within the group it turns Step Edit -> Steps ->
-// Roll -> Motion -> Step Edit; from outside it opens Step Edit on a kit (the
-// sampler or the 909, the MPC's printed job) and Roll on a synth or MIDI
-// track, whose notes want the piano roll first.
-PageId shift_seq_page(PageId page, bool kit);
+// Seq's three levels (shell/seq_layer.h): Patterns, an editor (Steps, Roll,
+// Motion: one remembered per track), and Step Edit under it.
+bool seq_editor(PageId page); // Steps, Roll or Motion
+// The selected track's editor: the one last open on it, else Steps on a kit (the sampler or
+// the 909) and Roll on a synth or MIDI track.
+PageId seq_editor_page(const UiState& ui, bool kit);
+// An editor opened: remembered for the selected track.
+void remember_editor(UiState& ui, PageId page);
+// A tap of Seq from ui.page: Patterns from anywhere; on Patterns the track's editor; on an
+// editor back to Patterns; on Step Edit back to the editor it sits under.
+PageId seq_tap_page(const UiState& ui, bool kit);
 
 } // namespace melodee

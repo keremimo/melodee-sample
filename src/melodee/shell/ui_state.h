@@ -71,8 +71,7 @@ struct UiState {
     bool rec_armed = false;        // Seq Record pressed while stopped: Play starts the take (its light flashes)
     uint8_t lead_pattern = 0;      // the pattern launched last: whose tempo plays with BPM per pattern on
     uint32_t locate = 0;           // Patterns: where Shift + Play carries on from, ticks (the wheel moves it)
-    bool b1_held = false;          // Patterns: B1 held, the wheel sets the BPM
-    bool bpm_tenths = false;       // and Push while it is held: whole BPM or tenths
+    bool bpm_tenths = false;       // Seq held + Push: the wheel's tempo by whole BPM or tenths
     // Time Correct (Shift + Pad 14): shift in ticks and swing for the notes moved, and the keys chosen.
     int16_t tc_shift = 0;
     uint8_t tc_swing = 50;
@@ -124,7 +123,6 @@ struct UiState {
     uint8_t map_cursor = 0;
     int8_t pattern_held = -1; // Patterns: a pad held, so the next one copies it
     bool pattern_copied = false;
-    bool launch_column = false; // Patterns, B3: a pad launches that column on every track
     uint16_t song_cursor = 0;   // bar
     uint16_t song_view = 0;     // first bar in view
     uint8_t song_zoom = 2;      // index into song_zooms
@@ -146,11 +144,13 @@ struct UiState {
     uint8_t trim_focus = 0;     // and where it closes in: 0 the start, 1 the end, 2 the loop point (Shift + K1-K3)
     bool sample_held = false;   // Sample held: a pad picks a kit pad without playing it (as on the MPC)
     bool sample_used = false;   // a pad was picked meanwhile, so letting go opens no page
-    bool seq_held = false;      // Seq held (for Seq + Sample)
+    // Seq held (shell/seq_layer.h): the Sequence layer on any page. When it went down, whether a control
+    // did something meanwhile (its release then goes nowhere), and whether B1-B3 left for an editor (the
+    // sheet stays away until Seq is let go). Each track's editor last open (0 none yet, then 1 + EditorKind).
+    bool seq_held = false, seq_used = false, seq_left = false;
+    uint32_t seq_down = 0;
+    std::array<uint8_t, track_count> seq_editor {};
     bool project_demos = false; // Project: in the DEMOS folder (parity phase 10)
-    // Seq + Sample pressed together (parity phase 10): Patterns on screen while the pads play the selected
-    // track (a kit's pads), both lights blinking; Seq or Sample again, or another page, ends it.
-    bool seq_sample = false;
     uint8_t warp_stretch = 0;   // Shift + Pad 15: the Follow how (Beats or Tones) Time stretch goes back to
     // Chop (parity phase 5): the last pad's region cut into slices.
     ChopMode chop_mode = ChopMode::Threshold;
@@ -225,7 +225,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff }; // ClearLoop: target the loop // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern }; // ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),

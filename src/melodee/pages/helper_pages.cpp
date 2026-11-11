@@ -4,7 +4,8 @@
 // TEMPO (hold Tap Tempo): K1 tempo, K2 swing for the whole project, K3 click
 //   level; B1 halves, B3 doubles, B2 (or Shift + Tap Tempo anywhere) the
 //   metronome Off -> On -> Rec (only while Seq Record); the wheel moves the
-//   tempo by 0.1. Tapping works from anywhere.
+//   tempo by 0.1; Push switches BPM per pattern (SEQ) and one for the project
+//   (GBL), named in the header. Tapping works from anywhere.
 // ARP (double tap on Note Repeat; shell/note_repeat.cpp turns it on and off
 //   on any page). K1 mode, K2 rate (1/4 to 1/32T), K3 octaves; Minus / Plus
 //   the gate. B3 Hold latches.
@@ -28,6 +29,9 @@ using namespace ui;
 // ---------- Tempo ----------
 void tempo_draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
+    // Push: BPM per pattern (each pattern number its own tempo, the one launched last leading) or one for the project.
+    h.left.push_back(pill(s.project.seq_tempo ? "P" + juce::String(s.ui.lead_pattern % pattern_count + 1) + " BPM" : juce::String("GBL BPM"),
+                          s.project.seq_tempo ? colour::text : colour::mid));
     h.right.push_back(label(s.project.name));
     frame(p, s, {{"HALF", "CLICK", "DOUBLE"}, -1, colour::text}, h);
     char text[16];
@@ -214,7 +218,10 @@ void capture_soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec tempo_page {tempo_draw, play_pad, tempo_wheel, no_push, tempo_soft,
+const PageSpec tempo_page {tempo_draw, play_pad, tempo_wheel, [](Context& c) {
+                               c.set_seq_tempo(!c.project.seq_tempo); // Push: per pattern or global
+                               c.notice(c.project.seq_tempo ? "BPM per pattern" : "One BPM for the project");
+                           }, tempo_soft,
                            [](Context& c, int way) { c.set_tempo(int(c.tempo_now()) + way * 10); }}; // Minus / Plus: a whole BPM
 const PageSpec arp_page {arp_draw, play_pad, no_wheel, no_push, arp_soft, arp_nudge};
 const PageSpec chord_page {chord_draw, play_pad, no_wheel, no_push, chord_soft, octave};

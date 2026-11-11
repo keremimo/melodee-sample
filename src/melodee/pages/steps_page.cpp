@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// STEPS (Shift + Seq, Step Edit): the pads are the sixteen steps of the bar in view, pad 1
+// STEPS (B1 on a sequence page, or Seq held + B1): the pads are the sixteen steps of the bar in view, pad 1
 // bottom left. Tap a pad: the step on (with the last note played) or off.
 // Hold a pad: that step is on the cards (length, velocity, chance) and the
 // wheel changes its pitch. Minus / Plus change bar; Erase + pad clears.

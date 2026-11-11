@@ -26,7 +26,7 @@ sample-base runtime in the `base/` submodule. Layering follows
 | `engine/` | Audio: DSP pieces, the six engines and MIDI's silent one, effects and punches, the Looper (`looper.*`), the engine host (16 tracks and L1–L4, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
 | `ui/` | The design system: tokens, the Rubik typeface, the components every page is built from. |
 | `pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
-| `shell/` | The control grammar and everything around the pages: printed buttons and their Shift jobs, Shift + pad (`shift_pad_jobs`), Pad Bank, mute mode, Note Repeat, Seq + Sample, undo, the fader, takeover, lights, MIDI in and out, the card (`project_store`, `sample_library`, `card_access`), audio input and renders, and the snapshot handed to the screen. |
+| `shell/` | The control grammar and everything around the pages: printed buttons and their Shift jobs, Shift + pad (`shift_pad_jobs`), Pad Bank, mute mode, Note Repeat, the Seq layer (`seq_layer`), undo, the fader, takeover, lights, MIDI in and out, the card (`project_store`, `sample_library`, `card_access`), audio input and renders, and the snapshot handed to the screen. |
 | `tools.*` | `--melodee-preview DIR [PAGE]`: draws named pages to PNG on a host. |
 
 The design boards (`.local/melodee-design/`, not in git) are the reference
@@ -70,14 +70,14 @@ cards.
 | Control | Press | With Shift |
 | --- | --- | --- |
 | Main volume | Master level, at once | |
-| Sample | Stage → Keys (Pads on a kit) → Mix, round; from any other page Stage. Held + pad: that kit pad becomes the last pad, unheard. With Seq: see Seq + Sample | Input Config |
-| Seq | Patterns. Held with Sample (either first): Patterns with the pads playing the selected track, a kit's pads (PADS PLAY KIT, both buttons blink); Seq or Sample again, or another page, ends it | Step Edit; again Steps → Roll → Motion → Step Edit |
+| Sample | Stage → Keys (Pads on a kit) → Mix, round; from any other page Stage. Held + pad: that kit pad becomes the last pad, unheard | Input Config |
+| Seq | Tap: Patterns; on Patterns the track's editor (Steps, Roll or Motion, the last open); on an editor or Step Edit back a level. Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, under the editor; again back to it |
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows them, eight at a time (the half with the selected track); −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. Tapped twice (within 450 ms) on a track whose taps step nothing (not a kit, Punch or Roll's octave, where quick taps only switch): the Tracks screen, latched, and a tap on Tracks goes back to Stage. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The track's target (Fader page), or the page's own job (Fader below); its light follows the value | |
-| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns on Patterns, tracks with Pad Bank held |
+| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns with Seq held, tracks with Pad Bank held |
 | Note Repeat | A tap latches, a hold lasts; double tap opens Arp. On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
@@ -288,28 +288,54 @@ of the project's time signature; its **Q** (1/4 .. 1/64 with triplets) is
 only the grid. Swing (50–75 %) stretches the first sixteenth of each
 eighth.
 
-- **Patterns** (Seq): tracks down, sixteen patterns across. Pads are the
-  track's patterns: a tap queues (next bar, or at once when stopped), Erase
-  + pad clears, hold one and tap another to copy. K1 length (1, 2, 4 .. 128
-  bars; Shift: any count), K2 Q (Shift: time signature, 1/4 .. 15/16), K3
-  swing (Shift: metronome level). The wheel moves the playhead by a beat
-  (Shift: by Q); stopped, that is where Shift + Play continues. Hold B1 +
-  wheel for the BPM (Push: whole / tenths); B2 SEQ / GBL BPM (each pattern
-  number its own tempo, the one launched last leading); B3 COLUMN latches
-  column launch. The header shows the position, time signature and Rec
-  Quantize.
+Seq has three levels and a layer (`shell/seq_layer.h`): **tap to look,
+hold to steer, Shift + Seq to zoom in**.
+
+- A **tap** of Seq opens Patterns from any page. On Patterns it opens the
+  selected track's editor: the one last open on that track, else Steps on
+  a kit and Roll on a synth or MIDI track. On an editor it goes back to
+  Patterns; on Step Edit back to its editor. B1–B3 on Patterns and on every
+  editor are STEPS, ROLL, MOTION.
+- **Seq held**, on any page, is the Sequence layer. The pads light at once
+  as the track's patterns (playing bright, queued blinking, with notes
+  faint, empty dark); after 0.3 s the **Sequence sheet** shows them as the
+  pads sit, what plays, what comes next and the tempo. Let go within 0.3 s
+  with nothing touched: a tap. While held:
+  - a pad launches that pattern of the selected track (next bar; stopped,
+    at once); an empty one starts as long as the one playing. Shift + pad
+    launches that column on every track holding notes there (and on the
+    selected one). Hold a pad and tap another to copy. Erase + pad asks,
+    then clears that pattern (one undo). Shift + Erase starts a pattern
+    copy: the pattern, then where (on this or another track; the pads stay
+    patterns until it ends).
+  - −/+ the previous / next pattern; the wheel the tempo (Push: whole BPM
+    or tenths); K1–K3 the pattern's length, Q and swing (Shift: any bar
+    count, time signature, metronome level), over Knob FX's.
+  - B1–B3 open Steps, Roll and Motion (the sheet stays away until Seq is
+    let go); Seq Record starts a new take in the next empty pattern, armed
+    (playing: recording at once). Other buttons keep their jobs.
+- **Patterns** (Seq): tracks down, sixteen patterns across. The pads play
+  the selected track, so it is played and recorded with its patterns in
+  view (Erase + pad and mute mode as on any play page). K1 length (1, 2, 4
+  .. 128 bars; Shift: any count), K2 Q (Shift: time signature, 1/4 ..
+  15/16), K3 swing (Shift: metronome level). The wheel moves the playhead
+  by a beat (Shift: by Q); stopped, that is where Shift + Play continues.
+  The header shows the position, time signature and Rec Quantize. BPM per
+  pattern (each pattern number its own tempo, the one launched last
+  leading) or one for the project: Push on the Tempo page.
 - **Seq Record**: arm and Play, or record at once; again stops recording.
   **Count-In** plays a bar of clicks first. Notes keep the tick and length
   they were played; with **Rec Quantize** on they land on Q (a note moved
   ahead of the playhead is not played twice). Overdub. A take is one undo.
   While the song plays, a pattern launched is written as a clip.
-- **Step Edit** (Shift + Seq): the events starting in one step of Q, listed.
-  Wheel a step, −/+ through its events, a pad picks its event; K1 pattern
-  length, K2 Q, K3 velocity, Shift + K1 the event's length, Shift + K2 time
-  signature; the fader nudges the event a tick a step; B3 erases the event,
-  Erase + pad asks, then erases that pad's events. Hold B1 for the BPM.
-- **Roll** (Shift + Seq on a synth or MIDI track; a kit opens Step Edit):
-  the pattern's notes, each at its own tick for its own length, over bar
+- **Step Edit** (Shift + Seq, under the editor; from Roll on the note in
+  focus): the events starting in one step of Q, listed. Wheel a step, −/+
+  through its events, a pad picks its event; K1 pattern length, K2 Q, K3
+  velocity, Shift + K1 the event's length, Shift + K2 time signature; the
+  fader nudges the event a tick a step; B3 erases the event, Erase + pad
+  asks, then erases that pad's events. B1 CLOSE, Push, Seq or Shift + Seq
+  go back to the editor.
+- **Roll** (B2): the pattern's notes, each at its own tick for its own length, over bar
   lines, any number to a step. The cursor is a step of Q and a pitch: the
   wheel moves it a step (onto the nearest note starting there), Shift +
   wheel every note in turn (a step's notes low to high, then the next
@@ -327,8 +353,10 @@ eighth.
   and glides the pitch there in about 60 ms (the GLIDE knob's rate when it
   is up). The sampler and the 909 play the next note and release the held
   one; MIDI out overlaps them, which a mono synth plays legato. With Seq Record on while playing, pads play in
-  live.
-- **Steps, Motion** (Shift + Seq again, round): Steps the bar's steps
+  live. On a kit (the sampler or the 909) the rows are its pads, a lane
+  each, the kit's bank in view and numbered as the pads are (every other
+  lane, the cursor's always); it opens on the last pad's lane.
+- **Steps, Motion** (B1, B3): Steps the bar's steps
   on the pads; Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
   playing sixteenth; a kit pad's level, tune, pan, envelopes, filter and
   more are lanes of that pad; Erase + pot asks, then clears the lane).
@@ -642,11 +670,11 @@ while following.
   play a kit, tracks elsewhere; Shift + pad solos. Muted pads red, soloed
   white. Shift + Mute unmutes everything. Kit pad mutes are saved.
 - **Erase**: + pad on a kit, stopped, empties the pad; playing or recording,
-  erases that pad's notes (one undo). + pad on Patterns clears the pattern,
-  on Step Edit asks. + pot sets the initial value (on Motion: asks to clear
+  erases that pad's notes (one undo). With Seq held + pad asks, then
+  clears that pattern; on Step Edit asks. + pot sets the initial value (on Motion: asks to clear
   the lane). + fader asks to clear its lane.
 - **Copy** (Shift + Erase): the first pad is the source, the next the
-  target; kit pads, patterns on Patterns, whole tracks with Pad Bank held
+  target; kit pads, patterns with Seq held, whole tracks with Pad Bank held
   (sound, kit, sixteen patterns and their motion; the target keeps its mix
   strip). Again, or Erase, leaves.
 - **Undo** (Shift + −, redo Shift + +): the last 32 steps. A take is one; a
@@ -770,7 +798,7 @@ Chop (`melodee_chop_*`); the browser (`melodee_files`,
 `melodee_midi_last_dest` (1 External, 2 USB-C, 3 All USB),
 `melodee_midi_panics`; MIDI Config's rows
 `melodee_midi_port` .. `melodee_midi_row`); undo and projects
-(`melodee_undo`, `melodee_redo`, `melodee_undo_last`, `melodee_seq_sample`,
+(`melodee_undo`, `melodee_redo`, `melodee_undo_last`, `melodee_seq_held`,
 `melodee_map`, `melodee_demos`, `melodee_gesture`, `melodee_engine`); SD
 card access (`melodee_card` 0 home, 1 lending, 2 lent, 3 returning;
 `melodee_card_note`, the reason a lend did not start, `CardNote`;

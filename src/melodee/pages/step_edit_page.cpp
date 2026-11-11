@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// STEP EDIT (Shift + Seq, as printed; again: Steps, Roll, Motion, and back
-// here): the selected track's pattern one step of Q at a time, as on the
-// MPC. The wheel moves a step, Minus / Plus go through the step's events,
-// a pad plays and picks its event on the step. K1 the pattern's length (as
+// STEP EDIT (Shift + Seq, as printed): the level under the editor, the
+// selected track's pattern one step of Q at a time, as on the MPC; B1 CLOSE,
+// Push, Seq or Shift + Seq again go back to the editor (shell/seq_layer.h).
+// The wheel moves a step, Minus / Plus go through the step's events, a pad
+// plays and picks its event on the step. K1 the pattern's length (as
 // on Patterns), K2 Q, K3 the event's velocity; Shift + K1 its length,
 // Shift + K2 the time signature. The fader nudges the event's timing, up
 // later and down earlier (shell/fader.cpp). B3 erases the event; Erase + pad
-// erases all of that pad's events once B3 says so. Hold B1 for the BPM
-// (the wheel; Push whole / tenths), as on Patterns.
+// erases all of that pad's events once B3 says so.
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
+#include "melodee/shell/page_stack.h"
 #include "melodee/shell/step_edit.h"
 #include <algorithm>
 #include <cstdio>
@@ -45,7 +46,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(in.count ? "EVENT " + juce::String(index + 1) + " / " + juce::String(in.count) : juce::String("NO EVENTS"),
                           in.count ? colour::mid : colour::dim));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"BPM", "", "ERASE"}, -1, c, {KeyIcon::None, KeyIcon::None, KeyIcon::None}}, h);
+    frame(p, s, {{"CLOSE", "", "ERASE"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
 
     // Left: the step, and its events as a list (the selected one raised).
     float x = zone::pad, y = zone::picture_y + 2, w = 196;
@@ -111,7 +112,6 @@ void draw(Paint& p, const Snapshot& s) {
         p.text("Length " + ticks_text(e.length), gx, sy + sh + 17, gw, 14, line);
         p.text("Fader: nudge", gx, sy + sh + 30, gw, 14, plain(colour::dim, type::small, Weight::Medium));
     }
-    if (s.ui.b1_held) draw_bpm_window(p, s);
 }
 
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
@@ -124,14 +124,20 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     if (down && key >= 0) select_key(c, key);
 }
 
-void wheel(Context& c, int delta) {
-    if (c.ui.b1_held) { c.set_tempo(int(c.tempo_now()) + delta * (c.ui.bpm_tenths ? 1 : 10)); return; }
-    step_move(c, delta);
+void wheel(Context& c, int delta) { step_move(c, delta); }
+
+// Back to the editor Step Edit sits under (Steps, Roll or Motion: the track's last).
+void close(Context& c) {
+    auto engine = c.track().engine;
+    c.open(seq_editor_page(c.ui, engine == EngineKind::Sampler || engine == EngineKind::Kit909));
 }
 
-void push(Context& c) { if (c.ui.b1_held) c.ui.bpm_tenths = !c.ui.bpm_tenths; }
+void push(Context& c) { close(c); }
 
-void soft(Context& c, int key) { if (key == 2) erase_event(c); } // B1 held is the BPM (shell.cpp)
+void soft(Context& c, int key) {
+    if (key == 0) close(c);
+    if (key == 2) erase_event(c);
+}
 
 void nudge(Context& c, int way) { event_move(c, way); }
 } // namespace

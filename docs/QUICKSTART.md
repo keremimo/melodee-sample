@@ -118,15 +118,17 @@ level, K3 its pattern.
 ## 5. Making a beat
 
 Press **Seq** for Patterns: tracks down, sixteen patterns across. The pads
-are the selected track's patterns: tap one to queue it (at the next bar,
-or at once when stopped). K1 sets the pattern's length in bars, K2 its
-grid (Q), K3 swing.
+play the selected track. **Hold Seq** and they are its patterns: tap one
+to queue it (at the next bar, or at once when stopped); the screen shows
+them after a moment. K1 sets the pattern's length in bars, K2 its grid
+(Q), K3 swing; holding Seq, they do that from any page, and the wheel
+sets the tempo. Tap Seq again for the editor (Steps, Roll, Motion on B1–B3).
 
 ![Patterns](images/quickstart/patterns.png)
 
 To record:
 
-1. Select a track (step 4) and a pattern.
+1. Select a track (step 4) and a pattern (hold Seq, tap its pad).
 2. Press **Seq Record**. Stopped, it arms (REC ARMED, the button flashes).
 3. Press **Play**. Recording starts; play the pads. Seq Record while
    playing records at once.
@@ -227,6 +229,6 @@ sheet saves too.
 ## 9. Where to go next
 
 [MELODEE.md](MELODEE.md) covers every button, page and Shift job: Keys
-and Mix (press Sample again), Step Edit and the piano roll (Shift + Seq),
+and Mix (press Sample again), the editors and Step Edit (Seq, Shift + Seq),
 Song (Shift + Pad 12), the effects (Knob FX, Pad FX, Shift + Knob FX),
 16 Levels, Note Repeat and the arp, the Looper, MIDI and SD card access.

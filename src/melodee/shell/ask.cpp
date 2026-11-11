@@ -28,6 +28,11 @@ bool ask_button(Context& c, SurfaceButton button) {
     else if (kind == UiState::Ask::NewProject) c.start_new_project();
     else if (kind == UiState::Ask::ClearLoop) { looper_do(c, looper::Do::Clear, unsigned(ui.ask_target)); c.notice("L" + std::to_string(ui.ask_target + 1) + " cleared"); }
     else if (kind == UiState::Ask::LooperOff) set_looper(c, false);
+    else if (kind == UiState::Ask::ClearPattern) { // Seq held + Erase + pad: that pattern of the selected track
+        unsigned n = unsigned(ui.ask_target) % pattern_count;
+        c.edit_pattern(ui.track, n, "Clear pattern", [&] { c.clear_pattern(ui.track, n); });
+        c.notice("P" + std::to_string(n + 1) + " cleared");
+    }
     return true;
 }
 
@@ -41,6 +46,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::TakeCardBack: return "Take the card back anyway?";
     case UiState::Ask::ClearLoop: return "Clear L" + std::to_string(ui.ask_target + 1) + "?";
     case UiState::Ask::LooperOff: return "Turn the Looper off?";
+    case UiState::Ask::ClearPattern: return "Clear P" + std::to_string(ui.ask_target % pattern_count + 1) + " of track " + std::to_string(ui.track % track_count + 1) + "?";
     default: return {};
     }
 }
@@ -63,6 +69,7 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     if (ui.ask == UiState::Ask::TakeCardBack) return "What the computer was writing may be lost.";
     if (ui.ask == UiState::Ask::ClearLoop) return "Its audio and its undo go.";
     if (ui.ask == UiState::Ask::LooperOff) return "Every loop goes, and L1-L4 with them.";
+    if (ui.ask == UiState::Ask::ClearPattern) return "Its notes and motion go; Shift + Minus brings them back.";
     if (ui.ask == UiState::Ask::NewProject)
         return ui.ask_target == 1 ? "Changes are saved first." : ui.ask_target == 2 ? "Unsaved changes are lost." : "The open project closes.";
     return {};

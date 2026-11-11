@@ -6,7 +6,6 @@
 namespace melodee {
 
 PadJob pad_job(const UiState& ui) {
-    if (ui.seq_sample && ui.page == PageId::Patterns) return play_pad;
     return page_spec(ui.page).pad;
 }
 
