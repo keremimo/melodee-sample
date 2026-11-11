@@ -35,5 +35,6 @@ void draw_notice(ui::Paint& p, const Snapshot& s);     // copying a pad, or what
 void draw_fader_card(ui::Paint& p, const Snapshot& s); // for a moment after the fader moves: what it drives here
 void draw_name_sheet(ui::Paint& p, const Snapshot& s); // while ui.name is open
 void draw_sampler_map(ui::Paint& p, const Snapshot& s); // the sampler pages' map (Push), parity phase 10
+void draw_place_bar(ui::Paint& p, const Snapshot& s);   // where the music is, last of all (shell/place_bar.h)
 
 } // namespace melodee

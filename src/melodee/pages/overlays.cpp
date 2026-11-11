@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Drawn over any page: the tracks while Pad Bank is held, Note Repeat's
 // rates, the Shift + K cards while Shift is held, and the Exit sheet after a
-// short press of Power.
+// short press of Power; and over all of them the place bar.
 #include "melodee/engine/arp.h"
 #include "melodee/pages/common.h"
 #include "melodee/shell/mute_mode.h"
@@ -24,6 +24,7 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     if (s.ui.exit_open) draw_exit_sheet(p, s);
     else if (s.ui.shift && !s.ui.shift_used && !s.ui.name.open()) draw_shift_layer(p, s);
     if (!sheet && !tracks_on_pads(s.ui) && repeat_keys(s.project, s.ui)) draw_repeat_keys(p, s);
+    draw_place_bar(p, s); // over everything: where the music is stays in view
 }
 
 // Note Repeat on: B1-B3 are its rate, 1/8, 1/16, 1/32, and with Shift held their triplets.

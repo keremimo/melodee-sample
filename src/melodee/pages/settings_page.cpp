@@ -8,7 +8,8 @@
 //   colours, white, off), how the knobs, Knob FX and the fader take over a
 //   value (Pickup, Scaled, Instant; the MPC keeps these on MIDI Config,
 //   phase 9 shows them there too), what Double Seq puts in the new half
-//   (Copy notes, as the MPC does, or Empty), screen brightness, the sample rate
+//   (Copy notes, as the MPC does, or Empty), screen brightness, where the
+//   place bar sits (Top, between the soft keys and the header, or Bottom), the sample rate
 //   (44.1, 48, 96 kHz) and the audio buffer (256 to 1024 frames: longer
 //   rides out a slow moment without a crackle, shorter is heard sooner),
 //   then sampling: how Audio Recall cuts the ring and when a Free take of

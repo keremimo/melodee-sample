@@ -32,6 +32,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/place_bar.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/fader_job.h"
 #include "melodee/shell/midi_route.h"
@@ -5354,7 +5355,67 @@ void note_pitches() {
     CHECK(note_key(kit, 20) == -1 && note_key(kit, 20, true) == 20 && note_key(kit, 127, true) == 127 && note_key(kit, 128, true) == -1);
 }
 
+// The place bar (shell/place_bar.h): segments, place and tone from the snapshot, and its Settings row.
+void place_bar() {
+    using Tone = PlaceBar::Tone;
+    auto s = std::make_unique<Snapshot>();
+    const uint32_t bar = 16 * sixteenth_ticks, beat = 4 * sixteenth_ticks;
+    // A 4-bar pattern playing: a segment a bar, beats as notches, green.
+    s->pattern.length = 4 * bar; s->playing = true; s->position = 22 * sixteenth_ticks;
+    PlaceBar b = place_bar_of(*s);
+    CHECK(b.count == 4 && b.segments[0] == bar && b.total() == 4 * bar && b.notch == beat && b.position == 22 * sixteenth_ticks);
+    CHECK(b.tone == Tone::Playing && !b.held && b.beat == beat);
+    // Recording turns it red; a length not a whole number of bars ends on a short segment.
+    s->ui.recording = true; s->pattern.length = bar + 4 * sixteenth_ticks;
+    b = place_bar_of(*s);
+    CHECK(b.tone == Tone::Recording && b.count == 2 && b.segments[1] == 4 * sixteenth_ticks && b.position == 22 * sixteenth_ticks % (bar + 4 * sixteenth_ticks));
+    // 64 bars: no more than 16 segments, each of 4 bars, notched by the bar.
+    s->pattern.length = 64 * bar;
+    b = place_bar_of(*s);
+    CHECK(b.count == 16 && b.segments[0] == 4 * bar && b.notch == bar);
+    // Count-In: a block a beat (3/4 here), the ones still to come lit.
+    s->count_in = 2; s->project.signature = 2;
+    b = place_bar_of(*s);
+    CHECK(b.tone == Tone::Waiting && b.blocks == 3 && b.blocks_left == 2);
+    s->count_in = 0; s->project.signature = common_time;
+    // Stopped: held where Shift + Play carries on from; Seq Record armed waits.
+    s->playing = false; s->ui.recording = false; s->pattern.length = 4 * bar; s->ui.locate = 37 * sixteenth_ticks;
+    b = place_bar_of(*s);
+    CHECK(b.tone == Tone::Stopped && b.held && b.position == 37 * sixteenth_ticks);
+    s->ui.rec_armed = true;
+    CHECK(place_bar_of(*s).tone == Tone::Waiting);
+    s->ui.rec_armed = false;
+    // The Song: sections between its markers, the place in bars.
+    s->playing = s->song_playing = true;
+    Clip clip; clip.track = 0; clip.bar = 0; clip.bars = 12;
+    CHECK(s->project.song.place(clip));
+    s->project.song.markers[0].bar = 8; s->project.song.markers[1].bar = 4; s->project.song.marker_count = 2;
+    s->song_bar = 5; s->ticks = 13 * bar + beat;
+    b = place_bar_of(*s);
+    CHECK(b.count == 3 && b.segments[0] == 4 * bar && b.segments[1] == 4 * bar && b.segments[2] == 4 * bar);
+    CHECK(b.position == 5 * bar + beat && b.notch == bar && b.tone == Tone::Playing);
+    s->song_playing = false;
+    // The Looper page: the loop selected, its bars, red while it overdubs, amber while armed.
+    s->ui.page = PageId::Looper; s->ui.loop = 1;
+    auto& v = s->loops[1].view;
+    v.state = looper::State::Overdub; v.ticks = 2 * bar; v.length = 1000; v.position = 750;
+    b = place_bar_of(*s);
+    CHECK(b.count == 2 && b.position == uint32_t(1.5 * bar) && b.tone == Tone::Recording);
+    v.state = looper::State::Playing;
+    CHECK(place_bar_of(*s).tone == Tone::Playing);
+    v.state = looper::State::Armed;
+    CHECK(place_bar_of(*s).tone == Tone::Waiting && place_bar_of(*s).held);
+    // Settings: Top by default, Bottom kept in the text.
+    Settings set;
+    CHECK(!set.place_bottom && set.value_text(Settings::PlaceBarRow) == "Top");
+    set.step(Settings::PlaceBarRow, 1);
+    CHECK(set.place_bottom && set.value_text(Settings::PlaceBarRow) == "Bottom");
+    Settings back; back.read(set.text());
+    CHECK(back.place_bottom);
+}
+
 int main() {
+    place_bar();
     song_buttons();
     sfz_reader();
     sample_cache();

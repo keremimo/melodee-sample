@@ -185,6 +185,13 @@ void step_edit_kit(Shell& shell, Snapshot& s) {
 
 // Roll on track 1: a bass line over bars 2 and 3 (the playable prototype's), a chord at 2.2.3, an accent at 2.3.1,
 // A4 over the rows and D3 under them; the cursor on `step` and `key`.
+// The place bar's previews: the kit on Pads, playing pattern slot 8, 4 bars long.
+void place_scene(Shell& shell, Snapshot& s) {
+    s.ui.page = PageId::Pads; s.ui.track = 3;
+    s.project.tracks[3].pattern = 7;
+    shell.patterns().at[3][7].length = 4 * 16 * sixteenth_ticks;
+}
+
 void roll_bass(Shell& shell, Snapshot& s, unsigned step, uint8_t key) {
     s.ui.page = PageId::Roll; s.ui.track = 0;
     auto& pattern = shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count];
@@ -281,6 +288,17 @@ struct Preview {
 
 const Preview previews[] {
     {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }}, // track 1: B1 PRESET
+    // The place bar (shell/place_bar.h) on the kit's Pads, its pattern slot 8 made 4 bars long (no other preview
+    // plays it): playing, at the top; recording, at the bottom; stopped, held where Shift + Play carries on.
+    {"placebar", [](Shell& shell, Snapshot& s) {
+         place_scene(shell, s); s.playing = true; s.position = 22 * sixteenth_ticks + 2;
+     }},
+    {"placebarbottom", [](Shell& shell, Snapshot& s) {
+         place_scene(shell, s); s.playing = true; s.ui.recording = true; s.ui.settings.place_bottom = true; s.position = 53 * sixteenth_ticks;
+     }},
+    {"placebarstopped", [](Shell& shell, Snapshot& s) {
+         place_scene(shell, s); s.ui.locate = 37 * sixteenth_ticks;
+     }},
     // Stage, context aware: each track type's pages (pages/stage_page.cpp).
     {"stagepreset", [](Shell&, Snapshot& s) { // a sound turned to, waiting to load; starred
          on_stage(s, 0, 0, 0); s.playing = true; s.ui.preset_due = s.now + 100; s.ui.preset_cursor = 4;

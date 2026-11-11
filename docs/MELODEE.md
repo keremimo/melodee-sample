@@ -578,7 +578,8 @@ while following.
   the metronome): palette, pad response (soft, medium, hard,
   full level), pad pressure on / off, pad lights, Knob / Knob FX / Fader
   takeover (Pickup, Scaled, Instant; Scaled, Scaled, Pickup by default),
-  screen brightness, sample rate (44.1, 48, 96 kHz) and audio buffer (256,
+  screen brightness, where the place bar sits (Top, Bottom), sample rate
+  (44.1, 48, 96 kHz) and audio buffer (256,
   384, 512, 768, 1024 frames, shown with the delay it makes: longer rides
   out a busy moment without a crackle, shorter is heard sooner); under the
   rows, what the device runs at now and its dropouts since start. Then the
@@ -604,6 +605,18 @@ while following.
 
 ## Across every page
 
+- **Place bar** (`shell/place_bar.h`, `pages/place_bar.cpp`): a 2 px strip
+  with no text on every screen, over every sheet, between the soft keys and
+  the header (rows 21-22) or, with Settings' Place bar on Bottom, under the
+  knob cards (rows 238-239). Its segments are the bars of the pattern
+  playing on the track in view (never more than 16: longer patterns group
+  their bars), the Song's sections between its markers while the Song plays
+  (or stopped on Song), or on the Looper page the selected loop's bars. The
+  fill is how far it has played; the segment it is in is a shade lighter,
+  notched at its beats; the leading edge grows a row on each beat. Green
+  playing, red recording or overdubbing, amber waiting (Count-In: a block a
+  beat, emptying; Seq Record or a loop armed, a loop queued), grey stopped,
+  held where Shift + Play carries on.
 - **Mute mode** (Mute): the pads mute kit pads (bank in view) where they
   play a kit, tracks elsewhere; Shift + pad solos. Muted pads red, soloed
   white. Shift + Mute unmutes everything. Kit pad mutes are saved.
