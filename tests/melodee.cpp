@@ -12,6 +12,7 @@
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/sfz.h"
+#include "melodee/engine/keygroup.h"
 #include "melodee/engine/stream_pager.h"
 #include "melodee/shell/sample_cache.h"
 #include "melodee/engine/take_recorder.h"
@@ -5035,6 +5036,74 @@ void sfz_reader() {
     }
 }
 
+// An MPC keygroup program's keygroups and layers as the SFZ reader's zones.
+void keygroup_reader() {
+    CHECK(std::fabs(keygroup_decibels(0.353) + 12) < 1e-9 && std::fabs(keygroup_decibels(1.0) - 6) < 1e-9);
+    CHECK(std::fabs(keygroup_seconds(0) - 0.001) < 1e-12 && std::fabs(keygroup_seconds(1) - 100) < 1e-9);
+    KeygroupProgram program;
+    program.type = "Keygroup";
+    program.tags = {{"KeygroupNumKeygroups", "2"}};
+    KeygroupInstrument low;
+    low.number = 1;
+    low.tags = {{"LowNote", "0"}, {"HighNote", "59"}, {"ZonePlay", "1"}, {"TriggerMode", "2"}, {"VolumeRelease", "0.2"},
+                {"VolumeSustain", "0.5"}, {"VelocitySensitivity", "0.5"}, {"FilterType", "2"}};
+    low.layers = {{{"Active", "True"}, {"SampleName", "Piano C3 "}, {"RootNote", "61"}, {"VelStart", "0"}, {"VelEnd", "64"},
+                   {"Volume", "0.353"}, {"Pan", "0"}, {"Pitch", "0"}, {"TuneCoarse", "2"}, {"TuneFine", "10"}, {"SliceLoop", "0"}},
+                  {{"Active", "True"}, {"SampleName", "Piano C3 Hard"}, {"RootNote", "61"}, {"VelStart", "65"}, {"VelEnd", "127"},
+                   {"Volume", "1.000000"}, {"Pan", "1"}, {"Pitch", "-0.5"}, {"SliceStart", "100"}, {"SliceEnd", "5000"},
+                   {"SliceLoop", "1"}, {"SliceLoopStart", "2000"}},
+                  {{"Active", "False"}, {"SampleName", "Off"}},
+                  {{"Active", "True"}, {"SampleName", ""}}};
+    KeygroupInstrument high;
+    high.number = 2;
+    high.tags = {{"LowNote", "60"}, {"HighNote", "127"}, {"ZonePlay", "0"}, {"TriggerMode", "0"}, {"IgnoreBaseNote", "True"}};
+    high.layers = {{{"SampleName", "Hit A"}, {"VelStart", "0"}, {"VelEnd", "60"}, {"KeyTrack", "False"}, {"RootNote", "73"}},
+                   {{"SampleFile", "C:\\Samples\\hit b.wav"}, {"VelStart", "61"}, {"VelEnd", "127"}, {"KeyTrack", "True"}, {"Loop", "True"}}};
+    KeygroupInstrument past;
+    past.number = 3;
+    past.layers = {{{"SampleName", "Never"}}};
+    program.instruments = {low, high, past};
+    auto read = read_keygroup(program);
+    CHECK(read.regions.size() == 4 && read.left == 0);
+    const auto& soft = read.regions[0];
+    const auto& hard = read.regions[1];
+    CHECK(soft.sample == "Piano C3 .WAV" && hard.sample == "Piano C3 Hard.WAV");
+    CHECK(soft.zone.low_key == 0 && soft.zone.high_key == 59 && soft.zone.root == 60);
+    CHECK(soft.zone.low_velocity == 1 && soft.zone.high_velocity == 64 && hard.zone.low_velocity == 65);
+    CHECK(soft.zone.tune == 210 && hard.zone.tune == -50);
+    CHECK(std::fabs(soft.zone.gain + 12) < 1e-4 && std::fabs(hard.zone.gain - 6) < 1e-4);
+    CHECK(soft.zone.pan == -1 && hard.zone.pan == 1);
+    CHECK(soft.zone.loop == ZoneLoop::Off && soft.loop_named && !soft.loop_asked);
+    CHECK(hard.offset == 100 && hard.end == 5000 && hard.zone.loop == ZoneLoop::On && hard.zone.loop_start == 2000 && hard.zone.loop_end == 5000);
+    CHECK(read.ignored.count("FilterType") && read.velocity == 50);
+    CHECK(read.envelope.sustain == 50.0 && std::fabs(*read.envelope.release - keygroup_seconds(0.2)) < 1e-9);
+    // the cycle: one layer a press, whatever its velocity, a hit a turn
+    const auto& a = read.regions[2];
+    const auto& b = read.regions[3];
+    CHECK(a.sample == "Hit A.WAV" && b.sample == "hit b.wav");
+    CHECK(a.zone.low_velocity == 1 && a.zone.high_velocity == 127 && b.zone.low_velocity == 1);
+    CHECK(a.zone.sequence == 1 && b.zone.sequence == 2 && a.zone.sequence_length == 2 && b.zone.sequence_length == 2);
+    CHECK(a.zone.one_shot && b.zone.one_shot && b.zone.loop == ZoneLoop::Off);
+    CHECK(a.zone.keytrack == 0 && b.zone.keytrack == 100 && a.zone.root == 72);
+    CHECK(a.zone.release == sfz_release_step(keygroup_seconds(0.63)) - sfz_release_step(keygroup_seconds(0.2)));
+    {   // a pick at random splits the dice; a release trigger is left out and named
+        KeygroupProgram picked;
+        picked.type = "Keygroup";
+        KeygroupInstrument one;
+        one.tags = {{"ZonePlay", "2"}};
+        one.layers = {{{"SampleName", "x"}}, {{"SampleName", "y"}, {"Loop", "True"}}};
+        KeygroupInstrument off = one;
+        off.tags = {{"TriggerMode", "1"}};
+        picked.instruments = {one, off};
+        auto r = read_keygroup(picked);
+        CHECK(r.regions.size() == 2 && r.left == 2 && r.left_by.count("TriggerMode"));
+        CHECK(r.regions[0].zone.high_random == 0.5f && r.regions[1].zone.low_random == 0.5f);
+        // Loop with no points: the file's own loop, if it has one
+        CHECK(r.regions[1].zone.loop == ZoneLoop::On && r.regions[1].zone.loop_end == 0 && r.regions[1].loop_asked);
+        CHECK(r.envelope.release && std::fabs(*r.envelope.release - keygroup_seconds(0.63)) < 1e-9);
+    }
+}
+
 // Laid out once and found again; chunks whole pages; the least lately played going first.
 void sample_cache() {
     namespace fs = std::filesystem;
@@ -5620,6 +5689,10 @@ void note_pitches() {
     std::strcpy(ref.path, "/media/card/Piano/Grand.SFZ");
     CHECK(ref.instrument());
     std::strcpy(ref.path, "/media/card/Piano/Grand.wav");
+    CHECK(!ref.instrument());
+    std::strcpy(ref.path, "/media/card/Keys/Rhodes.XPM");
+    CHECK(ref.instrument());
+    std::strcpy(ref.path, "/media/card/Keys/Rhodes.xpj");
     CHECK(!ref.instrument());
     Track kit; kit.engine = EngineKind::Sampler;
     CHECK(note_key(kit, 20) == -1 && note_key(kit, 20, true) == 20 && note_key(kit, 127, true) == 127 && note_key(kit, 128, true) == -1);
@@ -6240,6 +6313,7 @@ int main() {
     place_bar();
     song_buttons();
     sfz_reader();
+    keygroup_reader();
     sample_cache();
     stream_pager();
     sampler_zones();

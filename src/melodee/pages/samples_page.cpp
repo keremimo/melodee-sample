@@ -63,7 +63,7 @@ void draw(Paint& p, const Snapshot& s) {
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)
                         if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.tag = juce::String("ON ") + juce::String(label); break; }
-        if (file.instrument && r.tag.isEmpty()) r.tag = "SFZ";
+        if (file.instrument && r.tag.isEmpty()) r.tag = juce::String(file.path).endsWithIgnoreCase(".xpm") ? "XPM" : "SFZ";
         if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length, in place of the tag
             char now[16], of[24];
             std::snprintf(now, sizeof(now), "%.1f", heard.heard);

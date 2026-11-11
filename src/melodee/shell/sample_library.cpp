@@ -91,7 +91,10 @@ std::string upper(std::string text) {
 }
 bool is_wav(const fs::path& path) { return upper(path.extension().string()) == ".WAV"; }
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
-bool is_instrument(const fs::path& path) { return upper(path.extension().string()) == ".SFZ"; }
+bool is_instrument(const fs::path& path) { // an .sfz, or an MPC keygroup program (.xpm)
+    const auto kind = upper(path.extension().string());
+    return kind == ".SFZ" || kind == ".XPM";
+}
 // A folder's folders, WAV files and bank files, appended; hidden ones and lost+found left out.
 // card_top: the card's own top folder, where its boot folder (autorun, what starts the app) is no sample's.
 void list_into(const std::string& folder, std::vector<SampleFile>& out, bool card_top = false) {

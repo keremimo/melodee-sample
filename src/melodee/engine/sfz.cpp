@@ -358,6 +358,8 @@ int time_step(double seconds) { // the inverse of time_seconds: 1 ms to 10 s ove
 }
 } // namespace
 
+void sfz_share_envelopes(const std::vector<SfzEnvelope>& envelopes, SfzRead& read) { share(envelopes, read); }
+
 int sfz_attack_step(double seconds) { return time_step(seconds / 0.3); }          // the sampler plays attack * 0.3
 int sfz_decay_step(double seconds) { return time_step(seconds); }
 int sfz_release_step(double seconds) { return time_step((seconds - 0.003) / 0.5); } // and release * 0.5 + 3 ms

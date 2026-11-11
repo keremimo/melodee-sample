@@ -89,9 +89,11 @@ struct SampleRef {
     char name[28] {};
     uint32_t frames = 0; // at 44.1 kHz, once loaded
     bool used() const { return path[0] != 0; }
-    bool instrument() const { // a multisampled instrument, by what it is called
+    bool instrument() const { // a multisampled instrument, by what it is called: an .sfz or an MPC keygroup (.xpm)
         const char* end = path + std::strlen(path);
-        return end - path >= 4 && end[-4] == '.' && (end[-3] | 32) == 's' && (end[-2] | 32) == 'f' && (end[-1] | 32) == 'z';
+        if (end - path < 4 || end[-4] != '.') return false;
+        const char kind[3] = {char(end[-3] | 32), char(end[-2] | 32), char(end[-1] | 32)};
+        return (kind[0] == 's' && kind[1] == 'f' && kind[2] == 'z') || (kind[0] == 'x' && kind[1] == 'p' && kind[2] == 'm');
     }
 };
 

@@ -47,6 +47,10 @@ std::optional<int> sfz_note(const std::string& text); // a number or a name: c4 
 std::string sfz_uncommented(const std::string& text);
 std::vector<std::pair<std::string, std::string>> sfz_opcodes(const std::string& text);
 
+// The pad's envelope from each region's (one each, in order): the commonest
+// stage on the pad, each zone keeping how far it is from it. Other readers too.
+void sfz_share_envelopes(const std::vector<SfzEnvelope>& envelopes, SfzRead& read);
+
 // A stage's seconds as the pad's 0..100 steps (the sampler's own curves).
 int sfz_attack_step(double seconds);
 int sfz_decay_step(double seconds);

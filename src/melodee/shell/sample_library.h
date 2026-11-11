@@ -41,7 +41,7 @@ struct SampleFile {
     uint64_t bytes = 0;
     bool folder = false;
     bool bank = false;      // a kit bank file (".mldb", model/project_file.h), listed with the WAV files
-    bool instrument = false; // a multisampled instrument (".sfz"), loaded onto a pad as a WAV file is
+    bool instrument = false; // a multisampled instrument (".sfz", ".xpm"), loaded onto a pad as a WAV file is
 };
 struct LoadedSample {
     std::string name, path, error;

@@ -426,6 +426,14 @@ thread.
   Chop, Trim Sample, Save Sample, Normalize and Warp refuse on it; Cloud stays
   in the held start. SD card access lets go of instruments and reloads them
   when the card comes back. An SFZ takes one of the project's 64 sample slots.
+- **MPC keygroup programs** (`.xpm` in the browser, tagged XPM): load and
+  stream as an SFZ does. Each keygroup is a key range and each of its layers a
+  sample over a velocity range, found as its SampleName with `.WAV` beside the
+  program (any case). Carried over: root, tune, layer volume and pan, start,
+  end and forward loop, one shot, keytrack off, Cycle (a layer a press) and
+  Random, and the amp envelope. Named, not played: filters, reversed loops,
+  note-off keygroups. Drum programs and MPC 3's compressed `.xpm` are refused
+  with a word on the pad.
 - **Banks** (kit tracks only): one bank of a kit's sixteen pads as a file.
   **Save Bank** is Shift + Sample Select on Samples: the Name sheet (the kit's
   name and bank letter first), then `Samples/Banks/<name>.mldb` with every
