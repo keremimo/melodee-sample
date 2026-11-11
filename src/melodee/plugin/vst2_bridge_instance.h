@@ -8,7 +8,10 @@
 //
 // Any thread may call in: each round trip holds the connection's lock, so a
 // parameter read from the MIDI thread waits at most for the block the audio
-// thread is handing over (and the audio thread for that read).
+// thread is handing over, and the audio thread for that one read. The lock
+// inherits priority, so a reader holding it runs at the audio thread's while
+// that thread waits; the bridge's worker answers at that priority too, and a
+// whole state is read or written one parameter a lock, a block between each.
 #pragma once
 
 #include "melodee/plugin/vst2_bridge_protocol.h"
@@ -17,9 +20,43 @@
 
 #include <array>
 #include <mutex>
+#include <pthread.h>
 #include <sys/types.h>
 
 namespace melodee {
+
+// A recursive mutex with priority inheritance (PTHREAD_PRIO_INHERIT): while a
+// real-time thread waits for it, its holder runs at that thread's priority, so
+// the audio thread never waits on a normal thread the scheduler set aside.
+class InheritingMutex
+{
+public:
+    InheritingMutex()
+    {
+        pthread_mutexattr_t attributes;
+        pthread_mutexattr_init (&attributes);
+        pthread_mutexattr_settype (&attributes, PTHREAD_MUTEX_RECURSIVE);
+        inheriting = pthread_mutexattr_setprotocol (&attributes, PTHREAD_PRIO_INHERIT) == 0;
+        if (pthread_mutex_init (&mutex, &attributes) != 0) // no inheritance here: a plain recursive one
+        {
+            inheriting = false;
+            pthread_mutexattr_setprotocol (&attributes, PTHREAD_PRIO_NONE);
+            pthread_mutex_init (&mutex, &attributes);
+        }
+        pthread_mutexattr_destroy (&attributes);
+    }
+    ~InheritingMutex() { pthread_mutex_destroy (&mutex); }
+    InheritingMutex (const InheritingMutex&) = delete;
+    InheritingMutex& operator= (const InheritingMutex&) = delete;
+    void lock() { pthread_mutex_lock (&mutex); }
+    void unlock() { pthread_mutex_unlock (&mutex); }
+    bool try_lock() { return pthread_mutex_trylock (&mutex) == 0; }
+    bool inherits() const { return inheriting; }
+
+private:
+    pthread_mutex_t mutex;
+    bool inheriting = false;
+};
 
 class Vst2BridgeInstance final : public juce::AudioPluginInstance
 {
@@ -65,7 +102,7 @@ public:
         pid_t pid = -1;
         uint32_t sequence = 0;
         bool dead = false;
-        std::recursive_mutex lock; // around a whole exchange: its fields, the round trip, the answer
+        InheritingMutex lock; // around a whole exchange: its fields, the round trip, the answer
         bool call (bridge::Command, int timeoutMs = 2000);
         ~Connection();
     };

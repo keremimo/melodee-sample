@@ -1073,7 +1073,11 @@ of the card (beside `Samples/`), in any folders under it.
   `tools/plugin_support/SURVEY.md` says why these and no others.
 - **32-bit plug-ins** run in a bridge process: audio, MIDI and parameters
   cross in shared memory, a block at a time in the same period (about a
-  microsecond each way). If the plug-in crashes, only the bridge goes:
+  microsecond each way). Once the plug-in is open the bridge answers at
+  the audio thread's priority (`SCHED_FIFO` 30; threads the plug-in starts
+  stay normal), and the lock the audio thread shares with parameter reads
+  inherits priority, so a block never waits on a normal thread; a state
+  is read or written a parameter a lock. If the plug-in crashes, only the bridge goes:
   the page says it stopped working and picking it again reopens it.
 - **Saving.** A project names each plug-in by path (`Project::plugins`,
   32 entries) and keeps what each saves of itself (its state) in the file.

@@ -8,12 +8,14 @@
 #include "melodee/plugin/vst2_abi.h"
 #include "melodee/plugin/vst2_bridge_protocol.h"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <dlfcn.h>
 #include <linux/futex.h>
+#include <sched.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
@@ -153,6 +155,23 @@ void process()
     timeInfo.ppqPos = timeInfo.samplePos / rate * timeInfo.tempo / 60.0;
 }
 
+#ifndef SCHED_RESET_ON_FORK
+#define SCHED_RESET_ON_FORK 0x40000000
+#endif
+
+// This thread answers the host's audio thread every block, so once the plug-in
+// is open it runs at that thread's priority: a block never waits behind normal
+// work. Not while opening (a plug-in's set-up must not hold a core from the
+// audio threads), and threads the plug-in starts later go back to normal
+// (SCHED_RESET_ON_FORK). Best effort: without the right to, it stays as it was.
+void raisePriority()
+{
+    sched_param priority {};
+    priority.sched_priority = bridge::audioPriority;
+    if (sched_setscheduler (0, SCHED_FIFO | SCHED_RESET_ON_FORK, &priority) != 0)
+        std::fprintf (stderr, "vst2_bridge32: no real-time priority (%s)\n", std::strerror (errno));
+}
+
 // Runs one command; false once the host asked the bridge to quit.
 bool run (bridge::Command command)
 {
@@ -161,6 +180,8 @@ bool run (bridge::Command command)
     if (command == Command::open)
     {
         shared->result = open (shared->text) ? 1 : 0;
+        if (shared->result != 0)
+            raisePriority();
         return true;
     }
     if (effect == nullptr)

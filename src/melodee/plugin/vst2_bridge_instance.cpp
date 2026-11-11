@@ -50,7 +50,7 @@ public:
     float getValue() const override { return owner.parameter (index); }
     void setValue (float value) override
     {
-        const std::lock_guard<std::recursive_mutex> held (owner.connection->lock);
+        const std::lock_guard<InheritingMutex> held (owner.connection->lock);
         owner.shared->i0 = index;
         owner.shared->f0 = value;
         owner.call (bridge::Command::setParameter);
@@ -209,7 +209,7 @@ Vst2BridgeInstance::Connection::~Connection()
 // is usually back within tens of microseconds), then sleeps on the futex.
 bool Vst2BridgeInstance::Connection::call (bridge::Command command, int timeoutMs)
 {
-    const std::lock_guard<std::recursive_mutex> held (lock);
+    const std::lock_guard<InheritingMutex> held (lock);
     if (dead)
         return false;
     shared->command = command;
@@ -237,7 +237,7 @@ bool Vst2BridgeInstance::Connection::call (bridge::Command command, int timeoutM
 
 String Vst2BridgeInstance::callText (bridge::Command command, int index) const
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     shared->i0 = index;
     shared->text[0] = 0;
     if (! call (command))
@@ -248,7 +248,7 @@ String Vst2BridgeInstance::callText (bridge::Command command, int index) const
 
 float Vst2BridgeInstance::parameter (int index) const
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     shared->i0 = index;
     return call (bridge::Command::getParameter) ? shared->f0 : 0.0f;
 }
@@ -271,7 +271,7 @@ void Vst2BridgeInstance::fillInPluginDescription (PluginDescription& description
 
 void Vst2BridgeInstance::prepareToPlay (double newRate, int newBlock)
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     if (active)
         releaseResources();
     rate = newRate;
@@ -287,7 +287,7 @@ void Vst2BridgeInstance::prepareToPlay (double newRate, int newBlock)
 
 void Vst2BridgeInstance::releaseResources()
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     if (! active)
         return;
     shared->i0 = 0;
@@ -297,7 +297,7 @@ void Vst2BridgeInstance::releaseResources()
 
 void Vst2BridgeInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     const int frames = std::min ({ buffer.getNumSamples(), block, (int) bridge::maxFrames });
     const auto& info = shared->info;
 
@@ -333,7 +333,7 @@ void Vst2BridgeInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& m
 
 double Vst2BridgeInstance::getTailLengthSeconds() const
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     if (! call (bridge::Command::tailSize))
         return 0.0;
     return shared->result > 1 ? shared->result / rate : 0.0;
@@ -341,13 +341,13 @@ double Vst2BridgeInstance::getTailLengthSeconds() const
 
 int Vst2BridgeInstance::getCurrentProgram()
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     return call (bridge::Command::getProgram) ? shared->result : 0;
 }
 
 void Vst2BridgeInstance::setCurrentProgram (int index)
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
+    const std::lock_guard<InheritingMutex> held (connection->lock);
     shared->i0 = index;
     call (bridge::Command::setProgram);
 }
@@ -361,15 +361,18 @@ const String Vst2BridgeInstance::getProgramName (int index)
 // parameter values, so a project can move between the two hosts.
 void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     state.reset();
     state.append (stateTag, sizeof (stateTag));
-    if ((shared->info.flags & vst2::flag::programChunks) != 0 && call (bridge::Command::getState) && shared->result == 1)
     {
-        state.append (&stateChunk, 1);
-        state.append (shared->data, shared->dataSize);
-        return;
+        const std::lock_guard<InheritingMutex> held (connection->lock);
+        if ((shared->info.flags & vst2::flag::programChunks) != 0 && call (bridge::Command::getState) && shared->result == 1)
+        {
+            state.append (&stateChunk, 1);
+            state.append (shared->data, shared->dataSize);
+            return;
+        }
     }
+    // One parameter a round trip, each under the lock alone: the audio thread's blocks pass in between.
     state.append (&stateParameters, 1);
     for (int i = 0; i < shared->info.numParams; ++i)
     {
@@ -380,7 +383,6 @@ void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
 
 void Vst2BridgeInstance::setStateInformation (const void* data, int size)
 {
-    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     if (size < 5 || std::memcmp (data, stateTag, sizeof (stateTag)) != 0)
         return;
     const auto* bytes = static_cast<const uint8*> (data);
@@ -388,6 +390,7 @@ void Vst2BridgeInstance::setStateInformation (const void* data, int size)
     const auto bodySize = size - 5;
     if (bytes[4] == stateChunk)
     {
+        const std::lock_guard<InheritingMutex> held (connection->lock);
         if (bodySize <= (int) bridge::maxData)
         {
             std::memcpy (shared->data, body, (size_t) bodySize);
@@ -398,6 +401,7 @@ void Vst2BridgeInstance::setStateInformation (const void* data, int size)
     }
     for (int i = 0; i < std::min ((int) shared->info.numParams, bodySize / (int) sizeof (float)); ++i)
     {
+        const std::lock_guard<InheritingMutex> held (connection->lock); // one at a time, as getStateInformation
         shared->i0 = i;
         std::memcpy (&shared->f0, body + i * (int) sizeof (float), sizeof (float));
         call (bridge::Command::setParameter);

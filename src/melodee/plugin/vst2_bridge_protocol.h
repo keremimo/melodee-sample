@@ -19,6 +19,9 @@
 namespace bridge
 {
 constexpr uint32_t maxChannels = 16, maxFrames = 4096, maxEvents = 512, maxText = 1024, maxData = 1 << 20;
+// The host's audio thread's SCHED_FIFO priority (base drivers/audio.cpp): the
+// bridge's worker takes it once the plug-in is open, as it answers that thread.
+constexpr int audioPriority = 30;
 
 enum class Command : uint32_t
 {
