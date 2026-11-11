@@ -22,10 +22,10 @@ namespace {
 using namespace ui;
 constexpr unsigned visible = list_rows;
 
-juce::String kind_of(const PluginFile& file) {
+juce::String kind_of(const PluginFile& file) { // empty while it is still being found out: nothing that reads as cut text
     if (file.instrument == 1) return "INSTRUMENT";
     if (file.instrument == 0) return "EFFECT";
-    return juce::String::fromUTF8("\xe2\x80\xa6"); // still finding out
+    return {};
 }
 
 // What the picker loads into, for the header: the track, or the chain and its slot.
@@ -60,9 +60,10 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(folder + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(int(v.files.size())), c));
     if (s.ui.plugin_target == UiState::PluginTarget::Instrument) h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{v.top ? "CANCEL" : "BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
-    if (v.files.empty()) {
-        juce::String why = v.root.empty() ? "No card in the slot" : v.top ? "Put plug-ins in Plugins on the card" : "No plug-ins here";
-        p.text(why, zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 40, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
+    if (v.files.empty()) { // a glyph and two words: no card, or an empty Plugins folder
+        float mid = zone::width / 2.0f, y = zone::picture_y + 40;
+        icon(p, v.root.empty() ? Icon::Card : Icon::Folder, mid - 14, y, 28, colour::dim, 1.4f);
+        p.text(v.root.empty() ? "NO CARD" : "NO PLUG-INS", 0, y + 36, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
     const auto* ref = loaded_ref(s);
@@ -80,7 +81,7 @@ void draw(Paint& p, const Snapshot& s) {
         else if (file.several()) r.tag = juce::String(int(file.plugins)) + juce::String::fromUTF8(" PLUG-INS \xe2\x80\xba");
         else if (!file.loadable()) { r.tag = juce::String(file.why).toUpperCase(); r.dim = true; }
         else if (!loaded.empty() && file.path == loaded && file.id == loaded_id) { r.tag_lead = "LOADED "; r.tag = format_tag(file.format); }
-        else r.tag = juce::String(format_tag(file.format)) + juce::String::fromUTF8(" \xc2\xb7 ") + kind_of(file);
+        else r.tag = juce::String(format_tag(file.format)) + (kind_of(file).isEmpty() ? juce::String() : juce::String::fromUTF8(" \xc2\xb7 ") + kind_of(file));
         p.g.saveState();
         list_row(p, zone::pad, zone::picture_y + 0.5f + row * (list_row_h + list_row_gap), zone::width - 2 * zone::pad, r);
         p.g.restoreState();

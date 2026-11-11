@@ -152,7 +152,9 @@ float Paint::text(const juce::String& value, float x, float y, float w, float h,
     style.size = std::max(style.size, type::floor);
     if (audit && value.isNotEmpty()) {
         float needed = width(value, style);
-        if (asked.size < type::floor || needed > w + 0.5f) audit->push_back({value, asked.size, needed, w});
+        // Under the floor, wider than its box, or an ellipsis standing in for what does not fit: all fail the check.
+        bool ellipsis = value.contains(juce::String::fromUTF8("\xe2\x80\xa6")) || value.contains("...");
+        if (asked.size < type::floor || needed > w + 0.5f || ellipsis) audit->push_back({value, asked.size, needed, w});
     }
     // Colour and font stay set on g, as drawText() callers expect.
     g.setColour(style.colour);

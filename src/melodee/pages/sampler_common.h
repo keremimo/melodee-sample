@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/engine_info.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/sampler_map.h"
@@ -64,6 +65,9 @@ CloudGrains cloud_grains(const Snapshot& s, unsigned pad, const PadSound& sound,
 void draw_grains(ui::Paint& p, float x, float y, float w, float h, float from, float to, uint32_t frames, const CloudGrains& cloud,
                  juce::Colour shade);
 void sampler_rows_wheel(Context& c, int delta);
+// A sample page drawn as Stage draws the same page (pages/stage_page.cpp): the pad's pill, the sample keys, the
+// kit picture of `kind`; `row` (0 or 1) on pages with a second row of cards, -1 on the others.
+void kit_page(ui::Paint& p, const Snapshot& s, StageKind kind, int row);
 void sampler_bank(Context& c, int way);
 
 } // namespace melodee

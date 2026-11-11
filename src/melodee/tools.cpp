@@ -281,6 +281,7 @@ void preview_projects(Snapshot& s) {
     v.folders = {"Live sets", "Live sets/Spring tour", "Sketches", "Sketches/2026"};
     s.project_path = v.root + "/Night drive.mldp";
     s.dirty = true;
+    s.ui.project_rows = uint16_t(project_rows(v.entries.size(), s.project_path, s.project_folder)); // as the shell copies it in
 }
 
 // Step Edit on the kit (track 4): step 5 of pattern 1 holds a kick, a hat and
@@ -1432,6 +1433,16 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     Shell shell(host);
     board_project(shell);
     unsigned written = 0, text_issues = 0;
+    if (names.empty()) { // every page: first the PNGs of pages that are gone, so no removed screen lingers among them
+        std::error_code error;
+        for (const auto& entry : std::filesystem::directory_iterator(folder, error)) {
+            auto stem = entry.path().stem().string();
+            if (entry.path().extension() != ".png") continue;
+            if (stem.size() > 3 && stem.compare(stem.size() - 3, 3, "@2x") == 0) stem.resize(stem.size() - 3);
+            bool known = std::any_of(std::begin(previews), std::end(previews), [&](const auto& p) { return stem == p.name; });
+            if (!known) std::filesystem::remove(entry.path(), error);
+        }
+    }
     for (const auto& preview : previews) {
         if (!names.empty() && std::find(names.begin(), names.end(), preview.name) == names.end()) continue;
         auto snapshot = std::make_unique<Snapshot>();

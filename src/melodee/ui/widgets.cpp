@@ -103,9 +103,15 @@ void sheet(Paint& p, const Sheet& s) {
 void menu_sheet(Paint& p, const MenuSheet& m) {
     // A card 240 wide over the picture, rows of 23 with 1 between; tall
     // menus rise into the header so every row shows.
-    constexpr float w = 240, x = (zone::width - w) / 2, row_h = 23;
+    // Rows shrink (to 22) before the card would reach the soft keys, which stay readable over it.
+    constexpr float w = 240, x = (zone::width - w) / 2;
+    float row_h = std::min(23.0f, std::floor((zone::height - 4 - zone::header_y - 29) / float(std::max(1u, m.count))) - 1);
     float h = 6 + 18 + m.count * (row_h + 1) + 5;
-    float y = std::min(float(zone::picture_y + 4), zone::height - 4 - h);
+    float y = std::max(float(zone::header_y), std::min(float(zone::picture_y + 4), zone::height - 4 - h));
+    // The page behind sinks across the whole width, and where the card covers the header it goes: nothing beside
+    // the card reads as cut text.
+    if (y < zone::picture_y) p.fill(0, zone::header_y, zone::width, zone::height - zone::header_y, colour::bg); // a tall menu: nothing behind
+    else p.dim_zone(int(y) - 2, zone::height - int(y) + 2, 0.92f);
     for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
     p.fill(x, y, w, h, colour::surf, 6);
     p.ring(x, y, w, h, colour::line, 6);
@@ -167,6 +173,75 @@ void star(Paint& p, float cx, float cy, float r, juce::Colour c) {
     juce::Path path;
     path.addStar({cx, cy}, 5, r * 0.45f, r, 0);
     p.g.setColour(c); p.g.fillPath(path);
+}
+
+void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y, float h) {
+    float column = zone::width / 3.0f;
+    for (size_t n = 0; n < tiles.size(); ++n) {
+        const auto& t = tiles[n];
+        if (t.icon == Icon::None) continue;
+        float x = n * column + 4, w = column - 8, cx = x + w / 2;
+        auto edge = t.primary ? t.colour : colour::line;
+        // A soft shadow, the tile, and the caret up to its key.
+        for (int k = 1; k <= 3; ++k) p.fill(x - k, y + k * 2, w + 2 * k, h, juce::Colours::black.withAlpha(0.06f), 6 + k);
+        p.fill(x, y, w, h, colour::panel, 6);
+        p.ring(x, y, w, h, edge, 6, t.primary ? 1.4f : 1);
+        juce::Path caret;
+        caret.startNewSubPath(cx - 5, y + 0.5f); caret.lineTo(cx, y - 4.5f); caret.lineTo(cx + 5, y + 0.5f);
+        p.fill(cx - 5, y - 0.5f, 10, 2, colour::panel);
+        p.g.setColour(edge);
+        p.g.strokePath(caret, juce::PathStrokeType(t.primary ? 1.4f : 1, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
+        icon(p, t.icon, cx - 15, y + 18, 30, t.colour, 1.4f);
+        if (t.big.isNotEmpty()) {
+            auto big = plain(t.colour, type::value, Weight::SemiBold);
+            p.text(t.big, x + 4, y + 56, w - 8, 26, p.fit(t.big, big, w - 8, type::list), juce::Justification::centred);
+            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, y + 84, w - 8, 14, p.fit(t.sub, caps_text(colour::mid), w - 8, type::floor), juce::Justification::centred);
+        } else {
+            auto word = caps_text(t.colour, type::body);
+            p.text(t.word, x + 4, y + 60, w - 8, 18, p.fit(t.word, word, w - 8, type::floor), juce::Justification::centred);
+        }
+    }
+}
+
+void confirm_sheet(Paint& p, const ConfirmSheet& s) {
+    bool foot = s.undo || std::any_of(s.counts.begin(), s.counts.end(), [](const auto& c) { return c.first != Icon::None; });
+    constexpr float w = 268, x = (zone::width - w) / 2;
+    float h = foot ? 112 : 76, y = zone::picture_y + (zone::picture_h - 112) / 2; // the top stays put: what a page draws under the name lines up
+    for (int k = 1; k <= 3; ++k) p.fill(x - k, y + k * 2, w + 2 * k, h, juce::Colours::black.withAlpha(0.06f), 7 + k);
+    p.fill(x, y, w, h, colour::panel, 7);
+    p.ring(x, y, w, h, colour::rec, 7, 1.2f);
+    float at = x + 14, top = y + 14;
+    icon(p, s.icon, at, top, 22, colour::rec, 1.6f);
+    at += 32;
+    if (s.chip.isNotEmpty()) {
+        auto style = plain(colour::bg, type::body, Weight::Bold);
+        float cw = std::max(32.0f, p.width(s.chip, style) + 14);
+        p.fill(at, top, cw, 22, s.chip_colour, 4);
+        p.text(s.chip, at, top, cw, 22, style, juce::Justification::centred);
+        at += cw + 10;
+    }
+    auto name = plain(colour::text, type::list, Weight::SemiBold);
+    p.text(s.name, at, top, x + w - 14 - at, 22, p.fit(s.name, name, x + w - 14 - at, type::floor));
+    if (s.note.isNotEmpty()) p.text(s.note, x + 14, y + 48, w - 28, 16, caps_text(s.note_colour));
+    // The counts, glyph and number, and the undo keys on the right.
+    float by = y + h - 30, cx = x + 14;
+    for (const auto& [glyph, number] : s.counts) {
+        if (glyph == Icon::None) continue;
+        icon(p, glyph, cx, by + 1, 14, colour::sec, 1.5f);
+        auto style = plain(colour::text, type::body, Weight::SemiBold);
+        p.text(number, cx + 18, by, 60, 16, style);
+        cx += 18 + p.width(number, style) + 14;
+    }
+    if (s.undo) { // Shift, Minus: the keys that bring it back
+        float ux = x + w - 14 - 16;
+        icon(p, Icon::Undo, ux, by + 1, 14, colour::mid, 1.6f);
+        ux -= 22;
+        p.fill(ux, by - 1, 18, 18, colour::raised, 3);
+        p.text(juce::String::fromUTF8("\xe2\x88\x92"), ux, by - 1, 18, 18, plain(colour::sec, type::body, Weight::Bold), juce::Justification::centred);
+        ux -= 22;
+        p.fill(ux, by - 1, 18, 18, colour::raised, 3);
+        icon(p, Icon::Shift, ux + 3.5f, by + 2.5f, 11, colour::sec, 1.4f);
+    }
 }
 
 } // namespace melodee::ui

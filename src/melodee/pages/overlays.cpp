@@ -117,27 +117,25 @@ void draw_notice(Paint& p, const Snapshot& s) {
 void draw_exit_sheet(Paint& p, const Snapshot& s) {
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
     p.dim_zone(zone::knobs_y, zone::knobs_h);
-    // Soft keys: STAY under B1, POWER OFF under B2, LEAVE under B3 (Push never quits).
-    soft_keys(p, {{"STAY", "POWER OFF", "LEAVE"}, s.ui.exit_off ? 1 : 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
+    // Soft keys: STAY under B1, POWER OFF under B2, the MPC app under B3 (Push never quits); a tile under each says it again.
+    SoftKeys keys {{"STAY", "POWER OFF", "MPC APP"}, s.ui.exit_off ? 1 : -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    keys.glyphs = {Icon::None, Icon::Power, Icon::Mpc};
+    soft_keys(p, keys);
 
+    // The header says what happens to the project: saved (a check), or no card to save it on.
+    bool card = !s.projects.root.empty();
     Header h = header_of(s);
     h.playing = false; h.recording = false;
+    if (!card) h.left.push_back(pill(Icon::Card, "NO CARD", colour::amber));
+    else if (s.ui.exit_off && !s.ui.exit_saved) h.left.push_back(pill(Icon::Rec, "SAVING", colour::amber));
+    else h.left.push_back(pill(Icon::Check, s.project_path.empty() ? "SAVED AS NEW" : "SAVED", colour::play));
     h.right.push_back(label(s.project.name));
     header(p, h);
-    for (unsigned n = 0; n < 4; ++n)
-        p.fill(zone::pad, zone::picture_y + 1.5f + n * 36, zone::width - 2 * zone::pad, 33, colour::quiet.interpolatedWith(colour::bg, 0.5f), 4);
-    bool card = !s.projects.root.empty();
-    juce::String saved = !card ? juce::String("There is no card to save this project on.")
-                       : s.project_path.empty() ? juce::String("It is saved as a new project.")
-                       : juce::String(s.project.name) + " is saved.";
-    if (s.ui.exit_off) { // POWER OFF chosen: the save on its way, then a second saying it landed, then the MPC goes dark
-        juce::String body = !card ? juce::String("There is no card to save this project on. The MPC turns off now.")
-                          : !s.ui.exit_saved ? juce::String("Saving, then the MPC turns off.")
-                          : juce::String(s.project.name) + " is saved. It opens again when you turn the MPC on.";
-        sheet(p, {s.ui.exit_saved ? "Turning off" : "Saving", body, true});
+    if (s.ui.exit_off) { // POWER OFF chosen: the save on its way, then the MPC goes dark
+        key_tiles(p, {KeyTile {}, word_tile(Icon::Power, s.ui.exit_saved || !card ? "TURNING OFF" : "SAVING", true), KeyTile {}});
         return;
     }
-    sheet(p, {"Leave Melodee?", saved + " Leave starts the MPC app; Power off turns the MPC off.", true});
+    key_tiles(p, {word_tile(Icon::Back, "STAY", false, colour::sec), word_tile(Icon::Power, "OFF"), word_tile(Icon::Mpc, "MPC APP", true)});
 }
 
 } // namespace melodee

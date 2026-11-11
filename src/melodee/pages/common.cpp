@@ -73,8 +73,9 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
         bool loop = s.ui.page == PageId::Looper || (s.ui.page == PageId::Rack && s.ui.fx_loop >= 0); // L1-L4: their own colours
         unsigned l = s.ui.page == PageId::Looper ? s.ui.loop : unsigned(std::max<int>(s.ui.fx_loop, 0));
-        c.shade = neutral ? ui::colour::text : loop ? ui::loop_shade(l, n) : ui::knob_shade(s.ui.track, n);
-        c.track = neutral ? ui::colour::text : loop ? ui::loop_colour(l) : colour_of(s);
+        c.knob_fx = b.kind == Binding::Kind::KnobParam; // Knob FX owns the pot: white, never the track's colours
+        c.shade = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_shade(l, n) : ui::knob_shade(s.ui.track, n);
+        c.track = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_colour(l) : colour_of(s);
         c.fill = b.fraction();
         const auto& pot = s.ui.pots[n];
         if (pot.position >= 0 && !pot.engaged && pot.bound == b.key(s.ui.track)) {
@@ -208,7 +209,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
     case Kind::PadLoopPoint: c.label = "LOOP"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s"; break;
     case Kind::PadLoop: c.label = "LOOP"; c.value = b.value ? "On" : "Off"; break;
-    case Kind::PadMono: c.label = "POLY"; c.value = b.value ? "Mono" : "Poly"; break;
+    case Kind::PadMono: c.label = "VOICES"; c.value = b.value ? "Mono" : "Poly"; break;
     case Kind::PadLink: {
         char label[4]; pad_label(track.last_pad / 16 * 16 + unsigned(b.value + 15) % 16, label);
         c.label = "PAD LINK"; c.value = b.value ? juce::String(label) : juce::String("Off");
@@ -231,7 +232,19 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::PadWarp: {
         auto warp = warp_of_card(b.value);
         c.label = "WARP";
-        if (warp == warp_seq) c.value = "Seq";
+        if (warp == warp_seq) {
+            c.value = "Seq";
+            // Seq stretches the pad to the project's tempo from its own: past 2x either way it says by how much, in amber.
+            const auto& t = s.track();
+            if (t.engine == EngineKind::Sampler && s.sample.frames) {
+                const auto& pad = t.pads[t.last_pad % sampler_pads];
+                uint32_t end = pad.end ? pad.end : s.sample.frames;
+                double seconds = end > pad.start ? (end - pad.start) / 44100.0 : 0;
+                double own = pad.beats && seconds > 0 ? pad.beats * 60.0 / seconds : pad.own_tempo / 10.0, now = s.project.tempo / 10.0;
+                double stretch = own > 0 && now > 0 ? own / now : 1;
+                if (stretch > 2 || stretch < 0.5) { c.unit = juce::String::fromUTF8("\xc3\x97") + juce::String(stretch, 1); c.shade = ui::colour::amber; }
+            }
+        }
         else if (warp == warp_off) c.value = "Off";
         else { c.value = juce::String(int(warp)); c.unit = "%"; }
         break;
@@ -405,8 +418,17 @@ FaderShown fader_shown(const Snapshot& s) {
 
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header) {
     ui::soft_keys(p, keys);
-    ui::header(p, header);
-    ui::knob_strip(p, cards_of(s));
+    auto cards = cards_of(s);
+    bool knob_fx = std::any_of(cards.begin(), cards.end(), [](const ui::KnobCard& c) { return c.knob_fx; });
+    if (knob_fx && s.ui.page != PageId::KnobFx) { // the pots are Knob FX's: the header names its effect first
+        auto shown = header;
+        auto name = juce::String(knob_fx_entry(s.project.knob_fx.choice).name).toUpperCase();
+        shown.left.insert(shown.left.begin(), ui::chip(ui::Icon::Knob, name, ui::colour::text));
+        ui::header(p, shown);
+    } else {
+        ui::header(p, header);
+    }
+    ui::knob_strip(p, cards);
 }
 
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down) { c.play_pad(pad, velocity, down); }

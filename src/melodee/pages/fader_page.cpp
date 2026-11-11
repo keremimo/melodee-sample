@@ -26,73 +26,79 @@ void draw(Paint& p, const Snapshot& s) {
     bool kit = t.engine == EngineKind::Sampler, on = t.fader_on && t.used();
     unsigned chosen = unsigned(fader_target(t));
     Header h = header_of(s);
-    h.left.push_back(pill("FADER"));
-    h.left.push_back(pill(on ? "ON" : "OFF", on ? c : colour::mid));
+    h.left.push_back(pill(Icon::Fader, "FADER"));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"BACK", "", on ? "FADER OFF" : "FADER ON"}, on ? 2 : -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
+    SoftKeys keys {{"BACK", "", "FADER"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    keys.toggles = 4;
+    keys.lit = on ? 4 : 0;
+    frame(p, s, keys, h);
 
-    // The targets, one row each.
+    // The targets the track can take, one row each (a synth has the mod wheel alone).
     constexpr float rh = 18;
-    float x = zone::pad, w = 176, y = zone::picture_y + 1.5f;
-    for (unsigned n = 0; n < fader_targets; ++n, y += rh) {
+    float x = zone::pad, w = 184, y = zone::picture_y + 2;
+    for (unsigned n = 0; n < fader_targets; ++n) {
         auto target = FaderTarget(n);
-        bool cursor = n == s.ui.fader_cursor, here = n == chosen && on, usable = kit || !fader_needs_kit(target);
-        if (cursor) { p.fill(x, y, w, rh - 1, colour::raised, 4); p.fill(x, y, 3, rh - 1, c); }
-        auto ink = !usable ? colour::dim : cursor ? colour::text : colour::sec;
-        p.text(fader_target_name(target), x + 9, y, w - 50, rh - 1, plain(ink, type::small, Weight::Medium));
-        if (here) p.fill(x + w - 16, y + rh / 2 - 4, 7, 7, c, 3.5f);  // the one the fader moves
-        else if (!usable) p.text("KIT", x + w - 40, y, 32, rh - 1, caps_text(colour::dim), juce::Justification::right);
+        if (!kit && fader_needs_kit(target)) continue;
+        bool cursor = n == s.ui.fader_cursor || (!kit && fader_needs_kit(FaderTarget(s.ui.fader_cursor % fader_targets))), here = n == chosen && on;
+        if (cursor) { p.fill(x, y, w, rh - 1, c.withAlpha(0.16f), 3); p.fill(x, y, 2.5f, rh - 1, c); }
+        p.text(fader_target_name(target), x + 9, y, w - 30, rh - 1, plain(cursor ? colour::text : colour::sec, type::body, cursor ? Weight::SemiBold : Weight::Regular));
+        if (here) p.circle(x + w - 10, y + rh / 2 - 0.5f, 3.5f, c); // the one the fader moves
+        y += rh;
     }
 
-    // The fader as it stands: a slot, the value's level, what it is.
+    // The fader drawn: its slot, the value as a cap in the track colour, and while it has to reach the value (takeover),
+    // where the hand has it, dashed, with an arrow the way to move.
     auto shown = fader_shown(s);
-    float fx = x + w + 8, fw = zone::width - zone::pad - fx, top = zone::picture_y + 4, slot_h = 100;
-    p.fill(fx, top - 2.5f, fw, zone::picture_h - 3, colour::panel, 6);
-    float sw = 10, sx = fx + fw - 12 - sw; // the slot on the right, the words beside it
-    p.fill(sx, top + 4, sw, slot_h, colour::quiet, 3);
+    float sx = zone::width - zone::pad - 40, top = zone::picture_y + 8, slot_h = 128, mid = top + slot_h / 2;
+    p.fill(sx + 9, top, 6, slot_h, colour::line, 3);
+    if (shown.card.bipolar) p.fill(sx + 2, mid - 0.5f, 20, 1, colour::mid);
     if (shown.value) {
-        float level = std::clamp(shown.card.fill, 0.0f, 1.0f);
-        if (shown.card.bipolar) { // from the middle
-            float mid = top + 4 + slot_h / 2, at = top + 4 + slot_h * (1 - level);
-            p.fill(sx, std::min(mid, at), sw, std::max(1.0f, std::abs(at - mid)), shown.waiting ? colour::mid : c, 2);
-            p.fill(sx - 3, mid, sw + 6, 1, colour::line);
-        } else {
-            p.fill(sx, top + 4 + slot_h * (1 - level), sw, slot_h * level, shown.waiting ? colour::mid : c, 2);
-        }
-        if (shown.waiting) { // where the fader sits: it takes over the value once it gets there
-            float py = top + 4 + slot_h * (1 - shown.card.pot);
-            p.ring(sx - 4, py - 2, sw + 8, 4, colour::text, 2, 1);
+        float level = std::clamp(shown.card.fill, 0.0f, 1.0f), at = top + slot_h * (1 - level);
+        p.fill(sx, at - 4.5f, 24, 9, c, 2);
+        if (shown.waiting) {
+            float hand = top + slot_h * (1 - std::clamp(shown.card.pot, 0.0f, 1.0f));
+            p.g.setColour(colour::mid);
+            p.g.drawRoundedRectangle(sx + 0.5f, hand - 4, 23, 8, 2, 1.2f);
+            float ay = (hand + at) / 2;
+            if (hand < at) { // the value is below the hand: the arrow points down
+                juce::Path down;
+                float ax = sx + 35;
+                down.startNewSubPath(ax, ay - 7); down.lineTo(ax, ay + 7);
+                down.startNewSubPath(ax - 6, ay + 1); down.lineTo(ax, ay + 7); down.lineTo(ax + 6, ay + 1);
+                p.g.setColour(colour::amber);
+                p.g.strokePath(down, juce::PathStrokeType(1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            } else {
+                icon(p, Icon::ArrowUp, sx + 28, ay - 7, 14, colour::amber, 1.8f);
+            }
         }
     }
-    float tx = fx + 8, tw = sx - 8 - tx;
-    p.text("FADER", tx, top + 1, tw, 14, caps_text(colour::mid));
-    juce::String what = shown.off ? juce::String("Off") : shown.value ? shown.what : juce::String("Fader");
-    auto what_style = plain(colour::text, type::small, Weight::SemiBold);
-    auto what_lines = p.wrap(what, what_style, tw, 2);
-    float ty = top + 16;
-    for (int l = 0; l < what_lines.size(); ++l, ty += 13) p.text(what_lines[l], tx, ty, tw, 14, what_style);
-    ty += 3;
+    // Its value and what it moves, beside it.
+    float vx = x + w + 6, vw = sx - 6 - vx;
     if (shown.value) {
         juce::String value = shown.card.value + (shown.card.unit.isNotEmpty() ? " " + shown.card.unit : juce::String());
-        p.text(value, tx, ty, tw, 18, p.fit(value, plain(shown.waiting ? colour::mid : colour::text, type::list, Weight::Medium), tw, type::floor));
-        ty += 20;
-        auto wait = caps_text(colour::mid);
-        if (shown.waiting)
-            for (auto& line : p.wrap("MOVE TO PICK UP", wait, tw, 2)) { p.text(line, tx, ty, tw, 14, wait); ty += 13; }
-    } else if (!shown.off) {
-        p.text(shown.what, tx, ty, tw, 14, p.fit(shown.what, plain(colour::mid, type::small), tw, type::floor));
+        auto big = plain(shown.waiting ? colour::mid : colour::text, type::value, Weight::SemiBold);
+        p.text(value, vx, mid - 26, vw, 26, p.fit(value, big, vw, type::body), juce::Justification::centredRight);
     }
-    // How the fader takes over, set in Settings.
-    auto dim = caps_text(colour::dim);
-    auto takeover = p.wrap("TAKEOVER " + juce::String(takeover_name(s.ui.settings.fader_takeover)).toUpperCase() + " IN SETTINGS", dim, fw - 16, 3);
-    float by = top - 2.5f + zone::picture_h - 3 - 6 - takeover.size() * 13;
-    for (int l = 0; l < takeover.size(); ++l) p.text(takeover[l], fx + 8, by + l * 13, fw - 16, 14, dim);
+    juce::String what = shown.off ? juce::String("OFF") : shown.what.toUpperCase();
+    auto label = caps_text(colour::mid);
+    auto lines = p.wrap(what, label, vw, 2);
+    for (int l = 0; l < lines.size(); ++l) p.text(lines[l], vx, mid + 2 + l * 13, vw, 14, label, juce::Justification::centredRight);
 }
 
-void move(Context& c, int delta) {
-    c.ui.fader_cursor = uint8_t(std::clamp(int(c.ui.fader_cursor) + delta, 0, int(fader_targets) - 1));
+void move(Context& c, int delta) { // over the targets the track can take
+    bool kit = c.track().engine == EngineKind::Sampler;
+    int at = std::min(int(c.ui.fader_cursor), int(fader_targets) - 1);
+    if (delta != 0)
+        for (int n = at + delta; n >= 0 && n < int(fader_targets); n += delta)
+            if (kit || !fader_needs_kit(FaderTarget(n))) { at = n; break; }
+    if (!kit && fader_needs_kit(FaderTarget(at))) // a synth: onto the one it can take
+        for (unsigned n = 0; n < fader_targets; ++n) if (!fader_needs_kit(FaderTarget(n))) { at = int(n); break; }
+    c.ui.fader_cursor = uint8_t(at);
 }
-void push(Context& c) { set_fader_target(c, c.ui.fader_cursor); }
+void push(Context& c) {
+    move(c, 0); // a synth's cursor onto the one target it can take
+    set_fader_target(c, c.ui.fader_cursor);
+}
 void soft(Context& c, int key) {
     if (key == 0) c.back();
     else if (key == 2) toggle_fader(c);

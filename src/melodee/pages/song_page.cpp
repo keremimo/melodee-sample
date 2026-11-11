@@ -101,16 +101,28 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, s.ui.track));
 
     if (s.ui.song_export) {
-        // Export (B1), as on the MPC: B2 an audio mixdown, B3 a new pattern.
-        frame(p, s, {{"CANCEL", "MIXDOWN", "NEW PATTERN"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
+        // Export (B1), as on the MPC: B2 an audio mixdown, B3 a new pattern; a tile under each says what it makes.
+        SoftKeys keys {{"CANCEL", "MIXDOWN", "PATTERN"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+        keys.glyphs = {Icon::None, Icon::Wav, Icon::Pattern};
+        frame(p, s, keys, h);
+        p.dim_zone(zone::picture_y, zone::picture_h, 0.86f);
         p.dim_zone(zone::knobs_y, zone::knobs_h);
         unsigned bars = song.length(), seconds = unsigned(bars * (double(s.project.bar_ticks()) / ticks_per_quarter) * 600.0 / std::max(1u, s.tempo) + 0.5);
-        Sheet sheet_card;
-        sheet_card.title = "Export the song";
-        sheet_card.body = bars ? juce::String(bars) + (bars == 1 ? " bar, " : " bars, ") + juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2)
-                                     + ", once through. To a WAV on the card, or one pattern."
-                               : juce::String("The song is empty: place clips first.");
-        ui::sheet(p, sheet_card);
+        if (!bars) { // nothing to export yet
+            icon(p, Icon::Pattern, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::amber, 1.4f);
+            p.text("EMPTY SONG", 0, zone::picture_y + 80, zone::width, 14, caps_text(colour::amber), juce::Justification::centred);
+            return;
+        }
+        unsigned free = pattern_count; // the first pattern number no track uses
+        for (unsigned n = 0; n < pattern_count && free == pattern_count; ++n) {
+            bool used = false;
+            for (unsigned t = 0; t < track_count; ++t) used = used || s.sketches[t][n].notes;
+            if (!used) free = n;
+        }
+        juce::String length = juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
+        key_tiles(p, {KeyTile {}, value_tile(Icon::Wav, length, juce::String::fromUTF8("WAV \xc2\xb7 24-BIT"), true),
+                      value_tile(Icon::Pattern, free < pattern_count ? "P" + juce::String(free + 1) : juce::String("FULL"),
+                                 juce::String(bars) + (bars == 1 ? " BAR" : " BARS"))});
         return;
     }
     frame(p, s, keys_of(s, selected_clip >= 0 ? &song.clips[size_t(selected_clip)] : nullptr, c), h);

@@ -37,10 +37,14 @@ float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
     case Kind::Pill:
     case Kind::Chip: {
         auto style = caps_text(it.kind == Kind::Pill ? it.colour : colour::bg);
-        float w = p.width(it.text, style) + 8;
+        bool glyph = it.icon != Icon::None;
+        float tw = it.text.isEmpty() ? 0 : p.width(it.text, style);
+        float gw = glyph ? 10 + (tw > 0 ? 3 : 0) : 0;
+        float w = gw + tw + 8;
         if (!measure_only) {
             p.fill(x, top, w, item_h, it.kind == Kind::Pill ? colour::surf : it.colour, 3);
-            p.text(it.text, x, top, w, item_h, style, juce::Justification::centred);
+            if (glyph) icon(p, it.icon, x + 4, header_mid - 5, 10, style.colour, 1.5f);
+            if (tw > 0) p.text(it.text, x + 4 + gw, top, tw + 1, item_h, style);
         }
         return w;
     }
@@ -76,40 +80,40 @@ float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
 
 void soft_keys(Paint& p, const SoftKeys& keys) {
     float column = zone::width / 3.0f;
+    // One baseline for the row: when any key has page dots, every label sits up to leave them room.
+    bool dotted = false;
+    for (auto d : keys.dots) dotted = dotted || d > 1;
+    float label_y = dotted ? zone::soft_y - 3.0f : float(zone::soft_y), mid = label_y + zone::soft_h / 2.0f;
     for (int n = 0; n < 3; ++n) {
-        bool on = n == keys.active || ((keys.lit >> n) & 1);
-        float x = n * column;
-        if (on) {
-            float cx = x + column / 2;
-            p.fill(cx - 15, -2, 30, 4, keys.accent, 1.5f); // drawn from above the edge: only the lower corners show
+        size_t k = size_t(n);
+        bool toggle = (keys.toggles >> n) & 1, lit = (keys.lit >> n) & 1;
+        bool on = n == keys.active || lit;
+        float x = n * column, cx = x + column / 2;
+        if (on && !toggle) p.fill(cx - 15, -2, 30, 4, keys.accent, 1.5f); // drawn from above the edge: only the lower corners show
+        const auto& text = keys.labels[k];
+        auto tint = keys.tints[k];
+        auto style = caps_text(!tint.isTransparent() ? tint : on ? colour::text : colour::mid, type::soft);
+        // The glyph: Back and Check from the key's icon, else any glyph the page gives it.
+        Icon glyph = keys.icons[k] == KeyIcon::Back ? Icon::Back : keys.icons[k] == KeyIcon::Check ? Icon::Check : keys.glyphs[k];
+        bool has_glyph = glyph != Icon::None;
+        float tw = text.isEmpty() ? 0 : p.width(text, style);
+        float gw = has_glyph ? 10.5f + (tw > 0 ? 3.5f : 0) : 0, lw = toggle ? 4 + 6 : 0;
+        float left = cx - (gw + tw + lw) / 2;
+        if (has_glyph) icon(p, glyph, left, mid - 5.5f, 10.5f, style.colour, 1.5f);
+        if (tw > 0) p.text(text, left + gw, label_y, tw + 1, zone::soft_h, style);
+        if (toggle) { // the LED: lit in its colour while on, a ring while off
+            float lx = left + gw + tw + 4 + 3;
+            if (lit) p.circle(lx, mid, 3, keys.leds[k]);
+            else { p.g.setColour(colour::dim); p.g.drawEllipse(lx - 2.6f, mid - 2.6f, 5.2f, 5.2f, 1.1f); }
         }
-        const auto& text = keys.labels[size_t(n)];
-        auto style = caps_text(on ? colour::text : colour::mid, type::soft);
-        unsigned dots = keys.dots[size_t(n)];
-        float label_y = dots > 1 ? zone::soft_y - 3.0f : float(zone::soft_y); // room under it for the dots
-        if (text.isNotEmpty()) p.text(text, x, label_y, column, zone::soft_h, style, juce::Justification::centred);
+        unsigned dots = keys.dots[k];
         if (dots > 1) { // 3 px dots, 3 px apart, the page in view in the accent
-            float dw = dots * 3.0f + (dots - 1) * 3.0f, dx = x + column / 2 - dw / 2;
+            float dw = dots * 3.0f + (dots - 1) * 3.0f, dx = cx - dw / 2;
             for (unsigned d = 0; d < dots; ++d) {
-                auto c = on && d == keys.dot_at[size_t(n)] ? keys.accent : on ? colour::mid : colour::dim;
+                auto c = on && d == keys.dot_at[k] ? keys.accent : on ? colour::mid : colour::dim;
                 p.fill(dx + d * 6.0f, zone::soft_h - 6.0f, 3, 3, c, 1.5f);
             }
         }
-        auto icon = keys.icons[size_t(n)];
-        if (icon == KeyIcon::None) continue;
-        float left = x + column / 2 - p.width(text, style) / 2, mid = zone::soft_h / 2.0f;
-        juce::Path path;
-        if (icon == KeyIcon::Back) {
-            float bx = left - 9;
-            path.startNewSubPath(bx + 5, mid + 3); path.lineTo(bx + 5, mid - 3); path.lineTo(bx + 1, mid - 3);
-            path.startNewSubPath(bx, mid - 3); path.lineTo(bx + 2, mid - 5);
-            path.startNewSubPath(bx, mid - 3); path.lineTo(bx + 2, mid - 1);
-        } else {
-            float kx = left - 10;
-            path.startNewSubPath(kx, mid); path.lineTo(kx + 2.5f, mid + 3); path.lineTo(kx + 7, mid - 4);
-        }
-        p.g.setColour(style.colour);
-        p.g.strokePath(path, juce::PathStrokeType(1.1f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 }
 

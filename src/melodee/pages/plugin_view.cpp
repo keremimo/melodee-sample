@@ -28,17 +28,24 @@ void draw_plugin_view(Paint& p, const Snapshot& s, unsigned entry, juce::Colour 
     const float x = zone::pad, w = zone::width - 2 * zone::pad;
     bool ours = panel.entry == entry;
     p.text(plugin_name(s, entry), x, top, w - 110, 22, p.fit(plugin_name(s, entry), plain(colour::text, type::title, Weight::SemiBold), w - 110, type::floor));
-    if (!ours || panel.status == PluginStatus::None || panel.status == PluginStatus::Loading) {
-        p.text("Opening", x, top + 40, w, 20, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
+    if (!ours || panel.status == PluginStatus::None || panel.status == PluginStatus::Loading) { // the plug, waiting
+        icon(p, Icon::Plug, x + w / 2 - 14, top + 32, 28, colour::dim, 1.4f);
+        p.text("OPENING", x, top + 66, w, 14, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
     juce::String what = juce::String(panel.format) + juce::String::fromUTF8(" \xc2\xb7 ") + (panel.instrument ? "INSTRUMENT" : "EFFECT");
     p.text(what, x, top + 22, w, 14, caps_text(colour::mid));
     if (panel.status == PluginStatus::Failed || panel.status == PluginStatus::Crashed) {
-        juce::String head = panel.status == PluginStatus::Crashed ? "Stopped working" : "Could not open";
-        p.text(head, x, top + 44, w, 18, plain(colour::text, type::body, Weight::SemiBold), juce::Justification::centred);
-        juce::String why = panel.status == PluginStatus::Crashed ? juce::String("B1 picks it again from the card") : juce::String::fromUTF8(panel.error);
-        p.text(why, x, top + 64, w, 16, p.fit(why, plain(colour::dim, type::small, Weight::Medium), w, type::floor), juce::Justification::centred);
+        // The broken plug, the cause in two words, and (dim, for whoever fixes it) what the loader named.
+        bool crashed = panel.status == PluginStatus::Crashed;
+        auto error = juce::String::fromUTF8(panel.error);
+        bool library = error.contains("shared object") || error.contains(".so");
+        juce::String cause = crashed ? "STOPPED" : library ? "MISSING LIBRARY" : "WON'T OPEN";
+        icon(p, Icon::PlugBroken, x + 2, top + 44, 40, colour::rec, 1.3f);
+        icon(p, Icon::Warn, x + 56, top + 48, 13, colour::rec, 1.6f);
+        p.text(cause, x + 74, top + 46, w - 74, 16, caps_text(colour::rec, type::body));
+        juce::String code = crashed ? juce::String() : library ? error.upToFirstOccurrenceOf(":", false, false).trim() : error;
+        if (code.isNotEmpty()) p.text(code, x + 56, top + 66, w - 56, 14, p.fit(code, plain(colour::dim, type::small), w - 56, type::floor));
         return;
     }
     if (panel.rows > 1) {
@@ -47,7 +54,7 @@ void draw_plugin_view(Paint& p, const Snapshot& s, unsigned entry, juce::Colour 
         p.text(label, x, top, w - dots - 6, 22, caps_text(colour::mid), juce::Justification::centredRight);
     }
     if (!panel.rows) {
-        p.text("No parameters to show", x, top + 50, w, 18, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
+        p.text("NO PARAMETERS", x, top + 50, w, 18, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
     // How much of each block's time it takes: the cards below hold its parameters.

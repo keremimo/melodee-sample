@@ -109,7 +109,7 @@ void draw(Paint& p, const Snapshot& s) {
     else if (sheet) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
     else frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 0, colour::text}, h);
 
-    unsigned count = unsigned(v.entries.size()) + first_entry(s.project_path, s.project_folder), cursor = std::min<unsigned>(s.ui.project_cursor, count - 1);
+    unsigned count = project_rows(v.entries.size(), s.project_path, s.project_folder), cursor = std::min<unsigned>(s.ui.project_cursor, count - 1);
     unsigned first = cursor < 3 ? 0 : std::min(cursor - 3, count > visible ? count - visible : 0);
     float x = zone::pad, w = zone::width - 2 * zone::pad;
     for (unsigned row = 0; row < visible && first + row < count; ++row) {
@@ -181,14 +181,15 @@ void draw(Paint& p, const Snapshot& s) {
         const auto* e = entry_at(v, cursor, s.project_path, s.project_folder);
         if (!e) return;
         auto list = destinations(v, e->path);
-        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
+        p.fill(0, zone::picture_y, zone::width, zone::picture_h, colour::bg); // nothing of the list shows beside the sheet
         p.dim_zone(zone::knobs_y, zone::knobs_h);
         float px = zone::pad + 6, pw = zone::width - 2 * zone::pad - 12, py = zone::picture_y + 3, ph = zone::picture_h - 6;
         p.fill(px, py, pw, ph, colour::surf, 6);
         p.ring(px, py, pw, ph, colour::line, 6);
         p.text("MOVE " + juce::String(e->name).toUpperCase() + " TO", px + 9, py + 5, pw - 18, 10, p.fit("MOVE " + juce::String(e->name).toUpperCase() + " TO", caps_text(colour::mid), pw - 18, type::floor));
         if (list.empty()) {
-            p.text("No other folder: New folder here makes one", px, py + 50, pw, 14, plain(colour::dim, type::small), juce::Justification::centred);
+            icon(p, Icon::Folder, px + pw / 2 - 12, py + 40, 24, colour::dim, 1.4f); // nowhere else to go (New folder here makes one)
+            p.text("NO OTHER FOLDER", px, py + 70, pw, 14, caps_text(colour::dim), juce::Justification::centred);
             return;
         }
         constexpr unsigned shown = 6;
@@ -244,7 +245,7 @@ ProjectStore::View view_of(Context& c) {
     ProjectStore::View v;
     if (c.store) c.store->view(v);
     sort_view(v, c.ui.project_sort);
-    c.ui.project_rows = uint16_t(v.entries.size() + first_entry(c.project_path, c.project_folder));
+    c.ui.project_rows = uint16_t(project_rows(v.entries.size(), c.project_path, c.project_folder));
     return v;
 }
 

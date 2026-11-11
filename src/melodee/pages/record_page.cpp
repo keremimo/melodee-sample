@@ -17,6 +17,7 @@
 #include "melodee/pages/input_meter.h"
 #include "melodee/pages/pages.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace melodee {
@@ -32,34 +33,40 @@ void draw(Paint& p, const Snapshot& s) {
     h.recording = state == State::Recording;
     bool taking = s.ui.rec_pad >= 0 && s.ui.rec_track == s.ui.track;
     char label[4];
-    if (taking) { pad_label(unsigned(s.ui.rec_pad), label); h.left.push_back(pill(juce::String("TO PAD ") + juce::String(label), c)); }
-    else h.left.push_back(pill("TAP A PAD"));
-    h.left.push_back(pill(input_name(s, in.source == InputSource::Track).toUpperCase()));
-    if (s.speaker_quieted) h.left.push_back(pill("SPEAKER OFF", colour::amber));
+    if (taking) { pad_label(unsigned(s.ui.rec_pad), label); h.left.push_back(pill(Icon::Pads, juce::String(label), c)); }
+    h.left.push_back(pill(source_icon(in.source), juce::String(in.source == InputSource::Track ? "T" + juce::String(in.track % track_count + 1)
+                                                                                             : juce::String(input_source_name(in.source))).toUpperCase()));
+    if (s.speaker_quieted) h.left.push_back(pill(Icon::SpeakerOff, "", colour::amber));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{juce::String("MON ") + juce::String(monitor_name(in.monitor)).toUpperCase(), "INPUT", ""}, -1, c}, h);
+    SoftKeys keys {{"MONITOR", "INPUT", ""}, -1, c};
+    keys.toggles = 1;
+    keys.lit = in.monitor != Monitor::Off ? 1 : 0;
+    keys.leds[0] = in.monitor == Monitor::Auto ? colour::amber : colour::play;
+    keys.glyphs[1] = source_icon(in.source);
+    frame(p, s, keys, h);
 
     float x = zone::pad, w = zone::width - 2 * zone::pad;
-    const char* title = state == State::Armed ? "Waiting" : state == State::Cued ? "Next loop" : state == State::Recording ? "Recording"
-                      : state == State::Done || (taking && state == State::Idle) ? "Saving" : "Ready";
-    p.text(title, x, zone::picture_y, 160, 22, plain(colour::text, type::title, Weight::SemiBold));
-    // How far: in bars when it has a length, else in seconds.
+    // The state as a glyph (ready, waiting for the level or the loop, recording, saving) and how far, as numbers.
+    Icon glyph = state == State::Armed ? Icon::Ring : state == State::Cued ? Icon::Loop : state == State::Recording ? Icon::Rec
+               : state == State::Done || (taking && state == State::Idle) ? Icon::Check : Icon::Pads;
+    juce::Colour tone = state == State::Recording ? colour::rec : state == State::Armed || state == State::Cued ? colour::amber : colour::mid;
+    icon(p, glyph, x, zone::picture_y + 4, 14, tone, 1.6f);
     double bar_frames = double(s.project.bar_ticks()) / ticks_per_quarter * 60.0 / (s.tempo / 10.0) * 44100;
     unsigned bars = rec_bars(in.length);
     bool going = state == State::Recording || state == State::Done;
     juce::String where;
     if (going && s.take.length < TakeRecorder::max_frames && bar_frames > 0)
-        where = "BAR " + juce::String(std::min<unsigned>(unsigned(s.take.length / bar_frames + 0.5), unsigned(s.take.frames / bar_frames) + 1))
-              + " OF " + juce::String(unsigned(s.take.length / bar_frames + 0.5));
-    else if (going) where = juce::String(s.take.frames / 44100.0, 1) + " S";
-    else if (in.length == rec_seq) where = "SEQ LENGTH";
-    else where = bars ? juce::String(bars) + (bars == 1 ? " BAR" : " BARS") : juce::String("FREE");
-    p.text(where, x + 160, zone::picture_y, w - 160, 22, caps_text(colour::text), juce::Justification::centredRight);
+        where = juce::String(std::min<unsigned>(unsigned(s.take.length / bar_frames + 0.5), unsigned(s.take.frames / bar_frames) + 1))
+              + " / " + juce::String(unsigned(s.take.length / bar_frames + 0.5));
+    else if (going) where = juce::String(s.take.frames / 44100.0, 1) + " s";
+    else if (in.length == rec_seq) where = "SEQ";
+    else where = bars ? juce::String(bars) + (bars == 1 ? " bar" : " bars") : juce::String("FREE");
+    p.text(where, x + 100, zone::picture_y, w - 100, 22, plain(colour::text, type::list, Weight::SemiBold), juce::Justification::centredRight);
 
     // The take so far, against its bars, with the cuts the pads made. A take
     // without a length (Free, up to 60 s) is drawn as far as it has come, an
     // eighth of the way at least, so it grows across the picture.
-    float y = zone::picture_y + 26, wh = 48, mid = y + wh / 2;
+    float y = zone::picture_y + 30, wh = 48, mid = y + wh / 2;
     uint32_t length = std::max<uint32_t>(s.take.length, 1);
     unsigned shown = TakeRecorder::columns;
     if (length >= TakeRecorder::max_frames)
@@ -83,20 +90,28 @@ void draw(Paint& p, const Snapshot& s) {
         float at = x + w * std::min(1.0f, float(s.take.frames) / span);
         p.fill(at, y, 1, wh, colour::rec);
     }
-    // The input level, with the line it has to pass.
-    input_meter(p, s, c, x, y + wh + 10, w);
-    // What the pads do now: with Melodee's own sound as the source they play it until the take ends.
-    juce::String hint;
-    if (record_keys_shown(s)) {
-        juce::String what = in.source == InputSource::Track ? "Track " + juce::String(in.track % track_count + 1) : juce::String("the kit");
-        hint = juce::String::fromUTF8("Pads play ") + what + juce::String::fromUTF8(state == State::Recording ? " \xc2\xb7 Push or Stop: done"
-                                                                                                            : " \xc2\xb7 the first sound starts it");
-    } else {
-        hint = juce::String::fromUTF8(state == State::Recording ? "Pad again, Stop or Push: done \xc2\xb7 other pads: cut"
-                                    : state == State::Armed || state == State::Cued ? "The pad again: at once \xc2\xb7 Stop: cancel"
-                                    : "Tap a pad to record onto it");
+    // The input level, with the marker it has to pass.
+    input_meter(p, s, c, x, y + wh + 6, w);
+    // What the pads do now, as glyph pairs: a pad (the take's outlined, any other filled) and what it does.
+    struct Pair { int pad; Icon does; }; // pad: 1 the take's pad, 2 another pad, 3 the sixteen pads, 0 none (Stop)
+    std::array<Pair, 2> pairs {{{2, Icon::Rec}, {0, Icon::None}}};
+    size_t count = 1;
+    if (record_keys_shown(s)) pairs[0] = {3, Icon::Note};
+    else if (state == State::Recording) { pairs = {{{1, Icon::Stop}, {2, Icon::Scissors}}}; count = 2; }
+    else if (state == State::Armed || state == State::Cued) { pairs = {{{1, Icon::Play}, {0, Icon::Cross}}}; count = 2; }
+    float total = 0;
+    for (size_t n = 0; n < count; ++n) total += 12 + 6 + 12 + (n ? 20 : 0);
+    float lx = zone::width / 2.0f - total / 2, ly = zone::picture_y + 129;
+    for (size_t n = 0; n < count; ++n) {
+        if (n) { p.circle(lx + 10, ly + 6, 1.3f, colour::dim); lx += 20; }
+        const auto& pr = pairs[n];
+        if (pr.pad == 1) p.ring(lx, ly, 12, 12, c, 2.5f, 1.6f);
+        else if (pr.pad == 2) p.fill(lx, ly, 12, 12, colour::raised, 2.5f);
+        else if (pr.pad == 3) icon(p, Icon::Pads, lx, ly, 12, colour::sec, 1.5f);
+        else icon(p, Icon::Stop, lx, ly, 12, colour::sec);
+        icon(p, pr.does, lx + 18, ly, 12, pr.does == Icon::Rec ? colour::rec : colour::sec, 1.5f);
+        lx += 30;
     }
-    p.text(hint, x, y + wh + 50, w, 14, plain(colour::mid, type::small, Weight::Medium), juce::Justification::centred);
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {

@@ -172,7 +172,9 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
     CZ: DCW ENV → DCA ENV → TOUCH; SID: ENVELOPE → PWM → TOUCH. ARP: mode,
     rate, octaves, Shift + K1 gate, Shift + K3 hold. The own page (PERFORM,
     RATIOS, LINES, OSC) draws its Shift row. FX: the slot of the track's
-    chain the cards edit (Push the next one; Shift + Knob FX adds effects).
+    chain the cards edit (Push the next one; with none yet, Push opens the
+    effect picker; Shift + Knob FX adds effects), all six slots drawn with
+    their family glyphs.
   - **A kit**: Akai's pages in Akai's order on the last pad hit, B1 **TRIM →
     MIX → AMP ENV**, B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
     FILT ENV → KIT FILT** (Melodee's own pages join Akai's): the pad's
@@ -237,7 +239,11 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
   last note. Velocity (8–127), Filter (kit pads: pads 1–8 up to the pad's
   cutoff, 9–16 on to the top), Tune (the original on pad 4), and Melodee's
   Scale, whose K1 and K2 are the project's root and scale (elsewhere on this
-  page Shift + K1 and K2). Shift + 16 Levels or B1–B3 pick the type. On a
+  page Shift + K1 and K2). Shift + 16 Levels or B1–B3 pick the type: B1
+  Velocity, B2 Filter (kits; nothing on a synth), B3 Tune and again Scale,
+  its two dots saying which, on a kit and a synth alike. The picture: the
+  pads with their values, whose levels they are, and the type drawn (a
+  wedge, the sweep, a step a pad) with its two ends. On a
   kit in Tune or Scale (an instrument's pad above all), − / + move the pads
   an octave (three down to five up, kept with the track).
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
@@ -554,12 +560,18 @@ thread.
   in view, empty or MIDI tracks), K2 rec length (Free, Seq, 1–16 bars), K3
   threshold (−96..0 dB), Shift + K3 gain; with a track, Shift + K1 its tap:
   **Post FX** (after its chain, level and pan, before mute: a muted track
-  still records) or **Pre FX** (the engine alone). B1 monitor Off / Auto /
-  On (the speaker goes quiet while the mic is monitored; a monitored track
-  leaves the mix and is heard through the input instead, so once), B2 Rec
-  Input FX (Knob FX on the input during a take), B3 back. Kept with the
-  settings. The Looper's Input source hears the same.
-- **Record** (Sample Record on a kit): the same cards and B1. Tap a pad to
+  still records) or **Pre FX** (the engine alone). B1 back (as on every
+  sheet), B2 monitor Off / Auto / On (its LED amber on Auto, green on On;
+  the speaker goes quiet while the mic is monitored; a monitored track
+  leaves the mix and is heard through the input instead, so once), B3 Rec
+  Input FX (its LED; Knob FX on the input during a take). The picture is the
+  path as glyphs, source, gain, effect and monitor, over the level with the
+  threshold as a marker. Kept with the settings. The Looper's Input source
+  hears the same.
+- **Record** (Sample Record on a kit): the same cards; B1 the monitor (its
+  LED), B2 Input Config. The state is a glyph (ready, waiting, the next loop,
+  recording, saving), the cuts are named on the take, and what the pads do
+  now is drawn as pairs under the meter (this pad ends, other pads cut). Tap a pad to
   record onto it (from the threshold, or with Seq where the pattern comes
   round: a track source's own pattern); other pads tapped during the take
   cut it there. The pad again, Stop or Push ends it and Record stays;
@@ -637,7 +649,10 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
 ### Fader
 
 Each track has a target, picked on the **Fader page** (Shift + Pad 9; wheel
-or −/+ move, Push picks, B3 off / on, B1 back): Pad Volume, Pad Pan, Pad
+or −/+ move, Push picks, B3 off / on with its LED, B1 back; a synth lists
+the mod wheel alone, the one it can take; the fader is drawn with its value,
+and while it waits to pick a value up, where the hand has it and the way to
+move): Pad Volume, Pad Pan, Pad
 Tune, Pad Attack, Pad Decay / Release, Pad Cutoff (the last pad's), Kit
 Volume, Mod Wheel. Until picked, a kit takes Pad Volume and a synth the mod
 wheel. Pages with an obvious job keep it: Mix the track's level, Sends its
@@ -700,8 +715,9 @@ while following.
   16 tracks, 16 sequences or 64 samples loses the rest and says so.
 - **SD card access** (Project, at the top; as the MPC's): the card goes to
   a computer over USB-C as a drive. The page shows where the card is (the
-  MPC or the computer) and what to do: connect, then eject the drive on the
-  computer, then **B1** brings it back (Projects and Samples are read again,
+  MPC or the computer, the link between) and what to do as three step
+  glyphs, done, now and to come: connect, then eject the drive on the
+  computer, then **B1** TAKE BACK (Projects and Samples are read again,
   and Project is in view). If the computer still holds the drive, B1 says so
   and B1 again asks whether to take it anyway (B3, B1 Cancel). Meanwhile
   every other mode waits: only B1, Play, Stop, the pads (the selected
@@ -737,13 +753,27 @@ while following.
   phone keys (pad 14 space, 15 digits and `- _ .`, 16 delete); the wheel
   moves the cursor, Shift + wheel or K2 the character, K1 a ready name,
   Erase deletes (Shift + Erase clears); B1 cancels, B2 Aa, B3 or Push keeps.
-- **Exit** (Power, short): B3 LEAVE saves the project first, then returns to
-  the stock app; B2 POWER OFF saves it, then turns the MPC off; B1 stays
+- **Exit** (Power, short): a tile under each key. B3 MPC APP saves the
+  project first, then returns to the stock app; B2 POWER OFF saves it, then
+  turns the MPC off; the header says SAVED (or NO CARD); B1 stays
   (and calls off a save still on its way). At the next start Melodee opens
   the project set to open at start, or else the one last opened or saved.
 
 ## Across every page
 
+- **Screen grammar** (`ui/glyphs.*`, `ui/chrome.*`, `ui/knobs.*`,
+  `ui/widgets.*`): no sentences on screen. A state is a glyph and two words
+  at most (the glyphs are SVG path data on a 24 unit grid, drawn by
+  `ui::icon`); explanations live in this file. B1 is back or cancel, B3 the
+  verb (in REC when it erases); a key that turns something on or off names
+  it and carries an LED, never ON / OFF. A pot with no job draws nothing.
+  Knob FX's cards are white with the knob glyph, and the header names its
+  effect while it holds the pots. The picture shows what the cards cannot:
+  shapes, meters, routes, pads; never the three values again. Questions
+  before an erase or a loss share one sheet: what it is about as a glyph and
+  a chip, how much goes as glyphs and numbers, the undo keys when it can be
+  undone. The ten sample pages draw with Stage's own kit picture: the pad's
+  region fills the width, the file a strip above with the region bracketed.
 - **Place bar** (`shell/place_bar.h`, `pages/place_bar.cpp`): a 2 px strip
   with no text on every screen, over every sheet, between the soft keys and
   the header (rows 21-22) or, with Settings' Place bar on Bottom, under the

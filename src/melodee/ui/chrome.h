@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/ui/glyphs.h"
 #include "melodee/ui/paint.h"
 #include <array>
 #include <utility>
@@ -22,6 +23,14 @@ struct SoftKeys {
     std::array<KeyIcon, 3> icons {};
     // Stage: a button with a cycle of pages shows a dot for each under its label, the page in view lit.
     std::array<uint8_t, 3> dots {}, dot_at {};
+    // Any glyph before a label (a key's icon wins), and toggles: a key in `toggles` (a bit each, as `lit`)
+    // names a thing that is on or off and carries an LED after its label, lit while its `lit` bit is set,
+    // instead of ON / OFF words. A toggle gets no bar at the top.
+    std::array<Icon, 3> glyphs {};
+    uint8_t toggles = 0;
+    std::array<juce::Colour, 3> leds {colour::play, colour::play, colour::play};
+    // A key whose label and glyph are drawn in this colour (a destructive verb in REC); transparent: the usual.
+    std::array<juce::Colour, 3> tints {};
 };
 void soft_keys(Paint& p, const SoftKeys& keys);
 
@@ -39,11 +48,14 @@ struct HeaderItem {
     int track = 0;                     // Tag: the track number shown, 1-16
     juce::String engine;               // Tag: the engine name in capitals
     Glyph glyph = Glyph::Led;          // Sign: which, in `colour`
+    Icon icon = Icon::None;            // Pill, Chip: a glyph before the text (or alone)
 };
 inline HeaderItem pill(juce::String text, juce::Colour c = colour::mid) { return {HeaderItem::Kind::Pill, text, c, 0, {}}; }
 inline HeaderItem chip(juce::String text, juce::Colour c) { return {HeaderItem::Kind::Chip, text, c, 0, {}}; }
 inline HeaderItem label(juce::String text, juce::Colour c = colour::sec) { return {HeaderItem::Kind::Text, text, c, 0, {}}; }
 inline HeaderItem sign(Glyph g, juce::Colour c) { HeaderItem it {HeaderItem::Kind::Sign, {}, c, 0, {}}; it.glyph = g; return it; }
+inline HeaderItem pill(Icon i, juce::String text, juce::Colour c = colour::mid) { auto it = pill(std::move(text), c); it.icon = i; return it; }
+inline HeaderItem chip(Icon i, juce::String text, juce::Colour c) { auto it = chip(std::move(text), c); it.icon = i; return it; }
 inline HeaderItem track_tag(int track, juce::String engine, juce::String name, juce::Colour c) {
     return {HeaderItem::Kind::Tag, name, c, track, engine};
 }

@@ -85,8 +85,8 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     if (!kit(s)) {
         frame(p, s, punch_keys(s, 2), header_of(s));
-        p.text("Pad Punch is for a sampler track", zone::pad, zone::picture_y + 60, zone::width - 2 * zone::pad, 16,
-               plain(colour::dim, type::small), juce::Justification::centred);
+        icon(p, Icon::Pads, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f); // pads of a kit only
+        p.text("KITS ONLY", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
     unsigned bank = track.bank % sampler_banks, with = 0;
@@ -104,18 +104,26 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
         bool held = s.ui.pad_punch_held == int(k);
         p.fill(x, y, w, ch, pad.used() && pad.punch ? colour::surf : held ? colour::surf : colour::quiet, 4);
-        if (held) { // pressure fills the pad from below
-            float press = s.ui.pad_punch_pressure ? s.ui.pad_punch_pressure / 127.0f : pad.punch_depth / 100.0f;
-            p.fill(x, y + ch * (1 - press), w, ch * press, c, 4);
-        }
         float press = held ? (s.ui.pad_punch_pressure ? s.ui.pad_punch_pressure / 127.0f : pad.punch_depth / 100.0f) : 0;
+        constexpr float name_h = 16; // the name's row stays clear: pressure fills the pad from below up to it
+        float fill_top = y + name_h + (ch - name_h) * (1 - press);
+        if (held) p.fill(x, fill_top, w, (ch - name_h) * press, c, 4);
+        // The pad's name at the top and its punch at the foot, each in BG where the pressure has risen over it.
+        auto two_tone = [&](const juce::String& text, float tx, float ty, float tw, Paint::Text style) {
+            p.text(text, tx, ty, tw, 14, style);
+            if (!held || fill_top >= ty + 14) return;
+            p.g.saveState();
+            p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(fill_top), int(w) + 1, int(y + ch - fill_top) + 1));
+            style.colour = colour::bg;
+            p.text(text, tx, ty, tw, 14, style);
+            p.g.restoreState();
+        };
         juce::String name = pad_name(s, k, true);
-        if (name.isNotEmpty())
-            p.text(name, x + 4, y + 2, w - 8, 14, p.fit(name, plain(press > 0.85f ? colour::bg : colour::mid, type::small, Weight::SemiBold), w - 8, type::floor));
+        if (name.isNotEmpty()) two_tone(name, x + 4, y + 2, w - 8, p.fit(name, plain(colour::mid, type::small, Weight::SemiBold), w - 8, type::floor));
         if (pad.used() && pad.punch) {
-            auto style = plain(held ? colour::bg : c, type::small, Weight::Medium);
+            auto style = plain(c, type::small, Weight::Medium);
             juce::String fx = cell_name(p, punch_name(PunchKind(pad.punch - 1)), style, w - 6);
-            p.text(fx, x + 3, y + ch - 16, w - 6, 14, style);
+            two_tone(fx, x + 3, y + ch - 16, w - 6, style);
         }
     }
     // The last pad hit, and its punch.
@@ -127,7 +135,6 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
     if (pad.used()) p.text(pad_name(s, track.last_pad % sampler_pads, false), x, y + 14, iw, 16, p.fit(pad_name(s, track.last_pad % sampler_pads, false), plain(colour::sec, type::body, Weight::Medium), iw, type::floor));
     juce::String fx = !pad.used() ? juce::String("Empty") : pad.punch ? juce::String(punch_title(PunchKind(pad.punch - 1))) : juce::String("No punch");
     p.text(fx, x, y + 31, iw, 24, p.fit(fx, plain(pad.used() && pad.punch ? colour::text : colour::dim, 20, Weight::SemiBold), iw, type::floor));
-    p.text(pad.punch ? "this pad alone" : "K1 gives it one", x, y + 55, iw, 14, plain(colour::sec, type::small));
     if (pad.used() && s.sample.frames) {
         uint32_t end = pad.end ? pad.end : s.sample.frames;
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
@@ -138,8 +145,7 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
     }
     bool pressing = s.ui.pad_punch_held >= 0 && s.ui.pad_punch_pressure;
     int depth = pressing ? s.ui.pad_punch_pressure * 100 / 127 : pad.punch_depth;
-    p.text("PRESSURE", x, y + 94, iw, 14, caps_text(colour::mid));
-    p.text("DEPTH " + juce::String(depth) + " %", x, y + 108, iw, 14, caps_text(colour::sec));
+    p.text("PRESSURE", x, y + 108, iw, 14, caps_text(colour::mid)); // the depth as pressure makes it now (K3 holds the number)
     p.fill(x, y + 126, iw, 4, colour::line, 2);
     p.fill(x, y + 126, iw * depth / 100.0f, 4, knob_shade(s.ui.track, 2), 2);
 }

@@ -181,23 +181,27 @@ void draw(Paint& p, const Snapshot& s) {
         h.left.push_back(pill(juce::String(looper::quantize_name(s.project.looper.quantize)).toUpperCase()));
         h.right.push_back(chip("L" + juce::String(loop + 1), loop_colour(loop)));
         if (v.layers) h.right.push_back(label(juce::String(v.layers) + (v.layers == 1 ? " LAYER" : " LAYERS")));
-    } else {
-        h.right.push_back(label("LOOPER"));
     }
+    bool making = on && (!s.looper_on || !v.ready); // the memory is being made
+    if (!on || making) h.left.push_back(pill(Icon::Loop, making ? "LOADING" : "LOOPER OFF", making ? colour::amber : colour::mid));
     SoftKeys keys {{"LOOPS", "MIX", "MORE"}, int(s.ui.looper_view % 2), loop_colour(loop)};
-    if (!on) keys = SoftKeys {{"", "", "TURN ON"}, -1, colour::text, {KeyIcon::None, KeyIcon::None, KeyIcon::Check}};
+    if (!on) { keys = SoftKeys {{"", "", "TURN ON"}}; keys.glyphs[2] = Icon::Power; }
+    if (making) keys = SoftKeys {{"", "", ""}};
     if (on && s.ui.loop_sheet) keys = SoftKeys {{"BACK", "", "DO IT"}, -1, loop_colour(loop), {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
     frame(p, s, keys, h);
-    if (!on) {
-        constexpr float x = zone::pad, w = zone::width - 2 * zone::pad;
-        p.text("The Looper is off", x, zone::picture_y + 38, w, 20, plain(colour::text, type::list, Weight::Medium), juce::Justification::centred);
-        p.text("Four loops on tracks of their own, L1 to L4", x, zone::picture_y + 62, w, 16, plain(colour::mid, type::small), juce::Justification::centred);
-        p.text("B3 or Push turns it on", x, zone::picture_y + 80, w, 16, plain(colour::mid, type::small), juce::Justification::centred);
-        return;
-    }
-    if (!s.looper_on || !v.ready) { // the memory is being made
-        p.text("Making room for the loops", zone::pad, zone::picture_y + 60, zone::width - 2 * zone::pad, 18,
-               plain(colour::mid, type::body), juce::Justification::centred);
+    if (!on || making) { // L1-L4 as ghost lanes in their colours, the power glyph of B3 over them
+        for (unsigned l = 0; l < loop_tracks; ++l) {
+            float y = zone::picture_y + 8 + l * 33;
+            p.text("L" + juce::String(l + 1), zone::pad + 4, y + 6, 30, 20, plain(loop_colour(l).withAlpha(0.5f), type::list, Weight::SemiBold));
+            for (float x = 40; x < zone::width - zone::pad; x += 7) p.fill(x, y + 15, 2, 1.5f, loop_colour(l).withAlpha(0.35f));
+        }
+        float cx = 177, cy = zone::picture_y + 72;
+        p.circle(cx, cy, 25, colour::bg);
+        p.g.setColour(making ? colour::amber : colour::mid);
+        p.g.drawEllipse(cx - 25, cy - 25, 50, 50, 1.5f);
+        icon(p, making ? Icon::Loop : Icon::Power, cx - 12, cy - 12, 24, making ? colour::amber : colour::sec, 1.6f);
+        p.text(juce::String(loop_tracks) + juce::String::fromUTF8(" \xc3\x97 45 MB"), zone::pad, zone::picture_y + 128, zone::width - 2 * zone::pad, 14,
+               caps_text(colour::dim), juce::Justification::centredRight);
         return;
     }
     if (s.ui.looper_view % 2 == 1) draw_mix(p, s);

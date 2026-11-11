@@ -7,7 +7,7 @@
 // The knob strip over K1-K3: three cards, each a capitals label in the
 // knob's shade, the value, and a thin gauge. A card can be turning (tinted
 // with a ring), waiting for pickup (value dim, a hollow tick where the pot
-// sits) or idle (an empty quiet card).
+// sits) or idle: a pot with no job here, which draws nothing at all.
 namespace melodee::ui {
 
 struct KnobCard {
@@ -22,6 +22,7 @@ struct KnobCard {
     // 2 Shift is held and the card shows that parameter.
     uint8_t shift = 0;
     bool focus = false;    // Stage: the card the wheel fine-edits (Push moves it), ringed
+    bool knob_fx = false;  // Knob FX owns the pot: drawn in white with the knob glyph, never the track's colours
     juce::Colour shade = colour::text, track = colour::text;
 };
 void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards);

@@ -48,28 +48,58 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(note_name(note.key), x + 4, y + ch - 16, w - 8, 13, plain(fg, type::small, Weight::Medium));
     }
 
-    float x = zone::pad + grid_w + 10, y = zone::picture_y + 4.5f, iw = zone::width - zone::pad - x;
-    if (track.engine == EngineKind::Kit909) {
-        p.text("PADS PLAY", x, y, iw, 10, caps_text(colour::mid));
-        p.text("Drums", x, y + 11, iw, 29, plain(colour::text, 26, Weight::SemiBold));
-        p.text("eleven on pads 1 to 11", x, y + 41, iw, 12, plain(colour::sec, type::small));
+    float x = zone::pad + grid_w + 12, y = zone::picture_y + 4, iw = zone::width - zone::pad - x;
+    if (track.engine == EngineKind::Kit909) { // the drums on pads 1-11
+        p.text("Drums", x, y, iw, 29, plain(colour::text, 26, Weight::SemiBold));
+        icon(p, Icon::Pads, x, y + 36, 14, colour::sec, 1.5f);
+        p.text(juce::String(int(kit909::Drums)), x + 20, y + 35, iw - 20, 16, plain(colour::sec, type::body, Weight::SemiBold));
         return;
     }
-    p.text("PADS PLAY", x, y, iw, 10, caps_text(colour::mid));
-    juce::String title = track.layout == PadLayout::Chromatic ? juce::String(note_letter(s.project.root)) + " Chromatic"
-        : track.layout == PadLayout::Levels ? juce::String(note_name(track.last_note)) + " Levels"
-        : juce::String(note_letter(s.project.root)) + " " + scales()[s.project.scale % scales().size()].name;
-    float size = p.width(title, plain(colour::text, 26, Weight::SemiBold)) > iw ? 18 : 26;
-    p.text(title, x, y + 11, iw, 29, plain(colour::text, size, Weight::SemiBold));
-    juce::String range = track.layout == PadLayout::Levels ? juce::String("soft to loud")
-        : juce::String(note_name(lowest)) + " to " + juce::String(note_name(highest)) + juce::String::fromUTF8(" \xc2\xb7 roots filled");
-    p.text(range, x, y + 41, iw, 12, plain(colour::sec, type::small));
-    float ly = y + 64;
-    for (unsigned n = 0; n < unsigned(PadLayout::Count); ++n) {
+    // What the pads play: the root in the track colour, then the scale (or Chromatic, or the note of 16 Levels).
+    juce::String root = track.layout == PadLayout::Levels ? juce::String(note_name(track.last_note)) : juce::String(note_letter(s.project.root));
+    juce::String rest = track.layout == PadLayout::Chromatic ? juce::String("Chromatic") : track.layout == PadLayout::Levels ? juce::String("Levels")
+                      : juce::String(scales()[s.project.scale % scales().size()].name);
+    auto big = plain(colour::text, 22, Weight::SemiBold);
+    if (p.width(root + " " + rest, big) > iw) big.size = 17;
+    float rw = p.text(root, x, y, iw, 28, plain(c, big.size, Weight::SemiBold));
+    p.text(rest, x + rw + 6, y, iw - rw - 6, 28, big);
+
+    // The keyboard from the lowest pad's octave to the highest's: the keys the pads play lit, the roots in the track colour.
+    if (track.layout != PadLayout::Levels && highest >= lowest) {
+        std::array<bool, 128> played {};
+        for (unsigned pad = 0; pad < 16; ++pad) played[size_t(std::clamp(pad_note(s.project, track, pad).key, 0, 127))] = true;
+        auto is_white = [](int k) { int n = ((k % 12) + 12) % 12; return n != 1 && n != 3 && n != 6 && n != 8 && n != 10; };
+        int from = lowest - ((lowest % 12) + 12) % 12, to = highest + (11 - ((highest % 12) + 12) % 12);
+        int whites = 0;
+        for (int k = from; k <= to; ++k) whites += is_white(k);
+        float kw = iw / std::max(1, whites), ky = y + 38, kh = 28;
+        int at = 0;
+        for (int k = from; k <= to; ++k) {
+            if (!is_white(k)) continue;
+            bool on = k >= 0 && k < 128 && played[size_t(k)], root_key = on && ((k % 12) + 12) % 12 == int(s.project.root % 12);
+            p.fill(x + at * kw, ky, kw - 1, kh, root_key ? c : on ? colour::sec : colour::dim.withAlpha(0.5f), 1);
+            ++at;
+        }
+        at = 0;
+        for (int k = from; k <= to; ++k) {
+            if (is_white(k)) { ++at; continue; }
+            bool on = k >= 0 && k < 128 && played[size_t(k)], root_key = on && ((k % 12) + 12) % 12 == int(s.project.root % 12);
+            p.fill(x + at * kw - kw * 0.3f - 0.5f, ky, kw * 0.6f, kh * 0.6f, root_key ? c : on ? colour::mid : colour::bg, 1);
+        }
+        auto ends = plain(colour::sec, type::small, Weight::SemiBold);
+        p.text(note_name(lowest), x, ky + kh + 2, iw / 2, 14, ends);
+        p.text(note_name(highest), x + iw / 2, ky + kh + 2, iw / 2, 14, ends, juce::Justification::centredRight);
+    }
+
+    // The layouts K3 picks, as glyphs, the one in use lit.
+    const Icon layouts[] {Icon::Scale, Icon::Chromatic, Icon::Chord, Icon::Velocity};
+    float tw = std::min(32.0f, (iw - 3 * 4) / 4), ty = zone::picture_y + zone::picture_h - tw - 4;
+    for (unsigned n = 0; n < unsigned(PadLayout::Count) && n < 4; ++n) {
         bool on = unsigned(track.layout) == n;
-        if (on) p.circle(x + 2, ly + 6, 2, c);
-        p.text(layout_name(PadLayout(n)), x + 9, ly, iw - 9, 12, plain(on ? colour::text : colour::dim, type::small, Weight::Medium));
-        ly += 15.5f;
+        float tx = x + n * (tw + 4);
+        p.fill(tx, ty, tw, tw, on ? c.withAlpha(0.16f) : colour::surf, 4);
+        if (on) p.ring(tx, ty, tw, tw, c, 4, 1.2f);
+        icon(p, layouts[n], tx + tw / 2 - 9, ty + tw / 2 - 9, 18, on ? c : colour::mid, 1.6f);
     }
 }
 } // namespace

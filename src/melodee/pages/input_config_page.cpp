@@ -5,83 +5,91 @@
 // K1 source (Mic, Rear, Rear L / R, Resample, USB, USB L / R, then each
 // track with a sound: shell/input_choices.h; Shift + K1 its tap), K2 rec length
 // (Free, Seq, Melodee's 1-16 bars), K3 threshold (-96 dB: at once; Shift +
-// K3 Melodee's gain); B1 monitor (Off, Auto while Record is in view, On),
-// B2 Rec Input FX, B3 back. Record's cards are the same ones, so the two
-// pages always agree. The source is always routed, so the meter moves.
+// K3 Melodee's gain); B1 back, as on every sheet, B2 monitor (Off, Auto while
+// Record is in view, On; its LED amber on Auto, green on On), B3 Rec Input FX
+// (LED). Record's cards are the same ones, so the two pages always agree. The
+// picture is the signal path as glyphs (source, gain, FX, monitor) over the
+// level and its threshold. The source is always routed, so the meter moves.
+#include "melodee/engine/effect_info.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/input_meter.h"
 #include "melodee/pages/pages.h"
 #include "drivers/usb_audio.h"
 
 namespace melodee {
-namespace {
-using namespace ui;
 
-const char* detail_of(InputSource source) {
+// The glyph of an input source (also Record's header).
+ui::Icon source_icon(InputSource source) {
     switch (source) {
-    case InputSource::Mic: return "The microphone by the wheel, in mono.";
-    case InputSource::Rear: return "The rear inputs 1 / L and 2 / R, in stereo.";
-    case InputSource::RearL: return "The rear input 1 / L, on both sides.";
-    case InputSource::RearR: return "The rear input 2 / R, on both sides.";
-    case InputSource::Resample: return "Melodee's own mix, before main volume.";
-    case InputSource::Usb: return "What a computer plays over USB-C, in stereo.";
-    case InputSource::UsbL: return "USB-C's left channel, on both sides.";
-    case InputSource::UsbR: return "USB-C's right channel, on both sides.";
-    case InputSource::Track: return "";
-    default: return "";
+    case InputSource::Mic: return ui::Icon::Mic;
+    case InputSource::Rear: case InputSource::RearL: case InputSource::RearR: return ui::Icon::Jack;
+    case InputSource::Resample: return ui::Icon::Mpc;
+    case InputSource::Usb: case InputSource::UsbL: case InputSource::UsbR: return ui::Icon::Usb;
+    case InputSource::Track: return ui::Icon::Note;
+    default: return ui::Icon::Jack;
     }
 }
 
+namespace {
+using namespace ui;
 
 void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     const auto& in = s.ui.settings.input;
     Header h = header_of(s);
-    h.left.push_back(pill("INPUT CONFIG"));
-    if (s.speaker_quieted) h.left.push_back(pill("SPEAKER OFF", colour::amber));
+    h.left.push_back(pill("INPUT"));
+    if (s.speaker_quieted) h.left.push_back(pill(Icon::SpeakerOff, "SPEAKER", colour::amber));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{juce::String("MON ") + juce::String(monitor_name(in.monitor)).toUpperCase(), in.fx ? "INPUT FX ON" : "INPUT FX OFF", "BACK"},
-                 -1, c, {KeyIcon::None, KeyIcon::None, KeyIcon::Back}}, h);
+    SoftKeys keys {{"BACK", "MONITOR", "INPUT FX"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    keys.toggles = 2 | 4;
+    keys.lit = uint8_t((in.monitor != Monitor::Off ? 2 : 0) | (in.fx ? 4 : 0));
+    keys.leds[1] = in.monitor == Monitor::Auto ? colour::amber : colour::play;
+    frame(p, s, keys, h);
 
-    float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y;
-    p.text(input_name(s, false), x, y, w, 22, plain(colour::text, type::title, Weight::SemiBold));
-    juce::String detail = detail_of(in.source);
-    if (in.source == InputSource::Track) // Shift + K1 picks the tap; Record's pads play it once a take is armed
-        detail = in.post ? "After its effects, level and pan. Shift + K1: before." : "The engine alone, before its effects. Shift + K1: after.";
+    // The path, left to right: where it comes from, the gain, the effect on the way in, and whether it is heard.
+    struct Node { Icon glyph; juce::String value, under; juce::Colour colour; };
+    juce::String source = in.source == InputSource::Track ? "Track " + juce::String(in.track % track_count + 1) : juce::String(input_source_name(in.source));
+    juce::String under, gain = db_text(float(in.gain));
+    juce::Colour under_colour = colour::mid;
+    if (in.source == InputSource::Track) under = in.post ? "POST FX" : "PRE FX"; // Shift + K1
     if (from_usb(in.source)) {
         auto usb = UsbStreamState(s.usb_state);
-        detail = usb == UsbStreamState::Running ? juce::String("USB-C: the computer is playing.")
-               : usb == UsbStreamState::Missing ? juce::String("USB-C: no audio gadget found.")
-               : usb == UsbStreamState::Failed ? juce::String("USB-C: could not be opened.")
-               : juce::String("USB-C: waiting for the computer to play.");
+        under = usb == UsbStreamState::Running ? "PLAYING" : usb == UsbStreamState::Missing ? "NO GADGET" : usb == UsbStreamState::Failed ? "FAILED" : "WAITING";
+        under_colour = usb == UsbStreamState::Running ? colour::play : usb == UsbStreamState::Failed || usb == UsbStreamState::Missing ? colour::rec : colour::amber;
     }
-    p.text(detail, x, y + 23, w, 15, plain(colour::sec, type::small));
-
-    struct Row { const char* name; juce::String value; };
-    juce::String monitor = juce::String(monitor_name(in.monitor)).toUpperCase();
-    if (in.source == InputSource::Resample) monitor += " (THE MIX IS HEARD)";
-    else if (in.source == InputSource::Track && s.monitoring) monitor += juce::String::fromUTF8(" \xc2\xb7 THE TRACK, ONCE");
-    else if (s.monitoring) monitor += juce::String::fromUTF8(" \xc2\xb7 HEARD NOW");
-    // Source, rec length and threshold are the knob cards' (K1-K3): the rows
-    // hold what the cards do not.
-    const Row rows[] {
-        {"MONITOR", monitor},
-        {"REC INPUT FX", in.fx ? juce::String::fromUTF8("ON \xc2\xb7 KNOB FX: PHASE 7") : juce::String("OFF")},
-        {"GAIN", (in.gain > 0 ? "+" : "") + db_text(float(in.gain))},
+    juce::String fx = in.fx && s.project.knob_fx.kind ? juce::String(knob_fx_entry(s.project.knob_fx.choice).name) : juce::String("Off");
+    bool heard = s.monitoring || in.source == InputSource::Resample;
+    const Node nodes[] {
+        {source_icon(in.source), source, under, colour::text},
+        {Icon::Knob, gain, {}, colour::text},
+        {Icon::Modulation, fx, {}, in.fx ? colour::text : colour::dim},
+        {in.monitor == Monitor::Off ? Icon::SpeakerOff : Icon::Speaker, monitor_name(in.monitor), heard ? "HEARD" : "", heard ? colour::amber : colour::text},
     };
-    float ry = y + 42;
-    for (const auto& r : rows) {
-        float nw = p.text(r.name, x, ry, 110, 15, caps_text(colour::mid)) + 8;
-        p.text(r.value, x + nw, ry, w - nw, 15, p.fit(r.value, caps_text(colour::text), w - nw, type::floor), juce::Justification::centredRight);
-        ry += 16;
+    float y = zone::picture_y + 8, step = (zone::width - 2 * zone::pad) / 4.0f;
+    for (int n = 0; n < 4; ++n) {
+        const auto& node = nodes[n];
+        float cx = zone::pad + step * (n + 0.5f);
+        icon(p, node.glyph, cx - 12, y, 24, node.colour, 1.4f);
+        auto value = plain(node.colour, type::body, Weight::SemiBold);
+        p.text(node.value, cx - step / 2 + 2, y + 30, step - 4, 16, p.fit(node.value, value, step - 4, type::floor), juce::Justification::centred);
+        if (node.under.isNotEmpty())
+            p.text(node.under, cx - step / 2, y + 47, step, 14, caps_text(n == 0 ? under_colour : node.colour), juce::Justification::centred);
+        if (n < 3) { // the arrow on to the next node
+            juce::Path arrow;
+            float ax = cx + 18, bx = cx + step - 18, ay = y + 12;
+            arrow.startNewSubPath(ax, ay); arrow.lineTo(bx, ay);
+            arrow.startNewSubPath(bx - 4, ay - 4); arrow.lineTo(bx, ay); arrow.lineTo(bx - 4, ay + 4);
+            p.g.setColour(colour::dim);
+            p.g.strokePath(arrow, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
     }
-    input_meter(p, s, c, x, ry + 2, w);
+    input_meter(p, s, c, zone::pad, zone::picture_y + 88, zone::width - 2 * zone::pad);
 }
 
 void soft(Context& c, int key) {
-    if (key == 0) c.cycle_monitor();
-    if (key == 1) c.toggle_rec_fx();
-    if (key == 2) c.back();
+    if (key == 0) c.back();
+    if (key == 1) c.cycle_monitor();
+    if (key == 2) c.toggle_rec_fx();
 }
 } // namespace
 
