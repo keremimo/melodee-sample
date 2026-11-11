@@ -38,6 +38,17 @@ void draw_envelope(ui::Paint& p, float x, float y, float w, float h, double seco
 // The wake runs from the region's start (reversed: its end; after a loop
 // went round, its loop point) to the head.
 const PlayHead* pad_head(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames, ui::WaveHead& out);
+// Stage (mocks 2 and 3): one head a voice of `pad` (the four newest,
+// shell/playheads.h pad_voices): the newest at its envelope with its wake,
+// older ones at half and no wake. After a loop went round, the part before
+// the loop point keeps half a wake.
+struct StageHeads {
+    std::array<ui::WaveHead, PadVoices::cap + 1> wave {};
+    unsigned count = 0;               // heads in `wave`
+    const PlayHead* newest = nullptr; // nullptr: nothing shown
+    unsigned sounding = 0;            // voices heard now
+};
+StageHeads stage_heads(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames);
 void sampler_rows_wheel(Context& c, int delta);
 void sampler_bank(Context& c, int way);
 

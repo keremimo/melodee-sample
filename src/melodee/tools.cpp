@@ -173,6 +173,18 @@ void pad_voice(Snapshot& s, unsigned k, unsigned pad, uint32_t serial, float thr
     s.heads[k] = h;
 }
 
+// A voice of kit pad A09 (track 4) as heads[k] at frame `at` of the file, its envelope `level` (mocks 2 and 3).
+PlayHead& stage_voice(Snapshot& s, unsigned k, uint32_t serial, double at, float level) {
+    const auto& pad = s.project.tracks[3].pads[8];
+    PlayHead& h = s.heads[k];
+    h = PlayHead {};
+    h.serial = serial; h.pad = 8; h.slot = pad.sample; h.at = at;
+    h.from = pad.start; h.to = pad.end ? pad.end : s.sample.frames; h.loop_at = pad.loop_point();
+    h.step = pad.reverse ? -1 : 1; h.level = level; h.wake = 1;
+    if (pad.loop) h.flags |= tap::Loop;
+    return h;
+}
+
 // The Project board's card: two folders and four projects, Night drive open with changes.
 void preview_projects(Snapshot& s) {
     auto& v = s.projects;
@@ -594,6 +606,31 @@ const Preview previews[] {
          on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
          playing_head(s, 53100); // 1.204 s in
+     }},
+    {"stagevoices", [](Shell&, Snapshot& s) { // PLAY, Poly: a roll of three voices, the newest strong with its wake
+         on_stage(s, 3, 1, 1); s.playing = true; s.sample = break_sample();
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
+         stage_voice(s, 0, 12, 38000, 1.0f);
+         stage_voice(s, 1, 11, 75000, 0.7f);
+         stage_voice(s, 2, 10, 112000, 0.35f);
+     }},
+    {"stagemono", [](Shell&, Snapshot& s) { // PLAY, Mono: the new hit cut the last one, whose head is fading out
+         on_stage(s, 3, 1, 1); s.playing = true; s.sample = break_sample();
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000; pad.mono = true;
+         stage_voice(s, 0, 12, 26000, 1.0f);
+         stage_voice(s, 1, 11, 81000, 0.4f).cut = true;
+     }},
+    {"trimlooping", [](Shell&, Snapshot& s) { // TRIM, Loop on: the head just went round, the ghost at the end it left
+         on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 40000; pad.end = 140000;
+         pad.loop = true; pad.loop_lock = false; pad.loop_start = 82000; pad.play = PadPlay::Gate;
+         PlayHead& h = stage_voice(s, 0, 7, 84300, 1.0f);
+         h.pass = 2; h.wrap = 0.8f;
+     }},
+    {"trimreverse", [](Shell&, Snapshot& s) { // TRIM, reversed: the head runs right to left, its wake to its right
+         on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000; pad.reverse = true;
+         stage_voice(s, 0, 7, 96000, 0.9f);
      }},
     {"chop", [](Shell&, Snapshot& s) { // Threshold on the pad's region, slice 5 in hand
          s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;

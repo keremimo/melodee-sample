@@ -210,4 +210,26 @@ const PlayHead* pad_head(const Snapshot& s, unsigned pad, const PadSound& sound,
     return nullptr;
 }
 
+StageHeads stage_heads(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames) {
+    StageHeads out;
+    if (!frames) return out;
+    PadVoices voices = pad_voices(s.heads, int(pad), sound.sample);
+    out.sounding = voices.sounding;
+    for (unsigned n = 0; n < voices.count; ++n) {
+        const PlayHead& head = *voices.head[n];
+        auto& wave = out.wave[out.count++];
+        wave.at = float(head.at / frames);
+        wave.strength = voice_strength(head, n == 0);
+        wave.wake_from = wave.at;
+        if (n) continue; // older voices: a head, no wake
+        out.newest = &head;
+        bool round = head.pass && (head.flags & tap::Loop);
+        wave.wake_from = float(head.reverse() ? head.to : round ? head.loop_at : head.from) / float(frames);
+        wave.wake = head.wake;
+        if (round && !head.reverse() && head.loop_at > head.from) // the first pass's part before the loop point
+            out.wave[out.count++] = {float(head.loop_at) / float(frames), float(head.from) / float(frames), 0, head.wake * 0.5f};
+    }
+    return out;
+}
+
 } // namespace melodee

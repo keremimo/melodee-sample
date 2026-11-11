@@ -167,7 +167,12 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
     (the whole kit's pads as grain clouds): K1 position, K2 grain size, K3
     density, Shift + K1 scan, Shift + K2 spread, Shift + K3 Cloud on or off,
     the place and grains drawn on the wave. KIT FILT: cutoff, resonance,
-    type of the one filter after every pad.
+    type of the one filter after every pad. While the pad sounds each of its
+    voices draws a head on the waveform (the four newest; the newest with
+    its wake, older ones at half), a voice cut by Mono or a mute group fading
+    out over 60 ms, and PLAY counts them ("3 VOICES"). Reversed, the head runs
+    right to left; looping, a ghost stays a moment at the place it left, the
+    loop flag lights as it goes round, and TRIM counts the passes.
   - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 MIX, B3 FX. VOICE edits
     the drum the last pad played (Snare, Clap and Rim share a page) and the
     B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the

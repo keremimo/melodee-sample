@@ -5621,11 +5621,11 @@ void voice_taps() {
         TrackTaps t;
         t.track = 3; t.count = 1;
         auto& v = t.voice[0];
-        v.serial = 5; v.pad = 8; v.slot = 4; v.from = 100; v.to = 50000; v.loop_at = 100; v.at = 10100; v.step = 1; v.level = 1; v.age = 10000;
+        v.serial = 5; v.pad = 8; v.slot = 4; v.from = 100; v.to = 10200; v.loop_at = 100; v.at = 10100; v.step = 1; v.level = 1; v.age = 10000;
         trail.update(t, -500, 1000);
         auto h = trail.heads();
         CHECK(h[0].pad == 8 && h[0].wake == 1 && std::abs(h[0].at - 9600) < 1e-6 && h[1].pad < 0);
-        t.count = 0; // gone from the engine
+        t.count = 0; t.stamp = 500; // gone from the engine: run out at its end (a cut fades: voice_heads)
         trail.update(t, -500, 1100);
         h = trail.heads();
         CHECK(h[0].pad == 8 && h[0].level == 0 && h[0].wake == 1);
@@ -5642,6 +5642,109 @@ void voice_taps() {
         t.count = 0;
         trail.update(t, 0, 2180);
         CHECK(trail.heads()[0].pad < 0);
+    }
+}
+
+// Mocks 2 and 3 (shell/playheads.h): a cut voice's head fades over its 60 ms choke and goes on moving, one run out
+// at its end is no cut; a loop going round as heard leaves a ghost for 0.2 s; Stage takes the four newest voices of a
+// pad, counting only those heard.
+void voice_heads() {
+    auto voice = [](VoiceTap& v, uint32_t serial, uint32_t at, float level) {
+        v = VoiceTap {};
+        v.serial = serial; v.pad = 8; v.slot = 4; v.from = 1000; v.to = 50000; v.loop_at = 1000;
+        v.at = at; v.step = 1; v.level = level; v.age = at - 1000;
+    };
+    // Cut: gone from the engine mid-region while loud.
+    {
+        HeadTrail trail;
+        TrackTaps t;
+        t.track = 3; t.count = 1; t.stamp = 10000;
+        voice(t.voice[0], 5, 20000, 0.8f);
+        trail.update(t, -500, 1000);
+        CHECK(!trail.heads()[0].cut && trail.heads()[0].sounding());
+        t.count = 0; t.stamp = 10480; // the next block, the voice gone
+        trail.update(t, -500, 1010);
+        auto h = trail.heads()[0];
+        CHECK(h.cut && !h.sounding() && std::abs(h.level - 0.8f) < 0.01f && h.wake == 1);
+        CHECK(std::abs(h.at - (20000 + 480 - 500)) < 1e-6); // carried on from its last tap
+        t.stamp = 11920;
+        trail.update(t, -500, 1040);
+        h = trail.heads()[0];
+        CHECK(std::abs(h.level - 0.4f) < 0.01f && h.at > 20000);
+        trail.update(t, -500, 1070);
+        CHECK(trail.heads()[0].level == 0 && trail.heads()[0].wake == 1);
+        trail.update(t, -500, 1070 + HeadTrail::wake_ms);
+        CHECK(trail.heads()[0].pad < 0);
+    }
+    // A mute group's or mono's cut tapped while it fades (Choked): the level from before the cut, fading.
+    {
+        HeadTrail trail;
+        TrackTaps t;
+        t.track = 3; t.count = 1; t.stamp = 10000;
+        voice(t.voice[0], 5, 20000, 0.9f);
+        trail.update(t, 0, 1000);
+        t.voice[0].flags = tap::Choked; t.voice[0].level = 0.1f; t.stamp = 10128; t.voice[0].at += 128;
+        trail.update(t, 0, 1015);
+        auto h = trail.heads()[0];
+        CHECK(h.cut && std::abs(h.level - 0.9f) < 0.01f);
+        trail.update(t, 0, 1045);
+        CHECK(std::abs(trail.heads()[0].level - 0.45f) < 0.01f);
+    }
+    // Run out: a one shot gone at its region's end, or a release faded out, is no cut: its line goes at once.
+    {
+        HeadTrail trail;
+        TrackTaps t;
+        t.track = 3; t.count = 1; t.stamp = 10000;
+        voice(t.voice[0], 5, 49800, 1.0f);
+        trail.update(t, -300, 1000);
+        t.count = 0; t.stamp = 10512;
+        trail.update(t, -300, 1012);
+        auto h = trail.heads()[0];
+        CHECK(!h.cut && h.level == 0 && h.wake == 1 && h.at >= 49990);
+        HeadTrail quiet;
+        t.count = 1; t.stamp = 10000;
+        voice(t.voice[0], 6, 20000, 0.01f); t.voice[0].flags = tap::Releasing;
+        quiet.update(t, 0, 1000);
+        t.count = 0; t.stamp = 10256;
+        quiet.update(t, 0, 1010);
+        CHECK(!quiet.heads()[0].cut && quiet.heads()[0].level == 0);
+    }
+    // A loop going round as heard: the ghost at the end it left, 1 falling to 0 over 0.2 s; the pass counted.
+    {
+        HeadTrail trail;
+        TrackTaps t;
+        t.track = 3; t.count = 1; t.stamp = 10000;
+        auto& v = t.voice[0];
+        voice(v, 5, 1990, 1); v.from = 0; v.to = 2000; v.loop_at = 1200; v.flags = tap::Loop; v.age = 1990;
+        trail.update(t, 0, 1000);
+        CHECK(trail.heads()[0].pass == 0 && trail.heads()[0].wrap == 0);
+        v.at = 1250; v.age = 2050; v.flags = tap::Loop | tap::Wrapped; t.stamp = 10060;
+        trail.update(t, 0, 1016);
+        auto h = trail.heads()[0];
+        CHECK(h.pass == 1 && h.wrap == 1 && wrap_left(h) == 2000);
+        trail.update(t, 0, 1116);
+        CHECK(std::abs(trail.heads()[0].wrap - 0.5f) < 0.01f && trail.heads()[0].pass == 1);
+        trail.update(t, 0, 1216);
+        CHECK(trail.heads()[0].wrap == 0);
+        h.step = -1;
+        CHECK(wrap_left(h) == 1200); // reversed: it leaves the loop point for the end
+    }
+    // Stage's voices of a pad: the four newest of its sample, the newest at its envelope, older ones at half;
+    // the count only those heard (not cut, not silent), past the cap too; another sample or a cloud not at all.
+    {
+        std::array<PlayHead, HeadTrail::size> heads {};
+        for (unsigned k = 0; k < 7; ++k) {
+            auto& h = heads[k];
+            h.serial = 20 - k; h.pad = 8; h.slot = 4; h.from = 0; h.to = 10000; h.at = 1000 * k; h.step = 1; h.level = 0.8f; h.wake = 1;
+        }
+        heads[1].cut = true; heads[1].level = 0.5f;
+        heads[2].level = 0;  // silent, its wake fading
+        heads[5].slot = 9;   // another sample on the pad
+        heads[6].flags = tap::Cloud;
+        PadVoices v = pad_voices(heads, 8, 4);
+        CHECK(v.count == 4 && v.head[0] == &heads[0] && v.head[3] == &heads[3] && v.sounding == 3);
+        CHECK(std::abs(voice_strength(heads[0], true) - 0.8f) < 1e-6f && std::abs(voice_strength(heads[3], false) - 0.4f) < 1e-6f);
+        CHECK(pad_voices(heads, 9, 4).count == 0 && pad_voices(heads, 8, 9).sounding == 1);
     }
 }
 
@@ -5744,6 +5847,7 @@ void head_lines() {
 
 int main() {
     voice_taps();
+    voice_heads();
     place_bar();
     song_buttons();
     sfz_reader();

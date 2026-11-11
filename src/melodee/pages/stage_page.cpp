@@ -335,10 +335,12 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     p.g.reduceClipRegion(juce::Rectangle<int>(int(wx), int(wy) - 3, int(ww + 1), int(wh + 6)));
     float sx = x_of(region_from), ex = x_of(region_to);
     p.fill(sx, wy, ex - sx, wh, c.withAlpha(0.12f));
-    // The pad as it is heard: a head and its wake (not on Cloud, whose grains are the picture).
-    ui::WaveHead head;
-    const PlayHead* heard = page.kind != StageKind::Cloud ? pad_head(s, t.last_pad % sampler_pads, pad, frames, head) : nullptr;
-    waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, &head, heard ? 1 : 0);
+    // The pad as it is heard: a head a voice, the newest with its wake (not on Cloud, whose grains are the picture).
+    StageHeads heads = page.kind != StageKind::Cloud ? stage_heads(s, t.last_pad % sampler_pads, pad, frames) : StageHeads {};
+    const PlayHead* heard = heads.newest;
+    waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, heads.wave.data(), heads.count);
+    // A loop going round: for a moment a ghost stays at the place the head left (drawn last), so the jump reads as one.
+    const float wrap = heard && (heard->flags & tap::Loop) ? heard->wrap : 0.0f;
     if (page.kind == StageKind::Trim) {
         p.fill(sx, wy, 1, wh, knob_shade(s.ui.track, 0));
         p.fill(sx - 2.5f, wy - 2.5f, 5, 5, knob_shade(s.ui.track, 0), 1);
@@ -349,6 +351,7 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
             auto lc = pad.loop ? knob_shade(s.ui.track, 2) : knob_shade(s.ui.track, 2).withAlpha(0.5f);
             for (float d = wy; d < wy + wh; d += 6) p.fill(lx, d, 1, 3, lc);
             p.fill(lx, wy + wh - 5, 6, 5, lc, 1);
+            if (wrap > 0) p.fill(lx - 1, wy + wh - 8, 9, 8, knob_shade(s.ui.track, 2).withAlpha(wrap), 1.5f); // lit as it goes round
         }
     }
     double length = (end - start) / 44100.0;
@@ -383,8 +386,9 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
             p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1).withMultipliedAlpha(shade), 1.5f);
         }
     }
+    if (wrap > 0) p.fill(x_of(float(wrap_left(*heard)) / frames) - 0.75f, wy, 1.5f, wh, colour::text.withAlpha(0.55f * wrap));
     p.g.restoreState();
-    if (heard) draw_heads(p, wx, wy, ww, wh, from, to, &head, 1);
+    draw_heads(p, wx, wy, ww, wh, from, to, heads.wave.data(), heads.count);
     juce::String middle = "KEPT " + seconds(end - start);
     if (page.kind == StageKind::Tune) middle = juce::String(pad.pitch >= 0 ? "+" : "") + juce::String(pad.pitch) + " ST " + juce::String(pad.fine >= 0 ? "+" : "") + juce::String(pad.fine) + " CT";
     if (page.kind == StageKind::Play) middle = pad.group ? "MUTE GROUP " + juce::String(pad.group) : juce::String(pad.mono ? "MONO" : "POLY");
@@ -401,14 +405,23 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     if (page.kind == StageKind::Cloud)
         middle = t.params[sampler::Cloud] ? "AROUND " + juce::String((start + (end - start) * t.params[sampler::Position] / 100.0) / 44100.0, 3) + " S"
                                           : juce::String("SHIFT + K3 ON");
-    if (page.kind == StageKind::Trim && heard) { // while it plays: the time heard, of the time kept
-        double into = heard->reverse() ? double(end) - heard->at : heard->at - double(start);
-        juce::String now = seconds(uint32_t(std::clamp(into, 0.0, double(end - start)))), of = " OF " + seconds(end - start);
+    // While it plays, the middle label in two parts: what is happening in the text colour, the rest in mid.
+    auto two_part = [&](const juce::String& lead_text, const juce::String& rest_text) {
         axis(p, bottom - 16, seconds(uint32_t(from * frames)), "", seconds(uint32_t(to * frames)));
         auto lead = caps_text(colour::text), rest = caps_text(colour::mid);
-        float a = p.width(now, lead), b = p.width(of, rest), x0 = px + (pw - a - b) / 2;
-        p.text(now, x0, bottom - 16, a + 1, 14, lead);
-        p.text(of, x0 + a, bottom - 16, b + 1, 14, rest);
+        float a = p.width(lead_text, lead), b = p.width(rest_text, rest), x0 = px + (pw - a - b) / 2;
+        p.text(lead_text, x0, bottom - 16, a + 1, 14, lead);
+        p.text(rest_text, x0 + a, bottom - 16, b + 1, 14, rest);
+    };
+    if (page.kind == StageKind::Trim && heard) { // the time heard, of the time kept; going round, which pass
+        double into = heard->reverse() ? double(end) - heard->at : heard->at - double(start);
+        juce::String now = seconds(uint32_t(std::clamp(into, 0.0, double(end - start))));
+        if ((heard->flags & tap::Loop) && heard->pass) two_part("PASS " + juce::String(heard->pass + 1), dot + now);
+        else two_part(now, " OF " + seconds(end - start));
+        return;
+    }
+    if (page.kind == StageKind::Play && heads.sounding) { // how many voices sound
+        two_part(juce::String(heads.sounding), heads.sounding == 1 ? " VOICE" : " VOICES");
         return;
     }
     axis(p, bottom - 16, seconds(uint32_t(from * frames)), middle, seconds(uint32_t(to * frames)));
