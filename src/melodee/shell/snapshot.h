@@ -57,7 +57,7 @@ struct Snapshot {
     struct Take {
         uint8_t state = 0;             // TakeRecorder::State
         uint32_t frames = 0, length = 0;
-        float level = 0;
+        float level = 0, left = 0, right = 0; // the input's peak, and each side's
         std::array<uint8_t, 128> peaks {};
     } take;
     // Parity phase 6: a render (Bounce::State, frames so far), what Audio Recall holds,

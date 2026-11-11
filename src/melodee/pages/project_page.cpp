@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// PROJECT (Shift + Pad 16): projects are files on the SD card, as many as it
-// holds, in folders. The wheel moves; Push on New project starts one, Push
-// on a folder goes in (Shift + Push comes back out), Push on a project
-// opens its sheet: on the open one Save, Save as new, Duplicate, New folder
-// here, Open at start, Delete; on any other Load heads the list. Delete asks
-// once more. Save (with no file yet), Save as new and Rename open the Name
+// PROJECT (Shift + Pad 16): the open project's three jobs as tiles under
+// the keys: B1 SAVE (to its file in one press; with no file yet the Name
+// sheet first), B2 OPEN (the list), B3 NEW (asks first, as the MPC does).
+// Push saves too. Settings and About are Shift + Pad 8's.
+// The list behind OPEN: projects are files on the SD card, as many as it
+// holds, in folders; SD card access at the top lends the card to a computer
+// (pages/card_access_page.cpp). Each row a glyph first and its facts last.
+// The wheel moves; Push or B3 opens: a folder goes in (B1 or Shift + Push
+// comes back out, B1 at the top back to the tiles), a project's sheet opens
+// on its likely job as a tile (Save on the open one, Load on another), B2
+// MORE lists them all: on the open one Save, Save as new, Rename, Duplicate,
+// Move to folder, New folder here, Open at start, Delete; on another Load,
+// Load kit (its pads and samples onto the selected track, no patterns) and
+// the same. Delete asks once more. Save as new and Rename open the Name
 // sheet; Move to folder opens a picker of every folder (the wheel picks,
-// Push or B3 moves, B1 backs out). The amber dot marks unsaved changes.
-// Parity phase 10, as the MPC's project page: New project asks first (B3 DO
-// IT, B1 CANCEL); Load kit on another project's sheet takes only its kit
-// (pads and samples, no patterns) onto the selected track. Parity phase
-// 10b: SD card access, at the top, lends the card to a computer (pages/card_access_page.cpp).
+// Push or B3 moves, B1 backs out). K1 jumps, K2 sorts.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/project_store.h"
@@ -41,19 +45,17 @@ const char* action_name(Action a) {
     return names[a];
 }
 
-// The rows: New project, the open project when it has no file yet, SD card access (at the top folder),
-// then the folder's entries.
-bool unsaved_row(const std::string& path) { return path.empty(); }
-unsigned card_row(const std::string& path) { return unsaved_row(path) ? 2 : 1; }
+// The list's rows: SD card access (at the top folder), then the folder's entries.
 bool has_card_row(const std::string& folder) { return folder.empty(); }
-unsigned first_entry(const std::string& path, const std::string& folder) { return card_row(path) + (has_card_row(folder) ? 1 : 0); }
-const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const std::string& path, const std::string& folder) {
-    unsigned first = first_entry(path, folder);
+unsigned first_entry(const std::string& folder) { return has_card_row(folder) ? 1 : 0; }
+const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const std::string& folder) {
+    unsigned first = first_entry(folder);
     return row >= first && row - first < v.entries.size() ? &v.entries[row - first] : nullptr;
 }
-bool on_unsaved(unsigned row, const std::string& path) { return unsaved_row(path) && row == 1; }
 // SD card access (parity phase 10b), at the top, as the MPC's Project menu ends with it.
-bool on_card(unsigned row, const std::string& path, const std::string& folder) { return has_card_row(folder) && row == card_row(path); }
+bool on_card(unsigned row, const std::string& folder) { return has_card_row(folder) && row == 0; }
+// The sheet's likely job: Save on the open project, Load on any other.
+Action likely_of(bool open) { return open ? Save : Load; }
 
 // Move to folder: where a project can go (the top, then every folder by
 // name), all but the folder it is in.
@@ -66,26 +68,9 @@ std::vector<std::string> destinations(const ProjectStore::View& v, const std::st
     return out;
 }
 
-void folder_icon(Paint& p, float x, float cy) {
-    juce::Path icon;
-    icon.addRoundedRectangle(x, cy - 4, 12, 9, 1.5f);
-    icon.addRoundedRectangle(x, cy - 5.5f, 5, 3, 1);
-    p.g.setColour(colour::mid); p.g.fillPath(icon);
-}
-
-// A microSD card: the cut corner and its contacts.
-void card_icon(Paint& p, float x, float cy, juce::Colour c) {
-    juce::Path card;
-    card.startNewSubPath(x + 3, cy - 6);
-    card.lineTo(x + 10, cy - 6); card.lineTo(x + 10, cy + 6); card.lineTo(x, cy + 6); card.lineTo(x, cy - 3);
-    card.closeSubPath();
-    p.g.setColour(c); p.g.strokePath(card, juce::PathStrokeType(1.2f));
-    for (int k = 0; k < 3; ++k) p.fill(x + 3 + k * 2.2f, cy - 4, 1.1f, 3, c);
-}
-
 juce::String free_text(uint64_t bytes) {
     char text[32];
-    std::snprintf(text, sizeof(text), "%.1f GB FREE", bytes / 1e9);
+    std::snprintf(text, sizeof(text), "%.1f GB", bytes / 1e9);
     return text;
 }
 
@@ -97,100 +82,111 @@ void sort_view(ProjectStore::View& v, unsigned by_name) {
         return a.modified > b.modified;
     });
 }
+juce::String count_text(unsigned n, const char* one, const char* many) { return juce::String(n) + " " + (n == 1 ? one : many); }
+
+// The three jobs as tiles under the keys.
+void draw_tiles(Paint& p, const Snapshot& s, const ProjectStore::View& v) {
+    Header h = header_of(s);
+    if (v.root.empty()) h.left.push_back(pill(Icon::Card, "NO CARD", amber));
+    else if (s.dirty) h.left.push_back(pill(Icon::Rec, "UNSAVED", amber));
+    h.right.push_back(label(s.project.name));
+    SoftKeys keys {{"SAVE", "OPEN", "NEW"}, 0, colour::text};
+    keys.glyphs = {Icon::Save, Icon::Folder, Icon::Plus};
+    frame(p, s, keys, h);
+    unsigned projects = 0;
+    for (const auto& e : v.entries) projects += e.kind == ProjectEntry::Kind::Project;
+    juce::String fresh = !s.dirty ? juce::String() : s.project_path.empty() ? juce::String("CHANGES LOST") : juce::String("SAVES FIRST");
+    key_tiles(p, {word_sub_tile(Icon::Save, "SAVE", juce::String(s.project.name), true),
+                  word_sub_tile(Icon::Folder, "OPEN", v.root.empty() ? juce::String("NO CARD") : count_text(projects, "PROJECT", "PROJECTS")),
+                  word_sub_tile(Icon::Plus, "NEW", fresh)});
+}
+
+// One row of the list: a glyph, the name, its facts at the right edge.
+void draw_row(Paint& p, const Snapshot& s, const ProjectStore::View& v, unsigned n, float y, bool current) {
+    float x = zone::pad, w = zone::width - 2 * zone::pad, cy = y + list_row_h / 2, right = x + w - 8;
+    if (current) { p.fill(x, y, w, list_row_h, colour::raised, 3); p.fill(x, y, 2.5f, list_row_h, colour::text, 1); }
+    auto glyph_c = current ? colour::text : colour::mid;
+    auto facts = plain(colour::mid, type::small, Weight::SemiBold);
+    float tx = x + 28;
+    if (on_card(n, s.project_folder)) { // the card, to a computer over USB-C
+        icon(p, Icon::Card, x + 10, cy - 6, 12, glyph_c, 1.4f);
+        float fw = p.width("USB-C", caps_text(colour::mid));
+        p.text("USB-C", right - fw, y, fw + 1, list_row_h, caps_text(colour::mid));
+        icon(p, Icon::Usb, right - fw - 14, cy - 5, 10, colour::mid, 1.5f);
+        p.text("SD card access", tx, y, right - fw - 20 - tx, list_row_h, plain(current ? colour::text : colour::sec, type::list, Weight::Regular));
+        return;
+    }
+    const auto* e = entry_at(v, n, s.project_folder);
+    if (!e) return;
+    bool open = e->kind == ProjectEntry::Kind::Project && e->path == s.project_path;
+    if (e->kind == ProjectEntry::Kind::Folder) {
+        icon(p, Icon::Folder, x + 10, cy - 6, 12, glyph_c, 1.4f);
+        icon(p, Icon::ChevronRight, right - 10, cy - 5, 10, colour::dim, 1.6f);
+        juce::String count(e->projects);
+        float cw = p.width(count, facts);
+        p.text(count, right - 14 - cw, y, cw + 1, list_row_h, facts);
+        right -= 20 + cw;
+    } else {
+        icon(p, Icon::File, x + 10, cy - 6, 12, glyph_c, 1.4f);
+        if (open) { // the one open: OPEN, after a dot while it has changes the card has not
+            auto chip_style = caps_text(colour::bg);
+            float cw = p.width("OPEN", chip_style) + 8;
+            right -= cw;
+            p.fill(right, cy - 7.5f, cw, 15, colour::text, 3);
+            p.text("OPEN", right, cy - 7.5f, cw, 15, chip_style, juce::Justification::centred);
+            if (s.dirty) { right -= 9; p.circle(right + 2, cy, 2.5f, amber); }
+            right -= 6;
+        } else {
+            juce::String meta = e->mpc() ? juce::String("MPC")
+                              : count_text(e->tracks, "track", "tracks") + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(e->tempo / 10) + " BPM";
+            float mw = p.width(meta, facts);
+            p.text(meta, right - mw, y, mw + 1, list_row_h, facts);
+            right -= mw + 8;
+        }
+    }
+    auto name = plain(current || open ? colour::text : colour::sec, type::list, current ? Weight::Medium : Weight::Regular);
+    p.text(e->name, tx, y, right - tx, list_row_h, p.fit(e->name, name, right - tx, type::floor));
+}
+
 void draw(Paint& p, const Snapshot& s) {
     auto v = s.projects;
     sort_view(v, s.ui.project_sort);
+    if (!s.ui.project_list) { draw_tiles(p, s, v); return; }
     Header h = header_of(s);
     juce::String where = v.root.empty() ? juce::String("NO CARD") : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder));
     h.left.push_back(pill(where));
-    if (v.free_bytes) h.right.push_back(pill(free_text(v.free_bytes)));
+    if (v.free_bytes) h.right.push_back(pill(Icon::Card, free_text(v.free_bytes)));
     bool sheet = s.ui.sheet_open;
+    unsigned count = project_rows(v.entries.size(), s.project_folder), cursor = std::min<unsigned>(s.ui.project_cursor, std::max(count, 1u) - 1);
+    const auto* in_hand = entry_at(v, cursor, s.project_folder);
+    bool open_one = in_hand && in_hand->path == s.project_path, mpc = in_hand && in_hand->mpc();
     if (s.ui.move_open) frame(p, s, {{"BACK", "", "MOVE"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
-    else if (sheet) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
-    else frame(p, s, {{"PROJECT", "SETTINGS", "ABOUT"}, 0, colour::text}, h);
+    else if (sheet && s.ui.sheet_more) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    else if (sheet) {
+        SoftKeys keys {{"BACK", "MORE", open_one ? "SAVE" : "LOAD"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+        keys.glyphs = {Icon::None, Icon::Layers, open_one ? Icon::Save : Icon::Folder};
+        frame(p, s, keys, h);
+    } else frame(p, s, {{"BACK", "", "OPEN"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
 
-    unsigned count = project_rows(v.entries.size(), s.project_path, s.project_folder), cursor = std::min<unsigned>(s.ui.project_cursor, count - 1);
     unsigned first = cursor < 3 ? 0 : std::min(cursor - 3, count > visible ? count - visible : 0);
-    float x = zone::pad, w = zone::width - 2 * zone::pad;
-    for (unsigned row = 0; row < visible && first + row < count; ++row) {
-        unsigned n = first + row;
-        float y = zone::picture_y + 0.5f + row * (list_row_h + list_row_gap);
-        const auto* e = entry_at(v, n, s.project_path, s.project_folder);
-        bool current = n == cursor, open = e && e->kind == ProjectEntry::Kind::Project && e->path == s.project_path;
-        if (current) {
-            p.fill(x, y, w, list_row_h, colour::raised, 4);
-            p.g.saveState(); p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(list_row_h)));
-            p.fill(x, y, 8, list_row_h, colour::text, 4); p.g.restoreState();
-        }
-        float tx = x + 27, cy = y + list_row_h / 2;
-        if (on_card(n, s.project_path, s.project_folder)) { // the card, to a computer over USB-C
-            card_icon(p, x + 10, cy, colour::mid);
-            auto meta_style = caps_text(colour::mid);
-            float mw = p.width("USB-C", meta_style);
-            p.text("USB-C", x + w - 7 - mw, y, mw + 1, list_row_h, meta_style);
-            p.text("SD card access", tx, y, w - mw - 40, list_row_h, plain(colour::sec, type::body, Weight::Medium));
-            continue;
-        }
-        if (on_unsaved(n, s.project_path)) { // the open project, not on the card yet
-            auto chip_style = caps_text(colour::bg);
-            float cw = p.width("OPEN", chip_style) + 8, right = x + w - 7 - cw;
-            p.fill(right, cy - 7.5f, cw, 15, colour::text, 3);
-            p.text("OPEN", right, cy - 7.5f, cw, 15, chip_style, juce::Justification::centred);
-            auto style = caps_text(amber);
-            float uw = p.width("NOT SAVED", style);
-            p.text("NOT SAVED", right - uw - 6, y, uw + 1, list_row_h, style);
-            p.circle(right - uw - 11, cy, 2, amber);
-            p.text(s.project.name, tx, y, right - uw - 20 - tx, list_row_h, plain(colour::text, type::body, Weight::Medium));
-            continue;
-        }
-        if (!e) { // New project
-            p.fill(x + 11, cy - 0.75f, 9, 1.5f, colour::mid); p.fill(x + 14.75f, cy - 4.5f, 1.5f, 9, colour::mid);
-            p.text("New project", tx, y, w - 40, list_row_h, plain(colour::mid, type::body, Weight::Medium));
-            continue;
-        }
-        juce::String meta;
-        if (e->kind == ProjectEntry::Kind::Folder) {
-            folder_icon(p, x + 10, cy);
-            meta = juce::String(e->projects) + (e->projects == 1 ? " PROJECT" : " PROJECTS");
-        } else {
-            meta = e->mpc() ? juce::String("MPC") : juce::String(e->tracks) + (e->tracks == 1 ? " TRACK" : " TRACKS") + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(e->tempo / 10) + " BPM";
-        }
-        if (open) meta = {}; // the header and Stage say what the open project holds; its row says OPEN
-        auto meta_style = caps_text(open ? colour::text : colour::mid);
-        float mw = meta.isEmpty() ? 0 : p.width(meta, meta_style);
-        float right = x + w - 7 - mw;
-        if (mw > 0) p.text(meta, right, y, mw + 1, list_row_h, meta_style);
-        if (open) {
-            auto chip_style = caps_text(colour::bg);
-            float cw = p.width("OPEN", chip_style) + 8;
-            right -= cw + (mw > 0 ? 6 : 0);
-            p.fill(right, cy - 7.5f, cw, 15, colour::text, 3);
-            p.text("OPEN", right, cy - 7.5f, cw, 15, chip_style, juce::Justification::centred);
-            if (s.dirty) {
-                auto style = caps_text(amber);
-                float uw = p.width("UNSAVED", style);
-                right -= uw + 6;
-                p.text("UNSAVED", right, y, uw + 1, list_row_h, style);
-                right -= 7;
-                p.circle(right + 2, cy, 2, amber);
-            }
-        }
-        p.text(e->name, tx, y, right - tx - 4, list_row_h, p.fit(e->name, plain(open ? colour::text : colour::sec, type::body, Weight::Medium), right - tx - 4, type::floor));
+    for (unsigned row = 0; row < visible && first + row < count; ++row)
+        draw_row(p, s, v, first + row, zone::picture_y + 1 + row * (list_row_h + list_row_gap), first + row == cursor);
+    if (!count) { // an empty folder, or no card
+        icon(p, v.root.empty() ? Icon::Card : Icon::Folder, zone::width / 2.0f - 14, zone::picture_y + 50, 28, colour::dim, 1.4f);
+        return;
     }
     if (s.ui.move_open) { // the folder picker over the list
-        const auto* e = entry_at(v, cursor, s.project_path, s.project_folder);
+        const auto* e = in_hand;
         if (!e) return;
         auto list = destinations(v, e->path);
         p.fill(0, zone::picture_y, zone::width, zone::picture_h, colour::bg); // nothing of the list shows beside the sheet
         p.dim_zone(zone::knobs_y, zone::knobs_h);
         float px = zone::pad + 6, pw = zone::width - 2 * zone::pad - 12, py = zone::picture_y + 3, ph = zone::picture_h - 6;
         p.fill(px, py, pw, ph, colour::surf, 6);
-        p.ring(px, py, pw, ph, colour::line, 6);
         juce::String move = "MOVE " + juce::String(e->name) + " TO";
-        p.text(move, px + 9, py + 5, pw - 18, 10, p.fit(move, caps_text(colour::mid), pw - 18, type::floor));
+        p.text(move, px + 9, py + 5, pw - 18, 12, p.fit(move, caps_text(colour::mid), pw - 18, type::floor));
         if (list.empty()) {
             icon(p, Icon::Folder, px + pw / 2 - 12, py + 40, 24, colour::dim, 1.4f); // nowhere else to go (New folder here makes one)
-            p.text("NO OTHER FOLDER", px, py + 70, pw, 14, caps_text(colour::dim), juce::Justification::centred);
             return;
         }
         constexpr unsigned shown = 6;
@@ -200,45 +196,40 @@ void draw(Paint& p, const Snapshot& s) {
             unsigned n = from + r;
             float ry = py + 19 + r * 20, rx = px + 5, rw = pw - 10;
             bool on = n == at;
-            if (on) {
-                p.fill(rx, ry, rw, 19, colour::raised.brighter(0.25f), 4);
-                p.g.saveState(); p.g.reduceClipRegion(juce::Rectangle<int>(int(rx), int(ry), 3, 19));
-                p.fill(rx, ry, 8, 19, colour::text, 4); p.g.restoreState();
-            }
-            folder_icon(p, rx + 6, ry + 9.5f);
-            juce::String name = list[n].empty() ? juce::String("Projects (the top)") : juce::String(list[n]).replace("/", juce::String::fromUTF8(" \xe2\x80\xba "));
-            p.text(name, rx + 22, ry, rw - 28, 19, p.fit(name, plain(on ? colour::text : colour::sec, type::small, Weight::Medium), rw - 28, type::floor));
+            if (on) { p.fill(rx, ry, rw, 19, colour::raised, 3); p.fill(rx, ry, 2.5f, 19, colour::text, 1); }
+            icon(p, Icon::Folder, rx + 6, ry + 4, 11, on ? colour::text : colour::mid, 1.4f);
+            juce::String name = list[n].empty() ? juce::String("Projects") : juce::String(list[n]).replace("/", juce::String::fromUTF8(" \xe2\x80\xba "));
+            p.text(name, rx + 24, ry, rw - 30, 19, p.fit(name, plain(on ? colour::text : colour::sec, type::small, Weight::Medium), rw - 30, type::floor));
         }
         return;
     }
     if (!v.message.empty() && !sheet)
-        p.text(v.message, x, zone::picture_y + 132, w, 12, caps_text(colour::rec), juce::Justification::centredRight);
+        p.text(v.message, zone::pad, zone::picture_y + 132, zone::width - 2 * zone::pad, 12, caps_text(colour::rec), juce::Justification::centredRight);
 
     if (sheet) {
-        const auto* e = entry_at(v, cursor, s.project_path, s.project_folder);
-        bool unsaved = on_unsaved(cursor, s.project_path);
-        if (!unsaved && (!e || e->kind != ProjectEntry::Kind::Project)) return;
-        bool open = unsaved || e->path == s.project_path;
-        juce::String title = unsaved ? juce::String(s.project.name) : juce::String(e->name);
+        const auto* e = in_hand;
+        if (!e || e->kind != ProjectEntry::Kind::Project) return;
         std::array<Action, 8> list {};
-        unsigned n = actions(open, list, e && e->mpc());
+        unsigned n = actions(open_one, list, mpc);
+        if (!s.ui.sheet_more) {
+            auto likely = likely_of(open_one);
+            likely_sheet(p, word_sub_tile(likely == Save ? Icon::Save : Icon::Folder, likely == Save ? "SAVE" : "LOAD", juce::String(e->name)), n - 1);
+            return;
+        }
         MenuSheet m;
-        m.title = title; m.accent = colour::text;
-        if (unsaved) { m.detail = "NOT SAVED"; m.detail_colour = amber; }
-        else if (open && s.dirty) { m.detail = "UNSAVED CHANGES"; m.detail_colour = amber; }
-        else if (e && e->mpc()) { m.detail = "OPENS AS A COPY"; m.detail_colour = colour::mid; }
+        m.title = e->name; m.accent = colour::text;
+        if (open_one && s.dirty) { m.detail = "UNSAVED"; m.detail_colour = amber; }
+        else if (mpc) { m.detail = "OPENS AS A COPY"; m.detail_colour = colour::mid; }
         for (unsigned k = 0; k < n; ++k) {
-            bool off = false;
             juce::String name = action_name(list[k]);
             if (list[k] == Delete && s.ui.delete_armed && k == s.ui.sheet_row) name = "Delete: press again";
-            if (list[k] == OpenAtStart && !unsaved && v.start == e->path) name = "Opens at start";
-            if (unsaved && (list[k] == Duplicate || list[k] == OpenAtStart || list[k] == Delete || list[k] == MoveTo)) off = true; // no file yet
-            m.rows[k] = {name, "", false, list[k] == Delete, off};
+            if (list[k] == OpenAtStart && v.start == e->path) name = "Opens at start";
+            m.rows[k] = {name, "", false, list[k] == Delete, false};
         }
         m.count = n; m.current = s.ui.sheet_row % n;
         p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
         p.dim_zone(zone::knobs_y, zone::knobs_h);
-        wide_sheet(p, m, open ? "OPEN" : "PROJECT", colour::text);
+        wide_sheet(p, m, open_one ? "OPEN" : "PROJECT", colour::text);
     }
 }
 
@@ -246,32 +237,26 @@ ProjectStore::View view_of(Context& c) {
     ProjectStore::View v;
     if (c.store) c.store->view(v);
     sort_view(v, c.ui.project_sort);
-    c.ui.project_rows = uint16_t(project_rows(v.entries.size(), c.project_path, c.project_folder));
+    c.ui.project_rows = uint16_t(project_rows(v.entries.size(), c.project_folder));
     return v;
 }
 
-void act(Context& c) {
+void close_sheet(Context& c) { c.ui.sheet_open = false; c.ui.sheet_more = false; c.ui.delete_armed = false; }
+
+void act(Context& c, Action action) {
     auto v = view_of(c);
-    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
-    bool unsaved = on_unsaved(c.ui.project_cursor, c.project_path);
-    if ((!e && !unsaved) || !c.store) return;
-    bool open = unsaved || e->path == c.project_path;
-    std::array<Action, 8> list {};
-    unsigned n = actions(open, list, !unsaved && e && e->mpc());
-    auto action = list[c.ui.sheet_row % n];
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
+    if (!e || e->kind != ProjectEntry::Kind::Project || !c.store) return;
+    bool open = e->path == c.project_path;
     if (action != Delete) c.ui.delete_armed = false;
-    if (unsaved && (action == Duplicate || action == OpenAtStart || action == Delete || action == MoveTo)) return;
     switch (action) {
     case Load:
         if (e->mpc()) c.notice("Opening " + e->name);
         c.store->load(e->path);
         break;
-    case LoadKit: c.ui.sheet_open = false; c.load_kit_file(e->path, e->name); return;
-    case Save:
-        if (unsaved) { c.name_project(false); return; } // a name first
-        c.save_project_to(e->path);
-        break;
-    case SaveAsNew: c.name_project(true); return;
+    case LoadKit: close_sheet(c); c.load_kit_file(e->path, e->name); return;
+    case Save: c.save_project_to(e->path); break;
+    case SaveAsNew: close_sheet(c); c.name_project(true); return;
     case Duplicate: c.store->duplicate(e->path); break;
     case NewFolder: c.store->new_folder(); break;
     case OpenAtStart: c.store->open_at_start(e->path); break;
@@ -281,17 +266,29 @@ void act(Context& c) {
         if (open) c.project_path.clear(); // still open, but no longer on the card
         c.ui.delete_armed = false;
         break;
-    case Rename: c.rename_project(unsaved ? std::string() : e->path, unsaved ? std::string(c.project.name) : e->name); return;
-    case MoveTo: c.ui.sheet_open = false; c.ui.move_open = true; c.ui.move_cursor = 0; return;
+    case Rename: close_sheet(c); c.rename_project(e->path, e->name); return;
+    case MoveTo: close_sheet(c); c.ui.move_open = true; c.ui.move_cursor = 0; return;
     }
-    c.ui.sheet_open = false;
+    close_sheet(c);
     c.store->list(c.project_folder);
+}
+
+// The sheet's job: the likely one as it opens, else the row under the cursor of all of them.
+void act(Context& c) {
+    auto v = view_of(c);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
+    if (!e) return;
+    bool open = e->path == c.project_path;
+    if (!c.ui.sheet_more) { act(c, likely_of(open)); return; }
+    std::array<Action, 8> list {};
+    unsigned n = actions(open, list, e->mpc());
+    act(c, list[c.ui.sheet_row % n]);
 }
 
 // The picker: Push or B3 moves the project there, B1 backs out.
 void move_here(Context& c) {
     auto v = view_of(c);
-    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
     c.ui.move_open = false;
     if (!e || !c.store) return;
     auto list = destinations(v, e->path);
@@ -300,60 +297,84 @@ void move_here(Context& c) {
     c.store->list(c.project_folder);
 }
 
+void open_list(Context& c) {
+    c.ui.project_list = true;
+    c.ui.project_cursor = 0;
+    if (c.store) c.store->list(c.project_folder);
+}
+
 void wheel(Context& c, int delta) {
+    if (!c.ui.project_list) { open_list(c); return; } // turning on the tiles: the list
     if (c.ui.move_open) {
         auto v = view_of(c);
-        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
+        const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
         size_t n = e ? destinations(v, e->path).size() : 0;
         c.ui.move_cursor = uint16_t(std::clamp<int>(c.ui.move_cursor + delta, 0, std::max(int(n) - 1, 0)));
         return;
     }
     if (c.ui.sheet_open) {
         auto v = view_of(c);
-        const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
+        const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
         std::array<Action, 8> list {};
-        unsigned n = actions(on_unsaved(c.ui.project_cursor, c.project_path) || (e && e->path == c.project_path), list, e && e->mpc());
+        unsigned n = actions(e && e->path == c.project_path, list, e && e->mpc());
+        if (!c.ui.sheet_more) { c.ui.sheet_more = true; c.ui.sheet_row = 0; return; } // turning on the likely tile: all of them
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(n) - 1));
         c.ui.delete_armed = false;
         return;
     }
     auto v = view_of(c);
-    c.ui.project_cursor = uint16_t(std::clamp<int>(c.ui.project_cursor + delta, 0, int(v.entries.size() + first_entry(c.project_path, c.project_folder)) - 1));
+    c.ui.project_cursor = uint16_t(std::clamp<int>(c.ui.project_cursor + delta, 0, std::max(int(project_rows(v.entries.size(), c.project_folder)) - 1, 0)));
 }
 
-void push(Context& c) {
-    if (c.ui.move_open) { move_here(c); return; }
-    if (c.ui.sheet_open) { act(c); return; }
+void open_row(Context& c) {
     auto v = view_of(c);
-    if (on_unsaved(c.ui.project_cursor, c.project_path)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false; return; }
-    if (on_card(c.ui.project_cursor, c.project_path, c.project_folder)) { c.card_access(); return; }
-    const auto* e = entry_at(v, c.ui.project_cursor, c.project_path, c.project_folder);
-    if (!e) { // New project: asks first, as the MPC does (B3 DO IT, B1 CANCEL); the open one is saved first if it has a file
-        c.ask_new_project();
-        return;
-    }
+    if (on_card(c.ui.project_cursor, c.project_folder)) { c.card_access(); return; }
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
+    if (!e) return;
     if (e->kind == ProjectEntry::Kind::Folder) {
         c.project_folder = c.project_folder.empty() ? e->name : c.project_folder + "/" + e->name;
         c.ui.project_cursor = 0;
         if (c.store) c.store->list(c.project_folder);
         return;
     }
-    c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false;
+    c.ui.sheet_open = true; c.ui.sheet_more = false; c.ui.sheet_row = 0; c.ui.delete_armed = false;
+}
+
+void push(Context& c) {
+    if (!c.ui.project_list) { c.save_project(); return; } // the tiles: Push is SAVE, the likely one
+    if (c.ui.move_open) { move_here(c); return; }
+    if (c.ui.sheet_open) { act(c); return; }
+    open_row(c);
 }
 
 void soft(Context& c, int key) {
+    if (!c.ui.project_list) { // SAVE, OPEN, NEW
+        if (key == 0) c.save_project();
+        if (key == 1) open_list(c);
+        if (key == 2) c.ask_new_project(); // asks first, as the MPC does; the open one is saved first if it has a file
+        return;
+    }
     if (c.ui.move_open) {
         if (key == 0) c.ui.move_open = false;
         if (key == 2) move_here(c);
         return;
     }
-    if (c.ui.sheet_open) {
-        if (key == 0) { c.ui.sheet_open = false; c.ui.delete_armed = false; }
+    if (c.ui.sheet_open) { // BACK, MORE, the likely job; on the list BACK, -, DO IT
+        if (key == 0) { if (c.ui.sheet_more) { c.ui.sheet_more = false; c.ui.delete_armed = false; } else close_sheet(c); }
+        if (key == 1 && !c.ui.sheet_more) { c.ui.sheet_more = true; c.ui.sheet_row = 0; }
         if (key == 2) act(c);
         return;
     }
-    if (key == 1) c.open(PageId::SettingsPage);
-    if (key == 2) c.open(PageId::About);
+    if (key == 2) { open_row(c); return; }
+    if (key != 0) return;
+    if (!c.project_folder.empty()) { // BACK: up a folder, or from the top back to the tiles
+        auto cut = c.project_folder.find_last_of('/');
+        c.project_folder = cut == std::string::npos ? std::string() : c.project_folder.substr(0, cut);
+        c.ui.project_cursor = 0;
+        if (c.store) c.store->list(c.project_folder);
+        return;
+    }
+    c.ui.project_list = false;
 }
 } // namespace
 

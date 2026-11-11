@@ -128,7 +128,7 @@ holds the table the dispatch and the lights share.
 | 5 | Compressor | 13 | Trim Sample |
 | 6 | Half Speed | 14 | Time Correct |
 | 7 | Double Speed | 15 | Warp: Time stretch or Pitch for the kit |
-| 8 | MIDI Config | 16 | Project |
+| 8 | Settings (seven doors; MIDI Config one of them) | 16 | Project |
 
 Toggles (1, 4, 10) are kept in the settings file. While Shift is held the
 pads light: a toggle that is on bright, a job faint. The screen draws no
@@ -175,12 +175,15 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
     has stopped 250 ms; K2 the list (all, starred, recent), K3 the engine;
     Push opens Sounds. TONE: the engine's three favourites (PROPHET and SID
     draw the filter). MIX: level, pan, send; Shift + K3 the bus the send
-    goes to (Melodee has one send a track). SHAPE on PROPHET: FILTER ENV →
+    goes to (Melodee has one send a track); its meter carries the five steps
+    of the meter LEDs as a scale. SHAPE on PROPHET: FILTER ENV →
     AMP ENV → LFO (Shift + K1 release); FM6: OP 1 ENV → OP 2 ENV → TOUCH;
     CZ: DCW ENV → DCA ENV → TOUCH; SID: ENVELOPE → PWM → TOUCH. ARP: mode
     (Up, Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift +
     K1 gate, Shift + K3 hold; the header says whether it is on (Note Repeat
-    turns it on). CHORD: one pad a chord from the scale, K1 type (Triad, Dia
+    turns it on); its picture is a keyboard along the foot with the keys
+    held filled and the notes to come hanging over their keys, the next
+    one white, joined in the order they play. CHORD: one pad a chord from the scale, K1 type (Triad, Dia
     7, Sus2, Sus4, Power, Dia 9), K2 voicing (Close, Open, Drop 2, Spread), K3
     inversion, Shift + K1 chords on or off, Shift + K3 hold; the chord the last
     pad played drawn with its notes on two octaves of keys. The own page (PERFORM,
@@ -220,10 +223,13 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
     General MIDI names (74 Brightness, 71 Resonance, 1 Mod wheel at first),
     Shift + K picks a controller's number; they go out on a turn and record
     as Motion.
-  - **An empty track**: B1 **SYNTH** (K1 engine, K2 sound), B2 **KIT** (K1:
-    samples on the card, record the input, Audio Recall, Resample), B3
-    **MIDI** (K1 port, K2 channel); the wheel walks K1's list, Push makes
-    the track that.
+  - **An empty track**: three doors on one page, a tile under each key
+    showing what it would make, the pot under it choosing: **SYNTH** (K1
+    the engine), **KIT** (K2 where its first sound comes from: samples on
+    the card, record the input, Audio Recall, Resample), **MIDI** (K3 the
+    port). The key under a tile makes that track at once; Push makes the
+    one of the pot touched last (its key lit), the wheel turns that pot's
+    list. Sound and channel are picked after, on Stage.
 - **Tracks** (Sample's second stop, the mixer): the sixteen tracks as the
   pads sit, each cell its number, the pattern it plays, its engine as a
   glyph and its level up the right edge (muted: a crossed speaker); the
@@ -232,22 +238,32 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
   the wheel or −/+ the track, Push its Stage; the fader is its level. **B2
   LOOPER**, **B3 SENDS**. Pad Bank held + pad still picks a track from any
   page, the same picture over it.
-- **Keys** (Sample's third stop on a synth): the pads in the project's scale
-  (layouts, octave on −/+); Shift + K3 transposes the pads −12..+12 (kept
-  with the track). Push opens Edit.
+- **Keys** (Sample's third stop on a synth): the sixteen pads fill the
+  picture, each its note large and its degree in the scale small, the roots
+  filled in the track's colour, the pad played white; the key and scale are
+  the header's chip, the octave beside it. K1 root, K2 scale, K3 layout;
+  octave on −/+; Shift + K3 transposes the pads −12..+12 (kept with the
+  track). Push opens Edit.
 - **Pads** (Sample's third stop on a kit): the bank as the pads sit, the last pad
   with its length, play mode and waveform; K1 pitch, K2 level, K3 pan;
   Shift + K1 and K2 the project's root and scale; Push opens the map of the
   ten sample pages.
 - **Sounds** (Sample Select on a synth or 909): the factory sounds and one's
-  own for the engine; K1 steps the engine (six), the wheel walks, Push
-  loads; FAVOURITES lists the starred (Shift + Sample Select).
+  own for the engine, names in Title Case, the loaded one with a check at
+  its right edge; K1 jumps (as on every list; the engine is Stage PRESET's
+  K3), the wheel walks, Push loads; FAVOURITES lists the starred (Shift +
+  Sample Select).
 - **Edit** (Push on Keys): the engine's pages, then **Touch**
   (velocity and pressure: AT > VIB adds vibrato, AT > BRIGHT opens the
   sound), then the **mod matrix**: eight routes a track, source (LFO,
   velocity, aftertouch, wheel, key track, random, filter envelope),
-  destination (each engine names its own) and amount −100..100. B2 opens the
-  page map (wheel, Push jumps, B2 or Shift + Push closes).
+  destination (each engine names its own) and amount −100..100. No title
+  row: the page is the header's chip, and its curve fills the picture with
+  every parameter named at the point it moves, in its knob's colour while
+  on the row the pots hold, dim otherwise; the rest are listed small at the
+  top left. B1 and B3 name the pages either side with chevrons; **B2 MAP**
+  (its dots the page in view) opens the page map (wheel, Push jumps, B2 or
+  Shift + Push closes).
 - **16 Levels**: on a kit the last pad on all sixteen pads, on a synth its
   last note. Velocity (8–127), Filter (kit pads: pads 1–8 up to the pad's
   cutoff, 9–16 on to the top), Tune (the original on pad 4), and Melodee's
@@ -264,7 +280,10 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
   track's arp; a kit repeats the held pad.
 - **Tempo** (hold Tap Tempo): K1 tempo, K2 swing, K3 click level, Shift + K1
   and K2 the project's root and scale from any track; B1 halves,
-  B3 doubles, B2 the metronome Off / On / Rec; the wheel by 0.1, −/+ by 1.
+  B3 doubles, B2 CLICK the metronome Off / On / Rec (its LED green on,
+  amber on Rec); the wheel by 0.1, −/+ by 1. The picture is a ring that
+  beats: sixteen marks for the sixteenths, the swung ones off their places,
+  an arc sweeping the bar as it plays, the tempo in the middle.
 
 ### Looper
 
@@ -280,7 +299,10 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
   K2 its length (Free, 1, 2, 4, 8, 16 bars; before a take), K3 its level;
   Shift + K1 feedback, Shift + K2 Quantize (Bar, Beat, Off), Shift + K3 After
   take (Play, Overdub, Stop). **B2 MIX**: L1–L4 as strips; K1 level, K2 pan,
-  K3 send, Shift + K3 the bus. **B3 MORE**: the loop's sheet: Source (Push
+  K3 send, Shift + K3 the bus. **B3 MORE**: the loop's sheet, opening on
+  its likely job as a tile under B3 (PLAY or STOP on the boundary with
+  audio in the loop, SOURCE before a take; B3 or Push does it), its B2 MORE
+  listing them all: Source (Push
   steps Input, the tracks there are, the other loops, Mix), Play / Stop at the
   next boundary, Stop now, Undo / Redo last overdub (its layers), Commit to
   pad, Commit + note at bar 1, Clear loop and Looper off (both ask). The
@@ -384,8 +406,9 @@ hold to steer, Shift + Seq to zoom in**.
   at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
   is the pads' octave (Shift: down). Erase tapped alone deletes the note in
   focus; Erase + pad asks, then erases that key's notes. Push opens its
-  sheet (accent, slide, tie, delete): B1 CLOSE, B3 DO IT or Push, and a pad
-  or a pot closes it too. Accent plays the note about 4 dB louder (and 24
+  sheet on ACCENT, the likely job, as a tile under B3 (B3 or Push toggles
+  it and closes); B2 MORE lists accent, slide, tie, delete (B3 DO IT or
+  Push, B1 back); a pad or a pot closes it too. Accent plays the note about 4 dB louder (and 24
   velocity harder); Tie holds it until the next note, which goes on from it
   without a new attack (the same key: one long note); Slide does the same
   and glides the pitch there in about 60 ms (the GLIDE knob's rate when it
@@ -395,9 +418,15 @@ hold to steer, Shift + Seq to zoom in**.
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
 - **Steps, Motion** (B1, B3): Steps the bar's steps
-  on the pads; Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
+  on the pads, drawn as a drum machine draws a bar: sixteen columns in four
+  beats, each stacking its notes by pitch, taller for harder hits, a dot
+  over it for an accent, an arc under it for a tie, the numbers under them
+  and the pattern's bars as blocks at the foot; the step in hand is the
+  header's. Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
   playing sixteenth; a kit pad's level, tune, pan, envelopes, filter and
-  more are lanes of that pad; Erase + pot asks, then clears the lane).
+  more are lanes of that pad; Erase + pot asks, then clears the lane), all
+  three on one large graph in their knobs' colours, the one in hand heavy;
+  the cards are its legend.
 - **Time Correct** (Shift + Pad 14): the selected pattern onto Q; pads pick
   whose notes move, B2 all; K1 Q, K2 shift ±48 ticks, K3 swing; B3 DO IT.
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):
@@ -429,7 +458,10 @@ project's 64 samples. Samples are WAV (16, 24 or 32-bit PCM or float, any
 rate, up to 60 s), read on the service thread and handed whole to the audio
 thread.
 
-- **Samples** (Sample Select on a kit): the browser. MPC drum programs
+- **Samples** (Sample Select on a kit): the browser, each row a glyph
+  first (a folder with its chevron, a WAV, a kit, an instrument's keyboard,
+  a bank, an expansion's arrow) and its facts last (the format, the pad a
+  sample is on as a chip); K1 jumps. MPC drum programs
   (KIT) first, then instruments (XPM, XTY, SFZ), then folders, then files;
   an expansion's `[Previews]` and a program's own `_[TrackData]` are not
   listed; wheel and −/+ move, Push opens a folder or loads onto the last pad
@@ -538,6 +570,16 @@ thread.
   - Melodee's Follow (the kit keeps the project's tempo: Beats, Tones or
     Tape), Cloud (pads as grain clouds) and Kit filter (one filter after
     every pad).
+  - Each page draws the one thing its knobs change, in their colours, over
+    the shared kit picture: TRIM a flag for start, end and loop (the
+    kept length at the bottom right, the file's after it, dim; Shift + K1-K3
+    ZOOM START, END, LOOP; Shift + B1 LOOP LOCK with its LED); AMP ENV
+    attack and decay as coloured segments with handles and the softer hit's
+    envelope dashed (K3, velocity); TUNE a pitch ruler, two octaves each way;
+    FILTER and KIT FILT their response in a band of their own under the
+    wave; CLOUD POSITION as a line, SIZE the band round it, Spread a paler
+    band, Scan an arrow, its place in seconds at the line and its LED in
+    the header.
 - **Loop, Shift + Loop, Shift + Chop** act on the last pad from any page;
   the sample pages' title shows note, loop and reverse icons.
 - **Chop** (Chop): the last pad's region in slices that touch. Pads play and
@@ -546,13 +588,16 @@ thread.
   pad 1 plays the region and pads tapped meanwhile cut it, each pulled onto
   the strongest hit. Shift + B1 Extract (`Samples/Edits/<NAME>-Slice n.wav`
   onto the next empty pad), Shift + B2 Split, Shift + B3 Merge; Erase + pad
-  takes a slice out. B3 TO PADS lays the slices on pads, B1 DROP back.
+  takes a slice out. B3 TO PADS lays the slices on pads, B1 CANCEL drops
+  the chop. The slices are bands, every other one a shade darker, the one
+  in hand lit with the pad it lands on as a chip over it and its length at
+  the bottom right; the header counts them (scissors).
   The slice a pad plays lights faintly in the track colour with a head
   and its wake running through it, its bars full colour and its number
   bold in the track colour (the newest, if several); the slice in hand
   keeps its ground and handles. Manual's take line follows the voice as
   heard. Zoomed in, the view stays put.
-  B2 SNAP ON / OFF is Zero Snap (on by default, kept with the settings):
+  B2 SNAP (its LED lit while on) is Zero Snap (on by default, kept with the settings):
   every cut (each type's, Manual's taps, K1 / K2, Split, Sample Record's
   pad cuts) lands on the nearest zero crossing of both sides summed,
   looking up to 5 ms back and 1 ms ahead, so a slice starts and stops
@@ -574,13 +619,18 @@ thread.
   the speaker goes quiet while the mic is monitored; a monitored track
   leaves the mix and is heard through the input instead, so once), B3 Rec
   Input FX (its LED; Knob FX on the input during a take). The picture is the
-  path as glyphs, source, gain, effect and monitor, over the level with the
-  threshold as a marker. Kept with the settings. The Looper's Input source
+  back panel: the sources as the sockets they are (mic, rear jacks, USB-C,
+  then Melodee's own: Resample and a track), the one chosen glowing, which
+  sides it takes over its lead running into the stereo meter, the threshold
+  a marker on it. Kept with the settings. The Looper's Input source
   hears the same.
 - **Record** (Sample Record on a kit): the same cards; B1 the monitor (its
-  LED), B2 Input Config. The state is a glyph (ready, waiting, the next loop,
-  recording, saving), the cuts are named on the take, and what the pads do
-  now is drawn as pairs under the meter (this pad ends, other pads cut). Tap a pad to
+  LED), B2 Input Config. The take fills a frame of as many bars as its
+  length, numbered (the one being taken lit), so what is left shows; a Free
+  take grows across it. At the corner the state as a glyph (ready, waiting,
+  the next loop, recording, saving) and the time so far; the cuts carry
+  their pads as chips; the meter is stereo; what the pads do now is drawn
+  as pairs under it (this pad ends, other pads cut). Tap a pad to
   record onto it (from the threshold, or with Seq where the pattern comes
   round: a track source's own pattern); other pads tapped during the take
   cut it there. The pad again, Stop or Push ends it and Record stays;
@@ -615,9 +665,17 @@ emulator), filters and EQ, dynamics (Compressor, Gate, Transient, Limiter,
 Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
 
 - **FX Select** (Shift + Knob FX, round Track → Sends → Bus → Master; B1 /
-  B3 walk too): four device cards in view; the wheel picks, Push opens
-  Change, Bypass, Move, Remove; + ADD opens the picker. Sends: K1 send, K2
-  bus, K3 the bus's return. B1 from Track on a kit: the last pad's chain.
+  B3 walk too, named with chevrons): Stage's six-slot strip (each slot its
+  family's glyph and name, empty ones dots, the next a plus) and under it
+  the effect in hand, its name and family and what it does to sound drawn
+  from its own values (a tail for space, taps for time, a wave for motion,
+  the curve that bends it for dirt, the response for tone, the gain curve
+  for dynamics; two dots by it while it has a second row on −/+). The wheel
+  picks, Push on an effect opens its sheet on BYPASS (B3; it stays to hear
+  the difference), B2 MORE for change, presets, move, remove; Push on the
+  plus opens the picker, its families each with the strip's glyph. Sends:
+  K1 send, K2 bus, K3 the bus's return. B1 from Track on a kit: the last
+  pad's chain.
 - **Knob FX** (Knob FX): the mode on or off. While on, K1–K3 (and Shift +
   K1–K3) are its effect's on every page. The page lists the MPC's 28 then
   Melodee's 15 (wheel or −/+, Push loads). Pads switch it per kit pad (kit
@@ -673,7 +731,7 @@ drives for a moment after it moves.
 
 ### MIDI and sync
 
-**MIDI Config** (Shift + Pad 8; wheel, Push opens a value, −/+ change it, B1
+**MIDI Config** (Settings' MIDI door, Shift + Pad 8; wheel, Push opens a value, −/+ change it, B1
 back): port (External jacks or USB), In channel (All, 1–16: plays the
 selected track), Out channel, Track Channel (a track's own: plays it
 whichever is selected, and its notes go out there), Pad MIDI In / Out
@@ -701,15 +759,22 @@ while following.
 
 ### Project and system
 
-- **Project** (Shift + Pad 16): files (`.mldp`) in `Melodee/Projects` on
-  the card, in folders. Rows: New project (asks first: B3 DO IT, B1
-  CANCEL), the open project while it has no file, then at the top **SD card
-  access**, then folders (Push in, Shift + Push out) and
-  projects with their tracks and tempo. K2 jumps, K3 sorts. Push on a
-  project opens its sheet: on the open one Save, Save as new, Rename,
-  Duplicate, Move to folder, New folder here, Open at start, Delete (asks
-  again); on another Load and **Load kit (no patterns)** first (its first
-  kit onto the selected track, one undo). B2 Settings, B3 About.
+- **Project** (Shift + Pad 16): the open project's three jobs as tiles under
+  the keys: **B1 SAVE** (to its file in one press, or with no file yet the
+  Name sheet first; Push too), **B2 OPEN** (the list), **B3 NEW** (asks
+  first: B3 NEW, B1 CANCEL, saying whether it is saved first). The header
+  carries UNSAVED (amber) while there are changes. The list: files
+  (`.mldp`) in `Melodee/Projects` on the card, in folders, each row a glyph
+  first and its facts last: **SD card access** at the top, folders with how
+  many they hold (Push or B3 in, B1 or Shift + Push out, B1 at the top back
+  to the tiles) and projects with their tracks and tempo, the open one
+  OPEN (after an amber dot while unsaved). K1 jumps, K2 sorts. Push or B3 on
+  a project opens its sheet on its likely job as a tile under B3: SAVE on
+  the open one, LOAD on another; **B2 MORE** lists them all: on the open one
+  Save, Save as new, Rename, Duplicate, Move to folder, New folder here,
+  Open at start, Delete (asks again); on another Load and **Load kit (no
+  patterns)** (its first kit onto the selected track, one undo) first.
+  Settings and About are Shift + Pad 8's.
 - **MPC Sample projects** (`.xpj`): listed beside Melodee's, wherever they
   sit under `Melodee/Projects`; the row **MPC Sample** at the top opens the
   stock app's own `MPC-Sample/Projects`. Their sheet has Load and Load kit
@@ -722,12 +787,13 @@ while following.
   keeps them all, as a drum program's does (`<project>.xpj#<track>.<pad>`).
   Not carried over: Pad FX and inserts, sends, and Songs. A project past
   16 tracks, 16 sequences or 64 samples loses the rest and says so.
-- **SD card access** (Project, at the top; as the MPC's): the card goes to
-  a computer over USB-C as a drive. The page shows where the card is (the
-  MPC or the computer, the link between) and what to do as three step
-  glyphs, done, now and to come: connect, then eject the drive on the
-  computer, then **B1** TAKE BACK (Projects and Samples are read again,
-  and Project is in view). If the computer still holds the drive, B1 says so
+- **SD card access** (Project's list, at the top; as the MPC's): the card
+  goes to a computer over USB-C as a drive. The page draws the MPC and the
+  computer with the link between them, and the three steps on the link,
+  done (a check), now (amber, the only one with a word) and to come:
+  connect, then eject the drive on the computer, then **B1** TAKE BACK
+  (Projects and Samples are read again, and Project is in view); what still
+  answers is four dim glyphs in the corner. If the computer still holds the drive, B1 says so
   and B1 again asks whether to take it anyway (B3, B1 Cancel). Meanwhile
   every other mode waits: only B1, Play, Stop, the pads (the selected
   track's sound) and main volume answer, and Melodee reads and writes
@@ -736,16 +802,18 @@ while following.
   The base does the lending (`drivers/card_share.h`, HARDWARE.md "SD card
   access"); the page is `pages/card_access_page.cpp`, the controls
   `shell/card_access.*`.
-- **Settings** (B2 on Project; Melodee's, the same for every project, as is
-  the metronome): palette, pad response (soft, medium, hard,
-  full level), pad pressure on / off, pad lights, Knob / Knob FX / Fader
-  takeover (Pickup, Scaled, Instant; Scaled, Scaled, Pickup by default),
-  screen brightness, where the place bar sits (Top, Bottom), sample rate
-  (44.1, 48, 96 kHz) and audio buffer (256,
-  384, 512, 768, 1024 frames, shown with the delay it makes: longer rides
-  out a busy moment without a crackle, shorter is heard sooner); under the
-  rows, what the device runs at now and its dropouts since start. Then the
-  sampling rows: Recall grab (Last Phrase, First Sound, Whole 25 s), Recall
+- **Settings** (Shift + Pad 8; Melodee's, the same for every project, as is
+  the metronome): seven doors, four by two (the wheel picks, Push or B3
+  opens, B1 back), each a short list (Push opens a value, the wheel changes
+  it, −/+ at once, B1 back to the doors). **PADS**: pad response (soft,
+  medium, hard, full level), pad pressure on / off, pad lights, Double Seq.
+  **KNOBS**: Knob / Knob FX / Fader takeover (Pickup, Scaled, Instant;
+  Scaled, Scaled, Pickup by default). **SCREEN**: palette, brightness,
+  where the place bar sits (Top, Bottom). **AUDIO**: sample rate (44.1, 48,
+  96 kHz) and audio buffer (256, 384, 512, 768, 1024 frames, shown with the
+  delay it makes: longer rides out a busy moment without a crackle, shorter
+  is heard sooner); the header says what the device runs at now and, in
+  amber, its dropouts since start. **SAMPLING**: Recall grab (Last Phrase, First Sound, Whole 25 s), Recall
   gap (0.5, 1, 2, 4 s), Recall trim end (On, Off), Take auto end (Off,
   Synths & Resample, All Sources: a Free take ends on its own), Auto end
   after (0.5, 1, 1.5, 3 s) and Silence below (−48, −60, −72 dB: what
@@ -757,11 +825,15 @@ while following.
   while the card is lent). Samples, takes, renders and every frame count in a project stay at
   44.1 kHz whatever the rate (`engine/model_rate.h`), so projects open the
   same at any rate. Kept in `Melodee/settings` with the project to open at
-  start. **About** (B3): engines, effects, limits, versions, licence.
+  start. **MIDI**: MIDI Config's page. **ABOUT**: engines, effects, limits,
+  versions, licence.
 - **Name sheet** (Save, Rename, markers, sounds, samples): pads type like
-  phone keys (pad 14 space, 15 digits and `- _ .`, 16 delete); the wheel
+  phone keys, each pad showing both its letters with the one a tap gives
+  now bright (pad 14 space, 15 digits and `- _ .`, 16 delete, as glyphs); a
+  thin gauge under the name shows how much of its room it takes; the wheel
   moves the cursor, Shift + wheel or K2 the character, K1 a ready name,
-  Erase deletes (Shift + Erase clears); B1 cancels, B2 Aa, B3 or Push keeps.
+  Erase deletes (Shift + Erase clears); B1 cancels, B2 Aa, B3 SAVE or Push
+  keeps.
 - **Exit** (Power, short): a tile under each key. B3 MPC APP saves the
   project first, then returns to the stock app; B2 POWER OFF saves it, then
   turns the MPC off; the header says SAVED (or NO CARD); B1 stays
@@ -783,7 +855,11 @@ while following.
   words: the question ("Clear pattern 2?"), one or two short lines saying
   what goes and whether undo brings it back, what it is about as a chip,
   and the undo keys. Choices under the keys are plain tiles without
-  outlines, the likely one a shade lighter. Words: labels, keys and chips
+  outlines, the likely one a shade lighter. A sheet behind Push (a
+  project's, a note's, an effect's, a loop's) opens on the action most
+  likely wanted as the tile under B3, B2 MORE listing the rest. Lists show
+  what a row is as a glyph before its name and its facts at the right
+  edge; K1 jumps through every list, the other pots draw nothing. Words: labels, keys and chips
   in capitals; names of sounds, pads, effects and projects in Title Case
   (a factory name stored in capitals is shown so, roman numerals and
   acronyms kept); setting rows in sentence case; units as written (Hz,
@@ -880,15 +956,20 @@ of the card (beside `Samples/`), in any folders under it.
 - **An instrument.** PLUGIN is an engine like the others: SYNTH on Stage,
   or K1 on Sounds, then the PLUG-INS picker opens on the card's folder.
   Sample Select on a PLUGIN track opens the picker again. Push on a track
-  (Edit) shows the plug-in: its name, format, the share of each audio
-  block it takes, and its parameters three at a time on K1–K3; the wheel
-  or Minus / Plus step the rows, B1 opens the picker. Open MPC plug-ins
-  put their skin's Q-Link pages first. MIDI-CC stand-ins, host settings
-  and the plug-in's own bypass (the slot has one) are left out. A long
-  parameter name goes on its card in mixed case, or over two lines, never
-  cut.
+  (Edit) shows the plug-in: the share of each audio block it takes in the
+  header, and its parameters as a list, each name on one full line with its
+  number: the three on K1–K3 raised and ticked in their colours (their
+  values on the cards, which carry their numbers), the row before (or
+  after) with its values; the wheel or Minus / Plus step the rows, B1 opens
+  the picker. Open MPC plug-ins put their skin's Q-Link pages first.
+  MIDI-CC stand-ins, host settings and the plug-in's own bypass (the slot
+  has one) are left out.
 - **Bundles of several.** A bundle holding many plug-ins (LSP's VST3 holds
-  198) lists as one row, "198 PLUG-INS ›"; Push opens it, a row for each.
+  198) lists as one row, the plug glyph with its count and a chevron; Push
+  opens it, a row for each. Every row is a glyph first (folder, plug, a
+  broken plug with why for one that cannot load here) and its facts last
+  (the format, a check on the one loaded, a keyboard or sliders once known
+  to be an instrument or an effect); K1 jumps.
   The project keeps which one (its id) and its name.
 - **An effect.** The effect picker's last family, Plug-ins, opens the same
   folder for the slot; on the chain pages K1–K3 hold its parameters and

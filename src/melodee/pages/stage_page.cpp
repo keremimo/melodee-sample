@@ -20,6 +20,7 @@
 #include "melodee/model/chords.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/sampler_common.h"
+#include "melodee/shell/meter_lights.h"
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/ui/waveform.h"
@@ -197,19 +198,6 @@ void lfo_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded)); // the cards hold the numbers
 }
 
-// An effect family's glyph: the chain slots, the bus a send goes to.
-Icon family_icon(Family f) {
-    switch (f) {
-    case Family::Space: return Icon::Space;
-    case Family::Time: return Icon::Time;
-    case Family::Motion: return Icon::Modulation;
-    case Family::Dirt: return Icon::Dirt;
-    case Family::Tone: return Icon::Tone;
-    case Family::Dynamics: return Icon::Dynamics;
-    default: return Icon::Plug;
-    }
-}
-
 // MIX: what the cards cannot say. The track's meter with its level marked, where it sits between left and right,
 // and where it goes: the master, and its send (as thick as it is) into its bus, named by the bus's first effect.
 void mix_picture(Paint& p, const Snapshot& s) {
@@ -219,8 +207,10 @@ void mix_picture(Paint& p, const Snapshot& s) {
     float mx = px + 4, my = top + 8, mh = zone::picture_h - 16;
     p.fill(mx, my, 7, mh, colour::line, 3);
     float meter = s.meters[s.ui.track % track_count];
-    float heard = meter > 0 && !m.mute ? std::clamp((20 * std::log10(meter) + 48) / 48, 0.0f, 1.0f) : 0;
+    auto place = [](float db) { return std::clamp((db + 48) / 48, 0.0f, 1.0f); };
+    float heard = meter > 0 && !m.mute ? place(20 * std::log10(meter)) : 0;
     if (heard > 0) p.fill(mx, my + mh * (1 - heard), 7, mh * heard, c, 3);
+    for (float db : meter_mix_db) p.fill(mx + 10, my + mh * (1 - place(db)) - 0.5f, 4, 1, colour::dim); // the LEDs' five steps as a scale
     p.fill(mx - 3, my + mh * (1 - m.level / 127.0f) - 0.75f, 13, 1.5f, colour::text); // the level
     // The pan: a half dial, its needle where the track sits.
     float cx = px + 108, cy = top + 92, r = 32;
@@ -260,7 +250,9 @@ void mix_picture(Paint& p, const Snapshot& s) {
         "BUS " + juce::String::charToString(juce::juce_wchar('A' + m.bus % bus_count)), bus.fx.slots[0].used() ? juce::String(first.name) : juce::String());
 }
 
-// ARP: the notes it would play from the keys held (or an example chord), a column a step, beats marked.
+// ARP: a keyboard along the foot, the keys held filled (none held: an example chord, faint); the notes to come
+// hang over their keys as dots, the next one white and largest, falling toward the keys as they near, joined in
+// the order they play, so the run reads like hands on an instrument.
 void arp_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     auto c = colour_of(s);
@@ -279,16 +271,45 @@ void arp_picture(Paint& p, const Snapshot& s) {
     case ArpMode::Random: for (size_t n = 0; n < order.size(); ++n) std::swap(order[n], order[(n * 7 + 3) % order.size()]); break;
     default: break;
     }
-    // A step a column, the beats' columns raised, pitch upward; nothing held: an example chord, faint.
-    int lo = notes.front(), hi = std::max(notes.back(), lo + 12);
-    float gy = top + 6, gh = zone::picture_h - 12, cw = (pw - 15 * 3) / 16.0f;
-    auto ink = example ? c.withAlpha(0.35f) : c;
-    for (unsigned n = 0; n < 16; ++n) {
-        float x = px + n * (cw + 3);
-        if (n % 4 == 0) p.fill(x, gy, cw, gh, colour::panel, 3);
-        int key = order[n % order.size()];
-        float y = gy + gh - 10 - (key - lo) / float(hi - lo) * (gh - 14);
-        p.fill(x + 1.5f, y, cw - 3, 8, n % 4 == 0 ? ink : ink.withMultipliedAlpha(0.7f), 2);
+    // Two octaves of white keys from the held notes' lowest octave (three when the run climbs further).
+    int from = held.front() / 12 * 12, span = notes.back() - from >= 24 ? 3 : 2;
+    static const int whites[] {0, 2, 4, 5, 7, 9, 11};
+    unsigned white_keys = unsigned(7 * span + 1);
+    float ky = bottom - 36, kh = 34, ww = pw / white_keys;
+    auto x_of = [&](int key) { // a key's middle along the keyboard
+        int octave = (key - from) / 12, n = ((key - from) % 12 + 12) % 12;
+        int w = 0; while (w < 6 && whites[w + 1] <= n) ++w;
+        bool black = whites[w] != n;
+        return std::min(px + pw - 4, px + (octave * 7 + w) * ww + (black ? ww : ww / 2));
+    };
+    auto is_held = [&](int key) { return std::find(held.begin(), held.end(), key) != held.end(); };
+    auto fill = example ? c.withAlpha(0.45f) : c;
+    for (unsigned k = 0; k < white_keys; ++k) {
+        int key = from + 12 * int(k / 7) + whites[k % 7];
+        p.fill(px + k * ww + 0.5f, ky, ww - 1, kh, is_held(key) ? fill : colour::sec.withAlpha(0.85f), 2);
+    }
+    for (unsigned k = 0; k + 1 < white_keys; ++k) {
+        int white = whites[k % 7];
+        if (white == 4 || white == 11) continue; // no black key after E or B
+        int key = from + 12 * int(k / 7) + white + 1;
+        p.fill(px + (k + 1) * ww - ww * 0.3f, ky, ww * 0.6f, kh * 0.58f, is_held(key) ? fill : colour::bg, 2);
+    }
+    // The next eight notes over their keys, the next lowest (nearest the keys), joined in their order.
+    constexpr unsigned ahead = 8;
+    float step = (ky - top - 14) / ahead;
+    juce::Path run;
+    std::array<juce::Point<float>, ahead> at {};
+    for (unsigned k = 0; k < ahead; ++k) {
+        int key = order[k % order.size()];
+        at[k] = {x_of(key), ky - 10 - k * step};
+        if (k == 0) run.startNewSubPath(at[k]); else run.lineTo(at[k]);
+    }
+    p.g.setColour(colour::dim);
+    p.g.strokePath(run, juce::PathStrokeType(1));
+    for (unsigned k = ahead; k-- > 0;) {
+        auto dot = k == 0 ? colour::text : k < 4 ? knob_shade(s.ui.track, 0) : knob_shade(s.ui.track, 1);
+        float alpha = (example ? 0.5f : 1.0f) * (1 - k * 0.07f);
+        p.circle(at[k].x, at[k].y, k == 0 ? 4.6f : 3.6f, dot.withAlpha(alpha));
     }
 }
 
@@ -325,57 +346,13 @@ void chord_picture(Paint& p, const Snapshot& s) {
     }
 }
 
-// FX: the track's whole chain as a row of slots (a family glyph and a name each, the one the cards edit lit, empty
-// ones open), then the one in hand: its name, family, and what it does drawn. An empty chain: Push and a plus.
+// FX: the track's whole chain as a strip of six slots, then the one in hand: its name, family, and what it does
+// drawn (pages/fx_drawing.cpp, as FX Select draws it). An empty chain: Push and a plus.
 void fx_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
-    auto c = colour_of(s);
-    unsigned count = t.fx.count(), size = std::clamp<unsigned>(t.fx.size, 1, max_slots), slot = s.ui.fx_cursor[UiState::cursor_of(s.ui.track)];
-    constexpr float gap = 4, sy = top + 6, sh = 46;
-    float sw = (pw - (size - 1) * gap) / size;
-    for (unsigned n = 0; n < size; ++n) {
-        float x = px + n * (sw + gap);
-        if (n >= count) { // open: a quiet outline, the next one to fill with a plus
-            p.ring(x + 0.5f, sy + 0.5f, sw - 1, sh - 1, n == count && !count ? c : colour::line, 4, n == count && !count ? 1.3f : 1);
-            if (n == count) icon(p, Icon::Plus, x + sw / 2 - 7, sy + sh / 2 - 7, 14, count ? colour::dim : c, 1.8f);
-            continue;
-        }
-        const auto& fx = t.fx.slots[n];
-        const auto& info = effect_info(EffectKind(fx.kind));
-        bool here = n == slot;
-        p.fill(x, sy, sw, sh, here ? c.withAlpha(0.16f) : colour::surf, 4);
-        if (here) p.ring(x, sy, sw, sh, c, 4, 1.2f);
-        auto ink = fx.bypass ? colour::dim : here ? c : colour::sec;
-        icon(p, family_icon(info.family), x + sw / 2 - 9, sy + 5, 18, ink, 1.6f);
-        juce::String name = info.name;
-        auto style = plain(fx.bypass ? colour::dim : here ? colour::text : colour::sec, type::small, Weight::Medium);
-        p.text(name, x + 2, sy + 27, sw - 4, 14, p.fit(name, style, sw - 4, type::floor), juce::Justification::centred);
-        if (fx.bypass) p.fill(x + 6, sy + sh / 2, sw - 12, 1.2f, colour::dim); // struck through
-    }
-    if (!count) { // nothing yet: Push adds one
-        float mid = zone::width / 2.0f, gy = top + 86;
-        icon(p, Icon::Push, mid - 28, gy, 26, colour::sec, 1.5f);
-        icon(p, Icon::Plus, mid + 6, gy + 4, 18, colour::sec, 1.8f);
-        return;
-    }
-    if (slot >= count) return;
-    const auto& fx = t.fx.slots[slot];
-    const auto& info = effect_info(EffectKind(fx.kind));
-    juce::String name = info.name;
-    auto title = plain(fx.bypass ? colour::mid : colour::text, type::title, Weight::SemiBold);
-    float nw = p.text(name, px, top + 60, pw - 90, 26, p.fit(name, title, pw - 90, type::floor));
-    auto fam = caps_text(colour::mid);
-    juce::String family = juce::String(family_name(info.family)).toUpperCase();
-    float fw = p.width(family, fam) + 8;
-    p.fill(px + nw + 8, top + 66, fw, 15, colour::surf, 3);
-    p.text(family, px + nw + 8, top + 66, fw, 15, fam, juce::Justification::centred);
-    if (fx.bypass) draw_glyph(p, Glyph::LedOff, px + nw + 8 + fw + 6, top + 73.5f, colour::mid);
-    // What it does: its picture as bars, as the chain cards draw it.
-    float bx = px, by = top + 94, bw = pw, bh = bottom - 6 - by, step = bw / info.picture.size();
-    for (size_t n = 0; n < info.picture.size(); ++n) {
-        float h = std::max(2.0f, bh * info.picture[n] / 100.0f);
-        p.fill(bx + n * step + 2, by + bh - h, step - 4, h, fx.bypass ? colour::dim : c.withAlpha(0.55f + 0.45f * (n % 2)), 2);
-    }
+    unsigned slot = s.ui.fx_cursor[UiState::cursor_of(s.ui.track)];
+    fx_strip(p, t.fx, std::min<unsigned>(slot, t.fx.count()), colour_of(s), top + 6);
+    fx_in_hand(p, s, t.fx, t.fx.count() ? std::min<unsigned>(slot, t.fx.count() - 1) : 0, colour_of(s), top + 54, bottom - 4);
 }
 
 juce::String seconds(uint32_t frames) {
@@ -410,8 +387,8 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         glyph(Icon::Loop, pad.loop);
         if (pad.loop && pad.loop_lock) glyph(Icon::Lock, true);
         glyph(Icon::Reverse, pad.reverse);
-        if (page.kind == StageKind::Cloud || page.kind == StageKind::Follow) {
-            bool on = t.params[page.kind == StageKind::Cloud ? sampler::Cloud : sampler::Follow];
+        if (page.kind == StageKind::Follow) { // Cloud's LED is the header's
+            bool on = t.params[sampler::Follow];
             draw_glyph(p, on ? Glyph::Led : Glyph::LedOff, gx, gy + 6, on ? c : colour::dim);
             gx += 14;
         }
@@ -426,6 +403,10 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     p.fill(px + pw - 7, wy + wh / 2 - 0.5f, 9, 1, colour::dim);
     p.fill(px + pw - 7, wy + wh / 2 - 3 + pad.pan / 50.0f * (wh / 2 - 3), 9, 6, knob_shade(s.ui.track, 2), 1.5f);
 
+    // Filter and Kit filter: the wave gives a third of its height to the filter's own band below it (frequency, not time).
+    const bool band = page.kind == StageKind::Filter || page.kind == StageKind::KitFilter;
+    const float full_h = wh;
+    if (band) wh = std::floor(full_h * 0.64f);
     uint32_t frames = s.sample.frames, end = pad.end ? std::min(pad.end, frames) : frames, start = std::min(pad.start, end);
     float region_from = float(start) / frames, region_to = float(end) / frames;
     float from = 0, to = 1;
@@ -466,17 +447,15 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     else waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, heads.wave.data(), heads.count);
     // A loop going round: for a moment a ghost stays at the place the head left (drawn last), so the jump reads as one.
     const float wrap = heard && (heard->flags & tap::Loop) ? heard->wrap : 0.0f;
-    if (page.kind == StageKind::Trim) {
-        p.fill(sx, wy, 1, wh, knob_shade(s.ui.track, 0));
-        p.fill(sx - 2.5f, wy - 2.5f, 5, 5, knob_shade(s.ui.track, 0), 1);
-        p.fill(ex - 1, wy, 1, wh, knob_shade(s.ui.track, 1));
-        p.fill(ex - 3.5f, wy - 2.5f, 5, 5, knob_shade(s.ui.track, 1), 1);
-        if (!pad.loop_lock || pad.loop) { // the loop point: dashed, a flag at its foot
-            float lx = x_of(float(std::clamp(pad.loop_point(), start, end)) / frames);
+    float loop_x = -1;
+    if (page.kind == StageKind::Trim) { // start, end and loop, each in the colour of its card (the flags over the wave)
+        p.fill(sx, wy, 1.5f, wh, knob_shade(s.ui.track, 0));
+        p.fill(ex - 1.5f, wy, 1.5f, wh, knob_shade(s.ui.track, 1));
+        if (!pad.loop_lock || pad.loop) { // the loop point: dashed
+            loop_x = x_of(float(std::clamp(pad.loop_point(), start, end)) / frames);
             auto lc = pad.loop ? knob_shade(s.ui.track, 2) : knob_shade(s.ui.track, 2).withAlpha(0.5f);
-            for (float d = wy; d < wy + wh; d += 6) p.fill(lx, d, 1, 3, lc);
-            p.fill(lx, wy + wh - 5, 6, 5, lc, 1);
-            if (wrap > 0) p.fill(lx - 1, wy + wh - 8, 9, 8, knob_shade(s.ui.track, 2).withAlpha(wrap), 1.5f); // lit as it goes round
+            for (float d = wy; d < wy + wh; d += 6) p.fill(loop_x, d, 1.4f, 3, lc);
+            if (wrap > 0) p.fill(loop_x - 3, wy, 7, wh, knob_shade(s.ui.track, 2).withAlpha(0.25f * wrap)); // lit as it goes round
         }
     }
     double length = (end - start) / 44100.0;
@@ -488,41 +467,85 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         float sustain = (amp ? pad.sustain : pad.filter_sustain) / 100.0f;
         bool hold = amp && d >= 100;
         double decay = time_seconds(d) * (amp ? t.params[sampler::Decay] / 100.0 : 1.0);
+        float soft = amp ? 1.0f - 0.6f * pad.velocity_sense / 100.0f : 1.0f; // K3: how much softer a soft hit plays
         draw_envelope(p, ox, wy, ow, wh, length, time_seconds(a) * 0.3, hold ? length : decay, hold ? 1.0f : sustain,
-                      time_seconds(rl) * 0.5, from_end && !hold, s.ui.track);
+                      time_seconds(rl) * 0.5, from_end && !hold, s.ui.track, soft);
     }
-    if (page.kind == StageKind::Filter) {
-        float hz = 20.0f * std::exp2(pad.cutoff / 100.0f * 9.97f), q = 0.7f + pad.resonance * 0.06f;
-        unsigned shape = pad.filter == PadFilter::Hpf2 || pad.filter == PadFilter::Hpf4 ? 2 : pad.filter == PadFilter::Bpf2 || pad.filter == PadFilter::Bpf4 ? 1 : 0;
-        if (pad.filter != PadFilter::Off) draw_filter_curve(p, ox, wy, ow, wh, shape, 2, hz, q, knob_shade(s.ui.track, 1), knob_shade(s.ui.track, 0));
-    }
-    if (page.kind == StageKind::KitFilter) { // the one filter after every pad, over the whole sample
-        float hz = 20.0f * std::exp2(t.params[sampler::Filter] / 100.0f * 9.97f), q = 0.7f + t.params[sampler::Resonance] * 0.06f;
-        draw_filter_curve(p, wx, wy, ww, wh, unsigned(t.params[sampler::FilterType]) % 3, 2, hz, q, knob_shade(s.ui.track, 1), knob_shade(s.ui.track, 0));
-    }
-    if (page.kind == StageKind::Cloud) { // where the grains come from (K1), how long they are (K2), a few of them
-        float at = x_of(region_from + (region_to - region_from) * t.params[sampler::Position] / 100.0f);
-        float size = std::max(2.0f, ww / (to - from) * float(0.01 * std::pow(100.0, t.params[sampler::Size] / 100.0) * 44100 / frames));
+
+    float cloud_x = -1;
+    if (page.kind == StageKind::Cloud) { // POSITION the line (K1), SIZE the band round it (K2), Spread a paler band, Scan an arrow
+        cloud_x = x_of(region_from + (region_to - region_from) * t.params[sampler::Position] / 100.0f);
+        float size = std::max(3.0f, ww / (to - from) * float(0.01 * std::pow(100.0, t.params[sampler::Size] / 100.0) * 44100 / frames));
+        float spread = size * (1 + 3 * t.params[sampler::Spread] / 100.0f);
         auto shade = t.params[sampler::Cloud] ? 1.0f : 0.5f;
-        // While a cloud is heard its band travels with the grains (Scan); K1's line stays where K1 put it.
-        float band = cloud.centre >= 0 ? x_of(float(cloud.centre / frames)) : at;
-        p.fill(band - size / 2, wy, size, wh, colour::text.withAlpha(0.12f * shade));
-        p.fill(at, wy, 1, wh, knob_shade(s.ui.track, 0).withMultipliedAlpha(shade));
+        // While a cloud is heard its window travels with the grains (Scan); K1's line stays where K1 put it.
+        float centre = cloud.centre >= 0 ? x_of(float(cloud.centre / frames)) : cloud_x;
+        p.fill(centre - spread / 2, wy, spread, wh, knob_shade(s.ui.track, 1).withAlpha(0.08f * shade));
+        p.fill(centre - size / 2, wy, size, wh, knob_shade(s.ui.track, 1).withAlpha(0.18f * shade));
+        p.fill(cloud_x - 0.75f, wy, 1.5f, wh, knob_shade(s.ui.track, 0).withMultipliedAlpha(shade));
         if (cloud.view.count || cloud.view.voice) draw_grains(p, wx, wy, ww, wh, from, to, frames, cloud, knob_shade(s.ui.track, 1));
         else
-            for (unsigned g = 0; g < 9; ++g) { // still: a few grains round the place, as a picture of what it does
-                float gx = at + std::sin(g * 2.3f) * 0.5f * size, gy = wy + wh * (0.25f + 0.5f * std::fmod(g * 0.37f, 1.0f));
-                p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1).withMultipliedAlpha(shade), 1.5f);
+            for (unsigned g = 0; g < 14; ++g) { // still: grains as dots inside the window, a picture of what it does
+                float gx = centre + std::sin(g * 2.3f) * 0.45f * size, gy = wy + 6 + (wh - 12) * std::fmod(g * 0.37f + 0.11f, 1.0f);
+                p.circle(gx, gy, 1.2f + 0.8f * std::fmod(g * 0.61f, 1.0f), knob_shade(s.ui.track, 1).withMultipliedAlpha(shade * (0.4f + 0.6f * std::fmod(g * 0.29f, 1.0f))));
             }
     }
     if (wrap > 0) p.fill(x_of(float(wrap_left(*heard)) / frames) - 0.75f, wy, 1.5f, wh, colour::text.withAlpha(0.55f * wrap));
     p.g.restoreState();
     draw_heads(p, wx, wy, ww, wh, from, to, heads.wave.data(), heads.count);
+    if (page.kind == StageKind::Trim) { // the flags, in the cards' colours: no letters needed
+        icon(p, Icon::Flag, sx - 2, wy - 14, 12, knob_shade(s.ui.track, 0), 1.5f);
+        icon(p, Icon::Flag, ex - 2, wy - 14, 12, knob_shade(s.ui.track, 1), 1.5f);
+        if (loop_x >= 0) icon(p, Icon::Flag, loop_x - 2, wy - 14, 12, knob_shade(s.ui.track, 2).withAlpha(pad.loop ? 1.0f : 0.5f), 1.5f);
+    }
+    if (page.kind == StageKind::Cloud && t.params[sampler::Scan] > 0) { // Scan: the way the window travels
+        juce::Path arrow;
+        float ay = wy - 7, ax = cloud_x + 6, bx = ax + 8 + 18 * t.params[sampler::Scan] / 100.0f;
+        arrow.startNewSubPath(ax, ay); arrow.lineTo(bx, ay);
+        arrow.startNewSubPath(bx - 4, ay - 3.5f); arrow.lineTo(bx, ay); arrow.lineTo(bx - 4, ay + 3.5f);
+        p.g.setColour(knob_shade(s.ui.track, 0));
+        p.g.strokePath(arrow, juce::PathStrokeType(1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    if (band) { // the filter's own band: what it does to each frequency, low to high
+        float by = wy + wh + 4, bh = full_h - wh - 4;
+        p.fill(wx, by, ww, bh, colour::panel, 2);
+        float hz, q;
+        unsigned shape;
+        bool on = true;
+        if (page.kind == StageKind::Filter) {
+            hz = 20.0f * std::exp2(pad.cutoff / 100.0f * 9.97f); q = 0.7f + pad.resonance * 0.06f;
+            shape = pad.filter == PadFilter::Hpf2 || pad.filter == PadFilter::Hpf4 ? 2 : pad.filter == PadFilter::Bpf2 || pad.filter == PadFilter::Bpf4 ? 1 : 0;
+            on = pad.filter != PadFilter::Off;
+        } else { // the one filter after every pad
+            hz = 20.0f * std::exp2(t.params[sampler::Filter] / 100.0f * 9.97f); q = 0.7f + t.params[sampler::Resonance] * 0.06f;
+            shape = unsigned(t.params[sampler::FilterType]) % 3;
+        }
+        if (on) draw_filter_curve(p, wx, by, ww, bh, shape, 2, hz, q, knob_shade(s.ui.track, 1), knob_shade(s.ui.track, 0), false);
+        else p.fill(wx, by + bh / 2, ww, 1, colour::dim);
+    }
+    if (page.kind == StageKind::Tune) { // a pitch ruler under the wave: two octaves each way, the pad's pitch marked (K1)
+        float ry = wy + wh - 8, cx = wx + ww / 2, per = ww / 50;
+        p.fill(wx, ry - 6, ww, 14, colour::bg.withAlpha(0.85f));
+        p.fill(wx, ry, ww, 1, colour::line);
+        for (int st = -24; st <= 24; ++st) {
+            float tx = cx + st * per, th = st % 12 == 0 ? 7.0f : 3.0f;
+            p.fill(tx - 0.5f, ry - th / 2, 1, th, st == 0 ? colour::sec : colour::dim);
+        }
+        float at = cx + (pad.pitch + pad.fine / 100.0f) * per;
+        juce::Path mark;
+        mark.addTriangle(at - 4.5f, ry - 7, at + 4.5f, ry - 7, at, ry);
+        p.g.setColour(knob_shade(s.ui.track, 0)); p.g.fillPath(mark);
+    }
     modes();
-    // The cards carry the values; the row says only what they cannot: on Trim how much is kept, on Cloud where.
-    juce::String middle = page.kind == StageKind::Trim ? "KEPT " + seconds(end - start) : juce::String();
-    if (page.kind == StageKind::Cloud && t.params[sampler::Cloud])
-        middle = "AROUND " + seconds(uint32_t(start + (end - start) * t.params[sampler::Position] / 100.0));
+    // The cards carry the values; the row says only what they cannot: on Trim the length kept (and the file's after
+    // it, dim), on Cloud where the grains come from, at its line.
+    juce::String middle;
+    auto right_pair = [&](const juce::String& lead, const juce::String& rest) {
+        auto a_style = plain(colour::text, type::small, Weight::SemiBold), b_style = plain(colour::dim, type::small, Weight::SemiBold);
+        float bw = p.width(rest, b_style), aw = p.width(lead, a_style), rx = px + pw;
+        p.text(rest, rx - bw, bottom - 16, bw + 1, 14, b_style);
+        p.text(lead, rx - bw - 8 - aw, bottom - 16, aw + 1, 14, a_style);
+    };
     // While it plays, the middle label in two parts: what is happening in the text colour, the rest in mid.
     auto two_part = [&](const juce::String& lead_text, const juce::String& rest_text) {
         axis(p, bottom - 16, "", "", seconds(uint32_t((to - from) * frames)));
@@ -538,10 +561,17 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         else two_part(now, " OF " + seconds(end - start));
         return;
     }
-    if (page.kind == StageKind::Cloud && cloud.centre >= 0 && cloud.view.sounding()) { // where the grains are now
-        two_part("GRAINS AROUND " + seconds(uint32_t(cloud.centre)), "");
+    if (page.kind == StageKind::Cloud) { // where the grains come from (or are now), at the line; the file's length dim
+        double at = cloud.centre >= 0 && cloud.view.sounding() ? cloud.centre : double(start) + (end - start) * t.params[sampler::Position] / 100.0;
+        juce::String place = seconds(uint32_t(at)), whole = seconds(zoomed ? end - start : uint32_t((to - from) * frames));
+        auto a_style = plain(colour::text, type::small, Weight::SemiBold), b_style = plain(colour::dim, type::small, Weight::SemiBold);
+        float aw = p.width(place, a_style), bw = p.width(whole, b_style);
+        float lx = std::clamp(cloud_x - aw / 2, px + 70, px + pw - bw - 10 - aw);
+        p.text(place, lx, bottom - 16, aw + 1, 14, a_style);
+        p.text(whole, px + pw - bw, bottom - 16, bw + 1, 14, b_style);
         return;
     }
+    if (page.kind == StageKind::Trim) { right_pair(seconds(end - start), seconds(frames)); return; }
     if (page.kind == StageKind::Play && heads.sounding) { // how many voices sound
         two_part(juce::String(heads.sounding), heads.sounding == 1 ? " VOICE" : " VOICES");
         return;
@@ -662,39 +692,24 @@ void cc_picture(Paint& p, const Snapshot& s) {
     rows(p, {}, list, 44); // DEVICE says where they go
 }
 
-// An empty track's choosers.
-void choice_rows(Paint& p, const Snapshot& s, const std::vector<std::pair<juce::String, juce::String>>& items, unsigned current) {
-    float y = top + (zone::picture_h - items.size() * (list_row_h + list_row_gap)) / 2;
-    for (unsigned n = 0; n < items.size(); ++n) {
-        ListRow r;
-        r.name = items[n].first; r.current = n == current; r.accent = colour_of(s);
-        r.tag = r.current ? items[n].second : juce::String();
-        p.g.saveState();
-        list_row(p, px, y + n * (list_row_h + list_row_gap), pw, r);
-        p.g.restoreState();
-    }
-}
-
-void engines_picture(Paint& p, const Snapshot& s) {
+// An empty track's three doors, a tile under each key showing what it would make, the pot under it choosing:
+// K1 the engine, K2 the source of a kit's first sound, K3 the MIDI port. The door of the pot touched last is lit.
+void doors_picture(Paint& p, const Snapshot& s) {
     std::array<EngineKind, size_t(EngineKind::Count)> engines {};
     unsigned count = new_engines(engines);
-    if (!count) return;
-    unsigned at = s.ui.new_engine % count;
-    const auto& info = engine_info(engines[at]);
-    juce::String sound = info.sound_count ? name_case(info.sounds[std::min<unsigned>(s.ui.new_sound, info.sound_count - 1)].name) : juce::String();
-    std::vector<std::pair<juce::String, juce::String>> items;
-    for (unsigned n = 0; n < count; ++n) items.push_back({engine_info(engines[n]).name, sound});
-    choice_rows(p, s, items, at);
-}
-
-void sources_picture(Paint& p, const Snapshot& s) {
-    choice_rows(p, s, {{"Samples on the card", "SAMPLE SELECT"}, {"Record the input", "SAMPLE RECORD"},
-                       {"Audio Recall", "LAST 25 S"}, {"Resample", "THEN A PAD"}}, s.ui.new_source % new_sources);
-}
-
-void ports_picture(Paint& p, const Snapshot& s) {
-    juce::String ch = "CHANNEL " + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16));
-    choice_rows(p, s, {{"MIDI Out jack", ch}, {"USB-C", ch}, {"All USB", ch}}, s.ui.new_port % 3);
+    EngineKind engine = count ? engines[s.ui.new_engine % count] : EngineKind::None;
+    const auto& info = engine_info(engine);
+    int focus = stage_focus(s.ui, s.track());
+    static const char* sources[] {"Card", "Input", "Recall", "Resample"};
+    static const char* source_subs[] {"SAMPLES", "RECORD", "LAST 25 S", "THEN A PAD"};
+    static const Icon source_icons[] {Icon::Folder, Icon::Mic, Icon::Clock, Icon::Loop};
+    static const char* ports[] {"Out jack", "USB-C", "All USB"};
+    unsigned source = s.ui.new_source % new_sources, port = s.ui.new_port % 3;
+    auto synth = value_tile(engine_icon(engine), engine_word(engine), juce::String(info.sound_count) + (info.sound_count == 1 ? " SOUND" : " SOUNDS"), focus == 0);
+    auto kit = value_tile(source_icons[source], sources[source], source_subs[source], focus == 1);
+    auto midi = value_tile(Icon::Din, ports[port], "CHANNEL " + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16)), focus == 2);
+    for (auto* t : {&synth, &kit, &midi}) if (t->primary) t->colour = colour_of(s);
+    key_tiles(p, {synth, kit, midi});
 }
 
 void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift_row) {
@@ -721,6 +736,12 @@ ui::SoftKeys stage_keys(const Snapshot& s) {
     return keys;
 }
 
+// Cloud's on or off, as an LED in the header (its K3 on Shift turns it).
+HeaderItem cloud_pill(const Snapshot& s) {
+    bool on = s.track().params[sampler::Cloud];
+    return pill(on ? Icon::Rec : Icon::Ring, "CLOUD", on ? colour_of(s) : colour::mid);
+}
+
 // The kit header pill, Stage's and the sample pages' alike: the pad and its sample.
 HeaderItem kit_pill(const Snapshot& s) {
     const auto& t = s.track();
@@ -737,6 +758,7 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     if (stage_kit_page(page.kind) != PageId::Count) {
         h.left.push_back(kit_pill(s));
+        if (page.kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
     } else if (page.picture == StagePicture::Voice) {
         int hit = int(t.last_note) - 36;
         if (hit >= 0 && hit < int(kit909::Drums)) h.left.push_back(pill("PAD " + juce::String(hit + 1) + dot + juce::String(kit909::drum_name(unsigned(hit))), c));
@@ -747,7 +769,8 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, s.ui.track));
     auto keys = stage_keys(s);
     if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler) // the old Trim's Shift jobs on B1 and B2
-        keys = SoftKeys {{sampler_pad(s).loop_lock ? "LOCK OFF" : "LOOP LOCK", "NORMALIZE", ""}, -1, c};
+        { keys = SoftKeys {{"LOOP LOCK", "NORMALIZE", ""}, -1, c}; keys.toggles = 1; keys.lit = sampler_pad(s).loop_lock ? 1 : 0; keys.leds[0] = c; }
+    if (!t.used()) { keys.active = stage_focus(s.ui, t); keys.dots = {}; } // the doors: the one Push makes lit
     frame(p, s, keys, h);
     switch (page.picture) {
     case StagePicture::Preset: preset_picture(p, s); break;
@@ -765,9 +788,7 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Route: route_picture(p, s); break;
     case StagePicture::Program: program_picture(p, s); break;
     case StagePicture::Cc: cc_picture(p, s); break;
-    case StagePicture::Engines: engines_picture(p, s); break;
-    case StagePicture::Sources: sources_picture(p, s); break;
-    case StagePicture::Ports: ports_picture(p, s); break;
+    case StagePicture::Engines: case StagePicture::Sources: case StagePicture::Ports: doors_picture(p, s); break;
     case StagePicture::Bars: bars_picture(p, s, page, false); break;
     }
 }
@@ -780,6 +801,7 @@ void soft(Context& c, int key) {
         return;
     }
     c.stage_tick(UINT32_MAX); // a sound still waiting to load lands first
+    if (!c.track().used()) { stage_go(c.ui, unsigned(key), 0); c.stage_new(); return; } // the door under the key: the track is made
     stage_press(c.ui, c.track(), unsigned(key));
 }
 
@@ -802,7 +824,7 @@ void wheel(Context& c, int delta) {
 void push(Context& c) {
     auto& t = c.track();
     const auto& page = stage_page_now(c.ui, t);
-    if (!t.used()) { c.stage_new(); return; }
+    if (!t.used()) { stage_go(c.ui, unsigned(stage_focus(c.ui, t)), 0); c.stage_new(); return; } // the door of the pot touched last
     if (page.kind == StageKind::Preset) { c.stage_tick(UINT32_MAX); c.open(PageId::Sounds); return; }
     if (page.kind == StageKind::Fx && !t.fx.count()) { // nothing yet: the picker on the track's chain, to add the first
         c.ui.fx_loop = -1;
@@ -836,6 +858,7 @@ void nudge(Context& c, int way) {
 void kit_page(Paint& p, const Snapshot& s, StageKind kind, int row) {
     Header h = header_of(s);
     h.left.push_back(kit_pill(s));
+    if (kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, sampler_keys(s.ui.page, colour_of(s)), h);
     StagePage page {"", kind, StagePicture::Wave};

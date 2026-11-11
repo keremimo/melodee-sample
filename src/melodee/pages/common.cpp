@@ -220,7 +220,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = b.kind == Kind::PadEnd || b.kind == Kind::ChopEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
         break;
     case Kind::TrimZoom: case Kind::ChopZoom:
-        c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : "ZOOM"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
+        c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : b.id == 0 ? "ZOOM START" : b.id == 1 ? "ZOOM END" : "ZOOM LOOP"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
     case Kind::PadLoopPoint: c.label = "LOOP"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s"; break;
     case Kind::PadLoop: c.label = "LOOP"; c.value = b.value ? "On" : "Off"; break;
     case Kind::PadMono: c.label = "VOICES"; c.value = b.value ? "Mono" : "Poly"; break;
@@ -273,6 +273,9 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     }
     case Kind::FileJump:
         c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(s.ui.files_count);
+        break;
+    case Kind::PluginJump:
+        c.label = "JUMP"; c.value = juce::String(b.value + 1).paddedLeft('0', 2); c.unit = "/ " + juce::String(int(s.plugins.files.size()));
         break;
     case Kind::ProjectJump:
         c.label = "JUMP"; c.value = juce::String(b.value + 1); c.unit = "/ " + juce::String(b.max + 1);
@@ -351,8 +354,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     }
     case Kind::PluginParam: { // as the shell last read it from the plug-in (plugin/plugin_panel.h)
         const auto& card = s.ui.plugin_panel.params[plugin_binding_shown(b.id) % 3];
-        c.label_mixed = juce::String::fromUTF8(card.name);
-        c.label = c.label_mixed.toUpperCase();
+        c.label = juce::String(plugin_binding_shown(b.id) + 1); // its number: the page lists its name in full
         c.value = juce::String::fromUTF8(card.text);
         c.fill = std::clamp(b.value / float(plugin_param_max), 0.0f, 1.0f);
         break;
@@ -489,14 +491,22 @@ juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form) {
 juce::String name_case(const juce::String& name) {
     // Words kept as written: roman numerals and the acronyms sound names use.
     static const char* keep[] {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "FM", "LFO", "MIDI", "SID", "CZ", "DX", "PWM",
-                               "TB", "TR", "VCO", "VCF", "EP", "OB", "SH", "JX", "MS", "AM", "DJ", "HQ", "UK", "USA", "BPM", "SFZ", "MPC"};
+                               "TB", "TR", "VCO", "VCF", "EP", "OB", "SH", "JX", "MS", "AM", "DJ", "HQ", "UK", "USA", "BPM", "SFZ", "MPC", "EQ", "SP"};
     juce::StringArray words;
     words.addTokens(name, " ", "");
     for (auto& word : words) {
         bool letters = word.isNotEmpty() && word.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZ'-");
         bool kept = false;
         for (auto k : keep) kept = kept || word == k;
-        if (letters && !kept && word.length() > 1) word = word.substring(0, 1) + word.substring(1).toLowerCase();
+        if (letters && !kept && word.length() > 1) { // each part after a hyphen too: "Auto-Pan"
+            juce::String out;
+            bool start = true;
+            for (auto ch : word) {
+                out += start ? juce::CharacterFunctions::toUpperCase(ch) : juce::CharacterFunctions::toLowerCase(ch);
+                start = ch == '-';
+            }
+            word = out;
+        }
     }
     return words.joinIntoString(" ");
 }

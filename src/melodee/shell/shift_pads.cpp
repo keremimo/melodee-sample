@@ -57,9 +57,9 @@ void shift_pad(Context& c, unsigned pad) {
     case 4: // Compressor: the master's (parity phase 7)
         c.open(PageId::Compressor);
         break;
-    case 7: // MIDI Config (parity phase 9)
-        c.ui.midi_editing = false;
-        c.open(PageId::MidiConfig);
+    case 7: // Settings, as doors (MIDI Config one of them; Kerem's choice over the printed MIDI Config)
+        c.ui.midi_editing = false; c.ui.settings_editing = false; c.ui.settings_in = false;
+        c.open(PageId::SettingsPage);
         return;
     case 8: // Fader: the selected track's target, on / off (parity phase 8)
         c.ui.fader_cursor = uint8_t(fader_target(c.track())); // on the target it has
@@ -68,7 +68,8 @@ void shift_pad(Context& c, unsigned pad) {
     case 11: // Song
         c.open(PageId::Song);
         return;
-    case 15: // Project, the projects on the card
+    case 15: // Project: SAVE, OPEN and NEW, the projects on the card behind OPEN
+        c.ui.project_list = false; c.ui.sheet_open = false; c.ui.sheet_more = false; c.ui.move_open = false;
         c.open(PageId::Project);
         if (c.store) c.store->list(c.project_folder);
         c.ui.project_rows = 64; // until the list arrives

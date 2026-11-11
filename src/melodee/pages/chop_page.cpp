@@ -12,8 +12,11 @@
 // B2 Split (the slice in two), Shift + B3 Merge (with the slice before);
 // Erase + pad takes a slice out (it joins the one before). B3 lays every
 // slice onto pads from the first free one as regions of the same file; B1
-// drops the chop; B2 turns Zero Snap on or off (every cut onto a zero
-// crossing, shell/chop.h; on by default, kept with the settings).
+// drops the chop; B2 SNAP turns Zero Snap on or off, its LED lit while on
+// (every cut onto a zero crossing, shell/chop.h; on by default, kept with
+// the settings). The picture: the slices as bands, the one in hand lit with
+// the pad it lands on as a chip above it, their numbers under them; the
+// file's length at the top right, the slice's at the bottom right.
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -27,7 +30,7 @@ using namespace ui;
 
 juce::String seconds(uint32_t frames) {
     char text[24];
-    std::snprintf(text, sizeof(text), "%.3f S", frames / 44100.0);
+    std::snprintf(text, sizeof(text), "%.3f s", frames / 44100.0);
     return text;
 }
 
@@ -37,19 +40,21 @@ void draw(Paint& p, const Snapshot& s) {
     uint32_t frames = s.sample.frames;
     Header h = header_of(s);
     h.left.push_back(chip("CHOP", c));
-    h.left.push_back(pill(juce::String(chop_mode_name(s.ui.chop_mode)).toUpperCase(), c));
+    h.left.push_back(pill(Icon::Scissors, juce::String(slices.count), c));
     h.right.push_back(tag_of(s, s.ui.track));
     if (s.ui.shift) frame(p, s, {{"EXTRACT", "SPLIT", "MERGE"}, -1, c}, h);
-    else frame(p, s, {{"DROP", s.ui.settings.zero_snap ? "SNAP ON" : "SNAP OFF", "TO PADS"}, 2, colour::text,
-                      {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    else {
+        SoftKeys keys {{"CANCEL", "SNAP", "TO PADS"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
+        keys.toggles = 2; keys.lit = s.ui.settings.zero_snap ? 2 : 0;
+        frame(p, s, keys, h);
+    }
     float x = zone::pad, w = zone::width - 2 * zone::pad;
-    p.text(juce::String(slices.count) + (slices.count == 1 ? " slice" : " slices"), x, zone::picture_y, 150, 22,
-           plain(colour::text, type::title, Weight::SemiBold));
-    p.text(juce::String(s.sample.name) + juce::String::fromUTF8(" \xc2\xb7 ") + seconds(frames), x + 150, zone::picture_y, w - 150, 22,
-           caps_text(colour::mid), juce::Justification::centredRight);
+    if (frames) p.text(seconds(frames), x, zone::picture_y + 2, w, 14, plain(colour::dim, type::small, Weight::SemiBold), juce::Justification::centredRight);
     if (!frames || !slices.count) {
-        p.text(s.sample.error.empty() ? "Loading" : juce::String(s.sample.error), x, zone::picture_y + 40, w, 40,
-               plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
+        icon(p, s.sample.error.empty() ? Icon::Clock : Icon::Warn, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::dim, 1.4f);
+        if (!s.sample.error.empty())
+            p.text(juce::String(s.sample.error), x, zone::picture_y + 80, w, 16, p.fit(juce::String(s.sample.error), plain(colour::amber, type::small), w, type::floor),
+                   juce::Justification::centred);
         return;
     }
     unsigned selected = std::min<unsigned>(s.ui.chop_slice, slices.count - 1);
@@ -62,7 +67,7 @@ void draw(Paint& p, const Snapshot& s) {
         float centre = s.ui.chop_focus ? b : a;
         from = std::clamp(centre - window / 2, 0.0f, 1.0f - window); to = from + window;
     }
-    float y = zone::picture_y + 27, wh = 75;
+    float y = zone::picture_y + 22, wh = 92;
     auto x_of = [&](float at) { return x + (at - from) / (to - from) * w; };
     // What the audition voice plays now (mock 5): the slice a pad started, with its head and wake, or Manual's take.
     PadSound audition;
@@ -75,7 +80,11 @@ void draw(Paint& p, const Snapshot& s) {
     if (sounding >= 0) { sa = float(slices.start[sounding]) / frames; sb = float(slices.end(unsigned(sounding), frames)) / frames; }
     p.g.saveState();
     p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), int(w + 1), int(wh + 13)));
-    p.fill(x_of(a), y, x_of(b) - x_of(a), wh, colour::raised);
+    for (unsigned n = 1; n < slices.count; n += 2) { // the slices as bands, every other one a shade darker
+        float l = x_of(float(slices.start[n]) / frames), r = x_of(float(slices.end(n, frames)) / frames);
+        p.fill(l, y, r - l, wh, colour::quiet);
+    }
+    p.fill(x_of(a), y, x_of(b) - x_of(a), wh, c.withAlpha(0.22f)); // the one in hand, lit
     waveform(p, x, y, w, wh, s.sample.overview, from, to, a, b, c);
     if (sounding >= 0) { // its bars again, in full colour (dim ones too, while it plays), the head and its wake over them
         p.g.saveState();
@@ -125,23 +134,25 @@ void draw(Paint& p, const Snapshot& s) {
     if (taking) p.fill(x_of(sound.take ? float(playing->at / frames) : float(region_from) / frames), y, 2, wh, colour::text);
     p.g.restoreState();
     if (sounding >= 0) draw_heads(p, x, y, w, wh, from, to, &head, 1);
-    // The slice in hand, and what Manual waits for.
-    float fy = y + wh + 14;
-    p.fill(x, fy, w, 15, colour::quiet, 4);
-    float lw = p.text("SLICE " + juce::String(selected + 1), x + 7, fy, 60, 15, caps_text(colour::mid));
-    char text[24];
-    std::snprintf(text, sizeof(text), "%.3f s", (slices.end(selected, frames) - slices.start[selected]) / 44100.0);
-    p.text(text, x + 7 + lw + 6, fy, 80, 15, plain(colour::text, type::small, Weight::Medium));
-    juce::String hint;
-    if (taking) hint = "TAP PADS TO CUT";
-    else if (s.ui.chop_mode == ChopMode::Manual && s.ui.chop_armed) hint = "PAD 1 PLAYS, TAP TO CUT";
-    else {
+    // Over the slice in hand, the pad it lands on as a chip (taking Manual's cuts: the scissors); its length below right.
+    juce::String lands;
+    if (!taking) {
         const auto& track = s.track();
         unsigned pad = 0, n = 0;
         for (; pad < sampler_pads; ++pad) if (!track.pads[pad].used() && n++ == selected) break;
-        if (pad < sampler_pads) { char label[4]; pad_label(pad, label); hint = juce::String("LANDS ON PAD ") + juce::String(label); }
+        if (pad < sampler_pads) { char label[4]; pad_label(pad, label); lands = juce::String(label); }
     }
-    p.text(hint, x, fy, w - 7, 15, caps_text(c), juce::Justification::centredRight);
+    auto chip_style = caps_text(colour::bg);
+    float cw = 4 + 10 + (lands.isEmpty() ? 0 : 3 + p.width(lands, chip_style)) + 5;
+    float cx = std::clamp((x_of(a) + x_of(b)) / 2 - cw / 2, x, x + w - cw), cy = zone::picture_y + 3;
+    if (taking || lands.isNotEmpty()) {
+        p.fill(cx, cy, cw, 15, c, 3);
+        icon(p, taking ? Icon::Scissors : Icon::Pads, cx + 4, cy + 2.5f, 10, colour::bg, 1.6f);
+        if (lands.isNotEmpty()) p.text(lands, cx + 17, cy, cw - 17, 15, chip_style);
+    }
+    char text[24];
+    std::snprintf(text, sizeof(text), "%.3f s", (slices.end(selected, frames) - slices.start[selected]) / 44100.0);
+    p.text(text, x, y + wh + 13, w, 16, plain(colour::text, type::body, Weight::SemiBold), juce::Justification::centredRight);
 }
 
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {

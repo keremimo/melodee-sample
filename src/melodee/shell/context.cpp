@@ -484,6 +484,7 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::ChopZoom: ui.chop_zoom = uint8_t(value); ui.chop_focus = uint8_t(b.id % 2); break;
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
+    case Kind::PluginJump: ui.plugins_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;
     case Kind::ProjectSort: ui.project_sort = uint8_t(value); break;
     case Kind::PadFine: pad().fine = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Fine, value); break;

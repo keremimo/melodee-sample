@@ -2,9 +2,10 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // SOUNDS (Sample Select): the selected track's engine sounds. The wheel
 // scrolls, pads audition the sound under the cursor, Push loads it, Shift +
-// Push goes back. B1-B3 filter: all, favourites, recent. K1 engine, K2 jumps
-// through the list, K3 audition velocity. Shift + Sample Select stars the
-// sound under the cursor (elsewhere, the track's loaded sound).
+// Push goes back. B1-B3 filter: all, favourites, recent. K1 jumps through
+// the list (the engine is Stage PRESET's K3). Shift + Sample Select stars the
+// sound under the cursor (elsewhere, the track's loaded sound). The loaded
+// one carries a check at its right edge.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/sound_list.h"
@@ -27,9 +28,9 @@ void draw(Paint& p, const Snapshot& s) {
 
     std::array<uint16_t, max_listed> list {};
     unsigned count = sound_list(track, s.ui, list);
-    if (!count) {
-        p.text(s.ui.sounds_filter == 1 ? "No favourites yet" : "Nothing loaded yet", zone::pad, zone::picture_y,
-               zone::width - 2 * zone::pad, 40, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
+    if (!count) { // a glyph for the empty list: no star yet, nothing loaded yet
+        icon(p, s.ui.sounds_filter == 1 ? Icon::Star : Icon::Clock, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
+        p.text("NONE YET", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
     unsigned cursor = std::min<unsigned>(s.ui.sounds_cursor, count - 1);
@@ -41,7 +42,7 @@ void draw(Paint& p, const Snapshot& s) {
         ListRow r;
         r.number = number; r.name = name_case(info.sounds[sound].name); r.accent = c;
         r.current = first + row == cursor;
-        r.tag = sound == track.preset ? "LOADED" : "";
+        if (sound == track.preset) r.fact_icon = Icon::Check; // the one loaded
         r.starred = s.ui.settings.favourite(unsigned(track.engine), sound);
         p.g.saveState();
         list_row(p, zone::pad, zone::picture_y + 0.5f + row * (list_row_h + list_row_gap), zone::width - 2 * zone::pad, r);

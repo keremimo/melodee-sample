@@ -46,10 +46,10 @@ void draw(Paint& p, const Snapshot& s) {
     PreviewPlace heard = s.ui.preview ? preview_place(s.heads, int(sampler_pads), uint16_t(preview_slot), dsp::model_rate) : PreviewPlace {};
     frame(p, s, {{s.files_top ? "" : "BACK", other, s.ui.preview ? "PREVIEW ON" : "PREVIEW"}, heard.sounding ? 2 : -1, c,
                  {s.files_top ? KeyIcon::None : KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
-    if (s.files.empty()) {
-        juce::String why = drive == Drive::Card && s.sample_root.empty() ? "No card in the slot"
-                         : drive == Drive::Internal && s.files_top ? "No internal samples" : "No folders or WAV files here";
-        p.text(why, zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 40, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
+    if (s.files.empty()) { // a glyph and two words: no card, or nothing here
+        bool no_card = drive == Drive::Card && s.sample_root.empty();
+        icon(p, no_card ? Icon::Card : Icon::Folder, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
+        p.text(no_card ? "NO CARD" : "EMPTY", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
     unsigned count = unsigned(s.files.size()), cursor = std::min<unsigned>(s.ui.files_cursor, count - 1);
@@ -57,25 +57,27 @@ void draw(Paint& p, const Snapshot& s) {
     for (unsigned row = 0; row < visible && first + row < count; ++row) {
         const auto& file = s.files[first + row];
         ListRow r;
-        r.name = file.name; r.accent = c; r.current = first + row == cursor;
-        if (file.folder) r.tag = juce::String::fromUTF8("FOLDER \xe2\x80\xba");
-        else if (file.bank) r.tag = "BANK";
-        else // which pads of this kit play it
-            for (unsigned n = 0; n < sample_slots && r.tag.isEmpty(); ++n)
+        r.name = name_case(juce::String(file.name)); r.accent = c; r.current = first + row == cursor;
+        const juce::String path(file.path);
+        juce::String format = path.endsWithIgnoreCase(".xpm") ? "XPM" : path.endsWithIgnoreCase(".xty") ? "XTY" : path.endsWithIgnoreCase(".exs") ? "EXS"
+                            : path.endsWithIgnoreCase(".xpn") ? "XPN" : "SFZ";
+        if (file.folder) { r.icon = Icon::Folder; r.chevron = true; }
+        else if (file.bank) r.icon = Icon::Layers;
+        else if (file.kit) { r.icon = Icon::Pads; r.fact = format; }
+        else if (file.expansion) { r.icon = Icon::ArrowDown; r.fact = format; } // Push installs it
+        else if (file.instrument) { r.icon = Icon::Keyboard; r.fact = format; }
+        else {
+            r.icon = Icon::Wav;
+            for (unsigned n = 0; n < sample_slots && r.pad.isEmpty(); ++n) // which pad of this kit plays it
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)
-                        if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.tag = juce::String("ON ") + juce::String(label); break; }
-        if (file.instrument && r.tag.isEmpty()) {
-            const juce::String path(file.path);
-            r.tag = path.endsWithIgnoreCase(".xpm") ? "XPM" : path.endsWithIgnoreCase(".xty") ? "XTY" : path.endsWithIgnoreCase(".exs") ? "EXS" : "SFZ";
+                        if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.pad = juce::String(label); break; }
         }
-        if (file.kit && r.tag.isEmpty()) r.tag = "KIT";
-        if (file.expansion && r.tag.isEmpty()) r.tag = "INSTALL";
-        if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length, in place of the tag
+        if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length
             char now[16], of[24];
             std::snprintf(now, sizeof(now), "%.1f", heard.heard);
-            std::snprintf(of, sizeof(of), " / %.1f S", heard.length);
-            r.tag_lead = now; r.tag = of;
+            std::snprintf(of, sizeof(of), " / %.1f s", heard.length);
+            r.tag_lead = now; r.tag = of; r.fact = {};
             r.played = heard.through; r.played_wake = heard.wake; r.played_head = heard.strength;
         }
         p.g.saveState();

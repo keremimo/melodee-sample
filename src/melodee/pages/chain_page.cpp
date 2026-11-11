@@ -2,16 +2,19 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // PAD EFFECTS (B1 from Track on a sampler track), TRACK EFFECTS (Knob FX),
 // BUS (B3 from Sends) and MASTER (B3 from Bus): one page shape for every
-// stop along the signal. A pad's chain is the last pad hit's, four slots. Up to six effects in a row;
-// the wheel picks a device, the three pots hold three of its parameters and
-// Minus / Plus the other row. Push on a device: change, bypass, move,
-// remove. Push on + ADD opens the picker: 41 effects in six families, Push
-// enters a family, B3 adds, B1 backs out. A bus or the master has no track,
-// so it is drawn in neutral.
+// stop along the signal, Stage's FX strip: up to six effects in a row (a
+// pad's chain is the last pad hit's, four slots), each its family's glyph
+// and name, and under it the one in hand drawn as what it does to sound.
+// B1 and B3 name the chains before and after. The wheel picks a device,
+// the three pots hold three of its parameters and Minus / Plus the other row
+// (two dots by its name). Push on a device opens its sheet on BYPASS (B3),
+// B2 MORE for change, presets, move, remove. Push on the plus opens the
+// picker: 41 effects in six families, each with its glyph; Push enters a
+// family, B3 adds, B1 backs out. A bus or the master has no track, so it is
+// drawn in neutral.
 #include "melodee/engine/effect_info.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
-#include "melodee/pages/signal_flow.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
@@ -31,80 +34,49 @@ unsigned device_actions(const UiState& ui, const EffectSlot& slot, Actions& out)
 }
 
 juce::String bus_name(unsigned bus) { return juce::String("BUS ") + char('A' + bus % bus_count); }
-// A name on one line where it fits, else split at the space that lets both halves fit (the first word alone, else).
-std::pair<juce::String, juce::String> two_lines(const Paint& p, const juce::String& text, const Paint::Text& style, float w) {
-    if (p.width(text, style) <= w) return {text, {}};
-    auto words = juce::StringArray::fromTokens(text, " ", "");
-    for (int cut = words.size() - 1; cut > 0; --cut) {
-        juce::String first = words.joinIntoString(" ", 0, cut), second = words.joinIntoString(" ", cut);
-        if (p.width(first, style) <= w && p.width(second, style) <= w) return {first, second};
-    }
-    if (p.width(words[0], style) > w) { // one long word: broken where the width ends
-        int cut = words[0].length();
-        while (cut > 1 && p.width(words[0].substring(0, cut), style) > w) --cut;
-        return {words[0].substring(0, cut), text.substring(cut)};
-    }
-    return {words[0], words.joinIntoString(" ", 1)};
-}
 // The picker's families: every one, but a sampler pad's own chain takes no plug-ins.
 unsigned families(PageId page) { return unsigned(Family::Count) - (page == PageId::PadFx ? 1 : 0); }
 bool plugin_slot(const EffectSlot& slot) { return slot.kind == plugin_effect_kind; }
 unsigned bus_of(const Project& project, unsigned track) { return project.tracks[track % track_count].mix.bus % bus_count; }
 
+// The picker: the families down the left, each with the glyph the strip uses for it and how many it holds; the
+// family in hand's effects in two columns on the right, names in Title Case; Plug-ins the card's folder.
 void picker(Paint& p, const Snapshot& s, juce::Colour c) {
-    constexpr float x = zone::pad, y = zone::picture_y + 1.5f, w = zone::width - 2 * zone::pad, h = 143;
-    for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
-    p.fill(x, y, w, h, colour::surf, 6);
-    p.ring(x, y, w, h, colour::line, 6);
+    constexpr float x = zone::pad, y = zone::picture_y + 4, w = zone::width - 2 * zone::pad, h = zone::picture_h - 8;
+    p.fill(x, y, w, h, colour::panel, 4);
+    p.fill(x + 106, y + 6, 1, h - 12, colour::line);
     unsigned shown = families(s.ui.page);
+    Family in_hand = Family(s.ui.picker_family % unsigned(Family::Count));
     for (unsigned f = 0; f < shown; ++f) {
         FamilyList list {};
         unsigned count = family_effects(Family(f), list);
-        bool on = f == s.ui.picker_family;
-        float fy = y + 6 + f * 19;
-        if (on) p.fill(x + 6, fy, 100, 18, colour::raised, 4);
-        p.text(family_name(Family(f)), x + 12, fy, 70, 18, plain(on ? colour::text : colour::mid, type::small, on ? Weight::SemiBold : Weight::Medium));
-        if (Family(f) != Family::Plugins)
-            p.text(juce::String(count), x + 12, fy, 88, 18, caps_text(on ? c : colour::dim), juce::Justification::centredRight);
+        bool on = f == s.ui.picker_family, focus = on && !s.ui.picker_items;
+        float fy = y + 4 + f * 19.5f;
+        if (on) p.fill(x + 4, fy, 98, 18, focus ? colour::raised : colour::surf, 3);
+        icon(p, family_icon(Family(f)), x + 9, fy + 3.5f, 11, on ? c : colour::mid, 1.4f);
+        p.text(family_name(Family(f)), x + 26, fy, 60, 18, plain(on ? colour::text : colour::mid, type::small, on ? Weight::SemiBold : Weight::Medium));
+        juce::String n = Family(f) == Family::Plugins ? (s.plugins.root.empty() ? juce::String() : juce::String(int(s.plugins.files.size()))) : juce::String(count);
+        p.text(n, x + 4, fy, 94, 18, plain(on ? c : colour::dim, type::small, Weight::SemiBold), juce::Justification::centredRight);
     }
-    p.fill(x + 112, y + 6, 1, h - 12, colour::line);
-    float cw = (w - 124 - 9) / 2;
-    if (Family(s.ui.picker_family % unsigned(Family::Count)) == Family::Plugins) { // the card's Plugins folder, one Push away
+    float cx = x + 114, cw = (w - 114 - 8 - 4) / 2;
+    if (in_hand == Family::Plugins) { // the card's Plugins folder, one Push away
         bool on = s.ui.picker_items;
-        if (on) p.fill(x + 118, y + 6, cw * 2 + 3, 20, c, 4);
-        p.text(juce::String::fromUTF8("From the card \xe2\x80\xba"), x + 125, y + 6, cw * 2 - 10, 20, plain(on ? colour::bg : colour::sec, type::small, Weight::Medium));
-        p.text("VST3, VST2 and Open MPC", x + 125, y + 30, cw * 2 - 10, 16, plain(colour::dim, type::small, Weight::Medium));
-        p.text("in Plugins on the card", x + 125, y + 46, cw * 2 - 10, 16, plain(colour::dim, type::small, Weight::Medium));
+        if (on) p.fill(cx, y + 6, cw * 2 + 4, 20, c, 3);
+        icon(p, Icon::Folder, cx + 6, y + 10, 12, on ? colour::bg : colour::sec, 1.4f);
+        p.text("Plugins", cx + 24, y + 6, cw * 2 - 30, 20, plain(on ? colour::bg : colour::sec, type::body, Weight::Medium));
+        icon(p, Icon::ChevronRight, cx + cw * 2 - 12, y + 11, 10, on ? colour::bg : colour::dim, 1.6f);
         return;
     }
     FamilyList list {};
-    unsigned count = family_effects(Family(s.ui.picker_family % unsigned(Family::Count)), list);
+    unsigned count = family_effects(in_hand, list);
     for (unsigned n = 0; n < count; ++n) {
         const auto& info = effect_info(list[n]);
         bool on = s.ui.picker_items && n == s.ui.picker_item;
-        float ix = x + 118 + (n / 6) * (cw + 3), iy = y + 6 + (n % 6) * 22;
-        if (on) p.fill(ix, iy, cw, 20, info.built ? c : colour::raised, 4);
-        p.text(info.name, ix + 7, iy, cw - 10, 20,
-               plain(on && info.built ? colour::bg : info.built ? colour::sec : colour::dim, type::small, Weight::Medium));
-    }
-}
-
-void device_card(Paint& p, const Snapshot& s, const EffectSlot& slot, unsigned index, float x, float y, float w, float h, bool on, juce::Colour c) {
-    p.fill(x, y, w, h, on ? colour::raised : colour::quiet, 4);
-    const auto& info = effect_info(EffectKind(slot.kind));
-    juce::String head = juce::String(index + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(family_name(info.family)).toUpperCase();
-    p.text(head, x + 6, y + 4, w - 12, 14, p.fit(head, caps_text(on ? c : colour::mid), w - 12, type::floor));
-    juce::String title = plugin_slot(slot) ? plugin_name(s, unsigned(slot.params[0])) : juce::String(info.name);
-    auto style = plain(slot.bypass ? colour::dim : on ? colour::text : colour::sec, type::body, Weight::SemiBold);
-    float below = y + 37;
-    auto lines = two_lines(p, title, style, w - 12); // a plug-in's own name may be long: it wraps rather than being cut
-    p.text(lines.first, x + 6, y + 19, w - 12, 17, p.fit(lines.first, style, w - 12, type::floor));
-    if (lines.second.isNotEmpty()) { p.text(lines.second, x + 6, y + 35, w - 12, 17, p.fit(lines.second, style, w - 12, type::floor)); below = y + 53; }
-    if (slot.bypass) p.text("BYPASS", x + 6, below, w - 12, 14, caps_text(colour::dim));
-    float bx = x + 6, bottom = y + h - 6, bw = (w - 12 - 10 * 2.5f) / 11;
-    for (unsigned n = 0; n < 11; ++n) {
-        float bh = std::max(2.0f, info.picture[n] * 0.31f);
-        p.fill(bx + n * (bw + 2.5f), bottom - bh, bw, bh, info.picture[n] ? c.withAlpha(on && !slot.bypass ? 1.0f : 0.45f) : colour::line, 1.5f);
+        float ix = cx + (n / 6) * (cw + 4), iy = y + 6 + (n % 6) * 22;
+        if (on) p.fill(ix, iy, cw, 20, info.built ? c : colour::raised, 3);
+        juce::String name = name_case(juce::String(info.name).toUpperCase()); // Title Case: "Tape Echo"
+        auto style = plain(on && info.built ? colour::bg : info.built ? colour::sec : colour::dim, type::body, on ? Weight::SemiBold : Weight::Regular);
+        p.text(name, ix + 6, iy, cw - 8, 20, p.fit(name, style, cw - 8, type::floor));
     }
 }
 
@@ -116,11 +88,17 @@ void draw(Paint& p, const Snapshot& s) {
     unsigned count = chain.count(), cursor = std::min<unsigned>(s.ui.fx_cursor[UiState::cursor_of(n)], count);
     Header h = header_of(s);
     SoftKeys keys {{"", "TRACK", "SENDS"}, 1, c};
-    juce::String back = juce::String::fromUTF8("\xe2\x80\xb9 "), on = juce::String::fromUTF8(" \xe2\x80\xba");
-    if (pad && !kit) {
-        frame(p, s, {{"", "PAD", "TRACK" + on}, 1, c}, h);
-        p.text("Pad effects are for a sampler track", zone::pad, zone::picture_y + 60, zone::width - 2 * zone::pad, 16,
-               plain(colour::dim, type::small), juce::Justification::centred);
+    // B1 and B3 the chains before and after, a chevron pointing the way.
+    auto ends = [&](juce::String before, juce::String here, juce::String after) {
+        keys.labels = {before, here, after};
+        keys.glyphs[0] = before.isEmpty() ? Icon::None : Icon::ChevronLeft;
+        keys.after[2] = after.isEmpty() ? Icon::None : Icon::ChevronRight;
+    };
+    if (pad && !kit) { // pad effects belong to a kit's pads
+        ends("", "PAD", "TRACK");
+        frame(p, s, keys, h);
+        icon(p, Icon::Pads, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::dim, 1.4f);
+        icon(p, Icon::Cross, zone::width / 2.0f + 8, zone::picture_y + 64, 12, colour::dim, 1.8f);
         return;
     }
     if (pad) {
@@ -128,88 +106,56 @@ void draw(Paint& p, const Snapshot& s) {
         char label[4]; pad_label(last, label);
         juce::String name = "PAD " + juce::String(label);
         if (s.track().pads[last].used()) name += juce::String::fromUTF8(" \xc2\xb7 ") + name_case(pad_name(s, last, false));
-        keys.labels = {"", "PAD", "TRACK" + on};
+        ends("", "PAD", "TRACK");
         h.left.push_back(pill(name, c));
         h.right.push_back(tag_of(s, s.ui.track));
     } else if (track && s.ui.fx_loop >= 0) { // a loop track's chain (docs/LOOPER.md): B1 back to the Looper
         unsigned l = unsigned(s.ui.fx_loop) % loop_tracks;
         c = loop_colour(l);
-        keys = SoftKeys {{back + "LOOPER", "L" + juce::String(l + 1), ""}, 1, c};
+        keys.accent = c;
+        ends("LOOPER", "L" + juce::String(l + 1), "");
         h.right.push_back(chip("L" + juce::String(l + 1), c));
-    } else if (track) { keys.labels = {kit ? back + "PAD" : juce::String(), "TRACK", "SENDS" + on}; h.right.push_back(tag_of(s, s.ui.track)); }
+    } else if (track) { ends(kit ? "PAD" : "", "TRACK", "SENDS"); h.right.push_back(tag_of(s, s.ui.track)); }
     else if (s.ui.page == PageId::Bus) {
-        keys.labels = {back + "SENDS", bus_name(bus), "MASTER" + on};
+        ends("SENDS", bus_name(bus), "MASTER");
         h.left.push_back(pill("RETURN " + juce::String(s.project.buses[bus].level) + " %"));
         h.right.push_back(label(bus_name(bus), colour::mid));
-        if (count) h.right.push_back(label(effect_info(EffectKind(chain.slots[0].kind)).name, colour::text));
     } else {
-        keys.labels = {back + bus_name(bus), "MASTER", ""};
+        ends(bus_name(bus), "MASTER", "");
         h.right.push_back(label("MASTER", colour::mid));
+    }
+    if (s.ui.sheet_open && cursor < count) { // the device's sheet: BACK, MORE, BYPASS; on the list BACK, -, DO IT
+        keys = s.ui.sheet_more ? SoftKeys {{"BACK", "", "DO IT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}
+                               : SoftKeys {{"BACK", "MORE", "BYPASS"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+        if (!s.ui.sheet_more) keys.glyphs = {Icon::None, Icon::Layers, Icon::Power};
     }
     if (s.ui.picker_open) {
         keys = SoftKeys {{"BACK", "", s.ui.picker_replaces ? "CHANGE" : "ADD"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
         h.left.clear();
         h.left.push_back(pill(juce::String(effect_count()) + " EFFECTS"));
         h.left.push_back(pill("SLOT " + juce::String(cursor + 1), c));
+        keys.glyphs = {}; keys.after = {};
     }
     frame(p, s, keys, h);
     if (s.ui.picker_open) { picker(p, s, c); return; }
-    signal_flow(p, pad ? Stop::Pad : track ? Stop::Track : s.ui.page == PageId::Bus ? Stop::Bus : Stop::Master, c, kit);
-
-    // Three cards across; the window follows the cursor through six slots and + ADD.
-    unsigned shown = std::min<unsigned>(chain.size, count + 1), first = cursor > 2 ? cursor - 2 : 0;
-    float y = zone::picture_y + 20, ch = 96, gap = 4, cw = (zone::width - 2 * zone::pad - 2 * gap) / 3;
-    for (unsigned k = 0; k < 3; ++k) {
-        unsigned slot = first + k;
-        float x = zone::pad + k * (cw + gap);
-        if (slot < count) { device_card(p, s, chain.slots[slot], slot, x, y, cw, ch, slot == cursor, c); continue; }
-        p.fill(x, y, cw, ch, slot == cursor ? colour::raised : colour::quiet, 4);
-        if (slot < shown) { // + ADD
-            auto style = plain(slot == cursor ? colour::text : colour::dim, 22);
-            p.text("+", x, y + 30, cw, 24, style, juce::Justification::centred);
-            p.text("ADD", x, y + 55, cw, 14, caps_text(slot == cursor ? colour::text : colour::dim), juce::Justification::centred);
-        }
-    }
-    // The device in view, its row of parameters, and how full the chain is.
-    float fy = y + ch + 5;
-    bool on_plugin = cursor < count && plugin_slot(chain.slots[cursor]);
-    juce::String name = on_plugin ? plugin_name(s, unsigned(chain.slots[cursor].params[0]))
-                      : cursor < count ? juce::String(effect_info(EffectKind(chain.slots[cursor].kind)).name)
-                      : count < chain.size ? juce::String("Add an effect") : juce::String("Chain full");
-    auto name_style = plain(colour::text, type::list, Weight::SemiBold);
-    if (on_plugin && p.width(name, name_style) > 120) name = {}; // long: its card names it, this row holds its rows
-    float nw = name.isEmpty() ? -8.0f : p.text(name, zone::pad, fy, 160, 20, name_style);
-    if (on_plugin) { // Minus / Plus step its rows; while it opens or if it could not, say so
-        const auto& panel = s.ui.plugin_panel;
-        bool ours = panel.entry == unsigned(chain.slots[cursor].params[0]);
-        juce::String state = !ours || panel.status == PluginStatus::Loading || panel.status == PluginStatus::None ? "OPENING"
-                           : panel.status == PluginStatus::Failed ? "COULD NOT OPEN" : panel.status == PluginStatus::Crashed ? "STOPPED" : "";
-        if (state.isNotEmpty()) p.text(state, zone::pad + nw + 8, fy, 110, 20, caps_text(colour::mid));
-        else if (panel.rows > 1) {
-            float lw = p.text("ROW " + juce::String(panel.row + 1) + " / " + juce::String(panel.rows), zone::pad + nw + 8, fy, 90, 20, caps_text(colour::mid));
-            if (panel.rows <= 12) page_dots(p, zone::pad + nw + 8 + lw + 6, fy + 10, int(panel.rows), int(panel.row), c);
-        }
-    } else if (cursor < count) {
-        unsigned row = s.ui.fx_row[UiState::cursor_of(n)] % 2;
-        const auto& info = effect_info(EffectKind(chain.slots[cursor].kind));
-        bool second = info.params[3].label != nullptr;
-        if (second) {
-            float lw = p.text("ROW " + juce::String(row + 1) + " / 2", zone::pad + nw + 8, fy, 80, 20, caps_text(colour::mid));
-            page_dots(p, zone::pad + nw + 8 + lw + 6, fy + 10, 2, int(row), c);
-        }
-    }
-    juce::String slots = juce::String(count) + " OF " + juce::String(chain.size) + " SLOTS";
-    auto style = caps_text(colour::mid);
-    float pw = p.width(slots, style) + 9;
-    p.fill(zone::width - zone::pad - pw, fy + 2.5f, pw, 15, colour::surf, 3);
-    p.text(slots, zone::width - zone::pad - pw, fy + 2.5f, pw, 15, style, juce::Justification::centred);
+    fx_strip(p, chain, cursor, c, zone::picture_y + 6);
+    float y = zone::picture_y + 54, bottom = zone::picture_y + zone::picture_h - 4;
+    fx_in_hand(p, s, chain, cursor, c, y, bottom);
+    if (cursor < count && !plugin_slot(chain.slots[cursor]) && effect_info(EffectKind(chain.slots[cursor].kind)).params[3].label) // its two rows
+        page_dots(p, zone::width - zone::pad, y + 12, 2, int(s.ui.fx_row[UiState::cursor_of(n)] % 2), c, true);
 
     if (s.ui.sheet_open && cursor < count) {
         const auto& slot = chain.slots[cursor];
-        MenuSheet m;
-        m.title = effect_info(EffectKind(slot.kind)).name; m.detail = "SLOT " + juce::String(cursor + 1); m.accent = c;
         Actions actions {};
         unsigned rows = device_actions(s.ui, slot, actions);
+        if (!s.ui.sheet_more) { // the likely job, Bypass, under B3; it stays to hear the difference
+            auto tile = word_sub_tile(Icon::Power, "BYPASS", slot.bypass ? "ON" : "OFF");
+            tile.colour = c;
+            likely_sheet(p, tile, rows - 1);
+            return;
+        }
+        MenuSheet m;
+        m.title = effect_info(EffectKind(slot.kind)).name; m.detail = "SLOT " + juce::String(cursor + 1); m.accent = c;
         for (unsigned r = 0; r < rows; ++r)
             switch (actions[r]) {
             case Action::Change: m.rows[r] = {"Change", "", false, false, false}; break;
@@ -257,6 +203,7 @@ void wheel(Context& c, int delta) {
     }
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     if (ui.sheet_open) {
+        if (!ui.sheet_more) { ui.sheet_more = true; ui.sheet_row = 0; return; } // turning on the likely tile: all of them
         const auto& chain = c.project.chain(n);
         unsigned k = std::min<unsigned>(ui.fx_cursor[at], chain.size - 1);
         Actions actions {};
@@ -282,6 +229,7 @@ void push(Context& c) {
         return;
     }
     if (ui.sheet_open && cursor < chain.count()) {
+        if (!ui.sheet_more) { c.toggle_bypass(n, cursor); return; } // the likely job: Bypass, and it stays open to hear it
         Actions actions {};
         unsigned rows = device_actions(ui, chain.slots[cursor], actions);
         switch (actions[ui.sheet_row % rows]) {
@@ -295,7 +243,7 @@ void push(Context& c) {
         ui.sheet_open = false;
         return;
     }
-    if (cursor < chain.count()) { ui.sheet_open = true; ui.sheet_row = 0; return; }
+    if (cursor < chain.count()) { ui.sheet_open = true; ui.sheet_more = false; ui.sheet_row = 0; return; }
     if (cursor < chain.size) { ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = false; }
 }
 
@@ -306,7 +254,12 @@ void soft(Context& c, int key) {
         if (key == 2) { if (ui.picker_items) add_from_picker(c); else { ui.picker_items = true; ui.picker_item = 0; } }
         return;
     }
-    if (ui.sheet_open) { if (key == 0) ui.sheet_open = false; return; }
+    if (ui.sheet_open) { // BACK, MORE, BYPASS; on the list BACK, -, DO IT
+        if (key == 0) { if (ui.sheet_more) ui.sheet_more = false; else ui.sheet_open = false; }
+        if (key == 1 && !ui.sheet_more) { ui.sheet_more = true; ui.sheet_row = 0; }
+        if (key == 2) push(c);
+        return;
+    }
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) { if (key == 0) c.open(PageId::Looper); return; } // a loop track's chain
     bool kit = c.track().engine == EngineKind::Sampler;
     PageId before = ui.page == PageId::PadFx ? PageId::PadFx : ui.page == PageId::Rack ? (kit ? PageId::PadFx : PageId::Rack)

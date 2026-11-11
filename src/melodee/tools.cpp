@@ -281,7 +281,7 @@ void preview_projects(Snapshot& s) {
     v.folders = {"Live sets", "Live sets/Spring tour", "Sketches", "Sketches/2026"};
     s.project_path = v.root + "/Night drive.mldp";
     s.dirty = true;
-    s.ui.project_rows = uint16_t(project_rows(v.entries.size(), s.project_path, s.project_folder)); // as the shell copies it in
+    s.ui.project_rows = uint16_t(project_rows(v.entries.size(), s.project_folder)); // as the shell copies it in
 }
 
 // Step Edit on the kit (track 4): step 5 of pattern 1 holds a kick, a hat and
@@ -449,6 +449,16 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
         std::snprintf(c.name, sizeof(c.name), "%s", names[k]);
         std::snprintf(c.text, sizeof(c.text), "%s", texts[k]);
     }
+    // The list's window: the row before (Resonance, Env mod, Decay), then the three in hand.
+    const char* before[] {"Resonance", "Env mod", "Decay"};
+    const char* before_texts[] {"0.42", "3.1", "0.8"};
+    panel.window_first = 0;
+    for (unsigned k = 0; k < 6; ++k) {
+        auto& c = panel.window[k];
+        c.used = true;
+        if (k < 3) { std::snprintf(c.name, sizeof(c.name), "%s", before[k]); std::snprintf(c.text, sizeof(c.text), "%s", before_texts[k]); }
+        else c = panel.params[k - 3];
+    }
     s.ui.plugin_row[entry] = 1;
 }
 
@@ -547,13 +557,14 @@ const Preview previews[] {
     {"stagemidiccshift", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); s.ui.shift = true; }},
     {"stagemidiarp", [](Shell&, Snapshot& s) { stage_midi(s, 2, 0); }},
     {"stageemptysynth", [](Shell&, Snapshot& s) { on_stage(s, 12, 0, 0); s.ui.new_sound = 3; }},
-    {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); }},
-    {"stageemptymidi", [](Shell&, Snapshot& s) { on_stage(s, 12, 2, 0); s.ui.new_channel = 3; }},
+    {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); s.ui.last_pot = 1; s.ui.new_source = 2; }},
+    {"stageemptymidi", [](Shell&, Snapshot& s) { on_stage(s, 12, 2, 0); s.ui.new_channel = 3; s.ui.last_pot = 2; s.ui.new_port = 1; }},
     {"tracks", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; }}, // Pad Bank tapped twice
     // The Looper (docs/LOOPER.md): four loops in every state, the loop tracks' MIX, the loop's sheet, off, a loop's chain.
     {"looper", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.turning = 1; s.ui.turned_at = s.now; }},
     {"loopermix", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.looper_view = 1; s.ui.loop = 2; }},
-    {"loopersheet", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.loop_sheet = true; s.ui.loop_row = 3; }},
+    {"loopersheet", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.loop_sheet = true; s.ui.sheet_more = true; s.ui.loop_row = 3; }},
+    {"loopersheetlikely", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.loop_sheet = true; }}, // B3 MORE as it opens: the likely job
     {"loopershift", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.shift = true; }},
     {"looperoff", [](Shell&, Snapshot& s) { s.ui.page = PageId::Looper; }},
     {"looperempty", [](Shell&, Snapshot& s) { // just turned on: one loop playing, three empty
@@ -1002,22 +1013,31 @@ const Preview previews[] {
          s.ui.page = PageId::Song; s.ui.track = 2;
          s.ui.name.start(NameTarget::Mixdown, "Night drive", 31, false);
      }},
-    {"project", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4;
+    {"project", [](Shell&, Snapshot& s) { // Shift + Pad 16: SAVE, OPEN, NEW
+         s.ui.page = PageId::Project; s.playing = true;
          preview_projects(s);
      }},
-    {"filesheet", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4; s.ui.sheet_open = true;
+    {"projectlist", [](Shell&, Snapshot& s) { // OPEN: the list, the open project in hand
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3;
+         preview_projects(s);
+     }},
+    {"filesheet", [](Shell&, Snapshot& s) { // Push on the open project: SAVE, and MORE for the rest
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
+         preview_projects(s);
+     }},
+    {"filesheetmore", [](Shell&, Snapshot& s) { // MORE: all of them
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
+         s.ui.sheet_more = true; s.ui.sheet_row = 0;
          preview_projects(s);
      }},
     // Parity phase 10: another project's sheet with Load kit, New project asking first.
     {"loadkit", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.ui.project_cursor = 5; s.ui.sheet_open = true; s.ui.sheet_row = 1;
+         s.ui.page = PageId::Project; s.ui.project_list = true; s.ui.project_cursor = 4; s.ui.sheet_open = true; s.ui.sheet_more = true; s.ui.sheet_row = 1;
          preview_projects(s);
      }},
     // Parity phase 10b: SD card access, its row on Project, then the card on a computer, ejected, held, and none to lend.
     {"cardrow", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.ui.project_cursor = 1;
+         s.ui.page = PageId::Project; s.ui.project_list = true; s.ui.project_cursor = 0;
          preview_projects(s);
      }},
     {"cardaccess", [](Shell&, Snapshot& s) {
@@ -1041,7 +1061,7 @@ const Preview previews[] {
          preview_projects(s);
      }},
     {"movefolder", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4; s.ui.move_open = true; s.ui.move_cursor = 1;
+         s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3; s.ui.move_open = true; s.ui.move_cursor = 1;
          preview_projects(s);
      }},
     {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.ui.settings.click = 1; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
@@ -1152,14 +1172,16 @@ const Preview previews[] {
          }
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_cursor = 0; }},
-    {"settingsaudio", [](Shell&, Snapshot& s) { // the audio rows, scrolled into view, 48 kHz with a dropout
-        s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::AudioBuffer; s.ui.settings_editing = true;
+    {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_door = 3; }}, // the doors, AUDIO in hand
+    {"settingspads", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 0; s.ui.settings_cursor = Settings::PadResponse; }},
+    {"settingsscreen", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 2; s.ui.settings_cursor = Settings::Palette; }},
+    {"settingsaudio", [](Shell&, Snapshot& s) { // AUDIO's rows, 48 kHz with a dropout
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::AudioBuffer; s.ui.settings_editing = true;
         s.ui.settings.audio_rate = 48000; s.ui.settings.audio_periods = 4;
         s.audio_rate = 48000; s.audio_periods = 4; s.audio_xruns = 1;
     }},
     {"settingssampling", [](Shell&, Snapshot& s) { // the sampling rows: how Audio Recall cuts, when a take ends on its own
-        s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 4; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;
     }},
     {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},
     {"punch", [](Shell&, Snapshot& s) {
@@ -1210,7 +1232,7 @@ const Preview previews[] {
          s.ui.fader = {40, false, 1}; s.ui.fader_moved_at = s.now;
      }},
     {"fadersettings", [](Shell&, Snapshot& s) { // Settings: the three takeover rows, the fader's open
-         s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::FaderTakeover; s.ui.settings_editing = true;
+         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 1; s.ui.settings_cursor = Settings::FaderTakeover; s.ui.settings_editing = true;
      }},
     // Parity phase 9: MIDI and sync.
     {"midiconfig", [](Shell&, Snapshot& s) { // Shift + Pad 8: Sync In open on MIDI Clock, MIDI just came in
@@ -1393,9 +1415,13 @@ const Preview previews[] {
          roll_bass(shell, s, 22, 60);
          s.playing = true; s.position = 26 * sixteenth_ticks; s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"notesheet", [](Shell& shell, Snapshot& s) { // Push on the note in focus: B1 CLOSE, B3 DO IT
+    {"notesheet", [](Shell& shell, Snapshot& s) { // Push on the note in focus: ACCENT, MORE for the rest
          roll_bass(shell, s, 24, 57);
          s.ui.sheet_open = true;
+     }},
+    {"notesheetmore", [](Shell& shell, Snapshot& s) { // MORE: Accent, Slide, Tie, Delete
+         roll_bass(shell, s, 24, 57);
+         s.ui.sheet_open = true; s.ui.sheet_more = true; s.ui.sheet_row = 1;
      }},
     {"rolledges", [](Shell& shell, Snapshot& s) { // the rows lower: notes above and below are dots on the edges
          roll_bass(shell, s, 30, 55);

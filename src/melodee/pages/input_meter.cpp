@@ -18,14 +18,17 @@ juce::String db_text(float db) {
 
 void input_meter(Paint& p, const Snapshot& s, juce::Colour c, float x, float y, float w) {
     auto fraction = [](float db) { return std::clamp((db + 96) / 96, 0.0f, 1.0f); };
-    float by = y + 5, level = fraction(db_of(s.take.level));
-    p.fill(x, by, w, 7, colour::line, 2);
-    p.fill(x, by, w * level, 7, c, 2);
+    float by = y + 5;
+    for (int side = 0; side < 2; ++side) { // left over right
+        float level = fraction(db_of(side ? s.take.right : s.take.left)), sy = by + side * 4.5f;
+        p.fill(x, sy, w, 3.5f, colour::line, 1.75f);
+        if (level > 0) p.fill(x, sy, w * level, 3.5f, c, 1.75f);
+    }
     const auto& in = s.ui.settings.input;
     auto mark = plain(colour::amber, type::small, Weight::SemiBold);
     if (!in.at_once()) { // where a take starts: a tick through the bar, a caret under it and its level
         float tx = x + w * fraction(float(in.threshold));
-        p.fill(tx - 0.75f, by - 5, 1.5f, 17, colour::amber);
+        p.fill(tx - 0.75f, by - 4, 1.5f, 16, colour::amber);
         juce::Path caret;
         caret.addTriangle(tx - 4, by + 17, tx + 4, by + 17, tx, by + 12);
         p.g.setColour(colour::amber); p.g.fillPath(caret);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/effect_info.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/chrome.h"
 #include "melodee/ui/knobs.h"
@@ -53,11 +54,20 @@ juce::String name_case(const juce::String& name);
 // fits `w` in `style`, else in title case ("Beat Repeat"), which is narrower.
 juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::Paint::Text& style, float w);
 
+// Effects (pages/fx_drawing.cpp): a family as its glyph; the six-slot strip of a chain (each slot its family's
+// glyph and name, the one in hand lit, empty ones dots and the next a plus), Stage's FX and FX Select's alike;
+// the effect in hand under it, its name and family and what it does to sound drawn from its own values: a tail
+// for space, taps for time, a wave for motion, a curve for dirt, a response for tone, the gain curve for dynamics.
+ui::Icon family_icon(Family f);
+void fx_strip(ui::Paint& p, const Chain& chain, unsigned cursor, juce::Colour c, float y);
+void fx_in_hand(ui::Paint& p, const Snapshot& s, const Chain& chain, unsigned cursor, juce::Colour c, float y, float bottom);
+void effect_drawing(ui::Paint& p, const EffectSlot& slot, float x, float y, float w, float h, juce::Colour c);
+
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
 // A plug-in over the cards (pages/plugin_view.cpp): its name and format, then loading, why it failed, or its row of
 // parameters out of how many; Edit for a PLUGIN track, the chain pages for a plug-in effect.
-void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, juce::Colour c, float top);
+void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, float top);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
 
 // Defaults: pads play the selected track, Minus / Plus move its octave.

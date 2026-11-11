@@ -362,22 +362,14 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         if (slot >= track.fx.count()) return {};
         return effect_row(t * 64 + slot * 8, track.fx.slots[slot], shift_row ? 1 : 0);
     }
-    case SK::NewSynth: {
+    case SK::NewSynth: case SK::NewKit: case SK::NewMidi: { // an empty track's three doors: K1 the engine, K2 the source, K3 the port
         if (shift_row) return {};
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = new_engines(engines);
-        if (!count) return {};
-        unsigned sounds = engine_info(engines[ui.new_engine % count]).sound_count;
-        return {Binding {Kind::NewEngine, 0, 0, int(std::max(count, 2u)) - 1, int(ui.new_engine % count)},
-                Binding {Kind::NewSound, 0, 0, int(std::max(sounds, 2u)) - 1, int(std::min<unsigned>(ui.new_sound, sounds - 1))}, Binding {}};
+        return {count ? Binding {Kind::NewEngine, 0, 0, int(std::max(count, 2u)) - 1, int(ui.new_engine % count)} : Binding {},
+                Binding {Kind::NewSource, 0, 0, int(new_sources) - 1, ui.new_source % int(new_sources)},
+                Binding {Kind::NewPort, 0, 0, midi_track::PortCount - 1, ui.new_port % midi_track::PortCount}};
     }
-    case SK::NewKit:
-        if (shift_row) return {};
-        return {Binding {Kind::NewSource, 0, 0, int(new_sources) - 1, ui.new_source % int(new_sources)}, Binding {}, Binding {}};
-    case SK::NewMidi:
-        if (shift_row) return {};
-        return {Binding {Kind::NewPort, 0, 0, midi_track::PortCount - 1, ui.new_port % midi_track::PortCount},
-                Binding {Kind::NewChannel, 0, 1, 16, std::clamp<int>(ui.new_channel, 1, 16)}, Binding {}};
     default: return {};
     }
 }
@@ -513,16 +505,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     switch (ui.page) {
     case PageId::Keys:
         return project_key(project, Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)});
-    case PageId::Sounds: {
-        std::array<EngineKind, size_t(EngineKind::Count)> engines {};
-        unsigned count = available_engines(engines), at = 0;
-        for (unsigned n = 0; n < count; ++n) if (engines[n] == track.engine) at = n;
+    case PageId::Sounds: { // every list: K1 jumps, the other pots draw nothing (the engine is Stage PRESET's K3)
         std::array<uint16_t, max_listed> list {};
         unsigned listed = sound_list(track, ui, list);
-        // An engine choice needs at least two positions to turn through.
-        return {Binding {Kind::Engine, 0, 0, int(std::max(count, 2u)) - 1, int(at)},
-                Binding {Kind::Jump, 0, 0, int(std::max(listed, 1u)) - 1, std::min<int>(ui.sounds_cursor, int(listed) - 1)},
-                Binding {Kind::Audition, 0, 1, 127, ui.audition_velocity}};
+        return {Binding {Kind::Jump, 0, 0, int(std::max(listed, 1u)) - 1, std::min<int>(ui.sounds_cursor, int(listed) - 1)}, Binding {}, Binding {}};
     }
     case PageId::PluginPresets: return plugin_cards(ui, ui.presets_entry); // its row on K1-K3 while presets are heard
     case PageId::Edit: {
@@ -625,10 +611,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::CompAttack, 0, 0, 100, c.attack}, Binding {Kind::CompRelease, 0, 0, 100, c.release},
                 Binding {Kind::CompAmount, 0, 0, 100, c.amount}};
     }
-    case PageId::Project:
-        if (ui.sheet_open || ui.move_open) return {};
-        return {Binding {}, Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},
-                Binding {Kind::ProjectSort, 0, 0, 1, ui.project_sort}};
+    case PageId::Project: // the list: K1 jumps, K2 sorts; the tiles and the sheets have no pots
+        if (!ui.project_list || ui.sheet_open || ui.move_open) return {};
+        return {Binding {Kind::ProjectJump, 0, 0, std::max(int(ui.project_rows) - 1, 1), ui.project_cursor},
+                Binding {Kind::ProjectSort, 0, 0, 1, ui.project_sort}, Binding {}};
     case PageId::Tempo:
         return {Binding {Kind::Tempo, 0, 30, 300, int(project.tempo_of(ui.lead_pattern) / 10)}, Binding {Kind::Swing, 0, 50, 75, project.swing},
                 Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
@@ -666,8 +652,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::PadPunchKind, 0, 0, int(punch_kinds), pad.punch}, Binding {Kind::PadPunchRate, 0, 0, 3, pad.punch_rate},
                 Binding {Kind::PadPunchDepth, 0, 0, 100, pad.punch_depth}};
     }
-    case PageId::Samples:
-        return {Binding {}, Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}};
+    case PageId::Samples: // every list: K1 jumps, the other pots draw nothing
+        return {Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}, Binding {}};
+    case PageId::Plugins:
+        return {Binding {Kind::PluginJump, 0, 0, std::max(int(ui.plugins_count) - 1, 1), ui.plugins_cursor}, Binding {}, Binding {}};
     case PageId::Roll: { // the note in focus: K1 its length in steps of Q, K2 velocity, K3 chance; none, no cards
         int at = roll_focus(pattern, ui);
         if (at < 0) return {};
@@ -685,6 +673,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::StepChance, 0, 0, 100, step.chance}};
     }
     case PageId::Stage: return stage_bindings(project, ui, false);
+    // System pages: their rows take the wheel; no pots, so no cards (never the synth's favourites there).
+    case PageId::SettingsPage: case PageId::About: case PageId::MidiConfig: case PageId::FaderPage: return {};
     case PageId::Tracks: // the strip in hand: K1 the track, K2 its level, K3 its pan
         return {Binding {Kind::TrackPick, 0, 0, int(track_count) - 1, ui.track % int(track_count)},
                 Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan}};

@@ -108,10 +108,8 @@ private:
     std::atomic<unsigned> changes {0}, saved {0};
 };
 
-// The Project page's rows, the one count its list, K2's range and the shell agree on: New project, the open
-// project while it has no file, SD card access at the top folder, then the folder's entries.
-inline unsigned project_rows(size_t entries, const std::string& open_path, const std::string& folder) {
-    return unsigned(entries) + (open_path.empty() ? 2 : 1) + (folder.empty() ? 1 : 0);
-}
+// The Project list's rows, the one count its list, K1's range and the shell agree on: SD card access at the
+// top folder, then the folder's entries (New project and Save are tiles before the list).
+inline unsigned project_rows(size_t entries, const std::string& folder) { return unsigned(entries) + (folder.empty() ? 1 : 0); }
 
 } // namespace melodee

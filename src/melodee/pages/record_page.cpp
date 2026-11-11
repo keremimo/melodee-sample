@@ -46,52 +46,61 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, keys, h);
 
     float x = zone::pad, w = zone::width - 2 * zone::pad;
-    // The state as a glyph (ready, waiting for the level or the loop, recording, saving) and how far, as numbers.
+    // At the corner the state as a glyph (ready, waiting for the level or the loop, recording, saving) and the time so far.
     Icon glyph = state == State::Armed ? Icon::Ring : state == State::Cued ? Icon::Loop : state == State::Recording ? Icon::Rec
                : state == State::Done || (taking && state == State::Idle) ? Icon::Check : Icon::Pads;
     juce::Colour tone = state == State::Recording ? colour::rec : state == State::Armed || state == State::Cued ? colour::amber : colour::mid;
-    icon(p, glyph, x, zone::picture_y + 4, 14, tone, 1.6f);
     double bar_frames = double(s.project.bar_ticks()) / ticks_per_quarter * 60.0 / (s.tempo / 10.0) * 44100;
     unsigned bars = rec_bars(in.length);
     bool going = state == State::Recording || state == State::Done;
-    juce::String where;
-    if (going && s.take.length < TakeRecorder::max_frames && bar_frames > 0)
-        where = juce::String(std::min<unsigned>(unsigned(s.take.length / bar_frames + 0.5), unsigned(s.take.frames / bar_frames) + 1))
-              + " / " + juce::String(unsigned(s.take.length / bar_frames + 0.5));
-    else if (going) where = juce::String(s.take.frames / 44100.0, 1) + " s";
-    else if (in.length == rec_seq) where = "SEQ";
-    else where = bars ? juce::String(bars) + (bars == 1 ? " bar" : " bars") : juce::String("FREE");
-    p.text(where, x + 100, zone::picture_y, w - 100, 22, plain(colour::text, type::list, Weight::SemiBold), juce::Justification::centredRight);
+    juce::String elapsed = going ? juce::String(s.take.frames / 44100.0, 1) + " s" : in.length == rec_seq ? juce::String("SEQ") : juce::String();
+    auto time_style = plain(colour::text, type::body, Weight::SemiBold);
+    float tw = p.width(elapsed, time_style);
+    p.text(elapsed, x + w - tw, zone::picture_y + 1, tw + 1, 16, time_style);
+    icon(p, glyph, x + w - tw - (tw > 0 ? 18 : 12), zone::picture_y + 3, 12, tone, 1.6f);
 
-    // The take so far, against its bars, with the cuts the pads made. A take
-    // without a length (Free, up to 60 s) is drawn as far as it has come, an
-    // eighth of the way at least, so it grows across the picture.
-    float y = zone::picture_y + 30, wh = 48, mid = y + wh / 2;
+    // The take in its frame: with a length in bars, that many bars numbered (the one being taken lit), so what is
+    // left shows; a take without one (Free, up to 60 s) grows across the frame, an eighth of it at least.
+    float y = zone::picture_y + 18, wh = 62, mid = y + wh / 2;
+    p.fill(x, y, w, wh, colour::panel, 3);
     uint32_t length = std::max<uint32_t>(s.take.length, 1);
     unsigned shown = TakeRecorder::columns;
     if (length >= TakeRecorder::max_frames)
         shown = std::clamp<unsigned>(unsigned((uint64_t(s.take.frames) * TakeRecorder::columns + length - 1) / length), TakeRecorder::columns / 8,
                                      TakeRecorder::columns);
     float span = float(length) * shown / TakeRecorder::columns; // the frames across the picture
+    unsigned frame_bars = going && length < TakeRecorder::max_frames && bar_frames > 0 ? std::max(1u, unsigned(length / bar_frames + 0.5)) : bars;
+    unsigned now_bar = going && bar_frames > 0 ? unsigned(s.take.frames / bar_frames) : 0;
+    if (frame_bars > 1 && frame_bars <= 16)
+        for (unsigned b = 0; b < frame_bars; ++b) {
+            float bx = x + w * b / frame_bars;
+            if (b) p.fill(bx, y, 1, wh, colour::line);
+            bool lit = going && b == now_bar;
+            if (bx + 20 > x + w - tw - 22) continue; // clear of the time at the corner
+            p.text(juce::String(b + 1), bx + 3, zone::picture_y + 1, 24, 16, plain(lit ? colour::text : colour::dim, type::small, Weight::SemiBold));
+        }
     float cw = w / shown;
-    if (bars && !going) for (unsigned b = 1; b < bars; ++b) p.fill(x + w * b / bars, y, 1, wh, colour::line);
     for (unsigned n = 0; n < shown; ++n) {
-        float half = std::max(0.5f, s.take.peaks[n] / 255.0f * wh / 2);
+        float half = std::max(0.5f, s.take.peaks[n] / 255.0f * (wh / 2 - 4));
         p.fill(x + n * cw, mid - half, std::max(1.0f, cw * 0.6f), half * 2, c);
     }
     if (taking)
-        for (unsigned n = 0; n < s.ui.rec_chops; ++n) {
+        for (unsigned n = 0; n < s.ui.rec_chops; ++n) { // the cuts the pads made, each with its pad as a chip
             float at = x + w * std::min(1.0f, float(s.ui.rec_chop_at[n]) / span);
-            p.fill(at, y - 2, 1, wh + 4, colour::text);
+            p.fill(at, y, 1.2f, wh, colour::text.withAlpha(0.8f));
             pad_label(s.ui.rec_chop_pad[n], label);
-            p.text(juce::String(label), at + 2, y - 3, 30, 13, caps_text(colour::text));
+            auto style = caps_text(colour::text);
+            float lw = p.width(juce::String(label), style) + 6;
+            p.fill(at + 3, y + 4, lw, 13, colour::raised, 3);
+            p.text(juce::String(label), at + 3, y + 4, lw, 13, style, juce::Justification::centred);
         }
-    if (state == State::Recording) {
+    if (state == State::Recording) { // where it has come to, and what is left of the frame
         float at = x + w * std::min(1.0f, float(s.take.frames) / span);
-        p.fill(at, y, 1, wh, colour::rec);
+        p.fill(at - 1, y - 1, 2, wh + 2, colour::rec);
+        for (float d = at + 4; d < x + w - 2; d += 6) p.fill(d, mid - 0.6f, 2, 1.2f, colour::dim);
     }
     // The input level, with the marker it has to pass.
-    input_meter(p, s, c, x, y + wh + 6, w);
+    input_meter(p, s, c, x, y + wh + 4, w);
     // What the pads do now, as glyph pairs: a pad (the take's outlined, any other filled) and what it does.
     struct Pair { int pad; Icon does; }; // pad: 1 the take's pad, 2 another pad, 3 the sixteen pads, 0 none (Stop)
     std::array<Pair, 2> pairs {{{2, Icon::Rec}, {0, Icon::None}}};
@@ -101,7 +110,7 @@ void draw(Paint& p, const Snapshot& s) {
     else if (state == State::Armed || state == State::Cued) { pairs = {{{1, Icon::Play}, {0, Icon::Cross}}}; count = 2; }
     float total = 0;
     for (size_t n = 0; n < count; ++n) total += 12 + 6 + 12 + (n ? 20 : 0);
-    float lx = zone::width / 2.0f - total / 2, ly = zone::picture_y + 129;
+    float lx = zone::width / 2.0f - total / 2, ly = zone::picture_y + 130;
     for (size_t n = 0; n < count; ++n) {
         if (n) { p.circle(lx + 10, ly + 6, 1.3f, colour::dim); lx += 20; }
         const auto& pr = pairs[n];

@@ -22,12 +22,6 @@ namespace {
 using namespace ui;
 constexpr unsigned visible = list_rows;
 
-juce::String kind_of(const PluginFile& file) { // empty while it is still being found out: nothing that reads as cut text
-    if (file.instrument == 1) return "INSTRUMENT";
-    if (file.instrument == 0) return "EFFECT";
-    return {};
-}
-
 // What the picker loads into, for the header: the track, or the chain and its slot.
 juce::String target_text(const Snapshot& s) {
     if (s.ui.plugin_target == UiState::PluginTarget::Instrument) return "INSTRUMENT";
@@ -77,11 +71,15 @@ void draw(Paint& p, const Snapshot& s) {
         r.name = juce::String(file.name);
         r.accent = c;
         r.current = first + row == cursor;
-        if (file.folder) r.tag = juce::String::fromUTF8("FOLDER \xe2\x80\xba");
-        else if (file.several()) r.tag = juce::String(int(file.plugins)) + juce::String::fromUTF8(" PLUG-INS \xe2\x80\xba");
-        else if (!file.loadable()) { r.tag = juce::String(file.why).toUpperCase(); r.dim = true; }
-        else if (!loaded.empty() && file.path == loaded && file.id == loaded_id) { r.tag_lead = "LOADED "; r.tag = format_tag(file.format); }
-        else r.tag = juce::String(format_tag(file.format)) + (kind_of(file).isEmpty() ? juce::String() : juce::String::fromUTF8(" \xc2\xb7 ") + kind_of(file));
+        if (file.folder) { r.icon = Icon::Folder; r.chevron = true; }
+        else if (file.several()) { r.icon = Icon::Plug; r.fact = juce::String(int(file.plugins)); r.chevron = true; } // a bundle of several
+        else if (!file.loadable()) { r.icon = Icon::PlugBroken; r.fact = juce::String(file.why); r.dim = true; }
+        else {
+            r.icon = Icon::Plug;
+            r.fact = format_tag(file.format);
+            if (!loaded.empty() && file.path == loaded && file.id == loaded_id) r.fact_icon = Icon::Check; // the one loaded
+            else if (file.instrument >= 0) r.fact_icon = file.instrument ? Icon::Keyboard : Icon::Sliders;
+        }
         p.g.saveState();
         list_row(p, zone::pad, zone::picture_y + 0.5f + row * (list_row_h + list_row_gap), zone::width - 2 * zone::pad, r);
         p.g.restoreState();

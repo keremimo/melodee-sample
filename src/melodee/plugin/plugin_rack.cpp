@@ -404,16 +404,24 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
     out.load = uint16_t(std::clamp(h->load.load(std::memory_order_relaxed) * 1000.0f, 0.0f, 9999.0f));
     out.programs = uint16_t(std::min<size_t>(h->programs.size(), 0xffff));
     const auto& params = h->instance->getParameters();
-    for (unsigned k = 0; k < 3; ++k) {
-        size_t at = size_t(out.row) * 3 + k;
-        if (at >= h->shown.size()) break;
+    auto read = [&](size_t at, PluginPanelParam& card) {
         auto* p = params[h->shown[at]];
-        auto& card = out.params[k];
         card.used = true;
         put(card.name, sizeof(card.name), p->getName(int(sizeof(card.name) - 1)).trim().toStdString());
         float v = p->getValue();
         put(card.text, sizeof(card.text), tidy(p->getText(v, 64).trim().toStdString()));
         card.value = int16_t(std::lround(std::clamp(v, 0.0f, 1.0f) * plugin_param_max));
+    };
+    for (unsigned k = 0; k < 3; ++k) {
+        size_t at = size_t(out.row) * 3 + k;
+        if (at >= h->shown.size()) break;
+        read(at, out.params[k]);
+    }
+    out.window_first = uint16_t((out.row > 0 ? out.row - 1u : 0u) * 3u);
+    for (unsigned k = 0; k < out.window.size(); ++k) {
+        size_t at = size_t(out.window_first) + k;
+        if (at >= h->shown.size()) break;
+        read(at, out.window[k]);
     }
 }
 

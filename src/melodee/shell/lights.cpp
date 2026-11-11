@@ -160,7 +160,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         store_seen = store_->generation();
         ProjectStore::View v;
         store_->view(v);
-        ui_.project_rows = uint16_t(project_rows(v.entries.size(), context_.project_path, context_.project_folder));
+        ui_.project_rows = uint16_t(project_rows(v.entries.size(), context_.project_folder));
     }
     // Slots a Load Kit or Load Bank named past what the queue holds, as it drains.
     while (library_ && !context_.slots_waiting.empty()) {

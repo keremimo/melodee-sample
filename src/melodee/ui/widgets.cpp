@@ -38,10 +38,26 @@ void list_row(Paint& p, float x, float y, float w, const ListRow& row) {
     auto number = plain(colour::dim, type::small, Weight::Medium);
     float nx = x + 9, nw = row.number.isEmpty() ? 0 : std::max(16.0f, p.width(row.number, number));
     p.text(row.number, nx, y, nw, list_row_h, number);
-    float right = x + w - 7;
-    if (row.starred) { star(p, right - 5.5f, y + list_row_h / 2, 5.5f, row.accent); right -= 19; }
-    if (row.tag_lead.isNotEmpty()) { // "1.2 / 3.1 S": the lead in the accent, the rest in mid
-        auto lead = caps_text(row.accent), rest = caps_text(colour::mid);
+    float cy = y + list_row_h / 2, right = x + w - 7;
+    if (row.starred) { star(p, right - 5.5f, cy, 5.5f, row.accent); right -= 19; }
+    if (row.chevron) { icon(p, Icon::ChevronRight, right - 10, cy - 5, 10, colour::dim, 1.6f); right -= 14; }
+    if (row.fact.isNotEmpty()) {
+        auto style = plain(row.dim ? colour::dim : row.current ? colour::sec : colour::mid, type::small, Weight::SemiBold);
+        float fw = p.width(row.fact, style);
+        p.text(row.fact, right - fw, y, fw + 1, list_row_h, style);
+        right -= fw + 6;
+    }
+    if (row.fact_icon != Icon::None) { icon(p, row.fact_icon, right - 12, cy - 6, 12, row.accent, 1.6f); right -= 18; }
+    if (row.pad.isNotEmpty()) { // the pad it is on: a raised chip with the pads glyph
+        auto style = caps_text(row.accent);
+        float cw = 4 + 10 + 3 + p.width(row.pad, style) + 5;
+        p.fill(right - cw, cy - 7.5f, cw, 15, colour::raised, 3);
+        icon(p, Icon::Pads, right - cw + 4, cy - 5, 10, row.accent, 1.5f);
+        p.text(row.pad, right - cw + 17, cy - 7.5f, cw - 17, 15, style);
+        right -= cw + 6;
+    }
+    if (row.tag_lead.isNotEmpty()) { // "1.2 / 3.1 s": the lead in the accent, the rest in mid
+        auto lead = plain(row.accent, type::small, Weight::SemiBold), rest = plain(colour::mid, type::small, Weight::SemiBold);
         float lw = p.width(row.tag_lead, lead), tw = p.width(row.tag, rest);
         p.text(row.tag, right - tw, y, tw + 1, list_row_h, rest);
         p.text(row.tag_lead, right - tw - lw, y, lw + 1, list_row_h, lead);
@@ -53,7 +69,11 @@ void list_row(Paint& p, float x, float y, float w, const ListRow& row) {
         right -= tw + 8;
     }
     float name_x = nx + (nw > 0 ? nw + 6 : 0);
-    auto name = plain(row.current ? colour::text : row.dim ? colour::dim : colour::sec, type::list, Weight::Medium);
+    if (row.icon != Icon::None) {
+        icon(p, row.icon, name_x, cy - 6, 12, row.current ? row.accent : row.dim ? colour::dim : colour::mid, 1.4f);
+        name_x += 18;
+    }
+    auto name = plain(row.current ? colour::text : row.dim ? colour::dim : colour::sec, type::list, row.current ? Weight::Medium : Weight::Regular);
     p.text(row.name, name_x, y, right - name_x, list_row_h, p.fit(row.name, name, right - name_x, type::floor));
 }
 
@@ -194,9 +214,19 @@ void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y, float h) 
             if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, y + 90, w - 8, 14, p.fit(t.sub, caps_text(colour::mid), w - 8, type::floor), juce::Justification::centred);
         } else {
             auto word = caps_text(ink, type::body);
-            p.text(t.word, x + 4, y + 74, w - 8, 18, p.fit(t.word, word, w - 8, type::floor), juce::Justification::centred);
+            float wy = t.sub.isNotEmpty() ? y + 68 : y + 74;
+            p.text(t.word, x + 4, wy, w - 8, 18, p.fit(t.word, word, w - 8, type::floor), juce::Justification::centred);
+            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, wy + 20, w - 8, 14, p.fit(t.sub, caps_text(colour::mid), w - 8, type::floor), juce::Justification::centred);
         }
     }
+}
+
+void likely_sheet(Paint& p, const KeyTile& likely, unsigned others) {
+    p.dim_zone(zone::picture_y, zone::picture_h, 0.78f);
+    p.dim_zone(zone::knobs_y, zone::knobs_h);
+    auto more = word_sub_tile(Icon::Layers, "MORE", juce::String(others) + (others == 1 ? " ACTION" : " ACTIONS"));
+    auto primary = likely; primary.primary = true;
+    key_tiles(p, {KeyTile {}, others ? more : KeyTile {}, primary});
 }
 
 void confirm_sheet(Paint& p, const ConfirmSheet& s) {

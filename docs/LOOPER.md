@@ -101,7 +101,8 @@ shows bar.beat, the tempo and the selected loop's layers.
   K1 feedback, Shift + K2 Quantize, Shift + K3 After take.
 - **B2 MIX**: the four loop tracks as strips (level, pan, send and bus,
   meter, mute and solo); K1 level, K2 pan, K3 send, Shift + K3 the bus.
-- **B3 MORE**: the loop's sheet: Source (Push steps it), Play / Stop at the
+- **B3 MORE**: the loop's sheet, opening on its likely job as a tile (Play or Stop on the boundary with audio in the
+  loop, Source before a take), B2 MORE for all of them: Source (Push steps it), Play / Stop at the
   next boundary, Stop now, Undo / Redo last overdub (layers), Commit to pad,
   Commit + note at bar 1, Clear loop (asks), Looper off (asks). B1 closes.
 - **Push**: record → close → overdub ⇄ play, on the selected loop.

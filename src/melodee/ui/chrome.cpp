@@ -97,10 +97,12 @@ void soft_keys(Paint& p, const SoftKeys& keys) {
         Icon glyph = keys.icons[k] == KeyIcon::Back ? Icon::Back : keys.icons[k] == KeyIcon::Check ? Icon::Check : keys.glyphs[k];
         bool has_glyph = glyph != Icon::None;
         float tw = text.isEmpty() ? 0 : p.width(text, style);
-        float gw = has_glyph ? 10.5f + (tw > 0 ? 3.5f : 0) : 0, lw = toggle ? 4 + 6 : 0;
-        float left = cx - (gw + tw + lw) / 2;
+        bool has_after = keys.after[k] != Icon::None;
+        float gw = has_glyph ? 10.5f + (tw > 0 ? 3.5f : 0) : 0, lw = toggle ? 4 + 6 : 0, aw = has_after ? 3.5f + 10.5f : 0;
+        float left = cx - (gw + tw + lw + aw) / 2;
         if (has_glyph) icon(p, glyph, left, mid - 5.5f, 10.5f, style.colour, 1.5f);
         if (tw > 0) p.text(text, left + gw, label_y, tw + 1, zone::soft_h, style);
+        if (has_after) icon(p, keys.after[k], left + gw + tw + 3.5f, mid - 5.5f, 10.5f, style.colour, 1.5f);
         if (toggle) { // the LED: lit in its colour while on, a ring while off
             float lx = left + gw + tw + 4 + 3;
             if (lit) p.circle(lx, mid, 3, keys.leds[k]);

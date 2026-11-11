@@ -29,8 +29,8 @@ void draw(Paint& p, const Snapshot& s) {
     if (for_instrument(s)) h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
     if (v.list.empty()) {
-        p.text("No presets", zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 24, plain(colour::dim, type::small, Weight::Medium),
-               juce::Justification::centred);
+        icon(p, Icon::Layers, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
+        p.text("NONE", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
         return;
     }
     unsigned count = unsigned(v.list.size()), cursor = std::min<unsigned>(s.ui.presets_cursor, count - 1);
@@ -42,7 +42,7 @@ void draw(Paint& p, const Snapshot& s) {
         r.name = juce::String::fromUTF8(program.name.c_str());
         r.accent = c;
         r.current = first + row == cursor;
-        if (program.index == v.current) r.tag_lead = v.loading ? "LOADING" : "LOADED";
+        if (program.index == v.current) r.fact_icon = v.loading ? Icon::Clock : Icon::Check;
         p.g.saveState();
         list_row(p, zone::pad, zone::picture_y + 0.5f + row * (list_row_h + list_row_gap), zone::width - 2 * zone::pad, r);
         p.g.restoreState();

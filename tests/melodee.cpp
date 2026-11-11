@@ -1479,7 +1479,7 @@ void parity_basics() {
 // buttons that glow while Shift is held.
 void shift_pads() {
     const char* const printed[16] {"Full Level", "Half Seq", "Double Seq", "Count-In", "Compressor", "Half Speed",
-                                   "Double Speed", "MIDI Config", "Fader", "Rec Quantize", "Resample", "Song",
+                                   "Double Speed", "Settings", "Fader", "Rec Quantize", "Resample", "Song",
                                    "Trim Sample", "Time Correct", "Warp", "Project"};
     for (unsigned n = 0; n < 16; ++n) CHECK(std::string(shift_pad_job(n).name) == printed[n]);
     using K = ShiftPadJob::Kind;
@@ -4430,11 +4430,16 @@ void stage() {
     unsigned count = new_engines(engines);
     CHECK(count >= 5);
     for (unsigned n = 0; n < count; ++n) CHECK(engines[n] != EngineKind::Sampler && engines[n] != EngineKind::Midi && engines[n] != EngineKind::None);
-    CHECK(cards(false)[0].kind == K::NewEngine && cards(false)[1].kind == K::NewSound);
-    stage_press(ui, project->tracks[9], 1); CHECK(key() == "KIT" && cards(false)[0].kind == K::NewSource && cards(false)[0].max == int(new_sources) - 1);
-    stage_press(ui, project->tracks[9], 2); CHECK(key() == "MIDI" && cards(false)[0].kind == K::NewPort && cards(false)[1].kind == K::NewChannel);
-    ui.last_pot = 2; // K3 is on no card here: the wheel still walks K1's list
-    CHECK(stage_focus(ui, project->tracks[9]) == 0 && stage_focus(ui, project->tracks[0]) == 2);
+    // Three doors on one page, whichever key is lit: K1 the engine, K2 the kit's source, K3 the MIDI port.
+    for (unsigned door = 0; door < 3; ++door) {
+        stage_go(ui, door, 0);
+        auto doors = cards(false);
+        CHECK(doors[0].kind == K::NewEngine && doors[1].kind == K::NewSource && doors[1].max == int(new_sources) - 1 && doors[2].kind == K::NewPort);
+        CHECK(!shift_bindings(*project, ui, pattern)[0].bound()); // no Shift row on the doors
+    }
+    stage_go(ui, 0, 0);
+    ui.last_pot = 2; // the pot touched last picks the door Push makes, on an empty track too
+    CHECK(stage_focus(ui, project->tracks[9]) == 2 && stage_focus(ui, project->tracks[0]) == 2);
     ui.last_pot = -1;
 
     // Tracks: K1 the track, K2 its level, K3 its pan.

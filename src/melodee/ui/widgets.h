@@ -19,6 +19,12 @@ struct ListRow {
     juce::String number, name, tag;
     bool current = false, starred = false, dim = false;
     juce::Colour accent = colour::text;
+    // Glyph first, facts last: what the row is as a glyph before its name (folder, file, kit, bank, plug-in), and
+    // at the right edge its facts as written ("3.1 s", "VST3"), a glyph fact (a check for the one loaded), the
+    // pad a sample is on as a chip ("A05"), and a chevron for what opens further.
+    Icon icon = Icon::None, fact_icon = Icon::None;
+    juce::String fact, pad;
+    bool chevron = false;
     // A file heard as it plays (the current row only): the row fills in the
     // accent from the left as far as `played` (0..1; < 0 none), faint as
     // `played_wake` fades, with a thin head at the fill's end as strong as
@@ -79,6 +85,14 @@ inline KeyTile word_tile(Icon i, juce::String word, bool primary = false, juce::
 inline KeyTile value_tile(Icon i, juce::String big, juce::String sub, bool primary = false) {
     KeyTile t; t.icon = i; t.big = std::move(big); t.sub = std::move(sub); t.primary = primary; return t;
 }
+// A word with a small line under it ("SAVE" over the project's name).
+inline KeyTile word_sub_tile(Icon i, juce::String word, juce::String sub, bool primary = false) {
+    KeyTile t; t.icon = i; t.word = std::move(word); t.sub = std::move(sub); t.primary = primary; return t;
+}
+// A sheet behind Push as it opens: the one action most likely wanted as the
+// tile under B3, B2 MORE (how many others) for the rest as a list, over a
+// dimmed page; the keys say BACK, MORE and the verb.
+void likely_sheet(Paint& p, const KeyTile& likely, unsigned others);
 
 // The question before an erase or a loss, asked in words as a person would:
 // a glyph and the question ("Clear pattern 2?"), one or two short plain lines

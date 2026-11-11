@@ -145,7 +145,7 @@ void sampler_pills(Paint& p, float y, std::initializer_list<juce::String> texts,
 }
 
 void draw_filter_curve(Paint& p, float x, float y, float w, float h, unsigned shape, unsigned poles, float cutoff, float q,
-                       juce::Colour c, juce::Colour marker) {
+                       juce::Colour c, juce::Colour marker, bool labels) {
     juce::Path line, area;
     float cx = x;
     for (int n = 0; n <= 120; ++n) {
@@ -163,17 +163,17 @@ void draw_filter_curve(Paint& p, float x, float y, float w, float h, unsigned sh
     p.g.setColour(c.withAlpha(0.14f)); p.g.fillPath(area);
     p.g.setColour(c); p.g.strokePath(line, juce::PathStrokeType(1.5f));
     p.fill(cx, y, 1, h, marker);
-    auto axis = caps_text(colour::dim);
-    p.text("20 HZ", x, y + h + 3, 40, 9, axis); p.text("200", x + w / 3 - 10, y + h + 3, 40, 9, axis);
-    p.text("2 K", x + 2 * w / 3 - 10, y + h + 3, 40, 9, axis); p.text("20 K", x + w - 40, y + h + 3, 40, 9, axis, juce::Justification::centredRight);
+    if (!labels) return;
+    auto axis = plain(colour::dim, type::small, Weight::SemiBold); // units as written
+    p.text("20 Hz", x, y + h + 3, 44, 12, axis); p.text("200 Hz", x + w / 3 - 18, y + h + 3, 50, 12, axis);
+    p.text("2 kHz", x + 2 * w / 3 - 16, y + h + 3, 50, 12, axis); p.text("20 kHz", x + w - 50, y + h + 3, 50, 12, axis, juce::Justification::centredRight);
 }
 
 void draw_envelope(Paint& p, float x, float y, float w, float h, double length, double a, double d, float sustain, double r, bool fade_end,
-                   unsigned track) {
+                   unsigned track, float soft) {
     length = std::max(length, 0.01);
     auto x_of = [&](double t) { return x + float(std::clamp(t / length, 0.0, 1.0)) * w; };
     float top = y + 2, base = y + h - 2;
-    auto y_of = [&](float l) { return base - l * (base - top); };
     struct Seg { double t0, t1; float l0, l1; unsigned knob; };
     std::array<Seg, 4> segs;
     if (fade_end) { // held at the top, then faded over the decay before the end
@@ -183,11 +183,33 @@ void draw_envelope(Paint& p, float x, float y, float w, float h, double length, 
         segs = {Seg {0, a, 0, 1, 0}, Seg {a, a + d, 1, sustain, 1}, Seg {a + d, std::max(a + d, length - r), sustain, sustain, 3},
                 Seg {std::max(a + d, length - r), length, sustain, 0, 2}};
     }
+    auto shape = [&](float scale) { // the whole envelope at `scale` of full height, as one path
+        juce::Path path;
+        path.startNewSubPath(x_of(0), base);
+        for (const auto& sg : segs) {
+            if (sg.t1 <= sg.t0) continue;
+            path.lineTo(x_of(sg.t1), base - sg.l1 * scale * (base - top));
+        }
+        return path;
+    };
+    // The softer hit (K3, velocity): the same shape lower, dashed; then the envelope's area, faint.
+    if (soft < 0.99f) {
+        juce::Path dashed;
+        juce::PathStrokeType(1.3f).createDashedStroke(dashed, shape(soft), std::array<float, 2> {3, 3}.data(), 2);
+        p.g.setColour(knob_shade(track, 2)); p.g.fillPath(dashed);
+    }
+    juce::Path area = shape(1);
+    area.lineTo(x_of(length), base); area.closeSubPath();
+    p.g.setColour(track_colour(track).withAlpha(0.1f)); p.g.fillPath(area);
+    // Each part in the colour of the knob that moves it, with a handle where the knob's part ends.
+    auto y_of = [&](float l) { return base - l * (base - top); };
     for (const auto& sg : segs) {
         if (sg.t1 <= sg.t0) continue;
         p.g.setColour(sg.knob == 3 ? colour::mid : knob_shade(track, sg.knob));
-        p.g.drawLine(x_of(sg.t0), y_of(sg.l0), x_of(sg.t1), y_of(sg.l1), 1.5f);
+        p.g.drawLine(x_of(sg.t0), y_of(sg.l0), x_of(sg.t1), y_of(sg.l1), 2);
     }
+    for (const auto& sg : segs)
+        if (sg.t1 > sg.t0 && sg.knob < 2) p.circle(x_of(sg.t1), y_of(sg.l1), 3.5f, knob_shade(track, sg.knob));
 }
 
 void sampler_rows_wheel(Context& c, int delta) {

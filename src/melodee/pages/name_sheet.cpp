@@ -2,10 +2,12 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // THE NAME SHEET: typing a name, over any page. The pads type like phone
 // keys (two letters a pad, a second tap within 0.6 s for the other; pad 14
-// space, pad 15 digits and signs, pad 16 delete), the wheel moves the
+// space, pad 15 digits and signs, pad 16 delete): each pad shows both, the
+// one a tap gives now bright, swapping as you tap. The wheel moves the
 // cursor, Shift + wheel or K2 turns the character under it, Erase deletes
-// (with Shift, everything), K1 fills in a ready name. B1 cancels, B2 is
-// Aa, B3 or Push keeps it. Opens for Save and Rename on Project, Shift +
+// (with Shift, everything), K1 fills in a ready name; a thin gauge under the
+// name is how much of its room it takes. B1 cancels, B2 is Aa, B3 SAVE or
+// Push keeps it. Opens for Save and Rename on Project, Shift +
 // Push on a Song marker, Save sound, Save Sample and Save Bank (Shift +
 // Sample Select).
 #include "melodee/engine/engine_info.h"
@@ -20,7 +22,7 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
     bool sound = e.target == NameTarget::Sound || e.target == NameTarget::Sample || e.target == NameTarget::Bank;
     auto accent = sound ? colour_of(s) : colour::text;
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
-    soft_keys(p, {{"CANCEL", e.caps_only ? "" : "Aa", "DONE"}, e.lower ? 1 : 2, accent, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
+    soft_keys(p, {{"CANCEL", e.caps_only ? "" : "Aa", "SAVE"}, e.lower ? 1 : 2, accent, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
 
     juce::String what;
     switch (e.target) {
@@ -37,40 +39,44 @@ void draw_name_sheet(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.clear(); h.right.clear();
     h.left.push_back(pill(what, accent));
-    h.right.push_back(pill(juce::String(e.length) + " / " + juce::String(e.limit)));
     header(p, h);
 
-    // The field, with the cursor.
-    float fx = zone::pad, fy = zone::picture_y + 1, fw = zone::width - 2 * zone::pad, fh = 30;
-    p.fill(fx, fy, fw, fh, colour::surf, 5);
-    p.ring(fx, fy, fw, fh, colour::line, 5);
+    // The field with the cursor, and how much of its room the name takes as a thin gauge under it.
+    float fx = zone::pad, fy = zone::picture_y + 4, fw = zone::width - 2 * zone::pad, fh = 28;
+    p.fill(fx, fy, fw, fh, colour::panel, 4);
     juce::String text = juce::String::fromUTF8(e.text, int(e.length));
-    auto style = p.fit(text.isEmpty() ? "M" : text, plain(colour::text, 18, Weight::SemiBold), fw - 20, type::floor);
-    float tx = fx + 9, ty = fy + 3;
-    p.text(text, tx, ty, fw - 18, 24, style);
+    auto style = p.fit(text.isEmpty() ? "M" : text, plain(colour::text, type::title, Weight::SemiBold), fw - 20, type::floor);
+    float tx = fx + 8, ty = fy + 3;
+    p.text(text, tx, ty, fw - 16, 22, style);
     float cx = tx + p.width(text.substring(0, e.cursor), style);
-    p.fill(cx, fy + 6, 1.5f, fh - 12, accent);
-    if (text.isEmpty()) p.text("Type on the pads", tx + 6, ty, fw - 24, 24, plain(colour::dim, type::body));
+    p.fill(cx + 1, fy + 5, 2, fh - 10, accent);
+    p.fill(fx, fy + fh + 3, fw, 2, colour::line, 1);
+    p.fill(fx, fy + fh + 3, fw * e.length / std::max<float>(1, e.limit), 2, colour::sec, 1);
 
-    // The pads as they sit: what each types, the one just hit lit.
-    constexpr float gap = 2, top = zone::picture_y + 35;
-    float cw = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (zone::knobs_y - 2 - top - 3 * gap) / 4;
+    // The pads as they sit: both letters, the one a tap gives now bright; the pad just hit lit.
+    constexpr float gx = 4, gy = 3, top = zone::picture_y + 42;
+    float cw = (zone::width - 2 * zone::pad - 3 * gx) / 4, ch = (zone::knobs_y - 1 - top - 3 * gy) / 4;
     bool fresh = e.last_pad >= 0 && s.now - e.last_at < NameEntry::retap_ms;
     for (unsigned n = 0; n < 16; ++n) {
         unsigned row = 3 - n / 4, column = n % 4;
-        float x = zone::pad + column * (cw + gap), y = top + row * (ch + gap);
+        float x = zone::pad + column * (cw + gx), y = top + row * (ch + gy), mid = y + ch / 2;
         bool lit = fresh && e.last_pad == int(n);
-        p.fill(x, y, cw, ch, lit ? accent : colour::raised, 4);
-        juce::String label;
+        p.fill(x, y, cw, ch, lit ? accent : colour::surf, 3);
+        auto ink = lit ? colour::bg : colour::text, faint = lit ? colour::bg.withAlpha(0.5f) : colour::mid;
         if (n < 13) {
-            for (unsigned k = 0; k < e.pad_choices(n); ++k) label += juce::String::charToString(juce::juce_wchar(e.pad_char(n, k)));
+            unsigned choices = e.pad_choices(n), next = lit && choices > 1 ? (e.taps + 1u) % choices : 0;
+            auto letter = [&](unsigned k) { return juce::String::charToString(juce::juce_wchar(e.pad_char(n, k))); };
+            if (choices < 2) { p.text(letter(0), x, y, cw, ch, plain(ink, type::list, Weight::SemiBold), juce::Justification::centred); continue; }
+            for (unsigned k = 0; k < 2; ++k)
+                p.text(letter(k), x + cw / 2 - 18 + k * 18, y, 18, ch, plain(k == next ? ink : faint, type::list, k == next ? Weight::SemiBold : Weight::Medium),
+                       juce::Justification::centred);
+        } else if (n == 13) {
+            icon(p, Icon::SpaceBar, x + cw / 2 - 9, mid - 9, 18, lit ? ink : colour::sec, 1.5f);
+        } else if (n == 14) {
+            p.text(e.digits ? "ABC" : "123", x, y, cw, ch, plain(lit ? ink : colour::sec, type::body, Weight::SemiBold), juce::Justification::centred);
         } else {
-            label = n == 13 ? "SPACE" : n == 14 ? (e.digits ? "ABC" : "123") : "DEL";
+            icon(p, Icon::ArrowLeft, x + cw / 2 - 7, mid - 7, 14, lit ? ink : colour::sec, 1.6f);
         }
-        auto ls = n < 13 ? plain(lit ? colour::bg : colour::text, type::body, Weight::SemiBold) : caps_text(lit ? colour::bg : colour::mid);
-        p.text(label, x, y, cw, ch, ls, juce::Justification::centred);
-        if (lit && n < 13 && e.pad_choices(n) > 1) // which of its letters is in
-            p.fill(x + cw / 2 - 7 + 8 * e.taps, y + ch - 4, 6, 1.5f, colour::bg);
     }
 }
 

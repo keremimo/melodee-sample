@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// EDIT (Push on a track): one engine page at a time, with its curve as the
-// picture. B1 and B3 name the neighbouring pages and go there; the wheel
-// moves between rows of three; K1-K3 edit the row in view.
+// EDIT (Push on Keys): one engine page at a time, its curve filling the
+// picture with every parameter named at the point it moves, in its knob's
+// colour while it is on the row the pots hold, dim otherwise (the rest of the
+// page's parameters listed small at the top right), so nothing hides behind
+// a row count. B1 and B3 name the neighbouring pages and go there, B2 MAP
+// (its dots the page in view) opens the page map; the wheel moves between
+// rows of three; K1-K3 edit the row in view.
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/prophet_params.h"
@@ -10,6 +14,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/ui/widgets.h"
+#include <algorithm>
 #include <cmath>
 #include <complex>
 
@@ -17,8 +22,8 @@ namespace melodee {
 namespace {
 using namespace ui;
 
-// The picture's box at device size: 308 x 105 below the title.
-constexpr float px = zone::pad, py = zone::picture_y + 27, pw = zone::width - 2 * zone::pad, ph = 105;
+// The picture's box at device size: the whole picture, a line left under it for the axis.
+constexpr float px = zone::pad, py = zone::picture_y + 4, pw = zone::width - 2 * zone::pad, ph = 124;
 
 const EditPage& current_page(const Snapshot& s, unsigned& index) {
     const auto& info = engine_info(s.track().engine);
@@ -39,6 +44,39 @@ void axis(Paint& p, const juce::String& left, const juce::String& middle, const 
     p.text(left, px, y, 100, 9, style);
     p.text(middle, px + pw / 2 - 50, y, 100, 9, style, juce::Justification::centred);
     p.text(right, px + pw - 100, y, 100, 9, style, juce::Justification::centredRight);
+}
+
+// A parameter's name where it acts on the picture, in its shade.
+void name_at(Paint& p, const Snapshot& s, const EditPage& page, int id, float x, float y, juce::Justification j) {
+    if (id < 0) return;
+    juce::String label = engine_info(s.track().engine).params[id].label;
+    auto style = caps_text(shade_of(s, page, id));
+    float w = p.width(label, style) + 1;
+    float lx = j == juce::Justification::centredRight ? x - w : j == juce::Justification::centred ? x - w / 2 : x;
+    lx = std::clamp(lx, px, px + pw - w);
+    p.fill(lx - 2, y, w + 4, 14, colour::bg.withAlpha(0.7f), 2);
+    p.text(label, lx, y, w, 14, style);
+}
+
+// The page's parameters the picture does not draw: small at the top left, name and value, in their shades.
+void legend(Paint& p, const Snapshot& s, const EditPage& page, std::initializer_list<int> drawn) {
+    const auto& info = engine_info(s.track().engine);
+    const auto& v = s.track().params;
+    float y = py;
+    for (const auto& row : page.rows)
+        for (int id : row) {
+            if (id < 0 || std::find(drawn.begin(), drawn.end(), id) != drawn.end()) continue;
+            auto shown = show(info.params[id], v[size_t(id)]);
+            juce::String value = juce::String(shown.value) + (shown.unit.empty() ? "" : " " + juce::String(shown.unit));
+            auto vs = plain(shade_of(s, page, id) == colour::mid ? colour::dim : colour::sec, type::small, Weight::SemiBold);
+            juce::String label = info.params[id].label;
+            auto ls = caps_text(shade_of(s, page, id) == colour::mid ? colour::dim : shade_of(s, page, id));
+            float lw = p.width(label, ls) + 1;
+            p.fill(px, y, lw + 8 + p.width(value, vs) + 4, 14, colour::bg.withAlpha(0.7f), 2);
+            p.text(label, px + 2, y, lw, 14, ls);
+            p.text(value, px + 2 + lw + 6, y, p.width(value, vs) + 1, 14, vs);
+            y += 14;
+        }
 }
 
 juce::String hertz(float hz) {
@@ -96,6 +134,10 @@ void filter_picture(Paint& p, const Snapshot& s, const EditPage& page) {
     juce::PathStrokeType(1).createDashedStroke(dashed, mark, dash, 2);
     p.g.setColour(shade_of(s, page, Cutoff)); p.g.fillPath(dashed);
     if (v[Resonance] > 5) p.circle(peak_x, peak_y, 3.5f, shade_of(s, page, Resonance));
+    name_at(p, s, page, Cutoff, cx - 4, py + ph - 18, juce::Justification::centredRight);
+    name_at(p, s, page, Resonance, peak_x, std::max(py, peak_y - 18), juce::Justification::centred);
+    if (v[EnvAmount] > 0) name_at(p, s, page, EnvAmount, std::min(x_of(std::min(opened, 20000.0f)), px + pw - 30), py + 20, juce::Justification::centred);
+    legend(p, s, page, {Cutoff, Resonance, EnvAmount});
     axis(p, "20 Hz", hertz(cutoff), "20 kHz");
 }
 
@@ -123,11 +165,16 @@ void envelope_picture(Paint& p, const Snapshot& s, const EditPage& page) {
     segment(x1, y_of(1), x2, y_of(level), shade_of(s, page, d));
     segment(x2, y_of(level), x3, y_of(level), shade_of(s, page, su));
     segment(x3, y_of(level), x4, bottom, shade_of(s, page, r));
+    name_at(p, s, page, a, (x0 + x1) / 2 + 4, y_of(0.55f), juce::Justification::centredLeft);
+    name_at(p, s, page, d, (x1 + x2) / 2 + 6, y_of((1 + level) / 2) - 16, juce::Justification::centredLeft);
+    name_at(p, s, page, su, (x2 + x3) / 2, y_of(level) - 18, juce::Justification::centred);
+    name_at(p, s, page, r, (x3 + x4) / 2 + 4, y_of(level / 2), juce::Justification::centredLeft);
+    legend(p, s, page, {a, d, su, r});
     auto shown = [&](int id) { auto t = show(engine_info(s.track().engine).params[id], v[size_t(id)]); return t.value + " " + t.unit; };
     axis(p, shown(a), shown(d), shown(r));
 }
 
-void wave_picture(Paint& p, const Snapshot& s, bool b) {
+void wave_picture(Paint& p, const Snapshot& s, const EditPage& page, bool b) {
     using namespace prophet;
     const auto& v = s.track().params;
     float saw = v[b ? SawB : SawA], pulse = v[b ? PulseB : PulseA], tri = b ? v[TriB] : 0;
@@ -143,6 +190,7 @@ void wave_picture(Paint& p, const Snapshot& s, bool b) {
         if (n == 0) line.startNewSubPath(x, mid - y * amp); else line.lineTo(x, mid - y * amp);
     }
     p.fill(px, mid, pw, 1, colour::line);
+    legend(p, s, page, {});
     if (saw + pulse + tri == 0) { axis(p, "", "silent", ""); return; }
     p.g.setColour(colour_of(s));
     p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
@@ -150,7 +198,7 @@ void wave_picture(Paint& p, const Snapshot& s, bool b) {
     axis(p, "", f.value + " " + f.unit, "");
 }
 
-void lfo_picture(Paint& p, const Snapshot& s) {
+void lfo_picture(Paint& p, const Snapshot& s, const EditPage& page) {
     using namespace prophet;
     const auto& v = s.track().params;
     juce::Path line;
@@ -169,6 +217,7 @@ void lfo_picture(Paint& p, const Snapshot& s) {
     p.fill(px, mid, pw, 1, colour::line);
     p.g.setColour(colour_of(s));
     p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
+    legend(p, s, page, {});
     auto r = show(engine_info(s.track().engine).params[LfoRate], v[LfoRate]);
     axis(p, "", r.value + " " + r.unit, "");
 }
@@ -288,15 +337,19 @@ void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     Header h = header_of(s);
     if (s.track().engine == EngineKind::Plugin) { // the plug-in's own parameters, three at a time; B1 another from the card, B2 its presets
+        const auto& panel = s.ui.plugin_panel;
+        bool ours = panel.entry == s.track().plugin;
+        if (ours && panel.status == PluginStatus::Ready) // the share of each audio block it takes
+            h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
         h.right.push_back(tag_of(s, s.ui.track));
-        bool presets = s.ui.plugin_panel.entry == s.track().plugin && s.ui.plugin_panel.programs > 0;
+        bool presets = ours && panel.programs > 0;
         frame(p, s, {{"PLUG-INS", presets ? "PRESETS" : "", ""}, -1, c}, h);
-        if (s.track().plugin >= max_plugins) {
-            p.text("B1 picks a plug-in from the card", zone::pad, zone::picture_y, zone::width - 12, 40, plain(colour::dim, type::small, Weight::Medium),
-                   juce::Justification::centred);
+        if (s.track().plugin >= max_plugins) { // none yet: B1 picks one from the card
+            icon(p, Icon::Plug, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
+            p.text("NONE", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
             return;
         }
-        draw_plugin_view(p, s, s.track().plugin, c, zone::picture_y);
+        draw_plugin_view(p, s, s.track().plugin, zone::picture_y);
         return;
     }
     if (!info.page_count) {
@@ -311,34 +364,25 @@ void draw(Paint& p, const Snapshot& s) {
     unsigned count = edit_page_count(info);
     const auto& before = edit_page_at(info, index + count - 1);
     const auto& after = edit_page_at(info, index + 1);
+    h.left.push_back(pill(juce::String(page.title).toUpperCase(), c)); // the page in view: no title row under it
     if (page.picture == Picture::Mod && !s.ui.map_open) {
         unsigned used = 0;
         for (const auto& r : s.track().mods) used += r.used();
-        h.left.push_back(pill(juce::String(used) + " OF " + juce::String(mod_routes) + " ROUTES"));
+        h.left.push_back(pill(Icon::Modulation, juce::String(used) + " / " + juce::String(mod_routes)));
     }
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{juce::String::fromUTF8("\xe2\x80\xb9 ") + before.key,
-                    "PAGE " + juce::String(index + 1) + " / " + juce::String(count),
-                    juce::String(after.key) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c};
+    SoftKeys keys {{before.key, "MAP", after.key}, s.ui.map_open ? 1 : -1, c};
+    keys.glyphs[0] = Icon::ChevronLeft; keys.after[2] = Icon::ChevronRight;
+    keys.dots[1] = uint8_t(std::min(count, 16u)); keys.dot_at[1] = uint8_t(index);
     frame(p, s, keys, h);
     if (s.ui.map_open) { page_map(p, s, info); return; }
     if (page.picture == Picture::Mod) { mod_picture(p, s); return; }
-
-    float top = zone::picture_y;
-    p.text(page.title, px, top, pw - 90, 22, plain(colour::text, type::title, Weight::SemiBold));
-    unsigned rows = page.row_count();
-    if (rows > 1) {
-        unsigned row = s.ui.edit_row[s.ui.track] % rows;
-        float dots = page_dots(p, px + pw, top + 11, int(rows), int(row), c, true);
-        juce::String label = "ROW " + juce::String(row + 1) + " / " + juce::String(rows);
-        p.text(label, px, top, pw - dots - 6, 22, caps_text(colour::mid), juce::Justification::centredRight);
-    }
     switch (page.picture) {
     case Picture::Filter: filter_picture(p, s, page); break;
     case Picture::Envelope: envelope_picture(p, s, page); break;
-    case Picture::Wave: wave_picture(p, s, false); break;
-    case Picture::WaveB: wave_picture(p, s, true); break;
-    case Picture::Lfo: lfo_picture(p, s); break;
+    case Picture::Wave: wave_picture(p, s, page, false); break;
+    case Picture::WaveB: wave_picture(p, s, page, true); break;
+    case Picture::Lfo: lfo_picture(p, s, page); break;
     case Picture::Mixer: mixer_picture(p, s, page); break;
     case Picture::Bars: bars_picture(p, s, page); break;
     case Picture::Route: route_picture(p, s); break;

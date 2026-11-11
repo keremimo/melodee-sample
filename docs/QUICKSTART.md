@@ -94,8 +94,9 @@ number. B1 is DEVICE and PROGRAM, B3 ARP.
 
 ![Stage CC on a MIDI track](images/quickstart/stagemidicc.png)
 
-An empty track offers B1 SYNTH, B2 KIT, B3 MIDI: pick with the knobs,
-then Push makes the track that. One of SYNTH's engines is **PLUGIN**: a VST3
+An empty track offers three doors as tiles: SYNTH, KIT and MIDI, the knob
+under each choosing (K1 the engine, K2 where a kit's first sound comes from,
+K3 the MIDI port); the key under a tile makes that track. One of SYNTH's engines is **PLUGIN**: a VST3
 or VST2 instrument from a `Plugins` folder at the top of the card (Linux
 ARM builds only; the picker dims the rest and says why).
 
@@ -230,7 +231,9 @@ The pads are the loops too, a column each: the top row records and
 overdubs, the next plays or stops on the next bar, the third undoes the
 last overdub, and the bottom row held clears the loop.
 
-**B3 MORE** holds the rest: stop, undo, **Commit to pad** (the loop onto
+**B3 MORE** opens the loop's sheet on what you most likely want (play or
+stop it on the next bar; before a take, where it records from), and its
+**B2 MORE** holds the rest: stop, undo, **Commit to pad** (the loop onto
 the next empty pad of the selected kit track, + a note at bar 1 if you
 like), clear and Looper off. **B2 MIX** is L1–L4's levels, pans and sends;
 Shift + Knob FX opens a loop's effects.
@@ -241,15 +244,15 @@ Loops are saved with the project, next to its file.
 
 ## 8. Save the project
 
-Press **Shift + Pad 16** for Project. Turn the wheel to the open project
-(marked OPEN) and Push for its sheet. **Save** is first: B3 DO IT or
-Push.
+Press **Shift + Pad 16** for Project: **B1 SAVE**, B2 OPEN (the projects
+on the card), B3 NEW. Save is one press (Push too). In the list, Push on a
+project opens its sheet on Save or Load; B2 MORE has the rest.
 
-![The open project's sheet](images/quickstart/filesheet.png)
+![Project: Save, Open, New](images/quickstart/project.png)
 
-The first time, Melodee asks for a name. The pads type like phone keys
-(pad 14 space, pad 15 digits, pad 16 delete), the wheel moves the cursor.
-B3 or Push saves, B1 cancels.
+The first time, Melodee asks for a name. The pads type like phone keys,
+each showing the letter a tap gives now (pad 14 space, pad 15 digits, pad
+16 delete), the wheel moves the cursor. B3 SAVE or Push saves, B1 cancels.
 
 ![Naming a project](images/quickstart/nameproject.png)
 

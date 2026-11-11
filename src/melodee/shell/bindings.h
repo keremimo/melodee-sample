@@ -25,7 +25,7 @@ struct Binding {
         PadPitch, PadLevel, PadPan,        // the last pad hit on a sampler track
         PadStart, PadEnd, TrimZoom,        // Trim, in milliseconds of the sample
         ChopMode, ChopAmount, ChopStart,   // Chop; ChopStart in milliseconds (id: the slice)
-        FileJump,                          // Samples
+        FileJump, PluginJump,              // Samples, the plug-in picker
         RecThreshold, RecLength, RecGain,  // Record and Input Config (RecLength: 0 Free, 1 Seq, 2.. 1..16 bars)
         ProjectJump, ProjectSort,          // Project
         Tempo, ClickLevel,                 // Tempo (Swing as on Length)

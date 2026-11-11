@@ -23,6 +23,7 @@ enum class Icon : uint8_t {
     Star, Saw, Sine, Fm, Chip, Drum, Din, Keyboard,
     Save, Copy, Flag, Magnet, Metro, Tie, Slide, Accent, Pin, Gear, Info,
     Cloud, Tape, Clock, Swap, Route, Bars, Sliders, Layers, Screen, File, Wheel,
+    ArrowLeft, SpaceBar,
     Count
 };
 

@@ -34,6 +34,10 @@ struct PluginPanel {
     uint16_t load = 0;             // the share of a block it takes, in tenths of a percent
     uint16_t programs = 0;         // its named programs (presets), for PRESETS
     std::array<PluginPanelParam, 3> params {};
+    // The six parameters around the row in hand, its own three among them (the row before, or at the top the row
+    // after), for the page's list; `window_first` the first one's place in the list of shown ones.
+    std::array<PluginPanelParam, 6> window {};
+    uint16_t window_first = 0;
 };
 
 // A plug-in's programs as PRESETS lists them: the named ones, each with its

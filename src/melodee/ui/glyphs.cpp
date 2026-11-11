@@ -148,6 +148,8 @@ Shape make(Icon icon) {
     case Icon::Screen: s = box(3, 5, 18, 13, 2) + "M9 21 H15"; break;
     case Icon::File: s = "M6 2 H14 L19 7 V22 H6 Z M14 2 V7 H19"; break;
     case Icon::Wheel: s = circle(12, 12, 8.5f); f = circle(12, 6.6f, 1.6f); break;
+    case Icon::ArrowLeft: s = "M20 12 H5 M11 6 L5 12 L11 18"; break;
+    case Icon::SpaceBar: s = "M4 9 V15 H20 V9"; break;
     }
     return {svg_path(s.c_str()), svg_path(f.c_str())};
 }

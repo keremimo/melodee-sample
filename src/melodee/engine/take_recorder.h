@@ -59,10 +59,12 @@ public:
         if (s == State::Recording) state_.store(frames_.load() ? State::Done : State::Idle);
     }
     void process(const float* l, const float* r, unsigned n) {
-        float peak = 0;
-        for (unsigned f = 0; f < n; ++f) peak = std::max({peak, std::fabs(l[f]), std::fabs(r[f])});
-        float shown = level_.load(std::memory_order_relaxed) * 0.95f;
-        level_.store(std::max(peak, shown), std::memory_order_relaxed);
+        float peak_l = 0, peak_r = 0;
+        for (unsigned f = 0; f < n; ++f) { peak_l = std::max(peak_l, std::fabs(l[f])); peak_r = std::max(peak_r, std::fabs(r[f])); }
+        float peak = std::max(peak_l, peak_r);
+        level_.store(std::max(peak, level_.load(std::memory_order_relaxed) * 0.95f), std::memory_order_relaxed);
+        level_l_.store(std::max(peak_l, level_l_.load(std::memory_order_relaxed) * 0.95f), std::memory_order_relaxed);
+        level_r_.store(std::max(peak_r, level_r_.load(std::memory_order_relaxed) * 0.95f), std::memory_order_relaxed);
         auto s = state_.load();
         if (s == State::Armed && peak >= threshold) s = State::Recording, state_.store(s);
         if (s != State::Recording) return;
@@ -95,6 +97,8 @@ public:
     uint32_t frames() const { return frames_.load(std::memory_order_acquire); }
     uint32_t length() const { return limit_.load(); }
     float level() const { return level_.load(std::memory_order_relaxed); }
+    float level_left() const { return level_l_.load(std::memory_order_relaxed); }   // each side, for the stereo meter
+    float level_right() const { return level_r_.load(std::memory_order_relaxed); }
     uint8_t peak(unsigned column) const { return peaks[column % columns].load(std::memory_order_relaxed); }
     unsigned slot() const { return slot_.load(); }
 
@@ -116,7 +120,7 @@ private:
     std::atomic<State> state_ {State::Idle};
     std::atomic<uint32_t> frames_ {0}, limit_ {max_frames};
     std::atomic<unsigned> slot_ {0};
-    std::atomic<float> level_ {0};
+    std::atomic<float> level_ {0}, level_l_ {0}, level_r_ {0};
     std::array<std::atomic<uint8_t>, columns> peaks {};
 };
 

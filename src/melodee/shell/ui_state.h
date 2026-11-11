@@ -114,7 +114,8 @@ struct UiState {
     uint32_t midi_outputs = 0;
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
-    bool sheet_open = false;  // the note sheet over Roll
+    bool sheet_open = false;  // a sheet behind Push: Roll's note, a chain's device, a project's file
+    bool sheet_more = false;  // and past its likely action (B3) to all of them as a list (B2 MORE)
     uint8_t sheet_row = 0;
     // Roll (shell/roll.h): the cursor is step_cursor (a step of Q) and roll_key (a pitch), and the note
     // starting there on that key is in focus. roll_view: the first step in view; roll_top: the top row's key;
@@ -196,7 +197,8 @@ struct UiState {
     uint8_t rendering = 0;               // 0 none, 1 Resample, 2 the song's mixdown
     bool render_resume = false;          // Resample stopped what was playing: Play it again afterwards
     bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
-    uint16_t project_cursor = 0;  // Project: row under the cursor (0 is New project)
+    bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
+    uint16_t project_cursor = 0;  // Project: row under the cursor (0 is SD card access at the top)
     bool delete_armed = false;    // the file sheet's Delete asks once more
     uint8_t project_sort = 0;     // 0 newest first, 1 by name
     int8_t chord_pad = -1;        // Chord: the pad played last
@@ -222,8 +224,10 @@ struct UiState {
     bool move_open = false;                   // Project: the folder picker for Move to folder
     uint16_t move_cursor = 0;
     uint16_t user_sound_count = 0;            // sounds of one's own for the track's engine, copied in by the shell
-    uint8_t settings_cursor = 1;
+    uint8_t settings_cursor = 1;              // the row (Settings::Row) in hand behind a door
     bool settings_editing = false;            // Push opened the value under the cursor
+    uint8_t settings_door = 0;                // Settings: the door in hand (pages/settings_page.cpp)
+    bool settings_in = false;                 // and behind it: its rows
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

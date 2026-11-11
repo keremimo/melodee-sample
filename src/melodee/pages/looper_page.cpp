@@ -142,10 +142,21 @@ void draw_mix(Paint& p, const Snapshot& s) {
     }
 }
 
+// The sheet's likely job: with audio in the loop, play or stop it on the boundary; before, where it records from.
+LoopRow likely_row(bool audio) { return audio ? LoopRow::Toggle : LoopRow::Source; }
+
 void draw_sheet(Paint& p, const Snapshot& s) {
     unsigned loop = s.ui.loop % loop_tracks;
     const auto& v = s.loops[loop].view;
     bool audio = v.length > 0;
+    if (!s.ui.sheet_more) {
+        bool playing = v.state == S::Playing || v.state == S::Overdub;
+        auto tile = audio ? word_sub_tile(playing ? Icon::Stop : Icon::Play, playing ? "STOP" : "PLAY", "AT " + boundary_word(s).toUpperCase())
+                          : word_sub_tile(Icon::Mic, "SOURCE", juce::String(loop_source_name(s.project.looper.loops[loop].source)).toUpperCase());
+        tile.colour = loop_colour(loop);
+        likely_sheet(p, tile, unsigned(LoopRow::Count) - 1);
+        return;
+    }
     MenuSheet m;
     m.title = "L" + juce::String(loop + 1);
     m.detail = juce::String(looper::state_word(v.state));
@@ -184,7 +195,12 @@ void draw(Paint& p, const Snapshot& s) {
     SoftKeys keys {{"LOOPS", "MIX", "MORE"}, int(s.ui.looper_view % 2), loop_colour(loop)};
     if (!on) { keys = SoftKeys {{"", "", "TURN ON"}}; keys.glyphs[2] = Icon::Power; }
     if (making) keys = SoftKeys {{"", "", ""}};
-    if (on && s.ui.loop_sheet) keys = SoftKeys {{"BACK", "", "DO IT"}, -1, loop_colour(loop), {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
+    if (on && s.ui.loop_sheet && s.ui.sheet_more) keys = SoftKeys {{"BACK", "", "DO IT"}, 2, loop_colour(loop), {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
+    else if (on && s.ui.loop_sheet) { // the likely job under B3, MORE the rest
+        bool audio = v.length > 0, playing = v.state == S::Playing || v.state == S::Overdub;
+        keys = SoftKeys {{"BACK", "MORE", !audio ? "SOURCE" : playing ? "STOP" : "PLAY"}, 2, loop_colour(loop), {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+        keys.glyphs = {Icon::None, Icon::Layers, !audio ? Icon::Mic : playing ? Icon::Stop : Icon::Play};
+    }
     frame(p, s, keys, h);
     if (!on || making) { // L1-L4 as ghost lanes in their colours, the power glyph of B3 over them
         for (unsigned l = 0; l < loop_tracks; ++l) {
@@ -208,26 +224,34 @@ void draw(Paint& p, const Snapshot& s) {
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) { loop_grid_pad(c, pad, down); }
 
+// The likely job of the sheet: B3 or Push as it opens.
+void do_likely(Context& c) {
+    c.ui.loop_row = uint8_t(likely_row(c.host.looper().view(c.ui.loop % loop_tracks).length > 0));
+    loop_sheet_push(c);
+}
+
 void pick(Context& c, int delta) {
+    if (c.ui.loop_sheet && !c.ui.sheet_more) { c.ui.sheet_more = true; c.ui.loop_row = 0; return; } // turning on the likely tile: all of them
     if (c.ui.loop_sheet) { c.ui.loop_row = uint8_t((int(c.ui.loop_row) + delta + int(LoopRow::Count)) % int(LoopRow::Count)); return; }
     c.ui.loop = uint8_t((int(c.ui.loop) + delta + int(loop_tracks)) % int(loop_tracks));
 }
 
 void push(Context& c) {
     if (!c.project.looper.on) { set_looper(c, true); return; }
-    if (c.ui.loop_sheet) { loop_sheet_push(c); return; }
+    if (c.ui.loop_sheet) { if (c.ui.sheet_more) loop_sheet_push(c); else do_likely(c); return; }
     looper_do(c, looper::Do::Primary, c.ui.loop);
 }
 
 void soft(Context& c, int key) {
     auto& ui = c.ui;
     if (!c.project.looper.on) { if (key == 2) set_looper(c, true); return; }
-    if (ui.loop_sheet) {
-        if (key == 0) ui.loop_sheet = false;
-        if (key == 2) loop_sheet_push(c);
+    if (ui.loop_sheet) { // BACK, MORE, the likely job; on the list BACK, -, DO IT
+        if (key == 0) { if (ui.sheet_more) ui.sheet_more = false; else ui.loop_sheet = false; }
+        if (key == 1 && !ui.sheet_more) { ui.sheet_more = true; ui.loop_row = 0; }
+        if (key == 2) { if (ui.sheet_more) loop_sheet_push(c); else do_likely(c); }
         return;
     }
-    if (key == 2) { ui.loop_sheet = true; ui.loop_row = 0; return; }
+    if (key == 2) { ui.loop_sheet = true; ui.sheet_more = false; ui.loop_row = 0; return; }
     ui.looper_view = uint8_t(key);
 }
 } // namespace

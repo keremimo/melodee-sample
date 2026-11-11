@@ -28,12 +28,13 @@ float pad_icons(ui::Paint& p, float x, float y, const PadSound& pad, juce::Colou
 // A filter's response from 20 Hz to 20 kHz, filled under the line: shape 0
 // low, 1 band, 2 high pass; poles 2 or 4; cutoff in Hz, q its resonance.
 void draw_filter_curve(ui::Paint& p, float x, float y, float w, float h, unsigned shape, unsigned poles, float cutoff, float q,
-                       juce::Colour colour, juce::Colour marker);
+                       juce::Colour colour, juce::Colour marker, bool labels = true);
 // An envelope's line over a stretch of `seconds`: attack, decay to `sustain`,
 // held, release (seconds each); with `fade_end`, held at the top and faded
 // over `decay` before the end (the MPC's Decay From End).
 void draw_envelope(ui::Paint& p, float x, float y, float w, float h, double seconds, double attack, double decay, float sustain,
-                   double release, bool fade_end, unsigned track);
+                   double release, bool fade_end, unsigned track, float soft = 1); // soft < 1: the softer hit's envelope, dashed
+
 // The newest voice of `pad` playing `sound`'s sample (or its wake, still
 // fading) as a head over a file `frames` long (ui/waveform.h); nullptr: none.
 // The wake runs from the region's start (reversed: its end; after a loop

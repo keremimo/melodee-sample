@@ -269,7 +269,7 @@ void Shell::press(Button b, bool pressed) {
     case Button::TopRight: if (!repeat_soft(context_, 2)) page.soft(context_, 2); break;
     case Button::WheelPush:
         if (ui.shift && ui.page == PageId::Song) song_marker(context_);
-        else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
+        else if (ui.shift && ui.page == PageId::Project && ui.project_list && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
             // up a folder
             auto& f = context_.project_folder;
             auto cut = f.find_last_of('/');
@@ -473,6 +473,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     {
         const auto& r = host.recorder();
         out.take.state = uint8_t(r.state()); out.take.frames = r.frames(); out.take.length = r.length(); out.take.level = r.level();
+        out.take.left = r.level_left(); out.take.right = r.level_right();
         for (unsigned c = 0; c < out.take.peaks.size(); ++c) out.take.peaks[c] = r.peak(c);
         out.render_state = uint8_t(host.bounce().state()); out.render_frames = host.bounce().frames();
         out.recall_frames = host.recall().filled();

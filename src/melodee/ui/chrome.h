@@ -27,6 +27,7 @@ struct SoftKeys {
     // names a thing that is on or off and carries an LED after its label, lit while its `lit` bit is set,
     // instead of ON / OFF words. A toggle gets no bar at the top.
     std::array<Icon, 3> glyphs {};
+    std::array<Icon, 3> after {};       // a glyph after a label: the chain next along, "SENDS >"
     uint8_t toggles = 0;
     std::array<juce::Colour, 3> leds {colour::play, colour::play, colour::play};
     // A key whose label and glyph are drawn in this colour (a destructive verb in REC); transparent: the usual.
