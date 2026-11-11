@@ -26,7 +26,9 @@
 // hands it back. VST3 plug-ins are made on a JUCE message thread of the
 // rack's; 32-bit ARM ones run in a bridge process; the no-op GUI libraries
 // some link (libGL, libX11...) and the bridge's runtime come out of the
-// binary into /run the first time a plug-in loads.
+// binary into /run the first time a plug-in loads. Plug-ins keep their presets
+// and settings under $HOME, which is read only on the MPC: before one opens,
+// $HOME points at Melodee/Plugin Data on the card.
 namespace melodee {
 
 class EngineHost;
@@ -61,6 +63,11 @@ public:
     // K1-K3; a parameter by its place among the shown ones, 0..plugin_param_max.
     void panel(unsigned entry, unsigned row, PluginPanel& out) const;
     void set_param(unsigned entry, unsigned shown, int value);
+    // PRESETS: the plug-in's named programs, and one of them picked (by its
+    // number in the plug-in), switched to on the rack's thread. Picking the
+    // one it is on loads it again (edits since are dropped).
+    PluginPrograms programs(unsigned entry) const;
+    void select_program(unsigned entry, int program);
     PluginStatus status(unsigned entry) const;
     int instrument(unsigned entry) const; // 1, 0, or -1 while not known
 
@@ -95,7 +102,7 @@ private:
         PluginFile file;
     };
     struct Job {
-        enum class Kind : uint8_t { Load, Unload, Browse, Probe } kind = Kind::Browse;
+        enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program } kind = Kind::Browse;
         unsigned entry = 0;
         uint32_t generation = 0;
         std::string path;
@@ -105,6 +112,8 @@ private:
     void run();                                     // the rack's thread
     void load(const Job& job);
     void unload(unsigned entry, uint32_t generation);
+    void switch_program(unsigned entry, uint32_t generation, int program);
+    void use_plugin_home();                         // before a plug-in opens: $HOME on the card
     void list(const std::string& folder, int came_from);
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back

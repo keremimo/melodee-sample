@@ -523,6 +523,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::Jump, 0, 0, int(std::max(listed, 1u)) - 1, std::min<int>(ui.sounds_cursor, int(listed) - 1)},
                 Binding {Kind::Audition, 0, 1, 127, ui.audition_velocity}};
     }
+    case PageId::PluginPresets: return plugin_cards(ui, ui.presets_entry); // its row on K1-K3 while presets are heard
     case PageId::Edit: {
         if (track.engine == EngineKind::Plugin) return plugin_cards(ui, track.plugin);
         const auto& info = engine_info(track.engine);

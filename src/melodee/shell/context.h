@@ -218,6 +218,8 @@ public:
     void open_plugin_picker(UiState::PluginTarget target, unsigned chain = 0, unsigned slot = 0);
     void choose_plugin(const PluginFile& file);
     void set_plugin_param(int32_t id, int value);
+    void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
+    void choose_plugin_program(int index);    // PRESETS: Push on the row at `index`
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own

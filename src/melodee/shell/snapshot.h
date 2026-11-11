@@ -71,6 +71,7 @@ struct Snapshot {
     std::string files_folder;          // the folder listed (empty: the internal drive's categories)
     bool files_top = true;             // nothing above it (B1 has no job)
     PluginRack::View plugins;          // the PLUG-INS picker: the folder listed
+    PluginPrograms presets;            // PRESETS: the plug-in's programs
     ProjectStore::View projects;       // Project page and Exit
     std::string project_path, project_folder;
     bool dirty = false;

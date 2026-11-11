@@ -2,8 +2,9 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Plug-ins on the MIDI thread (docs/MELODEE.md, Plug-ins): the PLUG-INS picker
 // opened for a PLUGIN track's instrument or for a chain's slot, Push on a
-// plug-in there, the cards of the plug-in in view, and the rack kept in step
-// with the project (plugin/plugin_rack.h does the loading on its own thread).
+// plug-in there, PRESETS (its programs) and a pick there, the cards of the
+// plug-in in view, and the rack kept in step with the project
+// (plugin/plugin_rack.h does the loading on its own thread).
 //
 // A plug-in is an entry of Project::plugins: its path on the card. A PLUGIN
 // track names its entry; a Plugin effect names it in its first parameter. A
@@ -141,8 +142,29 @@ void Context::set_plugin_param(int32_t id, int value) {
     dirty = true;
 }
 
+void Context::open_plugin_presets(unsigned entry) {
+    if (!plugins || entry >= max_plugins) return;
+    auto programs = plugins->programs(entry);
+    if (programs.list.empty()) { notice("No presets in this plug-in"); return; }
+    ui.presets_entry = uint8_t(entry);
+    ui.presets_back = ui.page;
+    ui.presets_cursor = 0;
+    for (size_t n = 0; n < programs.list.size(); ++n)
+        if (programs.list[n].index == programs.current) ui.presets_cursor = uint16_t(n);
+    open(PageId::PluginPresets);
+}
+
+void Context::choose_plugin_program(int index) {
+    if (!plugins) return;
+    auto programs = plugins->programs(ui.presets_entry);
+    if (index < 0 || size_t(index) >= programs.list.size()) return;
+    plugins->select_program(ui.presets_entry, programs.list[size_t(index)].index);
+    dirty = true; // the plug-in's state, saved with the project, now holds it
+}
+
 int Context::plugin_in_focus() const {
     const auto& t = project.tracks[ui.track % track_count];
+    if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
     if (ui.page == PageId::Edit && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin;
     if (chain_page(ui.page) && !ui.picker_open) {
         unsigned n = page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];

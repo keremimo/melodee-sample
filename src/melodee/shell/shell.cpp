@@ -484,6 +484,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.project_path = context_.project_path; out.project_folder = context_.project_folder; out.dirty = context_.dirty;
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
     if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugins->view();
+    if (context_.plugins && ui_.page == PageId::PluginPresets) out.presets = context_.plugins->programs(ui_.presets_entry);
     if (library_) {
         const auto& t = project_->tracks[ui_.track];
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;

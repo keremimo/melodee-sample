@@ -438,7 +438,7 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
     std::snprintf(panel.format, sizeof(panel.format), "%s", format);
     if (status == PluginStatus::Failed) std::snprintf(panel.error, sizeof(panel.error), "libGL.so.1: cannot open shared object file");
     if (status != PluginStatus::Ready) return;
-    panel.rows = 8; panel.row = 1; panel.load = 216;
+    panel.rows = 8; panel.row = 1; panel.load = 216; panel.programs = 12;
     const char* names[] {"Cut Off", "Test for mono compatibility", "Time fraction"};
     const char* texts[] {"5.0", "7.2", "3.5"};
     const int16_t values[] {500, 720, 350};
@@ -647,6 +647,27 @@ const Preview previews[] {
          std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/DragonflyHallReverb.vst3");
          s.ui.fx_cursor[0] = 1;
          plugin_panel(s, 4, "Dragonfly Hall Reverb", "VST3", false, PluginStatus::Ready);
+     }},
+    {"rackpluginsheet", [](Shell&, Snapshot& s) { // Push on that plug-in: its sheet, with Presets
+         s.ui.page = PageId::Rack; s.ui.track = 0;
+         s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
+         s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/TONE3000.vst3");
+         s.ui.fx_cursor[0] = 1;
+         plugin_panel(s, 4, "TONE3000", "VST3", false, PluginStatus::Ready);
+         s.ui.plugin_panel.programs = 8;
+         s.ui.sheet_open = true; s.ui.sheet_row = 1;
+     }},
+    {"pluginpresets", [](Shell&, Snapshot& s) { // PRESETS for TONE3000 on track 1's chain: the eight factory ones, one loaded
+         s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Rack; s.ui.presets_entry = 4;
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/TONE3000.vst3");
+         plugin_panel(s, 4, "TONE3000", "VST3", false, PluginStatus::Ready);
+         auto& v = s.presets;
+         v.entry = 4;
+         const char* names[] {"Ampeg Bass Drive", "Bogner Fullstack", "Dumble Spread", "Marshall Bluesbreaker",
+                              "Matchless Crunch", "Mesa Pitch Shift", "Stereo Crunch Verb", "Stereo Fuzz"};
+         for (int i = 0; i < 8; ++i) v.list.push_back({i, names[i]});
+         v.current = 3; s.ui.presets_cursor = 4;
      }},
     {"pickerplugins", [](Shell&, Snapshot& s) { // the effect picker on the Plug-ins family
          s.ui.page = PageId::Rack; s.ui.track = 0; s.ui.picker_open = true; s.ui.picker_family = uint8_t(Family::Plugins); s.ui.picker_items = true;

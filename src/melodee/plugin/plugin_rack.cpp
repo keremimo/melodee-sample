@@ -116,6 +116,27 @@ bool hidden(const juce::AudioProcessorParameter& p) {
     auto name = p.getName(64);
     return !p.isAutomatable() || name.startsWith("MIDI Ch.") || name.startsWith("MIDI CC");
 }
+
+// The programs PRESETS lists: those with a name. Plug-ins that keep a fixed
+// number of slots name the unused ones "(empty)" (TONE3000), or leave them blank.
+std::vector<PluginProgram> named_programs(juce::AudioPluginInstance& instance) {
+    std::vector<PluginProgram> out;
+    for (int i = 0; i < instance.getNumPrograms(); ++i) {
+        auto name = instance.getProgramName(i).trim();
+        if (name.isEmpty() || name.equalsIgnoreCase("(empty)")) continue;
+        out.push_back({i, name.toStdString()});
+    }
+    return out;
+}
+
+// Where plug-ins keep presets and settings: Melodee/Plugin Data on the card,
+// as their home folder. They lay it out as on a Linux computer: most under
+// .config (TONE3000: .config/TONE3000/Presets), which a Mac's Finder hides.
+fs::path plugin_home(const std::string& card_top) {
+    if (const char* own = std::getenv("MELODEE_PLUGIN_HOME")) return own;
+    if (card_top.empty()) return {};
+    return fs::path(card_top) / "Melodee" / "Plugin Data";
+}
 } // namespace
 
 // What the audio thread runs (PluginRunner): the plug-in, its buffers made up
@@ -182,6 +203,9 @@ public:
     std::atomic<float> load {0};         // share of a block's time
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
+    std::vector<PluginProgram> programs; // its named programs, as it listed them on opening
+    int program = -1;                    // the one picked last here (under the rack's lock)
+    bool switching = false;              // a pick queued for the rack's thread (under the rack's lock)
 
 private:
     struct Midi { uint8_t status = 0, data1 = 0, data2 = 0; };
@@ -378,6 +402,7 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
     out.rows = uint16_t((h->shown.size() + 2) / 3);
     out.row = uint16_t(out.rows ? std::min<unsigned>(row, out.rows - 1u) : 0);
     out.load = uint16_t(std::clamp(h->load.load(std::memory_order_relaxed) * 1000.0f, 0.0f, 9999.0f));
+    out.programs = uint16_t(std::min<size_t>(h->programs.size(), 0xffff));
     const auto& params = h->instance->getParameters();
     for (unsigned k = 0; k < 3; ++k) {
         size_t at = size_t(out.row) * 3 + k;
@@ -400,6 +425,82 @@ void PluginRack::set_param(unsigned entry, unsigned shown_index, int value) {
     auto* p = h->instance->getParameters()[h->shown[shown_index]];
     float v = std::clamp(value, 0, plugin_param_max) / float(plugin_param_max);
     p->setValue(v);
+}
+
+PluginPrograms PluginRack::programs(unsigned entry) const {
+    PluginPrograms out;
+    out.entry = uint8_t(entry);
+    if (entry >= max_plugins) return out;
+    std::lock_guard<std::mutex> held(lock);
+    const auto& e = entries[entry];
+    if (!e.live || e.status != PluginStatus::Ready) return out;
+    out.list = e.live->programs;
+    out.current = e.live->program;
+    out.loading = e.live->switching;
+    return out;
+}
+
+void PluginRack::select_program(unsigned entry, int program) {
+    if (entry >= max_plugins) return;
+    Job job {Job::Kind::Program, entry, 0, {}, 0, program};
+    {
+        std::lock_guard<std::mutex> held(lock);
+        auto& e = entries[entry];
+        if (!e.live || e.status != PluginStatus::Ready) return;
+        e.live->program = program;
+        e.live->switching = true;
+        job.generation = e.generation;
+    }
+    push(std::move(job));
+    changed();
+}
+
+// Rack thread. A VST3 plug-in hears a program as its program parameter's
+// value, and a JUCE plug-in ignores the value it already holds, so the one it
+// is on (a freshly opened TONE3000 sits on 0 with nothing loaded) only loads
+// after another has gone through first: the controller takes the change from
+// JUCE's message thread (60 times a second) and the processor at its next
+// block, hence the wait.
+void PluginRack::switch_program(unsigned entry, uint32_t generation, int program) {
+    juce::AudioPluginInstance* instance = nullptr;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        auto& e = entries[entry];
+        if (e.generation != generation || !e.live) return; // changed since: the plug-in it was for is gone
+        instance = e.live->instance.get(); // freed only on this thread, so it outlives the switch
+    }
+    if (program >= 0 && program < instance->getNumPrograms()) {
+        if (instance->getCurrentProgram() == program && instance->getNumPrograms() > 1) {
+            instance->setCurrentProgram(program == 0 ? 1 : 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        }
+        instance->setCurrentProgram(program);
+    }
+    {
+        std::lock_guard<std::mutex> held(lock);
+        auto& e = entries[entry];
+        if (e.generation == generation && e.live && e.live->instance.get() == instance) e.live->switching = false;
+    }
+    changed();
+}
+
+// Rack thread, before a plug-in's library opens: $HOME on the card, made if
+// missing. Set only when it moves, as other threads may
+// read the environment.
+void PluginRack::use_plugin_home() {
+    std::string top;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        top = card_top;
+    }
+    fs::path home = plugin_home(top);
+    if (home.empty()) return;
+    std::error_code e;
+    fs::create_directories(home, e);
+    if (!fs::is_directory(home, e)) return;
+    const char* now = std::getenv("HOME");
+    if (now && home == fs::path(now)) return;
+    setenv("HOME", home.c_str(), 1);
 }
 
 void PluginRack::set_card(const std::string& top) {
@@ -466,6 +567,7 @@ void PluginRack::run() {
             break;
         }
         case Job::Kind::Probe: probe_listed(); break;
+        case Job::Kind::Program: switch_program(job.entry, job.generation, job.id); break;
         }
         free_retired();
     }
@@ -529,6 +631,7 @@ PluginRack::Known PluginRack::probe(const PluginFile& file) {
     int8_t kind = -1;
     std::string error;
     fs::path stage = stage_root() / ("probe-" + std::to_string(++stage_count));
+    use_plugin_home();
     if (ensure_plugin_support() && stage_copy(file, stage, error)) {
         std::string library = staged_library(file, stage);
         juce::String why;
@@ -608,6 +711,7 @@ void PluginRack::load(const Job& job) {
     };
     if (!file.loadable()) { fail(file.folder ? "Not a plug-in" : file.why); return; }
     if (!ensure_plugin_support()) { fail("Plug-in support missing"); return; }
+    use_plugin_home();
     fs::path stage = stage_root() / ("e" + std::to_string(job.entry) + "-" + std::to_string(++stage_count));
     std::string error;
     if (!stage_copy(file, stage, error)) { std::error_code e; fs::remove_all(stage, e); fail(error); return; }
@@ -652,6 +756,7 @@ void PluginRack::load(const Job& job) {
     auto handle = std::make_unique<PluginHandle>(std::move(instance), is_instrument, rate);
     handle->stage = stage.string();
     handle->format = file.format;
+    handle->programs = named_programs(*handle->instance);
     if (file.format != PluginFormat::Vst3) { // an Open MPC skin's Q-Link pages first, then the rest
         auto order = qlink_order(file.path);
         if (!order.empty()) {

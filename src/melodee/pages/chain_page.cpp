@@ -19,7 +19,16 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr unsigned device_actions = 5;
+// A device's sheet: Presets only on a plug-in that has some (its programs, PRESETS).
+enum class Action : uint8_t { Change, Presets, Bypass, Left, Right, Remove };
+using Actions = std::array<Action, 6>;
+unsigned device_actions(const UiState& ui, const EffectSlot& slot, Actions& out) {
+    unsigned n = 0;
+    out[n++] = Action::Change;
+    if (slot.kind == plugin_effect_kind && ui.plugin_panel.entry == unsigned(slot.params[0]) && ui.plugin_panel.programs > 0) out[n++] = Action::Presets;
+    for (Action a : {Action::Bypass, Action::Left, Action::Right, Action::Remove}) out[n++] = a;
+    return n;
+}
 
 juce::String bus_name(unsigned bus) { return juce::String("BUS ") + char('A' + bus % bus_count); }
 // A name on one line where it fits, else split at the space that lets both halves fit (the first word alone, else).
@@ -199,12 +208,18 @@ void draw(Paint& p, const Snapshot& s) {
         const auto& slot = chain.slots[cursor];
         MenuSheet m;
         m.title = effect_info(EffectKind(slot.kind)).name; m.detail = "SLOT " + juce::String(cursor + 1); m.accent = c;
-        m.rows[0] = {"Change", "", false, false, false};
-        m.rows[1] = {"Bypass", slot.bypass ? "On" : "Off", slot.bypass, false, false};
-        m.rows[2] = {"Move left", "", false, false, cursor == 0};
-        m.rows[3] = {"Move right", "", false, false, cursor + 1 >= count};
-        m.rows[4] = {"Remove", "", false, true, false};
-        m.count = device_actions; m.current = s.ui.sheet_row % device_actions;
+        Actions actions {};
+        unsigned rows = device_actions(s.ui, slot, actions);
+        for (unsigned r = 0; r < rows; ++r)
+            switch (actions[r]) {
+            case Action::Change: m.rows[r] = {"Change", "", false, false, false}; break;
+            case Action::Presets: m.rows[r] = {"Presets", juce::String(int(s.ui.plugin_panel.programs)), false, false, false}; break;
+            case Action::Bypass: m.rows[r] = {"Bypass", slot.bypass ? "On" : "Off", slot.bypass, false, false}; break;
+            case Action::Left: m.rows[r] = {"Move left", "", false, false, cursor == 0}; break;
+            case Action::Right: m.rows[r] = {"Move right", "", false, false, cursor + 1 >= count}; break;
+            case Action::Remove: m.rows[r] = {"Remove", "", false, true, false}; break;
+            }
+        m.count = rows; m.current = s.ui.sheet_row % rows;
         p.dim_zone(zone::picture_y, zone::picture_h, 0.6f);
         menu_sheet(p, m);
     }
@@ -240,8 +255,15 @@ void wheel(Context& c, int delta) {
         ui.picker_item = uint8_t(std::clamp<int>(ui.picker_item + delta, 0, int(count) - 1));
         return;
     }
-    if (ui.sheet_open) { ui.sheet_row = uint8_t(std::clamp<int>(ui.sheet_row + delta, 0, int(device_actions) - 1)); return; }
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
+    if (ui.sheet_open) {
+        const auto& chain = c.project.chain(n);
+        unsigned k = std::min<unsigned>(ui.fx_cursor[at], chain.size - 1);
+        Actions actions {};
+        unsigned rows = device_actions(ui, chain.slots[k], actions);
+        ui.sheet_row = uint8_t(std::clamp<int>(ui.sheet_row + delta, 0, int(rows) - 1));
+        return;
+    }
     const auto& chain = c.project.chain(n);
     unsigned last = std::min<unsigned>(chain.count(), chain.size - 1);
     ui.fx_cursor[at] = uint8_t(std::clamp<int>(ui.fx_cursor[at] + delta, 0, int(last)));
@@ -259,13 +281,16 @@ void push(Context& c) {
         else add_from_picker(c);
         return;
     }
-    if (ui.sheet_open) {
-        switch (ui.sheet_row % device_actions) {
-        case 0: ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = true; break;
-        case 1: c.toggle_bypass(n, cursor); return; // stays open to see it change
-        case 2: c.move_effect(n, cursor, -1); if (cursor) ui.fx_cursor[at] = uint8_t(cursor - 1); break;
-        case 3: c.move_effect(n, cursor, 1); if (cursor + 1 < chain.count()) ui.fx_cursor[at] = uint8_t(cursor + 1); break;
-        case 4: c.set_effect(n, cursor, EffectKind::None); break;
+    if (ui.sheet_open && cursor < chain.count()) {
+        Actions actions {};
+        unsigned rows = device_actions(ui, chain.slots[cursor], actions);
+        switch (actions[ui.sheet_row % rows]) {
+        case Action::Change: ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = true; break;
+        case Action::Presets: ui.sheet_open = false; c.open_plugin_presets(unsigned(chain.slots[cursor].params[0])); return;
+        case Action::Bypass: c.toggle_bypass(n, cursor); return; // stays open to see it change
+        case Action::Left: c.move_effect(n, cursor, -1); if (cursor) ui.fx_cursor[at] = uint8_t(cursor - 1); break;
+        case Action::Right: c.move_effect(n, cursor, 1); if (cursor + 1 < chain.count()) ui.fx_cursor[at] = uint8_t(cursor + 1); break;
+        case Action::Remove: c.set_effect(n, cursor, EffectKind::None); break;
         }
         ui.sheet_open = false;
         return;

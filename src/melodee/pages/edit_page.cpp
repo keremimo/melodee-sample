@@ -287,9 +287,10 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& info = engine_info(s.track().engine);
     auto c = colour_of(s);
     Header h = header_of(s);
-    if (s.track().engine == EngineKind::Plugin) { // the plug-in's own parameters, three at a time; B1 another from the card
+    if (s.track().engine == EngineKind::Plugin) { // the plug-in's own parameters, three at a time; B1 another from the card, B2 its presets
         h.right.push_back(tag_of(s, s.ui.track));
-        frame(p, s, {{"PLUG-INS", "", ""}, -1, c}, h);
+        bool presets = s.ui.plugin_panel.entry == s.track().plugin && s.ui.plugin_panel.programs > 0;
+        frame(p, s, {{"PLUG-INS", presets ? "PRESETS" : "", ""}, -1, c}, h);
         if (s.track().plugin >= max_plugins) {
             p.text("B1 picks a plug-in from the card", zone::pad, zone::picture_y, zone::width - 12, 40, plain(colour::dim, type::small, Weight::Medium),
                    juce::Justification::centred);
@@ -348,7 +349,11 @@ void draw(Paint& p, const Snapshot& s) {
 unsigned page_count(Context& c) { return std::max(edit_page_count(engine_info(c.track().engine)), 1u); }
 
 void soft(Context& c, int key) {
-    if (c.track().engine == EngineKind::Plugin) { if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument); return; }
+    if (c.track().engine == EngineKind::Plugin) {
+        if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument);
+        if (key == 1 && c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.programs > 0) c.open_plugin_presets(c.track().plugin);
+        return;
+    }
     unsigned count = page_count(c), t = c.ui.track;
     if (key == 1) { // B2: the page map, starting on the page in view
         c.ui.map_open = !c.ui.map_open;

@@ -827,6 +827,19 @@ of the card (beside `Samples/`), in any folders under it.
   folder for the slot; on the chain pages K1–K3 hold its parameters and
   Minus / Plus its rows. Track, bus, master and loop-track chains take
   plug-ins; a kit pad's own chain does not.
+- **Presets.** A plug-in's own programs, those with a name: B2 PRESETS on
+  a PLUGIN track's Edit, or Presets on a plug-in effect's sheet (Push on the
+  slot; the row shows only when it has some). The wheel or Minus / Plus
+  move, Push loads one and stays, so the next is heard straight after (the
+  pads play the track); the one picked says LOADED, B1 goes back. Picking
+  the one loaded loads it again, dropping edits since. What a preset loads
+  goes into the plug-in's state, so the project keeps it.
+- **Plugin Data.** Plug-ins keep presets and settings under their home
+  folder, and the MPC's is read only: before a plug-in opens, `$HOME` is
+  `Melodee/Plugin Data` on the card, laid out as on a Linux computer. Most
+  use `.config` there, which a Mac's Finder hides (Cmd-Shift-. shows it):
+  TONE3000 reads its presets from `.config/TONE3000/Presets` when it
+  opens.
 - **Loading.** The card is mounted `noexec`, so a plug-in runs from a copy
   in `/run` (RAM), made when a project uses it and removed when nothing
   does. The picker opens each plug-in it lists once, to tag it INSTRUMENT
@@ -862,6 +875,8 @@ of the card (beside `Samples/`), in any folders under it.
   the file, then renamed into place.
 - `Melodee/Sounds/<name>.mlds`: a sound's values and mod routes.
 - `Plugins/`: plug-ins, read only (above, "Plug-ins").
+- `Melodee/Plugin Data/`: the plug-ins' home: their presets and settings
+  (above, "Plug-ins").
 - `Melodee/settings`: Melodee's settings, MIDI Config, Input Config, the
   favourites, the project to open at start (`start=`) and the one last
   opened or saved (`last=`), opened at start when none is set.

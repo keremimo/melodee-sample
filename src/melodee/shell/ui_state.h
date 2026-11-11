@@ -26,6 +26,7 @@ enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motio
                             Looper,                            // Loop tapped twice: the four loops (docs/LOOPER.md)
                             RecQuantize,                       // Shift + Pad 10: Rec Quantize on or off, and its grid
                             Plugins,                           // the plug-in picker: the card's Plugins folder (docs/MELODEE.md)
+                            PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -150,6 +151,10 @@ struct UiState {
     PageId plugin_back = PageId::Stage;          // where B1 (Back) at the top and a load go
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
+    // PRESETS: the entry whose programs it lists, the row under the cursor, and where B1 goes back to.
+    uint8_t presets_entry = no_plugin;
+    uint16_t presets_cursor = 0;
+    PageId presets_back = PageId::Edit;
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)

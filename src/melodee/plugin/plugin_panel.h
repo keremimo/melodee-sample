@@ -4,9 +4,11 @@
 #include "melodee/model/limits.h"
 #include <array>
 #include <cstdint>
+#include <string>
+#include <vector>
 
-// What the page in view shows of one plug-in: its state and the row of three
-// parameters on K1-K3. The shell refreshes it from the rack (plugin/plugin_rack.h)
+// What the page in view shows of one plug-in: its state, the row of three
+// parameters on K1-K3, and its programs for PRESETS. The shell refreshes it from the rack (plugin/plugin_rack.h)
 // on the MIDI thread and keeps it in the UI state, so the cards and the pots'
 // pickup work from it like any other page's values. No JUCE here.
 namespace melodee {
@@ -30,7 +32,21 @@ struct PluginPanel {
     char error[64] {};             // why it failed
     uint16_t row = 0, rows = 0;    // rows of three parameters
     uint16_t load = 0;             // the share of a block it takes, in tenths of a percent
+    uint16_t programs = 0;         // its named programs (presets), for PRESETS
     std::array<PluginPanelParam, 3> params {};
+};
+
+// A plug-in's programs as PRESETS lists them: the named ones, each with its
+// number in the plug-in, and the one picked last (-1: none picked here yet).
+struct PluginProgram {
+    int index = 0;
+    std::string name;
+};
+struct PluginPrograms {
+    uint8_t entry = no_plugin;
+    std::vector<PluginProgram> list;
+    int current = -1;
+    bool loading = false;          // a pick still on its way to the plug-in
 };
 
 constexpr int plugin_param_max = 1000; // a card's range for a plug-in parameter
