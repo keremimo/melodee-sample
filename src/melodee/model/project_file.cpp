@@ -3,6 +3,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/model/fader.h"
 #include "melodee/model/pad_params.h"
+#include "melodee/model/scales.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/midi_engine.h"
 #include <algorithm>
@@ -331,6 +332,14 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad4(w, n, tr.pads[n]);
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // 16 Levels' ends where they are not as they come (round 2)
+        const auto& tr = project.tracks[t];
+        if (tr.levels_ends == Track {}.levels_ends) continue;
+        at = w.begin("LVLE");
+        w.u8(t); w.u8(4);
+        for (const auto& e : tr.levels_ends) { w.u8(uint8_t(e[0])); w.u8(uint8_t(e[1])); }
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // the fader's target where one is picked, or it is off (parity phase 8)
         const auto& tr = project.tracks[t];
         if (tr.fader_target == fader_by_engine && tr.fader_on) continue;
@@ -531,6 +540,14 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
                 e.param = uint8_t(motion_wheel); e.value = int16_t(std::clamp<int>(r.i16(), 0, 127));
                 if (r.ok) project->motion.write(e);
+            }
+        } else if (name == "LVLE") { // 16 Levels' two ends a type (round 2); without it each type's own
+            unsigned t = r.u8(), kinds = r.u8();
+            for (unsigned k = 0; k < kinds && r.ok; ++k) {
+                int low = int8_t(r.u8()), high = int8_t(r.u8());
+                if (!r.ok || t >= track_count || k >= 4) continue;
+                auto range = levels_range(LevelsKind(k));
+                project->tracks[t].levels_ends[k] = {int8_t(std::clamp(low, range.low, range.high)), int8_t(std::clamp(high, range.low, range.high))};
             }
         } else if (name == "FADR") { // the fader's target (parity phase 8); without it each track takes its engine's default
             unsigned t = r.u8(), target = r.u8(), on = r.u8();

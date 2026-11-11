@@ -437,10 +437,13 @@ void pad_expression() {
     auto bank = std::make_unique<PatternBank>();
     load_sound(project->tracks[2], EngineKind::Cz, 0);
     project->tracks[2].params[cz::AtVib] = 0;
+    project->tracks[2].levels_ends[unsigned(LevelsKind::Tune)] = {-12, 24}; // 16 Levels' ends go with the project (LVLE)
     auto bytes = save_project(*project, *bank);
     unsigned version = 9;
     auto back = std::make_unique<Project>();
     CHECK(load_project(bytes, *back, *bank, &version).empty() && version == params_version && back->tracks[2].params[cz::AtVib] == 0);
+    CHECK(back->tracks[2].levels_ends[unsigned(LevelsKind::Tune)][0] == -12 && back->tracks[2].levels_ends[unsigned(LevelsKind::Tune)][1] == 24);
+    CHECK(back->tracks[3].levels_ends == Track {}.levels_ends);
     UserSound us;
     us.engine = EngineKind::Cz;
     auto sound_bytes = save_sound(us);
@@ -2241,7 +2244,7 @@ void sample_mode() {
         e->restore_pads();
     }
 
-    // 16 Levels: Tune has the original on pad 4, Filter sweeps up to the pad's cutoff by pad 8.
+    // 16 Levels: Tune has the original on pad 4 at first, Filter sweeps the cutoff evenly; the two ends move (round 2).
     auto project = std::make_unique<Project>();
     load_sound(project->tracks[4], EngineKind::Sampler, 0);
     auto& kit = project->tracks[4];
@@ -2249,8 +2252,19 @@ void sample_mode() {
     kit.levels_kind = uint8_t(LevelsKind::Tune);
     CHECK(levels_of(*project, kit, 3).semitones == 0 && levels_of(*project, kit, 0).semitones == -3 && levels_of(*project, kit, 15).semitones == 12);
     kit.levels_kind = uint8_t(LevelsKind::Filter);
-    CHECK(levels_of(*project, kit, 0).cutoff == 0 && levels_of(*project, kit, 7).cutoff == 60 && levels_of(*project, kit, 15).cutoff == 100);
+    CHECK(levels_of(*project, kit, 0).cutoff == 0 && levels_of(*project, kit, 7).cutoff == 47 && levels_of(*project, kit, 15).cutoff == 100);
+    project->tracks[0].levels_kind = uint8_t(LevelsKind::Filter);
     CHECK(levels_of(*project, project->tracks[0], 5).velocity == level_velocity(5)); // a synth: Filter is soft to loud
+    kit.levels_ends[unsigned(LevelsKind::Filter)] = {48, 60};                       // a sweep over an octave of the cutoff
+    CHECK(levels_of(*project, kit, 0).cutoff == 48 && levels_of(*project, kit, 15).cutoff == 60);
+    kit.levels_kind = uint8_t(LevelsKind::Velocity);
+    kit.levels_ends[unsigned(LevelsKind::Velocity)] = {40, 127};                    // sixteen levels between 40 and 127
+    CHECK(levels_of(*project, kit, 0).velocity == 40 && levels_of(*project, kit, 15).velocity == 127 && levels_of(*project, kit, 8).velocity == 86);
+    kit.levels_kind = uint8_t(LevelsKind::Scale);
+    kit.levels_ends[unsigned(LevelsKind::Scale)] = {-2, 13};                        // down the scale below the root
+    CHECK(levels_of(*project, kit, 0).semitones == level_scale_semitones(*project, -2) + level_octave(kit) && level_scale_semitones(*project, -1) < 0);
+    kit.levels_ends = Track {}.levels_ends;
+    CHECK(Track {}.levels_kind == uint8_t(LevelsKind::Scale)); // a new track's 16 Levels go up the scale first
 
     // Cards: Trim's Shift row zooms at each handle; Play's Shift + K2 Pad Link; Warp's card both ways.
     kit.last_pad = 2; kit.pads[2].end = 30000; project->samples[0].frames = 44100;
@@ -3723,7 +3737,8 @@ void projects_and_polish() {
         t.octave = 4; // C4
         CHECK(pad_note(*p, t, 0).key == 60 && pad_note(*p, t, 0).root && pad_note(*p, t, 7).key == 67 && !pad_note(*p, t, 7).root);
         CHECK(pad_note(*p, t, 12).key == 72 && pad_note(*p, t, 12).root);
-        CHECK(levels_of(*p, t, 15).semitones == 0); // Velocity until asked
+        t.levels_kind = uint8_t(LevelsKind::Velocity);
+        CHECK(levels_of(*p, t, 15).semitones == 0); // Velocity: no pitch
         t.levels_kind = uint8_t(LevelsKind::Scale);
         CHECK(levels_of(*p, t, 15).semitones == 15);
         // Chords in Chromatic: a major triad on each pad's own semitone, not a cluster.
@@ -3747,10 +3762,11 @@ void projects_and_polish() {
             auto shifted = page_bindings(*p, ui, pattern, true);
             CHECK(shifted[0].kind == K::Root && shifted[1].kind == K::Scale && shifted[1].max == 12);
         }
-        ui.page = PageId::Levels;
-        CHECK(!page_bindings(*p, ui, pattern, false)[0].bound());
+        ui.page = PageId::Levels; // K1 the type, K2 and K3 the two ends; of type Scale the key on Shift + K1 and K2
         p->tracks[0].levels_kind = uint8_t(LevelsKind::Scale);
-        CHECK(page_bindings(*p, ui, pattern, false)[0].kind == K::Root && page_bindings(*p, ui, pattern, false)[1].kind == K::Scale);
+        auto levels = page_bindings(*p, ui, pattern, false);
+        CHECK(levels[0].kind == K::LevelsType && levels[1].kind == K::LevelsLow && levels[2].kind == K::LevelsHigh);
+        CHECK(levels[1].min == -14 && levels[2].value == 15 && page_bindings(*p, ui, pattern, true)[0].kind == K::Root);
     }
     // The metronome is Melodee's, not the project's: kept in the settings file; older files read Off at 40.
     {

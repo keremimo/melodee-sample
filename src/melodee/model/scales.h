@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/project.h"
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -66,15 +67,43 @@ inline int level_scale_step(const Project& project, unsigned pad) {
 }
 
 // 16 Levels (the MPC's types, and Melodee's scale): what pad 0..15 plays
-// of the one sound. Velocity soft to loud; Tune by semitones with the
-// original on pad 4 (on a kit, a whole octave up or down by − / +); Filter the pad's cutoff from the bottom up to its own
-// over pads 1-8 and on to the top over 9-16 (kit pads only); Scale up the
-// project's scale. velocity 0: the pad's own; cutoff -1: the pad's own.
+// of the one sound, evenly from pad 1's end to pad 16's (Track::levels_ends,
+// set on the page's K2 and K3): Velocity soft to loud; Scale up the
+// project's scale by steps; Tune by semitones (the original on pad 4 at
+// first; on a kit, a whole octave up or down by − / +); Filter the pad's
+// cutoff (kit pads only). velocity 0: the pad's own; cutoff -1: the pad's own.
 // Loop: 16 Levels opens the Looper, its pads the loop grid (docs/LOOPER.md).
 enum class LevelsKind : uint8_t { Velocity, Scale, Tune, Filter, Loop, Count };
 inline const char* levels_kind_name(LevelsKind k) {
     static const char* const names[] {"Velocity", "Scale", "Tune", "Filter", "Loop"};
     return names[unsigned(k) % unsigned(LevelsKind::Count)];
+}
+// How far each type's ends go.
+struct LevelsRange { int low, high; };
+inline LevelsRange levels_range(LevelsKind k) {
+    switch (k) {
+    case LevelsKind::Velocity: return {1, 127};
+    case LevelsKind::Scale: return {-14, 30};
+    case LevelsKind::Tune: return {-24, 24};
+    case LevelsKind::Filter: return {0, 100};
+    default: return {0, 0};
+    }
+}
+// The types a track's K1 turns through, Scale first: a kit has Filter as well.
+inline unsigned levels_types(bool kit, std::array<LevelsKind, 4>& out) {
+    out = {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Filter};
+    return kit ? 4 : 3;
+}
+// Pad `pad` (0..15) of the way from `low` (pad 1) to `high` (pad 16), rounded.
+inline int level_between(int low, int high, unsigned pad) {
+    return low + int(std::lround(double(high - low) * double(pad % 16) / 15.0));
+}
+// The semitones of scale step `step` above the root (below it when negative).
+inline int level_scale_semitones(const Project& project, int step) {
+    std::array<uint8_t, 12> degrees {};
+    int count = int(std::max(1u, scale_degrees(project.scale, degrees)));
+    int octave = step >= 0 ? step / count : -((-step + count - 1) / count);
+    return 12 * octave + degrees[size_t(step - octave * count)];
 }
 struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0; };
 // A kit pad's 16 Levels in pitch (Scale, Tune) an octave a step of the track's
@@ -84,19 +113,17 @@ inline int level_octave(const Track& track) { return track.engine == EngineKind:
 inline Level levels_of(const Project& project, const Track& track, unsigned pad) {
     pad %= 16;
     Level out;
-    switch (LevelsKind(track.levels_kind % unsigned(LevelsKind::Count))) {
-    case LevelsKind::Scale: out.semitones = level_scale_step(project, pad) + level_octave(track); out.shown = out.semitones; break;
-    case LevelsKind::Tune: out.semitones = int(pad) - 3 + level_octave(track); out.shown = out.semitones; break;
-    case LevelsKind::Filter:
-        if (track.engine == EngineKind::Sampler) {
-            int own = track.pads[track.levels_pad % sampler_pads].cutoff;
-            out.cutoff = pad < 8 ? own * int(pad) / 7 : own + (100 - own) * int(pad - 7) / 8;
-            out.shown = out.cutoff;
-            break;
-        }
-        [[fallthrough]]; // a synth has no pad filter: soft to loud
+    auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
+    if (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler) kind = LevelsKind::Velocity; // a synth has no pad filter
+    if (kind == LevelsKind::Loop) kind = LevelsKind::Velocity;
+    const auto& ends = track.levels_ends[unsigned(kind) % 4];
+    int at = level_between(ends[0], ends[1], pad);
+    switch (kind) {
+    case LevelsKind::Scale: out.semitones = level_scale_semitones(project, at) + level_octave(track); out.shown = out.semitones; break;
+    case LevelsKind::Tune: out.semitones = at + level_octave(track); out.shown = out.semitones; break;
+    case LevelsKind::Filter: out.cutoff = std::clamp(at, 0, 100); out.shown = out.cutoff; break;
     case LevelsKind::Velocity:
-    default: out.velocity = level_velocity(pad); out.shown = out.velocity; break;
+    default: out.velocity = std::clamp(at, 1, 127); out.shown = out.velocity; break;
     }
     return out;
 }

@@ -565,6 +565,20 @@ void Context::apply(const Binding& b, int value) {
         if (!t.arp_latch) { send({Type::Arp, ui.track, 0, 0, 0}); if (t.arp) send({Type::Arp, ui.track, 0, 0, 1}); }
         break;
     case Kind::ChordOn: t.chord = value != 0; break; // Shift + K1 on Stage's CHORD
+    case Kind::LevelsType: { // K1 on 16 Levels: Scale, Tune, Velocity (and Filter on a kit)
+        std::array<LevelsKind, 4> types {};
+        unsigned count = levels_types(t.engine == EngineKind::Sampler, types);
+        t.levels_kind = uint8_t(types[unsigned(std::clamp(value, 0, int(count) - 1))]);
+        ui.levels_hit = -1;
+        break;
+    }
+    case Kind::LevelsLow: case Kind::LevelsHigh: { // K2 / K3: pad 1's end, pad 16's
+        auto kind = LevelsKind(t.levels_kind % unsigned(LevelsKind::Count));
+        if (unsigned(kind) >= 4) break;
+        auto range = levels_range(kind);
+        t.levels_ends[unsigned(kind)][b.kind == Kind::LevelsHigh ? 1 : 0] = int8_t(std::clamp(value, range.low, range.high));
+        break;
+    }
     case Kind::NewEngine: ui.new_engine = uint8_t(value); ui.new_sound = 0; break;
     case Kind::NewSound: ui.new_sound = uint8_t(value); break;
     case Kind::NewSource: ui.new_source = uint8_t(value); break;

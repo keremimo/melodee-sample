@@ -82,10 +82,10 @@ void levels_button(Context& c) {
         return;
     }
     if (!t.used() && !ui.shift) { c.notice("16 Levels: an empty track"); return; }
-    if (ui.shift) { // the type: Velocity, Filter (kit pads), Tune, then Melodee's Scale and the Looper's Loop
-        static const LevelsKind kit_order[] {LevelsKind::Velocity, LevelsKind::Filter, LevelsKind::Tune, LevelsKind::Scale, LevelsKind::Loop};
-        static const LevelsKind synth_order[] {LevelsKind::Velocity, LevelsKind::Tune, LevelsKind::Scale, LevelsKind::Loop};
-        static const LevelsKind empty_order[] {LevelsKind::Velocity, LevelsKind::Loop};
+    if (ui.shift) { // the type: Melodee's Scale first (the most played), Tune, Velocity, Filter (kit pads), the Looper's Loop
+        static const LevelsKind kit_order[] {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Filter, LevelsKind::Loop};
+        static const LevelsKind synth_order[] {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Loop};
+        static const LevelsKind empty_order[] {LevelsKind::Scale, LevelsKind::Loop};
         const LevelsKind* order = !t.used() ? empty_order : kit ? kit_order : synth_order;
         unsigned count = !t.used() ? 2 : kit ? 5 : 4, at = 0;
         for (unsigned n = 0; n < count; ++n) if (unsigned(order[n]) == t.levels_kind) at = n;

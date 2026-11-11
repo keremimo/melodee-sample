@@ -265,16 +265,21 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
   (its dots the page in view) opens the page map (wheel, Push jumps, B2 or
   Shift + Push closes).
 - **16 Levels**: on a kit the last pad on all sixteen pads, on a synth its
-  last note. Velocity (8–127), Filter (kit pads: pads 1–8 up to the pad's
-  cutoff, 9–16 on to the top), Tune (the original on pad 4), and Melodee's
-  Scale, whose K1 and K2 are the project's root and scale (elsewhere on this
-  page Shift + K1 and K2). Shift + 16 Levels or B1–B3 pick the type: B1
-  Velocity, B2 Filter (kits; nothing on a synth), B3 Tune and again Scale,
-  its two dots saying which, on a kit and a synth alike. The picture: the
-  pads with their values, whose levels they are, and the type drawn (a
-  wedge, the sweep, a step a pad) with its two ends. On a
-  kit in Tune or Scale (an instrument's pad above all), − / + move the pads
-  an octave (three down to five up, kept with the track).
+  last note. Melodee's Scale first (a new track's type: up the project's
+  scale by steps), Tune (semitones), Velocity, Filter (kit pads: the
+  cutoff). **K1** the type, **K2** pad 1's end, **K3** pad 16's: the pads
+  between go evenly from one to the other, kept for each type with the
+  track (sixteen levels between 40 and 127, a filter sweep over an octave,
+  two octaves of a scale; at first Velocity 8–127, Scale steps 0–15, Tune
+  −3 to +12 with the original on pad 4, Filter 0–100). Shift + K1–K3 the
+  pad's own pitch, volume and pan (of type Scale, Shift + K1 and K2 the
+  project's root and scale). Shift + 16 Levels or B1–B3 pick the type too:
+  B1 Velocity, B2 Filter (kits; nothing on a synth), B3 Scale and again
+  Tune, its two dots saying which. The picture is the ramp from end to end
+  with a handle at each in its knob's colour, a tick a pad, the pad hit
+  marked with its value. On a kit in Tune or Scale (an instrument's pad
+  above all), − / + move the pads an octave (three down to five up, kept
+  with the track).
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
   (Shift: their triplets); straight rates swing with the project. It is the
   track's arp; a kit repeats the held pad.

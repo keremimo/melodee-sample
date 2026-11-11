@@ -389,6 +389,21 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::ArpGate: c.label = "GATE"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::ArpHold: c.label = "HOLD"; c.value = b.value ? "On" : "Off"; break;
     case Kind::ChordOn: c.label = "CHORD"; c.value = b.value ? "On" : "Off"; break;
+    case Kind::LevelsType: {
+        std::array<LevelsKind, 4> types {};
+        levels_types(track.engine == EngineKind::Sampler, types);
+        c.label = "TYPE"; c.value = levels_kind_name(types[size_t(b.value) % types.size()]);
+        break;
+    }
+    case Kind::LevelsLow: case Kind::LevelsHigh: { // as the pad at that end plays it
+        auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
+        c.label = b.kind == Kind::LevelsLow ? "LOW" : "HIGH";
+        bool signed_value = kind == LevelsKind::Scale || kind == LevelsKind::Tune;
+        c.value = (signed_value && b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        c.unit = kind == LevelsKind::Tune ? "st" : kind == LevelsKind::Filter ? "%" : kind == LevelsKind::Scale ? (std::abs(b.value) == 1 ? "step" : "steps") : "";
+        c.bipolar = signed_value;
+        break;
+    }
     case Kind::NewEngine: {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = new_engines(engines);

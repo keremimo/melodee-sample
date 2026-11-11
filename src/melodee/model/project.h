@@ -264,7 +264,10 @@ struct Track {
     // 16 Levels on a sampler track: one kit pad on all sixteen pads.
     bool levels = false;
     uint8_t levels_pad = 0;
-    uint8_t levels_kind = 0; // 0 velocity (soft to loud), 1 up the project's scale, 2 by semitones
+    uint8_t levels_kind = 1; // LevelsKind (model/scales.h): Scale on a new track, as the most played (Kerem)
+    // 16 Levels' two ends, pad 1's and pad 16's, for Velocity, Scale, Tune and Filter in LevelsKind's order
+    // (velocity 1..127, scale steps, semitones, cutoff 0..100); the pads between go evenly from one to the other.
+    std::array<std::array<int8_t, 2>, 4> levels_ends {{{8, 127}, {0, 15}, {-3, 12}, {0, 100}}};
     // Chord: one pad, one chord from the scale (up to four notes).
     bool chord = false, chord_hold = false;
     uint8_t chord_type = 1, chord_voicing = 0, chord_invert = 0;

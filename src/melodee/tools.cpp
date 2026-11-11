@@ -939,6 +939,7 @@ const Preview previews[] {
     {"levels", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1;
+         t.levels_kind = uint8_t(LevelsKind::Velocity); t.levels_ends[unsigned(LevelsKind::Velocity)] = {40, 127}; // sixteen levels from 40
          s.sample.frames = 26460;
          s.ui.levels_hit = 10; s.ui.levels_value = level_velocity(10);
      }},

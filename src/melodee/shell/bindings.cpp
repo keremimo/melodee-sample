@@ -453,9 +453,15 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     case PageId::Compressor: // Shift + K3: In Boost
         return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, project.compressor.boost}};
     case PageId::Stage: return stage_bindings(project, ui, true);
-    case PageId::Levels: // of type Scale the key is on K1 and K2 already
-        if (levels_in_scale(ui, track)) return {};
-        return project_key(project);
+    case PageId::Levels: { // the pad's own pitch, volume and pan; of type Scale the project's key on K1 and K2
+        bool kit = track.engine == EngineKind::Sampler;
+        const auto& pad = track.pads[track.levels_pad % sampler_pads];
+        Binding pan = kit && pad.used() ? Binding {Kind::PadPan, 0, -50, 50, pad.pan} : Binding {};
+        if (levels_in_scale(ui, track)) return project_key(project, pan);
+        if (!kit) return favourite_bindings(track);
+        if (!pad.used()) return {};
+        return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level}, pan};
+    }
     case PageId::Pads: case PageId::Tempo: return project_key(project); // Shift + K1 / K2: the project's key, no synth track needed
     case PageId::Keys: // Shift + K3: the pads by semitones
         if (track.engine == EngineKind::Kit909) return {};
@@ -571,14 +577,24 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::Send, 0, 0, 100, track.mix.send}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
-    case PageId::Levels:
+    case PageId::Levels: { // K1 the type, K2 and K3 the two ends: pad 1's and pad 16's
+        std::array<LevelsKind, 4> types {};
+        unsigned count = levels_types(track.engine == EngineKind::Sampler, types), at = 0;
+        auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
+        for (unsigned n = 0; n < count; ++n) if (types[n] == kind) at = n;
+        if (kind == LevelsKind::Loop || (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler)) return {};
+        auto range = levels_range(kind);
+        const auto& ends = track.levels_ends[unsigned(kind) % 4];
+        return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}, Binding {Kind::LevelsLow, 0, range.low, range.high, ends[0]},
+                Binding {Kind::LevelsHigh, 0, range.low, range.high, ends[1]}};
+    }
     case PageId::Pads: {
         bool in_scale = levels_in_scale(ui, track); // 16 Levels up the scale: K1 and K2 pick it
         if (track.engine != EngineKind::Sampler) { // 16 Levels on a synth: its own three
             auto own = favourite_bindings(track);
             return in_scale ? project_key(project, own[2]) : own;
         }
-        const auto& pad = track.pads[(ui.page == PageId::Levels ? track.levels_pad : track.last_pad) % sampler_pads];
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
         if (in_scale) return project_key(project, pad.used() ? Binding {Kind::PadPan, 0, -50, 50, pad.pan} : Binding {});
         if (!pad.used()) return {};
         return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level},
