@@ -159,10 +159,43 @@ static void take_back_loop(Context& c) {
     c.ui.notice[0] = 0;
 }
 
+// Loop is a hold, not a tap: the tap's loop taken back, and no double tap after it.
+static void grip_loop(Context& c) {
+    auto& ui = c.ui;
+    if (ui.loop_grip) return;
+    ui.loop_grip = true; ui.loop_tap_at = 0;
+    if (ui.loop_toggled) take_back_loop(c);
+    ui.loop_toggled = false;
+}
+
+// Shift + Loop's printed job, whether Shift is still down or not: the last pad reversed.
+static void reverse_last_pad(Context& c) {
+    if (c.track().engine != EngineKind::Sampler) c.notice("Loop: a kit pad's");
+    else c.toggle_reverse();
+}
+
+// Loop pressed a moment before Shift: Shift + Loop after all, the tap's loop taken back.
+static void loop_to_shift(Context& c) {
+    auto& ui = c.ui;
+    if (ui.loop_toggled) take_back_loop(c);
+    ui.loop_toggled = false; ui.loop_held = false; ui.loop_tap_at = 0;
+    ui.loop_shift_held = true; ui.shift_used = true;
+}
+
 void loop_press(Context& c, bool pressed) {
     auto& ui = c.ui;
-    if (!pressed) { ui.loop_held = false; return; }
-    if (ui.shift) { ui.shift_used = true; loop_button(c); return; } // Shift + Loop: Reverse, as printed
+    if (!pressed) {
+        if (ui.loop_held && !ui.loop_grip && ui.shift) loop_to_shift(c); // Shift came down during the tap
+        if (ui.loop_shift_held) reverse_last_pad(c); // let go before the hold: Reverse, as printed
+        if (ui.loop_held && ui.page != PageId::Looper) ui.loop_clear = -1; // a clear pad still down: no clear
+        ui.loop_held = false; ui.loop_grip = false; ui.loop_shift_held = false;
+        return;
+    }
+    if (ui.shift) { // Shift + Loop: Reverse on release; held half a second, the Looper on or off (looper_tick)
+        ui.shift_used = true;
+        ui.loop_down = c.now; ui.loop_shift_held = true;
+        return;
+    }
     if (ui.page == PageId::Looper) { ui.loop_tap_at = 0; c.back(); return; }
     if (ui.loop_tap_at && c.now - ui.loop_tap_at <= loop_double_ms) { // tapped twice: the Looper
         if (ui.loop_toggled) take_back_loop(c); // the first tap's loop
@@ -171,21 +204,28 @@ void loop_press(Context& c, bool pressed) {
         return;
     }
     ui.loop_tap_at = std::max<uint32_t>(c.now, 1);
-    ui.loop_down = c.now; ui.loop_held = true;
+    ui.loop_down = c.now; ui.loop_held = true; ui.loop_grip = false;
     ui.loop_on_song = ui.page == PageId::Song && !ui.song_export;
     if (ui.loop_on_song) ui.loop_toggled = song_loop(c); // on Song: the brace on the clip's bars
     else {
         ui.loop_toggled = c.track().engine == EngineKind::Sampler && c.pad().used();
         if (ui.loop_toggled) loop_button(c);             // the MPC's job: the last pad's loop
     }
-    if (!ui.loop_toggled) c.notice("Loop twice: the Looper");
+}
+
+bool loop_held_pad(Context& c, unsigned pad, bool down) {
+    if (!c.ui.loop_held || c.ui.page == PageId::Looper) return false;
+    if (down) grip_loop(c);
+    if (down && c.ui.shift) c.ui.shift_used = true; // Shift + a play / stop pad: at once
+    loop_grid_pad(c, pad, down);
+    return true;
 }
 
 void loop_grid_pad(Context& c, unsigned pad, bool down) {
     auto& ui = c.ui;
     unsigned column = pad % 4, row = pad / 4 % 4; // row 0 is the bottom one (pads 1-4)
     if (!down) { if (row == 0 && ui.loop_clear == int(column)) ui.loop_clear = -1; return; }
-    if (!c.project.looper.on) { c.notice("Looper off: B3 turns it on"); return; }
+    if (!c.project.looper.on) { c.notice(ui.page == PageId::Looper ? "Looper off: B3 turns it on" : "Looper off: Shift + hold Loop"); return; }
     ui.loop = uint8_t(column);
     switch (row) {
     case 3: looper_do(c, Do::Primary, column); break;
@@ -231,14 +271,20 @@ void loop_sheet_push(Context& c) {
 void looper_tick(Context& c, uint32_t now) {
     auto& ui = c.ui;
     const auto& looper = c.host.looper();
-    // Loop held: the Looper, the press's loop taken back.
-    if (ui.loop_held && now - ui.loop_down >= loop_hold_ms) {
-        ui.loop_held = false; ui.loop_tap_at = 0;
-        if (ui.page != PageId::Looper) {
-            if (ui.loop_toggled) take_back_loop(c);
-            c.open(PageId::Looper);
-        }
-        ui.loop_toggled = false;
+    // Shift + Loop held: the Looper on, or off (asked first while a loop holds audio); no Reverse.
+    if (ui.loop_held && !ui.loop_grip && ui.shift && now - ui.loop_down <= loop_chord_ms) loop_to_shift(c); // Shift a moment after Loop
+    if (ui.loop_shift_held && now - ui.loop_down >= loop_hold_ms) {
+        ui.loop_shift_held = false;
+        bool audio = false;
+        for (unsigned n = 0; n < loop_tracks; ++n) audio |= looper.view(n).state != Looper::State::Empty;
+        if (!c.project.looper.on) set_looper(c, true);
+        else if (audio) ask(c, UiState::Ask::LooperOff, 0);
+        else set_looper(c, false);
+    }
+    // Loop held: the pads are the loop grid (they were from the press), the press's loop taken back.
+    if (ui.loop_held && !ui.loop_grip && now - ui.loop_down >= loop_hold_ms && ui.page != PageId::Looper) {
+        grip_loop(c);
+        if (!c.project.looper.on) c.notice("Looper off: Shift + hold Loop"); // on, the lit grid says it
     }
     if (ui.loop_tap_at && now - ui.loop_tap_at > loop_double_ms && !ui.loop_held) { ui.loop_tap_at = 0; ui.loop_toggled = false; }
     // A clear pad held long enough.

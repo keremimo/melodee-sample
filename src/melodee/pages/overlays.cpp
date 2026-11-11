@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// Drawn over any page: the tracks while Pad Bank is held, Note Repeat's
+// Drawn over any page: the tracks while Pad Bank is held (after a second), Note Repeat's
 // rates, the Shift + K cards while Shift is held, and the Exit sheet after a
 // short press of Power; and over all of them the place bar.
 #include "melodee/engine/arp.h"
@@ -14,16 +14,17 @@ namespace melodee {
 using namespace ui;
 
 void draw_overlays(Paint& p, const Snapshot& s) {
+    bool tracks = track_overlay_shown(s.ui, s.now); // Pad Bank held a second, or a track copy
     bool sheet = s.ui.name.open() || s.ui.exit_open;
-    if (!sheet && !tracks_on_pads(s.ui)) draw_sampler_map(p, s); // under the notice and the cards
-    if (tracks_on_pads(s.ui) && !sheet) draw_track_overlay(p, s);
+    if (!sheet && !tracks) draw_sampler_map(p, s); // under the notice and the cards
+    if (tracks && !sheet) draw_track_overlay(p, s);
     if (!sheet && s.ui.ask != UiState::Ask::None) draw_ask_sheet(p, s); // B1 Cancel / B3 Do it before an erase
-    if (!sheet && s.ui.ask == UiState::Ask::None && !tracks_on_pads(s.ui)) draw_fader_card(p, s);
+    if (!sheet && s.ui.ask == UiState::Ask::None && !tracks) draw_fader_card(p, s);
     draw_notice(p, s);
     if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);
     else if (s.ui.shift && !s.ui.shift_used && !s.ui.name.open()) draw_shift_layer(p, s);
-    if (!sheet && !tracks_on_pads(s.ui) && repeat_keys(s.project, s.ui)) draw_repeat_keys(p, s);
+    if (!sheet && !tracks && repeat_keys(s.project, s.ui)) draw_repeat_keys(p, s);
     draw_place_bar(p, s); // over everything: where the music is stays in view
 }
 

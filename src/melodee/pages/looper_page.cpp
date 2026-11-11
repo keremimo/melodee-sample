@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// LOOPER (Loop tapped twice or held; 16 Levels of type Loop): the four loops
+// LOOPER (Loop tapped twice; 16 Levels of type Loop): the four loops
 // (docs/LOOPER.md). B1 LOOPS: a row each, its tag, its state as a word, its
 // waveform and playhead, its length and source; K1 the loop, K2 its length,
 // K3 its level (Shift: feedback, Quantize, After take). B2 MIX: the loop

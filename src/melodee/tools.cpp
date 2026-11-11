@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
 #include "melodee/shell/mpc_project.h"
+#include "melodee/shell/pad_bank.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/prophet_params.h"
@@ -583,6 +584,7 @@ const Preview previews[] {
      }},
     {"padbank", [](Shell&, Snapshot& s) { // Pad Bank held on a kit in bank F: the sixteen tracks
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.pad_bank = true; s.playing = true;
+         s.ui.pad_bank_down = s.now - pad_bank_overlay_ms; // held a second: the overlay is up
          s.project.tracks[3].bank = 5;
      }},
     {"copytrack", [](Shell&, Snapshot& s) { // Pad Bank held, Shift + Erase, track 2 picked: where does it go

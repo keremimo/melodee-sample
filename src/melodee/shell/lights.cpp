@@ -302,14 +302,15 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     uint32_t ticks = host.ticks();
     bool tracks = tracks_on_pads(ui), muting = ui.mute_mode() && !ui.name.open() && !tracks;
     bool mute_kit = muting && mute_on_kit(ui, kit_pads());
-    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !tracks && !muting;
+    bool loop_grid = (ui.page == PageId::Looper || ui.loop_held) && !tracks; // Loop held: the grid on any page
+    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !tracks && !muting && !(ui.loop_held && ui.page != PageId::Looper);
     const Rgb muted_red = led_colour::rgb(1, 0, 0, 0.35f); // muted, as the MPC lights it
     uint32_t lit = 0; // for `status`
     for (unsigned pad = 0; pad < 16; ++pad) {
         bool held = ui.held_pads & (1u << pad);
         Rgb colour {};
-        if (ui.page == PageId::Looper && !tracks) {
-            colour = loop_light(pad, now, muting);
+        if (loop_grid) {
+            colour = loop_light(pad, now, muting && ui.page == PageId::Looper);
         } else if (mute_kit) {
             // Mute mode on a kit: the bank's pads, muted red, soloed white, the rest in the track's colour.
             unsigned kit = track.bank % sampler_banks * 16 + pad;
@@ -405,7 +406,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             unsigned level = shift_pad_level(ui, pad);
             colour = level ? track_light(ui.track, level == 2 ? 1.0f : 0.3f) : Rgb {};
         }
-        if (held && ui.page != PageId::Steps && ui.page != PageId::Looper && !tracks && !muting) colour = led_colour::white(1);
+        if (held && ui.page != PageId::Steps && !loop_grid && !tracks && !muting) colour = led_colour::white(1);
         if (ui.settings.pad_lights == 1) { // white, as bright as the colour was
             float full = std::max<float>(led_colour::white(1).r, 1);
             colour = led_colour::white(std::max({colour.r, colour.g, colour.b}) / full);
@@ -486,7 +487,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
     on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
-    on(B::Loop, ui.page == PageId::Looper || (ui.page == PageId::Song ? project.song.looping()
+    on(B::Loop, ui.page == PageId::Looper || ui.loop_held || (ui.page == PageId::Song ? project.song.looping()
                     : track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the song's brace on Song, else the last pad loops; the Looper
     // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
     on(B::SixteenLevels, ui.page == PageId::Levels || track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));

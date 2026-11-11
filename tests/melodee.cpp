@@ -1561,13 +1561,15 @@ void parity_1c() {
     CHECK(!kit.any_pad_muted() && !pad_soloed(kit, 3));
 
     // Pad Bank held or a track copy: the pads are the tracks; Shift + Erase there copies.
-    UiState held; held.pad_bank = true;
+    UiState held; held.pad_bank = true; held.pad_bank_down = 5000;
     CHECK(tracks_on_pads(held));
+    // The pads are the tracks at once; the screen shows them a second on (a tap shows nothing).
+    CHECK(!track_overlay_shown(held, 5000 + pad_bank_overlay_ms - 1) && track_overlay_shown(held, 5000 + pad_bank_overlay_ms));
     project->tracks[1].engine = EngineKind::Prophet;
     held.track = 1;
     CHECK(button_has_shift_job(*project, held, SurfaceButton::Erase, false));
     held.pad_bank = false; held.copying = UiState::Copying::Tracks;
-    CHECK(tracks_on_pads(held));
+    CHECK(tracks_on_pads(held) && track_overlay_shown(held, 0)); // a track copy: at once
 
     // The project file: banks E-H, pad mutes and kit keys past 127 come back; TRAK still holds A-D alone.
     auto bank = std::make_unique<PatternBank>();

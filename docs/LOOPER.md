@@ -91,7 +91,7 @@ on and freed when it is turned off (the MPC has 2 GB).
 
 ## The page
 
-**Looper** (Loop twice or held; 16 Levels of type Loop). Calm, as every
+**Looper** (Loop twice; 16 Levels of type Loop). Calm, as every
 page: the four loops as rows, each its tag (L1–L4 in its colour), its state
 as a word (ARM, REC, DUB, PLAY, STOP; a change waiting blinks), its
 waveform with the playhead, its length in bars and its source. The header
@@ -107,9 +107,13 @@ shows bar.beat, the tempo and the selected loop's layers.
 - **Push**: record → close → overdub ⇄ play, on the selected loop.
 - **Shift + Knob FX** on the Looper opens the selected loop's effect chain.
 - With the Looper off the page asks first: **B3 TURN ON**.
+- **Shift + Loop held** half a second turns the Looper on or off from any
+  page (off asks first while a loop holds audio); a tap stays Reverse.
 
-**Pads** on the Looper are the loop grid; each column a loop, pad 1 bottom
-left:
+**Pads** on the Looper are the loop grid, and on any other page while Loop
+is held (lit from the press; half a second held, or a grid pad, takes the
+press's own loop toggle back, and letting Loop go gives the pads back); each
+column a loop, pad 1 bottom left:
 
 | Pads | Press | Light |
 | --- | --- | --- |

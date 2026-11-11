@@ -102,11 +102,12 @@ then Push makes the track that.
 Sixteen tracks, one per pad: pad 1 (bottom left) is track 1.
 
 **Hold Pad Bank and tap a pad** to select that track, from any page. While
-Pad Bank is held the screen shows the tracks, eight at a time.
+Pad Bank is held a second the screen shows the tracks, eight at a time.
 
 ![Pad Bank held](images/quickstart/padbank.png)
 
-**Tap Pad Bank twice** (quickly) for the Tracks screen, which stays open.
+**Tap Pad Bank twice** (quickly) on a synth or MIDI track for the Tracks
+screen, which stays open (on a kit quick taps only switch banks).
 Each cell shows the track's engine, sound, the pattern playing and its
 level. B1 shows tracks 1–8, B2 tracks 9–16, B3 goes back to Stage. Tap a
 pad to select its track and go back to Stage; K2 sets the selected track's

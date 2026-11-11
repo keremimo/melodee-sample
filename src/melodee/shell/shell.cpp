@@ -137,7 +137,7 @@ void Shell::press(Button b, bool pressed) {
         return;
     }
     if (b == Button::Sample) { if (!ui.exit_open) sample_button(context_, true); return; } // shell/sample_mode.cpp: held, a pad picks a kit pad
-    if (b == Button::Loop && !ui.exit_open) { loop_press(context_, pressed); return; } // twice or held: the Looper (shell/looper_jobs.cpp)
+    if (b == Button::Loop && (!ui.exit_open || !pressed)) { loop_press(context_, pressed); return; } // twice: the Looper; held: the loop grid (shell/looper_jobs.cpp)
     if (b == Button::Erase) {
         ui.erase = pressed;
         if (!pressed) { // tapped on its own: on Roll the note in focus goes (one undo)
@@ -385,6 +385,7 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down && (ui_.exit_open || ui_.ask != UiState::Ask::None)) return; // a sheet or a question over the page
     if (down && track_pad(context_, pad)) { end_copy_away(); return; } // Pad Bank + pad: that track (or a track copy's)
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
+    if (loop_held_pad(context_, pad, down)) return; // Loop held: the loop grid on any page
     // A Record take of Melodee's own sound: the pads play the instrument until it ends (Shift + pad jobs stay).
     if (!(down && ui_.shift) && (context_.record_keys() || (!down && context_.record_key_held(pad)))) {
         context_.record_key(pad, velocity, down);

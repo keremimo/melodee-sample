@@ -22,7 +22,7 @@ enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motio
                             MidiConfig,                        // parity phase 9: Shift + Pad 8
                             CardAccess,                        // parity phase 10b: Project's SD card access
                             Tracks,                            // Pad Bank tapped twice: the sixteen tracks, eight at a time
-                            Looper,                            // Loop tapped twice or held: the four loops (docs/LOOPER.md)
+                            Looper,                            // Loop tapped twice: the four loops (docs/LOOPER.md)
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -87,9 +87,8 @@ struct UiState {
     uint16_t preset_cursor = 0; // and where it is in the list (sound_list())
     // An empty track's choosers: the engine and its sound (SYNTH), the source (KIT), port and channel (MIDI).
     uint8_t new_engine = 0, new_sound = 0, new_source = 0, new_port = 1, new_channel = 1;
-    // Pad Bank tapped twice (shell/pad_bank.cpp): the first tap's time, and whether it stepped a kit's bank.
+    // Pad Bank tapped twice (shell/pad_bank.cpp): the first tap's time (only where a tap steps nothing), and the press's.
     uint32_t pad_bank_tap_at = 0, pad_bank_down = 0;
-    bool pad_bank_stepped = false;
     uint8_t tracks_half = 0; // the Tracks screen: 0 tracks 1-8, 1 tracks 9-16
     uint16_t sounds_cursor = 0;
     uint8_t sounds_filter = 0;       // all, favourites, recent
@@ -230,13 +229,15 @@ struct UiState {
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),
-    // its sheet (B3 MORE) and the row under the cursor; Loop's taps (twice, or held, opens the page) and whether
-    // its press toggled the last pad's loop; the loop whose clear pad is held on the grid, since when; and the
+    // its sheet (B3 MORE) and the row under the cursor; Loop's taps (twice opens the page; held, the pads are the
+    // loop grid on any page, loop_grip once held long or a grid pad hit) and whether its press toggled the last
+    // pad's loop; the loop whose clear pad is held on the grid, since when; and the
     // loop whose chain FX Select shows (-1: the selected track's).
     uint8_t loop = 0, looper_view = 0, loop_row = 0;
     bool loop_sheet = false;
     uint32_t loop_tap_at = 0, loop_down = 0;
-    bool loop_held = false, loop_toggled = false, loop_on_song = false;
+    bool loop_held = false, loop_grip = false, loop_toggled = false, loop_on_song = false;
+    bool loop_shift_held = false; // Shift + Loop down: let go soon, Reverse; held, the Looper on or off
     int8_t loop_clear = -1;
     uint32_t loop_clear_at = 0;
     int8_t fx_loop = -1;
