@@ -2624,6 +2624,39 @@ void performance_effects() {
         };
         double a_dry = hit(0, false), a_knob = hit(0, true), b_knob = hit(1, true);
         CHECK(a_dry > 0 && a_knob * 20 < a_dry && std::fabs(b_knob - a_dry) < a_dry * 0.05);
+        // Playing, the sequencer's ticks split the host's blocks: a pad through Knob FX (none chosen, so it passes
+        // untouched) must come out frame for frame as it does dry, whole and in place, as when stopped.
+        auto take = [&](bool knobbed, bool playing) {
+            EngineHost host;
+            host.load(*kit, *bank);
+            CHECK(host.offer_sample(0, &tone));
+            knob(host, EffectKind::None, {}, true, 0);
+            Command pads {Command::Type::KnobFx, 1, 0, 4}; pads.position = knobbed ? 1u : 0u; host.send(pads); // pad A01
+            if (playing) host.send({Command::Type::Play});
+            host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + 0), 110});
+            std::vector<int32_t> out(256);
+            std::vector<float> left;
+            for (unsigned n = 0; n < 100; ++n) {
+                host.render(out.data(), 128, 1);
+                for (unsigned f = 0; f < 128; ++f) left.push_back(out[2 * f] / 2147483648.0f);
+            }
+            CHECK(host.playing() == playing);
+            const SampleData* gone = nullptr;
+            while (host.take_retired(gone)) {}
+            return left;
+        };
+        auto energy_of = [](const std::vector<float>& s) { double e = 0; for (float v : s) e += double(v) * v; return e; };
+        auto apart = [](const std::vector<float>& a, const std::vector<float>& b) {
+            float most = 0;
+            for (size_t f = 0; f < a.size(); ++f) most = std::max(most, std::fabs(a[f] - b[f]));
+            return most;
+        };
+        auto still_dry = take(false, false), still_knob = take(true, false);
+        auto run_dry = take(false, true), run_knob = take(true, true);
+        double e_dry = energy_of(run_dry);
+        CHECK(e_dry > 0 && apart(still_knob, still_dry) < 1e-4f);                                       // stopped: untouched
+        CHECK(apart(run_dry, still_dry) < 1e-4f);                                                       // the ticks alone change nothing
+        CHECK(std::fabs(energy_of(run_knob) - e_dry) < e_dry * 0.01 && apart(run_knob, run_dry) < 1e-4f); // playing: whole and in place
     }
 
     // Rec Input FX: the take hears Knob FX on the input (the mix here, Resample), the speakers do not.

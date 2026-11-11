@@ -541,11 +541,10 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     // The punched pad renders on its own, and so does each pad with a chain
     // (blocks of 128 at most here).
     bool punching = aside && frames <= 128, chains = pad_effects && frames <= 128;
-    bool knobbing = (knob_mask[0] || knob_mask[1]) && frames <= 128;
+    bool knobbing = (knob_mask[0] || knob_mask[1]) && knob_l && knob_r && frames <= 128;
     if (punching) { std::fill(aside_l, aside_l + frames, 0.0f); std::fill(aside_r, aside_r + frames, 0.0f); }
     if (chains) for (auto& l : lane) if (l.pad >= 0) { l.fed = false; std::fill(l.l, l.l + frames, 0.0f); std::fill(l.r, l.r + frames, 0.0f); }
     knob_used = false;
-    if (knobbing) { std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f); }
     // Where a pad's sound joins: the kit, the Sidechain's key (first: it must not duck itself), or Knob FX's own output.
     bool keying = key_pad >= 0 && frames <= 128;
     auto out_l = [&](int pad) {

@@ -90,12 +90,13 @@ public:
     void set_pad_effects(PadEffects* effects) { pad_effects = effects; }
     static constexpr unsigned lanes = 8;
     // Knob FX (parity phase 7): the voices of these pads (a bit a pad) play
-    // into knob_left / knob_right instead, after their own chain and punch,
-    // for the host to put through Knob FX. No bits: none.
+    // into the host's l / r instead, after their own chain and punch, added to
+    // what is there, for the host to put through Knob FX. No bits: none. Like
+    // the Sidechain's key pad, the host hands this sub-block's place in its own
+    // buffers before each render; nullptr: none.
     void set_knob_pads(uint64_t low, uint64_t high) { knob_mask[0] = low; knob_mask[1] = high; }
-    bool knob_fed() const { return knob_used; } // the last block put something there
-    const float* knob_left() const { return knob_l; }
-    const float* knob_right() const { return knob_r; }
+    void set_knob_out(float* l, float* r) { knob_l = l; knob_r = r; }
+    bool knob_fed() const { return knob_used; } // the last render put something there
     // Sidechain: this kit pad's voices (after its own chain and punch) play into l / r instead of the kit,
     // added to what is there; the host hands this sub-block's place in its own buffers before each render
     // (a render can be part of the host's block). -1: none.
@@ -205,7 +206,8 @@ private:
     PadEffects* pad_effects = nullptr;
     uint64_t knob_mask[2] {};
     bool knob_used = false;
-    float knob_l[128] {}, knob_r[128] {};
+    float* knob_l = nullptr;
+    float* knob_r = nullptr;
     int key_pad = -1;
     float* key_l = nullptr;
     float* key_r = nullptr;

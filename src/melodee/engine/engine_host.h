@@ -191,6 +191,8 @@ private:
         bool wheel_moved = false;                 // and motion moved it since (parity phase 8)
         float buffer[block] {};
         float left[block] {}, right[block] {};
+        float knob_pad_l[block] {}, knob_pad_r[block] {}; // a kit's pads under Knob FX, as the sampler left them
+        bool knob_pad_fed = false;                         // and some sub-block of this block put something there
         uint8_t bus = 0;
         Arp arp;
         PendingOn arp_late;

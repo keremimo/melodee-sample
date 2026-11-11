@@ -1183,6 +1183,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         solo |= slot.solo;
         std::fill(slot.buffer, slot.buffer + frames, 0.0f);
         std::fill(slot.left, slot.left + frames, 0.0f); std::fill(slot.right, slot.right + frames, 0.0f);
+        slot.knob_pad_fed = false;
+        if (knob_heard && slot.engine == &slot.sampler) { // Knob FX on kit pads: they play apart, into the slot's knob_pad_l / knob_pad_r
+            std::fill(slot.knob_pad_l, slot.knob_pad_l + frames, 0.0f); std::fill(slot.knob_pad_r, slot.knob_pad_r + frames, 0.0f);
+        }
     }
 
     // Sidechain on one kit pad: the sampler plays that pad apart, into key_pad_l / key_pad_r.
@@ -1218,9 +1222,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (slot.engine == &slot.sampler) {
                 bool pad_key = pad_keyed >= 0 && &slot == &slots[unsigned(pad_keyed)];
                 slot.sampler.set_key_pad(pad_key ? int(comp.key_pad()) : -1, pad_key ? key_pad_l + done : nullptr, pad_key ? key_pad_r + done : nullptr);
+                slot.sampler.set_knob_out(knob_heard ? slot.knob_pad_l + done : nullptr, knob_heard ? slot.knob_pad_r + done : nullptr);
             }
             if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
             else slot.engine->render(slot.buffer + done, n);
+            if (slot.engine == &slot.sampler) slot.knob_pad_fed |= slot.sampler.knob_fed();
         }
         sync.run(frame_now + done, n, quarter_samples(), [&](const MidiOutEvent& e) { emit(e); });
         if (running && !held) {
@@ -1288,9 +1294,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             bool through_input = tap && monitor_on.load(std::memory_order_relaxed);
             bool heard = !slot.mute && !(solo && !slot.solo) && !through_input;
             // Knob FX: a kit's pads switched on come out apart, after their own chain (not the track's), at the track's level and pan.
-            if (heard && slot.engine == &slot.sampler && slot.sampler.knob_fed()) {
-                const float* kl = slot.sampler.knob_left();
-                const float* kr = slot.sampler.knob_right();
+            if (heard && slot.engine == &slot.sampler && slot.knob_pad_fed) {
+                const float* kl = slot.knob_pad_l;
+                const float* kr = slot.knob_pad_r;
                 float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
                 for (unsigned f = 0; f < frames; ++f) { knob_l[f] += kl[f] * l; knob_r[f] += kr[f] * r; }
                 knob_fed = true;
