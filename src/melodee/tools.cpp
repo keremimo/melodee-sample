@@ -697,6 +697,12 @@ const Preview previews[] {
          s.ui.chop_mode = ChopMode::Regions; s.ui.chop_slice = 4;
          chop_voice(s, s.ui.slices.start[7], s.ui.slices.end(7, s.sample.frames), 0.55f, 0.85f);
      }},
+    {"chopdense", [](Shell&, Snapshot& s) { // 37 slices: numbers that would collide step aside, slice 12 in hand and 20 sounding keep theirs
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.ui.slices = chop(ChopMode::Regions, 37, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.chop_mode = ChopMode::Regions; s.ui.chop_slice = 11;
+         chop_voice(s, s.ui.slices.start[19], s.ui.slices.end(19, s.sample.frames), 0.5f, 0.85f);
+     }},
     {"chopplayingsel", [](Shell&, Snapshot& s) { // the slice in hand playing: its raised ground and handles stay, the head over them
          s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;
          s.ui.slices = chop(ChopMode::Regions, 12, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);

@@ -86,12 +86,36 @@ void draw(Paint& p, const Snapshot& s) {
         waveform(p, x, y, w, wh, s.sample.overview, from, to, sa, sb, c, &head, 1);
         p.g.restoreState();
     }
+    // The numbers under the slices: where they would run into each other, some step aside; the slice in hand and
+    // the one sounding always keep theirs, and no number sits on theirs.
+    auto number_style = [&](unsigned n) {
+        bool heard = int(n) == sounding;
+        return plain(heard ? c : n == selected ? colour::text : colour::mid, type::small, heard || n == selected ? Weight::Bold : Weight::SemiBold);
+    };
+    auto number_span = [&](unsigned n) {
+        float l = x_of(float(slices.start[n]) / frames) + 1;
+        return std::pair<float, float> {l, l + p.width(juce::String(n + 1), number_style(n))};
+    };
+    auto kept_number = [&](unsigned n) { return n == selected || int(n) == sounding; };
+    constexpr float number_gap = 3;
+    float drawn_to = -1e9f;
     for (unsigned n = 0; n < slices.count; ++n) {
         float sx = x_of(float(slices.start[n]) / frames);
-        bool edge = n == selected || n == selected + 1, heard = int(n) == sounding;
+        bool edge = n == selected || n == selected + 1;
         if (n) p.fill(sx, y, 1, wh, edge ? colour::text : colour::line);
-        p.text(juce::String(n + 1), sx + 1, y + wh + 2, 16, 9,
-               plain(heard ? c : n == selected ? colour::text : colour::mid, type::small, heard || n == selected ? Weight::Bold : Weight::SemiBold));
+        auto [l, r] = number_span(n);
+        bool show = kept_number(n);
+        if (!show && l >= drawn_to + number_gap) {
+            show = true;
+            for (unsigned k = 0; k < slices.count && show; ++k) // keep clear of the numbers that always show
+                if (k != n && kept_number(k)) {
+                    auto [kl, kr] = number_span(k);
+                    show = r + number_gap <= kl || l >= kr + number_gap;
+                }
+        }
+        if (!show) continue;
+        p.text(juce::String(n + 1), sx + 1, y + wh + 2, 16, 9, number_style(n));
+        drawn_to = std::max(drawn_to, r);
     }
     p.fill(x_of(a), y, 1, wh, knob_shade(s.ui.track, 0));            // K1's handle
     p.fill(x_of(b) - 1, y, 1, wh, knob_shade(s.ui.track, 1));        // K2's
