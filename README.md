@@ -65,4 +65,5 @@ git add base
 ## Licence
 
 AGPL-3.0-only (`LICENSE`); JUCE under AGPLv3, Rubik under the SIL OFL 1.1
-([THIRD_PARTY.md](THIRD_PARTY.md)).
+([THIRD_PARTY.md](THIRD_PARTY.md)). The boot animation's logo and backdrop
+are outside the AGPL.

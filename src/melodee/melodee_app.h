@@ -9,6 +9,7 @@
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
+#include "melodee/ui/boot.h"
 #include "drivers/usb_audio.h"
 #include "runtime/app.h"
 #include <atomic>
@@ -51,6 +52,8 @@ private:
     melodee::InputRoute input_route; // service thread: Input Config's source on the hardware, USB-C in, the speaker
     melodee::PluginRack plugins;     // its own thread: the plug-ins the project uses (freed before the engine host)
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
+    melodee::ui::BootAnimation boot;          // screen thread: the logo, then the app
+    std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread
     // queues, the MIDI thread acts it out as if by hand.

@@ -19,6 +19,7 @@
 //                                    checks it sounds and stays inside full scale
 //   --self-test FILE.wav             the same check, under the name device.py and
 //                                    the SD boot run before leaving the stock app
+//   --melodee-boot DIR               draws the boot animation to DIR/boot-NNN.png, 30 a second
 //   --melodee-bench ROUNDS [PAGE...] times drawing each page, ROUNDS draws apiece
 //   --mpc-import FILE.xpj|.xpm|.xty  reads an MPC Sample project or an MPC program and prints what came across
 //   --mpc-install FILE.xpn DIR       installs an MPC expansion into DIR/<its title>

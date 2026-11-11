@@ -5,6 +5,23 @@
 Melodee: Copyright (C) 2026 Kerem Kilic (Ellic Studio), AGPL-3.0-only. The
 full text is in `LICENSE`.
 
+## Boot art
+
+The boot animation's two images are not covered by the AGPL, and neither
+is licensed with this code:
+
+- The Melodee logo (`src/melodee/ui/boot_logo.cpp`): Copyright (C) 2026
+  Kerem Kilic (Ellic Studio), all rights reserved.
+- The night city backdrop (`src/melodee/ui/boot_backdrop.cpp`): Copyright
+  (C) Yasmine Elsen (https://www.smallcutekitty.net), all rights reserved.
+  Made for Kerem Kilic (Ellic Studio), the only one permitted to use it.
+
+A fork may keep both files as they are. No public release of a fork, or of
+any other project built from this code (a binary, an SD card zip, an image
+or any other download), may contain either one: before releasing, replace
+both files with art of the fork's own (`tools/boot_art.py` writes them from
+any two 320 x 240 PNGs).
+
 ## sample-base
 
 The runtime, drivers, build and install scripts come from sample-base

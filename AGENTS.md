@@ -34,3 +34,8 @@ keep the copyright and SPDX headers as they are, keep his name and Ellic
 Studio in the README, About text and release notes, and name Melodee by Kerem
 Kiliç (Ellic Studio) as the origin wherever the fork describes where it comes
 from.
+
+The boot animation's logo and backdrop (`src/melodee/ui/boot_logo.cpp`,
+`src/melodee/ui/boot_backdrop.cpp`) are not under the AGPL (THIRD_PARTY.md,
+Boot art). A fork may keep them, but before any public release of a fork,
+replace both with the fork's own art through `tools/boot_art.py`.

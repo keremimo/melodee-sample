@@ -64,6 +64,10 @@ void MelodeeApp::render(const AudioBlock& input, AudioBlock& output) {
 void MelodeeApp::surface(const SurfaceEvent& event) {
     // A remote tool's prompt owns the controls while it is shown.
     if (session().prompting.load() && event.input.kind == SurfaceInput::Kind::Button) return;
+    // A press during the boot animation fades it out, and still counts.
+    bool pressed = (event.input.kind == SurfaceInput::Kind::Button && event.input.pressed) ||
+                   (event.pad >= 0 && (event.midi.status & 0xf0) == 0x90 && event.midi.value > 0);
+    if (pressed && !event.syncing) boot_skip.store(true, std::memory_order_relaxed);
     shell.surface(event, now_ms());
 }
 
@@ -241,7 +245,10 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
 
 void MelodeeApp::draw(juce::Graphics& g) {
     using namespace melodee;
-    shell.snapshot(*frame, now_ms());
+    uint32_t now = now_ms();
+    if (boot_skip.exchange(false, std::memory_order_relaxed)) boot.skip(now);
+    if (boot.covers(now)) { boot.draw(g, now); return; } // the app starts drawing as the animation fades out
+    shell.snapshot(*frame, now);
     frame->audio_rate = session().audio.rate.load(std::memory_order_relaxed);
     frame->audio_periods = session().audio.periods.load(std::memory_order_relaxed);
     frame->audio_xruns = session().audio.xruns.load(std::memory_order_relaxed);
@@ -249,6 +256,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
     g.fillAll(ui::colour::bg);
     page_spec(frame->ui.page).draw(p, *frame);
     draw_overlays(p, *frame);
+    boot.draw(g, now); // its fade out, over the app; nothing once it has ended
 }
 
 // The speaker plays while neither headphones nor line out is plugged in (and

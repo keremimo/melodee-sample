@@ -21,6 +21,7 @@
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/midi_config_rows.h"
+#include "melodee/ui/boot.h"
 #include "drivers/usb_audio.h"
 #include "runtime/screen.h"
 #include "runtime/util.h"
@@ -1445,6 +1446,36 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
     return text_issues ? 1 : 0;
 }
 
+// The boot animation at 30 frames a second, fading out over the starting
+// project's first page, as DIR/boot-NNN.png.
+int boot_frames(const std::string& folder) {
+    EngineHost host;
+    Shell shell(host);
+    board_project(shell);
+    auto snapshot = std::make_unique<Snapshot>();
+    shell.snapshot(*snapshot, 100000);
+    snapshot->ui = UiState {};
+    snapshot->now = 100000;
+    const auto& track = snapshot->project.tracks[snapshot->ui.track];
+    snapshot->pattern = shell.patterns().at[snapshot->ui.track][track.pattern];
+    ui::BootAnimation boot;
+    unsigned written = 0;
+    for (uint32_t ms = 0;; ms += 1000 / 30) {
+        juce::Image image(juce::Image::ARGB, screen_width, screen_height, true);
+        {
+            juce::Graphics g(image);
+            if (boot.covers(ms)) boot.draw(g, ms);
+            else { draw(g, *snapshot); boot.draw(g, ms); }
+        }
+        char name[32];
+        std::snprintf(name, sizeof name, "/boot-%03u.png", written++);
+        save_png(image, folder + name);
+        if (boot.finished(ms)) break;
+    }
+    std::cout << "MELODEE_BOOT frames=" << written << '\n';
+    return written > 1 ? 0 : 1;
+}
+
 // Draws every preview page `rounds` times at 320 x 240 and prints the mean
 // time per draw, for comparing drawing cost before and after a change.
 int bench(unsigned rounds, const std::vector<std::string>& names) {
@@ -1623,6 +1654,7 @@ std::optional<int> run_tool(int argc, char** argv) {
         std::printf("%s folder=%s files=%u/%u\n", error.empty() ? "installed" : ("error=" + error).c_str(), install.folder().c_str(), install.done(), install.total());
         return error.empty() ? 0 : 1;
     }
+    if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return bench(unsigned(std::max(1, std::atoi(argv[2]))), names);
