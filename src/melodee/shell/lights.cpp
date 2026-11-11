@@ -453,6 +453,20 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     // Bank lights A-H: the sampler track's bank in view.
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
         lights.bank(bank, track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks);
+    { // The meters beside the screen, as on the MPC: the input source while Record or Input Config is in view or a
+      // take waits or runs (what is about to be sampled), else main out.
+        using S = TakeRecorder::State;
+        auto take = host.recorder().state();
+        bool input = ui.page == PageId::Record || ui.page == PageId::InputConfig || take == S::Armed || take == S::Cued
+                  || take == S::Recording;
+        uint32_t bits = uint32_t(input) << 16;
+        for (unsigned side = 0; side < surface_meter_lights; ++side) {
+            uint8_t lit = input ? meter_lit(host.in_level(side), meter_input_db) : meter_lit(host.out_level(side), meter_mix_db);
+            lights.meter(side, lit);
+            bits |= uint32_t(lit) << (8 * side);
+        }
+        meter_bits.store(bits, std::memory_order_relaxed);
+    }
 
     using B = SurfaceButton;
     using L = ButtonLight;

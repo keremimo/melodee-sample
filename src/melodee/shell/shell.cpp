@@ -24,6 +24,7 @@
 #include "melodee/shell/shift_pads.h"
 #include "surface/controls.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -555,7 +556,7 @@ std::string Shell::summary() const {
            " melodee_bank=" + std::string(1, char('A' + ((st >> 26) & 7))) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
            " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load()) +
-           " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text() + " melodee_pads=" + lit_pads_text() +
+           " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text() + " melodee_pads=" + lit_pads_text() + " melodee_meter=" + meter_text() + " melodee_meter_db=" + meter_db_text() +
            " melodee_rec=" + std::to_string(rec_state.load()) + " melodee_count_in=" + std::to_string(host.count_in()) +
            " melodee_position=" + std::to_string(host.position_of(pt >> 8)) +
            " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
@@ -692,6 +693,25 @@ std::string Shell::lit_pads_text() const {
     for (unsigned n = 0; n < 16; ++n)
         if (lit & (1u << n)) { if (!out.empty()) out += ','; out += std::to_string(n + 1); }
     return out.empty() ? "none" : out;
+}
+
+// The meter lights beside the screen: left and right as masks (bit 0 the bottom LED), and what they show.
+std::string Shell::meter_text() const {
+    uint32_t bits = meter_bits.load(std::memory_order_relaxed);
+    return std::to_string(bits & 0xff) + ',' + std::to_string(bits >> 8 & 0xff) + ',' + (bits >> 16 & 1 ? "in" : "out");
+}
+
+// The levels the meters show now, left and right, in dBFS (-99 for silence).
+std::string Shell::meter_db_text() const {
+    bool input = meter_bits.load(std::memory_order_relaxed) >> 16 & 1;
+    std::string out;
+    for (unsigned side = 0; side < surface_meter_lights; ++side) {
+        float level = input ? host.in_level(side) : host.out_level(side);
+        char text[16];
+        std::snprintf(text, sizeof text, "%.1f", level > 0 ? std::max(-99.0f, 20 * std::log10(level)) : -99.0f);
+        out += (side ? "," : "") + std::string(text);
+    }
+    return out;
 }
 
 // Each lit button as name:level (1 faint, 2 bright), in the surface's order.

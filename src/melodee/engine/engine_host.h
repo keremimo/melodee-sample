@@ -143,6 +143,11 @@ public:
     void watch_taps(int track) { tap_track.store(track, std::memory_order_relaxed); }
     bool taps(TrackTaps& out) const { return tap_board.read(out); }
     float peak() const { return output_peak.load(std::memory_order_relaxed); }
+    // The meter lights beside the screen: the mix (before main volume, the listening level) and the input source,
+    // side 0 left, 1 right, as peaks falling meter_fall_db a second, so the 5 ms light pass misses none.
+    static constexpr float meter_fall_db = 30;
+    float out_level(unsigned side) const { return out_levels[side & 1].load(std::memory_order_relaxed); }
+    float in_level(unsigned side) const { return in_levels[side & 1].load(std::memory_order_relaxed); }
     unsigned dropped() const { return lost.load(std::memory_order_relaxed); }
 
     // Service thread: a loaded sample for slot `slot` (nullptr empties it). The
@@ -450,6 +455,7 @@ private:
     std::atomic<int> tap_track {-1};
     TapBoard tap_board;
     std::atomic<float> output_peak {0};
+    std::array<std::atomic<float>, 2> out_levels {}, in_levels {};
     std::atomic<unsigned> lost {0};
     std::atomic<bool> punch_on {false};
     std::atomic<unsigned> live_on {0};

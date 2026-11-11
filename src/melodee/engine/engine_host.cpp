@@ -1208,6 +1208,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (reformatting) { // a new rate: silent until the Reload has built everything again at it
         std::fill(out, out + 2 * frames, 0);
         if (stems) std::fill(stems, stems + size_t(track_count) * block, 0.0f);
+        for (auto* level : {&out_levels[0], &out_levels[1], &in_levels[0], &in_levels[1]}) level->store(0, std::memory_order_relaxed);
         frame_now += frames;
         return;
     }
@@ -1442,13 +1443,23 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (knob_rec && knob_heard && (taking == TakeRecorder::State::Armed || taking == TakeRecorder::State::Recording || taking == TakeRecorder::State::Cued))
         knob_in.process(record_l, record_r, frames);
     take.process(record_l, record_r, frames);
+    // The meters' fall over this block: meter_fall_db a second at the device's rate.
+    float meter_fall = std::pow(10.0f, -meter_fall_db / 20 * float(frames) / float(dsp::sample_rate()));
+    auto meter = [&](std::atomic<float>& held, float peak) {
+        held.store(std::max(peak, held.load(std::memory_order_relaxed) * meter_fall), std::memory_order_relaxed);
+    };
+    {
+        float in_l = 0, in_r = 0;
+        for (unsigned f = 0; f < frames; ++f) { in_l = std::max(in_l, std::fabs(record_l[f])); in_r = std::max(in_r, std::fabs(record_r[f])); }
+        meter(in_levels[0], in_l); meter(in_levels[1], in_r);
+    }
     recall_ring.write(record_l, record_r, frames);
     keep_sources(input, usb, frames);
     render_out.process(master_l, master_r, frames);
     // Monitor: the source heard with the mix (never the mix itself, heard already).
     if (monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample))
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += record_l[f]; master_r[f] += record_r[f]; }
-    float peak = 0;
+    float peak = 0, out_l = 0, out_r = 0;
     for (unsigned f = 0; f < frames; ++f) {
         if (click_env > 0.0005f) { // a short blip on top of the mix
             float blip = std::sin(2 * dsp::pi * click_phase) * click_env * click_level * 0.5f;
@@ -1456,12 +1467,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             click_env *= 0.9985f;
             master_l[f] += blip; master_r[f] += blip;
         }
+        out_l = std::max(out_l, std::fabs(master_l[f])); out_r = std::max(out_r, std::fabs(master_r[f])); // the mix, for the meters
         float left = dsp::soft_clip(master_l[f] * volume), right = dsp::soft_clip(master_r[f] * volume);
         peak = std::max(peak, std::max(std::fabs(left), std::fabs(right)));
         out[2 * f] = int32_t(std::clamp(left, -0.999f, 0.999f) * 2147483647.0f);
         out[2 * f + 1] = int32_t(std::clamp(right, -0.999f, 0.999f) * 2147483647.0f);
     }
     output_peak.store(peak, std::memory_order_relaxed);
+    meter(out_levels[0], out_l); meter(out_levels[1], out_r);
     if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
     publish_taps(frames);
     frame_now += frames;

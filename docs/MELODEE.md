@@ -144,8 +144,16 @@ would do nothing (Chop needs a kit pad with a sample, Loop and Sample Record
 a kit track, Erase something to clear). On the Name sheet only Erase, Play
 and Stop glow; on the Exit sheet none; during SD card access only Play and
 Stop. The bank lights show the kit's bank; the fader light shows its value
-(brightest at the middle for pan and tune). `shell/button_jobs.cpp`,
-`shell/lights.cpp`.
+(brightest at the middle for pan and tune). The meters right of the screen
+show the mix, left and right, before main volume; on Record and Input
+Config, and while a take waits or runs, the input source instead (as on
+the MPC), so Main Volume never starves them. For the mix the five LEDs
+light at −36, −27, −18, −11 and −7 dBFS, matched to Melodee's headroom (a
+synth in the greens with loud notes yellow, the 909 kit green and yellow with
+its loudest hits flashing red); for the input at −42, −30, −18, −9 and −2
+dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
+`melodee_meter_db=` in `status` gives the levels shown.
+`shell/button_jobs.cpp`, `shell/lights.cpp`, `shell/meter_lights.h`.
 
 ## Pages
 
@@ -964,7 +972,8 @@ and Melodee's:
 time against its budget, tenths of a percent), `melodee_render_parallel`
 (blocks the workers helped with), the
 page and track, the lit buttons (`melodee_buttons=seq:2,stop:1`, 1 faint,
-2 bright) and pads (`melodee_pads=`); the sequencer (`melodee_rec`,
+2 bright) and pads (`melodee_pads=`), the meters (`melodee_meter=3,1,out`:
+left and right as masks, bit 0 the bottom LED, then `out` or `in`); the sequencer (`melodee_rec`,
 `melodee_count_in`, `melodee_position`, `melodee_pattern_ticks`,
 `melodee_events`, `melodee_q`, `melodee_first_tick`, `melodee_signature`,
 `melodee_ticks`, `melodee_song_bar`, `melodee_song_clips`); Step Edit

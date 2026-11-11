@@ -61,6 +61,7 @@
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/meter_lights.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/card_access.h"
@@ -2329,6 +2330,37 @@ void chop_and_browser() {
 
 // Parity phase 6: Input Config, the input path, Sample Record's Seq take,
 // Audio Recall's ring, renders of the mix and Song -> new pattern.
+// The meter lights beside the screen: the engine's left and right levels (the input source, and the mix before
+// main volume), falling 30 dB a second, and the LEDs a strip lights for them.
+void meter_lights() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (auto& t : project->tracks) t.engine = EngineKind::None;
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    std::vector<int32_t> input(256), silent(256), out(256);
+    for (unsigned f = 0; f < 128; ++f) { input[2 * f] = int32_t(0.5 * 2147483647.0); input[2 * f + 1] = int32_t(0.25 * 2147483647.0); }
+    host->send({Command::Type::RecordSource, uint8_t(InputSource::Rear)});
+    host->send({Command::Type::Monitor, 0, 0, 0, 1});
+    for (unsigned n = 0; n < 4; ++n) host->render(out.data(), 128, 2, input.data());
+    CHECK(std::fabs(host->in_level(0) - 0.5f) < 1e-3f && std::fabs(host->in_level(1) - 0.25f) < 1e-3f);
+    CHECK(std::fabs(host->out_level(0) - 0.5f) < 1e-3f && std::fabs(host->out_level(1) - 0.25f) < 1e-3f); // main volume 2 unheard
+    host->send({Command::Type::Monitor, 0, 0, 0, 0});
+    for (unsigned n = 0; n < unsigned(dsp::sample_rate()) / 128; ++n) host->render(out.data(), 128, 2, silent.data());
+    float fell = 20 * std::log10(host->in_level(0) / 0.5f), fell_out = 20 * std::log10(host->out_level(1) / 0.25f);
+    CHECK(fell < -29 && fell > -31 && fell_out < -29 && fell_out > -31);
+
+    // A bar up to the level, nothing held. The input's steps (-42, -30, -18, -9, -2 dBFS); the mix's: a synth's
+    // median (-22) two greens, its loudest (-9) yellow, the 909's loudest (-6) red.
+    auto at = [](float db) { return std::pow(10.0f, db / 20); };
+    const auto& in = meter_input_db;
+    CHECK(meter_lit(0, in) == 0 && meter_lit(at(-45), in) == 0);
+    CHECK(meter_lit(at(-35), in) == 0b00001 && meter_lit(at(-15), in) == 0b00111 && meter_lit(at(-5), in) == 0b01111);
+    CHECK(meter_lit(at(0), in) == surface_meter_all && meter_lit(at(6), in) == surface_meter_all);
+    CHECK(meter_lit(at(-22), meter_mix_db) == 0b00011 && meter_lit(at(-9), meter_mix_db) == 0b01111);
+    CHECK(meter_lit(at(-6), meter_mix_db) == surface_meter_all);
+}
+
 void audio_input_and_rendering() {
     // Input Config: Auto hears the source only on Record; the mix is never monitored; the monitored mic quiets the speaker.
     InputConfig in;
@@ -6644,6 +6676,7 @@ int main() {
     pad_fx_and_flex();
     performance_effects();
     audio_input_and_rendering();
+    meter_lights();
     chop_and_browser();
     sample_mode();
     step_edit_and_pad_motion();

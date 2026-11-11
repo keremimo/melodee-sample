@@ -6,6 +6,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/shell/looper_jobs.h"
+#include "melodee/shell/meter_lights.h"
 #include "melodee/shell/midi_io.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
@@ -84,9 +85,12 @@ private:
     Takeover pot_takeover(const Binding& binding) const;
     std::string button_text() const; // the button lights for `status`
     std::string lit_pads_text() const; // and the lit pads
+    std::string meter_text() const;    // and the meters beside the screen
+    std::string meter_db_text() const; // and the levels they show
     std::string pad_summary() const;   // the last pad's Sample Mode values (phase 4)
     std::atomic<uint64_t> button_levels {0};
     std::atomic<uint32_t> pads_lit {0}; // the pads lit, a bit each, for `status`
+    std::atomic<uint32_t> meter_bits {0}; // their LEDs (left, right << 8) and the input shown (<< 16), for `status`
     bool record_track_keys() const; // Record: a synth track source plays the pads (Minus / Plus: its octave)
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
     bool song_buttons() const { return ui_.page == PageId::Song && !ui_.song_export && !ui_.shift; } // Chop, Erase, Note Repeat work on the clip
