@@ -10,7 +10,10 @@
 //       library), and the plug-ins inside (instrument or effect, buses).
 //   vst_probe run BUNDLE_OR_SO [--index N] [--rate HZ] [--block FRAMES]
 //                        [--seconds S] [--instances N] [--wav OUT.wav]
-//       Loads the plug-in, plays chords into an instrument or noise bursts
+//                        [--program N] [--home DIR]
+//       Loads the plug-in (with $HOME set to DIR, where a plug-in looks for
+//       its presets; the MPC's own is read only), switches to program N and
+//       waits for its state to change, plays chords into an instrument or noise bursts
 //       and a tone into an effect, times every processBlock against the
 //       block's real-time budget, round-trips its state and writes what it
 //       played to a WAV file.
@@ -199,6 +202,7 @@ struct RunOptions
     int block = 128;
     double seconds = 10.0;
     int instances = 1;
+    int program = -1;  // -1 leaves the plug-in's own default
     File wav;
 };
 
@@ -236,6 +240,42 @@ void describe (AudioPluginInstance& plugin)
     if (params.size() > 24)
         std::printf ("  ...\n");
     std::printf ("programs: %d\n", plugin.getNumPrograms());
+    int named = 0;
+    for (int i = 0; i < plugin.getNumPrograms() && named < 16; ++i)
+    {
+        const auto name = plugin.getProgramName (i);
+        if (name.isEmpty())
+            continue;
+        std::printf ("  %3d %s\n", i, name.toRawUTF8());
+        ++named;
+    }
+}
+
+// Switch to a program and wait until the plug-in's state shows it took
+// (plug-ins that load files for a preset often do it off the calling
+// thread). Silent blocks are processed meanwhile, as a host would.
+void selectProgram (AudioPluginInstance& plugin, int program, int block)
+{
+    MemoryBlock before;
+    plugin.getStateInformation (before);
+    const auto t0 = std::chrono::steady_clock::now();
+    plugin.setCurrentProgram (program);
+    AudioBuffer<float> silence (std::max ({ 2, plugin.getTotalNumInputChannels(), plugin.getTotalNumOutputChannels() }), block);
+    MidiBuffer midi;
+    MemoryBlock after;
+    for (int tries = 0; tries < 100; ++tries)
+    {
+        silence.clear();
+        plugin.processBlock (silence, midi);
+        plugin.getStateInformation (after);
+        if (after != before)
+            break;
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    const auto ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+    std::printf ("program %d (%s): %s after %.0f ms, state %zu -> %zu bytes\n", program,
+                 plugin.getProgramName (program).toRawUTF8(), after != before ? "state changed" : "state unchanged",
+                 ms, before.getSize(), after.getSize());
 }
 
 void checkState (AudioPluginInstance& plugin)
@@ -308,6 +348,9 @@ int run (const RunOptions& options)
         plugin->setNonRealtime (false);
         plugin->prepareToPlay (options.rate, options.block);
     }
+    if (options.program >= 0)
+        for (auto& plugin : plugins)
+            selectProgram (*plugin, options.program, options.block);
     std::printf ("memory: %ld KiB more resident for %d instance(s)\n", residentKiB() - rssBefore, options.instances);
 
     const int channels = std::max ({ 2, first.getTotalNumInputChannels(), first.getTotalNumOutputChannels() });
@@ -462,7 +505,8 @@ int usage()
 {
     std::printf ("usage: vst_probe scan DIR_OR_BUNDLE\n"
                  "       vst_probe run BUNDLE [--index N] [--rate HZ] [--block FRAMES]\n"
-                 "                            [--seconds S] [--instances N] [--wav OUT.wav]\n");
+                 "                            [--seconds S] [--instances N] [--wav OUT.wav]\n"
+                 "                            [--program N] [--home DIR]\n");
     return 2;
 }
 
@@ -485,6 +529,10 @@ int dispatch (const StringArray& args)
         else if (key == "--seconds") options.seconds = value.getDoubleValue();
         else if (key == "--instances") options.instances = std::max (1, value.getIntValue());
         else if (key == "--wav") options.wav = File::getCurrentWorkingDirectory().getChildFile (value);
+        else if (key == "--program") options.program = std::max (0, value.getIntValue());
+        // Plug-ins find their presets and settings under $HOME, which is read
+        // only on the MPC; set before any plug-in library is opened.
+        else if (key == "--home") setenv ("HOME", File::getCurrentWorkingDirectory().getChildFile (value).getFullPathName().toRawUTF8(), 1);
         else return usage();
     }
     return run (options);

@@ -31,7 +31,15 @@ runtime), from `build/plugin-support`. Copy `build/vst_probe/vst_probe`,
 ./vst_probe run /tmp/vst3/Nekobi.vst3 --rate 44100 --block 128 --seconds 8 --wav out.wav
 ./vst_probe run /tmp/vst3/DragonflyHallReverb.vst3 --instances 8
 ./vst_probe run "/tmp/openmpc/sd88me - VST - Acid-303/acid303.so" --rate 44100
+./vst_probe run /tmp/vst3/TONE3000.vst3 --home /tmp/t3khome --program 3
 ```
+
+`--home DIR` sets `$HOME` before any plug-in loads; plug-ins look for
+presets and settings there, and the MPC's own `/root` is read only.
+`--program N` switches to program N after `prepareToPlay` and waits (up to
+10 s, processing silent blocks) until the plug-in's state changes, so
+plug-ins that load a preset's files in the background are timed with it
+loaded. The program list (first 16 named) is printed with the parameters.
 
 ## Findings (2026-11-11, AC50 1.3.0.12, Cortex-A55 x4, 2 GB)
 
@@ -178,3 +186,48 @@ GLIBCXX_3.4.29 at most, hard-float, NEON) against its aarch64 build, at
   trip. It would give up on a block within the period instead of the
   probe's 200 ms, run the bridge at the audio thread's real-time priority,
   and ship the armhf runtime's licences with a source offer.
+
+## TONE3000 (NAM amp captures and IRs)
+
+TONE3000 v0.0.12, official `linux-aarch64` release (JUCE 9.0.3), VST3,
+tested 2026-11-11.
+
+- **Loads with the stubs.** NEEDED is `libX11.so.6`, `libasound`,
+  `libfontconfig` and the C/C++ runtimes; it opens the other X11 libraries,
+  `libcurl` and JACK itself and carries on without the missing ones. No
+  GTK, though its installer lists it. It needs GLIBCXX_3.4.32, exactly what
+  the MPC has: a release built with a newer GCC would not open.
+- **Presets are programs, found under `$HOME`.** It reads
+  `$HOME/.config/TONE3000/Presets` (and `/usr/share/TONE3000/Presets`),
+  lists the presets as its 128 VST3 programs and loads one on a program
+  change. With `/root` read only it finds none; with `--home` and the 8
+  factory `.t3kpreset` files copied in, programs 0 to 7 are named. A
+  preset carries its models (`.nam` captures and IR `.wav`s, about 300 KB a
+  capture), so it loads offline and the plug-in's state after a program
+  change holds them too (0.8 to 1.8 MB). Program 0 cannot be selected
+  first: the program parameter is already 0.
+- **Parameters:** 2125, most of them the 2048 VST3 MIDI CC proxies (as with
+  DPF); the real ones are the input, tone stack, gate, spread and align
+  controls. The chain and its models are not parameters.
+- **CPU (one core, 128 frames, Melodee running):**
+
+  | Preset | Rate | Mean | p99 | Max | Over budget |
+  | --- | --- | --- | --- | --- | --- |
+  | none loaded | 44.1 kHz | 3.5% | 5.6% | 11.7% | 0 |
+  | Matchless Crunch (2 captures) | 48 kHz | 57.4% | 77.8% | 98.5% | 0 of 5625 |
+  | Matchless Crunch | 44.1 kHz | 70.1% | 82.2% | 89.8% | 0 of 5168 |
+  | Marshall Bluesbreaker (2 captures, 1.78 s stereo IR) | 48 kHz | 50.3% | 623% | 755% | 79 of 5625 |
+  | Marshall Bluesbreaker | 44.1 kHz | 60.9% | 637% | 946% | 82 of 5168 |
+
+  The captures are 48 kHz models, so 44.1 kHz adds resampling. The
+  Bluesbreaker's 16 to 27 ms blocks recur through the whole run, not only
+  while loading: likely the long IR's convolution. One instance with
+  short IRs fits a core; it does not leave room for much else on it.
+
+In Melodee since (docs/MELODEE.md, Plug-ins: Presets, Plugin Data), on
+track 1's chain at 48 kHz with five other plug-ins loaded: the 8 factory
+presets list on PRESETS from `Melodee/Plugin Data/.config/TONE3000/Presets`
+(TONE3000 builds `$HOME/.config` itself; it ignores `$XDG_CONFIG_HOME`).
+Matchless Crunch takes 65% of a block with no xruns over 10 s; Marshall
+Bluesbreaker 45 to 58% and 5 to 6 xruns a second (its IR). Picking the
+loaded preset again reloads it (another goes through first).
