@@ -1260,6 +1260,10 @@ void settings() {
     CHECK(c.screen == 20);
     c.step(Settings::PadLights, -1); CHECK(c.pad_lights == 2);
     c.step(Settings::Palette, 1); CHECK(c.value_text(Settings::Palette) == "NIGHT");
+    // Double Seq: Copy notes (the MPC's) or Empty, kept in the text.
+    CHECK(c.double_copies && c.value_text(Settings::DoubleSeq) == "Copy notes");
+    c.step(Settings::DoubleSeq, 1); CHECK(!c.double_copies && c.value_text(Settings::DoubleSeq) == "Empty");
+    { Settings back; back.read(c.text()); CHECK(!back.double_copies); }
     // Favourites: starred sounds by engine, kept in the text; the Sounds page's FAVOURITES lists them.
     static_assert(Settings::engines == unsigned(EngineKind::Count), "a favourites row per engine");
     Settings f;
@@ -1659,6 +1663,11 @@ void timing() {
     d.add({0, 24, 36, 100, 100, 0}); d.add({100, 24, 38, 100, 100, 0}); d.add({384, 24, 40, 100, 100, 0}); // the last is past the end
     CHECK(double_pattern(d, 128 * 384) && d.length == 768 && d.events.size() == 4 && d.events[2].tick == 384 && d.events[3].tick == 484);
     CHECK(!double_pattern(d, 768 + 1));
+    { // Settings' Double Seq "Empty": twice as long, the new half bare
+        Pattern e;
+        e.add({0, 24, 36, 100, 100, 0}); e.add({100, 24, 38, 100, 100, 0}); e.add({384, 24, 40, 100, 100, 0});
+        CHECK(double_pattern(e, 128 * 384, false) && e.length == 768 && e.events.size() == 2 && e.events[1].tick == 100);
+    }
     half_pattern(d);
     CHECK(d.length == 384 && d.events.size() == 2);
     scale_pattern(d, true); // half speed: twice as far apart; 100 -> 200
