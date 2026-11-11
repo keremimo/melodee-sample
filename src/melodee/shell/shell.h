@@ -69,6 +69,7 @@ public:
     void set_library(SampleLibrary* library) { library_ = library; context_.library = library; }
     void set_store(ProjectStore* store) { store_ = store; context_.store = store; }
     void set_input(InputRoute* input) { input_ = input; context_.input = input; }
+    void set_plugins(PluginRack* plugins) { context_.plugins = plugins; } // the app's plug-in rack (plugin/plugin_rack.h)
     // SD card access (parity phase 10b): the MIDI thread asks, the service thread lends.
     CardLink& card() { return card_link; }
 

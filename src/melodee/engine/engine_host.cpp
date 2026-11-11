@@ -149,6 +149,7 @@ bool EngineHost::skipped(Slot& slot, unsigned key, uint32_t tick) {
 void EngineHost::load_track(unsigned t, const Track& track) {
     auto& slot = slots[t % track_count];
     midi_all_off(t, frame_now); // what this track sent ends before it changes
+    slot.plugin_entry = track.plugin;
     select_engine(slot, track.engine);
     const auto& info = engine_info(track.engine);
     slot.base = track.params;
@@ -198,7 +199,9 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
                 : kind == EngineKind::Fm6 ? static_cast<Engine*>(&slot.fm)
                 : kind == EngineKind::Sid ? static_cast<Engine*>(&slot.sid)
                 : kind == EngineKind::Cz ? static_cast<Engine*>(&slot.cz)
-                : kind == EngineKind::Midi ? static_cast<Engine*>(&slot.midi) : nullptr;
+                : kind == EngineKind::Midi ? static_cast<Engine*>(&slot.midi)
+                : kind == EngineKind::Plugin ? static_cast<Engine*>(&slot.plugin) : nullptr;
+    slot.plugin.attach(kind == EngineKind::Plugin ? runner_of(slot.plugin_entry) : nullptr);
     slot.sampler.set_samples(&samples);
     slot.arp.top = kind == EngineKind::Sampler ? int(sampler_last_key) : 127; // a kit's notes run past 127
     for (auto& off : slot.offs) off.key = -1;
@@ -230,6 +233,11 @@ void EngineHost::apply(const Command& c) {
     auto& slot = slots[c.track % track_count];
     switch (c.type) {
     case Type::Looper: loops.ask(looper::Do(c.index), c.track, c.value, c.position); break;
+    case Type::TrackPlugin:
+        if (c.track >= track_count) break;
+        slot.plugin_entry = uint8_t(c.value);
+        slot.plugin.attach(slot.kind == EngineKind::Plugin ? runner_of(slot.plugin_entry) : nullptr);
+        break;
     case Type::NoteOn:
         if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value);
         if (c.pattern != 1) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now, -1); // a pad's note (not one from MIDI in)
@@ -677,7 +685,32 @@ void EngineHost::run_offs(Slot& slot, unsigned frames) {
 void EngineHost::run_chain(unsigned chain, float* left, float* right, unsigned frames) {
     for (auto& effect : fx[chain]) {
         if (effect.kind() == EffectKind::None) break; // slots are packed from the front
+        if (effect.kind() == EffectKind::Plugin) { // the rack's plug-in for the entry it names; none yet: through
+            auto* runner = runner_of(unsigned(effect.param(0)));
+            if (runner && !effect.bypassed()) runner->render(left, right, frames);
+            continue;
+        }
         effect.process(left, right, frames);
+    }
+}
+
+// The rack's plug-ins, each into its entry; the one it replaces goes back to be freed (held in limbo while the queue
+// is full; with limbo full too the offer waits in its queue for the next block).
+void EngineHost::take_plugins() {
+    for (auto& q : plugin_limbo) if (q && retired_plugins.push(q)) q = nullptr;
+    PluginOffer offer;
+    while (true) {
+        bool room = false;
+        for (auto q : plugin_limbo) room |= q == nullptr;
+        if (!room || !plugin_offers.pop(offer)) break;
+        if (offer.entry >= max_plugins) continue;
+        PluginRunner* old = runners[offer.entry];
+        if (old && !retired_plugins.push(old))
+            for (auto& q : plugin_limbo) if (!q) { q = old; break; }
+        runners[offer.entry] = offer.runner;
+        for (auto& slot : slots)
+            if (slot.kind == EngineKind::Plugin && slot.plugin_entry == offer.entry) slot.plugin.attach(offer.runner);
+            else if (slot.plugin.attached() == old && old) slot.plugin.attach(nullptr);
     }
 }
 
@@ -1160,6 +1193,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         samples[offer.slot] = offer.sample;
         if (old && !retired.push(old)) samples[offer.slot] = old; // no room to give it back: keep it, try later
     }
+    take_plugins();
     // Where this block sits against CLOCK_MONOTONIC, for MIDI out and in.
     clock.stamp(int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()), frame_now);
     Command command;

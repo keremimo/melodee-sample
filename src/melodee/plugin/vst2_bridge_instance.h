@@ -1,21 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // An armv7 VST2 plug-in, run in a 32-bit vst2_bridge32 process and wrapped
 // as a JUCE AudioPluginInstance for the 64-bit host. Audio, MIDI and calls
 // cross in one shared-memory block (vst2_bridge_protocol.h); processBlock
 // hands the block over and waits for it in the same period, so there is no
 // added latency. A crash in the plug-in ends the bridge, not the host.
 //
-// Not thread-safe: one thread at a time may call into an instance. A
-// Melodee build would cache parameter values and fold parameter changes
-// into the process command instead of making separate round trips.
+// Any thread may call in: each round trip holds the connection's lock, so a
+// parameter read from the MIDI thread waits at most for the block the audio
+// thread is handing over (and the audio thread for that read).
 #pragma once
 
-#include "vst2_bridge_protocol.h"
+#include "melodee/plugin/vst2_bridge_protocol.h"
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
 #include <array>
+#include <mutex>
 #include <sys/types.h>
+
+namespace melodee {
 
 class Vst2BridgeInstance final : public juce::AudioPluginInstance
 {
@@ -48,6 +52,8 @@ public:
     void setStateInformation (const void*, int) override;
 
     bool bridgeDied() const { return connection->dead; }
+    // How long processBlock waits for its block before the bridge counts as dead.
+    void setProcessTimeout (int milliseconds) { processTimeoutMs = milliseconds; }
     // Times `count` empty round trips (a command the plug-in answers
     // instantly): {mean, p99, max} in microseconds. The handoff's own cost.
     std::array<double, 3> measureRoundTrips (int count);
@@ -59,6 +65,7 @@ public:
         pid_t pid = -1;
         uint32_t sequence = 0;
         bool dead = false;
+        std::recursive_mutex lock; // around a whole exchange: its fields, the round trip, the answer
         bool call (bridge::Command, int timeoutMs = 2000);
         ~Connection();
     };
@@ -78,6 +85,9 @@ private:
     juce::File file;
     juce::String name, vendor;
     bool active = false;
+    int processTimeoutMs = 200;
     double rate = 48000.0;
     int block = 128;
 };
+
+} // namespace melodee

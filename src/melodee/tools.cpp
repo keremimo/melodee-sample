@@ -356,6 +356,57 @@ void looper_scene(Snapshot& s) {
     s.project.loop_mix[3].solo = true; s.project.loop_mix[3].bus = 2; s.project.loop_mix[3].send = 55;
 }
 
+// Plug-ins (docs/MELODEE.md): a Plugins folder as the picker lists it, and a PLUGIN track's panel as the rack fills it.
+void plugin_listing(Snapshot& s) {
+    auto& v = s.plugins;
+    v.root = "/media/card/Plugins"; v.folder = v.root; v.top = true;
+    auto add = [&](const char* name, bool folder, PluginFormat format, int8_t instrument, const char* why = "") {
+        PluginFile f;
+        f.name = name; f.folder = folder; f.format = format; f.instrument = instrument; f.why = why;
+        f.path = v.root + "/" + name;
+        v.files.push_back(f);
+    };
+    add("Open MPC", true, PluginFormat::Vst3, -1);
+    add("Dragonfly", true, PluginFormat::Vst3, -1);
+    add("Acid-303", false, PluginFormat::Vst2Arm32, 1);
+    add("Nekobi", false, PluginFormat::Vst3, 1);
+    add("8W8", false, PluginFormat::Vst2, 1);
+    add("MVerb", false, PluginFormat::Vst3, 0);
+    add("Serum", false, PluginFormat::Vst3, -1, "Windows and Mac builds only");
+    add("Kars", false, PluginFormat::Vst3, -1);
+    add("LSP Plugins", false, PluginFormat::Vst3, 0);
+    v.files.back().plugins = 214; // a bundle of many: a row that opens
+}
+
+void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* format, bool instrument, PluginStatus status) {
+    auto& panel = s.ui.plugin_panel;
+    panel = {};
+    panel.entry = uint8_t(entry); panel.status = status; panel.instrument = instrument;
+    std::snprintf(panel.name, sizeof(panel.name), "%s", name);
+    std::snprintf(panel.format, sizeof(panel.format), "%s", format);
+    if (status == PluginStatus::Failed) std::snprintf(panel.error, sizeof(panel.error), "libGL.so.1: cannot open shared object file");
+    if (status != PluginStatus::Ready) return;
+    panel.rows = 8; panel.row = 1; panel.load = 216;
+    const char* names[] {"Cut Off", "Test for mono compatibility", "Time fraction"};
+    const char* texts[] {"5.0", "7.2", "3.5"};
+    const int16_t values[] {500, 720, 350};
+    for (unsigned k = 0; k < 3; ++k) {
+        auto& c = panel.params[k];
+        c.used = true; c.value = values[k];
+        std::snprintf(c.name, sizeof(c.name), "%s", names[k]);
+        std::snprintf(c.text, sizeof(c.text), "%s", texts[k]);
+    }
+    s.ui.plugin_row[entry] = 1;
+}
+
+void plugin_track(Snapshot& s, PluginStatus status) {
+    s.ui.page = PageId::Edit; s.ui.track = 2;
+    auto& t = s.project.tracks[2];
+    t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("ACID-303");
+    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Plugins/sd88me - VST - Acid-303");
+    plugin_panel(s, 0, "Acid-303", "ARMV7", true, status);
+}
+
 struct Preview {
     const char* name;
     void (*set)(Shell&, Snapshot&);
@@ -510,6 +561,43 @@ const Preview previews[] {
          const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
          s.project.tracks[2].pattern = 1;
+     }},
+    {"plugins", [](Shell&, Snapshot& s) { // the picker for track 3's instrument: folders, plug-ins, one for Windows only
+         s.ui.page = PageId::Plugins; s.ui.track = 2; s.ui.plugin_target = UiState::PluginTarget::Instrument;
+         plugin_listing(s); s.ui.plugins_cursor = 3;
+     }},
+    {"pluginsbundle", [](Shell&, Snapshot& s) { // LSP's bundle opened for track 1's third slot: a row a plug-in
+         s.ui.page = PageId::Plugins; s.ui.plugin_target = UiState::PluginTarget::Effect; s.ui.plugin_chain = 0; s.ui.plugin_slot = 2;
+         auto& v = s.plugins;
+         v.root = "/media/card/Plugins"; v.folder = v.root + "/LSP/lsp-plugins.vst3"; v.top = false;
+         const char* names[] {"A/B Tester x2 Mono", "Beat Breather Stereo", "Compressor x2 Stereo", "Dynamic Processor Stereo",
+                              "Graphic Equalizer x16 Stereo", "Impulse Reverb Stereo", "Multiband Compressor x8 Stereo", "Trigger Stereo"};
+         int32_t id = 1;
+         for (const char* n : names) {
+             PluginFile f; f.name = n; f.path = v.folder; f.format = PluginFormat::Vst3; f.instrument = 0; f.plugins = 214; f.id = id++;
+             v.files.push_back(f);
+         }
+         s.ui.plugins_cursor = 2;
+     }},
+    {"pluginsfx", [](Shell&, Snapshot& s) { // the picker for the master's second slot
+         s.ui.page = PageId::Plugins; s.ui.plugin_target = UiState::PluginTarget::Effect; s.ui.plugin_chain = uint8_t(master_chain); s.ui.plugin_slot = 1;
+         plugin_listing(s); s.ui.plugins_cursor = 5;
+     }},
+    {"pluginedit", [](Shell&, Snapshot& s) { // Edit on a PLUGIN track: row 2 of 8 on K1-K3, K2 turning
+         plugin_track(s, PluginStatus::Ready); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"pluginopening", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Loading); }},
+    {"pluginfailed", [](Shell&, Snapshot& s) { plugin_track(s, PluginStatus::Failed); }},
+    {"rackplugin", [](Shell&, Snapshot& s) { // a plug-in effect on track 1's chain, after an echo
+         s.ui.page = PageId::Rack; s.ui.track = 0;
+         s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
+         s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/DragonflyHallReverb.vst3");
+         s.ui.fx_cursor[0] = 1;
+         plugin_panel(s, 4, "Dragonfly Hall Reverb", "VST3", false, PluginStatus::Ready);
+     }},
+    {"pickerplugins", [](Shell&, Snapshot& s) { // the effect picker on the Plug-ins family
+         s.ui.page = PageId::Rack; s.ui.track = 0; s.ui.picker_open = true; s.ui.picker_family = uint8_t(Family::Plugins); s.ui.picker_items = true;
      }},
     {"recquantize", [](Shell&, Snapshot& s) { // Shift + Pad 10: on, a grid of its own, 1/32T, K1 turning
          s.ui.page = PageId::RecQuantize; s.ui.track = 0; s.playing = true;

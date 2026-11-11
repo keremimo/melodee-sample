@@ -100,6 +100,9 @@ const EffectInfo effects[] {
      {50, 54, 90, 50, 46, 52, 48, 84, 50, 48, 52}},
     {K::TapeEmu, "Tape emulator", F::Dirt, true, {P("WOW", 10, 100, 30), P("NOISE", 10, 100, 20), P("PITCH", 20, 100, 30), none, none, none},
      {40, 52, 60, 56, 62, 58, 64, 60, 54, 50, 46}},
+    // Not DSP of Melodee's own: Effect passes sound through and the engine host runs the plug-in instead.
+    {K::Plugin, "Plug-in", F::Plugins, true, {P("ENTRY", 0, 31, 0, Format::Number), none, none, none, none, none},
+     {30, 50, 70, 50, 30, 50, 70, 50, 30, 50, 70}},
 };
 static_assert(sizeof(effects) / sizeof(effects[0]) == size_t(EffectKind::Count), "one entry per effect");
 } // namespace
@@ -129,7 +132,8 @@ const KnobFxEntry& knob_fx_entry(unsigned index) { return knob_entries[index < k
 unsigned knob_fx_mpc_count() { return knob_mpc; }
 
 const char* family_name(Family family) {
-    static const char* names[] {"Space", "Time", "Motion", "Dirt", "Tone", "Dynamics"};
+    static const char* names[] {"Space", "Time", "Motion", "Dirt", "Tone", "Dynamics", "Plug-ins"};
+    static_assert(sizeof(names) / sizeof(names[0]) == size_t(Family::Count), "a name a family");
     return names[unsigned(family) % unsigned(Family::Count)];
 }
 

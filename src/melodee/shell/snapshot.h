@@ -8,6 +8,7 @@
 #include "melodee/shell/playheads.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
 #include <cstdint>
@@ -69,6 +70,7 @@ struct Snapshot {
     std::string sample_root;           // the card's Samples folder; empty: no card
     std::string files_folder;          // the folder listed (empty: the internal drive's categories)
     bool files_top = true;             // nothing above it (B1 has no job)
+    PluginRack::View plugins;          // the PLUG-INS picker: the folder listed
     ProjectStore::View projects;       // Project page and Exit
     std::string project_path, project_folder;
     bool dirty = false;

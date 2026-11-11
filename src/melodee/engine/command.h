@@ -99,7 +99,9 @@ struct Command {
         // The Looper (docs/LOOPER.md): track = the loop 0-3, index = looper::Do, value, position (Latency's frames).
         // Level, Pan, Send, Mute, Solo and SendBus with track 16-19 are the loop tracks L1-L4's strips; their
         // chains are loop_chain(0..3) for FxKind, FxParam and FxBypass.
-        Looper
+        Looper,
+        // Plug-ins (docs/MELODEE.md): track, value = the entry of Project::plugins a PLUGIN track plays (255 none).
+        TrackPlugin
 
     };
     Command() = default;

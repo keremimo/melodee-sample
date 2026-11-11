@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/project.h"
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -13,10 +14,13 @@
 // patterns take no room.
 namespace melodee {
 
-std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns);
+// `states`: each plug-in's state (plugin/plugin_rack.h), saved with its entry in PLUG; none: the paths alone.
+std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns,
+                                  const std::array<std::vector<uint8_t>, max_plugins>* states = nullptr);
 // Empty on success; on failure the targets are left as they were.
-// `version`: the file's params_version (limits.h), 0 when it predates it.
-std::string load_project(const std::vector<uint8_t>& data, Project& project, PatternBank& patterns, unsigned* version = nullptr);
+// `version`: the file's params_version (limits.h), 0 when it predates it. `states`: the plug-ins' states, when wanted.
+std::string load_project(const std::vector<uint8_t>& data, Project& project, PatternBank& patterns, unsigned* version = nullptr,
+                         std::array<std::vector<uint8_t>, max_plugins>* states = nullptr);
 
 // A kit bank as a file (".mldb", in the card's Samples/Banks): sixteen pads,
 // their chains and the files they play, so one bank of a kit loads into any

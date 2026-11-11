@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/limits.h"
 #include "melodee/model/project.h"
+#include "melodee/plugin/plugin_panel.h"
 #include "melodee/shell/chop.h"
 #include "melodee/shell/name_entry.h"
 #include "melodee/shell/settings.h"
@@ -24,6 +25,7 @@ enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motio
                             Tracks,                            // Pad Bank tapped twice: the sixteen tracks, eight at a time
                             Looper,                            // Loop tapped twice: the four loops (docs/LOOPER.md)
                             RecQuantize,                       // Shift + Pad 10: Rec Quantize on or off, and its grid
+                            Plugins,                           // the plug-in picker: the card's Plugins folder (docs/MELODEE.md)
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -139,6 +141,15 @@ struct UiState {
     uint8_t comp_bank = 0;                                     // Compressor: the kit bank those pads show
     bool comp_pads = false;                                    // Compressor, Sidechain on a kit: the pads pick the key pad, not the track
     uint8_t knob_cursor = 0;                                   // Knob FX: the list's entry under the cursor (Push loads it)
+    // Plug-ins (docs/MELODEE.md): the picker's cursor and rows (copied in by the shell), what Push loads into (a
+    // PLUGIN track's instrument, or a chain's slot), the plug-in in focus as the page shows it, and each entry's row.
+    enum class PluginTarget : uint8_t { Instrument, Effect };
+    uint16_t plugins_cursor = 0, plugins_count = 0;
+    PluginTarget plugin_target = PluginTarget::Instrument;
+    uint8_t plugin_chain = 0, plugin_slot = 0;  // Effect: where it goes
+    PageId plugin_back = PageId::Stage;          // where B1 (Back) at the top and a load go
+    PluginPanel plugin_panel;
+    std::array<uint16_t, max_plugins> plugin_row {};
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)

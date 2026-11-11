@@ -23,7 +23,7 @@ namespace melodee {
 // EngineInfo can be picked yet.
 // Midi plays an external instrument (docs/MIDI_TRACKS.md); files keep it in
 // MIDT, TRAK says None, so older builds load the track empty.
-enum class EngineKind : uint8_t { None, Prophet, Fm6, Cz, Sid, Kit909, Sampler, Midi, Count };
+enum class EngineKind : uint8_t { None, Prophet, Fm6, Cz, Sid, Kit909, Sampler, Midi, Plugin, Count };
 
 // Every pattern of every track (their events on the heap).
 struct PatternBank {
@@ -277,6 +277,7 @@ struct Track {
     bool fader_on = true;
     uint8_t wheel = 0;    // the mod wheel as the fader left it, 0..127 (played, not saved)
     uint8_t midi_channel = 0; // MIDI Config: 0 none, 1..16 notes on it play this track; its notes go out on it (parity phase 9)
+    uint8_t plugin = no_plugin; // a PLUGIN track: the entry of Project::plugins it plays
     bool used() const { return engine != EngineKind::None; }
     // The note a new step gets on Steps: on a kit the pad hit last, else the last note played.
     uint8_t step_note() const { return engine == EngineKind::Sampler ? uint8_t(sampler_first_note + last_pad % sampler_pads) : last_note; }
@@ -298,6 +299,16 @@ constexpr TimeSignature time_signatures[] {
 constexpr unsigned time_signature_count = sizeof(time_signatures) / sizeof(time_signatures[0]);
 constexpr unsigned common_time = 3; // 4/4
 constexpr unsigned bar_ticks_of(TimeSignature t) { return t.beats * ticks_per_quarter * 4 / t.unit; }
+
+// A plug-in a project uses (Project::plugins): where it is on the card. Its
+// state (what the plug-in saves of itself) travels beside the project, in the
+// file's PLUG section and the rack (plugin/plugin_rack.h), not in here.
+struct PluginRef {
+    char path[plugin_path_length] {}; // a .vst3 bundle, a VST2 .so, or an Open MPC plug-in folder; empty: free
+    int32_t id = 0;                   // which plug-in of a bundle holding several (its JUCE unique id); 0: its first
+    char name[40] {};                 // as the picker named it, for the cards while it is not open
+    bool used() const { return path[0] != 0; }
+};
 
 struct Project {
     char name[32] = "Untitled";
@@ -324,6 +335,7 @@ struct Project {
     Song song;
     std::array<Bus, bus_count> buses {};
     std::array<SampleRef, sample_slots> samples {};
+    std::array<PluginRef, max_plugins> plugins {};
     Chain master {{}, master_slots};
     // The Looper (docs/LOOPER.md): its settings, and its four tracks' strips and chains.
     LooperSettings looper;
@@ -346,5 +358,16 @@ struct Project {
         return seq_tempo && own ? own : tempo;
     }
 };
+
+// Whether entry `entry` of Project::plugins is played by a PLUGIN track or sits in a chain (a sampler pad's own chain
+// takes none: plugin effects go on tracks, buses, the master and the loop tracks).
+inline bool plugin_used_by(const Project& project, unsigned entry) {
+    for (const auto& t : project.tracks)
+        if (t.engine == EngineKind::Plugin && t.plugin == entry) return true;
+    for (unsigned n = 0; n < chain_count; ++n)
+        for (const auto& s : project.chain(n).slots)
+            if (s.kind == plugin_effect_kind && unsigned(s.params[0]) == entry) return true;
+    return false;
+}
 
 } // namespace melodee

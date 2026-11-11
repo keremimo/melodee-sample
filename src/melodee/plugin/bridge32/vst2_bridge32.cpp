@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // vst2_bridge32: runs one armv7 VST2 plug-in for a 64-bit host. Built for
 // armhf and started through the shipped armhf loader:
 //   ld-linux-armhf.so.3 --library-path RUNTIME vst2_bridge32 FD
 // FD is the host's memfd holding a bridge::Shared. No JUCE here: only the
 // plug-in, vst2_abi.h and libc, so the 32-bit side stays small.
-#include "vst2_abi.h"
-#include "vst2_bridge_protocol.h"
+#include "melodee/plugin/vst2_abi.h"
+#include "melodee/plugin/vst2_bridge_protocol.h"
 
 #include <cstdio>
 #include <cstdlib>

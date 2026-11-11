@@ -19,8 +19,8 @@
 // The main thread is JUCE's message thread (VST3 creation and the Linux
 // IRunLoop live there); the work runs on a second thread, as audio would.
 
-#include "vst2_bridge_instance.h"
-#include "vst2_instance.h"
+#include "melodee/plugin/vst2_bridge_instance.h"
+#include "melodee/plugin/vst2_instance.h"
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
@@ -36,6 +36,8 @@
 #include <vector>
 
 using namespace juce;
+using melodee::Vst2BridgeInstance;
+using melodee::Vst2Instance;
 
 namespace
 {
@@ -124,7 +126,7 @@ Array<File> vst2Under (const File& root)
 }
 
 // The 32-bit bridge: bridge32/ beside the probe, holding vst2_bridge32 and
-// the armhf runtime in armhf/.
+// the armhf runtime in armhf/ (Melodee's plug-in support, build/plugin-support).
 File bridgeFolder()
 {
     return File::getSpecialLocation (File::currentExecutableFile).getSiblingFile ("bridge32");

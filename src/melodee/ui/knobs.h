@@ -14,6 +14,7 @@ struct KnobCard {
     enum class State { Idle, Rest, Turning, Pickup };
     State state = State::Idle;
     juce::String label, value, unit;
+    juce::String label_mixed; // the label in mixed case, drawn instead where the capitals do not fit (a plug-in's own names)
     float fill = 0;        // 0..1 along the gauge
     bool bipolar = false;  // filled from the centre, with a centre mark
     float pot = -1;        // Pickup: where the pot sits, 0..1

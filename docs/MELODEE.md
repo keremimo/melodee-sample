@@ -24,6 +24,7 @@ sample-base runtime in the `base/` submodule. Layering follows
 | `melodee_app.*` | The `App`: hands each runtime hook to its owner below. Thin. |
 | `model/` | The project: tracks, patterns (event lists), song, mix, motion, kits, limits (`limits.h`). Plain data, no threads. |
 | `engine/` | Audio: DSP pieces, the six engines and MIDI's silent one, effects and punches, the Looper (`looper.*`), the engine host (16 tracks and L1–L4, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
+| `plugin/` | Plug-ins (below, "Plug-ins"): the rack that loads them on its own thread, JUCE's headless VST3 host, Melodee's VST2 host and its 32-bit bridge (`bridge32/`), the GUI-library stubs and bridge runtime carried in the binary. Only `plugin_runner.h` reaches the engine host. |
 | `ui/` | The design system: tokens, the Rubik typeface, the components every page is built from. |
 | `pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
 | `shell/` | The control grammar and everything around the pages: printed buttons and their Shift jobs, Shift + pad (`shift_pad_jobs`), Pad Bank, mute mode, Note Repeat, the Seq layer (`seq_layer`), undo, the fader, takeover, lights, MIDI in and out, the card (`project_store`, `sample_library`, `card_access`), audio input and renders, and the snapshot handed to the screen. |
@@ -49,6 +50,10 @@ one owner per piece of state.
   copies arrive whole by pointer and go back to be freed elsewhere.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
+- **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
+  copies one into RAM, opens it, and offers it to the audio thread by
+  pointer, as samples go; the one it replaces comes back to be freed there.
+  VST3 plug-ins are made on a JUCE message thread of the rack's own.
 - **Service thread** does every file on the card (projects, sounds,
   settings, samples, takes, renders), the input routes and the speaker,
   the power key, and SD card access. It leaves the card alone while the
@@ -739,9 +744,62 @@ while following.
 - **Sampler**: the kit above.
 - **MIDI**: no sound; an external instrument on the track's own port and
   channel (above, "MIDI and sync"). No mod matrix.
+- **PLUGIN**: a plug-in instrument from the card (below). Its parameters
+  are the plug-in's own; no mod matrix.
 
 Every synth has the mod matrix, Touch and an LFO. Each track has eight
 voices or the engine's own count; tracks render in one block of 128 frames.
+
+## Plug-ins
+
+VST3 and VST2 plug-ins, instruments and effects, from `Plugins/` at the top
+of the card (beside `Samples/`), in any folders under it.
+
+- **What loads.** Builds for this MPC only: a `.vst3` bundle with
+  `Contents/aarch64-linux/`, an [Open MPC](https://open-mpc.github.io)
+  plug-in folder (its `plugin-meta.xml` beside a VST2 `.so`), or a VST2
+  `.so` on its own; aarch64, or 32-bit ARM (armv7) through the bridge. The
+  picker lists the rest dimmed with the reason ("Windows and Mac builds
+  only"). Most commercial plug-ins have no Linux ARM build.
+- **An instrument.** PLUGIN is an engine like the others: SYNTH on Stage,
+  or K1 on Sounds, then the PLUG-INS picker opens on the card's folder.
+  Sample Select on a PLUGIN track opens the picker again. Push on a track
+  (Edit) shows the plug-in: its name, format, the share of each audio
+  block it takes, and its parameters three at a time on K1–K3; the wheel
+  or Minus / Plus step the rows, B1 opens the picker. Open MPC plug-ins
+  put their skin's Q-Link pages first. MIDI-CC stand-ins, host settings
+  and the plug-in's own bypass (the slot has one) are left out. A long
+  parameter name goes on its card in mixed case, or over two lines, never
+  cut.
+- **Bundles of several.** A bundle holding many plug-ins (LSP's VST3 holds
+  198) lists as one row, "198 PLUG-INS ›"; Push opens it, a row for each.
+  The project keeps which one (its id) and its name.
+- **An effect.** The effect picker's last family, Plug-ins, opens the same
+  folder for the slot; on the chain pages K1–K3 hold its parameters and
+  Minus / Plus its rows. Track, bus, master and loop-track chains take
+  plug-ins; a kit pad's own chain does not.
+- **Loading.** The card is mounted `noexec`, so a plug-in runs from a copy
+  in `/run` (RAM), made when a project uses it and removed when nothing
+  does. The picker opens each plug-in it lists once, to tag it INSTRUMENT
+  or EFFECT. Opening takes from a few ms (VST2) to a quarter second (a
+  32-bit plug-in starting its bridge).
+- **Support carried in the binary.** No-op stand-ins for the GUI libraries
+  editors link (`libGL`, the X11 and xcb families, `libcairo`; Melodee never
+  opens an editor), the real `libsndfile` with its codecs (plug-ins read
+  audio files with it), and the 32-bit bridge with Debian's armhf runtime
+  go into `/run/melodee-plugins/support` the first time a plug-in loads.
+  `tools/plugin_support/SURVEY.md` says why these and no others.
+- **32-bit plug-ins** run in a bridge process: audio, MIDI and parameters
+  cross in shared memory, a block at a time in the same period (about a
+  microsecond each way). If the plug-in crashes, only the bridge goes:
+  the page says it stopped working and picking it again reopens it.
+- **Saving.** A project names each plug-in by path (`Project::plugins`,
+  32 entries) and keeps what each saves of itself (its state) in the file.
+- **Not yet.** Plug-in parameters take no Motion and no undo; Knob FX and
+  a kit pad's chain take no plug-ins; editors are never shown.
+- `tools/vst_probe/` is a command-line host on the same code, for trying a
+  plug-in on the MPC before loading it in Melodee (its README has
+  measurements).
 
 ## Files on the card
 
@@ -749,10 +807,12 @@ voices or the engine's own count; tracks render in one block of 128 frames.
   readable and only what differs from empty is written (`EVNT` events,
   `MOT2` / `MOTP` / `MOTW` motion, `TIME`, `PAD4` / `KITX` / `PMUT` kits,
   `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad) and the rest; a
-  MIDI track is None in `TRAK` and MIDI in `MIDT`, so older builds load it
-  empty). Saved beside
+  MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in
+  `TRAK` and itself in `PLGT`, so older builds load them empty; `PLUG` holds
+  each plug-in's path and state). Saved beside
   the file, then renamed into place.
 - `Melodee/Sounds/<name>.mlds`: a sound's values and mod routes.
+- `Plugins/`: plug-ins, read only (above, "Plug-ins").
 - `Melodee/settings`: Melodee's settings, MIDI Config, Input Config, the
   favourites, the project to open at start (`start=`) and the one last
   opened or saved (`last=`), opened at start when none is set.
@@ -830,7 +890,9 @@ card access (`melodee_card` 0 home, 1 lending, 2 lent, 3 returning;
 `melodee_loop_quantize`, `melodee_loop_then`, `melodee_loop_transport`,
 `melodee_loop_latency`, `melodee_loop_memory`, and `melodee_loop1` ..
 `melodee_loop4`: state, length, place, bars, layers, undo, source, feedback,
-tempo, stretched, fitting, pending). The runtime's own
+tempo, stretched, fitting, pending); plug-ins (`melodee_plugins`: each
+entry in use as entry:state:name:format:load, the load in tenths of a
+percent of a block, `none` when there are none). The runtime's own
 `card_share=` says the same from the base's side.
 
 ## Previews

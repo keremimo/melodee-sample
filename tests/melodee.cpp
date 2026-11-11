@@ -4060,7 +4060,7 @@ void midi_tracks() {
               midi_track::dest_of(99) == MidiDest::External);
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = available_engines(engines);
-        CHECK(count >= 1 && engines[count - 1] == EngineKind::Midi);
+        CHECK(count >= 2 && engines[count - 2] == EngineKind::Midi && engines[count - 1] == EngineKind::Plugin); // K1: MIDI, then plug-ins
     }
     // Ports: a MIDI track's own, apart from MIDI Config's.
     {
@@ -6142,7 +6142,118 @@ void place_bar() {
     CHECK(back.place_bottom);
 }
 
+
+// Plug-ins (docs/MELODEE.md): the engine host plays whatever PluginRunner the rack offers an entry, as a PLUGIN
+// track's instrument and as a chain's Plugin effect; projects keep the table, the tracks' entries and the states.
+struct FakePlugin final : PluginRunner {
+    bool instrument = true;
+    int notes_on = 0, notes_off = 0, silenced = 0;
+    unsigned rendered = 0;
+    float level = 0;
+    void midi(uint8_t status, uint8_t, uint8_t data2) override {
+        if ((status & 0xf0) == 0x90 && data2) { ++notes_on; level = 0.25f; }
+        if ((status & 0xf0) == 0x80) { ++notes_off; level = 0; }
+    }
+    void silence() override { ++silenced; level = 0; }
+    void render(float* left, float* right, unsigned frames) override {
+        rendered += frames;
+        for (unsigned f = 0; f < frames; ++f) {
+            if (instrument) { left[f] += level; right[f] += level; }
+            else { left[f] *= 0.5f; right[f] *= 0.5f; } // an effect: half as loud
+        }
+    }
+};
+
+void plugins() {
+    // The file: PLGT makes the track a PLUGIN track (TRAK says None, as older builds should see it), PLUG keeps
+    // each entry's path and state.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->tracks[2].engine = EngineKind::Plugin;
+        project->tracks[2].plugin = 5;
+        std::snprintf(project->plugins[5].path, plugin_path_length, "/media/card/Plugins/Nekobi.vst3");
+        std::snprintf(project->plugins[9].path, plugin_path_length, "/media/card/Plugins/sd88me - VST - Acid-303");
+        std::snprintf(project->plugins[7].path, plugin_path_length, "/media/card/Plugins/lsp-plugins.vst3"); // one of a bundle's
+        project->plugins[7].id = -123456789;
+        std::snprintf(project->plugins[7].name, sizeof(project->plugins[7].name), "Compressor x2 Stereo");
+        project->buses[0].fx.slots[0] = {plugin_effect_kind, false, {7, 0, 0, 0, 0, 0}};
+        project->master.slots[0] = {plugin_effect_kind, false, {9, 0, 0, 0, 0, 0}};
+        std::array<std::vector<uint8_t>, max_plugins> states;
+        states[5] = {1, 2, 3, 250};
+        auto data = save_project(*project, *bank, &states);
+        auto copy = std::make_unique<Project>();
+        auto copy_bank = std::make_unique<PatternBank>();
+        std::array<std::vector<uint8_t>, max_plugins> read;
+        CHECK(load_project(data, *copy, *copy_bank, nullptr, &read).empty());
+        CHECK(copy->tracks[2].engine == EngineKind::Plugin && copy->tracks[2].plugin == 5);
+        CHECK(std::string(copy->plugins[5].path) == "/media/card/Plugins/Nekobi.vst3");
+        CHECK(std::string(copy->plugins[9].path) == "/media/card/Plugins/sd88me - VST - Acid-303");
+        CHECK(read[5] == states[5] && read[9].empty() && !copy->plugins[4].used());
+        CHECK(copy->plugins[7].id == -123456789 && std::string(copy->plugins[7].name) == "Compressor x2 Stereo" && copy->plugins[5].id == 0);
+        CHECK(copy->master.slots[0].kind == plugin_effect_kind && copy->master.slots[0].params[0] == 9);
+        CHECK(plugin_used_by(*copy, 5) && plugin_used_by(*copy, 9) && !plugin_used_by(*copy, 4));
+        copy->tracks[2].engine = EngineKind::Prophet; // the entry stays in the table but nothing plays it
+        CHECK(!plugin_used_by(*copy, 5));
+    }
+    // The host: a PLUGIN track with no plug-in yet is silent; once offered, notes reach it and it is heard; a
+    // plug-in effect on the track's chain works on what the track plays; a new offer hands the old one back.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    project->tracks[0].engine = EngineKind::Plugin;
+    project->tracks[0].plugin = 3;
+    EngineHost host;
+    host.load(*project, *bank);
+    std::vector<int32_t> out(256);
+    auto peak = [&](unsigned blocks) {
+        float most = 0;
+        for (unsigned n = 0; n < blocks; ++n) {
+            host.render(out.data(), 128, 1);
+            for (auto v : out) most = std::max(most, std::fabs(v / 2147483648.0f));
+        }
+        return most;
+    };
+    host.send({Command::Type::NoteOn, 0, 0, 60, 100});
+    CHECK(peak(4) == 0); // nothing offered yet
+    FakePlugin synth;
+    CHECK(host.offer_plugin(3, &synth));
+    host.send({Command::Type::NoteOn, 0, 0, 60, 100});
+    float loud = peak(4);
+    CHECK(synth.notes_on == 1 && synth.rendered >= 4 * 128 && loud > 0.05f);
+    // The effect: entry 7 on the track's chain halves it.
+    FakePlugin half;
+    half.instrument = false;
+    host.send({Command::Type::FxKind, 0, 0, 0, int16_t(EffectKind::Plugin)});
+    host.send({Command::Type::FxParam, 0, 0, 0, 7});
+    CHECK(host.offer_plugin(7, &half));
+    float halved = peak(4);
+    CHECK(half.rendered >= 4 * 128 && std::fabs(halved - loud * 0.5f) < loud * 0.05f);
+    // Bypassed, the effect is skipped.
+    host.send({Command::Type::FxBypass, 0, 0, 0, 1});
+    unsigned before = half.rendered;
+    CHECK(std::fabs(peak(4) - loud) < loud * 0.05f && half.rendered == before);
+    // Another plug-in for entry 3: the old one comes back to be freed and the track plays the new one.
+    FakePlugin second;
+    CHECK(host.offer_plugin(3, &second));
+    peak(1);
+    PluginRunner* back = nullptr;
+    CHECK(host.take_retired_plugin(back) && back == &synth);
+    host.send({Command::Type::NoteOn, 0, 0, 62, 100});
+    peak(2);
+    CHECK(second.notes_on == 1 && synth.notes_on == 1);
+    // The track to another entry: it lets go of the plug-in it played.
+    host.send({Command::Type::TrackPlugin, 0, 0, 0, 4});
+    CHECK(peak(2) == 0 && second.silenced >= 1);
+    // Entries let go of (nullptr) hand theirs back too.
+    CHECK(host.offer_plugin(7, nullptr) && host.offer_plugin(3, nullptr));
+    peak(1);
+    unsigned handed = 0;
+    while (host.take_retired_plugin(back)) handed += back == &half || back == &second;
+    CHECK(handed == 2);
+}
+
 int main() {
+    plugins();
     voice_taps();
     voice_heads();
     chop_heads();

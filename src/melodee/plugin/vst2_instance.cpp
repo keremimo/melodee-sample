@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#include "vst2_instance.h"
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/plugin/vst2_instance.h"
 
 #include <cstring>
 #include <dlfcn.h>
 
+namespace melodee {
 using namespace juce;
 
 namespace
@@ -378,3 +380,5 @@ void Vst2Instance::setStateInformation (const void* data, int size)
         effect->setParameter (effect, i, value);
     }
 }
+
+} // namespace melodee

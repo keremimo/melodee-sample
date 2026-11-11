@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#include "vst2_bridge_instance.h"
-#include "vst2_abi.h"
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/plugin/vst2_bridge_instance.h"
+#include "melodee/plugin/vst2_abi.h"
 
 #include <algorithm>
 #include <chrono>
@@ -14,6 +15,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+namespace melodee {
 using namespace juce;
 
 namespace
@@ -48,6 +50,7 @@ public:
     float getValue() const override { return owner.parameter (index); }
     void setValue (float value) override
     {
+        const std::lock_guard<std::recursive_mutex> held (owner.connection->lock);
         owner.shared->i0 = index;
         owner.shared->f0 = value;
         owner.call (bridge::Command::setParameter);
@@ -206,6 +209,7 @@ Vst2BridgeInstance::Connection::~Connection()
 // is usually back within tens of microseconds), then sleeps on the futex.
 bool Vst2BridgeInstance::Connection::call (bridge::Command command, int timeoutMs)
 {
+    const std::lock_guard<std::recursive_mutex> held (lock);
     if (dead)
         return false;
     shared->command = command;
@@ -233,6 +237,7 @@ bool Vst2BridgeInstance::Connection::call (bridge::Command command, int timeoutM
 
 String Vst2BridgeInstance::callText (bridge::Command command, int index) const
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     shared->i0 = index;
     shared->text[0] = 0;
     if (! call (command))
@@ -243,6 +248,7 @@ String Vst2BridgeInstance::callText (bridge::Command command, int index) const
 
 float Vst2BridgeInstance::parameter (int index) const
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     shared->i0 = index;
     return call (bridge::Command::getParameter) ? shared->f0 : 0.0f;
 }
@@ -265,6 +271,7 @@ void Vst2BridgeInstance::fillInPluginDescription (PluginDescription& description
 
 void Vst2BridgeInstance::prepareToPlay (double newRate, int newBlock)
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     if (active)
         releaseResources();
     rate = newRate;
@@ -280,6 +287,7 @@ void Vst2BridgeInstance::prepareToPlay (double newRate, int newBlock)
 
 void Vst2BridgeInstance::releaseResources()
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     if (! active)
         return;
     shared->i0 = 0;
@@ -289,6 +297,7 @@ void Vst2BridgeInstance::releaseResources()
 
 void Vst2BridgeInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     const int frames = std::min ({ buffer.getNumSamples(), block, (int) bridge::maxFrames });
     const auto& info = shared->info;
 
@@ -312,9 +321,7 @@ void Vst2BridgeInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& m
             std::memset (shared->audioIn[c], 0, sizeof (float) * (size_t) frames);
     }
 
-    // A real-time host would give up within the period; the probe allows
-    // 200 ms so a slow block shows up as an overrun rather than a death.
-    const bool ok = call (bridge::Command::process, 200);
+    const bool ok = call (bridge::Command::process, processTimeoutMs);
     for (int c = 0; c < buffer.getNumChannels(); ++c)
     {
         if (ok && c < info.numOutputs)
@@ -326,6 +333,7 @@ void Vst2BridgeInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& m
 
 double Vst2BridgeInstance::getTailLengthSeconds() const
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     if (! call (bridge::Command::tailSize))
         return 0.0;
     return shared->result > 1 ? shared->result / rate : 0.0;
@@ -333,11 +341,13 @@ double Vst2BridgeInstance::getTailLengthSeconds() const
 
 int Vst2BridgeInstance::getCurrentProgram()
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     return call (bridge::Command::getProgram) ? shared->result : 0;
 }
 
 void Vst2BridgeInstance::setCurrentProgram (int index)
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     shared->i0 = index;
     call (bridge::Command::setProgram);
 }
@@ -351,6 +361,7 @@ const String Vst2BridgeInstance::getProgramName (int index)
 // parameter values, so a project can move between the two hosts.
 void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     state.reset();
     state.append (stateTag, sizeof (stateTag));
     if ((shared->info.flags & vst2::flag::programChunks) != 0 && call (bridge::Command::getState) && shared->result == 1)
@@ -369,6 +380,7 @@ void Vst2BridgeInstance::getStateInformation (MemoryBlock& state)
 
 void Vst2BridgeInstance::setStateInformation (const void* data, int size)
 {
+    const std::lock_guard<std::recursive_mutex> held (connection->lock);
     if (size < 5 || std::memcmp (data, stateTag, sizeof (stateTag)) != 0)
         return;
     const auto* bytes = static_cast<const uint8*> (data);
@@ -408,3 +420,5 @@ std::array<double, 3> Vst2BridgeInstance::measureRoundTrips (int count)
         total += t;
     return { total / (double) times.size(), times[(size_t) (0.99 * (double) (times.size() - 1))], times.back() };
 }
+
+} // namespace melodee

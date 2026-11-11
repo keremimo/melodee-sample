@@ -53,8 +53,19 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const Sound midi_sounds[] {{"MIDI OUT", {{{-1, 0}}}}};
     static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params, midi_track::Count, midi_pages, 2,
                                   {midi_track::Port, midi_track::Channel, -1}, midi_sounds, 1, nullptr, 0, false};
+    // PLUGIN (docs/MELODEE.md, Plug-ins): a plug-in instrument from the card; its parameters are its own (the
+    // rack's), so the engine states none here and its Edit page draws the plug-in's.
+    static const Sound plugin_sounds[] {{"PLUG-IN", {{{-1, 0}}}}};
+    static const StageGroups plugin_stage {{{
+        {{{stage_mix, {}, {}}}, 1},
+        {{{stage_arp, {}, {}}}, 1},
+        {{{stage_fx, {}, {}}}, 1},
+    }}};
+    static const EngineInfo plugin {EngineKind::Plugin, "PLUGIN", true, nullptr, 0, nullptr, 0, {-1, -1, -1},
+                                    plugin_sounds, 1, nullptr, 0, false, &plugin_stage};
     switch (kind) {
     case EngineKind::Midi: return midi;
+    case EngineKind::Plugin: return plugin;
     case EngineKind::Prophet: return prophet::info();
     case EngineKind::Fm6: return fm6::info();
     case EngineKind::Cz: return cz::info();

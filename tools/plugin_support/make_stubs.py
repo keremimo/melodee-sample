@@ -9,10 +9,9 @@ the real library's soname and exports every function the real one does,
 all returning 0, so the dynamic linker is satisfied and any accidental call
 fails softly (XOpenDisplay gives NULL: no display).
 
-Run inside the base's build image from the repository root:
-    python3 tools/vst_probe/make_stubs.py build/vst_probe/stubs
-It installs the real Debian libraries in the container only to read their
-export lists; nothing from them is copied.
+Melodee's build image (tools/plugin_support/Dockerfile) holds the real
+Debian libraries; only their export lists are read, nothing is copied:
+    python3 tools/plugin_support/make_stubs.py build/plugin-support/stubs
 """
 from pathlib import Path
 import subprocess
@@ -29,6 +28,14 @@ PACKAGES = {
     "libxinerama1": ["libXinerama.so.1"],
     "libxi6": ["libXi.so.6"],
     "libxfixes3": ["libXfixes.so.3"],
+    # Cairo (LSP, DPF's Cairo builds, x42) and what VSTGUI's Linux editors link (tools/plugin_support/SURVEY.md).
+    "libcairo2": ["libcairo.so.2"],
+    "libxcb1": ["libxcb.so.1"],
+    "libxcb-util1": ["libxcb-util.so.1"],
+    "libxcb-cursor0": ["libxcb-cursor.so.0"],
+    "libxcb-keysyms1": ["libxcb-keysyms.so.1"],
+    "libxcb-xkb1": ["libxcb-xkb.so.1"],
+    "libxkbcommon-x11-0": ["libxkbcommon-x11.so.0"],
 }
 
 
@@ -44,6 +51,7 @@ def exported_functions(library):
         # Num: Value Size Type Bind Vis Ndx Name
         if len(fields) >= 8 and fields[3] == "FUNC" and fields[6] != "UND" and fields[4] in ("GLOBAL", "WEAK"):
             names.add(fields[7].split("@")[0])
+    names -= {"_init", "_fini"}  # some export these; the C runtime's own come with every library
     return sorted(names)
 
 
@@ -52,14 +60,12 @@ def find_library(soname):
         path = Path(folder) / soname
         if path.exists():
             return path
-    raise SystemExit(f"{soname} not found after installing its package")
+    raise SystemExit(f"{soname} not found: build in Melodee's image (tools/plugin_support/Dockerfile)")
 
 
 def main():
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else "build/vst_probe/stubs")
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else "build/plugin-support/stubs")
     out.mkdir(parents=True, exist_ok=True)
-    run("apt-get", "update", "-qq", stdout=subprocess.DEVNULL)
-    run("apt-get", "install", "-y", "-qq", "--no-install-recommends", *PACKAGES, stdout=subprocess.DEVNULL)
     for sonames in PACKAGES.values():
         for soname in sonames:
             functions = exported_functions(find_library(soname))

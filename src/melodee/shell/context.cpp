@@ -12,6 +12,7 @@
 #include "melodee/model/chords.h"
 #include "melodee/model/scales.h"
 #include "melodee/model/project_file.h"
+#include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
@@ -46,7 +47,9 @@ void Context::save_project_to(const std::string& path) {
     auto name = std::filesystem::path(path).stem().string();
     std::snprintf(project.name, sizeof(project.name), "%s", name.c_str());
     save_loop_files(*this, path); // the loops' lengths into the project, their audio beside it (docs/LOOPER.md)
-    store->save(path, melodee::save_project(project, patterns));
+    PluginStates states;
+    if (plugins) states = plugins->states(); // each plug-in's state as it is now, beside the project
+    store->save(path, melodee::save_project(project, patterns, &states));
     project_path = path;
     dirty = false;
 }
@@ -60,8 +63,10 @@ void Context::new_project() {
     switch_to(*fresh, *bank, {});
 }
 
-void Context::switch_to(const Project& next, const PatternBank& bank, const std::string& path) {
+void Context::switch_to(const Project& next, const PatternBank& bank, const std::string& path,
+                        const std::array<std::vector<uint8_t>, max_plugins>* plugin_states) {
     send({Type::AllNotesOff, 255});
+    if (plugins) plugins->set_states(plugin_states ? *plugin_states : PluginStates {});
     project = next;
     patterns = bank;
     auto keep = ui.pots;
@@ -100,6 +105,8 @@ bool Context::reformat() {
 }
 
 void Context::open(PageId page) {
+    // A PLUGIN track's sounds are the plug-ins on the card (Sample Select, or Sounds from anywhere).
+    if (page == PageId::Sounds && track().engine == EngineKind::Plugin && plugins) { open_plugin_picker(UiState::PluginTarget::Instrument); return; }
     if (page == PageId::Trim) { // Trim lives on Stage now: a kit's B1 TRIM (the sampler pages' B1 and Chop come here)
         if (track().engine == EngineKind::Sampler) stage_go(ui, 0, 0);
         page = PageId::Stage;
@@ -358,7 +365,10 @@ void Context::apply(const Binding& b, int value) {
     case Kind::Engine: {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = available_engines(engines);
-        if (unsigned(value) < count && engines[size_t(value)] != t.engine) load_sound(ui.track, engines[size_t(value)], 0);
+        if (unsigned(value) < count && engines[size_t(value)] != t.engine) {
+            load_sound(ui.track, engines[size_t(value)], 0);
+            if (t.engine == EngineKind::Plugin) open_plugin_picker(UiState::PluginTarget::Instrument); // which plug-in
+        }
         break;
     }
     case Kind::Jump: ui.sounds_cursor = uint16_t(value); break;
@@ -419,6 +429,7 @@ void Context::apply(const Binding& b, int value) {
         if (chain == ui.track) record_motion(int(motion_fx_param(slot, q)), value); // the track's own effects land in Motion
         break;
     }
+    case Kind::PluginParam: set_plugin_param(b.id, value); break;
     case Kind::SendBus: set_send_bus(ui.track, unsigned(value)); break;
     case Kind::BusReturn: set_return(unsigned(b.id), value); break;
     case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pitch, value); break;

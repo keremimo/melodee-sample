@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The VST 2.4 plug-in binary interface, as far as a headless host needs it:
 // the effect struct a plug-in's VSTPluginMain returns, the opcodes a host
 // sends it, the ones a plug-in sends back, and the MIDI event layout.

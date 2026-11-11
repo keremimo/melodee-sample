@@ -42,6 +42,7 @@ void Context::stage_new() {
         auto kind = engines[ui.new_engine % count];
         load_sound(ui.track, kind, std::min<unsigned>(ui.new_sound, std::max(engine_info(kind).sound_count, 1u) - 1));
         stage_go(ui, 0, 0); // PRESET
+        if (kind == EngineKind::Plugin) open_plugin_picker(UiState::PluginTarget::Instrument); // which plug-in, from the card
         break;
     }
     case StageKind::NewKit:

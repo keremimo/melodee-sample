@@ -43,6 +43,8 @@ public:
     void set_param(unsigned index, int value);
     void set_bypass(bool on) { bypass = on; }
     EffectKind kind() const { return current; }
+    bool bypassed() const { return bypass; }
+    int param(unsigned index) const { return index < effect_params ? p[index] : 0; }
     void process(float* left, float* right, unsigned frames);
 
 private:

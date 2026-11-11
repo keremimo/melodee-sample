@@ -6,6 +6,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
+#include "melodee/plugin/plugin_rack.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/button_jobs.h"
@@ -116,12 +117,13 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             auto project = std::make_unique<Project>();
             auto bank = std::make_unique<PatternBank>();
             unsigned version = 0;
-            if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version).empty()) {
+            PluginStates plugin_states;
+            if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version, &plugin_states).empty()) {
                 for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
                 if (!context_.kit_from.empty() && context_.kit_from == loaded->path) // Load Kit: only its kit, onto the selected track
                     context_.load_kit(*project, std::filesystem::path(loaded->path).stem().string());
                 else if (loaded->imported) { context_.switch_to(*project, *bank, {}); context_.dirty = true; context_.notice(loaded->note); } // not saved yet: the .xpj stays as it is
-                else context_.switch_to(*project, *bank, loaded->path);
+                else context_.switch_to(*project, *bank, loaded->path, &plugin_states);
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
@@ -132,6 +134,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     if (ui_.exit_saved && now - off_saved_at >= 1000) power_off.store(true); // a second to read that it is saved
     context_.song_tick();
+    context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
     // Sounds of one's own, when the card's list changes.
     if (store_ && store_->generation() != sounds_seen) {

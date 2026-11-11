@@ -210,7 +210,7 @@ void Effect::reverb(float& l, float& r) {
 }
 
 void Effect::process(float* left, float* right, unsigned frames) {
-    if (bypass || current == K::None || !effect_info(current).built) return;
+    if (bypass || current == K::None || current == K::Plugin || !effect_info(current).built) return; // a plug-in: the host runs it
     if (needs_memory(current) && !memory) return; // the pool ran out: sound passes through
     if (current >= K::DiffDelay) { process_extra(left, right, frames); return; }
     float* line_l = memory;

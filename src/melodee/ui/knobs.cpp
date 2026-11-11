@@ -35,15 +35,32 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
             if (c.focus && c.state == State::Rest) p.ring(x + 0.5f, top + 0.5f, w - 1, h - 1, c.shade.withAlpha(0.6f), 3); // the wheel's card
         }
         float inner = x + 6, iw = w - 12;
-        p.text(c.label, inner, top + 3, iw - (c.shift ? 9 : 0), 13, caps_text(c.shade));
+        float lw = iw - (c.shift ? 9 : 0);
+        // A plug-in's own name: capitals where they fit, else mixed case (narrower, as on Stage), else mixed case over
+        // two lines with the value a size smaller beneath, so no name is cut.
+        auto mixed = plain(c.shade, type::small, Weight::SemiBold);
+        juce::StringArray two;
+        if (c.label_mixed.isNotEmpty() && p.width(c.label, caps_text(c.shade)) > lw && p.width(c.label_mixed, mixed) > lw) {
+            auto style = mixed;
+            two = p.wrap(c.label_mixed, style, lw, 2);
+        }
+        if (two.size() == 2) {
+            p.text(two[0], inner, top + 1, lw, 12, mixed);
+            p.text(two[1], inner, top + 12, lw, 12, mixed);
+        } else if (c.label_mixed.isNotEmpty() && p.width(c.label, caps_text(c.shade)) > lw) {
+            p.text(c.label_mixed, inner, top + 3, lw, 13, mixed);
+        } else {
+            p.text(c.label, inner, top + 3, lw, 13, caps_text(c.shade));
+        }
         if (c.shift) shift_mark(p, x + w - 12, top + 5.5f, c.shift == 2 ? c.shade : colour::mid, c.shift == 2);
-        auto value = plain(c.state == State::Pickup ? colour::dim : colour::text, type::value, Weight::Medium);
+        bool low = two.size() == 2; // under a two-line name the value sits lower and a size smaller
+        auto value = plain(c.state == State::Pickup ? colour::dim : colour::text, low ? type::list : type::value, Weight::Medium);
         auto unit = plain(colour::mid, type::body);
         float room = iw - (c.unit.isNotEmpty() ? p.width(c.unit, unit) + 3 : 0.0f);
         auto shown = p.fit(c.value, value, room, type::floor); // a long name shrinks to fit
-        float vw = p.text(c.value, inner, top + 15, room, 22, shown);
+        float vw = p.text(c.value, inner, low ? top + 23 : top + 15, room, low ? 16 : 22, shown);
         if (c.unit.isNotEmpty())
-            p.text(c.unit, inner + vw + 3, top + 18, iw - vw - 3, 20, unit);
+            p.text(c.unit, inner + vw + 3, low ? top + 24 : top + 18, iw - vw - 3, low ? 15 : 20, unit);
         // The gauge: a 2 px track with the value filled in the knob's shade.
         float gy = top + 40, fill = std::clamp(c.fill, 0.0f, 1.0f);
         p.fill(inner, gy, iw, 2, colour::line, 1);

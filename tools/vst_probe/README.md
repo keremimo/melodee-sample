@@ -3,8 +3,8 @@
 A command-line VST3 and VST2 host for the MPC Sample, built on JUCE 9's
 `juce_audio_processors_headless` (no GUI modules). VST3 goes through JUCE's
 VST3 format. VST2 `.so` files (such as Open MPC's plug-ins) go through
-`Vst2Instance` (`vst2_instance.h`), a `juce::AudioPluginInstance` over our
-own `vst2_abi.h`, so both formats share one interface. 32-bit armv7 VST2
+`Vst2Instance` (`src/melodee/plugin/vst2_instance.h`), a
+`juce::AudioPluginInstance` over Melodee's own `vst2_abi.h`, so both formats share one interface. 32-bit armv7 VST2
 plug-ins run in a separate `vst2_bridge32` process through
 `Vst2BridgeInstance`, which implements the same interface. It answers what Melodee's
 VST instrument tracks and VST effect slots will face before any of that is
@@ -12,21 +12,19 @@ built. It opens no audio device, so it runs beside Melodee.
 
 ## Build and run
 
-Inside the base's build image, after Melodee's build has compiled JUCE:
+The probe is built on Melodee's plug-in code (`src/melodee/plugin/`), after
+Melodee's own build, in Melodee's build image (`./build.sh` makes both):
 
 ```sh
-docker run --rm --platform linux/arm64 -v "$PWD:/work" sample-base-builder \
-    sh -c 'make -f tools/vst_probe/Makefile -j4 && python3 tools/vst_probe/make_stubs.py build/vst_probe/stubs && sh tools/vst_probe/build_bridge32.sh'
+docker run --rm --platform linux/arm64 -v "$PWD:/work" melodee-builder \
+    make -f tools/vst_probe/Makefile support
 ```
 
-`build_bridge32.sh` builds the bridge for armhf and copies Debian's armhf
-runtime (loader, glibc 2.36, libstdc++, libgcc_s; 3 MB) into
-`build/vst_probe/bridge32/`. Copy that folder next to the probe.
-
-On the MPC, with `build/vst_probe/vst_probe` and `build/vst_probe/stubs/` copied
-to `/tmp/vst_probe/` and the bundles to `/tmp/vst3/`:
-
-The probe loads the stubs from `stubs/` beside its binary by itself.
+`support` puts Melodee's plug-in support beside the probe: `stubs/` (the
+no-op GUI libraries) and `bridge32/` (the 32-bit bridge and its armhf
+runtime), from `build/plugin-support`. Copy `build/vst_probe/vst_probe`,
+`stubs/` and `bridge32/` to `/tmp/vst_probe/` on the MPC and the plug-ins to
+`/tmp/` (the card is `noexec`). The probe loads the stubs by itself.
 
 ```sh
 ./vst_probe scan /tmp/vst3
@@ -132,10 +130,11 @@ The MPC kernel has `CONFIG_COMPAT=y`, and the A55 runs AArch32 code, so
 process cannot `dlopen` a 32-bit `.so`, so armv7 plug-ins run in a
 separate process:
 
-- **`vst2_bridge32`** (armhf, 16 KB, no JUCE) loads the plug-in with
-  `vst2_abi.h`. It is started as `bridge32/armhf/ld-linux-armhf.so.3
-  --library-path bridge32/armhf bridge32/vst2_bridge32 FD`, so nothing is
-  installed on the rootfs. `PR_SET_PDEATHSIG` ends it if the host dies.
+- **`vst2_bridge32`** (armhf, 16 KB, no JUCE;
+  `src/melodee/plugin/bridge32/`) loads the plug-in with `vst2_abi.h`. It
+  is started as `bridge32/armhf/ld-linux-armhf.so.3 --library-path
+  bridge32/armhf bridge32/vst2_bridge32 FD`, so nothing is installed on the
+  rootfs. `PR_SET_PDEATHSIG` ends it if the host dies.
 - **`Vst2BridgeInstance`** (64-bit, `juce::AudioPluginInstance`) creates a
   `memfd` holding `bridge::Shared` (`vst2_bridge_protocol.h`, fixed-width
   fields only) and hands each command over. Commands cover audio, MIDI,

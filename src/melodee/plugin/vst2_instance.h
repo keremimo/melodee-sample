@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // A VST2 plug-in (.so exporting VSTPluginMain) wrapped as a JUCE
 // AudioPluginInstance, so a host treats it like a JUCE-loaded VST3: same
 // prepareToPlay/processBlock/parameters/state calls. JUCE's own VST2 host
 // needs Steinberg's withdrawn SDK headers; this uses vst2_abi.h instead.
 #pragma once
 
-#include "vst2_abi.h"
+#include "melodee/plugin/vst2_abi.h"
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
 #include <array>
 #include <atomic>
 #include <vector>
+
+namespace melodee {
 
 class Vst2Instance final : public juce::AudioPluginInstance
 {
@@ -68,3 +71,5 @@ private:
     vst2::Events<512> events {};
     std::array<std::atomic<bool>, 64> unanswered {};
 };
+
+} // namespace melodee

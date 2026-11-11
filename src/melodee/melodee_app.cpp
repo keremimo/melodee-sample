@@ -35,8 +35,9 @@ bool request_power_off() {
 
 
 MelodeeApp::MelodeeApp()
-    : shell(host), library(host), frame(std::make_unique<melodee::Snapshot>()) {
+    : shell(host), library(host), plugins(host), frame(std::make_unique<melodee::Snapshot>()) {
     shell.set_library(&library);
+    shell.set_plugins(&plugins);
     shell.set_store(&store);
     shell.set_input(&input_route);
     host.load(shell.project(), shell.patterns());

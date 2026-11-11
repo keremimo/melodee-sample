@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The shared memory between a 64-bit host (Vst2BridgeInstance) and the
 // 32-bit vst2_bridge32 process that loads an armv7 VST2 plug-in.
 //

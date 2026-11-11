@@ -9,6 +9,7 @@
 #include "melodee/engine/looper.h"
 #include "melodee/engine/master_comp.h"
 #include "melodee/engine/midi_engine.h"
+#include "melodee/engine/plugin_engine.h"
 #include "melodee/engine/sid.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/prophet.h"
@@ -137,6 +138,11 @@ public:
     bool offer_sample(unsigned slot, const SampleData* sample) { return offers.push({uint16_t(slot), sample}); }
     StreamPager& streams() { return pager; } // multisampled instruments' reading from the card
     bool take_retired(const SampleData*& sample) { return retired.pop(sample); }
+    // The rack's thread (plugin/plugin_rack.h): the plug-in for entry `entry` of Project::plugins (nullptr: none). The
+    // audio thread swaps it in at its next block, after the commands sent before it, and hands the one it replaced
+    // back through take_retired_plugin(), to be freed there.
+    bool offer_plugin(unsigned entry, PluginRunner* runner) { return plugin_offers.push({uint8_t(entry), runner}); }
+    bool take_retired_plugin(PluginRunner*& runner) { return retired_plugins.pop(runner); }
     // MIDI thread: a ProjectPack the audio thread has finished with, to free.
     bool take_done_pack(const ProjectPack*& pack) { return done_packs.pop(pack); }
     bool take_done_track(const TrackPack*& pack) { return done_tracks.pop(pack); }
@@ -172,6 +178,8 @@ private:
         SidEngine sid;
         CzEngine cz;
         MidiEngine midi; // silent: a MIDI track (docs/MIDI_TRACKS.md)
+        PluginEngine plugin;             // a PLUGIN track: the rack's plug-in for `plugin_entry`
+        uint8_t plugin_entry = no_plugin;
         Engine* engine = nullptr;
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
         bool mute = false, solo = false;
@@ -278,6 +286,14 @@ private:
     bool skipped(Slot& slot, unsigned key, uint32_t tick);
 
     MidiQueue<4096, Command> queue;
+    // Plug-ins: each entry's as the rack offered it; the ones replaced wait in the queue to be freed.
+    struct PluginOffer { uint8_t entry = 0; PluginRunner* runner = nullptr; };
+    MidiQueue<64, PluginOffer> plugin_offers;
+    MidiQueue<64, PluginRunner*> retired_plugins;
+    std::array<PluginRunner*, max_plugins> runners {};
+    std::array<PluginRunner*, 16> plugin_limbo {}; // replaced ones the queue had no room for yet
+    PluginRunner* runner_of(unsigned entry) const { return entry < max_plugins ? runners[entry] : nullptr; }
+    void take_plugins(); // the offers waiting, at the start of a block
     struct Offer { uint16_t slot = 0; const SampleData* sample = nullptr; };
     MidiQueue<64, Offer> offers;
     MidiQueue<128, const SampleData*> retired;

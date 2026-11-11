@@ -130,7 +130,7 @@ void read_step(Reader& r, Step& s) {
 }
 } // namespace
 
-std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns) {
+std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns, const std::array<std::vector<uint8_t>, max_plugins>* states) {
     Writer w;
     w.out.insert(w.out.end(), magic, magic + 8);
     auto at = w.begin("PROJ");
@@ -142,8 +142,10 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& tr = project.tracks[t];
         at = w.begin("TRAK");
-        // A MIDI track is None here and Midi in MIDT, so older builds load it empty (not as the engine after their last).
-        w.u8(t); w.u8(tr.engine == EngineKind::Midi ? 0u : unsigned(tr.engine)); w.u16(tr.preset); w.text(tr.name);
+        // A MIDI or PLUGIN track is None here and itself in MIDT / PLGT, so older builds load it empty (not as the engine
+        // after their last).
+        bool own_section = tr.engine == EngineKind::Midi || tr.engine == EngineKind::Plugin;
+        w.u8(t); w.u8(own_section ? 0u : unsigned(tr.engine)); w.u16(tr.preset); w.text(tr.name);
         w.u8(max_params); for (auto v : tr.params) w.i16(v);
         w.u8(tr.mix.level); w.i16(tr.mix.pan); w.u8(tr.mix.send); w.u8(tr.mix.bus); w.u8(tr.mix.mute); w.u8(tr.mix.solo);
         w.u8(tr.pattern); w.u8(unsigned(tr.layout)); w.i16(tr.octave); w.u8(tr.last_note);
@@ -342,6 +344,27 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.u8(t); w.u8(2); // the section's version: 2 has bank, program and the CCs in TRAK's params; later ones add more after it
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // a PLUGIN track and the entry of PLUG it plays; TRAK said None
+        const auto& tr = project.tracks[t];
+        if (tr.engine != EngineKind::Plugin) continue;
+        at = w.begin("PLGT");
+        w.u8(t); w.u8(tr.plugin);
+        w.end(at);
+    }
+    for (unsigned e = 0; e < max_plugins; ++e) { // the plug-ins: the entry, its path, its state as it saved itself
+        const auto& ref = project.plugins[e];
+        if (!ref.used()) continue;
+        at = w.begin("PLUG");
+        size_t length = std::strlen(ref.path);
+        w.u8(e); w.u16(unsigned(length));
+        w.out.insert(w.out.end(), ref.path, ref.path + length);
+        static const std::vector<uint8_t> none;
+        const auto& state = states ? (*states)[e] : none;
+        w.u32(uint32_t(state.size()));
+        w.out.insert(w.out.end(), state.begin(), state.end());
+        w.u32(uint32_t(ref.id)); w.text(ref.name); // after the state: which plug-in of a bundle, and its name
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // a track's own MIDI channel (parity phase 9)
         if (!project.tracks[t].midi_channel) continue;
         at = w.begin("MIDC");
@@ -366,7 +389,9 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     return w.out;
 }
 
-std::string load_project(const std::vector<uint8_t>& data, Project& target, PatternBank& target_patterns, unsigned* version) {
+std::string load_project(const std::vector<uint8_t>& data, Project& target, PatternBank& target_patterns, unsigned* version,
+                         std::array<std::vector<uint8_t>, max_plugins>* states) {
+    std::array<std::vector<uint8_t>, max_plugins> plugin_states;
     unsigned file_version = 0;
     if (data.size() < 8 || std::memcmp(data.data(), magic, 8)) return "not a Melodee project";
     auto project = std::make_unique<Project>();
@@ -521,6 +546,23 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 if (version < 2) // before Stage: bank, program and the CCs at their initial values, not the zeros the file holds
                     for (unsigned p = midi_track::routing_params; p < info.param_count; ++p) tr.params[p] = info.params[p].initial;
             }
+        } else if (name == "PLGT") { // a PLUGIN track; TRAK, before it, said None
+            unsigned t = r.u8(), entry = r.u8();
+            if (r.ok && t < track_count) {
+                project->tracks[t].engine = EngineKind::Plugin;
+                project->tracks[t].plugin = uint8_t(entry < max_plugins ? entry : no_plugin);
+            }
+        } else if (name == "PLUG") {
+            unsigned e = r.u8(), length = r.u16();
+            char path[plugin_path_length] {};
+            for (unsigned k = 0; k < length; ++k) { char ch = char(r.u8()); if (k + 1 < sizeof(path)) path[k] = ch; }
+            uint32_t size = r.u32();
+            std::vector<uint8_t> state;
+            for (uint32_t k = 0; k < size && r.ok; ++k) state.push_back(uint8_t(r.u8()));
+            if (!r.ok || e >= max_plugins) continue;
+            std::memcpy(project->plugins[e].path, path, sizeof(path));
+            plugin_states[e] = std::move(state);
+            if (!r.done()) { project->plugins[e].id = int32_t(r.u32()); r.text(project->plugins[e].name, sizeof(project->plugins[e].name)); }
         } else if (name == "MIDC") { // a track's own MIDI channel; without it none
             unsigned t = r.u8(), channel = r.u8();
             if (r.ok && t < track_count) project->tracks[t].midi_channel = uint8_t(channel <= 16 ? channel : 0);
@@ -652,6 +694,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     target = *project;
     target_patterns = *patterns;
     if (version) *version = file_version;
+    if (states) *states = std::move(plugin_states);
     return {};
 }
 

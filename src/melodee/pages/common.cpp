@@ -322,6 +322,14 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
         break;
     }
+    case Kind::PluginParam: { // as the shell last read it from the plug-in (plugin/plugin_panel.h)
+        const auto& card = s.ui.plugin_panel.params[plugin_binding_shown(b.id) % 3];
+        c.label_mixed = juce::String::fromUTF8(card.name);
+        c.label = c.label_mixed.toUpperCase();
+        c.value = juce::String::fromUTF8(card.text);
+        c.fill = std::clamp(b.value / float(plugin_param_max), 0.0f, 1.0f);
+        break;
+    }
     case Kind::PadFxParam: {
         const auto& pi = mpc_pad_fx(unsigned(b.id) / 4).params[unsigned(b.id) % 4 % punch_params];
         auto shown = show(pi, b.value);

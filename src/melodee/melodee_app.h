@@ -5,6 +5,7 @@
 #include "melodee/shell/input_route.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
@@ -48,6 +49,7 @@ private:
     melodee::SampleLibrary library; // service thread: files on the card
     melodee::ProjectStore store;    // service thread: projects on the card
     melodee::InputRoute input_route; // service thread: Input Config's source on the hardware, USB-C in, the speaker
+    melodee::PluginRack plugins;     // its own thread: the plug-ins the project uses (freed before the engine host)
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     uint64_t power_presses = 0;               // service thread
     // `melodee-press [shift+]BUTTON|wheel+N|wheel-N|padN`: the service thread

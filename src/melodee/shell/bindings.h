@@ -59,7 +59,8 @@ struct Binding {
         // The Looper (docs/LOOPER.md): the loop, its length (index into looper::lengths), the settings every loop
         // shares; on MIX the loop track's strip (id: the loop).
         LoopPick, LoopLength, LoopLevel, LoopFeedback, LoopQuantize, LoopThen, LoopPan, LoopSend, LoopBus,
-        RecGrid                                    // REC QUANTIZE (Shift + Pad 10): 0 the pattern's Q, else 1 + a Division
+        RecGrid,                                   // REC QUANTIZE (Shift + Pad 10): 0 the pattern's Q, else 1 + a Division
+        PluginParam                                // a plug-in's parameter (docs/MELODEE.md), id: plugin_binding(), 0..plugin_param_max
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

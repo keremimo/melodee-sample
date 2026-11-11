@@ -27,6 +27,8 @@
 namespace melodee {
 
 class EngineHost;
+class PluginRack;
+struct PluginFile;
 class SampleLibrary;
 class ProjectStore;
 class InputRoute;
@@ -209,6 +211,19 @@ public:
     void set_seq_tempo(bool on);                             // Push on Tempo: BPM per pattern (SEQ) or global (GBL)
     void locate(int way);                                    // the wheel on Patterns: by a beat (Shift: by Q)
     unsigned tempo_now() const { return project.tempo_of(ui.lead_pattern); }
+    // Plug-ins (shell/plugin_jobs.cpp, docs/MELODEE.md): the rack (set by the app); the picker opened for the selected
+    // PLUGIN track's instrument or for a chain's slot; Push on a plug-in there; a card's value; the rack kept in step
+    // with the project and the panel of the plug-in in view refreshed (often, from the shell's tick).
+    PluginRack* plugins = nullptr;
+    void open_plugin_picker(UiState::PluginTarget target, unsigned chain = 0, unsigned slot = 0);
+    void choose_plugin(const PluginFile& file);
+    void set_plugin_param(int32_t id, int value);
+    void plugins_tick(uint32_t now);
+    int plugin_in_focus() const; // the entry the page in view shows, -1 none
+    void split_shared_plugins(); // a copy's second user of an entry gets one of its own
+    uint32_t plugin_panel_at = 0;
+    unsigned plugin_view_seen = ~0u;
+    bool plugin_came_back = true; // false after going up, until the cursor lands on the folder it came out of
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     // Projects on the card
@@ -234,7 +249,9 @@ public:
     void load_bank(const BankFile& bank, const std::string& name); // into the bank in view, one undo
     std::string bank_from;                    // the file Load Bank waits for
     // Switches the whole app to `project`: the audio thread gets a copy, samples reload.
-    void switch_to(const Project& project, const PatternBank& patterns, const std::string& path);
+    // `plugin_states`: what its file kept of each plug-in (none: each opens at its defaults).
+    void switch_to(const Project& project, const PatternBank& patterns, const std::string& path,
+                   const std::array<std::vector<uint8_t>, max_plugins>* plugin_states = nullptr);
     // The device's rate changed (Settings' SAMPLE RATE): the same project again, so the audio thread works out every
     // engine and effect anew at it. It stops playback. False when the queue was full (try again).
     bool reformat();

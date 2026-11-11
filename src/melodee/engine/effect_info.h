@@ -21,12 +21,15 @@ enum class EffectKind : uint8_t {
     // Parity phase 7: the MPC's Knob FX effects Melodee lacked (appended, so saved kinds keep their numbers).
     DiffDelay, SampleDelay, Spring, Pumper, AmpSim, TubeDrive, SoftClip, Ensemble, MultiChorus, AutoWah,
     Vintage, Vinyl, TapeEmu,
+    // A plug-in effect (docs/MELODEE.md, Plug-ins): parameter 0 is its entry in Project::plugins; the plug-in does the rest.
+    Plugin,
     Count
 };
 
 static_assert(unsigned(EffectKind::Count) == effect_kinds, "model/limits.h counts the effects");
+static_assert(unsigned(EffectKind::Plugin) == plugin_effect_kind, "model/limits.h names the plug-in effect");
 constexpr unsigned effect_params = 6;
-enum class Family : uint8_t { Space, Time, Motion, Dirt, Tone, Dynamics, Count };
+enum class Family : uint8_t { Space, Time, Motion, Dirt, Tone, Dynamics, Plugins, Count };
 
 struct EffectInfo {
     EffectKind kind;
@@ -42,7 +45,7 @@ const char* family_name(Family family);
 // The effects of a family in picker order (two columns of six at most).
 using FamilyList = std::array<EffectKind, 12>;
 unsigned family_effects(Family family, FamilyList& out);
-inline unsigned effect_count() { return unsigned(EffectKind::Count) - 1; }
+inline unsigned effect_count() { return unsigned(EffectKind::Count) - 2; } // Melodee's own: not None, not Plugin
 
 // Knob FX's list (parity phase 7): the MPC's effects in its order, each as
 // one of Melodee's effects (a filter with its type set), then Melodee's own.

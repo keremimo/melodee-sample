@@ -88,6 +88,10 @@ def collect(binary, version, commit):
     files["licenses/THIRD_PARTY.md"] = (ROOT / "THIRD_PARTY.md").read_bytes()
     files["licenses/Rubik-OFL.txt"] = (ROOT / "build/deps/rubik/OFL.txt").read_bytes()
     files["licenses/JUCE-LICENSE.md"] = (ROOT / "build/deps/JUCE/LICENSE.md").read_bytes()
+    # Plug-ins (docs/MELODEE.md): the VST3 SDK inside JUCE, and the armhf runtime inside the binary's support pack.
+    files["licenses/VST3-SDK-LICENSE.txt"] = (ROOT / "build/deps/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK/LICENSE.txt").read_bytes()
+    for path in sorted((ROOT / "build/plugin-support/licenses").glob("*")):
+        files[f"licenses/armhf-runtime/{path.name}"] = path.read_bytes()
     return files
 
 

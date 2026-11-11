@@ -191,11 +191,23 @@ namespace {
 std::array<Binding, 3> effect_row(unsigned id, const EffectSlot& s, unsigned row) {
     const auto& info = effect_info(EffectKind(s.kind));
     std::array<Binding, 3> out;
+    if (s.kind == plugin_effect_kind) return out; // its entry is no card: the plug-in's own are (plugin_cards())
     for (unsigned k = 0; k < 3; ++k) {
         unsigned q = row * 3 + k;
         const auto& pi = info.params[q];
         if (pi.label) out[k] = {Kind::FxParam, int32_t(id + q), pi.min, pi.max, s.params[q]};
     }
+    return out;
+}
+// A plug-in's row of three, as the shell last read it into the panel (plugin/plugin_panel.h); none while another
+// plug-in's panel is up or it is still loading.
+std::array<Binding, 3> plugin_cards(const UiState& ui, unsigned entry) {
+    std::array<Binding, 3> out;
+    const auto& panel = ui.plugin_panel;
+    if (panel.entry != entry || panel.status != PluginStatus::Ready) return out;
+    for (unsigned k = 0; k < 3; ++k)
+        if (panel.params[k].used)
+            out[k] = {Kind::PluginParam, plugin_binding(entry, panel.row * 3u + k), 0, plugin_param_max, panel.params[k].value};
     return out;
 }
 // Knob FX's row (Shift: its second), while the mode is on.
@@ -513,6 +525,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::Audition, 0, 1, 127, ui.audition_velocity}};
     }
     case PageId::Edit: {
+        if (track.engine == EngineKind::Plugin) return plugin_cards(ui, track.plugin);
         const auto& info = engine_info(track.engine);
         if (!info.page_count) return {};
         if (is_mod_page(info, ui.edit_page[ui.track])) {
@@ -563,6 +576,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
         const auto& c = project.chain(chain);
         if (slot >= c.count() || ui.picker_open) return {};
+        if (c.slots[slot].kind == plugin_effect_kind) return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
         return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)] % 2);
     }
     case PageId::Sends: {

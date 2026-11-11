@@ -53,6 +53,10 @@ juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::P
 
 // Draws soft keys, header and knob strip; the page draws the picture.
 void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::Header& header);
+// A plug-in over the cards (pages/plugin_view.cpp): its name and format, then loading, why it failed, or its row of
+// parameters out of how many; Edit for a PLUGIN track, the chain pages for a plug-in effect.
+void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, juce::Colour c, float top);
+juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
 
 // Defaults: pads play the selected track, Minus / Plus move its octave.
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/input_route.h"
 #include "melodee/engine/engine_host.h"
@@ -483,6 +484,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     for (unsigned n = 0; n < 16; ++n) out.held_keys[n] = context_.pad_keys[n][0];
     out.project_path = context_.project_path; out.project_folder = context_.project_folder; out.dirty = context_.dirty;
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
+    if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugins->view();
     if (library_) {
         const auto& t = project_->tracks[ui_.track];
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
@@ -569,7 +571,8 @@ std::string Shell::summary() const {
            // Phase 10b: SD card access (0 home, 1 lending, 2 lent, 3 returning; the note shell/card_access.h's CardNote).
            " melodee_card=" + std::to_string(card_link.state.load()) + " melodee_card_note=" + std::to_string(card_link.note.load()) +
            " melodee_card_ejected=" + std::to_string(int(card_link.ejected.load())) + " melodee_card_locked=" + std::to_string(int(card_link.locked.load())) +
-           " " + looper_status(host.looper());
+           " " + looper_status(host.looper()) +
+           " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none"));
 }
 
 // Phase 10: undo (depth, redo waiting, the last step's name), Seq held, the sampler map, DEMOS, a pot gesture open.
