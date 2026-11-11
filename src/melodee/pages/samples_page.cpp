@@ -45,7 +45,7 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, {{s.files_top ? "" : "BACK", other, s.ui.preview ? "PREVIEW ON" : "PREVIEW"}, heard.sounding ? 2 : -1, c,
                  {s.files_top ? KeyIcon::None : KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
     if (s.files.empty()) {
-        juce::String why = drive == Drive::Card && s.sample_root.empty() ? "No Samples folder on the card"
+        juce::String why = drive == Drive::Card && s.sample_root.empty() ? "No card in the slot"
                          : drive == Drive::Internal && s.files_top ? "No internal samples" : "No folders or WAV files here";
         p.text(why, zone::pad, zone::picture_y, zone::width - 2 * zone::pad, 40, plain(colour::dim, type::small, Weight::Medium), juce::Justification::centred);
         return;

@@ -134,7 +134,8 @@ void SampleLibrary::service(Hardware& hardware) {
         { std::lock_guard<std::mutex> guard(lock); std::swap(pending, preview_pending); heard = preview_wanted; }
         if (pending && !heard.empty()) hear(heard);
     }
-    // The card's Samples folder: $MELODEE_SAMPLES, else the first card's, looked for every few seconds.
+    // The card's Samples folder: $MELODEE_SAMPLES, else the first card's, looked for every few seconds. A card
+    // without one is still a card: what Melodee writes makes the folder, and browsing starts at the card's top.
     bool browse_wanted;
     { std::lock_guard<std::mutex> guard(lock); browse_wanted = wanted.pending; }
     if (++ticks % 600 == 1 || scan_wanted.load() || browse_wanted) {
@@ -142,7 +143,7 @@ void SampleLibrary::service(Hardware& hardware) {
         if (const char* forced = std::getenv("MELODEE_SAMPLES")) root = top = forced;
         else
             for (const auto& space : platform.storage())
-                if (space.path.rfind("/media/", 0) == 0 && fs::is_directory(space.path + "/Samples")) { top = space.path; root = space.path + "/Samples"; break; }
+                if (space.path.rfind("/media/", 0) == 0) { top = space.path; root = space.path + "/Samples"; break; }
         bool changed = root != root_seen;
         if (changed) { root_seen = root; std::lock_guard<std::mutex> guard(lock); card_top = top; known.root = root; }
         if (changed) {
@@ -166,7 +167,8 @@ void SampleLibrary::scan() {
         drive = known.drive; folder = known.folder;
     }
     auto tops = internal_tops();
-    auto start_of = [&](Drive d) { return d == Drive::Internal ? std::string() : root_seen.empty() ? card_top : root_seen; };
+    std::error_code error;
+    auto start_of = [&](Drive d) { return d == Drive::Internal ? std::string() : fs::is_directory(root_seen, error) ? root_seen : card_top; };
     std::string left; // going up: the folder left, to put the cursor on
     if (ask.pending && ask.up) {
         bool at_top = drive == Drive::Internal ? folder.empty() : (folder.empty() || folder == card_top);
@@ -181,7 +183,6 @@ void SampleLibrary::scan() {
         folder = ask.folder.empty() ? start_of(drive) : ask.folder;
     }
     // A card taken out, or a folder gone: back to the drive's start.
-    std::error_code error;
     if (drive == Drive::Card && (card_top.empty() || folder.rfind(card_top, 0) != 0)) folder = start_of(drive);
     if (!folder.empty() && !fs::is_directory(folder, error)) folder = start_of(drive);
     std::vector<SampleFile> files;
