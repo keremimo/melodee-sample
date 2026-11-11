@@ -28,12 +28,6 @@ void follow(Context& c, uint32_t tick, int key) {
 }
 } // namespace
 
-int pad_key(const Project& project, const Track& t, unsigned pad) {
-    if (t.engine == EngineKind::Sampler) return int(sampler_first_note + t.bank % sampler_banks * 16 + pad % 16);
-    if (t.engine == EngineKind::Kit909) return pad < 11 ? int(36 + pad) : -1;
-    return t.used() ? pad_note(project, t, pad).key : -1;
-}
-
 std::string key_label(const Track& t, int key) {
     if (t.engine == EngineKind::Sampler && key >= int(sampler_first_note) && key <= int(sampler_last_key)) {
         char label[4];
