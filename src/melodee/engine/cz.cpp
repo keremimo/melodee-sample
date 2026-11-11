@@ -121,9 +121,21 @@ void CzEngine::note_on(int key, int velocity) {
     if (!v) for (auto& x : voices) if (x.key < 0) { v = &x; break; }
     if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
     *v = Voice {};
-    v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f;
+    v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f; v->accent = accent;
     v->random = noise.next();
     v->dcw.gate(true); v->dca.gate(true);
+}
+
+// Slide or Tie from the sequencer (Engine::slide): the held voice of `from` goes on as `to`.
+void CzEngine::slide(int from, int to, int velocity, bool glide) {
+    bool found = false;
+    for (auto& v : voices)
+        if (v.key == from && v.held) {
+            if (glide && from != to) v.slide += float(from - to);
+            v.key = to; v.age = ++clock; v.accent = accent;
+            found = true;
+        }
+    if (!found) note_on(to, velocity);
 }
 void CzEngine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
 void CzEngine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.dcw.gate(false); v.dca.gate(false); } }
@@ -141,14 +153,15 @@ void CzEngine::render(float* out, unsigned frames) {
         using expression::at;
         expression::follow(v.touch, v.pressure, frames);
         auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.dcw.level});
-        // Pitch: the bend, the matrix and pressure's vibrato.
-        float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+        // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato.
+        v.slide = expression::slide_settle(v.slide, frames);
+        float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
         // Line 1 (or 2 alone, a fifth of the detune up); with 1+1' or 1+2' the second line too, detuned.
         float dt0 = dsp::midi_hz(key + (line == 1 ? p[Octave] * 12 : 0) + at(m, line == 1 ? ModDest::OscBPitch : ModDest::OscAPitch) * 12) / dsp::sample_rate();
         float dt1 = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
         float follow = 1 - p[KeyFollow] / 100.0f * std::clamp((key - 48) / 48.0f, 0.0f, 1.0f); // high notes bend less
         float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel))
-            * (both ? 0.18f : 0.26f);
+            * (both ? 0.18f : 0.26f) * v.accent;
         // Brightness: pressure and the matrix open the DCW.
         float open = v.touch * p[AtBright] / 100.0f * 0.6f + at(m, ModDest::Cutoff);
         for (unsigned f = 0; f < frames; ++f) {

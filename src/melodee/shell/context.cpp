@@ -1383,8 +1383,10 @@ void Context::double_length() {
 void Context::double_notes() {
     auto& p = pattern();
     uint32_t length = p.length;
-    if (!double_pattern(p, project.max_length())) return;
+    bool copy = ui.settings.double_copies;
+    if (!double_pattern(p, project.max_length(), copy)) return;
     sync_pattern(ui.track, track().pattern);
+    if (!copy) return; // Settings' Double Seq "Empty": the new half starts bare, motion too
     // Its motion too, as far as there is room.
     auto& motion = project.motion;
     unsigned sixteenths = length / sixteenth_ticks, events = motion.count;

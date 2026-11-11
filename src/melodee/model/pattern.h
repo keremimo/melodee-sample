@@ -100,7 +100,7 @@ StepEvents step_events(const Pattern& pattern, unsigned step);
 // Edits of a whole pattern (Shift + Pad 2, 3, 6, 7 and Time Correct). Each
 // keeps the pattern's notes in order; two notes landing on the same tick
 // with the same key become one.
-bool double_pattern(Pattern& p, uint32_t max_length); // Double Seq: twice as long, the notes twice; false past max_length
+bool double_pattern(Pattern& p, uint32_t max_length, bool copy = true); // Double Seq: twice as long, the notes twice (or the new half empty); false past max_length
 void half_pattern(Pattern& p);                        // Half Seq: the first half
 void scale_pattern(Pattern& p, bool slower);          // Half / Double Speed: every note twice as far apart, or half; the length stays
 // The tick a recorded note lands on with Rec Quantize: the nearest step of

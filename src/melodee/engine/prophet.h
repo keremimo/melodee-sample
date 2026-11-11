@@ -30,6 +30,8 @@ public:
     void set_bend(float value) override { bend = value; }
     void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; }
     void set_pressure(int key, float value) override;
+    void set_accent(float gain) override { accent = gain; }
+    void slide(int from, int to, int velocity, bool glide) override;
     void render(float* out, unsigned frames) override;
     bool sounding() const override;
 
@@ -39,6 +41,7 @@ private:
         bool held = false;
         uint32_t age = 0;
         float velocity = 0, pitch = 60, target = 60, drift = 0, detune = 0;
+        float accent = 1, slide = 0; // the sequencer's: a gain, and semitones off the key (expression::slide_settle)
         dsp::Oscillator a, b;
         dsp::Ladder filter;
         dsp::Envelope amp_env, filter_env;
@@ -65,6 +68,7 @@ private:
     float lfo_value = 0, vibrato_value = 0;
     dsp::Envelope::Shape amp_shape, filter_shape;
     float glide_coefficient = 1;
+    float accent = 1; // for the notes started next (set_accent)
     bool dirty = true;
 };
 

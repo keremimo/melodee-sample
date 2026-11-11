@@ -89,7 +89,7 @@ void Kit909Engine::note_on(int key, int velocity) {
     if (d == ClosedHat) voices[OpenHat].on = false; // the closed hat chokes the open one
     auto& v = voices[size_t(d)];
     v = Voice {};
-    v.on = true; v.velocity = 0.3f + 0.7f * velocity / 127.0f;
+    v.on = true; v.velocity = (0.3f + 0.7f * velocity / 127.0f) * accent;
     // Each drum starts only what it uses, so it ends when those have died away.
     v.amp = d == Clap ? 0 : 1; v.noise_amp = d == Snare || d == Clap ? 1 : 0; v.pitch_env = 1;
 }

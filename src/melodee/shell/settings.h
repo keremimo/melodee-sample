@@ -15,7 +15,7 @@
 // Melodee's own settings, not the project's: how the pads respond and
 // light, whether their pressure is used, how the knobs, Knob FX and the fader take over a value, the screen, the audio
 // device's rate and buffer, and the MPC's recording toggles
-// (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize) and Input Config (Shift + Sample). Kept as key=value lines in the
+// (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize), what Double Seq puts in the new half and Input Config (Shift + Sample). Kept as key=value lines in the
 // `settings` file next to the projects (with the project to open at start).
 namespace melodee {
 
@@ -30,13 +30,14 @@ inline const char* takeover_name(Takeover t) {
 }
 
 struct Settings {
-    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, Screen, SampleRate,
+    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, Screen, SampleRate,
                          AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
     bool rec_quantize = true; // recorded notes onto the grid (off: phase 2)
     bool zero_snap = true;    // Chop's cuts onto zero crossings (Chop's B2; shell/chop.h)
+    bool double_copies = true; // Double Seq (Shift + Pad 3): the new half plays the notes again (the MPC's way), or starts empty
     uint8_t click = 0;        // the metronome: 0 off, 1 on, 2 only while Seq Record (Shift + Tap Tempo)
     uint8_t click_level = 40;
     bool full_level() const { return pad_response == 3; }
@@ -75,7 +76,7 @@ struct Settings {
 
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
-                                    "Fader takeover", "Screen", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
+                                    "Fader takeover", "Double Seq", "Screen", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below"};
         return names[row % Rows];
     }
@@ -90,6 +91,7 @@ struct Settings {
         case KnobTakeover: return takeover_name(knob_takeover);
         case KnobFxTakeover: return takeover_name(knob_fx_takeover);
         case FaderTakeover: return takeover_name(fader_takeover);
+        case DoubleSeq: return double_copies ? "Copy notes" : "Empty";
         case SampleRate: return audio_rate == 44100 ? "44.1 kHz" : std::to_string(audio_rate / 1000) + " kHz";
         case AudioBuffer: { // the frames queued, and how late that is heard at the rate chosen
             unsigned frames = 128u * audio_periods;
@@ -115,6 +117,7 @@ struct Settings {
         case KnobTakeover: knob_takeover = step_takeover(knob_takeover, way); break;
         case KnobFxTakeover: knob_fx_takeover = step_takeover(knob_fx_takeover, way); break;
         case FaderTakeover: fader_takeover = step_takeover(fader_takeover, way); break;
+        case DoubleSeq: double_copies = !double_copies; break;
         case Screen: screen = uint8_t(std::clamp(int(screen) + way * 10, 20, 100)); break;
         case SampleRate: audio_rate = rates[size_t(std::clamp(rate_index() + (way < 0 ? -1 : 1), 0, int(rates.size()) - 1))]; break;
         case AudioBuffer: audio_periods = buffers[size_t(std::clamp(buffer_index() + (way < 0 ? -1 : 1), 0, int(buffers.size()) - 1))]; break;
@@ -158,7 +161,7 @@ struct Settings {
             << "\npickup=" << int(knob_takeover != Takeover::Instant) << "\nknob_takeover=" << int(knob_takeover)
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize)
-            << "\nzero_snap=" << int(zero_snap) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
+            << "\nzero_snap=" << int(zero_snap) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
@@ -200,6 +203,7 @@ struct Settings {
             else if (key == "count_in") count_in = value != 0;
             else if (key == "rec_quantize") rec_quantize = value != 0;
             else if (key == "zero_snap") zero_snap = value != 0;
+            else if (key == "double_copies") double_copies = value != 0;
             else if (key == "click") click = uint8_t(std::clamp(value, 0, 2));
             else if (key == "click_level") click_level = uint8_t(std::clamp(value, 0, 100));
             else if (key == "response_before") response_before = uint8_t(std::clamp(value, 0, 2));

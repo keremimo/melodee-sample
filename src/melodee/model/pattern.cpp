@@ -66,10 +66,10 @@ void Pattern::sort() { std::stable_sort(events.begin(), events.end(), before); }
 
 void Pattern::cut(uint32_t tick) { events.erase(events.begin() + long(lower(tick)), events.end()); }
 
-bool double_pattern(Pattern& p, uint32_t max_length) {
+bool double_pattern(Pattern& p, uint32_t max_length, bool copy) {
     if (p.length * 2 > max_length) return false;
     p.cut(p.length); // nothing hidden past the end comes back
-    size_t count = p.events.size();
+    size_t count = copy ? p.events.size() : 0;
     for (size_t n = 0; n < count && p.events.size() < max_pattern_events; ++n) { Event e = p.events[n]; e.tick += p.length; p.events.push_back(e); }
     p.length *= 2;
     return true;

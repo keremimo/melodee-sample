@@ -63,6 +63,7 @@ void ProphetEngine::start(Voice& v, int key, int velocity, bool retrigger) {
     v.random = noise.next();
     v.key = key; v.held = true; v.age = ++clock;
     v.velocity = velocity / 127.0f;
+    v.accent = accent; v.slide = 0;
     v.target = float(key);
     if (!was || glide_coefficient >= 1.0f) v.pitch = float(key);
     if (retrigger || !was) { v.amp_env.gate(true); v.filter_env.gate(true); }
@@ -94,6 +95,22 @@ void ProphetEngine::note_on(int key, int velocity) {
     auto& v = allocate(key);
     v.detune = 0;
     start(v, key, velocity, true);
+}
+
+// Slide or Tie from the sequencer (Engine::slide): the held voices of `from` go on as `to`. With the
+// GLIDE knob up they glide at its rate, as a played legato does; else a slide takes its own 60 ms.
+void ProphetEngine::slide(int from, int to, int velocity, bool glide) {
+    if (dirty) update();
+    bool found = false;
+    for (auto& v : voices)
+        if (v.key == from && v.held) {
+            v.slide = glide && glide_coefficient >= 1.0f ? v.pitch - float(to) : 0;
+            v.key = to; v.target = float(to); v.age = ++clock; v.accent = accent;
+            if (!glide || glide_coefficient >= 1.0f) v.pitch = float(to) + v.slide;
+            found = true;
+        }
+    if (!found) { note_on(to, velocity); return; }
+    for (unsigned n = 0; n < stacked; ++n) if (stack[n] == from) stack[n] = to; // mono and unison: `to` is held now
 }
 
 void ProphetEngine::note_off(int key) {
@@ -129,6 +146,10 @@ void ProphetEngine::silence() {
 
 void ProphetEngine::control(Voice& v) {
     v.pitch += (v.target - v.pitch) * glide_coefficient;
+    if (v.slide != 0) { // a sequenced slide's own glide, over the GLIDE knob's (none: at once)
+        v.slide = expression::slide_settle(v.slide, control_block);
+        v.pitch = v.target + v.slide;
+    }
     // Vintage: each voice wanders a little in pitch.
     if (p[Vintage]) {
         float r = noise.next();
@@ -174,7 +195,7 @@ void ProphetEngine::control(Voice& v) {
     if (p[PolyFilter]) octaves += poly_env * 4.0f + (2.0f * v.b.phase - 1.0f) * p[PolyOscB] / 100.0f * 2.0f;
     octaves += at(m, ModDest::Cutoff) * 5 + v.touch * p[AtBright] / 100.0f * 4.0f;
     v.filter.tune(20.0f * std::exp2(octaves), std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f));
-    v.gain = std::max(0.0f, expression::velocity_gain(v.velocity, p[VelAmp] / 100.0f) * (1.0f + at(m, ModDest::AmpLevel)));
+    v.gain = std::max(0.0f, expression::velocity_gain(v.velocity, p[VelAmp] / 100.0f) * (1.0f + at(m, ModDest::AmpLevel))) * v.accent;
 }
 
 void ProphetEngine::render(float* out, unsigned frames) {

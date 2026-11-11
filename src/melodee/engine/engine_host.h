@@ -175,6 +175,9 @@ private:
         int clip = -1;                     // in the song: the clip playing
         bool silent = false;               // in the song: no clip here
         std::array<PendingOff, 32> offs {};
+        // A note with Slide or Tie, held into the next note of its pattern, which takes it over (key: as the
+        // engine plays it; midi: as it went out). Its off, a sixteenth past that note, lets it go if none comes.
+        struct Held { int16_t key = -1, midi = -1; bool glide = false; } held;
         std::array<int16_t, max_params> base {}; // the track's own values; motion only borrows them
         std::array<std::array<int16_t, effect_params>, max_slots> fx_base {}; // and its effects'
         bool fx_moved = false;
@@ -205,6 +208,7 @@ private:
     void restore(Slot& slot);
     void schedule_off(Slot& slot, int key, int32_t samples);
     void run_offs(Slot& slot, unsigned frames);
+    void cancel_off(Slot& slot, int key);
     double tick_length() const { return dsp::sample_rate() * 60.0 / (tempo / 10.0) / ticks_per_quarter; } // device frames a clock tick
     double arp_tick_length() const { return tick_length() * (ticks_per_quarter / arp_ticks_per_quarter); }
     // MIDI out and sync (parity phase 9).
@@ -215,6 +219,7 @@ private:
     void midi_silenced();                                                    // MIDI tracks muted or soloed out: their notes end
     void midi_note(unsigned t, int key, int velocity, uint64_t at, int64_t length); // and its off after `length` frames (-1 none)
     void midi_note_off(unsigned t, int key, uint64_t at);
+    bool midi_hold(unsigned t, int key, int64_t length, uint64_t at); // a tie: the note sounding goes on `length` frames from `at`
     void midi_offs_due(uint64_t until);                                      // offs before `until`, at their frames
     void midi_all_off(unsigned track, uint64_t at);                         // 255: every track's
     // A MIDI track's own parameter beyond port and channel: a controller value goes out as a CC; bank and

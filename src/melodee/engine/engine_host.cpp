@@ -4,6 +4,7 @@
 #include <chrono>
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/expression.h"
 #include <algorithm>
 #include <cmath>
 
@@ -201,6 +202,7 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
     slot.sampler.set_samples(&samples);
     slot.arp.top = kind == EngineKind::Sampler ? int(sampler_last_key) : 127; // a kit's notes run past 127
     for (auto& off : slot.offs) off.key = -1;
+    slot.held = {};
 }
 
 bool EngineHost::loop_strip_command(const Command& c) {
@@ -242,6 +244,7 @@ void EngineHost::apply(const Command& c) {
             if ((c.track == 255 || t == c.track) && slots[t].engine) {
                 slots[t].engine->all_notes_off();
                 for (auto& off : slots[t].offs) off.key = -1;
+                slots[t].held = {};
             }
         break;
     case Type::Engine: midi_all_off(c.track, frame_now); select_engine(slot, EngineKind(c.index)); break;
@@ -606,6 +609,7 @@ void EngineHost::apply(const Command& c) {
         for (auto& s : slots) restore(s);
         for (auto& s : slots) {
             for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
+            s.held = {};
         }
         break;
     case Type::Tempo:
@@ -650,11 +654,19 @@ void EngineHost::schedule_off(Slot& slot, int key, int32_t samples) {
     slot.engine->note_off(key); // no room: end it now rather than hang
 }
 
+void EngineHost::cancel_off(Slot& slot, int key) {
+    for (auto& off : slot.offs) if (off.key == key) off.key = -1;
+}
+
 void EngineHost::run_offs(Slot& slot, unsigned frames) {
     for (auto& off : slot.offs) {
         if (off.key < 0) continue;
         off.samples -= int32_t(frames);
-        if (off.samples <= 0) { if (slot.engine) slot.engine->note_off(off.key); off.key = -1; }
+        if (off.samples <= 0) {
+            if (slot.engine) slot.engine->note_off(off.key);
+            if (off.key == slot.held.key) slot.held = {}; // nothing took it over
+            off.key = -1;
+        }
     }
 }
 
@@ -732,7 +744,7 @@ void EngineHost::bar_start() {
     if ((rendering || !song.looping()) && !song_recording && song_bar_now >= std::max(song.length(), 1u)) { // the end of the song
         running = false;
         if (rendering) render_out.tail(); // on until the mix falls silent
-        for (auto& s : slots) for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
+        for (auto& s : slots) { for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; } s.held = {}; }
         return;
     }
     clips_at_bar(false);
@@ -782,7 +794,7 @@ void EngineHost::mtc_place(double seconds) {
             song_bar_now = b ? b - 1 : 0; // the first tick's bar_start() moves it on to b (and finds its end)
         } else if (!song.looping() && !song_recording && b >= std::max(song.length(), 1u)) {
             running = false; // past the song's end
-            for (auto& s : slots) for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; }
+            for (auto& s : slots) { for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; } s.held = {}; }
         } else {
             song_bar_now = b;
             clips_at_bar(true);
@@ -917,6 +929,13 @@ void EngineHost::midi_note_off(unsigned t, int key, uint64_t at) {
         }
 }
 
+bool EngineHost::midi_hold(unsigned t, int key, int64_t length, uint64_t at) {
+    if (!out_wanted(t, key)) return true; // nothing went out to hold
+    for (auto& off : midi_offs)
+        if (off.on && off.track == t % track_count && off.key == key) { off.at = at + uint64_t(std::max<int64_t>(length, 0)); return true; }
+    return false;
+}
+
 void EngineHost::midi_offs_due(uint64_t until) {
     for (auto& off : midi_offs)
         if (off.on && off.at < until) { emit(off_event(off, off.at)); off.on = false; }
@@ -1032,6 +1051,7 @@ void EngineHost::tick() {
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
         if (sound && motion.count && at % sixteenth_ticks == 0) play_motion(t, slot, at / sixteenth_ticks);
         const auto& events = pattern.events;
+        Slot::Held holding; // this tick's own Slide or Tie, for the notes of a later one
         for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n) {
             const auto& e = events[n];
             if (e.key > 127 && slot.kind != EngineKind::Sampler) continue; // past 127: kit pads only
@@ -1039,16 +1059,39 @@ void EngineHost::tick() {
             if (skipped(slot, unsigned(played), at)) continue;
             random = random * 1664525u + 1013904223u;
             if (e.chance < 100 && (random >> 8) % 100 >= e.chance) continue;
-            // Held for its length, a touch short unless tied.
-            double gap = e.flags & step_tie ? 0 : std::min<unsigned>(pattern.q(), e.length) * 0.1;
-            auto samples = int32_t(tick_length() * (e.length - gap));
-            int velocity = e.flags & step_accent ? std::min(127, e.velocity + 24) : e.velocity;
-            if (sound) {
-                slot.engine->note_on(played, velocity);
-                schedule_off(slot, played, std::max<int32_t>(samples, 64));
+            // Held for its length, a touch short; with Slide or Tie, until the next note starts (and past
+            // it, so that note finds it held and takes it over: no new attack; a slide glides there).
+            bool legato = e.flags & (step_slide | step_tie);
+            double ticks = e.length - std::min<unsigned>(pattern.q(), e.length) * 0.1;
+            if (legato) {
+                size_t next = n + 1;
+                while (next < events.size() && events[next].tick == at) ++next;
+                uint32_t to = next < events.size() && events[next].tick < length ? events[next].tick : events.front().tick + length;
+                ticks = double(to - at) + sixteenth_ticks;
             }
-            midi_note(t, e.key, velocity, frame_now + block_at, std::max<int32_t>(samples, 64));
+            auto samples = std::max<int32_t>(int32_t(tick_length() * ticks), 64);
+            // Accent: louder, and harder where velocity moves the sound.
+            bool accent = e.flags & step_accent;
+            int velocity = accent ? std::min(127, e.velocity + 24) : e.velocity;
+            auto from = slot.held; // the note held into this tick takes this one, the first note on it
+            slot.held = {};
+            if (sound) {
+                slot.engine->set_accent(accent ? expression::accent_gain : 1.0f);
+                if (from.key >= 0) {
+                    slot.engine->slide(from.key, played, velocity, from.glide);
+                    if (from.key != played) cancel_off(slot, from.key);
+                } else {
+                    slot.engine->note_on(played, velocity);
+                }
+                slot.engine->set_accent(1);
+                schedule_off(slot, played, samples);
+            }
+            // MIDI: a tie onto the same key goes on; else the notes overlap, which a mono synth plays legato.
+            if (from.midi != e.key || !midi_hold(t, e.key, samples, frame_now + block_at))
+                midi_note(t, e.key, velocity, frame_now + block_at, samples);
+            if (legato) holding = {int16_t(played), int16_t(e.key), (e.flags & step_slide) != 0};
         }
+        if (holding.key >= 0) slot.held = holding;
     }
     until_tick += tick_samples(tick_now);
     ++tick_now;

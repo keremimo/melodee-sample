@@ -211,6 +211,64 @@ void host_sequencer() {
     CHECK(peak > 0.005f);
     CHECK(host.dropped() == 0);
 }
+// Slide, Tie and Accent as played: a tied note goes on into the next of its key, a slid one overlaps the next
+// (a mono synth's legato) and glides there without a new attack, and an accented note comes out louder.
+void sequenced_legato() {
+    {   // MIDI out, which shows the notes as they go.
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[midi_track::Port] = midi_track::UsbC; project->tracks[0].params[midi_track::Channel] = 1;
+        project->tempo = 1200;
+        auto& p = bank->at[0][0];
+        put(p, 0, 60, 100, 1, step_tie); put(p, 1, 60, 100); put(p, 2, 64, 100, 1, step_slide); put(p, 3, 67, 100);
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        std::vector<MidiOutEvent> notes;
+        for (unsigned n = 0; n < 230; ++n) { // past step 4 (5512.5 frames a step)
+            host.render(out.data(), 128, 1);
+            MidiOutEvent e;
+            while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn || e.kind == MidiOutEvent::Kind::NoteOff) notes.push_back(e);
+        }
+        auto find = [&](MidiOutEvent::Kind kind, uint8_t key) {
+            int count = 0; uint64_t at = 0;
+            for (auto& e : notes) if (e.kind == kind && e.a == key) { if (!count) at = e.frame; ++count; }
+            return std::pair<int, uint64_t>{count, at};
+        };
+        using K = MidiOutEvent::Kind;
+        auto on60 = find(K::NoteOn, 60), off60 = find(K::NoteOff, 60), on64 = find(K::NoteOn, 64), off64 = find(K::NoteOff, 64), on67 = find(K::NoteOn, 67);
+        CHECK(on60.first == 1 && off60.first == 1);              // tied onto the same key: one note
+        CHECK(off60.second > on60.second + 5512 + 4000);          // held through step 2's note
+        CHECK(on64.first == 1 && on67.first == 1 && off64.first == 1);
+        CHECK(off64.second > on67.second);                        // the slide overlaps the next note
+    }
+    {   // A mono Prophet: the slide's next note has no new attack, so it is not quieter at its start than held on.
+        auto level = [](uint8_t flags) {
+            auto project = std::make_unique<Project>();
+            auto bank = std::make_unique<PatternBank>();
+            load_sound(project->tracks[0], EngineKind::Prophet, 1);
+            project->tempo = 1200;
+            put(bank->at[0][0], 0, 57, 80, 1, flags); put(bank->at[0][0], 1, 64, 80);
+            EngineHost host;
+            host.load(*project, *bank);
+            host.send({Command::Type::Play});
+            std::vector<int32_t> out(256);
+            std::vector<float> left;
+            for (unsigned n = 0; n < 80; ++n) {
+                host.render(out.data(), 128, 1);
+                for (unsigned f = 0; f < 128; ++f) left.push_back(out[2 * f] / 2147483648.0f);
+            }
+            return std::pair<float, float>{peak_of(left, 0, 5000), peak_of(left, 5050, 5500)}; // the first note; its end, before the second
+        };
+        auto plain = level(0), accent = level(step_accent), slide = level(step_slide), tie = level(step_tie);
+        CHECK(accent.first > plain.first * 1.3f);  // louder, at a velocity with room left or not
+        CHECK(slide.second > plain.second * 1.5f); // held across the step's end, not released short
+        CHECK(tie.second > plain.second * 1.5f);
+    }
+}
 void motion() {
     // The store: a second write at the same place replaces, clear drops one lane, and it fills at the limit.
     Motion m;
@@ -4160,6 +4218,14 @@ void roll() {
     CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 40 && ui.roll_key == 69);  // Shift + wheel: note to note over empty bars
     CHECK(!roll_jump(p, ui, 1) && ui.step_cursor == 40);
     CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 8 && ui.roll_key == 57);
+    // and through a chord one note at a time, low to high, both ways.
+    ui.step_cursor = 6; ui.roll_key = 60;
+    CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 6 && ui.roll_key == 64 && roll_focus(p, ui) >= 0);
+    CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 8 && ui.roll_key == 57);
+    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 6 && ui.roll_key == 64);
+    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 6 && ui.roll_key == 60);
+    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 0 && ui.roll_key == 62);
+    CHECK(!roll_jump(p, ui, -1));
     // The view scrolls a step at a time, the cursor two steps from either edge, inside the pattern.
     ui.step_cursor = 40; ui.roll_view = 0; roll_follow(p, ui); CHECK(ui.roll_view == 27 && roll_first(p, ui) == 27);
     ui.step_cursor = 63; roll_follow(p, ui); CHECK(ui.roll_view == 48);
@@ -5303,5 +5369,6 @@ int main() {
     bindings();
     prophet_engine();
     host_sequencer();
+    sequenced_legato();
     std::puts("melodee ok");
 }

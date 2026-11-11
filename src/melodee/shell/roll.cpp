@@ -69,17 +69,19 @@ void roll_step(const Pattern& pattern, UiState& ui, int way) {
 }
 
 bool roll_jump(const Pattern& pattern, UiState& ui, int way) {
-    unsigned q = pattern.q(), cursor = roll_cursor(pattern, ui);
-    int to = -1;
-    for (const auto& e : pattern.events) { // in order of their ticks
+    // Every note in turn, by step and then pitch: a chord's notes up one by one, then on to the next step's.
+    unsigned q = pattern.q();
+    auto place = [&](unsigned step, int key) { return int64_t(step) * 256 + key; };
+    int64_t here = place(roll_cursor(pattern, ui), ui.roll_key), to = -1;
+    for (const auto& e : pattern.events) {
         if (e.tick >= pattern.length) break;
-        unsigned step = e.tick / q;
-        if (way > 0 && step > cursor) { to = int(step); break; }
-        if (way < 0 && step < cursor) to = int(step);
+        int64_t at = place(e.tick / q, e.key);
+        if (way > 0 && at > here && (to < 0 || at < to)) to = at;
+        if (way < 0 && at < here && (to < 0 || at > to)) to = at;
     }
     if (to < 0) return false;
-    put_cursor(ui, unsigned(to));
-    ui.roll_key = uint8_t(nearest_key(pattern, unsigned(to), ui.roll_key));
+    put_cursor(ui, unsigned(to / 256));
+    ui.roll_key = uint8_t(to % 256);
     roll_follow(pattern, ui);
     roll_select(pattern, ui);
     return true;

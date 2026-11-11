@@ -25,7 +25,7 @@ void shift_pad(Context& c, unsigned pad) {
     case 1: // Half Seq: the first half of the pattern
         c.half_length();
         return;
-    case 2: // Double Seq: the pattern twice as long, played twice
+    case 2: // Double Seq: the pattern twice as long, played twice (or the new half empty: Settings)
         c.double_length();
         return;
     case 5: // Half Speed: every note twice as far apart

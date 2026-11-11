@@ -297,7 +297,8 @@ eighth.
   the pattern's notes, each at its own tick for its own length, over bar
   lines, any number to a step. The cursor is a step of Q and a pitch: the
   wheel moves it a step (onto the nearest note starting there), Shift +
-  wheel note to note, −/+ walk the chord in the step and then a semitone;
+  wheel every note in turn (a step's notes low to high, then the next
+  step's), −/+ walk the chord in the step and then a semitone;
   the view scrolls a step at a time, and dots on its edges mark notes above
   and below. The note at the cursor is in focus, drawn white and named in
   the header; K1 its length, K2 velocity, K3 chance. A pad writes its note
@@ -305,7 +306,12 @@ eighth.
   is the pads' octave (Shift: down). Erase tapped alone deletes the note in
   focus; Erase + pad asks, then erases that key's notes. Push opens its
   sheet (accent, slide, tie, delete): B1 CLOSE, B3 DO IT or Push, and a pad
-  or a pot closes it too. With Seq Record on while playing, pads play in
+  or a pot closes it too. Accent plays the note about 4 dB louder (and 24
+  velocity harder); Tie holds it until the next note, which goes on from it
+  without a new attack (the same key: one long note); Slide does the same
+  and glides the pitch there in about 60 ms (the GLIDE knob's rate when it
+  is up). The sampler and the 909 play the next note and release the held
+  one; MIDI out overlaps them, which a mono synth plays legato. With Seq Record on while playing, pads play in
   live.
 - **Steps, Motion** (Shift + Seq again, round): Steps the bar's steps
   on the pads; Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
@@ -314,7 +320,9 @@ eighth.
 - **Time Correct** (Shift + Pad 14): the selected pattern onto Q; pads pick
   whose notes move, B2 all; K1 Q, K2 shift ±48 ticks, K3 swing; B3 DO IT.
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):
-  each one undo; the length stays for the speeds.
+  each one undo; the length stays for the speeds. Settings' Double Seq row
+  picks what the new half holds: Copy notes (the MPC's way, motion too) or
+  Empty.
 - **Recall** (Shift + Seq Record): the last 1–4 bars the pads played,
   quantised into the first empty pattern; B3 or Push keeps it, B1 drops.
 - **Song** (Shift + Pad 12): a lane per track, clips of patterns, markers,

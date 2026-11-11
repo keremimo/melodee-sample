@@ -159,9 +159,21 @@ void Fm6Engine::note_on(int key, int velocity) {
     if (!v) for (auto& x : voices) if (x.key < 0) { v = &x; break; }
     if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
     *v = Voice {};
-    v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f;
+    v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f; v->accent = accent;
     v->random = noise.next();
     for (auto& e : v->env) e.gate(true);
+}
+
+// Slide or Tie from the sequencer (Engine::slide): the held voice of `from` goes on as `to`.
+void Fm6Engine::slide(int from, int to, int velocity, bool glide) {
+    bool found = false;
+    for (auto& v : voices)
+        if (v.key == from && v.held) {
+            if (glide && from != to) v.slide += float(from - to);
+            v.key = to; v.age = ++clock; v.accent = accent;
+            found = true;
+        }
+    if (!found) note_on(to, velocity);
 }
 void Fm6Engine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
 void Fm6Engine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; for (auto& e : v.env) e.gate(false); } }
@@ -181,15 +193,16 @@ void Fm6Engine::render(float* out, unsigned frames) {
         if (v.key < 0) continue;
         expression::follow(v.touch, v.pressure, frames);
         auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env[0].level});
-        // Pitch: the bend, the matrix and pressure's vibrato; carriers and modulators can part.
-        float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+        // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato; carriers and modulators can part.
+        v.slide = expression::slide_settle(v.slide, frames);
+        float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
         float hz_carrier = dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate();
         float hz_modulator = dsp::midi_hz(key + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
         // Brightness: pressure and the matrix scale every modulator, as a DX patch's aftertouch into modulator levels.
         float bright = std::min(8.0f, std::exp2(2 * (at(m, ModDest::Cutoff) + v.touch * p[AtBright] / 100.0f)));
         float steps = std::clamp(p[Feedback] + at(m, ModDest::Resonance) * 7, 0.0f, 7.0f);
         float feedback = steps > 0 ? std::exp2(steps - 7) * 0.8f : 0;
-        float amp = std::max(0.0f, 1 + at(m, ModDest::AmpLevel));
+        float amp = std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * v.accent;
         std::array<float, ops> gain {}, step {};
         float self = 0; // op 6's level into its own feedback
         for (unsigned op = 0; op < ops; ++op) {

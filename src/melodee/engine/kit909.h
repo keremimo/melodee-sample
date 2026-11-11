@@ -30,6 +30,7 @@ class Kit909Engine final : public Engine {
 public:
     Kit909Engine();
     void note_on(int key, int velocity) override;
+    void set_accent(float gain) override { accent = gain; }
     void note_off(int) override {}
     void all_notes_off() override {}
     void silence() override;
@@ -49,6 +50,7 @@ private:
     std::array<Voice, kit909::Drums> voices {};
     std::array<int, kit909::Count> p {};
     dsp::Noise noise;
+    float accent = 1; // the sequencer's, for the drums started next (set_accent)
 };
 
 } // namespace melodee

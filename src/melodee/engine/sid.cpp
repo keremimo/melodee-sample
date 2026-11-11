@@ -89,9 +89,21 @@ void SidEngine::note_on(int key, int velocity) {
     float s1 = v->s1, s2 = v->s2;
     *v = Voice {};
     v->s1 = s1 * 0.5f; v->s2 = s2 * 0.5f;
-    v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f;
+    v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f; v->accent = accent;
     v->random = noise.next();
     v->env.gate(true);
+}
+
+// Slide or Tie from the sequencer (Engine::slide): the held voice of `from` goes on as `to`.
+void SidEngine::slide(int from, int to, int velocity, bool glide) {
+    bool found = false;
+    for (auto& v : voices)
+        if (v.key == from && v.held) {
+            if (glide && from != to) v.slide += float(from - to);
+            v.key = to; v.age = ++clock; v.accent = accent;
+            found = true;
+        }
+    if (!found) note_on(to, velocity);
 }
 void SidEngine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
 void SidEngine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.env.gate(false); } }
@@ -114,8 +126,9 @@ void SidEngine::render(float* out, unsigned frames) {
             using expression::at;
             expression::follow(v.touch, v.pressure, n);
             auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env.level});
-            // Pitch: the bend, the matrix and pressure's vibrato.
-            float key = v.key + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+            // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato.
+            v.slide = expression::slide_settle(v.slide, n);
+            float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
             float dt = std::min(dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate(), 0.45f);
             float dt2 = std::min(dsp::midi_hz(key + p[Detune] + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate(), 0.45f);
             float width = std::clamp(sweep + at(m, ModDest::PulseWidth) * 0.45f, 0.03f, 0.97f);
@@ -124,7 +137,7 @@ void SidEngine::render(float* out, unsigned frames) {
                 + v.touch * p[AtBright] / 100.0f * 4 + at(m, ModDest::Cutoff) * 5;
             float g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate() * 0.45f) / dsp::sample_rate());
             float k = 2 - 1.95f * std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f);
-            float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f;
+            float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f * v.accent;
             for (unsigned f = 0; f < n; ++f) {
                 v.phase2 += dt2;
                 bool wrap2 = v.phase2 >= 1;

@@ -116,7 +116,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     // Volume (dB, as the MPC shows it), Normalize, and velocity by the pad's sensitivity.
     float sense = sound.velocity_sense / 100.0f, curve = 0.25f + 0.75f * std::clamp(velocity, 0, 127) / 127.0f;
     float velocity_gain = 1.0f - sense * (1.0f - curve);
-    v.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f);
+    v.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f) * accent;
     if (zone) v.gain *= std::pow(10.0f, zone->gain / 20.0f);
     float angle = (std::clamp<float>(float(sound.pan) + (zone ? zone->pan * 50.0f : 0.0f), -50.0f, 50.0f) + 50) / 100.0f * dsp::pi / 2;
     v.left = std::cos(angle); v.right = std::sin(angle); // constant power: centre is -3 dB a side, as the stock MPC plays it

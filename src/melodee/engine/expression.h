@@ -55,6 +55,16 @@ inline float lfo_rate_octaves(const std::array<ModRoute, mod_routes>& mods, floa
     return octaves;
 }
 
+// A sequenced note's Accent: about 4 dB over its velocity, which may already be full.
+constexpr float accent_gain = 1.6f;
+
+// A slid voice's pitch: `offset` semitones from its new key, closing on it
+// with a 20 ms time constant (mostly there in 60 ms, a 303's slide).
+inline float slide_settle(float offset, unsigned frames) {
+    if (std::fabs(offset) < 0.001f) return 0;
+    return offset * std::exp(-float(frames) / (0.02f * dsp::sample_rate()));
+}
+
 // Velocity into level, depth 0..1. Squared, so soft hits are clearly
 // softer: at depth 0.7 a velocity of 40 plays about 9 dB under a full hit.
 inline float velocity_gain(float velocity, float depth) {

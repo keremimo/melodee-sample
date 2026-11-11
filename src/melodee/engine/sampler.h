@@ -65,6 +65,7 @@ public:
     void play_pad(unsigned pad, int velocity, int semitones, int cutoff = -1);
 
     void note_on(int key, int velocity) override;
+    void set_accent(float gain) override { accent = gain; }
     void note_off(int key) override;
     void all_notes_off() override;
     void silence() override;
@@ -178,6 +179,7 @@ private:
     std::array<Voice, max_voices> voices {};
     std::array<int, sampler::Count> p {};
     uint32_t clock = 0;
+    float accent = 1; // the sequencer's, for the voices started next (set_accent)
     float g = 1, k = 2, s1[2] {}, s2[2] {};
     bool filtered = false;
     int aside_pad = -1;
