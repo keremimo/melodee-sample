@@ -68,7 +68,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         auto& c = cards[n];
         if (!b.bound()) continue;
         if (second[n].bound()) c.shift = s.ui.shift ? 2 : 1;
-        if (s.ui.page == PageId::Stage) c.focus = int(n) == stage_focus(s.ui); // the wheel's card
+        if (s.ui.page == PageId::Stage) c.focus = int(n) == stage_focus(s.ui, s.track()); // the wheel's card
         // A bus or the master belongs to no track: its cards are neutral.
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
         bool loop = s.ui.page == PageId::Looper || (s.ui.page == PageId::Rack && s.ui.fx_loop >= 0); // L1-L4: their own colours

@@ -61,7 +61,8 @@ inline void stage_go(UiState& ui, unsigned group, unsigned sub) {
 }
 
 // The card the wheel fine-edits on Stage, and Push moves on (the MPC's encoder press): the pot touched last.
-inline int stage_focus(const UiState& ui) { return ui.last_pot >= 0 ? ui.last_pot % 3 : 0; }
+// An empty track's wheel walks the list in its picture, always K1's: the pot touched last may be on no card here.
+inline int stage_focus(const UiState& ui, const Track& t) { return t.used() && ui.last_pot >= 0 ? ui.last_pot % 3 : 0; }
 
 // The sampler page a kit's Stage page edits the same values as (their bindings and undo scope are shared).
 constexpr PageId stage_kit_page(StageKind kind) {

@@ -175,7 +175,8 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
     as Motion.
   - **An empty track**: B1 **SYNTH** (K1 engine, K2 sound), B2 **KIT** (K1:
     samples on the card, record the input, Audio Recall, Resample), B3
-    **MIDI** (K1 port, K2 channel); Push makes the track that.
+    **MIDI** (K1 port, K2 channel); the wheel walks K1's list, Push makes
+    the track that.
 - **Tracks** (Pad Bank tapped twice): the sixteen tracks as the pads sit,
   eight at a time, each cell engine, sound, the pattern playing and level.
   B1 tracks 1–8, B2 tracks 9–16, B3 back to Stage; a pad picks its track

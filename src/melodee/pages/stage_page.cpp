@@ -9,7 +9,7 @@
 // Filt Env on the last pad hit; a 909 its preset, the voice the last pad hit
 // and levels, mix, effects; a MIDI track device and program, CC, arp; an
 // empty track what it becomes. The wheel fine-edits the card touched last
-// (PRESET: walks the sounds), Push moves to the next card (PRESET: the Sounds
+// (PRESET: walks the sounds; an empty track: walks its list), Push moves to the next card (PRESET: the Sounds
 // list; FX: the next effect; an empty track: makes it), Shift + Push is Back.
 // The pads play the track; on a kit the pad played is the pad edited.
 #include "melodee/engine/arp.h"
@@ -603,7 +603,7 @@ void wheel(Context& c, int delta) {
         if (cards[0].kind == Binding::Kind::StageSound) c.preset_turn(cards[0].value + delta);
         return;
     }
-    int n = stage_focus(c.ui);
+    int n = stage_focus(c.ui, c.track());
     const auto& b = cards[size_t(n)];
     if (!b.bound()) return;
     c.apply(b, b.value + delta);
@@ -623,7 +623,7 @@ void push(Context& c) {
         return;
     }
     auto cards = page_bindings(c.project, c.ui, c.pattern(), false);
-    int from = stage_focus(c.ui);
+    int from = stage_focus(c.ui, t);
     for (int k = 1; k <= 3; ++k) { // the next card that holds something
         int n = (from + k) % 3;
         if (cards[size_t(n)].bound()) { c.ui.last_pot = int8_t(n); c.ui.last_pot_shift = false; c.ui.turning = int8_t(n); c.ui.turned_at = c.now; return; }
