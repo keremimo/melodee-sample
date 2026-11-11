@@ -338,7 +338,11 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     // The pad as it is heard: a head a voice, the newest with its wake (not on Cloud, whose grains are the picture).
     StageHeads heads = page.kind != StageKind::Cloud ? stage_heads(s, t.last_pad % sampler_pads, pad, frames) : StageHeads {};
     const PlayHead* heard = heads.newest;
-    waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, heads.wave.data(), heads.count);
+    // Cloud (mock 6): its grains as heard; the bars a live grain covers lighten.
+    CloudGrains cloud = page.kind == StageKind::Cloud ? cloud_grains(s, t.last_pad % sampler_pads, pad, frames, from, to, ww) : CloudGrains {};
+    if (page.kind == StageKind::Cloud)
+        waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, cloud.wakes.data(), cloud.wake_count);
+    else waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, heads.wave.data(), heads.count);
     // A loop going round: for a moment a ghost stays at the place the head left (drawn last), so the jump reads as one.
     const float wrap = heard && (heard->flags & tap::Loop) ? heard->wrap : 0.0f;
     if (page.kind == StageKind::Trim) {
@@ -379,12 +383,16 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         float at = x_of(region_from + (region_to - region_from) * t.params[sampler::Position] / 100.0f);
         float size = std::max(2.0f, ww / (to - from) * float(0.01 * std::pow(100.0, t.params[sampler::Size] / 100.0) * 44100 / frames));
         auto shade = t.params[sampler::Cloud] ? 1.0f : 0.5f;
-        p.fill(at - size / 2, wy, size, wh, colour::text.withAlpha(0.12f * shade));
+        // While a cloud is heard its band travels with the grains (Scan); K1's line stays where K1 put it.
+        float band = cloud.centre >= 0 ? x_of(float(cloud.centre / frames)) : at;
+        p.fill(band - size / 2, wy, size, wh, colour::text.withAlpha(0.12f * shade));
         p.fill(at, wy, 1, wh, knob_shade(s.ui.track, 0).withMultipliedAlpha(shade));
-        for (unsigned g = 0; g < 9; ++g) {
-            float gx = at + std::sin(g * 2.3f) * 0.5f * size, gy = wy + wh * (0.25f + 0.5f * std::fmod(g * 0.37f, 1.0f));
-            p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1).withMultipliedAlpha(shade), 1.5f);
-        }
+        if (cloud.view.count || cloud.view.voice) draw_grains(p, wx, wy, ww, wh, from, to, frames, cloud, knob_shade(s.ui.track, 1));
+        else
+            for (unsigned g = 0; g < 9; ++g) { // still: a few grains round the place, as a picture of what it does
+                float gx = at + std::sin(g * 2.3f) * 0.5f * size, gy = wy + wh * (0.25f + 0.5f * std::fmod(g * 0.37f, 1.0f));
+                p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1).withMultipliedAlpha(shade), 1.5f);
+            }
     }
     if (wrap > 0) p.fill(x_of(float(wrap_left(*heard)) / frames) - 0.75f, wy, 1.5f, wh, colour::text.withAlpha(0.55f * wrap));
     p.g.restoreState();
@@ -418,6 +426,10 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         juce::String now = seconds(uint32_t(std::clamp(into, 0.0, double(end - start))));
         if ((heard->flags & tap::Loop) && heard->pass) two_part("PASS " + juce::String(heard->pass + 1), dot + now);
         else two_part(now, " OF " + seconds(end - start));
+        return;
+    }
+    if (page.kind == StageKind::Cloud && cloud.centre >= 0 && cloud.view.sounding()) { // where the grains are now
+        two_part("GRAINS AROUND " + seconds(uint32_t(cloud.centre)), "");
         return;
     }
     if (page.kind == StageKind::Play && heads.sounding) { // how many voices sound

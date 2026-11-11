@@ -43,6 +43,19 @@ struct VoiceTap {
     uint8_t spare[3] {};
 };
 
+// One grain of a cloud (mock 6): where it started reading, where it reads
+// now, and how far through its window it is, in output frames.
+struct GrainTap {
+    uint32_t serial = 0;    // the grain's own number (it grows with each grain): follows one grain from block to block
+    uint32_t from = 0;      // the frame in the file it started at
+    uint32_t at = 0;        // the frame it reads now
+    uint32_t age = 0;       // output frames it has sounded
+    uint32_t length = 0;    // its window, in output frames
+    float step = 0;         // frames of the file per output frame
+    int16_t pad = -1;       // the pad whose cloud spawned it
+    uint16_t slot = 0xffff; // the sample
+};
+
 struct TrackTaps {
     static constexpr unsigned voices = 8, grains = 16;
     uint64_t stamp = 0;        // the device frame the taps stand at: the end of the block they were taken after
@@ -52,8 +65,7 @@ struct TrackTaps {
     uint8_t spare = 0;
     uint32_t spare2 = 0;
     std::array<VoiceTap, voices> voice {};
-    std::array<uint32_t, grains> grain_at {}; // a cloud's grains: the frame each reads now
-    std::array<uint8_t, grains> grain_age {}; // and how far through its window, 0..255
+    std::array<GrainTap, grains> grain {}; // a cloud's newest grains, `grain_count` of them, newest first
 };
 static_assert(std::is_trivially_copyable_v<TrackTaps> && sizeof(TrackTaps) % 4 == 0, "copied as words");
 
@@ -135,6 +147,30 @@ inline HeardPlace heard_at(const VoiceTap& t, double frames) {
         else if (at >= hi) at = round_lo + std::fmod(at - hi, span);
         h.at = at;
     }
+    return h;
+}
+
+// Where a grain is heard `frames` output frames after its tap was taken
+// (negative: before it, the output latency): `begun` false while it is not
+// heard yet; `over` once its window has closed, `after` output frames ago.
+// `at` stops where the grain stopped reading; `window` is its sine window
+// heard now (0 before and after).
+struct HeardGrain {
+    bool begun = false, over = false;
+    double at = 0;
+    float window = 0;
+    double after = 0;
+};
+inline HeardGrain heard_grain(const GrainTap& g, double frames) {
+    HeardGrain h;
+    const double age = double(g.age) + frames, length = std::max(1.0, double(g.length));
+    h.at = g.from;
+    if (age < 0) return h;
+    h.begun = true;
+    h.over = age >= length;
+    h.at = double(g.from) + double(g.step) * std::min(age, length);
+    if (h.over) h.after = age - length;
+    else h.window = float(std::sin(3.14159265358979 * age / length));
     return h;
 }
 

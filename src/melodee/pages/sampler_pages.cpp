@@ -178,17 +178,22 @@ void cloud_draw(Paint& p, const Snapshot& s) {
     if (!pad.used() || !s.sample.frames) return;
     uint32_t end = pad.end ? pad.end : s.sample.frames;
     float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
-    waveform(p, x, y, w, h, s.sample.overview, from, to, from, to, c.withAlpha(0.5f));
+    // While the pad's cloud is heard (mock 6): its grains, the bars they cover lit, the label where they are now.
+    CloudGrains cloud = cloud_grains(s, s.track().last_pad % sampler_pads, pad, s.sample.frames, from, to, w);
+    waveform(p, x, y, w, h, s.sample.overview, from, to, from, to, c.withAlpha(0.5f), cloud.wakes.data(), cloud.wake_count);
     float at = x + w * v[sampler::Position] / 100.0f, size = std::max(2.0f, w * float(0.01f * std::pow(100.0f, v[sampler::Size] / 100.0f) * 44100 / std::max(1u, end - pad.start)));
-    p.fill(at - size / 2, y, size, h, colour::text.withAlpha(0.12f));
+    float band = cloud.centre >= 0 ? x + w * float((cloud.centre / s.sample.frames - from) / std::max(1e-6f, to - from)) : at;
+    p.fill(band - size / 2, y, size, h, colour::text.withAlpha(0.12f));
     p.fill(at, y - 3, 1, h + 3, knob_shade(s.ui.track, 0));
-    // A few grains round the place, as dots in K2's shade.
-    for (unsigned g = 0; g < 9; ++g) {
-        float gx = at + (std::sin(g * 2.3f) * 0.5f) * size, gy = y + h * (0.25f + 0.5f * std::fmod(g * 0.37f, 1.0f));
-        p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1), 1.5f);
-    }
-    double centre = (pad.start + (end - pad.start) * v[sampler::Position] / 100.0) / 44100.0;
-    p.text("GRAINS AROUND " + juce::String(centre, 3) + " S", x, y + h + 3, w, 9, caps_text(colour::sec), juce::Justification::centred);
+    if (cloud.view.count || cloud.view.voice) draw_grains(p, x, y, w, h, from, to, s.sample.frames, cloud, knob_shade(s.ui.track, 1));
+    else
+        for (unsigned g = 0; g < 9; ++g) { // still: a few grains round the place, as dots in K2's shade
+            float gx = at + (std::sin(g * 2.3f) * 0.5f) * size, gy = y + h * (0.25f + 0.5f * std::fmod(g * 0.37f, 1.0f));
+            p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1), 1.5f);
+        }
+    bool heard = cloud.centre >= 0 && cloud.view.sounding();
+    double centre = (heard ? cloud.centre : pad.start + (end - pad.start) * v[sampler::Position] / 100.0) / 44100.0;
+    p.text("GRAINS AROUND " + juce::String(centre, 3) + " S", x, y + h + 3, w, 9, caps_text(heard ? colour::text : colour::sec), juce::Justification::centred);
     juce::String scan = v[sampler::Scan] == 50 ? juce::String("SCAN STILL") : "SCAN " + juce::String((v[sampler::Scan] - 50) / 50.0, 2);
     sampler_pills(p, y + h + 16, {scan, "SPREAD " + juce::String(v[sampler::Spread]) + " CT"}, colour::mid);
 }

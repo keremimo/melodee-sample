@@ -20,7 +20,7 @@ void waveform(Paint& p, float x, float y, float w, float h, const std::array<uin
     // The wakes' faint ground, under the bars.
     for (unsigned n = 0; n < count; ++n) {
         const auto& head = heads[n];
-        if (head.wake <= 0) continue;
+        if (head.wake <= 0 || !head.ground) continue;
         float a = std::clamp(x_of(std::min(head.at, head.wake_from)), x, x + w);
         float b = std::clamp(x_of(std::max(head.at, head.wake_from)), x, x + w);
         if (b > a) p.fill(a, y, b - a, h, colour.withAlpha(0.13f * head.wake));

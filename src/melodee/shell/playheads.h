@@ -31,6 +31,99 @@ struct PlayHead {
     bool sounding() const;
 };
 
+// A cloud's grains as the screen draws them (mock 6): each kept by its
+// serial from the taps, where it is heard now, its window's weight, and a
+// faint mark for `mark_ms` once its window has closed. Screen thread only.
+struct GrainPlace {
+    uint32_t serial = 0;
+    int16_t pad = -1;       // -1: none
+    uint16_t slot = 0xffff;
+    double from = 0, at = 0; // frames of the file: where it began, where it is heard now (stops where it stopped)
+    float window = 0;       // its sine window heard now, 0..1 (0: not sounding)
+    float mark = 0;         // 1 as its window closes, falling to 0 over GrainTrail::mark_ms
+    bool shown() const { return pad >= 0 && (window > 0 || mark > 0); }
+    bool live() const { return pad >= 0 && window > 0; }
+};
+// Where a grain sits across the waveform, 0..1 (0.5 the middle): the same for a grain every frame, so nothing flickers.
+inline float grain_lane(uint32_t serial) {
+    uint32_t h = serial * 2654435761u;
+    h ^= h >> 15;
+    return float(h >> 8) / float(1u << 24);
+}
+// How strong a grain draws: live with its window (never under 0.35, so a grain just born shows), then its mark.
+inline float grain_alpha(const GrainPlace& g) { return g.window > 0 ? 0.35f + 0.65f * g.window : 0.3f * g.mark; }
+
+class GrainTrail {
+public:
+    static constexpr unsigned size = 32;      // the taps' 16 live grains and the marks of those just gone
+    static constexpr uint32_t mark_ms = 150;
+
+    void update(const TrackTaps& taps, double frames, uint32_t now_ms) {
+        if (taps.track != track) { kept = {}; track = taps.track; }
+        std::array<bool, size> seen {};
+        for (unsigned i = 0; i < taps.grain_count && i < TrackTaps::grains; ++i) {
+            const GrainTap& g = taps.grain[i];
+            unsigned k = find(g.serial);
+            if (k == size) k = room(seen);
+            if (k == size) continue;
+            Kept& e = kept[k];
+            if (e.place.pad < 0 || e.place.serial != g.serial) e = Kept {};
+            e.last = g; e.stamp = taps.stamp; e.used = true;
+            seen[k] = true;
+        }
+        for (auto& e : kept) {
+            if (!e.used) continue;
+            // Gone from the engine (it has finished reading): carry it on from its last tap; the ear is a latency behind.
+            const double since = double(taps.stamp) - double(e.stamp);
+            HeardGrain h = heard_grain(e.last, frames + since);
+            e.place.serial = e.last.serial; e.place.pad = e.last.pad; e.place.slot = e.last.slot;
+            e.place.from = e.last.from; e.place.at = h.at;
+            e.place.window = h.window;
+            if (!h.begun) { e.place.window = 0; e.place.mark = 0; continue; }
+            if (h.over) {
+                if (!e.ended) { e.ended = true; e.ended_at = now_ms; }
+                e.place.mark = std::max(0.0f, 1.0f - float(now_ms - e.ended_at) / float(mark_ms));
+                if (e.place.mark <= 0) e = Kept {};
+            } else e.place.mark = 0;
+        }
+    }
+    // Every grain still shown (live or marked); the rest have pad -1.
+    std::array<GrainPlace, size> grains() const {
+        std::array<GrainPlace, size> out {};
+        for (unsigned k = 0; k < size; ++k) if (kept[k].used && kept[k].place.shown()) out[k] = kept[k].place;
+        return out;
+    }
+
+private:
+    struct Kept {
+        GrainPlace place;
+        GrainTap last;
+        uint64_t stamp = 0;
+        bool used = false;
+        bool ended = false;
+        uint32_t ended_at = 0;
+    };
+    unsigned find(uint32_t serial) const {
+        for (unsigned k = 0; k < size; ++k) if (kept[k].used && kept[k].last.serial == serial) return k;
+        return size;
+    }
+    unsigned room(const std::array<bool, size>& seen) const { // a free place, else the faintest mark, else the oldest
+        unsigned best = size;
+        for (unsigned k = 0; k < size; ++k) {
+            if (seen[k]) continue;
+            if (!kept[k].used) return k;
+            if (best == size) { best = k; continue; }
+            const auto& a = kept[k];
+            const auto& b = kept[best];
+            if (a.ended != b.ended) { if (a.ended) best = k; continue; }
+            if (a.ended ? a.place.mark < b.place.mark : int32_t(a.last.serial - b.last.serial) < 0) best = k;
+        }
+        return best;
+    }
+    std::array<Kept, size> kept {};
+    uint8_t track = 255;
+};
+
 class HeadTrail {
 public:
     static constexpr unsigned size = TrackTaps::voices;
@@ -41,6 +134,7 @@ public:
 
     // `frames`: output frames from the taps' stamp to the frame heard now (negative: the latency).
     void update(const TrackTaps& taps, double frames, uint32_t now_ms) {
+        grain_trail.update(taps, frames, now_ms);
         if (taps.track != track) { kept = {}; track = taps.track; }
         std::array<bool, size> seen {};
         for (unsigned i = 0; i < taps.count && i < TrackTaps::voices; ++i) {
@@ -98,6 +192,8 @@ public:
         }
         return out;
     }
+    // The cloud's grains still shown (GrainTrail).
+    std::array<GrainPlace, GrainTrail::size> grains() const { return grain_trail.grains(); }
 
 private:
     struct Kept {
@@ -145,6 +241,7 @@ private:
     }
     std::array<Kept, size> kept {};
     uint8_t track = 255;
+    GrainTrail grain_trail;
 };
 
 inline bool PlayHead::sounding() const { return pad >= 0 && !cut && level >= HeadTrail::silent; }
@@ -248,6 +345,36 @@ inline ChopSound chop_sound(const PlayHead* head, const Slices& slices, uint32_t
             out.slice = int(n);
             break;
         }
+    return out;
+}
+
+// Stage's Cloud (mock 6): a pad's cloud as heard. `centre` is where its
+// grains come from now (Scan carries it), from the cloud voice's head;
+// `grains` the pad's grains still shown, newest first, at most `cap`.
+struct CloudView {
+    static constexpr unsigned cap = TrackTaps::grains;
+    const PlayHead* voice = nullptr; // the newest cloud voice of the pad still shown
+    std::array<const GrainPlace*, cap> grains {};
+    unsigned count = 0;
+    unsigned live = 0;   // grains sounding now
+    bool sounding() const { return (voice && voice->sounding()) || live > 0; }
+};
+inline CloudView cloud_view(const std::array<PlayHead, HeadTrail::size>& heads, const std::array<GrainPlace, GrainTrail::size>& grains,
+                            int pad, uint16_t slot) {
+    CloudView out;
+    for (const auto& h : heads) // newest first
+        if (h.shown() && h.pad == pad && h.slot == slot && (h.flags & tap::Cloud)) { out.voice = &h; break; }
+    std::array<const GrainPlace*, GrainTrail::size> all {};
+    unsigned n = 0;
+    for (const auto& g : grains) {
+        if (!g.shown() || g.pad != pad || g.slot != slot) continue;
+        if (g.live()) ++out.live;
+        all[n++] = &g;
+    }
+    out.count = std::min(n, CloudView::cap);
+    std::partial_sort(all.begin(), all.begin() + out.count, all.begin() + n,
+                      [](const GrainPlace* a, const GrainPlace* b) { return int32_t(a->serial - b->serial) > 0; });
+    std::copy(all.begin(), all.begin() + out.count, out.grains.begin());
     return out;
 }
 

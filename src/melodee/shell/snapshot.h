@@ -45,6 +45,7 @@ struct Snapshot {
     TrackTaps taps;
     double tap_frames = 0;
     std::array<PlayHead, HeadTrail::size> heads {};
+    std::array<GrainPlace, GrainTrail::size> grains {}; // a cloud's grains heard now, and the marks of those just gone
     float compression = 0;                   // dB the master compressor takes off now (parity phase 7)
     unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)
     std::array<std::array<PatternSketch, pattern_count>, track_count> sketches {};

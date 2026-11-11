@@ -194,6 +194,28 @@ void chop_voice(Snapshot& s, uint32_t from, uint32_t to, float through, float le
     s.heads[0] = h;
 }
 
+// Kit pad A09's cloud heard (track 4, mock 6): its voice's head at frame `centre` (where its grains come from now),
+// twelve grains round it at their own points in their windows, newest last, and two just gone, their marks fading.
+void cloud_heard(Snapshot& s, double centre) {
+    const auto& pad = s.project.tracks[3].pads[8];
+    PlayHead& h = s.heads[0];
+    h = PlayHead {};
+    h.serial = 30; h.pad = 8; h.slot = pad.sample; h.at = centre;
+    h.from = pad.start; h.to = pad.end ? pad.end : s.sample.frames; h.loop_at = h.from;
+    h.level = 0.8f; h.wake = 1; h.flags = tap::Cloud;
+    const double length = 0.1 * 44100, spread = 0.05 * double(h.to - h.from);
+    for (unsigned k = 0; k < 14; ++k) {
+        GrainPlace& g = s.grains[k];
+        g = GrainPlace {};
+        g.serial = 200 + k; g.pad = 8; g.slot = pad.sample;
+        g.from = centre + std::sin(k * 2.3) * spread;
+        float through = k < 12 ? 1.0f - (k + 0.5f) / 12.0f : 1.0f; // the newest just born
+        g.at = g.from + length * through;
+        if (k < 12) g.window = std::sin(3.14159f * through);
+        else g.mark = k == 12 ? 0.7f : 0.3f;
+    }
+}
+
 // The Project board's card: two folders and four projects, Night drive open with changes.
 void preview_projects(Snapshot& s) {
     auto& v = s.projects;
@@ -375,6 +397,20 @@ const Preview previews[] {
     {"stagekitfollow", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Follow] = 1; }},
     {"stagekitcloud", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Cloud] = 1; }},
     {"stagekitcloudoff", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true; }},
+    {"stagecloudplaying", [](Shell&, Snapshot& s) { // CLOUD while A09 is held: its grains, the bars they cover lit, where they are
+         on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true;
+         auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 38;
+         auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; // the whole break
+         uint32_t end = pad.end ? pad.end : s.sample.frames;
+         cloud_heard(s, pad.start + (end - pad.start) * 0.38);
+     }},
+    {"stagecloudscan", [](Shell&, Snapshot& s) { // Scan moving: the cloud has travelled on from K1's line, the label with it
+         on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true;
+         auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 20; t.params[sampler::Scan] = 75;
+         auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; // the whole break
+         uint32_t end = pad.end ? pad.end : s.sample.frames;
+         cloud_heard(s, pad.start + (end - pad.start) * 0.52);
+     }},
     {"stagekitfilt", [](Shell&, Snapshot& s) { on_stage(s, 3, 2, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Filter] = 55; }},
     {"stagekitfilter", [](Shell&, Snapshot& s) {
          on_stage(s, 3, 2, 0); s.sample = break_sample(); s.playing = true;
@@ -1012,6 +1048,11 @@ const Preview previews[] {
     {"follow", [](Shell&, Snapshot& s) { s.ui.page = PageId::FollowPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Follow] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; t.pads[4].own_tempo = 920;
          s.ui.turning = 1; s.ui.turned_at = s.now; }},
+    {"cloudplaying", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 38; t.last_pad = 8;
+         auto& pad = t.pads[8]; pad.start = 0; pad.end = 230087;
+         cloud_heard(s, 230087 * 0.38);
+     }},
     {"cloud", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     // Parity phase 10: the sampler's page map (Push) over Play, and Seq + Sample on Patterns.

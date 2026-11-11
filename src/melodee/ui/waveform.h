@@ -20,6 +20,7 @@ struct WaveHead {
     float wake_from = 0;  // the wake runs from here to `at`, either way round (reversed: from the region's end)
     float strength = 0;   // the head's line: its envelope, 0..1 (0: no line, the wake may still show)
     float wake = 0;       // 0..1: 1 while it sounds, fading once it is silent
+    bool ground = true;   // the wake's faint fill under the bars (a cloud's grains light their bars only)
 };
 
 // The waveform with heads over it (mock 1, "a head and its wake"): each

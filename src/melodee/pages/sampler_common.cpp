@@ -232,4 +232,39 @@ StageHeads stage_heads(const Snapshot& s, unsigned pad, const PadSound& sound, u
     return out;
 }
 
+CloudGrains cloud_grains(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames, float from, float to, float w) {
+    CloudGrains out;
+    if (!frames) return out;
+    out.view = cloud_view(s.heads, s.grains, int(pad), sound.sample);
+    // A grain reads a few milliseconds of the file: widen its lit stretch by half a bar's column so it meets one.
+    const float reach = (to - from) * 1.5f / std::max(1.0f, w);
+    double sum = 0;
+    unsigned live = 0;
+    for (unsigned n = 0; n < out.view.count; ++n) {
+        const GrainPlace& g = *out.view.grains[n];
+        if (!g.live()) continue;
+        sum += g.at; ++live;
+        if (g.window < 0.2f) continue;
+        float a = float(g.from / frames), b = float(g.at / frames);
+        out.wakes[out.wake_count++] = {std::max(a, b) + reach, std::min(a, b) - reach, 0, g.window, false};
+    }
+    if (out.view.voice) out.centre = out.view.voice->at;
+    else if (live) out.centre = sum / live;
+    return out;
+}
+
+void draw_grains(ui::Paint& p, float x, float y, float w, float h, float from, float to, uint32_t frames, const CloudGrains& cloud,
+                 juce::Colour shade) {
+    if (!frames) return;
+    auto x_of = [&](double at) { return x + float((at / frames - from) / std::max(1e-6f, to - from)) * w; };
+    for (unsigned n = cloud.view.count; n-- > 0;) { // oldest first, so the newest lie on top
+        const GrainPlace& g = *cloud.view.grains[n];
+        float a = grain_alpha(g);
+        if (a <= 0.01f) continue;
+        float x0 = x_of(g.from), x1 = std::max(x0 + 5, x_of(g.at) + 2);
+        float gy = y + h / 2 + (grain_lane(g.serial) - 0.5f) * 0.75f * h;
+        p.fill(x0, gy - 1.5f, x1 - x0, 3, shade.withAlpha(a), 1.5f);
+    }
+}
+
 } // namespace melodee

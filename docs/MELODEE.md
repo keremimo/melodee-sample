@@ -173,7 +173,11 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
     its wake, older ones at half), a voice cut by Mono or a mute group fading
     out over 60 ms, and PLAY counts them ("3 VOICES"). Reversed, the head runs
     right to left; looping, a ghost stays a moment at the place it left, the
-    loop flag lights as it goes round, and TRIM counts the passes.
+    loop flag lights as it goes round, and TRIM counts the passes. On CLOUD
+    each grain of a held pad's cloud is a short pill in K2's shade from where
+    it began to where it reads, at its window's strength, leaving a faint
+    mark for 150 ms; the bars a grain covers lighten, and with Scan moving
+    the cloud travels and GRAINS AROUND follows it (K1's line stays).
   - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 MIX, B3 FX. VOICE edits
     the drum the last pad played (Snare, Clap and Rim share a page) and the
     B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the

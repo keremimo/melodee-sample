@@ -531,6 +531,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     }
     trail.update(out.taps, out.tap_frames, now);
     out.heads = trail.heads();
+    out.grains = trail.grains();
     out.compression = host.compression();
     out.flex_playing = host.flex_playing();
     out.now = now;

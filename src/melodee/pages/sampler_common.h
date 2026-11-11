@@ -49,6 +49,20 @@ struct StageHeads {
     unsigned sounding = 0;            // voices heard now
 };
 StageHeads stage_heads(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames);
+// Cloud (mock 6): the grains of `pad`'s cloud over a waveform `w` wide
+// showing `from`..`to` of a file `frames` long. `wakes` lightens the bars a
+// live grain covers (pass them to ui::waveform); draw_grains() then lays each
+// grain as a 3 px pill from where it began to where it reads, in K2's shade at
+// its window's strength, at its own height across the middle of the waveform.
+struct CloudGrains {
+    CloudView view;
+    std::array<ui::WaveHead, CloudView::cap> wakes {};
+    unsigned wake_count = 0;
+    double centre = -1; // the frame the grains come from now (Scan moves it); -1: no cloud heard
+};
+CloudGrains cloud_grains(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames, float from, float to, float w);
+void draw_grains(ui::Paint& p, float x, float y, float w, float h, float from, float to, uint32_t frames, const CloudGrains& cloud,
+                 juce::Colour shade);
 void sampler_rows_wheel(Context& c, int delta);
 void sampler_bank(Context& c, int way);
 

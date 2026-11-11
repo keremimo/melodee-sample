@@ -310,7 +310,8 @@ void SamplerEngine::spawn(Voice& v) {
     float detune = int32_t(seed) / 2147483648.0f * p[Spread] / 100.0f; // up to a semitone either way per 100 cents
     *g = Grain {v.sample, at, v.step * std::exp2(detune / 12.0), 0,
                 uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate()), v.gain * v.env.level, v.left, v.right,
-                v.l, v.r, v.end, v.zone ? v.start : 0, v.zone ? v.start + uint32_t(span) : 0};
+                v.l, v.r, v.end, v.zone ? v.start : 0, v.zone ? v.start + uint32_t(span) : 0,
+                ++grain_serial, at, int16_t(v.pad), uint16_t(v.slot)};
 }
 
 // Output frames left before the region's end (reversed: its start), for
@@ -662,12 +663,18 @@ void SamplerEngine::taps(TrackTaps& out) const {
         if (v.choked) flags |= tap::Choked;
         t.flags = flags;
     }
-    out.grain_count = 0;
-    for (const auto& g : grains) {
-        if (!g.sample || out.grain_count >= TrackTaps::grains) continue;
-        out.grain_at[out.grain_count] = uint32_t(std::max(0.0, g.position));
-        out.grain_age[out.grain_count] = uint8_t(std::min<uint32_t>(255, g.length ? g.age * 255u / g.length : 255));
-        ++out.grain_count;
+    // The newest grains (a partial sort of pointers, on the stack), each where it began and where it reads now.
+    std::array<const Grain*, std::tuple_size_v<decltype(grains)>> playing {};
+    unsigned count = 0;
+    for (const auto& g : grains) if (g.sample) playing[count++] = &g;
+    unsigned kept = std::min<unsigned>(count, TrackTaps::grains);
+    std::partial_sort(playing.begin(), playing.begin() + kept, playing.begin() + count,
+                      [](const Grain* a, const Grain* b) { return int32_t(a->serial - b->serial) > 0; });
+    out.grain_count = uint8_t(kept);
+    for (unsigned i = 0; i < kept; ++i) {
+        const Grain& g = *playing[i];
+        out.grain[i] = GrainTap {g.serial, uint32_t(std::max(0.0, g.from)), uint32_t(std::max(0.0, g.position)), g.age, g.length,
+                                 float(g.step), g.pad, g.slot};
     }
 }
 

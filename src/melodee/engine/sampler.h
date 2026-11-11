@@ -173,9 +173,14 @@ private:
         const float* r = nullptr;
         uint32_t frames = 1;
         uint32_t low = 0, top = 0;      // an instrument's: stays inside what is held (top 0: anywhere)
+        uint32_t serial = 0;            // for the screen (taps): which grain, where it began, whose
+        double from = 0;
+        int16_t pad = -1;
+        uint16_t slot = 0xffff;
     };
     void spawn(Voice& v);
     std::array<Grain, 48> grains {};
+    uint32_t grain_serial = 0;
     unsigned tempo = 1200;
     uint32_t seed = 99;
     const Table* samples = nullptr;

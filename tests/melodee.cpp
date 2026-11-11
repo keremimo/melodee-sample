@@ -5584,7 +5584,20 @@ void voice_taps() {
         for (unsigned b = 0; b < 20; ++b) block(e);
         auto t = tapped(e);
         CHECK(t.count == 1 && (t.voice[0].flags & tap::Cloud) && std::abs(int(t.voice[0].at) - 22050) < 200);
-        CHECK(t.grain_count > 0 && t.grain_at[0] < 44100);
+        CHECK(t.grain_count > 0 && t.grain_count <= TrackTaps::grains);
+        // Each grain: the pad's, where it began near the cloud's place, reading on from there, newest first.
+        bool whole = true;
+        for (unsigned i = 0; i < t.grain_count; ++i) {
+            const auto& g = t.grain[i];
+            whole = whole && g.pad == 2 && g.slot == 2 && g.length > 0 && g.age <= g.length && g.at >= g.from && g.step > 0;
+            whole = whole && std::abs(int(g.from) - 22050) < 2300 && (i == 0 || int32_t(t.grain[i - 1].serial - g.serial) > 0);
+        }
+        CHECK(whole);
+        // Dense and long, more grains play than the taps carry: the newest sixteen.
+        e.set_param(sampler::Density, 100); e.set_param(sampler::Size, 100);
+        for (unsigned b = 0; b < 200; ++b) block(e);
+        t = tapped(e);
+        CHECK(t.grain_count == TrackTaps::grains && t.grain[0].age < t.grain[15].age);
     }
     // Chop's audition is tapped too, as pad sampler_pads.
     {
@@ -5600,9 +5613,9 @@ void voice_taps() {
         TapBoard board;
         TrackTaps in, out;
         CHECK(board.read(out) && out.track == 255);
-        in.track = 3; in.stamp = 123456789012ull; in.count = 1; in.voice[0].at = 777; in.voice[0].step = -1.5f; in.grain_at[15] = 9;
+        in.track = 3; in.stamp = 123456789012ull; in.count = 1; in.voice[0].at = 777; in.voice[0].step = -1.5f; in.grain[15].at = 9; in.grain[15].pad = 7;
         board.publish(in);
-        CHECK(board.read(out) && out.track == 3 && out.stamp == 123456789012ull && out.voice[0].at == 777 && out.voice[0].step == -1.5f && out.grain_at[15] == 9);
+        CHECK(board.read(out) && out.track == 3 && out.stamp == 123456789012ull && out.voice[0].at == 777 && out.voice[0].step == -1.5f && out.grain[15].at == 9 && out.grain[15].pad == 7);
     }
     // The host publishes the watched track's after each block, stamped with the block's end.
     {
@@ -5772,6 +5785,81 @@ void chop_heads() {
     CHECK(chop_sound(&h, sl, 12000, true).take && chop_sound(&h, sl, 12000, false).slice == 0);
 }
 
+// Mock 6 (engine/voice_tap.h, shell/playheads.h): a grain where it is heard, kept by the screen till its mark has
+// faded 150 ms after its window closed; each at its own height; a pad's cloud with its grains newest first.
+void cloud_grains() {
+    GrainTap g;
+    g.serial = 40; g.from = 1000; g.at = 1100; g.age = 100; g.length = 400; g.step = 1; g.pad = 8; g.slot = 4;
+    HeardGrain h = heard_grain(g, -200); // a latency earlier: not heard yet
+    CHECK(!h.begun && h.window == 0 && h.at == 1000);
+    h = heard_grain(g, 100);             // half way: the top of its window
+    CHECK(h.begun && !h.over && std::abs(h.window - 1.0f) < 1e-4f && std::abs(h.at - 1200) < 1e-9);
+    h = heard_grain(g, 350);             // past its end: stopped where it stopped reading
+    CHECK(h.over && h.window == 0 && std::abs(h.at - 1400) < 1e-9 && std::abs(h.after - 50) < 1e-9);
+    g.step = 0.5f;
+    CHECK(std::abs(heard_grain(g, 0).at - 1050) < 1e-9);
+    g.step = 1;
+
+    GrainTrail trail;
+    TrackTaps t;
+    t.track = 3; t.grain_count = 1; t.grain[0] = g;
+    trail.update(t, -200, 1000);
+    auto shown = [&] { unsigned n = 0; for (const auto& p : trail.grains()) n += p.shown(); return n; };
+    CHECK(shown() == 0);                 // not heard yet
+    trail.update(t, 100, 1010);
+    auto first = [&] { for (const auto& p : trail.grains()) if (p.shown()) return p; return GrainPlace {}; };
+    CHECK(shown() == 1 && first().live() && first().serial == 40 && std::abs(first().at - 1200) < 1e-9 && first().pad == 8);
+    CHECK(std::abs(grain_alpha(first()) - 1.0f) < 1e-4f);
+    // Gone from the engine: carried on from its last tap to its end, then a mark that fades over 150 ms.
+    t.grain_count = 0; t.stamp = 300;
+    trail.update(t, 100, 1020);
+    CHECK(shown() == 1 && !first().live() && first().mark == 1 && std::abs(first().at - 1400) < 1e-9);
+    CHECK(std::abs(grain_alpha(first()) - 0.3f) < 1e-6f);
+    trail.update(t, 100, 1020 + GrainTrail::mark_ms / 2);
+    CHECK(std::abs(first().mark - 0.5f) < 0.01f);
+    trail.update(t, 100, 1020 + GrainTrail::mark_ms);
+    CHECK(shown() == 0);
+    // More grains than it keeps: the newest stay; another track starts afresh.
+    for (uint32_t n = 0; n < 3; ++n) {
+        t.grain_count = TrackTaps::grains;
+        for (unsigned i = 0; i < TrackTaps::grains; ++i) { t.grain[i] = g; t.grain[i].serial = 100 + n * 16 + (15 - i); }
+        trail.update(t, 0, 2000 + n);
+    }
+    unsigned newest = 0;
+    for (const auto& p : trail.grains()) newest += p.shown() && p.serial >= 132;
+    CHECK(newest == 16 && shown() == GrainTrail::size);
+    t.track = 4; t.grain_count = 0;
+    trail.update(t, 0, 2010);
+    CHECK(shown() == 0);
+    // HeadTrail keeps a GrainTrail of its own.
+    HeadTrail heads;
+    t.grain_count = 1; t.grain[0] = g;
+    heads.update(t, 0, 3000);
+    unsigned via = 0;
+    for (const auto& p : heads.grains()) via += p.live();
+    CHECK(via == 1);
+
+    // Heights: the same for a grain every time, spread across, never outside 0..1.
+    float lo = 1, hi = 0;
+    bool steady = true;
+    for (uint32_t n = 1; n < 200; ++n) { float a = grain_lane(n); lo = std::min(lo, a); hi = std::max(hi, a); steady = steady && a == grain_lane(n); }
+    CHECK(steady && lo >= 0 && hi < 1 && hi - lo > 0.8f && grain_lane(7) != grain_lane(8));
+
+    // A pad's cloud: its cloud voice's head (the centre), its grains newest first; others' left out.
+    std::array<PlayHead, HeadTrail::size> hs {};
+    hs[0].pad = 8; hs[0].slot = 4; hs[0].serial = 9; hs[0].at = 5000; hs[0].level = 0.7f; hs[0].wake = 1; hs[0].flags = tap::Cloud;
+    hs[1].pad = 8; hs[1].slot = 4; hs[1].serial = 8; hs[1].at = 100; hs[1].level = 0.7f; hs[1].wake = 1; // a plain voice
+    std::array<GrainPlace, GrainTrail::size> gs {};
+    for (unsigned k = 0; k < 5; ++k) { gs[k].serial = 50 + k; gs[k].pad = 8; gs[k].slot = 4; gs[k].window = 0.5f; }
+    gs[3].window = 0; gs[3].mark = 0.4f; // just gone
+    gs[4].pad = 9;                        // another pad's
+    CloudView v = cloud_view(hs, gs, 8, 4);
+    CHECK(v.voice == &hs[0] && v.count == 4 && v.live == 3 && v.grains[0]->serial == 53 && v.grains[3]->serial == 50 && v.sounding());
+    CHECK(cloud_view(hs, gs, 9, 4).voice == nullptr && cloud_view(hs, gs, 9, 4).count == 1 && cloud_view(hs, gs, 8, 5).count == 0);
+    hs[0].level = 0; for (auto& p : gs) p.window = 0;
+    CHECK(!cloud_view(hs, gs, 8, 4).sounding());
+}
+
 void place_bar() {
     using Tone = PlaceBar::Tone;
     auto s = std::make_unique<Snapshot>();
@@ -5873,6 +5961,7 @@ int main() {
     voice_taps();
     voice_heads();
     chop_heads();
+    cloud_grains();
     place_bar();
     song_buttons();
     sfz_reader();
