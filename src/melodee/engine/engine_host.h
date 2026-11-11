@@ -15,6 +15,7 @@
 #include "melodee/engine/prophet.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/punch.h"
+#include "melodee/engine/render_pool.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/engine/bounce.h"
@@ -94,6 +95,18 @@ public:
     // interleaved stereo floats, for the USB sources.
     void render(int32_t* out, unsigned frames, float volume, const int32_t* input = nullptr, float* stems = nullptr,
                 const float* usb = nullptr);
+    // Before the audio thread starts: `count` render workers beside it (0: it renders alone), at its real-time
+    // priority. Each block's tracks, their engines and then their chains, are shared out among them once the
+    // last block's took more than `from_ns` (all cores together; 0 always, for tests).
+    void set_render_threads(unsigned count, uint64_t from_ns = 150000);
+    unsigned render_threads() const { return workers.workers(); }
+    // Any thread: the workers used (true) or left asleep, from the next block; for comparing the two.
+    void set_render_parallel(bool on) { parallel_allowed.store(on, std::memory_order_relaxed); }
+    bool render_parallel() const { return parallel_allowed.load(std::memory_order_relaxed); }
+    // Any thread: the share of its time the latest blocks took (the peak, falling slowly), and how many blocks the
+    // workers have helped with.
+    float render_load() const { return block_load.load(std::memory_order_relaxed); }
+    uint64_t render_parallel_blocks() const { return parallel_blocks.load(std::memory_order_relaxed); }
     // The Looper (docs/LOOPER.md): its loops play into the tracks L1-L4, after the sixteen.
     Looper& looper() { return loops; }
     const Looper& looper() const { return loops; }
@@ -354,6 +367,19 @@ private:
     void start_punch(const PendingPunch& p);
     double bar_length() const { return tick_length() * bar; }
     std::array<Slot, track_count> slots;
+    // Rendering on several cores (render_pool.h): the workers; the tracks heaviest first by what each took last
+    // block, the ones with an engine in that order; each track's time this block (engine and chain), and the total.
+    static constexpr int render_priority = 30;            // the audio thread's (base drivers/audio.cpp)
+    uint64_t parallel_from_ns = 150000;                   // less than this a block: the audio thread alone
+    RenderPool workers;
+    std::array<uint8_t, track_count> order = [] { std::array<uint8_t, track_count> o {}; for (unsigned t = 0; t < track_count; ++t) o[t] = uint8_t(t); return o; }();
+    std::array<uint8_t, track_count> sounding_tracks {};
+    std::array<uint32_t, track_count> track_ns {};
+    uint64_t track_work_ns = 0;
+    std::atomic<float> block_load {0};
+    std::atomic<bool> parallel_allowed {true};
+    std::atomic<uint64_t> parallel_blocks {0};
+    bool plugin_in_two_places() const;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;
     std::unique_ptr<std::array<SamplerEngine::PadEffects, track_count>> pad_fx; // each sampler pad's chain

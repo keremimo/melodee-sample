@@ -1199,6 +1199,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     Command command;
     for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
     frames = std::min(frames, block);
+    auto block_start = std::chrono::steady_clock::now();
+    // The tracks' own work goes to the render workers too once it is worth waking them for, and never while one
+    // plug-in plays in two places (it would be asked for two blocks at once).
+    bool parallel = workers.workers() && parallel_allowed.load(std::memory_order_relaxed) && track_work_ns >= parallel_from_ns
+                 && !plugin_in_two_places();
+    track_ns.fill(0);
     if (reformatting) { // a new rate: silent until the Reload has built everything again at it
         std::fill(out, out + 2 * frames, 0);
         if (stems) std::fill(stems, stems + size_t(track_count) * block, 0.0f);
@@ -1249,6 +1255,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 n = std::min<unsigned>(n, unsigned(std::ceil(until_tick / speed)));
             }
         }
+        // Note-offs and late arp notes first, track by track (they may send MIDI out), then the engines, each
+        // track's apart: on the render workers too when there is enough to share (render_pool.h).
         for (auto& slot : slots) {
             if (!slot.engine) continue;
             run_offs(slot, n);
@@ -1258,10 +1266,20 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 slot.sampler.set_key_pad(pad_key ? int(comp.key_pad()) : -1, pad_key ? key_pad_l + done : nullptr, pad_key ? key_pad_r + done : nullptr);
                 slot.sampler.set_knob_out(knob_heard ? slot.knob_pad_l + done : nullptr, knob_heard ? slot.knob_pad_r + done : nullptr);
             }
+        }
+        unsigned active = 0; // the heaviest first, so the longest job never starts last
+        for (unsigned k = 0; k < track_count; ++k) if (slots[order[k]].engine) sounding_tracks[active++] = order[k];
+        auto engine_job = [&](unsigned i) {
+            unsigned t = sounding_tracks[i];
+            auto& slot = slots[t];
+            auto t0 = std::chrono::steady_clock::now();
             if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
             else slot.engine->render(slot.buffer + done, n);
             if (slot.engine == &slot.sampler) slot.knob_pad_fed |= slot.sampler.knob_fed();
-        }
+            track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        };
+        if (parallel) workers.run(active, engine_job);
+        else for (unsigned i = 0; i < active; ++i) engine_job(i);
         sync.run(frame_now + done, n, quarter_samples(), [&](const MidiOutEvent& e) { emit(e); });
         if (running && !held) {
             until_tick -= n * speed;                                     // MTC in trims the pace; 1 otherwise
@@ -1293,6 +1311,43 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     unsigned tapped = source_track.load(std::memory_order_relaxed) % track_count;
     bool tap_post = source_post.load(std::memory_order_relaxed);
     if (tapping) { std::fill(tap_l, tap_l + frames, 0.0f); std::fill(tap_r, tap_r + frames, 0.0f); }
+    // Each track on its own: level, pan, its chain, punches on it, and what it taps or keys (only one track does
+    // each); on the render workers too. Then into the master, the buses and the rest, in track order, here.
+    unsigned active = 0;
+    for (unsigned k = 0; k < track_count; ++k) if (slots[order[k]].engine) sounding_tracks[active++] = order[k];
+    auto chain_job = [&](unsigned i) {
+        unsigned t = sounding_tracks[i];
+        auto& slot = slots[t];
+        auto t0 = std::chrono::steady_clock::now();
+        bool tap = tapping && t == tapped;
+        if (tap && !tap_post) { // before the track's level, pan and chain; a mono engine on both sides
+            const float* l = slot.engine->stereo() ? slot.left : slot.buffer;
+            const float* r = slot.engine->stereo() ? slot.right : slot.buffer;
+            std::copy(l, l + frames, tap_l); std::copy(r, r + frames, tap_r);
+        }
+        if (slot.engine->stereo()) { // its own stereo picture; the track's pan balances it
+            float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
+            for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= l; slot.right[f] *= r; }
+        } else {
+            for (unsigned f = 0; f < frames; ++f) {
+                float x = slot.buffer[f] * slot.gain;
+                slot.left[f] = x * slot.pan_left; slot.right[f] = x * slot.pan_right;
+            }
+        }
+        run_chain(t, slot.left, slot.right, frames);
+        if (punch_target == t) punch.process(slot.left, slot.right, frames);
+        run_live(uint8_t(t), slot.left, slot.right, frames);
+        if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
+        bool keying = keyed && t == key && pad_keyed < 0; // the whole track keys
+        if (keying) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
+        if (pad_keyed == int(t)) { // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
+            float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
+            for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * l; key_r[f] = key_pad_r[f] * r; }
+        }
+        track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+    };
+    if (parallel) workers.run(active, chain_job);
+    else for (unsigned i = 0; i < active; ++i) chain_job(i);
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         float level = 0;
@@ -1300,30 +1355,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         if (stem) std::fill(stem, stem + frames, 0.0f);
         bool tap = tapping && t == tapped;
         if (slot.engine) {
-            if (tap && !tap_post) { // before the track's level, pan and chain; a mono engine on both sides
-                const float* l = slot.engine->stereo() ? slot.left : slot.buffer;
-                const float* r = slot.engine->stereo() ? slot.right : slot.buffer;
-                std::copy(l, l + frames, tap_l); std::copy(r, r + frames, tap_r);
-            }
-            if (slot.engine->stereo()) { // its own stereo picture; the track's pan balances it
-                float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
-                for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= l; slot.right[f] *= r; }
-            } else {
-                for (unsigned f = 0; f < frames; ++f) {
-                    float x = slot.buffer[f] * slot.gain;
-                    slot.left[f] = x * slot.pan_left; slot.right[f] = x * slot.pan_right;
-                }
-            }
-            run_chain(t, slot.left, slot.right, frames);
-            if (punch_target == t) punch.process(slot.left, slot.right, frames);
-            run_live(uint8_t(t), slot.left, slot.right, frames);
-            if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
-            bool keying = keyed && t == key && pad_keyed < 0; // the whole track keys
-            if (keying) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
-            if (pad_keyed == int(t)) { // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
-                float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
-                for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * l; key_r[f] = key_pad_r[f] * r; }
-            }
+            bool keying = keyed && t == key && pad_keyed < 0;
             // Monitored, the tapped track is heard through the input (gain, Rec Input FX) instead: once, as it records.
             bool through_input = tap && monitor_on.load(std::memory_order_relaxed);
             bool heard = !slot.mute && !(solo && !slot.solo) && !through_input;
@@ -1433,6 +1465,45 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
     publish_taps(frames);
     frame_now += frames;
+    // What the tracks took this block (all cores), heaviest first next time; and this block's time against its
+    // budget, the peak of the last few, for status.
+    uint64_t work = 0;
+    for (unsigned t = 0; t < track_count; ++t) work += track_ns[t];
+    track_work_ns = work;
+    for (unsigned k = 1; k < track_count; ++k) // insertion sort: sixteen, mostly in order already
+        for (unsigned j = k; j > 0 && track_ns[order[j]] > track_ns[order[j - 1]]; --j) std::swap(order[j], order[j - 1]);
+    double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - block_start).count();
+    float share = float(took * dsp::sample_rate() / std::max(frames, 1u));
+    float shown = block_load.load(std::memory_order_relaxed) * 0.995f;
+    block_load.store(std::max(share, shown), std::memory_order_relaxed);
+    if (parallel) parallel_blocks.fetch_add(1, std::memory_order_relaxed);
+}
+
+void EngineHost::set_render_threads(unsigned count, uint64_t from_ns) {
+    parallel_from_ns = from_ns;
+    workers.start(count, render_priority);
+}
+
+// One plug-in instance named by two of the places that run apart: two PLUGIN tracks, or a track's chain and
+// another's (split_shared_plugins() parts them unless every entry is taken).
+bool EngineHost::plugin_in_two_places() const {
+    std::array<const PluginRunner*, track_count * (max_slots + 1)> seen {};
+    unsigned count = 0;
+    auto check = [&](const PluginRunner* r) {
+        if (!r) return false;
+        for (unsigned i = 0; i < count; ++i) if (seen[i] == r) return true;
+        seen[count++] = r;
+        return false;
+    };
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& slot = slots[t];
+        if (slot.engine == &slot.plugin && check(slot.plugin.attached())) return true;
+        for (const auto& effect : fx[t]) {
+            if (effect.kind() == EffectKind::None) break;
+            if (effect.kind() == EffectKind::Plugin && check(runner_of(unsigned(effect.param(0))))) return true;
+        }
+    }
+    return false;
 }
 
 // The watched track's voices after this block, stamped with the frame they stand at (the block's end).

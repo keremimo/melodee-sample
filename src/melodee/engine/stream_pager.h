@@ -29,7 +29,10 @@ public:
     void start();
     void stop();
 
-    // Audio thread. open() gives a stream, or -1 with none free.
+    // Audio thread, or its render workers (engine/render_pool.h): open(),
+    // restart(), close() and block() take a short spin lock, as kit tracks may
+    // render on several cores at once; a stream's own calls (place(), limit(),
+    // dead()) are its voice's alone. open() gives a stream, or -1 with none free.
     int open(ZonePart& part, uint32_t frame, bool reverse, float speed);
     void restart(int stream, uint32_t frame); // a loop came round to here
     void place(int stream, uint32_t frame) { slots[size_t(stream)].at.store(frame, std::memory_order_relaxed); }
@@ -85,7 +88,13 @@ private:
     Pin pin_fn;
     std::array<Slot, stream_count> slots {};
     std::array<Work, stream_count> work {};
-    MidiQueue<4096, Message> messages;
+    MidiQueue<4096, Message> messages;   // one producer: the holder of `sending`
+    std::atomic_flag sending = ATOMIC_FLAG_INIT;
+    struct Sending { // the producer side for the length of a call
+        std::atomic_flag& flag;
+        explicit Sending(std::atomic_flag& f) : flag(f) { while (flag.test_and_set(std::memory_order_acquire)) {} }
+        ~Sending() { flag.clear(std::memory_order_release); }
+    };
     std::atomic<unsigned> under {0};
     std::atomic<uint64_t> flush_asked {0}, flush_done {0};
     std::atomic<bool> running {false};

@@ -48,6 +48,18 @@ one owner per piece of state.
   effects the tracks, and decides which MIDI goes out at which frame. It
   never allocates, locks or waits: patterns, samples, projects and track
   copies arrive whole by pointer and go back to be freed elsewhere.
+- **Render workers** (`engine/render_pool.*`, three on the MPC's four
+  cores, `$MELODEE_RENDER_THREADS` to choose) share the audio thread's
+  block at its real-time priority: first each track's engine, then each
+  track's level, pan and chain (where plug-in effects sit), one track a
+  job, the heaviest of the last block first. The audio thread takes jobs
+  too, then sums the tracks into the buses and master in track order, so a
+  block sounds the same with workers or without (a test checks it sample
+  for sample). Note-offs, the arp and MIDI out stay on the audio thread.
+  Below 150 µs of track work a block the workers sleep, as they do while
+  one plug-in instance plays in two places. Kit tracks reach the stream
+  pager under a short spin lock. A single plug-in still gets one core's
+  share of a block: a 16 ms block from one cannot be split.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
@@ -909,13 +921,18 @@ and Melodee's:
   input|track M|loop M|mix|rear [l|r]|usb [l|r]|mic | latency FRAMES|auto |
   transport follow|free |
   commit N [note]` (docs/LOOPER.md).
+- `melodee-render [serial|parallel]`: the render workers left asleep (the
+  audio thread renders alone) or used again, from the next block.
 - `melodee-midi [usb] HEX...`: one message into the input path, as if from
   the External (or USB) port. `melodee-midi panic`: MIDI Config's MIDI
   Panic.
 - `card-share [on|off|force]` (the runtime's): SD card access from the
   remote; Melodee opens its page as if B1 had been pressed there.
 
-`status` adds Melodee's fields: `melodee_playing`, `melodee_dropped`, the
+`status` adds Melodee's fields: `melodee_playing`, `melodee_dropped`,
+`melodee_render_threads`, `melodee_render_load` (the recent peak block's
+time against its budget, tenths of a percent), `melodee_render_parallel`
+(blocks the workers helped with), the
 page and track, the lit buttons (`melodee_buttons=seq:2,stop:1`, 1 faint,
 2 bright) and pads (`melodee_pads=`); the sequencer (`melodee_rec`,
 `melodee_count_in`, `melodee_position`, `melodee_pattern_ticks`,

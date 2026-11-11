@@ -5416,6 +5416,54 @@ bool logged_pin(const void* address, size_t, bool lock) {
     return true;
 }
 
+// Rendering on several cores (engine/render_pool.h): a busy project sounds the same, sample for sample, with
+// render workers sharing every block as with the audio thread alone; and the workers did share them.
+void parallel_render() {
+    auto render = [](unsigned workers, uint64_t* helped) {
+        auto p = std::make_unique<Project>();
+        auto b = std::make_unique<PatternBank>();
+        const EngineKind kinds[] {EngineKind::Prophet, EngineKind::Fm6, EngineKind::Cz, EngineKind::Sid,
+                                  EngineKind::Kit909, EngineKind::Prophet, EngineKind::Fm6, EngineKind::Cz};
+        const EffectKind chains[][2] {{EffectKind::Reverb, EffectKind::Echo}, {EffectKind::Chorus, EffectKind::Drive},
+                                      {EffectKind::Phaser, EffectKind::Plate}, {EffectKind::Crush, EffectKind::Filter},
+                                      {EffectKind::Compressor, EffectKind::Room}, {EffectKind::TapeEcho, EffectKind::Width},
+                                      {EffectKind::Flanger, EffectKind::Shimmer}, {EffectKind::Tape, EffectKind::PingPong}};
+        for (unsigned t = 0; t < 8; ++t) {
+            load_sound(p->tracks[t], kinds[t], 0);
+            p->tracks[t].mix.pan = int8_t(int(t) * 12 - 42);
+            p->tracks[t].mix.send = uint8_t(20 + t * 5);
+            p->tracks[t].mix.bus = uint8_t(t % bus_count);
+            for (unsigned k = 0; k < 2; ++k) p->tracks[t].fx.slots[k] = {uint8_t(chains[t][k]), false, {60, 50, 40, 50, 30, 0}};
+        }
+        p->buses[1].fx.slots[0] = {uint8_t(EffectKind::Reverb), false, {70, 50, 40, 50, 0, 0}};
+        EngineHost host;
+        host.set_render_threads(workers, 0);
+        host.load(*p, *b);
+        std::vector<int32_t> block(256), all;
+        for (unsigned n = 0; n < 600; ++n) {
+            if (n % 50 == 0)
+                for (unsigned t = 0; t < 8; ++t) {
+                    host.send({Command::Type::NoteOff, uint8_t(t), 0, uint16_t(48 + t + (n / 50 + 1) % 2 * 7), 0});
+                    host.send({Command::Type::NoteOn, uint8_t(t), 0, uint16_t(48 + t + (n / 50) % 2 * 7), int16_t(90 + t)});
+                }
+            host.render(block.data(), 128, 1);
+            all.insert(all.end(), block.begin(), block.end());
+        }
+        if (helped) *helped = host.render_parallel_blocks();
+        return all;
+    };
+    uint64_t helped = 0;
+    auto alone = render(0, nullptr);
+    auto shared = render(3, &helped);
+    double energy = 0;
+    for (int32_t s : alone) energy += std::fabs(s / 2147483648.0);
+    CHECK(energy > 100);           // it plays
+    CHECK(helped == 600);          // every block went to the workers
+    CHECK(shared == alone);        // and sounds the same
+    // Twice more: the workers sleep and wake between runs without losing a block.
+    for (int again = 0; again < 2; ++again) CHECK(render(3, nullptr) == alone);
+}
+
 void stream_pager() {
     std::vector<std::pair<uintptr_t, bool>> log;
     pin_log = &log; pin_fails = false;
@@ -6578,6 +6626,7 @@ int main() {
     expansion_paths();
     sample_cache();
     stream_pager();
+    parallel_render();
     sampler_zones();
     note_pitches();
     track_source();

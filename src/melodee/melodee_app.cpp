@@ -13,7 +13,9 @@
 #include <unistd.h>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
+#include <thread>
 
 extern char** environ;
 
@@ -41,6 +43,11 @@ MelodeeApp::MelodeeApp()
     shell.set_store(&store);
     shell.set_input(&input_route);
     host.load(shell.project(), shell.patterns());
+    // The tracks render on every core: a worker for each beside the audio thread ($MELODEE_RENDER_THREADS: how many).
+    unsigned cores = std::max(std::thread::hardware_concurrency(), 1u);
+    unsigned workers = std::min(cores - 1, 3u);
+    if (const char* own = std::getenv("MELODEE_RENDER_THREADS")) workers = unsigned(std::clamp(std::atoi(own), 0, 7));
+    host.set_render_threads(workers);
 }
 
 // MIDI out and sync are timed on the device's own clock: its rate and the frames it keeps queued. A new rate
@@ -154,6 +161,11 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
 }
 
 std::string MelodeeApp::command(const std::string& action, const std::string& argument, Hardware&) {
+    if (action == "melodee-render") { // melodee-render serial|parallel: the render workers left asleep or used again
+        if (argument == "serial" || argument == "parallel") host.set_render_parallel(argument == "parallel");
+        else if (!argument.empty()) return "ERR melodee-render serial|parallel";
+        return std::string("OK melodee-render ") + (host.render_parallel() ? "parallel" : "serial");
+    }
     if (action == "melodee-midi" && argument == "panic") { // MIDI Config's MIDI Panic (docs/MIDI_TRACKS.md)
         panic_asked.store(true);
         return "OK melodee-midi panic";
@@ -336,5 +348,8 @@ void MelodeeApp::card_access(Hardware& hardware) {
 
 std::string MelodeeApp::status() const {
     return "melodee_playing=" + std::to_string(host.playing()) + " melodee_dropped=" + std::to_string(host.dropped())
-         + " melodee_stream_underruns=" + std::to_string(const_cast<melodee::EngineHost&>(host).streams().underruns()) + " " + shell.summary();
+         + " melodee_stream_underruns=" + std::to_string(const_cast<melodee::EngineHost&>(host).streams().underruns())
+         + " melodee_render_threads=" + std::to_string(host.render_threads())
+         + " melodee_render_load=" + std::to_string(int(std::lround(host.render_load() * 1000))) // tenths of a percent, the recent peak
+         + " melodee_render_parallel=" + std::to_string(host.render_parallel_blocks()) + " " + shell.summary();
 }

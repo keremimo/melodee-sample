@@ -39,6 +39,7 @@ void StreamPager::run() {
 }
 
 int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed) {
+    Sending held(sending);
     for (unsigned n = 0; n < stream_count; ++n) {
         auto& s = slots[n];
         if (s.used) continue;
@@ -58,6 +59,7 @@ int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed)
 }
 
 void StreamPager::restart(int stream, uint32_t frame) {
+    Sending held(sending);
     auto& s = slots[size_t(stream)];
     s.head = frame + stream_chunk;
     s.at.store(frame, std::memory_order_relaxed);
@@ -75,6 +77,7 @@ uint32_t StreamPager::limit(int stream) const {
 }
 
 void StreamPager::close(int stream) {
+    Sending held(sending);
     auto& s = slots[size_t(stream)];
     Message m;
     m.kind = Message::Close; m.stream = int16_t(stream);
@@ -82,7 +85,7 @@ void StreamPager::close(int stream) {
     else s.closing = true;
 }
 
-void StreamPager::block() {
+void StreamPager::block() { // close() takes the lock for each
     for (unsigned n = 0; n < stream_count; ++n) if (slots[n].closing) close(int(n));
 }
 
