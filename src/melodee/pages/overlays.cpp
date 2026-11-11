@@ -112,8 +112,8 @@ void draw_notice(Paint& p, const Snapshot& s) {
 void draw_exit_sheet(Paint& p, const Snapshot& s) {
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
     p.dim_zone(zone::knobs_y, zone::knobs_h);
-    // Soft keys: STAY under B1, LEAVE under B3 (Push never quits).
-    soft_keys(p, {{"STAY", "", "LEAVE"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
+    // Soft keys: STAY under B1, POWER OFF under B2, LEAVE under B3 (Push never quits).
+    soft_keys(p, {{"STAY", "POWER OFF", "LEAVE"}, s.ui.exit_off ? 1 : 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}});
 
     Header h = header_of(s);
     h.playing = false; h.recording = false;
@@ -121,11 +121,16 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
     header(p, h);
     for (unsigned n = 0; n < 4; ++n)
         p.fill(zone::pad, zone::picture_y + 1.5f + n * 36, zone::width - 2 * zone::pad, 33, colour::quiet.interpolatedWith(colour::bg, 0.5f), 4);
-    juce::String body = s.projects.root.empty()
-        ? juce::String("Notes stop and the MPC app starts again. There is no card to save this project on.")
-        : juce::String(s.project_path.empty() ? "It is saved as a new project." : (juce::String(s.project.name) + " is saved."))
-              + " Notes stop and the MPC app starts again.";
-    sheet(p, {"Leave Melodee?", body, true});
+    bool card = !s.projects.root.empty();
+    juce::String saved = !card ? juce::String("There is no card to save this project on.")
+                       : s.project_path.empty() ? juce::String("It is saved as a new project.")
+                       : juce::String(s.project.name) + " is saved.";
+    if (s.ui.exit_off) { // POWER OFF chosen: the save on its way, then the MPC goes dark
+        sheet(p, {"Turning off", card ? juce::String("Saving, then the MPC turns off. It opens this project when you turn it on.")
+                                      : juce::String("The MPC turns off."), true});
+        return;
+    }
+    sheet(p, {"Leave Melodee?", saved + " Leave starts the MPC app; Power off turns the MPC off.", true});
 }
 
 } // namespace melodee

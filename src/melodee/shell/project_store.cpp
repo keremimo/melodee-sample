@@ -47,6 +47,7 @@ void ProjectStore::duplicate(const std::string& path) { push(new Request {Reques
 void ProjectStore::remove(const std::string& path) { push(new Request {Request::Kind::Remove, path, {}}); }
 void ProjectStore::new_folder() { push(new Request {Request::Kind::NewFolder, {}, {}}); }
 void ProjectStore::open_at_start(const std::string& path) { push(new Request {Request::Kind::OpenAtStart, path, {}}); }
+void ProjectStore::opened(const std::string& path) { if (!path.empty()) push(new Request {Request::Kind::Opened, path, {}}); }
 void ProjectStore::save_settings(const std::string& text) { push(new Request {Request::Kind::Settings, text, {}}); }
 void ProjectStore::rename(const std::string& path, const std::string& name) {
     push(new Request {Request::Kind::Rename, path, std::vector<uint8_t>(name.begin(), name.end())});
@@ -130,14 +131,16 @@ void ProjectStore::service(Hardware& hardware) {
             folder.clear();
             std::error_code error;
             // Nothing is created on the card until something is saved there.
-            // What to open at start lives next to the projects.
+            // What to open at start lives next to the projects: the one set to, else the last one open.
             start.clear();
+            last.clear();
             settings.clear();
             if (!root.empty()) {
                 std::ifstream file(fs::path(root).parent_path() / "settings");
                 std::string line;
                 while (std::getline(file, line)) {
                     if (line.rfind("start=", 0) == 0) start = line.substr(6);
+                    else if (line.rfind("last=", 0) == 0) last = line.substr(5);
                     else if (!line.empty()) settings += line + '\n';
                 }
             }
@@ -147,9 +150,10 @@ void ProjectStore::service(Hardware& hardware) {
             }
             scan_sounds();
             scan();
-            if (!started && !start.empty() && fs::exists(start, error)) {
-                auto* l = new LoadedProject {start, {}, read_file(start), false, {}};
-                if (!loaded.push(l)) delete l;
+            const auto& resume = !start.empty() && fs::exists(start, error) ? start : last;
+            if (!started && !resume.empty() && fs::exists(resume, error)) {
+                auto* l = new LoadedProject {resume, {}, read_file(resume), false, {}};
+                if (l->bytes.empty() || !loaded.push(l)) delete l;
             }
             started = true;
         }
@@ -228,6 +232,7 @@ void ProjectStore::run(Request& r) {
         }
         fs::rename(temporary, r.path, error);
         if (error) { publish_message("Could not save"); return; }
+        remember(r.path); // only the open project is saved, and before the count moves, so a leave after it keeps it
         saved.fetch_add(1, std::memory_order_release);
         break;
     }
@@ -259,6 +264,9 @@ void ProjectStore::run(Request& r) {
         start = start == r.path ? std::string() : r.path; // again on the same project: no longer
         write_settings(error);
         break;
+    case Request::Kind::Opened:
+        remember(r.path);
+        break;
     case Request::Kind::Settings:
         settings = r.path;
         write_settings(error);
@@ -271,6 +279,7 @@ void ProjectStore::run(Request& r) {
         if (error) { publish_message("Could not rename"); return; }
         carry_loops(r.path, target, false);
         if (start == r.path) { start = target.string(); write_settings(error); }
+        if (last == r.path) remember(target.string());
         break;
     }
     case Request::Kind::Move: {
@@ -286,6 +295,7 @@ void ProjectStore::run(Request& r) {
         if (error) { publish_message("Could not move"); return; }
         carry_loops(r.path, target, false);
         if (start == r.path) { start = target.string(); write_settings(error); }
+        if (last == r.path) remember(target.string());
         std::lock_guard<std::mutex> guard(lock);
         known.moved_from = r.path; known.moved_to = target.string();
         break;
@@ -309,10 +319,18 @@ void ProjectStore::run(Request& r) {
     scan();
 }
 
+void ProjectStore::remember(const std::string& path) {
+    if (path == last) return;
+    last = path;
+    std::error_code error;
+    write_settings(error);
+}
+
 void ProjectStore::write_settings(std::error_code& error) {
     fs::create_directories(fs::path(root).parent_path(), error);
     std::ofstream file(fs::path(root).parent_path() / "settings", std::ios::trunc);
     if (!start.empty()) file << "start=" << start << '\n';
+    if (!last.empty()) file << "last=" << last << '\n';
     file << settings;
     std::lock_guard<std::mutex> guard(lock);
     known.settings = settings;

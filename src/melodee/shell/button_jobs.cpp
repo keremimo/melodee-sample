@@ -7,7 +7,7 @@ namespace melodee {
 
 bool button_has_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads, bool erase_pots) {
     using B = SurfaceButton;
-    if (ui.exit_open) return false; // only B1 and B3 answer, and they have no lights
+    if (ui.exit_open) return false; // only B1, B2 and B3 answer, and they have no lights
     if (ui.name.open()) return button == B::Erase || button == B::Play || button == B::Stop; // the Name sheet
     if (ui.page == PageId::CardAccess || ui.card.state != 0) { // SD card access: everything else waits (shell/card_access.h)
         if (ui.ask != UiState::Ask::None) return button == B::TopLeft || button == B::TopRight || button == B::Play || button == B::Stop;

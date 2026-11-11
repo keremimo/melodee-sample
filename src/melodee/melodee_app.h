@@ -36,7 +36,7 @@ public:
     std::string command_names() const override { return "melodee-press, melodee-midi"; }
     std::string status() const override;
     bool claims_wheel_push() const override { return true; }
-    bool finished() const override { return shell.leaving(); }
+    bool finished() const override { return shell.leaving() || power_off_failed.load(); }
 
 private:
     uint32_t now_ms() const;
@@ -60,6 +60,8 @@ private:
     MidiQueue<16, melodee::LooperAsk> remote_looper; // `melodee-looper`, parsed on arrival, done on the MIDI thread
     std::atomic<bool> panic_asked {false}; // `melodee-midi panic`
     bool power_known = false;
+    bool power_off_asked = false;             // service thread: systemd asked to turn the MPC off
+    std::atomic<bool> power_off_failed {false}; // it could not be asked (or this is not the MPC): leave for the stock app
     melodee::CardNote card_note = melodee::CardNote::None; // service thread: why the last lend did not start
     uint64_t card_returns = 0;
     unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)

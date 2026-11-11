@@ -29,11 +29,12 @@ namespace melodee {
 using Type = Command::Type;
 
 void Context::send(const Command& command) {
-    // Anything but playing changes the project.
+    // Anything but playing changes the project (the metronome is Melodee's setting, not the project's).
     switch (command.type) {
     case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Pressure:
     case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
-    case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded: break;
+    case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded:
+    case Type::Click: break;
     default: dirty = true;
     }
     host.send(command);
@@ -79,6 +80,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     if (!host.send(c)) delete pack;
     send_click(); // the metronome is Melodee's, and no take is running now
     project_path = path;
+    if (store) store->opened(path); // a file of its own: the one the next start resumes
     dirty = false;
     samples_to_load = 0; // every sample slot again, a few each tick
     load_loop_files(*this, path); // its loops, from beside its file (docs/LOOPER.md)

@@ -8,9 +8,30 @@
 #include "drivers/power_button.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/paint.h"
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+
+extern char** environ;
+
+namespace {
+// Service thread: asks systemd to turn the MPC off. Only on the MPC itself
+// (its stock binary is there), never on a computer running a host build. systemd stops this service first (the
+// recovery script sees the system stopping and leaves the stock app off), then unmounts the card and powers down.
+bool request_power_off() {
+    if (access("/usr/bin/MPC Sample", F_OK) != 0) return false;
+    sync(); // the project and settings on the card before anything stops
+    char systemctl[] = "/bin/systemctl", no_block[] = "--no-block", poweroff[] = "poweroff";
+    char* argv[] = {systemctl, no_block, poweroff, nullptr};
+    pid_t pid = 0;
+    if (posix_spawn(&pid, systemctl, nullptr, nullptr, argv, environ) != 0) return false;
+    int status = 0;
+    return waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0; // --no-block: it only queues the job
+}
+} // namespace
 
 
 MelodeeApp::MelodeeApp()
@@ -175,6 +196,8 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         int value = std::clamp(std::atoi(argument.c_str() + 6), 0, 127);
         return presses.push({3, uint8_t(SurfaceControl::Fader), int8_t(value)}) ? "OK melodee-press " + argument : "ERR busy";
     }
+    // power: a short press of Power (not on the surface port): the Exit sheet opens, nothing more
+    if (argument == "power") { shell.power_pressed(); return "OK melodee-press power"; }
     auto button_named = [](const std::string& wanted) {
         for (unsigned n = 0; n < surface_buttons.size(); ++n) {
             std::string name = surface_buttons[n].name;
@@ -243,6 +266,11 @@ void MelodeeApp::service(Hardware& hardware) {
     if (hardware.card.status().state == CardShareState::Home) {
         library.service(hardware);
         store.service(hardware);
+    }
+    // POWER OFF on the Exit sheet, once the project is saved; if the MPC will not turn off, the stock app instead.
+    if (shell.powering_off() && !power_off_asked) {
+        power_off_asked = true;
+        if (!request_power_off()) power_off_failed.store(true);
     }
     // A short press of Power opens the Exit sheet.
     uint64_t presses = hardware.power.presses();

@@ -124,7 +124,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
-        if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) leave.store(true); // loop files too
+        if (leave_after_save >= 0 && int(store_->saves()) >= leave_after_save && !(library_ && library_->loops_busy())) // loop files too
+            (off_after_save ? power_off : leave).store(true);
     }
     context_.song_tick();
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
@@ -166,7 +167,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.now = now;
     looper_tick(context_, now); // Loop held, a clear pad held, refusals, the metronome (shell/looper_jobs.cpp)
     unsigned presses = power.load(std::memory_order_relaxed);
-    if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; }
+    if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; } // a second press while it is open does nothing more
 
     const auto& ui = ui_;
     {

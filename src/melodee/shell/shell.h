@@ -52,6 +52,8 @@ public:
     void power_pressed() { power.fetch_add(1, std::memory_order_relaxed); }
     // Any thread: LEAVE was chosen on the Exit sheet.
     bool leaving() const { return leave.load(std::memory_order_relaxed); }
+    // Any thread: POWER OFF was chosen on the Exit sheet and the project is on the card: the MPC may turn off.
+    bool powering_off() const { return power_off.load(std::memory_order_relaxed); }
     // Any thread: page, track, the last pad's sample slot and its frames, for `status`.
     std::string summary() const;
 
@@ -102,7 +104,7 @@ private:
     std::atomic<uint32_t> audio_wanted {44100u | 3u << 20}; // rate | periods << 20
     std::atomic<unsigned> power {0};
     unsigned power_seen = 0;
-    std::atomic<bool> leave {false};
+    std::atomic<bool> leave {false}, power_off {false};
     SampleLibrary* library_ = nullptr;
     unsigned library_seen = ~0u;
     unsigned format_seen = 0; // the engine's format_changes() the project was last sent again for
@@ -115,6 +117,7 @@ private:
     unsigned store_seen = ~0u, settings_seen = ~0u, sounds_seen = ~0u;
     bool settings_loaded = false;
     int leave_after_save = -1; // the saves count to wait for before leaving
+    bool off_after_save = false; // and then turn the MPC off instead of starting the stock app
     std::atomic<uint32_t> page_track {0}, pad_sample {0}, pad_frames {0}, tempo_now {0}; // copies for summary()
     std::atomic<uint32_t> stage_bits {0};
     std::string stage_key_text; // under text_lock

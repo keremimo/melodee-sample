@@ -56,8 +56,9 @@ one owner per piece of state.
 
 Wheel Push belongs to Melodee (`App::claims_wheel_push()`); the Exit sheet
 (a short press of Power) saves and returns to the stock app through
-`App::finished()`. Crash, remote stop and the recovery service are the
-runtime's.
+`App::finished()`, or saves and asks systemd to power the MPC off (the
+recovery script sees the system stopping and leaves the stock app off).
+Crash, remote stop and the recovery service are the runtime's.
 
 ## The panel
 
@@ -615,7 +616,9 @@ while following.
   moves the cursor, Shift + wheel or K2 the character, K1 a ready name,
   Erase deletes (Shift + Erase clears); B1 cancels, B2 Aa, B3 or Push keeps.
 - **Exit** (Power, short): B3 LEAVE saves the project first, then returns to
-  the stock app; B1 stays.
+  the stock app; B2 POWER OFF saves it, then turns the MPC off; B1 stays
+  (and calls off a save still on its way). At the next start Melodee opens
+  the project set to open at start, or else the one last opened or saved.
 
 ## Across every page
 
@@ -695,7 +698,8 @@ voices or the engine's own count; tracks render in one block of 128 frames.
   the file, then renamed into place.
 - `Melodee/Sounds/<name>.mlds`: a sound's values and mod routes.
 - `Melodee/settings`: Melodee's settings, MIDI Config, Input Config, the
-  favourites and the project to open at start.
+  favourites, the project to open at start (`start=`) and the one last
+  opened or saved (`last=`), opened at start when none is set.
 - `Samples/`: loaded from anywhere under it; Melodee writes `Recorded/`,
   `Edits/` and saved samples there, bank files in `Banks/`, and committed
   loops in `Looper/`.

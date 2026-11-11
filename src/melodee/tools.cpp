@@ -1066,6 +1066,8 @@ const Preview previews[] {
          s.project.root = 0; s.project.scale = 7; s.ui.levels_hit = 5;
      }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
+    {"exitcard", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; s.projects.root = "/media/card/Melodee/Projects"; s.project_path = "/media/card/Melodee/Projects/Song.mldp"; }},
+    {"exitoff", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = s.ui.exit_off = true; s.projects.root = "/media/card/Melodee/Projects"; }},
     {"name", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Song; s.ui.song_cursor = 16; s.playing = true;
          s.ui.name.start(NameTarget::Marker, "CHORUS", 11, true);
@@ -1159,7 +1161,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit");
+    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff");
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
     // Text under the floor or cut by its box fails the build check.
     return text_issues ? 1 : 0;

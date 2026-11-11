@@ -17,7 +17,8 @@ struct Hardware;
 // thread asks (list a folder, save these bytes, load, duplicate, delete, new
 // folder, open at start) through a queue; loaded files come back through
 // another, and the listing is read under a short lock. On the first pass it
-// loads the project set to open at start, if any.
+// loads the project set to open at start or, with none set, the one last
+// opened or saved, so a power-on picks up where the last session left off.
 namespace melodee {
 
 struct ProjectEntry {
@@ -48,6 +49,7 @@ public:
     void remove(const std::string& path);
     void new_folder();
     void open_at_start(const std::string& path);
+    void opened(const std::string& path);   // the project now open, from its file: the one to resume at the next start
     void save_settings(const std::string& text); // Melodee's settings (shell/settings.h), kept with the start project
     void rename(const std::string& path, const std::string& name); // a project, in its folder
     void save_sound(const std::string& name, std::vector<uint8_t> bytes); // Melodee/Sounds/<name>.mlds
@@ -83,7 +85,7 @@ public:
 
 private:
     struct Request {
-        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Settings, Rename, SaveSound, Move } kind;
+        enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Opened, Settings, Rename, SaveSound, Move } kind;
         std::string path;
         std::vector<uint8_t> bytes;
     };
@@ -95,6 +97,8 @@ private:
     MidiQueue<32, Request*> requests;           // MIDI thread produces
     MidiQueue<4, LoadedProject*> loaded;        // service thread produces
     std::string root, folder, start, settings;  // service thread
+    std::string last;                           // service thread: the project last opened or saved
+    void remember(const std::string& path);     // service thread: `last`, written to the card when it changes
     void write_settings(std::error_code& error);
     void scan_sounds();
     bool started = false;

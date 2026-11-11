@@ -66,6 +66,7 @@ struct UiState {
     bool repeat_held = false, repeat_turned_on = false;
     uint32_t repeat_down = 0, repeat_tap_at = 0;
     bool exit_open = false, recording = false;
+    bool exit_off = false;         // the Exit sheet's POWER OFF chosen: saving, then the MPC turns off
     bool rec_armed = false;        // Seq Record pressed while stopped: Play starts the take (its light flashes)
     uint8_t lead_pattern = 0;      // the pattern launched last: whose tempo plays with BPM per pattern on
     uint32_t locate = 0;           // Patterns: where Shift + Play carries on from, ticks (the wheel moves it)

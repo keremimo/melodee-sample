@@ -168,16 +168,18 @@ void Shell::press(Button b, bool pressed) {
     if (ui.shift) ui.shift_used = true;
 
     if (ui.exit_open) {
-        // Only the soft keys answer: B1 stays, B3 leaves.
-        if (b == Button::TopLeft) ui.exit_open = false;
-        if (b == Button::TopRight && leave_after_save < 0) {
+        // Only the soft keys answer: B1 stays (even while a save to leave after is on its way), B2 turns
+        // the MPC off, B3 leaves for the stock app.
+        if (b == Button::TopLeft) { ui.exit_open = false; ui.exit_off = false; leave_after_save = -1; off_after_save = false; }
+        if ((b == Button::TopMiddle || b == Button::TopRight) && leave_after_save < 0) {
+            off_after_save = ui.exit_off = b == Button::TopMiddle;
             context_.send({Command::Type::Stop});
             context_.send({Command::Type::AllNotesOff, 255});
             // The project goes to the card first (a new file if it has none); then away.
             ProjectStore::View v;
             if (store_) store_->view(v);
             if (!v.root.empty()) { leave_after_save = int(store_->saves()) + 1; context_.save_project(); }
-            else leave.store(true);
+            else (off_after_save ? power_off : leave).store(true);
         }
         return;
     }
