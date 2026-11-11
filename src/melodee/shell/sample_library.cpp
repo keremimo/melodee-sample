@@ -93,13 +93,14 @@ bool is_wav(const fs::path& path) { return upper(path.extension().string()) == "
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
 bool is_instrument(const fs::path& path) { return upper(path.extension().string()) == ".SFZ"; }
 // A folder's folders, WAV files and bank files, appended; hidden ones and lost+found left out.
-void list_into(const std::string& folder, std::vector<SampleFile>& out) {
+// card_top: the card's own top folder, where its boot folder (autorun, what starts the app) is no sample's.
+void list_into(const std::string& folder, std::vector<SampleFile>& out, bool card_top = false) {
     std::error_code error;
     if (folder.empty() || !fs::is_directory(folder, error)) return;
     for (auto it = fs::directory_iterator(folder, fs::directory_options::skip_permission_denied, error);
          !error && it != fs::directory_iterator() && out.size() < 4000; it.increment(error)) {
         auto name = it->path().filename().string();
-        if (name.empty() || name[0] == '.' || name == "lost+found") continue;
+        if (name.empty() || name[0] == '.' || name == "lost+found" || (card_top && name == "autorun")) continue;
         bool folder_here = it->is_directory(error);
         bool bank = !folder_here && is_bank(it->path());
         bool instrument = !folder_here && is_instrument(it->path());
@@ -187,7 +188,7 @@ void SampleLibrary::scan() {
     if (!folder.empty() && !fs::is_directory(folder, error)) folder = start_of(drive);
     std::vector<SampleFile> files;
     if (drive == Drive::Internal && folder.empty()) for (const auto& t : tops) list_into(t, files);
-    else list_into(folder, files);
+    else list_into(folder, files, drive == Drive::Card && folder == card_top);
     std::sort(files.begin(), files.end(), [](const SampleFile& a, const SampleFile& b) {
         return a.folder != b.folder ? a.folder : a.name != b.name ? a.name < b.name : a.path < b.path;
     });
