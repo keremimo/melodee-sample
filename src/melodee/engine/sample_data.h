@@ -37,6 +37,9 @@ constexpr unsigned max_hits = 128;
 // any rate, converted to 44.1 kHz) of at most `max_seconds`. Returns an
 // empty message on success, else what went wrong.
 std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60, WavInfo* info = nullptr);
+// The loop a FLAC file keeps from the WAV it was made of (flac --keep-foreign-metadata: an
+// APPLICATION block "riff" holding the smpl chunk), into `info`; false when it has none.
+bool read_flac_loop(const std::string& path, WavInfo& info);
 // Writes 24-bit stereo PCM at 44.1 kHz; empty on success.
 std::string write_wav(const std::string& path, const SampleData& sample);
 // The same format written as it comes (the song's mixdown): open, add

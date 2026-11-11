@@ -480,7 +480,7 @@ void SamplerEngine::play_zone(Voice& v, float* to_l, float* to_r, unsigned from,
             while (v.position >= v.loop_hi) v.position -= double(v.loop_hi - v.loop_at);
             came_round(v);
         }
-        if (v.reverse ? v.position < v.start : v.position >= v.end - 1) { v.pad = -1; return; }
+        if (!round && (v.reverse ? v.position < v.start : v.position >= v.end - 1)) { v.pad = -1; return; } // a loop may run to the file's very end
         unsigned i = unsigned(v.position);
         float frac = float(v.position - i);
         unsigned j = i + 1;

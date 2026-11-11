@@ -4992,6 +4992,14 @@ void sampler_zones() {
         CHECK(zone_rms(tail, 0, 2000) > 0.1); // sounding through the release...
         CHECK(!held.engine->sounding() || zone_rms(tail, 12000, 13000) == 0.0); // ...and gone once past the sample's end
     }
+    { // a loop may end at the very end of its file
+        ZoneRig r;
+        r.part(zone_tone(441, 0.5f, 4000));
+        auto& z = r.zone(0); z.loop = ZoneLoop::On; z.loop_start = 2000; z.loop_end = 4000;
+        r.build(PadPlay::Gate);
+        r.key(0);
+        CHECK(zone_rms(r.run(30000), 25000, 30000) > 0.2);
+    }
     { // the seam: a loop of whole cycles at any pitch has no step at the join
         ZoneRig r;
         r.part(zone_tone(441, 0.5f, 8000));
@@ -5146,6 +5154,33 @@ void sampler_zones() {
 
 // A note's pitch: a chord on one pad, kept through steps and files, older files reading as before.
 void note_pitches() {
+    { // a FLAC's loop, kept from the WAV it was made of
+        namespace fs = std::filesystem;
+        auto path = (fs::temp_directory_path() / ("melodee-loop-" + std::to_string(getpid()) + ".flac")).string();
+        auto write = [&](bool looped) {
+            std::string b = "fLaC";
+            auto block = [&](uint8_t type, const std::string& body, bool last) {
+                b += char(type | (last ? 0x80 : 0)); b += char(body.size() >> 16); b += char(body.size() >> 8); b += char(body.size()); b += body;
+            };
+            auto le = [](uint32_t v) { return std::string {char(v), char(v >> 8), char(v >> 16), char(v >> 24)}; };
+            block(0, std::string(34, 'x'), false);
+            block(2, "riff" + std::string("RIFF") + le(1000) + "WAVE", false); // the file's other foreign chunks
+            std::string data(60, '\0');
+            if (looped) { data.replace(28, 4, le(1)); data.replace(44, 4, le(319390)); data.replace(48, 4, le(322438)); }
+            block(2, "riffsmpl" + le(60) + data, false);
+            block(1, std::string(100, '\0'), true);
+            std::ofstream(path, std::ios::binary) << b;
+        };
+        WavInfo info;
+        write(true);
+        CHECK(read_flac_loop(path, info) && info.loop_start == 319390 && info.loop_end == 322439);
+        write(false);
+        WavInfo none;
+        CHECK(!read_flac_loop(path, none) && none.loop_end == -1);
+        { std::ofstream(path, std::ios::binary) << "RIFFnotflac"; }
+        CHECK(!read_flac_loop(path, none));
+        fs::remove(path);
+    }
     CHECK(pad_note(40, 0) == 40 && (pad_note(40, 5) & 0xff) == 40 && int8_t(pad_note(40, -7) >> 8) == -7);
     Pattern p;
     Event a; a.tick = 0; a.key = 40; a.pitch = 4;

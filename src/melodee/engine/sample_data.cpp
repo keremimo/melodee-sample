@@ -78,6 +78,31 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
     return {};
 }
 
+bool read_flac_loop(const std::string& path, WavInfo& info) {
+    std::ifstream file(path, std::ios::binary);
+    char tag[4];
+    if (!file.read(tag, 4) || std::memcmp(tag, "fLaC", 4)) return false;
+    uint8_t head[4];
+    while (file.read(reinterpret_cast<char*>(head), 4)) {
+        const bool last = head[0] & 0x80;
+        const unsigned type = head[0] & 0x7f, size = unsigned(head[1]) << 16 | unsigned(head[2]) << 8 | head[3];
+        uint8_t body[72];
+        if (type == 2 && size >= sizeof(body)) { // "riff", then the chunk: "smpl", its size, its 60 bytes
+            if (!file.read(reinterpret_cast<char*>(body), sizeof(body))) return false;
+            if (!std::memcmp(body, "riff", 4) && !std::memcmp(body + 4, "smpl", 4) && u32(body + 12 + 28) > 0 && u32(body + 12 + 48) > u32(body + 12 + 44)) {
+                info.loop_start = u32(body + 12 + 44);
+                info.loop_end = int64_t(u32(body + 12 + 48)) + 1;
+                return true;
+            }
+            file.seekg(std::streamoff(size - sizeof(body)), std::ios::cur);
+        } else {
+            file.seekg(std::streamoff(size), std::ios::cur);
+        }
+        if (last) break;
+    }
+    return false;
+}
+
 std::string write_wav(const std::string& path, const SampleData& s) {
     std::ofstream file(path, std::ios::binary);
     if (!file) return "cannot write";

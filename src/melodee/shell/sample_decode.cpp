@@ -37,7 +37,10 @@ std::string read_audio(const std::string& path, SampleData& out, unsigned max_se
     if (frames <= 0) return "no audio";
     juce::AudioBuffer<float> audio(int(channels), frames);
     if (!reader->read(&audio, 0, frames, 0, true, channels > 1)) return "cannot read it";
-    if (info) { info->channels = channels; info->rate = unsigned(reader->sampleRate); }
+    if (info) {
+        info->channels = channels; info->rate = unsigned(reader->sampleRate);
+        read_flac_loop(path, *info); // nothing to find in anything but a FLAC made from a looped WAV
+    }
     // To the project's rate, linearly, as read_wav does.
     const double ratio = reader->sampleRate / double(dsp::model_rate);
     const auto length = uint32_t(frames / ratio);
