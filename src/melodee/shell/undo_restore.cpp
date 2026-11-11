@@ -142,7 +142,7 @@ void Context::restore_master(const MasterState& m) {
     if (k.bypass != m.knob_bypass) { k.bypass = m.knob_bypass; send_knob_state(); }
     const auto& c = m.compressor;
     set_compressor(0, c.on); set_compressor(1, c.color); set_compressor(2, c.attack); set_compressor(3, c.release);
-    set_compressor(4, c.amount); set_compressor(5, c.boost);
+    set_compressor(4, c.amount); set_compressor(5, c.boost); set_compressor(6, c.sidechain); set_compressor(7, c.key);
     for (unsigned n = 0; n < 16; ++n)
         for (unsigned q = 0; q < 3; ++q)
             if (project.pad_fx_params[n][q] != m.pad_fx[n][q]) set_pad_fx_param(n, q, m.pad_fx[n][q]);

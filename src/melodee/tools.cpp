@@ -937,6 +937,12 @@ const Preview previews[] {
          c.on = true; c.color = true; c.amount = 60; c.attack = 25; c.release = 40; c.boost = 3;
          s.compression = 4.5f; s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
+    {"compressorside", [](Shell&, Snapshot& s) { // Sidechain: track 1 keys it, the rest ducking 7 dB, Color on
+         s.ui.page = PageId::Compressor; s.playing = true;
+         auto& c = s.project.compressor;
+         c.on = true; c.color = true; c.sidechain = true; c.key = 0; c.amount = 55; c.attack = 5; c.release = 60;
+         s.compression = 7.0f;
+     }},
     {"pickerdirt", [](Shell&, Snapshot& s) { // the picker on Dirt: Amp sim, Tube drive, Soft clipper, Vintage, Vinyl, Tape emulator
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 2; s.playing = true;
          s.ui.picker_open = true; s.ui.picker_items = true; s.ui.picker_family = uint8_t(Family::Dirt); s.ui.picker_item = 8;

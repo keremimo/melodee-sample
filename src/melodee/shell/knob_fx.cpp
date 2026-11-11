@@ -114,6 +114,8 @@ void Context::set_compressor(unsigned what, int value) {
     case 3: c.release = uint8_t(std::clamp(value, 0, 100)); value = c.release; break;
     case 4: c.amount = uint8_t(std::clamp(value, 0, 100)); value = c.amount; break;
     case 5: c.boost = uint8_t(std::clamp(value, 0, 24)); value = c.boost; break;
+    case 6: c.sidechain = value != 0; break;
+    case 7: c.key = uint8_t(std::clamp<int>(value, 0, track_count - 1)); value = c.key; break;
     default: return;
     }
     send({Type::Compressor, 0, 0, uint16_t(what), int16_t(value)});

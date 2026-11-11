@@ -456,6 +456,8 @@ void EngineHost::apply(const Command& c) {
         case 3: settings.release = uint8_t(c.value); break;
         case 4: settings.amount = uint8_t(c.value); break;
         case 5: settings.boost = uint8_t(c.value); break;
+        case 6: settings.sidechain = c.value != 0; break;
+        case 7: settings.key = uint8_t(std::clamp<int>(c.value, 0, track_count - 1)); break;
         default: break;
         }
         comp_settings = settings;
@@ -1226,6 +1228,13 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     std::fill(master_l, master_l + frames, 0.0f); std::fill(master_r, master_r + frames, 0.0f);
     std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f);
     bool knob_fed = false;
+    // Sidechain: the key track keys the compressor and stays aside while the rest ducks under it.
+    bool keyed = comp.keyed();
+    unsigned key = comp.key() % track_count;
+    if (keyed) {
+        std::fill(key_l, key_l + frames, 0.0f); std::fill(key_r, key_r + frames, 0.0f);
+        std::fill(aside_l, aside_l + frames, 0.0f); std::fill(aside_r, aside_r + frames, 0.0f);
+    }
     // The Track input source: one track on its own, the engine alone (pre) or as it leaves its chain (post).
     bool tapping = source_now.load(std::memory_order_relaxed) == unsigned(InputSource::Track);
     unsigned tapped = source_track.load(std::memory_order_relaxed) % track_count;
@@ -1256,6 +1265,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (punch_target == t) punch.process(slot.left, slot.right, frames);
             run_live(uint8_t(t), slot.left, slot.right, frames);
             if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
+            bool keying = keyed && t == key;
+            if (keying) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
             // Monitored, the tapped track is heard through the input (gain, Rec Input FX) instead: once, as it records.
             bool through_input = tap && monitor_on.load(std::memory_order_relaxed);
             bool heard = !slot.mute && !(solo && !slot.solo) && !through_input;
@@ -1269,8 +1280,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             }
             bool knobbed = knob_heard && ((knob_tracks >> t) & 1);
             if (heard) {
-                float* to_l = knobbed ? knob_l : master_l;
-                float* to_r = knobbed ? knob_r : master_r;
+                float* to_l = knobbed ? knob_l : keying ? aside_l : master_l;
+                float* to_r = knobbed ? knob_r : keying ? aside_r : master_r;
                 knob_fed |= knobbed;
                 for (unsigned f = 0; f < frames; ++f) {
                     to_l[f] += slot.left[f]; to_r[f] += slot.right[f];
@@ -1300,6 +1311,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         knob_tail = knob_tail > frames ? knob_tail - frames : 0;
     } else if (knob_fed) {
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += knob_l[f]; master_r[f] += knob_r[f]; }
+    }
+    if (keyed) { // everything but the key ducks under it, then the key joins, untouched
+        comp.duck(key_l, key_r, master_l, master_r, frames);
+        for (unsigned f = 0; f < frames; ++f) { master_l[f] += aside_l[f]; master_r[f] += aside_r[f]; }
     }
     run_chain(master_chain, master_l, master_r, frames);
     if (punch_target == 255) punch.process(master_l, master_r, frames);

@@ -318,7 +318,7 @@ public:
     bool knob_fx_kit();                                   // its pads are kit pads (the selected track is a kit)
     void send_knob_state();                               // heard or not, and Rec Input FX
     void send_knob_targets();
-    void set_compressor(unsigned what, int value);        // as Command::Compressor's index: on, Color, attack, release, amount, boost
+    void set_compressor(unsigned what, int value);        // as Command::Compressor's index: on, Color, attack, release, amount, boost, Sidechain, key
     // Effects: chain numbers as in model/project.h (tracks, buses, master).
     void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
     void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);

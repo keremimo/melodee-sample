@@ -2661,11 +2661,46 @@ void performance_effects() {
     auto uncompressed = loud(false, false), compressed = loud(true, false), coloured = loud(true, true);
     CHECK(uncompressed.second == 0 && compressed.second > 3 && coloured.second > 3 && coloured.first > 0.01f);
 
+    // Sidechain: track 1 keys it; track 3 ducks under it, track 1 passes untouched, no makeup without the key,
+    // and a muted key still ducks (a ghost key).
+    {
+        auto two = std::make_unique<Project>(*project);
+        load_sound(two->tracks[2], EngineKind::Prophet, 0);
+        two->tracks[2].params[prophet::Cutoff] = 100;
+        struct Heard { double energy; float reduction; };
+        auto side = [&](bool on, bool key_plays, bool other_plays, bool key_muted) {
+            EngineHost host;
+            host.load(*two, *bank);
+            host.send({Command::Type::Compressor, 0, 0, 4, 100});
+            host.send({Command::Type::Compressor, 0, 0, 7, 0});
+            host.send({Command::Type::Compressor, 0, 0, 6, 1});
+            host.send({Command::Type::Compressor, 0, 0, 0, int16_t(on)});
+            if (key_muted) host.send({Command::Type::Mute, 0, 0, 0, 1});
+            if (key_plays) for (int note : {45, 57}) host.send({Command::Type::NoteOn, 0, 0, uint16_t(note), 127});
+            if (other_plays) for (int note : {64, 69}) host.send({Command::Type::NoteOn, 2, 0, uint16_t(note), 110});
+            std::vector<int32_t> out(256);
+            double sum = 0;
+            for (unsigned n = 0; n < 200; ++n) {
+                host.render(out.data(), 128, 1);
+                if (n > 40) for (auto v : out) sum += double(v / 2147483648.0f) * (v / 2147483648.0f);
+            }
+            return Heard {sum, host.compression()};
+        };
+        auto key_dry = side(false, true, false, false), key_keyed = side(true, true, false, false);
+        auto other_dry = side(false, false, true, false), other_alone = side(true, false, true, false);
+        auto both_dry = side(false, true, true, false), both_keyed = side(true, true, true, false);
+        auto ghost = side(true, true, true, true);
+        CHECK(key_keyed.reduction > 3 && std::fabs(key_keyed.energy - key_dry.energy) < key_dry.energy * 0.01);       // the key untouched
+        CHECK(other_alone.reduction == 0 && std::fabs(other_alone.energy - other_dry.energy) < other_dry.energy * 0.01); // no key, no change
+        CHECK(both_keyed.energy < both_dry.energy - other_dry.energy * 0.5);                                           // the rest ducks
+        CHECK(ghost.reduction > 3 && ghost.energy < other_dry.energy * 0.5);                                           // muted key, track 3 ducked
+    }
+
     // The project file: Knob FX and the compressor come back; older files (neither section) load them off.
     project->knob_fx.choice = 16; project->knob_fx.kind = uint8_t(EffectKind::AmpSim); project->knob_fx.params = {3, 70, 40, 2, -3, 5};
     project->knob_fx.on = true; project->knob_fx.bypass = true;
     project->knob_fx.set_track(4, true); project->knob_fx.set_pad(1, 70, true);
-    project->compressor = {true, true, 12, 80, 66, 9};
+    project->compressor = {true, true, 12, 80, 66, 9, true, 5};
     auto data = save_project(*project, *bank);
     auto back = std::make_unique<Project>();
     auto back_bank = std::make_unique<PatternBank>();
@@ -2674,7 +2709,7 @@ void performance_effects() {
     CHECK(!k.on && k.bypass && k.choice == 16 && k.kind == uint8_t(EffectKind::AmpSim) && k.params[4] == -3 && k.track_on(4) && !k.track_on(3)
           && k.pad_on(1, 70) && !k.pad_on(1, 6));
     const auto& c = back->compressor;
-    CHECK(c.on && c.color && c.attack == 12 && c.release == 80 && c.amount == 66 && c.boost == 9);
+    CHECK(c.on && c.color && c.attack == 12 && c.release == 80 && c.amount == 66 && c.boost == 9 && c.sidechain && c.key == 5);
     auto older = data;
     for (size_t n = 0; n + 4 <= older.size(); ++n)
         if (std::memcmp(&older[n], "KNFX", 4) == 0 || std::memcmp(&older[n], "CMPR", 4) == 0) std::memcpy(&older[n], "XXXX", 4);

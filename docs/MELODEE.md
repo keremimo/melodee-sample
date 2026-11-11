@@ -545,8 +545,15 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   quantize.
 - **Pad Punch** (Pad FX again on a kit): each kit pad its own punch, rate
   and depth.
-- **Compressor** (Shift + Pad 5): on the master. B1 Color, B3 engage; K1
-  attack, K2 release, K3 amount, Shift + K3 In Boost.
+- **Compressor** (Shift + Pad 5): on the master. B1 Sidechain, B2 Color,
+  B3 engage; K1 attack, K2 release, K3 amount, Shift + K3 In Boost. With
+  Sidechain one track keys it (the wheel or −/+ pick it, its tag on the
+  header): its sound after its chain, muted or not, drives the detector,
+  and the rest of the mix (other tracks, the Looper, the bus returns, Knob
+  FX) ducks under it before the master chain, with no makeup; the key
+  passes untouched, In Boost drives the detector alone, and Color stays on
+  the master. The curve then shows the key's level against what the rest
+  keeps.
 
 ### Fader
 

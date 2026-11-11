@@ -242,6 +242,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             const auto& c = project_->compressor;
             comp_bits.store(uint32_t(c.on) | uint32_t(c.color) << 1 | uint32_t(c.boost) << 2 | uint32_t(c.attack) << 8 | uint32_t(c.release) << 16
                             | uint32_t(c.amount) << 24, std::memory_order_relaxed);
+            comp_side.store(uint32_t(c.sidechain) | uint32_t(c.key) << 1, std::memory_order_relaxed);
         }
         { // phase 7b: Pad FX (bank, engaged, latched, selected; the slots' kinds + 1) and Flex Beat's settings
             unsigned latched = 0;

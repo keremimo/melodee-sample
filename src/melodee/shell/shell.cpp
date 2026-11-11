@@ -594,7 +594,7 @@ std::string Shell::midi_config_summary() const {
 // Phase 7: Knob FX and the master compressor.
 std::string Shell::fx_summary() const {
     uint32_t k = knob_bits.load(std::memory_order_relaxed), targets = knob_targets.load(std::memory_order_relaxed);
-    uint32_t c = comp_bits.load(std::memory_order_relaxed);
+    uint32_t c = comp_bits.load(std::memory_order_relaxed), side = comp_side.load(std::memory_order_relaxed);
     char text[48];
     std::snprintf(text, sizeof(text), "%.1f", double(host.compression()));
     return " melodee_knob=" + std::to_string(k & 1) + " melodee_knob_bypass=" + std::to_string((k >> 1) & 1)
@@ -604,6 +604,7 @@ std::string Shell::fx_summary() const {
          + " melodee_comp=" + std::to_string(c & 1) + " melodee_comp_color=" + std::to_string((c >> 1) & 1)
          + " melodee_comp_boost=" + std::to_string((c >> 2) & 0x3f) + " melodee_comp_attack=" + std::to_string((c >> 8) & 0xff)
          + " melodee_comp_release=" + std::to_string((c >> 16) & 0xff) + " melodee_comp_amount=" + std::to_string(c >> 24)
+         + " melodee_comp_sidechain=" + std::to_string(side & 1) + " melodee_comp_key=" + std::to_string((side >> 1) + 1)
          + " melodee_comp_reduction=" + text + padfx_summary() + fader_summary();
 }
 

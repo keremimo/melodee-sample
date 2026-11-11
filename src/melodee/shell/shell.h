@@ -133,7 +133,7 @@ private:
     // Phase 5: Chop (type, slices, the slice in hand, armed), the last pad's region and file, slots
     // used, the browser (rows, cursor, drive, preview) and its folder.
     std::atomic<uint32_t> record_bits {0}; // phase 6: source, monitor, the take's pad + 1, cuts, rendering, pick, threshold
-    std::atomic<uint32_t> knob_bits {0}, knob_targets {0}, comp_bits {0}; // phase 7: Knob FX and the master compressor
+    std::atomic<uint32_t> knob_bits {0}, knob_targets {0}, comp_bits {0}, comp_side {0}; // phase 7: Knob FX and the master compressor (Sidechain, key)
     std::atomic<uint32_t> padfx_bits {0}, punch_slots_bits {0};            // phase 7b: Pad FX and Flex Beat
     std::atomic<uint32_t> fader_bits {0}, fader_value {0};                 // phase 8: the fader
     std::atomic<int> fader_at {-1};                                        // and where it sits
