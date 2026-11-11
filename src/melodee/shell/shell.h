@@ -8,6 +8,7 @@
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/meter_lights.h"
 #include "melodee/shell/midi_io.h"
+#include "melodee/shell/pad_context.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/snapshot.h"
@@ -92,12 +93,15 @@ private:
     std::string meter_db_text() const; // and the levels they show
     std::string pad_summary() const;   // the last pad's Sample Mode values (phase 4)
     std::atomic<uint64_t> button_levels {0};
-    std::atomic<uint32_t> pads_lit {0}; // the pads lit, a bit each, for `status`
+    std::atomic<uint64_t> pad_rungs {0}, pad_hues {0}; // each pad's rung and hue (shell/pad_light.h), 4 bits a pad, for `status`
+    std::array<uint32_t, 16> pad_let_go {}; // when each pad was let go, ms + 1: its flare fades from there (shell/pad_lights.h)
+    unsigned count_beat_seen = 0;           // the count-in's beat the pads last pulsed for
+    uint32_t count_beat_at = 0;             // and when it began, ms
+    PadFacts pad_facts() const;             // what pad_context() asks of the shell (shell/pad_context.h)
     std::atomic<uint32_t> meter_bits {0}; // their LEDs (left, right << 8) and the input shown (<< 16), for `status`
     bool record_track_keys() const; // Record: a synth track source plays the pads (Minus / Plus: its octave)
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
     bool song_buttons() const { return ui_.page == PageId::Song && !ui_.song_export && !ui_.shift; } // Chop, Erase, Note Repeat work on the clip
-    Rgb loop_light(unsigned pad, uint32_t now, bool muting) const; // the Looper's grid (shell/lights.cpp)
     void end_copy_away();  // copying stops away from the pads it copies
 
     EngineHost& host;

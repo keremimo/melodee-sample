@@ -14,6 +14,7 @@
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
+#include "melodee/shell/pad_lights.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/seq_layer.h"
@@ -28,56 +29,6 @@
 #include <cstdio>
 
 namespace melodee {
-namespace {
-Rgb track_light(unsigned track, float level) {
-    uint32_t c = ui::track_shades[track % track_count][0];
-    return led_colour::rgb(((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f, level);
-}
-Rgb loop_colour_light(unsigned loop, float level) {
-    uint32_t c = ui::loop_shades[loop % loop_tracks][0];
-    return led_colour::rgb(((c >> 16) & 255) / 255.0f, ((c >> 8) & 255) / 255.0f, (c & 255) / 255.0f, level);
-}
-} // namespace
-
-// The loop grid (docs/LOOPER.md): a column a loop, pad 1 bottom left; in mute mode each column its loop track.
-Rgb Shell::loop_light(unsigned pad, uint32_t now, bool muting) const {
-    using S = Looper::State;
-    const auto& lp = host.looper();
-    unsigned loop = pad % 4, row = pad / 4 % 4;
-    if (!lp.enabled_now()) return {};
-    auto v = lp.view(loop);
-    const auto& m = project_->loop_mix[loop];
-    if (muting) return m.mute ? led_colour::rgb(1, 0, 0, 0.35f) : m.solo ? led_colour::white(0.8f) : loop_colour_light(loop, 0.6f);
-    bool blink = (now / 200) % 2, audio = v.length > 0;
-    bool waiting = v.pending != Looper::Pending::None;
-    switch (row) {
-    case 3: // record / overdub / play
-        if (v.state == S::Recording) return led_colour::rgb(1, 0, 0, 1);
-        if (v.state == S::Armed) return led_colour::rgb(1, 0, 0, blink ? 1.0f : 0.15f);
-        if (v.state == S::Overdub) return led_colour::rgb(1, 0.45f, 0, 1);
-        if (v.fitting) return loop_colour_light(loop, blink ? 0.8f : 0.2f);
-        return loop_colour_light(loop, audio ? 0.3f : 0.12f);
-    case 2: { // play or stop on the next boundary
-        if (!audio) return {};
-        if (waiting) return loop_colour_light(loop, blink ? 0.9f : 0.12f);
-        if (v.state == S::Playing || v.state == S::Overdub) {
-            double tick = lp.beat_tick();
-            unsigned bar = project_->bar_ticks(), beat = project_->beat_ticks();
-            double in_bar = std::fmod(std::max(tick, 0.0), double(bar)), in_beat = std::fmod(std::max(tick, 0.0), double(beat));
-            if (host.playing() && in_bar < beat / 4.0) return led_colour::white(0.9f);
-            return loop_colour_light(loop, host.playing() && in_beat < beat / 4.0 ? 1.0f : 0.55f);
-        }
-        return loop_colour_light(loop, 0.12f);
-    }
-    case 1: // undo, then redo
-        return v.undo == looper::Undo::Undo ? led_colour::white(0.6f) : v.undo == looper::Undo::Redo ? led_colour::white(0.15f) : Rgb {};
-    default: { // hold to clear
-        if (!audio && v.state == S::Empty) return {};
-        if (ui_.loop_clear == int(loop)) return led_colour::rgb(1, 0, 0, std::min(1.0f, 0.2f + 0.8f * float(now - ui_.loop_clear_at) / loop_clear_ms));
-        return led_colour::rgb(1, 0, 0, 0.2f);
-    }
-    }
-}
 
 void Shell::lights(SurfaceLights& lights, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock); // the screen thread may be copying the state
@@ -310,145 +261,33 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     const auto& project = *project_;
     const auto& track = project.tracks[ui.track];
     bool playing = host.playing();
-    int position = host.position_of(ui.track);
     uint32_t ticks = host.ticks();
-    bool tracks = tracks_on_pads(ui), muting = ui.mute_mode() && !ui.name.open() && !tracks;
-    bool mute_kit = muting && mute_on_kit(ui, kit_pads());
-    bool loop_grid = (ui.page == PageId::Looper || ui.loop_held) && !tracks; // Loop held: the grid on any page
-    bool pattern_pads = patterns_on_pads(ui) && !tracks && !loop_grid; // Seq held, or a pattern copy: the track's patterns
-    bool shift_pads = ui.shift && !ui.name.open() && !ui.exit_open && !tracks && !muting && !pattern_pads && !(ui.loop_held && ui.page != PageId::Looper);
-    const Rgb muted_red = led_colour::rgb(1, 0, 0, 0.35f); // muted, as the MPC lights it
-    uint32_t lit = 0; // for `status`
-    for (unsigned pad = 0; pad < 16; ++pad) {
-        bool held = ui.held_pads & (1u << pad);
-        Rgb colour {};
-        if (loop_grid) {
-            colour = loop_light(pad, now, muting && ui.page == PageId::Looper);
-        } else if (pattern_pads) {
-            // The pads are the selected track's sixteen patterns: playing bright, queued blinking, holding
-            // notes dim, empty dark; a copy's first pattern white.
-            bool notes = !patterns_->at[ui.track][pad].empty();
-            bool live = host.pattern_of(ui.track) == pad, queued = playing && track.pattern == pad && !live;
-            bool now_on = playing ? live : track.pattern == pad;
-            float level = now_on ? 1.0f : queued ? ((now / 150) % 2 ? 0.8f : 0.15f) : notes ? 0.25f : 0;
-            colour = track_light(ui.track, level);
-            if (ui.copying == UiState::Copying::Patterns && ui.copy_track == ui.track && ui.copy_from == int(pad)) colour = led_colour::white(1);
-        } else if (mute_kit) {
-            // Mute mode on a kit: the bank's pads, muted red, soloed white, the rest in the track's colour.
-            unsigned kit = track.bank % sampler_banks * 16 + pad;
-            colour = !track.pads[kit].used() ? Rgb {} : track.pad_muted(kit) ? muted_red
-                   : pad_soloed(track, kit) ? led_colour::white(0.8f) : track_light(ui.track, 0.6f);
-        } else if (context_.record_keys() && !tracks && !muting) {
-            // A take of Melodee's own sound: the pads are the instrument (a track source in its colour; Resample the
-            // kit, the take's pad red), lit white while held.
-            const auto& in = ui.settings.input;
-            bool kit_source = in.source != InputSource::Track;
-            unsigned from = kit_source ? ui.track : in.track % track_count;
-            unsigned kit = track.bank % sampler_banks * 16 + pad;
-            if (held) colour = led_colour::white(1);
-            else if (kit_source && ui.rec_pad == int(kit)) colour = led_colour::rgb(1, 0, 0, 1);
-            else if (kit_source) colour = track_light(from, track.pads[kit].used() ? 0.4f : 0.07f);
-            else colour = track_light(from, project.tracks[from].engine == EngineKind::Kit909 && pad >= 11 ? 0.0f : 0.45f);
-        } else if ((ui.page == PageId::Record || ui.resample_pick) && track.engine == EngineKind::Sampler && !tracks && !muting) {
-            // Record and Resample's pick: every pad can take a sample (empty ones faint); the take's pad
-            // red, flashing while it waits; the pads cut from it white.
-            unsigned kit = track.bank % sampler_banks * 16 + pad;
-            bool take_here = ui.rec_track == ui.track;
-            bool cut = false;
-            for (unsigned n = 0; n < ui.rec_chops && take_here; ++n) cut |= ui.rec_chop_pad[n] == kit;
-            auto state = host.recorder().state();
-            if (take_here && ui.rec_pad == int(kit))
-                colour = state == TakeRecorder::State::Recording || (now / 250) % 2 ? led_colour::rgb(1, 0, 0, 1) : led_colour::rgb(1, 0, 0, 0.2f);
-            else if (cut) colour = led_colour::white(0.9f);
-            else colour = track_light(ui.track, track.pads[kit].used() ? 0.3f : 0.07f);
-        } else if (tracks || muting || ui.page == PageId::Tracks || ui.page == PageId::Song) {
-            // The pads are the tracks.
-            const auto& t = project.tracks[pad];
-            float level = !t.used() ? 0 : pad == ui.track ? 1.0f : t.mix.mute ? 0.08f : 0.35f;
-            colour = track_light(pad, level);
-            if (muting && t.used()) colour = t.mix.mute ? muted_red : (t.mix.solo ? led_colour::white(0.8f) : track_light(pad, 0.6f));
-            if (ui.copying == UiState::Copying::Tracks && ui.copy_from == int(pad)) colour = led_colour::white(1); // the track being copied
-        } else if (ui.page == PageId::Steps) {
-            const auto& pattern = context_.pattern();
-            unsigned step = ui.steps_bar * bar_steps + pad;
-            bool inside = step < pattern.steps(), on = inside && !pattern.step(step).empty();
-            colour = on ? track_light(ui.track, 0.8f) : Rgb {};
-            if (playing && inside && position >= 0 && unsigned(position) / pattern.q() == step) colour = led_colour::white(0.7f);
-            if (int(step) == ui.held_step) colour = led_colour::white(1);
-        } else if (ui.page == PageId::StepEdit) {
-            // The pads with an event on the step bright, the selected event's white, the rest faint.
-            const auto& pattern = context_.pattern();
-            int key = pad_key(project, track, pad), chosen = selected_event(pattern, ui);
-            auto in = step_events(pattern, unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps());
-            bool here = false;
-            for (unsigned n = 0; n < in.count; ++n) here |= pattern.events[in.first + n].key == key;
-            bool empty_pad = track.engine == EngineKind::Sampler && !track.pads[(unsigned(key) - sampler_first_note) % sampler_pads].used();
-            colour = key < 0 ? Rgb {} : chosen >= 0 && pattern.events[size_t(chosen)].key == key ? led_colour::white(1)
-                   : here ? track_light(ui.track, 1.0f) : empty_pad ? Rgb {} : track_light(ui.track, 0.12f);
-        } else if (ui.page == PageId::Compressor && project.compressor.sidechain) {
-            // Sidechain's key: the key track bright and the others faint, or the key kit's pads of the bank shown.
-            const auto& c = project.compressor;
-            unsigned key = c.key % track_count;
-            const auto& kit_track = project.tracks[key];
-            if (ui.comp_pads && kit_track.engine == EngineKind::Sampler) {
-                unsigned kit = ui.comp_bank % sampler_banks * 16 + pad;
-                colour = track_light(key, c.key_pad == kit ? 1.0f : kit_track.pads[kit].used() ? 0.12f : 0.0f);
-            } else {
-                colour = track_light(pad, pad == key ? 1.0f : project.tracks[pad].used() ? 0.12f : 0.0f);
-            }
-        } else if (ui.page == PageId::KnobFx) {
-            // Knob FX: the pads it is on bright, the rest faint (as on the MPC); kit pads of the bank, or tracks.
-            const auto& k = project.knob_fx;
-            if (track.engine == EngineKind::Sampler) {
-                unsigned kit = track.bank % sampler_banks * 16 + pad;
-                colour = track_light(ui.track, k.pad_on(ui.track, kit) ? 1.0f : track.pads[kit].used() ? 0.12f : 0.04f);
-            } else {
-                colour = track_light(pad, k.track_on(pad) ? 1.0f : project.tracks[pad].used() ? 0.12f : 0.04f);
-            }
-        } else if (ui.page == PageId::Punch) {
-            // The bank's punches: sounding bright, engaged but bypassed (a fifth) blinking, the rest faint; white on the master.
-            int kind = punch_on_pad(project.punch_bank, pad);
-            bool waiting = kind >= 0 && ui.engaged_at(kind) >= 0 && !ui.punch_sounding(kind);
-            float level = kind < 0 ? 0 : ui.punch_sounding(kind) ? 1.0f : waiting ? ((now / 250) % 2 ? 0.5f : 0.15f) : 0.25f;
-            colour = project.punch_target ? track_light(ui.track, level) : led_colour::white(level * 0.7f);
-        } else if (ui.page == PageId::FlexBeat) {
-            // Flex Beat: the pad playing bright (Empty when none), the others faint.
-            unsigned playing = host.flex_playing();
-            colour = led_colour::white(pad == playing ? 0.8f : pad == 0 ? 0.08f : 0.2f);
-        } else if (ui.page == PageId::PadPunch && track.engine == EngineKind::Sampler) {
-            unsigned kit = track.bank % sampler_banks * 16 + pad;
-            const auto& sound = track.pads[kit];
-            colour = sound.used() ? track_light(ui.track, ui.pad_punch_held == int(kit) ? 1.0f : sound.punch ? 0.5f : 0.12f) : Rgb {};
-        } else if (track.engine == EngineKind::Sampler) {
-            unsigned kit = track.bank % sampler_banks * 16 + pad;
-            colour = track.pads[kit].used() ? track_light(ui.track, kit == track.last_pad ? 1.0f : 0.3f) : Rgb {};
-        } else if (track.engine == EngineKind::Kit909) {
-            colour = pad < 11 ? track_light(ui.track, pad == unsigned(track.last_note - 36) ? 0.9f : 0.3f) : Rgb {};
-        } else if (track.used()) {
-            auto note = pad_note(project, track, pad);
-            colour = track_light(ui.track, note.root ? 0.9f : 0.22f);
+    { // The pads (shell/pad_lights.cpp): they light as what a press does there, chosen as Shell::hit() chooses it.
+        unsigned beat = host.count_in();
+        if (beat != count_beat_seen) { count_beat_seen = beat; count_beat_at = beat ? now : 0; }
+        host.watch_taps(int(ui.track % track_count)); // the screen asks the same: the selected track's voices
+        TrackTaps taps;
+        if (!host.taps(taps) || taps.track != ui.track % track_count) taps = TrackTaps {};
+        PadScene scene {ui, project, *patterns_, host, taps, pad_facts(), now, &pad_let_go, count_beat_at};
+        std::array<pad_light::Look, 16> looks;
+        pad_looks(scene, looks);
+        uint64_t rungs = 0, hues = 0;
+        for (unsigned pad = 0; pad < 16; ++pad) {
+            lights.pad(pad, looks[pad].rgb);
+            if (!looks[pad].lit()) continue;
+            rungs |= uint64_t(pad_light::rung(looks[pad].level)) << (4 * pad);
+            hues |= uint64_t(looks[pad].hue) << (4 * pad);
         }
-        if (shift_pads && !(ui.page == PageId::Looper && pad >= 8 && pad < 12)) { // Shift held (the grid's 9-12: play or stop at once): the pads with a printed job glow, a toggle that is on brightly
-            unsigned level = shift_pad_level(ui, pad);
-            colour = level ? track_light(ui.track, level == 2 ? 1.0f : 0.3f) : Rgb {};
-        }
-        if (held && ui.page != PageId::Steps && !loop_grid && !tracks && !muting && !pattern_pads) colour = led_colour::white(1);
-        if (ui.settings.pad_lights == 1) { // white, as bright as the colour was
-            float full = std::max<float>(led_colour::white(1).r, 1);
-            colour = led_colour::white(std::max({colour.r, colour.g, colour.b}) / full);
-        }
-        if (ui.settings.pad_lights == 2) colour = {};
-        lights.pad(pad, colour);
-        if (colour.r || colour.g || colour.b) lit |= 1u << pad;
+        pad_rungs.store(rungs, std::memory_order_relaxed);
+        pad_hues.store(hues, std::memory_order_relaxed);
     }
-    pads_lit.store(lit, std::memory_order_relaxed);
     { // The fader light shows the value it drives (brightest at the middle for pan and tune), dark with nothing to drive;
       // white where that value is the master's (Compressor, Flex Beat, Knob FX).
         auto job = fader_job(project, ui);
         float level = fader_light_level(job);
         bool master = job.source == FaderJob::Source::Page
                    && (ui.page == PageId::Compressor || ui.page == PageId::FlexBeat || ui.page == PageId::KnobFx);
-        lights.fader(level <= 0 ? Rgb {} : master ? led_colour::white(level) : track_light(ui.track, level));
+        lights.fader(level <= 0 ? Rgb {} : master ? led_colour::white(level) : pad_light::track(ui.track, level).rgb);
     }
     // Bank lights A-H: the sampler track's bank in view.
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)

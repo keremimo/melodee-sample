@@ -6718,6 +6718,195 @@ void plugins() {
     CHECK(handed == 2);
 }
 
+#include "melodee/shell/pad_lights.h"
+#include "melodee/shell/step_lane.h"
+
+// The pads light as what a press does there (shell/pad_context.h, shell/pad_lights.cpp), on five rungs.
+void pad_lights() {
+    using namespace pad_light;
+    // The ladder: Faint keeps every channel of each track's colour lit; 0.07 left track 1 pure red.
+    auto channels = [](Rgb c) { return unsigned(c.r > 0) + unsigned(c.g > 0) + unsigned(c.b > 0); };
+    for (unsigned t = 0; t < 16; ++t) CHECK(channels(track(t, faint).rgb) == channels(track(t, full).rgb));
+    CHECK(channels(track(0, 0.07f).rgb) == 1 && channels(track(0, full).rgb) == 3);
+    CHECK(rung(0) == 0 && rung(faint) == 1 && rung(dim) == 2 && rung(mid) == 3 && rung(full) == 4 && rung(0.3f) == 1);
+
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    EngineHost host;
+    TrackTaps taps;
+    UiState ui;
+    auto& kit = project->tracks[1];
+    kit.engine = EngineKind::Sampler;
+    for (unsigned n = 0; n < 12; ++n) kit.pads[n].sample = uint16_t(n);
+    kit.last_pad = 1;
+    kit.pad_mutes[0] |= uint64_t(1) << 8; // pad 9
+    project->tracks[0].engine = EngineKind::Prophet;
+    project->tracks[5].engine = EngineKind::Kit909;
+    ui.track = 1; ui.page = PageId::Stage;
+    std::array<Look, 16> looks;
+    PadFacts plays; plays.kit_pads = true;
+    auto light = [&](PadFacts facts, uint32_t now = 1000, const std::array<uint32_t, 16>* let_go = nullptr) {
+        PadScene scene {ui, *project, *bank, host, taps, facts, now, let_go, 0};
+        pad_looks(scene, looks);
+    };
+    auto is = [&](unsigned pad, Hue hue, unsigned r) { return looks[pad].hue == hue && rung(looks[pad].level) == r; };
+
+    // A kit: the last pad Full, a sample Dim, empty dark, muted Faint red on every play page; held white.
+    light(plays);
+    CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(12, Hue::None, 0) && is(8, Hue::Red, 1));
+    ui.held_pads = 1u << 3; light(plays); CHECK(is(3, Hue::White, 4)); ui.held_pads = 0;
+    std::array<uint32_t, 16> let_go {};
+    let_go[0] = 1000 + 1; // pad 1 let go at 1000 ms: it flares, and a second later it is Dim again
+    light(plays, 1000, &let_go); CHECK(is(0, Hue::Track, 4));
+    light(plays, 2000, &let_go); CHECK(is(0, Hue::Track, 2));
+    taps.track = 1; taps.count = 1; taps.voice[0].pad = 2; taps.voice[0].level = 0.5f; // a voice at half its envelope
+    light(plays); CHECK(is(2, Hue::Track, 3));
+    taps = TrackTaps {};
+    // The 909: eleven drums, the last one played Full.
+    ui.track = 5; project->tracks[5].last_note = 37; light({});
+    CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(11, Hue::None, 0));
+    // A synth: roots Mid, the scale Dim; chromatic, the notes out of the scale Faint.
+    ui.track = 0; light({});
+    CHECK(is(0, Hue::Track, 3) && is(1, Hue::Track, 2) && is(7, Hue::Track, 3));
+    project->tracks[0].layout = PadLayout::Chromatic; light({});
+    CHECK(is(0, Hue::Track, 3) && is(1, Hue::Track, 1) && is(2, Hue::Track, 2));
+    project->tracks[0].layout = PadLayout::Scale;
+    // 16 Levels: soft to loud; Tune as recorded white on pad 4, below Faint, an octave up Mid.
+    ui.track = 1; kit.levels = true; kit.levels_kind = uint8_t(LevelsKind::Velocity); light({});
+    CHECK(is(0, Hue::Track, 1) && is(15, Hue::Track, 4) && looks[7].level < looks[8].level);
+    kit.levels_kind = uint8_t(LevelsKind::Tune); light({});
+    CHECK(is(3, Hue::White, 3) && is(0, Hue::Track, 1) && is(15, Hue::Track, 3));
+    kit.levels = false;
+
+    // Tracks: picked Full, heard Dim, muted Faint red; a solo leaves the rest Faint.
+    ui.page = PageId::Tracks; project->tracks[3].engine = EngineKind::Fm6; project->tracks[3].mix.mute = true; light({});
+    CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(3, Hue::Red, 1) && is(9, Hue::None, 0));
+    project->tracks[0].mix.solo = true; light({});
+    CHECK(is(0, Hue::White, 2) && is(5, Hue::Track, 1));
+    ui.page = PageId::Stage; ui.pad_bank = true; light(plays); // Pad Bank held: the tracks, on any page
+    CHECK(is(1, Hue::Track, 4) && is(3, Hue::Red, 1));
+    ui.pad_bank = false;
+    // Mute mode: a kit's pads on a kit page, the tracks on Tracks; muted Dim red, a solo white.
+    ui.mute = true; light(plays);
+    CHECK(is(8, Hue::Red, 2) && is(0, Hue::Track, 3) && is(12, Hue::None, 0));
+    ui.page = PageId::Tracks; light({});
+    CHECK(is(3, Hue::Red, 2) && is(0, Hue::White, 3) && is(5, Hue::Track, 1));
+    ui.mute = false; project->tracks[0].mix.solo = false;
+    // Song: the lane picked, a clip under the cursor Mid, not in the song Faint.
+    ui.page = PageId::Song; project->song.clips[0].track = 0; project->song.clips[0].bars = 2; project->song.count = 1; light({});
+    CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 3) && is(5, Hue::Track, 1));
+
+    // Seq held: the pattern in play Full, with notes Dim, empty dark; + Erase red; + Shift a column; a copy.
+    auto& p = bank->at[1][0];
+    put(p, 0, uint8_t(sampler_first_note + 1), 127);
+    put(p, 2, uint8_t(sampler_first_note), 100);
+    put(bank->at[1][2], 0, uint8_t(sampler_first_note), 100);
+    ui.page = PageId::Stage; ui.seq_held = true; light(plays);
+    CHECK(is(0, Hue::Track, 4) && is(2, Hue::Track, 2) && is(5, Hue::None, 0));
+    ui.erase = true; light(plays);
+    CHECK(is(0, Hue::Red, 3) && is(2, Hue::Red, 2) && is(5, Hue::None, 0));
+    ui.erase = false; ui.shift = true; light(plays);
+    CHECK(is(0, Hue::White, 4) && is(2, Hue::White, 1));
+    ui.shift = false; ui.copying = UiState::Copying::Patterns; ui.copy_from = 0; ui.copy_track = 1; light(plays);
+    CHECK(is(0, Hue::White, 4) && is(2, Hue::Red, 1) && is(3, Hue::Track, 1));
+    ui.copying = UiState::Copying::Off; ui.copy_from = -1; ui.seq_held = false;
+    // Steps on a kit: the last pad's lane only, by velocity; past the pattern's end dark.
+    ui.page = PageId::Steps; light(plays);
+    CHECK(is(0, Hue::Track, 4) && is(2, Hue::Track, 1) && is(1, Hue::Track, 1));
+    p.length = 12 * sixteenth_ticks; light(plays);
+    CHECK(is(12, Hue::None, 0) && is(11, Hue::Track, 1));
+    p.length = 16 * sixteenth_ticks;
+    CHECK(steps_lane(kit) == 37 && steps_lane(project->tracks[0]) == -1);
+    CHECK(step_velocity(p, 0, 37) == 127 && step_velocity(p, 2, 37) == 0 && step_velocity(p, 2, -1) == 100);
+    CHECK(add_lane_note(p, 2, 37, 90) && step_velocity(p, 2, 37) == 90 && step_velocity(p, 2, 36) == 100); // beside the other pad's
+    CHECK(clear_lane(p, 2, 37) && step_velocity(p, 2, 37) == 0 && step_velocity(p, 2, 36) == 100);        // only its lane goes
+    CHECK(!clear_lane(p, 5, 37));
+    CHECK(move_lane(p, 0, 37, 38) && step_velocity(p, 0, 38) == 127 && step_velocity(p, 0, 37) == 0 && move_lane(p, 0, 38, 37));
+    // Step Edit: the chosen event white, a pad with nothing on the step Faint.
+    ui.page = PageId::StepEdit; ui.step_cursor = 0; light({});
+    CHECK(is(1, Hue::White, 4) && is(0, Hue::Track, 1) && is(12, Hue::None, 0));
+    // Roll: the note in focus white, notes elsewhere Dim, none Faint.
+    ui.page = PageId::Roll; ui.roll_key = 37; light({});
+    CHECK(is(1, Hue::White, 4) && is(0, Hue::Track, 2) && is(5, Hue::Track, 1));
+    // Time Correct: whose notes move.
+    ui.page = PageId::TimeCorrect; ui.tc_all = true; light({});
+    CHECK(is(0, Hue::Track, 4) && is(1, Hue::Track, 4) && is(5, Hue::None, 0));
+    ui.tc_all = false; ui.tc_toggle(36); light({});
+    CHECK(is(0, Hue::Track, 4) && is(1, Hue::Track, 2));
+
+    // Chop: the slices, the one in hand Full; Manual armed, pad 1 flashes red.
+    ui.page = PageId::Chop; ui.slices.count = 5; ui.chop_slice = 2; light({});
+    CHECK(is(2, Hue::Track, 4) && is(0, Hue::Track, 2) && is(6, Hue::None, 0));
+    ui.chop_mode = ChopMode::Manual; ui.chop_armed = true; light({}, 1000);
+    CHECK(is(0, Hue::Red, 4) && is(1, Hue::None, 0));
+    ui.chop_armed = false; ui.chop_mode = ChopMode::Threshold; ui.slices.count = 0;
+    // Record: the take's pad red, a sample Dim, empty Faint (never 0.07, which drove tracks 1 and 2 red).
+    ui.page = PageId::Record; ui.rec_track = 1; ui.rec_pad = 12; light({}, 1000);
+    CHECK(is(12, Hue::Red, 4) && is(0, Hue::Track, 2) && is(13, Hue::Track, 1));
+    ui.rec_pad = -1;
+    ui.page = PageId::Stage; ui.resample_pick = true; light(plays);
+    CHECK(is(0, Hue::Track, 2) && looks[12].hue == Hue::Track && looks[12].level <= dim);
+    ui.resample_pick = false;
+    // Knob FX and Flex Beat.
+    ui.page = PageId::KnobFx; light({});
+    CHECK(is(0, Hue::Track, 2) && is(12, Hue::None, 0));
+    ui.page = PageId::FlexBeat; light({});
+    CHECK(is(0, Hue::White, 4) && is(1, Hue::White, 2));
+    ui.page = PageId::Stage;
+
+    // Shift: the panel's jobs white, dark where they cannot act.
+    ui.shift = true; kit.pattern = 1; light(plays); // an empty pattern on a kit
+    CHECK(is(1, Hue::None, 0) && is(2, Hue::None, 0) && is(5, Hue::None, 0) && is(13, Hue::None, 0));
+    CHECK(is(3, Hue::White, 2) && is(9, Hue::White, 4) && is(7, Hue::White, 2));
+    kit.pattern = 0; light(plays);
+    CHECK(is(1, Hue::White, 2) && is(5, Hue::White, 2) && is(10, Hue::White, 2));
+    ui.track = 0; light({}); // kits only: Resample, Trim Sample, Warp
+    CHECK(is(10, Hue::None, 0) && is(12, Hue::None, 0) && is(14, Hue::None, 0));
+    ui.track = 1; ui.shift = false;
+    // Erase held on a kit, stopped: the pads that would empty. A pad copy: from, then where.
+    ui.erase = true; light(plays);
+    CHECK(is(0, Hue::Red, 1) && is(12, Hue::None, 0));
+    ui.erase = false; ui.copying = UiState::Copying::Pads; light(plays);
+    CHECK(is(0, Hue::Track, 2) && is(12, Hue::None, 0));
+    ui.copy_from = 4; light(plays);
+    CHECK(is(4, Hue::White, 4) && is(0, Hue::Red, 1) && is(12, Hue::Track, 1));
+    ui.copying = UiState::Copying::Off; ui.copy_from = -1;
+    // The Name sheet: keys white, delete red, the one just typed bright for the retap window.
+    ui.name.start(NameTarget::ProjectSave, "", 12, false); ui.name.last_pad = 6; ui.name.last_at = 900; light({}, 1000);
+    CHECK(is(0, Hue::White, 2) && is(15, Hue::Red, 2) && is(6, Hue::White, 4));
+    ui.name = NameEntry {};
+    // A question: what it is about flashes red, the rest dark; Exit: every pad dark.
+    ui.ask = UiState::Ask::ClearPattern; ui.ask_target = 2; ui.seq_held = true; light({}, 1000);
+    CHECK(is(2, Hue::Red, 4) && is(0, Hue::None, 0));
+    ui.ask = UiState::Ask::None; ui.seq_held = false; ui.exit_open = true; light(plays);
+    for (unsigned n = 0; n < 16; ++n) CHECK(!looks[n].lit());
+    ui.exit_open = false;
+    // The Pad lights setting comes last: White, or Off.
+    ui.settings.pad_lights = 1; light(plays);
+    CHECK(looks[1].hue == Hue::White && looks[1].rgb.r == looks[1].rgb.g && looks[1].rgb.g == looks[1].rgb.b);
+    ui.settings.pad_lights = 2; light(plays);
+    for (unsigned n = 0; n < 16; ++n) CHECK(!looks[n].lit());
+    ui.settings.pad_lights = 0;
+
+    // One chooser, in Shell::hit's order: presses and lights agree.
+    CHECK(pad_context(ui, kit, plays, 0) == PadContext::Page);
+    ui.shift = true; ui.mute = true;
+    CHECK(pad_context(ui, kit, plays, 0) == PadContext::Mute); // Shift + pad in mute mode solos
+    ui.mute = false; ui.page = PageId::Looper;
+    CHECK(pad_context(ui, kit, plays, 8) == PadContext::LoopNow && pad_context(ui, kit, plays, 7) == PadContext::Shift);
+    ui.page = PageId::Stage; ui.shift = false; ui.seq_held = true; ui.name.start(NameTarget::Marker, "", 8, true);
+    CHECK(pad_context(ui, kit, plays, 0) == PadContext::Name); // the sheet over the layer
+    ui.name = NameEntry {}; ui.seq_held = false; ui.erase = true;
+    CHECK(pad_context(ui, kit, plays, 0) == PadContext::PadErase && pad_context(ui, kit, {}, 0) == PadContext::Page);
+    ui.erase = false;
+    PadFacts taking = plays; taking.record_keys = true;
+    CHECK(pad_context(ui, kit, taking, 0) == PadContext::RecordKeys);
+    ui.shift = true; CHECK(pad_context(ui, kit, taking, 0) == PadContext::Shift); ui.shift = false; // Shift + pad jobs stay
+    PadFacts card; card.card = true; ui.exit_open = true;
+    CHECK(pad_context(ui, kit, card, 0) == PadContext::Page); // SD card access: the pads only play
+    ui.exit_open = false;
+}
+
 int main() {
     plugins();
     voice_taps();
@@ -6761,6 +6950,7 @@ int main() {
     pad_expression();
     parity_1c();
     shift_pads();
+    pad_lights();
     button_remap();
     parity_basics();
     history();

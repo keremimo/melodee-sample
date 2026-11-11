@@ -131,7 +131,10 @@ holds the table the dispatch and the lights share.
 | 8 | Settings (seven doors; MIDI Config one of them) | 16 | Project |
 
 Toggles (1, 4, 10) are kept in the settings file. While Shift is held the
-pads light: a toggle that is on bright, a job faint. The screen draws no
+pads light white, the panel's own: a toggle that is on Full, a job Dim, and
+dark where the job would only answer with a notice (Half and Double Seq,
+Half and Double Speed and Time Correct with no notes in the pattern;
+Resample, Trim Sample and Warp off a kit or on an instrument). The screen draws no
 Shift layer, since the jobs are printed on the MPC: the page stays, and
 the knob strip shows only the Shift + K cards.
 
@@ -154,6 +157,55 @@ its loudest hits flashing red); for the input at −42, −30, −18, −9 and �
 dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
 `melodee_meter_db=` in `status` gives the levels shown.
 `shell/button_jobs.cpp`, `shell/lights.cpp`, `shell/meter_lights.h`.
+
+### Pad lights
+
+The pads light as what a press does there: `pad_context()`
+(`shell/pad_context.h`) picks the context in the order `Shell::hit()`
+dispatches presses, and both switch on it, so a layer cannot get a job
+without a light. `shell/pad_lights.cpp` has a function a context, in one
+grammar (`shell/pad_light.h`):
+
+- **Colour** says whose pad it is: the track's colour (a loop's on the
+  Looper), white for the panel's own jobs and the pad in your hand, red for
+  a loss or a recording (muted, about to be erased, the take).
+- **Brightness** has five rungs: Off, Faint 0.25, Dim 0.4, Mid 0.65 and
+  Full. The LEDs square a level before the 0–127 drive, so below about 0.2
+  a colour falls apart; Faint is the lowest rung at which all sixteen track
+  colours keep their hue.
+- **Motion** is timing: a blink waits for a boundary (a pattern or a track's
+  next pattern for the bar), a flare is a sound fading (a kit's voices, the
+  pattern at the playhead for the 909, synths and MIDI, a pad let go), the
+  Count-In pulses every pad white on its beats, the bar's first brighter.
+
+| Context | The pads |
+| --- | --- |
+| A kit (play pages, the sample pages, the browser) | The last pad Full, a sample Dim, empty dark, a muted pad Faint red; each flares as it sounds; held white, red while Seq Record writes it |
+| The 909 | Its eleven drums Dim, the last one played Full, flaring as they play |
+| A synth or MIDI track | Roots Mid, the scale Dim (chromatic: notes out of the scale Faint); a held chord's other notes white |
+| 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Tune as recorded white, below Faint, octaves Mid; Scale roots Mid; the pad hit last white as its sound fades |
+| Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces) |
+| Mute mode | Muted Dim red, heard Mid (kit pads flaring), soloed white, silenced by a solo Faint |
+| Song | The lane picked Full, a clip under the cursor Mid, clips elsewhere Dim, not in the song Faint |
+| Seq held | The pattern playing Full, queued blinking, with notes Dim; + Shift a column, white by how many tracks hold notes there; + Erase red; a copy's source white, where it lands Faint (red where it replaces) |
+| Steps | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end dark, the playhead white (red while recording); on a kit the last pad's lane |
+| Step Edit | The step's events by velocity, the chosen one white |
+| Roll | The note in focus white, the cursor's step Full, notes elsewhere Dim, none Faint |
+| Time Correct | Whose notes move Full, with notes Dim |
+| Motion on a kit | The last pad Full, pads with recorded motion Mid |
+| Chop | The slices, the one in hand Full, flaring as they play; Manual armed: pad 1 flashing red; cutting: pad 1 white, the rest white Faint; + Erase the slices that would go Faint red |
+| Record, Resample | The take's pad red (flashing while it waits), cuts white; Resample's empty pads pulse |
+| Punch | A held punch white as deep as it is pressed, latched Full, waiting blinking |
+| Knob FX, Flex Beat, Pad Punch, sidechain | On or playing Full, the rest Dim or Faint, empty dark |
+| Shift held | The jobs white (above) |
+| Erase held on a kit | Stopped: the pads that would empty Faint red; playing: the pads with notes Dim red, flaring as they play |
+| Shift + Erase on a kit | The pads that can be copied Dim; then the source white, where it lands Faint (red where it replaces) |
+| Name sheet | Keys white Dim, delete red, the key just typed bright for the retap window |
+| A question, Exit | The pad the question is about flashing red, the rest dark; Exit all dark |
+
+The Pad lights setting (Colour, White, Off) comes last. `status` reports each
+lit pad's hue and rung (`melodee_pads=2:t4,9:r1`: pad 2 the track's colour
+Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
 
 ## Pages
 
@@ -427,7 +479,9 @@ hold to steer, Shift + Seq to zoom in**.
   beats, each stacking its notes by pitch, taller for harder hits, a dot
   over it for an accent, an arc under it for a tie, the numbers under them
   and the pattern's bars as blocks at the foot; the step in hand is the
-  header's. Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
+  header's. On a kit the pads are the last pad's lane: a tap sets or clears
+  that pad's note and leaves the others' (Roll edits the whole kit), and
+  the wheel moves a held step's note to the next pad, the lane with it. Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
   playing sixteenth; a kit pad's level, tune, pan, envelopes, filter and
   more are lanes of that pad; Erase + pot asks, then clears the lane), all
   three on one large graph in their knobs' colours, the one in hand heavy;
@@ -1078,7 +1132,7 @@ and Melodee's:
 time against its budget, tenths of a percent), `melodee_render_parallel`
 (blocks the workers helped with), the
 page and track, the lit buttons (`melodee_buttons=seq:2,stop:1`, 1 faint,
-2 bright) and pads (`melodee_pads=`), the meters (`melodee_meter=3,1,out`:
+2 bright) and pads (`melodee_pads=2:t4`: hue and rung, Pad lights above), the meters (`melodee_meter=3,1,out`:
 left and right as masks, bit 0 the bottom LED, then `out` or `in`); the sequencer (`melodee_rec`,
 `melodee_count_in`, `melodee_position`, `melodee_pattern_ticks`,
 `melodee_events`, `melodee_q`, `melodee_first_tick`, `melodee_signature`,

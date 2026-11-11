@@ -11,6 +11,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/step_lane.h"
 #include <algorithm>
 
 namespace melodee {
@@ -90,32 +91,58 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(zone::pad + b * (bw + 3), by, bw, 5, window + b == bar ? c : colour::line, 2);
 }
 
+// The step's notes out; on a kit only the last pad's lane (shell/step_lane.h).
+void clear_step(Context& c, unsigned st, int lane) {
+    if (lane < 0) { c.set_step(c.ui.track, st, Step {}); return; }
+    if (clear_lane(c.pattern(), st, lane)) c.sync_pattern(c.ui.track, c.track().pattern);
+}
+
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     auto& pattern = c.pattern();
     unsigned st = unsigned(c.ui.steps_bar) * bar_steps + pad % 16;
     if (st >= pattern.steps()) return;
+    int lane = steps_lane(c.track()); // a kit: the last pad's lane, the other pads' notes left alone
     if (down) {
-        if (c.ui.erase) { c.edit_pattern(c.ui.track, c.track().pattern, "Erase step", [&] { c.set_step(c.ui.track, st, Step {}); }); return; }
+        if (c.ui.erase) { c.edit_pattern(c.ui.track, c.track().pattern, "Erase step", [&] { clear_step(c, st, lane); }); return; }
         c.ui.step_cursor = int16_t(st);
         c.ui.held_step = int16_t(st);
         c.ui.held_since = c.now;
         c.ui.held_edited = false;
-        c.ui.held_created = pattern.step(st).empty();
+        c.ui.held_created = !step_velocity(pattern, st, lane);
         if (c.ui.held_created) {
-            Step step;
-            step.notes[0] = {c.track().step_note(), uint8_t(std::max<int>(velocity, 64))};
-            c.set_step(c.ui.track, st, step);
+            uint8_t v = uint8_t(std::max<int>(velocity, 64));
+            if (lane >= 0) {
+                if (add_lane_note(pattern, st, uint8_t(lane), v)) c.sync_pattern(c.ui.track, c.track().pattern);
+                else c.notice("The pattern is full");
+            } else {
+                Step step;
+                step.notes[0] = {c.track().step_note(), v};
+                c.set_step(c.ui.track, st, step);
+            }
         }
         return;
     }
     if (c.ui.held_step != int(st)) return;
     bool tap = c.now - c.ui.held_since < tap_ms;
-    if (!c.ui.held_created && !c.ui.held_edited && tap) c.set_step(c.ui.track, st, Step {});
+    if (!c.ui.held_created && !c.ui.held_edited && tap) clear_step(c, st, lane);
     c.ui.held_step = -1;
 }
 
 void wheel(Context& c, int delta) {
     auto& pattern = c.pattern();
+    if (c.ui.held_step >= 0 && steps_lane(c.track()) >= 0) {
+        // A kit: the lane's note moves to the next pad (not onto one already there), and the lane with it.
+        auto& t = c.track();
+        int lane = steps_lane(t), to = std::clamp(lane + delta, int(sampler_first_note), int(sampler_last_key));
+        unsigned st = unsigned(c.ui.held_step);
+        if (to != lane && !step_velocity(pattern, st, to) && move_lane(pattern, st, lane, uint8_t(to))) {
+            t.last_note = uint8_t(to);
+            t.last_pad = uint8_t(to - int(sampler_first_note));
+            c.sync_pattern(c.ui.track, t.pattern);
+        }
+        c.ui.held_edited = true;
+        return;
+    }
     if (c.ui.held_step >= 0) {
         // The held step's notes move together, one semitone a detent.
         Step step = pattern.step(unsigned(c.ui.held_step));

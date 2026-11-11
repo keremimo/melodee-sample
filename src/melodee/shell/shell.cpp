@@ -15,6 +15,7 @@
 #include "melodee/shell/takeover.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
+#include "melodee/shell/pad_light.h"
 #include <cstdio>
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/roll.h"
@@ -382,53 +383,59 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down) velocity = ui_.settings.velocity(velocity); // the pad response
     if (down) ui_.held_pads |= 1u << pad; else ui_.held_pads &= ~(1u << pad);
     if (down && ui_.erase) ui_.erase_used = true; // Erase + pad: its release deletes nothing
-    if (down && (ui_.exit_open || ui_.ask != UiState::Ask::None)) return; // a sheet or a question over the page
-    if (down && track_pad(context_, pad)) { end_copy_away(); return; } // Pad Bank + pad: that track (or a track copy's)
-    if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
-    if (loop_held_pad(context_, pad, down)) return; // Loop held: the loop grid on any page
-    if (down && pattern_copy_pad(context_, pad)) return; // a pattern copy (Shift + Erase with Seq held): from, then to
-    if (seq_pad(context_, pad, down)) return;            // Seq held: the selected track's patterns (shell/seq_layer.cpp)
-    // A Record take of Melodee's own sound: the pads play the instrument until it ends (Shift + pad jobs stay).
-    if (!(down && ui_.shift) && (context_.record_keys() || (!down && context_.record_key_held(pad)))) {
-        context_.record_key(pad, velocity, down);
+    if (!down) { // a release goes where its press went
+        pad_let_go[pad % 16] = context_.now + 1; // its light fades from here
+        if (ui_.name.open()) return;
+        if (loop_held_pad(context_, pad, false)) return;
+        if (seq_pad(context_, pad, false)) return;
+        if (context_.record_keys() || context_.record_key_held(pad)) { context_.record_key(pad, velocity, false); return; }
+        pad_job(ui_)(context_, pad, velocity, false);
         return;
     }
-    if (down && ui_.mute_mode()) { mute_pad(context_, pad, kit_pads()); return; } // mute mode: mute; with Shift, solo
-    if (down && sample_pad(context_, pad)) return; // Sample held: the pad becomes the last pad, unheard
-    if (down && ui_.shift && ui_.page == PageId::Looper && pad >= 8 && pad < 12) { // the loop grid: play or stop at once
-        ui_.shift_used = true;
-        loop_grid_pad(context_, pad, true);
-        return;
-    }
-    if (down && ui_.shift) { // the printed Shift + pad jobs, on every page but the browser (its next empty pad)
+    // A press: what the pads are now, the same choice their lights make (shell/pad_context.h, shell/pad_lights.cpp).
+    unsigned kit = context_.track().bank % sampler_banks * 16 + pad % 16;
+    switch (pad_context(ui_, context_.track(), pad_facts(), pad)) {
+    case PadContext::Sheet: return; // a sheet or a question over the page
+    case PadContext::Tracks: track_pad(context_, pad); end_copy_away(); return; // Pad Bank + pad: that track (or a track copy's)
+    case PadContext::Name: ui_.name.pad(pad, context_.now); return; // the pads type
+    case PadContext::LoopHeld: loop_held_pad(context_, pad, true); return; // Loop held: the loop grid on any page
+    case PadContext::PatternCopy: pattern_copy_pad(context_, pad); return; // Shift + Erase with Seq held: from, then to
+    case PadContext::SeqLayer: seq_pad(context_, pad, true); return; // Seq held: the selected track's patterns (shell/seq_layer.cpp)
+    case PadContext::RecordKeys: context_.record_key(pad, velocity, true); return; // a take of Melodee's own sound: the instrument
+    case PadContext::Mute: mute_pad(context_, pad, kit_pads()); return; // mute; with Shift, solo
+    case PadContext::SamplePick: sample_pad(context_, pad); return; // Sample held: the pad becomes the last pad, unheard
+    case PadContext::LoopNow: ui_.shift_used = true; loop_grid_pad(context_, pad, true); return; // the loop grid: at once
+    case PadContext::Shift: // the printed Shift + pad jobs, on every page but the browser (its next empty pad)
         ui_.shift_used = true;
         if (!samples_shift_pad(context_)) shift_pad(context_, pad);
         return;
-    }
-    if (down && ui_.resample_pick) { // Resample (Shift + Pad 11): this pad gets the render
-        context_.resample_pad(context_.track().bank % sampler_banks * 16 + pad);
+    case PadContext::ResamplePick: context_.resample_pad(kit); return; // Resample (Shift + Pad 11): this pad gets the render
+    case PadContext::PadErase: // stopped, the pad empty; playing or recording, its notes out of the pattern
+        if (host.playing() || ui_.recording) context_.erase_pad_notes(kit);
+        else context_.delete_pad(kit);
         return;
-    }
-    bool copying_pads = ui_.copying == UiState::Copying::Pads;
-    if (down && kit_pads() && (copying_pads || ui_.erase)) {
-        unsigned kit = context_.track().bank % sampler_banks * 16 + pad;
-        if (!copying_pads) { // Erase + pad: stopped, the pad empty; playing or recording, its notes out of the pattern
-            if (host.playing() || ui_.recording) context_.erase_pad_notes(kit);
-            else context_.delete_pad(kit);
-            return;
-        }
-        if (ui_.copy_from < 0) {                                    // copying: first the pad to copy
+    case PadContext::PadCopy:
+        if (ui_.copy_from < 0) { // first the pad to copy
             if (context_.track().pads[kit].used()) { ui_.copy_from = int8_t(kit); context_.track().last_pad = uint8_t(kit); }
             else context_.notice(pad_text("Empty", kit));
             return;
         }
-        if (unsigned(ui_.copy_from) == kit) return;                // then where it goes
+        if (unsigned(ui_.copy_from) == kit) return; // then where it goes
         context_.copy_pad(unsigned(ui_.copy_from), kit);
         context_.track().last_pad = uint8_t(kit);
         ui_.stop_copying();
         return;
+    case PadContext::Page: break;
     }
     pad_job(ui_)(context_, pad, velocity, down);
+}
+
+PadFacts Shell::pad_facts() const {
+    PadFacts f;
+    f.card = card_owns_controls(ui_);
+    f.record_keys = context_.record_keys();
+    f.kit_pads = kit_pads();
+    return f;
 }
 
 // A Record take from a synth track: its pads play, so Minus / Plus move their octave.
@@ -695,10 +702,14 @@ std::string Shell::sample_summary() const {
 
 // The lit pads by number, 1-16.
 std::string Shell::lit_pads_text() const {
-    uint32_t lit = pads_lit.load(std::memory_order_relaxed);
+    uint64_t rungs = pad_rungs.load(std::memory_order_relaxed), hues = pad_hues.load(std::memory_order_relaxed);
     std::string out;
-    for (unsigned n = 0; n < 16; ++n)
-        if (lit & (1u << n)) { if (!out.empty()) out += ','; out += std::to_string(n + 1); }
+    for (unsigned n = 0; n < 16; ++n) { // pad:hue rung, as 3:t4 (shell/pad_light.h: rung 1 faint .. 4 full; hue t, l, w, r, o)
+        unsigned rung = unsigned(rungs >> (4 * n)) & 15;
+        if (!rung) continue;
+        if (!out.empty()) out += ',';
+        out += std::to_string(n + 1) + ':' + pad_light::hue_letter(pad_light::Hue(unsigned(hues >> (4 * n)) & 15)) + std::to_string(rung);
+    }
     return out.empty() ? "none" : out;
 }
 
