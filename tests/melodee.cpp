@@ -37,6 +37,7 @@
 #include "melodee/shell/settings.h"
 #include "melodee/shell/place_bar.h"
 #include "melodee/shell/playheads.h"
+#include "melodee/shell/record_place.h"
 #include "melodee/engine/voice_tap.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/comp_trail.h"
@@ -6907,8 +6908,50 @@ void pad_lights() {
     ui.exit_open = false;
 }
 
-// Roadmap P0: a hit plays at its own frame, a block late.
+// Roadmap P0: a hit lands in Seq Record where it was heard, and plays at its own frame, a block late.
 void hits_on_time() {
+    // The place's arithmetic: counted back from the playhead and wrapped; a step snapped onto still to come or not.
+    CHECK(wrap_tick(-3, 384) == 381 && wrap_tick(390, 384) == 6 && wrap_tick(5, 384) == 5);
+    CHECK(still_ahead(100, 120, 102, 384));  // the playhead two ticks on: the step is still to come, skipped once
+    CHECK(!still_ahead(100, 120, 121, 384)); // it played already
+    CHECK(!still_ahead(100, 96, 102, 384));  // snapped back: behind the hit
+    CHECK(still_ahead(380, 0, 382, 384));    // onto the first step, next time round
+    CHECK(!still_ahead(3, 0, 5, 384));       // back onto the first step: behind
+    CHECK(still_ahead(100, 101, 99, 384));   // the hit rounded up to a tick the playhead has not played
+
+    // Where a hit was heard: its stamp less the output latency (three periods), on the nearest tick, though the
+    // playhead has moved on since.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        project->tempo = 1200; // 120 BPM: a tick every 229.6875 frames at 44.1 kHz
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        std::vector<int32_t> out(256);
+        host.send({Command::Type::Play}); // the patterns from tick 0, its first tick on the first frame
+        for (int b = 0; b < 40; ++b) host.render(out.data(), 128, 1);
+        const auto& clock = host.audio_clock();
+        CHECK(clock.known() && host.position_of(0) > 20);
+        const double tick = 44100 * 60.0 / 120 / 96;
+        const int64_t latency_ns = int64_t(384 * 1e9 / 44100);
+        int position = -1;
+        uint32_t ticks = 0;
+        // In as tick 10's frame reached the jacks: tick 10.
+        CHECK(host.heard_place(0, uint64_t(clock.heard_at(uint64_t(10 * tick))), position, ticks) && position == 10 && ticks == 11);
+        // In as that frame was rendered: heard 384 frames (1.67 ticks) before, tick 8. The playhead's own place would be 22.
+        CHECK(host.heard_place(0, uint64_t(clock.heard_at(uint64_t(10 * tick)) - latency_ns), position, ticks) && position == 8);
+        // The nearest tick: four tenths of a tick on, the same; six tenths, the next.
+        CHECK(host.place_at(0, uint64_t(10.4 * tick), position, ticks) && position == 10);
+        CHECK(host.place_at(0, uint64_t(10.6 * tick), position, ticks) && position == 11 && ticks == 12);
+        CHECK(host.place_at(0, 0, position, ticks) && position == 0); // no tick of the run before its first
+        CHECK(!host.heard_place(0, 0, position, ticks));              // no stamp: none (the playhead, in Context::record)
+        host.send({Command::Type::Stop});
+        host.render(out.data(), 128, 1);
+        CHECK(!host.place_at(0, uint64_t(10 * tick), position, ticks)); // stopped: none
+    }
+
     // Two hits 5 ms apart (220.5 frames) come out 5 ms apart, each a block after the frame it came in at, not on
     // block starts; one that came in after its frame (a late MIDI thread) plays at once and is counted.
     {

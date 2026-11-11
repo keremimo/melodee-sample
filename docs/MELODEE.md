@@ -446,7 +446,9 @@ hold to steer, Shift + Seq to zoom in**.
   leading) or one for the project: Push on the Tempo page.
 - **Seq Record**: arm and Play, or record at once; again stops recording.
   **Count-In** plays a bar of clicks first. Notes keep the tick and length
-  they were played; with **Rec Quantize** on they land on its grid (a note
+  they were heard at (the pad's stamp less the output latency, to the
+  nearest tick, not where the playhead has got to by the time the MIDI
+  thread sees it); with **Rec Quantize** on they land on its grid (a note
   moved ahead of the playhead is not played twice). Shift + Pad 10 opens
   REC QUANTIZE: B3 turns it on or off, K1, the wheel or −/+ pick the grid,
   the pattern's Q or one of its own (1/4 .. 1/64 with triplets), kept with

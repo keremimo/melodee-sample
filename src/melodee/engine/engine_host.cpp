@@ -174,6 +174,40 @@ bool EngineHost::mid_block(Command::Type type) {
     }
 }
 
+// Where `track` was when `frame` was rendered: the tick at or before it, or the next when that is nearer, counted
+// back from position_of() through the ticks of this run (a jump, Play or Locate, starts a new run).
+bool EngineHost::place_at(unsigned track, uint64_t frame, int& position, uint32_t& ticks) const {
+    auto entry = [&](uint32_t n) { return tick_ring[n % tick_ring_size].load(std::memory_order_relaxed); };
+    const uint32_t f = uint32_t(frame);
+    for (unsigned attempt = 0;; ++attempt) {
+        uint32_t head = tick_head.load(std::memory_order_acquire);
+        int now = position_of(track);
+        if (!head || now < 0 || !playing()) return false;
+        uint32_t i = head - 1, reach = std::min(head, tick_ring_size - 16); // clear of what the writer may overwrite
+        uint64_t e = entry(i);
+        int back = 0;
+        while (int32_t(uint32_t(e) - f) > 0 && uint32_t(back) + 1 < reach) {
+            uint64_t before = entry(i - 1);
+            if (uint32_t(before >> 32) + 1 != uint32_t(e >> 32)) break; // the run starts here
+            --i; e = before; ++back;
+        }
+        bool next = false; // past that tick: the next one, when it is nearer
+        if (int32_t(f - uint32_t(e)) > 0) {
+            float span = i == head - 1 ? tick_frames.load(std::memory_order_relaxed) : float(uint32_t(entry(i + 1)) - uint32_t(e));
+            next = float(f - uint32_t(e)) * 2 > span;
+        }
+        if (tick_head.load(std::memory_order_acquire) != head && attempt < 3) continue; // a tick came meanwhile
+        position = now - back + (next ? 1 : 0);
+        ticks = uint32_t(e >> 32) + (next ? 2 : 1); // as ticks() reads just after that tick played
+        return true;
+    }
+}
+
+bool EngineHost::heard_place(unsigned track, uint64_t ns, int& position, uint32_t& ticks) const {
+    if (!ns || !clock.known()) return false;
+    return place_at(track, clock.heard_frame(int64_t(ns)), position, ticks);
+}
+
 // A note Seq Record wrote just ahead of the playhead was heard as it was played: once, not twice.
 bool EngineHost::skipped(Slot& slot, unsigned key, uint32_t tick) {
     for (auto& s : slot.skips) {
@@ -1171,6 +1205,11 @@ void EngineHost::tick() {
         }
         if (holding.key >= 0) slot.held = holding;
     }
+    // Where this tick fell, for a hit heard then (place_at): after the positions, which the release publishes too.
+    uint32_t head = tick_head.load(std::memory_order_relaxed);
+    tick_ring[head % tick_ring_size].store(uint64_t(uint32_t(frame_now + block_at)) | uint64_t(tick_now) << 32, std::memory_order_relaxed);
+    tick_frames.store(float(tick_samples(tick_now) / speed), std::memory_order_relaxed);
+    tick_head.store(head + 1, std::memory_order_release);
     until_tick += tick_samples(tick_now);
     ++tick_now;
     tick_count.store(tick_now, std::memory_order_relaxed);

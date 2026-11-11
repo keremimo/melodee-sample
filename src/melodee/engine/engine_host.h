@@ -91,6 +91,12 @@ public:
         if (ns && clock.known()) { command.timed = true; command.at = uint32_t(clock.frame_at(int64_t(ns)) + block); }
         return send(command);
     }
+    // Any thread: where `track` was in its pattern when a hit at `ns` was heard (its stamp less the output latency),
+    // to the nearest tick, counted back from position_of() (so it may come out below 0: wrap it by the pattern's
+    // length), and ticks() then. False while no tick of this run is known for it. place_at: the same for the frame
+    // rendered then.
+    bool heard_place(unsigned track, uint64_t ns, int& position, uint32_t& ticks) const;
+    bool place_at(unsigned track, uint64_t frame, int& position, uint32_t& ticks) const;
     // Any thread: timed notes played on their frame, those that came after it (played at once), and the latest by.
     uint32_t timed_kept() const { return timed_on_time.load(std::memory_order_relaxed); }
     uint32_t timed_missed() const { return timed_late.load(std::memory_order_relaxed); }
@@ -321,6 +327,12 @@ private:
     unsigned take_commands(unsigned offset, unsigned frames); // those due by `offset`; the offset the next one waits for
     static bool mid_block(Command::Type type);                // applied inside a block too (notes and values)
     static constexpr int32_t timed_reach = 3 * 128;           // further ahead than a hit can be (three blocks): at once
+    // Each tick of a pattern playing: its frame (low 32 bits) and tick_now, for place_at(). The audio thread writes
+    // the ring, any thread reads it.
+    static constexpr unsigned tick_ring_size = 256;
+    std::array<std::atomic<uint64_t>, tick_ring_size> tick_ring {};
+    std::atomic<uint32_t> tick_head {0};  // ticks written
+    std::atomic<float> tick_frames {0};   // frames the newest tick lasts (swing and MTC's pace in)
     std::atomic<uint32_t> timed_on_time {0}, timed_late {0}, timed_worst {0};
     // Plug-ins: each entry's as the rack offered it; the ones replaced wait in the queue to be freed.
     struct PluginOffer { uint8_t entry = 0; PluginRunner* runner = nullptr; };

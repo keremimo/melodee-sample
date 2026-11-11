@@ -14,6 +14,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/record_place.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
@@ -253,21 +254,26 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
     ui.chord_pad = int8_t(pad);
 }
 
-// Seq Record while playing: the note lands where it was played, or with Rec
-// Quantize on (Shift + Pad 10) on the nearest step of its grid (the pattern's Q,
-// or one of its own: Settings::rec_grid). A note moved ahead of
-// the playhead is skipped once by the audio thread, as it was heard live.
+// Seq Record while playing: the note lands where it was heard (its pad's or MIDI
+// message's stamp less the output latency, on the nearest tick: by the time the
+// MIDI thread sees it the playhead has moved on), or with Rec Quantize on
+// (Shift + Pad 10) on the nearest step of its grid (the pattern's Q, or one of
+// its own: Settings::rec_grid). A note moved ahead of the playhead is skipped
+// once by the audio thread, as it was heard live.
 void Context::record(int key, int velocity) {
     if (!ui.recording || !host.playing() || host.count_in()) return;
     auto& p = pattern();
-    int position = host.position_of(ui.track);
-    if (position < 0) return;
-    uint32_t at = uint32_t(position) % p.length;
+    int position = 0;
+    uint32_t ticks = 0;
+    if (!host.heard_place(ui.track, hit_ns, position, ticks)) { position = host.position_of(ui.track); ticks = host.ticks(); }
+    int playhead = host.position_of(ui.track);
+    if (playhead < 0) return;
+    uint32_t at = wrap_tick(position, p.length);
     bool ahead = false;
     if (ui.settings.rec_quantize) {
         unsigned grid = division_ticks(grid_division(ui.settings.rec_grid, p.division));
         uint32_t snapped = quantise_tick(p, at, grid); // past the last step: the first, next time round
-        ahead = snapped > at || (snapped == 0 && at > 0);
+        ahead = still_ahead(at, snapped, playhead, p.length);
         at = snapped;
     }
     Event e;
@@ -276,16 +282,19 @@ void Context::record(int key, int velocity) {
     sync_pattern(ui.track, track().pattern);
     if (ahead) { Command c {Type::Recorded, ui.track, track().pattern, uint16_t(key)}; c.position = at; send(c); }
     for (auto& h : held_notes)
-        if (h.key < 0) { h = {key, ui.track, track().pattern, at, host.ticks()}; break; }
+        if (h.key < 0) { h = {key, ui.track, track().pattern, at, ticks}; break; }
 }
 
-// A recorded note let go: it is as long as it was held.
+// A recorded note let go: it is as long as it was held (from its press to its release, both as heard).
 void Context::record_release(int key) {
     for (auto& h : held_notes) {
         if (h.key != key) continue;
         h.key = -1;
         auto& p = patterns.at[h.track % track_count][h.pattern % pattern_count];
-        uint32_t held = host.ticks() - h.since;
+        int position = 0;
+        uint32_t ticks = 0;
+        if (!host.heard_place(h.track, hit_ns, position, ticks)) ticks = host.ticks();
+        uint32_t held = ticks - h.since;
         for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
             if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8)) {
                 p.events[n].length = uint16_t(std::clamp<uint32_t>(held, 1, 65535));
