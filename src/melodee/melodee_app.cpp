@@ -42,6 +42,10 @@ MelodeeApp::MelodeeApp()
     shell.set_plugins(&plugins);
     shell.set_store(&store);
     shell.set_input(&input_route);
+    // The card's settings now, not first on the service thread: the runtime opens the audio device with
+    // audio_format() as it starts, and Settings' rate from that first open spares a reopen moments later
+    // (the codec powered down and up again, its mute shut a second, and the USB-C gadget rebound twice).
+    shell.start_settings(melodee::ProjectStore::read_settings_file(melodee::ProjectStore::projects_root(Platform().storage())).settings);
     host.load(shell.project(), shell.patterns());
     // The tracks render on every core: a worker for each beside the audio thread ($MELODEE_RENDER_THREADS: how many).
     unsigned cores = std::max(std::thread::hardware_concurrency(), 1u);

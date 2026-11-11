@@ -11,6 +11,7 @@
 #include <vector>
 
 struct Hardware;
+struct StorageSpace;
 
 // Projects as files on the card, run on the service thread: Melodee/Projects
 // on the first card ($MELODEE_PROJECTS on a host), in folders. The MIDI
@@ -60,6 +61,13 @@ public:
     std::unique_ptr<LoadedProject> take_loaded(); // a loaded project, if one is waiting
     // A free name in the folder in view: "Project 3", or "<base> copy".
     std::string free_path(const std::string& base) const;
+
+    // Any thread, before the threads start too: where projects live, $MELODEE_PROJECTS or Melodee/Projects on
+    // the first card among `storage`'s mounts (empty with none), and the settings file beside them,
+    // Melodee/settings: its start= and last= lines, and the rest, which Settings::read() takes.
+    struct SettingsFile { std::string start, last, settings; };
+    static std::string projects_root(const std::vector<StorageSpace>& storage);
+    static SettingsFile read_settings_file(const std::string& root);
 
     // Service thread.
     void service(Hardware& hardware);

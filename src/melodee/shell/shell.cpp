@@ -40,6 +40,11 @@ Shell::Shell(EngineHost& host)
     context_.card = &card_link;
 }
 
+void Shell::start_settings(const std::string& text) {
+    ui_.settings.read(text);
+    want_audio_format();
+}
+
 void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;

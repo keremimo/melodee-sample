@@ -154,7 +154,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     // The backlight stays as the stock app left it until Screen asks for less (and then follows it).
     if (ui_.settings.screen != 100 || screen_wanted.load(std::memory_order_relaxed)) screen_wanted.store(ui_.settings.screen, std::memory_order_relaxed);
-    audio_wanted.store(ui_.settings.audio_rate | uint32_t(ui_.settings.audio_periods) << 20, std::memory_order_relaxed);
+    want_audio_format();
     // The Project page's row count, for K2's range.
     if (store_ && ui_.page == PageId::Project && store_->generation() != store_seen) {
         store_seen = store_->generation();

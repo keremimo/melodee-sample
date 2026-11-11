@@ -115,36 +115,51 @@ void ProjectStore::publish_message(const std::string& message) {
     changes.fetch_add(1, std::memory_order_release);
 }
 
+namespace {
+// The first card among the mounts, or null.
+const StorageSpace* first_card(const std::vector<StorageSpace>& storage) {
+    for (const auto& space : storage)
+        if (space.path.rfind("/media/", 0) == 0) return &space;
+    return nullptr;
+}
+} // namespace
+
+std::string ProjectStore::projects_root(const std::vector<StorageSpace>& storage) {
+    if (const char* forced = std::getenv("MELODEE_PROJECTS")) return forced;
+    const StorageSpace* card = first_card(storage);
+    return card ? card->path + "/Melodee/Projects" : std::string();
+}
+
+ProjectStore::SettingsFile ProjectStore::read_settings_file(const std::string& root) {
+    SettingsFile out;
+    if (root.empty()) return out;
+    std::ifstream file(fs::path(root).parent_path() / "settings");
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.rfind("start=", 0) == 0) out.start = line.substr(6);
+        else if (line.rfind("last=", 0) == 0) out.last = line.substr(5);
+        else if (!line.empty()) out.settings += line + '\n';
+    }
+    return out;
+}
+
 void ProjectStore::service(Hardware& hardware) {
     // The root: $MELODEE_PROJECTS, else Melodee/Projects on the first card, looked for every few seconds.
     if (++ticks % 600 == 1) {
-        std::string found;
-        uint64_t free_bytes = 0;
-        if (const char* forced = std::getenv("MELODEE_PROJECTS")) found = forced;
-        for (const auto& space : hardware.platform.storage())
-            if (space.path.rfind("/media/", 0) == 0) {
-                if (found.empty()) found = space.path + "/Melodee/Projects";
-                free_bytes = space.free_bytes;
-                break;
-            }
+        auto storage = hardware.platform.storage();
+        std::string found = projects_root(storage);
+        const StorageSpace* card = first_card(storage);
+        uint64_t free_bytes = card ? card->free_bytes : 0;
         if (found != root) {
             root = found;
             folder.clear();
             std::error_code error;
             // Nothing is created on the card until something is saved there.
             // What to open at start lives next to the projects: the one set to, else the last one open.
-            start.clear();
-            last.clear();
-            settings.clear();
-            if (!root.empty()) {
-                std::ifstream file(fs::path(root).parent_path() / "settings");
-                std::string line;
-                while (std::getline(file, line)) {
-                    if (line.rfind("start=", 0) == 0) start = line.substr(6);
-                    else if (line.rfind("last=", 0) == 0) last = line.substr(5);
-                    else if (!line.empty()) settings += line + '\n';
-                }
-            }
+            auto file = read_settings_file(root);
+            start = std::move(file.start);
+            last = std::move(file.last);
+            settings = std::move(file.settings);
             {
                 std::lock_guard<std::mutex> guard(lock);
                 known.settings = settings; known.settings_read = !root.empty();

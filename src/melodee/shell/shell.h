@@ -45,9 +45,12 @@ public:
     void looper_ask(const LooperAsk& ask, uint32_t now_ms); // `melodee-looper` (shell/looper_jobs.h)
     float volume() const { return main_volume.load(std::memory_order_relaxed); }
     unsigned screen() const { return screen_wanted.load(std::memory_order_relaxed); } // brightness %, 0: leave it
-    // Any thread: Settings' sample rate and buffer (periods), once the card's settings are read; until then the default.
+    // Any thread: Settings' sample rate and buffer (periods): the card's from start_settings(), else the default.
     unsigned audio_rate() const { return audio_wanted.load(std::memory_order_relaxed) & 0xfffff; }
     unsigned audio_periods() const { return audio_wanted.load(std::memory_order_relaxed) >> 20; }
+    // Before the threads start: the card's settings (Settings::read() text), so that the runtime opens the audio
+    // device at their rate and buffer at once. The service thread reads the same file again later.
+    void start_settings(const std::string& text);
 
     // Service thread: Power was pressed. MIDI thread acts on it in lights().
     void power_pressed() { power.fetch_add(1, std::memory_order_relaxed); }
@@ -108,6 +111,7 @@ private:
     std::atomic<float> main_volume {0.7f};
     std::atomic<unsigned> screen_wanted {0}; // 0 until the settings say; then 20..100 %
     std::atomic<uint32_t> audio_wanted {44100u | 3u << 20}; // rate | periods << 20
+    void want_audio_format() { audio_wanted.store(ui_.settings.audio_rate | uint32_t(ui_.settings.audio_periods) << 20, std::memory_order_relaxed); }
     std::atomic<unsigned> power {0};
     unsigned power_seen = 0;
     std::atomic<bool> leave {false}, power_off {false};
