@@ -107,7 +107,7 @@ void SampleLibrary::drain_render() {
 }
 
 bool SampleLibrary::busy() const {
-    return rendering || host.recorder().state() != TakeRecorder::State::Idle;
+    return rendering || !landings.empty() || host.recorder().state() != TakeRecorder::State::Idle; // an instrument still being laid out writes to it too
 }
 
 } // namespace melodee

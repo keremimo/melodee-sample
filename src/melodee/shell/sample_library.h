@@ -3,8 +3,10 @@
 #pragma once
 #include "melodee/engine/recall_ring.h"
 #include "melodee/engine/sample_data.h"
+#include "melodee/engine/sfz.h"
 #include "melodee/model/looper.h"
 #include "melodee/model/sampler.h"
+#include "melodee/shell/sample_cache.h"
 #include "surface/midi.h"
 #include <array>
 #include <atomic>
@@ -39,6 +41,7 @@ struct SampleFile {
     uint64_t bytes = 0;
     bool folder = false;
     bool bank = false;      // a kit bank file (".mldb", model/project_file.h), listed with the WAV files
+    bool instrument = false; // a multisampled instrument (".sfz"), loaded onto a pad as a WAV file is
 };
 struct LoadedSample {
     std::string name, path, error;
@@ -47,6 +50,13 @@ struct LoadedSample {
     std::array<Hit, max_hits> hits {};
     unsigned hit_count = 0;
     bool ready = false;
+    // A multisampled instrument: no frames of its own, so nothing to trim or chop.
+    bool instrument = false;
+    unsigned zones = 0, parts = 0, parts_ready = 0, parts_failed = 0, left = 0;
+    uint8_t low_key = 127, high_key = 0;
+    std::string ignored;     // what it asked for and is not played, named
+    std::array<int8_t, 4> stages {{-1, -1, -1, -1}}; // the pad's attack, decay, sustain, release, -1: none named
+    int8_t velocity = 100;   // the pad's Velocity Sense
 };
 
 // A file Melodee makes from a slot's audio, on the service thread.
@@ -71,6 +81,11 @@ public:
     void rescan() { scan_wanted.store(true); }
     // Service thread: a take or a render is writing to the card (SD card access waits for it).
     bool busy() const;
+    // Service thread: SD card access. Instruments are read from the card, so before it is
+    // lent they let go of it (false if they could not in time), and come back after.
+    bool release_instruments();
+    void restore_instruments();
+    bool instruments_away() const { return !away.empty(); }
     // MIDI thread: the browser. A folder to list (empty: the drive's start),
     // up one folder, or the other drive.
     void browse(Drive drive, const std::string& folder);
@@ -153,6 +168,25 @@ private:
     void finish(const std::string& text, int failed = -1);
     std::string free_name(const std::string& folder, const std::string& name, const char* extension = ".wav") const;
     void bank_files(); // the bank writes and reads asked for
+    // Instruments (sample_library_instruments.cpp): read, then one of their files a pass.
+    void begin_instrument(const Request& request);
+    void land_next();
+    void cancel_landing(unsigned slot);
+    void hear_instrument(const std::string& path);
+    bool reap();       // what the audio thread has let go of; true if anything went
+    struct Landing {
+        uint8_t slot = 0;
+        std::string folder;
+        SfzRead read;
+        std::shared_ptr<Multisample> multi;
+        std::vector<std::string> names;         // each part's file, as its regions name it
+        std::vector<std::vector<uint16_t>> zones; // the zones of each part
+        unsigned next = 0;
+    };
+    std::vector<Landing> landings;
+    SampleCache cache;
+    bool cache_tidied = false;
+    std::vector<std::pair<uint8_t, std::string>> away; // the instruments put down for SD card access
 
     EngineHost& host;
     MidiQueue<16, Request> requests; // MIDI thread produces, service thread consumes

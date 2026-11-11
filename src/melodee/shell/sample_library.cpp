@@ -91,6 +91,7 @@ std::string upper(std::string text) {
 }
 bool is_wav(const fs::path& path) { return upper(path.extension().string()) == ".WAV"; }
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
+bool is_instrument(const fs::path& path) { return upper(path.extension().string()) == ".SFZ"; }
 // A folder's folders, WAV files and bank files, appended; hidden ones and lost+found left out.
 void list_into(const std::string& folder, std::vector<SampleFile>& out) {
     std::error_code error;
@@ -101,9 +102,10 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out) {
         if (name.empty() || name[0] == '.' || name == "lost+found") continue;
         bool folder_here = it->is_directory(error);
         bool bank = !folder_here && is_bank(it->path());
-        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank))) continue;
+        bool instrument = !folder_here && is_instrument(it->path());
+        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument))) continue;
         SampleFile f;
-        f.path = it->path().string(); f.folder = folder_here; f.bank = bank;
+        f.path = it->path().string(); f.folder = folder_here; f.bank = bank; f.instrument = instrument;
         f.name = upper(folder_here ? name : it->path().stem().string()).substr(0, 26);
         if (!folder_here) f.bytes = it->file_size(error);
         out.push_back(std::move(f));
@@ -118,15 +120,9 @@ void SampleLibrary::service(Hardware& hardware) {
     RecallJob recall_job;
     if (recalls.pop(recall_job)) save_recall(recall_job);
     loop_service(); // the Looper's commit and files (shell/looper_files.cpp)
-    // Samples the audio thread has let go of.
-    const SampleData* gone = nullptr;
-    while (host.take_retired(gone)) {
-        {
-            std::lock_guard<std::mutex> guard(lock);
-            for (auto& d : data_of) if (d == gone) d = nullptr;
-        }
-        owned.erase(std::remove_if(owned.begin(), owned.end(), [&](const auto& p) { return p.get() == gone; }), owned.end());
-    }
+    host.streams().start();
+    reap(); // samples the audio thread has let go of
+    land_next();
     Request request;
     SampleJob job;
     bank_files();
@@ -149,6 +145,10 @@ void SampleLibrary::service(Hardware& hardware) {
                 if (space.path.rfind("/media/", 0) == 0 && fs::is_directory(space.path + "/Samples")) { top = space.path; root = space.path + "/Samples"; break; }
         bool changed = root != root_seen;
         if (changed) { root_seen = root; std::lock_guard<std::mutex> guard(lock); card_top = top; known.root = root; }
+        if (changed) {
+            cache.set_folder(top.empty() ? std::string() : top + "/Melodee/Cache");
+            if (!top.empty() && !cache_tidied) { cache_tidied = true; cache.tidy(); }
+        }
         scan_wanted.store(false);
         scan();
     }
@@ -349,6 +349,7 @@ void SampleLibrary::make(const SampleJob& job) {
 
 // The browser's preview (B3): the file in the preview slot, at most 30 s of it.
 void SampleLibrary::hear(const std::string& path) {
+    if (is_instrument(path)) { hear_instrument(path); return; }
     auto data = std::make_unique<SampleData>();
     if (!read_wav(path, *data, 30).empty() || !data->frames) return;
     if (!host.offer_sample(preview_slot, data.get())) return;
@@ -414,6 +415,8 @@ void SampleLibrary::read(const Request& request) {
         }
         return;
     }
+    cancel_landing(request.slot);
+    if (is_instrument(request.path)) { begin_instrument(request); return; }
     auto data = std::make_unique<SampleData>();
     auto error = read_wav(request.path, *data);
     const SampleData* held = nullptr;

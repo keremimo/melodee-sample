@@ -268,6 +268,7 @@ void MelodeeApp::card_access(Hardware& hardware) {
     case CardRequest::Lend:
         card_note = CardNote::None;
         if (library.busy()) card_note = CardNote::Writing; // a take or a render still writes to it
+        else if (!library.release_instruments()) card_note = CardNote::Failed;
         else if (!card.lend()) card_note = card.status().message == "no card" ? CardNote::NoCard : CardNote::Failed;
         break;
     case CardRequest::Return: card.take_back(false); break;
@@ -275,6 +276,7 @@ void MelodeeApp::card_access(Hardware& hardware) {
     default: break;
     }
     const auto& now = card.status();
+    if (now.state == CardShareState::Home && library.instruments_away()) library.restore_instruments(); // back, or never lent
     if (now.returns != card_returns) { // back: its projects and samples read again
         card_returns = now.returns;
         library.rescan();
@@ -296,5 +298,6 @@ void MelodeeApp::card_access(Hardware& hardware) {
 }
 
 std::string MelodeeApp::status() const {
-    return "melodee_playing=" + std::to_string(host.playing()) + " melodee_dropped=" + std::to_string(host.dropped()) + " " + shell.summary();
+    return "melodee_playing=" + std::to_string(host.playing()) + " melodee_dropped=" + std::to_string(host.dropped())
+         + " melodee_stream_underruns=" + std::to_string(const_cast<melodee::EngineHost&>(host).streams().underruns()) + " " + shell.summary();
 }
