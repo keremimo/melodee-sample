@@ -134,7 +134,7 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
 ### Playing
 
 - **Stage** (Sample): the selected track's quick pages, as the MPC's Sample
-  mode. **B1–B3** each hold a cycle of up to three pages: the lit one again
+  mode. **B1–B3** each hold a cycle of up to four pages: the lit one again
   steps to the next, another jumps to its first; the soft keys name each
   button's page, with a dot a page under a cycle. Each track keeps its own
   button and page. The pads play the track (a kit's pad played is the pad
@@ -156,13 +156,18 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
     RATIOS, LINES, OSC) draws its Shift row. FX: the slot of the track's
     chain the cards edit (Push the next one; Shift + Knob FX adds effects).
   - **A kit**: Akai's pages in Akai's order on the last pad hit, B1 **TRIM →
-    MIX → AMP ENV**, B2 **TUNE → PLAY**, B3 **FILTER → FILT ENV**: the pad's
+    MIX → AMP ENV**, B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
+    FILT ENV → KIT FILT** (Melodee's own pages join Akai's): the pad's
     waveform with its volume on the left and pan on the right, chips for
     how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
     + B1 Loop Lock, Shift + B2 Normalize), the envelopes and the filter lie
     over the region. MIX: volume, kit volume, pan; Shift + K2 on AMP ENV and
     FILT ENV decay from start or end, Shift + K3 on TUNE # Beats, Shift + K2
-    on PLAY Pad Link.
+    on PLAY Pad Link. FOLLOW: on, how (Beats, Tones, Tape), pitch. CLOUD
+    (the whole kit's pads as grain clouds): K1 position, K2 grain size, K3
+    density, Shift + K1 scan, Shift + K2 spread, Shift + K3 Cloud on or off,
+    the place and grains drawn on the wave. KIT FILT: cutoff, resonance,
+    type of the one filter after every pad.
   - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 MIX, B3 FX. VOICE edits
     the drum the last pad played (Snare, Clap and Rim share a page) and the
     B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the

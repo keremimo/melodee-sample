@@ -54,7 +54,7 @@ struct EditPage {
 
 // Stage (pages/stage_page.cpp, docs/MELODEE.md): the selected track's quick
 // pages, as the MPC's Sample Mode has them. B1-B3 each hold a cycle of up to
-// three pages; pressing the lit button again steps to the next, another
+// four pages; pressing the lit button again steps to the next, another
 // button jumps to the first of its own. Each engine states its pages here as
 // data; StageKind says where a page's cards come from.
 enum class StageKind : uint8_t {
@@ -65,6 +65,7 @@ enum class StageKind : uint8_t {
     Fx,         // a slot of the track's chain: its first row (Shift: the second); Push the next slot
     Voice,      // the drum the last pad played: its page of `voices` (pad_voice says which)
     Trim, PadMix, AmpEnv, Tune, Play, Filter, FiltEnv, // a kit: the last pad's Sample Mode values
+    Follow, Cloud, KitFilter,                          // a kit: Melodee's own kit-wide pages
     NewSynth, NewKit, NewMidi,                         // an empty track: what it becomes (Push)
 };
 // What the picture over the knobs draws.
@@ -85,7 +86,7 @@ struct StagePage {
     std::array<int8_t, 3> shift {{-1, -1, -1}};
 };
 struct StageGroup {
-    std::array<StagePage, 3> pages;
+    std::array<StagePage, 4> pages;
     uint8_t count;
 };
 struct StageGroups {

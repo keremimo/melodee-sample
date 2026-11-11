@@ -4027,12 +4027,12 @@ void midi_tracks() {
 // Stage, context aware (shell/stage_map.h, the engines' stage tables, bindings.cpp).
 void stage() {
     using K = Binding::Kind;
-    // Every engine's table: three buttons of one to three pages, each named, its parameters the engine's own.
+    // Every engine's table: three buttons of one to four pages, each named, its parameters the engine's own.
     for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) {
         const auto& g = stage_groups(EngineKind(k));
         const auto& info = engine_info(EngineKind(k));
         for (const auto& group : g.groups) {
-            CHECK(group.count >= 1 && group.count <= 3);
+            CHECK(group.count >= 1 && group.count <= 4);
             for (unsigned n = 0; n < group.count; ++n) {
                 const auto& page = group.pages[n];
                 CHECK(page.key && std::strlen(page.key) > 0);
@@ -4043,7 +4043,7 @@ void stage() {
         }
     }
     CHECK(stage_groups(EngineKind::Prophet).groups[0].pages[0].kind == StageKind::Preset);
-    CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 2);
+    CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 4);
     CHECK(stage_groups(EngineKind::None).groups[2].pages[0].kind == StageKind::NewMidi);
 
     auto project = std::make_unique<Project>();
@@ -4124,7 +4124,17 @@ void stage() {
     CHECK(cards(false)[2].kind == K::PadFilterType);
     stage_go(ui, 2, 1);
     CHECK(cards(false)[2].kind == K::PadFAmount);
-    kit.last_pad = 6; // a pad without a sample: nothing to turn
+    // Melodee's own kit pages join Akai's groups: B2 TUNE -> PLAY -> FOLLOW -> CLOUD, B3 ... -> KIT FILT.
+    stage_go(ui, 1, 1);
+    stage_press(ui, kit, 1); CHECK(key() == "FOLLOW" && cards(false)[0].id == sampler::Follow && cards(false)[1].id == sampler::FollowHow);
+    stage_press(ui, kit, 1); CHECK(key() == "CLOUD" && cards(false)[0].id == sampler::Position && cards(false)[2].id == sampler::Density);
+    CHECK(cards(true)[0].id == sampler::Scan && cards(true)[2].id == sampler::Cloud);
+    stage_press(ui, kit, 1); CHECK(key() == "TUNE");
+    stage_go(ui, 2, 2);
+    CHECK(key() == "KIT FILT" && cards(false)[0].id == sampler::Filter && cards(false)[2].id == sampler::FilterType);
+    kit.last_pad = 6; // a pad without a sample: nothing to turn, but the kit's own values still are
+    CHECK(cards(false)[0].bound() && cards(false)[0].id == sampler::Filter);
+    stage_go(ui, 2, 1);
     CHECK(!cards(false)[0].bound());
     CHECK(stage_kit_page(StageKind::AmpEnv) == PageId::EnvelopePage && stage_kit_page(StageKind::Preset) == PageId::Count);
 

@@ -230,7 +230,16 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
         return {Binding {Kind::PadStart, 0, s0, std::min(s1, end - 1), start}, Binding {Kind::PadEnd, 0, std::max(e0, start + 1), e1, end},
                 Binding {Kind::PadLoopPoint, 0, std::max(l0, start), std::min(l1, std::max(start + 1, end - 1)), loop}};
     }
-    if (track.engine != EngineKind::Sampler || !pad.used()) return {};
+    if (track.engine != EngineKind::Sampler) return {};
+    switch (page) { // Melodee's kit-wide pages, with or without a pad
+    case PageId::FilterPage: return {param(track, sampler::Filter), param(track, sampler::Resonance), param(track, sampler::FilterType)};
+    case PageId::FollowPage: return {param(track, sampler::Follow), param(track, sampler::FollowHow), param(track, sampler::PitchHow)};
+    case PageId::CloudPage: // where, grain size, grains a second; row 2 scan, spread and Cloud on or off
+        if (row2) return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
+        return {param(track, sampler::Position), param(track, sampler::Size), param(track, sampler::Density)};
+    default: break;
+    }
+    if (!pad.used()) return {};
     switch (page) {
     case PageId::PadMix: // K1 volume, K3 pan (Shift + K2 the kit's volume)
         return {Binding {Kind::PadLevel, 0, 0, 127, pad.level}, Binding {}, Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
@@ -259,7 +268,7 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
 }
 
 // Their Shift + K cards, as on the MPC: zoom on Trim, the kit's volume on Mix, Decay From on the envelopes,
-// # Beats on Tune, Pad Link on Play.
+// # Beats on Tune, Pad Link on Play; on Stage's CLOUD, Cloud's row 2 (scan, spread, on or off).
 std::array<Binding, 3> pad_page_shift(const Track& track, const UiState& ui, PageId page) {
     if (page == PageId::Trim) return {trim_zoom(ui, 0), trim_zoom(ui, 1), trim_zoom(ui, 2)};
     const auto& pad = track.pads[track.last_pad % sampler_pads];
@@ -275,6 +284,7 @@ std::array<Binding, 3> pad_page_shift(const Track& track, const UiState& ui, Pag
     case PageId::PlayPage:
         if (!pad.used() || ui.sampler_row) return {};
         return {Binding {}, Binding {Kind::PadLink, 0, 0, 16, pad.link}, Binding {}};
+    case PageId::CloudPage: return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
     default: return {};
     }
 }
@@ -612,12 +622,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::EnvelopePage:
     case PageId::PadFilterPage:
     case PageId::FilterEnvPage:
-        return pad_page_bindings(project, track, ui, ui.page, ui.sampler_row != 0);
-    case PageId::FilterPage: return {param(track, sampler::Filter), param(track, sampler::Resonance), param(track, sampler::FilterType)};
-    case PageId::FollowPage: return {param(track, sampler::Follow), param(track, sampler::FollowHow), param(track, sampler::PitchHow)};
+    case PageId::FilterPage:
+    case PageId::FollowPage:
     case PageId::CloudPage:
-        if (ui.sampler_row) return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
-        return {param(track, sampler::Position), param(track, sampler::Size), param(track, sampler::Density)};
+        return pad_page_bindings(project, track, ui, ui.page, ui.sampler_row != 0);
     case PageId::Punch: { // the MPC's Pad FX pressed last: its K1-K3 (as on the MPC); else depth, snap, tail
         if (ui.punch_selected >= 0 && punch_is_mpc(PunchKind(ui.punch_selected))) {
             unsigned mpc = unsigned(ui.punch_selected) - punch_mpc_first;

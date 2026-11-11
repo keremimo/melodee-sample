@@ -81,7 +81,7 @@ void draw(Paint& p, const Snapshot& s) {
 }
 
 void bank(Context& c, int way) { c.track().bank = uint8_t((c.track().bank + sampler_banks + way) % sampler_banks); }
-// Push: the sampler's ten pages as a map (Stage holds the MPC's own; Follow, Cloud, Kit filter and the second rows are here).
+// Push: the sampler's ten pages as a map (Stage holds them too, but not their second rows).
 void push(Context& c) {
     c.open(PageId::PadMix);
     c.ui.map_open = true;

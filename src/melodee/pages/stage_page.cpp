@@ -312,6 +312,8 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     if (pad.loop) chip_at(pad.loop_lock ? "LOOP LOCKED" : "LOOP");
     if (pad.reverse) chip_at("REVERSE");
     if (page.kind == StageKind::Trim && s.ui.trim_zoom) chip_at(juce::String::fromUTF8("\xc3\x97") + juce::String(1 << s.ui.trim_zoom));
+    if (page.kind == StageKind::Cloud) chip_at(t.params[sampler::Cloud] ? "CLOUD ON" : "CLOUD OFF");
+    if (page.kind == StageKind::Follow) chip_at(t.params[sampler::Follow] ? "FOLLOW ON" : "FOLLOW OFF");
     // Volume and pan, as two thin meters at the sides.
     p.fill(px, wy, 5, wh, colour::line, 2.5f);
     float vol = pad.level / 127.0f;
@@ -363,11 +365,38 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         unsigned shape = pad.filter == PadFilter::Hpf2 || pad.filter == PadFilter::Hpf4 ? 2 : pad.filter == PadFilter::Bpf2 || pad.filter == PadFilter::Bpf4 ? 1 : 0;
         if (pad.filter != PadFilter::Off) draw_filter_curve(p, ox, wy, ow, wh, shape, 2, hz, q, knob_shade(s.ui.track, 1), knob_shade(s.ui.track, 0));
     }
+    if (page.kind == StageKind::KitFilter) { // the one filter after every pad, over the whole sample
+        float hz = 20.0f * std::exp2(t.params[sampler::Filter] / 100.0f * 9.97f), q = 0.7f + t.params[sampler::Resonance] * 0.06f;
+        draw_filter_curve(p, wx, wy, ww, wh, unsigned(t.params[sampler::FilterType]) % 3, 2, hz, q, knob_shade(s.ui.track, 1), knob_shade(s.ui.track, 0));
+    }
+    if (page.kind == StageKind::Cloud) { // where the grains come from (K1), how long they are (K2), a few of them
+        float at = x_of(region_from + (region_to - region_from) * t.params[sampler::Position] / 100.0f);
+        float size = std::max(2.0f, ww / (to - from) * float(0.01 * std::pow(100.0, t.params[sampler::Size] / 100.0) * 44100 / frames));
+        auto shade = t.params[sampler::Cloud] ? 1.0f : 0.5f;
+        p.fill(at - size / 2, wy, size, wh, colour::text.withAlpha(0.12f * shade));
+        p.fill(at, wy, 1, wh, knob_shade(s.ui.track, 0).withMultipliedAlpha(shade));
+        for (unsigned g = 0; g < 9; ++g) {
+            float gx = at + std::sin(g * 2.3f) * 0.5f * size, gy = wy + wh * (0.25f + 0.5f * std::fmod(g * 0.37f, 1.0f));
+            p.fill(gx, gy, 6, 3, knob_shade(s.ui.track, 1).withMultipliedAlpha(shade), 1.5f);
+        }
+    }
     p.g.restoreState();
     juce::String middle = "KEPT " + seconds(end - start);
     if (page.kind == StageKind::Tune) middle = juce::String(pad.pitch >= 0 ? "+" : "") + juce::String(pad.pitch) + " ST " + juce::String(pad.fine >= 0 ? "+" : "") + juce::String(pad.fine) + " CT";
     if (page.kind == StageKind::Play) middle = pad.group ? "MUTE GROUP " + juce::String(pad.group) : juce::String(pad.mono ? "MONO" : "POLY");
     if (page.kind == StageKind::Filter) middle = pad.filter == PadFilter::Off ? juce::String("FILTER OFF") : juce::String(pad_filter_name(pad.filter)).toUpperCase();
+    if (page.kind == StageKind::KitFilter) {
+        static const char* types[] {"KIT LOW PASS", "KIT BAND PASS", "KIT HIGH PASS"};
+        middle = types[unsigned(t.params[sampler::FilterType]) % 3];
+    }
+    if (page.kind == StageKind::Follow) {
+        static const char* hows[] {"BEATS", "TONES", "TAPE"};
+        middle = t.params[sampler::Follow] ? juce::String(hows[unsigned(t.params[sampler::FollowHow]) % 3]) + dot + (t.params[sampler::PitchHow] ? "STRETCH" : "SPEED")
+                                           : juce::String("K1 TURNS ON");
+    }
+    if (page.kind == StageKind::Cloud)
+        middle = t.params[sampler::Cloud] ? "AROUND " + juce::String((start + (end - start) * t.params[sampler::Position] / 100.0) / 44100.0, 3) + " S"
+                                          : juce::String("SHIFT + K3 ON");
     axis(p, bottom - 16, seconds(uint32_t(from * frames)), middle, seconds(uint32_t(to * frames)));
 }
 

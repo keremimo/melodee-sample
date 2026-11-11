@@ -311,6 +311,10 @@ const Preview previews[] {
      }},
     {"stagekittune", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 0); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pitch = -2; }},
     {"stagekitplay", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 1); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].group = 2; }},
+    {"stagekitfollow", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Follow] = 1; }},
+    {"stagekitcloud", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Cloud] = 1; }},
+    {"stagekitcloudoff", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true; }},
+    {"stagekitfilt", [](Shell&, Snapshot& s) { on_stage(s, 3, 2, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Filter] = 55; }},
     {"stagekitfilter", [](Shell&, Snapshot& s) {
          on_stage(s, 3, 2, 0); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Lpf4; pad.cutoff = 45; pad.resonance = 40;
