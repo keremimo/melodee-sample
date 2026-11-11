@@ -11,7 +11,7 @@ behaviour changed.
 
 ## Rules for every phase
 
-- Work in `/Users/kerem/code/personal/melodee-sample` on `main`, no
+- Work in this checkout on `main`, no
   worktree. Build with `./build.sh` here, reusing `build/`; never in a
   private scratch copy. Other sessions edit this checkout at the same time:
   commit only your own paths (`git commit <paths> -m ...`), never `git
@@ -29,7 +29,7 @@ behaviour changed.
   `Command`s. Project file: new fields are new tagged sections, so older
   `.mldp` files still load. No literal 44100: rates and latency come from
   `EngineHost::set_audio_format` / `drivers/audio.h`.
-- Base changes go into `/Users/kerem/code/personal/sample-base` (committed
+- Base changes go into the sibling checkout `../sample-base` (committed
   there, then `base/` moved to that commit). Never push anything, here or
   there, and never touch GitHub: list the pushes owed in the log.
 - Screens: pads pick, knobs set, keys act, Push has one job, no push and
@@ -81,7 +81,7 @@ behaviour changed.
 
 ## P1: drums and sequencer
 
-Reference: melodee-ios (`~/code/personal/melodee-ios`,
+Reference: melodee-ios (the sibling checkout `../melodee-ios`,
 `MelodeeKit/Sources/MelodeeAudio/Pattern.swift` and `NoteEffects.swift`)
 has ratchets, conditions, lane lengths and Euclid already; port the
 behaviour, write the code fresh for this app.
