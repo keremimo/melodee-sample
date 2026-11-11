@@ -6,6 +6,7 @@
 #include <climits>
 #include <pthread.h>
 #include <sched.h>
+#include <thread>
 #if defined(__linux__)
 #include <linux/futex.h>
 #include <sys/syscall.h>
@@ -33,41 +34,45 @@ void flush_denormals() {
 #endif
 }
 
+// Sleeping until `word` moves on from `seen`: a futex on Linux (the MPC); elsewhere (a computer's tests) short
+// naps that look again, which needs no waking.
+void sleep_while(std::atomic<uint32_t>& word, uint32_t seen) {
 #if defined(__linux__)
-void futex_wait(std::atomic<uint32_t>& word, uint32_t seen) {
     syscall(SYS_futex, reinterpret_cast<uint32_t*>(&word), FUTEX_WAIT_PRIVATE, seen, nullptr, nullptr, 0);
-}
-void futex_wake(std::atomic<uint32_t>& word) {
-    syscall(SYS_futex, reinterpret_cast<uint32_t*>(&word), FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
-}
+#else
+    if (word.load(std::memory_order_acquire) == seen) std::this_thread::sleep_for(std::chrono::microseconds(100));
 #endif
+}
+void wake_all(std::atomic<uint32_t>& word) {
+#if defined(__linux__)
+    syscall(SYS_futex, reinterpret_cast<uint32_t*>(&word), FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
+#else
+    (void)word;
+#endif
+}
 } // namespace
 
 RenderPool::~RenderPool() { stop(); }
 
 void RenderPool::start(unsigned count, int priority) {
     stop();
-#if defined(__linux__)
     stopping.store(false);
     for (unsigned n = 0; n < count; ++n) {
         threads.emplace_back([this] { work(); });
         sched_param param {};
         param.sched_priority = priority;
         pthread_setschedparam(threads.back().native_handle(), SCHED_FIFO, &param); // best effort, as the audio thread's
+#if defined(__linux__)
         pthread_setname_np(threads.back().native_handle(), "melodee-render");
-    }
-#else
-    (void)count; (void)priority;
 #endif
+    }
 }
 
 void RenderPool::stop() {
     if (threads.empty()) return;
     stopping.store(true);
     generation.fetch_add(1, std::memory_order_acq_rel);
-#if defined(__linux__)
-    futex_wake(generation);
-#endif
+    wake_all(generation);
     for (auto& t : threads) t.join();
     threads.clear();
 }
@@ -93,15 +98,16 @@ void RenderPool::dispatch(unsigned count, Call job, void* job_context) {
     ticket.store(uint64_t(gen) << 32 | uint64_t(count) << 16, std::memory_order_release);
     // seq_cst with the worker's side: either it sees the new generation or this sees it asleep.
     generation.store(gen, std::memory_order_seq_cst);
-#if defined(__linux__)
-    if (sleepers.load(std::memory_order_seq_cst)) futex_wake(generation);
-#endif
+    if (sleepers.load(std::memory_order_seq_cst)) wake_all(generation);
     while (claim(gen)) {}
     while (done.load(std::memory_order_acquire) < count) relax();
 }
 
 void RenderPool::work() {
     flush_denormals();
+#if defined(__APPLE__)
+    pthread_setname_np("melodee-render");
+#endif
     uint32_t seen = generation.load(std::memory_order_acquire);
     while (true) {
         // Wait for the next run: spin a little (the block's next run is near), then sleep.
@@ -110,15 +116,13 @@ void RenderPool::work() {
             auto until = std::chrono::steady_clock::now() + spin;
             while ((gen = generation.load(std::memory_order_acquire)) == seen && std::chrono::steady_clock::now() < until) relax();
         }
-#if defined(__linux__)
         while (gen == seen) {
             sleepers.fetch_add(1, std::memory_order_seq_cst);
             gen = generation.load(std::memory_order_seq_cst);
-            if (gen == seen) futex_wait(generation, seen);
+            if (gen == seen) sleep_while(generation, seen);
             sleepers.fetch_sub(1, std::memory_order_acq_rel);
             gen = generation.load(std::memory_order_acquire);
         }
-#endif
         if (stopping.load(std::memory_order_acquire)) return;
         seen = gen;
         while (claim(gen)) {}

@@ -16,8 +16,9 @@
 // Workers run at the audio thread's real-time priority. Between the two runs
 // of a block they spin briefly; after that they sleep on a futex and run()
 // wakes them, so an idle Melodee keeps its cores idle. Nothing here allocates
-// or locks once started. Linux only; elsewhere (or with no workers) run()
-// does every job on the calling thread.
+// or locks once started. On Linux they sleep on a futex; elsewhere (a
+// computer's tests) in short naps. With no workers run() does every job on
+// the calling thread.
 namespace melodee {
 
 class RenderPool {
