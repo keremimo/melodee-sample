@@ -196,7 +196,7 @@ void import_mpc(LoadedProject& l) {
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
     MpcImport report;
-    const bool program = fs::path(l.path).extension() == ".xpm" || fs::path(l.path).extension() == ".XPM"; // a drum program: a kit
+    const bool program = is_mpc_program(l.path); // a drum program (.xpm, .xty): a kit
     l.error = program ? import_mpc_program(l.bytes, l.path, *project, report) : import_mpc_project(l.bytes, l.path, *project, *patterns, report);
     l.bytes.clear();
     if (!l.error.empty()) { l.note = l.error; return; }

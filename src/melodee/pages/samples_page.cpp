@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // SAMPLES (Sample Select on a sampler track): the MPC's sample browser.
-// MPC drum programs (KIT) first, then folders, as categories, then the WAV files and SFZ instruments. The wheel and Minus /
+// MPC drum programs (KIT) first, then instruments (XPM, XTY, SFZ), then folders, as categories, then the WAV files. The wheel and Minus /
 // Plus move, Push opens a folder or loads the file onto the last pad hit
 // (keeping the pad's settings; the whole file, Trim or Chop shape it), or a
 // bank file (BANK, Samples/Banks) into the kit's bank in view, or an MPC drum
-// program (KIT) as the track's kit, as Load Kit does; Shift +
+// program (KIT) as the track's kit, as Load Kit does, or installs an MPC
+// expansion (.xpn, INSTALL) onto the card and opens its folder; Shift +
 // Sample Select here saves that bank as a bank file (Save Bank). B1
 // goes back out, B2 picks the drive (the card, or the internal one: the
 // factory categories and the stock app's samples, read only), B3 hears each
@@ -64,8 +65,10 @@ void draw(Paint& p, const Snapshot& s) {
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)
                         if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.tag = juce::String("ON ") + juce::String(label); break; }
-        if (file.instrument && r.tag.isEmpty()) r.tag = juce::String(file.path).endsWithIgnoreCase(".xpm") ? "XPM" : "SFZ";
+        if (file.instrument && r.tag.isEmpty())
+            r.tag = juce::String(file.path).endsWithIgnoreCase(".xpm") ? "XPM" : juce::String(file.path).endsWithIgnoreCase(".xty") ? "XTY" : "SFZ";
         if (file.kit && r.tag.isEmpty()) r.tag = "KIT";
+        if (file.expansion && r.tag.isEmpty()) r.tag = "INSTALL";
         if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length, in place of the tag
             char now[16], of[24];
             std::snprintf(now, sizeof(now), "%.1f", heard.heard);
@@ -93,6 +96,7 @@ void push(Context& c) {
     if (file.folder) c.library->browse(Drive(c.ui.files_drive), file.path);
     else if (file.bank) c.load_bank_file(file.path, file.name);
     else if (file.kit) c.load_kit_file(file.path, file.name);
+    else if (file.expansion) c.library->install(file.path);
     else c.load_file(file.path, file.name, false);
 }
 
@@ -113,6 +117,7 @@ bool samples_shift_pad(Context& c) {
     const auto& file = files[c.ui.files_cursor];
     if (file.bank) { c.notice("Push loads a bank"); return true; }
     if (file.kit) { c.notice("Push loads a kit"); return true; }
+    if (file.expansion) { c.notice("Push installs it"); return true; }
     c.load_file(file.path, file.name, true);
     return true;
 }

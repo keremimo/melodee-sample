@@ -114,7 +114,7 @@ double layer_cents(const KeygroupTags& l) {
 
 // One keygroup's layers (a drum pad's: `drum`) as zones over low..high.
 void add_layers(const KeygroupInstrument& instrument, int low, int high, bool drum, SfzRead& read,
-                std::vector<SfzEnvelope>& envelopes, bool& velocity_taken) {
+                std::vector<SfzEnvelope>& envelopes, bool& velocity_taken, double program_cents = 0, double program_db = 0) {
     const auto& t = instrument.tags;
     const auto layers = keygroup_layers(instrument);
     if (layers.empty()) return;
@@ -127,17 +127,18 @@ void add_layers(const KeygroupInstrument& instrument, int low, int high, bool dr
     int play = int_at(t, "ZonePlay").value_or(1);
     if (play < 0 || play > 2) { read.ignored.insert("ZonePlay"); play = 1; }
     // A drum pad's filter, volume and tune are the pad's own (keygroup_pad()); a keygroup's go on its zones.
-    double instrument_cents = 0, instrument_db = 0;
+    double instrument_cents = program_cents, instrument_db = program_db;
     if (!drum) {
         if (int_at(t, "FilterType").value_or(0) > 0) read.ignored.insert("FilterType");
-        instrument_cents = 100.0 * int_at(t, "TuneCoarse").value_or(0) + int_at(t, "TuneFine").value_or(0);
-        if (auto volume = number_at(t, "Volume"); volume && *volume > 0) instrument_db = 40 * std::log10(*volume) + 6;
+        instrument_cents += 100.0 * int_at(t, "TuneCoarse").value_or(0) + int_at(t, "TuneFine").value_or(0);
+        if (auto volume = number_at(t, "Volume"); volume && *volume > 0) instrument_db += 40 * std::log10(*volume) + 6;
     }
     const bool no_keytrack = !drum && flag_at(t, "IgnoreBaseNote").value_or(false);
     const auto envelope = envelope_of(t);
     if (!velocity_taken) {
         velocity_taken = true;
-        if (auto amount = number_at(t, "VelocitySensitivity"); amount && *amount > 0) read.velocity = std::clamp(*amount, 0.0, 1.0) * 100;
+        // 0 is none at all (an organ's): every press full
+        if (auto amount = number_at(t, "VelocitySensitivity")) read.velocity = std::clamp(*amount, 0.0, 1.0) * 100;
     }
     const size_t count = layers.size();
     for (size_t n = 0; n < count; ++n) {
@@ -248,13 +249,20 @@ PadFilter mpc_filter(int type) {
 SfzRead read_keygroup(const KeygroupProgram& program) {
     SfzRead read;
     std::vector<SfzEnvelope> envelopes;
-    const int keygroups = int_at(program.tags, "KeygroupNumKeygroups").value_or(128);
+    const auto& p = program.tags;
+    const int keygroups = int_at(p, "KeygroupNumKeygroups").value_or(128);
+    // The program's own tune and volume, over every keygroup's: TuneCoarse and TuneFine (an .xpm),
+    // transpose in semitones (an MPC 3 program's); Volume on the MPC's curve, 0.7079 at 0 dB.
+    double cents = 100.0 * (int_at(p, "TuneCoarse").value_or(0) + int_at(p, "KeygroupTranspose").value_or(0)) + int_at(p, "TuneFine").value_or(0);
+    double db = 0;
+    if (auto volume = number_at(p, "Volume"); volume && *volume > 0) db = 40 * std::log10(*volume) + 6;
+    if (auto transpose = number_at(p, "KeygroupMasterTranspose"); transpose && std::fabs(*transpose - 0.5) > 1e-6) read.ignored.insert("KeygroupMasterTranspose");
     bool velocity_taken = false;
     for (const auto& instrument : program.instruments) {
         if (instrument.number > keygroups) continue; // past the program's count: left over from a longer one
         const int low = std::clamp(int_at(instrument.tags, "LowNote").value_or(0), 0, 127);
         const int high = std::clamp(int_at(instrument.tags, "HighNote").value_or(127), 0, 127);
-        add_layers(instrument, low, high, false, read, envelopes, velocity_taken);
+        add_layers(instrument, low, high, false, read, envelopes, velocity_taken, cents, db);
     }
     sfz_share_envelopes(envelopes, read);
     return read;

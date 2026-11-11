@@ -3,6 +3,7 @@
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/chop.h"
 #include "melodee/shell/mpc_program.h"
+#include "melodee/shell/sample_decode.h"
 #include "drivers/mixer.h"
 #include "drivers/platform.h"
 #include "runtime/app.h"
@@ -60,6 +61,39 @@ void SampleLibrary::browse(Drive drive, const std::string& folder) {
     std::lock_guard<std::mutex> guard(lock);
     wanted.pending = true; wanted.up = false; wanted.drive = drive; wanted.folder = folder;
 }
+void SampleLibrary::install(const std::string& path) {
+    std::lock_guard<std::mutex> guard(lock);
+    installs_wanted.push_back(path);
+}
+
+void SampleLibrary::install_service() {
+    if (!installing) {
+        std::string path, root;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            if (installs_wanted.empty()) return;
+            path = installs_wanted.front();
+            installs_wanted.erase(installs_wanted.begin());
+            root = known.root;
+        }
+        if (root.empty()) { finish("Install: no card"); return; }
+        auto next = std::make_unique<ExpansionInstall>();
+        auto error = next->open(path, (fs::path(root) / "Expansions").string());
+        if (!error.empty()) { finish("Install: " + error); return; }
+        finish("Installing " + next->title());
+        installing = std::move(next);
+        return;
+    }
+    std::string error;
+    if (installing->step(error)) return;
+    if (!error.empty()) finish("Install: " + error);
+    else {
+        finish("Installed " + installing->title());
+        browse(Drive::Card, installing->folder()); // its programs, in view
+    }
+    installing.reset();
+}
+
 void SampleLibrary::browse_up() {
     std::lock_guard<std::mutex> guard(lock);
     wanted.pending = true; wanted.up = true;
@@ -92,12 +126,26 @@ std::string upper(std::string text) {
 }
 bool is_wav(const fs::path& path) { return upper(path.extension().string()) == ".WAV"; }
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
-bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm), or a pad of an MPC program or project
+bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm, .xty), or a pad of an MPC program or project
     std::string file, which;
     if (split_program_pad(path.string(), file, which)) return true;
     const auto kind = upper(path.extension().string());
-    return kind == ".SFZ" || kind == ".XPM";
+    return kind == ".SFZ" || kind == ".XPM" || kind == ".XTY";
 }
+// "<name>_[TrackData]" beside <name>.xty (and an .xpj's, an .xpm's data folder beside its file).
+bool owned_data(const fs::path& dir) {
+    const std::string name = dir.filename().string();
+    for (const char* tail : {"_[TrackData]", "_[ProjectData]", "_[ProgramData]"}) {
+        const std::string t = tail;
+        if (name.size() <= t.size() || name.compare(name.size() - t.size(), t.size(), t)) continue;
+        const std::string stem = name.substr(0, name.size() - t.size());
+        std::error_code error;
+        for (const char* kind : {".xty", ".xpj", ".xpm", ".XTY", ".XPJ", ".XPM"})
+            if (fs::exists(dir.parent_path() / (stem + kind), error)) return true;
+    }
+    return false;
+}
+bool is_expansion(const fs::path& path) { return upper(path.extension().string()) == ".XPN"; } // an MPC expansion: a zip to install
 // A folder's folders, WAV files and bank files, appended; hidden ones and lost+found left out.
 // card_top: the card's own top folder, where its boot folder (autorun, what starts the app) is no sample's.
 void list_into(const std::string& folder, std::vector<SampleFile>& out, bool card_top = false) {
@@ -108,12 +156,15 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out, bool car
         auto name = it->path().filename().string();
         if (name.empty() || name[0] == '.' || name == "lost+found" || (card_top && name == "autorun")) continue;
         bool folder_here = it->is_directory(error);
+        if (folder_here && name == "[Previews]") continue; // an expansion's program previews: Preview plays them on the program
+        if (folder_here && owned_data(it->path())) continue;  // a program's or project's own samples: it is the row
         bool bank = !folder_here && is_bank(it->path());
         bool instrument = !folder_here && is_instrument(it->path());
-        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument))) continue;
+        bool expansion = !folder_here && is_expansion(it->path());
+        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument || expansion))) continue;
         SampleFile f;
-        f.path = it->path().string(); f.folder = folder_here; f.bank = bank; f.instrument = instrument;
-        if (instrument && upper(it->path().extension().string()) == ".XPM" && is_drum_program(f.path)) { f.kit = true; f.instrument = false; }
+        f.path = it->path().string(); f.folder = folder_here; f.bank = bank; f.instrument = instrument; f.expansion = expansion;
+        if (instrument && is_drum_program(f.path)) { f.kit = true; f.instrument = false; }
         f.name = upper(folder_here ? name : it->path().stem().string()).substr(0, 26);
         if (!folder_here) f.bytes = it->file_size(error);
         out.push_back(std::move(f));
@@ -134,6 +185,7 @@ void SampleLibrary::service(Hardware& hardware) {
     Request request;
     SampleJob job;
     bank_files();
+    install_service();
     if (requests.pop(request)) read(request); // one file per pass keeps the thread answering
     else if (jobs.pop(job)) make(job);
     else {
@@ -196,9 +248,11 @@ void SampleLibrary::scan() {
     std::vector<SampleFile> files;
     if (drive == Drive::Internal && folder.empty()) for (const auto& t : tops) list_into(t, files);
     else list_into(folder, files, drive == Drive::Card && folder == card_top);
-    // MPC drum programs (kits) first, as an expansion's folder holds them beside its [Previews]; then folders, then files.
+    // MPC drum programs (kits) first, then instruments (keygroup programs, SFZ), as an expansion's folder holds
+    // them among its samples; then folders, then files.
     std::sort(files.begin(), files.end(), [](const SampleFile& a, const SampleFile& b) {
         if (a.kit != b.kit) return a.kit;
+        if (a.instrument != b.instrument) return a.instrument;
         return a.folder != b.folder ? a.folder : a.name != b.name ? a.name < b.name : a.path < b.path;
     });
     int came_from = -1;
@@ -360,9 +414,13 @@ void SampleLibrary::make(const SampleJob& job) {
 
 // The browser's preview (B3): the file in the preview slot, at most 30 s of it.
 void SampleLibrary::hear(const std::string& path) {
-    if (is_instrument(path)) { hear_instrument(path); return; }
+    // An MPC program with a preview of its own (an expansion's [Previews]): that, as the MPC plays it.
+    const std::string preview = is_mpc_program(path) ? program_preview(path) : std::string();
+    if (preview.empty() && is_expansion(path)) return;
+    if (preview.empty() && is_drum_program(path)) return; // a kit with no preview: nothing to hear
+    if (preview.empty() && is_instrument(path)) { hear_instrument(path); return; }
     auto data = std::make_unique<SampleData>();
-    if (!read_wav(path, *data, 30).empty() || !data->frames) return;
+    if (!(preview.empty() ? read_wav(path, *data, 30) : read_audio(preview, *data, 30, nullptr)).empty() || !data->frames) return;
     if (!host.offer_sample(preview_slot, data.get())) return;
     owned.push_back(std::move(data));
     { std::lock_guard<std::mutex> guard(lock); preview_heard = path; }

@@ -401,7 +401,9 @@ rate, up to 60 s), read on the service thread and handed whole to the audio
 thread.
 
 - **Samples** (Sample Select on a kit): the browser. MPC drum programs
-  (KIT) first, then folders, then files; wheel and −/+ move, Push opens a folder or loads onto the last pad
+  (KIT) first, then instruments (XPM, XTY, SFZ), then folders, then files;
+  an expansion's `[Previews]` and a program's own `_[TrackData]` are not
+  listed; wheel and −/+ move, Push opens a folder or loads onto the last pad
   (keeping its settings), B1 back out, B2 the drive (CARD from `Samples`,
   or INTERNAL: the factory categories and the stock app's User folder, read
   only), B3 PREVIEW plays each file as the cursor lands (its row fills in
@@ -432,9 +434,15 @@ thread.
   program (any case). Carried over: root, tune, layer volume (its gain) and
   pan, the keygroup's volume and tune, start, end and forward loop, one shot,
   keytrack off, Cycle (a layer a press) and Random, and the amp envelope.
-  Named, not played: filters, reversed loops, note-off keygroups. MPC 3's
-  compressed `.xpm` is refused with a word on the pad.
-- **MPC drum programs** (`.xpm` of type Drum, tagged KIT): Push loads the
+  The program's own volume and tune go over every keygroup, and its Velocity
+  Sense of 0 (an organ's) plays every press full. Named, not played: filters,
+  reversed loops, note-off keygroups. A layer naming a sample the folder does
+  not hold (expansions keep some from their full version) is left out and
+  counted on TRIM, not called an error; a program with none found is.
+- **MPC 3 programs** (`.xty`, an MPC 3 track, tagged XTY; and an `.xpm`
+  MPC 3 saved, gzip around JSON): read as `.xpm` ones are, keygroup or drum,
+  their samples in `<name>_[TrackData]` beside them.
+- **MPC drum programs** (`.xpm` or `.xty` of type Drum, tagged KIT): Push loads the
   program as the selected kit track's kit, as Load Kit does (one undo), each
   instrument onto its pad (1 is A01, 17 is B01). A pad of one layer plays its
   WAV; one of more (a cycle of hits, velocity layers, a random pick) plays its
@@ -443,6 +451,13 @@ thread.
   Shot, Note On), mono, mute group, envelope, velocity, filter (a one-pole as
   the two-pole kind) and filter envelope; each layer's tune, volume, pan,
   region and loop. Shift + pad on it says Push loads a kit.
+- **MPC expansions** (`.xpn`, tagged INSTALL): Push installs one onto the card,
+  a file a pass, into `Samples/Expansions/<its title>` (from its
+  `Expansion.xml`), then opens that folder; a file already there at its size
+  is kept, so installing again only finishes what was left. B3 PREVIEW on a
+  program plays its own preview, `[Previews]/<program file>.mp3`, when the
+  expansion has one (JUCE's MP3 decoder); else a keygroup plays the zone
+  nearest middle C and a kit stays quiet.
 - **Banks** (kit tracks only): one bank of a kit's sixteen pads as a file.
   **Save Bank** is Shift + Sample Select on Samples: the Name sheet (the kit's
   name and bank letter first), then `Samples/Banks/<name>.mldb` with every

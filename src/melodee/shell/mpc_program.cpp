@@ -83,7 +83,7 @@ int slot_for(Project& project, const std::string& path, const std::string& name)
 
 std::string parse_mpc_program(const std::string& text, KeygroupProgram& program) {
     size_t first = text.find_first_not_of(" \t\r\n\xef\xbb\xbf");
-    if (first == std::string::npos || text[first] != '<') return "Newer MPC format";
+    if (first == std::string::npos || text[first] != '<') return "Not an MPC program";
     auto xml = juce::XmlDocument::parse(juce::String::fromUTF8(text.data(), int(text.size())));
     if (!xml || !xml->hasTagName("MPCVObject")) return "Unreadable";
     auto* found = xml->getChildByName("Program");
@@ -103,15 +103,38 @@ std::string parse_mpc_program(const std::string& text, KeygroupProgram& program)
     return {};
 }
 
+std::string read_program(const std::string& path, const std::string& bytes, KeygroupProgram& program) {
+    if (bytes.size() >= 2 && uint8_t(bytes[0]) == 0x1f && uint8_t(bytes[1]) == 0x8b) // the MPC 3's: gzip around JSON
+        return read_mpc_json_program(std::vector<uint8_t>(bytes.begin(), bytes.end()), path, program);
+    return parse_mpc_program(bytes, program);
+}
+
+bool is_mpc_program(const std::string& path) {
+    auto kind = lowered(fs::path(path).extension().string());
+    return kind == ".xpm" || kind == ".xty";
+}
+
 bool is_drum_program(const std::string& path) {
+    if (!is_mpc_program(path)) return false;
     std::string head;
     if (!read_bytes(path, head, 16384)) return false;
+    if (head.size() >= 2 && uint8_t(head[0]) == 0x1f && uint8_t(head[1]) == 0x8b) { // JSON: read whole (an .xty is a few hundred KB)
+        std::string whole;
+        KeygroupProgram program;
+        return read_bytes(path, whole, 8u << 20) && read_program(path, whole, program).empty() && program.type == "Drum";
+    }
     return head.find("<Program type=\"Drum\"") != std::string::npos;
+}
+
+std::string program_preview(const std::string& path) {
+    const fs::path where(path);
+    auto found = found_beside(where.parent_path(), "[Previews]/" + where.filename().string() + ".mp3");
+    return found.empty() ? std::string() : found.string();
 }
 
 std::string import_mpc_program(const std::vector<uint8_t>& file, const std::string& path, Project& project, MpcImport& report) {
     KeygroupProgram program;
-    auto error = parse_mpc_program(std::string(file.begin(), file.end()), program);
+    auto error = read_program(path, std::string(file.begin(), file.end()), program);
     if (!error.empty()) return error;
     if (program.type != "Drum") return "Not a drum program";
     const fs::path where(path), folder = where.parent_path();
@@ -162,7 +185,7 @@ bool split_program_pad(const std::string& path, std::string& file, std::string& 
     file = path.substr(0, mark);
     which = path.substr(mark + 1);
     auto kind = lowered(fs::path(file).extension().string());
-    return kind == ".xpm" || kind == ".xpj";
+    return kind == ".xpm" || kind == ".xpj" || kind == ".xty";
 }
 
 std::map<std::string, KeygroupInstrument> program_pads(const std::string& file, std::string& error) {
@@ -183,7 +206,7 @@ std::map<std::string, KeygroupInstrument> program_pads(const std::string& file, 
         pads = mpc_project_pads(std::vector<uint8_t>(bytes.begin(), bytes.end()), file);
     } else {
         KeygroupProgram program;
-        error = parse_mpc_program(bytes, program);
+        error = read_program(file, bytes, program);
         if (!error.empty()) return {};
         for (auto& instrument : program.instruments)
             if (keygroup_layers(instrument).size() > 1) pads[std::to_string(instrument.number)] = std::move(instrument);

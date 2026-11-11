@@ -152,7 +152,7 @@ hit. B2 switches between the card and the MPC's internal factory samples;
 B3 PREVIEW plays each file as you land on it. Shift + pad loads onto the
 next empty pad.
 
-**Multisampled instruments.** An `.sfz`, or an MPC keygroup program (`.xpm`), loads the same way, onto one pad. An MPC drum program (`.xpm`, tagged KIT) loads as the whole kit instead, its cycled hits kept. Press **16 Levels** on it and choose Tune with Shift + 16 Levels to play it chromatically on the pads; a MIDI keyboard plays it at real pitch while 16 Levels is on. The first load prepares its files on the card, which can take a while for a big library; after that it opens at once.
+**Multisampled instruments.** An `.sfz`, or an MPC keygroup program (`.xpm`), loads the same way, onto one pad. An MPC drum program (`.xpm` or MPC 3's `.xty`, tagged KIT) loads as the whole kit instead, its cycled hits kept; MPC 3 keygroup tracks (`.xty`) load as instruments. Push on an MPC expansion (`.xpn`, tagged INSTALL) installs it into `Samples/Expansions` and opens it; with PREVIEW on, its programs play their own previews. Press **16 Levels** on it and choose Tune with Shift + 16 Levels to play it chromatically on the pads; a MIDI keyboard plays it at real pitch while 16 Levels is on. The first load prepares its files on the card, which can take a while for a big library; after that it opens at once.
 
 ![The sample browser](images/quickstart/samples.png)
 

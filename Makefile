@@ -5,10 +5,10 @@ TARGET := build/melodee
 APP_SOURCES := $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 include base/base.mk
 
-# JUCE's decoders, for an SFZ's FLAC, Ogg and AIFF samples. Melodee's alone,
-# so the base stays as it is.
+# JUCE's decoders, for an SFZ's FLAC, Ogg and AIFF samples and an MPC
+# expansion's MP3 previews. Melodee's alone, so the base stays as it is.
 FORMATS := $(JUCE)/juce_audio_formats
-FORMAT_FLAGS := -DJUCE_USE_MP3AUDIOFORMAT=0 -DJUCE_USE_WINDOWS_MEDIA_FORMAT=0 -DJUCE_USE_OPUS=0
+FORMAT_FLAGS := -DJUCE_USE_MP3AUDIOFORMAT=1 -DJUCE_USE_WINDOWS_MEDIA_FORMAT=0 -DJUCE_USE_OPUS=0
 FORMAT_OBJECTS := build/obj/juce_audio_formats.o build/obj/juce_audio_formats_flac_1.o build/obj/juce_audio_formats_flac_2.o build/obj/juce_audio_formats_ogg.o
 OBJECTS += $(FORMAT_OBJECTS)
 $(TARGET): $(FORMAT_OBJECTS)

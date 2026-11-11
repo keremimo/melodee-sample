@@ -13,6 +13,7 @@
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/sfz.h"
 #include "melodee/engine/keygroup.h"
+#include "melodee/shell/expansion_install.h"
 #include "melodee/engine/stream_pager.h"
 #include "melodee/shell/sample_cache.h"
 #include "melodee/engine/take_recorder.h"
@@ -5114,6 +5115,37 @@ void keygroup_reader() {
         auto r = read_keygroup(tuned);
         CHECK(r.regions.size() == 1 && r.regions[0].zone.tune == 105 && std::fabs(r.regions[0].zone.gain - (6 + 20 * std::log10(0.5))) < 1e-3);
     }
+    {   // the program's own, over every keygroup: an organ's (Vintage Organs) velocity off, its volume and tune
+        KeygroupProgram organ;
+        organ.type = "Keygroup";
+        organ.tags = {{"Volume", "0.707946"}, {"TuneCoarse", "1"}, {"KeygroupTranspose", "-2"}, {"KeygroupMasterTranspose", "0.500000"},
+                      {"KeygroupNumKeygroups", "1"}};
+        KeygroupInstrument one;
+        one.number = 1;
+        one.tags = {{"LowNote", "24"}, {"HighNote", "37"}, {"Volume", "0.46"}, {"VelocitySensitivity", "0.000000"}, {"ZonePlay", "1"}};
+        one.layers = {{{"SampleName", "Organ-036 C1"}, {"RootNote", "37"}, {"Volume", "0.71"}},
+                      {{"SampleName", "Organ-036 C1 b"}, {"RootNote", "37"}}};
+        KeygroupInstrument spare = one;
+        spare.number = 2; // past KeygroupNumKeygroups
+        organ.instruments = {one, spare};
+        auto r = read_keygroup(organ);
+        CHECK(r.regions.size() == 2 && r.velocity == 0 && r.ignored.empty());
+        CHECK(r.regions[0].zone.root == 36 && r.regions[0].zone.tune == -100 && r.regions[1].zone.low_velocity == 1); // both layers stack
+        const double kg = 40 * std::log10(0.46) + 6;
+        CHECK(std::fabs(r.regions[0].zone.gain - (kg + 20 * std::log10(0.71))) < 1e-3 && std::fabs(r.regions[1].zone.gain - kg) < 1e-3);
+        organ.tags["KeygroupMasterTranspose"] = "0.6";
+        CHECK(read_keygroup(organ).ignored.count("KeygroupMasterTranspose"));
+    }
+}
+
+// An expansion's zip entries stay inside its folder.
+void expansion_paths() {
+    CHECK(expansion_entry_path("Expansion.xml") == "Expansion.xml");
+    CHECK(expansion_entry_path("Organ_[TrackData]/Organ-036 C1.wav") == "Organ_[TrackData]/Organ-036 C1.wav");
+    CHECK(expansion_entry_path("a\\b//./c.wav") == "a/b/c.wav");
+    CHECK(expansion_entry_path("/abs/c.wav") == "abs/c.wav");
+    CHECK(expansion_entry_path("../evil.wav").empty() && expansion_entry_path("a/../../evil.wav").empty());
+    CHECK(expansion_entry_path("C:\\evil.wav").empty() && expansion_entry_path("").empty());
 }
 
 // A drum program's pad, as the Dirty Drummer kits have them: four hits cycled,
@@ -5754,6 +5786,10 @@ void note_pitches() {
     CHECK(ref.instrument());
     std::strcpy(ref.path, "/media/card/Kits/Kick #1.wav");
     CHECK(!ref.instrument());
+    std::strcpy(ref.path, "/media/card/Expansions/Organs/Organ-Farfisa VO Miller.xty");
+    CHECK(ref.instrument());
+    std::strcpy(ref.path, "/media/card/Expansions/Kits/Kit.XTY#5");
+    CHECK(ref.instrument());
     Track kit; kit.engine = EngineKind::Sampler;
     CHECK(note_key(kit, 20) == -1 && note_key(kit, 20, true) == 20 && note_key(kit, 127, true) == 127 && note_key(kit, 128, true) == -1);
 }
@@ -6375,6 +6411,7 @@ int main() {
     sfz_reader();
     keygroup_reader();
     drum_program_pads();
+    expansion_paths();
     sample_cache();
     stream_pager();
     sampler_zones();

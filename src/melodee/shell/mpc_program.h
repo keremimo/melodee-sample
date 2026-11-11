@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-// MPC programs (.xpm, the XML kind): a keygroup program is one instrument on a
+// MPC programs (.xpm, and the MPC 3's .xty tracks): a keygroup program is one instrument on a
 // pad (engine/keygroup.h); a drum program is a kit, loaded with Load Kit onto
 // the selected track as an MPC Sample project's is. A drum pad of one layer
 // plays its WAV; one of more plays them as an instrument named
@@ -17,12 +17,18 @@
 // program when the pad's sample loads, so its layers stream from the card.
 namespace melodee {
 
-// The XML read into the keygroup reader's tree. Empty on success; the MPC 3
-// kind (gzip around JSON) is named, not read.
+// An .xpm's XML read into the keygroup reader's tree. Empty on success.
 std::string parse_mpc_program(const std::string& text, KeygroupProgram& program);
+// Any MPC program's bytes, read into that tree: an .xpm's XML, or the MPC 3's
+// gzip JSON (an .xty track, or an .xpm saved by MPC 3). Empty on success.
+std::string read_program(const std::string& path, const std::string& bytes, KeygroupProgram& program);
 
-// A drum program, by its first few kilobytes.
+// An .xpm or an .xty: an MPC program, by its name.
+bool is_mpc_program(const std::string& path);
+// A drum program (a kit), by its first few kilobytes, or the whole of an MPC 3 one.
 bool is_drum_program(const std::string& path);
+// The program's preview, as MPC expansions keep one: "[Previews]/<program file>.mp3" beside it; empty when none.
+std::string program_preview(const std::string& path);
 
 // A drum program as a project of one kit track. Empty on success.
 std::string import_mpc_program(const std::vector<uint8_t>& file, const std::string& path, Project& project, MpcImport& report);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/shell/expansion_install.h"
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/pad_bank.h"
@@ -1472,6 +1473,25 @@ int sound(const std::string& path) {
 static int mpc_import(const char* path) {
     std::ifstream file(path, std::ios::binary);
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
+    if (is_mpc_program(path) && !is_drum_program(path)) { // a keygroup program: one pad's instrument
+        KeygroupProgram program;
+        auto error = read_program(path, std::string(bytes.begin(), bytes.end()), program);
+        if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
+        auto read = read_keygroup(program);
+        std::string ignored;
+        for (const auto& i : read.ignored) ignored += i + " ";
+        std::printf("keygroup name=%s zones=%zu left=%u velocity=%.0f ignored=%s preview=%s\n", program.tags["ProgramName"].c_str(), read.regions.size(),
+                    read.left, read.velocity, ignored.c_str(), program_preview(path).c_str());
+        unsigned missing = 0;
+        for (const auto& r : read.regions) {
+            bool there = std::filesystem::exists(std::filesystem::path(path).parent_path() / r.sample);
+            missing += !there;
+            std::printf("  keys %u-%u root %u vel %u-%u tune %d gain %.1f end %lld %s%s\n", r.zone.low_key, r.zone.high_key, r.zone.root, r.zone.low_velocity,
+                        r.zone.high_velocity, r.zone.tune, r.zone.gain, (long long)r.end, r.sample.c_str(), there ? "" : " MISSING");
+        }
+        std::printf("missing=%u\n", missing);
+        return 0;
+    }
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
     MpcImport report;
@@ -1528,6 +1548,13 @@ std::optional<int> run_tool(int argc, char** argv) {
     // --self-test is what device.py and the SD boot run before stopping the stock app.
     if (argc == 3 && (!std::strcmp(argv[1], "--melodee-sound") || !std::strcmp(argv[1], "--self-test"))) return sound(argv[2]);
     if (argc == 3 && !std::strcmp(argv[1], "--mpc-import")) return mpc_import(argv[2]);
+    if (argc == 4 && !std::strcmp(argv[1], "--mpc-install")) { // an expansion into DIR/<its title>, as Push on one does
+        ExpansionInstall install;
+        auto error = install.open(argv[2], argv[3]);
+        while (error.empty() && install.step(error)) {}
+        std::printf("%s folder=%s files=%u/%u\n", error.empty() ? "installed" : ("error=" + error).c_str(), install.folder().c_str(), install.done(), install.total());
+        return error.empty() ? 0 : 1;
+    }
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return bench(unsigned(std::max(1, std::atoi(argv[2]))), names);

@@ -90,7 +90,8 @@ struct SampleRef {
     uint32_t frames = 0; // at 44.1 kHz, once loaded
     bool used() const { return path[0] != 0; }
     // A multisampled instrument, by what it is called: an .sfz, an MPC keygroup
-    // program (.xpm), or one pad of an MPC drum program or project, "<file>#<pad>".
+    // program (.xpm, the MPC 3's .xty), or one pad of an MPC drum program or
+    // project, "<file>#<pad>".
     bool instrument() const {
         const char* end = path + std::strlen(path);
         const char* mark = std::strrchr(path, '#');
@@ -98,9 +99,10 @@ struct SampleRef {
         if (pad) end = mark;
         if (end - path < 4 || end[-4] != '.') return false;
         const char kind[3] = {char(end[-3] | 32), char(end[-2] | 32), char(end[-1] | 32)};
-        const bool xp = kind[0] == 'x' && kind[1] == 'p';
-        if (pad) return xp && (kind[2] == 'm' || kind[2] == 'j');
-        return (kind[0] == 's' && kind[1] == 'f' && kind[2] == 'z') || (xp && kind[2] == 'm');
+        const bool xpm = kind[0] == 'x' && kind[1] == 'p' && kind[2] == 'm';
+        const bool xty = kind[0] == 'x' && kind[1] == 't' && kind[2] == 'y';
+        if (pad) return xpm || xty || (kind[0] == 'x' && kind[1] == 'p' && kind[2] == 'j');
+        return (kind[0] == 's' && kind[1] == 'f' && kind[2] == 'z') || xpm || xty;
     }
 };
 

@@ -40,7 +40,8 @@ juce::var read_document(const std::vector<uint8_t>& file) {
         line.assign(at, stop);
         at = stop + 1;
     }
-    if (header[0] != "ACVS" || header[2] != "SerialisableProjectData" || header[3] != "json") return {};
+    // SerialisableProjectData (.xpj), SerialisableTrackData (.xty), and the MPC 3's programs alike
+    if (header[0] != "ACVS" || header[2].rfind("Serialisable", 0) != 0 || header[3] != "json") return {};
     return juce::JSON::parse(juce::String::fromUTF8(at, int(end - at)))["data"];
 }
 
@@ -156,7 +157,55 @@ KeygroupTags layer_tags(const juce::var& layer, const std::string& data_folder) 
     tags["SliceLoop"] = text(flag(layer, "layerLoopModeOverridesSliceLoopMode", true) ? integer(layer, "loopMode") : integer(slice, "LoopMode"));
     tags["SliceLoopStart"] = text(number(slice, "LoopStart"));
     tags["Direction"] = text(integer(layer, "direction"));
+    tags["RootNote"] = text(integer(layer, "rootNote", 61)); // one past the MIDI note, as in an .xpm
+    tags["KeyTrack"] = flag(layer, "keyTrackEnable") ? "True" : "False";
+    tags["Pitch"] = text(number(layer, "pitch"));
     return tags;
+}
+
+// An instrument (a drum pad or a keygroup) as a program's <Instrument>, its layers' files in `data_folder`.
+KeygroupInstrument instrument_tags(const juce::var& instrument, int number_of, const std::string& data_folder) {
+    const auto& synth = instrument["synthSection"];
+    const auto& amp = synth["ampEnvelope"];
+    const auto& filter = synth["filterData"]["value0"];
+    const auto& filter_env = synth["filterEnvelope"];
+    const auto& mix = instrument["mixable"];
+    auto text = [](double value) { return std::to_string(value); };
+    auto truth = [](bool value) { return std::string(value ? "True" : "False"); };
+    KeygroupInstrument made;
+    made.number = number_of;
+    auto& t = made.tags;
+    t["LowNote"] = text(integer(instrument, "lowNote"));
+    t["HighNote"] = text(integer(instrument, "highNote", 127));
+    t["ZonePlay"] = text(integer(instrument, "zonePlayTime", 1));
+    t["TriggerMode"] = text(integer(instrument, "triggerMode", 2));
+    t["IgnoreBaseNote"] = truth(flag(instrument, "ignoreBaseNote"));
+    t["Volume"] = text(number(mix, "volume", 0.7079));
+    t["Pan"] = text(number(mix, "pan", 0.5));
+    t["Mute"] = truth(flag(mix, "mute"));
+    t["TuneCoarse"] = text(integer(instrument, "coarseTune"));
+    t["TuneFine"] = text(integer(instrument, "fineTune"));
+    t["Mono"] = truth(flag(instrument, "monophonic"));
+    t["MuteGroup"] = text(integer(instrument, "whichMuteGroup"));
+    t["VolumeAttack"] = text(number(amp["Attack"], "value0"));
+    t["VolumeHold"] = text(number(amp["Hold"], "value0"));
+    t["VolumeDecay"] = text(number(amp["Decay"], "value0"));
+    t["VolumeSustain"] = text(number(amp["Sustain"], "value0", 1));
+    t["VolumeRelease"] = text(number(amp["Release"], "value0"));
+    t["VolumeDecayType"] = truth(flag(amp["DecayFromEnd"], "value0", true));
+    t["VelocitySensitivity"] = text(number(synth, "velocitySensitivity", 1));
+    t["FilterType"] = text(integer(filter, "filterType", 29));
+    t["Cutoff"] = text(number(filter, "filterCutoff", 1));
+    t["Resonance"] = text(number(filter, "filterResonance"));
+    t["FilterEnvAmt"] = text(number(filter, "filterEnvelopeAmount"));
+    t["FilterAttack"] = text(number(filter_env["Attack"], "value0"));
+    t["FilterDecay"] = text(number(filter_env["Decay"], "value0"));
+    t["FilterSustain"] = text(number(filter_env["Sustain"], "value0"));
+    t["FilterRelease"] = text(number(filter_env["Release"], "value0"));
+    if (const auto* layers = instrument["layersv"].getArray())
+        for (const auto& layer : *layers)
+            if (layer["sampleFile"].toString().isNotEmpty()) made.layers.push_back(layer_tags(layer, data_folder));
+    return made;
 }
 
 void read_pad(const juce::var& instrument, const juce::var& layer, unsigned slot, double to_model, PadSound& pad, bool layered = false) {
@@ -272,17 +321,36 @@ std::map<std::string, KeygroupInstrument> mpc_project_pads(const std::vector<uin
         for (int n = 0; n < std::min(instruments->size(), mpc_pads); ++n) {
             const auto& instrument = instruments->getReference(n);
             if (sounding_layers(instrument) < 2) continue;
-            KeygroupInstrument pad;
-            pad.number = n + 1;
-            pad.tags["ZonePlay"] = std::to_string(integer(instrument, "zonePlayTime", 1));
-            pad.tags["TriggerMode"] = std::to_string(integer(instrument, "triggerMode", 2));
-            if (const auto* layers = instrument["layersv"].getArray())
-                for (const auto& layer : *layers)
-                    if (layer["sampleFile"].toString().isNotEmpty()) pad.layers.push_back(layer_tags(layer, data_folder));
-            pads[std::to_string(t) + "." + std::to_string(n + 1)] = std::move(pad);
+            pads[std::to_string(t) + "." + std::to_string(n + 1)] = instrument_tags(instrument, n + 1, data_folder);
         }
     }
     return pads;
+}
+
+std::string read_mpc_json_program(const std::vector<uint8_t>& file, const std::string& path, KeygroupProgram& out) {
+    const auto data = read_document(file);
+    if (data.isVoid()) return "Unreadable";
+    const auto& program = data["program"].isObject() ? data["program"] : data;
+    const auto* instruments = program["drum"]["instruments"].getArray();
+    if (!instruments) return "Not an MPC program";
+    // Its samples: in "<name>_[TrackData]" (an .xty) or "<name>_[ProgramData]" beside it, else beside it.
+    const fs::path where(path);
+    std::string data_folder;
+    std::error_code error;
+    for (const char* tail : {"_[TrackData]", "_[ProgramData]"})
+        if (data_folder.empty() && fs::is_directory(where.parent_path() / (where.stem().string() + tail), error)) data_folder = where.stem().string() + tail;
+    out = KeygroupProgram {};
+    out.type = integer(program, "type") == 1 ? "Keygroup" : "Drum";
+    out.tags["ProgramName"] = program["name"].toString().toStdString();
+    out.tags["Volume"] = std::to_string(number(program["mixable"], "volume", 0.7079));
+    out.tags["Pan"] = std::to_string(number(program["mixable"], "pan", 0.5));
+    if (program["keygroup"].isObject()) {
+        out.tags["KeygroupNumKeygroups"] = std::to_string(integer(program["keygroup"], "numKeygroups", 128));
+        out.tags["KeygroupTranspose"] = std::to_string(integer(program["keygroup"], "transpose"));
+    }
+    for (int n = 0; n < std::min(instruments->size(), mpc_pads); ++n)
+        out.instruments.push_back(instrument_tags(instruments->getReference(n), n + 1, data_folder));
+    return {};
 }
 
 std::string import_mpc_project(const std::vector<uint8_t>& file, const std::string& path, Project& project, PatternBank& patterns, MpcImport& report) {

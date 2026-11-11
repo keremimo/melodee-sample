@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // An SFZ's samples, whatever kind they are: WAV by the sampler's own reader
-// (it also finds the loop a smpl chunk holds), FLAC, Ogg and AIFF by JUCE's.
+// (it also finds the loop a smpl chunk holds), FLAC, Ogg and AIFF by JUCE's,
+// and MP3 (an MPC expansion's program previews) by JUCE's too.
 #include "melodee/shell/sample_decode.h"
 #include "melodee/engine/dsp.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -13,7 +14,7 @@ namespace melodee {
 namespace {
 bool juce_kind(const std::string& path) {
     auto extension = juce::File(path).getFileExtension().toLowerCase();
-    return extension == ".flac" || extension == ".ogg" || extension == ".oga" || extension == ".aif" || extension == ".aiff";
+    return extension == ".flac" || extension == ".ogg" || extension == ".oga" || extension == ".aif" || extension == ".aiff" || extension == ".mp3";
 }
 
 juce::AudioFormatManager& formats() { // service thread only
@@ -22,6 +23,9 @@ juce::AudioFormatManager& formats() { // service thread only
         m->registerFormat(new juce::FlacAudioFormat, false);
         m->registerFormat(new juce::OggVorbisAudioFormat, false);
         m->registerFormat(new juce::AiffAudioFormat, false);
+#if JUCE_USE_MP3AUDIOFORMAT
+        m->registerFormat(new juce::MP3AudioFormat, false);
+#endif
         return m;
     }();
     return *manager;

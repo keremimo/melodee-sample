@@ -85,13 +85,33 @@ std::string upper_stem(const std::string& path) {
     return name;
 }
 
-// An .xpm keygroup program; a drum program is a kit (Load Kit), not one pad's instrument.
-SfzRead read_keygroup_file(const std::string& text, std::string* error) {
+// A keygroup program (an .xpm, or an MPC 3 .xty); a drum program is a kit (Load Kit), not one pad's instrument.
+SfzRead read_keygroup_file(const std::string& path, const std::string& text, std::string* error) {
     KeygroupProgram program;
-    auto why = parse_mpc_program(text, program);
+    auto why = read_program(path, text, program);
     if (why.empty() && program.type != "Keygroup") why = program.type == "Drum" ? "A drum kit: Push loads it" : "Not a keygroup";
     if (!why.empty()) { if (error) *error = why; return {}; }
     return read_keygroup(program);
+}
+
+// An MPC program's layers whose files are not beside it: left out, as the MPC plays them (silent). Expansions
+// ship programs whose layers still name samples the pack leaves out (Vintage Organs' demo: a celesta under
+// every organ keygroup), and those are no fault of the card's. Only a program with none found is.
+SfzRead found_only(SfzRead read, const std::string& path, std::string* error) {
+    const fs::path folder = fs::path(path).parent_path();
+    std::map<std::string, bool> there;
+    const size_t had = read.regions.size();
+    read.regions.erase(std::remove_if(read.regions.begin(), read.regions.end(), [&](const SfzRegion& r) {
+        auto known = there.find(r.sample);
+        if (known == there.end()) known = there.emplace(r.sample, !find_beside(folder, r.sample).empty()).first;
+        return !known->second;
+    }), read.regions.end());
+    if (read.regions.size() < had) {
+        read.left += unsigned(had - read.regions.size());
+        read.left_by.insert("missing files");
+        if (read.regions.empty() && error) *error = "Files missing";
+    }
+    return read;
 }
 
 SfzRead read_instrument(const std::string& path, std::string* error) {
@@ -101,11 +121,11 @@ SfzRead read_instrument(const std::string& path, std::string* error) {
         auto pads = program_pads(file, why);
         auto found = pads.find(which);
         if (found == pads.end()) { if (error) *error = why.empty() ? "Pad not found" : why; return {}; }
-        return read_drum_pad(found->second);
+        return found_only(read_drum_pad(found->second), file, error);
     }
     auto text = read_text(path);
     if (!text) { if (error) *error = "cannot read it"; return {}; }
-    if (lowered(fs::path(path).extension().string()) == ".xpm") return read_keygroup_file(*text, error);
+    if (is_mpc_program(path)) return found_only(read_keygroup_file(path, *text, error), path, error);
     const fs::path folder = fs::path(path).parent_path();
     return read_sfz(*text, [&](const std::string& name) -> std::optional<std::string> {
         auto found = find_beside(folder, name);

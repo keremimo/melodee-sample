@@ -29,6 +29,10 @@ std::string import_mpc_project(const std::vector<uint8_t>& file, const std::stri
 // (shell/mpc_program.h): the project's such pads, by "<track>.<pad>", their layers as a drum program's tags.
 std::map<std::string, KeygroupInstrument> mpc_project_pads(const std::vector<uint8_t>& file, const std::string& path);
 
+// An MPC 3 program in JSON (an .xty track's, or a gzip .xpm) as the tree .xpm programs read into
+// (engine/keygroup.h), drum or keygroup alike. Empty on success.
+std::string read_mpc_json_program(const std::vector<uint8_t>& file, const std::string& path, KeygroupProgram& program);
+
 // The sample rate of a WAV file; 0 when it cannot tell.
 unsigned mpc_wav_rate(const std::string& path);
 

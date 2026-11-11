@@ -17,7 +17,9 @@ JUCE 9.0.5, Raw Material Software Limited, pinned commit
 `d60b7a78030661574a615b586d9325ba7a7fa7dd`, used under AGPLv3 (JUCE also
 offers a commercial licence). The base's `tools/dependencies.py` fetches it
 into ignored `build/deps/JUCE`, whose `LICENSE.md` and `JUCE.spdx.json`
-travel with it; release zips include `LICENSE.md`.
+travel with it; release zips include `LICENSE.md`. Its MP3 decoder
+(`JUCE_USE_MP3AUDIOFORMAT`, for an MPC expansion's previews) is on: JUCE's
+own code, under the same licence; the MP3 patents ran out in 2017.
 
 ## Plug-in hosting
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/shell/expansion_install.h"
 #include "melodee/engine/recall_ring.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sfz.h"
@@ -42,7 +43,8 @@ struct SampleFile {
     bool folder = false;
     bool bank = false;      // a kit bank file (".mldb", model/project_file.h), listed with the WAV files
     bool instrument = false; // a multisampled instrument (".sfz", ".xpm"), loaded onto a pad as a WAV file is
-    bool kit = false;        // an MPC drum program (".xpm"): Push loads it onto the track as Load Kit does
+    bool kit = false;        // an MPC drum program (".xpm", ".xty"): Push loads it onto the track as Load Kit does
+    bool expansion = false;  // an MPC expansion (".xpn"): Push installs it onto the card
 };
 struct LoadedSample {
     std::string name, path, error;
@@ -107,6 +109,9 @@ public:
     void read_bank(const std::string& path);
     struct BankBytes { std::string path, error; std::vector<uint8_t> bytes; };
     bool take_bank(BankBytes& out);
+    // MIDI thread: an MPC expansion (.xpn) to install onto the card (shell/expansion_install.h);
+    // done() says when it starts and ends, and the browser then shows its folder.
+    void install(const std::string& path);
     // Changes each time the list or a loaded sample changes.
     unsigned generation() const { return changes.load(std::memory_order_acquire); }
 
@@ -170,6 +175,9 @@ private:
     void finish(const std::string& text, int failed = -1);
     std::string free_name(const std::string& folder, const std::string& name, const char* extension = ".wav") const;
     void bank_files(); // the bank writes and reads asked for
+    void install_service(); // an expansion asked for: opened, then a file of it each pass
+    std::unique_ptr<ExpansionInstall> installing;
+    std::vector<std::string> installs_wanted; // under `lock`
     // Instruments (sample_library_instruments.cpp): read, then one of their files a pass.
     void begin_instrument(const Request& request);
     void land_next();
