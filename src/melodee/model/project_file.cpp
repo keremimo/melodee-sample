@@ -420,7 +420,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             tr.mix.send = uint8_t(std::min(100u, r.u8())); tr.mix.bus = uint8_t(r.u8() % bus_count);
             tr.mix.mute = r.u8() != 0; tr.mix.solo = r.u8() != 0;
             tr.pattern = uint8_t(r.u8() % pattern_count); tr.layout = PadLayout(std::min<unsigned>(r.u8(), unsigned(PadLayout::Count) - 1));
-            tr.octave = int8_t(std::clamp(r.i16(), 0, 7)); tr.last_note = uint8_t(r.u8() & 127);
+            tr.octave = int8_t(std::clamp(r.i16(), -1, 7)); tr.last_note = uint8_t(r.u8() & 127); // octave: a kit's 16 Levels goes to -1 (model/scales.h)
             unsigned routes = r.u8();
             for (unsigned k = 0; k < routes; ++k) {
                 ModRoute m {uint8_t(r.u8()), uint8_t(r.u8()), int8_t(std::clamp(r.i16(), -100, 100))};

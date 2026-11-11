@@ -92,7 +92,7 @@ cards.
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
-| − / + | Lists move as the wheel does; on play pages the octave (on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
+| − / + | Lists move as the wheel does; on play pages the octave (a kit's 16 Levels in Tune or Scale too; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
 | Sample Record | Record (kit tracks); on Record it ends the take and opens Stage's TRIM on the pad | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into a pattern |
 | Stop | Stop (on Record, ends the take) | All notes off |
@@ -225,7 +225,9 @@ Stop. The bank lights show the kit's bank; the fader light shows its value
   last note. Velocity (8–127), Filter (kit pads: pads 1–8 up to the pad's
   cutoff, 9–16 on to the top), Tune (the original on pad 4), and Melodee's
   Scale, whose K1 and K2 are the project's root and scale (elsewhere on this
-  page Shift + K1 and K2). Shift + 16 Levels or B1–B3 pick the type.
+  page Shift + K1 and K2). Shift + 16 Levels or B1–B3 pick the type. On a
+  kit in Tune or Scale (an instrument's pad above all), − / + move the pads
+  an octave (three down to five up, kept with the track).
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
   (Shift: their triplets); straight rates swing with the project. It is the
   track's arp; a kit repeats the held pad.

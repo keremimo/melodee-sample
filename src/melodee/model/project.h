@@ -241,7 +241,7 @@ struct Track {
     Mix mix;
     uint8_t pattern = 0;  // the pattern playing
     PadLayout layout = PadLayout::Scale;
-    int8_t octave = 2;    // of the lowest pad, C4 = MIDI 60
+    int8_t octave = 2;    // of the lowest pad, C4 = MIDI 60; a kit: its 16 Levels in pitch, 2 as it is (-1..7)
     uint8_t last_note = 50;
     std::array<ModRoute, mod_routes> mods {};
     Chain fx {{}, track_slots};

@@ -7,12 +7,15 @@
 // 9-16; Tune by semitones, the original on pad 4; and Melodee's Scale, up
 // the project's scale (B3 again on Tune, or a synth's B2). Pad 1 is bottom
 // left. The pots stay on that pad; of type Scale, K1 and K2 are the project's
-// key, elsewhere on this page Shift + K1 and K2. 16 Levels again goes back.
+// key, elsewhere on this page Shift + K1 and K2. On a kit in Tune or Scale,
+// − / + move the pads an octave. 16 Levels again goes back.
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/pages/sampler_common.h"
 #include "melodee/ui/waveform.h"
+#include <algorithm>
+#include <string>
 
 namespace melodee {
 namespace {
@@ -108,8 +111,19 @@ void soft(Context& c, int key) {
     t.levels_kind = uint8_t(next);
     c.ui.levels_hit = -1;
 }
+
+// − / +: on a kit in Tune or Scale (an instrument's pad above all) the pads an
+// octave down or up, as on the other play pages.
+void nudge(Context& c, int way) {
+    auto& t = c.track();
+    const auto kind = kind_of(t);
+    if (t.engine != EngineKind::Sampler || (kind != LevelsKind::Tune && kind != LevelsKind::Scale)) return;
+    t.octave = int8_t(std::clamp(t.octave + way, kit_lowest_octave, kit_highest_octave));
+    const int octave = t.octave - kit_level_octave;
+    c.notice(octave ? std::string("Octave ") + (octave > 0 ? "+" : "") + std::to_string(octave) : std::string("Octave 0, as it is"));
+}
 } // namespace
 
-const PageSpec levels_page {draw, play_pad, no_wheel, no_push, soft, [](Context&, int) {}};
+const PageSpec levels_page {draw, play_pad, no_wheel, no_push, soft, nudge};
 
 } // namespace melodee

@@ -5139,6 +5139,32 @@ void keygroup_reader() {
     }
 }
 
+// 16 Levels in pitch on a kit: the octave − / + set over the pads; a synth's keeps its own.
+void kit_levels_octave() {
+    auto project = std::make_unique<Project>();
+    auto& kit = project->tracks[4];
+    kit.engine = EngineKind::Sampler;
+    kit.levels = true;
+    kit.levels_kind = uint8_t(LevelsKind::Tune);
+    CHECK(levels_of(*project, kit, 3).semitones == 0); // the original on pad 4, as it is
+    kit.octave = 3;
+    CHECK(levels_of(*project, kit, 3).semitones == 12 && levels_of(*project, kit, 3).shown == 12);
+    kit.octave = -1;
+    kit.levels_kind = uint8_t(LevelsKind::Scale);
+    CHECK(levels_of(*project, kit, 0).semitones == -36);
+    kit.levels_kind = uint8_t(LevelsKind::Velocity);
+    CHECK(levels_of(*project, kit, 0).semitones == 0);
+    auto& synth = project->tracks[1];
+    synth.engine = EngineKind::Prophet;
+    synth.levels_kind = uint8_t(LevelsKind::Tune);
+    synth.octave = 5;
+    CHECK(levels_of(*project, synth, 3).semitones == 0);
+    auto bank = std::make_unique<PatternBank>();
+    auto bytes = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    CHECK(load_project(bytes, *back, *bank).empty() && back->tracks[4].octave == -1);
+}
+
 // A Logic EXS24 instrument's blocks, in either byte order, as Logic lays them out.
 struct ExsBytes {
     bool big = false;
@@ -6547,6 +6573,7 @@ int main() {
     sfz_reader();
     keygroup_reader();
     exs_reader();
+    kit_levels_octave();
     drum_program_pads();
     expansion_paths();
     sample_cache();

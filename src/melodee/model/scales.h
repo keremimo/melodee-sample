@@ -67,7 +67,7 @@ inline int level_scale_step(const Project& project, unsigned pad) {
 
 // 16 Levels (the MPC's types, and Melodee's scale): what pad 0..15 plays
 // of the one sound. Velocity soft to loud; Tune by semitones with the
-// original on pad 4; Filter the pad's cutoff from the bottom up to its own
+// original on pad 4 (on a kit, a whole octave up or down by − / +); Filter the pad's cutoff from the bottom up to its own
 // over pads 1-8 and on to the top over 9-16 (kit pads only); Scale up the
 // project's scale. velocity 0: the pad's own; cutoff -1: the pad's own.
 // Loop: 16 Levels opens the Looper, its pads the loop grid (docs/LOOPER.md).
@@ -77,12 +77,16 @@ inline const char* levels_kind_name(LevelsKind k) {
     return names[unsigned(k) % unsigned(LevelsKind::Count)];
 }
 struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0; };
+// A kit pad's 16 Levels in pitch (Scale, Tune) an octave a step of the track's
+// octave, 2 as it is (− / + step it there); a synth's pads keep their own.
+constexpr int kit_level_octave = 2, kit_lowest_octave = -1, kit_highest_octave = 7;
+inline int level_octave(const Track& track) { return track.engine == EngineKind::Sampler ? 12 * (track.octave - kit_level_octave) : 0; }
 inline Level levels_of(const Project& project, const Track& track, unsigned pad) {
     pad %= 16;
     Level out;
     switch (LevelsKind(track.levels_kind % unsigned(LevelsKind::Count))) {
-    case LevelsKind::Scale: out.semitones = level_scale_step(project, pad); out.shown = out.semitones; break;
-    case LevelsKind::Tune: out.semitones = int(pad) - 3; out.shown = out.semitones; break;
+    case LevelsKind::Scale: out.semitones = level_scale_step(project, pad) + level_octave(track); out.shown = out.semitones; break;
+    case LevelsKind::Tune: out.semitones = int(pad) - 3 + level_octave(track); out.shown = out.semitones; break;
     case LevelsKind::Filter:
         if (track.engine == EngineKind::Sampler) {
             int own = track.pads[track.levels_pad % sampler_pads].cutoff;
