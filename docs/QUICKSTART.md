@@ -24,8 +24,9 @@ The zip holds an `autorun` folder, a `README.txt` and the licences.
 
 **Back to the stock app:** press Power briefly. The Exit sheet opens: **B3
 LEAVE** saves the project and returns to the stock app until the next time
-the MPC is switched on; B1 stays in Melodee. To stop Melodee starting at
-all, delete the `autorun` folder from the card.
+the MPC is switched on; **B2 POWER OFF** saves it and turns the MPC off; B1
+stays in Melodee. Next time, Melodee opens the project you had open. To
+stop Melodee starting at all, delete the `autorun` folder from the card.
 
 ## 2. The screen
 
@@ -94,7 +95,9 @@ number. B1 is DEVICE and PROGRAM, B3 ARP.
 ![Stage CC on a MIDI track](images/quickstart/stagemidicc.png)
 
 An empty track offers B1 SYNTH, B2 KIT, B3 MIDI: pick with the knobs,
-then Push makes the track that.
+then Push makes the track that. One of SYNTH's engines is **PLUGIN**: a VST3
+or VST2 instrument from a `Plugins` folder at the top of the card (Linux
+ARM builds only; the picker dims the rest and says why).
 
 ## 4. Picking a track
 
@@ -152,9 +155,35 @@ hit. B2 switches between the card and the MPC's internal factory samples;
 B3 PREVIEW plays each file as you land on it. Shift + pad loads onto the
 next empty pad.
 
-**Multisampled instruments.** An `.sfz`, or an MPC keygroup program (`.xpm`), loads the same way, onto one pad. An MPC drum program (`.xpm` or MPC 3's `.xty`, tagged KIT) loads as the whole kit instead, its cycled hits kept; MPC 3 keygroup tracks (`.xty`) load as instruments. Push on an MPC expansion (`.xpn`, tagged INSTALL) installs it into `Samples/Expansions` and opens it; with PREVIEW on, its programs play their own previews. Press **16 Levels** on it and choose Tune with Shift + 16 Levels to play it chromatically on the pads; a MIDI keyboard plays it at real pitch while 16 Levels is on. The first load prepares its files on the card, which can take a while for a big library; after that it opens at once.
-
 ![The sample browser](images/quickstart/samples.png)
+
+**Multisampled instruments.** An SFZ (`.sfz`), an MPC keygroup program
+(`.xpm`, or an MPC 3 track `.xty`) or a Logic EXS24 / Sampler instrument
+(`.exs`) loads the same way, onto one pad; the browser tags each by its
+kind. Put an `.exs` in the folder with its samples (or a `Samples` folder
+beside it) and Melodee finds them as Logic does. An MPC drum program
+(`.xpm` or `.xty`, tagged KIT) loads as the whole kit instead, its cycled
+hits kept. Push on an MPC expansion (`.xpn`, tagged INSTALL) installs it
+into `Samples/Expansions` and opens it; with PREVIEW on, its programs play
+their own previews.
+
+![Instruments in the browser](images/quickstart/samplesinstruments.png)
+
+The first load prepares the instrument's files on the card, which can take
+a while for a big library; after that it opens at once. TRIM then shows
+which keys and velocities it covers instead of a waveform, and names
+anything in the file Melodee does not play.
+
+![TRIM on an instrument](images/quickstart/triminstrument.png)
+
+An instrument's pad plays while you hold it and fades out over its release
+when you let go. To play it in pitch, press **16 Levels**, then B3 (Tune,
+then Scale) or Shift + 16 Levels for the type: Tune puts its own pitch on
+pad 4, Scale walks the project's scale from pad 1. **− / +** move all
+sixteen pads an octave down or up. While 16 Levels is on, a MIDI keyboard
+plays the instrument at real pitch.
+
+![16 Levels on an instrument, an octave up](images/quickstart/levelsoctave.png)
 
 **Cut: Chop.** Chop slices the last pad's sample. K1 and K2 move the
 slice's start and end, K3 picks how it slices (Threshold, Regions, Beats,
@@ -175,8 +204,9 @@ ends it and opens TRIM. Shift + Sample opens the full Input Config.
 
 Four audio loops that follow the tempo, on tracks of their own (L1–L4).
 
-**Open: tap Loop twice** (quickly), or hold it half a second. The first
-time, the Looper is off: B3 or Push turns it on.
+**Open: tap Loop twice** (quickly). The first time, the Looper is off: B3
+or Push turns it on (or hold Shift + Loop half a second). Held on any page,
+Loop turns the pads into the loop grid (below) for as long as it is down.
 
 Each row is one loop: its state (ARM, REC, DUB, PLAY, STOP), its
 waveform, its length and what it records. K1 picks the loop, K2 its length
@@ -224,11 +254,13 @@ B3 or Push saves, B1 cancels.
 ![Naming a project](images/quickstart/nameproject.png)
 
 Projects go to `Melodee/Projects` on the card. Leaving through the Exit
-sheet saves too.
+sheet saves too, and Melodee opens the same project the next time it
+starts.
 
 ## 9. Where to go next
 
 [MELODEE.md](MELODEE.md) covers every button, page and Shift job: Keys
 and Mix (press Sample again), the editors and Step Edit (Seq, Shift + Seq),
 Song (Shift + Pad 12), the effects (Knob FX, Pad FX, Shift + Knob FX),
-16 Levels, Note Repeat and the arp, the Looper, MIDI and SD card access.
+16 Levels, Note Repeat and the arp, the Looper, plug-ins, MIDI and SD card
+access.

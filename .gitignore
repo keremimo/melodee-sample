@@ -33,3 +33,6 @@ private/
 *.settings
 !/AGENTS.md
 dist/
+
+# The quickstart's screenshots (rendered by --melodee-preview)
+!/docs/images/quickstart/*.png
