@@ -957,6 +957,16 @@ const Preview previews[] {
          s.compression = 7.0f;
          kick_trail(s);
      }},
+    {"compressoroff", [](Shell&, Snapshot& s) { // bypassed: BYPASSED beside the page name, B3 lit, the curve grey
+         s.ui.page = PageId::Compressor; s.playing = true;
+         s.project.compressor.amount = 60;
+     }},
+    {"compressorsideoff", [](Shell&, Snapshot& s) { // the most the header holds: bypassed, Sidechain on a kit pad, Color
+         s.ui.page = PageId::Compressor; s.playing = true; s.ui.track = 0;
+         auto& c = s.project.compressor;
+         c.on = false; c.color = true; c.sidechain = true; c.key = 3; c.key_pad = 1; c.amount = 60;
+         s.ui.comp_pads = true; s.ui.comp_bank = 0;
+     }},
     {"compressorkick", [](Shell&, Snapshot& s) { // Sidechain on the kit's A01 Kick alone: its pads, bank A
          s.ui.page = PageId::Compressor; s.playing = true; s.ui.track = 0;
          auto& c = s.project.compressor;

@@ -17,7 +17,7 @@ struct SoftKeys {
         : labels(std::move(labels)), active(active), accent(accent), icons(icons) {}
     std::array<juce::String, 3> labels;
     int active = -1;                    // the page's own key gets a short bar at the top edge
-    int also = -1;                      // a second key that is on (two toggles side by side)
+    uint8_t lit = 0;                    // toggles side by side: each key that is on, a bit each (B1 1, B2 2, B3 4)
     juce::Colour accent = colour::text; // the bar's colour, usually the track's
     std::array<KeyIcon, 3> icons {};
     // Stage: a button with a cycle of pages shows a dot for each under its label, the page in view lit.

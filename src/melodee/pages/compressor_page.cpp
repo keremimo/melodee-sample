@@ -82,12 +82,16 @@ void draw(Paint& p, const Snapshot& s) {
     auto accent = colour::text;
     unsigned key = c.key % track_count;
     Header h = header_of(s);
+    // Left: the page, and BYPASSED only while it is. Right: what it works on: the whole
+    // master, or with Sidechain the track or kit pad the rest of the mix ducks under
+    // (not the selected track; "key" is the musical key elsewhere in Melodee).
     h.left.push_back(pill("COMPRESSOR"));
-    h.left.push_back(pill(c.on ? "ON" : "BYPASS", c.on ? accent : colour::mid));
-    if (c.sidechain) { h.right.push_back(label("KEY", colour::mid)); h.right.push_back(key_tag(s)); } // not the selected track
-    else h.right.push_back(label("MASTER", colour::mid));
-    SoftKeys keys {{"SIDECHAIN", "COLOR", c.on ? "BYPASS" : "ENGAGE"}, c.sidechain ? 0 : -1, accent};
-    keys.also = c.color ? 1 : -1; // both toggles show their bar
+    if (!c.on) h.left.push_back(pill("BYPASSED", colour::mid));
+    // Bypassed, nothing ducks: B1 lit and the grid still show the source.
+    if (c.sidechain && c.on) { h.right.push_back(label("DUCKED BY", colour::mid)); h.right.push_back(key_tag(s)); }
+    else if (!c.sidechain) h.right.push_back(label("MASTER", colour::mid));
+    SoftKeys keys {{"SIDECHAIN", "COLOR", "BYPASS"}, -1, accent}; // three toggles, each lit while it is on
+    keys.lit = uint8_t(c.sidechain | c.color << 1 | !c.on << 2);
     frame(p, s, keys, h);
 
     auto mix = c.on ? accent : colour::mid;                                      // the mix and what it keeps
@@ -174,10 +178,10 @@ void soft(Context& c, int key) {
     const auto& comp = c.project.compressor;
     if (key == 0) {
         c.set_compressor(6, !comp.sidechain);
-        c.notice(comp.sidechain ? "Sidechain: track " + std::to_string(comp.key + 1) + " keys it" : "Sidechain off");
+        c.notice(comp.sidechain ? "Sidechain on: pick a track on the pads" : "Sidechain off");
     }
     if (key == 1) { c.set_compressor(1, !comp.color); c.notice(comp.color ? "Color on" : "Color off"); }
-    if (key == 2) { c.set_compressor(0, !comp.on); c.notice(comp.on ? "Compressor engaged" : "Compressor bypassed"); }
+    if (key == 2) { c.set_compressor(0, !comp.on); c.notice(comp.on ? "Compressor on" : "Compressor bypassed"); }
 }
 
 void key_track(Context& c, unsigned track) {
@@ -200,8 +204,8 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
         bool whole = comp.key_pad == kit;
         c.set_compressor(8, whole ? -1 : int(kit));
         char label[4]; pad_label(kit, label);
-        c.notice(whole ? "Track " + std::to_string(key + 1) + ", the whole kit, keys it"
-                       : std::string(label) + " " + kit_pad_name(c.project, key, kit).toStdString() + " keys it");
+        c.notice(whole ? "Track " + std::to_string(key + 1) + " ducks the mix, the whole kit"
+                       : std::string(label) + " " + kit_pad_name(c.project, key, kit).toStdString() + " ducks the mix");
         return;
     }
     if (!down) return;
@@ -211,14 +215,14 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
         return;
     }
     key_track(c, pad % 16);
-    c.notice("Track " + std::to_string(pad % 16 + 1) + " keys it");
+    c.notice("Track " + std::to_string(pad % 16 + 1) + " ducks the mix");
 }
 
 // Push: on a kit key, its pads or the tracks.
 void push(Context& c) {
     const auto& comp = c.project.compressor;
     if (!comp.sidechain) return;
-    if (!key_is_kit(c.project)) { c.notice("Track " + std::to_string(comp.key + 1) + " is no kit: it keys whole"); return; }
+    if (!key_is_kit(c.project)) { c.notice("Track " + std::to_string(comp.key + 1) + " is not a sample kit"); return; }
     c.ui.comp_pads = !c.ui.comp_pads;
     if (c.ui.comp_pads)
         c.ui.comp_bank = uint8_t(comp.key_pad != MasterComp::whole_kit ? comp.key_pad / 16 : c.project.tracks[comp.key % track_count].bank % sampler_banks);
