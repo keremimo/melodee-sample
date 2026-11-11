@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/cz.h"
+#include "melodee/engine/output_trim.h"
 #include <algorithm>
 #include <cmath>
 
@@ -161,7 +162,7 @@ void CzEngine::render(float* out, unsigned frames) {
         float dt1 = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
         float follow = 1 - p[KeyFollow] / 100.0f * std::clamp((key - 48) / 48.0f, 0.0f, 1.0f); // high notes bend less
         float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel))
-            * (both ? 0.18f : 0.26f) * v.accent;
+            * (both ? 0.18f : 0.26f) * output_trim::cz * v.accent;
         // Brightness: pressure and the matrix open the DCW.
         float open = v.touch * p[AtBright] / 100.0f * 0.6f + at(m, ModDest::Cutoff);
         for (unsigned f = 0; f < frames; ++f) {

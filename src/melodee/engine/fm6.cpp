@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/fm6.h"
+#include "melodee/engine/output_trim.h"
 #include <algorithm>
 #include <cmath>
 
@@ -187,7 +188,7 @@ void Fm6Engine::render(float* out, unsigned frames) {
     const auto& r = routing(unsigned(p[Algorithm]));
     unsigned carriers = 0;
     for (unsigned op = 0; op < ops; ++op) carriers += (r.carriers >> op) & 1;
-    float volume = p[Volume] / 100.0f * 0.5f / std::sqrt(float(std::max(carriers, 1u)));
+    float volume = p[Volume] / 100.0f * 0.5f * output_trim::fm6 / std::sqrt(float(std::max(carriers, 1u)));
     lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), frames);
     for (auto& v : voices) {
         if (v.key < 0) continue;

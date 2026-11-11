@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/sid.h"
+#include "melodee/engine/output_trim.h"
 #include <algorithm>
 #include <cmath>
 
@@ -137,7 +138,7 @@ void SidEngine::render(float* out, unsigned frames) {
                 + v.touch * p[AtBright] / 100.0f * 4 + at(m, ModDest::Cutoff) * 5;
             float g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate() * 0.45f) / dsp::sample_rate());
             float k = 2 - 1.95f * std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f);
-            float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f * v.accent;
+            float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f * output_trim::sid * v.accent;
             for (unsigned f = 0; f < n; ++f) {
                 v.phase2 += dt2;
                 bool wrap2 = v.phase2 >= 1;

@@ -1168,6 +1168,60 @@ void more_engines() {
         CHECK(peak_of(run(e, 4410)) > 0.005f);
     }
 }
+// Gain staging (engine/output_trim.h): the loudest momentary loudness of a mono engine's output (BS.1770: K-weighted,
+// 400 ms windows every 100 ms, at 44.1 kHz), which a centred track's two sides add up to again.
+double loudest_momentary(const std::vector<float>& x) {
+    struct Biquad { double b0, b1, b2, a1, a2, z1 = 0, z2 = 0;
+                    double run(double v) { double y = b0 * v + z1; z1 = b1 * v - a1 * y + z2; z2 = b2 * v - a2 * y; return y; } };
+    const double fs = 44100, pi = 3.141592653589793;
+    double A = std::pow(10, 3.999843853973347 / 40), w = 2 * pi * 1681.974450955533 / fs, c = std::cos(w);
+    double s = 2 * std::sqrt(A) * std::sin(w) / (2 * 0.7071752369554196), a0 = (A + 1) - (A - 1) * c + s;
+    Biquad shelf {A * ((A + 1) + (A - 1) * c + s) / a0, -2 * A * ((A - 1) + (A + 1) * c) / a0, A * ((A + 1) + (A - 1) * c - s) / a0,
+                  2 * ((A - 1) - (A + 1) * c) / a0, ((A + 1) - (A - 1) * c - s) / a0};
+    w = 2 * pi * 38.13547087602444 / fs; c = std::cos(w);
+    double al = std::sin(w) / (2 * 0.5003270373238773);
+    Biquad high {(1 + c) / 2 / (1 + al), -(1 + c) / (1 + al), (1 + c) / 2 / (1 + al), -2 * c / (1 + al), (1 - al) / (1 + al)};
+    std::vector<double> power(x.size());
+    for (size_t n = 0; n < x.size(); ++n) { double k = high.run(shelf.run(x[n])); power[n] = k * k; }
+    const size_t window = size_t(0.4 * fs), hop = size_t(0.1 * fs);
+    double most = 1e-20;
+    for (size_t at = 0; at + window <= power.size(); at += hop) {
+        double sum = 0;
+        for (size_t n = at; n < at + window; ++n) sum += power[n];
+        most = std::max(most, sum / double(window));
+    }
+    return -0.691 + 10 * std::log10(most);
+}
+// A sound's note held at full velocity for 1.5 s: its loudness, averaged over C3, C4 and C5.
+template <class E> double held_loudness(const EngineInfo& info, unsigned sound, std::initializer_list<std::pair<int, int>> changes = {}) {
+    double sum = 0;
+    for (int key : {48, 60, 72}) {
+        auto engine = std::make_unique<E>();
+        std::array<int16_t, max_params> values;
+        sound_values(info, sound, values);
+        for (auto [q, v] : changes) values[size_t(q)] = int16_t(v);
+        for (unsigned q = 0; q < info.param_count; ++q) engine->set_param(int(q), values[q]);
+        engine->note_on(key, 127);
+        sum += loudest_momentary(run(*engine, 66150));
+    }
+    return sum / 3;
+}
+void engine_levels() {
+    // Each synth's INIT VOICE as loud as the 909's kick (which plays as loud as the MPC's factory kits), about
+    // -15 LUFS, all within 2 dB or so.
+    Kit909Engine kit;
+    kit.note_on(36 + kit909::Kick, 127);
+    double kick = loudest_momentary(run(kit, 44100));
+    std::array<double, 5> heard {kick, held_loudness<ProphetEngine>(prophet::info(), 0), held_loudness<Fm6Engine>(fm6::info(), 0),
+                                 held_loudness<SidEngine>(sid::info(), 0), held_loudness<CzEngine>(cz::info(), 0)};
+    auto [quietest, loudest] = std::minmax_element(heard.begin(), heard.end());
+    if (*loudest - *quietest > 2.5) std::fprintf(stderr, "levels: kick %.1f PROPHET %.1f FM6 %.1f SID %.1f CZ %.1f\n", heard[0], heard[1], heard[2], heard[3], heard[4]);
+    CHECK(*loudest - *quietest < 2.5);
+    for (double l : heard) CHECK(l > -17 && l < -13);
+    // A PROPHET unison stack (every voice, detuned) as loud as one voice.
+    double one = heard[1], stack = held_loudness<ProphetEngine>(prophet::info(), 0, {{prophet::Unison, 1}, {prophet::Detune, 35}});
+    CHECK(std::fabs(stack - one) < 2);
+}
 void punches() {
     // A test signal with no repeats in it: noise.
     auto signal = [](unsigned n) { uint32_t h = n * 2654435761u; return (int32_t(h) >> 8) / 8388608.0f * 0.5f; };
@@ -6691,6 +6745,7 @@ int main() {
     settings();
     punches();
     more_engines();
+    engine_levels();
     drums();
     helpers();
     project_files();

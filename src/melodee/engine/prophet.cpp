@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/prophet.h"
+#include "melodee/engine/output_trim.h"
 #include <algorithm>
 #include <cmath>
 
@@ -200,6 +201,8 @@ void ProphetEngine::control(Voice& v) {
 
 void ProphetEngine::render(float* out, unsigned frames) {
     if (dirty) update();
+    // Unison stacks every voice on one key: their detuned sum, as loud as one voice (output_trim.h).
+    float output_gain = 0.7f * output_trim::prophet / (p[Unison] ? std::sqrt(float(std::clamp(p[Voices], 1, int(max_voices)))) : 1.0f);
     float level_a = p[LevelA] / 100.0f, level_b = p[LevelB] / 100.0f, level_n = p[Noise] / 100.0f;
     float poly_b_fm = p[PolyFreqA] ? p[PolyOscB] / 100.0f * 2.0f : 0;
     float poly_b_pw = p[PolyPwA] ? p[PolyOscB] / 100.0f * 0.4f : 0;
@@ -224,7 +227,7 @@ void ProphetEngine::render(float* out, unsigned frames) {
                 x *= 0.5f;
                 float y = v.filter.process(x);
                 v.filter_env.next(filter_shape);
-                out[start + f] += y * v.amp_env.next(amp_shape) * v.gain * 0.7f;
+                out[start + f] += y * v.amp_env.next(amp_shape) * v.gain * output_gain;
             }
         }
     }

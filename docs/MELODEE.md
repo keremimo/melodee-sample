@@ -849,6 +849,11 @@ while following.
 Every synth has the mod matrix, Touch and an LFO. Each track has eight
 voices or the engine's own count; tracks render in one block of 128 frames.
 
+Levels: the kits set them. The 909 and the MPC's factory samples on the
+sampler (at unity) play a beat at about -13 LUFS; each synth's held note at
+full velocity sits at about -15, a drum hit's level (`engine/output_trim.h`).
+A PROPHET unison stack is as loud as one voice.
+
 ## Plug-ins
 
 VST3 and VST2 plug-ins, instruments and effects, from `Plugins/` at the top
