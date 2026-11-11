@@ -92,7 +92,7 @@ void draw_notice(Paint& p, const Snapshot& s) {
     } else if (s.ui.copying == UiState::Copying::Tracks) {
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a track") : "Copy track " + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.notice[0] && s.now - s.ui.notice_at < 1500) {
-        text = juce::String(s.ui.notice);
+        text = juce::String::fromUTF8(s.ui.notice); // notices may hold an en dash or a middle dot
     } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here
         const auto& t = s.track();
         bool kit = mute_on_kit(s.ui, t.engine == EngineKind::Sampler && !t.levels && pad_job(s.ui) == play_pad);

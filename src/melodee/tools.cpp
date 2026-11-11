@@ -567,6 +567,26 @@ const Preview previews[] {
              s.take.peaks[c] = uint8_t(std::clamp((c % 22 < 3 ? 0.9 : 0.55) * (0.8 + 0.2 * std::sin(c * 0.9)) * (c < 4 ? 0.1 : 1.0), 0.0, 1.0) * 255);
          s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
+    {"recordtrack", [](Shell&, Snapshot& s) { // sampling track 1's PROPHET after its effects: the pads play it, the take ends on its own
+         s.ui.page = PageId::Record; s.ui.track = 3;
+         auto& in = s.ui.settings.input;
+         in.source = InputSource::Track; in.track = 0; in.post = true; in.length = rec_free; in.threshold = -48; in.monitor = Monitor::Auto;
+         s.monitoring = true;
+         s.ui.rec_pad = 4; s.ui.rec_track = 3; s.ui.rec_slot = 5;
+         s.take.state = uint8_t(TakeRecorder::State::Recording); s.take.length = TakeRecorder::max_frames; s.take.frames = 3 * 44100;
+         s.take.level = 0.42f;
+         for (unsigned c = 0; c < 128 * s.take.frames / s.take.length; ++c)
+             s.take.peaks[c] = uint8_t(std::clamp((0.35 + 0.5 * std::fabs(std::sin(c * 0.7))) * (c < 1 ? 0.2 : 1.0), 0.0, 1.0) * 255);
+         s.ui.held_pads = 1u << 5 | 1u << 9;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"inputtrack", [](Shell&, Snapshot& s) { // Input Config with a track as the source, before its effects
+         s.ui.page = PageId::InputConfig; s.ui.track = 3; s.take.level = 0.2f;
+         auto& in = s.ui.settings.input;
+         in.source = InputSource::Track; in.track = 0; in.post = false; in.monitor = Monitor::On;
+         s.monitoring = true;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"recordseq", [](Shell&, Snapshot& s) { // Rec length Seq while playing: the take waits for the pattern to come round
          s.ui.page = PageId::Record; s.ui.track = 3; s.playing = true;
          auto& in = s.ui.settings.input;
@@ -732,6 +752,9 @@ const Preview previews[] {
         s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::AudioBuffer; s.ui.settings_editing = true;
         s.ui.settings.audio_rate = 48000; s.ui.settings.audio_periods = 4;
         s.audio_rate = 48000; s.audio_periods = 4; s.audio_xruns = 1;
+    }},
+    {"settingssampling", [](Shell&, Snapshot& s) { // the sampling rows: how Audio Recall cuts, when a take ends on its own
+        s.ui.page = PageId::SettingsPage; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;
     }},
     {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},
     {"punch", [](Shell&, Snapshot& s) {

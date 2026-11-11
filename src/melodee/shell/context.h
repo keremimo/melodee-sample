@@ -252,7 +252,14 @@ public:
     bool host_recording() const;                                       // a take is armed, cued or running
     // Input Config and Sample Record (parity phase 6, shell/sample_record.cpp).
     InputRoute* input = nullptr;                          // set by the app: the hardware behind the source
-    void set_input_source(InputSource source);            // K1 on Input Config and Record
+    void set_input_source(InputSource source, unsigned track = 0); // K1 on Input Config and Record (track: InputSource::Track)
+    void set_input_tap(bool post);                        // Shift + K1 there: a track before or after its effects
+    // Record with Melodee's own sound as the source (a track, the mix): from the pad tapped until the take ends, the
+    // pads play the instrument instead of cutting the take (a track source: that track; Resample: the kit itself).
+    bool record_keys() const;
+    void record_key(unsigned pad, uint8_t velocity, bool down);
+    bool record_key_held(unsigned pad) const { return (record_key_pads >> (pad % 16)) & 1u; }
+    void record_octave(int way);                          // Minus / Plus meanwhile: the source track's pads an octave
     void cycle_monitor();                                 // B1: Off -> Auto -> On
     void toggle_rec_fx();                                 // B2 on Input Config: Rec Input FX
     void input_changed();                                 // a setting moved: the engine hears it, the card keeps it (soon)
@@ -265,6 +272,7 @@ public:
     uint32_t rec_armed_at = 0;                            // ms
     bool monitor_sent = false, monitor_known = false;
     int gain_sent = 0;
+    uint16_t record_key_pads = 0;                         // pads playing through record_key()
     // Renders of the mix (parity phase 6, shell/render.cpp): Resample (Shift + Pad 11, then a pad) and the song's mixdown.
     void resample();                                      // Shift + Pad 11: wait for the pad (again: not)
     void resample_pad(unsigned kit);                      // the pad: the pattern rendered onto it

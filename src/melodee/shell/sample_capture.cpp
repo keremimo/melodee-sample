@@ -16,23 +16,28 @@ namespace fs = std::filesystem;
 
 std::string SampleLibrary::card() const { std::lock_guard<std::mutex> guard(lock); return card_top; }
 
-// Shift + Sample Record: the last 25 s of the source, from its first sound
-// (what came before it, quieter than -60 dB, is left out but for 10 ms).
-void SampleLibrary::save_recall(unsigned slot) {
+// Shift + Sample Record: the last 25 s of the source, cut as the Settings
+// page's Recall rows say (recall_bounds: the last phrase, from the first
+// sound, or all of it; the quiet after the last sound left out or kept).
+void SampleLibrary::save_recall(const RecallJob& job) {
+    int slot = int(job.slot);
     const auto& ring = host.recall();
     uint32_t frames = ring.filled();
-    if (frames < 441) { finish("Audio Recall: nothing yet", int(slot)); return; }
+    if (frames < RecallRing::rate / 100) { finish("Audio Recall: nothing yet", slot); return; }
     auto data = std::make_unique<SampleData>();
     data->left.resize(frames); data->right.resize(frames);
-    if (!ring.copy_last(frames, data->left.data(), data->right.data())) { finish("Audio Recall: try again", int(slot)); return; }
-    uint32_t first = 0;
-    while (first < frames && std::fabs(data->left[first]) < 0.001f && std::fabs(data->right[first]) < 0.001f) ++first;
-    if (first == frames) { finish("Audio Recall: only silence", int(slot)); return; }
-    first = first > 441 ? first - 441 : 0;
+    if (!ring.copy_last(frames, data->left.data(), data->right.data())) { finish("Audio Recall: try again", slot); return; }
+    uint32_t first = 0, end = frames;
+    if (!recall_bounds(data->left.data(), data->right.data(), frames, RecallRing::rate, job.options, first, end)) {
+        finish("Audio Recall: only silence", slot);
+        return;
+    }
+    data->left.erase(data->left.begin() + end, data->left.end());
+    data->right.erase(data->right.begin() + end, data->right.end());
     data->left.erase(data->left.begin(), data->left.begin() + first);
     data->right.erase(data->right.begin(), data->right.begin() + first);
-    data->frames = frames - first;
-    land(slot, std::move(data), "Recorded", "RECALL", "Audio Recall");
+    data->frames = end - first;
+    land(unsigned(slot), std::move(data), "Recorded", "RECALL", "Audio Recall");
 }
 
 // A render: its job first (the MIDI thread queues it before it presses

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/recall_ring.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/model/looper.h"
 #include "melodee/model/sampler.h"
@@ -101,7 +102,7 @@ public:
     // about to play: into slot `slot` (Resample, Samples/Recorded/RESAMPLE
     // n.wav), or straight into Melodee/Mixdowns/<name>.wav on the card (the
     // song). `frames`: how long it should run, to make room up front.
-    bool recall(unsigned slot) { return recalls.push(uint8_t(slot)); }
+    bool recall(unsigned slot, const RecallOptions& options) { return recalls.push({uint8_t(slot), options}); }
     struct Render { bool to_file = false; uint8_t slot = 0; uint32_t frames = 0; char name[40] {}; };
     bool render(const Render& job) { return renders.push(job); }
     std::string card() const; // the card's top folder; empty without one
@@ -163,9 +164,10 @@ private:
     std::atomic<unsigned> take_count {0};
     void save_take();
     // Recall and renders (shell/sample_capture.cpp).
-    MidiQueue<4, uint8_t> recalls;
+    struct RecallJob { uint8_t slot = 0; RecallOptions options; };
+    MidiQueue<4, RecallJob> recalls;
     MidiQueue<4, Render> renders;
-    void save_recall(unsigned slot);
+    void save_recall(const RecallJob& job);
     void drain_render();
     // A sample made here: written as Samples/<folder>/<stem> n.wav when there is a
     // card, offered to `slot` and listed; `what` names it in a failure.

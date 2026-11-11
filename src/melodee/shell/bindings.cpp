@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/demo_projects.h"
+#include "melodee/shell/input_choices.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/pad_fx_info.h"
@@ -367,8 +368,11 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
                 Binding {Kind::LoopQuantize, 0, 0, int(looper::Quantize::Count) - 1, project.looper.quantize},
                 Binding {Kind::LoopThen, 0, 0, int(looper::Then::Count) - 1, project.looper.then}};
     }
-    case PageId::Record: case PageId::InputConfig: // Shift + K3: Melodee's input gain
-        return {Binding {}, Binding {}, Binding {Kind::RecGain, 0, -12, 24, ui.settings.input.gain}};
+    case PageId::Record: case PageId::InputConfig: { // Shift + K1: a track's tap (before or after its effects); Shift + K3: Melodee's input gain
+        const auto& in = ui.settings.input;
+        Binding tap = in.source == InputSource::Track ? Binding {Kind::RecTap, 0, 0, 1, int(in.post)} : Binding {};
+        return {tap, Binding {}, Binding {Kind::RecGain, 0, -12, 24, in.gain}};
+    }
     case PageId::Patterns: // Shift: any bar count, the time signature, the metronome's level (as on the MPC)
         return {Binding {Kind::PatternBars, 0, 1, int(max_bars), int(pattern_bars(project, pattern))},
                 Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature},
@@ -555,7 +559,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Record: case PageId::InputConfig: { // as on the MPC's Sample Record: K1 source, K2 rec length, K3 threshold
         const auto& in = ui.settings.input;
-        return {Binding {Kind::RecSource, 0, 0, int(InputSource::Count) - 1, int(in.source)},
+        auto choices = input_choices(project, ui.track, in);
+        return {Binding {Kind::RecSource, 0, 0, int(choices.count) - 1, int(choices.index_of(input_code(in)))},
                 Binding {Kind::RecLength, 0, 0, int(rec_lengths) - 1, in.length},
                 Binding {Kind::RecThreshold, 0, InputConfig::threshold_min, 0, in.threshold}};
     }

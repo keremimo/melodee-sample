@@ -4,6 +4,8 @@
 #include "melodee/engine/punch.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
+#include "melodee/engine/engine_info.h"
+#include "melodee/engine/take_recorder.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/model/chords.h"
@@ -11,6 +13,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/fader_job.h"
+#include "melodee/shell/input_choices.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/shell/stage_map.h"
@@ -298,7 +301,16 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         else if (b.value == int(rec_seq)) c.value = "Seq";
         else { auto bars = rec_bars(unsigned(b.value)); c.value = juce::String(bars); c.unit = bars == 1 ? "bar" : "bars"; }
         break;
-    case Kind::RecSource: c.label = "SOURCE"; c.value = input_source_name(InputSource(b.value)); break;
+    case Kind::RecSource: {
+        c.label = "SOURCE";
+        unsigned code = input_choices(s.project, s.ui.track, s.ui.settings.input).code_at(b.value);
+        if (code < input_track_code) { c.value = input_source_name(InputSource(code)); break; }
+        unsigned t = code - input_track_code; // the track on the label, its engine as the value
+        c.label = "TRACK " + juce::String(t + 1);
+        c.value = sounding_track(s.project.tracks[t]) ? engine_word(s.project.tracks[t].engine) : juce::String("Silent");
+        break;
+    }
+    case Kind::RecTap: c.label = "TAP"; c.value = b.value ? "Post FX" : "Pre FX"; break;
     case Kind::KnobParam: {
         const auto& pi = effect_info(EffectKind(s.project.knob_fx.kind)).params[unsigned(b.id) % effect_params];
         auto shown = show(pi, b.value);
@@ -447,4 +459,29 @@ void draw_bpm_window(ui::Paint& p, const Snapshot& s) {
            juce::Justification::centred);
 }
 
+} // namespace melodee
+
+namespace melodee {
+// An engine as a word: Prophet, Sampler; the short ones as they are printed (FM6, SID, CZ, 909).
+juce::String engine_word(EngineKind kind) {
+    juce::String name = engine_info(kind).name;
+    return name.length() > 3 ? name.substring(0, 1) + name.substring(1).toLowerCase() : name;
+}
+
+juce::String input_name(const Snapshot& s, bool with_tap) {
+    const auto& in = s.ui.settings.input;
+    if (in.source != InputSource::Track) return input_source_name(in.source);
+    unsigned t = in.track % track_count;
+    juce::String name = "Track " + juce::String(t + 1);
+    if (with_tap) return name + (in.post ? " Post" : " Pre"); // the header: the track and its tap
+    if (sounding_track(s.project.tracks[t])) name += " " + engine_word(s.project.tracks[t].engine);
+    return name;
+}
+
+bool record_keys_shown(const Snapshot& s) {
+    auto state = TakeRecorder::State(s.take.state);
+    return s.ui.page == PageId::Record && internal_source(s.ui.settings.input.source) && s.ui.rec_slot >= 0
+        && s.ui.rec_track == s.ui.track
+        && (state == TakeRecorder::State::Armed || state == TakeRecorder::State::Cued || state == TakeRecorder::State::Recording);
+}
 } // namespace melodee

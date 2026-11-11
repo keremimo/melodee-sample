@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // INPUT CONFIG (Shift + Sample, as printed; B2 on Record): what Sample
 // Record and Audio Recall hear, as Akai's input_configuration page lists it.
-// K1 source (Mic, Rear, Rear L / R, Resample, USB, USB L / R), K2 rec length
+// K1 source (Mic, Rear, Rear L / R, Resample, USB, USB L / R, then each
+// track with a sound: shell/input_choices.h; Shift + K1 its tap), K2 rec length
 // (Free, Seq, Melodee's 1-16 bars), K3 threshold (-96 dB: at once; Shift +
 // K3 Melodee's gain); B1 monitor (Off, Auto while Record is in view, On),
 // B2 Rec Input FX, B3 back. Record's cards are the same ones, so the two
@@ -26,6 +27,7 @@ const char* detail_of(InputSource source) {
     case InputSource::Usb: return "What a computer plays over USB-C, in stereo.";
     case InputSource::UsbL: return "USB-C's left channel, on both sides.";
     case InputSource::UsbR: return "USB-C's right channel, on both sides.";
+    case InputSource::Track: return "";
     default: return "";
     }
 }
@@ -42,8 +44,10 @@ void draw(Paint& p, const Snapshot& s) {
                  -1, c, {KeyIcon::None, KeyIcon::None, KeyIcon::Back}}, h);
 
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y;
-    p.text(input_source_name(in.source), x, y, w, 22, plain(colour::text, type::title, Weight::SemiBold));
+    p.text(input_name(s, false), x, y, w, 22, plain(colour::text, type::title, Weight::SemiBold));
     juce::String detail = detail_of(in.source);
+    if (in.source == InputSource::Track) // Shift + K1 picks the tap; Record's pads play it once a take is armed
+        detail = in.post ? "After its effects, level and pan. Shift + K1: before." : "The engine alone, before its effects. Shift + K1: after.";
     if (from_usb(in.source)) {
         auto usb = UsbStreamState(s.usb_state);
         detail = usb == UsbStreamState::Running ? juce::String("USB-C: the computer is playing.")
@@ -56,6 +60,7 @@ void draw(Paint& p, const Snapshot& s) {
     struct Row { const char* name; juce::String value; };
     juce::String monitor = juce::String(monitor_name(in.monitor)).toUpperCase();
     if (in.source == InputSource::Resample) monitor += " (THE MIX IS HEARD)";
+    else if (in.source == InputSource::Track && s.monitoring) monitor += juce::String::fromUTF8(" \xc2\xb7 THE TRACK, ONCE");
     else if (s.monitoring) monitor += juce::String::fromUTF8(" \xc2\xb7 HEARD NOW");
     // Source, rec length and threshold are the knob cards' (K1-K3): the rows
     // hold what the cards do not.

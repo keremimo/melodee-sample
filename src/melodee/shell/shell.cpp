@@ -251,10 +251,12 @@ void Shell::press(Button b, bool pressed) {
     // Pad Bank held: Minus / Plus jump banks.
     case Button::Minus:
         if (ui.shift) context_.undo();
+        else if (record_track_keys()) context_.record_octave(-1); // the source track's pads, while they play
         else if (!pad_bank_move(context_, -1)) page.nudge(context_, -1);
         break;
     case Button::Plus:
         if (ui.shift) context_.redo();
+        else if (record_track_keys()) context_.record_octave(1);
         else if (!pad_bank_move(context_, 1)) page.nudge(context_, 1);
         break;
     // Note Repeat on: B1-B3 are its rate (Shift: triplets), except on Arp and Chord.
@@ -373,6 +375,11 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
     if (down && (ui_.exit_open || ui_.ask != UiState::Ask::None)) return; // a sheet or a question over the page
     if (down && track_pad(context_, pad)) { end_copy_away(); return; } // Pad Bank + pad: that track (or a track copy's)
     if (ui_.name.open()) { if (down) ui_.name.pad(pad, context_.now); return; } // the pads type
+    // A Record take of Melodee's own sound: the pads play the instrument until it ends (Shift + pad jobs stay).
+    if (!(down && ui_.shift) && (context_.record_keys() || (!down && context_.record_key_held(pad)))) {
+        context_.record_key(pad, velocity, down);
+        return;
+    }
     if (down && ui_.mute_mode()) { mute_pad(context_, pad, kit_pads()); return; } // mute mode: mute; with Shift, solo
     if (down && sample_pad(context_, pad)) return; // Sample held: the pad becomes the last pad, unheard
     if (down && ui_.shift && ui_.page == PageId::Looper && pad >= 8 && pad < 12) { // the loop grid: play or stop at once
@@ -409,6 +416,13 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
         return;
     }
     pad_job(ui_)(context_, pad, velocity, down);
+}
+
+// A Record take from a synth track: its pads play, so Minus / Plus move their octave.
+bool Shell::record_track_keys() const {
+    if (!context_.record_keys() || ui_.settings.input.source != InputSource::Track) return false;
+    auto engine = project_->tracks[ui_.settings.input.track % track_count].engine;
+    return engine != EngineKind::Sampler && engine != EngineKind::Kit909;
 }
 
 // Whether the pads play the selected track's kit on this page, one pad each:

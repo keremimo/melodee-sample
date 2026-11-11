@@ -9,7 +9,9 @@
 //   value (Pickup, Scaled, Instant; the MPC keeps these on MIDI Config,
 //   phase 9 shows them there too), screen brightness, the sample rate
 //   (44.1, 48, 96 kHz) and the audio buffer (256 to 1024 frames: longer
-//   rides out a slow moment without a crackle, shorter is heard sooner).
+//   rides out a slow moment without a crackle, shorter is heard sooner),
+//   then sampling: how Audio Recall cuts the ring and when a Free take of
+//   Melodee's own sound (or any source) ends on its own.
 //   Seven rows show at a time, scrolled with the cursor; the line under
 //   them says what the audio device runs at now and its dropouts so far
 //   (a change takes a moment and stops playback).

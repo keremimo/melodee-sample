@@ -31,9 +31,14 @@ public:
 
     // Audio thread (through the engine host's commands).
     // threshold_db -96 or below: at once. cued: wait for go() instead of the level.
-    void arm(float threshold_db, uint32_t length, unsigned slot, bool cued = false) {
+    // quiet_end (frames kept, 0 never): the take ends on its own once it has been
+    // below silence_db that long after a sound, cut 10 ms after the last one.
+    void arm(float threshold_db, uint32_t length, unsigned slot, bool cued = false, uint32_t quiet_end = 0, float silence_db = -60) {
         if (state_.load() != State::Idle) return;
         threshold = threshold_db <= -96 ? 0 : std::pow(10.0f, threshold_db / 20.0f);
+        quiet = quiet_end;
+        silence = std::pow(10.0f, silence_db / 20.0f);
+        last_loud = 0; heard = false;
         limit = std::min(length ? length : max_frames, max_frames);
         slot_.store(slot);
         frames_.store(0);
@@ -69,11 +74,18 @@ public:
         for (unsigned f = 0; f < n && kept < limit; ++f) convert.feed(l[f], r[f], [&](float cl, float cr) {
             if (kept >= limit) return;
             left_[kept] = cl; right_[kept] = cr;
+            if (std::fabs(cl) >= silence || std::fabs(cr) >= silence) { last_loud = kept; heard = true; }
             unsigned c = unsigned(uint64_t(kept) * columns / limit);
             uint8_t v = uint8_t(std::min(1.0f, std::max(std::fabs(cl), std::fabs(cr))) * 255);
             if (v > peaks[c].load(std::memory_order_relaxed)) peaks[c].store(v, std::memory_order_relaxed);
             ++kept;
         });
+        if (quiet && heard && kept - last_loud >= quiet) { // quiet long enough: done, ending where the sound did
+            kept = std::min(kept, last_loud + 1 + tail_frames);
+            frames_.store(kept, std::memory_order_release);
+            state_.store(State::Done);
+            return;
+        }
         frames_.store(kept, std::memory_order_release);
         if (kept >= limit) state_.store(State::Done);
     }
@@ -95,6 +107,10 @@ private:
     std::unique_ptr<float[]> left_, right_;
     ToModelRate convert;
     float threshold = 0.03f;
+    static constexpr uint32_t tail_frames = uint32_t(dsp::model_rate) / 100; // 10 ms kept after the last sound
+    uint32_t quiet = 0, last_loud = 0;
+    float silence = 0.001f;
+    bool heard = false;
     unsigned start_at = 0;
     uint32_t limit = max_frames;
     std::atomic<State> state_ {State::Idle};

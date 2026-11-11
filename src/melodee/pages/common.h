@@ -32,6 +32,11 @@ juce::Colour colour_of(const Snapshot& s);              // the selected track's 
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
 juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
+// The input source as Record and Input Config name it: "Rear", or a track's "Track 3 Prophet" (with_tap: "Track 3 Post").
+juce::String input_name(const Snapshot& s, bool with_tap);
+juce::String engine_word(EngineKind kind); // "Prophet", "FM6"
+// Record: a take of Melodee's own sound runs, so the pads play the instrument (Context::record_keys()).
+bool record_keys_shown(const Snapshot& s);
 
 // The tracks as the pads sit, pad 1 bottom left, in the picture zone, eight
 // at a time (the half with the selected track): Stage's picture, and the

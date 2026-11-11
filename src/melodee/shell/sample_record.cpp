@@ -15,13 +15,21 @@
 //   pads tapped cut it there, each getting the part from its cut on; the
 //   pad again, Stop or Push ends it and stays; Sample Record ends it and
 //   goes back to the pad's Sample page.
+// - A Track source (or Resample) on Record: the tapped pad is the take's;
+//   from then until it ends the pads play the instrument (record_key), and
+//   a Free take ends on its own after the Settings page's quiet stretch.
 // - Audio Recall (Shift + Sample Record): the ring's last 25 s onto the next
-//   empty pad, written by the service thread.
+//   empty pad, cut as the Settings page says (recall_bounds), written by the
+//   service thread.
 #include "melodee/engine/engine_host.h"
+#include "melodee/model/scales.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/input_choices.h"
 #include "melodee/shell/input_route.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
+#include <algorithm>
+#include <cstdio>
 
 namespace melodee {
 using Type = Command::Type;
@@ -33,18 +41,40 @@ uint8_t length_code(const InputConfig& in) {
     return in.length == rec_free ? 0 : in.length == rec_seq ? 255 : uint8_t(rec_bars(in.length));
 }
 
+// RecordSource for the input as set: with a track, which one and its tap.
+Command source_command(const InputConfig& in) {
+    return {Type::RecordSource, uint8_t(in.source), 0, uint16_t(in.track % track_count), int16_t(in.post)};
+}
+
 bool arm_take(Context& c, unsigned kit) {
     auto& t = c.track();
     if (t.engine != EngineKind::Sampler) { c.notice("Sample Record: kit tracks"); return false; }
+    const auto& in = c.ui.settings.input;
+    unsigned source = in.track % track_count;
+    if (in.source == InputSource::Track) { // a track records onto a kit pad: another track, with a sound
+        char text[40];
+        if (source == c.ui.track) { c.notice("Source: pick another track"); return false; }
+        if (!sounding_track(c.project.tracks[source])) {
+            std::snprintf(text, sizeof(text), "Source: track %u has no sound", source + 1);
+            c.notice(text);
+            return false;
+        }
+    }
     kit %= sampler_pads;
     int slot = c.hold_file("TAKE", c.ui.track, int(kit), 2);
     if (slot < 0) { c.notice("Record: samples full (64)"); return false; }
     c.ui.rec_slot = int16_t(slot); c.ui.rec_pad = int16_t(kit); c.ui.rec_track = c.ui.track; c.ui.rec_chops = 0;
     c.rec_armed_at = c.now;
     t.last_pad = uint8_t(kit);
-    const auto& in = c.ui.settings.input;
+    // Free: the take ends on its own after a quiet stretch, where the Settings page says so for this source.
+    const auto& sp = c.ui.settings.sampling;
+    Command quiet {Type::RecordAutoEnd, 0, 0, 0, int16_t(sp.silence_db())};
+    if (in.length == rec_free && sp.auto_ends(in.source))
+        quiet.position = uint32_t(SamplingPrefs::end_seconds[sp.end_after % SamplingPrefs::end_count] * float(dsp::model_rate));
+    c.send(quiet);
+    c.send(source_command(in));
     Command arm {Type::RecordArm, uint8_t(in.source), length_code(in), uint16_t(slot), int16_t(in.threshold)};
-    arm.position = c.ui.track;
+    arm.position = in.source == InputSource::Track ? source : c.ui.track; // Seq: the source track's pattern
     c.send(arm);
     bool cued = in.length == rec_seq && c.host.playing();
     c.notice(pad_text(cued ? "Next loop, to" : in.at_once() ? "Recording to" : "Waiting, to", kit));
@@ -52,10 +82,48 @@ bool arm_take(Context& c, unsigned kit) {
 }
 } // namespace
 
-void Context::set_input_source(InputSource source) {
+void Context::set_input_source(InputSource source, unsigned track) {
     if (host_recording()) { notice("Source stays while recording"); return; }
     ui.settings.input.source = source;
+    ui.settings.input.track = uint8_t(track % track_count);
     input_changed();
+}
+
+void Context::set_input_tap(bool post) {
+    if (host_recording()) { notice("Tap stays while recording"); return; }
+    ui.settings.input.post = post;
+    input_changed();
+}
+
+bool Context::record_keys() const {
+    const auto& in = ui.settings.input;
+    if (ui.page != PageId::Record || !internal_source(in.source)) return false;
+    if (ui.rec_slot < 0 || ui.rec_track != ui.track) return false;
+    auto state = host.recorder().state();
+    return state == State::Armed || state == State::Cued || state == State::Recording;
+}
+
+// A pad while a take of Melodee's own sound runs: the source track plays it as
+// if it were selected (its layout, scale, chord, arp, levels; never into its
+// pattern), or with Resample the kit in view.
+void Context::record_key(unsigned pad, uint8_t velocity, bool down) {
+    pad %= 16;
+    const auto& in = ui.settings.input;
+    uint8_t keep_track = ui.track;
+    bool keep_recording = ui.recording;
+    if (in.source == InputSource::Track) ui.track = uint8_t(in.track % track_count);
+    ui.recording = false;
+    play_pad(pad, velocity, down);
+    ui.track = keep_track;
+    ui.recording = keep_recording;
+    if (down) record_key_pads = uint16_t(record_key_pads | 1u << pad);
+    else record_key_pads = uint16_t(record_key_pads & ~(1u << pad));
+}
+
+void Context::record_octave(int way) {
+    auto& t = project.tracks[ui.settings.input.track % track_count];
+    t.octave = int8_t(std::clamp(t.octave + way, 0, 7));
+    notice(std::string("Pads ") + note_name(pad_note(project, t, 0).key) + "\xe2\x80\x93" + note_name(pad_note(project, t, 15).key));
 }
 
 void Context::cycle_monitor() {
@@ -75,7 +143,7 @@ void Context::toggle_rec_fx() {
 void Context::input_changed() {
     auto& in = ui.settings.input;
     in.clamp();
-    send({Type::RecordSource, uint8_t(in.source)});
+    send(source_command(in));
     send({Type::RecordGain, 0, 0, 0, int16_t(in.gain)});
     gain_sent = in.gain;
     send_knob_state(); // Rec Input FX: Knob FX on the input during a take
@@ -129,12 +197,18 @@ void Context::audio_recall() {
     auto& t = track();
     if (t.engine != EngineKind::Sampler) { notice("Audio Recall: kit tracks"); return; }
     if (!library) return;
-    if (host.recall().filled() < 441) { notice("Audio Recall: nothing yet"); return; }
+    if (host.recall().filled() < RecallRing::rate / 100) { notice("Audio Recall: nothing yet"); return; }
     int kit = next_empty_pad(t.last_pad);
     if (kit < 0) { notice("No empty pad"); return; }
     int slot = hold_file("RECALL", ui.track, kit, 1);
     if (slot < 0) { notice("Audio Recall: samples full"); return; }
-    if (!library->recall(unsigned(slot))) { drop_file(slot); notice("Audio Recall: busy"); return; }
+    const auto& sp = ui.settings.sampling;
+    RecallOptions options;
+    options.grab = uint8_t(sp.grab);
+    options.gap = uint32_t(SamplingPrefs::gap_seconds[sp.gap % SamplingPrefs::gap_count] * float(RecallRing::rate));
+    options.trim_end = sp.trim_end;
+    options.silence = sp.silence_level();
+    if (!library->recall(unsigned(slot), options)) { drop_file(slot); notice("Audio Recall: busy"); return; }
     notice(pad_text("Audio Recall to", unsigned(kit)));
 }
 
@@ -149,7 +223,14 @@ void Context::record_tick(uint32_t at) {
     }
     if (input) input->want(in.source, in.mutes_speaker(page));
     // The engine hears the settings as loaded from the card (and after a take, a source changed meanwhile).
-    if (host.recorder().state() == State::Idle && host.record_source() != unsigned(in.source)) send({Type::RecordSource, uint8_t(in.source)});
+    if (host.recorder().state() == State::Idle
+        && (host.record_source() != unsigned(in.source)
+            || (in.source == InputSource::Track && (host.record_track() != in.track % track_count || host.record_post() != in.post))))
+        send(source_command(in));
+    // The take ended (or Record was left): what the pads played on the source lets go.
+    if (record_key_pads && !record_keys())
+        for (unsigned pad = 0; pad < 16; ++pad)
+            if (record_key_held(pad)) record_key(pad, 0, false);
     if (gain_sent != in.gain) { send({Type::RecordGain, 0, 0, 0, int16_t(in.gain)}); gain_sent = in.gain; }
     if (settings_save_at && at >= settings_save_at) {
         settings_save_at = 0;

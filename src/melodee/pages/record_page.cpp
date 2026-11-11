@@ -9,7 +9,9 @@
 // Sample page. K1 source, K2 rec length, K3 threshold, B1 monitor, as on the
 // MPC and in step with Input Config (B2 opens it); Shift + K3 gain. Push on
 // its own records onto the first empty pad. Takes are saved to
-// Samples/Recorded on the card.
+// Samples/Recorded on the card. With Melodee's own sound as the source (a
+// track, Resample) the pads play the instrument from the tap until the take
+// ends (Context::record_keys(); the shell routes them before this page).
 #include "melodee/engine/take_recorder.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/input_meter.h"
@@ -32,7 +34,7 @@ void draw(Paint& p, const Snapshot& s) {
     char label[4];
     if (taking) { pad_label(unsigned(s.ui.rec_pad), label); h.left.push_back(pill(juce::String("TO PAD ") + juce::String(label), c)); }
     else h.left.push_back(pill("TAP A PAD"));
-    h.left.push_back(pill(juce::String(input_source_name(in.source)).toUpperCase()));
+    h.left.push_back(pill(input_name(s, in.source == InputSource::Track).toUpperCase()));
     if (s.speaker_quieted) h.left.push_back(pill("SPEAKER OFF", colour::amber));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{juce::String("MON ") + juce::String(monitor_name(in.monitor)).toUpperCase(), "INPUT", ""}, -1, c}, h);
@@ -83,11 +85,18 @@ void draw(Paint& p, const Snapshot& s) {
     }
     // The input level, with the line it has to pass.
     input_meter(p, s, c, x, y + wh + 10, w);
-    // What the pads do now.
-    const char* hint = state == State::Recording ? "Pad again, Stop or Push: done \xc2\xb7 other pads: cut"
-                     : state == State::Armed || state == State::Cued ? "The pad again: at once \xc2\xb7 Stop: cancel"
-                     : "Tap a pad to record onto it";
-    p.text(juce::String::fromUTF8(hint), x, y + wh + 50, w, 14, plain(colour::mid, type::small, Weight::Medium), juce::Justification::centred);
+    // What the pads do now: with Melodee's own sound as the source they play it until the take ends.
+    juce::String hint;
+    if (record_keys_shown(s)) {
+        juce::String what = in.source == InputSource::Track ? "Track " + juce::String(in.track % track_count + 1) : juce::String("the kit");
+        hint = juce::String::fromUTF8("Pads play ") + what + juce::String::fromUTF8(state == State::Recording ? " \xc2\xb7 Push or Stop: done"
+                                                                                                            : " \xc2\xb7 the first sound starts it");
+    } else {
+        hint = juce::String::fromUTF8(state == State::Recording ? "Pad again, Stop or Push: done \xc2\xb7 other pads: cut"
+                                    : state == State::Armed || state == State::Cued ? "The pad again: at once \xc2\xb7 Stop: cancel"
+                                    : "Tap a pad to record onto it");
+    }
+    p.text(hint, x, y + wh + 50, w, 14, plain(colour::mid, type::small, Weight::Medium), juce::Justification::centred);
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {

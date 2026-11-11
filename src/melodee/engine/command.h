@@ -48,8 +48,11 @@ struct Command {
         // (0 until stopped, 1..16 bars, 255 Seq: the pattern of track `position`, from where it comes round while playing)
         RecordArm,
         RecordGain,  // value = dB
-        RecordSource, // track = InputSource: what the meter, Audio Recall's ring and the next take hear
+        // track = InputSource: what the meter, Audio Recall's ring and the next take hear; with InputSource::Track,
+        // index = the track and value 1 after its chain, level and pan (0: the engine alone)
+        RecordSource,
         RecordNow, RecordStop,
+        RecordAutoEnd, // value = silence dB, position = frames of it (at the model rate) that end the next Free take; 0 never
         Reload,      // pack: a whole project to switch to; handed back through the host's done queue
         Click,       // value: on; index: level 0..100
         Arp,         // track; index = 0 on, 1 mode, 2 rate, 3 octaves, 4 gate; value

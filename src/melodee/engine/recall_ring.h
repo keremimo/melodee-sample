@@ -4,6 +4,7 @@
 #include "melodee/engine/model_rate.h"
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 
@@ -63,5 +64,41 @@ private:
     ToModelRate convert;
     std::atomic<uint64_t> written_ {0}, since_ {0};
 };
+
+// How much of the ring Audio Recall keeps (the Settings page's Recall rows).
+struct RecallOptions {
+    uint8_t grab = 0;        // RecallGrab: 0 the last phrase, 1 from the first sound, 2 everything
+    uint32_t gap = RecallRing::rate; // Last Phrase: a quiet stretch this long (frames) begins a new phrase
+    bool trim_end = true;    // the quiet after the last sound left out
+    float silence = 0.001f;  // what counts as quiet (linear; -60 dB)
+};
+
+// The part of a copied ring to keep, [first, end): 10 ms before the sound it
+// starts on and 10 ms after the last sound (when trimmed). False when there
+// is only quiet (never for everything).
+inline bool recall_bounds(const float* l, const float* r, uint32_t frames, uint32_t rate, const RecallOptions& o,
+                          uint32_t& first, uint32_t& end) {
+    first = 0; end = frames;
+    if (o.grab == 2) return frames > 0;
+    auto loud = [&](uint32_t f) { return std::fabs(l[f]) >= o.silence || std::fabs(r[f]) >= o.silence; };
+    uint32_t pad = rate / 100;
+    uint32_t last = frames;
+    while (last > 0 && !loud(last - 1)) --last; // just after the last sound
+    if (!last) return false;
+    uint32_t start = 0;
+    if (o.grab == 0) { // back from the last sound to a quiet stretch of `gap`
+        uint32_t quiet = 0;
+        start = last - 1;
+        for (uint32_t f = last; f-- > 0;) {
+            if (loud(f)) { start = f; quiet = 0; continue; }
+            if (++quiet >= o.gap) break;
+        }
+        if (quiet < o.gap) start = 0; // no such stretch: from the first sound
+    }
+    while (start < last && !loud(start)) ++start;
+    first = start > pad ? start - pad : 0;
+    end = o.trim_end ? std::min(frames, last + pad) : frames;
+    return true;
+}
 
 } // namespace melodee

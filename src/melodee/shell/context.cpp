@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/context.h"
 #include "melodee/model/pad_params.h"
+#include "melodee/shell/input_choices.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/midi_engine.h"
@@ -32,7 +33,7 @@ void Context::send(const Command& command) {
     switch (command.type) {
     case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Pressure:
     case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
-    case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::Locate: case Type::Recorded: break;
+    case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded: break;
     default: dirty = true;
     }
     host.send(command);
@@ -501,7 +502,13 @@ void Context::apply(const Binding& b, int value) {
     case Kind::CaptureBars: ui.capture_bars = uint8_t(value); break;
     case Kind::CaptureQuantise: ui.capture_quantise = uint8_t(value); break;
     case Kind::CaptureInto: ui.capture_into = uint8_t(value); break;
-    case Kind::RecSource: set_input_source(InputSource(value)); break;
+    case Kind::RecSource: {
+        unsigned code = input_choices(project, ui.track, ui.settings.input).code_at(value);
+        if (code >= input_track_code) set_input_source(InputSource::Track, code - input_track_code);
+        else set_input_source(InputSource(code), ui.settings.input.track);
+        break;
+    }
+    case Kind::RecTap: set_input_tap(value != 0); break;
     case Kind::KnobParam: knob_fx_param(unsigned(b.id), value); break;
     case Kind::PadFxParam: set_pad_fx_param(unsigned(b.id) / 4, unsigned(b.id) % 4, value); break;
     case Kind::FlexMode: set_flex(1, value); break;
@@ -701,7 +708,9 @@ void Context::pressure(unsigned pad, uint8_t value) {
         send({Type::PunchDepth, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8), int16_t(value * 100 / 127)});
         return;
     }
-    for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, ui.track, 0, uint16_t(k), int16_t(value)}); // every note of a chord
+    // Every note of a chord; a pad playing a Record take's source track presses that track's notes.
+    unsigned to = record_key_held(pad) && ui.settings.input.source == InputSource::Track ? ui.settings.input.track % track_count : ui.track;
+    for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, uint8_t(to), 0, uint16_t(k), int16_t(value)});
 }
 
 void Context::set_mute(unsigned t, bool on) {

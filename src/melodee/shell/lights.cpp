@@ -310,6 +310,17 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             unsigned kit = track.bank % sampler_banks * 16 + pad;
             colour = !track.pads[kit].used() ? Rgb {} : track.pad_muted(kit) ? muted_red
                    : pad_soloed(track, kit) ? led_colour::white(0.8f) : track_light(ui.track, 0.6f);
+        } else if (context_.record_keys() && !tracks && !muting) {
+            // A take of Melodee's own sound: the pads are the instrument (a track source in its colour; Resample the
+            // kit, the take's pad red), lit white while held.
+            const auto& in = ui.settings.input;
+            bool kit_source = in.source != InputSource::Track;
+            unsigned from = kit_source ? ui.track : in.track % track_count;
+            unsigned kit = track.bank % sampler_banks * 16 + pad;
+            if (held) colour = led_colour::white(1);
+            else if (kit_source && ui.rec_pad == int(kit)) colour = led_colour::rgb(1, 0, 0, 1);
+            else if (kit_source) colour = track_light(from, track.pads[kit].used() ? 0.4f : 0.07f);
+            else colour = track_light(from, project.tracks[from].engine == EngineKind::Kit909 && pad >= 11 ? 0.0f : 0.45f);
         } else if ((ui.page == PageId::Record || ui.resample_pick) && track.engine == EngineKind::Sampler && !tracks && !muting) {
             // Record and Resample's pick: every pad can take a sample (empty ones faint); the take's pad
             // red, flashing while it waits; the pads cut from it white.

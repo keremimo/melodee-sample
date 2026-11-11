@@ -84,6 +84,7 @@ private:
     std::string pad_summary() const;   // the last pad's Sample Mode values (phase 4)
     std::atomic<uint64_t> button_levels {0};
     std::atomic<uint32_t> pads_lit {0}; // the pads lit, a bit each, for `status`
+    bool record_track_keys() const; // Record: a synth track source plays the pads (Minus / Plus: its octave)
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
     Rgb loop_light(unsigned pad, uint32_t now, bool muting) const; // the Looper's grid (shell/lights.cpp)
     void end_copy_away();  // copying stops away from the pads it copies

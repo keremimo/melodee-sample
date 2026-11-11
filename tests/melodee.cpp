@@ -23,6 +23,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/input_choices.h"
 #include "melodee/shell/fader_job.h"
 #include "melodee/shell/midi_route.h"
 #include "melodee/shell/mtc_in.h"
@@ -2178,7 +2179,7 @@ void audio_input_and_rendering() {
     Settings old; old.read("pad_response=2\npickup=1\n");
     CHECK(old.input.source == InputSource::Rear && old.input.monitor == Monitor::Auto && old.input.threshold == -30 && old.input.length == rec_free);
     Settings wild; wild.read("input_source=99\nthreshold=-200\nrec_length=99\n");
-    CHECK(wild.input.source == InputSource::UsbR && wild.input.threshold == -96 && wild.input.length == rec_lengths - 1);
+    CHECK(wild.input.source == InputSource::Track && wild.input.threshold == -96 && wild.input.length == rec_lengths - 1);
 
     // The engine host's input path: each source's channels, the gain, the meter, and Monitor.
     auto project = std::make_unique<Project>();
@@ -3525,6 +3526,173 @@ void device_rates() {
     }
 }
 
+// Sampling from an engine: the Track input source (before or after the
+// track's chain, heard once while monitored), a Free take ending on its own
+// after a quiet stretch, Audio Recall's cuts, the K1 list and the settings.
+void track_source() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (auto& t : project->tracks) t.engine = EngineKind::None;
+    load_sound(project->tracks[0], EngineKind::Prophet, 0);
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    std::vector<int32_t> out(256);
+    auto run = [&](unsigned blocks) { for (unsigned n = 0; n < blocks; ++n) host->render(out.data(), 128, 1, nullptr); };
+    auto source = [&](bool post) { host->send({Command::Type::RecordSource, uint8_t(InputSource::Track), 0, 0, int16_t(post)}); };
+    source(true);
+    host->send({Command::Type::NoteOn, 0, 0, 60, 110});
+    run(80);
+    CHECK(host->record_source() == unsigned(InputSource::Track) && host->record_track() == 0 && host->record_post());
+    float post_full = host->recorder().level();
+    CHECK(post_full > 0.01f);
+    source(false);
+    run(40);
+    float pre_full = host->recorder().level();
+    CHECK(!host->record_post() && pre_full > 0.01f);
+    // The track turned down: after its level the tap follows, the engine alone does not.
+    host->send({Command::Type::Level, 0, 0, 0, 10});
+    run(80);
+    CHECK(std::fabs(host->recorder().level() - pre_full) < pre_full * 0.35f);
+    source(true);
+    run(80);
+    CHECK(host->recorder().level() < post_full * 0.5f);
+    // Muted, it still records (the tap is before mute).
+    host->send({Command::Type::Level, 0, 0, 0, 80});
+    host->send({Command::Type::Mute, 0, 0, 0, 1});
+    run(80);
+    CHECK(host->recorder().level() > 0.01f);
+    run(4);
+    int32_t muted_peak = 0;
+    for (auto v : out) muted_peak = std::max(muted_peak, std::abs(v));
+    CHECK(muted_peak == 0);
+    host->send({Command::Type::Mute, 0, 0, 0, 0});
+    // Monitored, the track is heard through the input instead of the mix: once, as loud as before.
+    auto peak_out = [&]() {
+        int32_t peak = 0;
+        for (unsigned n = 0; n < 40; ++n) { host->render(out.data(), 128, 1, nullptr); for (auto v : out) peak = std::max(peak, std::abs(v)); }
+        return peak;
+    };
+    int32_t mixed = peak_out();
+    host->send({Command::Type::Monitor, 0, 0, 0, 1});
+    int32_t monitored = peak_out();
+    CHECK(mixed > 0 && std::abs(double(monitored) / mixed - 1.0) < 0.2);
+    host->send({Command::Type::Monitor, 0, 0, 0, 0});
+    // Another track or tap: what the ring holds is another source's.
+    run(10);
+    CHECK(host->recall().filled() > 1280);
+    source(false);
+    run(1);
+    CHECK(host->recall().filled() == 128);
+    host->send({Command::Type::RecordSource, uint8_t(InputSource::Track), 0, 1, 0});
+    run(1);
+    CHECK(host->recall().filled() == 128 && host->record_track() == 1);
+    // Rec length Seq follows the track named (the source's pattern: a bar at 120 BPM).
+    bank->at[0][0].length = project->bar_ticks();
+    host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    Command seq {Command::Type::RecordArm, uint8_t(InputSource::Track), 255, 3, -96};
+    seq.position = 0;
+    host->send(seq);
+    run(1);
+    CHECK(host->recorder().length() + 1 >= 88200 && host->recorder().length() <= 88201);
+    host->send({Command::Type::RecordStop});
+    run(1);
+    host->recorder().release();
+    host->send({Command::Type::NoteOff, 0, 0, 60, 0});
+
+    // A Free take ends on its own once quiet for 1.5 s, 10 ms after its last sound; without it, it waits.
+    {
+        auto take = std::make_unique<TakeRecorder>();
+        uint32_t quiet = uint32_t(1.5f * dsp::model_rate);
+        take->arm(-96, 0, 0, false, quiet, -60);
+        std::vector<float> loud(128, 0.5f), silent(128, 0.0f);
+        unsigned blocks = 0;
+        for (; blocks * 128 < 22050; ++blocks) take->process(loud.data(), loud.data(), 128);
+        uint32_t sounded = blocks * 128;
+        for (unsigned n = 0; n < 1000 && take->state() == TakeRecorder::State::Recording; ++n) take->process(silent.data(), silent.data(), 128);
+        CHECK(take->state() == TakeRecorder::State::Done);
+        CHECK(take->frames() == sounded + uint32_t(dsp::model_rate) / 100);
+        take->release();
+        take->arm(-96, 0, 0, false, 0, -60);
+        take->process(loud.data(), loud.data(), 128);
+        for (unsigned n = 0; n < 1000; ++n) take->process(silent.data(), silent.data(), 128);
+        CHECK(take->state() == TakeRecorder::State::Recording);
+        take->stop();
+        take->release();
+        take->arm(-96, 0, 0, false, quiet, -60); // quiet from the start: nothing heard, nothing ends it
+        for (unsigned n = 0; n < 1000; ++n) take->process(silent.data(), silent.data(), 128);
+        CHECK(take->state() == TakeRecorder::State::Recording);
+    }
+
+    // Audio Recall: burst A, 2 s quiet, burst B, 0.5 s quiet.
+    {
+        const uint32_t rate = RecallRing::rate, pad = rate / 100;
+        uint32_t a0 = rate / 2, a1 = a0 + rate / 2, b0 = a1 + 2 * rate, b1 = b0 + rate / 2, total = b1 + rate / 2;
+        std::vector<float> l(total, 0.0f), r(total, 0.0f);
+        for (uint32_t f = a0; f < a1; ++f) l[f] = 0.4f;
+        for (uint32_t f = b0; f < b1; ++f) r[f] = -0.4f;
+        RecallOptions o;
+        uint32_t first = 0, end = 0;
+        CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == b0 - pad && end == b1 + pad);
+        o.gap = 4 * rate;
+        CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == a0 - pad && end == b1 + pad);
+        o.grab = 1; o.gap = rate;
+        CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == a0 - pad && end == b1 + pad);
+        o.trim_end = false;
+        CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == a0 - pad && end == total);
+        o.grab = 2;
+        CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == 0 && end == total);
+        std::vector<float> none(total, 0.0f);
+        CHECK(recall_bounds(none.data(), none.data(), total, rate, o, first, end));
+        o.grab = 0;
+        CHECK(!recall_bounds(none.data(), none.data(), total, rate, o, first, end));
+        o.trim_end = true; // one burst with short gaps inside: kept whole
+        std::vector<float> one(total, 0.0f);
+        for (uint32_t f = a0; f < a1; ++f) one[f] = 0.4f;
+        for (uint32_t f = a1 + rate / 2; f < a1 + rate; ++f) one[f] = 0.4f;
+        CHECK(recall_bounds(one.data(), one.data(), total, rate, o, first, end) && first == a0 - pad && end == a1 + rate + pad);
+    }
+
+    // K1's list: the inputs, then tracks with a sound; the kit taken onto, empty and MIDI tracks left out.
+    {
+        Project p;
+        for (auto& t : p.tracks) t.engine = EngineKind::None;
+        p.tracks[0].engine = EngineKind::Prophet; p.tracks[2].engine = EngineKind::Kit909;
+        p.tracks[3].engine = EngineKind::Sampler; p.tracks[4].engine = EngineKind::Midi; p.tracks[5].engine = EngineKind::Sampler;
+        InputConfig in;
+        auto choices = input_choices(p, 3, in);
+        CHECK(choices.count == 8 + 3 && choices.codes[8] == input_track_code + 0 && choices.codes[9] == input_track_code + 2
+              && choices.codes[10] == input_track_code + 5);
+        CHECK(input_choices(p, 0, in).count == 8 + 4); // a synth in view is a source too
+        in.source = InputSource::Track; in.track = 7; // gone quiet: still listed while chosen
+        auto kept = input_choices(p, 3, in);
+        CHECK(kept.count == 12 && kept.codes[kept.index_of(input_code(in))] == input_track_code + 7);
+        CHECK(internal_source(InputSource::Track) && internal_source(InputSource::Resample) && !internal_source(InputSource::Mic));
+    }
+
+    // The settings: the track and its tap, and the six sampling rows, kept and read back.
+    {
+        Settings a;
+        CHECK(a.value_text(Settings::RecallGrabRow) == "Last Phrase" && a.value_text(Settings::RecallGap) == "1 s"
+              && a.value_text(Settings::TakeAutoEnd) == "Synths & Resample" && a.value_text(Settings::AutoEndAfter) == "1.5 s"
+              && a.value_text(Settings::SilenceBelow) == "-60 dB" && a.value_text(Settings::RecallTrimEnd) == "On");
+        CHECK(a.sampling.auto_ends(InputSource::Track) && !a.sampling.auto_ends(InputSource::Mic));
+        a.input.source = InputSource::Track; a.input.track = 5; a.input.post = false;
+        a.step(Settings::RecallGrabRow, 1); a.step(Settings::RecallGap, -1); a.step(Settings::RecallTrimEnd, 1);
+        a.step(Settings::TakeAutoEnd, 1); a.step(Settings::AutoEndAfter, 1); a.step(Settings::SilenceBelow, 1);
+        a.step(Settings::SilenceBelow, 1);
+        Settings b;
+        b.read(a.text());
+        CHECK(b.input.source == InputSource::Track && b.input.track == 5 && !b.input.post);
+        CHECK(b.sampling.grab == RecallGrab::FirstSound && b.sampling.gap == 0 && !b.sampling.trim_end && b.sampling.auto_end == AutoEnd::All
+              && b.sampling.end_after == 3 && b.sampling.silence_db() == -72 && b.value_text(Settings::RecallGap) == "0.5 s");
+        CHECK(b.sampling.auto_ends(InputSource::Mic));
+        b.read("recall_grab=9\nrecall_gap=-3\nauto_end_after=40\nsilence_db=-50\ninput_track=99\n");
+        CHECK(b.sampling.grab == RecallGrab::Whole && b.sampling.gap == 0 && b.sampling.end_after == 3 && b.sampling.silence_db() == -48
+              && b.input.track == 15);
+    }
+}
+
 // MIDI tracks (docs/MIDI_TRACKS.md, phase M1): the engine, its port and channel, where its notes go, when they end.
 void midi_tracks() {
     using K = MidiOutEvent::Kind;
@@ -4278,6 +4446,7 @@ void zero_snap() {
 }
 
 int main() {
+    track_source();
     zero_snap();
     looper_engine();
     roll();

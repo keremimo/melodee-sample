@@ -44,7 +44,8 @@ struct Binding {
         PadFilterType, PadCutoff, PadResonance, PadFAttack, PadFDecay, PadFSustain, PadFRelease, PadFAmount,
         PadWarp, PadBeats,                         // PadWarp: 0 Off, 1..151 50..200 %, 152 Seq
         ChopEnd, ChopZoom,                         // Chop (parity phase 5): K2 the slice's end (ms); Shift + K1 / K2 zoom (id 0 start, 1 end)
-        RecSource,                                 // Record and Input Config (parity phase 6): InputSource
+        RecSource,                                 // Record and Input Config (parity phase 6): index into input_choices()
+        RecTap,                                    // Shift + K1 there, the Track source: 0 Pre FX, 1 Post FX
         KnobParam,                                 // Knob FX (parity phase 7), id: the effect's parameter 0..5
         CompAttack, CompRelease, CompAmount, CompBoost, // the master compressor (parity phase 7)
         PadFxParam,                                // Pad FX (parity phase 7b): id = the MPC's Pad FX * 4 + its K

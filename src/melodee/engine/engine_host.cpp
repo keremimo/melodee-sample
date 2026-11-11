@@ -422,15 +422,23 @@ void EngineHost::apply(const Command& c) {
         } else if (c.pattern) {
             length = uint32_t(double(c.pattern) * bar * tick_length() + 0.5);
         }
-        take.arm(float(c.value), length, c.index, cue_track >= 0);
+        take.arm(float(c.value), length, c.index, cue_track >= 0, length ? 0 : auto_quiet, auto_silence_db);
         break;
     }
-    case Type::RecordSource:
-        if (take.state() == TakeRecorder::State::Idle && c.track % unsigned(InputSource::Count) != source_now.load(std::memory_order_relaxed)) {
-            source_now.store(c.track % unsigned(InputSource::Count), std::memory_order_relaxed);
-            recall_ring.restart(); // what came in before is another source's
-        }
+    case Type::RecordSource: {
+        if (take.state() != TakeRecorder::State::Idle) break;
+        unsigned source = c.track % unsigned(InputSource::Count), track = c.index % track_count;
+        bool post = c.value != 0;
+        bool same = source == source_now.load(std::memory_order_relaxed)
+                 && (source != unsigned(InputSource::Track)
+                     || (track == source_track.load(std::memory_order_relaxed) && post == source_post.load(std::memory_order_relaxed)));
+        source_now.store(source, std::memory_order_relaxed);
+        source_track.store(track, std::memory_order_relaxed);
+        source_post.store(post, std::memory_order_relaxed);
+        if (!same) recall_ring.restart(); // what came in before is another source's
         break;
+    }
+    case Type::RecordAutoEnd: auto_quiet = c.position; auto_silence_db = float(c.value); break;
     case Type::RecordGain: record_gain = std::pow(10.0f, std::clamp<int>(c.value, -24, 24) / 20.0f); break;
     case Type::RecordNow: take.start_now(); break;
     case Type::RecordStop: take.stop(); cue_track = -1; break;
@@ -1054,6 +1062,7 @@ void EngineHost::select_input(const int32_t* input, const float* usb, unsigned f
     for (unsigned f = 0; f < frames; ++f) {
         float l = 0, r = 0;
         if (source == InputSource::Resample) { l = master_l[f]; r = master_r[f]; }
+        else if (source == InputSource::Track) { l = tap_l[f]; r = tap_r[f]; }
         else if (from_usb(source)) { if (usb) { l = usb[2 * f]; r = usb[2 * f + 1]; } }
         else if (input) { l = input[2 * f] * scale; r = input[2 * f + 1] * scale; }
         switch (source) {
@@ -1172,12 +1181,23 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     std::fill(master_l, master_l + frames, 0.0f); std::fill(master_r, master_r + frames, 0.0f);
     std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f);
     bool knob_fed = false;
+    // The Track input source: one track on its own, the engine alone (pre) or as it leaves its chain (post).
+    bool tapping = source_now.load(std::memory_order_relaxed) == unsigned(InputSource::Track);
+    unsigned tapped = source_track.load(std::memory_order_relaxed) % track_count;
+    bool tap_post = source_post.load(std::memory_order_relaxed);
+    if (tapping) { std::fill(tap_l, tap_l + frames, 0.0f); std::fill(tap_r, tap_r + frames, 0.0f); }
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         float level = 0;
         float* stem = stems ? stems + size_t(t) * block : nullptr;
         if (stem) std::fill(stem, stem + frames, 0.0f);
+        bool tap = tapping && t == tapped;
         if (slot.engine) {
+            if (tap && !tap_post) { // before the track's level, pan and chain; a mono engine on both sides
+                const float* l = slot.engine->stereo() ? slot.left : slot.buffer;
+                const float* r = slot.engine->stereo() ? slot.right : slot.buffer;
+                std::copy(l, l + frames, tap_l); std::copy(r, r + frames, tap_r);
+            }
             if (slot.engine->stereo()) { // its own stereo picture; the track's pan balances it
                 float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
                 for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= l; slot.right[f] *= r; }
@@ -1190,7 +1210,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             run_chain(t, slot.left, slot.right, frames);
             if (punch_target == t) punch.process(slot.left, slot.right, frames);
             run_live(uint8_t(t), slot.left, slot.right, frames);
-            bool heard = !slot.mute && !(solo && !slot.solo);
+            if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
+            // Monitored, the tapped track is heard through the input (gain, Rec Input FX) instead: once, as it records.
+            bool through_input = tap && monitor_on.load(std::memory_order_relaxed);
+            bool heard = !slot.mute && !(solo && !slot.solo) && !through_input;
             // Knob FX: a kit's pads switched on come out apart, after their own chain (not the track's), at the track's level and pan.
             if (heard && slot.engine == &slot.sampler && slot.sampler.knob_fed()) {
                 const float* kl = slot.sampler.knob_left();

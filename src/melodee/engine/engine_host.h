@@ -104,6 +104,8 @@ public:
     Bounce& bounce() { return render_out; }
     const Bounce& bounce() const { return render_out; }
     unsigned record_source() const { return source_now.load(std::memory_order_relaxed); } // InputSource
+    unsigned record_track() const { return source_track.load(std::memory_order_relaxed); } // InputSource::Track: which
+    bool record_post() const { return source_post.load(std::memory_order_relaxed); }      // and after its chain
     bool monitoring() const { return monitor_on.load(std::memory_order_relaxed); }
 
     // Feedback, any thread.
@@ -276,6 +278,10 @@ private:
     RecallRing recall_ring; // Audio Recall: the source, always
     Bounce render_out;      // Resample and the song's mixdown
     std::atomic<unsigned> source_now {1};
+    std::atomic<unsigned> source_track {0};
+    std::atomic<bool> source_post {true};
+    uint32_t auto_quiet = 0;       // RecordAutoEnd: a Free take ends after this long quiet (frames at the model rate; 0 never)
+    float auto_silence_db = -60;   // and what quiet is
     std::atomic<bool> monitor_on {false};
     float record_gain = 1;  // linear
     int cue_track = -1;     // a take cued for Rec length Seq starts where this track's pattern comes round
@@ -288,6 +294,7 @@ private:
     bool click = false;
     float click_level = 0.4f, click_env = 0, click_phase = 0, click_step = 0;
     float record_l[block] {}, record_r[block] {};
+    float tap_l[block] {}, tap_r[block] {}; // the Track source this block
     // Punch: one on the master or a track, one on a single sampler pad. A
     // press while playing waits for the next step of its snap grid.
     struct PendingPunch { bool waiting = false; uint8_t target = 255; PunchKind kind {}; float depth = 1; unsigned snap = 2, tail = 0; };

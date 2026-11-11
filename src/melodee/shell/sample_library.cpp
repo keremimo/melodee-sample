@@ -115,8 +115,8 @@ void SampleLibrary::service(Hardware& hardware) {
     const Platform& platform = hardware.platform;
     if (host.recorder().state() == TakeRecorder::State::Done) save_take();
     drain_render(); // a render's frames, as they come, every pass
-    uint8_t recall_slot;
-    if (recalls.pop(recall_slot)) save_recall(recall_slot);
+    RecallJob recall_job;
+    if (recalls.pop(recall_job)) save_recall(recall_job);
     loop_service(); // the Looper's commit and files (shell/looper_files.cpp)
     // Samples the audio thread has let go of.
     const SampleData* gone = nullptr;

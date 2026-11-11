@@ -390,19 +390,35 @@ thread.
   one undo; then Stage's TRIM. **Save Sample** (Shift + Sample Select on a kit): the Name
   sheet, then `Samples/<name>.wav`; the pad unchanged.
 - **Input Config** (Shift + Sample; B2 on Record): K1 source (Mic, Rear,
-  Rear L, Rear R, Resample, USB, USB L, USB R), K2 rec length (Free, Seq,
-  1–16 bars), K3 threshold (−96..0 dB), Shift + K3 gain; B1 monitor Off /
-  Auto / On (the speaker goes quiet while the mic is monitored), B2 Rec
+  Rear L, Rear R, Resample, USB, USB L, USB R, then **Track n** for each
+  track with a sound of its own: a synth, the 909, another kit; not the kit
+  in view, empty or MIDI tracks), K2 rec length (Free, Seq, 1–16 bars), K3
+  threshold (−96..0 dB), Shift + K3 gain; with a track, Shift + K1 its tap:
+  **Post FX** (after its chain, level and pan, before mute: a muted track
+  still records) or **Pre FX** (the engine alone). B1 monitor Off / Auto /
+  On (the speaker goes quiet while the mic is monitored; a monitored track
+  leaves the mix and is heard through the input instead, so once), B2 Rec
   Input FX (Knob FX on the input during a take), B3 back. Kept with the
-  settings.
+  settings. The Looper's Input source hears the same.
 - **Record** (Sample Record on a kit): the same cards and B1. Tap a pad to
   record onto it (from the threshold, or with Seq where the pattern comes
-  round); other pads tapped during the take cut it there. The pad again,
-  Stop or Push ends it and Record stays; Sample Record ends it and opens
-  Stage's TRIM. `Samples/Recorded/TAKE n.wav`, up to 60 s.
+  round: a track source's own pattern); other pads tapped during the take
+  cut it there. The pad again, Stop or Push ends it and Record stays;
+  Sample Record ends it and opens Stage's TRIM.
+  `Samples/Recorded/TAKE n.wav`, up to 60 s. **Sampling Melodee's own
+  sound** (a Track source or Resample): the tap only picks the pad; from
+  then until the take ends the 16 pads play the instrument (a track: as if
+  it were selected, its layout, scale, chord, arp, Levels and octave, never
+  into its pattern, − / + its octave; Resample: the kit), lit white while
+  held. With a threshold, the first note starts the take. With rec length
+  Free, the take ends on its own after a quiet stretch (Settings: Take auto
+  end), cut 10 ms after the last sound; Push or Stop end it sooner.
 - **Audio Recall** (Shift + Sample Record): the source always fills a 25 s
-  ring; this copies it out from the first sound as
-  `Samples/Recorded/RECALL n.wav` onto the next empty pad. One undo.
+  ring; this copies it out as `Samples/Recorded/RECALL n.wav` onto the next
+  empty pad, cut as Settings says: the last phrase (after the last quiet gap
+  of Recall gap, the default), from the first sound, or the whole 25 s;
+  the quiet after the last sound left out unless Recall trim end is off.
+  One undo.
 - **Resample** (Shift + Pad 11, then a pad): the selected track's pattern
   with every track playing, rendered in real time onto that pad
   (`Samples/Recorded/RESAMPLE n.wav`, up to 60 s). One undo.
@@ -511,7 +527,12 @@ while following.
   screen brightness, sample rate (44.1, 48, 96 kHz) and audio buffer (256,
   384, 512, 768, 1024 frames, shown with the delay it makes: longer rides
   out a busy moment without a crackle, shorter is heard sooner); under the
-  rows, what the device runs at now and its dropouts since start. A rate or
+  rows, what the device runs at now and its dropouts since start. Then the
+  sampling rows: Recall grab (Last Phrase, First Sound, Whole 25 s), Recall
+  gap (0.5, 1, 2, 4 s), Recall trim end (On, Off), Take auto end (Off,
+  Synths & Resample, All Sources: a Free take ends on its own), Auto end
+  after (0.5, 1, 1.5, 3 s) and Silence below (−48, −60, −72 dB: what
+  counts as quiet for both). A rate or
   buffer change reopens the audio device (a short silence) and a rate change
   stops playback: the engine builds every sound and effect again at the new
   rate. The computer sees the MPC's USB-C audio at the new rate too (the

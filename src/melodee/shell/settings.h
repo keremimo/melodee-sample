@@ -31,7 +31,7 @@ inline const char* takeover_name(Takeover t) {
 
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, Screen, SampleRate,
-                         AudioBuffer, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
@@ -56,6 +56,7 @@ struct Settings {
     uint32_t audio_rate = 44100;
     uint8_t audio_periods = 3;
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
+    SamplingPrefs sampling;   // how Audio Recall cuts the ring, and when a Free take ends on its own
     MidiConfig midi;          // MIDI Config (Shift + Pad 8, parity phase 9)
     // Starred factory sounds, by engine (EngineKind's order), for the Sounds page's FAVOURITES.
     static constexpr unsigned engines = 8, sounds = 256; // a row per EngineKind (MIDI is the eighth)
@@ -72,7 +73,8 @@ struct Settings {
 
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
-                                    "Fader takeover", "Screen", "Sample rate", "Audio buffer"};
+                                    "Fader takeover", "Screen", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
+                                    "Recall trim end", "Take auto end", "Auto end after", "Silence below"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -93,6 +95,12 @@ struct Settings {
             std::snprintf(text, sizeof(text), "%u  %.1f ms", frames, 1000.0 * frames / audio_rate);
             return text;
         }
+        case RecallGrabRow: return recall_grab_name(sampling.grab);
+        case RecallGap: return seconds_text(SamplingPrefs::gap_seconds[sampling.gap % SamplingPrefs::gap_count]);
+        case RecallTrimEnd: return sampling.trim_end ? "On" : "Off";
+        case TakeAutoEnd: return auto_end_name(sampling.auto_end);
+        case AutoEndAfter: return seconds_text(SamplingPrefs::end_seconds[sampling.end_after % SamplingPrefs::end_count]);
+        case SilenceBelow: return std::to_string(sampling.silence_db()) + " dB";
         default: return std::to_string(screen) + " %";
         }
     }
@@ -108,8 +116,21 @@ struct Settings {
         case Screen: screen = uint8_t(std::clamp(int(screen) + way * 10, 20, 100)); break;
         case SampleRate: audio_rate = rates[size_t(std::clamp(rate_index() + (way < 0 ? -1 : 1), 0, int(rates.size()) - 1))]; break;
         case AudioBuffer: audio_periods = buffers[size_t(std::clamp(buffer_index() + (way < 0 ? -1 : 1), 0, int(buffers.size()) - 1))]; break;
+        case RecallGrabRow: sampling.grab = RecallGrab(step_in(unsigned(sampling.grab), unsigned(RecallGrab::Count), way)); break;
+        case RecallGap: sampling.gap = uint8_t(step_in(sampling.gap, SamplingPrefs::gap_count, way)); break;
+        case RecallTrimEnd: sampling.trim_end = !sampling.trim_end; break;
+        case TakeAutoEnd: sampling.auto_end = AutoEnd(step_in(unsigned(sampling.auto_end), unsigned(AutoEnd::Count), way)); break;
+        case AutoEndAfter: sampling.end_after = uint8_t(step_in(sampling.end_after, SamplingPrefs::end_count, way)); break;
+        case SilenceBelow: sampling.silence = uint8_t(step_in(sampling.silence, SamplingPrefs::silence_count, way)); break;
         default: break;
         }
+    }
+    // A list's next or previous entry, stopping at its ends.
+    static unsigned step_in(unsigned at, unsigned count, int way) { return unsigned(std::clamp(int(at) + (way < 0 ? -1 : 1), 0, int(count) - 1)); }
+    static std::string seconds_text(float s) {
+        char text[16];
+        std::snprintf(text, sizeof(text), s == std::floor(s) ? "%.0f s" : "%.1f s", double(s));
+        return text;
     }
     int rate_index() const { return int(std::find(rates.begin(), rates.end(), audio_rate) - rates.begin()) % int(rates.size()); }
     int buffer_index() const {
@@ -139,6 +160,10 @@ struct Settings {
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
+            << "\ninput_track=" << int(input.track) << "\ninput_tap=" << int(input.post)
+            << "\nrecall_grab=" << int(sampling.grab) << "\nrecall_gap=" << int(sampling.gap) << "\nrecall_trim=" << int(sampling.trim_end)
+            << "\nauto_end=" << int(sampling.auto_end) << "\nauto_end_after=" << int(sampling.end_after)
+            << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
@@ -180,6 +205,14 @@ struct Settings {
             else if (key == "rec_length") input.length = uint8_t(std::clamp(value, 0, int(rec_lengths) - 1));
             else if (key == "rec_fx") input.fx = value != 0;
             else if (key == "rec_gain") input.gain = int8_t(std::clamp(value, -12, 24));
+            else if (key == "input_track") input.track = uint8_t(std::clamp(value, 0, 15));
+            else if (key == "input_tap") input.post = value != 0;
+            else if (key == "recall_grab") sampling.grab = RecallGrab(std::clamp(value, 0, int(RecallGrab::Count) - 1));
+            else if (key == "recall_gap") sampling.gap = uint8_t(std::clamp(value, 0, int(SamplingPrefs::gap_count) - 1));
+            else if (key == "recall_trim") sampling.trim_end = value != 0;
+            else if (key == "auto_end") sampling.auto_end = AutoEnd(std::clamp(value, 0, int(AutoEnd::Count) - 1));
+            else if (key == "auto_end_after") sampling.end_after = uint8_t(std::clamp(value, 0, int(SamplingPrefs::end_count) - 1));
+            else if (key == "silence_db") sampling.silence = SamplingPrefs::silence_index(value);
             else if (key == "audio_rate") { if (std::find(rates.begin(), rates.end(), unsigned(value)) != rates.end()) audio_rate = uint32_t(value); }
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (read_midi_config(midi, key, value)) {}
