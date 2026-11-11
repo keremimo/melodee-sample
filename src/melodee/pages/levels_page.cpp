@@ -11,6 +11,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/pages/sampler_common.h"
 #include "melodee/ui/waveform.h"
 
 namespace melodee {
@@ -83,7 +84,10 @@ void draw(Paint& p, const Snapshot& s) {
     if (pad && pad->used() && s.sample.frames) {
         uint32_t end = pad->end ? pad->end : s.sample.frames;
         float from = float(pad->start) / s.sample.frames, to = float(end) / s.sample.frames;
-        waveform(p, x, y + 72, iw, 22, s.sample.overview, from, to, from, to, c, 1);
+        ui::WaveHead head; // the pad as it is heard: a head and its wake
+        bool heard = pad_head(s, t.levels_pad % sampler_pads, *pad, s.sample.frames, head);
+        waveform(p, x, y + 72, iw, 22, s.sample.overview, from, to, from, to, c, &head, heard ? 1 : 0, 1);
+        if (heard) draw_heads(p, x, y + 70, iw, 26, from, to, &head, 1, false);
     }
     if (s.ui.levels_hit >= 0) {
         auto playing = caps_text(colour::mid);

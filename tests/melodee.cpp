@@ -33,6 +33,8 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/place_bar.h"
+#include "melodee/shell/playheads.h"
+#include "melodee/engine/voice_tap.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/fader_job.h"
 #include "melodee/shell/midi_route.h"
@@ -5356,6 +5358,188 @@ void note_pitches() {
 }
 
 // The place bar (shell/place_bar.h): segments, place and tone from the snapshot, and its Settings row.
+// The voices' taps (engine/voice_tap.h) and the screen's heads (shell/playheads.h): where a voice stands after each
+// block, forwards, reversed and round a loop, its level as it is let go or cut, placed where it is heard.
+void voice_taps() {
+    SampleData data;
+    data.frames = 44100;
+    data.left.assign(data.frames, 0.5f); data.right.assign(data.frames, 0.5f);
+    SamplerEngine::Table table {};
+    table[2] = &data;
+    std::vector<float> l(128, 0), r(128, 0);
+    auto block = [&](SamplerEngine& e) { std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f); e.render_stereo(l.data(), r.data(), 128); };
+    auto tapped = [&](const SamplerEngine& e) { TrackTaps t; t.track = 0; e.taps(t); return t; };
+    const double rate = dsp::model_rate / dsp::sample_rate(); // file frames per output frame at the pad's own pitch
+
+    // Forwards: the tap advances a block at a time; heard a latency earlier, the head is that far behind.
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound pad; pad.sample = 2; pad.start = 1000; pad.end = 20000;
+        e.set_pad(4, pad);
+        e.note_on(int(sampler_first_note) + 4, 100);
+        block(e);
+        auto a = tapped(e);
+        CHECK(a.count == 1 && a.voice[0].pad == 4 && a.voice[0].slot == 2);
+        CHECK(a.voice[0].from == 1000 && a.voice[0].to == 20000 && a.voice[0].step > 0);
+        CHECK(std::abs(double(a.voice[0].at) - (1000 + 128 * rate)) < 2);
+        CHECK(a.voice[0].age == 128 && a.voice[0].level > 0.9f && !(a.voice[0].flags & tap::Loop));
+        for (unsigned b = 0; b < 9; ++b) block(e);
+        auto b = tapped(e);
+        CHECK(b.voice[0].serial == a.voice[0].serial);
+        CHECK(std::abs(double(b.voice[0].at) - (1000 + 1280 * rate)) < 2);
+        HeardPlace h = heard_at(b.voice[0], -384);
+        CHECK(h.begun && std::abs(h.at - (1000 + (1280 - 384) * rate)) < 2);
+        CHECK(!heard_at(a.voice[0], -384).begun); // the first block is not heard yet a latency later
+        CHECK(heard_at(b.voice[0], 1e6).at <= 20000); // a one shot holds at its end
+        // A second hit is the newest tap.
+        e.note_on(int(sampler_first_note) + 4, 100);
+        block(e);
+        auto c = tapped(e);
+        CHECK(c.count == 2 && c.voice[0].serial > c.voice[1].serial && c.voice[0].at < c.voice[1].at);
+    }
+    // Reversed: the step is negative and the tap runs down from the region's end.
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound pad; pad.sample = 2; pad.start = 1000; pad.end = 20000; pad.reverse = true;
+        e.set_pad(0, pad);
+        e.note_on(int(sampler_first_note), 100);
+        block(e);
+        auto a = tapped(e);
+        for (unsigned b = 0; b < 4; ++b) block(e);
+        auto b = tapped(e);
+        CHECK(a.voice[0].step < 0 && b.voice[0].at < a.voice[0].at && a.voice[0].at < 20000 && a.voice[0].at > 19000);
+        CHECK(heard_at(b.voice[0], -256).at > b.voice[0].at);
+    }
+    // A loop: it goes round from the loop point, the block it does so says Wrapped, and the head heard a latency
+    // earlier is found before the turn, near the end.
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound pad; pad.sample = 2; pad.start = 0; pad.end = 2000; pad.loop = true; pad.loop_lock = false; pad.loop_start = 1200;
+        pad.play = PadPlay::Gate;
+        e.set_pad(1, pad);
+        e.note_on(int(sampler_first_note) + 1, 100);
+        bool wrapped = false;
+        VoiceTap after {};
+        for (unsigned b = 0; b < 60 && !wrapped; ++b) {
+            block(e);
+            auto t = tapped(e);
+            CHECK(t.count == 1 && (t.voice[0].flags & tap::Loop) && t.voice[0].loop_at == 1200);
+            if (t.voice[0].flags & tap::Wrapped) { wrapped = true; after = t.voice[0]; }
+        }
+        CHECK(wrapped && after.at >= 1200 && after.at < 1200 + 128 * rate + 2);
+        HeardPlace h = heard_at(after, -double(after.at - 1200) / rate - 20); // 20 frames before it went round
+        CHECK(h.at > 1950 && h.at < 2000 && h.pass == 0);
+        HeardPlace on = heard_at(after, 0);
+        CHECK(on.pass == 1 && std::abs(on.at - after.at) < 1);
+        block(e);
+        CHECK(!(tapped(e).voice[0].flags & tap::Wrapped)); // only the block it went round in
+        // Reversed loops stay inside loop point .. end.
+        VoiceTap back = after; back.step = -float(rate); back.flags = tap::Loop;
+        HeardPlace rb = heard_at(back, 2000);
+        CHECK(rb.at >= 1200 && rb.at < 2000);
+    }
+    // Let go: a gate's tap says Releasing and its level falls; a mute group's cut says Choked and it is gone in ms.
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound pad; pad.sample = 2; pad.play = PadPlay::Gate; pad.release = 40; pad.group = 3;
+        e.set_pad(0, pad); e.set_pad(1, pad);
+        e.note_on(int(sampler_first_note), 100);
+        for (unsigned b = 0; b < 4; ++b) block(e);
+        float held = tapped(e).voice[0].level;
+        e.note_off(int(sampler_first_note));
+        block(e);
+        auto t = tapped(e);
+        CHECK((t.voice[0].flags & tap::Releasing) && t.voice[0].level < held);
+        for (unsigned b = 0; b < 8; ++b) block(e);
+        CHECK(tapped(e).count == 0 || tapped(e).voice[0].level < t.voice[0].level);
+        e.note_on(int(sampler_first_note), 100);
+        for (unsigned b = 0; b < 2; ++b) block(e);
+        e.note_on(int(sampler_first_note) + 1, 100); // the same group: pad 1 cuts pad 0
+        auto cut = tapped(e);
+        CHECK(cut.count >= 2);
+        block(e);
+        auto after = tapped(e);
+        bool gone = true;
+        for (unsigned i = 0; i < after.count; ++i) if (after.voice[i].pad == 0) gone = after.voice[i].level < 0.1f;
+        CHECK(gone && after.voice[0].pad == 1);
+        CHECK(after.count == 1 || (after.voice[1].flags & tap::Choked) || after.voice[1].pad != 0);
+    }
+    // A cloud: its tap is where its grains come from, and the grains' places come with it.
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound pad; pad.sample = 2; pad.play = PadPlay::Gate;
+        e.set_pad(2, pad);
+        e.set_param(sampler::Cloud, 1); e.set_param(sampler::Density, 80); e.set_param(sampler::Position, 50);
+        e.note_on(int(sampler_first_note) + 2, 100);
+        for (unsigned b = 0; b < 20; ++b) block(e);
+        auto t = tapped(e);
+        CHECK(t.count == 1 && (t.voice[0].flags & tap::Cloud) && std::abs(int(t.voice[0].at) - 22050) < 200);
+        CHECK(t.grain_count > 0 && t.grain_at[0] < 44100);
+    }
+    // Chop's audition is tapped too, as pad sampler_pads.
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        e.audition(2, 5000, 9000, 100);
+        block(e);
+        auto t = tapped(e);
+        CHECK(t.count == 1 && t.voice[0].pad == int(sampler_pads) && t.voice[0].from == 5000);
+    }
+    // The board: what one side publishes the other reads whole.
+    {
+        TapBoard board;
+        TrackTaps in, out;
+        CHECK(board.read(out) && out.track == 255);
+        in.track = 3; in.stamp = 123456789012ull; in.count = 1; in.voice[0].at = 777; in.voice[0].step = -1.5f; in.grain_at[15] = 9;
+        board.publish(in);
+        CHECK(board.read(out) && out.track == 3 && out.stamp == 123456789012ull && out.voice[0].at == 777 && out.voice[0].step == -1.5f && out.grain_at[15] == 9);
+    }
+    // The host publishes the watched track's after each block, stamped with the block's end.
+    {
+        EngineHost host;
+        std::vector<int32_t> out(256);
+        host.watch_taps(2);
+        host.render(out.data(), 128, 1);
+        TrackTaps t;
+        CHECK(host.taps(t) && t.track == 2 && t.stamp == 128 && t.count == 0);
+        host.render(out.data(), 128, 1);
+        CHECK(host.taps(t) && t.stamp == 256);
+    }
+    // The trail: a head shows once heard, keeps its wake while it sounds, and fades out 0.35 s after it has gone.
+    {
+        HeadTrail trail;
+        TrackTaps t;
+        t.track = 3; t.count = 1;
+        auto& v = t.voice[0];
+        v.serial = 5; v.pad = 8; v.slot = 4; v.from = 100; v.to = 50000; v.loop_at = 100; v.at = 10100; v.step = 1; v.level = 1; v.age = 10000;
+        trail.update(t, -500, 1000);
+        auto h = trail.heads();
+        CHECK(h[0].pad == 8 && h[0].wake == 1 && std::abs(h[0].at - 9600) < 1e-6 && h[1].pad < 0);
+        t.count = 0; // gone from the engine
+        trail.update(t, -500, 1100);
+        h = trail.heads();
+        CHECK(h[0].pad == 8 && h[0].level == 0 && h[0].wake == 1);
+        trail.update(t, -500, 1275);
+        CHECK(std::abs(trail.heads()[0].wake - 0.5f) < 0.01f);
+        trail.update(t, -500, 1450);
+        CHECK(trail.heads()[0].pad < 0);
+        // Silent while still tapped (a release run out) fades the same way; a new track starts afresh.
+        t.count = 1; v.level = 0;
+        trail.update(t, 0, 2000);
+        trail.update(t, 0, 2175);
+        CHECK(std::abs(trail.heads()[0].wake - 0.5f) < 0.01f);
+        t.track = 4;
+        t.count = 0;
+        trail.update(t, 0, 2180);
+        CHECK(trail.heads()[0].pad < 0);
+    }
+}
+
 void place_bar() {
     using Tone = PlaceBar::Tone;
     auto s = std::make_unique<Snapshot>();
@@ -5415,6 +5599,7 @@ void place_bar() {
 }
 
 int main() {
+    voice_taps();
     place_bar();
     song_buttons();
     sfz_reader();

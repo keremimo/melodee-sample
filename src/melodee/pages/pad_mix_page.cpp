@@ -32,7 +32,10 @@ void draw(Paint& p, const Snapshot& s) {
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
         float g = std::min(1.0f, volume_gain(pad.level) * volume_gain(s.track().params[sampler::Level]) * std::pow(10.0f, pad.gain / 2000.0f));
         float wh = std::max(4.0f, h * g);
-        waveform(p, x + 14, y + (h - wh) / 2, w - 42, wh, s.sample.overview, from, to, from, to, c);
+        ui::WaveHead head; // the pad as it is heard: a head and its wake
+        bool heard = pad_head(s, s.track().last_pad % sampler_pads, pad, s.sample.frames, head);
+        waveform(p, x + 14, y + (h - wh) / 2, w - 42, wh, s.sample.overview, from, to, from, to, c, &head, heard ? 1 : 0);
+        if (heard) draw_heads(p, x + 14, y + (h - wh) / 2, w - 42, wh, from, to, &head, 1);
     }
     // The pan meter: a line with the centre marked.
     float px = x + w - 20, pw = 20, py = y + h / 2;

@@ -6,6 +6,7 @@
 // level, pan. Push opens the map of the sampler's pages for that pad.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/pages/sampler_common.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/ui/waveform.h"
 #include <cstdio>
@@ -57,7 +58,10 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(juce::String(text) + juce::String::fromUTF8(" \xc2\xb7 ") + (pad.play == PadPlay::Gate ? "gate" : "one shot"),
                x, y + 41, iw, 14, plain(colour::sec, type::small));
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
-        waveform(p, x, y + 58, iw, 14, s.sample.overview, from, to, from, to, c, 1);
+        ui::WaveHead head; // the pad as it is heard: a head and its wake
+        bool heard = pad_head(s, track.last_pad % sampler_pads, pad, s.sample.frames, head);
+        waveform(p, x, y + 58, iw, 14, s.sample.overview, from, to, from, to, c, &head, heard ? 1 : 0, 1);
+        if (heard) draw_heads(p, x, y + 56, iw, 18, from, to, &head, 1, false);
     } else if (pad.used() && s.sample.instrument) {
         juce::String what = juce::String(s.sample.zones) + " zones";
         if (s.sample.parts_ready + s.sample.parts_failed < s.sample.parts) what = "Reading " + juce::String(s.sample.parts_ready) + " / " + juce::String(s.sample.parts);

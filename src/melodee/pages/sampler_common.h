@@ -4,6 +4,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/sampler_map.h"
+#include "melodee/ui/waveform.h"
 
 // What the sampler's ten pages share (Trim, Mix, Amp Env, Tune, Play,
 // Filter, Filt Env as the MPC has them, then Melodee's Kit filter, Follow and
@@ -32,6 +33,11 @@ void draw_filter_curve(ui::Paint& p, float x, float y, float w, float h, unsigne
 // over `decay` before the end (the MPC's Decay From End).
 void draw_envelope(ui::Paint& p, float x, float y, float w, float h, double seconds, double attack, double decay, float sustain,
                    double release, bool fade_end, unsigned track);
+// The newest voice of `pad` playing `sound`'s sample (or its wake, still
+// fading) as a head over a file `frames` long (ui/waveform.h); nullptr: none.
+// The wake runs from the region's start (reversed: its end; after a loop
+// went round, its loop point) to the head.
+const PlayHead* pad_head(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames, ui::WaveHead& out);
 void sampler_rows_wheel(Context& c, int delta);
 void sampler_bank(Context& c, int way);
 

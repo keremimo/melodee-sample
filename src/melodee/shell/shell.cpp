@@ -10,6 +10,7 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/fader.h"
+#include <chrono>
 #include "melodee/shell/takeover.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
@@ -516,6 +517,17 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         }
     }
     for (unsigned t = 0; t < track_count; ++t) out.meters[t] = host.meter(t);
+    // The voices of the track in view, placed where they are heard: the device frame heard now (the audio clock,
+    // at the device's own rate, less what the PCM holds queued) against the frame the taps stand at.
+    host.watch_taps(int(ui_.track % track_count));
+    if (!host.taps(out.taps) || out.taps.track != ui_.track % track_count) out.taps = TrackTaps {};
+    out.tap_frames = 0;
+    if (const auto& clock = host.audio_clock(); clock.known() && out.taps.track != 255) {
+        auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        out.tap_frames = double(clock.frame_at(int64_t(ns))) - double(clock.latency_frames()) - double(out.taps.stamp);
+    }
+    trail.update(out.taps, out.tap_frames, now);
+    out.heads = trail.heads();
     out.compression = host.compression();
     out.flex_playing = host.flex_playing();
     out.now = now;

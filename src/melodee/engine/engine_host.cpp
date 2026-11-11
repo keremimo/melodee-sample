@@ -1350,7 +1350,20 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     }
     output_peak.store(peak, std::memory_order_relaxed);
     if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
+    publish_taps(frames);
     frame_now += frames;
+}
+
+// The watched track's voices after this block, stamped with the frame they stand at (the block's end).
+void EngineHost::publish_taps(unsigned frames) {
+    int watched = tap_track.load(std::memory_order_relaxed);
+    if (watched < 0 || watched >= int(track_count)) return;
+    TrackTaps taps;
+    taps.track = uint8_t(watched);
+    taps.stamp = frame_now + frames;
+    auto& slot = slots[size_t(watched)];
+    if (slot.engine == &slot.sampler) slot.sampler.taps(taps);
+    tap_board.publish(taps);
 }
 
 // The Looper's block: its clock from the sequencer's, its loops into L1-L4, each through its strip (a stereo

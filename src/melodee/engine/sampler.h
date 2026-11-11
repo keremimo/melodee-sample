@@ -7,6 +7,7 @@
 #include "melodee/engine/punch.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/stream_pager.h"
+#include "melodee/engine/voice_tap.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/model/sampler.h"
 #include <array>
@@ -74,6 +75,9 @@ public:
     bool stereo() const override { return true; }
     void render_stereo(float* left, float* right, unsigned frames) override;
     bool sounding() const override;
+    // What the voices show the screen (engine/voice_tap.h): the newest
+    // TrackTaps::voices of them, then the cloud's grains. Audio thread, after render.
+    void taps(TrackTaps& out) const;
     // The project's tempo, for Follow (tenths of a BPM).
     void set_tempo(unsigned tenths) { tempo = tenths; }
     // Pad Punch: the voices of `pad` go through `punch` on their own before
@@ -119,6 +123,8 @@ private:
         uint8_t group = 0;
         float gain = 0, left = 0.7071f, right = 0.7071f, fade = 1;
         uint32_t age = 0;
+        uint32_t sounded = 0;   // output frames it has played (Offset's wait not counted), for its tap
+        bool wrapped = false;   // went round its loop in this block
         dsp::Envelope env;
         dsp::Envelope::Shape shape;
         // Loop: after the end (or, reversed, the loop point) it goes on from the loop point (or the end).

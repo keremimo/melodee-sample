@@ -4,6 +4,7 @@
 #include "melodee/engine/looper.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/playheads.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/ui_state.h"
@@ -39,6 +40,11 @@ struct Snapshot {
     bool song_playing = false;
     unsigned song_bar = 0;
     std::array<float, track_count> meters {};
+    // The voices of the track in view as the engine left them (engine/voice_tap.h), output frames from their stamp
+    // to the frame heard now, and each voice's head where it is heard, newest first (shell/playheads.h).
+    TrackTaps taps;
+    double tap_frames = 0;
+    std::array<PlayHead, HeadTrail::size> heads {};
     float compression = 0;                   // dB the master compressor takes off now (parity phase 7)
     unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)
     std::array<std::array<PatternSketch, pattern_count>, track_count> sketches {};

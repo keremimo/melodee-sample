@@ -196,4 +196,18 @@ void sampler_rows_wheel(Context& c, int delta) {
 }
 void sampler_bank(Context& c, int way) { c.track().bank = uint8_t((c.track().bank + sampler_banks + way) % sampler_banks); }
 
+const PlayHead* pad_head(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames, ui::WaveHead& out) {
+    if (!frames) return nullptr;
+    for (const auto& head : s.heads) {
+        if (!head.shown() || head.pad != int(pad) || head.slot != sound.sample || (head.flags & tap::Cloud)) continue;
+        uint32_t wake_from = head.reverse() ? head.to : head.pass && (head.flags & tap::Loop) ? head.loop_at : head.from;
+        out.at = float(head.at / frames);
+        out.wake_from = float(wake_from) / float(frames);
+        out.strength = head.level;
+        out.wake = head.wake;
+        return &head; // newest first
+    }
+    return nullptr;
+}
+
 } // namespace melodee

@@ -123,6 +123,10 @@ public:
     bool song_playing() const { return in_song.load(std::memory_order_relaxed); }
     unsigned song_bar() const { return bar_now.load(std::memory_order_relaxed); }
     float meter(unsigned track) const { return meters[track % track_count].load(std::memory_order_relaxed); }
+    // The voices of the track the screen watches (engine/voice_tap.h), as the last block left them; false while a
+    // write was under way each time it looked. watch_taps(-1): none taken.
+    void watch_taps(int track) { tap_track.store(track, std::memory_order_relaxed); }
+    bool taps(TrackTaps& out) const { return tap_board.read(out); }
     float peak() const { return output_peak.load(std::memory_order_relaxed); }
     unsigned dropped() const { return lost.load(std::memory_order_relaxed); }
 
@@ -367,6 +371,7 @@ private:
     bool loop_strip_command(const Command& c); // Level, Pan, Send, Mute, Solo, SendBus for L1-L4 (track 16-19)
     void run_loops(unsigned frames, bool solo); // the loops into their tracks, and those into the master and buses
     void keep_sources(unsigned frames);         // this block's sources for the loops' next one
+    void publish_taps(unsigned frames);         // the watched track's voices, for the screen
     std::array<PlayPatterns, track_count> patterns {};
     Motion motion;
     Song song;
@@ -394,6 +399,8 @@ private:
     std::atomic<bool> in_song {false};
     std::atomic<unsigned> bar_now {0};
     std::array<std::atomic<float>, track_count> meters {};
+    std::atomic<int> tap_track {-1};
+    TapBoard tap_board;
     std::atomic<float> output_peak {0};
     std::atomic<unsigned> lost {0};
     std::atomic<bool> punch_on {false};

@@ -390,6 +390,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
         if (past) {
             if (v.zone ? !round : !v.loop) { v.pad = -1; return; }
             v.place = v.reverse ? v.end - 1 : v.loop_at;
+            v.wrapped = true;
             v.since_hop = v.hop; // a fresh tap from the loop point
             if (v.zone) came_round(v);
         }
@@ -432,6 +433,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
 
 // A zone's loop went round: a loop held whole needs no stream any more; a longer one starts a new run.
 void SamplerEngine::came_round(Voice& v) {
+    v.wrapped = true;
     if (v.loop_hi <= v.loop_at + stream_chunk) { end_stream(v); v.capped = false; return; }
     if (v.stream >= 0) pager->restart(v.stream, v.loop_at);
     else v.head_end = v.loop_at + stream_chunk;
@@ -515,6 +517,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         if (v.pad < 0 || !v.cloud) continue;
         for (unsigned f = 0; f < frames; ++f) v.env.next(v.shape);
         if (v.life > 0 && (v.life -= frames) <= 0) { v.env.gate(false); v.filter_env.gate(false); }
+        v.sounded += frames;
         if (!v.env.active() || (v.choked && (v.fade -= 0.25f) <= 0)) { v.pad = -1; continue; }
         v.scan += (p[Scan] - 50) / 50.0 * v.step * frames; // forwards or backwards at up to its own speed
         v.next_grain -= frames;
@@ -547,6 +550,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     auto out_r = [&](int pad) { return knobbing && knobbed(pad) ? knob_r : right; };
     for (auto& v : voices) {
         if (v.pad < 0 || v.cloud) continue;
+        v.wrapped = false;
         float* to_l = punching && v.pad == aside_pad ? aside_l : out_l(v.pad);
         float* to_r = punching && v.pad == aside_pad ? aside_r : out_r(v.pad);
         if (chains && v.pad < int(sampler_pads) && (*pad_effects)[size_t(v.pad)][0].kind() != EffectKind::None)
@@ -563,6 +567,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             if (v.choked) { v.pad = -1; continue; }
             if (from == frames) continue;
         }
+        v.sounded += frames - from;
         if (v.zone) {
             if (!admit(v, frames - from)) continue;
             if (v.stretch) stretch(v, l, r, to_l, to_r, from, frames);
@@ -577,6 +582,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             if (past) {
                 if (!v.loop) { v.pad = -1; break; }
                 v.position = v.reverse ? v.end - 1 : v.loop_at; // round again
+                v.wrapped = true;
             }
             unsigned i = unsigned(v.position);
             float frac = float(v.position - i);
@@ -616,6 +622,53 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             s1[side] = g * hp + bp; s2[side] = g * bp + lp;
             io[side][f] = p[FilterType] == 1 ? bp : p[FilterType] == 2 ? hp : lp;
         }
+}
+
+// The newest voices first (a partial sort of pointers, on the stack), each
+// where it stands now; then where the cloud's grains read.
+void SamplerEngine::taps(TrackTaps& out) const {
+    std::array<const Voice*, max_voices> live {};
+    unsigned n = 0;
+    for (const auto& v : voices) if (v.pad >= 0) live[n++] = &v;
+    unsigned shown = std::min<unsigned>(n, TrackTaps::voices);
+    std::partial_sort(live.begin(), live.begin() + shown, live.begin() + n, [](const Voice* a, const Voice* b) { return a->age > b->age; });
+    out.count = uint8_t(shown);
+    for (unsigned i = 0; i < shown; ++i) {
+        const Voice& v = *live[i];
+        VoiceTap& t = out.voice[i];
+        t = VoiceTap {};
+        t.serial = v.age; t.pad = int16_t(v.pad); t.slot = v.slot;
+        t.from = v.start; t.to = v.zone && v.loop ? v.loop_hi : v.end;
+        t.loop_at = v.loop ? v.loop_at : v.start;
+        t.age = v.sounded;
+        const double way = v.reverse ? -1.0 : 1.0;
+        uint8_t flags = 0;
+        if (v.cloud) { // where the grains come from (spawn's centre), and how fast Scan carries it
+            double span = v.zone ? std::min(v.end - v.start, stream_chunk) : v.end - v.start;
+            double at = v.start + span * (p[sampler::Position] / 100.0) + v.scan;
+            at = std::fmod(std::fmod(at - v.start, span) + span, span) + v.start;
+            t.at = uint32_t(at); t.step = float((p[sampler::Scan] - 50) / 50.0 * v.step);
+            t.to = v.start + uint32_t(span);
+            flags |= tap::Cloud;
+        } else if (v.stretch) { t.at = uint32_t(std::max(0.0, v.place)); t.step = float(way * v.advance); flags |= tap::Stretch; }
+        else { t.at = uint32_t(std::max(0.0, v.position)); t.step = float(way * v.step); }
+        float level = v.env.level * v.fade;
+        if (v.tail > 0) level *= std::min(1.0f, frames_left(v, v.stretch ? v.place : v.position, v.stretch ? v.advance : v.step) / v.tail);
+        t.level = std::clamp(level, 0.0f, 1.0f);
+        if (v.loop && !v.cloud) flags |= tap::Loop;
+        if (v.wrapped) flags |= tap::Wrapped;
+        if (v.env.stage == dsp::Envelope::Stage::Release) flags |= tap::Releasing;
+        if (v.wait) flags |= tap::Waiting;
+        if (v.choked) flags |= tap::Choked;
+        t.flags = flags;
+    }
+    out.grain_count = 0;
+    for (const auto& g : grains) {
+        if (!g.sample || out.grain_count >= TrackTaps::grains) continue;
+        out.grain_at[out.grain_count] = uint32_t(std::max(0.0, g.position));
+        out.grain_age[out.grain_count] = uint8_t(std::min<uint32_t>(255, g.length ? g.age * 255u / g.length : 255));
+        ++out.grain_count;
+    }
 }
 
 } // namespace melodee

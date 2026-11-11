@@ -151,6 +151,17 @@ LoadedSample break_sample() {
     return s;
 }
 
+// A voice of the kit's pad A09 heard `into` frames into its region, its envelope `level` (shell/playheads.h, as the
+// trail leaves it in the snapshot): the head and its wake.
+void playing_head(Snapshot& s, double into, float level = 1) {
+    const auto& pad = s.project.tracks[3].pads[8];
+    PlayHead h;
+    h.serial = 7; h.pad = 8; h.slot = pad.sample; h.at = pad.start + into;
+    h.from = pad.start; h.to = pad.end ? pad.end : s.sample.frames; h.loop_at = h.from;
+    h.step = 1; h.level = level; h.wake = 1;
+    s.heads[0] = h;
+}
+
 // The Project board's card: two folders and four projects, Night drive open with changes.
 void preview_projects(Snapshot& s) {
     auto& v = s.projects;
@@ -483,6 +494,10 @@ const Preview previews[] {
     {"pads", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"padsplaying", [](Shell&, Snapshot& s) { // the pad in hand as it plays: a head on its small waveform
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         playing_head(s, 9000, 0.8f);
+     }},
     {"padcopy", [](Shell&, Snapshot& s) { // Shift + Erase, then a pad: where does it go
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.copying = UiState::Copying::Pads; s.ui.copy_from = 2;
      }},
@@ -542,6 +557,11 @@ const Preview previews[] {
          on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
          s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"trimplaying", [](Shell&, Snapshot& s) { // TRIM while the pad plays: the head, its wake, the time heard
+         on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
+         playing_head(s, 53100); // 1.204 s in
      }},
     {"chop", [](Shell&, Snapshot& s) { // Threshold on the pad's region, slice 5 in hand
          s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;

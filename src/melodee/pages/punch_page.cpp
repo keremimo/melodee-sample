@@ -17,6 +17,7 @@
 #include "melodee/engine/punch.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/pages/sampler_common.h"
 #include "melodee/ui/waveform.h"
 #include <cstdio>
 
@@ -130,7 +131,10 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
     if (pad.used() && s.sample.frames) {
         uint32_t end = pad.end ? pad.end : s.sample.frames;
         float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
-        waveform(p, x, y + 71, iw, 20, s.sample.overview, from, to, from, to, c, 1);
+        ui::WaveHead head; // the pad as it is heard: a head and its wake
+        bool heard = pad_head(s, track.last_pad % sampler_pads, pad, s.sample.frames, head);
+        waveform(p, x, y + 71, iw, 20, s.sample.overview, from, to, from, to, c, &head, heard ? 1 : 0, 1);
+        if (heard) draw_heads(p, x, y + 69, iw, 24, from, to, &head, 1, false);
     }
     bool pressing = s.ui.pad_punch_held >= 0 && s.ui.pad_punch_pressure;
     int depth = pressing ? s.ui.pad_punch_pressure * 100 / 127 : pad.punch_depth;
