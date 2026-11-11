@@ -429,11 +429,20 @@ thread.
 - **MPC keygroup programs** (`.xpm` in the browser, tagged XPM): load and
   stream as an SFZ does. Each keygroup is a key range and each of its layers a
   sample over a velocity range, found as its SampleName with `.WAV` beside the
-  program (any case). Carried over: root, tune, layer volume and pan, start,
-  end and forward loop, one shot, keytrack off, Cycle (a layer a press) and
-  Random, and the amp envelope. Named, not played: filters, reversed loops,
-  note-off keygroups. Drum programs and MPC 3's compressed `.xpm` are refused
-  with a word on the pad.
+  program (any case). Carried over: root, tune, layer volume (its gain) and
+  pan, the keygroup's volume and tune, start, end and forward loop, one shot,
+  keytrack off, Cycle (a layer a press) and Random, and the amp envelope.
+  Named, not played: filters, reversed loops, note-off keygroups. MPC 3's
+  compressed `.xpm` is refused with a word on the pad.
+- **MPC drum programs** (`.xpm` of type Drum, tagged KIT): Push loads the
+  program as the selected kit track's kit, as Load Kit does (one undo), each
+  instrument onto its pad (1 is A01, 17 is B01). A pad of one layer plays its
+  WAV; one of more (a cycle of hits, velocity layers, a random pick) plays its
+  layers as an instrument named `<program>.xpm#<pad>`, streamed from the card
+  as an SFZ is. Carried over: the pad's volume, pan, tune, play type (One
+  Shot, Note On), mono, mute group, envelope, velocity, filter (a one-pole as
+  the two-pole kind) and filter envelope; each layer's tune, volume, pan,
+  region and loop. Shift + pad on it says Push loads a kit.
 - **Banks** (kit tracks only): one bank of a kit's sixteen pads as a file.
   **Save Bank** is Shift + Sample Select on Samples: the Name sheet (the kit's
   name and bank letter first), then `Samples/Banks/<name>.mldb` with every
@@ -641,8 +650,9 @@ while following.
   from where they are. Each Drum track becomes a kit track and each
   sequence that numbered pattern, with its tempo. Carried over: pad regions,
   tune, volume, pan, play type, mono, mute group, envelope, loop, Warp, and
-  the filter types stock's Sample Mode offers. Not carried over: Pad FX and
-  inserts, sends, velocity layers past the first, and Songs. A project past
+  the filter types stock's Sample Mode offers. A pad of more than one layer
+  keeps them all, as a drum program's does (`<project>.xpj#<track>.<pad>`).
+  Not carried over: Pad FX and inserts, sends, and Songs. A project past
   16 tracks, 16 sequences or 64 samples loses the rest and says so.
 - **SD card access** (Project, at the top; as the MPC's): the card goes to
   a computer over USB-C as a drive. The page shows where the card is (the

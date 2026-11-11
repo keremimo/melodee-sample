@@ -7,6 +7,7 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/keygroup.h"
+#include "melodee/shell/mpc_program.h"
 #include "melodee/shell/sample_decode.h"
 #include "melodee/shell/sample_library.h"
 #include <algorithm>
@@ -16,7 +17,6 @@
 #include <fstream>
 #include <map>
 #include <sstream>
-#include <juce_core/juce_core.h>
 #include <thread>
 
 namespace melodee {
@@ -85,47 +85,24 @@ std::string upper_stem(const std::string& path) {
     return name;
 }
 
-// JUCE keeps an element's text as text-node children: a leaf is one with only those.
-bool has_elements(const juce::XmlElement& element) {
-    for (auto* child : element.getChildIterator())
-        if (!child->isTextElement()) return true;
-    return false;
-}
-
-KeygroupTags leaves_of(const juce::XmlElement& element) {
-    KeygroupTags tags;
-    for (auto* child : element.getChildIterator())
-        if (!child->isTextElement() && !has_elements(*child)) tags[child->getTagName().toStdString()] = child->getAllSubText().toStdString();
-    return tags;
-}
-
-// An .xpm's XML into the keygroup reader's tree. The MPC 3 kind (gzip around
-// JSON) and drum programs are named, not played.
+// An .xpm keygroup program; a drum program is a kit (Load Kit), not one pad's instrument.
 SfzRead read_keygroup_file(const std::string& text, std::string* error) {
-    auto fail = [&](const char* why) { if (error) *error = why; return SfzRead {}; };
-    size_t first = text.find_first_not_of(" \t\r\n\xef\xbb\xbf");
-    if (first == std::string::npos || text[first] != '<') return fail("Newer MPC format");
-    auto xml = juce::XmlDocument::parse(juce::String::fromUTF8(text.data(), int(text.size())));
-    if (!xml || !xml->hasTagName("MPCVObject")) return fail("Unreadable");
-    auto* found = xml->getChildByName("Program");
-    if (!found) return fail("Unreadable");
     KeygroupProgram program;
-    program.type = found->getStringAttribute("type").toStdString();
-    if (program.type != "Keygroup") return fail("Not a keygroup");
-    program.tags = leaves_of(*found);
-    if (auto* instruments = found->getChildByName("Instruments"))
-        for (auto* element : instruments->getChildWithTagNameIterator("Instrument")) {
-            KeygroupInstrument instrument;
-            instrument.number = element->getIntAttribute("number");
-            instrument.tags = leaves_of(*element);
-            if (auto* layers = element->getChildByName("Layers"))
-                for (auto* layer : layers->getChildWithTagNameIterator("Layer")) instrument.layers.push_back(leaves_of(*layer));
-            program.instruments.push_back(std::move(instrument));
-        }
+    auto why = parse_mpc_program(text, program);
+    if (why.empty() && program.type != "Keygroup") why = program.type == "Drum" ? "A drum kit: Push loads it" : "Not a keygroup";
+    if (!why.empty()) { if (error) *error = why; return {}; }
     return read_keygroup(program);
 }
 
 SfzRead read_instrument(const std::string& path, std::string* error) {
+    std::string file, which;
+    if (split_program_pad(path, file, which)) { // one pad of a drum program or an MPC Sample project, its layers as zones
+        std::string why;
+        auto pads = program_pads(file, why);
+        auto found = pads.find(which);
+        if (found == pads.end()) { if (error) *error = why.empty() ? "Pad not found" : why; return {}; }
+        return read_drum_pad(found->second);
+    }
     auto text = read_text(path);
     if (!text) { if (error) *error = "cannot read it"; return {}; }
     if (lowered(fs::path(path).extension().string()) == ".xpm") return read_keygroup_file(*text, error);

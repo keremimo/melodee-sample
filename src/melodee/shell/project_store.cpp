@@ -4,6 +4,7 @@
 #include "drivers/platform.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
+#include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "runtime/app.h"
 #include <algorithm>
@@ -195,7 +196,8 @@ void import_mpc(LoadedProject& l) {
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
     MpcImport report;
-    l.error = import_mpc_project(l.bytes, l.path, *project, *patterns, report);
+    const bool program = fs::path(l.path).extension() == ".xpm" || fs::path(l.path).extension() == ".XPM"; // a drum program: a kit
+    l.error = program ? import_mpc_program(l.bytes, l.path, *project, report) : import_mpc_project(l.bytes, l.path, *project, *patterns, report);
     l.bytes.clear();
     if (!l.error.empty()) { l.note = l.error; return; }
     l.bytes = save_project(*project, *patterns);
@@ -239,7 +241,7 @@ void ProjectStore::run(Request& r) {
     case Request::Kind::Load: {
         auto* l = new LoadedProject {r.path, {}, read_file(r.path), false, {}};
         if (l->bytes.empty()) l->error = "Could not read";
-        else if (is_mpc_project(r.path)) import_mpc(*l);
+        else if (is_mpc_project(r.path) || is_drum_program(r.path)) import_mpc(*l);
         if (!loaded.push(l)) delete l;
         return;
     }

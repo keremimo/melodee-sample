@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/chop.h"
+#include "melodee/shell/mpc_program.h"
 #include "drivers/mixer.h"
 #include "drivers/platform.h"
 #include "runtime/app.h"
@@ -91,7 +92,9 @@ std::string upper(std::string text) {
 }
 bool is_wav(const fs::path& path) { return upper(path.extension().string()) == ".WAV"; }
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
-bool is_instrument(const fs::path& path) { // an .sfz, or an MPC keygroup program (.xpm)
+bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm), or a pad of an MPC program or project
+    std::string file, which;
+    if (split_program_pad(path.string(), file, which)) return true;
     const auto kind = upper(path.extension().string());
     return kind == ".SFZ" || kind == ".XPM";
 }
@@ -110,6 +113,7 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out, bool car
         if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument))) continue;
         SampleFile f;
         f.path = it->path().string(); f.folder = folder_here; f.bank = bank; f.instrument = instrument;
+        if (instrument && upper(it->path().extension().string()) == ".XPM" && is_drum_program(f.path)) { f.kit = true; f.instrument = false; }
         f.name = upper(folder_here ? name : it->path().stem().string()).substr(0, 26);
         if (!folder_here) f.bytes = it->file_size(error);
         out.push_back(std::move(f));

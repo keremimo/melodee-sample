@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/keygroup.h"
 #include "melodee/model/project.h"
+#include <map>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -22,5 +24,12 @@ bool is_mpc_project(const std::string& path);
 
 // Empty on success. A file of 10 MB of JSON takes a while: never on the MIDI or audio thread.
 std::string import_mpc_project(const std::vector<uint8_t>& file, const std::string& path, Project& project, PatternBank& patterns, MpcImport& report);
+
+// A pad of more than one layer plays them as an instrument named "<project>#<track>.<pad>"
+// (shell/mpc_program.h): the project's such pads, by "<track>.<pad>", their layers as a drum program's tags.
+std::map<std::string, KeygroupInstrument> mpc_project_pads(const std::vector<uint8_t>& file, const std::string& path);
+
+// The sample rate of a WAV file; 0 when it cannot tell.
+unsigned mpc_wav_rate(const std::string& path);
 
 } // namespace melodee

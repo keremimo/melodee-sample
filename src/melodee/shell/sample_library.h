@@ -42,6 +42,7 @@ struct SampleFile {
     bool folder = false;
     bool bank = false;      // a kit bank file (".mldb", model/project_file.h), listed with the WAV files
     bool instrument = false; // a multisampled instrument (".sfz", ".xpm"), loaded onto a pad as a WAV file is
+    bool kit = false;        // an MPC drum program (".xpm"): Push loads it onto the track as Load Kit does
 };
 struct LoadedSample {
     std::string name, path, error;

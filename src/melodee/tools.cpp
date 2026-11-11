@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/seq_layer.h"
@@ -26,6 +27,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -1466,7 +1468,7 @@ int sound(const std::string& path) {
 
 } // namespace
 
-// What an MPC Sample project becomes, for the build's checks and a look at a real file.
+// What an MPC Sample project or an MPC drum program becomes, for the build's checks and a look at a real file.
 static int mpc_import(const char* path) {
     std::ifstream file(path, std::ios::binary);
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), {});
@@ -1474,7 +1476,9 @@ static int mpc_import(const char* path) {
     auto patterns = std::make_unique<PatternBank>();
     MpcImport report;
     auto began = std::chrono::steady_clock::now();
-    auto error = import_mpc_project(bytes, path, *project, *patterns, report);
+    const std::string kind = std::filesystem::path(path).extension().string();
+    auto error = kind == ".xpm" || kind == ".XPM" ? import_mpc_program(bytes, path, *project, report)
+                                                  : import_mpc_project(bytes, path, *project, *patterns, report);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
     if (!error.empty()) { std::printf("error=%s\n", error.c_str()); return 1; }
     std::printf("name=%s tracks=%u sequences=%u pads=%u notes=%u over_limit=%u missing=%u tempo=%u seq_tempo=%d signature=%u/%u ms=%lld\n", project->name, report.tracks,
@@ -1491,6 +1495,21 @@ static int mpc_import(const char* path) {
             pad_label(n, label);
             std::printf("pad %s file=%s start=%u end=%u level=%u pan=%d pitch=%d play=%d mono=%d group=%u filter=%s cutoff=%u warp=%u attack=%u decay=%u loop=%d\n", label, project->samples[pad.sample].name,
                         pad.start, pad.end, pad.level, pad.pan, pad.pitch, int(pad.play), pad.mono, pad.group, pad_filter_name(pad.filter), pad.cutoff, pad.warp, pad.attack, pad.decay, pad.loop);
+            const auto& ref = project->samples[pad.sample];
+            std::string file, which;
+            if (ref.instrument() && split_program_pad(ref.path, file, which)) { // its layers, as the sample library will read them
+                std::string why;
+                auto pads = program_pads(file, why);
+                auto found = pads.find(which);
+                if (found == pads.end()) { std::printf("  layers: not found %s\n", why.c_str()); continue; }
+                auto read = read_drum_pad(found->second);
+                std::printf("  layers=%zu", read.regions.size());
+                for (const auto& r : read.regions)
+                    std::printf(" [%s vel %u-%u seq %u/%u gain %.1f end %lld%s]", r.sample.c_str(), r.zone.low_velocity, r.zone.high_velocity,
+                                r.zone.sequence, r.zone.sequence_length, r.zone.gain, (long long)r.end,
+                                std::filesystem::exists(std::filesystem::path(file).parent_path() / r.sample) ? "" : " MISSING");
+                std::printf("\n");
+            } else std::printf("  path=%s%s\n", ref.path, std::filesystem::exists(ref.path) ? "" : " MISSING");
         }
         for (unsigned p = 0; p < pattern_count; ++p) {
             const auto& pattern = patterns->at[t][p];

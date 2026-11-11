@@ -4,7 +4,8 @@
 // Folders first, as categories, then the WAV files and SFZ instruments. The wheel and Minus /
 // Plus move, Push opens a folder or loads the file onto the last pad hit
 // (keeping the pad's settings; the whole file, Trim or Chop shape it), or a
-// bank file (BANK, Samples/Banks) into the kit's bank in view; Shift +
+// bank file (BANK, Samples/Banks) into the kit's bank in view, or an MPC drum
+// program (KIT) as the track's kit, as Load Kit does; Shift +
 // Sample Select here saves that bank as a bank file (Save Bank). B1
 // goes back out, B2 picks the drive (the card, or the internal one: the
 // factory categories and the stock app's samples, read only), B3 hears each
@@ -64,6 +65,7 @@ void draw(Paint& p, const Snapshot& s) {
                     for (unsigned k = 0; k < sampler_pads; ++k)
                         if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.tag = juce::String("ON ") + juce::String(label); break; }
         if (file.instrument && r.tag.isEmpty()) r.tag = juce::String(file.path).endsWithIgnoreCase(".xpm") ? "XPM" : "SFZ";
+        if (file.kit && r.tag.isEmpty()) r.tag = "KIT";
         if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length, in place of the tag
             char now[16], of[24];
             std::snprintf(now, sizeof(now), "%.1f", heard.heard);
@@ -90,6 +92,7 @@ void push(Context& c) {
     const auto& file = files[c.ui.files_cursor];
     if (file.folder) c.library->browse(Drive(c.ui.files_drive), file.path);
     else if (file.bank) c.load_bank_file(file.path, file.name);
+    else if (file.kit) c.load_kit_file(file.path, file.name);
     else c.load_file(file.path, file.name, false);
 }
 
@@ -109,6 +112,7 @@ bool samples_shift_pad(Context& c) {
     if (c.ui.files_cursor >= files.size() || files[c.ui.files_cursor].folder) { c.notice("Shift + pad: a file first"); return true; }
     const auto& file = files[c.ui.files_cursor];
     if (file.bank) { c.notice("Push loads a bank"); return true; }
+    if (file.kit) { c.notice("Push loads a kit"); return true; }
     c.load_file(file.path, file.name, true);
     return true;
 }

@@ -89,11 +89,18 @@ struct SampleRef {
     char name[28] {};
     uint32_t frames = 0; // at 44.1 kHz, once loaded
     bool used() const { return path[0] != 0; }
-    bool instrument() const { // a multisampled instrument, by what it is called: an .sfz or an MPC keygroup (.xpm)
+    // A multisampled instrument, by what it is called: an .sfz, an MPC keygroup
+    // program (.xpm), or one pad of an MPC drum program or project, "<file>#<pad>".
+    bool instrument() const {
         const char* end = path + std::strlen(path);
+        const char* mark = std::strrchr(path, '#');
+        const bool pad = mark && mark + 1 < end;
+        if (pad) end = mark;
         if (end - path < 4 || end[-4] != '.') return false;
         const char kind[3] = {char(end[-3] | 32), char(end[-2] | 32), char(end[-1] | 32)};
-        return (kind[0] == 's' && kind[1] == 'f' && kind[2] == 'z') || (kind[0] == 'x' && kind[1] == 'p' && kind[2] == 'm');
+        const bool xp = kind[0] == 'x' && kind[1] == 'p';
+        if (pad) return xp && (kind[2] == 'm' || kind[2] == 'j');
+        return (kind[0] == 's' && kind[1] == 'f' && kind[2] == 'z') || (xp && kind[2] == 'm');
     }
 };
 

@@ -5038,7 +5038,9 @@ void sfz_reader() {
 
 // An MPC keygroup program's keygroups and layers as the SFZ reader's zones.
 void keygroup_reader() {
-    CHECK(std::fabs(keygroup_decibels(0.353) + 12) < 1e-9 && std::fabs(keygroup_decibels(1.0) - 6) < 1e-9);
+    CHECK(std::fabs(keygroup_decibels(1.0)) < 1e-9 && std::fabs(keygroup_decibels(0.5) + 6.0206) < 1e-3);
+    CHECK(mpc_level(0.707946) == 100 && mpc_level(1.0) == 127 && mpc_level(0) == 0 && mpc_pan(0.5) == 0 && mpc_pan(0.37) == -13);
+    CHECK(mpc_filter(1) == PadFilter::Lpf2 && mpc_filter(7) == PadFilter::Hpf2 && mpc_filter(29) == PadFilter::Classic && mpc_filter(20) == PadFilter::Off);
     CHECK(std::fabs(keygroup_seconds(0) - 0.001) < 1e-12 && std::fabs(keygroup_seconds(1) - 100) < 1e-9);
     KeygroupProgram program;
     program.type = "Keygroup";
@@ -5071,7 +5073,7 @@ void keygroup_reader() {
     CHECK(soft.zone.low_key == 0 && soft.zone.high_key == 59 && soft.zone.root == 60);
     CHECK(soft.zone.low_velocity == 1 && soft.zone.high_velocity == 64 && hard.zone.low_velocity == 65);
     CHECK(soft.zone.tune == 210 && hard.zone.tune == -50);
-    CHECK(std::fabs(soft.zone.gain + 12) < 1e-4 && std::fabs(hard.zone.gain - 6) < 1e-4);
+    CHECK(std::fabs(soft.zone.gain - 20 * std::log10(0.353)) < 1e-4 && std::fabs(hard.zone.gain) < 1e-4);
     CHECK(soft.zone.pan == -1 && hard.zone.pan == 1);
     CHECK(soft.zone.loop == ZoneLoop::Off && soft.loop_named && !soft.loop_asked);
     CHECK(hard.offset == 100 && hard.end == 5000 && hard.zone.loop == ZoneLoop::On && hard.zone.loop_start == 2000 && hard.zone.loop_end == 5000);
@@ -5102,6 +5104,58 @@ void keygroup_reader() {
         CHECK(r.regions[1].zone.loop == ZoneLoop::On && r.regions[1].zone.loop_end == 0 && r.regions[1].loop_asked);
         CHECK(r.envelope.release && std::fabs(*r.envelope.release - keygroup_seconds(0.63)) < 1e-9);
     }
+    {   // a keygroup's own volume and tune go onto its zones
+        KeygroupProgram tuned;
+        tuned.type = "Keygroup";
+        KeygroupInstrument one;
+        one.tags = {{"Volume", "1.0"}, {"TuneCoarse", "-1"}, {"TuneFine", "5"}};
+        one.layers = {{{"SampleName", "x"}, {"Volume", "0.5"}, {"TuneCoarse", "2"}}};
+        tuned.instruments = {one};
+        auto r = read_keygroup(tuned);
+        CHECK(r.regions.size() == 1 && r.regions[0].zone.tune == 105 && std::fabs(r.regions[0].zone.gain - (6 + 20 * std::log10(0.5))) < 1e-3);
+    }
+}
+
+// A drum program's pad, as the Dirty Drummer kits have them: four hits cycled,
+// the pad's own level, pan, filter and envelope; a one-layer pad plays its WAV.
+void drum_program_pads() {
+    KeygroupInstrument kick;
+    kick.number = 1;
+    kick.tags = {{"ZonePlay", "0"}, {"TriggerMode", "0"}, {"Volume", "0.707946"}, {"Pan", "0.370000"}, {"Mono", "True"},
+                 {"MuteGroup", "2"}, {"VolumeDecay", "0.050000"}, {"VolumeDecayType", "True"}, {"FilterType", "1"},
+                 {"Cutoff", "0.732284"}, {"TuneCoarse", "-1"}, {"VelocitySensitivity", "0.5"}, {"LowNote", "0"}, {"HighNote", "127"}};
+    for (const char* hit : {"Acoustic-Kick-dd2 dk k_p1", "Acoustic-Kick-dd2 dk k_p2", "Acoustic-Kick-dd2 dk k_p3", "Acoustic-Kick-dd2 dk k_p4"})
+        kick.layers.push_back({{"Active", "True"}, {"SampleName", hit}, {"VelStart", "0"}, {"VelEnd", "127"}, {"RootNote", "0"},
+                               {"Volume", "1.000000"}, {"Pan", "0.500000"}, {"Pitch", "-4.000000"}, {"TuneCoarse", "-4"}, {"KeyTrack", "False"},
+                               {"SliceLoop", "0"}, {"SliceStart", "0"}, {"SliceEnd", "17557"}});
+    kick.layers.push_back({{"Active", "True"}, {"SampleName", ""}});
+    CHECK(keygroup_layers(kick).size() == 4);
+    auto read = read_drum_pad(kick);
+    CHECK(read.regions.size() == 4 && read.left == 0);
+    for (unsigned n = 0; n < 4; ++n) {
+        const auto& z = read.regions[n].zone;
+        CHECK(z.low_key == 0 && z.high_key == 127 && z.root == 60 && z.keytrack == 100); // RootNote 0 is not C-1 here
+        CHECK(z.sequence == n + 1 && z.sequence_length == 4 && z.one_shot && z.tune == -400 && z.gain == 0);
+        CHECK(read.regions[n].end == 17557);
+    }
+    CHECK(read.regions[0].sample == "Acoustic-Kick-dd2 dk k_p1.WAV");
+    CHECK(!read.envelope.attack && !read.envelope.release && read.regions[2].zone.release == 0); // the pad's envelope, not the zones'
+    PadSound pad;
+    keygroup_pad(kick, 1.0, pad);
+    CHECK(pad.level == 100 && pad.pan == -13 && pad.mono && pad.group == 2 && pad.play == PadPlay::OneShot);
+    CHECK(pad.pitch == -1 && pad.fine == 0 && pad.start == 0 && pad.end == 0); // the layers' tune and region are the zones'
+    CHECK(pad.filter == PadFilter::Lpf2 && pad.cutoff == 73 && pad.decay == 5 && !pad.decay_from_start && pad.velocity_sense == 50);
+    KeygroupInstrument snare = kick;
+    snare.layers.resize(1);
+    snare.layers[0]["Volume"] = "0.63";
+    snare.layers[0]["SliceLoop"] = "1";
+    snare.layers[0]["SliceLoopStart"] = "100";
+    snare.tags["Cutoff"] = "1.0";
+    snare.tags["FilterType"] = "1";
+    PadSound one;
+    keygroup_pad(snare, 2.0, one);
+    CHECK(one.pitch == -5 && one.end == 2 * 17557 && one.loop && !one.loop_lock && one.loop_start == 200);
+    CHECK(one.gain == int16_t(std::lround(20 * std::log10(0.63) * 100)) && one.filter == PadFilter::Off); // wide open: off
 }
 
 // Laid out once and found again; chunks whole pages; the least lately played going first.
@@ -5693,6 +5747,12 @@ void note_pitches() {
     std::strcpy(ref.path, "/media/card/Keys/Rhodes.XPM");
     CHECK(ref.instrument());
     std::strcpy(ref.path, "/media/card/Keys/Rhodes.xpj");
+    CHECK(!ref.instrument());
+    std::strcpy(ref.path, "/media/card/Kits/Kit-Lofi Patch.xpm#12");
+    CHECK(ref.instrument());
+    std::strcpy(ref.path, "/media/card/Projects/Cycle 86bpm.xpj#3.16");
+    CHECK(ref.instrument());
+    std::strcpy(ref.path, "/media/card/Kits/Kick #1.wav");
     CHECK(!ref.instrument());
     Track kit; kit.engine = EngineKind::Sampler;
     CHECK(note_key(kit, 20) == -1 && note_key(kit, 20, true) == 20 && note_key(kit, 127, true) == 127 && note_key(kit, 128, true) == -1);
@@ -6314,6 +6374,7 @@ int main() {
     song_buttons();
     sfz_reader();
     keygroup_reader();
+    drum_program_pads();
     sample_cache();
     stream_pager();
     sampler_zones();

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// An MPC keygroup program's keygroups and layers as zones. The tags are read
-// as the MPC's own files and the open converters that read them have them:
-// RootNote is one past the MIDI note, a layer's Volume 0.353..1 is -12..+6 dB,
-// Pan 0..1 is left to right, an envelope's 0..1 is 1 ms to 100 s, and the
-// sample is its SampleName with ".WAV", beside the program.
+// MPC programs as zones and pads: a keygroup program's keygroups and layers,
+// and a drum program's pads. The tags are read as the MPC's own files have
+// them (a drum .xpm and the same kit's .xpj agree number for number): RootNote
+// is one past the MIDI note, a layer's Volume is its gain (1 is 0 dB), a pad's
+// Volume is on the MPC's squared curve (0.7079 is 0 dB), Pan 0..1 is left to
+// right, an envelope's 0..1 is 1 ms to 100 s, and the sample is its SampleName
+// with ".WAV", beside the program.
 #include "melodee/engine/keygroup.h"
 #include <algorithm>
 #include <cctype>
@@ -101,11 +103,147 @@ SfzEnvelope envelope_of(const KeygroupTags& tags) {
     if (auto hold = number_at(tags, "VolumeHold"); hold && *hold > 0) *made.decay += keygroup_seconds(*hold);
     return made;
 }
+uint8_t percent(double value) { return uint8_t(std::clamp(std::lround(value * 100), 0l, 100l)); }
+
+// A layer's tune in cents: Pitch is semitones; older files have TuneCoarse and TuneFine (cents) alone.
+double layer_cents(const KeygroupTags& l) {
+    double cents = 100.0 * int_at(l, "TuneCoarse").value_or(0) + int_at(l, "TuneFine").value_or(0);
+    if (auto pitch = number_at(l, "Pitch"); pitch && *pitch != 0) cents = *pitch * 100;
+    return cents;
+}
+
+// One keygroup's layers (a drum pad's: `drum`) as zones over low..high.
+void add_layers(const KeygroupInstrument& instrument, int low, int high, bool drum, SfzRead& read,
+                std::vector<SfzEnvelope>& envelopes, bool& velocity_taken) {
+    const auto& t = instrument.tags;
+    const auto layers = keygroup_layers(instrument);
+    if (layers.empty()) return;
+    if (low > high) { read.left += unsigned(layers.size()); return; }
+    // TriggerMode: 0 one shot, 1 on the key's release, 2 (and older files' absence) on the press.
+    const int trigger = int_at(t, "TriggerMode").value_or(-1);
+    if (trigger == 1) { read.left += unsigned(layers.size()); read.left_by.insert("TriggerMode"); return; }
+    const bool one_shot = trigger == 0 || (trigger < 0 && flag_at(t, "OneShot").value_or(false));
+    // ZonePlay: 0 cycles the layers a press at a time, 1 plays those its velocity reaches, 2 picks one at random.
+    int play = int_at(t, "ZonePlay").value_or(1);
+    if (play < 0 || play > 2) { read.ignored.insert("ZonePlay"); play = 1; }
+    // A drum pad's filter, volume and tune are the pad's own (keygroup_pad()); a keygroup's go on its zones.
+    double instrument_cents = 0, instrument_db = 0;
+    if (!drum) {
+        if (int_at(t, "FilterType").value_or(0) > 0) read.ignored.insert("FilterType");
+        instrument_cents = 100.0 * int_at(t, "TuneCoarse").value_or(0) + int_at(t, "TuneFine").value_or(0);
+        if (auto volume = number_at(t, "Volume"); volume && *volume > 0) instrument_db = 40 * std::log10(*volume) + 6;
+    }
+    const bool no_keytrack = !drum && flag_at(t, "IgnoreBaseNote").value_or(false);
+    const auto envelope = envelope_of(t);
+    if (!velocity_taken) {
+        velocity_taken = true;
+        if (auto amount = number_at(t, "VelocitySensitivity"); amount && *amount > 0) read.velocity = std::clamp(*amount, 0.0, 1.0) * 100;
+    }
+    const size_t count = layers.size();
+    for (size_t n = 0; n < count; ++n) {
+        if (read.regions.size() >= max_zones) { ++read.left; continue; }
+        const auto& l = *layers[n];
+        SfzRegion made;
+        made.sample = keygroup_sample(l);
+        auto& z = made.zone;
+        z.low_key = uint8_t(low);
+        z.high_key = uint8_t(high);
+        // RootNote is one past the MIDI note; a drum pad's layers sit at the pad's note.
+        z.root = drum ? 60 : clamped<uint8_t>(int_at(l, "RootNote").value_or(61) - 1, 0, 127);
+        // velocity 0 is a release: the lowest that plays is 1
+        z.low_velocity = clamped<uint8_t>(int_at(l, "VelStart").value_or(1), 1, 127);
+        z.high_velocity = clamped<uint8_t>(int_at(l, "VelEnd").value_or(127), 1, 127);
+        if (z.low_velocity > z.high_velocity) { ++read.left; continue; }
+        if (count > 1 && play != 1) {
+            // a cycle or a pick: the press plays one layer whatever its velocity
+            z.low_velocity = 1;
+            z.high_velocity = 127;
+            if (play == 0) { z.sequence = uint32_t(n + 1); z.sequence_length = uint32_t(count); }
+            else { z.low_random = float(double(n) / count); z.high_random = float(double(n + 1) / count); }
+        }
+        z.tune = clamped<int16_t>(int(std::lround(layer_cents(l) + instrument_cents)), -32000, 32000);
+        if (no_keytrack && !flag_at(l, "KeyTrack").value_or(false)) z.keytrack = 0;
+        double db = instrument_db;
+        if (auto volume = number_at(l, "Volume")) db += keygroup_decibels(*volume);
+        z.gain = float(std::clamp(db, -96.0, 12.0));
+        if (auto pan = number_at(l, "Pan")) z.pan = float(std::clamp(*pan * 2 - 1, -1.0, 1.0));
+        // Where it plays from and to: the Slice* tags, older files' Sample*.
+        auto start = int_at(l, "SliceStart");
+        if (!start) start = int_at(l, "SampleStart");
+        auto end = int_at(l, "SliceEnd");
+        if (!end) end = int_at(l, "SampleEnd");
+        if (start && *start > 0) made.offset = *start;
+        if (end && *end > 0) made.end = *end;
+        z.one_shot = one_shot;
+        made.loop_named = one_shot;
+        if (!one_shot) {
+            if (auto slice_loop = int_at(l, "SliceLoop")) {
+                made.loop_named = true;
+                if (*slice_loop > 0) {
+                    if (*slice_loop != 1) read.ignored.insert("SliceLoop"); // reversed or back and forth: played forward
+                    z.loop = ZoneLoop::On;
+                    z.loop_start = uint32_t(std::max(int_at(l, "SliceLoopStart").value_or(0), 0));
+                    z.loop_end = end && *end > 0 ? uint32_t(*end) : to_its_end;
+                    if (z.loop_end <= z.loop_start) z.loop_end = to_its_end;
+                }
+            } else if (auto loop = flag_at(l, "Loop")) {
+                made.loop_named = true;
+                if (*loop) {
+                    z.loop = ZoneLoop::On;
+                    auto from = int_at(l, "LoopStart").value_or(0), to = int_at(l, "LoopEnd").value_or(0);
+                    if (to > from && from >= 0) { z.loop_start = uint32_t(from); z.loop_end = uint32_t(to); }
+                }
+            }
+            made.loop_asked = z.loop != ZoneLoop::Off;
+        }
+        read.regions.push_back(std::move(made));
+        envelopes.push_back(envelope);
+    }
+}
 } // namespace
+
+std::vector<const KeygroupTags*> keygroup_layers(const KeygroupInstrument& instrument) {
+    std::vector<const KeygroupTags*> layers;
+    if (flag_at(instrument.tags, "Mute").value_or(false)) return layers;
+    for (const auto& layer : instrument.layers) {
+        if (!flag_at(layer, "Active").value_or(true) || flag_at(layer, "Mute").value_or(false)) continue;
+        if (sample_of(layer).empty()) continue;
+        layers.push_back(&layer);
+    }
+    return layers;
+}
+
+std::string keygroup_sample(const KeygroupTags& layer) { return sample_of(layer); }
 
 double keygroup_seconds(double value) { return 0.001 * std::pow(100000.0, std::clamp(value, 0.0, 1.0)); }
 
-double keygroup_decibels(double value) { return (value - 0.353) * 18.0 / (1.0 - 0.353) - 12.0; }
+// The MPC's own projects write a layer's volume as {gainCoefficient, controlValue, law}, the two
+// alike for its layers: the number is the gain itself.
+double keygroup_decibels(double value) { return value > 0 ? 20 * std::log10(value) : -96.0; }
+
+// Volume on the MPC's curve: squared, 1.0 at +6 dB, 0.7079 at 0 dB (sampler.h's levels).
+uint8_t mpc_level(double value) {
+    if (value <= 0) return 0;
+    double db = 40 * std::log10(value) + level_top_db;
+    if (db >= 0) return uint8_t(std::clamp(std::lround(100 + db / level_top_db * 27), 100l, 127l));
+    return uint8_t(std::clamp(std::lround(100 * std::pow(10.0, db / 37)), 1l, 100l));
+}
+
+int8_t mpc_pan(double value) { return int8_t(std::clamp(std::lround((value - 0.5) * 100), -50l, 50l)); }
+
+// The MPC's filter table, thirty types, as the pad's: a one-pole as the pad's two-pole kind.
+PadFilter mpc_filter(int type) {
+    switch (type) {
+    case 1: case 2: return PadFilter::Lpf2;
+    case 3: case 4: case 5: return PadFilter::Lpf4;
+    case 6: case 7: return PadFilter::Hpf2;
+    case 8: case 9: case 10: return PadFilter::Hpf4;
+    case 11: return PadFilter::Bpf2;
+    case 12: case 13: case 14: return PadFilter::Bpf4;
+    case 29: return PadFilter::Classic; // "MPC3000 LPF"; every pad starts on it, wide open
+    default: return PadFilter::Off;
+    }
+}
 
 SfzRead read_keygroup(const KeygroupProgram& program) {
     SfzRead read;
@@ -114,95 +252,71 @@ SfzRead read_keygroup(const KeygroupProgram& program) {
     bool velocity_taken = false;
     for (const auto& instrument : program.instruments) {
         if (instrument.number > keygroups) continue; // past the program's count: left over from a longer one
-        const auto& t = instrument.tags;
-        if (flag_at(t, "Mute").value_or(false)) continue;
-        std::vector<const KeygroupTags*> layers;
-        for (const auto& layer : instrument.layers) {
-            if (!flag_at(layer, "Active").value_or(true) || flag_at(layer, "Mute").value_or(false)) continue;
-            if (sample_of(layer).empty()) continue;
-            layers.push_back(&layer);
-        }
-        if (layers.empty()) continue;
-        const int low = std::clamp(int_at(t, "LowNote").value_or(0), 0, 127);
-        const int high = std::clamp(int_at(t, "HighNote").value_or(127), 0, 127);
-        if (low > high) { read.left += unsigned(layers.size()); continue; }
-        // TriggerMode: 0 one shot, 1 on the key's release, 2 (and older files' absence) on the press.
-        const int trigger = int_at(t, "TriggerMode").value_or(-1);
-        if (trigger == 1) { read.left += unsigned(layers.size()); read.left_by.insert("TriggerMode"); continue; }
-        const bool one_shot = trigger == 0 || (trigger < 0 && flag_at(t, "OneShot").value_or(false));
-        // ZonePlay: 0 cycles the layers a press at a time, 1 plays those its velocity reaches, 2 picks one at random.
-        int play = int_at(t, "ZonePlay").value_or(1);
-        if (play < 0 || play > 2) { read.ignored.insert("ZonePlay"); play = 1; }
-        if (int_at(t, "FilterType").value_or(0) > 0) read.ignored.insert("FilterType");
-        const bool no_keytrack = flag_at(t, "IgnoreBaseNote").value_or(false);
-        const auto envelope = envelope_of(t);
-        if (!velocity_taken) {
-            velocity_taken = true;
-            if (auto amount = number_at(t, "VelocitySensitivity"); amount && *amount > 0) read.velocity = std::clamp(*amount, 0.0, 1.0) * 100;
-        }
-        const size_t count = layers.size();
-        for (size_t n = 0; n < count; ++n) {
-            if (read.regions.size() >= max_zones) { ++read.left; continue; }
-            const auto& l = *layers[n];
-            SfzRegion made;
-            made.sample = sample_of(l);
-            auto& z = made.zone;
-            z.low_key = uint8_t(low);
-            z.high_key = uint8_t(high);
-            z.root = clamped<uint8_t>(int_at(l, "RootNote").value_or(61) - 1, 0, 127);
-            // velocity 0 is a release: the lowest that plays is 1
-            z.low_velocity = clamped<uint8_t>(int_at(l, "VelStart").value_or(1), 1, 127);
-            z.high_velocity = clamped<uint8_t>(int_at(l, "VelEnd").value_or(127), 1, 127);
-            if (z.low_velocity > z.high_velocity) { ++read.left; continue; }
-            if (count > 1 && play != 1) {
-                // a cycle or a pick: the press plays one layer whatever its velocity
-                z.low_velocity = 1;
-                z.high_velocity = 127;
-                if (play == 0) { z.sequence = uint32_t(n + 1); z.sequence_length = uint32_t(count); }
-                else { z.low_random = float(double(n) / count); z.high_random = float(double(n + 1) / count); }
-            }
-            // Pitch is semitones; older files have it as TuneCoarse and TuneFine (cents) alone.
-            double cents = 100.0 * int_at(l, "TuneCoarse").value_or(0) + int_at(l, "TuneFine").value_or(0);
-            if (auto pitch = number_at(l, "Pitch"); pitch && *pitch != 0) cents = *pitch * 100;
-            z.tune = clamped<int16_t>(int(std::lround(cents)), -32000, 32000);
-            if (no_keytrack && !flag_at(l, "KeyTrack").value_or(false)) z.keytrack = 0;
-            if (auto volume = number_at(l, "Volume")) z.gain = float(std::clamp(keygroup_decibels(*volume), -96.0, 6.0));
-            if (auto pan = number_at(l, "Pan")) z.pan = float(std::clamp(*pan * 2 - 1, -1.0, 1.0));
-            // Where it plays from and to: the Slice* tags, older files' Sample*.
-            auto start = int_at(l, "SliceStart");
-            if (!start) start = int_at(l, "SampleStart");
-            auto end = int_at(l, "SliceEnd");
-            if (!end) end = int_at(l, "SampleEnd");
-            if (start && *start > 0) made.offset = *start;
-            if (end && *end > 0) made.end = *end;
-            z.one_shot = one_shot;
-            made.loop_named = one_shot;
-            if (!one_shot) {
-                if (auto slice_loop = int_at(l, "SliceLoop")) {
-                    made.loop_named = true;
-                    if (*slice_loop > 0) {
-                        if (*slice_loop != 1) read.ignored.insert("SliceLoop"); // reversed or back and forth: played forward
-                        z.loop = ZoneLoop::On;
-                        z.loop_start = uint32_t(std::max(int_at(l, "SliceLoopStart").value_or(0), 0));
-                        z.loop_end = end && *end > 0 ? uint32_t(*end) : to_its_end;
-                        if (z.loop_end <= z.loop_start) z.loop_end = to_its_end;
-                    }
-                } else if (auto loop = flag_at(l, "Loop")) {
-                    made.loop_named = true;
-                    if (*loop) {
-                        z.loop = ZoneLoop::On;
-                        auto from = int_at(l, "LoopStart").value_or(0), to = int_at(l, "LoopEnd").value_or(0);
-                        if (to > from && from >= 0) { z.loop_start = uint32_t(from); z.loop_end = uint32_t(to); }
-                    }
-                }
-                made.loop_asked = z.loop != ZoneLoop::Off;
-            }
-            read.regions.push_back(std::move(made));
-            envelopes.push_back(envelope);
-        }
+        const int low = std::clamp(int_at(instrument.tags, "LowNote").value_or(0), 0, 127);
+        const int high = std::clamp(int_at(instrument.tags, "HighNote").value_or(127), 0, 127);
+        add_layers(instrument, low, high, false, read, envelopes, velocity_taken);
     }
     sfz_share_envelopes(envelopes, read);
     return read;
+}
+
+SfzRead read_drum_pad(const KeygroupInstrument& pad) {
+    SfzRead read;
+    std::vector<SfzEnvelope> envelopes;
+    bool velocity_taken = true; // the pad's own (keygroup_pad())
+    add_layers(pad, 0, 127, true, read, envelopes, velocity_taken);
+    return read; // the envelope is the pad's: no stage on the zones
+}
+
+void keygroup_pad(const KeygroupInstrument& instrument, double to_model, PadSound& pad) {
+    const auto& t = instrument.tags;
+    const auto layers = keygroup_layers(instrument);
+    const auto frame = [&](int at) { return uint32_t(std::max(std::lround(at * to_model), 0l)); };
+    double cents = 100.0 * int_at(t, "TuneCoarse").value_or(0) + int_at(t, "TuneFine").value_or(0);
+    if (layers.size() == 1) cents += layer_cents(*layers[0]);
+    const int whole = int(std::lround(cents / 100));
+    pad.pitch = int8_t(std::clamp(whole, -48, 48));
+    pad.fine = int8_t(std::clamp(int(std::lround(cents - 100.0 * whole)), -99, 99));
+    pad.level = mpc_level(number_at(t, "Volume").value_or(0.7079));
+    pad.pan = mpc_pan(number_at(t, "Pan").value_or(0.5));
+    pad.play = int_at(t, "TriggerMode").value_or(flag_at(t, "OneShot").value_or(true) ? 0 : 2) == 0 ? PadPlay::OneShot : PadPlay::Gate;
+    pad.mono = flag_at(t, "Mono").value_or(false);
+    pad.group = uint8_t(std::clamp(int_at(t, "MuteGroup").value_or(0), 0, 16));
+    pad.attack = percent(number_at(t, "VolumeAttack").value_or(0));
+    pad.decay = percent(number_at(t, "VolumeDecay").value_or(0.05));
+    pad.sustain = percent(number_at(t, "VolumeSustain").value_or(1));
+    pad.release = percent(number_at(t, "VolumeRelease").value_or(0));
+    pad.decay_from_start = !flag_at(t, "VolumeDecayType").value_or(true);
+    pad.velocity_sense = percent(number_at(t, "VelocitySensitivity").value_or(1));
+    pad.cutoff = percent(number_at(t, "Cutoff").value_or(1));
+    pad.resonance = percent(number_at(t, "Resonance").value_or(0));
+    pad.filter_amount = percent(number_at(t, "FilterEnvAmt").value_or(0));
+    pad.filter = mpc_filter(int_at(t, "FilterType").value_or(0));
+    if ((pad.filter == PadFilter::Classic || pad.filter == PadFilter::Lpf2 || pad.filter == PadFilter::Lpf4) && pad.cutoff == 100 &&
+        !pad.resonance && !pad.filter_amount) pad.filter = PadFilter::Off; // wide open: nothing to hear
+    if (pad.filter_amount) {
+        pad.filter_attack = percent(number_at(t, "FilterAttack").value_or(0));
+        pad.filter_decay = percent(number_at(t, "FilterDecay").value_or(0));
+        pad.filter_sustain = percent(number_at(t, "FilterSustain").value_or(0));
+        pad.filter_release = percent(number_at(t, "FilterRelease").value_or(0));
+    }
+    if (layers.size() != 1) return;
+    // One layer: the pad plays its file, from where the layer says.
+    const auto& l = *layers[0];
+    auto start = int_at(l, "SliceStart");
+    if (!start) start = int_at(l, "SampleStart");
+    auto end = int_at(l, "SliceEnd");
+    if (!end) end = int_at(l, "SampleEnd");
+    pad.start = start && *start > 0 ? frame(*start) : 0;
+    pad.end = end && *end > 0 ? frame(*end) : 0;
+    pad.reverse = int_at(l, "Direction").value_or(0) == 1;
+    if (int_at(l, "SliceLoop").value_or(0) > 0) {
+        pad.loop = true;
+        pad.loop_lock = false;
+        pad.loop_start = frame(std::max(int_at(l, "SliceLoopStart").value_or(0), 0));
+    }
+    if (auto volume = number_at(l, "Volume"); volume && *volume > 0 && *volume != 1)
+        pad.gain = int16_t(std::clamp(std::lround(keygroup_decibels(*volume) * 100), -9600l, 1200l));
 }
 
 } // namespace melodee

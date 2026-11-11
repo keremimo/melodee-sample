@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/shell/mpc_program.h"
+#include "melodee/engine/dsp.h"
+#include "melodee/engine/engine_info.h"
+#include "melodee/model/scales.h"
+#include <juce_core/juce_core.h>
+#include <algorithm>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <sstream>
+
+namespace melodee {
+namespace fs = std::filesystem;
+namespace {
+constexpr size_t most_text = 32u << 20;
+
+std::string lowered(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+    return text;
+}
+
+bool read_bytes(const std::string& path, std::string& out, size_t limit) {
+    std::error_code error;
+    auto bytes = fs::file_size(path, error);
+    if (error || bytes > most_text) return false;
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return false;
+    out.resize(std::min<size_t>(bytes, limit));
+    file.read(out.data(), std::streamsize(out.size()));
+    out.resize(size_t(file.gcount()));
+    return true;
+}
+
+// A file as a program names it, beside the program: exactly or, on a card written elsewhere, whatever the case.
+fs::path found_beside(const fs::path& folder, const std::string& relative) {
+    fs::path at = folder;
+    std::stringstream parts(relative);
+    std::string part;
+    std::error_code error;
+    while (std::getline(parts, part, '/')) {
+        if (part.empty() || part == "." || part == "..") continue; // never out of the program's folder
+        if (fs::exists(at / part, error)) { at /= part; continue; }
+        bool found = false;
+        const auto wanted = lowered(part);
+        for (auto it = fs::directory_iterator(at, error); !error && it != fs::directory_iterator(); it.increment(error))
+            if (lowered(it->path().filename().string()) == wanted) { at = it->path(); found = true; break; }
+        if (!found) return {};
+    }
+    return at;
+}
+
+// JUCE keeps an element's text as text-node children: a leaf is one with only those.
+bool has_elements(const juce::XmlElement& element) {
+    for (auto* child : element.getChildIterator())
+        if (!child->isTextElement()) return true;
+    return false;
+}
+
+KeygroupTags leaves_of(const juce::XmlElement& element) {
+    KeygroupTags tags;
+    for (auto* child : element.getChildIterator())
+        if (!child->isTextElement() && !has_elements(*child)) tags[child->getTagName().toStdString()] = child->getAllSubText().toStdString();
+    return tags;
+}
+
+// The project's sample slots, each path once; -1 when full.
+int slot_for(Project& project, const std::string& path, const std::string& name) {
+    if (path.size() >= sizeof(SampleRef::path)) return -1;
+    for (unsigned n = 0; n < sample_slots; ++n) {
+        auto& ref = project.samples[n];
+        if (ref.used() && path == ref.path) return int(n);
+        if (ref.used()) continue;
+        std::snprintf(ref.path, sizeof(ref.path), "%s", path.c_str());
+        std::snprintf(ref.name, sizeof(ref.name), "%s", name.c_str());
+        return int(n);
+    }
+    return -1;
+}
+} // namespace
+
+std::string parse_mpc_program(const std::string& text, KeygroupProgram& program) {
+    size_t first = text.find_first_not_of(" \t\r\n\xef\xbb\xbf");
+    if (first == std::string::npos || text[first] != '<') return "Newer MPC format";
+    auto xml = juce::XmlDocument::parse(juce::String::fromUTF8(text.data(), int(text.size())));
+    if (!xml || !xml->hasTagName("MPCVObject")) return "Unreadable";
+    auto* found = xml->getChildByName("Program");
+    if (!found) return "Unreadable";
+    program = KeygroupProgram {};
+    program.type = found->getStringAttribute("type").toStdString();
+    program.tags = leaves_of(*found);
+    if (auto* instruments = found->getChildByName("Instruments"))
+        for (auto* element : instruments->getChildWithTagNameIterator("Instrument")) {
+            KeygroupInstrument instrument;
+            instrument.number = element->getIntAttribute("number");
+            instrument.tags = leaves_of(*element);
+            if (auto* layers = element->getChildByName("Layers"))
+                for (auto* layer : layers->getChildWithTagNameIterator("Layer")) instrument.layers.push_back(leaves_of(*layer));
+            program.instruments.push_back(std::move(instrument));
+        }
+    return {};
+}
+
+bool is_drum_program(const std::string& path) {
+    std::string head;
+    if (!read_bytes(path, head, 16384)) return false;
+    return head.find("<Program type=\"Drum\"") != std::string::npos;
+}
+
+std::string import_mpc_program(const std::vector<uint8_t>& file, const std::string& path, Project& project, MpcImport& report) {
+    KeygroupProgram program;
+    auto error = parse_mpc_program(std::string(file.begin(), file.end()), program);
+    if (!error.empty()) return error;
+    if (program.type != "Drum") return "Not a drum program";
+    const fs::path where(path), folder = where.parent_path();
+    project = Project {};
+    std::snprintf(project.name, sizeof(project.name), "%s", where.stem().string().c_str());
+    project.root = 0;
+    project.scale = chromatic_scale;
+    auto& track = project.tracks[0];
+    load_sound(track, EngineKind::Sampler, 0);
+    auto named = program.tags.count("ProgramName") ? program.tags["ProgramName"] : where.stem().string();
+    track.set_name(named.c_str());
+    auto number = [&](const char* tag, double fallback) {
+        auto found = program.tags.find(tag);
+        return found == program.tags.end() ? fallback : std::atof(found->second.c_str());
+    };
+    track.mix.level = mpc_level(number("Volume", 0.7079));
+    track.mix.pan = mpc_pan(number("Pan", 0.5));
+    for (const auto& instrument : program.instruments) {
+        const auto layers = keygroup_layers(instrument);
+        if (layers.empty()) continue;
+        if (instrument.number < 1 || instrument.number > int(sampler_pads)) { ++report.over_limit; continue; }
+        const auto sample = keygroup_sample(*layers.front());
+        int slot = -1;
+        double to_model = 1.0;
+        if (layers.size() == 1) { // its WAV, as any pad's
+            auto found = found_beside(folder, sample);
+            report.missing += found.empty();
+            auto at = found.empty() ? (folder / sample) : found;
+            slot = slot_for(project, at.string(), at.stem().string());
+            if (unsigned rate = mpc_wav_rate(at.string())) to_model = double(dsp::model_rate) / rate;
+        } else { // its layers, as an instrument read from the program
+            slot = slot_for(project, path + "#" + std::to_string(instrument.number), fs::path(sample).stem().string());
+        }
+        if (slot < 0) { ++report.over_limit; continue; }
+        auto& pad = track.pads[size_t(instrument.number - 1)];
+        keygroup_pad(instrument, to_model, pad);
+        pad.sample = uint16_t(slot);
+        ++report.pads;
+    }
+    if (!report.pads) return "Nothing to import";
+    report.tracks = 1;
+    return {};
+}
+
+bool split_program_pad(const std::string& path, std::string& file, std::string& which) {
+    auto mark = path.rfind('#');
+    if (mark == std::string::npos || mark + 1 >= path.size()) return false;
+    file = path.substr(0, mark);
+    which = path.substr(mark + 1);
+    auto kind = lowered(fs::path(file).extension().string());
+    return kind == ".xpm" || kind == ".xpj";
+}
+
+std::map<std::string, KeygroupInstrument> program_pads(const std::string& file, std::string& error) {
+    // The pads of a kit load one after another: the file is read once for all of them.
+    static std::mutex lock;
+    static std::string cached_path;
+    static int64_t cached_stamp = -1;
+    static std::map<std::string, KeygroupInstrument> cached;
+    std::error_code fs_error;
+    auto stamp = int64_t(fs::last_write_time(file, fs_error).time_since_epoch().count()) ^ int64_t(fs::file_size(file, fs_error));
+    if (fs_error) { error = "Files missing"; return {}; }
+    std::lock_guard<std::mutex> guard(lock);
+    if (file == cached_path && stamp == cached_stamp) return cached;
+    std::map<std::string, KeygroupInstrument> pads;
+    std::string bytes;
+    if (!read_bytes(file, bytes, most_text)) { error = "cannot read it"; return {}; }
+    if (lowered(fs::path(file).extension().string()) == ".xpj") {
+        pads = mpc_project_pads(std::vector<uint8_t>(bytes.begin(), bytes.end()), file);
+    } else {
+        KeygroupProgram program;
+        error = parse_mpc_program(bytes, program);
+        if (!error.empty()) return {};
+        for (auto& instrument : program.instruments)
+            if (keygroup_layers(instrument).size() > 1) pads[std::to_string(instrument.number)] = std::move(instrument);
+    }
+    cached_path = file;
+    cached_stamp = stamp;
+    cached = pads;
+    return pads;
+}
+
+} // namespace melodee

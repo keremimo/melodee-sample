@@ -56,30 +56,10 @@ bool flag(const juce::var& object, const char* key, bool fallback = false) {
 uint8_t percent(double value) { return uint8_t(std::clamp(std::lround(value * 100), 0l, 100l)); }
 uint16_t tenths(double bpm) { return uint16_t(std::clamp(std::lround(bpm * 10), 300l, 3000l)); }
 
-// A volume in the file (1.0 is +6 dB, 0.7079 is 0 dB, squared between) as Melodee's 0..127 (sampler.h).
-uint8_t level_of(double value) {
-    if (value <= 0) return 0;
-    double db = 40 * std::log10(value) + level_top_db;
-    if (db >= 0) return uint8_t(std::clamp(std::lround(100 + db / level_top_db * 27), 100l, 127l));
-    return uint8_t(std::clamp(std::lround(100 * std::pow(10.0, db / 37)), 1l, 100l));
-}
-int8_t pan_of(double value) { return int8_t(std::clamp(std::lround((value - 0.5) * 100), -50l, 50l)); }
+uint8_t level_of(double value) { return mpc_level(value); }
+int8_t pan_of(double value) { return mpc_pan(value); }
+PadFilter filter_of(int type) { return mpc_filter(type); }
 
-// The stock app's filter table, thirty types of which its Sample Mode offers these eight.
-PadFilter filter_of(int type) {
-    switch (type) {
-    case 2: return PadFilter::Lpf2;
-    case 3: return PadFilter::Lpf4;
-    case 7: return PadFilter::Hpf2;
-    case 8: return PadFilter::Hpf4;
-    case 11: return PadFilter::Bpf2;
-    case 12: return PadFilter::Bpf4;
-    case 29: return PadFilter::Classic; // "MPC3000 LPF"; every pad starts on it, wide open
-    default: return PadFilter::Off;
-    }
-}
-
-// The sample rate of a WAV file; 0 when it cannot tell.
 unsigned wav_rate(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
     char head[12];
@@ -119,6 +99,19 @@ public:
         }
         return -1;
     }
+    // A slot for a pad's layers, played as an instrument: the path names the pad.
+    int instrument(const std::string& path, const std::string& name) {
+        if (path.size() >= sizeof(SampleRef::path)) return -1;
+        for (unsigned n = 0; n < sample_slots; ++n) {
+            auto& ref = project.samples[n];
+            if (ref.used() && path == ref.path) return int(n);
+            if (ref.used()) continue;
+            std::snprintf(ref.path, sizeof(ref.path), "%s", path.c_str());
+            std::snprintf(ref.name, sizeof(ref.name), "%s", name.c_str());
+            return int(n);
+        }
+        return -1;
+    }
     double to_model(unsigned slot) const { return rates[slot % sample_slots]; }
 private:
     Project& project;
@@ -136,7 +129,37 @@ const juce::var& sounding_layer(const juce::var& instrument) {
     return nothing;
 }
 
-void read_pad(const juce::var& instrument, const juce::var& layer, unsigned slot, double to_model, PadSound& pad) {
+unsigned sounding_layers(const juce::var& instrument) {
+    unsigned count = 0;
+    if (const auto* layers = instrument["layersv"].getArray())
+        for (const auto& layer : *layers) count += flag(layer, "active", true) && !flag(layer, "mute") && layer["sampleFile"].toString().isNotEmpty();
+    return count;
+}
+
+// A layer as a drum program's <Layer> (engine/keygroup.h), its file in the project's data folder.
+KeygroupTags layer_tags(const juce::var& layer, const std::string& data_folder) {
+    const auto& slice = layer["sliceInfo"];
+    const auto& volume = layer["volume"];
+    auto text = [](double value) { return std::to_string(value); };
+    KeygroupTags tags;
+    tags["Active"] = flag(layer, "active", true) ? "True" : "False";
+    tags["Mute"] = flag(layer, "mute") ? "True" : "False";
+    tags["SampleName"] = data_folder + "/" + fs::path(layer["sampleFile"].toString().toStdString()).filename().string();
+    tags["VelStart"] = text(integer(layer, "velocityStart"));
+    tags["VelEnd"] = text(integer(layer, "velocityEnd", 127));
+    tags["TuneCoarse"] = text(integer(layer, "coarseTune"));
+    tags["TuneFine"] = text(integer(layer, "fineTune"));
+    tags["Volume"] = text(volume.isObject() ? number(volume, "gainCoefficient", 1) : number(layer, "volume", 1));
+    tags["Pan"] = text(number(layer, "pan", 0.5));
+    tags["SliceStart"] = text(number(slice, "Start"));
+    tags["SliceEnd"] = text(number(slice, "End"));
+    tags["SliceLoop"] = text(flag(layer, "layerLoopModeOverridesSliceLoopMode", true) ? integer(layer, "loopMode") : integer(slice, "LoopMode"));
+    tags["SliceLoopStart"] = text(number(slice, "LoopStart"));
+    tags["Direction"] = text(integer(layer, "direction"));
+    return tags;
+}
+
+void read_pad(const juce::var& instrument, const juce::var& layer, unsigned slot, double to_model, PadSound& pad, bool layered = false) {
     const auto frame = [&](double at) { return uint32_t(std::max(std::lround(at * to_model), 0l)); };
     const auto& slice = layer["sliceInfo"];
     const auto& synth = instrument["synthSection"];
@@ -174,6 +197,15 @@ void read_pad(const juce::var& instrument, const juce::var& layer, unsigned slot
         pad.filter_decay = percent(number(env["Decay"], "value0"));
         pad.filter_sustain = percent(number(env["Sustain"], "value0"));
         pad.filter_release = percent(number(env["Release"], "value0"));
+    }
+    if (layered) { // the layers' own tune, region and loop are their zones' (engine/keygroup.h)
+        pad.start = pad.end = pad.loop_start = 0;
+        pad.loop = false;
+        pad.loop_lock = true;
+        pad.reverse = false;
+        pad.pitch = int8_t(std::clamp(integer(instrument, "coarseTune"), -48, 48));
+        pad.fine = int8_t(std::clamp(integer(instrument, "fineTune"), -99, 99));
+        return;
     }
     if (flag(instrument, "warpEnable")) {
         pad.warp = flag(instrument, "bpmLock", true) ? warp_seq : uint8_t(std::clamp(integer(instrument, "stretchPercentage", 100), int(warp_min), int(warp_max)));
@@ -225,6 +257,34 @@ unsigned read_notes(const juce::var& clip, const std::array<int, 128>& pad_of_no
 
 bool is_mpc_project(const std::string& path) { return fs::path(path).extension() == ".xpj"; }
 
+unsigned mpc_wav_rate(const std::string& path) { return wav_rate(path); }
+
+std::map<std::string, KeygroupInstrument> mpc_project_pads(const std::vector<uint8_t>& file, const std::string& path) {
+    std::map<std::string, KeygroupInstrument> pads;
+    const auto data = read_document(file);
+    const auto* tracks = data["tracks"].getArray();
+    if (!tracks) return pads;
+    const fs::path where(path);
+    const std::string data_folder = where.stem().string() + "_[ProjectData]";
+    for (int t = 0; t < tracks->size(); ++t) {
+        const auto* instruments = tracks->getReference(t)["program"]["drum"]["instruments"].getArray();
+        if (!instruments) continue;
+        for (int n = 0; n < std::min(instruments->size(), mpc_pads); ++n) {
+            const auto& instrument = instruments->getReference(n);
+            if (sounding_layers(instrument) < 2) continue;
+            KeygroupInstrument pad;
+            pad.number = n + 1;
+            pad.tags["ZonePlay"] = std::to_string(integer(instrument, "zonePlayTime", 1));
+            pad.tags["TriggerMode"] = std::to_string(integer(instrument, "triggerMode", 2));
+            if (const auto* layers = instrument["layersv"].getArray())
+                for (const auto& layer : *layers)
+                    if (layer["sampleFile"].toString().isNotEmpty()) pad.layers.push_back(layer_tags(layer, data_folder));
+            pads[std::to_string(t) + "." + std::to_string(n + 1)] = std::move(pad);
+        }
+    }
+    return pads;
+}
+
 std::string import_mpc_project(const std::vector<uint8_t>& file, const std::string& path, Project& project, PatternBank& patterns, MpcImport& report) {
     const auto data = read_document(file);
     const auto* tracks = data["tracks"].getArray();
@@ -248,7 +308,9 @@ std::string import_mpc_project(const std::vector<uint8_t>& file, const std::stri
 
     Samples samples(project, where.parent_path() / (where.stem().string() + "_[ProjectData]"));
     unsigned used = 0;
+    int raw_index = -1;
     for (const auto& source : *tracks) {
+        ++raw_index;
         const auto& program = source["program"];
         const auto* instruments = program["drum"]["instruments"].getArray();
         if (!instruments) continue; // submixes and outputs are tracks in the file too
@@ -274,10 +336,13 @@ std::string import_mpc_project(const std::vector<uint8_t>& file, const std::stri
             const auto& layer = sounding_layer(instrument);
             if (layer.isVoid()) continue;
             bool missing = false;
-            int slot = samples.slot(layer["sampleFile"].toString(), missing);
+            const bool layered = sounding_layers(instrument) > 1;
+            int slot = layered ? samples.instrument(path + "#" + std::to_string(raw_index) + "." + std::to_string(n + 1),
+                                                    layer["sampleName"].toString().toStdString().substr(0, sizeof(SampleRef::name) - 1))
+                               : samples.slot(layer["sampleFile"].toString(), missing);
             if (slot < 0) { ++report.over_limit; continue; }
             report.missing += missing;
-            read_pad(instrument, layer, unsigned(slot), samples.to_model(unsigned(slot)), track.pads[size_t(n)]);
+            read_pad(instrument, layer, unsigned(slot), layered ? 1.0 : samples.to_model(unsigned(slot)), track.pads[size_t(n)], layered);
             ++report.pads;
         }
 
