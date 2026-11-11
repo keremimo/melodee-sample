@@ -141,7 +141,7 @@ void Context::select_track(unsigned t) {
 
 void Context::note(unsigned t, int key, int velocity) {
     int top = project.tracks[t % track_count].engine == EngineKind::Sampler ? int(sampler_last_key) : 127; // kit pads in banks F-H
-    if (key < 0 || key > top) return;
+    if (key < 0 || (key & 0xff) > top) return;
     Command c {velocity ? Type::NoteOn : Type::NoteOff, uint8_t(t), uint8_t(from_midi ? 1 : 0), uint16_t(key), int16_t(velocity)};
     send(c);
 }
@@ -163,7 +163,7 @@ void Context::key(int k, int velocity, bool down) {
     } else {
         for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()); ++n) {
             auto& h = history[(history_at - 1 - n) % history.size()];
-            if (h.track == ui.track && h.key == k && !h.length) { h.length = std::max<uint32_t>(1, now - h.at); break; }
+            if (h.track == ui.track && h.key == uint8_t(k) && !h.length) { h.length = std::max<uint32_t>(1, now - h.at); break; }
         }
     }
 }
@@ -185,7 +185,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         if (t.levels) { // 16 Levels: one kit pad, soft to loud, its filter swept, or in pitch
             auto level = levels_of(project, t, pad);
             ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(level.shown);
-            pad_keys[pad][0] = int16_t(sampler_first_note + t.levels_pad);
+            pad_keys[pad][0] = pad_note(int(sampler_first_note + t.levels_pad), level.semitones); // what it plays, so Seq Record keeps it
             int v = level.velocity ? level.velocity : velocity;
             Command c {Type::PadNote, ui.track, uint8_t(level.semitones + 64), t.levels_pad, int16_t(v)};
             c.position = uint32_t(level.cutoff + 1);
@@ -244,12 +244,12 @@ void Context::record(int key, int velocity) {
         at = snapped;
     }
     Event e;
-    e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
+    e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
     if (!p.add(e)) { notice("Pattern full"); return; }
     sync_pattern(ui.track, track().pattern);
     if (ahead) { Command c {Type::Recorded, ui.track, track().pattern, uint16_t(key)}; c.position = at; send(c); }
     for (auto& h : held_notes)
-        if (h.key < 0) { h = {int16_t(key), ui.track, track().pattern, at, host.ticks()}; break; }
+        if (h.key < 0) { h = {key, ui.track, track().pattern, at, host.ticks()}; break; }
 }
 
 // A recorded note let go: it is as long as it was held.
@@ -260,7 +260,7 @@ void Context::record_release(int key) {
         auto& p = patterns.at[h.track % track_count][h.pattern % pattern_count];
         uint32_t held = host.ticks() - h.since;
         for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
-            if (p.events[n].key == key) {
+            if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8)) {
                 p.events[n].length = uint16_t(std::clamp<uint32_t>(held, 1, 65535));
                 sync_pattern(h.track, h.pattern);
                 break;
@@ -714,7 +714,7 @@ void Context::pressure(unsigned pad, uint8_t value) {
     }
     // Every note of a chord; a pad playing a Record take's source track presses that track's notes.
     unsigned to = record_key_held(pad) && ui.settings.input.source == InputSource::Track ? ui.settings.input.track % track_count : ui.track;
-    for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, uint8_t(to), 0, uint16_t(k), int16_t(value)});
+    for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, uint8_t(to), 0, uint16_t(k & 0xff), int16_t(value)});
 }
 
 void Context::set_mute(unsigned t, bool on) {

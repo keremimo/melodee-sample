@@ -32,9 +32,9 @@ uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_c
     return tracks;
 }
 
-int note_key(const Track& track, int note) {
+int note_key(const Track& track, int note, bool every_key) {
     if (note < 0 || note > 127) return -1;
-    if (track.engine == EngineKind::Sampler) return note >= int(sampler_first_note) ? note : -1;
+    if (track.engine == EngineKind::Sampler) return every_key || note >= int(sampler_first_note) ? note : -1;
     if (track.engine == EngineKind::Kit909) return note >= 36 && note < 47 ? note : -1;
     return note;
 }

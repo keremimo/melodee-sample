@@ -5144,11 +5144,52 @@ void sampler_zones() {
     }
 }
 
+// A note's pitch: a chord on one pad, kept through steps and files, older files reading as before.
+void note_pitches() {
+    CHECK(pad_note(40, 0) == 40 && (pad_note(40, 5) & 0xff) == 40 && int8_t(pad_note(40, -7) >> 8) == -7);
+    Pattern p;
+    Event a; a.tick = 0; a.key = 40; a.pitch = 4;
+    Event b = a; b.pitch = 7;
+    CHECK(p.add(a) && p.add(b) && p.events.size() == 2 && p.events[0].pitch == 4 && p.events[1].pitch == 7);
+    Event again = a; again.velocity = 33;
+    CHECK(p.add(again) && p.events.size() == 2 && p.events[0].velocity == 33); // the same note replaced, not a third
+    Step st = p.step(0);
+    p.set_step(0, st);
+    CHECK(p.events.size() == 2 && p.events[0].pitch == 4 && p.events[1].pitch == 7); // edited as steps, they keep their pitch
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    bank->at[2][1].length = 96;
+    bank->at[2][1].events = p.events;
+    auto bytes = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto read = std::make_unique<PatternBank>();
+    CHECK(load_project(bytes, *back, *read).empty());
+    const auto& got = read->at[2][1].events;
+    CHECK(got.size() == 2 && got[0].pitch == 4 && got[1].pitch == 7);
+    { // a file with no PTCH: every pitch stays 0
+        Event plain; plain.key = 41;
+        bank->at[2][1].events = {plain};
+        auto old = std::make_unique<PatternBank>();
+        CHECK(load_project(save_project(*project, *bank), *back, *old).empty());
+        CHECK(old->at[2][1].events.size() == 1 && old->at[2][1].events[0].pitch == 0);
+        auto tag = save_project(*project, *bank);
+        CHECK(std::search(tag.begin(), tag.end(), "PTCH", "PTCH" + 4) == tag.end());
+    }
+    SampleRef ref;
+    std::strcpy(ref.path, "/media/card/Piano/Grand.SFZ");
+    CHECK(ref.instrument());
+    std::strcpy(ref.path, "/media/card/Piano/Grand.wav");
+    CHECK(!ref.instrument());
+    Track kit; kit.engine = EngineKind::Sampler;
+    CHECK(note_key(kit, 20) == -1 && note_key(kit, 20, true) == 20 && note_key(kit, 127, true) == 127 && note_key(kit, 128, true) == -1);
+}
+
 int main() {
     sfz_reader();
     sample_cache();
     stream_pager();
     sampler_zones();
+    note_pitches();
     track_source();
     zero_snap();
     looper_engine();

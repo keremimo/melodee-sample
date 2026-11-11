@@ -162,6 +162,11 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
         sound.gain = 0; sound.own_tempo = 0; sound.beats = 0;
     } else sound = PadSound {};
     sound.sample = uint16_t(slot);
+    if (project.samples[size_t(slot)].instrument()) { // played on keys: held while held, no region of its own
+        sound.play = PadPlay::Gate; sound.decay = 100; sound.sustain = 100;
+        sound.loop = false; sound.warp = warp_off; sound.beats = 0;
+        landing_pads.push_back({ui.track, uint8_t(kit), uint16_t(slot)});
+    }
     edit.what = pad_text("Load", unsigned(kit));
     restore_pad(ui.track, unsigned(kit), edit.pad_after);
     t.last_pad = uint8_t(kit);
@@ -170,10 +175,40 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
     notice(keep ? pad_text("Loaded", unsigned(kit)) + ", settings kept" : pad_text("Loaded", unsigned(kit)));
 }
 
+// An instrument read: the envelope most of its regions have goes on its pad,
+// with its velocity tracking and an open filter, once, as part of the Load.
+void Context::land_instruments() {
+    if (!library || landing_pads.empty()) return;
+    for (size_t n = 0; n < landing_pads.size();) {
+        const auto l = landing_pads[n];
+        auto& tr = project.tracks[l.track % track_count];
+        auto& pad = tr.pads[l.pad % sampler_pads];
+        const auto& ref = project.samples[l.slot % sample_slots];
+        if (pad.sample != l.slot || !ref.instrument()) { landing_pads.erase(landing_pads.begin() + long(n)); continue; }
+        const auto loaded = library->slot(l.slot);
+        if (loaded.path != ref.path || (!loaded.ready && loaded.error.empty())) { ++n; continue; } // not read yet
+        landing_pads.erase(landing_pads.begin() + long(n));
+        if (!loaded.ready) { notice(loaded.error.c_str()); continue; }
+        auto apply = [&](PadSound& sound) {
+            if (loaded.stages[0] >= 0) sound.attack = uint8_t(loaded.stages[0]);
+            if (loaded.stages[1] >= 0) sound.decay = uint8_t(loaded.stages[1]);
+            if (loaded.stages[2] >= 0) sound.sustain = uint8_t(loaded.stages[2]);
+            if (loaded.stages[3] >= 0) sound.release = uint8_t(loaded.stages[3]);
+            sound.velocity_sense = uint8_t(loaded.velocity);
+            sound.filter = PadFilter::Off; sound.cutoff = 100;
+        };
+        apply(pad);
+        send_pad(l.track, l.pad);
+        if (auto* edit = edits.latest())
+            if (edit->track == l.track && edit->pad == int16_t(l.pad) && edit->pad_after.sound.sample == l.slot) apply(edit->pad_after.sound);
+    }
+}
+
 // Made files that have arrived go onto their pads; what the library has to
 // say about a file (saved, failed) shows over the header.
 void Context::files_landed() {
     if (!library) return;
+    land_instruments();
     SampleLibrary::Done done;
     while (library->done(done)) {
         notice(done.text);

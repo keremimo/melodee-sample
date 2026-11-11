@@ -39,16 +39,32 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
     if (down) midi_held[t].set(size_t(k));
     else if (midi_held[t].test(size_t(k))) midi_held[t].reset(size_t(k));
     else return; // never started here (or already let go)
+    // An instrument under 16 Levels has the keyboard: the note is that pad, at the key
+    // played. Kept from the press, so its end finds it whatever has changed meanwhile.
+    if (down) {
+        midi_played[t][size_t(k)] = k;
+        if (midi_every_key(tr)) {
+            const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
+            midi_played[t][size_t(k)] = pad_note(int(sampler_first_note + tr.levels_pad % sampler_pads), k - 60 - pad.pitch);
+        }
+    }
+    const int played = midi_played[t][size_t(k)];
     from_midi = true;
     if (t == ui.track) { // as the pads: the arp, Seq Record, Capture's history
-        if (down && tr.engine == EngineKind::Sampler) tr.last_pad = uint8_t((unsigned(k) - sampler_first_note) % sampler_pads);
-        key(k, velocity, down);
+        if (down && played == k && tr.engine == EngineKind::Sampler) tr.last_pad = uint8_t((unsigned(k) - sampler_first_note) % sampler_pads);
+        key(played, velocity, down);
     } else if (tr.arp) {
-        if (down || !tr.arp_latch) send({Type::ArpKey, uint8_t(t), 0, uint16_t(k), int16_t(down ? velocity : 0)});
+        if (down || !tr.arp_latch) send({Type::ArpKey, uint8_t(t), 0, uint16_t(played), int16_t(down ? velocity : 0)});
     } else {
-        note(t, k, down ? velocity : 0);
+        note(t, played, down ? velocity : 0);
     }
     from_midi = false;
+}
+
+bool Context::midi_every_key(const Track& tr) const {
+    if (tr.engine != EngineKind::Sampler || !tr.levels || tr.arp) return false;
+    const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
+    return pad.used() && project.samples[pad.sample % sample_slots].instrument();
 }
 
 void Context::midi_release_all() {
@@ -163,8 +179,8 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     uint16_t tracks = note_tracks(config, own, c.ui.track, unsigned(channel));
     if (m.isNoteOff(true)) { // a note off (or on at velocity 0) ends the note wherever it is held, even after a track change
         for (unsigned t = 0; t < track_count; ++t) {
-            int key = note_key(c.project.tracks[t], m.getNoteNumber());
-            if (key >= 0 && c.midi_held[t].test(size_t(key))) c.midi_key(t, key, 0, false);
+            int key = m.getNoteNumber();
+            if (key >= 0 && key < 128 && c.midi_held[t].test(size_t(key))) c.midi_key(t, key, 0, false);
         }
         return;
     }
@@ -172,7 +188,7 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         if (!config.pad_in) return;
         for (unsigned t = 0; t < track_count; ++t) {
             if (!((tracks >> t) & 1)) continue;
-            int key = note_key(c.project.tracks[t], m.getNoteNumber());
+            int key = note_key(c.project.tracks[t], m.getNoteNumber(), c.midi_every_key(c.project.tracks[t]));
             if (key >= 0) c.midi_key(t, key, m.getVelocity(), true);
         }
         return;

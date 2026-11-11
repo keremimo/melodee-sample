@@ -4,12 +4,12 @@
 
 namespace melodee {
 namespace {
-bool before(const Event& a, const Event& b) { return a.tick != b.tick ? a.tick < b.tick : a.key < b.key; }
+bool before(const Event& a, const Event& b) { return a.tick != b.tick ? a.tick < b.tick : a.key != b.key ? a.key < b.key : a.pitch < b.pitch; }
 } // namespace
 
 bool Pattern::add(const Event& e) {
     auto at = std::lower_bound(events.begin(), events.end(), e, before);
-    if (at != events.end() && at->tick == e.tick && at->key == e.key) { *at = e; return true; }
+    if (at != events.end() && at->tick == e.tick && at->key == e.key && at->pitch == e.pitch) { *at = e; return true; }
     if (events.size() >= max_pattern_events) return false;
     events.insert(at, e);
     return true;
@@ -56,6 +56,8 @@ void Pattern::set_step(unsigned s, const Step& value) {
         if (value.length == old.length)
             for (unsigned k = 0; k < count; ++k) if (was[k].key == n.key) e.length = was[k].length;
         e.key = n.key; e.velocity = n.velocity; e.chance = value.chance; e.flags = value.flags;
+        for (unsigned k = 0; k < count; ++k) // the note it was keeps its pitch
+            if (was[k].key == n.key && was[k].velocity) { e.pitch = was[k].pitch; was[k].velocity = 0; break; }
         add(e);
     }
 }

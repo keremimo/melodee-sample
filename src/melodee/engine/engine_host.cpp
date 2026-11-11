@@ -230,11 +230,11 @@ void EngineHost::apply(const Command& c) {
     case Type::Looper: loops.ask(looper::Do(c.index), c.track, c.value, c.position); break;
     case Type::NoteOn:
         if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value);
-        if (c.pattern != 1) midi_note(c.track % track_count, c.index, c.value, frame_now, -1); // a pad's note (not one from MIDI in)
+        if (c.pattern != 1) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now, -1); // a pad's note (not one from MIDI in)
         break;
     case Type::NoteOff:
         if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_off(c.index);
-        if (c.pattern != 1) midi_note_off(c.track % track_count, c.index, frame_now);
+        if (c.pattern != 1) midi_note_off(c.track % track_count, c.index & 0xff, frame_now);
         break;
     case Type::AllNotesOff:
         midi_all_off(c.track, frame_now);
@@ -1035,7 +1035,8 @@ void EngineHost::tick() {
         for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n) {
             const auto& e = events[n];
             if (e.key > 127 && slot.kind != EngineKind::Sampler) continue; // past 127: kit pads only
-            if (skipped(slot, e.key, at)) continue;
+            const int played = pad_note(e.key, e.pitch); // the key, and over it what a kit pad plays at
+            if (skipped(slot, unsigned(played), at)) continue;
             random = random * 1664525u + 1013904223u;
             if (e.chance < 100 && (random >> 8) % 100 >= e.chance) continue;
             // Held for its length, a touch short unless tied.
@@ -1043,8 +1044,8 @@ void EngineHost::tick() {
             auto samples = int32_t(tick_length() * (e.length - gap));
             int velocity = e.flags & step_accent ? std::min(127, e.velocity + 24) : e.velocity;
             if (sound) {
-                slot.engine->note_on(e.key, velocity);
-                schedule_off(slot, e.key, std::max<int32_t>(samples, 64));
+                slot.engine->note_on(played, velocity);
+                schedule_off(slot, played, std::max<int32_t>(samples, 64));
             }
             midi_note(t, e.key, velocity, frame_now + block_at, std::max<int32_t>(samples, 64));
         }

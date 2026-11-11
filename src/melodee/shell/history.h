@@ -126,6 +126,7 @@ public:
     void clear() { undo_.clear(); redo_.clear(); }
     size_t size() const { return undo_.size(); }
     const Edit* last() const { return undo_.empty() ? nullptr : &undo_.back(); }
+    Edit* latest() { return undo_.empty() ? nullptr : &undo_.back(); }
     unsigned pushes = 0; // edits kept so far: a press that kept its own edit is not kept twice (shell/undo_scope.h)
 
 private:

@@ -89,7 +89,14 @@ struct SampleRef {
     char name[28] {};
     uint32_t frames = 0; // at 44.1 kHz, once loaded
     bool used() const { return path[0] != 0; }
+    bool instrument() const { // a multisampled instrument, by what it is called
+        const char* end = path + std::strlen(path);
+        return end - path >= 4 && end[-4] == '.' && (end[-3] | 32) == 's' && (end[-2] | 32) == 'f' && (end[-1] | 32) == 'z';
+    }
 };
+
+// A note of a pad, with the semitones it plays at from the pad's root over the key.
+constexpr int pad_note(int key, int semitones) { return semitones ? key | (int(uint8_t(int8_t(semitones))) << 8) : key; }
 
 // The pad's label as the boards print it: A01 .. D16.
 inline void pad_label(unsigned pad, char out[4]) {

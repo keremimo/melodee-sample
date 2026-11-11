@@ -188,7 +188,7 @@ private:
         PendingOn arp_late;
         int arp_played = -1, arp_from = -1; // the arp's last note and the held key it came from
         // Notes Seq Record just wrote ahead of the playhead (Rec Quantize), already heard live: skipped once.
-        struct Skip { int16_t key = -1; uint8_t pattern = 0; uint32_t tick = 0, until = 0; };
+        struct Skip { int32_t key = -1; uint8_t pattern = 0; uint32_t tick = 0, until = 0; };
         std::array<Skip, 8> skips {};
     };
     void load_track(unsigned t, const Track& track); // a whole track's sound, kit, mix and effects

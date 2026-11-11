@@ -41,8 +41,9 @@ struct Event {
     uint32_t tick = 0;
     uint16_t length = sixteenth_ticks;
     uint8_t key = 0, velocity = 100, chance = 100, flags = 0;
+    int8_t pitch = 0; // a sampler pad's: semitones from its root (16 Levels, an instrument's keys)
     bool operator==(const Event& o) const {
-        return tick == o.tick && length == o.length && key == o.key && velocity == o.velocity && chance == o.chance && flags == o.flags;
+        return tick == o.tick && length == o.length && key == o.key && velocity == o.velocity && chance == o.chance && flags == o.flags && pitch == o.pitch;
     }
     bool operator!=(const Event& o) const { return !(*this == o); }
 };

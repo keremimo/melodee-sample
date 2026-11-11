@@ -164,6 +164,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             w.u32(uint32_t(pattern.events.size()));
             for (const auto& e : pattern.events) { w.u32(e.tick); w.u16(e.length); w.u8(e.key); w.u8(e.velocity); w.u8(e.chance); w.u8(e.flags); }
             w.end(at);
+            uint32_t pitched = 0;
+            for (const auto& e : pattern.events) pitched += e.pitch != 0;
+            if (pitched) { // what older builds skip: the notes that play off their pad's root, by their place in EVNT
+                at = w.begin("PTCH");
+                w.u8(t); w.u8(p); w.u32(pitched);
+                for (uint32_t n = 0; n < pattern.events.size(); ++n)
+                    if (pattern.events[n].pitch) { w.u32(n); w.u8(uint8_t(pattern.events[n].pitch)); }
+                w.end(at);
+            }
         }
     }
     at = w.begin("TIME"); // time signature, BPM per pattern
@@ -457,6 +466,16 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 if (r.ok) pattern.events.push_back(e);
             }
             pattern.sort();
+        } else if (name == "PTCH") {
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            uint32_t count = std::min<uint32_t>(r.u32(), max_pattern_events);
+            for (uint32_t k = 0; k < count && r.ok; ++k) {
+                uint32_t place = r.u32();
+                auto pitch = int8_t(uint8_t(r.u8()));
+                if (r.ok && place < pattern.events.size()) pattern.events[place].pitch = pitch;
+            }
         } else if (name == "MOTN" || name == "MOT2") {
             bool legacy = name == "MOTN";
             unsigned count = r.u16();

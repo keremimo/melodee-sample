@@ -29,7 +29,7 @@ uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_c
 // The key a MIDI note plays on a track: a synth the note itself; a kit the
 // pad it names (36 = A01, as Melodee's own pad keys and its MIDI out), -1
 // below the first pad; a 909 its drums from 36 as its pads.
-int note_key(const Track& track, int note);
+int note_key(const Track& track, int note, bool every_key = false); // every_key: a kit pad playing an instrument on the keys
 
 // The channel a track's notes go out on (its own, else MIDI Config's Out) and
 // when (PadMidiOut), for Command::MidiTrack.

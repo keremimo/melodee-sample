@@ -54,7 +54,7 @@ public:
     // While Seq Record is on: the edit the take becomes in the history when it goes off.
     std::unique_ptr<Edit> take_edit;
     // Notes the take wrote that are still held: their length is what was played.
-    struct Held { int16_t key = -1; uint8_t track = 0, pattern = 0; uint32_t tick = 0, since = 0; };
+    struct Held { int32_t key = -1; uint8_t track = 0, pattern = 0; uint32_t tick = 0, since = 0; };
     std::array<Held, 16> held_notes {};
     int take_track = -1, take_pattern = -1;
     bool in_take(unsigned t, unsigned p) const { return take_edit && take_track == int(t) && take_pattern == int(p); } // Seq Record on this pattern
@@ -350,8 +350,8 @@ public:
     void set_tempo(int tenths);
 
     // The keys each pad started (a chord has up to four), so a release ends them.
-    std::array<std::array<int16_t, notes_per_step>, 16> pad_keys = [] {
-        std::array<std::array<int16_t, notes_per_step>, 16> keys {};
+    std::array<std::array<int32_t, notes_per_step>, 16> pad_keys = [] {
+        std::array<std::array<int32_t, notes_per_step>, 16> keys {};
         for (auto& pad : keys) pad.fill(-1);
         return keys;
     }();
@@ -362,6 +362,12 @@ public:
     void midi_key(unsigned t, int note, int velocity, bool down);
     void midi_release_all();                                // the input went away: every note it holds ends
     std::array<std::bitset<128>, track_count> midi_held {};  // keys MIDI in holds, by track
+    std::array<std::array<int32_t, 128>, track_count> midi_played {}; // what each of them plays
+    bool midi_every_key(const Track& tr) const;              // 16 Levels on an instrument: the whole keyboard is that pad
+    // An instrument loaded onto a pad: its envelope and velocity go onto the pad once read.
+    struct LandingPad { uint8_t track = 0; uint8_t pad = 0; uint16_t slot = 0; };
+    std::vector<LandingPad> landing_pads;
+    void land_instruments();
     bool from_midi = false;                                 // note() is playing what came in: not echoed out
     void change_midi(unsigned row, int way);                // one step along a MIDI Config row (shell/midi_config_rows.h)
     void reset_settings();                                  // MIDI Config's Reset Factory Settings, after B3
