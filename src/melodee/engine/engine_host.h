@@ -84,6 +84,17 @@ public:
         lost.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
+    // MIDI thread: a note played at `ns` (CLOCK_MONOTONIC, the pad's or the MIDI message's receive stamp). It plays
+    // a block after the frame being rendered then, at that frame (Command::timed), so two hits keep their spacing
+    // to the frame instead of moving to block starts. Untimed (the next block's start) while the clock is unknown.
+    bool send_at(Command command, uint64_t ns) {
+        if (ns && clock.known()) { command.timed = true; command.at = uint32_t(clock.frame_at(int64_t(ns)) + block); }
+        return send(command);
+    }
+    // Any thread: timed notes played on their frame, those that came after it (played at once), and the latest by.
+    uint32_t timed_kept() const { return timed_on_time.load(std::memory_order_relaxed); }
+    uint32_t timed_missed() const { return timed_late.load(std::memory_order_relaxed); }
+    uint32_t timed_worst_frames() const { return timed_worst.load(std::memory_order_relaxed); }
 
     // Audio thread: `frames` interleaved stereo S32 frames, after `volume`;
     // `input` the capture block (silent when there is none), for Record.
@@ -304,6 +315,13 @@ private:
     bool skipped(Slot& slot, unsigned key, uint32_t tick);
 
     MidiQueue<4096, Command> queue;
+    // The first command not applied yet: a timed note before its frame, or one sent after it, waiting behind it.
+    Command waiting {};
+    bool has_waiting = false;
+    unsigned take_commands(unsigned offset, unsigned frames); // those due by `offset`; the offset the next one waits for
+    static bool mid_block(Command::Type type);                // applied inside a block too (notes and values)
+    static constexpr int32_t timed_reach = 3 * 128;           // further ahead than a hit can be (three blocks): at once
+    std::atomic<uint32_t> timed_on_time {0}, timed_late {0}, timed_worst {0};
     // Plug-ins: each entry's as the rack offered it; the ones replaced wait in the queue to be freed.
     struct PluginOffer { uint8_t entry = 0; PluginRunner* runner = nullptr; };
     MidiQueue<64, PluginOffer> plugin_offers;

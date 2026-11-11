@@ -63,6 +63,10 @@ public:
     bool played_song = false; // the last Play was the song's
     EngineHost& host;
     uint32_t now = 0; // ms, set for each control
+    // CLOCK_MONOTONIC ns the control or MIDI message being handled came in (its receive stamp; 0: none, a timer's
+    // or a remote press): its notes play a block after that frame (EngineHost::send_at) and Seq Record places
+    // them where they were heard.
+    uint64_t hit_ns = 0;
 
     Track& track() { return project.tracks[ui.track % track_count]; }
     Pattern& pattern() { return patterns.at[ui.track % track_count][track().pattern % pattern_count]; }

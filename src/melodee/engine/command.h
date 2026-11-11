@@ -121,6 +121,11 @@ struct Command {
     SongPunch song_punch {};
     struct ProjectPack* pack = nullptr;
     struct TrackPack* track_pack = nullptr;
+    // A note played by hand or by MIDI in (EngineHost::send_at): it plays at frame `at` (the low 32 bits of the
+    // audio thread's count), a block after the frame it came in at, so hits keep their spacing; whatever was sent
+    // after it waits behind it (EngineHost::take_commands).
+    bool timed = false;
+    uint32_t at = 0;
 };
 
 } // namespace melodee

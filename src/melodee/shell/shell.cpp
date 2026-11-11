@@ -46,9 +46,21 @@ void Shell::start_settings(const std::string& text) {
     want_audio_format();
 }
 
+namespace {
+// The control or MIDI message being handled, for its notes' frame and Seq Record's place (Context::hit_ns).
+struct HitStamp {
+    Context& context;
+    HitStamp(Context& c, uint64_t ns) : context(c) { context.hit_ns = ns; }
+    ~HitStamp() { context.hit_ns = 0; }
+    HitStamp(const HitStamp&) = delete;
+    HitStamp& operator=(const HitStamp&) = delete;
+};
+} // namespace
+
 void Shell::midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;
+    HitStamp stamp(context_, packet.timestamp_ns);
     midi_io.receive(context_, port, packet);
 }
 
@@ -78,6 +90,7 @@ void Shell::midi_output(MidiOutput& out, MidiIo::Clock::time_point at, uint32_t 
 void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;
+    HitStamp stamp(context_, event.timestamp_ns);
     const auto& input = event.input;
     if (event.pad >= 0) {
         unsigned kind = event.midi.status & 0xf0;
@@ -573,6 +586,8 @@ std::string Shell::summary() const {
            " melodee_punch=" + std::to_string(int(host.punching())) + " melodee_buttons=" + button_text() + " melodee_pads=" + lit_pads_text() + " melodee_meter=" + meter_text() + " melodee_meter_db=" + meter_db_text() +
            " melodee_rec=" + std::to_string(rec_state.load()) + " melodee_count_in=" + std::to_string(host.count_in()) +
            " melodee_position=" + std::to_string(host.position_of(pt >> 8)) +
+           " melodee_timed=" + std::to_string(host.timed_kept()) + "/" + std::to_string(host.timed_missed()) + "/" +
+           std::to_string(host.timed_worst_frames()) + // notes played by hand on their frame / after it / the latest by
            " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
            " melodee_q=" + std::to_string(pattern_q.load()) + " melodee_first_tick=" + std::to_string(first_tick.load()) +
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +

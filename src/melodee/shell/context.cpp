@@ -39,7 +39,13 @@ void Context::send(const Command& command) {
     case Type::Click: break;
     default: dirty = true;
     }
-    host.send(command);
+    // A note played by hand or by MIDI in plays at the frame it came in, a block late, not at the next block's start.
+    switch (command.type) {
+    case Type::NoteOn: case Type::NoteOff: case Type::PadNote: case Type::ArpKey: case Type::Pressure: case Type::Audition:
+        host.send_at(command, hit_ns);
+        break;
+    default: host.send(command);
+    }
 }
 
 void Context::save_project_to(const std::string& path) {

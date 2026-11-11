@@ -98,6 +98,7 @@ void MelodeeApp::midi_output(MidiOutput& out, Clock::time_point now) {
 }
 
 void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
+    auto remote_ns = [] { return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count()); };
     melodee::LooperAsk looper_ask;
     while (remote_looper.pop(looper_ask)) shell.looper_ask(looper_ask, now_ms());
     Remote remote;
@@ -127,6 +128,7 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
             SurfaceEvent event;
             bool down = remote.delta != 0;
             event.pad = remote.index;
+            event.timestamp_ns = remote_ns(); // timed as a hand's, to the frame
             event.midi = {uint8_t(down ? 0x99 : 0x89), surface_pad_notes[remote.index % 16], uint8_t(down ? 100 : 0)};
             shell.surface(event, now_ms());
             continue;
@@ -144,6 +146,7 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
                 SurfaceEvent event;
                 event.pad = remote.index;
                 event.midi = {uint8_t(down ? 0x99 : 0x89), surface_pad_notes[remote.index % 16], uint8_t(down ? 100 : 0)};
+                event.timestamp_ns = remote_ns();
                 shell.surface(event, now_ms());
             }
             if (holding) hold(false);

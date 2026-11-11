@@ -42,9 +42,17 @@ one owner per piece of state.
 - **MIDI thread** owns the project and the interface state. Pads, buttons,
   pots, the wheel, the fader and external MIDI change them there. Every
   change that affects sound becomes a small `Command` pushed onto one
-  single-producer queue to the audio thread.
+  single-producer queue to the audio thread. It runs at `SCHED_FIFO` 15
+  (the base's, under the audio thread's 30), so a pad is read as it
+  arrives. A note played by hand or by MIDI in carries its receive stamp
+  (`Context::hit_ns`): it plays a block after the frame it came in at, at
+  that frame (`EngineHost::send_at`), so two hits keep their spacing;
+  status `melodee_timed` counts those on their frame, those that came
+  after it, and the latest by (frames).
 - **Audio thread** owns the engines and copies of the patterns. Each block
-  drains the queue, advances the clock, plays the engines, mixes and
+  drains the queue (a timed note waits for its frame and splits the block
+  there; what was sent after it waits behind it, and inside a block only
+  notes and values are applied), advances the clock, plays the engines, mixes and
   effects the tracks, and decides which MIDI goes out at which frame. It
   never allocates, locks or waits: patterns, samples, projects and track
   copies arrive whole by pointer and go back to be freed elsewhere.
@@ -1134,7 +1142,8 @@ time against its budget, tenths of a percent), `melodee_render_parallel`
 page and track, the lit buttons (`melodee_buttons=seq:2,stop:1`, 1 faint,
 2 bright) and pads (`melodee_pads=2:t4`: hue and rung, Pad lights above), the meters (`melodee_meter=3,1,out`:
 left and right as masks, bit 0 the bottom LED, then `out` or `in`); the sequencer (`melodee_rec`,
-`melodee_count_in`, `melodee_position`, `melodee_pattern_ticks`,
+`melodee_count_in`, `melodee_position`, `melodee_timed` (notes played by
+hand on their frame / after it / the latest by, frames), `melodee_pattern_ticks`,
 `melodee_events`, `melodee_q`, `melodee_first_tick`, `melodee_signature`,
 `melodee_ticks`, `melodee_song_bar`, `melodee_song_clips`); Step Edit
 (`melodee_step`, `melodee_event`, `melodee_event_tick`); `melodee_ask` (0

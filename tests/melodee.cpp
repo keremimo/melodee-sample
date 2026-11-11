@@ -6907,6 +6907,57 @@ void pad_lights() {
     ui.exit_open = false;
 }
 
+// Roadmap P0: a hit plays at its own frame, a block late.
+void hits_on_time() {
+    // Two hits 5 ms apart (220.5 frames) come out 5 ms apart, each a block after the frame it came in at, not on
+    // block starts; one that came in after its frame (a late MIDI thread) plays at once and is counted.
+    {
+        using K = MidiOutEvent::Kind;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        load_sound(project->tracks[1], EngineKind::Prophet, 1);
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        host.send({Command::Type::MidiTrack, 0, 0, 5, 1}); // MIDI out too, to the frame
+        host.send({Command::Type::MidiTrack, 1, 0, 6, 1});
+        std::vector<int32_t> out(256);
+        std::vector<float> stems(size_t(track_count) * EngineHost::block);
+        std::array<std::vector<float>, 2> heard;
+        auto render = [&] {
+            host.render(out.data(), 128, 1, nullptr, stems.data());
+            for (unsigned t = 0; t < 2; ++t) heard[t].insert(heard[t].end(), stems.begin() + t * 128, stems.begin() + (t + 1) * 128);
+        };
+        for (int b = 0; b < 4; ++b) render();
+        const auto& clock = host.audio_clock();
+        // In 1 ms into rendering frame 512's block, and 5 ms after.
+        const int64_t first = clock.heard_at(512) - int64_t(384 * 1e9 / 44100) + 1000000, second = first + 5000000;
+        const uint64_t f1 = clock.frame_at(first) + 128, f2 = clock.frame_at(second) + 128;
+        CHECK(f2 - f1 >= 220 && f2 - f1 <= 221 && f1 % 128 != 0 && f2 % 128 != 0);
+        host.send_at({Command::Type::NoteOn, 0, 0, 60, 100}, uint64_t(first));
+        host.send({Command::Type::Param, 1, 0, 0, project->tracks[1].params[0]}); // untimed: waits behind, still applied
+        host.send_at({Command::Type::NoteOn, 1, 0, 60, 100}, uint64_t(second));
+        for (int b = 0; b < 8; ++b) render();
+        std::vector<uint64_t> on;
+        MidiOutEvent e;
+        while (host.take_midi(e)) if (e.kind == K::NoteOn) on.push_back(e.frame);
+        CHECK(on.size() == 2 && on[0] == f1 && on[1] == f2);
+        auto onset = [&](const std::vector<float>& v) { for (size_t n = 0; n < v.size(); ++n) if (v[n] != 0) return n; return v.size(); };
+        CHECK(onset(heard[0]) >= f1 && onset(heard[0]) <= f1 + 2);
+        CHECK(onset(heard[1]) >= f2 && onset(heard[1]) <= f2 + 2);
+        CHECK(host.timed_kept() == 2 && host.timed_missed() == 0);
+        // Late: its frame went by before it came (the MIDI thread woke late). It plays at the next block's start.
+        Command late {Command::Type::NoteOn, 0, 0, 62, 100};
+        late.timed = true; late.at = uint32_t(f1);
+        host.send(late);
+        render();
+        on.clear();
+        while (host.take_midi(e)) if (e.kind == K::NoteOn) on.push_back(e.frame);
+        CHECK(on.size() == 1 && on[0] == 12 * 128 && host.timed_missed() == 1 && host.timed_worst_frames() == 12 * 128 - f1);
+    }
+}
+
 int main() {
     plugins();
     voice_taps();
@@ -6947,6 +6998,7 @@ int main() {
     sample_mode();
     step_edit_and_pad_motion();
     timing();
+    hits_on_time();
     pad_expression();
     parity_1c();
     shift_pads();

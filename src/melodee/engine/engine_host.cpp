@@ -133,6 +133,47 @@ void EngineHost::retire(Pattern* pattern) {
     // No room anywhere: it is leaked rather than freed here.
 }
 
+// The commands due `offset` frames into this block of `frames`, in the order sent. A timed note (send_at) waits
+// for its frame, and whatever came after it waits behind it, so nothing overtakes it. Inside a block only notes
+// and values are applied (mid_block); anything else waits for the next block's start, where all of it always was.
+// Returns the offset the next command waits for, or `frames`.
+unsigned EngineHost::take_commands(unsigned offset, unsigned frames) {
+    for (unsigned n = 0; n < 4096; ++n) {
+        if (!has_waiting && !queue.pop(waiting)) return frames;
+        has_waiting = true;
+        if (waiting.timed) {
+            int32_t due = int32_t(waiting.at - uint32_t(frame_now));
+            if (due > timed_reach) due = 0; // the audio clock off (just after an overrun): at once, as before
+            if (due > int32_t(offset)) return unsigned(std::min<int32_t>(due, int32_t(frames)));
+            // On its frame, or it came after it (the MIDI thread woke late): at once, and counted.
+            uint32_t late = uint32_t(int32_t(offset) - due);
+            if (!late) timed_on_time.fetch_add(1, std::memory_order_relaxed);
+            else {
+                timed_late.fetch_add(1, std::memory_order_relaxed);
+                if (late > timed_worst.load(std::memory_order_relaxed)) timed_worst.store(late, std::memory_order_relaxed);
+            }
+        } else if (offset && !mid_block(waiting.type)) {
+            return frames;
+        }
+        has_waiting = false;
+        block_at = offset; // MIDI out of what it plays goes at this frame
+        apply(waiting);
+    }
+    return frames;
+}
+
+bool EngineHost::mid_block(Command::Type type) {
+    using Type = Command::Type;
+    switch (type) {
+    case Type::NoteOn: case Type::NoteOff: case Type::PadNote: case Type::ArpKey: case Type::Pressure: case Type::Audition:
+    case Type::Param: case Type::Wheel: case Type::Mod: case Type::Level: case Type::Pan: case Type::FxParam:
+    case Type::PadFxParam: case Type::PatternData: case Type::Recorded:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // A note Seq Record wrote just ahead of the playhead was heard as it was played: once, not twice.
 bool EngineHost::skipped(Slot& slot, unsigned key, uint32_t tick) {
     for (auto& s : slot.skips) {
@@ -240,11 +281,11 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::NoteOn:
         if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value);
-        if (c.pattern != 1) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now, -1); // a pad's note (not one from MIDI in)
+        if (c.pattern != 1) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now + block_at, -1); // a pad's note (not one from MIDI in)
         break;
     case Type::NoteOff:
         if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_off(c.index);
-        if (c.pattern != 1) midi_note_off(c.track % track_count, c.index & 0xff, frame_now);
+        if (c.pattern != 1) midi_note_off(c.track % track_count, c.index & 0xff, frame_now + block_at);
         break;
     case Type::AllNotesOff:
         midi_all_off(c.track, frame_now);
@@ -481,7 +522,7 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::PadNote:
         if (slot.engine == &slot.sampler) slot.sampler.play_pad(c.index, c.value, int(c.pattern) - 64, int(c.position) - 1);
-        midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now, -1); // 16 Levels: the pad's note
+        midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now + block_at, -1); // 16 Levels: the pad's note
         break;
     case Type::MidiTrack:
         if (!is_midi(c.track)) midi_all_off(c.track, frame_now); // what went out on the old channel ends there (a MIDI track keeps its own)
@@ -1196,9 +1237,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     take_plugins();
     // Where this block sits against CLOCK_MONOTONIC, for MIDI out and in.
     clock.stamp(int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()), frame_now);
-    Command command;
-    for (unsigned n = 0; n < 4096 && queue.pop(command); ++n) apply(command);
     frames = std::min(frames, block);
+    // The commands due at the block's start; a timed note later in it splits the block at its frame, below.
+    unsigned next_command = take_commands(0, frames);
     auto block_start = std::chrono::steady_clock::now();
     // The tracks' own work goes to the render workers too once it is worth waking them for, and never while one
     // plug-in plays in two places (it would be asked for two blocks at once).
@@ -1241,10 +1282,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // The Looper's time is the sequencer's at the block's first frame (run_loops() comes after the block is played).
     loop_running = running; loop_counting = count_left > 0;
     loop_tick = running ? double(tick_now) - until_tick / tick_length() : 0;
-    // Render up to each step, play the step, carry on: steps land on the sample.
+    // Render up to each step, play the step, carry on: steps land on the sample, and so do notes played by hand.
     unsigned done = 0;
     while (done < frames) {
-        unsigned n = frames - done;
+        if (next_command <= done) next_command = take_commands(done, frames);
+        unsigned n = std::min(frames, next_command) - done;
         bool held = false; // following MIDI clock in: the next tick waits for its pulse
         if (running) {
             ext_release(frame_now + done);
