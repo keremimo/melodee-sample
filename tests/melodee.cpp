@@ -3,8 +3,10 @@
 // the PROPHET engine and the engine host's sequencer and mixer.
 #include "melodee/engine/effects.h"
 #include <functional>
+#include <map>
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sampler.h"
+#include "melodee/engine/sfz.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
@@ -4517,7 +4519,143 @@ void zero_snap() {
     CHECK(whole[2000] > 0.1f && whole[20] > 3 * slice[20]);
 }
 
+// The SFZ reader, as melodee-ios's: its levels, comments, defines, includes and traps.
+void sfz_reader() {
+    using S = std::vector<std::string>;
+    auto samples = [](const SfzRead& r) { S out; for (auto& g : r.regions) out.push_back(g.sample); return out; };
+    {
+        auto read = read_sfz(
+            "// a comment\n/* a block\n   of comment */\n#define $LOW 36\n"
+            "<control> default_path=Samples\\Keys\\ note_offset=0\n"
+            "<global> ampeg_release=0.5 ampeg_attack=0.01 ampeg_sustain=80 ampeg_decay=1\n"
+            "<group> lovel=1 hivel=64 volume=-6 seq_length=2\n"
+            "<region> sample=C2 soft.wav lokey=$LOW hikey=47 pitch_keycenter=c2 tune=-5 seq_position=1 loop_mode=loop_continuous loop_start=100 loop_end=199\n"
+            "<region> sample=C2 soft 2.wav lokey=36 hikey=47 pitch_keycenter=36 seq_position=2 pan=-50 bend_up=200\n"
+            "<group> lovel=65\n"
+            "<region> sample=C4 loud.wav key=c#4 volume=3 transpose=-1 offset=48 end=4799 loop_mode=one_shot group=2 off_by=3 pitch_keytrack=0\n"
+            "<region> sample=*sine key=70\n<region> sample=gone.wav hikey=-1\n");
+        CHECK(read.regions.size() == 3 && read.left == 2);
+        CHECK(read.ignored == std::set<std::string> {"bend_up"});
+        const auto& soft = read.regions[0], &second = read.regions[1], &loud = read.regions[2];
+        CHECK(soft.sample == "Samples/Keys/C2 soft.wav" && second.sample == "Samples/Keys/C2 soft 2.wav");
+        CHECK(soft.zone.low_key == 36 && soft.zone.high_key == 47 && soft.zone.root == 36);
+        CHECK(soft.zone.low_velocity == 1 && soft.zone.high_velocity == 64 && soft.zone.gain == -6 && soft.zone.tune == -5);
+        CHECK(soft.zone.sequence_length == 2 && soft.zone.sequence == 1 && second.zone.sequence == 2 && second.zone.pan == -0.5f);
+        CHECK(soft.zone.loop == ZoneLoop::On && soft.zone.loop_start == 100 && soft.zone.loop_end == 200);
+        CHECK(loud.zone.low_key == 61 && loud.zone.high_key == 61 && loud.zone.root == 61 && loud.zone.tune == -100 && loud.zone.gain == 3);
+        CHECK(loud.zone.low_velocity == 65 && loud.zone.high_velocity == 127 && loud.zone.one_shot && loud.zone.group == 2 && loud.zone.off_by == 3);
+        CHECK(loud.zone.keytrack == 0 && loud.offset == 48 && loud.end == 4800);
+        CHECK(read.envelope.attack == 0.01 && read.envelope.decay == 1.0 && read.envelope.sustain == 80.0 && read.envelope.release == 0.5);
+    }
+    CHECK(sfz_note("60") == 60 && sfz_note("c4") == 60 && sfz_note("C4") == 60 && sfz_note("c#4") == 61 && sfz_note("db4") == 61);
+    CHECK(sfz_note("a-1") == 9 && sfz_note("b3") == 59 && !sfz_note("zz") && !sfz_note("c"));
+    {
+        auto read = read_sfz("<group>hivel=50\n#include \"more.sfz\"\n<region>sample=c.wav", [](const std::string& name) {
+            return name == "more.sfz" ? std::optional<std::string>("<region>sample=b.wav") : std::nullopt;
+        });
+        CHECK(samples(read) == S({"b.wav", "c.wav"}));
+        for (auto& g : read.regions) CHECK(g.zone.high_velocity == 50);
+    }
+    { // laid out as Splendid Grand Piano's file is
+        std::map<std::string, std::string> files {
+            {"Data/Res.txt", "group_volume=-11\nampeg_attack=0.1\n\n<region> lokey=021 hikey=022 pitch_keycenter=033 sample=PP A0.$EXT\n"},
+            {"Data/PP.txt", "<region> region_label=01 lokey=021 hikey=024 pitch_keycenter=023 ampeg_release=0.6 sample=PP B-1.$EXT\n"
+                            "<region> region_label=07 lokey=036 hikey=037 pitch_keycenter=037 sample=PP C#1.$EXT volume=1\n"
+                            "<region> region_label=08 lokey=038 hikey=039 pitch_keycenter=038 sample=PP D1.$EXT offset=1046\n"
+                            "<region> region_label=44 lokey=091 hikey=091 pitch_keycenter=091 ampeg_release=10 sample=PP G5.$EXT pan=-30 offset=135\n"},
+            {"Data/FF.txt", "<region> lokey=036 hikey=037 pitch_keycenter=037 sample=FF C#1.$EXT\n"}};
+        auto read = read_sfz(
+            "#define $RES 70\n#define $RELEASE 72\n#define $EXT flac\n#define $DIR Data\n"
+            "<control>\ndefault_path=Samples/\nlabel_cc64=Sus.Pedal\nlabel_cc$RES=Resonance\nset_hdcc$RES=0.5\nset_hdcc$RELEASE=0.35\n"
+            "//*******************************************************\n"
+            "<global>\nampeg_attack=0.0005\nampeg_hold=8\nampeg_decay=80\nampeg_sustain=0\nampeg_release_oncc$RELEASE=2\nampeg_releasecc64=15\nampeg_release_curvecc64=11\n"
+            "<curve>curve_index=11\nv000=0\nv127=1\n"
+            "<group>\ngroup=1\nlocc64=65\nlocc$RES=1\n#include \"$DIR/Res.txt\"\n"
+            "<group>\nlovel=1\nhivel=40\ncutoff=1000\ngroup_volume=0\n#define $DYN PP\ngroup_label=P$DYN\n#include \"$DIR/$DYN.txt\"\n"
+            "<group>\nlovel=41\nhivel=127\ngroup_volume=-3\n#define $DYN FF\ngroup_label=$DYN\n#include \"$DIR/$DYN.txt\"\n",
+            [&](const std::string& name) { auto f = files.find(name); return f == files.end() ? std::nullopt : std::optional<std::string>(f->second); });
+        CHECK(read.left == 1 && read.left_by == std::set<std::string> {"locc64"}); // the resonance layer waits for the pedal
+        CHECK(read.regions.size() == 5);
+        const auto& first = read.regions[0], &sharp = read.regions[1], &last = read.regions[3], &loud = read.regions[4];
+        CHECK(first.sample == "Samples/PP B-1.flac" && sharp.sample == "Samples/PP C#1.flac" && loud.sample == "Samples/FF C#1.flac");
+        for (unsigned n = 0; n < 4; ++n) CHECK(read.regions[n].zone.cutoff == 1000 && read.regions[n].zone.high_velocity == 40);
+        CHECK(loud.zone.cutoff == 0 && loud.zone.low_velocity == 41 && loud.zone.gain == -3);
+        CHECK(read.regions[2].offset == 1046 && last.zone.pan == -0.3f);
+        CHECK(read.envelope.sustain == 100.0); // the hold and decay pass the longest stage: the sample falls by itself
+        CHECK(read.envelope.release == 0.001 + 2 * 0.35);
+        CHECK(sharp.zone.release == 0 && loud.zone.release == 0);
+        CHECK(first.zone.release == sfz_release_step(1.3) - sfz_release_step(0.701));
+        CHECK(last.zone.release == 100 - sfz_release_step(0.701));
+        CHECK(read.velocity == 100);
+        for (auto& name : read.ignored) CHECK(name.rfind("label_", 0) != 0 && name.rfind("set_", 0) != 0);
+        CHECK(!read.ignored.count("ampeg_release_oncc72") && !read.ignored.count("cutoff") && read.ignored.count("ampeg_releasecc64"));
+    }
+    {
+        auto found = sfz_opcodes("sample=PP C#1.flac Lokey=36 x-y=1  9a=2 == hikey= 40 path=a=b.wav");
+        std::vector<std::pair<std::string, std::string>> expected {
+            {"sample", "PP C#1.flac"}, {"lokey", "36 x-"}, {"y", "1  9"}, {"a", "2 =="}, {"hikey", "40"}, {"path", ""}, {"a", "b.wav"}};
+        CHECK(found == expected);
+    }
+    { // a line of stars is a line comment; a /* never closed is the rest of the file
+        auto read = read_sfz("//****************\n<region> sample=a.wav // and what follows /* is still this line's\n"
+                             "/* a // in a block */ <region> sample=b.wav\n/////////////\n<region> sample=c.wav /* never closed\n<region> sample=d.wav\n");
+        CHECK(samples(read) == S({"a.wav", "b.wav", "c.wav"}));
+        CHECK(sfz_uncommented("a//b\r\nc/*d*/e\n") == "a\r\nce\n");
+    }
+    {
+        auto read = read_sfz("<control> set_cc1=100 set_hdcc2=0.25\n<region> sample=up.wav key=60 hicc64=63\n<region> sample=down.wav key=60 locc64=64\n"
+                             "<region> sample=wheel high.wav key=61 locc1=90\n<region> sample=wheel low.wav key=61 hicc1=89\n"
+                             "<region> sample=fine.wav key=62 lohdcc2=0.5\n<region> sample=fine low.wav key=62 hihdcc2=0.5\n<region> sample=note.wav key=63 locc133=64\n");
+        CHECK(samples(read) == S({"up.wav", "wheel high.wav", "fine low.wav", "note.wav"}));
+        CHECK(read.left == 3 && read.ignored.count("locc133"));
+    }
+    {
+        auto read = read_sfz("<global> sw_lokey=24 sw_hikey=25 sw_default=24\n<region> sample=note.wav key=60 sw_last=24\n<region> sample=other.wav key=60 sw_last=25\n"
+                             "<region> sample=tail.wav key=60 trigger=release sw_last=24\n<region> sample=first.wav key=61 trigger=first sw_last=24\n"
+                             "<region> sample=slur.wav key=61 trigger=legato sw_last=24\n");
+        CHECK(samples(read) == S({"note.wav", "first.wav"}));
+        CHECK(read.left == 3 && read.left_by == std::set<std::string>({"trigger", "sw_last"}));
+    }
+    {
+        auto read = read_sfz("<region> sample=a.wav cutoff=800 resonance=9 fil_type=hpf_2p fil_veltrack=1200 fil_keytrack=50 fil_keycenter=c5\n"
+                             "<region> sample=b.wav cutoff=800 fil_type=lpf_1p\n<region> sample=c.wav cutoff=800 fil_type=bpf_2p\n"
+                             "<region> sample=d.wav cutoff=800 fil_type=brf_2p\n<region> sample=e.wav cutoff=99999 resonance=99\n");
+        const auto& r = read.regions;
+        CHECK(r[0].zone.cutoff == 800 && r[0].zone.resonance == 9 && r[0].zone.filter == PadFilter::Hpf2 && r[0].zone.cutoff_velocity == 1200
+              && r[0].zone.cutoff_key == 50 && r[0].zone.cutoff_center == 72);
+        CHECK(r[1].zone.filter == PadFilter::Lpf2 && r[2].zone.filter == PadFilter::Bpf2);
+        CHECK(r[3].zone.cutoff == 0 && r[3].zone.filter == PadFilter::Off && read.ignored == std::set<std::string> {"fil_type"});
+        CHECK(r[4].zone.cutoff == 20000 && r[4].zone.resonance == 40);
+    }
+    { // a zone's envelope is off the one most share
+        auto read = read_sfz("<region> sample=a.wav ampeg_release=2\n<region> sample=b.wav ampeg_release=0.5 ampeg_attack=0.1\n<region> sample=c.wav ampeg_release=0.5\n"
+                             "<region> sample=d.wav ampeg_release=0.5 ampeg_sustain=50 ampeg_decay=1\n<region> sample=e.wav\n");
+        CHECK(read.envelope.attack == 0.0 && read.envelope.decay == 0.0 && read.envelope.sustain == 100.0 && read.envelope.release == 0.5);
+        const auto& r = read.regions;
+        CHECK(r[1].zone.release == 0 && r[0].zone.release == sfz_release_step(2) - sfz_release_step(0.5));
+        CHECK(r[1].zone.attack == sfz_attack_step(0.1) && r[2].zone.attack == 0);
+        CHECK(r[3].zone.sustain == 50 - 100 && r[3].zone.decay == sfz_decay_step(1) - sfz_decay_step(0));
+        CHECK(r[4].zone.release == sfz_release_step(0.001) - sfz_release_step(0.5));
+    }
+    {
+        auto read = read_sfz("<region> sample=a.wav\n<region> sample=b.wav");
+        CHECK(!read.envelope.attack && !read.envelope.decay && !read.envelope.sustain && !read.envelope.release);
+        for (auto& g : read.regions) CHECK(g.zone.attack == 0 && g.zone.release == 0 && g.zone.sustain == 0 && g.zone.decay == 0);
+    }
+    {
+        auto read = read_sfz("<region> sample=a.wav ampeg_hold=1 ampeg_decay=2 ampeg_sustain=40 amp_veltrack=25");
+        CHECK(read.envelope.decay == 3.0 && read.envelope.sustain == 40.0 && read.velocity == 25);
+    }
+    {
+        std::string many;
+        for (unsigned n = 0; n < max_zones + 3; ++n) many += "<region>sample=" + std::to_string(n) + ".wav\n";
+        auto read = read_sfz(many);
+        CHECK(read.regions.size() == max_zones && read.left == 3);
+    }
+}
+
 int main() {
+    sfz_reader();
     track_source();
     zero_snap();
     looper_engine();
