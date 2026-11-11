@@ -255,6 +255,7 @@ public:
     // engine and effect anew at it. It stops playback. False when the queue was full (try again).
     bool reformat();
     unsigned samples_to_load = sample_slots; // next sample slot to (re)load after a switch
+    std::vector<uint8_t> slots_waiting;      // slots sample_slot() named while the library's queue was full: asked for again each pass
     PadSound& pad() { return track().pads[track().last_pad % sampler_pads]; }
     void send_pad(unsigned track, unsigned pad);
     int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load

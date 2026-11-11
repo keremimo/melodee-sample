@@ -89,6 +89,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     if (store) store->opened(path); // a file of its own: the one the next start resumes
     dirty = false;
     samples_to_load = 0; // every sample slot again, a few each tick
+    slots_waiting.clear();
     load_loop_files(*this, path); // its loops, from beside its file (docs/LOOPER.md)
 }
 
@@ -1161,7 +1162,7 @@ int Context::sample_slot(const std::string& path, const std::string& name) {
     std::strncpy(ref.path, path.c_str(), sizeof(ref.path) - 1);
     std::strncpy(ref.name, name.c_str(), sizeof(ref.name) - 1);
     ref.frames = 0; // known once loaded
-    library->load(unsigned(free), path);
+    if (!library->load(unsigned(free), path)) slots_waiting.push_back(uint8_t(free)); // a kit of many: the rest as the queue drains
     return free;
 }
 

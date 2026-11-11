@@ -162,6 +162,13 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         store_->view(v);
         ui_.project_rows = uint16_t(v.entries.size() + (context_.project_path.empty() ? 2 : 1) + (context_.project_folder.empty() ? 1 : 0)); // + SD card access
     }
+    // Slots a Load Kit or Load Bank named past what the queue holds, as it drains.
+    while (library_ && !context_.slots_waiting.empty()) {
+        unsigned slot = context_.slots_waiting.front();
+        const auto& ref = project_->samples[slot % sample_slots];
+        if (ref.used() && !library_->load(slot, ref.path)) break;
+        context_.slots_waiting.erase(context_.slots_waiting.begin());
+    }
     // After a switch, every sample slot loads again (or empties), a few each pass.
     while (library_ && context_.samples_to_load < sample_slots) {
         const auto& ref = project_->samples[context_.samples_to_load];
