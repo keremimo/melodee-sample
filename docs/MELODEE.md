@@ -340,6 +340,22 @@ thread.
   or INTERNAL: the factory categories and the stock app's User folder, read
   only), B3 PREVIEW plays each file as the cursor lands; Shift + pad loads
   onto the next empty pad. Melodee writes only to the card.
+- **SFZ instruments** (`.sfz` in the browser, tagged SFZ): load onto a pad as
+  a WAV does; the pad keeps all its controls and its note and velocity pick
+  zones (up to 512; round robin, layers, `group` / `off_by`, each zone's own
+  filter and envelope as offsets from the pad's). A hit plays key 60 plus the
+  pad's Semi. **16 Levels** on the pad plays it: Tune or Scale for notes,
+  Velocity through its layers; while 16 Levels is on it, a MIDI keyboard plays
+  it at real pitch. Stage's TRIM shows its keys and velocities, how far it has
+  been read and anything not played. Samples may be WAV, FLAC, Ogg or AIFF; a
+  loop may come from the region, a WAV's `smpl` chunk or one kept in a FLAC.
+  The first load decodes each file once into `Melodee/Cache`; after that
+  opening is near instant and audio streams from the card (a third of a
+  second of each zone's start stays in memory, `engine/stream_pager.h` pins
+  the rest ahead of each voice, so the audio thread never waits on the card).
+  Chop, Trim Sample, Save Sample, Normalize and Warp refuse on it; Cloud stays
+  in the held start. SD card access lets go of instruments and reloads them
+  when the card comes back. An SFZ takes one of the project's 64 sample slots.
 - **Banks** (kit tracks only): one bank of a kit's sixteen pads as a file.
   **Save Bank** is Shift + Sample Select on Samples: the Name sheet (the kit's
   name and bank letter first), then `Samples/Banks/<name>.mldb` with every
@@ -616,7 +632,7 @@ voices or the engine's own count; tracks render in one block of 128 frames.
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
   `MOT2` / `MOTP` / `MOTW` motion, `TIME`, `PAD4` / `KITX` / `PMUT` kits,
-  `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER` and the rest; a
+  `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, so older builds load it
   empty). Saved beside
   the file, then renamed into place.
@@ -626,6 +642,9 @@ voices or the engine's own count; tracks render in one block of 128 frames.
 - `Samples/`: loaded from anywhere under it; Melodee writes `Recorded/`,
   `Edits/` and saved samples there, bank files in `Banks/`, and committed
   loops in `Looper/`.
+- `Melodee/Cache/*.f32`: SFZ samples decoded for streaming, named by the
+  source's name, size and date; the least lately played go past 4 GB. Safe to
+  delete: they are made again.
 - `Melodee/Projects/**/<project> Loops/Loop N.wav`: a project's loops.
   `Melodee/Mixdowns/` holds song mixdowns.
 

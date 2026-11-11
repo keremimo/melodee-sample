@@ -149,6 +149,8 @@ hit. B2 switches between the card and the MPC's internal factory samples;
 B3 PREVIEW plays each file as you land on it. Shift + pad loads onto the
 next empty pad.
 
+**Multisampled instruments.** An `.sfz` loads the same way, onto one pad. Press **16 Levels** on it and choose Tune with Shift + 16 Levels to play it chromatically on the pads; a MIDI keyboard plays it at real pitch while 16 Levels is on. The first load prepares its files on the card, which can take a while for a big library; after that it opens at once.
+
 ![The sample browser](images/quickstart/samples.png)
 
 **Cut: Chop.** Chop slices the last pad's sample. K1 and K2 move the
