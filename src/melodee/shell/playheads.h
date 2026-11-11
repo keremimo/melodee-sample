@@ -105,4 +105,60 @@ private:
     uint8_t track = 255;
 };
 
+// How far a head has played through its region, 0..1: from its start, or
+// reversed from its end (a loop's later passes from where they are now).
+inline float head_through(const PlayHead& h) {
+    if (h.to <= h.from) return 0;
+    double span = double(h.to) - double(h.from);
+    double into = h.reverse() ? double(h.to) - h.at : h.at - double(h.from);
+    return float(std::clamp(into / span, 0.0, 1.0));
+}
+
+// The Pads page (mock 4): a line along the foot of each sounding pad of the
+// bank in view, as long as the pad's newest voice has played through its
+// region, as strong as that voice's envelope (0: no line).
+struct PadLine {
+    float through = 0;
+    float strength = 0;
+};
+inline std::array<PadLine, 16> bank_lines(const std::array<PlayHead, HeadTrail::size>& heads, unsigned bank) {
+    std::array<PadLine, 16> out {};
+    std::array<bool, 16> taken {};
+    for (const auto& h : heads) { // newest first: the first a pad meets is its newest
+        if (!h.shown() || h.pad < int(bank * 16) || h.pad >= int(bank * 16 + 16)) continue;
+        unsigned n = unsigned(h.pad) - bank * 16;
+        if (taken[n]) continue;
+        taken[n] = true;
+        out[n] = {head_through(h), std::clamp(h.level, 0.0f, 1.0f)};
+    }
+    return out;
+}
+
+// The Samples list (mock 7): the file previewing under the cursor, played on
+// the audition voice (`pad`, `slot`): how far through, the seconds heard of
+// its length at `rate` frames a second, the fill's fade and the head's
+// strength. Not shown once a moved cursor cut it (that voice was another file).
+struct PreviewPlace {
+    bool shown = false;
+    bool sounding = false;   // still heard (B3 lit)
+    float through = 0, strength = 0, wake = 0;
+    double heard = 0, length = 0; // seconds
+};
+inline PreviewPlace preview_place(const std::array<PlayHead, HeadTrail::size>& heads, int pad, uint16_t slot, double rate) {
+    PreviewPlace out;
+    for (const auto& h : heads) {
+        if (!h.shown() || h.pad != pad || h.slot != slot) continue;
+        if (h.flags & tap::Choked) return out; // the newest preview was cut: nothing for this row
+        out.shown = true;
+        out.sounding = h.level >= HeadTrail::silent;
+        out.through = head_through(h);
+        out.strength = std::clamp(h.level, 0.0f, 1.0f);
+        out.wake = h.wake;
+        out.length = rate > 0 && h.to > h.from ? (double(h.to) - double(h.from)) / rate : 0;
+        out.heard = out.length * out.through;
+        return out;
+    }
+    return out;
+}
+
 } // namespace melodee

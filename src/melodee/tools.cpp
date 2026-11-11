@@ -162,6 +162,17 @@ void playing_head(Snapshot& s, double into, float level = 1) {
     s.heads[0] = h;
 }
 
+// A voice of kit pad `pad` (track 4) `through` its region (0..1), its envelope `level`, as heads[k].
+void pad_voice(Snapshot& s, unsigned k, unsigned pad, uint32_t serial, float through, float level) {
+    const auto& kp = s.project.tracks[3].pads[pad];
+    PlayHead h;
+    h.serial = serial; h.pad = int16_t(pad); h.slot = kp.sample;
+    h.from = kp.start; h.to = kp.end ? kp.end : kp.start + 20000; h.loop_at = h.from;
+    h.at = h.from + (h.to - h.from) * double(through);
+    h.step = 1; h.level = level; h.wake = 1;
+    s.heads[k] = h;
+}
+
 // The Project board's card: two folders and four projects, Night drive open with changes.
 void preview_projects(Snapshot& s) {
     auto& v = s.projects;
@@ -498,6 +509,14 @@ const Preview previews[] {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          playing_head(s, 9000, 0.8f);
      }},
+    {"padslines", [](Shell&, Snapshot& s) { // a kit playing: a line along the foot of each sounding pad, the one in hand too
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         pad_voice(s, 0, 8, 40, 0.62f, 0.9f);  // A09, in hand: a line in the background colour
+         pad_voice(s, 1, 0, 39, 0.3f, 1.0f);   // A01 kick
+         pad_voice(s, 2, 2, 38, 0.85f, 0.35f); // A03 hat, fading
+         pad_voice(s, 3, 5, 37, 0.18f, 0.8f);  // A06
+         pad_voice(s, 4, 0, 30, 0.95f, 0.1f);  // an older kick: the newest one's line shows
+     }},
     {"padcopy", [](Shell&, Snapshot& s) { // Shift + Erase, then a pad: where does it go
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.copying = UiState::Copying::Pads; s.ui.copy_from = 2;
      }},
@@ -533,6 +552,19 @@ const Preview previews[] {
          for (auto name : files) s.files.push_back({std::string("/media/card/Samples/") + name + ".wav", name, 0, false});
          s.files[4].path = s.project.samples[4].path;
          s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"samplespreview", [](Shell&, Snapshot& s) { // B3 on: the file under the cursor fills its row as it plays, 1.2 of 3.1 s
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.preview = true; s.ui.files_cursor = 5; s.sample_root = "/media/card/Samples";
+         s.files_folder = s.sample_root; s.files_top = false;
+         for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Samples/") + name, name, 0, true});
+         const char* files[] {"AMEN TYPE", "DUST BREAK", "FUNK LOOP 04", "RHODES STAB", "TAPE HIT", "VINYL CHORD"};
+         for (auto name : files) s.files.push_back({std::string("/media/card/Samples/") + name + ".wav", name, 0, false});
+         s.files[4].path = s.project.samples[4].path;
+         s.ui.files_count = uint16_t(s.files.size());
+         PlayHead h; // the audition voice on the preview slot
+         h.serial = 50; h.pad = int16_t(sampler_pads); h.slot = uint16_t(preview_slot);
+         h.from = 0; h.to = 137592; h.loop_at = 0; h.at = 52920; h.step = 1; h.level = 0.85f; h.wake = 1;
+         s.heads[0] = h;
      }},
     {"banks", [](Shell&, Snapshot& s) { // the card's Samples/Banks: bank files, Push loads one into the bank in view
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 1; s.sample_root = "/media/card/Samples";

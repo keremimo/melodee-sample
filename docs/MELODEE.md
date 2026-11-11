@@ -357,8 +357,12 @@ thread.
   files; wheel and −/+ move, Push opens a folder or loads onto the last pad
   (keeping its settings), B1 back out, B2 the drive (CARD from `Samples`,
   or INTERNAL: the factory categories and the stock app's User folder, read
-  only), B3 PREVIEW plays each file as the cursor lands; Shift + pad loads
-  onto the next empty pad. Melodee writes only to the card.
+  only), B3 PREVIEW plays each file as the cursor lands (its row fills in
+  the track colour as it plays, with the seconds heard of its length on the
+  right, and B3 lights while there is sound); Shift + pad loads onto the
+  next empty pad. Melodee writes only to the card. On **Pads** every pad that
+  sounds draws a thin line along its foot, as far as its newest voice has
+  played through its region and as strong as that voice's envelope.
 - **SFZ instruments** (`.sfz` in the browser, tagged SFZ): load onto a pad as
   a WAV does; the pad keeps all its controls and its note and velocity pick
   zones (up to 512; round robin, layers, `group` / `off_by`, each zone's own

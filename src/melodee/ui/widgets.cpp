@@ -21,6 +21,15 @@ float page_dots(Paint& p, float x, float cy, int count, int at, juce::Colour c, 
 void list_row(Paint& p, float x, float y, float w, const ListRow& row) {
     if (row.current) {
         p.fill(x, y, w, list_row_h, colour::raised, 4);
+        if (row.played >= 0) { // inside the row's rounded fill: the part heard, then its head
+            float to = w * std::clamp(row.played, 0.0f, 1.0f);
+            p.g.saveState();
+            p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), int(std::lround(to)), int(list_row_h)));
+            p.fill(x, y, w, list_row_h, row.accent.withAlpha(0.2f * std::clamp(row.played_wake, 0.0f, 1.0f)), 4);
+            p.g.restoreState();
+            if (row.played_head > 0)
+                p.fill(std::clamp(x + to - 1, x, x + w - 1.5f), y, 1.5f, list_row_h, colour::text.withAlpha(0.8f * std::min(1.0f, row.played_head)));
+        }
         p.g.saveState();
         p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(list_row_h)));
         p.fill(x, y, 8, list_row_h, row.accent, 4);
@@ -31,7 +40,13 @@ void list_row(Paint& p, float x, float y, float w, const ListRow& row) {
     p.text(row.number, nx, y, nw, list_row_h, number);
     float right = x + w - 7;
     if (row.starred) { star(p, right - 5.5f, y + list_row_h / 2, 5.5f, row.accent); right -= 19; }
-    if (row.tag.isNotEmpty()) {
+    if (row.tag_lead.isNotEmpty()) { // "1.2 / 3.1 S": the lead in the accent, the rest in mid
+        auto lead = caps_text(row.accent), rest = caps_text(colour::mid);
+        float lw = p.width(row.tag_lead, lead), tw = p.width(row.tag, rest);
+        p.text(row.tag, right - tw, y, tw + 1, list_row_h, rest);
+        p.text(row.tag_lead, right - tw - lw, y, lw + 1, list_row_h, lead);
+        right -= lw + tw + 8;
+    } else if (row.tag.isNotEmpty()) {
         auto style = caps_text(row.accent);
         float tw = p.width(row.tag, style);
         p.text(row.tag, right - tw, y, tw + 1, list_row_h, style);

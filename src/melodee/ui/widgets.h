@@ -17,6 +17,12 @@ struct ListRow {
     juce::String number, name, tag;
     bool current = false, starred = false, dim = false;
     juce::Colour accent = colour::text;
+    // A file heard as it plays (the current row only): the row fills in the
+    // accent from the left as far as `played` (0..1; < 0 none), faint as
+    // `played_wake` fades, with a thin head at the fill's end as strong as
+    // `played_head`. `tag_lead` then leads the tag in the accent, the tag in mid.
+    float played = -1, played_wake = 1, played_head = 0;
+    juce::String tag_lead;
 };
 void list_row(Paint& p, float x, float y, float w, const ListRow& row);
 constexpr float list_row_h = 23, list_row_gap = 1;

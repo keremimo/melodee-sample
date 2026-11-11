@@ -13,8 +13,10 @@
 // jumps. The pads play the kit.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/engine/dsp.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/ui/widgets.h"
+#include <cstdio>
 #include <filesystem>
 #include <vector>
 
@@ -38,7 +40,9 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(folder_title(s) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(s.files.size()), c));
     h.right.push_back(tag_of(s, s.ui.track));
     juce::String other = drive == Drive::Card ? "INTERNAL" : "CARD";
-    frame(p, s, {{s.files_top ? "" : "BACK", other, s.ui.preview ? "PREVIEW ON" : "PREVIEW"}, s.ui.preview ? 2 : -1, c,
+    // The file under the cursor as it previews (mock 7): its row fills as it plays; B3 lit while there is sound.
+    PreviewPlace heard = s.ui.preview ? preview_place(s.heads, int(sampler_pads), uint16_t(preview_slot), dsp::model_rate) : PreviewPlace {};
+    frame(p, s, {{s.files_top ? "" : "BACK", other, s.ui.preview ? "PREVIEW ON" : "PREVIEW"}, heard.sounding ? 2 : -1, c,
                  {s.files_top ? KeyIcon::None : KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
     if (s.files.empty()) {
         juce::String why = drive == Drive::Card && s.sample_root.empty() ? "No Samples folder on the card"
@@ -60,6 +64,13 @@ void draw(Paint& p, const Snapshot& s) {
                     for (unsigned k = 0; k < sampler_pads; ++k)
                         if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.tag = juce::String("ON ") + juce::String(label); break; }
         if (file.instrument && r.tag.isEmpty()) r.tag = "SFZ";
+        if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length, in place of the tag
+            char now[16], of[24];
+            std::snprintf(now, sizeof(now), "%.1f", heard.heard);
+            std::snprintf(of, sizeof(of), " / %.1f S", heard.length);
+            r.tag_lead = now; r.tag = of;
+            r.played = heard.through; r.played_wake = heard.wake; r.played_head = heard.strength;
+        }
         p.g.saveState();
         list_row(p, zone::pad, zone::picture_y + 0.5f + row * (list_row_h + list_row_gap), zone::width - 2 * zone::pad, r);
         p.g.restoreState();

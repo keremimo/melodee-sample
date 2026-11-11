@@ -26,6 +26,7 @@ void draw(Paint& p, const Snapshot& s) {
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 196;
     constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 2.0f - 3 * gap) / 4;
+    auto lines = bank_lines(s.heads, bank); // what sounds: a line along each pad's foot (mock 4)
     for (unsigned n = 0; n < 16; ++n) {
         unsigned kit = bank * 16 + n, row = 3 - n / 4, column = n % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
@@ -39,6 +40,9 @@ void draw(Paint& p, const Snapshot& s) {
         auto name = pad_name(s, kit, true);
         if (name.isNotEmpty())
             p.text(name, x + 4, y + ch - 16, w - 8, 14, p.fit(name, plain(last ? colour::bg : colour::text, type::small, Weight::Medium), w - 8, type::floor));
+        if (lines[n].strength > 0 && lines[n].through > 0) // as far as it has played, as strong as its envelope
+            p.fill(x + 4, y + ch - 3.5f, std::max(2.0f, (w - 8) * lines[n].through), 2,
+                   (last ? colour::bg : c).withAlpha(lines[n].strength), 1);
         if (muted) p.fill(x, y, w, ch, colour::bg.withAlpha(0.45f), 4);
     }
     // The pad in hand.
@@ -48,9 +52,9 @@ void draw(Paint& p, const Snapshot& s) {
     p.text(juce::String("PAD ") + juce::String(label), x, y, iw, 14, caps_text(colour::mid));
     auto name = pad.used() ? pad_name(s, track.last_pad % sampler_pads, false) : juce::String("Empty");
     auto name_style = p.fit(name, plain(pad.used() ? colour::text : colour::dim, 22, Weight::SemiBold), iw, type::floor);
-    auto lines = p.wrap(name, name_style, iw, 2);
-    for (int l = 0; l < lines.size(); ++l) p.text(lines[l], x, y + 15 + l * 24, iw, 26, name_style);
-    y += (lines.size() > 1 ? 24 : 0);
+    auto name_lines = p.wrap(name, name_style, iw, 2);
+    for (int l = 0; l < name_lines.size(); ++l) p.text(name_lines[l], x, y + 15 + l * 24, iw, 26, name_style);
+    y += (name_lines.size() > 1 ? 24 : 0);
     if (pad.used() && s.sample.frames) {
         uint32_t end = pad.end ? pad.end : s.sample.frames;
         char text[48];

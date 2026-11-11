@@ -5645,6 +5645,45 @@ void place_bar() {
     CHECK(b.position == 5 * bar + beat && b.notch == bar && b.tone == Tone::Playing);
     s->song_playing = false;
     // The Looper page: the loop selected, its bars, red while it overdubs, amber while armed.
+// Mock 4 and 7 (shell/playheads.h): a line along each sounding pad of the bank in view, its newest voice's; and the
+// Samples row of the file previewing, how far, the time heard of its length, nothing once the cursor cut it.
+void head_lines() {
+    auto head = [](int pad, uint32_t serial, double at, float level, float step = 1) {
+        PlayHead h;
+        h.serial = serial; h.pad = int16_t(pad); h.slot = 3; h.from = 1000; h.to = 5000; h.loop_at = 1000;
+        h.at = at; h.step = step; h.level = level; h.wake = 1;
+        return h;
+    };
+    CHECK(std::abs(head_through(head(0, 1, 2000, 1)) - 0.25f) < 1e-6f);
+    CHECK(std::abs(head_through(head(0, 1, 2000, 1, -1)) - 0.75f) < 1e-6f); // reversed: from the end
+    CHECK(head_through(head(0, 1, 9000, 1)) == 1 && head_through(head(0, 1, 0, 1)) == 0);
+    std::array<PlayHead, HeadTrail::size> heads {};
+    heads[0] = head(18, 9, 3000, 0.8f);  // bank B, pad 3: newest
+    heads[1] = head(18, 4, 4800, 0.2f);  // the same pad, older: not shown
+    heads[2] = head(2, 3, 1400, 1);      // bank A: not in view
+    heads[3] = head(16, 2, 1000, 0.5f);  // bank B pad 1, just begun: no length yet
+    heads[4] = head(31, 1, 3000, 0.0f);  // gone silent, its wake still fading: no line
+    heads[4].wake = 0.5f;
+    auto lines = bank_lines(heads, 1);
+    CHECK(std::abs(lines[2].through - 0.5f) < 1e-6f && std::abs(lines[2].strength - 0.8f) < 1e-6f);
+    CHECK(lines[0].through == 0 && std::abs(lines[0].strength - 0.5f) < 1e-6f);
+    CHECK(lines[15].strength == 0 && lines[1].strength == 0);
+    CHECK(bank_lines(heads, 0)[2].strength == 1 && bank_lines(heads, 0)[2].through > 0);
+    // The preview: the audition voice on the preview slot only.
+    std::array<PlayHead, HeadTrail::size> pv {};
+    pv[0] = head(128, 7, 1000 + 52920, 0.9f); pv[0].from = 1000; pv[0].to = 1000 + 137592; pv[0].slot = 64;
+    pv[1] = head(128, 6, 2000, 1);           // another audition (Chop's): another slot
+    PreviewPlace at = preview_place(pv, 128, 64, 44100);
+    CHECK(at.shown && at.sounding && std::abs(at.heard - 1.2) < 1e-3 && std::abs(at.length - 3.12) < 1e-3);
+    CHECK(std::abs(at.through - 52920.0f / 137592.0f) < 1e-5f && std::abs(at.strength - 0.9f) < 1e-6f);
+    pv[0].level = 0; pv[0].wake = 0.4f; // ended: the row still fades, B3 no longer lit
+    at = preview_place(pv, 128, 64, 44100);
+    CHECK(at.shown && !at.sounding && std::abs(at.wake - 0.4f) < 1e-6f);
+    pv[0].flags = tap::Choked; // the cursor moved on: nothing for the row
+    CHECK(!preview_place(pv, 128, 64, 44100).shown);
+    CHECK(!preview_place(std::array<PlayHead, HeadTrail::size> {}, 128, 64, 44100).shown);
+}
+
     s->ui.page = PageId::Looper; s->ui.loop = 1;
     auto& v = s->loops[1].view;
     v.state = looper::State::Overdub; v.ticks = 2 * bar; v.length = 1000; v.position = 750;
@@ -5705,6 +5744,7 @@ int main() {
     helpers();
     project_files();
     recording();
+    head_lines();
     sampler_kit();
     effects();
     arrange();
