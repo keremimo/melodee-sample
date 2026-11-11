@@ -136,6 +136,8 @@ struct UiState {
     bool picker_open = false, picker_items = false;           // the effect picker; focus on its effects column
     uint8_t picker_family = 0, picker_item = 0;
     bool picker_replaces = false;                              // Change on a device, not + ADD
+    uint8_t comp_bank = 0;                                     // Compressor: the kit bank those pads show
+    bool comp_pads = false;                                    // Compressor, Sidechain on a kit: the pads pick the key pad, not the track
     uint8_t knob_cursor = 0;                                   // Knob FX: the list's entry under the cursor (Push loads it)
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell

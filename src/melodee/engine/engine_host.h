@@ -351,7 +351,8 @@ private:
     std::array<std::array<uint64_t, 2>, track_count> knob_pads {};
     uint32_t knob_tail = 0;
     float knob_l[block] {}, knob_r[block] {};
-    float key_l[block] {}, key_r[block] {}, aside_l[block] {}, aside_r[block] {}; // Sidechain: the key heard by the detector, and as it joins the master
+    float key_l[block] {}, key_r[block] {}, aside_l[block] {}, aside_r[block] {};
+    float key_pad_l[block] {}, key_pad_r[block] {}; // Sidechain on one kit pad: that pad as the sampler left it // Sidechain: the key heard by the detector, and as it joins the master
     void knob_targets(); // hands each kit its pads (none while Knob FX is not heard)
     void knob_command(const Command& c);
     MasterCompressor comp;

@@ -2696,6 +2696,39 @@ void performance_effects() {
         CHECK(both_keyed.energy < both_dry.energy - other_dry.energy * 0.5);                                           // the rest ducks
         CHECK(ghost.reduction > 3 && ghost.energy < other_dry.energy * 0.5);                                           // muted key, track 3 ducked
     }
+    // Sidechain on one kit pad: A01 keys it and passes untouched; A02 on the same kit ducks under it.
+    {
+        auto kit = std::make_unique<Project>(*project);
+        load_sound(kit->tracks[1], EngineKind::Sampler, 0);
+        for (unsigned pad : {0u, 1u}) { kit->tracks[1].pads[pad].sample = 0; kit->tracks[1].pads[pad].play = PadPlay::OneShot; }
+        SampleData tone;
+        tone.frames = 44100; tone.left.resize(44100); tone.right.resize(44100);
+        for (unsigned n = 0; n < 44100; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.05) * 0.8);
+        auto hit = [&](bool keyed, bool a01, bool a02) {
+            EngineHost host;
+            host.load(*kit, *bank);
+            CHECK(host.offer_sample(0, &tone));
+            host.send({Command::Type::Compressor, 0, 0, 4, 100});
+            host.send({Command::Type::Compressor, 0, 0, 7, 1});
+            host.send({Command::Type::Compressor, 0, 0, 8, 0});
+            host.send({Command::Type::Compressor, 0, 0, 6, 1});
+            host.send({Command::Type::Compressor, 0, 0, 0, int16_t(keyed)});
+            if (a01) host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + 0), 110});
+            if (a02) host.send({Command::Type::NoteOn, 1, 0, uint16_t(sampler_first_note + 1), 110});
+            std::vector<int32_t> out(256);
+            double sum = 0;
+            for (unsigned n = 0; n < 100; ++n) { host.render(out.data(), 128, 1); if (n > 10) for (auto v : out) sum += double(v / 2147483648.0f) * (v / 2147483648.0f); }
+            const SampleData* gone = nullptr;
+            while (host.take_retired(gone)) {}
+            return std::pair<double, float>(sum, host.compression());
+        };
+        auto a_dry = hit(false, true, false), a_keyed = hit(true, true, false);
+        auto b_dry = hit(false, false, true), b_keyed = hit(true, false, true);
+        auto both_dry = hit(false, true, true), both_keyed = hit(true, true, true);
+        CHECK(a_dry.first > 0 && a_keyed.second > 3 && std::fabs(a_keyed.first - a_dry.first) < a_dry.first * 0.01); // the key pad untouched
+        CHECK(b_keyed.second == 0 && std::fabs(b_keyed.first - b_dry.first) < b_dry.first * 0.01);                   // no key, no change
+        CHECK(both_keyed.first < both_dry.first - b_dry.first * 0.5);                                                // A02 ducks
+    }
     // The page's picture: the compressor hands over its peaks, the trail keeps a column every 33 ms whatever the frame rate.
     {
         EngineHost host;
@@ -2724,7 +2757,7 @@ void performance_effects() {
     project->knob_fx.choice = 16; project->knob_fx.kind = uint8_t(EffectKind::AmpSim); project->knob_fx.params = {3, 70, 40, 2, -3, 5};
     project->knob_fx.on = true; project->knob_fx.bypass = true;
     project->knob_fx.set_track(4, true); project->knob_fx.set_pad(1, 70, true);
-    project->compressor = {true, true, 12, 80, 66, 9, true, 5};
+    project->compressor = {true, true, 12, 80, 66, 9, true, 5, 7};
     auto data = save_project(*project, *bank);
     auto back = std::make_unique<Project>();
     auto back_bank = std::make_unique<PatternBank>();
@@ -2733,7 +2766,7 @@ void performance_effects() {
     CHECK(!k.on && k.bypass && k.choice == 16 && k.kind == uint8_t(EffectKind::AmpSim) && k.params[4] == -3 && k.track_on(4) && !k.track_on(3)
           && k.pad_on(1, 70) && !k.pad_on(1, 6));
     const auto& c = back->compressor;
-    CHECK(c.on && c.color && c.attack == 12 && c.release == 80 && c.amount == 66 && c.boost == 9 && c.sidechain && c.key == 5);
+    CHECK(c.on && c.color && c.attack == 12 && c.release == 80 && c.amount == 66 && c.boost == 9 && c.sidechain && c.key == 5 && c.key_pad == 7);
     auto older = data;
     for (size_t n = 0; n + 4 <= older.size(); ++n)
         if (std::memcmp(&older[n], "KNFX", 4) == 0 || std::memcmp(&older[n], "CMPR", 4) == 0) std::memcpy(&older[n], "XXXX", 4);

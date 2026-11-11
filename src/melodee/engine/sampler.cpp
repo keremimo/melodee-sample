@@ -546,9 +546,14 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     if (chains) for (auto& l : lane) if (l.pad >= 0) { l.fed = false; std::fill(l.l, l.l + frames, 0.0f); std::fill(l.r, l.r + frames, 0.0f); }
     knob_used = false;
     if (knobbing) { std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f); }
-    // Where a pad's sound joins: the kit, or Knob FX's own output.
-    auto out_l = [&](int pad) { if (knobbing && knobbed(pad)) { knob_used = true; return knob_l; } return left; };
-    auto out_r = [&](int pad) { return knobbing && knobbed(pad) ? knob_r : right; };
+    // Where a pad's sound joins: the kit, the Sidechain's key (first: it must not duck itself), or Knob FX's own output.
+    bool keying = key_pad >= 0 && frames <= 128;
+    auto out_l = [&](int pad) {
+        if (keying && pad == key_pad) return key_l;
+        if (knobbing && knobbed(pad)) { knob_used = true; return knob_l; }
+        return left;
+    };
+    auto out_r = [&](int pad) { return keying && pad == key_pad ? key_r : knobbing && knobbed(pad) ? knob_r : right; };
     for (auto& v : voices) {
         if (v.pad < 0 || v.cloud) continue;
         v.wrapped = false;

@@ -21,6 +21,7 @@ public:
     void duck(const float* key_left, const float* key_right, float* left, float* right, unsigned frames);
     bool keyed() const { return s.on && s.sidechain; }
     unsigned key() const { return s.key; }
+    unsigned key_pad() const { return s.key_pad; } // MasterComp::whole_kit: the whole track
     float reduction_db() const { return shown.load(std::memory_order_relaxed); } // for the page's meter
     // For the page's picture (screen thread): the loudest the detector heard (dB, In Boost in) and the
     // most it took off since it last asked; both start again.

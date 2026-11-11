@@ -610,7 +610,8 @@ std::string Shell::fx_summary() const {
          + " melodee_comp=" + std::to_string(c & 1) + " melodee_comp_color=" + std::to_string((c >> 1) & 1)
          + " melodee_comp_boost=" + std::to_string((c >> 2) & 0x3f) + " melodee_comp_attack=" + std::to_string((c >> 8) & 0xff)
          + " melodee_comp_release=" + std::to_string((c >> 16) & 0xff) + " melodee_comp_amount=" + std::to_string(c >> 24)
-         + " melodee_comp_sidechain=" + std::to_string(side & 1) + " melodee_comp_key=" + std::to_string((side >> 1) + 1)
+         + " melodee_comp_sidechain=" + std::to_string(side & 1) + " melodee_comp_key=" + std::to_string(((side >> 1) & 0x7f) + 1)
+         + " melodee_comp_key_pad=" + std::to_string(((side >> 8) & 0xff) == MasterComp::whole_kit ? 0u : ((side >> 8) & 0xff) + 1)
          + " melodee_comp_reduction=" + text + padfx_summary() + fader_summary();
 }
 

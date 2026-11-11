@@ -96,6 +96,10 @@ public:
     bool knob_fed() const { return knob_used; } // the last block put something there
     const float* knob_left() const { return knob_l; }
     const float* knob_right() const { return knob_r; }
+    // Sidechain: this kit pad's voices (after its own chain and punch) play into l / r instead of the kit,
+    // added to what is there; the host hands this sub-block's place in its own buffers before each render
+    // (a render can be part of the host's block). -1: none.
+    void set_key_pad(int pad, float* l, float* r) { key_pad = l && r ? pad : -1; key_l = l; key_r = r; }
 
 private:
     struct Voice {
@@ -202,6 +206,9 @@ private:
     uint64_t knob_mask[2] {};
     bool knob_used = false;
     float knob_l[128] {}, knob_r[128] {};
+    int key_pad = -1;
+    float* key_l = nullptr;
+    float* key_r = nullptr;
     bool knobbed(int pad) const { return pad >= 0 && pad < 128 && ((knob_mask[pad / 64] >> (pad % 64)) & 1); }
     std::array<Lane, lanes> lane {};
     Lane* lane_for(int pad); // the pad's lane, a free one, or nullptr

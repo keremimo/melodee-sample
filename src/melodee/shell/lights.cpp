@@ -242,7 +242,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             const auto& c = project_->compressor;
             comp_bits.store(uint32_t(c.on) | uint32_t(c.color) << 1 | uint32_t(c.boost) << 2 | uint32_t(c.attack) << 8 | uint32_t(c.release) << 16
                             | uint32_t(c.amount) << 24, std::memory_order_relaxed);
-            comp_side.store(uint32_t(c.sidechain) | uint32_t(c.key) << 1, std::memory_order_relaxed);
+            comp_side.store(uint32_t(c.sidechain) | uint32_t(c.key) << 1 | uint32_t(c.key_pad) << 8, std::memory_order_relaxed);
         }
         { // phase 7b: Pad FX (bank, engaged, latched, selected; the slots' kinds + 1) and Flex Beat's settings
             unsigned latched = 0;
@@ -375,6 +375,17 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             bool empty_pad = track.engine == EngineKind::Sampler && !track.pads[(unsigned(key) - sampler_first_note) % sampler_pads].used();
             colour = key < 0 ? Rgb {} : chosen >= 0 && pattern.events[size_t(chosen)].key == key ? led_colour::white(1)
                    : here ? track_light(ui.track, 1.0f) : empty_pad ? Rgb {} : track_light(ui.track, 0.12f);
+        } else if (ui.page == PageId::Compressor && project.compressor.sidechain) {
+            // Sidechain's key: the key track bright and the others faint, or the key kit's pads of the bank shown.
+            const auto& c = project.compressor;
+            unsigned key = c.key % track_count;
+            const auto& kit_track = project.tracks[key];
+            if (ui.comp_pads && kit_track.engine == EngineKind::Sampler) {
+                unsigned kit = ui.comp_bank % sampler_banks * 16 + pad;
+                colour = track_light(key, c.key_pad == kit ? 1.0f : kit_track.pads[kit].used() ? 0.12f : 0.0f);
+            } else {
+                colour = track_light(pad, pad == key ? 1.0f : project.tracks[pad].used() ? 0.12f : 0.0f);
+            }
         } else if (ui.page == PageId::KnobFx) {
             // Knob FX: the pads it is on bright, the rest faint (as on the MPC); kit pads of the bank, or tracks.
             const auto& k = project.knob_fx;

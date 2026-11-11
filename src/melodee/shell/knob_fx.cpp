@@ -116,6 +116,7 @@ void Context::set_compressor(unsigned what, int value) {
     case 5: c.boost = uint8_t(std::clamp(value, 0, 24)); value = c.boost; break;
     case 6: c.sidechain = value != 0; break;
     case 7: c.key = uint8_t(std::clamp<int>(value, 0, track_count - 1)); value = c.key; break;
+    case 8: c.key_pad = value < 0 || value >= int(sampler_pads) ? MasterComp::whole_kit : uint8_t(value); value = c.key_pad == MasterComp::whole_kit ? -1 : c.key_pad; break;
     default: return;
     }
     send({Type::Compressor, 0, 0, uint16_t(what), int16_t(value)});

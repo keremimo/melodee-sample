@@ -143,6 +143,7 @@ void Context::restore_master(const MasterState& m) {
     const auto& c = m.compressor;
     set_compressor(0, c.on); set_compressor(1, c.color); set_compressor(2, c.attack); set_compressor(3, c.release);
     set_compressor(4, c.amount); set_compressor(5, c.boost); set_compressor(6, c.sidechain); set_compressor(7, c.key);
+    set_compressor(8, c.key_pad == MasterComp::whole_kit ? -1 : c.key_pad);
     for (unsigned n = 0; n < 16; ++n)
         for (unsigned q = 0; q < 3; ++q)
             if (project.pad_fx_params[n][q] != m.pad_fx[n][q]) set_pad_fx_param(n, q, m.pad_fx[n][q]);

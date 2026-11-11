@@ -547,13 +547,20 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   and depth.
 - **Compressor** (Shift + Pad 5): on the master. B1 Sidechain, B2 Color,
   B3 engage; K1 attack, K2 release, K3 amount, Shift + K3 In Boost. With
-  Sidechain one track keys it (the wheel or −/+ pick it, its tag on the
-  header): its sound after its chain, muted or not, drives the detector,
+  Sidechain one track keys it, whichever track is selected: the pads pick
+  it (the grid on the left, KEY and its name on the header; the wheel or
+  −/+ step it). On a sample kit the key can be one pad, the kick: Push (or
+  the kit's pad again) shows its pads, a pad keys alone and sounds as it is
+  picked, the same pad again keys the whole kit, the wheel or −/+ walk the
+  banks. A key pad leaves the kit after its own chain (skipping the kit
+  filter and the track's chain, as Knob FX's pads do) and the rest of the
+  kit ducks with everything else. The key's sound after its chain, muted
+  or not, drives the detector,
   and the rest of the mix (other tracks, the Looper, the bus returns, Knob
   FX) ducks under it before the master chain, with no makeup; the key
   passes untouched, In Boost drives the detector alone, and Color stays on
   the master. The picture: the curve with a dot where the level sits now
-  (with Sidechain the key across, what the rest keeps up), and beside it
+  (the key grid with Sidechain), and beside it
   the last 2.6 s: what the detector heard rising from the foot (the key in
   its track's colour), the threshold dashed, and what was taken off
   hanging from the top, so the pump shows as it plays; under it the dB

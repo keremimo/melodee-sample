@@ -53,7 +53,7 @@ float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
 void soft_keys(Paint& p, const SoftKeys& keys) {
     float column = zone::width / 3.0f;
     for (int n = 0; n < 3; ++n) {
-        bool on = n == keys.active;
+        bool on = n == keys.active || n == keys.also;
         float x = n * column;
         if (on) {
             float cx = x + column / 2;

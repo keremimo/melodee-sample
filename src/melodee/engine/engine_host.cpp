@@ -458,6 +458,7 @@ void EngineHost::apply(const Command& c) {
         case 5: settings.boost = uint8_t(c.value); break;
         case 6: settings.sidechain = c.value != 0; break;
         case 7: settings.key = uint8_t(std::clamp<int>(c.value, 0, track_count - 1)); break;
+        case 8: settings.key_pad = c.value < 0 || c.value >= int(sampler_pads) ? MasterComp::whole_kit : uint8_t(c.value); break;
         default: break;
         }
         comp_settings = settings;
@@ -1184,6 +1185,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         std::fill(slot.left, slot.left + frames, 0.0f); std::fill(slot.right, slot.right + frames, 0.0f);
     }
 
+    // Sidechain on one kit pad: the sampler plays that pad apart, into key_pad_l / key_pad_r.
+    int pad_keyed = -1; // the key track, when its key is one of its pads
+    if (comp.keyed() && comp.key_pad() < sampler_pads) {
+        auto& ks = slots[comp.key() % track_count];
+        if (ks.engine == &ks.sampler) pad_keyed = int(comp.key() % track_count);
+    }
+    if (pad_keyed >= 0) { std::fill(key_pad_l, key_pad_l + frames, 0.0f); std::fill(key_pad_r, key_pad_r + frames, 0.0f); }
+
     // The Looper's time is the sequencer's at the block's first frame (run_loops() comes after the block is played).
     loop_running = running; loop_counting = count_left > 0;
     loop_tick = running ? double(tick_now) - until_tick / tick_length() : 0;
@@ -1206,6 +1215,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (!slot.engine) continue;
             run_offs(slot, n);
             run_late(slot, n);
+            if (slot.engine == &slot.sampler) {
+                bool pad_key = pad_keyed >= 0 && &slot == &slots[unsigned(pad_keyed)];
+                slot.sampler.set_key_pad(pad_key ? int(comp.key_pad()) : -1, pad_key ? key_pad_l + done : nullptr, pad_key ? key_pad_r + done : nullptr);
+            }
             if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
             else slot.engine->render(slot.buffer + done, n);
         }
@@ -1265,8 +1278,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (punch_target == t) punch.process(slot.left, slot.right, frames);
             run_live(uint8_t(t), slot.left, slot.right, frames);
             if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
-            bool keying = keyed && t == key;
+            bool keying = keyed && t == key && pad_keyed < 0; // the whole track keys
             if (keying) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
+            if (pad_keyed == int(t)) { // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
+                float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
+                for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * l; key_r[f] = key_pad_r[f] * r; }
+            }
             // Monitored, the tapped track is heard through the input (gain, Rec Input FX) instead: once, as it records.
             bool through_input = tap && monitor_on.load(std::memory_order_relaxed);
             bool heard = !slot.mute && !(solo && !slot.solo) && !through_input;
@@ -1292,6 +1309,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 if (stem) { // a centred mono track sums to itself, as does one panned hard
                     float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f);
                     for (unsigned f = 0; f < frames; ++f) stem[f] = (slot.left[f] + slot.right[f]) * unpan;
+                }
+            }
+            if (heard && pad_keyed == int(t)) { // the key pad joins after the ducking, untouched (no send: it left before the chain)
+                float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f);
+                for (unsigned f = 0; f < frames; ++f) {
+                    aside_l[f] += key_l[f]; aside_r[f] += key_r[f];
+                    level = std::max(level, std::max(std::fabs(key_l[f]), std::fabs(key_r[f])));
+                    if (stem) stem[f] += (key_l[f] + key_r[f]) * unpan;
                 }
             }
         }

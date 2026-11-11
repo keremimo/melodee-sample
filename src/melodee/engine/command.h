@@ -76,7 +76,7 @@ struct Command {
         // (pattern = which, value), 2 the state (value: 1 heard now, 2 Rec Input FX on the input), 3 the tracks (position: a bit
         // a track), 4 a kit's pads (track, pattern = 0..3 a quarter of its 128 pads, position: a bit a pad).
         KnobFx,
-        Compressor,     // the master compressor: index 0 on, 1 Color, 2 attack, 3 release, 4 amount, 5 In Boost, 6 Sidechain, 7 key track; value
+        Compressor,     // the master compressor: index 0 on, 1 Color, 2 attack, 3 release, 4 amount, 5 In Boost, 6 Sidechain, 7 key track, 8 key pad (-1 the whole track); value
         // Parity phase 7b. Pad FX: up to four punches at once, each in a live slot: PunchOn / PunchOff / PunchDepth with
         // position = slot + 1 (0: slot 1, as before; PunchOff track 254: every slot). PunchParam: index = the MPC's Pad FX
         // 0..15, pattern = which of its K1-K3, value. FlexBeat: index 0 the pad (0 Empty, 1..15), 1 mode (0 One Shot,

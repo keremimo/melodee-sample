@@ -306,6 +306,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         const auto& c = project.compressor;
         w.u8(c.on); w.u8(c.color); w.u8(c.attack); w.u8(c.release); w.u8(c.amount); w.u8(c.boost);
         w.u8(c.sidechain); w.u8(c.key); // Sidechain (older files end before it: off)
+        w.u8(c.key_pad);                // its key pad (older files: the whole track)
     }
     w.end(at);
     for (unsigned t = 0; t < track_count; ++t) { // kit pads in banks E-H (parity phase 1c)
@@ -630,6 +631,8 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             c.amount = uint8_t(std::min(100u, r.u8())); c.boost = uint8_t(std::min(24u, r.u8()));
             c.sidechain = false; c.key = 0;
             if (!r.done()) { c.sidechain = r.u8() != 0; c.key = uint8_t(r.u8() % track_count); }
+            c.key_pad = MasterComp::whole_kit;
+            if (!r.done()) { unsigned pad = r.u8(); c.key_pad = pad < sampler_pads ? uint8_t(pad) : MasterComp::whole_kit; }
         } else if (name == "SMPL") {
             unsigned n = r.u8();
             if (n >= sample_slots) continue;
