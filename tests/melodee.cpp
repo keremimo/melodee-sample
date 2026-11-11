@@ -743,12 +743,12 @@ void sampler_kit() {
         SamplerEngine::Table tones {};
         tones[0] = tone.get();
         struct Heard { unsigned frames; float hz; };
-        auto hear = [&](int how, int pitch_how, int follow, int semitones) {
+        auto hear = [&](int how, int pitch_how, int follow, int semitones, int warp = warp_off) {
             SamplerEngine engine;
             engine.set_samples(&tones);
             engine.set_tempo(1200);
             engine.set_param(sampler::Follow, follow); engine.set_param(sampler::FollowHow, how); engine.set_param(sampler::PitchHow, pitch_how);
-            PadSound sound; sound.sample = 0; sound.own_tempo = 600; sound.pitch = int8_t(semitones); sound.decay = 100;
+            PadSound sound; sound.sample = 0; sound.own_tempo = 600; sound.pitch = int8_t(semitones); sound.decay = 100; sound.warp = uint8_t(warp);
             engine.set_pad(0, sound);
             engine.note_on(int(sampler_first_note), 120);
             std::vector<float> l(128), r(128), all;
@@ -773,6 +773,23 @@ void sampler_kit() {
         CHECK(std::abs(int(up.frames) - 44100) < 600 && std::fabs(up.hz - 882) < 30);
         auto plain = hear(1, 0, 0, 12); // an octave up by speed: half as long
         CHECK(std::abs(int(plain.frames) - 22050) < 600 && std::fabs(plain.hz - 882) < 30);
+        // Warp's mode. Warp on by Time stretch holds a note to Warp's length;
+        // by Pitch the pad's Semi is out and Warp moves pitch with length;
+        // Warp Off plays by speed in either mode.
+        auto heard = [&](const char* name, Heard h, unsigned frames, float hz) {
+            bool ok = std::abs(int(h.frames) - int(frames)) < 600 && std::fabs(h.hz - hz) < 30;
+            if (!ok) std::fprintf(stderr, "warp %s: %u frames %f Hz\n", name, h.frames, h.hz);
+            CHECK(ok);
+        };
+        for (int how : {0, 1}) {
+            heard("stretch 100 up", hear(how, 0, 0, 12, 100), 44100, 882);
+            heard("stretch 200 up", hear(how, 0, 0, 12, 200), 88200, 882);
+            heard("stretch 50 same", hear(how, 0, 0, 0, 50), 22050, 441);
+            heard("off up", hear(how, 0, 0, 12), 22050, 882);
+        }
+        heard("pitch 100 semi out", hear(2, 0, 0, 12, 100), 44100, 441);
+        heard("pitch 50", hear(2, 0, 0, 12, 50), 22050, 882);
+        heard("pitch off up", hear(2, 0, 0, 12), 22050, 882);
     }
     // Punches written into the song play where they were written, for as long, and survive a save.
     {

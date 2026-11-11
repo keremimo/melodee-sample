@@ -51,28 +51,34 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     v.loop_at = std::clamp(sound.loop_point(), v.start, v.end - 2);
     v.edge_in = !v.loop && v.start > 0;              // the file's own start and end need no fade
     v.edge_out = !v.loop && v.end < data->frames;
-    v.step = std::exp2((sound.pitch + semitones + sound.fine / 100.0 + p[Tune]) / 12.0);
+    // Warp's mode is the kit's FollowHow: Tape is Pitch, the others Time stretch.
+    // Warp on by Pitch leaves the pad's Semi and Fine out, as the MPC does.
+    const bool tape = p[FollowHow] == 2, warped = sound.warped();
+    const double own_tune = warped && tape ? 0.0 : sound.pitch + sound.fine / 100.0;
+    v.step = std::exp2((own_tune + semitones + p[Tune]) / 12.0);
     v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
     // Warp, else Follow: the speed the region moves at. Warp's Seq plays it at
     // the project's tempo from its own (by # Beats, else worked out from its
     // length); 50..200 % makes it that long. By Tape, speed and pitch move
     // together; by Beats or Tones the sound is stretched, its pitch kept.
-    // PITCH Stretch keeps a pitch change from changing the length too.
+    // A pitch change leaves the length alone under PITCH Stretch, and under
+    // Warp by Time stretch; Warp Off plays it by speed, so tuned pads stay clean.
     double rate = 1.0, frames = double(v.end - v.start);
     if (sound.warp == warp_seq) {
         double own = sound.beats ? sound.beats * 60.0 * dsp::model_rate / frames * 10.0 : double(sound.own_tempo);
         if (own > 0) rate = tempo / own;
     } else if (sound.warp >= warp_min) rate = 100.0 / sound.warp;
     else if (p[Follow] && sound.own_tempo) rate = double(tempo) / sound.own_tempo;
-    bool tape = p[FollowHow] == 2;
+    const bool keep_length = p[PitchHow] == 1 || (warped && !tape);
+    const bool shifted = std::fabs(v.step - 1.0) > 1e-6;
     // Samples are at 44.1 kHz: at another device rate each output frame reads that much further along.
     double per_frame = dsp::model_rate / dsp::sample_rate();
-    double pitch = (tape ? v.step * rate : v.step) * per_frame;              // what the taps read at
-    double advance = rate * (p[PitchHow] == 1 ? 1.0 : v.step) * per_frame; // how fast the sound moves on
+    double pitch = (tape ? v.step * rate : v.step) * per_frame;        // what the taps read at
+    double advance = rate * (keep_length ? 1.0 : v.step) * per_frame; // how fast the sound moves on
     v.step = pitch;
     if (!v.cloud && pad < int(sampler_pads) && std::fabs(pitch - advance) > 1e-6) {
         v.stretch = true;
-        v.beats = p[FollowHow] == 0;
+        v.beats = p[FollowHow] == 0 && !(keep_length && shifted); // a note held to length wants overlapped windows
         v.advance = advance;
         v.place = v.position;
         // Beats: a segment a sixteenth of the project long, cut in at its own place, so hits stay whole.

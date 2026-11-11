@@ -234,9 +234,11 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
     switch (page) {
     case PageId::PadMix: // K1 volume, K3 pan (Shift + K2 the kit's volume)
         return {Binding {Kind::PadLevel, 0, 0, 127, pad.level}, Binding {}, Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
-    case PageId::PadPage: // Tune: semitones, cents, Warp (Shift + K3 # Beats)
-        return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadFine, 0, -50, 50, pad.fine},
+    case PageId::PadPage: { // Tune: semitones, cents, Warp (Shift + K3 # Beats); Warp on by Pitch has no Semi or Fine
+        bool tuned = !(pad.warped() && track.params[sampler::FollowHow] == 2);
+        return {tuned ? Binding {Kind::PadPitch, 0, -24, 24, pad.pitch} : Binding {}, tuned ? Binding {Kind::PadFine, 0, -50, 50, pad.fine} : Binding {},
                 Binding {Kind::PadWarp, 0, 0, warp_card_seq, warp_card(pad.warp)}};
+    }
     case PageId::PlayPage: // Mono / Poly, mute group, offset (Shift + K2 Pad Link); row 2 Note On, reverse, loop
         if (row2) return {Binding {Kind::PadPlayMode, 0, 0, 1, int(pad.play)}, Binding {Kind::PadReverse, 0, 0, 1, pad.reverse},
                           Binding {Kind::PadLoop, 0, 0, 1, pad.loop}};

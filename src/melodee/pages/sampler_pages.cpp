@@ -37,20 +37,22 @@ void pad_draw(Paint& p, const Snapshot& s) { // Tune
     const auto& pad = sampler_pad(s);
     auto c = colour_of(s);
     float x = zone::pad, w = zone::width - 2 * zone::pad, y = zone::picture_y + 30;
+    bool pitch_mode = s.track().params[sampler::FollowHow] == 2;
+    bool tuned = !(pitch_mode && pad.warped()); // Warp on by Pitch: no Semi or Fine
+    int semi = tuned ? pad.pitch : 0, fine = tuned ? pad.fine : 0;
     // Pitch on a line from -12 to +12 (beyond, it sits at the end).
     p.text("PITCH", x, y, 60, 9, caps_text(colour::mid));
-    p.text((pad.pitch >= 0 ? "+" : "") + juce::String(pad.pitch) + " ST", x, y, w, 9, caps_text(colour::text), juce::Justification::centredRight);
+    p.text(tuned ? (semi >= 0 ? "+" : "") + juce::String(semi) + " ST" : juce::String("OFF IN WARP BY PITCH"), x, y, w, 9, caps_text(tuned ? colour::text : colour::mid), juce::Justification::centredRight);
     p.fill(x, y + 18, w, 1, colour::line);
     for (int st = -12; st <= 12; ++st) p.fill(x + w * (st + 12) / 24.0f, y + (st % 12 ? 15 : 12), 0.5f, st % 12 ? 6 : 12, colour::dim);
-    float px = x + w * (std::clamp<int>(pad.pitch, -12, 12) + 12) / 24.0f;
-    p.fill(px - 0.5f, y + 10, 1.5f, 16, c);
-    p.fill(px - 3, y + 7, 6, 6, c, 1.5f);
+    float px = x + w * (std::clamp<int>(semi, -12, 12) + 12) / 24.0f;
+    p.fill(px - 0.5f, y + 10, 1.5f, 16, tuned ? c : colour::dim);
+    p.fill(px - 3, y + 7, 6, 6, tuned ? c : colour::dim, 1.5f);
     // Fine, and the length as it plays: pitch, warp.
     float fy = y + 44;
     p.text("FINE", x, fy, 40, 14, caps_text(colour::mid));
     p.fill(x, fy + 16, w * 0.32f, 1, colour::line);
-    p.fill(x + w * 0.32f * (pad.fine + 50) / 100.0f - 0.5f, fy + 11, 1.5f, 10, knob_shade(s.ui.track, 1));
-    bool pitch_mode = s.track().params[sampler::FollowHow] == 2;
+    p.fill(x + w * 0.32f * (fine + 50) / 100.0f - 0.5f, fy + 11, 1.5f, 10, knob_shade(s.ui.track, 1));
     if (s.sample.frames && pad.used()) {
         uint32_t end = pad.end ? pad.end : s.sample.frames, length = end > pad.start ? end - pad.start : 0;
         double seconds = length / 44100.0, played = seconds / std::exp2((pad.pitch + pad.fine / 100.0) / 12.0);

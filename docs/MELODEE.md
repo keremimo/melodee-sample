@@ -361,7 +361,11 @@ thread.
   - Amp Env: attack, decay (One shot) or release (Note On), velocity
     sensitivity; Shift + K2 decay from start or end; row 2 the rest.
   - Tune: semitones, cents, Warp (Off, 50–200 %, Seq from # Beats; Shift +
-    K3 # Beats). Shift + Pad 15 picks Time stretch or Pitch.
+    K3 # Beats). Shift + Pad 15 picks Time stretch or Pitch, which matters
+    with Warp on: Time stretch holds a tuned pad or a higher note to Warp's
+    length, Pitch moves pitch with length and turns Semi and Fine off. With
+    Warp Off a higher note plays faster and shorter (Follow's PITCH Stretch
+    keeps the length for the whole kit).
   - Play: Mono / Poly, mute group 1–16, offset; Shift + K2 Pad Link; row 2
     Note On, reverse, loop.
   - Filter (Off, Classic, LPF2/4, HPF2/4, BPF2/4) and Filt Env (up to seven

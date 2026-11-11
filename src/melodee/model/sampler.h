@@ -81,6 +81,7 @@ struct PadSound {
     int16_t gain = 0;             // hundredths of a dB: Normalize (Shift + B2 on Trim)
     uint32_t loop_point() const { return loop_lock ? start : loop_start; }
     bool used() const { return sample != no_sample; }
+    bool warped() const { return warp == warp_seq || warp >= warp_min; }
 };
 
 struct SampleRef {

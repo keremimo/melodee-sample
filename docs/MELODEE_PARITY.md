@@ -212,7 +212,7 @@ left on by phase 1b's device checks for a while, which plays every hit at 127.
 - [x] Hold Sample + pad: select a kit pad without playing it.
 - [x] Later (from phase 4): the MPC's sampler page groups on B1 (Trim / Mix / Amp Env), B2 (Tune / Play), B3 (Filter / Filt Env), with phase 10's direct jumps. Built in phase 10.
 - [ ] Later (from phase 4): Seq Record keeps a 16 Levels pad's pitch and cutoff, not only its velocity.
-- [ ] Later (from phase 4): Pad Link through more than one pad (a linked pad's own link); semi / fine off in Warp's Pitch mode, as on the MPC.
+- [ ] Later (from phase 4): Pad Link through more than one pad (a linked pad's own link).
 - [ ] Later (from phase 4): a short crossfade at the loop seam, if the hand check hears a click.
 
 ### Phase 5: chop, sample files and browser
