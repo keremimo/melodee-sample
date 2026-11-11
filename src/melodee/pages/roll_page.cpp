@@ -174,7 +174,7 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     if (down && c.ui.erase) { // Erase + pad: every note of its key, once B3 says so (as on Step Edit)
         c.ui.sheet_open = false;
-        int key = pad_note(c.project, c.track(), pad).key;
+        int key = pad_key(c.project, c.track(), pad);
         if (c.track().used() && key >= 0) ask(c, UiState::Ask::EraseKeyEvents, key);
         return;
     }
@@ -183,7 +183,7 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     if (c.ui.sheet_open) c.ui.sheet_open = false; // a pad leaves the sheet and writes as ever
     if (c.ui.recording && c.host.playing()) return; // played in live by Seq Record
     int v = c.track().layout == PadLayout::Levels ? level_velocity(pad) : velocity;
-    roll_write(c, pad_note(c.project, c.track(), pad).key, uint8_t(v));
+    roll_write(c, pad_key(c.project, c.track(), pad), uint8_t(v));
 }
 
 void wheel(Context& c, int delta) {
