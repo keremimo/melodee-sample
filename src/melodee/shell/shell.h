@@ -86,6 +86,7 @@ private:
     std::atomic<uint32_t> pads_lit {0}; // the pads lit, a bit each, for `status`
     bool record_track_keys() const; // Record: a synth track source plays the pads (Minus / Plus: its octave)
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
+    bool song_buttons() const { return ui_.page == PageId::Song && !ui_.song_export && !ui_.shift; } // Chop, Erase, Note Repeat work on the clip
     Rgb loop_light(unsigned pad, uint32_t now, bool muting) const; // the Looper's grid (shell/lights.cpp)
     void end_copy_away();  // copying stops away from the pads it copies
 

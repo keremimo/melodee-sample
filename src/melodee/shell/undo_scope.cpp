@@ -76,6 +76,7 @@ UndoScope pattern_scope(const Project& project, const UiState& ui) {
 UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton button, bool pad) {
     using S = UndoScope::Kind;
     using B = SurfaceButton;
+    if (!pad && ui.page == PageId::Song && !ui.shift && !ui.song_export && (button == B::Loop || button == B::NoteRepeat)) return of(S::Song, ui); // the brace, the clip's repeats
     if (!pad && (button == B::Loop || (button == B::Chop && ui.shift))) return pad_scope(ui, project);
     if (!pad && (button == B::KnobFx || button == B::Mute || button == B::NoteRepeat || button == B::PadBank || button == B::Play
                  || button == B::Stop || button == B::SeqRecord)) return {}; // modes and the transport, not edits

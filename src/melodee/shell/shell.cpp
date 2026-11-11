@@ -130,7 +130,11 @@ void Shell::press(Button b, bool pressed) {
     }
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp
     if (b == Button::Mute) { mute_button(context_, pressed); return; }         // shell/mute_mode.cpp
-    if (b == Button::NoteRepeat && !ui.exit_open) { repeat_button(context_, pressed); return; } // shell/note_repeat.cpp
+    if (b == Button::NoteRepeat && !ui.exit_open) { // shell/note_repeat.cpp; on Song the pads play nothing: it repeats the clip
+        if (pressed && song_buttons()) song_repeat(context_);
+        else repeat_button(context_, pressed);
+        return;
+    }
     if (b == Button::Sample) { if (!ui.exit_open) sample_button(context_, true); return; } // shell/sample_mode.cpp: held, a pad picks a kit pad
     if (b == Button::Loop && !ui.exit_open) { loop_press(context_, pressed); return; } // twice or held: the Looper (shell/looper_jobs.cpp)
     if (b == Button::Erase) {
@@ -151,6 +155,8 @@ void Shell::press(Button b, bool pressed) {
         } else if (ui.copying != UiState::Copying::Off) { // Erase alone leaves copying
             ui.stop_copying();
             context_.notice("Copy off");
+        } else if (song_buttons()) {
+            song_erase(context_); // the clip under the cursor, one undo
         }
         return;
     }
@@ -219,7 +225,7 @@ void Shell::press(Button b, bool pressed) {
         else context_.record_button();
         break;
     case Button::SixteenLevels: levels_button(context_); break; // the last pad (or note) on all sixteen; Shift: the type
-    case Button::Chop: chop_button(context_); break;            // Chop on the last pad's sample; Shift: Note On
+    case Button::Chop: if (song_buttons()) song_chop(context_); else chop_button(context_); break; // Chop on the last pad's sample; Shift: Note On; on Song the clip in two
     case Button::Play: if (ui.shift) context_.play_continue(); else context_.play(); break;
     case Button::Stop:
         if (ui.page == PageId::Record) context_.send({Command::Type::RecordStop}); // the take ends; Record stays
@@ -264,7 +270,7 @@ void Shell::press(Button b, bool pressed) {
     case Button::TopMiddle: if (!repeat_soft(context_, 1)) page.soft(context_, 1); break;
     case Button::TopRight: if (!repeat_soft(context_, 2)) page.soft(context_, 2); break;
     case Button::WheelPush:
-        if (ui.shift && ui.page == PageId::Song && !ui.sheet_open) song_marker(context_);
+        if (ui.shift && ui.page == PageId::Song) song_marker(context_);
         else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && ui.project_demos) { ui.project_demos = false; ui.project_cursor = 0; } // out of DEMOS
         else if (ui.shift && ui.page == PageId::Project && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
             // up a folder

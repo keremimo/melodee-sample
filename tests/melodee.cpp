@@ -4831,6 +4831,41 @@ void stream_pager() {
     pin_log = nullptr;
 }
 
+// Song's clip jobs live on printed buttons: which glow, what undo keeps, and B1-B3 staying the page's under a latched Note Repeat.
+static void song_buttons() {
+    auto project = std::make_unique<Project>();
+    using B = SurfaceButton;
+    auto& song = project->song;
+    CHECK(song.place({2, 0, 4, 4, false}));
+    UiState ui; ui.page = PageId::Song; ui.track = 2;
+    auto job = [&](B b) { return button_has_job(*project, ui, b, false, false); };
+    ui.song_cursor = 0; // empty time
+    CHECK(!job(B::Chop) && !job(B::Erase) && !job(B::NoteRepeat) && job(B::Loop));
+    ui.song_cursor = 4; // the clip's first bar: nothing to split off
+    CHECK(!job(B::Chop) && job(B::Erase) && !job(B::NoteRepeat));
+    ui.song_cursor = 6;
+    CHECK(job(B::Chop) && job(B::Erase));
+    CHECK(song.next_marker(0) == 0);
+    CHECK(song.step_marker(8) && song.next_marker(4) == 8 && !job(B::NoteRepeat)); // the marker is where the clip ends
+    CHECK(song.step_marker(16) && song.step_marker(12) && song.next_marker(8) == 12);
+    song.markers[size_t(song.marker_at(8))].bar = 2; // now the next is past the clip's end
+    CHECK(song.next_marker(4) == 12 && job(B::NoteRepeat));
+    ui.song_export = true; // the export sheet: the page's rules, not the clip's
+    CHECK(!job(B::Erase));
+    ui.song_export = false;
+    CHECK(press_scope(*project, ui, B::Loop, false).kind == UndoScope::Kind::Song);
+    CHECK(press_scope(*project, ui, B::NoteRepeat, false).kind == UndoScope::Kind::Song);
+    CHECK(press_scope(*project, ui, B::Chop, false).kind == UndoScope::Kind::Song);
+    CHECK(press_scope(*project, ui, B::Erase, false).kind == UndoScope::Kind::Song);
+    ui.shift = true; // Shift + Loop stays Reverse, of the last pad
+    CHECK(press_scope(*project, ui, B::Loop, false).kind != UndoScope::Kind::Song);
+    ui.shift = false;
+    project->tracks[2].arp = true;
+    CHECK(!repeat_keys(*project, ui));
+    ui.page = PageId::Patterns;
+    CHECK(repeat_keys(*project, ui));
+}
+
 // A pad holding an instrument: zones by key and velocity, as the pad's own sound in every other way.
 struct ZoneRig {
     std::vector<std::vector<float>> audio;
@@ -5220,6 +5255,7 @@ void note_pitches() {
 }
 
 int main() {
+    song_buttons();
     sfz_reader();
     sample_cache();
     stream_pager();

@@ -17,6 +17,14 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
         return button == B::TopLeft || button == B::TopRight || button == B::Play || button == B::Stop;
     const auto& track = project.tracks[ui.track % track_count];
     bool kit = track.engine == EngineKind::Sampler;
+    if (ui.page == PageId::Song && !ui.song_export && (button == B::Chop || button == B::Erase || button == B::NoteRepeat)) { // the clip under the cursor
+        int at = project.song.clip_at(ui.track % track_count, ui.song_cursor);
+        if (at < 0) return button == B::Erase && ui.copying != UiState::Copying::Off;
+        const auto& clip = project.song.clips[size_t(at)];
+        if (button == B::Chop) return ui.song_cursor > clip.bar;
+        if (button == B::NoteRepeat) return project.song.next_marker(clip.bar) > clip.end();
+        return true;
+    }
     switch (button) {
     case B::Chop: return kit && track.pads[track.last_pad % sampler_pads].used(); // the last pad's sample
     case B::Loop: return true;         // the last pad's loop (a kit); twice or held, the Looper

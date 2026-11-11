@@ -182,6 +182,13 @@ struct Song {
     // existing one to the next name; after the last name it goes.
     static constexpr const char* marker_names[] {"INTRO", "VERSE", "CHORUS", "BRIDGE", "DROP", "BREAK", "OUTRO"};
     static constexpr unsigned marker_name_count = sizeof(marker_names) / sizeof(marker_names[0]);
+    // The first marker after `bar`, or 0 (no marker can come after a bar and sit at bar 0).
+    unsigned next_marker(unsigned bar) const {
+        unsigned next = 0;
+        for (unsigned m = 0; m < marker_count; ++m)
+            if (markers[m].bar > bar && (!next || markers[m].bar < next)) next = markers[m].bar;
+        return next;
+    }
     int marker_at(unsigned bar) const {
         for (unsigned m = 0; m < marker_count; ++m) if (markers[m].bar == bar) return int(m);
         return -1;

@@ -434,9 +434,12 @@ const Preview previews[] {
          s.playing = s.song_playing = true; s.song_bar = 25; s.ticks = 40 * 4;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
-    {"clipsheet", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 16; s.ui.sheet_open = true;
+    {"songclip", [](Shell&, Snapshot& s) { // the cursor on a clip: B2 and B3 are its jobs
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 16;
          s.playing = true;
+     }},
+    {"songshift", [](Shell&, Snapshot& s) { // and with Shift held
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 16; s.ui.shift = true;
      }},
     {"rack", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 1; s.playing = true;
@@ -1022,7 +1025,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom clipsheet length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit");
+    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit");
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
     // Text under the floor or cut by its box fails the build check.
     return text_issues ? 1 : 0;

@@ -9,6 +9,14 @@ namespace melodee {
 // Shift + Push on Song: a marker at the cursor, or its next name (the one
 // place Shift + Push is not Back; Kerem's choice).
 void song_marker(Context& c);
+// Song's printed buttons, with no Shift and the export sheet closed (shell/shell.cpp):
+// Chop splits the clip at the cursor, Erase deletes it, Note Repeat repeats it to the next marker.
+void song_chop(Context& c);
+void song_erase(Context& c);
+void song_repeat(Context& c);
+// Loop: the brace on the clip's bars, or off. False when there was nothing to do.
+bool song_loop(Context& c);
+void song_loop_back(Context& c); // the brace before the last song_loop()
 extern const PageSpec stage_page, keys_page, mix_page, sounds_page, edit_page, steps_page, roll_page, motion_page, patterns_page, song_page, input_config_page,
     rack_page, sends_page, bus_page, master_page,
     pads_page, samples_page, chop_page,

@@ -76,11 +76,11 @@ cards.
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the screen shows the tracks, eight at a time (the half with the selected track), a pad picks one, −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. Tapped twice (within 450 ms): the Tracks screen, latched; on a kit the first tap's bank step is undone, and a tap on Tracks goes back to Stage. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The track's target (Fader page), or the page's own job (Fader below); its light follows the value | |
-| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus | Copy: kit pads, patterns on Patterns, tracks with Pad Bank held |
-| Note Repeat | A tap latches, a hold lasts; double tap opens Arp | |
-| Chop | Chop on the last pad's region; again back to Stage's TRIM | Note On (the last pad plays while held), or One shot |
+| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns on Patterns, tracks with Pad Bank held |
+| Note Repeat | A tap latches, a hold lasts; double tap opens Arp. On Song, repeats the clip to the next marker | |
+| Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
-| Loop | The last kit pad's loop on or off, lit while it loops. Tapped twice (within 450 ms) or held half a second: the Looper (the first tap's loop taken back); on the Looper, back | Reverse the last pad |
+| Loop | The last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Tapped twice (within 450 ms) or held half a second: the Looper (the first tap's loop taken back); on the Looper, back | Reverse the last pad |
 | 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper | The type: Velocity, Filter (kits), Tune, Scale, Loop |
 | Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. Synth or 909: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
@@ -319,9 +319,14 @@ eighth.
 - **Song** (Shift + Pad 12): a lane per track, clips of patterns, markers,
   a loop brace, the cursor. K1 zoom (4–64 bars), K2 / K3 the next clip's
   pattern and length (or the clip's under the cursor); wheel by the bar,
-  pads pick the lane, Push places a clip or opens its sheet (split,
-  duplicate, repeat to the next marker, loop these bars, own pattern,
-  motion lane, mute, delete); −/+ jump markers; Shift + Push adds a marker
+  pads pick the lane, −/+ jump markers. Clip jobs are on buttons, each lit
+  only when it can act on what the cursor is on:
+  **B3** Place (on a clip, Duplicate after it), **B2** Mute / Unmute,
+  **Shift + B2** its Motion, **Shift + B3** its Own Pattern, **Push** opens
+  its notes (Roll, or Step Edit on a kit; on empty time Places), **Chop**
+  splits at the cursor, **Erase** deletes, **Note Repeat** repeats to the
+  next marker, **Loop** loops its bars (again, or on empty time, off; twice
+  still opens the Looper). Each is one undo. Shift + Push adds a marker
   (on a marker, names it). Play here plays the song from the cursor. **B1
   Export**: B2 audio mixdown (Name sheet; once through, tails up to 10 s,
   `Melodee/Mixdowns/<name>.wav`, 24-bit; Stop drops it), B3 New pattern

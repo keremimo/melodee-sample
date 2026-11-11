@@ -471,7 +471,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
-    on(B::NoteRepeat, track.arp);
+    on(B::NoteRepeat, track.arp && ui.page != PageId::Song); // on Song it repeats the clip
     {
         auto state = host.recorder().state();
         bool blink = (now / 250) % 2;
@@ -481,7 +481,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
     on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
-    on(B::Loop, ui.page == PageId::Looper || (track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the last pad loops; the Looper
+    on(B::Loop, ui.page == PageId::Looper || (ui.page == PageId::Song ? project.song.looping()
+                    : track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the song's brace on Song, else the last pad loops; the Looper
     // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
     on(B::SixteenLevels, ui.page == PageId::Levels || track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));
     on(B::Play, playing);

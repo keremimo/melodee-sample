@@ -129,6 +129,7 @@ struct UiState {
     uint8_t song_zoom = 2;      // index into song_zooms
     uint8_t song_pattern = 0;   // what Push places on empty time
     uint8_t song_length = 4;    // bars
+    uint16_t song_loop_was[2] {}; // the brace before Loop moved it, for a double tap's take-back
     // Per chain: the slot (or + ADD) and parameter row; the pad chains share the last entry (cursor_of()).
     std::array<uint8_t, chain_count + 1> fx_cursor {}, fx_row {};
     static unsigned cursor_of(unsigned chain) { return chain < chain_count ? chain : chain_count; }
@@ -233,7 +234,7 @@ struct UiState {
     uint8_t loop = 0, looper_view = 0, loop_row = 0;
     bool loop_sheet = false;
     uint32_t loop_tap_at = 0, loop_down = 0;
-    bool loop_held = false, loop_toggled = false;
+    bool loop_held = false, loop_toggled = false, loop_on_song = false;
     int8_t loop_clear = -1;
     uint32_t loop_clear_at = 0;
     int8_t fx_loop = -1;

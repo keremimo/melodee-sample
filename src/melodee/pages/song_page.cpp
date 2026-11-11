@@ -5,12 +5,15 @@
 // time left to right; a clip is a pattern placed on a lane, in the track's
 // colour with its notes in small, notches at each repeat. Markers name the
 // parts, the brace is the loop, the strip at the bottom is the whole song.
-// The wheel moves the cursor by the bar, pads pick the lane, Push on a clip
-// opens its sheet, Push on empty time places the pattern on K2 for the
-// length on K3. K1 zoom. Minus / Plus jump between markers (or clip edges
-// while there are none). Shift + Push adds a marker at the cursor, or gives
-// it the next name, or after the last name removes it. Play here plays the
-// song from the cursor.
+// The wheel moves the cursor by the bar, pads pick the lane. Every clip job
+// is on a button of its own, no menu: B3 places the pattern on K2 for the
+// length on K3 (on a clip, duplicates it after itself), B2 mutes the clip,
+// Shift + B2 its motion, Shift + B3 gives it its own pattern, Push opens its
+// notes (on empty time, places as B3 does), Chop splits it at the cursor,
+// Erase deletes it, Note Repeat repeats it to the next marker, Loop loops
+// its bars. K1 zoom. Minus / Plus jump between markers (or clip edges while
+// there are none). Shift + Push adds a marker at the cursor, or names it.
+// Play here plays the song from the cursor.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
@@ -25,7 +28,6 @@ using namespace ui;
 // the selected track.
 constexpr unsigned lanes = 6;
 constexpr float x0 = 34, x1 = zone::width - zone::pad, lane_top = zone::picture_y + 29, lane_h = 15, lane_gap = 1;
-constexpr unsigned clip_actions = 8;
 
 unsigned zoom_of(const UiState& ui) { return song_zooms[ui.song_zoom % (sizeof(song_zooms) / sizeof(song_zooms[0]))]; }
 // The first bar in view: the remembered one, moved just enough to show the cursor.
@@ -78,6 +80,13 @@ void draw_clip(Paint& p, const Snapshot& s, const Clip& clip, float y, unsigned 
     p.g.restoreState();
 }
 
+// B1-B3 follow what is under the cursor; with Shift, the clip's second jobs.
+SoftKeys keys_of(const Snapshot& s, const Clip* clip, juce::Colour c) {
+    if (s.ui.shift) return {{"", clip ? "MOTION" : "", clip ? "OWN PATTERN" : ""}, -1, c};
+    if (clip) return {{"EXPORT", clip->muted ? "UNMUTE" : "MUTE", "DUPLICATE"}, -1, c};
+    return {{"EXPORT", "", s.project.tracks[s.ui.track].used() ? "PLACE" : ""}, -1, c};
+}
+
 void draw(Paint& p, const Snapshot& s) {
     const auto& song = s.project.song;
     auto c = colour_of(s);
@@ -91,31 +100,6 @@ void draw(Paint& p, const Snapshot& s) {
     else if (song.looping() && !s.following) h.left.push_back(pill("LOOP " + juce::String(song.loop_start + 1) + dash() + juce::String(song.loop_end), colour::text));
     h.right.push_back(tag_of(s, s.ui.track));
 
-    if (s.ui.sheet_open && selected_clip >= 0) {
-        // The clip sheet over the page.
-        frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
-        p.dim_zone(zone::knobs_y, zone::knobs_h);
-        const auto& clip = song.clips[size_t(selected_clip)];
-        unsigned next_marker = 0;
-        for (unsigned m = 0; m < song.marker_count; ++m)
-            if (song.markers[m].bar > clip.bar && (!next_marker || song.markers[m].bar < next_marker)) next_marker = song.markers[m].bar;
-        MenuSheet m;
-        m.title = "Clip"; m.accent = track_colour(clip.track);
-        m.detail = "BARS " + juce::String(clip.bar + 1) + dash() + juce::String(clip.end()) + juce::String::fromUTF8(" \xc2\xb7 TRACK ")
-            + juce::String(clip.track + 1);
-        bool can_split = cursor > clip.bar && cursor < clip.end();
-        m.rows[0] = {"Split at bar " + juce::String(cursor + 1), "", false, false, !can_split};
-        m.rows[1] = {"Duplicate after", "", false, false, false};
-        m.rows[2] = {"Repeat to next marker", "", false, false, !next_marker};
-        m.rows[3] = {song.loop_start == clip.bar && song.loop_end == clip.end() ? "Stop looping" : "Loop these bars", "", false, false, false};
-        m.rows[4] = {"Make its own pattern", "", false, false, false};
-        m.rows[5] = {"Show motion lane", "", false, false, false};
-        m.rows[6] = {clip.muted ? "Unmute clip" : "Mute clip", "", false, false, false};
-        m.rows[7] = {"Delete clip", "", false, true, false};
-        m.count = clip_actions; m.current = s.ui.sheet_row % clip_actions;
-        wide_sheet(p, m, "P" + juce::String(clip.pattern + 1), track_colour(clip.track));
-        return;
-    }
     if (s.ui.song_export) {
         // Export (B1), as on the MPC: B2 an audio mixdown, B3 a new pattern.
         frame(p, s, {{"CANCEL", "MIXDOWN", "NEW PATTERN"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
@@ -129,7 +113,7 @@ void draw(Paint& p, const Snapshot& s) {
         ui::sheet(p, sheet_card);
         return;
     }
-    frame(p, s, {{"EXPORT", "SONG", ""}, 1, c}, h);
+    frame(p, s, keys_of(s, selected_clip >= 0 ? &song.clips[size_t(selected_clip)] : nullptr, c), h);
 
     // Markers, the ruler and the loop brace.
     float label_every = zoom <= 8 ? 1 : zoom / 4.0f;
@@ -201,96 +185,83 @@ void draw(Paint& p, const Snapshot& s) {
     p.fill(x0 + ow * view / total, oy - 1, std::max(4.0f, ow * zoom / total), 4, colour::mid, 2);
 }
 
-Clip* clip_here(Context& c) {
-    int n = c.project.song.clip_at(c.ui.track, c.ui.song_cursor);
-    return n < 0 ? nullptr : &c.project.song.clips[size_t(n)];
-}
+int clip_index(const Context& c) { return c.project.song.clip_at(c.ui.track, c.ui.song_cursor); }
 
-void act(Context& c) {
-    auto& song = c.project.song;
-    int index = song.clip_at(c.ui.track, c.ui.song_cursor);
-    if (index < 0) { c.ui.sheet_open = false; return; }
-    Clip clip = song.clips[size_t(index)];
-    unsigned cursor = c.ui.song_cursor;
-    switch (c.ui.sheet_row % clip_actions) {
-    case 0: // split at the cursor
-        if (cursor <= clip.bar || cursor >= clip.end()) return;
-        song.clips[size_t(index)].bars = uint16_t(cursor - clip.bar);
-        { Clip tail = clip; tail.bar = uint16_t(cursor); tail.bars = uint16_t(clip.end() - cursor); song.place(tail); }
-        break;
-    case 1: { Clip copy = clip; copy.bar = clip.end(); song.place(copy); c.ui.song_cursor = copy.bar; break; }
-    case 2: { // repeat until the next marker
-        unsigned until = 0;
-        for (unsigned m = 0; m < song.marker_count; ++m)
-            if (song.markers[m].bar > clip.bar && (!until || song.markers[m].bar < until)) until = song.markers[m].bar;
-        if (!until) return;
-        for (unsigned at = clip.end(); at < until;) {
-            Clip copy = clip; copy.bar = uint16_t(at); copy.bars = uint16_t(std::min<unsigned>(clip.bars, until - at));
-            if (!song.place(copy)) break;
-            at += copy.bars;
-        }
-        break;
-    }
-    case 3:
-        if (song.loop_start == clip.bar && song.loop_end == clip.end()) song.loop_start = song.loop_end = 0;
-        else { song.loop_start = clip.bar; song.loop_end = clip.end(); }
-        break;
-    case 4: { // a copy of its pattern in the first empty slot, so editing it changes this clip alone
-        const auto& patterns = c.patterns.at[clip.track];
-        for (unsigned n = 0; n < pattern_count; ++n) {
-            bool placed = false;
-            for (unsigned k = 0; k < song.count; ++k) placed |= song.clips[k].track == clip.track && song.clips[k].pattern == n;
-            if (placed || !patterns[n].empty() || n == clip.pattern) continue;
-            c.copy_pattern(clip.track, clip.pattern, n);
-            song.clips[size_t(index)].pattern = uint8_t(n);
-            break;
-        }
-        break;
-    }
-    case 5: // its motion: the Motion page on this clip's pattern
-        c.launch(clip.track, clip.pattern);
-        c.sync_song();
-        c.open(PageId::Motion);
-        return;
-    case 6: song.clips[size_t(index)].muted = !clip.muted; break;
-    case 7: song.erase(unsigned(index)); break;
-    }
-    c.ui.sheet_open = false;
-    c.sync_song();
-}
-
-void pad(Context& c, unsigned pad, uint8_t, bool down) {
-    if (down && !c.ui.sheet_open) c.select_track(pad); // pads pick the lane
-}
-
-void wheel(Context& c, int delta) {
-    if (c.ui.song_export) return;
-    if (c.ui.sheet_open) {
-        c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(clip_actions) - 1));
-        return;
-    }
-    c.ui.song_cursor = uint16_t(std::clamp<int>(c.ui.song_cursor + delta, 0, int(song_bars) - 1));
-    c.ui.song_view = uint16_t(view_of(c.ui));
-}
-
-void push(Context& c) {
-    if (c.ui.song_export) return;
-    if (c.ui.sheet_open) { act(c); return; }
-    if (clip_here(c)) { c.ui.sheet_open = true; c.ui.sheet_row = 0; return; }
+void place(Context& c) {
     if (!c.track().used()) return;
     Clip clip;
     clip.track = c.ui.track; clip.pattern = c.ui.song_pattern; clip.bar = c.ui.song_cursor; clip.bars = c.ui.song_length;
     if (c.project.song.place(clip)) c.sync_song();
 }
 
+void duplicate(Context& c, int index) {
+    Clip copy = c.project.song.clips[size_t(index)];
+    copy.bar = copy.end();
+    if (!c.project.song.place(copy)) return;
+    c.ui.song_cursor = copy.bar;
+    c.ui.song_view = uint16_t(view_of(c.ui));
+    c.sync_song();
+}
+
+// A copy of its pattern in the first empty slot, so editing it changes this clip alone.
+void own_pattern(Context& c, int index) {
+    auto& song = c.project.song;
+    Clip clip = song.clips[size_t(index)];
+    const auto& patterns = c.patterns.at[clip.track];
+    for (unsigned n = 0; n < pattern_count; ++n) {
+        bool placed = false;
+        for (unsigned k = 0; k < song.count; ++k) placed |= song.clips[k].track == clip.track && song.clips[k].pattern == n;
+        if (placed || !patterns[n].empty() || n == clip.pattern) continue;
+        c.copy_pattern(clip.track, clip.pattern, n);
+        song.clips[size_t(index)].pattern = uint8_t(n);
+        c.sync_song();
+        return;
+    }
+    c.notice("No free pattern");
+}
+
+// Into the clip's pattern: its notes, or with `motion` its motion lanes.
+void open_clip(Context& c, int index, bool motion) {
+    Clip clip = c.project.song.clips[size_t(index)];
+    c.launch(clip.track, clip.pattern);
+    c.sync_song();
+    auto engine = c.track().engine;
+    c.open(motion ? PageId::Motion : engine == EngineKind::Sampler || engine == EngineKind::Kit909 ? PageId::StepEdit : PageId::Roll);
+}
+
+void pad(Context& c, unsigned pad, uint8_t, bool down) {
+    if (down) c.select_track(pad); // pads pick the lane
+}
+
+void wheel(Context& c, int delta) {
+    if (c.ui.song_export) return;
+    c.ui.song_cursor = uint16_t(std::clamp<int>(c.ui.song_cursor + delta, 0, int(song_bars) - 1));
+    c.ui.song_view = uint16_t(view_of(c.ui));
+}
+
+void push(Context& c) {
+    if (c.ui.song_export) return;
+    int index = clip_index(c);
+    if (index >= 0) open_clip(c, index, false);
+    else place(c);
+}
+
 void soft(Context& c, int key) {
     if (c.ui.song_export) { c.song_export_soft(key); return; } // B1 Cancel, B2 Audio mixdown, B3 New pattern
-    if (c.ui.sheet_open) {
-        if (key == 0) c.ui.sheet_open = false;
-        if (key == 2) act(c);
+    int index = clip_index(c);
+    if (c.ui.shift) {
+        if (index < 0) return;
+        if (key == 1) open_clip(c, index, true);
+        if (key == 2) own_pattern(c, index);
         return;
     }
     if (key == 0) c.ui.song_export = true; // Export, as on the MPC (Patterns is on Seq)
+    if (key == 1 && index >= 0) {
+        auto& clip = c.project.song.clips[size_t(index)];
+        clip.muted = !clip.muted;
+        c.sync_song();
+    }
+    if (key == 2) { if (index >= 0) duplicate(c, index); else place(c); }
 }
 
 // Minus / Plus: the previous or next marker, or clip edge while there are no markers.
@@ -314,6 +285,64 @@ void nudge(Context& c, int way) {
 void song_marker(Context& c) {
     if (c.project.song.marker_at(c.ui.song_cursor) >= 0) c.name_marker(c.ui.song_cursor);
     else c.project.song.step_marker(c.ui.song_cursor);
+}
+
+// Chop: the clip in two at the cursor.
+void song_chop(Context& c) {
+    auto& song = c.project.song;
+    int index = clip_index(c);
+    if (index < 0 || c.ui.song_cursor <= song.clips[size_t(index)].bar) { c.notice("Chop: cursor inside a clip"); return; }
+    Clip clip = song.clips[size_t(index)];
+    unsigned cursor = c.ui.song_cursor;
+    song.clips[size_t(index)].bars = uint16_t(cursor - clip.bar);
+    Clip tail = clip;
+    tail.bar = uint16_t(cursor); tail.bars = uint16_t(clip.end() - cursor);
+    song.place(tail);
+    c.sync_song();
+}
+
+void song_erase(Context& c) {
+    int index = clip_index(c);
+    if (index < 0) return;
+    c.project.song.erase(unsigned(index));
+    c.sync_song();
+}
+
+// Note Repeat: the clip again and again up to the next marker.
+void song_repeat(Context& c) {
+    auto& song = c.project.song;
+    int index = clip_index(c);
+    if (index < 0) return;
+    Clip clip = song.clips[size_t(index)];
+    unsigned until = song.next_marker(clip.bar);
+    if (until <= clip.end()) { c.notice("Repeat: needs a marker ahead"); return; }
+    for (unsigned at = clip.end(); at < until;) {
+        Clip copy = clip;
+        copy.bar = uint16_t(at); copy.bars = uint16_t(std::min<unsigned>(clip.bars, until - at));
+        if (!song.place(copy)) break;
+        at += copy.bars;
+    }
+    c.sync_song();
+}
+
+// Loop: the brace on the clip's bars; again, or on empty time, off.
+bool song_loop(Context& c) {
+    auto& song = c.project.song;
+    int index = clip_index(c);
+    if (index < 0 && !song.looping()) return false;
+    c.ui.song_loop_was[0] = song.loop_start; c.ui.song_loop_was[1] = song.loop_end;
+    bool same = index >= 0 && song.loop_start == song.clips[size_t(index)].bar && song.loop_end == song.clips[size_t(index)].end();
+    if (index < 0 || same) song.loop_start = song.loop_end = 0;
+    else { song.loop_start = song.clips[size_t(index)].bar; song.loop_end = song.clips[size_t(index)].end(); }
+    c.sync_song();
+    return true;
+}
+
+// The brace as it was: a tap that turned out to be the first of two, for the Looper.
+void song_loop_back(Context& c) {
+    c.project.song.loop_start = c.ui.song_loop_was[0];
+    c.project.song.loop_end = c.ui.song_loop_was[1];
+    c.sync_song();
 }
 
 const PageSpec song_page {draw, pad, wheel, push, soft, nudge};

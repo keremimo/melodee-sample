@@ -9,7 +9,7 @@
 //                                    and DIR/<page>@2x.png at the boards' 640 x 480.
 //                                    Pages: stage keys sounds edit soundmap mod touch mix steps roll
 //                                    notesheet motion patterns song songzoom
-//                                    clipsheet length rack sends bus fxpick
+//                                    songclip songshift length rack sends bus fxpick
 //                                    pads samples trim chop levels record
 //                                    project filesheet tempo arp chord capture
 //                                    pad play envelope filter follow cloud shift exit

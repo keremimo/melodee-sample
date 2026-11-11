@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/sample_mode.h"
@@ -119,22 +120,32 @@ void set_loop_solo(Context& c, unsigned loop, bool on) {
     c.send({Type::Solo, uint8_t(track_count + loop), 0, 0, on});
 }
 
+// The Looper was meant, not the tap's loop: undo that tap, silently.
+static void take_back_loop(Context& c) {
+    if (c.ui.loop_on_song) song_loop_back(c); else c.toggle_loop();
+    c.ui.notice[0] = 0;
+}
+
 void loop_press(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (!pressed) { ui.loop_held = false; return; }
     if (ui.shift) { ui.shift_used = true; loop_button(c); return; } // Shift + Loop: Reverse, as printed
     if (ui.page == PageId::Looper) { ui.loop_tap_at = 0; c.back(); return; }
     if (ui.loop_tap_at && c.now - ui.loop_tap_at <= loop_double_ms) { // tapped twice: the Looper
-        if (ui.loop_toggled) { c.toggle_loop(); ui.notice[0] = 0; } // the first tap's loop taken back
+        if (ui.loop_toggled) take_back_loop(c); // the first tap's loop
         ui.loop_tap_at = 0; ui.loop_toggled = false; ui.loop_held = false;
         c.open(PageId::Looper);
         return;
     }
     ui.loop_tap_at = std::max<uint32_t>(c.now, 1);
     ui.loop_down = c.now; ui.loop_held = true;
-    ui.loop_toggled = c.track().engine == EngineKind::Sampler && c.pad().used();
-    if (ui.loop_toggled) loop_button(c);           // the MPC's job: the last pad's loop
-    else c.notice("Loop twice: the Looper");
+    ui.loop_on_song = ui.page == PageId::Song && !ui.song_export;
+    if (ui.loop_on_song) ui.loop_toggled = song_loop(c); // on Song: the brace on the clip's bars
+    else {
+        ui.loop_toggled = c.track().engine == EngineKind::Sampler && c.pad().used();
+        if (ui.loop_toggled) loop_button(c);             // the MPC's job: the last pad's loop
+    }
+    if (!ui.loop_toggled) c.notice("Loop twice: the Looper");
 }
 
 void loop_grid_pad(Context& c, unsigned pad, bool down) {
@@ -191,7 +202,7 @@ void looper_tick(Context& c, uint32_t now) {
     if (ui.loop_held && now - ui.loop_down >= loop_hold_ms) {
         ui.loop_held = false; ui.loop_tap_at = 0;
         if (ui.page != PageId::Looper) {
-            if (ui.loop_toggled) { c.toggle_loop(); ui.notice[0] = 0; }
+            if (ui.loop_toggled) take_back_loop(c);
             c.open(PageId::Looper);
         }
         ui.loop_toggled = false;
