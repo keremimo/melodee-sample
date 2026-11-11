@@ -5914,6 +5914,8 @@ void note_pitches() {
     CHECK(ref.instrument());
     std::strcpy(ref.path, "/media/card/Keys/Rhodes.xpj");
     CHECK(!ref.instrument());
+    std::strcpy(ref.path, "/media/card/Samples/Boys Choir/Boys Choir.exs"); // held while held, as an SFZ is
+    CHECK(ref.instrument());
     std::strcpy(ref.path, "/media/card/Kits/Kit-Lofi Patch.xpm#12");
     CHECK(ref.instrument());
     std::strcpy(ref.path, "/media/card/Projects/Cycle 86bpm.xpj#3.16");
