@@ -5748,6 +5748,30 @@ void voice_heads() {
     }
 }
 
+// Mock 5 (shell/playheads.h): the slice Chop's audition voice plays, found from its region; Manual's take is the
+// whole region while it is heard, and no slice.
+void chop_heads() {
+    Slices sl;
+    sl.count = 3; sl.start[0] = 1000; sl.start[1] = 5000; sl.start[2] = 9000; sl.last = 12000;
+    PlayHead h;
+    h.serial = 3; h.pad = 128; h.slot = 4; h.from = 5000; h.to = 9000; h.at = 6000; h.step = 1; h.level = 0.8f; h.wake = 1;
+    CHECK(chop_sound(&h, sl, 20000, false).slice == 1 && !chop_sound(&h, sl, 20000, false).take);
+    CHECK(chop_sound(nullptr, sl, 20000, false).slice == -1 && chop_sound(&h, Slices {}, 20000, false).slice == -1);
+    h.from = 9000; h.to = 12000; // the last slice, up to `last`
+    CHECK(chop_sound(&h, sl, 20000, false).slice == 2);
+    h.from = 4000; h.to = 9000;  // a slice moved under it: none
+    CHECK(chop_sound(&h, sl, 20000, false).slice == -1);
+    h.from = 1000; h.to = 12000; // Manual's take over the whole region
+    ChopSound take = chop_sound(&h, sl, 20000, true);
+    CHECK(take.take && take.slice == -1);
+    CHECK(!chop_sound(&h, sl, 20000, false).take);
+    h.level = 0;                 // played out: no take, and no slice for it either
+    take = chop_sound(&h, sl, 20000, true);
+    CHECK(!take.take && take.slice == -1);
+    sl.count = 1; h.level = 0.8f; // one slice, the whole region: the take while armed, else that slice
+    CHECK(chop_sound(&h, sl, 12000, true).take && chop_sound(&h, sl, 12000, false).slice == 0);
+}
+
 void place_bar() {
     using Tone = PlaceBar::Tone;
     auto s = std::make_unique<Snapshot>();
@@ -5848,6 +5872,7 @@ void head_lines() {
 int main() {
     voice_taps();
     voice_heads();
+    chop_heads();
     place_bar();
     song_buttons();
     sfz_reader();

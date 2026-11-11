@@ -185,6 +185,15 @@ PlayHead& stage_voice(Snapshot& s, unsigned k, uint32_t serial, double at, float
     return h;
 }
 
+// Chop's audition voice (Chop's pads play through it) on frames `from`..`to` of slot 4, `through` it (0..1), as heads[0].
+void chop_voice(Snapshot& s, uint32_t from, uint32_t to, float through, float level) {
+    PlayHead h;
+    h.serial = 60; h.pad = int16_t(sampler_pads); h.slot = 4;
+    h.from = from; h.to = to; h.loop_at = from; h.at = from + double(to - from) * through;
+    h.step = 1; h.level = level; h.wake = 1;
+    s.heads[0] = h;
+}
+
 // The Project board's card: two folders and four projects, Night drive open with changes.
 void preview_projects(Snapshot& s) {
     auto& v = s.projects;
@@ -644,6 +653,19 @@ const Preview previews[] {
          s.ui.slices = chop(ChopMode::Manual, 0, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
          for (uint32_t at : {28000u, 57000u, 86000u}) s.ui.slices.add(at, s.sample.frames, manual_slices);
          s.ui.chop_slice = 3; s.ui.chop_take_at = s.now > 2400 ? s.now - 2400 : 1;
+         chop_voice(s, s.ui.slices.start[0], s.ui.slices.end(s.ui.slices.count - 1, s.sample.frames), 0.48f, 0.9f);
+     }},
+    {"chopplaying", [](Shell&, Snapshot& s) { // a pad playing slice 8 while slice 5 is in hand: it lights, its head runs through it
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.ui.slices = chop(ChopMode::Regions, 12, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.chop_mode = ChopMode::Regions; s.ui.chop_slice = 4;
+         chop_voice(s, s.ui.slices.start[7], s.ui.slices.end(7, s.sample.frames), 0.55f, 0.85f);
+     }},
+    {"chopplayingsel", [](Shell&, Snapshot& s) { // the slice in hand playing: its raised ground and handles stay, the head over them
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.ui.slices = chop(ChopMode::Regions, 12, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.chop_mode = ChopMode::Regions; s.ui.chop_slice = 4;
+         chop_voice(s, s.ui.slices.start[4], s.ui.slices.end(4, s.sample.frames), 0.4f, 1.0f);
      }},
     {"chopshift", [](Shell&, Snapshot& s) { // Shift: Extract / Split / Merge, zoomed in at the slice's end
          s.ui.page = PageId::Chop; s.ui.track = 3; s.sample = break_sample(); s.ui.chop_sample = 4;

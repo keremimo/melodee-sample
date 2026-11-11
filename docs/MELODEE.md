@@ -429,6 +429,11 @@ thread.
   the strongest hit. Shift + B1 Extract (`Samples/Edits/<NAME>-Slice n.wav`
   onto the next empty pad), Shift + B2 Split, Shift + B3 Merge; Erase + pad
   takes a slice out. B3 TO PADS lays the slices on pads, B1 DROP back.
+  The slice a pad plays lights faintly in the track colour with a head
+  and its wake running through it, its bars full colour and its number
+  bold in the track colour (the newest, if several); the slice in hand
+  keeps its ground and handles. Manual's take line follows the voice as
+  heard. Zoomed in, the view stays put.
   B2 SNAP ON / OFF is Zero Snap (on by default, kept with the settings):
   every cut (each type's, Manual's taps, K1 / K2, Split, Sample Record's
   pad cuts) lands on the nearest zero crossing of both sides summed,

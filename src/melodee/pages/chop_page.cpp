@@ -17,6 +17,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/pages/sampler_common.h"
 #include "melodee/ui/waveform.h"
 #include <cstdio>
 
@@ -63,23 +64,43 @@ void draw(Paint& p, const Snapshot& s) {
     }
     float y = zone::picture_y + 27, wh = 75;
     auto x_of = [&](float at) { return x + (at - from) / (to - from) * w; };
+    // What the audition voice plays now (mock 5): the slice a pad started, with its head and wake, or Manual's take.
+    PadSound audition;
+    audition.sample = s.ui.chop_sample;
+    WaveHead head;
+    const PlayHead* playing = pad_head(s, sampler_pads, audition, frames, head);
+    ChopSound sound = chop_sound(playing, slices, frames, s.ui.chop_take_at != 0);
+    int sounding = sound.slice >= 0 && head.wake > 0 ? sound.slice : -1;
+    float sa = 0, sb = 0; // the sounding slice, 0..1 of the file
+    if (sounding >= 0) { sa = float(slices.start[sounding]) / frames; sb = float(slices.end(unsigned(sounding), frames)) / frames; }
     p.g.saveState();
     p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), int(w + 1), int(wh + 13)));
     p.fill(x_of(a), y, x_of(b) - x_of(a), wh, colour::raised);
     waveform(p, x, y, w, wh, s.sample.overview, from, to, a, b, c);
+    if (sounding >= 0) { // its bars again, in full colour (dim ones too, while it plays), the head and its wake over them
+        p.g.saveState();
+        float l = std::floor(x_of(sa)), r = std::ceil(x_of(sb));
+        p.g.reduceClipRegion(juce::Rectangle<int>(int(l), int(y), int(std::max(0.0f, r - l)), int(wh)));
+        p.fill(l, y, r - l, wh, sounding == int(selected) ? colour::raised : colour::bg);
+        p.fill(l, y, r - l, wh, c.withAlpha(0.17f * head.wake));
+        waveform(p, x, y, w, wh, s.sample.overview, from, to, sa, sb, c, &head, 1);
+        p.g.restoreState();
+    }
     for (unsigned n = 0; n < slices.count; ++n) {
         float sx = x_of(float(slices.start[n]) / frames);
-        bool edge = n == selected || n == selected + 1;
+        bool edge = n == selected || n == selected + 1, heard = int(n) == sounding;
         if (n) p.fill(sx, y, 1, wh, edge ? colour::text : colour::line);
-        p.text(juce::String(n + 1), sx + 1, y + wh + 2, 16, 9, plain(n == selected ? colour::text : colour::mid, type::small, n == selected ? Weight::Bold : Weight::SemiBold));
+        p.text(juce::String(n + 1), sx + 1, y + wh + 2, 16, 9,
+               plain(heard ? c : n == selected ? colour::text : colour::mid, type::small, heard || n == selected ? Weight::Bold : Weight::SemiBold));
     }
     p.fill(x_of(a), y, 1, wh, knob_shade(s.ui.track, 0));            // K1's handle
     p.fill(x_of(b) - 1, y, 1, wh, knob_shade(s.ui.track, 1));        // K2's
-    // Manual's take: where the region is now.
-    uint32_t heard = s.ui.chop_take_at && s.now >= s.ui.chop_take_at ? uint32_t(uint64_t(s.now - s.ui.chop_take_at) * 441 / 10) : 0;
-    bool taking = s.ui.chop_take_at && region_from + heard < region_to;
-    if (taking) p.fill(x_of(float(region_from + heard) / frames), y, 2, wh, colour::text);
+    // Manual's take: where the audition voice is heard in the region now (its region's start until it is heard).
+    bool starting = s.ui.chop_take_at && !sound.take && s.now >= s.ui.chop_take_at && s.now - s.ui.chop_take_at < 250;
+    bool taking = sound.take || starting;
+    if (taking) p.fill(x_of(sound.take ? float(playing->at / frames) : float(region_from) / frames), y, 2, wh, colour::text);
     p.g.restoreState();
+    if (sounding >= 0) draw_heads(p, x, y, w, wh, from, to, &head, 1);
     // The slice in hand, and what Manual waits for.
     float fy = y + wh + 14;
     p.fill(x, fy, w, 15, colour::quiet, 4);
