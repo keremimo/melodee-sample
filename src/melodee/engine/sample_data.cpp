@@ -12,7 +12,7 @@ uint32_t u32(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8 | u
 uint16_t u16(const uint8_t* p) { return uint16_t(p[0] | p[1] << 8); }
 } // namespace
 
-std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds) {
+std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info) {
     std::ifstream file(path, std::ios::binary);
     if (!file) return "cannot open";
     uint8_t head[12];
@@ -31,10 +31,18 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
         } else if (!std::memcmp(chunk, "data", 4)) {
             if (!format) return "data before format";
             uint64_t limit = uint64_t(max_seconds) * rate * channels * (bits / 8);
+            auto after = file.tellg() + std::streamoff(uint64_t(size) + (size & 1));
             data.resize(size_t(std::min<uint64_t>(size, limit)));
             file.read(reinterpret_cast<char*>(data.data()), std::streamsize(data.size()));
             data.resize(size_t(file.gcount()));
-            break;
+            if (!info) break;
+            file.clear(); // a smpl chunk may follow the audio
+            file.seekg(after);
+        } else if (info && !std::memcmp(chunk, "smpl", 4) && size >= 60) {
+            uint8_t body[60];
+            if (!file.read(reinterpret_cast<char*>(body), 60)) break;
+            if (u32(body + 28) > 0 && u32(body + 48) > u32(body + 44)) { info->loop_start = u32(body + 44); info->loop_end = int64_t(u32(body + 48)) + 1; }
+            file.seekg(std::streamoff(uint64_t(size) + (size & 1) - 60), std::ios::cur);
         } else {
             file.seekg(size + (size & 1), std::ios::cur);
         }
@@ -44,6 +52,7 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
     if (channels < 1 || channels > 2 || rate < 8000 || rate > 192000) return "unsupported channels or rate";
     unsigned bytes = bits / 8, frames = unsigned(data.size() / (bytes * channels));
     if (!frames) return "no audio";
+    if (info) { info->channels = channels; info->rate = rate; }
     auto sample = [&](unsigned frame, unsigned channel) {
         const uint8_t* p = &data[(size_t(frame) * channels + channel) * bytes];
         if (floating) { float f; std::memcpy(&f, p, 4); return std::isfinite(f) ? f : 0.0f; }

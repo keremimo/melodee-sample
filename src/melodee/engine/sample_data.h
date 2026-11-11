@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/multisample.h"
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -16,6 +17,14 @@ namespace melodee {
 struct SampleData {
     std::vector<float> left, right;
     uint32_t frames = 0;
+    std::shared_ptr<Multisample> multi; // a multisampled instrument: no frames of its own, its zones' instead
+};
+
+// What a file says of itself, beyond its frames: its rate and sides, and the
+// first loop of its smpl chunk (frames at its own rate, end past the last; -1 none).
+struct WavInfo {
+    unsigned channels = 0, rate = 0;
+    int64_t loop_start = -1, loop_end = -1;
 };
 
 // The waveform as the pages draw it: the peak of each of 512 columns, 0..255.
@@ -27,7 +36,7 @@ constexpr unsigned max_hits = 128;
 // Reads a WAV file (PCM 16, 24 or 32 bit, or 32-bit float; mono or stereo;
 // any rate, converted to 44.1 kHz) of at most `max_seconds`. Returns an
 // empty message on success, else what went wrong.
-std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60);
+std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60, WavInfo* info = nullptr);
 // Writes 24-bit stereo PCM at 44.1 kHz; empty on success.
 std::string write_wav(const std::string& path, const SampleData& sample);
 // The same format written as it comes (the song's mixdown): open, add

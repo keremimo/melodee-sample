@@ -2,11 +2,16 @@
 // Melodee's model and audio side on the host: pad layouts, knob bindings,
 // the PROPHET engine and the engine host's sequencer and mixer.
 #include "melodee/engine/effects.h"
+#include <fstream>
+#include <filesystem>
 #include <functional>
 #include <map>
+#include <unistd.h>
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/sfz.h"
+#include "melodee/engine/stream_pager.h"
+#include "melodee/shell/sample_cache.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
@@ -4076,6 +4081,9 @@ void stage() {
     CHECK(cards(false)[0].kind == K::NewEngine && cards(false)[1].kind == K::NewSound);
     stage_press(ui, project->tracks[9], 1); CHECK(key() == "KIT" && cards(false)[0].kind == K::NewSource && cards(false)[0].max == int(new_sources) - 1);
     stage_press(ui, project->tracks[9], 2); CHECK(key() == "MIDI" && cards(false)[0].kind == K::NewPort && cards(false)[1].kind == K::NewChannel);
+    ui.last_pot = 2; // K3 is on no card here: the wheel still walks K1's list
+    CHECK(stage_focus(ui, project->tracks[9]) == 0 && stage_focus(ui, project->tracks[0]) == 2);
+    ui.last_pot = -1;
 
     // Tracks: K1 the track, K2 its level, K3 its pattern.
     ui.page = PageId::Tracks; ui.track = 0;
@@ -4654,8 +4662,176 @@ void sfz_reader() {
     }
 }
 
+// Laid out once and found again; chunks whole pages; the least lately played going first.
+void sample_cache() {
+    namespace fs = std::filesystem;
+    auto base = fs::temp_directory_path() / ("melodee-cache-" + std::to_string(getpid()));
+    fs::create_directories(base / "Cache");
+    SampleCache cache;
+    cache.set_folder((base / "Cache").string());
+    auto source = (base / "PP C#1.wav").string();
+    { std::ofstream(source) << "abc"; }
+    auto file = cache.file_of(source);
+    CHECK(!file.empty() && !cache.file_of((base / "gone.wav").string()).size());
+    LaidOut info;
+    CHECK(!cache.ready(file, info));
+    SampleData data;
+    data.frames = 40000; data.left.resize(40000); data.right.resize(40000);
+    for (unsigned n = 0; n < 40000; ++n) { data.left[n] = float(n); data.right[n] = -float(n); }
+    LaidOut out; out.frames = 40000; out.channels = 2; out.source_rate = 48000; out.loop_start = 7; out.loop_end = 99;
+    CHECK(cache.lay_out(file, data, out).empty());
+    CHECK(!fs::exists(file + ".part"));
+    CHECK(cache.ready(file, info) && info.frames == 40000 && info.channels == 2 && info.source_rate == 48000 && info.loop_start == 7 && info.loop_end == 99);
+    {
+        ZonePart part;
+        CHECK(SampleCache::map(file, info, part));
+        CHECK(part.left[39999] == 39999.0f && part.right[39999] == -39999.0f && part.left[0] == 0.0f);
+        CHECK(part.pins.size() == 3);
+        // both sides start on a chunk boundary of the file, so a chunk is whole pages
+        CHECK((reinterpret_cast<uintptr_t>(part.left) - reinterpret_cast<uintptr_t>(part.mapping)) % stream_chunk_bytes == 0);
+        CHECK((reinterpret_cast<uintptr_t>(part.right) - reinterpret_cast<uintptr_t>(part.mapping)) % stream_chunk_bytes == 0);
+    }
+    { // one side has no right
+        auto mono = (base / "Cache/mono.f32").string();
+        LaidOut one; one.frames = 100; one.channels = 1;
+        SampleData m; m.frames = 100; m.left.assign(100, 0.5f); m.right = m.left;
+        CHECK(cache.lay_out(mono, m, one).empty());
+        LaidOut got;
+        CHECK(cache.ready(mono, got) && got.channels == 1);
+        ZonePart part;
+        CHECK(SampleCache::map(mono, got, part) && part.right == part.left && part.left[99] == 0.5f);
+        CHECK(fs::file_size(mono) == SampleCache::bytes_of(100, 1));
+    }
+    { std::ofstream(file, std::ios::app) << "x"; } // not the size it says: laid out again
+    CHECK(!cache.ready(file, info));
+    { std::ofstream(source, std::ios::app) << "more"; }
+    CHECK(cache.file_of(source) != file); // the source changed
+    fs::remove_all(base / "Cache");
+    fs::create_directories(base / "Cache");
+    for (unsigned n = 0; n < 3; ++n) {
+        auto name = base / "Cache" / (std::to_string(n) + ".f32");
+        std::ofstream(name) << std::string(1000, 'x');
+        fs::last_write_time(name, fs::file_time_type::clock::now() - std::chrono::hours(10 - n));
+    }
+    { std::ofstream(base / "Cache/other.txt") << std::string(5000, 'x'); }
+    cache.tidy(2000);
+    CHECK(!fs::exists(base / "Cache/0.f32") && fs::exists(base / "Cache/1.f32") && fs::exists(base / "Cache/2.f32") && fs::exists(base / "Cache/other.txt"));
+    fs::remove_all(base);
+}
+
+// The pager pins ahead of a voice and lets go behind; the audio thread sees only what is safe.
+std::vector<std::pair<uintptr_t, bool>>* pin_log = nullptr;
+bool pin_fails = false;
+bool logged_pin(const void* address, size_t, bool lock) {
+    if (lock && pin_fails) return false;
+    if (pin_log) pin_log->push_back({reinterpret_cast<uintptr_t>(address), lock});
+    return true;
+}
+
+void stream_pager() {
+    std::vector<std::pair<uintptr_t, bool>> log;
+    pin_log = &log; pin_fails = false;
+    StreamPager pager(logged_pin);
+    std::vector<float> side(stream_chunk * 10);
+    auto base = reinterpret_cast<uintptr_t>(side.data());
+    auto chunk_of = [&](uintptr_t a) { return (a - base) / (stream_chunk * sizeof(float)); };
+    ZonePart part;
+    part.left = part.right = side.data();
+    part.pins.assign(10, 0);
+    part.frames.store(stream_chunk * 10);
+    const auto c = stream_chunk;
+    int s = pager.open(part, 0, false, 1.0f);
+    CHECK(s >= 0);
+    CHECK(pager.limit(s) == c); // the head is held, so safe before the pager has answered
+    while (pager.pump()) {}
+    CHECK(pager.limit(s) == 3 * c && part.pins[0] == 1 && part.pins[1] == 1 && part.pins[2] == 1 && part.pins[3] == 0);
+    pager.place(s, 2 * c + 5);
+    while (pager.pump()) {}
+    CHECK(pager.limit(s) == 5 * c);
+    CHECK(part.pins[0] == 0 && part.pins[1] == 1); // a chunk behind stays
+    CHECK(!log.empty() && !log.back().second); // the last it did was let go
+    { // a second voice over the same chunks keeps them when the first lets go
+        int t = pager.open(part, 2 * c, false, 1.0f);
+        CHECK(t >= 0 && t != s);
+        while (pager.pump()) {}
+        CHECK(part.pins[2] == 2);
+        log.clear();
+        pager.close(s);
+        while (pager.pump()) {}
+        CHECK(part.pins[2] == 1 && part.pins[1] == 0);
+        for (auto& e : log) CHECK(chunk_of(e.first) != 2);
+        pager.close(t);
+        while (pager.pump()) {}
+        for (auto n : part.pins) CHECK(n == 0);
+    }
+    { // to the end, and no further
+        int t = pager.open(part, 8 * c, false, 1.0f);
+        while (pager.pump()) {}
+        CHECK(pager.limit(t) == 10 * c);
+        pager.close(t);
+        while (pager.pump()) {}
+    }
+    { // a loop coming round starts a new run: its old answer no longer counts
+        int t = pager.open(part, 0, false, 1.0f);
+        while (pager.pump()) {}
+        pager.place(t, 2 * c);
+        while (pager.pump()) {}
+        CHECK(pager.limit(t) == 5 * c);
+        pager.restart(t, c / 2);
+        CHECK(pager.limit(t) == c / 2 + c); // before the pager answers: the loop's held start only
+        while (pager.pump()) {}
+        CHECK(pager.limit(t) == 3 * c);
+        pager.close(t);
+        while (pager.pump()) {}
+    }
+    { // reversed: nothing is safe until pinned, then downwards
+        int t = pager.open(part, 9 * c + 7, true, 1.0f);
+        CHECK(pager.limit(t) == UINT32_MAX);
+        while (pager.pump()) {}
+        CHECK(pager.limit(t) == 7 * c);
+        pager.place(t, 5 * c + 3);
+        while (pager.pump()) {}
+        CHECK(pager.limit(t) == 3 * c && part.pins[9] == 0);
+        pager.close(t);
+        while (pager.pump()) {}
+    }
+    { // what stays held for the part outlasts every voice
+        CHECK(pager.hold(part, 100, c));
+        CHECK(part.pins[0] == 1 && part.pins[1] == 1 && part.pins[2] == 0);
+        int t = pager.open(part, 0, false, 1.0f);
+        while (pager.pump()) {}
+        pager.place(t, 6 * c);
+        while (pager.pump()) {}
+        CHECK(part.pins[0] == 1 && part.pins[1] == 1);
+        pager.close(t);
+        while (pager.pump()) {}
+        CHECK(part.pins[0] == 1 && part.pins[1] == 1 && part.pins[6] == 0);
+    }
+    { // a card gone: the stream says so and pins nothing more
+        pin_fails = true;
+        int t = pager.open(part, 3 * c, false, 1.0f);
+        while (pager.pump()) {}
+        CHECK(pager.dead(t) && pager.limit(t) == 4 * c);
+        pin_fails = false;
+        pager.close(t);
+        while (pager.pump()) {}
+    }
+    { // every stream taken: -1, not a reuse
+        std::vector<int> all;
+        for (unsigned n = 0; n < StreamPager::stream_count; ++n) all.push_back(pager.open(part, 0, false, 1.0f));
+        for (int x : all) CHECK(x >= 0);
+        CHECK(pager.open(part, 0, false, 1.0f) == -1);
+        for (int x : all) pager.close(x);
+        while (pager.pump()) {}
+        CHECK(pager.open(part, 0, false, 1.0f) >= 0);
+    }
+    pin_log = nullptr;
+}
+
 int main() {
     sfz_reader();
+    sample_cache();
+    stream_pager();
     track_source();
     zero_snap();
     looper_engine();
