@@ -530,6 +530,12 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.heads = trail.heads();
     out.grains = trail.grains();
     out.compression = host.compression();
+    {
+        float level = -90, reduce = 0;
+        host.compressor_activity(level, reduce);
+        comp_trail.update(level, reduce, now);
+        out.comp_trail = comp_trail.trail();
+    }
     out.flex_playing = host.flex_playing();
     out.now = now;
 }

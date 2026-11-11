@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/looper.h"
 #include "melodee/model/project.h"
+#include "melodee/shell/comp_trail.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/playheads.h"
 #include "melodee/shell/project_store.h"
@@ -47,6 +48,7 @@ struct Snapshot {
     std::array<PlayHead, HeadTrail::size> heads {};
     std::array<GrainPlace, GrainTrail::size> grains {}; // a cloud's grains heard now, and the marks of those just gone
     float compression = 0;                   // dB the master compressor takes off now (parity phase 7)
+    std::array<CompColumn, comp_columns> comp_trail {}; // what it heard and took off, a column every comp_column_ms, oldest first
     unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)
     std::array<std::array<PatternSketch, pattern_count>, track_count> sketches {};
     LoadedSample sample;               // the sample in hand: the last pad's, or Chop's

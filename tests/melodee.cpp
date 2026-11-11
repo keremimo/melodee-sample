@@ -36,6 +36,7 @@
 #include "melodee/shell/playheads.h"
 #include "melodee/engine/voice_tap.h"
 #include "melodee/shell/input_choices.h"
+#include "melodee/shell/comp_trail.h"
 #include "melodee/shell/fader_job.h"
 #include "melodee/shell/midi_route.h"
 #include "melodee/shell/mtc_in.h"
@@ -2694,6 +2695,29 @@ void performance_effects() {
         CHECK(other_alone.reduction == 0 && std::fabs(other_alone.energy - other_dry.energy) < other_dry.energy * 0.01); // no key, no change
         CHECK(both_keyed.energy < both_dry.energy - other_dry.energy * 0.5);                                           // the rest ducks
         CHECK(ghost.reduction > 3 && ghost.energy < other_dry.energy * 0.5);                                           // muted key, track 3 ducked
+    }
+    // The page's picture: the compressor hands over its peaks, the trail keeps a column every 33 ms whatever the frame rate.
+    {
+        EngineHost host;
+        host.load(*project, *bank);
+        host.send({Command::Type::Compressor, 0, 0, 4, 100});
+        host.send({Command::Type::Compressor, 0, 0, 0, 1});
+        for (int note : {57, 64}) host.send({Command::Type::NoteOn, 0, 0, uint16_t(note), 127});
+        std::vector<int32_t> out(256);
+        for (unsigned n = 0; n < 100; ++n) host.render(out.data(), 128, 1);
+        float level = -90, reduce = 0;
+        host.compressor_activity(level, reduce);
+        CHECK(level > -30 && reduce > 3);
+        host.compressor_activity(level, reduce); // taken: both start again
+        CHECK(level == -90 && reduce == 0);
+        CompTrail trail;
+        trail.update(-6, 5, 1000);                     // the first column at once
+        CHECK(trail.trail().back().level == -6 && trail.trail().back().reduce == 5);
+        trail.update(-20, 1, 1010);                    // not due: kept for the next column
+        trail.update(-90, 0, 1040);
+        CHECK(trail.trail().back().level == -20 && trail.trail()[comp_columns - 2].level == -6);
+        trail.update(-12, 2, 1140);                    // a slow frame: the column due three times
+        CHECK(trail.trail().back().level == -12 && trail.trail()[comp_columns - 3].level == -12);
     }
 
     // The project file: Knob FX and the compressor come back; older files (neither section) load them off.

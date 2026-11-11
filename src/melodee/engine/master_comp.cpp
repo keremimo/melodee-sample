@@ -49,16 +49,29 @@ void MasterCompressor::colour(float& l, float& r) {
     r = dsp::soft_clip((r + low_r * 0.6f) * 1.1f) / 1.1f;
 }
 
+void MasterCompressor::note(float env_most, float reduce_most) {
+    float db = 20 * std::log10(std::max(env_most, 1e-5f));
+    // Kept to the most: a block the screen takes between this load and store is lost, which only drops a column's peak.
+    if (db > heard_most.load(std::memory_order_relaxed)) heard_most.store(db, std::memory_order_relaxed);
+    if (reduce_most > took_most.load(std::memory_order_relaxed)) took_most.store(reduce_most, std::memory_order_relaxed);
+}
+
+void MasterCompressor::take_activity(float& level_db, float& reduce_db) {
+    level_db = heard_most.exchange(-90, std::memory_order_relaxed);
+    reduce_db = took_most.exchange(0, std::memory_order_relaxed);
+}
+
 void MasterCompressor::process(float* left, float* right, unsigned frames) {
     if (!s.on) { shown.store(0, std::memory_order_relaxed); return; }
     if (s.sidechain) { // duck() did the dynamics before the master chain; what is left here is Color
         if (s.color) for (unsigned f = 0; f < frames; ++f) colour(left[f], right[f]);
         return;
     }
-    float most = 0;
+    float most = 0, loudest = 0;
     for (unsigned f = 0; f < frames; ++f) {
         float l = left[f] * boost, r = right[f] * boost;
         float level = envelope(std::max(std::fabs(l), std::fabs(r)));
+        loudest = std::max(loudest, level);
         if ((f & 3) == 0) { // the gain computer every fourth sample, the gain ramping between
             float over = 20 * std::log10(std::max(level, 1e-6f)) - threshold;
             float reduce = over > 0 ? over * (1 - 1 / ratio) : 0;
@@ -71,13 +84,15 @@ void MasterCompressor::process(float* left, float* right, unsigned frames) {
         left[f] = l; right[f] = r;
     }
     shown.store(most, std::memory_order_relaxed);
+    note(loudest, most);
 }
 
 void MasterCompressor::duck(const float* key_left, const float* key_right, float* left, float* right, unsigned frames) {
     if (!keyed()) return;
-    float most = 0;
+    float most = 0, loudest = 0;
     for (unsigned f = 0; f < frames; ++f) {
         float level = envelope(std::max(std::fabs(key_left[f]), std::fabs(key_right[f])) * boost);
+        loudest = std::max(loudest, level);
         if ((f & 3) == 0) {
             float over = 20 * std::log10(std::max(level, 1e-6f)) - threshold;
             float reduce = over > 0 ? over * (1 - 1 / ratio) : 0;
@@ -88,6 +103,7 @@ void MasterCompressor::duck(const float* key_left, const float* key_right, float
         left[f] *= gain; right[f] *= gain;
     }
     shown.store(most, std::memory_order_relaxed);
+    note(loudest, most);
 }
 
 } // namespace melodee

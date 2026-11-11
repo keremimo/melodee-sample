@@ -936,12 +936,21 @@ const Preview previews[] {
          auto& c = s.project.compressor;
          c.on = true; c.color = true; c.amount = 60; c.attack = 25; c.release = 40; c.boost = 3;
          s.compression = 4.5f; s.ui.turning = 2; s.ui.turned_at = s.now;
+         for (unsigned n = 0; n < comp_columns; ++n) { // a busy mix: beats over a held bed
+             unsigned beat = n % 15;
+             s.comp_trail[n] = {-14.0f + 9.0f * std::exp(-float(beat) / 3) + 1.5f * std::sin(float(n) * 0.7f),
+                                1.5f + 3.5f * std::exp(-float(beat) / 4)};
+         }
      }},
     {"compressorside", [](Shell&, Snapshot& s) { // Sidechain: track 1 keys it, the rest ducking 7 dB, Color on
          s.ui.page = PageId::Compressor; s.playing = true;
          auto& c = s.project.compressor;
          c.on = true; c.color = true; c.sidechain = true; c.key = 0; c.amount = 55; c.attack = 5; c.release = 60;
          s.compression = 7.0f;
+         for (unsigned n = 0; n < comp_columns; ++n) { // a kick on each beat (15 columns): its hit, the mix ducking and coming back
+             unsigned beat = (n + 6) % 15;
+             s.comp_trail[n] = {beat < 6 ? -3.0f - 6.0f * float(beat) : -90.0f, beat == 0 ? 4.0f : 8.0f * std::exp(-float(beat - 1) / 3.5f)};
+         }
      }},
     {"pickerdirt", [](Shell&, Snapshot& s) { // the picker on Dirt: Amp sim, Tube drive, Soft clipper, Vintage, Vinyl, Tape emulator
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 2; s.playing = true;

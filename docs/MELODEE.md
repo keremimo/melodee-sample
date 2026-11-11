@@ -552,8 +552,12 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   and the rest of the mix (other tracks, the Looper, the bus returns, Knob
   FX) ducks under it before the master chain, with no makeup; the key
   passes untouched, In Boost drives the detector alone, and Color stays on
-  the master. The curve then shows the key's level against what the rest
-  keeps.
+  the master. The picture: the curve with a dot where the level sits now
+  (with Sidechain the key across, what the rest keeps up), and beside it
+  the last 2.6 s: what the detector heard rising from the foot (the key in
+  its track's colour), the threshold dashed, and what was taken off
+  hanging from the top, so the pump shows as it plays; under it the dB
+  taken off now.
 
 ### Fader
 

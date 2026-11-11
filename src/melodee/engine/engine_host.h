@@ -118,6 +118,7 @@ public:
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
     bool punching() const { return punch_on.load(std::memory_order_relaxed); }
     float compression() const { return comp.reduction_db(); } // dB the master compressor takes off now
+    void compressor_activity(float& level_db, float& reduce_db) { comp.take_activity(level_db, reduce_db); } // the page's picture
     unsigned flex_playing() const { return flex_now.load(std::memory_order_relaxed); } // Flex Beat's pad playing, 0 Empty
     unsigned live_punches() const { return live_on.load(std::memory_order_relaxed); }  // Pad FX: a bit a live slot sounding
     bool song_playing() const { return in_song.load(std::memory_order_relaxed); }

@@ -22,10 +22,14 @@ public:
     bool keyed() const { return s.on && s.sidechain; }
     unsigned key() const { return s.key; }
     float reduction_db() const { return shown.load(std::memory_order_relaxed); } // for the page's meter
+    // For the page's picture (screen thread): the loudest the detector heard (dB, In Boost in) and the
+    // most it took off since it last asked; both start again.
+    void take_activity(float& level_db, float& reduce_db);
 private:
     float envelope(float level);     // the envelope, attack up and release down
     float target(float reduce) const; // the gain for that many dB off (makeup only on the mix itself)
     void colour(float& l, float& r);
+    void note(float env_most, float reduce_most); // a block's loudest and most taken off, for take_activity()
     MasterComp s;
     float attack = 0.99f, release = 0.999f, threshold = 0, ratio = 1, makeup = 1, boost = 1;
     float env = 0, low_l = 0, low_r = 0, wobble = 0, gain = 1, step = 0;
@@ -33,6 +37,7 @@ private:
     float delay_l[line] {}, delay_r[line] {};
     unsigned at = 0;
     std::atomic<float> shown {0};
+    std::atomic<float> heard_most {-90}, took_most {0}; // since the screen last asked
 };
 
 } // namespace melodee

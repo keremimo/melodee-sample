@@ -98,6 +98,7 @@ private:
     UiState ui_;
     Context context_;
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
+    CompTrail comp_trail; // the screen thread's, in snapshot(): the Compressor page's picture over time
     HeadTrail trail; // the screen thread's, in snapshot(): heads kept while their wakes fade
     std::atomic<float> main_volume {0.7f};
     std::atomic<unsigned> screen_wanted {0}; // 0 until the settings say; then 20..100 %
