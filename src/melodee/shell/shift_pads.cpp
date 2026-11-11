@@ -45,9 +45,8 @@ void shift_pad(Context& c, unsigned pad) {
         settings.count_in = !settings.count_in;
         toggled(c, job.name, settings.count_in);
         return;
-    case 9: // Rec Quantize: recorded notes onto the nearest step of Q; off, they keep the time played
-        settings.rec_quantize = !settings.rec_quantize;
-        toggled(c, job.name, settings.rec_quantize);
+    case 9: // Rec Quantize: its page, on or off (B3) and the grid recorded notes land on (the pattern's Q or its own)
+        c.open(PageId::RecQuantize);
         return;
     case 14: // Warp: Time stretch or Pitch for the kit (its Follow how)
         c.toggle_warp_mode();

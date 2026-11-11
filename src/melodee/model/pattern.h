@@ -23,6 +23,10 @@ inline unsigned division_ticks(Division d) {
     static const unsigned ticks[] {96, 64, 48, 32, 24, 16, 12, 8, 6};
     return ticks[unsigned(d) < unsigned(Division::Count) ? unsigned(d) : 4];
 }
+// Rec Quantize's grid (Settings::rec_grid): 0 follows the pattern's `q`, else 1 + a Division.
+inline Division grid_division(unsigned grid, Division q) {
+    return grid >= 1 && grid <= unsigned(Division::Count) ? Division(grid - 1) : q;
+}
 inline const char* division_name(Division d) {
     static const char* names[] {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T", "1/64"};
     return names[unsigned(d) < unsigned(Division::Count) ? unsigned(d) : 4];
@@ -106,6 +110,8 @@ void scale_pattern(Pattern& p, bool slower);          // Half / Double Speed: ev
 // The tick a recorded note lands on with Rec Quantize: the nearest step of
 // Q; past the last step, the first (next time round).
 uint32_t quantise_tick(const Pattern& p, uint32_t tick);
+// The same onto a grid of `grid` ticks (Rec Quantize's own: shell/settings.h's rec_grid).
+uint32_t quantise_tick(const Pattern& p, uint32_t tick, unsigned grid);
 // Time Correct: notes `chosen` (a bit a key, 0..191) onto the nearest step
 // of Q, every second step of a straight Q late by swing (50..75 %), then
 // moved by shift ticks (wrapping inside the pattern).

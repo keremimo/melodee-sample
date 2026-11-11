@@ -93,10 +93,12 @@ void scale_pattern(Pattern& p, bool slower) {
     for (const auto& e : moved) p.add(e);
 }
 
-uint32_t quantise_tick(const Pattern& p, uint32_t tick) {
-    unsigned q = p.q();
-    uint32_t snapped = (tick + q / 2) / q * q;
-    return snapped >= p.length ? 0 : snapped;
+uint32_t quantise_tick(const Pattern& p, uint32_t tick) { return quantise_tick(p, tick, p.q()); }
+
+uint32_t quantise_tick(const Pattern& p, uint32_t tick, unsigned grid) {
+    grid = std::max(grid, 1u);
+    uint32_t snapped = (tick + grid / 2) / grid * grid;
+    return snapped >= p.length ? 0 : snapped; // past the last step: the first, next time round
 }
 
 void time_correct_all(Pattern& p, const std::array<uint64_t, 3>* keys, unsigned swing, int shift) {

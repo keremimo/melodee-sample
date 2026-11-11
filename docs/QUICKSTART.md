@@ -138,8 +138,9 @@ To record:
 ![Seq Record armed](images/quickstart/recarmed.png)
 
 Play starts from the top. Each take is one undo step: **Shift + −** undoes,
-Shift + + redoes. Shift + Pad 4 turns on a bar of count-in, Shift + Pad 10
-Rec Quantize (notes land on the grid).
+Shift + + redoes. Shift + Pad 4 turns on a bar of count-in. Shift + Pad 10
+opens Rec Quantize: B3 turns it on or off (notes land on the grid), the
+wheel picks the grid (the pattern's Q, or 1/16, 1/32 and the rest).
 
 ## 6. Samples
 

@@ -503,6 +503,14 @@ const Preview previews[] {
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
          s.project.tracks[2].pattern = 1;
      }},
+    {"recquantize", [](Shell&, Snapshot& s) { // Shift + Pad 10: on, a grid of its own, 1/32T, K1 turning
+         s.ui.page = PageId::RecQuantize; s.ui.track = 0; s.playing = true;
+         s.ui.settings.rec_quantize = true; s.ui.settings.rec_grid = 1 + unsigned(Division::ThirtySecondTriplet);
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"recquantizeoff", [](Shell&, Snapshot& s) { // off, following the pattern's Q
+         s.ui.page = PageId::RecQuantize; s.ui.track = 3; s.ui.settings.rec_quantize = false; s.ui.settings.rec_grid = 0;
+     }},
     {"seqsheet", [](Shell&, Snapshot& s) { // Seq held over Stage: track 3 plays P2, P4 waits for the bar
          s.ui.page = PageId::Stage; s.ui.track = 2; s.playing = true;
          const uint8_t live[] {1, 0, 0, 2, 1, 0, 0, 0};
@@ -1228,7 +1236,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns seqsheet seqbpm seqclear rollkit song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
+    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns recquantize recquantizeoff seqsheet seqbpm seqclear rollkit song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
     // Text under the floor or cut by its box fails the build check.
     return text_issues ? 1 : 0;

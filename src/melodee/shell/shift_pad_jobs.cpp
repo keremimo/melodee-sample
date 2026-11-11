@@ -9,7 +9,7 @@ using K = ShiftPadJob::Kind;
 constexpr ShiftPadJob jobs[16] {
     {"Full Level", K::Toggle, 0},   {"Half Seq", K::Action, 0},     {"Double Seq", K::Action, 0},  {"Count-In", K::Toggle, 2},
     {"Compressor", K::Open, 0},     {"Half Speed", K::Action, 0},  {"Double Speed", K::Action, 0}, {"MIDI Config", K::Open, 0},
-    {"Fader", K::Open, 0},           {"Rec Quantize", K::Toggle, 2}, {"Resample", K::Action, 0},    {"Song", K::Open, 0},
+    {"Fader", K::Open, 0},           {"Rec Quantize", K::Open, 2}, {"Resample", K::Action, 0},    {"Song", K::Open, 0},
     {"Trim Sample", K::Action, 0},   {"Time Correct", K::Open, 0}, {"Warp", K::Action, 0},         {"Project", K::Open, 0},
 };
 } // namespace
@@ -28,7 +28,7 @@ bool shift_pad_on(const UiState& ui, unsigned pad) {
 unsigned shift_pad_level(const UiState& ui, unsigned pad) {
     const auto& job = shift_pad_job(pad);
     if (job.kind == K::Later) return 0;
-    return job.kind == K::Toggle && shift_pad_on(ui, pad) ? 2 : 1;
+    return shift_pad_on(ui, pad) ? 2 : 1; // a toggle on, or Rec Quantize's page with it on
 }
 
 } // namespace melodee

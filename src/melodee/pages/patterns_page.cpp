@@ -36,7 +36,9 @@ void draw(Paint& p, const Snapshot& s) {
     uint32_t at = s.playing && s.positions[s.ui.track] >= 0 ? uint32_t(s.positions[s.ui.track]) : s.ui.locate % length;
     auto sig = s.project.time_signature(); // where, in which time signature: one pill for the room
     h.left.push_back(pill(where(s, at) + "  " + juce::String(sig.beats) + "/" + juce::String(sig.unit), s.playing ? colour::text : colour::mid));
-    h.left.push_back(pill(s.ui.settings.rec_quantize ? "REC Q " + juce::String(division_name(s.pattern.division)) : juce::String("REC Q OFF"),
+    // Rec Quantize's grid (Shift + Pad 10): the pattern's Q or its own.
+    h.left.push_back(pill(s.ui.settings.rec_quantize ? "REC Q " + juce::String(division_name(grid_division(s.ui.settings.rec_grid, s.pattern.division)))
+                                                     : juce::String("REC Q OFF"),
                           s.ui.settings.rec_quantize ? colour::mid : colour::dim));
     // No track tag: the grid marks the selected track, and the header needs the room.
     frame(p, s, {{"STEPS", "ROLL", "MOTION"}, -1, colour_of(s)}, h);

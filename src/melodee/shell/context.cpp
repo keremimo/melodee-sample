@@ -241,7 +241,8 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
 }
 
 // Seq Record while playing: the note lands where it was played, or with Rec
-// Quantize on (Shift + Pad 10) on the nearest step of Q. A note moved ahead of
+// Quantize on (Shift + Pad 10) on the nearest step of its grid (the pattern's Q,
+// or one of its own: Settings::rec_grid). A note moved ahead of
 // the playhead is skipped once by the audio thread, as it was heard live.
 void Context::record(int key, int velocity) {
     if (!ui.recording || !host.playing() || host.count_in()) return;
@@ -251,7 +252,8 @@ void Context::record(int key, int velocity) {
     uint32_t at = uint32_t(position) % p.length;
     bool ahead = false;
     if (ui.settings.rec_quantize) {
-        uint32_t snapped = quantise_tick(p, at); // past the last step: the first, next time round
+        unsigned grid = division_ticks(grid_division(ui.settings.rec_grid, p.division));
+        uint32_t snapped = quantise_tick(p, at, grid); // past the last step: the first, next time round
         ahead = snapped > at || (snapped == 0 && at > 0);
         at = snapped;
     }
@@ -504,6 +506,10 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadPunchKind: pad().punch = uint8_t(value); break;
     case Kind::PadPunchRate: pad().punch_rate = uint8_t(value); break;
     case Kind::PadPunchDepth: pad().punch_depth = uint8_t(value); break;
+    case Kind::RecGrid: // the REC QUANTIZE page's K1: the pattern's Q, or a grid of its own
+        ui.settings.rec_grid = uint8_t(std::clamp(value, 0, int(Division::Count)));
+        settings_save_at = std::max<uint32_t>(now, 1) + 1000;
+        break;
     case Kind::ClickLevel:
         ui.settings.click_level = uint8_t(value);
         send_click();

@@ -533,6 +533,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
     case PageId::Patterns: return pattern_cards(project, pattern);
+    case PageId::RecQuantize: // K1 the grid: the pattern's Q, or 1/4 .. 1/64 of its own
+        return {Binding {Kind::RecGrid, 0, 0, int(Division::Count), ui.settings.rec_grid}, Binding {}, Binding {}};
     case PageId::StepEdit: { // as on the MPC: K1 the pattern's length (as on Patterns), K2 Q, K3 the selected event's velocity
         unsigned bars = pattern_bars(project, pattern), index = 0;
         while (index + 1 < pattern_length_count && pattern_lengths[index + 1] <= bars) ++index;

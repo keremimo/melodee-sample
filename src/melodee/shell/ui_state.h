@@ -23,6 +23,7 @@ enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motio
                             CardAccess,                        // parity phase 10b: Project's SD card access
                             Tracks,                            // Pad Bank tapped twice: the sixteen tracks, eight at a time
                             Looper,                            // Loop tapped twice: the four loops (docs/LOOPER.md)
+                            RecQuantize,                       // Shift + Pad 10: Rec Quantize on or off, and its grid
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has

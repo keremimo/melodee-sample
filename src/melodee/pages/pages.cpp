@@ -55,6 +55,7 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Compressor: return compressor_page;
     case PageId::FlexBeat: return flex_beat_page;
     case PageId::FaderPage: return fader_page;
+    case PageId::RecQuantize: return rec_quantize_page;
     case PageId::MidiConfig: return midi_config_page;
     case PageId::CardAccess: return card_access_page;
     case PageId::Tracks: return tracks_page;
