@@ -546,8 +546,10 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
 - **Pad Punch** (Pad FX again on a kit): each kit pad its own punch, rate
   and depth.
 - **Compressor** (Shift + Pad 5): on the master. B1 Sidechain, B2 Color,
-  B3 Bypass, each lit while on; the header says BYPASSED while it is, and
-  MASTER or, with Sidechain, DUCKED BY and the source. K1 attack, K2 release, K3 amount, Shift + K3 In Boost. With
+  B3 Bypass, each lit while on, with no messages. The header shows signs,
+  not words: an LED beside COMPRESSOR (lit while it works, a ring while
+  bypassed), and on the right MASTER or, with Sidechain, the pump sign (the
+  graph's dip) and the source's tag. K1 attack, K2 release, K3 amount, Shift + K3 In Boost. With
   Sidechain one track keys it, whichever track is selected: the pads pick
   it (the grid on the left; the wheel or −/+ step it). On a sample kit the key can be one pad, the kick: Push (or
   the kit's pad again) shows its pads, a pad keys alone and sounds as it is

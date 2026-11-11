@@ -954,6 +954,7 @@ const Preview previews[] {
          s.ui.page = PageId::Compressor; s.playing = true; s.ui.track = 0;
          auto& c = s.project.compressor;
          c.on = true; c.color = true; c.sidechain = true; c.key = 3; c.amount = 55; c.attack = 5; c.release = 60;
+         s.project.tracks[3].set_name("CLASSIC 909 KITS"); // a long name, as the device's own
          s.compression = 7.0f;
          kick_trail(s);
      }},

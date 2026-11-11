@@ -25,16 +25,25 @@ struct SoftKeys {
 };
 void soft_keys(Paint& p, const SoftKeys& keys);
 
+// Small drawn signs in place of words: an LED lit (on) or a ring (bypassed), the
+// sidechain's pump (a quick dip and a slow climb, as the Compressor's graph draws
+// it), and the wheel's push (a ring with a dot).
+enum class Glyph : uint8_t { Led, LedOff, Duck, Push };
+float glyph_width(Glyph g);
+void draw_glyph(Paint& p, Glyph g, float x, float cy, juce::Colour c); // x its left edge, cy its middle
+
 struct HeaderItem {
-    enum class Kind { Pill, Chip, Text, Tag } kind = Kind::Pill;
+    enum class Kind { Pill, Chip, Text, Tag, Sign } kind = Kind::Pill;
     juce::String text;                 // pill, chip, text; the tag's sound name
     juce::Colour colour = colour::mid; // pill text, chip fill, text colour; the tag's track colour
     int track = 0;                     // Tag: the track number shown, 1-16
     juce::String engine;               // Tag: the engine name in capitals
+    Glyph glyph = Glyph::Led;          // Sign: which, in `colour`
 };
 inline HeaderItem pill(juce::String text, juce::Colour c = colour::mid) { return {HeaderItem::Kind::Pill, text, c, 0, {}}; }
 inline HeaderItem chip(juce::String text, juce::Colour c) { return {HeaderItem::Kind::Chip, text, c, 0, {}}; }
 inline HeaderItem label(juce::String text, juce::Colour c = colour::sec) { return {HeaderItem::Kind::Text, text, c, 0, {}}; }
+inline HeaderItem sign(Glyph g, juce::Colour c) { HeaderItem it {HeaderItem::Kind::Sign, {}, c, 0, {}}; it.glyph = g; return it; }
 inline HeaderItem track_tag(int track, juce::String engine, juce::String name, juce::Colour c) {
     return {HeaderItem::Kind::Tag, name, c, track, engine};
 }

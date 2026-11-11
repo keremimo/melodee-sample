@@ -8,6 +8,27 @@ namespace {
 constexpr float item_h = 15; // a pill or chip: capitals with 2 px above and below
 constexpr float header_mid = zone::header_y + zone::header_h / 2.0f;
 
+} // namespace
+
+float glyph_width(Glyph g) { return g == Glyph::Duck ? 16 : g == Glyph::Push ? 10 : 8; }
+
+void draw_glyph(Paint& p, Glyph g, float x, float cy, juce::Colour c) {
+    switch (g) {
+    case Glyph::Led: p.circle(x + 4, cy, 3.5f, c); break;
+    case Glyph::LedOff: p.g.setColour(c); p.g.drawEllipse(x + 0.75f, cy - 3.25f, 6.5f, 6.5f, 1.3f); break;
+    case Glyph::Duck: { // level at the top, a quick dip, a slow climb back
+        juce::Path path;
+        float top = cy - 4.5f, foot = cy + 4.5f;
+        path.startNewSubPath(x, top); path.lineTo(x + 4, top); path.lineTo(x + 4.5f, foot);
+        path.cubicTo(x + 7.5f, foot, x + 9, top + 1, x + 16, top); // the slow climb of a release
+        p.g.setColour(c); p.g.strokePath(path, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        break;
+    }
+    case Glyph::Push: p.g.setColour(c); p.g.drawEllipse(x + 0.75f, cy - 4.25f, 8.5f, 8.5f, 1.3f); p.circle(x + 5, cy, 1.8f, c); break;
+    }
+}
+
+namespace {
 // Draws one header item with its left edge at x; returns its width.
 float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
     using Kind = HeaderItem::Kind;
@@ -45,6 +66,9 @@ float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
         }
         return w;
     }
+    case Kind::Sign:
+        if (!measure_only) draw_glyph(p, it.glyph, x, header_mid, it.colour);
+        return glyph_width(it.glyph);
     }
     return 0;
 }
