@@ -18,6 +18,11 @@ enum class Icon : uint8_t {
     Knob, Lock, Warn, Pads, Scissors, Wav, Pattern,
     Scale, Chromatic, Chord, Velocity, Fader, Ring, Push, Mpc,
     Note, Motion, ArrowUp, Space, Time, Modulation, Dirt, Tone, Dynamics,
+    // Round 2: the engines, the transport's count, the sheets' keys and the rest of the boards' set.
+    Minus, ArrowDown, ArrowRight, ChevronLeft, ChevronRight,
+    Star, Saw, Sine, Fm, Chip, Drum, Din, Keyboard,
+    Save, Copy, Flag, Magnet, Metro, Tie, Slide, Accent, Pin, Gear, Info,
+    Cloud, Tape, Clock, Swap, Route, Bars, Sliders, Layers, Screen, File, Wheel,
     Count
 };
 

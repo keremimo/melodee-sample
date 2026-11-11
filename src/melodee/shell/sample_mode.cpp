@@ -9,7 +9,7 @@
 
 namespace melodee {
 namespace {
-bool play_group(PageId page) { return page == PageId::Stage || page == PageId::Keys || page == PageId::Pads || page == PageId::Mix; }
+bool play_group(PageId page) { return page == PageId::Stage || page == PageId::Tracks || page == PageId::Keys || page == PageId::Pads; }
 
 // The last pad, when the track is a kit and the pad holds a sample; else says why.
 PadSound* kit_pad(Context& c, const char* job) {
@@ -17,13 +17,13 @@ PadSound* kit_pad(Context& c, const char* job) {
     return &c.pad();
 }
 
-// Sample alone: the play pages in turn, as before (Stage, the pads, Mix).
+// Sample alone, where you go to look: Stage, then Tracks, then the pads (Keys, or Pads on a kit), round;
+// from any other page Stage.
 void open_sample_page(Context& c) {
     auto& ui = c.ui;
-    if (play_group(ui.page)) {
-        PageId keys = c.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
-        c.open(ui.page == PageId::Stage ? keys : (ui.page == PageId::Keys || ui.page == PageId::Pads) ? PageId::Mix : PageId::Stage);
-    } else c.open(PageId::Stage);
+    PageId keys = c.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
+    if (!play_group(ui.page)) c.open(PageId::Stage);
+    else c.open(ui.page == PageId::Stage ? PageId::Tracks : ui.page == PageId::Tracks ? keys : PageId::Stage);
 }
 } // namespace
 

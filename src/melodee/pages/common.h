@@ -27,7 +27,7 @@ struct FaderShown {
     bool waiting = false; // takeover: the fader has not met the value yet
 };
 FaderShown fader_shown(const Snapshot& s);
-ui::SoftKeys play_keys(const Snapshot& s, int active); // STAGE KEYS MIX
+ui::SoftKeys play_keys(const Snapshot& s, int active); // STAGE TRACKS KEYS (PADS on a kit)
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
@@ -39,14 +39,16 @@ juce::String engine_word(EngineKind kind); // "Prophet", "FM6"
 // Record: a take of Melodee's own sound runs, so the pads play the instrument (Context::record_keys()).
 bool record_keys_shown(const Snapshot& s);
 
-// The tracks as the pads sit, pad 1 bottom left, in the picture zone, eight
-// at a time (the half with the selected track): Stage's picture, and the
-// screen while Pad Bank is held. The pill names the half in the header.
+// The sixteen tracks as the pads sit, pad 1 bottom left, with the track in
+// hand as a strip on the right, in the picture zone: the Tracks page, and the
+// screen while Pad Bank is held.
 void track_grid(ui::Paint& p, const Snapshot& s);
-void track_grid(ui::Paint& p, const Snapshot& s, unsigned half); // the Tracks screen: the half its B1 / B2 chose
-unsigned track_half(const Snapshot& s);
-ui::HeaderItem track_half_pill(const Snapshot& s);
+// An engine as a glyph: a saw for the Prophet, FM's operators, a chip for SID, pads for a kit, a DIN plug for MIDI.
+ui::Icon engine_icon(EngineKind kind);
 
+// A sound, pad or track name as names are shown (words: capitals for labels, Title Case for names): a name stored
+// in capitals ("FUNK BASS II") in Title Case ("Funk Bass II"), roman numerals and acronyms as written.
+juce::String name_case(const juce::String& name);
 // A name in capitals ("BEAT REPEAT") for a narrow cell: as it is when it
 // fits `w` in `style`, else in title case ("Beat Repeat"), which is narrower.
 juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::Paint::Text& style, float w);
@@ -63,6 +65,6 @@ void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down);
 void octave(Context& c, int way);
 void no_wheel(Context&, int);
 void no_push(Context&);
-void play_soft(Context& c, int key); // B1-B3 open Stage, Keys, Mix
+void play_soft(Context& c, int key); // B1-B3 open Stage, Tracks, Keys (Pads)
 
 } // namespace melodee

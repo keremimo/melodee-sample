@@ -12,7 +12,6 @@ PadJob pad_job(const UiState& ui) {
 const PageSpec& page_spec(PageId page) {
     switch (page) {
     case PageId::Keys: return keys_page;
-    case PageId::Mix: return mix_page;
     case PageId::Sounds: return sounds_page;
     case PageId::Edit: return edit_page;
     case PageId::Steps: return steps_page;
@@ -32,8 +31,6 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Record: return record_page;
     case PageId::Project: return project_page;
     case PageId::Tempo: return tempo_page;
-    case PageId::Arp: return arp_page;
-    case PageId::Chord: return chord_page;
     case PageId::Capture: return capture_page;
     case PageId::PadPage: return pad_edit_page;
     case PageId::PlayPage: return play_edit_page;

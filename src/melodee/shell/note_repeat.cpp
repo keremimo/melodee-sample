@@ -11,26 +11,18 @@ void repeat_button(Context& c, bool pressed) {
     auto& t = c.track();
     if (pressed) {
         if (ui.shift) ui.shift_used = true; // nothing printed for Shift + Note Repeat: it acts as Note Repeat
-        if (ui.repeat_tap_at && c.now - ui.repeat_tap_at <= repeat_double_ms) { // a double tap: on, and its page
-            ui.repeat_tap_at = 0; ui.repeat_held = false;
-            if (!t.arp) c.set_arp(true);
-            c.open(PageId::Arp);
-            return;
-        }
         bool was = t.arp;
         if (!was) c.set_arp(true);
         ui.repeat_held = true; ui.repeat_turned_on = !was; ui.repeat_down = c.now;
         return;
     }
-    if (!ui.repeat_held) return; // the second press of a double tap
+    if (!ui.repeat_held) return;
     ui.repeat_held = false;
     if (c.now - ui.repeat_down > repeat_hold_ms) { // held: only for as long
         if (ui.repeat_turned_on) c.set_arp(false);
-        ui.repeat_tap_at = 0;
         return;
     }
-    ui.repeat_tap_at = ui.repeat_down; // a tap: it stays as the press left it, or a tap while on turns it off
-    if (!ui.repeat_turned_on) c.set_arp(false);
+    if (!ui.repeat_turned_on) c.set_arp(false); // a tap: it stays as the press left it, or a tap while on turns it off
 }
 
 bool repeat_soft(Context& c, int key) {

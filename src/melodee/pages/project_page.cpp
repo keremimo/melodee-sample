@@ -101,7 +101,7 @@ void draw(Paint& p, const Snapshot& s) {
     auto v = s.projects;
     sort_view(v, s.ui.project_sort);
     Header h = header_of(s);
-    juce::String where = v.root.empty() ? juce::String("NO CARD") : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder).toUpperCase());
+    juce::String where = v.root.empty() ? juce::String("NO CARD") : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder));
     h.left.push_back(pill(where));
     if (v.free_bytes) h.right.push_back(pill(free_text(v.free_bytes)));
     bool sheet = s.ui.sheet_open;
@@ -186,7 +186,8 @@ void draw(Paint& p, const Snapshot& s) {
         float px = zone::pad + 6, pw = zone::width - 2 * zone::pad - 12, py = zone::picture_y + 3, ph = zone::picture_h - 6;
         p.fill(px, py, pw, ph, colour::surf, 6);
         p.ring(px, py, pw, ph, colour::line, 6);
-        p.text("MOVE " + juce::String(e->name).toUpperCase() + " TO", px + 9, py + 5, pw - 18, 10, p.fit("MOVE " + juce::String(e->name).toUpperCase() + " TO", caps_text(colour::mid), pw - 18, type::floor));
+        juce::String move = "MOVE " + juce::String(e->name) + " TO";
+        p.text(move, px + 9, py + 5, pw - 18, 10, p.fit(move, caps_text(colour::mid), pw - 18, type::floor));
         if (list.empty()) {
             icon(p, Icon::Folder, px + pw / 2 - 12, py + 40, 24, colour::dim, 1.4f); // nowhere else to go (New folder here makes one)
             p.text("NO OTHER FOLDER", px, py + 70, pw, 14, caps_text(colour::dim), juce::Justification::centred);

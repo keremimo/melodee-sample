@@ -380,7 +380,7 @@ void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
         if (cv_blocked || (e.kind == K::CvLow && !cv_taken)) break; // the line is only ever taken by a pulse (opt-in)
         if (!out.sync(e.kind == K::CvHigh)) { // the kernel or another program holds SYNC OUT
             cv_blocked = true; cv_ok.store(false);
-            c.notice("CV/Sync Out: the jack is busy");
+            c.notice("CV/sync out: the jack is busy");
             c.send({Type::MidiSync, 0, 0, 2, 0});
             break;
         }

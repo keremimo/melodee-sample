@@ -180,67 +180,57 @@ void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y, float h) 
     for (size_t n = 0; n < tiles.size(); ++n) {
         const auto& t = tiles[n];
         if (t.icon == Icon::None) continue;
-        float x = n * column + 4, w = column - 8, cx = x + w / 2;
-        auto edge = t.primary ? t.colour : colour::line;
-        // A soft shadow, the tile, and the caret up to its key.
-        for (int k = 1; k <= 3; ++k) p.fill(x - k, y + k * 2, w + 2 * k, h, juce::Colours::black.withAlpha(0.06f), 6 + k);
-        p.fill(x, y, w, h, colour::panel, 6);
-        p.ring(x, y, w, h, edge, 6, t.primary ? 1.4f : 1);
-        juce::Path caret;
-        caret.startNewSubPath(cx - 5, y + 0.5f); caret.lineTo(cx, y - 4.5f); caret.lineTo(cx + 5, y + 0.5f);
-        p.fill(cx - 5, y - 0.5f, 10, 2, colour::panel);
-        p.g.setColour(edge);
-        p.g.strokePath(caret, juce::PathStrokeType(t.primary ? 1.4f : 1, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
-        icon(p, t.icon, cx - 15, y + 18, 30, t.colour, 1.4f);
+        float x = n * column + 6, w = column - 12, cx = x + w / 2;
+        auto ground = t.primary ? colour::raised : colour::panel;
+        auto ink = t.primary ? t.colour : colour::mid;
+        p.fill(x, y, w, h, ground, 6);
+        juce::Path caret; // up to its key, in the tile's own ground
+        caret.addTriangle(cx - 5, y + 0.5f, cx, y - 5, cx + 5, y + 0.5f);
+        p.g.setColour(ground); p.g.fillPath(caret);
+        icon(p, t.icon, cx - 13, y + 26, 26, ink, 1.4f);
         if (t.big.isNotEmpty()) {
-            auto big = plain(t.colour, type::value, Weight::SemiBold);
-            p.text(t.big, x + 4, y + 56, w - 8, 26, p.fit(t.big, big, w - 8, type::list), juce::Justification::centred);
-            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, y + 84, w - 8, 14, p.fit(t.sub, caps_text(colour::mid), w - 8, type::floor), juce::Justification::centred);
+            auto big = plain(ink, type::value, Weight::SemiBold);
+            p.text(t.big, x + 4, y + 62, w - 8, 26, p.fit(t.big, big, w - 8, type::list), juce::Justification::centred);
+            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, y + 90, w - 8, 14, p.fit(t.sub, caps_text(colour::mid), w - 8, type::floor), juce::Justification::centred);
         } else {
-            auto word = caps_text(t.colour, type::body);
-            p.text(t.word, x + 4, y + 60, w - 8, 18, p.fit(t.word, word, w - 8, type::floor), juce::Justification::centred);
+            auto word = caps_text(ink, type::body);
+            p.text(t.word, x + 4, y + 74, w - 8, 18, p.fit(t.word, word, w - 8, type::floor), juce::Justification::centred);
         }
     }
 }
 
 void confirm_sheet(Paint& p, const ConfirmSheet& s) {
-    bool foot = s.undo || std::any_of(s.counts.begin(), s.counts.end(), [](const auto& c) { return c.first != Icon::None; });
-    constexpr float w = 268, x = (zone::width - w) / 2;
-    float h = foot ? 112 : 76, y = zone::picture_y + (zone::picture_h - 112) / 2; // the top stays put: what a page draws under the name lines up
+    bool foot = s.chip.isNotEmpty() || s.name.isNotEmpty() || s.undo;
+    constexpr float w = 272, x = (zone::width - w) / 2, y = zone::picture_y + (zone::picture_h - 116) / 2; // the top stays put
+    float h = foot ? 116 : s.lines[1].isEmpty() ? 70 : 86;
     for (int k = 1; k <= 3; ++k) p.fill(x - k, y + k * 2, w + 2 * k, h, juce::Colours::black.withAlpha(0.06f), 7 + k);
-    p.fill(x, y, w, h, colour::panel, 7);
-    p.ring(x, y, w, h, colour::rec, 7, 1.2f);
-    float at = x + 14, top = y + 14;
-    icon(p, s.icon, at, top, 22, colour::rec, 1.6f);
-    at += 32;
+    p.fill(x, y, w, h, colour::panel, 6);
+    p.ring(x, y, w, h, colour::rec, 6, 1.2f);
+    icon(p, s.icon, x + 14, y + 12, 20, colour::rec, 1.6f);
+    auto title = plain(colour::text, type::list, Weight::SemiBold);
+    p.text(s.title, x + 44, y + 12, w - 58, 20, p.fit(s.title, title, w - 58, type::floor));
+    auto line = plain(colour::sec, type::small, Weight::Regular);
+    for (size_t n = 0; n < s.lines.size(); ++n)
+        if (s.lines[n].isNotEmpty()) p.text(s.lines[n], x + 16, y + 44 + n * 16, w - 32, 14, p.fit(s.lines[n], line, w - 32, type::floor));
+    // The foot: what it is about, and the keys that bring it back.
+    float by = y + h - 26, at = x + 16;
     if (s.chip.isNotEmpty()) {
-        auto style = plain(colour::bg, type::body, Weight::Bold);
-        float cw = std::max(32.0f, p.width(s.chip, style) + 14);
-        p.fill(at, top, cw, 22, s.chip_colour, 4);
-        p.text(s.chip, at, top, cw, 22, style, juce::Justification::centred);
-        at += cw + 10;
+        auto style = caps_text(colour::bg);
+        float cw = p.width(s.chip, style) + 10;
+        p.fill(at, by, cw, 15, s.chip_colour, 3);
+        p.text(s.chip, at, by, cw, 15, style, juce::Justification::centred);
+        at += cw + 8;
     }
-    auto name = plain(colour::text, type::list, Weight::SemiBold);
-    p.text(s.name, at, top, x + w - 14 - at, 22, p.fit(s.name, name, x + w - 14 - at, type::floor));
-    if (s.note.isNotEmpty()) p.text(s.note, x + 14, y + 48, w - 28, 16, caps_text(s.note_colour));
-    // The counts, glyph and number, and the undo keys on the right.
-    float by = y + h - 30, cx = x + 14;
-    for (const auto& [glyph, number] : s.counts) {
-        if (glyph == Icon::None) continue;
-        icon(p, glyph, cx, by + 1, 14, colour::sec, 1.5f);
-        auto style = plain(colour::text, type::body, Weight::SemiBold);
-        p.text(number, cx + 18, by, 60, 16, style);
-        cx += 18 + p.width(number, style) + 14;
-    }
-    if (s.undo) { // Shift, Minus: the keys that bring it back
-        float ux = x + w - 14 - 16;
-        icon(p, Icon::Undo, ux, by + 1, 14, colour::mid, 1.6f);
-        ux -= 22;
-        p.fill(ux, by - 1, 18, 18, colour::raised, 3);
-        p.text(juce::String::fromUTF8("\xe2\x88\x92"), ux, by - 1, 18, 18, plain(colour::sec, type::body, Weight::Bold), juce::Justification::centred);
-        ux -= 22;
-        p.fill(ux, by - 1, 18, 18, colour::raised, 3);
-        icon(p, Icon::Shift, ux + 3.5f, by + 2.5f, 11, colour::sec, 1.4f);
+    if (s.name.isNotEmpty()) p.text(s.name, at, by, x + w - 90 - at, 15, p.fit(s.name, caps_text(colour::sec), x + w - 90 - at, type::floor));
+    if (s.undo) { // Shift, Minus, then the undo glyph
+        float ux = x + w - 16 - 14;
+        icon(p, Icon::Undo, ux, by + 1, 13, colour::mid, 1.5f);
+        ux -= 21;
+        p.fill(ux, by - 1, 17, 17, colour::raised, 3);
+        icon(p, Icon::Minus, ux + 3.5f, by + 2.5f, 10, colour::sec, 1.8f);
+        ux -= 21;
+        p.fill(ux, by - 1, 17, 17, colour::raised, 3);
+        icon(p, Icon::Shift, ux + 3.5f, by + 2.5f, 10, colour::sec, 1.4f);
     }
 }
 

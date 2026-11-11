@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// SENDS (B3 from the track): four buses, A-D, each with its own chain and
+// SENDS (B3 on Tracks): four buses, A-D, each with its own chain and
 // return. One send per track into the bus it picks, drawn as strips, eight
 // at a time (the half with the selected track).
 // K1 the selected track's send, K2 which bus, K3 that bus's return. The
@@ -18,7 +18,8 @@ void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     unsigned bus = s.track().mix.bus % bus_count;
     Header h = header_of(s);
-    h.left.push_back(track_half_pill(s));
+    unsigned half = (s.ui.track % track_count) / 8;
+    h.left.push_back(pill(half ? "TRACKS 9-16" : "TRACKS 1-8"));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{juce::String::fromUTF8("\xe2\x80\xb9 TRACK"), "SENDS",
                   juce::String("BUS ") + char('A' + bus) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c}, h);
@@ -44,7 +45,7 @@ void draw(Paint& p, const Snapshot& s) {
     }
     // Eight strips: each track's send, dim when it feeds another bus.
     float top = y + bh + 4, sh = zone::picture_y + zone::picture_h - 2 - top, sg = 4, sw = (zone::width - 2 * zone::pad - 7 * sg) / 8;
-    unsigned first = track_half(s) * 8;
+    unsigned first = half * 8;
     for (unsigned n = 0; n < 8; ++n) {
         unsigned t = first + n;
         const auto& track = s.project.tracks[t];

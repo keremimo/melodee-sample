@@ -55,7 +55,7 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& v = s.plugins;
     Header h = header_of(s);
     juce::String folder = v.root.empty() ? juce::String("NO CARD")
-                        : v.top ? juce::String("PLUGINS") : juce::String(std::filesystem::path(v.folder).stem().string()).toUpperCase();
+                        : v.top ? juce::String("PLUGINS") : juce::String(std::filesystem::path(v.folder).stem().string());
     h.left.push_back(chip(target_text(s), c));
     h.left.push_back(pill(folder + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(int(v.files.size())), c));
     if (s.ui.plugin_target == UiState::PluginTarget::Instrument) h.right.push_back(tag_of(s, s.ui.track));

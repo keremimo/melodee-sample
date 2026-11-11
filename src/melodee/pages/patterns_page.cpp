@@ -9,8 +9,8 @@
 // (Shift + K3 the metronome's level). B1-B3 open Steps, Roll and Motion, as
 // on every sequence page; Seq again opens the one last used on the track.
 // The wheel moves the playhead by a beat (Shift: by Q); stopped, it sets
-// where Shift + Play carries on from. The header shows where the playhead
-// is, the time signature and Rec Quantize (Shift + Pad 10). Minus / Plus
+// where Shift + Play carries on from (the place bar shows it). The header
+// shows Rec Quantize (Shift + Pad 10) and the track. Minus / Plus
 // move the track. Tempo: Seq held + wheel; per pattern or global on the
 // Tempo page (Push).
 #include "melodee/pages/common.h"
@@ -21,26 +21,14 @@ namespace melodee {
 namespace {
 using namespace ui;
 
-// Bar.beat.tick of a position in the pattern, as the MPC counts (from 1).
-juce::String where(const Snapshot& s, uint32_t ticks) {
-    unsigned bar = s.project.bar_ticks(), beat = s.project.beat_ticks();
-    char text[24];
-    std::snprintf(text, sizeof(text), "%u.%u.%02u", ticks / bar + 1, ticks % bar / beat + 1, ticks % beat);
-    return text;
-}
-
 void draw(Paint& p, const Snapshot& s) {
     unsigned first = s.ui.track / 8 * 8;
     Header h = header_of(s);
-    uint32_t length = std::max<uint32_t>(s.pattern.length, 1);
-    uint32_t at = s.playing && s.positions[s.ui.track] >= 0 ? uint32_t(s.positions[s.ui.track]) : s.ui.locate % length;
-    auto sig = s.project.time_signature(); // where, in which time signature: one pill for the room
-    h.left.push_back(pill(where(s, at) + "  " + juce::String(sig.beats) + "/" + juce::String(sig.unit), s.playing ? colour::text : colour::mid));
-    // Rec Quantize's grid (Shift + Pad 10): the pattern's Q or its own.
-    h.left.push_back(pill(s.ui.settings.rec_quantize ? "REC Q " + juce::String(division_name(grid_division(s.ui.settings.rec_grid, s.pattern.division)))
-                                                     : juce::String("REC Q OFF"),
+    // Rec Quantize's grid (Shift + Pad 10): the pattern's Q or its own; the position is the place bar's.
+    h.left.push_back(pill(Icon::Magnet, s.ui.settings.rec_quantize ? juce::String(division_name(grid_division(s.ui.settings.rec_grid, s.pattern.division)))
+                                                                 : juce::String("OFF"),
                           s.ui.settings.rec_quantize ? colour::mid : colour::dim));
-    // No track tag: the grid marks the selected track, and the header needs the room.
+    h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{"STEPS", "ROLL", "MOTION"}, -1, colour_of(s)}, h);
 
     constexpr float gap = 2, label_w = 16, head_h = 9, top = zone::picture_y + 1.5f;

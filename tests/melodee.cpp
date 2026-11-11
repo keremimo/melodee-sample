@@ -135,9 +135,10 @@ void bindings() {
     auto stage = page_bindings(project, ui, pattern);
     CHECK(stage[0].kind == Binding::Kind::Param && stage[0].id == prophet::Cutoff);
     CHECK(stage[0].at(0) == 0 && stage[0].at(127) == 100 && stage[0].at(64) == 50);
-    ui.page = PageId::Mix;
+    ui.page = PageId::Tracks; // the strip in hand: the track, its level and pan
     auto mix = page_bindings(project, ui, pattern);
-    CHECK(mix[1].kind == Binding::Kind::Pan && mix[1].at(0) == -50 && mix[1].at(127) == 50);
+    CHECK(mix[0].kind == Binding::Kind::TrackPick && mix[1].kind == Binding::Kind::Level);
+    CHECK(mix[2].kind == Binding::Kind::Pan && mix[2].at(0) == -50 && mix[2].at(127) == 50);
     ui.page = PageId::Steps;
     CHECK(!page_bindings(project, ui, pattern)[0].bound()); // an empty step has nothing on the cards
     put(pattern, 0, 50, 90);
@@ -1557,7 +1558,7 @@ void button_remap() {
     for (unsigned n = 0; n < 3; ++n) CHECK(record_cards[n].kind == cards[n].kind && record_cards[n].value == cards[n].value);
     CHECK(page_bindings(*project, ui, pattern, true)[2].kind == Binding::Kind::RecGain);
     // Seq held, on any page: K1-K3 the pattern's length, Q and swing; Shift as on Patterns; before Knob FX's.
-    ui.page = PageId::Mix; ui.seq_held = true;
+    ui.page = PageId::Tracks; ui.seq_held = true;
     cards = page_bindings(*project, ui, pattern);
     CHECK(cards[0].kind == Binding::Kind::PatternLength && cards[1].kind == Binding::Kind::Division && cards[2].kind == Binding::Kind::Swing);
     cards = page_bindings(*project, ui, pattern, true);
@@ -1601,7 +1602,7 @@ void button_remap() {
     for (unsigned n = 0; n < 40; ++n) go(n % 2 ? PageId::Tempo : PageId::Project), go(PageId(unsigned(PageId::Samples) + n % 3));
     CHECK(nav.back_depth <= UiState::back_capacity);
 
-    // Faint lights: Chop only with a kit; Loop everywhere (twice or held, the Looper); Erase where it does something.
+    // Faint lights: Chop only with a kit; Loop everywhere (held, the loop grid); Erase where it does something.
     using B = SurfaceButton;
     UiState l; l.page = PageId::Stage; l.track = 0;
     CHECK(button_has_job(*project, l, B::Seq, false, false));
@@ -1642,21 +1643,19 @@ void parity_1c() {
     ui.page = PageId::Stage; // latched, Stage keeps its buttons; held, they are the rates
     CHECK(!repeat_keys(*project, ui));
     ui.repeat_held = true; CHECK(repeat_keys(*project, ui)); ui.repeat_held = false;
-    ui.page = PageId::Arp;
-    CHECK(!repeat_keys(*project, ui)); // its own keys stay on Arp
+    ui.page = PageId::Song;
+    CHECK(!repeat_keys(*project, ui)); // its own keys stay on Song
     Arp arp; arp.top = int(sampler_last_key);
     arp.press(150, 90);
     int velocity = 0;
     CHECK(arp.next(velocity) == 150 && velocity == 90); // a kit pad in bank H repeats as itself
 
-    // Mute mode: kit pads where the pads play the kit (Stage too), tracks on Mix and Tracks.
+    // Mute mode: kit pads where the pads play the kit (Stage too), tracks on Tracks.
     ui.page = PageId::Pads;
     CHECK(mute_on_kit(ui, true) && !mute_on_kit(ui, false));
     ui.page = PageId::Stage;
     CHECK(mute_on_kit(ui, true));
     ui.page = PageId::Tracks;
-    CHECK(!mute_on_kit(ui, true));
-    ui.page = PageId::Mix;
     CHECK(!mute_on_kit(ui, true));
     ui.mute_latch = true;
     CHECK(ui.mute_mode());
@@ -2896,7 +2895,7 @@ void performance_effects() {
 
     // Bindings: with the mode on the pots are Knob FX's on any page, Shift its second row; Shift + K on a chain gives the other row.
     UiState ui;
-    ui.page = PageId::Mix;
+    ui.page = PageId::Tracks;
     project->knob_fx.on = true; project->knob_fx.bypass = false;
     Pattern pattern;
     auto cards = page_bindings(*project, ui, pattern, false);
@@ -2904,7 +2903,7 @@ void performance_effects() {
     cards = page_bindings(*project, ui, pattern, true);
     CHECK(cards[0].kind == Binding::Kind::KnobParam && cards[0].id == 3 && cards[2].value == 5);
     project->knob_fx.on = false;
-    CHECK(page_bindings(*project, ui, pattern, false)[0].kind == Binding::Kind::Level);
+    CHECK(page_bindings(*project, ui, pattern, false)[1].kind == Binding::Kind::Level);
     ui.page = PageId::Rack; ui.track = 2;
     project->tracks[2].fx.slots[0].kind = uint8_t(EffectKind::Spring);
     project->tracks[2].fx.slots[0].params = {0, 25, 30, 70, 60, 120};
@@ -3048,7 +3047,7 @@ void fader_and_takeover() {
     UiState ui; ui.track = 3; ui.page = PageId::Stage;
     auto job = fader_job(*project, ui);
     CHECK(job.source == FaderJob::Source::Target && job.binding.kind == Kind::PadLevel && job.binding.value == 90);
-    ui.page = PageId::Mix;
+    ui.page = PageId::Tracks;
     job = fader_job(*project, ui);
     CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::Level);
     ui.page = PageId::Sends; CHECK(fader_job(*project, ui).binding.kind == Kind::Send);
@@ -3066,7 +3065,7 @@ void fader_and_takeover() {
     // Off: only the page's own jobs remain.
     ui.page = PageId::Stage; kit.fader_on = false;
     CHECK(fader_job(*project, ui).source == FaderJob::Source::None && fader_light_level(fader_job(*project, ui)) == 0);
-    ui.page = PageId::Mix; CHECK(fader_job(*project, ui).source == FaderJob::Source::Page);
+    ui.page = PageId::Tracks; CHECK(fader_job(*project, ui).source == FaderJob::Source::Page);
     kit.fader_on = true; ui.page = PageId::Stage;
     // Decay / Release swaps with the pad's play mode; an empty last pad has nothing to drive.
     kit.fader_target = uint8_t(FaderTarget::PadDecay); kit.pads[8].play = PadPlay::OneShot;
@@ -3185,7 +3184,7 @@ void midi_and_sync() {
         midi_row_step(set, track, PadOutRow, -1); CHECK(set.midi.pad_out == PadMidiOut::Empty);
         midi_row_step(set, track, SyncOutRow, 1); CHECK(midi_row_value(set, track, SyncOutRow) == "MIDI Clock");
         midi_row_step(set, track, FaderTakeoverRow, 1); CHECK(set.fader_takeover == Takeover::Scaled);
-        CHECK(midi_row_value(set, track, ProgramChangeRow) == "Off" && std::string(midi_row_name(ResetRow)) == "Reset Factory Settings");
+        CHECK(midi_row_value(set, track, ProgramChangeRow) == "Off" && std::string(midi_row_name(ResetRow)) == "Reset factory settings");
     }
     // Where notes go: a track's own channel wins; the In channel (All or one) plays the selected track.
     {
@@ -4141,7 +4140,7 @@ void midi_tracks() {
     // MIDI Config's MIDI Panic: a row that changes nothing when stepped.
     {
         Settings set; Track track;
-        CHECK(std::string(midi_row_name(PanicRow)) == "MIDI Panic" && PanicRow + 1 == ResetRow);
+        CHECK(std::string(midi_row_name(PanicRow)) == "MIDI panic" && PanicRow + 1 == ResetRow);
         MidiConfig before = set.midi;
         midi_row_step(set, track, PanicRow, 1);
         CHECK(set.midi == before && midi_row_value(set, track, PanicRow).empty());
@@ -4335,7 +4334,7 @@ void stage() {
     CHECK(amp_shift[0].id == prophet::AmpRelease && amp_shift[1].id == prophet::VelAmp && amp_shift[2].id == prophet::AmpSustain);
     CHECK(shift_bindings(*project, ui, pattern)[0].bound() && !shift_bindings(*project, ui, pattern)[2].bound());
     // PERFORM: glide, unison, detune; the Shift row vintage, bend, voices.
-    stage_go(ui, 2, 1);
+    stage_go(ui, 2, 2);
     CHECK(cards(false)[0].id == prophet::Glide && cards(true)[2].id == prophet::Voices);
     // MIX: level, pan, send; Shift + K3 the bus.
     stage_go(ui, 0, 2);
@@ -4343,8 +4342,12 @@ void stage() {
     // ARP: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold.
     stage_go(ui, 2, 0);
     CHECK(cards(false)[0].kind == K::ArpMode && cards(false)[1].kind == K::ArpRate && cards(true)[0].kind == K::ArpGate && cards(true)[2].kind == K::ArpHold);
+    // CHORD: type, voicing, inversion; Shift + K1 chords on or off, Shift + K3 hold.
+    stage_go(ui, 2, 1);
+    CHECK(key() == "CHORD" && cards(false)[0].kind == K::ChordType && cards(false)[2].kind == K::ChordInvert);
+    CHECK(cards(true)[0].kind == K::ChordOn && cards(true)[2].kind == K::ArpHold);
     // FX: nothing without effects; with one, its first row and (Shift) its second.
-    stage_go(ui, 2, 2);
+    stage_go(ui, 2, 3);
     CHECK(!cards(false)[0].bound());
     project->tracks[0].fx.slots[0].kind = uint8_t(EffectKind::Echo);
     CHECK(cards(false)[0].kind == K::FxParam && cards(false)[0].id == 0 * 64 + 0 * 8 + 0);
@@ -4434,10 +4437,9 @@ void stage() {
     CHECK(stage_focus(ui, project->tracks[9]) == 0 && stage_focus(ui, project->tracks[0]) == 2);
     ui.last_pot = -1;
 
-    // Tracks: K1 the track, K2 its level, K3 its pattern.
+    // Tracks: K1 the track, K2 its level, K3 its pan.
     ui.page = PageId::Tracks; ui.track = 0;
-    CHECK(cards(false)[0].kind == K::TrackPick && cards(false)[1].kind == K::Level && cards(false)[2].kind == K::TrackPattern);
-    CHECK(pad_bank_double_ms == 450);
+    CHECK(cards(false)[0].kind == K::TrackPick && cards(false)[1].kind == K::Level && cards(false)[2].kind == K::Pan);
 
     // Undo: Shift + B1 / B2 on a kit's TRIM (Loop Lock, Normalize) are the pad's; B1 alone on Stage keeps nothing.
     ui.page = PageId::Stage; ui.track = 1; stage_go(ui, 0, 0); kit.last_pad = 5;

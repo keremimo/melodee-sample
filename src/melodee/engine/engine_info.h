@@ -62,6 +62,7 @@ enum class StageKind : uint8_t {
     Preset,     // the engine's sounds: K1 the sound (it loads once the turning stops), K2 the list, K3 the engine
     Mix,        // the track's level, pan and send; Shift + K3 the bus the send goes to
     Arp,        // the track's arp: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold
+    Chord,      // one pad, one chord from the scale: type, voicing, inversion; Shift + K1 on or off, Shift + K3 hold
     Fx,         // a slot of the track's chain: its first row (Shift: the second); Push the next slot
     Voice,      // the drum the last pad played: its page of `voices` (pad_voice says which)
     Trim, PadMix, AmpEnv, Tune, Play, Filter, FiltEnv, // a kit: the last pad's Sample Mode values
@@ -76,7 +77,7 @@ enum class StagePicture : uint8_t {
     Envelope,  // params[0..2] attack, decay, sustain; shift[0] release
     Lfo,       // params[0] rate, params[1] shape (Triangle, Saw, Square, Random), params[2] amount
     ShiftRows, // the Shift row as rows: what Shift + K1-K3 reach
-    Mix, Arp, Fx, Wave, Voice, Levels, Route, Program, Cc, Engines, Sources, Ports,
+    Mix, Arp, Chord, Fx, Wave, Voice, Levels, Route, Program, Cc, Engines, Sources, Ports,
 };
 struct StagePage {
     const char* key; // as the soft key names it: "AMP ENV"
@@ -131,10 +132,11 @@ const EngineInfo& engine_info(EngineKind kind);
 // Stage's pages for an engine (None: the empty track's chooser).
 const StageGroups& stage_groups(EngineKind kind);
 // Stage's three synth engines' shared first and last pages: B1 SOUND
-// (PRESET, TONE, MIX) and B3 PLAY (ARP, the engine's own, FX).
+// (PRESET, TONE, MIX) and B3 PLAY (ARP, CHORD, the engine's own, FX).
 constexpr StagePage stage_preset {"PRESET", StageKind::Preset, StagePicture::Preset};
 constexpr StagePage stage_mix {"MIX", StageKind::Mix, StagePicture::Mix};
 constexpr StagePage stage_arp {"ARP", StageKind::Arp, StagePicture::Arp};
+constexpr StagePage stage_chord {"CHORD", StageKind::Chord, StagePicture::Chord};
 constexpr StagePage stage_fx {"FX", StageKind::Fx, StagePicture::Fx};
 // Edit's pages for an engine: its own, then the mod matrix, which every
 // engine shares ("a page like any other").

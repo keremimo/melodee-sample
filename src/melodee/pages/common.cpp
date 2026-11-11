@@ -29,15 +29,15 @@ ui::Header header_of(const Snapshot& s) {
     ui::Header h;
     h.playing = s.playing;
     h.recording = s.ui.recording;
+    h.armed = s.ui.rec_armed && !s.ui.recording; // Seq Record armed: Play starts the take
     char bpm[16];
     int tempo = int(s.tempo);
     if (tempo % 10) std::snprintf(bpm, sizeof(bpm), "%d.%d", tempo / 10, tempo % 10);
     else std::snprintf(bpm, sizeof(bpm), "%d", tempo / 10);
     h.bpm = bpm;
-    // Count-In: the beat counted before the take; Seq Record armed: Play starts it.
+    // Count-In: the beat counted before the take, an amber metronome chip.
+    if (s.count_in) h.left.push_back(ui::chip(ui::Icon::Metro, juce::String(s.count_in), ui::colour::amber));
     if (s.following) h.left.push_back(ui::chip(s.following_mtc ? "EXT MTC" : "EXT CLOCK", ui::colour::text)); // MIDI clock / MTC in leads (phase 9, 9b)
-    if (s.count_in) h.left.push_back(ui::chip("COUNT " + juce::String(s.count_in), ui::colour::rec));
-    else if (s.ui.rec_armed) h.left.push_back(ui::chip("REC ARMED", ui::colour::rec));
     // A render as it plays (Resample, the song's mixdown), or Resample waiting for its pad.
     if (s.ui.rendering) {
         unsigned seconds = s.render_frames / 44100;
@@ -51,12 +51,26 @@ ui::Header header_of(const Snapshot& s) {
 ui::HeaderItem tag_of(const Snapshot& s, unsigned track) {
     const auto& t = s.project.tracks[track % track_count];
     const auto& info = engine_info(t.engine);
-    return ui::track_tag(int(track % track_count) + 1, t.used() ? info.name : "", t.used() ? t.name : "Empty",
+    return ui::track_tag(int(track % track_count) + 1, t.used() ? info.name : "", t.used() ? name_case(t.name) : "Empty",
                          ui::track_colour(track));
 }
 
+ui::Icon engine_icon(EngineKind kind) {
+    switch (kind) {
+    case EngineKind::Prophet: return ui::Icon::Saw;
+    case EngineKind::Fm6: return ui::Icon::Fm;
+    case EngineKind::Cz: return ui::Icon::Sine;
+    case EngineKind::Sid: return ui::Icon::Chip;
+    case EngineKind::Kit909: return ui::Icon::Drum;
+    case EngineKind::Sampler: return ui::Icon::Pads;
+    case EngineKind::Midi: return ui::Icon::Din;
+    case EngineKind::Plugin: return ui::Icon::Plug;
+    default: return ui::Icon::None;
+    }
+}
+
 ui::SoftKeys play_keys(const Snapshot& s, int active) {
-    return {{"STAGE", s.track().engine == EngineKind::Sampler ? "PADS" : "KEYS", "MIX"}, active, colour_of(s)};
+    return {{"STAGE", "TRACKS", s.track().engine == EngineKind::Sampler ? "PADS" : "KEYS"}, active, colour_of(s)};
 }
 
 std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
@@ -372,6 +386,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::SoundList: { static const char* lists[] {"All", "Starred", "Recent"}; c.label = "LIST"; c.value = lists[b.value % 3]; break; }
     case Kind::ArpGate: c.label = "GATE"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::ArpHold: c.label = "HOLD"; c.value = b.value ? "On" : "Off"; break;
+    case Kind::ChordOn: c.label = "CHORD"; c.value = b.value ? "On" : "Off"; break;
     case Kind::NewEngine: {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = new_engines(engines);
@@ -436,9 +451,9 @@ void octave(Context& c, int way) { auto& t = c.track(); t.octave = int8_t(std::c
 void no_wheel(Context&, int) {}
 void no_push(Context&) {}
 void play_soft(Context& c, int key) {
-    // On a sampler track B2 is PADS.
+    // Sample's three stops in its order; on a sampler track B3 is PADS.
     PageId keys = c.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
-    const PageId pages[] {PageId::Stage, keys, PageId::Mix};
+    const PageId pages[] {PageId::Stage, PageId::Tracks, keys};
     c.open(pages[key % 3]);
 }
 
@@ -470,6 +485,21 @@ juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form) {
     return word + " " + juce::String(index);
 }
 
+
+juce::String name_case(const juce::String& name) {
+    // Words kept as written: roman numerals and the acronyms sound names use.
+    static const char* keep[] {"I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "FM", "LFO", "MIDI", "SID", "CZ", "DX", "PWM",
+                               "TB", "TR", "VCO", "VCF", "EP", "OB", "SH", "JX", "MS", "AM", "DJ", "HQ", "UK", "USA", "BPM", "SFZ", "MPC"};
+    juce::StringArray words;
+    words.addTokens(name, " ", "");
+    for (auto& word : words) {
+        bool letters = word.isNotEmpty() && word.containsOnly("ABCDEFGHIJKLMNOPQRSTUVWXYZ'-");
+        bool kept = false;
+        for (auto k : keep) kept = kept || word == k;
+        if (letters && !kept && word.length() > 1) word = word.substring(0, 1) + word.substring(1).toLowerCase();
+    }
+    return words.joinIntoString(" ");
+}
 
 juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::Paint::Text& style, float w) {
     if (p.width(name, style) <= w) return name;

@@ -101,7 +101,7 @@ const StageGroups stage {{{
     {{{{"FILTER ENV", K::Params, S::Envelope, {{FilterAttack, FilterDecay, FilterSustain}}, {{FilterRelease, _, _}}},
        {"AMP ENV", K::Params, S::Envelope, {{AmpAttack, AmpDecay, AmpSustain}}, {{AmpRelease, VelAmp, _}}},
        {"LFO", K::Params, S::Lfo, {{LfoRate, LfoShape, LfoAmount}}, {{LfoFreq, LfoPw, LfoFilter}}}}}, 3},
-    {{{stage_arp, {"PERFORM", K::Params, S::ShiftRows, {{Glide, Unison, Detune}}, {{Vintage, BendRange, Voices}}}, stage_fx}}, 3},
+    {{{stage_arp, stage_chord, {"PERFORM", K::Params, S::ShiftRows, {{Glide, Unison, Detune}}, {{Vintage, BendRange, Voices}}}, stage_fx}}, 4},
 }}};
 } // namespace
 

@@ -98,7 +98,7 @@ const StageGroups stage {{{
     {{{{"OP 1 ENV", K::Params, S::Envelope, {{op(0, Attack), op(0, Decay), op(0, Sustain)}}, {{op(0, Release), op(0, Velocity), op(0, Level)}}},
        {"OP 2 ENV", K::Params, S::Envelope, {{op(1, Attack), op(1, Decay), op(1, Sustain)}}, {{op(1, Release), op(1, Velocity), op(1, Level)}}},
        {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},
-    {{{stage_arp, {"RATIOS", K::Params, S::ShiftRows, {{op(0, Ratio), op(1, Ratio), op(2, Ratio)}}, {{op(3, Ratio), op(4, Ratio), op(5, Ratio)}}}, stage_fx}}, 3},
+    {{{stage_arp, stage_chord, {"RATIOS", K::Params, S::ShiftRows, {{op(0, Ratio), op(1, Ratio), op(2, Ratio)}}, {{op(3, Ratio), op(4, Ratio), op(5, Ratio)}}}, stage_fx}}, 4},
 }}};
 } // namespace
 

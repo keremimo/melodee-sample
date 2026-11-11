@@ -563,12 +563,13 @@ void Context::apply(const Binding& b, int value) {
         t.arp_latch = value != 0;
         if (!t.arp_latch) { send({Type::Arp, ui.track, 0, 0, 0}); if (t.arp) send({Type::Arp, ui.track, 0, 0, 1}); }
         break;
+    case Kind::ChordOn: t.chord = value != 0; break; // Shift + K1 on Stage's CHORD
     case Kind::NewEngine: ui.new_engine = uint8_t(value); ui.new_sound = 0; break;
     case Kind::NewSound: ui.new_sound = uint8_t(value); break;
     case Kind::NewSource: ui.new_source = uint8_t(value); break;
     case Kind::NewPort: ui.new_port = uint8_t(value); break;
     case Kind::NewChannel: ui.new_channel = uint8_t(value); break;
-    case Kind::TrackPick: select_track(unsigned(value)); ui.tracks_half = uint8_t(ui.track / 8); break;
+    case Kind::TrackPick: select_track(unsigned(value)); break;
     case Kind::TrackPattern: launch(ui.track, unsigned(value)); break;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp).
     case Kind::LoopPick: ui.loop = uint8_t(value % loop_tracks); break;

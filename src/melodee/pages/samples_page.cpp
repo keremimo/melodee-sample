@@ -30,7 +30,7 @@ constexpr unsigned visible = list_rows;
 juce::String folder_title(const Snapshot& s) {
     if (s.ui.files_drive == unsigned(Drive::Internal) && s.files_top) return "CATEGORIES";
     if (s.files_folder.empty()) return "NO CARD";
-    return juce::String(std::filesystem::path(s.files_folder).filename().string()).toUpperCase();
+    return juce::String(std::filesystem::path(s.files_folder).filename().string());
 }
 
 void draw(Paint& p, const Snapshot& s) {

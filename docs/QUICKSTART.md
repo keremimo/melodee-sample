@@ -71,8 +71,8 @@ the engine. Push opens the full Sounds list.
 ![Stage PRESET on a PROPHET](images/quickstart/stagepreset.png)
 
 **A synth: AMP ENV (B2, second page).** B2 holds the shape pages: on a
-PROPHET FILTER ENV, AMP ENV, LFO. B1 is PRESET, TONE, MIX; B3 is ARP, the
-engine's own page, FX.
+PROPHET FILTER ENV, AMP ENV, LFO. B1 is PRESET, TONE, MIX; B3 is ARP, CHORD,
+the engine's own page, FX.
 
 ![Stage AMP ENV on a PROPHET](images/quickstart/stageampenv.png)
 
@@ -104,16 +104,16 @@ ARM builds only; the picker dims the rest and says why).
 Sixteen tracks, one per pad: pad 1 (bottom left) is track 1.
 
 **Hold Pad Bank and tap a pad** to select that track, from any page. While
-Pad Bank is held a second the screen shows the tracks, eight at a time.
+Pad Bank is held a second the screen shows all sixteen tracks.
 
 ![Pad Bank held](images/quickstart/padbank.png)
 
-**Tap Pad Bank twice** (quickly) on a synth or MIDI track for the Tracks
-screen, which stays open (on a kit quick taps only switch banks).
-Each cell shows the track's engine, sound, the pattern playing and its
-level. B1 shows tracks 1–8, B2 tracks 9–16, B3 goes back to Stage. Tap a
-pad to select its track and go back to Stage; K2 sets the selected track's
-level, K3 its pattern.
+**Press Sample on Stage** for Tracks, the mixer: all sixteen tracks as the
+pads sit, each with its pattern, engine glyph and level, and the track in
+hand as a strip on the right (fader, meter, pan, send). Tap a pad to select
+its track; K2 sets its level, K3 its pan, Push opens its Stage. B2 opens
+the Looper, B3 the Sends. Sample again goes on to Keys (Pads on a kit),
+and once more back to Stage.
 
 ![The Tracks screen](images/quickstart/tracks.png)
 
@@ -204,7 +204,7 @@ ends it and opens TRIM. Shift + Sample opens the full Input Config.
 
 Four audio loops that follow the tempo, on tracks of their own (L1–L4).
 
-**Open: tap Loop twice** (quickly). The first time, the Looper is off: B3
+**Open: Sample to Tracks, then B2 LOOPER.** The first time, the Looper is off: B3
 or Push turns it on (or hold Shift + Loop half a second). Held on any page,
 Loop turns the pads into the loop grid (below) for as long as it is down.
 
@@ -259,8 +259,8 @@ starts.
 
 ## 9. Where to go next
 
-[MELODEE.md](MELODEE.md) covers every button, page and Shift job: Keys
-and Mix (press Sample again), the editors and Step Edit (Seq, Shift + Seq),
+[MELODEE.md](MELODEE.md) covers every button, page and Shift job: Tracks
+and Keys (press Sample again), the editors and Step Edit (Seq, Shift + Seq),
 Song (Shift + Pad 12), the effects (Knob FX, Pad FX, Shift + Knob FX),
 16 Levels, Note Repeat and the arp, the Looper, plug-ins, MIDI and SD card
 access.

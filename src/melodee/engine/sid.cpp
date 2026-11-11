@@ -55,7 +55,7 @@ const StageGroups stage {{{
     {{{{"ENVELOPE", K::Params, S::Envelope, {{Attack, Decay, Sustain}}, {{Release, Velocity, _}}},
        {"PWM", K::Params, S::Bars, {{PwmDepth, PwmRate, Crush}}},
        {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},
-    {{{stage_arp, {"OSC", K::Params, S::ShiftRows, {{Wave, PulseWidth, Detune}}, {{Ring, Sync, Model}}}, stage_fx}}, 3},
+    {{{stage_arp, stage_chord, {"OSC", K::Params, S::ShiftRows, {{Wave, PulseWidth, Detune}}, {{Ring, Sync, Model}}}, stage_fx}}, 4},
 }}};
 } // namespace
 

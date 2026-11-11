@@ -192,7 +192,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             const auto& t = project_->tracks[ui_.track];
             auto at = stage_at(ui_, t);
             stage_bits.store(at.group | at.sub << 4 | unsigned(stage_focus(ui_, t)) << 8 | unsigned(ui_.preset_due != 0) << 12
-                             | unsigned(ui_.tracks_half) << 13 | unsigned(t.preset & 0x3ff) << 16 | unsigned(t.bank % sampler_banks) << 26,
+                             | unsigned(t.preset & 0x3ff) << 16 | unsigned(t.bank % sampler_banks) << 26,
                              std::memory_order_relaxed);
             std::lock_guard<std::mutex> text(text_lock);
             stage_key_text = stage_page_now(ui_, t).key;
@@ -361,7 +361,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 colour = state == TakeRecorder::State::Recording || (now / 250) % 2 ? led_colour::rgb(1, 0, 0, 1) : led_colour::rgb(1, 0, 0, 0.2f);
             else if (cut) colour = led_colour::white(0.9f);
             else colour = track_light(ui.track, track.pads[kit].used() ? 0.3f : 0.07f);
-        } else if (tracks || muting || ui.page == PageId::Tracks || ui.page == PageId::Mix || ui.page == PageId::Song) {
+        } else if (tracks || muting || ui.page == PageId::Tracks || ui.page == PageId::Song) {
             // The pads are the tracks.
             const auto& t = project.tracks[pad];
             float level = !t.used() ? 0 : pad == ui.track ? 1.0f : t.mix.mute ? 0.08f : 0.35f;
@@ -523,7 +523,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         button_levels.store(levels, std::memory_order_relaxed);
         return;
     }
-    bool play_group = ui.page == PageId::Stage || ui.page == PageId::Keys || ui.page == PageId::Pads || ui.page == PageId::Mix;
+    bool play_group = ui.page == PageId::Stage || ui.page == PageId::Tracks || ui.page == PageId::Keys || ui.page == PageId::Pads;
     on(B::Sample, play_group || ui.page == PageId::InputConfig);
     on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::StepEdit || ui.page == PageId::Steps
                    || ui.page == PageId::Roll || ui.page == PageId::Motion);

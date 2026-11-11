@@ -16,14 +16,14 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Mix, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Arp, Chord, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
+enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
                             MidiConfig,                        // parity phase 9: Shift + Pad 8
                             CardAccess,                        // parity phase 10b: Project's SD card access
-                            Tracks,                            // Pad Bank tapped twice: the sixteen tracks, eight at a time
-                            Looper,                            // Loop tapped twice: the four loops (docs/LOOPER.md)
+                            Tracks,                            // Sample's second stop: the sixteen tracks and the strip in hand
+                            Looper,                            // LOOPER on Tracks: the four loops (docs/LOOPER.md)
                             RecQuantize,                       // Shift + Pad 10: Rec Quantize on or off, and its grid
                             Plugins,                           // the plug-in picker: the card's Plugins folder (docs/MELODEE.md)
                             PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
@@ -66,9 +66,9 @@ struct UiState {
     bool mute_latch = false, mute_used = false;
     uint32_t mute_down = 0;
     bool mute_mode() const { return mute || mute_latch; }
-    // Note Repeat (shell/note_repeat.cpp): a tap latches, a hold lasts while held, a double tap opens Arp.
+    // Note Repeat (shell/note_repeat.cpp): a tap latches, a hold lasts while held.
     bool repeat_held = false, repeat_turned_on = false;
-    uint32_t repeat_down = 0, repeat_tap_at = 0;
+    uint32_t repeat_down = 0;
     bool exit_open = false, recording = false;
     bool exit_off = false;         // the Exit sheet's POWER OFF chosen: saving, then the MPC turns off
     bool exit_saved = false;       // and the project is on the card: the sheet says so for a second first
@@ -90,9 +90,8 @@ struct UiState {
     uint16_t preset_cursor = 0; // and where it is in the list (sound_list())
     // An empty track's choosers: the engine and its sound (SYNTH), the source (KIT), port and channel (MIDI).
     uint8_t new_engine = 0, new_sound = 0, new_source = 0, new_port = 1, new_channel = 1;
-    // Pad Bank tapped twice (shell/pad_bank.cpp): the first tap's time (only where a tap steps nothing), and the press's.
-    uint32_t pad_bank_tap_at = 0, pad_bank_down = 0;
-    uint8_t tracks_half = 0; // the Tracks screen: 0 tracks 1-8, 1 tracks 9-16
+    // Pad Bank (shell/pad_bank.cpp): when it went down; held a second, the tracks over the page.
+    uint32_t pad_bank_down = 0;
     uint16_t sounds_cursor = 0;
     uint8_t sounds_filter = 0;       // all, favourites, recent
     uint8_t audition_velocity = 100;
@@ -132,7 +131,6 @@ struct UiState {
     uint8_t song_zoom = 2;      // index into song_zooms
     uint8_t song_pattern = 0;   // what Push places on empty time
     uint8_t song_length = 4;    // bars
-    uint16_t song_loop_was[2] {}; // the brace before Loop moved it, for a double tap's take-back
     // Per chain: the slot (or + ADD) and parameter row; the pad chains share the last entry (cursor_of()).
     std::array<uint8_t, chain_count + 1> fx_cursor {}, fx_row {};
     static unsigned cursor_of(unsigned chain) { return chain < chain_count ? chain : chain_count; }
@@ -247,14 +245,14 @@ struct UiState {
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),
-    // its sheet (B3 MORE) and the row under the cursor; Loop's taps (twice opens the page; held, the pads are the
-    // loop grid on any page, loop_grip once held long or a grid pad hit) and whether its press toggled the last
-    // pad's loop; the loop whose clear pad is held on the grid, since when; and the
+    // its sheet (B3 MORE) and the row under the cursor; Loop down (held, the pads are the loop grid on any page,
+    // loop_grip once held long or a grid pad hit: its release then does nothing) and whether it went down on Song;
+    // the loop whose clear pad is held on the grid, since when; and the
     // loop whose chain FX Select shows (-1: the selected track's).
     uint8_t loop = 0, looper_view = 0, loop_row = 0;
     bool loop_sheet = false;
-    uint32_t loop_tap_at = 0, loop_down = 0;
-    bool loop_held = false, loop_grip = false, loop_toggled = false, loop_on_song = false;
+    uint32_t loop_down = 0;
+    bool loop_held = false, loop_grip = false, loop_on_song = false;
     bool loop_shift_held = false; // Shift + Loop down: let go soon, Reverse; held, the Looper on or off
     int8_t loop_clear = -1;
     uint32_t loop_clear_at = 0;

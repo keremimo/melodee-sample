@@ -19,9 +19,9 @@ void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     Header h = header_of(s);
     h.left.push_back(pill("OCT " + juce::String(track.octave)));
-    if (track.transpose) h.left.push_back(pill((track.transpose > 0 ? "+" : juce::String::fromUTF8("\xe2\x88\x92")) + juce::String(std::abs(track.transpose)) + " ST"));
+    if (track.transpose) h.left.push_back(pill((track.transpose > 0 ? "+" : juce::String::fromUTF8("\xe2\x88\x92")) + juce::String(std::abs(track.transpose)) + " st"));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, play_keys(s, 1), h);
+    frame(p, s, play_keys(s, 2), h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 150;
     constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 2.0f - 3 * gap) / 4;

@@ -25,7 +25,7 @@ void draw(Paint& p, const Snapshot& s) {
     unsigned entry = s.ui.presets_entry;
     Header h = header_of(s);
     h.left.push_back(chip("PRESETS", c));
-    h.left.push_back(pill(plugin_name(s, entry).toUpperCase() + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(int(v.list.size())), c));
+    h.left.push_back(pill(plugin_name(s, entry) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(int(v.list.size())), c));
     if (for_instrument(s)) h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
     if (v.list.empty()) {

@@ -16,7 +16,7 @@ constexpr uint32_t mute_hold_ms = 400; // longer than this, Mute was held, not t
 void mute_button(Context& c, bool pressed);
 // Whether mute mode works on kit pads here: the pads play the selected
 // track's kit (`kit_pads`), and the page is not one about tracks (Stage, Mix).
-inline bool mute_on_kit(const UiState& ui, bool kit_pads) { return kit_pads && ui.page != PageId::Mix && ui.page != PageId::Tracks; }
+inline bool mute_on_kit(const UiState& ui, bool kit_pads) { return kit_pads && ui.page != PageId::Tracks; }
 // A pad pressed in mute mode: mutes (or unmutes) a kit pad or a track; with Shift, solos.
 void mute_pad(Context& c, unsigned pad, bool kit_pads);
 void set_pad_mute(Context& c, unsigned track, unsigned kit, bool on);

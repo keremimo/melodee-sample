@@ -153,20 +153,8 @@ void set_loop_solo(Context& c, unsigned loop, bool on) {
     c.send({Type::Solo, uint8_t(track_count + loop), 0, 0, on});
 }
 
-// The Looper was meant, not the tap's loop: undo that tap, silently.
-static void take_back_loop(Context& c) {
-    if (c.ui.loop_on_song) song_loop_back(c); else c.toggle_loop();
-    c.ui.notice[0] = 0;
-}
-
-// Loop is a hold, not a tap: the tap's loop taken back, and no double tap after it.
-static void grip_loop(Context& c) {
-    auto& ui = c.ui;
-    if (ui.loop_grip) return;
-    ui.loop_grip = true; ui.loop_tap_at = 0;
-    if (ui.loop_toggled) take_back_loop(c);
-    ui.loop_toggled = false;
-}
+// Loop is a hold, not a tap: its release does nothing then.
+static void grip_loop(Context& c) { c.ui.loop_grip = true; }
 
 // Shift + Loop's printed job, whether Shift is still down or not: the last pad reversed.
 static void reverse_last_pad(Context& c) {
@@ -174,12 +162,18 @@ static void reverse_last_pad(Context& c) {
     else c.toggle_reverse();
 }
 
-// Loop pressed a moment before Shift: Shift + Loop after all, the tap's loop taken back.
+// Loop pressed a moment before Shift: Shift + Loop after all.
 static void loop_to_shift(Context& c) {
     auto& ui = c.ui;
-    if (ui.loop_toggled) take_back_loop(c);
-    ui.loop_toggled = false; ui.loop_held = false; ui.loop_tap_at = 0;
+    ui.loop_held = false;
     ui.loop_shift_held = true; ui.shift_used = true;
+}
+
+// Loop's printed job, on release: on Song the brace on the clip's bars, elsewhere the last pad's loop.
+static void loop_tap(Context& c) {
+    if (c.ui.loop_on_song) song_loop(c);
+    else if (c.track().engine == EngineKind::Sampler && c.pad().used()) loop_button(c);
+    else c.notice("Loop: a kit pad's");
 }
 
 void loop_press(Context& c, bool pressed) {
@@ -187,6 +181,7 @@ void loop_press(Context& c, bool pressed) {
     if (!pressed) {
         if (ui.loop_held && !ui.loop_grip && ui.shift) loop_to_shift(c); // Shift came down during the tap
         if (ui.loop_shift_held) reverse_last_pad(c); // let go before the hold: Reverse, as printed
+        else if (ui.loop_held && !ui.loop_grip) loop_tap(c);
         if (ui.loop_held && ui.page != PageId::Looper) ui.loop_clear = -1; // a clear pad still down: no clear
         ui.loop_held = false; ui.loop_grip = false; ui.loop_shift_held = false;
         return;
@@ -196,21 +191,8 @@ void loop_press(Context& c, bool pressed) {
         ui.loop_down = c.now; ui.loop_shift_held = true;
         return;
     }
-    if (ui.page == PageId::Looper) { ui.loop_tap_at = 0; c.back(); return; }
-    if (ui.loop_tap_at && c.now - ui.loop_tap_at <= loop_double_ms) { // tapped twice: the Looper
-        if (ui.loop_toggled) take_back_loop(c); // the first tap's loop
-        ui.loop_tap_at = 0; ui.loop_toggled = false; ui.loop_held = false;
-        c.open(PageId::Looper);
-        return;
-    }
-    ui.loop_tap_at = std::max<uint32_t>(c.now, 1);
     ui.loop_down = c.now; ui.loop_held = true; ui.loop_grip = false;
     ui.loop_on_song = ui.page == PageId::Song && !ui.song_export;
-    if (ui.loop_on_song) ui.loop_toggled = song_loop(c); // on Song: the brace on the clip's bars
-    else {
-        ui.loop_toggled = c.track().engine == EngineKind::Sampler && c.pad().used();
-        if (ui.loop_toggled) loop_button(c);             // the MPC's job: the last pad's loop
-    }
 }
 
 bool loop_held_pad(Context& c, unsigned pad, bool down) {
@@ -281,12 +263,11 @@ void looper_tick(Context& c, uint32_t now) {
         else if (audio) ask(c, UiState::Ask::LooperOff, 0);
         else set_looper(c, false);
     }
-    // Loop held: the pads are the loop grid (they were from the press), the press's loop taken back.
+    // Loop held: the pads are the loop grid (they were from the press), and its release does nothing.
     if (ui.loop_held && !ui.loop_grip && now - ui.loop_down >= loop_hold_ms && ui.page != PageId::Looper) {
         grip_loop(c);
         if (!c.project.looper.on) c.notice("Looper off: Shift + hold Loop"); // on, the lit grid says it
     }
-    if (ui.loop_tap_at && now - ui.loop_tap_at > loop_double_ms && !ui.loop_held) { ui.loop_tap_at = 0; ui.loop_toggled = false; }
     // A clear pad held long enough.
     if (ui.loop_clear >= 0 && now - ui.loop_clear_at >= loop_clear_ms) {
         unsigned loop = unsigned(ui.loop_clear);

@@ -60,8 +60,12 @@ inline HeaderItem track_tag(int track, juce::String engine, juce::String name, j
     return {HeaderItem::Kind::Tag, name, c, track, engine};
 }
 
+// The two rows over every page (frame: two chips at most): transport (a play
+// triangle, a stop square, the red dot while recording, a red ring while
+// armed), tempo, at most two state chips, and on the right the track, which
+// gives up its engine name, then its sound name, but never its number.
 struct Header {
-    bool playing = false, recording = false;
+    bool playing = false, recording = false, armed = false;
     juce::String bpm = "120";
     std::vector<HeaderItem> left, right;
 };

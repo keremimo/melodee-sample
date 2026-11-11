@@ -83,7 +83,7 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
                  || button == B::Stop || button == B::SeqRecord)) return {}; // modes and the transport, not edits
     switch (ui.page) {
     case PageId::Song: return of(S::Song, ui);
-    case PageId::Mix: case PageId::Sends: return of(S::Mix, ui);
+    case PageId::Tracks: case PageId::Sends: return of(S::Mix, ui);
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: return of(S::Chain, ui, page_chain(project, ui));
     case PageId::KnobFx: case PageId::Compressor: case PageId::FlexBeat: case PageId::Punch: return of(S::Master, ui);
     case PageId::Chop: return ui.chop_armed && pad ? UndoScope {} : of(S::Chop, ui); // Manual's taps are one take, not a step each

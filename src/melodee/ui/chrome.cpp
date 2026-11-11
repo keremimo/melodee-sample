@@ -119,8 +119,13 @@ void soft_keys(Paint& p, const SoftKeys& keys) {
 
 void header(Paint& p, const Header& h) {
     float x = zone::pad;
-    // Transport: a play triangle while playing, a stop square otherwise.
-    if (h.playing) {
+    // Transport: the red dot while recording (no word), a red ring while armed, a play triangle, a stop square.
+    if (h.recording) {
+        p.circle(x + 4, header_mid, 3.6f, colour::rec);
+    } else if (h.armed) {
+        p.g.setColour(colour::rec);
+        p.g.drawEllipse(x + 0.6f, header_mid - 3.4f, 6.8f, 6.8f, 1.5f);
+    } else if (h.playing) {
         juce::Path tri;
         tri.addTriangle(x + 1, header_mid - 3.75f, x + 1, header_mid + 3.75f, x + 7.5f, header_mid);
         p.g.setColour(colour::text); p.g.fillPath(tri);
@@ -129,13 +134,10 @@ void header(Paint& p, const Header& h) {
     }
     x += 13;
     x += p.text(h.bpm, x, zone::header_y, 50, zone::header_h, plain(colour::text, type::bpm, Weight::Medium)) + 5;
-    if (h.recording) {
-        p.circle(x + 3, header_mid, 3, colour::rec);
-        x += 9;
-        x += p.text("REC", x, zone::header_y, 34, zone::header_h, caps_text(colour::rec)) + 5;
-    }
+    // Two chips at most: the state chips come first (header_of), a page's own after them.
+    std::vector<HeaderItem> left(h.left.begin(), h.left.begin() + std::min<size_t>(h.left.size(), 2));
     float left_end = x;
-    for (const auto& it : h.left) left_end += item(p, it, 0, true) + 4;
+    for (const auto& it : left) left_end += item(p, it, 0, true) + 4;
     auto right_items = h.right;
     auto right_width = [&] {
         float total = 0;
@@ -144,20 +146,15 @@ void header(Paint& p, const Header& h) {
     };
     float right = zone::width - zone::pad, total = right_width();
     // When both sides do not fit, the track tag gives up its engine name
-    // first, then its sound name, then goes (the page under it says which
-    // track it is).
+    // first, then its sound name; its numbered box always stays.
     if (right - total < left_end + 2)
         for (auto& it : right_items) if (it.kind == HeaderItem::Kind::Tag) it.engine = {};
     total = right_width();
     if (right - total < left_end + 2)
         for (auto& it : right_items) if (it.kind == HeaderItem::Kind::Tag) it.text = {};
     total = right_width();
-    if (right - total < left_end + 2) // last, the tag itself: the page shows the track
-        right_items.erase(std::remove_if(right_items.begin(), right_items.end(),
-                                         [](const HeaderItem& it) { return it.kind == HeaderItem::Kind::Tag; }), right_items.end());
-    total = right_width();
     if (right - total < left_end + 2) report_text_issue({"header", type::floor, left_end + total, right - zone::pad});
-    for (const auto& it : h.left) x += item(p, it, x, false) + 4;
+    for (const auto& it : left) x += item(p, it, x, false) + 4;
     float at = right - total;
     for (const auto& it : right_items) at += item(p, it, at, false) + 4;
 }

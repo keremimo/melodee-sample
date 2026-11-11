@@ -22,7 +22,7 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill(juce::String("BANK ") + char('A' + bank)));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, play_keys(s, 1), h);
+    frame(p, s, play_keys(s, 2), h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 196;
     constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 2.0f - 3 * gap) / 4;

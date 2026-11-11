@@ -353,6 +353,10 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         if (shift_row) return {Binding {Kind::ArpGate, 0, 5, 100, track.arp_gate}, Binding {}, Binding {Kind::ArpHold, 0, 0, 1, track.arp_latch}};
         return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},
                 Binding {Kind::ArpOctaves, 0, 1, 4, track.arp_octaves}};
+    case SK::Chord:
+        if (shift_row) return {Binding {Kind::ChordOn, 0, 0, 1, track.chord}, Binding {}, Binding {Kind::ArpHold, 0, 0, 1, track.arp_latch}};
+        return {Binding {Kind::ChordType, 0, 0, 5, track.chord_type}, Binding {Kind::ChordVoicing, 0, 0, 3, track.chord_voicing},
+                Binding {Kind::ChordInvert, 0, 0, 3, track.chord_invert}};
     case SK::Fx: {
         unsigned slot = ui.fx_cursor[UiState::cursor_of(t)];
         if (slot >= track.fx.count()) return {};
@@ -509,9 +513,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     switch (ui.page) {
     case PageId::Keys:
         return project_key(project, Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)});
-    case PageId::Mix:
-        return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
-                Binding {Kind::Send, 0, 0, 100, track.mix.send}};
     case PageId::Sounds: {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = available_engines(engines), at = 0;
@@ -631,12 +632,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::Tempo:
         return {Binding {Kind::Tempo, 0, 30, 300, int(project.tempo_of(ui.lead_pattern) / 10)}, Binding {Kind::Swing, 0, 50, 75, project.swing},
                 Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
-    case PageId::Arp:
-        return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},
-                Binding {Kind::ArpOctaves, 0, 1, 4, track.arp_octaves}};
-    case PageId::Chord:
-        return {Binding {Kind::ChordType, 0, 0, 5, track.chord_type}, Binding {Kind::ChordVoicing, 0, 0, 3, track.chord_voicing},
-                Binding {Kind::ChordInvert, 0, 0, 3, track.chord_invert}};
     case PageId::Capture:
         return {Binding {Kind::CaptureBars, 0, 1, 4, ui.capture_bars}, Binding {Kind::CaptureQuantise, 0, 0, 2, ui.capture_quantise},
                 Binding {Kind::CaptureInto, 0, 0, int(pattern_count) - 1, ui.capture_into}};
@@ -690,9 +685,9 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::StepChance, 0, 0, 100, step.chance}};
     }
     case PageId::Stage: return stage_bindings(project, ui, false);
-    case PageId::Tracks: // K1 the track, K2 its level, K3 its pattern
+    case PageId::Tracks: // the strip in hand: K1 the track, K2 its level, K3 its pan
         return {Binding {Kind::TrackPick, 0, 0, int(track_count) - 1, ui.track % int(track_count)},
-                Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::TrackPattern, 0, 0, int(pattern_count) - 1, track.pattern}};
+                Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan}};
     default: return favourite_bindings(track);
     }
 }

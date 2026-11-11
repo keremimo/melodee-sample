@@ -19,10 +19,10 @@ enum MidiRow : uint8_t {
 };
 
 inline const char* midi_row_name(unsigned row) {
-    static const char* const names[] {"MIDI Port", "MIDI In Channel", "MIDI Out Channel", "Track Channel", "Pad MIDI In",
-                                      "Pad MIDI Out", "MIDI Sync In", "MIDI Sync Out", "MIDI Thru", "Receive Program Change",
-                                      "CV/Sync Out", "CV/Sync Base", "CV/Sync Division", "Parameter Takeover",
-                                      "Knob FX Takeover", "Fader Takeover", "MIDI Panic", "Reset Factory Settings"};
+    static const char* const names[] {"MIDI port", "MIDI in channel", "MIDI out channel", "Track channel", "Pad MIDI in",
+                                      "Pad MIDI out", "MIDI sync in", "MIDI sync out", "MIDI thru", "Receive program change",
+                                      "CV/sync out", "CV/sync base", "CV/sync division", "Parameter takeover",
+                                      "Knob FX takeover", "Fader takeover", "MIDI panic", "Reset factory settings"};
     return names[row % MidiRows];
 }
 

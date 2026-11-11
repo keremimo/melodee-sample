@@ -500,6 +500,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             auto& sketch = out.sketches[t][n];
             sketch.length = pattern.length; sketch.keys.fill(0);
             sketch.notes = !pattern.empty();
+            sketch.count = uint16_t(std::min<size_t>(pattern.events.size(), 0xffff));
             for (const auto& e : pattern.events) { // the first note of each of the first 64 sixteenths
                 unsigned k = e.tick / sixteenth_ticks;
                 if (k >= sketch.keys.size() || e.tick >= pattern.length) break;
@@ -552,7 +553,7 @@ std::string Shell::summary() const {
     return "melodee_page=" + std::to_string(pt & 0xff) + " melodee_track=" + std::to_string((pt >> 8) + 1) +
            " melodee_stage=" + std::to_string((st & 0xf) + 1) + "." + std::to_string(((st >> 4) & 0xf) + 1) + " melodee_stage_key=" + key +
            " melodee_stage_card=" + std::to_string(((st >> 8) & 0xf) + 1) + " melodee_preset_due=" + std::to_string((st >> 12) & 1) +
-           " melodee_tracks_half=" + std::to_string((st >> 13) & 1) + " melodee_preset=" + std::to_string(((st >> 16) & 0x3ff) + 1) +
+           " melodee_preset=" + std::to_string(((st >> 16) & 0x3ff) + 1) +
            " melodee_bank=" + std::string(1, char('A' + ((st >> 26) & 7))) +
            " melodee_pad_sample=" + std::to_string(int(pad_sample.load()) == 0xffff ? -1 : int(pad_sample.load())) +
            " melodee_pad_frames=" + std::to_string(pad_frames.load()) + " melodee_tempo=" + std::to_string(tempo_now.load()) +

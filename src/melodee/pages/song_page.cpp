@@ -342,19 +342,11 @@ bool song_loop(Context& c) {
     auto& song = c.project.song;
     int index = clip_index(c);
     if (index < 0 && !song.looping()) return false;
-    c.ui.song_loop_was[0] = song.loop_start; c.ui.song_loop_was[1] = song.loop_end;
     bool same = index >= 0 && song.loop_start == song.clips[size_t(index)].bar && song.loop_end == song.clips[size_t(index)].end();
     if (index < 0 || same) song.loop_start = song.loop_end = 0;
     else { song.loop_start = song.clips[size_t(index)].bar; song.loop_end = song.clips[size_t(index)].end(); }
     c.sync_song();
     return true;
-}
-
-// The brace as it was: a tap that turned out to be the first of two, for the Looper.
-void song_loop_back(Context& c) {
-    c.project.song.loop_start = c.ui.song_loop_was[0];
-    c.project.song.loop_end = c.ui.song_loop_was[1];
-    c.sync_song();
 }
 
 const PageSpec song_page {draw, pad, wheel, push, soft, nudge};

@@ -127,7 +127,7 @@ void draw(Paint& p, const Snapshot& s) {
         unsigned last = s.track().last_pad % sampler_pads;
         char label[4]; pad_label(last, label);
         juce::String name = "PAD " + juce::String(label);
-        if (s.track().pads[last].used()) name += juce::String::fromUTF8(" \xc2\xb7 ") + pad_name(s, last, false).toUpperCase();
+        if (s.track().pads[last].used()) name += juce::String::fromUTF8(" \xc2\xb7 ") + name_case(pad_name(s, last, false));
         keys.labels = {"", "PAD", "TRACK" + on};
         h.left.push_back(pill(name, c));
         h.right.push_back(tag_of(s, s.ui.track));

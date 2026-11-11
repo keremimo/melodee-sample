@@ -7,28 +7,27 @@
 #include <cstdint>
 #include <string>
 
-// The Looper's controls (docs/LOOPER.md), on the MIDI thread: Loop tapped
-// twice opens its page, the pads there (and anywhere while Loop is held) are the loop grid, the page's
+// The Looper's controls (docs/LOOPER.md), on the MIDI thread: LOOPER on
+// Tracks opens its page, the pads there (and anywhere while Loop is held) are the loop grid, the page's
 // sheet (B3 MORE) holds the rest, and each ask keeps the project's values in
 // step with what goes to the audio thread (Command::Looper).
 namespace melodee {
 
 class Context;
 
-constexpr uint32_t loop_double_ms = 450; // Loop tapped twice within this: the Looper
-constexpr uint32_t loop_hold_ms = 500;   // Loop held this long: a hold (the tap's loop taken back), not a tap
+constexpr uint32_t loop_hold_ms = 500;   // Loop held this long: a hold (its release does nothing), not a tap
 constexpr uint32_t loop_chord_ms = 150;  // Shift this soon after Loop: Shift + Loop (later, Shift + a grid pad)
 constexpr uint32_t loop_clear_ms = 600;  // a grid pad of the bottom row held this long clears its loop
 
 // One ask of the Looper, its project values kept (Length, Feedback, Source, the shared settings, on or off).
 void looper_do(Context& c, looper::Do what, unsigned loop, int value = 0, uint32_t position = 0);
 void set_looper(Context& c, bool on);
-// Loop, pressed and let go: a tap is the MPC's (the last pad's loop); twice, the Looper; held, the pads are the
-// loop grid on any page until it is let go; on the Looper it goes back. Shift + Loop let go within half a
-// second: Reverse; held that long, the Looper on or off instead (off asks first while a loop holds audio).
-// Shift pressed during a plain Loop tap makes it Shift + Loop (the tap's loop taken back).
+// Loop, pressed and let go: a tap is the MPC's (the last pad's loop; on Song the clip's brace), done on
+// release; held, the pads are the loop grid on any page until it is let go, and the release does nothing.
+// Shift + Loop let go within half a second: Reverse; held that long, the Looper on or off instead (off asks
+// first while a loop holds audio). Shift pressed during a plain Loop tap makes it Shift + Loop.
 void loop_press(Context& c, bool pressed);
-// A pad while Loop is held off the Looper: the loop grid's (the press's own loop taken back). False otherwise.
+// A pad while Loop is held off the Looper: the loop grid's (its release then does nothing). False otherwise.
 bool loop_held_pad(Context& c, unsigned pad, bool down);
 // The loop grid: each column a loop (pad 1 bottom left). Top row record / overdub / play, then play or stop on
 // the next boundary (Shift: at once), undo then redo, hold to clear.

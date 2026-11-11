@@ -175,10 +175,7 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     bool on = s.project.looper.on;
     if (on) {
-        double tick = std::max(0.0, s.loop_tick);
-        unsigned bar = std::max(1u, s.project.bar_ticks()), beat = std::max(1u, s.project.beat_ticks());
-        h.left.push_back(pill(juce::String(unsigned(tick / bar) + 1) + "." + juce::String(unsigned(std::fmod(tick, bar) / beat) + 1)));
-        h.left.push_back(pill(juce::String(looper::quantize_name(s.project.looper.quantize)).toUpperCase()));
+        h.left.push_back(pill(Icon::Magnet, juce::String(looper::quantize_name(s.project.looper.quantize)).toUpperCase()));
         h.right.push_back(chip("L" + juce::String(loop + 1), loop_colour(loop)));
         if (v.layers) h.right.push_back(label(juce::String(v.layers) + (v.layers == 1 ? " LAYER" : " LAYERS")));
     }

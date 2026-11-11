@@ -91,7 +91,7 @@ on and freed when it is turned off (the MPC has 2 GB).
 
 ## The page
 
-**Looper** (Loop twice; 16 Levels of type Loop). Calm, as every
+**Looper** (LOOPER on Tracks; 16 Levels of type Loop). Calm, as every
 page: the four loops as rows, each its tag (L1–L4 in its colour), its state
 as a word (ARM, REC, DUB, PLAY, STOP; a change waiting blinks), its
 waveform with the playhead, its length in bars and its source. The header

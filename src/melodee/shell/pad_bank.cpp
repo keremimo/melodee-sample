@@ -25,30 +25,13 @@ void step_bank(Context& c, int way) {
 
 void pad_bank_button(Context& c, bool pressed) {
     auto& ui = c.ui;
-    if (pressed) {
-        if (ui.pad_bank_tap_at && c.now - ui.pad_bank_tap_at <= pad_bank_double_ms && !ui.shift) { // tapped twice: the Tracks screen
-            ui.pad_bank_tap_at = 0;
-            ui.tracks_half = uint8_t(ui.track / 8);
-            c.open(PageId::Tracks);
-            ui.pad_bank = true; ui.pad_bank_used = true; ui.pad_bank_down = c.now; // held on, it picks tracks as ever; its release steps nothing
-            return;
-        }
-        ui.pad_bank = true; ui.pad_bank_used = false; ui.pad_bank_down = c.now;
-        return;
-    }
+    if (pressed) { ui.pad_bank = true; ui.pad_bank_used = false; ui.pad_bank_down = c.now; return; }
     ui.pad_bank = false;
-    ui.pad_bank_tap_at = 0;
     if (ui.pad_bank_used) return; // held for a pad, a jump or a copy: no step
     if (ui.shift) ui.shift_used = true;
-    if (ui.page == PageId::Tracks) { c.open(PageId::Stage); return; } // a tap on Tracks: back
-    // Where a tap steps something, quick taps only step: no double tap that could open Tracks mid-switch.
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (c.track().engine == EngineKind::Sampler) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
-    if (ui.page == PageId::Roll && c.track().engine != EngineKind::Kit909) { // Roll on a synth: −/+ are its pitch, so the pads' octave is here
-        step_octave(c, ui.shift ? -1 : 1);
-        return;
-    }
-    if (!ui.shift) ui.pad_bank_tap_at = std::max<uint32_t>(ui.pad_bank_down, 1); // no banks here: a second tap soon, Tracks
+    if (ui.page == PageId::Roll && c.track().engine != EngineKind::Kit909) step_octave(c, ui.shift ? -1 : 1); // Roll on a synth: −/+ are its pitch
 }
 
 bool pad_bank_move(Context& c, int way) {

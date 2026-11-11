@@ -58,7 +58,7 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const Sound plugin_sounds[] {{"PLUG-IN", {{{-1, 0}}}}};
     static const StageGroups plugin_stage {{{
         {{{stage_mix, {}, {}}}, 1},
-        {{{stage_arp, {}, {}}}, 1},
+        {{{stage_arp, stage_chord, {}}}, 2},
         {{{stage_fx, {}, {}}}, 1},
     }}};
     static const EngineInfo plugin {EngineKind::Plugin, "PLUGIN", true, nullptr, 0, nullptr, 0, {-1, -1, -1},
@@ -93,7 +93,7 @@ const StageGroups& stage_groups(EngineKind kind) {
         {{{{"DEVICE", K::Params, P::Route, {{Port, Channel, _}}},
            {"PROGRAM", K::Params, P::Program, {{BankMsb, BankLsb, Program}}}, {}}}, 2},
         {{{{"CC", K::Params, P::Cc, {{Cc1, Cc2, Cc3}}, {{CcNumber1, CcNumber2, CcNumber3}}}, {}, {}}}, 1},
-        {{{stage_arp, {}, {}}}, 1},
+        {{{stage_arp, stage_chord, {}}}, 2},
     }}};
     // An empty track: what it becomes.
     static const StageGroups empty {{{
@@ -104,7 +104,7 @@ const StageGroups& stage_groups(EngineKind kind) {
     // An engine that states none: its sounds and mix, the arp, its effects.
     static const StageGroups plain {{{
         {{{stage_preset, stage_mix, {}}}, 2},
-        {{{stage_arp, {}, {}}}, 1},
+        {{{stage_arp, stage_chord, {}}}, 2},
         {{{stage_fx, {}, {}}}, 1},
     }}};
     switch (kind) {

@@ -64,7 +64,8 @@ void wide_sheet(Paint& p, const MenuSheet& sheet, const juce::String& chip_text,
 
 // Choices as tiles straight under the soft keys that pick them, each with a
 // caret up to its key: a glyph, then a word (or a big value with a small word
-// under it). The primary one is outlined. An empty tile (no glyph) is skipped.
+// under it). Plain panels without outlines: the likely one a shade lighter
+// with white type, the others grey. An empty tile (no glyph) is skipped.
 struct KeyTile {
     Icon icon = Icon::None;
     juce::String word, big, sub;
@@ -79,18 +80,18 @@ inline KeyTile value_tile(Icon i, juce::String big, juce::String sub, bool prima
     KeyTile t; t.icon = i; t.big = std::move(big); t.sub = std::move(sub); t.primary = primary; return t;
 }
 
-// The question before an erase or a loss, without sentences: a glyph (the
-// trash, or what the question is about), the thing in question as a chip
-// and a short name, counts as glyph and number, and the undo keys when it
-// can be undone (Shift + Minus). Over a dimmed picture, outlined in REC.
+// The question before an erase or a loss, asked in words as a person would:
+// a glyph and the question ("Clear pattern 2?"), one or two short plain lines
+// saying what goes and whether undo brings it back, and at the foot what it
+// is about as a chip and a name, with the undo keys (Shift + Minus) when it
+// can be undone. Over a dimmed picture, outlined in REC.
 struct ConfirmSheet {
     Icon icon = Icon::Trash;
-    juce::String chip, name;            // "P2" in `chip_colour`; "TRACK 3"
+    juce::String title;                  // "Clear pattern 2?"
+    std::array<juce::String, 2> lines;   // "24 notes of track 3 go.", "Undo brings them back."
+    juce::String chip, name;             // "P2" in `chip_colour`; "TRACK 3"
     juce::Colour chip_colour = colour::text;
-    std::array<std::pair<Icon, juce::String>, 3> counts {}; // e.g. {Note, "24"}, {Motion, "2"}
-    bool undo = false;                  // Shift + Minus brings it back
-    juce::String note;                  // two words at most under the name ("SAVED FIRST")
-    juce::Colour note_colour = colour::mid;
+    bool undo = false;                   // Shift + Minus brings it back
 };
 void confirm_sheet(Paint& p, const ConfirmSheet& s);
 

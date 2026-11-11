@@ -4,10 +4,10 @@
 // B1-B3 each hold a cycle of pages (engine/engine_info.h, stage_groups()):
 // the lit one again steps to the next page, another jumps to its first; the
 // soft keys name each button's page, with a dot a page under a cycle. A synth
-// has SOUND (preset, tone, mix), SHAPE (envelopes, LFO) and PLAY (arp, its
-// own, effects); a kit Akai's Trim / Mix / Amp Env, Tune / Play and Filter /
+// has SOUND (preset, tone, mix), SHAPE (envelopes, LFO) and PLAY (arp, chord,
+// its own, effects); a kit Akai's Trim / Mix / Amp Env, Tune / Play and Filter /
 // Filt Env on the last pad hit; a 909 its preset, the voice the last pad hit
-// and levels, mix, effects; a MIDI track device and program, CC, arp; an
+// and levels, mix, effects; a MIDI track device and program, CC, arp and chord; an
 // empty track what it becomes. The wheel fine-edits the card touched last
 // (PRESET: walks the sounds; an empty track: walks its list), Push moves to the next card (PRESET: the Sounds
 // list; FX: the next effect, or with none yet the effect picker; an empty track: makes it), Shift + Push is Back.
@@ -17,6 +17,7 @@
 #include "melodee/engine/kit909.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
+#include "melodee/model/chords.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/sampler_common.h"
 #include "melodee/shell/sound_list.h"
@@ -104,7 +105,7 @@ void preset_picture(Paint& p, const Snapshot& s) {
     int at = 0;
     if (s.ui.preset_due) at = std::min<int>(s.ui.preset_cursor, int(count) - 1);
     else for (unsigned n = 0; n < count; ++n) if (list[n] == t.preset) at = int(n);
-    auto name_of = [&](unsigned sound) { return sound < info.sound_count ? juce::String(info.sounds[sound].name) : "Own sound " + juce::String(sound - info.sound_count + 1); };
+    auto name_of = [&](unsigned sound) { return sound < info.sound_count ? name_case(info.sounds[sound].name) : "Own sound " + juce::String(sound - info.sound_count + 1); };
     auto number = [&](int n) { char text[16]; std::snprintf(text, sizeof(text), "%02d", n + 1); return juce::String(text); };
     float y = top + 13;
     auto side_row = [&](int n) {
@@ -288,6 +289,39 @@ void arp_picture(Paint& p, const Snapshot& s) {
         int key = order[n % order.size()];
         float y = gy + gh - 10 - (key - lo) / float(hi - lo) * (gh - 14);
         p.fill(x + 1.5f, y, cw - 3, 8, n % 4 == 0 ? ink : ink.withMultipliedAlpha(0.7f), 2);
+    }
+}
+
+// CHORD: the chord the last pad plays (pad 1 before any), its notes, and two octaves of keys with them lit;
+// faint while chords are off (Shift + K1).
+void chord_picture(Paint& p, const Snapshot& s) {
+    const auto& t = s.track();
+    auto c = colour_of(s);
+    unsigned pad = s.ui.chord_pad >= 0 ? unsigned(s.ui.chord_pad) : 0;
+    std::array<int, notes_per_step> keys {};
+    unsigned n = chord_notes(s.project, t, pad, keys);
+    auto ink = t.chord ? c : c.withAlpha(0.35f);
+    juce::String name(chord_name(s.project, t, pad));
+    float w = p.text(name, px, top + 2, 150, 32, plain(t.chord ? colour::text : colour::mid, 28, Weight::SemiBold));
+    juce::String notes;
+    for (unsigned k = 0; k < n; ++k) notes += (k ? "  " : "") + juce::String(note_name(keys[k]));
+    p.text(notes, px + w + 10, top + 10, pw - w - 10, 20, plain(ink, type::body, Weight::Medium));
+    int from = keys[0] / 12 * 12;
+    float ky = top + 46, kh = bottom - 6 - ky, ww = pw / 14;
+    auto lit = [&](int k) { for (unsigned q = 0; q < n; ++q) if (keys[q] == k) return true; return false; };
+    static const int whites[] {0, 2, 4, 5, 7, 9, 11};
+    for (unsigned k = 0; k < 14; ++k) {
+        int key = from + 12 * int(k / 7) + whites[k % 7];
+        float kx = px + k * ww;
+        p.fill(kx + 0.5f, ky, ww - 1, kh, lit(key) ? ink : colour::sec.withAlpha(t.chord ? 1.0f : 0.5f), 2);
+        if (whites[k % 7] == 0 || lit(key))
+            p.text(note_name(key), kx, ky + kh - 14, ww, 12, plain(colour::bg, type::small, Weight::SemiBold), juce::Justification::centred);
+    }
+    for (unsigned k = 0; k < 14; ++k) {
+        int white = whites[k % 7];
+        if (white == 4 || white == 11) continue; // no black key after E or B
+        int key = from + 12 * int(k / 7) + white + 1;
+        p.fill(px + (k + 1) * ww - ww * 0.3f, ky, ww * 0.6f, kh * 0.55f, lit(key) ? ink : colour::bg, 2);
     }
 }
 
@@ -647,7 +681,7 @@ void engines_picture(Paint& p, const Snapshot& s) {
     if (!count) return;
     unsigned at = s.ui.new_engine % count;
     const auto& info = engine_info(engines[at]);
-    juce::String sound = info.sound_count ? juce::String(info.sounds[std::min<unsigned>(s.ui.new_sound, info.sound_count - 1)].name) : juce::String();
+    juce::String sound = info.sound_count ? name_case(info.sounds[std::min<unsigned>(s.ui.new_sound, info.sound_count - 1)].name) : juce::String();
     std::vector<std::pair<juce::String, juce::String>> items;
     for (unsigned n = 0; n < count; ++n) items.push_back({engine_info(engines[n]).name, sound});
     choice_rows(p, s, items, at);
@@ -693,7 +727,7 @@ HeaderItem kit_pill(const Snapshot& s) {
     char label[4];
     pad_label(t.last_pad, label);
     auto name = pad_name(s, t.last_pad % sampler_pads, false);
-    return pill(juce::String(label) + (name.isNotEmpty() ? dot + name.toUpperCase() : dot + "EMPTY"), colour_of(s));
+    return pill(juce::String(label) + (name.isNotEmpty() ? dot + name_case(name) : dot + "EMPTY"), colour_of(s));
 }
 
 void draw(Paint& p, const Snapshot& s) {
@@ -705,7 +739,10 @@ void draw(Paint& p, const Snapshot& s) {
         h.left.push_back(kit_pill(s));
     } else if (page.picture == StagePicture::Voice) {
         int hit = int(t.last_note) - 36;
-        if (hit >= 0 && hit < int(kit909::Drums)) h.left.push_back(pill("PAD " + juce::String(hit + 1) + dot + juce::String(kit909::drum_name(unsigned(hit))).toUpperCase(), c));
+        if (hit >= 0 && hit < int(kit909::Drums)) h.left.push_back(pill("PAD " + juce::String(hit + 1) + dot + juce::String(kit909::drum_name(unsigned(hit))), c));
+    } else if (page.kind == StageKind::Arp || page.kind == StageKind::Chord) { // on or off, as the LED on the MPC would say
+        bool on = page.kind == StageKind::Arp ? t.arp : t.chord;
+        h.left.push_back(pill(on ? Icon::Check : Icon::None, on ? "ON" : "OFF", on ? c : colour::mid));
     }
     h.right.push_back(tag_of(s, s.ui.track));
     auto keys = stage_keys(s);
@@ -720,6 +757,7 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::ShiftRows: bars_picture(p, s, page, true); break;
     case StagePicture::Mix: mix_picture(p, s); break;
     case StagePicture::Arp: arp_picture(p, s); break;
+    case StagePicture::Chord: chord_picture(p, s); break;
     case StagePicture::Fx: fx_picture(p, s); break;
     case StagePicture::Wave: wave_picture(p, s, page); break;
     case StagePicture::Voice: voice_picture(p, s); break;

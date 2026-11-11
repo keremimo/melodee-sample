@@ -108,6 +108,46 @@ Shape make(Icon icon) {
     case Icon::Dirt: s = "M3 20 C10 20 9 4 21 4"; break;
     case Icon::Tone: s = "M3 16 H8 L13 8 H21"; break;
     case Icon::Dynamics: s = "M3 21 L12 12 L21 8"; break;
+    case Icon::Minus: s = "M5 12 H19"; break;
+    case Icon::ArrowDown: s = "M12 4 V19 M6 13 L12 19 L18 13"; break;
+    case Icon::ArrowRight: s = "M4 12 H19 M13 6 L19 12 L13 18"; break;
+    case Icon::ChevronLeft: s = "M15 5 L8 12 L15 19"; break;
+    case Icon::ChevronRight: s = "M9 5 L16 12 L9 19"; break;
+    case Icon::Star: f = "M12 3 L14.7 9.2 L21.5 9.8 L16.3 14.2 L17.9 20.8 L12 17.3 L6.1 20.8 L7.7 14.2 L2.5 9.8 L9.3 9.2 Z"; break;
+    case Icon::Saw: s = "M3 17 L11 7 V17 L19 7 V17 H21"; break;
+    case Icon::Sine: s = "M3 12 C6 3 9 3 12 12 C15 21 18 21 21 12"; break;
+    case Icon::Fm: s = circle(7, 8, 3) + circle(17, 8, 3) + circle(12, 17, 3) + "M9 10.5 L10.6 14.4 M15 10.5 L13.4 14.4"; break;
+    case Icon::Chip: s = box(7, 7, 10, 10, 1) + "M10 4 V7 M14 4 V7 M10 17 V20 M14 17 V20 M4 10 H7 M4 14 H7 M17 10 H20 M17 14 H20"; break;
+    case Icon::Drum: s = "M4 8 A8 3.5 0 1 0 20 8 A8 3.5 0 1 0 4 8 Z M4 8 V16 C4 18 7.6 19.5 12 19.5 C16.4 19.5 20 18 20 16 V8"; break;
+    case Icon::Din:
+        s = circle(12, 12, 9);
+        f = circle(7.5f, 12.5f, 1.1f) + circle(16.5f, 12.5f, 1.1f) + circle(9, 8.6f, 1.1f) + circle(15, 8.6f, 1.1f) + circle(12, 7, 1.1f);
+        break;
+    case Icon::Keyboard: s = box(3, 6, 18, 12, 1.5f) + "M7.5 12 V18 M12 12 V18 M16.5 12 V18 M9.75 6 V12 M14.25 6 V12"; break;
+    case Icon::Save: s = "M5 3 H16 L20 7 V21 H5 Z M8 3 V8 H15 V3 M8 21 V14 H16 V21"; break;
+    case Icon::Copy: s = box(8, 8, 12, 12, 1.5f) + "M16 8 V5.5 A1.5 1.5 0 0 0 14.5 4 H5.5 A1.5 1.5 0 0 0 4 5.5 V14.5 A1.5 1.5 0 0 0 5.5 16 H8"; break;
+    case Icon::Flag: s = "M6 21 V4 H18 L15 8.5 L18 13 H6"; break;
+    case Icon::Magnet: s = "M6 4 V12 A6 6 0 0 0 18 12 V4 H14 V12 A2 2 0 0 1 10 12 V4 Z M6 8 H10 M14 8 H18"; break;
+    case Icon::Metro: s = "M8 3 H16 L19 21 H5 Z M12 15 L17 6 M8.5 15 H15.5"; break;
+    case Icon::Tie: s = "M4 9 C8 17 16 17 20 9"; break;
+    case Icon::Slide: s = "M4 18 L20 6"; f = circle(4, 18, 2) + circle(20, 6, 2); break;
+    case Icon::Accent: s = "M5 6 L19 12 L5 18"; break;
+    case Icon::Pin: s = "M12 21 V14 M7 14 H17 L15.5 9 V4 H8.5 V9 Z"; break;
+    case Icon::Gear:
+        s = circle(12, 12, 3.2f) + "M12 2.5 V6 M12 18 V21.5 M2.5 12 H6 M18 12 H21.5 M5.3 5.3 L7.8 7.8 M16.2 16.2 L18.7 18.7 M5.3 18.7 L7.8 16.2 M16.2 7.8 L18.7 5.3";
+        break;
+    case Icon::Info: s = circle(12, 12, 9) + "M12 11 V17 M12 7.4 V7.6"; break;
+    case Icon::Cloud: s = "M7 18 A4.5 4.5 0 0 1 7.5 9 A5.5 5.5 0 0 1 18 10.5 A3.8 3.8 0 0 1 17.5 18 Z"; break;
+    case Icon::Tape: s = box(3, 6, 18, 12, 2) + circle(8.5f, 12, 2) + circle(15.5f, 12, 2); break;
+    case Icon::Clock: s = circle(12, 12, 8.5f) + "M12 7 V12 L15.5 14"; break;
+    case Icon::Swap: s = "M4 8 H18 M14 4 L18 8 L14 12 M20 16 H6 M10 12 L6 16 L10 20"; break;
+    case Icon::Route: s = "M3 12 H9 C14 12 12 6 21 6 M9 12 C14 12 12 18 21 18"; break;
+    case Icon::Bars: s = "M6 20 V10 M12 20 V4 M18 20 V13"; break;
+    case Icon::Sliders: s = "M6 4 V20 M12 4 V20 M18 4 V20"; f = box(3.5f, 7, 5, 4, 1) + box(9.5f, 13, 5, 4, 1) + box(15.5f, 6, 5, 4, 1); break;
+    case Icon::Layers: s = "M12 4 L21 9 L12 14 L3 9 Z M3 13.5 L12 18.5 L21 13.5"; break;
+    case Icon::Screen: s = box(3, 5, 18, 13, 2) + "M9 21 H15"; break;
+    case Icon::File: s = "M6 2 H14 L19 7 V22 H6 Z M14 2 V7 H19"; break;
+    case Icon::Wheel: s = circle(12, 12, 8.5f); f = circle(12, 6.6f, 1.6f); break;
     }
     return {svg_path(s.c_str()), svg_path(f.c_str())};
 }

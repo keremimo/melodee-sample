@@ -39,7 +39,7 @@ void draw(Paint& p, const Snapshot& s) {
         char number[8];
         std::snprintf(number, sizeof(number), "%02u", sound + 1);
         ListRow r;
-        r.number = number; r.name = info.sounds[sound].name; r.accent = c;
+        r.number = number; r.name = name_case(info.sounds[sound].name); r.accent = c;
         r.current = first + row == cursor;
         r.tag = sound == track.preset ? "LOADED" : "";
         r.starred = s.ui.settings.favourite(unsigned(track.engine), sound);

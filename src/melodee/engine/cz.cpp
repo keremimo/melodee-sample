@@ -54,7 +54,7 @@ const StageGroups stage {{{
     {{{{"DCW ENV", K::Params, S::Envelope, {{DcwAttack, DcwDecay, DcwSustain}}, {{DcwRelease, DcwAmount, KeyFollow}}},
        {"DCA ENV", K::Params, S::Envelope, {{DcaAttack, DcaDecay, DcaSustain}}, {{DcaRelease, Velocity, _}}},
        {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},
-    {{{stage_arp, {"LINES", K::Params, S::ShiftRows, {{Line, Detune, Octave}}, {{Wave1, Wave2, _}}}, stage_fx}}, 3},
+    {{{stage_arp, stage_chord, {"LINES", K::Params, S::ShiftRows, {{Line, Detune, Octave}}, {{Wave1, Wave2, _}}}, stage_fx}}, 4},
 }}};
 
 float knee(float phase, float m) { return phase < m ? phase * 0.5f / m : 0.5f + (phase - m) * 0.5f / (1 - m); }

@@ -52,8 +52,8 @@ struct Binding {
         FlexMode, FlexMix,                         // Flex Beat
         ModWheel,                                  // the fader's mod wheel (parity phase 8), 0..127
         // Stage (shell/stage_map.h): PRESET's sound (its place in sound_list()) and list, the arp's gate and hold,
-        // an empty track's choosers; the Tracks screen's track and its pattern.
-        StageSound, SoundList, ArpGate, ArpHold,
+        // chords on or off, an empty track's choosers; the Tracks screen's track and its pattern.
+        StageSound, SoundList, ArpGate, ArpHold, ChordOn,
         NewEngine, NewSound, NewSource, NewPort, NewChannel, // NewEngine: index into new_engines()
         TrackPick, TrackPattern,
         // The Looper (docs/LOOPER.md): the loop, its length (index into looper::lengths), the settings every loop

@@ -493,14 +493,15 @@ const Preview previews[] {
          on_stage(s, 0, 2, 0); s.playing = true; auto& t = s.project.tracks[0]; t.arp = true; t.arp_mode = 2;
          s.held_keys.fill(-1); s.held_keys[0] = 50; s.held_keys[4] = 53; s.held_keys[9] = 57;
      }},
-    {"stageperform", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 1); s.playing = true; }},
-    {"stagefx", [](Shell&, Snapshot& s) { on_stage(s, 2, 2, 2); s.playing = true; s.ui.fx_cursor[2] = 1; }},
-    {"stagefxempty", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 2); s.playing = true; }},
+    {"stagechord", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 1); s.playing = true; auto& t = s.project.tracks[0]; t.chord = true; t.chord_type = 1; s.ui.chord_pad = 1; }},
+    {"stageperform", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 2); s.playing = true; }},
+    {"stagefx", [](Shell&, Snapshot& s) { on_stage(s, 2, 2, 3); s.playing = true; s.ui.fx_cursor[2] = 1; }},
+    {"stagefxempty", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 3); s.playing = true; }},
     {"stageshift", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.ui.shift = true; }}, // AMP ENV's Shift row
     {"stagefm6", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[5], EngineKind::Fm6, 1); on_stage(s, 5, 1, 0); s.playing = true; }},
     {"stagecz", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 1, 0); s.playing = true; }},
     {"stagesid", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[7], EngineKind::Sid, 1); on_stage(s, 7, 0, 1); s.playing = true; }},
-    {"stagecztone", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 2, 1); s.playing = true; }},
+    {"stagecztone", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 2, 2); s.playing = true; }},
     {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
     {"stagekitampenv", [](Shell&, Snapshot& s) {
          on_stage(s, 3, 0, 2); s.sample = break_sample(); s.playing = true;
@@ -563,7 +564,7 @@ const Preview previews[] {
          looper_scene(s); s.ui.page = PageId::Rack; s.ui.fx_loop = 1;
          s.project.loop_fx[1].slots[0].kind = uint8_t(EffectKind::Echo);
      }},
-    {"tracks2", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.ui.tracks_half = 1; }},
+    {"tracks2", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.playing = true; s.project.tracks[2].mix.mute = true; }},
     {"keys", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
@@ -593,13 +594,6 @@ const Preview previews[] {
          s.ui.page = PageId::Edit; s.ui.edit_page[0] = uint8_t(prophet::info().page_count - 1); s.ui.edit_row[0] = 1; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
          s.ui.pots[1] = {50, false, Binding {Binding::Kind::Param, prophet::AtBright, 0, 100, 0}.key(1)};
-     }},
-    {"mix", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Mix; s.ui.track = 2; s.playing = true;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
-         s.ui.pots[2] = {90, false, Binding {Binding::Kind::Send, 0, 0, 100, 0}.key(2)};
-         const float meters[] {0.5f, 0.42f, 0.2f, 0, 0.6f, 0.25f, 0.3f, 0.05f, 0.18f, 0.08f};
-         for (unsigned t = 0; t < 10; ++t) s.meters[t] = meters[t];
      }},
     {"steps", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
@@ -694,7 +688,7 @@ const Preview previews[] {
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
      }},
     {"seqclear", [](Shell&, Snapshot& s) { // Seq held + Erase + pad 2: B1 Cancel, B3 Do it
-         s.ui.page = PageId::Mix; s.ui.track = 2; s.ui.erase = true;
+         s.ui.page = PageId::Tracks; s.ui.track = 2; s.ui.erase = true;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
          s.ui.ask = UiState::Ask::ClearPattern; s.ui.ask_target = 1;
      }},
@@ -1051,18 +1045,6 @@ const Preview previews[] {
          preview_projects(s);
      }},
     {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.ui.settings.click = 1; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
-    {"arp", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Arp; s.ui.track = 2; s.playing = true;
-         auto& t = s.project.tracks[2]; t.arp = true; t.chord = true; t.arp_octaves = 2; t.chord_type = 1;
-         s.project.root = 2; s.project.scale = 2; t.octave = 2;
-         s.ui.turning = 1; s.ui.turned_at = s.now;
-     }},
-    {"chord", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Chord; s.ui.track = 2; s.playing = true; s.ui.chord_pad = 1;
-         auto& t = s.project.tracks[2]; t.chord = true; t.chord_type = 1; t.octave = 2;
-         s.project.root = 2; s.project.scale = 2;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
     {"capture", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Capture; s.ui.track = 0; s.playing = true; s.ui.capture_into = 2;
          // Four bars of a bass line played on the pads, just now.
@@ -1215,8 +1197,8 @@ const Preview previews[] {
          t.fader_on = false; t.wheel = 70;
          s.ui.fader_cursor = 2;
      }},
-    {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Mix: the selected track's level
-         s.ui.page = PageId::Mix; s.ui.track = 2; s.playing = true;
+    {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Tracks: the selected track's level
+         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
          s.ui.fader = {90, true, 1}; s.ui.fader_moved_at = s.now;
          s.project.tracks[2].mix.level = 90;
          const float meters[] {0.5f, 0.42f, 0.2f, 0, 0.6f, 0.25f, 0.3f, 0.05f, 0.18f, 0.08f};

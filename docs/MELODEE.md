@@ -87,18 +87,18 @@ cards.
 | Control | Press | With Shift |
 | --- | --- | --- |
 | Main volume | Master level, at once | |
-| Sample | Stage → Keys (Pads on a kit) → Mix, round; from any other page Stage. Held + pad: that kit pad becomes the last pad, unheard | Input Config |
+| Sample | Stage → Tracks → Keys (Pads on a kit), round; from any other page Stage. Held + pad: that kit pad becomes the last pad, unheard | Input Config |
 | Seq | Tap: Patterns; on Patterns the track's editor (Steps, Roll or Motion, the last open); on an editor or Step Edit back a level. Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, under the editor; again back to it |
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows them, eight at a time (the half with the selected track); −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. Tapped twice (within 450 ms) on a track whose taps step nothing (not a kit, Punch or Roll's octave, where quick taps only switch): the Tracks screen, latched, and a tap on Tracks goes back to Stage. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
+| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The track's target (Fader page), or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns with Seq held, tracks with Pad Bank held |
-| Note Repeat | A tap latches, a hold lasts; double tap opens Arp. On Song, repeats the clip to the next marker | |
+| Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B3). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
-| Loop | The last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Tapped twice (within 450 ms): the Looper (the first tap's loop taken back). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad takes the press's loop back); on the Looper, back | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
+| Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). No double tap: the Looper is LOOPER on Tracks | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
 | 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper | The type: Velocity, Filter (kits), Tune, Scale, Loop |
 | Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. Synth or 909: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
@@ -169,7 +169,7 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
   bank). Track 1 starts as a PROPHET, track 5 an empty kit, track 6 a 909
   with a beat.
   - **A synth** (PROPHET, FM6, CZ, SID): B1 **PRESET → TONE → MIX**, B2
-    **SHAPE**, B3 **ARP → its own page → FX**. PRESET: the sound before,
+    **SHAPE**, B3 **ARP → CHORD → its own page → FX**. PRESET: the sound before,
     the one in hand with its star, the one after, where it sits; K1 or the
     wheel walks the sounds and the one turned to loads once the turning
     has stopped 250 ms; K2 the list (all, starred, recent), K3 the engine;
@@ -177,8 +177,13 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
     draw the filter). MIX: level, pan, send; Shift + K3 the bus the send
     goes to (Melodee has one send a track). SHAPE on PROPHET: FILTER ENV →
     AMP ENV → LFO (Shift + K1 release); FM6: OP 1 ENV → OP 2 ENV → TOUCH;
-    CZ: DCW ENV → DCA ENV → TOUCH; SID: ENVELOPE → PWM → TOUCH. ARP: mode,
-    rate, octaves, Shift + K1 gate, Shift + K3 hold. The own page (PERFORM,
+    CZ: DCW ENV → DCA ENV → TOUCH; SID: ENVELOPE → PWM → TOUCH. ARP: mode
+    (Up, Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift +
+    K1 gate, Shift + K3 hold; the header says whether it is on (Note Repeat
+    turns it on). CHORD: one pad a chord from the scale, K1 type (Triad, Dia
+    7, Sus2, Sus4, Power, Dia 9), K2 voicing (Close, Open, Drop 2, Spread), K3
+    inversion, Shift + K1 chords on or off, Shift + K3 hold; the chord the last
+    pad played drawn with its notes on two octaves of keys. The own page (PERFORM,
     RATIOS, LINES, OSC) draws its Shift row. FX: the slot of the track's
     chain the cards edit (Push the next one; with none yet, Push opens the
     effect picker; Shift + Knob FX adds effects), all six slots drawn with
@@ -209,7 +214,7 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
     the drum the last pad played (Snare, Clap and Rim share a page) and the
     B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the
     toms, hats and cymbals on Shift.
-  - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 ARP. PROGRAM:
+  - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 **ARP → CHORD**. PROGRAM:
     bank MSB, bank LSB and program (each Off until set), sent on a change
     and when the track loads. CC: three controllers on K1–K3 with their
     General MIDI names (74 Brightness, 71 Resonance, 1 Mod wheel at first),
@@ -219,21 +224,21 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
     samples on the card, record the input, Audio Recall, Resample), B3
     **MIDI** (K1 port, K2 channel); the wheel walks K1's list, Push makes
     the track that.
-- **Tracks** (Pad Bank tapped twice): the sixteen tracks as the pads sit,
-  eight at a time, each cell engine, sound, the pattern playing and level.
-  B1 tracks 1–8, B2 tracks 9–16, B3 back to Stage; a pad picks its track
-  and goes back to Stage; K1 the track, K2 its level, K3 its pattern; the
-  wheel the track. Pad Bank held + pad still picks a track from any page.
-- **Keys** (Sample again on a synth): the pads in the project's scale
+- **Tracks** (Sample's second stop, the mixer): the sixteen tracks as the
+  pads sit, each cell its number, the pattern it plays, its engine as a
+  glyph and its level up the right edge (muted: a crossed speaker); the
+  track in hand as a strip on the right with its name, fader, meter, pan
+  and send. A pad picks its track; K1 the track, K2 its level, K3 its pan;
+  the wheel or −/+ the track, Push its Stage; the fader is its level. **B2
+  LOOPER**, **B3 SENDS**. Pad Bank held + pad still picks a track from any
+  page, the same picture over it.
+- **Keys** (Sample's third stop on a synth): the pads in the project's scale
   (layouts, octave on −/+); Shift + K3 transposes the pads −12..+12 (kept
   with the track). Push opens Edit.
-- **Pads** (Sample again on a kit): the bank as the pads sit, the last pad
+- **Pads** (Sample's third stop on a kit): the bank as the pads sit, the last pad
   with its length, play mode and waveform; K1 pitch, K2 level, K3 pan;
   Shift + K1 and K2 the project's root and scale; Push opens the map of the
   ten sample pages.
-- **Mix** (Sample a third time): eight strips at a time (the half with the
-  selected track), level, pan, mute and solo,
-  the send and its bus, meters. The fader is the selected track's level here.
 - **Sounds** (Sample Select on a synth or 909): the factory sounds and one's
   own for the engine; K1 steps the engine (six), the wheel walks, Push
   loads; FAVOURITES lists the starred (Shift + Sample Select).
@@ -257,10 +262,6 @@ dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
   (Shift: their triplets); straight rates swing with the project. It is the
   track's arp; a kit repeats the held pad.
-- **Arp** (double tap Note Repeat): Up, Down, Up-down, Random, Order; K2
-  rate 1/4 .. 1/32T, K3 octaves, −/+ gate, B3 Hold. **Chord** (B1 on Arp):
-  one pad a chord from the scale (Triad, Dia 7, Sus2, Sus4, Power, Dia 9;
-  Close, Open, Drop 2, Spread; inversions).
 - **Tempo** (hold Tap Tempo): K1 tempo, K2 swing, K3 click level, Shift + K1
   and K2 the project's root and scale from any track; B1 halves,
   B3 doubles, B2 the metronome Off / On / Rec; the wheel by 0.1, −/+ by 1.
@@ -271,7 +272,7 @@ Four tempo-synced audio loops on tracks of their own, **L1–L4**, there while
 the Looper is on ([LOOPER.md](LOOPER.md) has the design). Each loop track has
 a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
 
-- **Looper** (Loop twice; 16 Levels of type Loop): off, it asks first
+- **Looper** (LOOPER on Tracks; 16 Levels of type Loop): off, it asks first
   (B3 or Push turns it on: 45 MB a loop, made in the background). **B1 LOOPS**:
   a row a loop, its state as a word (ARM, REC, DUB, PLAY, STOP, FIT; a change
   waiting blinks), its waveform and playhead, its length and source (a loop
@@ -414,8 +415,8 @@ hold to steer, Shift + Seq to zoom in**.
   **Shift + B2** its Motion, **Shift + B3** its Own Pattern, **Push** opens
   its notes (Roll, or Step Edit on a kit; on empty time Places), **Chop**
   splits at the cursor, **Erase** deletes, **Note Repeat** repeats to the
-  next marker, **Loop** loops its bars (again, or on empty time, off; twice
-  still opens the Looper). Each is one undo. Shift + Push adds a marker
+  next marker, **Loop** loops its bars (again, or on empty time, off). Each
+  is one undo. Shift + Push adds a marker
   (on a marker, names it). Play here plays the song from the cursor. **B1
   Export**: B2 audio mixdown (Name sheet; once through, tails up to 10 s,
   `Melodee/Mixdowns/<name>.wav`, 24-bit; Stop drops it), B3 New pattern
@@ -663,7 +664,7 @@ and while it waits to pick a value up, where the hand has it and the way to
 move): Pad Volume, Pad Pan, Pad
 Tune, Pad Attack, Pad Decay / Release, Pad Cutoff (the last pad's), Kit
 Volume, Mod Wheel. Until picked, a kit takes Pad Volume and a synth the mod
-wheel. Pages with an obvious job keep it: Mix the track's level, Sends its
+wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
 send, Step Edit nudges, Knob FX its effect's MIX, Compressor its amount,
 Flex Beat its mix. The fader takes a value over by Fader takeover (Pickup
 by default); Seq Record writes the lane of what it moves; Erase + fader
@@ -778,10 +779,21 @@ while following.
   Knob FX's cards are white with the knob glyph, and the header names its
   effect while it holds the pots. The picture shows what the cards cannot:
   shapes, meters, routes, pads; never the three values again. Questions
-  before an erase or a loss share one sheet: what it is about as a glyph and
-  a chip, how much goes as glyphs and numbers, the undo keys when it can be
-  undone. The ten sample pages draw with Stage's own kit picture: the pad's
+  before an erase or a loss share one sheet, the one place with a line of
+  words: the question ("Clear pattern 2?"), one or two short lines saying
+  what goes and whether undo brings it back, what it is about as a chip,
+  and the undo keys. Choices under the keys are plain tiles without
+  outlines, the likely one a shade lighter. Words: labels, keys and chips
+  in capitals; names of sounds, pads, effects and projects in Title Case
+  (a factory name stored in capitals is shown so, roman numerals and
+  acronyms kept); setting rows in sentence case; units as written (Hz,
+  kHz, dB, ms, s, st, ct, BPM). The ten sample pages draw with Stage's own kit picture: the pad's
   region fills the width, the file a strip above with the region bracketed.
+- **Header**: transport (play triangle, stop square, the red dot while
+  recording, a red ring while Seq Record is armed), tempo, at most two
+  state chips (the count-in first, an amber metronome chip; then the page's
+  own) and the track's tag, which gives up its engine, then its sound
+  name, never its number. Where the playhead is, is the place bar's job.
 - **Place bar** (`shell/place_bar.h`, `pages/place_bar.cpp`): a 2 px strip
   with no text on every screen, over every sheet, between the soft keys and
   the header (rows 21-22) or, with Settings' Place bar on Bottom, under the
@@ -823,8 +835,8 @@ while following.
 - **Text size**: nothing on screen is drawn under 11 px (`ui::type::floor`
   in `ui/tokens.h`; labels 11, body 13, lists 15, knob values 22), so the
   320 × 240 panel reads at arm's length. Text is never cut: where a page
-  runs out of room it shows fewer things at a time (Tracks, Mix and Sends
-  eight tracks, Song six lanes, FX chains three devices), or a long
+  runs out of room it shows fewer things at a time (Sends eight tracks,
+  Song six lanes, FX chains three devices), or a long
   capitalised name turns to title case in a narrow cell.
 
 ## Sound engines

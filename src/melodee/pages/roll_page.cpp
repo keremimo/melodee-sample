@@ -51,7 +51,7 @@ void draw(Paint& p, const Snapshot& s) {
     bool kit = track.engine == EngineKind::Sampler || track.engine == EngineKind::Kit909; // lanes of pads, not keys
     Header h = header_of(s);
     if (!ui.recording) {
-        if (focused) h.left.push_back(chip(where(s, focused->tick) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(key_label(track, focused->key)), c));
+        if (focused) h.left.push_back(chip(Icon::Note, juce::String(key_label(track, focused->key)), c)); // where it sits: the place bar's
         else h.left.push_back(pill("BAR " + juce::String(cursor * q / bar + 1) + " / " + juce::String((pattern.length + bar - 1) / bar)));
     }
     h.right.push_back(tag_of(s, ui.track));
