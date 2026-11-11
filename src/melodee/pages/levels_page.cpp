@@ -23,6 +23,12 @@ using namespace ui;
 
 LevelsKind kind_of(const Track& t) { return LevelsKind(t.levels_kind % unsigned(LevelsKind::Count)); }
 
+// A kit's octave off its instrument's own pitch, signed: "+1", "-2".
+juce::String octave_text(const Track& t) {
+    const int octave = level_octave(t) / 12;
+    return octave > 0 ? "+" + juce::String(octave) : juce::String(octave);
+}
+
 juce::String value_of(const Snapshot& s, unsigned pad) {
     auto level = levels_of(s.project, s.track(), pad);
     switch (kind_of(s.track())) {
@@ -49,7 +55,7 @@ void draw(Paint& p, const Snapshot& s) {
         unsigned row = 3 - n / 4, column = n % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
         bool hit = int(n) == s.ui.levels_hit;
-        bool original = kind == LevelsKind::Tune && n == 3;
+        bool original = kind == LevelsKind::Tune && n == 3 && !level_octave(t);
         // Lighter as they rise.
         p.fill(x, y, w, ch, colour::bg, 4);
         p.fill(x, y, w, ch, hit ? colour::text : c.withAlpha(0.2f + 0.6f * n / 15.0f), 4);
@@ -77,9 +83,12 @@ void draw(Paint& p, const Snapshot& s) {
     case LevelsKind::Velocity: range = juce::String::fromUTF8("soft to loud \xc2\xb7 8 to 127"); break;
     case LevelsKind::Filter: range = kit ? juce::String::fromUTF8("its cutoff swept \xc2\xb7 pad 8 its own")
                                          : juce::String::fromUTF8("soft to loud \xc2\xb7 8 to 127"); break;
-    case LevelsKind::Tune: range = juce::String::fromUTF8("by semitones \xc2\xb7 pad 4 as it is"); break;
+    case LevelsKind::Tune:
+        range = level_octave(t) ? juce::String::fromUTF8("by semitones \xc2\xb7 octave ") + octave_text(t)
+                                : juce::String::fromUTF8("by semitones \xc2\xb7 pad 4 as it is");
+        break;
     default: range = juce::String("up ") + note_letter(s.project.root) + " " + scales()[s.project.scale % scales().size()].name
-                     + juce::String::fromUTF8(" \xc2\xb7 0 to +") + value_of(s, 15).substring(1); break;
+                     + juce::String::fromUTF8(" \xc2\xb7 ") + value_of(s, 0) + " to " + value_of(s, 15); break;
     }
     auto range_style = plain(colour::sec, type::small);
     auto range_lines = p.wrap(range, range_style, iw, 2);

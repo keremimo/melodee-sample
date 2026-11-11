@@ -188,6 +188,22 @@ LoadedSample break_sample() {
     return s;
 }
 
+// Track 3's pad `pad` holding a Logic EXS24 instrument: 22 zones over C0..C7 at
+// every velocity, all its files read, Note On as a loaded instrument is.
+void choir_pad(Snapshot& s, unsigned pad) {
+    auto& sound = s.project.tracks[3].pads[pad % sampler_pads];
+    auto& ref = s.project.samples[sound.sample % sample_slots];
+    std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Boys Choir/Boys Choir.exs");
+    std::snprintf(ref.name, sizeof(ref.name), "BOYS CHOIR");
+    ref.frames = 0;
+    sound.play = PadPlay::Gate; sound.start = sound.end = 0;
+    LoadedSample m;
+    m.name = ref.name; m.path = ref.path; m.instrument = true; m.ready = true;
+    m.zones = 22; m.parts = 22; m.parts_ready = 22; m.low_key = 24; m.high_key = 108;
+    for (unsigned key = 24; key <= 108; ++key) m.map[key] = 0xffff;
+    s.sample = m;
+}
+
 // A voice of the kit's pad A09 heard `into` frames into its region, its envelope `level` (shell/playheads.h, as the
 // trail leaves it in the snapshot): the head and its wake.
 void playing_head(Snapshot& s, double into, float level = 1) {
@@ -765,6 +781,24 @@ const Preview previews[] {
          s.files[4].path = s.project.samples[4].path;
          s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"samplesinstruments", [](Shell&, Snapshot& s) { // a folder of instruments: each tagged by its kind, a kit, an expansion
+         s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 0; s.sample_root = "/media/card/Samples";
+         s.files_folder = s.sample_root + "/Instruments"; s.files_top = false;
+         struct Row { const char* name; const char* file; bool instrument, kit, expansion; };
+         const Row rows[] {{"BOYS CHOIR AH-EH-EE-OO", "Boys Choir Ah-Eh-Ee-Oo.exs", true, false, false},
+                           {"GRAND PIANO", "Grand Piano.sfz", true, false, false},
+                           {"RHODES MK1", "Rhodes MK1.xpm", true, false, false},
+                           {"ORGAN-FARFISA", "Organ-Farfisa.xty", true, false, false},
+                           {"KIT-LOFI PATCH", "Kit-Lofi Patch.xpm", false, true, false},
+                           {"VINTAGE ORGANS", "Vintage Organs.xpn", false, false, true}};
+         for (const auto& r : rows) {
+             SampleFile f;
+             f.path = s.files_folder + "/" + r.file; f.name = r.name;
+             f.instrument = r.instrument; f.kit = r.kit; f.expansion = r.expansion;
+             s.files.push_back(f);
+         }
+         s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
     {"samplespreview", [](Shell&, Snapshot& s) { // B3 on: the file under the cursor fills its row as it plays, 1.2 of 3.1 s
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.preview = true; s.ui.files_cursor = 5; s.sample_root = "/media/card/Samples";
          s.files_folder = s.sample_root; s.files_top = false;
@@ -800,6 +834,10 @@ const Preview previews[] {
     {"trim", [](Shell&, Snapshot& s) { // Stage on a kit: B1 TRIM, the last pad's region
          on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"triminstrument", [](Shell&, Snapshot& s) { // TRIM on a pad holding an .exs: its keys and velocities in place of a waveform
+         on_stage(s, 3, 0, 0); s.playing = true; choir_pad(s, 8);
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"trimplaying", [](Shell&, Snapshot& s) { // TRIM while the pad plays: the head, its wake, the time heard
@@ -1286,6 +1324,14 @@ const Preview previews[] {
      }},
     {"shifttempo", [](Shell&, Snapshot& s) { // Shift held on Tempo: the project's key
          s.ui.page = PageId::Tempo; s.ui.shift = true; s.project.root = 0; s.project.scale = chromatic_scale;
+     }},
+    {"levelsoctave", [](Shell&, Snapshot& s) { // 16 Levels by Tune on an instrument's pad, + pressed once: an octave up
+         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true;
+         auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 8; t.last_pad = 8; t.levels_kind = uint8_t(LevelsKind::Tune);
+         t.octave = int8_t(kit_level_octave + 1);
+         choir_pad(s, 8);
+         s.ui.levels_hit = 3; s.ui.levels_value = 12;
+         std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Octave +1"); s.ui.notice_at = s.now;
      }},
     {"levelsscale", [](Shell&, Snapshot& s) { // 16 Levels up the scale on a kit: K1 and K2 are the key
          s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
