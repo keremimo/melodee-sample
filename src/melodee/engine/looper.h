@@ -240,11 +240,13 @@ private:
     void reset(Loop& l, bool keep_memory);
     double boundary(double tick) const;                 // the first quantize boundary at or after `tick`
     void queue(Loop& l, Pending p, double now);         // a pending action for the next boundary (or the transport's start)
+    double take_start(const Loop& self, double now) const; // where an armed take starts: the longest loop playing's next start
     void set_write(Loop& l, Write mode);
     void schedule_write(Loop& l, Write mode, unsigned lag);
     void end_pass(Loop& l);                             // an overdub pass over: its undo is there
     void begin_take(Loop& l, double at, unsigned lag);
-    void close_take(Loop& l, double at);
+    void close_take(Loop& l, double at, double past = 0); // `past`: frames the take ran past `at`, dropped
+    void close_on_bar(Loop& l, double now, bool nearest); // on whole bars from its start (a press, or a stop)
     void take_written(Loop& l);
     void punch(Loop& l, bool in, unsigned lag);
     void act(Loop& l, Pending p, double at, unsigned lag); // a pending action, on its tick

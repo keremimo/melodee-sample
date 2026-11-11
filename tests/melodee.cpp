@@ -4430,6 +4430,71 @@ void looper_engine() {
     looper.ask(looper::Do::Source, 2, looper::source_loop(2));
     block();
     CHECK(looper.view(2).source == looper::source_input && looper.view(2).errors == 1);
+    // Takes close on whole bars from their start. Free, pressed: the nearest bar (one just passed drops what ran past
+    // it, one ahead waits for its end); a set length plays out to its last bar whatever is pressed; Stop now keeps
+    // the whole bars it has.
+    {
+        auto take = [&](unsigned bars) {
+            looper.ask(looper::Do::Length, 2, int(bars));
+            looper.ask(looper::Do::Primary, 2, 0);
+            block();
+            while (looper.view(2).state != Looper::State::Recording) block();
+        };
+        auto clear = [&] {
+            looper.ask(looper::Do::Clear, 2, 0);
+            run_frames(16 * looper::block);
+            CHECK(looper.view(2).state == Looper::State::Empty);
+        };
+        take(0);
+        run_frames(bar_frames * 5 / 4);
+        looper.ask(looper::Do::Primary, 2, 0);
+        block();
+        v = looper.view(2);
+        CHECK(v.state == Looper::State::Playing && v.length == bar_frames && std::fabs(v.ticks - 384) < 1e-6);
+        clear();
+        take(0);
+        run_frames(bar_frames * 17 / 10);
+        looper.ask(looper::Do::Primary, 2, 0);
+        block();
+        CHECK(looper.view(2).state == Looper::State::Recording && looper.view(2).pending == Looper::Pending::Close);
+        run_frames(bar_frames / 2);
+        v = looper.view(2);
+        CHECK(v.state == Looper::State::Playing && v.length == 2 * bar_frames && std::fabs(v.ticks - 768) < 1e-6);
+        clear();
+        take(0);
+        run_frames(bar_frames / 4);
+        looper.ask(looper::Do::Primary, 2, 0); // under half a bar: still the first bar
+        run_frames(bar_frames);
+        v = looper.view(2);
+        CHECK(v.state == Looper::State::Playing && v.length == bar_frames);
+        clear();
+        take(2);
+        run_frames(bar_frames / 2);
+        looper.ask(looper::Do::Primary, 2, 0);
+        block();
+        CHECK(looper.view(2).state == Looper::State::Recording);
+        run_frames(bar_frames * 3 / 2);
+        v = looper.view(2);
+        CHECK(v.state == Looper::State::Playing && v.length == 2 * bar_frames && std::fabs(v.ticks - 768) < 1e-6);
+        // Armed with that two-bar loop playing (the longest), a take waits for its next start, not the next bar.
+        looper.ask(looper::Do::Primary, 3, 0);
+        run_frames(bar_frames * 3 / 2);
+        CHECK(looper.view(3).state == Looper::State::Armed && looper.view(3).pending == Looper::Pending::Start);
+        run_frames(bar_frames * 3 / 5);
+        CHECK(looper.view(3).state == Looper::State::Recording);
+        looper.ask(looper::Do::Clear, 3, 0);
+        run_frames(16 * looper::block);
+        CHECK(looper.view(3).state == Looper::State::Empty);
+        clear();
+        take(0);
+        run_frames(bar_frames * 7 / 5);
+        looper.ask(looper::Do::Halt, 2, 0);
+        block();
+        v = looper.view(2);
+        CHECK(v.state == Looper::State::Stopped && v.length == bar_frames && std::fabs(v.ticks - 384) < 1e-6);
+        clear();
+        looper.ask(looper::Do::Length, 2, 0);
+    }
 
     // Another tempo: loop 1 stays on the beat and keeps its pitch (stretched), then Push fits it and overdubs.
     constexpr double faster = 96.0 * 300 / 60.0 / 44100.0;

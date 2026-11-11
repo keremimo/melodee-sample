@@ -122,9 +122,20 @@ double Looper::boundary(double tick) const {
     return std::ceil((tick - 1e-6) / q) * q;
 }
 
+// An armed take starts where the longest loop playing starts again, so it never begins halfway through what is
+// heard; with none playing (or Quantize Off) on the next boundary.
+double Looper::take_start(const Loop& self, double now) const {
+    if (quantize_mode == uint8_t(looper::Quantize::Off)) return now;
+    const Loop* lead = nullptr;
+    for (auto& x : loops)
+        if (&x != &self && x.ticks > 0 && x.length && (x.state == State::Playing || x.state == State::Overdub) && (!lead || x.ticks > lead->ticks)) lead = &x;
+    if (!lead) return boundary(now);
+    return lead->start + std::ceil((now - lead->start - 1e-6) / lead->ticks) * lead->ticks;
+}
+
 void Looper::queue(Loop& l, Pending p, double now) {
     l.pending = p;
-    l.target = halted ? -1 : boundary(now);
+    l.target = halted ? -1 : p == Pending::Start ? take_start(l, now) : boundary(now);
 }
 
 unsigned Looper::lag_of(const Loop& l, unsigned frames) const {
@@ -239,7 +250,7 @@ void Looper::primary(Loop& l, unsigned n, double now) {
         break;
     }
     case State::Armed: l.state = State::Empty; l.pending = Pending::None; break;
-    case State::Recording: queue(l, Pending::Close, now); break;
+    case State::Recording: close_on_bar(l, now, true); break;
     case State::Playing: {
         if (l.swapping) { refuse(l, looper::Error::Busy); return; }
         if (halted) { refuse(l, looper::Error::Locked); return; } // no overdub while the transport is stopped
@@ -261,13 +272,13 @@ void Looper::toggle(Loop& l, double now) {
         if (l.pending == Pending::Play) l.pending = Pending::None; else queue(l, Pending::Play, now);
         break;
     case State::Armed: l.state = State::Empty; l.pending = Pending::None; break;
-    case State::Recording: queue(l, Pending::Close, now); break;
+    case State::Recording: close_on_bar(l, now, true); break;
     case State::Empty: break;
     }
 }
 
 void Looper::halt(Loop& l, double now) {
-    if (l.state == State::Recording) close_take(l, now);
+    if (l.state == State::Recording) close_on_bar(l, now, false);
     if (l.state == State::Overdub) punch(l, false, 0);
     if (l.state == State::Playing || l.state == State::Overdub) l.state = State::Stopped;
     if (l.state == State::Armed) l.state = State::Empty;
@@ -341,9 +352,25 @@ void Looper::begin_take(Loop& l, double at, unsigned lag) {
     else l.pending = Pending::None;
 }
 
-void Looper::close_take(Loop& l, double at) {
+// A take closes on whole bars from its start, so the loop is always whole bars long. A set length plays out to its
+// last bar (pressing does not cut it short). Free, pressed (`nearest`): the nearest bar, at least the first; one
+// still ahead closes on its tick, one just passed closes now and drops what ran past it. Stopped (not `nearest`):
+// nothing more comes, so the last bar passed; under a bar it keeps what it has.
+void Looper::close_on_bar(Loop& l, double now, bool nearest) {
     if (l.state != State::Recording) return;
-    l.length = uint32_t(std::clamp<double>(std::round(l.take_at), 1, looper::capacity));
+    if (nearest && l.bars) return; // its Close waits on its last bar already
+    double bar = std::max(last_bar, 1.0), per = std::max(last_per_frame, 1e-9), ratio = dsp::model_rate / rate;
+    double ran = l.take_at / ratio * per; // the ticks the take has run, at this pace
+    double whole = nearest ? std::max(1.0, std::round(ran / bar)) : std::floor(ran / bar + 1e-6);
+    if (whole < 1) { close_take(l, now); return; }
+    double past = l.take_at - whole * bar / per * ratio; // frames the take ran past that bar
+    if (past < 0 && nearest) { l.pending = Pending::Close; l.target = l.start + whole * bar; return; }
+    close_take(l, l.start + whole * bar, std::max(past, 0.0));
+}
+
+void Looper::close_take(Loop& l, double at, double past) {
+    if (l.state != State::Recording) return;
+    l.length = uint32_t(std::clamp<double>(std::round(l.take_at - past), 1, looper::capacity));
     l.ticks = at - l.start;
     if (l.ticks <= 1e-6) l.ticks = l.length / (dsp::model_rate / rate) * std::max(last_per_frame, 1e-9);
     l.tempo = uint16_t(std::clamp<float>(std::round(tenths_of(l.ticks / l.length)), 1, 65535));
@@ -616,7 +643,7 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
     if (now_halted && !halted) { // the transport stopped: takes close, overdubs end, every loop fades and holds
         for (auto& l : loops) {
             l.halt_tick = own_tick;
-            if (l.state == State::Recording) close_take(l, own_tick);
+            if (l.state == State::Recording) close_on_bar(l, own_tick, false);
             if (l.state == State::Overdub) { punch(l, false, 0); l.state = State::Playing; }
             if (l.pending != Pending::None) l.target = -1;
         }
@@ -625,12 +652,14 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
     was_running = clock.running && !clock.counting;
     if (restart) {
         for (auto& l : loops) {
-            if (l.state == State::Recording) close_take(l, own_tick);
+            if (l.state == State::Recording) close_on_bar(l, own_tick, false);
             if (l.length) l.start = 0; // every loop lines up with bar 1
             l.stretch.reset();
         }
     }
-    if (!halted) for (auto& l : loops) if (l.pending != Pending::None && (l.target < 0 || restart)) l.target = boundary(own_tick);
+    if (!halted)
+        for (auto& l : loops)
+            if (l.pending != Pending::None && (l.target < 0 || restart)) l.target = l.pending == Pending::Start ? take_start(l, own_tick) : boundary(own_tick);
 
     // A fit done, an undo going on, a clear faded out, the Looper turned off once nothing is in the way.
     for (auto& l : loops) {

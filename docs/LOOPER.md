@@ -27,8 +27,12 @@ Each loop is in one state: **Empty**, **Armed** (waits for its boundary),
 **Recording** (its first take), **Playing**, **Overdub** or **Stopped**.
 
 - **Push** (or a pad of the grid's top row): Empty → Armed, then Recording
-  on the next boundary; Recording → closes on the next boundary (a set length
-  closes the take by itself); after the first take the loop does what
+  where the longest loop playing starts again (none playing: the next
+  boundary), never halfway through it; Recording → closes on whole bars from
+  the take's start: free, the nearest bar (at least one; one just passed
+  closes at once and drops what ran past it), a set length on its last bar
+  (pressing does not cut it short). Stop now or the transport stopping keeps
+  the whole bars it has. After the first take the loop does what
   **After take** says (Play, Overdub or Stop). Then Playing ⇄ Overdub at once
   (punch in and out, short fades). A Stopped loop plays again on the next
   boundary.
