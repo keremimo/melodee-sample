@@ -400,8 +400,8 @@ project's 64 samples. Samples are WAV (16, 24 or 32-bit PCM or float, any
 rate, up to 60 s), read on the service thread and handed whole to the audio
 thread.
 
-- **Samples** (Sample Select on a kit): the browser. Folders first, then
-  files; wheel and −/+ move, Push opens a folder or loads onto the last pad
+- **Samples** (Sample Select on a kit): the browser. MPC drum programs
+  (KIT) first, then folders, then files; wheel and −/+ move, Push opens a folder or loads onto the last pad
   (keeping its settings), B1 back out, B2 the drive (CARD from `Samples`,
   or INTERNAL: the factory categories and the stock app's User folder, read
   only), B3 PREVIEW plays each file as the cursor lands (its row fills in

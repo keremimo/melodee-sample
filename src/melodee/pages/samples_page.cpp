@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // SAMPLES (Sample Select on a sampler track): the MPC's sample browser.
-// Folders first, as categories, then the WAV files and SFZ instruments. The wheel and Minus /
+// MPC drum programs (KIT) first, then folders, as categories, then the WAV files and SFZ instruments. The wheel and Minus /
 // Plus move, Push opens a folder or loads the file onto the last pad hit
 // (keeping the pad's settings; the whole file, Trim or Chop shape it), or a
 // bank file (BANK, Samples/Banks) into the kit's bank in view, or an MPC drum

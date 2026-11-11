@@ -196,7 +196,9 @@ void SampleLibrary::scan() {
     std::vector<SampleFile> files;
     if (drive == Drive::Internal && folder.empty()) for (const auto& t : tops) list_into(t, files);
     else list_into(folder, files, drive == Drive::Card && folder == card_top);
+    // MPC drum programs (kits) first, as an expansion's folder holds them beside its [Previews]; then folders, then files.
     std::sort(files.begin(), files.end(), [](const SampleFile& a, const SampleFile& b) {
+        if (a.kit != b.kit) return a.kit;
         return a.folder != b.folder ? a.folder : a.name != b.name ? a.name < b.name : a.path < b.path;
     });
     int came_from = -1;
