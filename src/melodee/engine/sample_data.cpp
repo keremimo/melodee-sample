@@ -298,35 +298,4 @@ void make_overview(const SampleData& s, Overview& out) {
     }
 }
 
-// Onsets: the level in 5 ms windows; a hit is a window much louder than the
-// ones before it. Strength is how sharp the rise was.
-unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out) {
-    constexpr unsigned window = 220;
-    unsigned windows = s.frames / window;
-    std::vector<float> level(windows);
-    for (unsigned w = 0; w < windows; ++w) {
-        float sum = 0;
-        for (unsigned n = w * window; n < (w + 1) * window; ++n) sum += s.left[n] * s.left[n] + s.right[n] * s.right[n];
-        level[w] = std::sqrt(sum / (2 * window));
-    }
-    std::vector<Hit> found;
-    found.push_back({0, 255});
-    unsigned quiet_until = 0;
-    for (unsigned w = 4; w < windows; ++w) {
-        float before = (level[w - 1] + level[w - 2] + level[w - 3] + level[w - 4]) / 4;
-        float rise = level[w] - before;
-        if (w < quiet_until || rise <= 0.01f || level[w] < before * 1.6f) continue;
-        float strength = std::min(1.0f, rise / (level[w] + 1e-4f));
-        found.push_back({w * window, uint8_t(std::lround(strength * 255))});
-        quiet_until = w + 10; // 50 ms between hits
-    }
-    if (found.size() > out.size()) { // keep the strongest, then put them back in time order
-        std::sort(found.begin() + 1, found.end(), [](const Hit& a, const Hit& b) { return a.strength > b.strength; });
-        found.resize(out.size());
-        std::sort(found.begin(), found.end(), [](const Hit& a, const Hit& b) { return a.frame < b.frame; });
-    }
-    std::copy(found.begin(), found.end(), out.begin());
-    return unsigned(found.size());
-}
-
 } // namespace melodee

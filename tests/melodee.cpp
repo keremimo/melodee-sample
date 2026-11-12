@@ -2535,6 +2535,68 @@ void zoom_and_fine_edit() {
 // Parity phase 5: Chop on a region (types, slice start / end, Split, Merge,
 // Manual's limit and its taps pulled onto hits), the cards and their zoom,
 // the preview slot in the engine, Trim Sample as a Shift + pad action.
+// Hits from the spectrum (engine/onsets.cpp): what a level-only detector misses, cuts on or just before the attack,
+// nothing from a held tone or the sample's end.
+void onset_hits() {
+    auto make = [](double seconds, const std::function<double(double)>& at) {
+        SampleData s;
+        s.frames = uint32_t(seconds * 44100);
+        for (uint32_t n = 0; n < s.frames; ++n) s.left.push_back(float(at(n / 44100.0)));
+        s.right = s.left;
+        return s;
+    };
+    auto hits_of = [](const SampleData& s) {
+        std::array<Hit, max_hits> hits {};
+        unsigned count = find_hits(s, hits);
+        return std::vector<Hit>(hits.begin(), hits.begin() + count);
+    };
+    // A cut within `early` ms before `seconds` (never after).
+    auto near = [](const Hit& h, double seconds, double early) { return h.frame <= seconds * 44100 + 44 && h.frame + early * 44.1 >= seconds * 44100; };
+
+    // A held tone from 0.2 s: one hit where it starts, none while it holds or where the sample ends.
+    auto tone = hits_of(make(2.0, [](double t) { return t < 0.2 ? 0 : 0.4 * std::sin(2 * M_PI * 330 * t) * std::min(1.0, (t - 0.2) / 0.005); }));
+    CHECK(tone.size() == 2 && tone[0].frame == 0 && near(tone[1], 0.2, 2));
+
+    // Chord changes at the same loudness (10 ms crossfades at 0.5 and 1.0 s): hits there and nowhere else.
+    auto chord = [](double t, const double* f) { double v = 0; for (int k = 0; k < 3; ++k) v += std::sin(2 * M_PI * f[k] * t); return 0.2 * v; };
+    auto chords = hits_of(make(1.5, [&](double t) {
+        static const double a[3] = {220, 277.18, 329.63}, b[3] = {196, 246.94, 293.66}, c[3] = {174.61, 220, 261.63};
+        double x = t < 0.5 ? chord(t, a) : t < 0.51 ? chord(t, a) * (0.51 - t) / 0.01 + chord(t, b) * (t - 0.5) / 0.01
+                 : t < 1.0 ? chord(t, b) : t < 1.01 ? chord(t, b) * (1.01 - t) / 0.01 + chord(t, c) * (t - 1.0) / 0.01 : chord(t, c);
+        return x * std::min(1.0, t / 0.005);
+    }));
+    CHECK(chords.size() == 3 && near(chords[1], 0.5, 12) && near(chords[2], 1.0, 12));
+
+    // Hats (30 ms noise bursts) every 0.25 s over a loud held 110 Hz pad: each one, cut at most 3 ms early.
+    uint32_t noise = 1;
+    auto hats = hits_of(make(1.5, [&](double t) {
+        double x = 0.5 * std::sin(2 * M_PI * 110 * t) * std::min(1.0, t / 0.005), in = std::fmod(t, 0.25);
+        if (t >= 0.25 && in < 0.03) {
+            noise = noise * 1664525u + 1013904223u;
+            x += 0.08 * ((noise >> 8) / 8388608.0 - 1) * std::exp(-in / 0.008);
+        }
+        return x;
+    }));
+    CHECK(hats.size() == 6);
+    for (unsigned n = 1; n < hats.size(); ++n) CHECK(near(hats[n], 0.25 * n, 3) && hats[n].strength > 200);
+
+    // A kick with a 5 ms ramp at 0.7 s over a fading tone: the cut lands where the ramp starts, not where it peaks.
+    auto kick = hits_of(make(1.2, [](double t) {
+        double x = t > 0.1 ? 0.3 * std::sin(2 * M_PI * 440 * t) * std::exp(-(t - 0.1) / 0.15) : 0;
+        if (t >= 0.7) {
+            double u = t - 0.7;
+            x += 0.8 * std::min(1.0, u / 0.005) * std::sin(2 * M_PI * (60 + 200 * std::exp(-u / 0.02)) * u) * std::exp(-u / 0.2);
+        }
+        return x;
+    }));
+    CHECK(kick.size() == 3 && near(kick[1], 0.1, 2) && near(kick[2], 0.7, 2));
+
+    // The same hits at -40 dB: the spectrum's floor follows the sample's level.
+    auto quiet = hits_of(make(1.2, [](double t) { return t >= 0.7 ? 0.008 * std::sin(2 * M_PI * 200 * t) * std::exp(-(t - 0.7) / 0.1) : 0; }));
+    CHECK(quiet.size() == 2 && near(quiet[1], 0.7, 2));
+    CHECK(hits_of(SampleData {}).size() == 1);
+}
+
 void chop_and_browser() {
     std::array<Hit, max_hits> hits {};
     unsigned found = 0;
@@ -12360,6 +12422,7 @@ int main() {
     performance_effects();
     audio_input_and_rendering();
     meter_lights();
+    onset_hits();
     chop_and_browser();
     zoom_and_fine_edit();
     sample_mode();

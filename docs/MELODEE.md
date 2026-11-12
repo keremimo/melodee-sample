@@ -1140,7 +1140,11 @@ the file holds, to the bit.
   the sample pages' title shows note, loop and reverse icons.
 - **Chop** (Chop): the last pad's region in slices that touch. Pads play and
   pick slices; K1 start, K2 end, K3 type (Threshold, Regions, Beats,
-  Manual), Shift + K3 its amount, Shift + K1 / K2 zoom. Manual (K3 or Push):
+  Manual), Shift + K3 its amount, Shift + K1 / K2 zoom. Threshold keeps the
+  hits at least that strong: a hit is a change in the spectrum (a drum, a hat
+  over a held pad, a chord change at the same loudness), cut at the quiet
+  point just before its attack, its strength against the sample's strongest
+  hit (`engine/onsets.cpp`). Manual (K3 or Push):
   pad 1 plays the region and pads tapped meanwhile cut it, each pulled onto
   the strongest hit. Shift + B1 Extract (`Samples/Edits/<NAME>-Slice n.wav`
   onto the next empty pad), Shift + B2 Split, Shift + B3 Merge; Erase + pad

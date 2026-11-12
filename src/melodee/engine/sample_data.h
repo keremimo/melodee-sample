@@ -106,7 +106,9 @@ private:
     uint32_t noise = 0x9e3779b9u; // the dither's
 };
 void make_overview(const SampleData& sample, Overview& out);
-// The hits, strongest kept, sorted by frame; the first is always frame 0.
+// The hits (engine/onsets.cpp: changes in the spectrum, each cut moved back to
+// the quiet point before its attack), strongest kept, sorted by frame; the
+// first is always frame 0. Strength is relative to the strongest hit.
 unsigned find_hits(const SampleData& sample, std::array<Hit, max_hits>& out);
 
 } // namespace melodee
