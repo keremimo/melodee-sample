@@ -41,6 +41,23 @@ void sleep_while(std::atomic<uint32_t>& word, uint32_t seen) {
     if (word.load(std::memory_order_acquire) == seen) std::this_thread::sleep_for(std::chrono::microseconds(100));
 #endif
 }
+} // namespace
+
+// The calling thread kept to one core (Linux; false elsewhere or when the kernel refuses).
+bool keep_to_core(int core) {
+#if defined(__linux__)
+    if (core < 0 || core >= CPU_SETSIZE) return false;
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(core, &set);
+    return sched_setaffinity(0, sizeof set, &set) == 0;
+#else
+    (void)core;
+    return false;
+#endif
+}
+
+namespace {
 void wake_all(std::atomic<uint32_t>& word) {
 #if defined(__linux__)
     syscall(SYS_futex, reinterpret_cast<uint32_t*>(&word), FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
@@ -52,11 +69,13 @@ void wake_all(std::atomic<uint32_t>& word) {
 
 RenderPool::~RenderPool() { stop(); }
 
-void RenderPool::start(unsigned count, int priority) {
+void RenderPool::start(unsigned count, int priority, const int* cores) {
     stop();
     stopping.store(false);
+    count = std::min<unsigned>(count, unsigned(tids.size()));
     for (unsigned n = 0; n < count; ++n) {
-        threads.emplace_back([this] { work(); });
+        int core = cores ? cores[n] : -1;
+        threads.emplace_back([this, n, core] { work(n, core); });
         sched_param param {};
         param.sched_priority = priority;
         pthread_setschedparam(threads.back().native_handle(), SCHED_FIFO, &param); // best effort, as the audio thread's
@@ -73,6 +92,7 @@ void RenderPool::stop() {
     wake_all(generation);
     for (auto& t : threads) t.join();
     threads.clear();
+    for (auto& t : tids) t.store(0, std::memory_order_relaxed);
 }
 
 bool RenderPool::claim(uint32_t gen) {
@@ -112,8 +132,14 @@ void RenderPool::wake() {
     if (sleepers.load(std::memory_order_seq_cst)) wake_all(generation);
 }
 
-void RenderPool::work() {
+void RenderPool::work(unsigned n, int core) {
     flush_denormals();
+#if defined(__linux__)
+    if (core >= 0) keep_to_core(core);
+    tids[n].store(int(syscall(SYS_gettid)), std::memory_order_release);
+#else
+    (void)n; (void)core;
+#endif
 #if defined(__APPLE__)
     pthread_setname_np("melodee-render");
 #endif

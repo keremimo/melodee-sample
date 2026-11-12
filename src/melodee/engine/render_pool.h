@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <thread>
@@ -23,6 +24,9 @@
 // no workers run() does every job on the calling thread.
 namespace melodee {
 
+// The calling thread kept to one core (roadmap P2, Linux; false elsewhere or when refused).
+bool keep_to_core(int core);
+
 class RenderPool {
 public:
     RenderPool() = default;
@@ -30,10 +34,13 @@ public:
     RenderPool(const RenderPool&) = delete;
     RenderPool& operator=(const RenderPool&) = delete;
 
-    // Before the audio thread starts (or while it is stopped): `count` workers, 0 none.
-    void start(unsigned count, int priority);
+    // Before the audio thread starts (or while it is stopped): `count` workers, 0 none; `cores`, when given, the core
+    // each keeps to (roadmap P2, Linux; -1 any).
+    void start(unsigned count, int priority, const int* cores = nullptr);
     void stop();
     unsigned workers() const { return unsigned(threads.size()); }
+    // Any thread: worker `n`'s thread id once it has started (0 before, and off Linux), to keep other threads off its core.
+    int worker_tid(unsigned n) const { return n < tids.size() ? tids[n].load(std::memory_order_acquire) : 0; }
 
     // Audio thread: job(i) for each i below `count` (at most 65535), then back. `more`: another run follows soon
     // (within this block), so the workers wait for it awake, at most spin_us; else they go to sleep when done.
@@ -58,9 +65,10 @@ private:
     using Call = void (*)(void*, unsigned);
     void dispatch(unsigned count, Call call, void* context, bool more);
     bool claim(uint32_t generation); // one job of that run, if any is left; false when none
-    void work();
+    void work(unsigned n, int core);
 
     std::vector<std::thread> threads;
+    std::array<std::atomic<int>, 8> tids {};
     // A run in one word: its generation (high 32 bits), how many jobs (16) and the next to hand out (low 16),
     // so a worker that wakes late never takes a job of the next run as one of its own, nor reads half of one.
     std::atomic<uint64_t> ticket {0};

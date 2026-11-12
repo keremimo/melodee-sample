@@ -15,6 +15,9 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <sched.h>
+#include <string>
 #include <thread>
 
 extern char** environ;
@@ -47,11 +50,37 @@ MelodeeApp::MelodeeApp()
     // (the codec powered down and up again, its mute shut a second, and the USB-C gadget rebound twice).
     shell.start_settings(melodee::ProjectStore::read_settings_file(melodee::ProjectStore::projects_root(Platform().storage())).settings);
     host.load(shell.project(), shell.patterns());
-    // The tracks render on every core: a worker for each beside the audio thread ($MELODEE_RENDER_THREADS: how many).
+    // The tracks render on several cores (roadmap P2). Floating: a worker for each core beside the audio thread, every
+    // one free to run anywhere. Pinned: the audio thread on core 1 and two workers on cores 2 and 3, the rest of Melodee
+    // kept on core 0 (keep_rest_off()). $MELODEE_RENDER_THREADS: "pinned", or how many floating workers.
     unsigned cores = std::max(std::thread::hardware_concurrency(), 1u);
-    unsigned workers = std::min(cores - 1, 3u);
-    if (const char* own = std::getenv("MELODEE_RENDER_THREADS")) workers = unsigned(std::clamp(std::atoi(own), 0, 7));
-    host.set_render_threads(workers);
+    bool pinned = render_pinned_default && cores >= 4;
+    unsigned workers = pinned ? 2u : std::min(cores - 1, 3u);
+    if (const char* own = std::getenv("MELODEE_RENDER_THREADS")) {
+        pinned = std::string(own) == "pinned" && cores >= 4;
+        workers = pinned ? 2u : unsigned(std::clamp(std::atoi(own), 0, 7));
+    }
+    host.set_render_threads(workers, 150000, pinned);
+}
+
+// Pinned (roadmap P2): every thread of Melodee's but the audio thread and the render workers onto core 0, those
+// already running and, every two seconds, any started since (a thread starts where the one that made it was, so
+// most are born there). Service thread.
+void MelodeeApp::keep_rest_off() {
+#if defined(__linux__)
+    if (!host.render_pinned()) return;
+    uint32_t now = now_ms();
+    if (pinned_at && now - pinned_at < 2000) return;
+    pinned_at = now ? now : 1;
+    cpu_set_t first;
+    CPU_ZERO(&first);
+    CPU_SET(0, &first);
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator("/proc/self/task", error)) {
+        int tid = std::atoi(entry.path().filename().c_str());
+        if (tid > 0 && !host.rendering_thread(tid)) sched_setaffinity(pid_t(tid), sizeof first, &first);
+    }
+#endif
 }
 
 // MIDI out and sync are timed on the device's own clock: its rate and the frames it keeps queued. A new rate
@@ -327,6 +356,7 @@ void MelodeeApp::read_machine(Hardware& hardware) {
 }
 
 void MelodeeApp::service(Hardware& hardware) {
+    keep_rest_off();
     read_machine(hardware);
     input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
     host.looper().service(); // the Looper's memory in and out, its fits (docs/LOOPER.md)

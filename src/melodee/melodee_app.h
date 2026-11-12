@@ -66,6 +66,11 @@ private:
     std::vector<CpuTimes> cpu_before; // service thread: the last reading of each core
     uint32_t machine_at = 0, card_at = 0; // service thread: when they were read
     void read_machine(Hardware& hardware); // service thread
+    // Roadmap P2: whether the render threads keep to cores 1-3 and the rest to core 0 unless $MELODEE_RENDER_THREADS
+    // says otherwise (measured on the MPC, docs/ROADMAP.md); and the service thread's sweep that keeps the rest there.
+    static constexpr bool render_pinned_default = false;
+    void keep_rest_off();
+    uint32_t pinned_at = 0; // service thread: the last sweep
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     melodee::ui::BootAnimation boot;          // screen thread: the logo, then the app
     std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now

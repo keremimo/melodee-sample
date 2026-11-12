@@ -136,9 +136,14 @@ public:
                 const float* usb = nullptr);
     // Before the audio thread starts: `count` render workers beside it (0: it renders alone), at its real-time
     // priority. Each block's tracks, their engines and then their chains, are shared out among them once the
-    // last block's took more than `from_ns` (all cores together; 0 always, for tests).
-    void set_render_threads(unsigned count, uint64_t from_ns = 150000);
+    // last block's took more than `from_ns` (all cores together; 0 always, for tests). `pinned` (roadmap P2): the
+    // audio thread keeps to core 1 (from its first block) and worker n to core 2 + n; whoever starts Melodee keeps
+    // its other threads on core 0 (rendering_thread()). Else every one floats over every core.
+    void set_render_threads(unsigned count, uint64_t from_ns = 150000, bool pinned = false);
     unsigned render_threads() const { return workers.workers(); }
+    bool render_pinned() const { return pin_audio >= 0; }
+    // Any thread: whether thread `tid` renders (the audio thread, once it has played a block, or a worker).
+    bool rendering_thread(int tid) const;
     // Any thread: how long the workers wait awake for a run that follows within the block (render_pool.h).
     void set_render_spin(unsigned us, bool always = false) { workers.set_spin(us); workers.set_linger_always(always); } // always: after every run, as before
     // Any thread: the workers used (true) or left asleep, from the next block; for comparing the two.
@@ -512,6 +517,8 @@ private:
     // Rendering on several cores (render_pool.h): the workers; the tracks heaviest first by what each took last
     // block, the ones with an engine in that order; each track's time this block (engine and chain), and the total.
     static constexpr int render_priority = 30;            // the audio thread's (base drivers/audio.cpp)
+    int pin_audio = -1;                                   // the core the audio thread keeps to (-1: any)
+    std::atomic<int> audio_tid {0};                       // the audio thread's id, from its first block (Linux)
     uint64_t parallel_from_ns = 150000;                   // less than this a block: the audio thread alone
     RenderPool workers;
     std::array<uint8_t, track_count> order = [] { std::array<uint8_t, track_count> o {}; for (unsigned t = 0; t < track_count; ++t) o[t] = uint8_t(t); return o; }();

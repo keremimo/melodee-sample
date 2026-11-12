@@ -87,11 +87,12 @@ double thread_seconds() {
 
 // Arguments as key=value: seconds (10), rate (48000), threads (3 workers), mode (whole: one dispatch a block; split:
 // the old way), spin (µs the workers wait awake for a run that follows within the block), linger (1: after every
-// run; with mode=split spin=200, the way it was before roadmap P2), tracks (16).
+// run; with mode=split spin=200, the way it was before roadmap P2), pin (1: this thread on core 1, the workers on
+// cores 2, 3, ...; give threads=2), tracks (16).
 int dsp_bench(int argc, char** argv) {
     double seconds = 10;
     unsigned rate = 48000, threads = 3, spin = 200, tracks = track_count;
-    bool whole = true, linger = false;
+    bool whole = true, linger = false, pinned = false;
     for (int n = 2; n < argc; ++n) {
         std::string arg = argv[n];
         auto eq = arg.find('=');
@@ -103,6 +104,7 @@ int dsp_bench(int argc, char** argv) {
         else if (key == "spin") spin = unsigned(std::atoi(value.c_str()));
         else if (key == "mode") whole = value != "split";
         else if (key == "linger") linger = value == "1";
+        else if (key == "pin") pinned = value == "1";
         else if (key == "tracks") tracks = std::min<unsigned>(unsigned(std::atoi(value.c_str())), track_count);
         else { std::fprintf(stderr, "dsp-bench: no key %s\n", key.c_str()); return 1; }
     }
@@ -125,7 +127,7 @@ int dsp_bench(int argc, char** argv) {
         }
     }
     EngineHost host;
-    host.set_render_threads(threads, 150000);
+    host.set_render_threads(threads, 150000, pinned);
     host.set_one_dispatch(whole);
     host.set_render_spin(spin, linger);
     host.load(*project, *bank);
@@ -184,10 +186,10 @@ int dsp_bench(int argc, char** argv) {
     for (float us : took) mean += us;
     mean /= std::max<size_t>(took.size(), 1);
     auto at = [&](double q) { return sorted.empty() ? 0.0f : sorted[std::min(sorted.size() - 1, size_t(q * sorted.size()))]; };
-    std::printf("MELODEE_DSP_BENCH mode=%s linger=%d threads=%u spin=%u tracks=%u rate=%u realtime=%d blocks=%u period_us=%.0f "
+    std::printf("MELODEE_DSP_BENCH mode=%s linger=%d pin=%d threads=%u spin=%u tracks=%u rate=%u realtime=%d blocks=%u period_us=%.0f "
                 "mean_us=%.0f p50_us=%.0f p99_us=%.0f max_us=%.0f over=%u cpu_pct=%.1f audio_thread_pct=%.1f workers_pct=%.1f "
                 "parallel_blocks=%llu calls_lost=%u\n",
-                whole ? "whole" : "split", int(linger), threads, spin, tracks, rate, int(realtime), blocks, period_ns / 1000.0, mean, at(0.5),
+                whole ? "whole" : "split", int(linger), int(pinned), threads, spin, tracks, rate, int(realtime), blocks, period_ns / 1000.0, mean, at(0.5),
                 at(0.99), sorted.empty() ? 0.0f : sorted.back(), over, 100 * cpu / wall, 100 * own / wall, 100 * (cpu - own) / wall,
                 (unsigned long long)host.render_parallel_blocks(), host.calls_lost());
     return 0;

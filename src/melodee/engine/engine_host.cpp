@@ -7,6 +7,10 @@
 #include "melodee/engine/expression.h"
 #include <algorithm>
 #include <cmath>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
 
 namespace melodee {
 namespace {
@@ -1564,7 +1568,14 @@ void EngineHost::knob_command(const Command& c) {
 
 void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32_t* input, float* stems, const float* usb) {
     static thread_local bool flushed = false;
-    if (!flushed) { flush_denormals(); flushed = true; }
+    if (!flushed) { // the thread's first block: denormals off; kept to its core when pinned, and known (roadmap P2)
+        flush_denormals();
+        flushed = true;
+        if (pin_audio >= 0) keep_to_core(pin_audio);
+#if defined(__linux__)
+        audio_tid.store(int(syscall(SYS_gettid)), std::memory_order_release);
+#endif
+    }
     for (auto& q : limbo) if (q && retired_patterns.push(q)) q = nullptr; // retired copies the queue had no room for
     pager.block();
     // Samples first: a command sent after a sample was offered (the browser's
@@ -1962,9 +1973,19 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (parallel) parallel_blocks.fetch_add(1, std::memory_order_relaxed);
 }
 
-void EngineHost::set_render_threads(unsigned count, uint64_t from_ns) {
+void EngineHost::set_render_threads(unsigned count, uint64_t from_ns, bool pinned) {
     parallel_from_ns = from_ns;
-    workers.start(count, render_priority);
+    std::array<int, 8> cores {};
+    for (unsigned n = 0; n < cores.size(); ++n) cores[n] = int(2 + n);
+    pin_audio = pinned ? 1 : -1;
+    workers.start(count, render_priority, pinned ? cores.data() : nullptr);
+}
+
+bool EngineHost::rendering_thread(int tid) const {
+    if (tid <= 0) return false;
+    if (tid == audio_tid.load(std::memory_order_acquire)) return true;
+    for (unsigned n = 0; n < workers.workers(); ++n) if (workers.worker_tid(n) == tid) return true;
+    return false;
 }
 
 // One plug-in instance named by two of the places that run apart: two PLUGIN tracks, or a track's chain and
