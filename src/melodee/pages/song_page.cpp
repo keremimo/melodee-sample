@@ -189,12 +189,14 @@ void draw(Paint& p, const Snapshot& s) {
             p.fill(px, bottom, pw, 2.5f, e.target == 255 ? colour::text : track_colour(e.target), 1);
         }
     }
-    // The whole song, with the window on it.
+    // The whole song, with the window on it, after its length in bars.
     unsigned total = std::max({song.length(), view + zoom, 16u});
-    float oy = bottom + (song.punch_count ? 13 : 6), ow = x1 - x0;
-    p.text(juce::String(song.length()), zone::pad, oy - 5.5f, 22, 11, plain(colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
-    p.fill(x0, oy, ow, 2, colour::line, 1);
-    p.fill(x0 + ow * view / total, oy - 1, std::max(4.0f, ow * zoom / total), 4, colour::mid, 2);
+    juce::String length = juce::String(song.length()) + (song.length() == 1 ? " BAR" : " BARS");
+    auto length_style = caps_text(colour::dim);
+    float oy = bottom + (song.punch_count ? 13 : 6), lw = p.width(length, length_style) + 1, sx = zone::pad + lw + 6, ow = x1 - sx;
+    p.text(length, zone::pad, oy - 5.5f, lw, 11, length_style);
+    p.fill(sx, oy, ow, 2, colour::line, 1);
+    p.fill(sx + ow * view / total, oy - 1, std::max(4.0f, ow * zoom / total), 4, colour::mid, 2);
 }
 
 int clip_index(const Context& c) { return c.project.song.clip_at(c.ui.track, c.ui.song_cursor); }
