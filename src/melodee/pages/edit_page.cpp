@@ -59,10 +59,11 @@ void name_at(Paint& p, const Snapshot& s, const EditPage& page, int id, float x,
 }
 
 // The page's parameters the picture does not draw: small at the top left, name and value, in their shades.
-void legend(Paint& p, const Snapshot& s, const EditPage& page, std::initializer_list<int> drawn) {
+// Returns how wide the column is (0 when it lists nothing), so a picture can start right of it.
+float legend(Paint& p, const Snapshot& s, const EditPage& page, std::initializer_list<int> drawn) {
     const auto& info = engine_info(s.track().engine);
     const auto& v = s.track().params;
-    float y = py;
+    float y = py, widest = 0;
     for (const auto& row : page.rows)
         for (int id : row) {
             if (id < 0 || std::find(drawn.begin(), drawn.end(), id) != drawn.end()) continue;
@@ -75,8 +76,10 @@ void legend(Paint& p, const Snapshot& s, const EditPage& page, std::initializer_
             p.fill(px, y, lw + 8 + p.width(value, vs) + 4, 14, colour::bg.withAlpha(0.7f), 2);
             p.text(label, px + 2, y, lw, 14, ls);
             p.text(value, px + 2 + lw + 6, y, p.width(value, vs) + 1, 14, vs);
+            widest = std::max(widest, lw + 8 + p.width(value, vs) + 4);
             y += 14;
         }
+    return widest;
 }
 
 juce::String hertz(float hz) {
@@ -149,9 +152,11 @@ void envelope_picture(Paint& p, const Snapshot& s, const EditPage& page) {
     float level = v[size_t(su)] / 100.0f, hold = 0.25f;
     // Times on a square-root scale so short and long stages both show.
     float wa = std::sqrt(ta), wd = std::sqrt(td), wr = std::sqrt(tr), total = wa + wd + wr + hold;
-    float scale = (pw - 4) / total, top = py + 6, bottom = py + ph - 1;
+    float left = legend(p, s, page, {a, d, su, r}); // the page's other values in a column, the envelope right of it
+    float start = px + 2 + (left > 0 ? left + 8 : 0);
+    float scale = (px + pw - 2 - start) / total, top = py + 6, bottom = py + ph - 1;
     auto y_of = [&](float l) { return bottom - l * (bottom - top); };
-    float x0 = px + 2, x1 = x0 + wa * scale, x2 = x1 + wd * scale, x3 = x2 + hold * scale, x4 = x3 + wr * scale;
+    float x0 = start, x1 = x0 + wa * scale, x2 = x1 + wd * scale, x3 = x2 + hold * scale, x4 = x3 + wr * scale;
     juce::Path area;
     area.startNewSubPath(x0, bottom); area.lineTo(x1, y_of(1)); area.lineTo(x2, y_of(level));
     area.lineTo(x3, y_of(level)); area.lineTo(x4, bottom); area.closeSubPath();
@@ -168,8 +173,7 @@ void envelope_picture(Paint& p, const Snapshot& s, const EditPage& page) {
     name_at(p, s, page, a, (x0 + x1) / 2 + 4, y_of(0.55f), juce::Justification::centredLeft);
     name_at(p, s, page, d, (x1 + x2) / 2 + 6, y_of((1 + level) / 2) - 16, juce::Justification::centredLeft);
     name_at(p, s, page, su, (x2 + x3) / 2, y_of(level) - 18, juce::Justification::centred);
-    name_at(p, s, page, r, (x3 + x4) / 2 + 4, y_of(level / 2), juce::Justification::centredLeft);
-    legend(p, s, page, {a, d, su, r});
+    name_at(p, s, page, r, (x3 + x4) / 2 + 4, std::min(y_of(level / 2), bottom - 16), juce::Justification::centredLeft); // above the axis's times
     auto shown = [&](int id) { auto t = show(engine_info(s.track().engine).params[id], v[size_t(id)]); return t.value + " " + t.unit; };
     axis(p, shown(a), shown(d), shown(r));
 }
@@ -179,6 +183,8 @@ void wave_picture(Paint& p, const Snapshot& s, const EditPage& page, bool b) {
     const auto& v = s.track().params;
     float saw = v[b ? SawB : SawA], pulse = v[b ? PulseB : PulseA], tri = b ? v[TriB] : 0;
     float width = v[b ? PwB : PwA] / 100.0f;
+    float left = legend(p, s, page, {}); // the page's values in a column, the wave right of it, never across them
+    float wx = left > 0 ? px + left + 10 : px, ww = px + pw - wx;
     juce::Path line;
     float mid = py + ph / 2, amp = ph / 2 - 8;
     for (int n = 0; n <= 300; ++n) {
@@ -186,11 +192,10 @@ void wave_picture(Paint& p, const Snapshot& s, const EditPage& page, bool b) {
         float y = saw * (2 * phase - 1) + pulse * (phase < width ? 1 : -1) + tri * (1 - 4 * std::fabs(phase - 0.5f));
         float sum = saw + pulse + tri;
         if (sum > 0) y /= sum;
-        float x = px + pw * n / 300.0f;
+        float x = wx + ww * n / 300.0f;
         if (n == 0) line.startNewSubPath(x, mid - y * amp); else line.lineTo(x, mid - y * amp);
     }
-    p.fill(px, mid, pw, 1, colour::line);
-    legend(p, s, page, {});
+    p.fill(wx, mid, ww, 1, colour::line);
     if (saw + pulse + tri == 0) { axis(p, "", "silent", ""); return; }
     p.g.setColour(colour_of(s));
     p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
@@ -201,6 +206,8 @@ void wave_picture(Paint& p, const Snapshot& s, const EditPage& page, bool b) {
 void lfo_picture(Paint& p, const Snapshot& s, const EditPage& page) {
     using namespace prophet;
     const auto& v = s.track().params;
+    float left = legend(p, s, page, {}); // the page's values in a column, the wave right of it
+    float wx = left > 0 ? px + left + 10 : px, ww = px + pw - wx;
     juce::Path line;
     float mid = py + ph / 2, amp = ph / 2 - 8;
     for (int n = 0; n <= 300; ++n) {
@@ -211,13 +218,12 @@ void lfo_picture(Paint& p, const Snapshot& s, const EditPage& page) {
         case 3: y = std::sin(float(int(n / 25) * 12.9898f)) ; break;
         default: y = 1 - 4 * std::fabs(phase - 0.5f);
         }
-        float x = px + pw * n / 300.0f;
+        float x = wx + ww * n / 300.0f;
         if (n == 0) line.startNewSubPath(x, mid - y * amp); else line.lineTo(x, mid - y * amp);
     }
-    p.fill(px, mid, pw, 1, colour::line);
+    p.fill(wx, mid, ww, 1, colour::line);
     p.g.setColour(colour_of(s));
     p.g.strokePath(line, juce::PathStrokeType(2, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
-    legend(p, s, page, {});
     auto r = show(engine_info(s.track().engine).params[LfoRate], v[LfoRate]);
     axis(p, "", r.value + " " + r.unit, "");
 }
