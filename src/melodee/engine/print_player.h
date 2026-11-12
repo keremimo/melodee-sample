@@ -47,6 +47,10 @@ struct PrintClip {
 struct FreezePack {
     uint8_t track = 0;
     PrintTap tap = PrintTap::PostFx;
+    // Freeze plan F2c: the level and pan its Post FX prints were made at (print_mix(), model/print.h); played at the
+    // track's level and pan now, relative to these.
+    uint8_t level = 100;
+    int8_t pan = 0;
     std::array<PrintClip*, pattern_count> clips {};
     std::vector<std::unique_ptr<PrintClip>> owned;
 };

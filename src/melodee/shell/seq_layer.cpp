@@ -81,6 +81,11 @@ void seq_press(Context& c, bool pressed) {
         return;
     }
     if (!ui.seq_held) return;
+    if (ui.seq_print) { // freeze plan F2c: Seq let go after Sample Record: the patterns frozen as they stand
+        ui.seq_held = false; ui.seq_left = false;
+        c.seq_print_end();
+        return;
+    }
     bool tap = !ui.seq_used && c.now - ui.seq_down < seq_sheet_ms;
     ui.seq_held = false; ui.seq_left = false;
     if (!tap) return;
@@ -101,9 +106,11 @@ bool seq_pad(Context& c, unsigned pad, bool down) {
         ui.pattern_held = -1;
         return true;
     }
+    unsigned under = pad;
     pad = ui.pad_pattern(pad); // the pattern under it, in the bank in view (Seq held + Pad Bank)
     if (!ui.seq_held) return false;
     ui.seq_used = true;
+    if (ui.seq_print) { c.seq_print_pad(under); return true; } // freeze plan F2c: that pattern frozen or thawed
     unsigned t = ui.track % track_count;
     if (ui.erase) {
         if (c.patterns.at[t][pad].empty()) c.notice(name_of(pad) + " is empty");
@@ -144,7 +151,12 @@ bool seq_button(Context& c, SurfaceButton button) {
     }
     case B::SeqRecord:
         if (ui.shift) return false; // Recall, as printed
+        if (c.frozen_edit(ui.track)) return true; // freeze plan F2c: a take on a frozen track asks first
         new_take(c);
+        return true;
+    case B::SampleRecord: // freeze plan F2c: the pattern pads freeze or thaw their patterns until Seq is let go
+        if (ui.shift) return false; // Audio Recall, as printed
+        if (!ui.seq_print) c.seq_print_start();
         return true;
     case B::WheelPush:
         ui.bpm_tenths = !ui.bpm_tenths;

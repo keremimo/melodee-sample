@@ -21,11 +21,19 @@ using namespace ui;
 
 void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
-    h.left.push_back(pill(juce::String(s.project.used_tracks()) + " USED"));
+    // Freeze plan F2c: the share of each block in use, all tracks together (what freezing brings down), first.
+    float all = s.machine.render_load;
+    h.left.push_back(pill(Icon::Chip, "CPU " + juce::String(int(std::lround(all * 100))) + " %", load_colour(all)));
     if (s.track().speed != speed_normal) // the strip in hand plays its patterns at a speed (Shift + K1, roadmap P1)
         h.left.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), colour_of(s)));
+    auto used = pill(juce::String(s.project.used_tracks()) + " USED");
+    used.spare = true; // left out before the name when room is short
+    h.left.push_back(used);
     float load = s.machine.track_load[s.ui.track % track_count]; // the track in hand's share of a block (roadmap P2)
-    if (s.track().used()) h.right.push_back(pill(Icon::Chip, juce::String(int(std::lround(load * 100))) + " %", load_colour(load)));
+    if (s.track().used()) {
+        bool frozen = s.freeze[s.ui.track % track_count].frozen();
+        h.right.push_back(pill(frozen ? Icon::Snow : Icon::Chip, juce::String(int(std::lround(load * 100))) + " %", frozen ? colour::ice : load_colour(load)));
+    }
     h.right.push_back(label(s.project.name));
     SoftKeys keys {{"TRACKS", "LOOPER", "SENDS"}, 0, colour_of(s)};
     if (s.ui.shift) { // Shift: a track moved or copied to another pad

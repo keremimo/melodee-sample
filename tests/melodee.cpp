@@ -11802,7 +11802,18 @@ void prints_f2a() {
         change(*p, *b);
         return hash(*p, *b) != h;
     };
-    CHECK(!changed([](Project& p, PatternBank&) { p.tracks[0].mix.level = 64; p.tracks[0].mix.pan = -30; p.tracks[0].mix.sends[1] = 80; }));
+    // Freeze plan F2c: with effects on its chain the level and pan meet them first, as live (print_mix()): they count;
+    // with an empty chain the print is made at unity and centred and they do not. Sends never do.
+    CHECK(project->tracks[0].fx.slots[0].used());
+    CHECK(changed([](Project& p, PatternBank&) { p.tracks[0].mix.level = 64; }) && changed([](Project& p, PatternBank&) { p.tracks[0].mix.pan = -30; }));
+    CHECK(!changed([](Project& p, PatternBank&) { p.tracks[0].mix.sends[1] = 80; }));
+    {
+        auto plain = std::make_unique<Project>(*project);
+        plain->tracks[0].fx = Chain {};
+        const uint64_t at_unity = hash(*plain, *bank);
+        plain->tracks[0].mix.level = 64; plain->tracks[0].mix.pan = -30; plain->tracks[0].mix.sends[1] = 80;
+        CHECK(hash(*plain, *bank) == at_unity);
+    }
     CHECK(!changed([](Project& p, PatternBank&) { p.tracks[0].mix.mute = true; p.tracks[1].mix.solo = true; }));
     CHECK(!changed([](Project& p, PatternBank&) { p.tracks[0].set_name("Drums"); p.tracks[0].last_pad = 7; p.name[0] = 'X'; }));
     CHECK(!changed([](Project&, PatternBank& b) { put(b.at[1][0], 1, uint8_t(sampler_first_note), 50); }));     // another track's notes
@@ -11962,6 +11973,24 @@ void freeze_f2b() {
         auto heard = run(*echoed, nullptr);
         auto frozen = run(*echoed, pack_of(*echoed, PrintTail::Loop, PrintTap::PreFx));
         CHECK(differ(heard, live, 1e-3f) > 0 && differ(heard, frozen) == 0);
+    }
+    {   // Freeze plan F2c: Post FX with a Drive on the chain at level 60, panned: the print is made at that level and pan
+        // (print_mix()), as the Drive hears them live, so it sounds the same
+        auto driven = std::make_unique<Project>(*project);
+        driven->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Drive), false, {90, 60, 50, 50, 0, 0}};
+        driven->tracks[0].mix.level = 60; driven->tracks[0].mix.pan = 15;
+        CHECK(print_mix(driven->tracks[0]).level == 60 && print_mix(driven->tracks[0]).pan == 15 && print_mix(project->tracks[0]).level == 100);
+        auto heard = run(*driven, nullptr);
+        auto* pack = pack_of(*driven, PrintTail::Loop, PrintTap::PostFx);
+        pack->level = 60; pack->pan = 15;
+        auto frozen = run(*driven, pack);
+        CHECK(differ(heard, frozen, 1e-5f) == 0);
+        auto louder = std::make_unique<Project>(*driven); // the level turned up after the freeze: the print follows it
+        louder->tracks[0].mix.level = 80;
+        auto* again = pack_of(*driven, PrintTail::Loop, PrintTap::PostFx);
+        again->level = 60; again->pan = 15;
+        auto up = run(*louder, again);
+        CHECK(peak_of(up.l, 0, up.l.size()) > peak_of(frozen.l, 0, frozen.l.size()) * 1.5f);
     }
 
     // Wake and sleep. Asleep a second after the freeze (it took over with nothing sounding); a hand's note wakes it in

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/print.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/history.h"
@@ -47,6 +48,12 @@ UndoScope pattern_scope(const Project& project, const UiState& ui);
 // The edit's name, shown on undo: "A01", "Mix", "T3 FX", "Bus A FX", "Master FX", "Knob FX", "T2 sound", "Song", "Chop",
 // "T1 P3".
 std::string scope_name(const Project& project, const UiState& ui, const UndoScope& scope);
+// Freeze plan F2c: whether a change in `scope` changes what a frozen track's prints are made of: its sound, a kit pad,
+// a frozen pattern, its chain (Post FX prints) or a kit pad's effects. The mix, the master and the song stay live.
+bool print_covers(const std::array<TrackFreeze, track_count>& freeze, const UndoScope& scope);
+// What a card's value is part of for a freeze: binding_scope(), and the pattern's values no undo keeps (its length, Q,
+// swing), the track's speed, Stage's sound, a plug-in's values, the arp and chords, which a print holds too.
+UndoScope freeze_scope(const Project& project, const UiState& ui, const Binding& binding);
 // The states a scope compares and restores (shell/history.h).
 MixState mix_of(const Project& project);
 SoundState sound_of(const Track& track);

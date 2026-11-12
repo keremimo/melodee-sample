@@ -150,6 +150,18 @@ Shape make(Icon icon) {
     case Icon::Wheel: s = circle(12, 12, 8.5f); f = circle(12, 6.6f, 1.6f); break;
     case Icon::ArrowLeft: s = "M20 12 H5 M11 6 L5 12 L11 18"; break;
     case Icon::SpaceBar: s = "M4 9 V15 H20 V9"; break;
+    case Icon::Snow: // six arms of 9.6 from the middle, each with two barbs at 0.62 of its length
+        for (int k = 0; k < 6; ++k) {
+            float a = -juce::MathConstants<float>::halfPi + k * juce::MathConstants<float>::pi / 3;
+            auto n = [](float v) { return std::to_string(v); };
+            s += "M12 12 L" + n(12 + 9.6f * std::cos(a)) + " " + n(12 + 9.6f * std::sin(a)) + " ";
+            float qx = 12 + 5.95f * std::cos(a), qy = 12 + 5.95f * std::sin(a);
+            for (int side : {-1, 1}) {
+                float b = a + side * juce::MathConstants<float>::pi / 4;
+                s += "M" + n(qx) + " " + n(qy) + " L" + n(qx + 3.3f * std::cos(b)) + " " + n(qy + 3.3f * std::sin(b)) + " ";
+            }
+        }
+        break;
     }
     return {svg_path(s.c_str()), svg_path(f.c_str())};
 }

@@ -319,10 +319,26 @@ Look seq_look(const PadScene& s, unsigned pad) {
         for (unsigned k = 0; k < track_count; ++k) with += s.project.tracks[k].used() && !s.patterns.at[k][n].empty();
         return with == 0 ? Look {} : with == 1 ? white(faint) : with < 4 ? white(dim) : white(mid);
     }
+    if (ui.seq_print) // freeze plan F2c, Seq held + Sample Record: frozen ones white, the rest as they are
+        return !notes ? Look {} : ui.seq_frozen_at(n) ? white(on ? full : mid) : track(at, on ? full : dim);
     if (ui.pattern_held == int(n)) return white(full); // tap another to copy it there
+    if (s.freeze && (*s.freeze)[at].frozen() && (*s.freeze)[at].plays(n) && notes) return white(on ? full : dim); // a frozen pattern
     if (on) return track(at, full);
     if (rolling && t.pattern == n) return blink(s.now, blink_ms) ? track(at, full) : track(at, faint); // waits for the bar
     return notes ? track(at, dim) : Look {};
+}
+// Freeze plan F2c, the PRINT sheet: the patterns lit get printed (the track's colour), the rest with notes faint; while
+// printing, those done white, the one printing blinking white.
+Look print_look(const PadScene& s, unsigned pad) {
+    const auto& sheet = s.ui.print_sheet;
+    unsigned t = sheet.track % track_count, n = s.ui.pad_pattern(pad);
+    if (s.patterns.at[t][n].empty()) return {};
+    bool lit = sheet.picked(n);
+    if (!sheet.printing) return lit ? track(t, full) : track(t, faint);
+    if (!lit) return {};
+    if ((s.printed[n / 64] >> (n % 64)) & 1) return white(full);
+    if (s.printing == int(n)) return blink(s.now, blink_ms) ? white(mid) : track(t, dim);
+    return track(t, dim);
 }
 Look velocity_look(unsigned t, unsigned velocity) {
     return !velocity ? track(t, faint) : track(t, velocity >= 120 ? full : velocity >= 90 ? mid : dim);
@@ -678,6 +694,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::Motion: look = motion_look(s, snd, moving, pad); break;
             case PageId::Chop: look = chop_look(s, slices, pad); break;
             case PageId::Record: look = record_look(s, pad); break;
+            case PageId::Print: look = print_look(s, pad); break; // freeze plan F2c
             case PageId::Compressor: look = compressor_look(s, snd, pad); break;
             case PageId::KnobFx: look = knob_fx_look(s, pad); break;
             case PageId::Punch: look = punch_look(s, pad); break;

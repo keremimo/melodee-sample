@@ -102,7 +102,8 @@ struct Binding {
         // there; with none, the lane's tempo there) and its shape (0 a step on its bar, 1 a ramp from the point before).
         SongTempo, SongTempoShape,
         PitchBend, // a PLUGIN track's pitch bend (the fader's Pitch Bend), -64..63 around the centre
-        PatternProgram // a MIDI track's PROGRAM K3: the program its pattern in hand sends as it starts (0: the track's)
+        PatternProgram, // a MIDI track's PROGRAM K3: the program its pattern in hand sends as it starts (0: the track's)
+        PrintTapPick, PrintTailPick // freeze plan F2c, the PRINT sheet: K1 where prints are taken (PrintTap), K2 how they end (PrintTail)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

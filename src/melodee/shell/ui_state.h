@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include "melodee/model/print.h"
 #include "melodee/model/project.h"
 #include "melodee/plugin/plugin_panel.h"
 #include "melodee/shell/chop.h"
@@ -30,6 +31,7 @@ enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Pa
                             LayersPage,                        // roadmap P3: a kit pad's four layers
                             ModPage,                           // roadmap P4: modulators and macros (MOTION again on Motion)
                             Scenes,                            // roadmap P5: scenes and follow actions (Push on Patterns)
+                            Print,                             // freeze plan F2c: the PRINT sheet (Sample Record on a plug-in or MIDI track)
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -329,7 +331,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate }; // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate, Unfreeze }; // Unfreeze (freeze plan F2c): an edit of a frozen track; target the track // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),
@@ -355,6 +357,29 @@ struct UiState {
     // project store's save count to wait for after INSTALL.
     struct UpdateView { uint8_t phase = 0, error = 0; char version[32] {}; int32_t after_save = -1; };
     UpdateView update;
+    // Freeze plan F2c (shell/print_sheet.cpp): the PRINT sheet's choices for its track: the patterns lit (a bit each),
+    // where the prints are taken and how they end; `printing` once B3 FREEZE went (the sheet shows the prints made
+    // until they are ready, B1 calls them off), for the freeze `print_serial` names.
+    struct PrintSheet {
+        uint8_t track = 0;
+        std::array<uint64_t, (pattern_count + 63) / 64> picks {};
+        PrintTap tap = PrintTap::PostFx;
+        PrintTail tail = PrintTail::Loop;
+        bool printing = false;
+        uint32_t serial = 0;
+        bool picked(unsigned p) const { p %= pattern_count; return (picks[p / 64] >> (p % 64)) & 1; }
+        void pick(unsigned p, bool on) {
+            p %= pattern_count;
+            uint64_t bit = uint64_t(1) << (p % 64);
+            picks[p / 64] = on ? picks[p / 64] | bit : picks[p / 64] & ~bit;
+        }
+    };
+    PrintSheet print_sheet;
+    // Seq held + Sample Record: each pattern pad freezes or thaws its pattern of the selected track until Seq is let
+    // go (`seq_frozen`: the patterns as they will be then); the prints are made on the release.
+    bool seq_print = false;
+    std::array<uint64_t, (pattern_count + 63) / 64> seq_frozen {};
+    bool seq_frozen_at(unsigned p) const { p %= pattern_count; return (seq_frozen[p / 64] >> (p % 64)) & 1; }
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms

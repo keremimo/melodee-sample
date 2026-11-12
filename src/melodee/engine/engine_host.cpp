@@ -2548,10 +2548,18 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         float balance = slot.engine->stereo() ? 1.4142f : 1.0f; // a stereo engine's pan balances it, unity at the centre
         slot.mix_l.aim(slot.gain * slot.pan_left * balance, frames, snap_mix);
         slot.mix_r.aim(slot.gain * slot.pan_right * balance, frames, snap_mix);
-        // Freeze plan F2b: a Post FX print was made at unity and centred (that pan law in it): the level and pan
-        // taken relative to those, after it.
-        slot.print_mix_l.aim(slot.gain * (slot.pan_left / pan_centre), frames, snap_mix);
-        slot.print_mix_r.aim(slot.gain * (slot.pan_right / pan_centre), frames, snap_mix);
+        // Freeze plan F2b: a Post FX print was made at a level and pan (that pan law in it: model/print.h print_mix(),
+        // freeze plan F2c): the level and pan now taken relative to those, after it. A side the print's pan left
+        // (nearly) silent keeps its own sound as it is while the pan stays.
+        float ref_gain = 1, ref_l = pan_centre, ref_r = pan_centre;
+        if (const FreezePack* pack = slot.freeze) {
+            ref_gain = std::max(level_gain(pack->level), 1e-4f);
+            float angle = (std::clamp<int>(pack->pan, -50, 50) + 50) / 100.0f * dsp::pi / 2;
+            ref_l = std::cos(angle); ref_r = std::sin(angle);
+        }
+        auto side = [](float now, float ref) { return std::fabs(now - ref) < 1e-6f ? 1.0f : now / std::max(ref, 0.05f); };
+        slot.print_mix_l.aim(slot.gain / ref_gain * side(slot.pan_left, ref_l), frames, snap_mix);
+        slot.print_mix_r.aim(slot.gain / ref_gain * side(slot.pan_right, ref_r), frames, snap_mix);
     }
     auto chain_of = [&](unsigned t) {
         auto& slot = slots[t];

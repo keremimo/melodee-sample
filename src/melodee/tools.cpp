@@ -515,6 +515,35 @@ void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
     s.ui.page = PageId::Stage; s.ui.track = uint8_t(track);
     s.ui.stage_group[track] = uint8_t(group); s.ui.stage_sub[track] = uint8_t(sub);
 }
+// Freeze plan F2c's previews: track 3 (a plug-in) with patterns P1-P4, P9 and P10, P2 playing; on the PRINT sheet all
+// but P10 lit. frozen_scene(): P1-P3 frozen, Post FX, Loop, its print of P2 playing.
+void print_scene(Snapshot& s) {
+    s.ui.page = PageId::Print; s.ui.track = 2; s.playing = true;
+    for (unsigned n : {0u, 1u, 2u, 3u, 8u, 9u}) { s.sketches[2][n].notes = true; s.sketches[2][n].length = 16 * ticks_per_quarter; }
+    s.project.tracks[2].pattern = 1; s.playing_patterns[2] = 1; s.positions[2] = int(22 * sixteenth_ticks);
+    auto& sheet = s.ui.print_sheet;
+    sheet.track = 2;
+    for (unsigned n : {0u, 1u, 2u, 3u, 8u}) sheet.pick(n, true);
+    s.machine.track_load[2] = 0.22f;
+    s.audio_rate = 48000;
+}
+void frozen_scene(Snapshot& s) {
+    print_scene(s);
+    s.ui.page = PageId::Stage;
+    auto& f = s.freeze[2];
+    f.state = FreezeState::Frozen;
+    for (unsigned n : {0u, 1u, 2u}) f.set(n, true);
+    s.prints_kept[2] = 3;
+    s.printing_tracks = 1u << 2;
+    s.machine.track_load[2] = 0.004f; s.live_load[2] = 0.22f;
+    s.print_peaks_known = true;
+    for (unsigned n = 0; n < s.print_peaks.size(); ++n) { // sixteen notes with a short tail each, a loud first of four
+        unsigned in_note = n % 6;
+        float level = (n / 6) % 4 == 0 ? 0.9f : 0.55f;
+        s.print_peaks[n] = uint8_t(255 * level * std::exp(-0.45f * float(in_note)));
+    }
+}
+
 // Stage on track 12, a MIDI track to a synth on USB-C, channel 3.
 void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
     auto& t = s.project.tracks[11];
@@ -833,6 +862,51 @@ const Preview previews[] {
          for (unsigned t = 0; t < 8; ++t) { s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks); }
          s.project.tracks[2].pattern = 3;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; // held a moment: the sheet is up
+     }},
+    // Freeze plan F2c: the PRINT sheet on track 3 (a plug-in), its prints being made, a MIDI track's sheet, Seq held +
+    // Sample Record, Tracks and Stage with track 3 frozen, and the question an edit of it asks.
+    {"print", [](Shell&, Snapshot& s) { print_scene(s); }},
+    {"printing", [](Shell&, Snapshot& s) {
+         print_scene(s);
+         auto& sheet = s.ui.print_sheet;
+         sheet.printing = true;
+         auto& job = s.print;
+         job.busy = true; job.freeze = true; job.track = 2; job.count = 5; job.through = 3; job.pattern = 3; job.fraction = 0.62f;
+         job.times_real = 5.8f; job.seconds_left = 9;
+         for (unsigned n : {0u, 1u, 2u}) job.done[0] |= uint64_t(1) << n;
+     }},
+    {"printmidi", [](Shell&, Snapshot& s) {
+         stage_midi(s, 0, 0);
+         for (unsigned n : {0u, 1u, 2u, 3u}) { s.sketches[11][n].notes = true; s.sketches[11][n].length = 64 * sixteenth_ticks; }
+         s.ui.page = PageId::Print;
+         auto& sheet = s.ui.print_sheet;
+         sheet.track = 11; sheet.tail = PrintTail::Ring;
+         for (unsigned n : {0u, 1u, 2u, 3u}) sheet.pick(n, true);
+     }},
+    {"seqprint", [](Shell&, Snapshot& s) { // Seq held + Sample Record: P1 and P3 frozen, P2 playing, P4 and P9 live
+         frozen_scene(s);
+         s.ui.page = PageId::Stage;
+         s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; s.ui.seq_print = true;
+         s.ui.seq_frozen = {};
+         for (unsigned n : {0u, 2u}) s.ui.seq_frozen[0] |= uint64_t(1) << n;
+     }},
+    {"seqfrozen", [](Shell&, Snapshot& s) { // Seq held on a frozen track: its frozen patterns marked
+         frozen_scene(s);
+         s.ui.page = PageId::Stage;
+         s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
+     }},
+    {"tracksfrozen", [](Shell&, Snapshot& s) {
+         frozen_scene(s);
+         s.ui.page = PageId::Tracks;
+         const float loads[] {0.04f, 0.11f, 0.004f, 0.02f, 0.16f, 0.09f, 0.03f, 0.05f};
+         for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
+         s.machine.render_load = 0.41f;
+     }},
+    {"stagefrozen", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); }}, // the print of P2 playing; the sound's cards dim
+    {"stagefrozenshift", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); s.ui.shift = true; }}, // Shift + B3: deep freeze, later
+    {"askunfreeze", [](Shell&, Snapshot& s) { // a sound card turned on a frozen track
+         frozen_scene(s); on_stage(s, 2, 1, 0);
+         s.ui.ask = UiState::Ask::Unfreeze; s.ui.ask_target = 2;
      }},
     {"seqbank", [](Shell&, Snapshot& s) { // Seq held + Pad Bank: bank B, track 3 plays P18, P20 waits for the bar
          s.ui.page = PageId::Stage; s.ui.track = 2; s.playing = true; s.ui.pattern_bank = 1;

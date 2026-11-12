@@ -43,7 +43,9 @@ struct LoadedSample;
 class Context {
 public:
     Context(Project& project, PatternBank& patterns, UiState& ui, EngineHost& host)
-        : project(project), patterns(patterns), ui(ui), host(host) {}
+        : project(project), patterns(patterns), ui(ui), host(host) { edits.gate = &Context::edit_gate; edits.gate_owner = this; }
+    Context(const Context&) = delete;
+    Context& operator=(const Context&) = delete;
     Project& project;
     PatternBank& patterns;
     UiState& ui;
@@ -321,6 +323,36 @@ public:
     bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
     std::array<uint32_t, track_count> freeze_serial {};
     uint32_t freeze_waiting = 0;
+    // Freeze plan F2c (shell/print_sheet.cpp). The PRINT sheet: opened by Sample Record on a PLUGIN or MIDI track (B3
+    // PRINT on a kit's Record), its pads the patterns of the bank in view (a tap lights or leaves one out, B2 ALL), B3
+    // FREEZE prints and freezes them, B1 CANCEL closes it or calls the prints off with nothing changed.
+    void open_print_sheet();
+    void print_sheet_pad(unsigned pad);
+    void print_sheet_all();
+    void print_sheet_go();
+    void print_sheet_cancel();
+    // Seq held + Sample Record: while Seq stays down each pattern pad freezes or thaws its pattern; on its release the
+    // track is frozen as they stand (prints made first), or unfrozen when none is left.
+    void seq_print_start();
+    void seq_print_pad(unsigned pad);
+    void seq_print_end();
+    // An edit of what a frozen track's prints are made of (its sound, kit pads, chain at Post FX, a frozen pattern):
+    // print_covers() says so; frozen_edit() also asks "Unfreeze track N?" (B3 UNFREEZE) and the edit must not
+    // happen. Every edit kept in the history passes edit_gate(): one that changed such a thing is put back and asks.
+    bool print_covers(const UndoScope& scope) const;
+    bool frozen_edit(const UndoScope& scope);
+    bool frozen_edit(unsigned track); // anything of the track (recording)
+    bool edit_covers(const Edit& edit) const;
+    unsigned edit_track(const Edit& edit) const; // the frozen track an edit_covers() edit touches (an undo or redo asks too)
+    static bool edit_gate(void* context, Edit& edit);
+    void ask_unfreeze(unsigned track);
+    // Each track's choices at its last freeze (picks, tap, tail; kept through an unfreeze for the next PRINT sheet), and
+    // its share of a block as it played live then (0: not known), for what freezing saved.
+    std::array<TrackFreeze, track_count> freeze_last {};
+    std::array<float, track_count> live_load {};
+    TrackFreeze print_was {}; // the track's freeze before B3 FREEZE, for B1 to put back
+    // Each frozen track's prints in small (PrintPeaks, shell/print_engine.h), by pattern, as their freeze was made.
+    std::array<std::vector<std::pair<uint8_t, std::array<uint8_t, 96>>>, track_count> print_peaks {};
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     // Projects on the card

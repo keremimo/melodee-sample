@@ -24,6 +24,7 @@ enum class Icon : uint8_t {
     Save, Copy, Flag, Magnet, Metro, Tie, Slide, Accent, Pin, Gear, Info,
     Cloud, Tape, Clock, Swap, Route, Bars, Sliders, Layers, Screen, File, Wheel,
     ArrowLeft, SpaceBar,
+    Snow, // freeze plan F2c: a frozen track or pattern, a print
     Count
 };
 

@@ -81,6 +81,10 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
             p.circle(cx, gy + 1, 3, colour::text);
             p.circle(cx, gy + 1, 2, colour::surf);
         }
+        if (c.frozen) { // freeze plan F2c: held by a print; turning it asks to unfreeze first
+            p.fill(x, top, w, h, colour::bg.withAlpha(0.55f), 3);
+            icon(p, Icon::Snow, x + w - 16 - (c.shift ? 10 : 0), top + 4.5f, 10, colour::ice, 1.4f);
+        }
     }
 }
 

@@ -9,6 +9,7 @@
 #include "melodee/engine/sample_data.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/sample_library.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -165,6 +166,11 @@ std::string PrintEngine::status() const {
     return s;
 }
 
+PrintProgress PrintEngine::progress() const {
+    std::lock_guard<std::mutex> held(lock);
+    return shown;
+}
+
 void PrintEngine::run() {
 #if defined(__linux__)
     sched_param none {};
@@ -182,6 +188,12 @@ void PrintEngine::run() {
         if (!job) continue;
         PrintTable known = job->known; // with each print made or found unchanged, for a freeze's pack
         bool failed = false;
+        {
+            std::lock_guard<std::mutex> held(lock);
+            shown = PrintProgress {};
+            shown.busy = true; shown.track = uint8_t(job->track); shown.freeze = job->freeze; shown.serial = job->serial;
+            shown.count = uint16_t(job->patterns.size());
+        }
         auto samples = library ? library->hold_samples() : std::array<const SampleData*, sample_slots> {};
         for (uint8_t pattern : job->patterns) {
             if (cancelled.load()) { failed = true; break; }
@@ -189,11 +201,16 @@ void PrintEngine::run() {
             {
                 std::lock_guard<std::mutex> held(lock);
                 doing = "track=" + std::to_string(job->track + 1) + " pattern=" + print_pattern_name(pattern);
+                shown.pattern = int16_t(pattern); shown.fraction = 0;
             }
             PrintResult r = print_one(*job, pattern, samples);
             if (r.error.empty()) known.put(r.record);
             else failed = true;
             std::lock_guard<std::mutex> held(lock);
+            auto& bits = r.error.empty() ? shown.done : shown.failed;
+            bits[pattern / 64] |= uint64_t(1) << (pattern % 64);
+            ++shown.through;
+            shown.pattern = -1; shown.fraction = 0;
             lines.push_back(line_of(r));
             while (lines.size() > kept_lines) lines.pop_front();
             results.push_back(std::move(r));
@@ -216,6 +233,7 @@ void PrintEngine::run() {
         }
         std::lock_guard<std::mutex> held(lock);
         doing.clear();
+        shown.busy = false; shown.pattern = -1;
         running.store(false, std::memory_order_release);
     }
 }
@@ -228,6 +246,10 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
     auto pack = std::make_unique<FreezePack>();
     pack->track = uint8_t(job.track);
     pack->tap = job.tap;
+    { // freeze plan F2c: what its prints were made at (a print whose hash still matches was made at these too)
+        Mix m = print_mix(job.project->tracks[job.track % track_count]);
+        pack->level = m.level; pack->pan = m.pan;
+    }
     const unsigned rate = unsigned(std::lround(dsp::sample_rate()));
     const std::string folder = prints_folder(job.project_path);
     const Track& track = job.project->tracks[job.track % track_count];
@@ -273,6 +295,20 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
             if (2 * frame >= 2 * uint64_t(rate)) held = hold(uint32_t(std::min<uint64_t>(2 * frame, part.total)), 2 * stream_chunk);
         }
         if (!held) { f.error = "cannot hold " + rec->file + " in memory"; return f; }
+        { // freeze plan F2c: its first pass in small for Stage, a few frames of each column read
+            PrintPeaks peaks {};
+            const uint32_t span = std::max<uint32_t>(1, std::min(clip->frames, clip->pass ? clip->pass : clip->frames));
+            const float* data = part.left;
+            for (unsigned col = 0; col < print_peak_columns; ++col) {
+                uint32_t from = uint32_t(uint64_t(span) * col / print_peak_columns), to = uint32_t(uint64_t(span) * (col + 1) / print_peak_columns);
+                uint32_t step = std::max<uint32_t>(1, (to - from) / 48);
+                float most = 0;
+                for (uint32_t f0 = from; f0 < to && f0 < clip->frames; f0 += step)
+                    most = std::max({most, std::fabs(data[2 * size_t(f0)]), std::fabs(data[2 * size_t(f0) + 1])});
+                peaks[col] = uint8_t(std::lround(std::clamp(most, 0.0f, 1.0f) * 255));
+            }
+            f.peaks.emplace_back(p, peaks);
+        }
         pack->clips[p] = clip.get();
         pack->owned.push_back(std::move(clip));
     }
@@ -362,11 +398,28 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     if (r.error.empty()) {
         uint32_t ticks = played_pattern(bank->at[t][pattern], track.speed).length;
         auto r0 = Clock::now();
-        uint64_t blocks = 0;
+        uint64_t blocks = 0, total = 0;
+        unsigned left = 0; // the job's patterns after this one
+        {
+            std::lock_guard<std::mutex> held(lock);
+            left = shown.count > shown.through + 1u ? shown.count - shown.through - 1u : 0;
+        }
         audio = render_print(*host, t, ticks, job.tap, job.tail, [&] {
             if (streams) {
                 double ahead = double(blocks) * EngineHost::block / rate - since(r0);
                 if (ahead > 0) std::this_thread::sleep_for(std::chrono::duration<double>(ahead));
+            }
+            if (blocks == 1) { // the first block placed the tempo: what the print renders, two passes for Loop, a second's tail for Ring
+                uint64_t pass = host->tick_frame(std::max<uint32_t>(ticks, 1));
+                total = pass * (job.tail == PrintTail::Loop ? 2 : 1) + (job.tail == PrintTail::Ring ? uint64_t(rate) : 0);
+            }
+            if (total && (blocks & 7) == 0) { // the sheet's progress, every eighth block
+                double rendered = double(blocks) * EngineHost::block, wall = since(r0);
+                double speed = wall > 0 ? rendered / rate / wall : 0;
+                std::lock_guard<std::mutex> held(lock);
+                shown.fraction = float(std::min(1.0, rendered / double(total)));
+                shown.times_real = float(speed);
+                shown.seconds_left = speed > 0 ? float((std::max(0.0, double(total) - rendered) + double(left) * double(total)) / rate / speed) : 0;
             }
             ++blocks;
             return !cancelled.load();

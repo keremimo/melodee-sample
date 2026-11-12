@@ -150,8 +150,12 @@ struct Edit {
 class History {
 public:
     static constexpr size_t depth = 32;
+    // Freeze plan F2c: asked before an edit is kept; false: it is not (the owner put back what it changed).
+    bool (*gate)(void* owner, Edit& edit) = nullptr;
+    void* gate_owner = nullptr;
     void push(Edit&& edit) {
         ++pushes;
+        if (gate && !gate(gate_owner, edit)) return;
         redo_.clear();
         undo_.push_back(std::move(edit));
         if (undo_.size() > depth) undo_.pop_front();

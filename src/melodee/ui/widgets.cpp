@@ -236,8 +236,8 @@ void confirm_sheet(Paint& p, const ConfirmSheet& s) {
     float h = foot ? 116 : s.lines[1].isEmpty() ? 70 : 86;
     for (int k = 1; k <= 3; ++k) p.fill(x - k, y + k * 2, w + 2 * k, h, juce::Colours::black.withAlpha(0.06f), 7 + k);
     p.fill(x, y, w, h, colour::panel, 6);
-    p.ring(x, y, w, h, colour::rec, 6, 1.2f);
-    icon(p, s.icon, x + 14, y + 12, 20, colour::rec, 1.6f);
+    p.ring(x, y, w, h, s.accent, 6, 1.2f);
+    icon(p, s.icon, x + 14, y + 12, 20, s.accent, 1.6f);
     auto title = plain(colour::text, type::list, Weight::SemiBold);
     p.text(s.title, x + 44, y + 12, w - 58, 20, p.fit(s.title, title, w - 58, type::floor));
     auto line = plain(colour::sec, type::small, Weight::Regular);

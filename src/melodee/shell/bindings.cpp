@@ -766,6 +766,11 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         auto feel = feel_cards(pattern, 0);
         return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)}, feel[0], feel[1]};
     }
+    case PageId::Print: { // freeze plan F2c: K1 TAP, K2 TAIL; K3 empty (no Song lane print yet); still while printing
+        const auto& sheet = ui.print_sheet;
+        if (sheet.printing || project.tracks[sheet.track % track_count].engine == EngineKind::Midi) return {};
+        return {Binding {Kind::PrintTapPick, 0, 0, 1, int(sheet.tap)}, Binding {Kind::PrintTailPick, 0, 0, 2, int(sheet.tail)}, Binding {}};
+    }
     case PageId::Scenes: { // roadmap P5: the selected track's pattern's follow action, after how long, on what odds
         if (!project.tracks[ui.track % track_count].used()) return {};
         const auto& f = pattern.follow;

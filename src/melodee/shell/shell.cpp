@@ -44,7 +44,7 @@ using Button = SurfaceButton;
 void let_go(Context& c, Button b) {
     auto& ui = c.ui;
     switch (b) {
-    case Button::Seq: ui.seq_held = false; ui.seq_left = false; break;
+    case Button::Seq: ui.seq_held = false; ui.seq_left = false; ui.seq_print = false; break;
     case Button::PadBank: ui.pad_bank = false; break;
     case Button::Mute: ui.mute = false; break;
     case Button::Erase: ui.erase = false; break;
@@ -320,7 +320,8 @@ void Shell::press(Button b, bool pressed) {
         break;
     case Button::SampleRecord: // a sampler track: the Record page; there, a take ends and Sample Mode has its pad
         if (ui.shift) { context_.audio_recall(); break; } // Audio Recall: the input ring's last 25 s
-        if (context_.track().engine != EngineKind::Sampler) { context_.notice("Sample Record: kit tracks"); break; }
+        if (ui.page == PageId::Print) { context_.print_sheet_cancel(); break; } // again: the sheet closes (calling off its prints)
+        if (context_.track().engine != EngineKind::Sampler) { context_.open_print_sheet(); break; } // freeze plan F2c: PRINT
         if (ui.page != PageId::Record) context_.open(PageId::Record);
         else context_.record_button();
         break;
@@ -477,7 +478,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         context_.release_pad(pad);
         if (ui_.held_step >= 0 && unsigned(ui_.held_step) % bar_steps == pad % 16) ui_.held_step = -1;
         if (ui_.held_note == int(pad % 16)) ui_.held_note = -1; // Roll's note held for its locks
-        if (ui_.pattern_held == int(pad % 16)) ui_.pattern_held = -1;
+        if (ui_.pattern_held >= 0 && unsigned(ui_.pattern_held) % pattern_pads == pad % 16) ui_.pattern_held = -1; // a pattern of any bank
         context_.close_hold(pad);
         return;
     }
@@ -663,6 +664,18 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
                 if (!sketch.keys[k]) sketch.keys[k] = e.key;
             }
         }
+    out.freeze = context_.prints.freeze; // freeze plan F2c
+    out.prints_kept = {};
+    for (const auto& r : context_.prints.records) ++out.prints_kept[r.track % track_count];
+    out.print = context_.printer ? context_.printer->progress() : PrintProgress {};
+    out.live_load = context_.live_load;
+    out.printing_tracks = host.printing_tracks();
+    {
+        unsigned t = ui_.track % track_count, live = (host.playing() ? unsigned(host.pattern_of(t)) : project_->tracks[t].pattern) % pattern_count;
+        out.print_peaks_known = false;
+        for (const auto& [n, peaks] : context_.print_peaks[t])
+            if (n == live) { out.print_peaks = peaks; out.print_peaks_known = true; }
+    }
     out.song_playing = host.song_playing();
     out.song_bar = host.song_bar();
     {

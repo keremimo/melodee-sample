@@ -12,6 +12,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/ui/widgets.h"
+#include <cmath>
 
 namespace melodee {
 using namespace ui;
@@ -43,7 +44,9 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
     soft_keys(p, {{"STEPS", "ROLL", "MOTION"}, -1, c});
     Header h = header_of(s);
     h.left.push_back(chip("SEQUENCE", c));
-    h.left.push_back(bank_pill(s));
+    const bool printing = s.ui.seq_print; // freeze plan F2c: Seq held + Sample Record, the pads freeze or thaw
+    const auto& frozen = s.freeze[t];
+    h.left.push_back(printing ? chip(Icon::Snow, "PRINT", colour::ice) : bank_pill(s));
     h.right.push_back(tag_of(s, t));
     header(p, h);
 
@@ -56,12 +59,15 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
         bool notes = s.sketches[t][n].notes, playing = n == live, waiting = int(n) == queued;
         bool copying = s.ui.copying == UiState::Copying::Patterns && s.ui.copy_track == t && s.ui.copy_from == int(n);
         juce::Colour text = colour::dim;
-        if (playing) { p.fill(x, y, cell, cell, c, 5); text = colour::bg; }
+        bool ice = notes && (printing ? s.ui.seq_frozen_at(n) : frozen.frozen() && frozen.plays(n)); // frozen, or to be
+        if (ice && !playing) { p.fill(x, y, cell, cell, colour::ice.withAlpha(0.2f), 5); text = colour::ice; }
+        else if (playing) { p.fill(x, y, cell, cell, c, 5); text = colour::bg; }
         else if (waiting) { p.fill(x, y, cell, cell, c.withAlpha(blink ? 0.5f : 0.15f), 5); p.ring(x, y, cell, cell, c, 5, 1.5f); text = colour::text; }
         else if (notes) { p.fill(x, y, cell, cell, c.withAlpha(0.22f), 5); text = c; }
         else p.fill(x, y, cell, cell, colour::quiet, 5);
         if (copying) p.ring(x - 1, y - 1, cell + 2, cell + 2, colour::text, 6, 1.5f);
         p.text(juce::String(n + 1), x, y, cell, cell, plain(text, type::body, Weight::SemiBold), juce::Justification::centred);
+        if (ice) icon(p, Icon::Snow, x + cell - 11.5f, y + 2.5f, 9, playing ? colour::bg : colour::ice, 1.4f);
         if (track.chained()) // its place in the chain, small in the corner
             for (unsigned k = 0; k < track.chain_count; ++k)
                 if (track.chain[k] == n) {
@@ -70,8 +76,21 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
                 }
     }
 
-    // Beside them, the chain: what plays now, what comes next, what follows; the tempo under them.
     float x = gx + grid + 14, w = zone::width - zone::pad - x, y = gy + 2;
+    if (printing) { // beside them: how many are frozen, what that saves, the tempo
+        unsigned with = 0, ice = 0;
+        for (unsigned n = 0; n < pattern_count; ++n) { with += s.sketches[t][n].notes; ice += s.sketches[t][n].notes && s.ui.seq_frozen_at(n); }
+        block(p, x, y, w, "FROZEN", juce::String(ice), "of " + juce::String(with), colour::ice);
+        float load = s.machine.track_load[t];
+        float saved = frozen.frozen() ? (s.live_load[t] > 0 ? std::max(0.0f, s.live_load[t] - load) : -1) : ice ? load : -1; // live: what freezing saves
+        block(p, x, y + 44, w, "CPU", saved < 0 ? juce::String::fromUTF8("\xe2\x80\x94") : juce::String::fromUTF8("\xe2\x88\x92") + juce::String(int(std::lround(saved * 100))),
+              saved < 0 ? juce::String() : juce::String("% of a block"), colour::ice);
+        juce::String tempo = juce::String(s.tempo / 10) + "." + juce::String(s.tempo % 10);
+        block(p, x, y + 88, w, "TEMPO", tempo, "BPM", colour::amber);
+        knob_strip(p, cards_of(s));
+        return;
+    }
+    // Beside them, the chain: what plays now, what comes next, what follows; the tempo under them.
     block(p, x, y, w, "NOW", "P" + juce::String(live + 1), bars_text(s, s.sketches[t][live].length), c);
     auto dash = juce::String::fromUTF8("\xe2\x80\x94");
     int next = queued, after = -1;

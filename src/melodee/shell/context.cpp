@@ -472,6 +472,7 @@ void Context::audition(int sound) {
 void Context::apply(const Binding& b, int value) {
     using Kind = Binding::Kind;
     value = std::clamp(value, b.min, b.max);
+    if (frozen_edit(freeze_scope(project, ui, b))) return; // freeze plan F2c: what a frozen track's prints hold asks "Unfreeze track N?" first
     touch_gesture(b); // one undo step per control's turns (shell/undo_scope.cpp)
     learn_lane(*this, b); // roadmap P4: what ADD on the MOD page takes
     if (mod_binding(*this, b, value)) return;
@@ -770,6 +771,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::TrackSpeed: set_speed(unsigned(b.id), value); break;
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
+    case Kind::PrintTapPick: ui.print_sheet.tap = value ? PrintTap::PreFx : PrintTap::PostFx; break; // freeze plan F2c
+    case Kind::PrintTailPick: ui.print_sheet.tail = PrintTail(std::clamp(value, 0, 2)); break;
     case Kind::PatternProgram:
         if (pattern().program != std::clamp(value, 0, 128)) { pattern().program = uint8_t(std::clamp(value, 0, 128)); sync_pattern(ui.track, track().pattern); }
         break;
@@ -1397,6 +1400,7 @@ void Context::undo() {
     if (ui.recording) set_recording(false); // a take in progress ends, and is the edit undone
     if (const Edit* last = edits.last(); last && last->swap_a >= 0) // a track move waits for a take that hears it
         if (auto why = swap_waits(*this, unsigned(last->swap_a), unsigned(last->swap_b)); !why.empty()) { notice("Undo: " + why); return; }
+    if (const Edit* last = edits.last(); last && edit_covers(*last)) { ask_unfreeze(edit_track(*last)); return; } // freeze plan F2c
     Edit* e = edits.undo();
     if (!e) { notice("Nothing to undo"); return; }
     apply_edit(*e, false);
@@ -1409,6 +1413,7 @@ void Context::redo() {
     if (ui.recording) return; // a take in progress would be lost under it
     if (const Edit* next = edits.next(); next && next->swap_a >= 0)
         if (auto why = swap_waits(*this, unsigned(next->swap_a), unsigned(next->swap_b)); !why.empty()) { notice("Redo: " + why); return; }
+    if (const Edit* next = edits.next(); next && edit_covers(*next)) { ask_unfreeze(edit_track(*next)); return; } // freeze plan F2c
     Edit* e = edits.redo();
     if (!e) { notice("Nothing to redo"); return; }
     apply_edit(*e, true);
@@ -1807,7 +1812,7 @@ void Context::set_recording(bool on) {
 // it records at once; recording, it stops recording and playback goes on.
 void Context::seq_record() {
     if (ui.recording) { set_recording(false); return; }
-    if (frozen(ui.track)) { notice("Track " + std::to_string(ui.track + 1) + " is frozen"); return; } // freeze plan F2b
+    if (frozen_edit(ui.track)) return; // freeze plan F2c: "Unfreeze track N?" first
     if (host.playing()) { set_recording(true); return; }
     ui.rec_armed = !ui.rec_armed;
 }

@@ -70,12 +70,16 @@ struct PrintTable {
 
 // `project` and `bank` (copies) made into what a print of pattern `pattern` of track `track` plays: that track alone
 // in its place, playing that pattern and no other, its level at unity, pan centred, no sends, mute or solo, no
-// chain of patterns; the pattern without its kept punches, follow action and mix lanes (level, pan, sends, the
+// chain of patterns (with effects on its chain its level and pan kept: print_mix()); the pattern without its kept punches, follow action and mix lanes (level, pan, sends, the
 // master's and the returns' values), which stay live; the project's tempo the one that pattern plays at; no buses'
 // or master's effects, Knob FX, master compressor, Looper, macros or song; only the samples, chops, plug-ins and
 // modulator targets the track uses. What the screen keeps of the track (its name, last pad and note, fader) is
 // cleared too, so it does not move the hash.
 void print_project(Project& project, PatternBank& bank, unsigned track, unsigned pattern);
+// Freeze plan F2c: the level and pan a Post FX print of `track` is made at. A track with effects on its chain keeps
+// its own, as live, where they meet the chain first (a compressor or a drive hears the level it hears live); one
+// without, unity and centred. Playback takes the track's level and pan relative to these.
+Mix print_mix(const Track& track);
 
 // What made a print: a print_project() and the plug-ins' states (plugin/plugin_rack.h; only the entries it uses
 // count), with its tap, tail and the device's rate. 64-bit FNV-1a over the project file save_project() writes of them.

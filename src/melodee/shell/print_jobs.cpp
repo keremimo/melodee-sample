@@ -91,14 +91,23 @@ void Context::print_tick() {
     while (printer->take_ready(ready)) {
         const unsigned t = ready.track % track_count;
         bool wanted = ready.project_path == project_path && ready.serial == freeze_serial[t] && frozen(t);
+        // Freeze plan F2c: the PRINT sheet waiting for this freeze closes once it is sent (or says why not).
+        auto& sheet = ui.print_sheet;
+        bool sheet_waits = wanted && sheet.printing && sheet.track == t && sheet.serial == ready.serial;
+        if (sheet_waits) {
+            sheet.printing = false;
+            if (ui.page == PageId::Print) back();
+        }
         if (!wanted || !ready.pack) {
             printer->discard(ready.pack);
             if (wanted) notice("Track " + std::to_string(t + 1) + " not frozen: " + ready.error);
             continue;
         }
+        print_peaks[t] = std::move(ready.peaks); // freeze plan F2c: Stage's picture of each print
         Command c {Command::Type::Freeze, uint8_t(t), 0, 0, 1}; // on the next bar while playing
         c.freeze = ready.pack;
         if (!host.send(c)) printer->discard(ready.pack);
+        else if (sheet_waits) notice("Track " + std::to_string(t + 1) + " frozen");
     }
     if (freeze_waiting && !printer->busy() && !project_path.empty()) {
         unsigned t = 0;
@@ -123,7 +132,10 @@ void Context::print_tick() {
         job.known = prints;
         bool empty = job.patterns.empty();
         if (empty || printer->start(std::move(job))) freeze_waiting &= ~(1u << t);
-        if (empty) unfreeze(t); // its patterns have no notes left
+        if (empty) {
+            unfreeze(t); // its patterns have no notes left
+            if (ui.print_sheet.printing && ui.print_sheet.track == t) { ui.print_sheet.printing = false; if (ui.page == PageId::Print) back(); }
+        }
     }
     PrintResult r;
     while (printer->take(r)) {

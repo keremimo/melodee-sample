@@ -6,6 +6,7 @@
 #include "melodee/shell/comp_trail.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/playheads.h"
+#include "melodee/shell/print_engine.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/plugin/plugin_rack.h"
@@ -116,6 +117,16 @@ struct Snapshot {
         unsigned pdc_frames = 0;             // roadmap P4: what plug-in delay compensation holds everything back by
     } machine;
     std::array<float, modulator_count> mod_values {}; // roadmap P4: each modulator's value now (EngineHost::modulator_value)
+    // Freeze plan F2c: each track's freeze (FRZN) and prints kept (PRNT records), the print engine's job as far as it
+    // has gone, each track's share of a block when it was frozen (0: not known), and the tracks the audio thread
+    // plays prints for now (a bit each).
+    std::array<TrackFreeze, track_count> freeze {};
+    std::array<uint16_t, track_count> prints_kept {};
+    PrintProgress print {};
+    std::array<float, track_count> live_load {};
+    uint32_t printing_tracks = 0;
+    std::array<uint8_t, 96> print_peaks {}; // the selected track's pattern playing, its print in small (PrintPeaks)
+    bool print_peaks_known = false;
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };
 

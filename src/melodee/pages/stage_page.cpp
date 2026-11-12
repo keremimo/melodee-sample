@@ -23,6 +23,7 @@
 #include "melodee/shell/key_pick.h"
 #include "melodee/shell/meter_lights.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/print_engine.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/ui/waveform.h"
@@ -813,6 +814,56 @@ void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift
     if (shift_row) icon(p, Icon::Shift, px, y0 + 6, 12, colour::mid, 1.4f); // the rows Shift + K1-K3 turn
 }
 
+// Freeze plan F2c: Stage of a frozen track (its sound pages; MIX and SENDS stay live): the print of the pattern
+// playing, bar by bar with the playhead, over FREEZE and PADS PLAY LIVE and what the print holds.
+bool frozen_view(const Snapshot& s, const StagePage& page) {
+    const auto& f = s.freeze[s.ui.track % track_count];
+    return f.frozen() && s.track().used() && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends;
+}
+
+void frozen_picture(Paint& p, const Snapshot& s) {
+    const unsigned t = s.ui.track % track_count;
+    const auto& f = s.freeze[t];
+    const auto c = colour_of(s);
+    unsigned live = (s.playing ? s.playing_patterns[t] : s.track().pattern) % pattern_count;
+    const auto& sketch = s.sketches[t][live];
+    const bool printed = f.plays(live) && s.print_peaks_known && (!s.playing || ((s.printing_tracks >> t) & 1)); // stopped: what will play
+    const float x = 12, w = zone::width - 24, y = top + 16, h = 74;
+    unsigned bar = std::max(1u, s.project.bar_ticks()), bars = std::max(1u, unsigned((sketch.length + bar - 1) / bar));
+    unsigned every = bars <= 8 ? 1 : bars <= 16 ? 2 : bars <= 32 ? 4 : 8; // bar numbers a label's room apart
+    p.fill(x, y, w, h, colour::quiet, 4);
+    for (unsigned k = 0; k < bars; ++k) {
+        float bx = x + w * float(k) / float(bars);
+        if (k) p.fill(bx, y, 0.6f, h, colour::line);
+        if (k % every == 0) p.text(juce::String(k + 1), bx + 3, top + 2, 24, 12, plain(colour::mid, type::small, Weight::SemiBold));
+    }
+    if (printed) {
+        float cw = w / float(print_peak_columns), mid = y + h / 2;
+        for (unsigned n = 0; n < print_peak_columns; ++n) {
+            float level = std::sqrt(s.print_peaks[n] / 255.0f); // as loud ones are heard: soft tails still show
+            float bh = std::max(1.0f, level * (h - 6));
+            p.fill(x + n * cw + 0.4f, mid - bh / 2, std::max(1.0f, cw - 0.8f), bh, c.withAlpha(0.92f), 0.5f);
+        }
+    } else { // that pattern plays live (not frozen, or its print not ready yet)
+        bool waiting = f.plays(live) && s.print.busy && s.print.track == t;
+        p.text(waiting ? "PRINTING" : "LIVE", x, y, w, h, caps_text(waiting ? colour::ice : colour::mid), juce::Justification::centred);
+    }
+    if (s.playing && s.positions[t] >= 0 && sketch.length) { // the playhead
+        float at = x + w * float(uint32_t(s.positions[t]) % sketch.length) / float(sketch.length);
+        p.fill(at, y - 2, 1.2f, h + 4, colour::text);
+    }
+    // FREEZE and what still plays live, then what the print holds.
+    auto ice = caps_text(colour::ice), mid = caps_text(colour::mid);
+    juce::String freeze = "FREEZE", pads = "PADS PLAY LIVE";
+    float fw = p.width(freeze, ice), gw = p.width(pads, mid), lx = (zone::width - (14 + fw + 14 + gw)) / 2, ly = y + h + 8;
+    icon(p, Icon::Snow, lx, ly + 1, 11, colour::ice, 1.5f);
+    p.text(freeze, lx + 14, ly, fw + 2, 13, ice);
+    p.text(pads, lx + 14 + fw + 14, ly, gw + 2, 13, mid);
+    juce::String held = juce::String(f.tap == PrintTap::PreFx ? "PRE FX" : "POST FX") + dot
+                      + (f.tail == PrintTail::Ring ? "RING" : f.tail == PrintTail::Cut ? "CUT" : "LOOP") + dot + juce::String(bars) + (bars == 1 ? " BAR" : " BARS");
+    p.text(held, px, ly + 17, pw, 13, mid, juce::Justification::centredTop);
+}
+
 ui::SoftKeys stage_keys(const Snapshot& s) {
     const auto& t = s.track();
     const auto& g = stage_groups(t.engine);
@@ -863,13 +914,21 @@ void draw(Paint& p, const Snapshot& s) {
         bool on = page.kind == StageKind::Arp ? t.arp : t.chord;
         h.left.push_back(pill(on ? Icon::Check : Icon::None, on ? "ON" : "OFF", on ? c : colour::mid));
     }
+    const bool frozen = frozen_view(s, page); // freeze plan F2c
+    if (frozen) {
+        h.left.clear();
+        unsigned live = (s.playing ? s.playing_patterns[s.ui.track % track_count] : t.pattern) % pattern_count;
+        h.left.push_back(chip(Icon::Snow, "P" + juce::String(live + 1), colour::ice));
+    }
     h.right.push_back(tag_of(s, s.ui.track));
     auto keys = stage_keys(s);
+    if (frozen && s.ui.shift) { keys = SoftKeys {{"", "", "DEEP FREEZE"}, -1, c}; keys.glyphs[2] = Icon::Snow; keys.tints[2] = colour::dim; } // F2d
     if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler && !instrument_pad(s)) // the old Trim's Shift jobs on B1 and B2
         { keys = SoftKeys {{"LOOP LOCK", "NORMALIZE", ""}, -1, c}; keys.toggles = 1; keys.lit = sampler_pad(s).loop_lock ? 1 : 0; keys.leds[0] = c; }
     if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
     if (!t.used()) { keys.active = stage_focus(s.ui, t); keys.dots = {}; } // the doors: the one Push makes lit
     frame(p, s, keys, h);
+    if (frozen) { frozen_picture(p, s); return; }
     switch (page.picture) {
     case StagePicture::Preset: preset_picture(p, s); break;
     case StagePicture::Filter: filter_picture(p, s, page); break;
@@ -891,6 +950,10 @@ void draw(Paint& p, const Snapshot& s) {
 
 void soft(Context& c, int key) {
     const auto& page = stage_page_now(c.ui, c.track());
+    if (c.ui.shift && c.frozen(c.ui.track) && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends) {
+        if (key == 2) c.notice("Deep freeze: later"); // freeze plan F2d
+        return;
+    }
     const auto& last = c.track().pads[c.track().last_pad % sampler_pads];
     const bool zones = last.used() && c.project.samples[last.sample % sample_slots].instrument(); // ZONES: no Trim jobs
     if (c.ui.shift && page.kind == StageKind::Trim && c.track().engine == EngineKind::Sampler && !zones) {

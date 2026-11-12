@@ -22,6 +22,14 @@ void PrintTable::put(const PrintRecord& record) {
     else records.insert(at, record);
 }
 
+Mix print_mix(const Track& track) {
+    Mix m;
+    bool chain = false;
+    for (const auto& slot : track.fx.slots) chain |= slot.used();
+    if (chain) { m.level = track.mix.level; m.pan = track.mix.pan; }
+    return m;
+}
+
 void print_project(Project& project, PatternBank& bank, unsigned track, unsigned pattern) {
     const unsigned t = track % track_count, p = pattern % pattern_count;
     for (unsigned k = 0; k < track_count; ++k)
@@ -44,7 +52,7 @@ void print_project(Project& project, PatternBank& bank, unsigned track, unsigned
     tr = project.tracks[t];
     const Track plain {};
     tr.set_name("");
-    tr.mix = Mix {};
+    tr.mix = print_mix(project.tracks[t]); // unity and centred, or (effects on its chain) as it meets them live
     tr.pattern = uint8_t(p);
     tr.chain = {}; tr.chain_count = 0; tr.chain_at = 0;
     tr.last_note = plain.last_note; tr.last_pad = plain.last_pad;

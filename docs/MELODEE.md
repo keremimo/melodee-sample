@@ -132,7 +132,7 @@ cards.
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
 | − / + | Lists move as the wheel does; on play pages the octave (a kit's 16 Levels in Tune or Scale too; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
-| Sample Record | Record (kit tracks); on Record it ends the take and opens Stage's TRIM on the pad | Audio Recall: the last 25 s onto the next empty pad |
+| Sample Record | Record on a kit (there it ends the take and opens Stage's TRIM on the pad; B3 PRINT the PRINT sheet); the PRINT sheet on a PLUGIN or MIDI track (Print and freeze, below); with Seq held, the pattern pads freeze or thaw | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): what every track played last into its next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
 | Play | Play from the start (on Song from the cursor); held while playing, Fill (FILL trig conditions play) | Continue from where it stopped or the wheel put it |
@@ -213,7 +213,8 @@ grammar (`shell/pad_light.h`):
 | Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces); a move's in their own colour, Dim where a track trades places |
 | Mute mode | Muted Dim red, heard Mid (kit pads flaring), soloed white, silenced by a solo Faint |
 | Song | The lane picked Full, a clip under the cursor Mid, clips elsewhere Dim, not in the song Faint |
-| Seq held | The pattern playing Full, queued blinking, with notes Dim; + Shift a column, white by how many tracks hold notes there; + Erase red; a copy's source white, where it lands Faint (red where it replaces) |
+| Seq held | The pattern playing Full, queued blinking, with notes Dim, frozen white (Dim; playing Full); + Shift a column, white by how many tracks hold notes there; + Erase red; a copy's source white, where it lands Faint (red where it replaces); + Sample Record the patterns to freeze white |
+| PRINT sheet | Patterns lit for printing Full, others with notes Faint; printing: done white, the one printing blinking white, waiting Dim |
 | Steps | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end dark, the playhead white (red while recording); on a kit the last pad's lane |
 | Step Edit | The step's events by velocity, the chosen one white |
 | Roll | The note in focus white, the cursor's step Full, notes elsewhere Dim, none Faint |
@@ -800,6 +801,80 @@ hold to steer, Shift + Seq to zoom in**.
   MIDI) loads with Push: every note onto the selected track's pattern
   playing, as many bars as they take (128 at most), one undo; a kit takes
   notes 36 on as its pads.
+
+### Print and freeze
+
+A track can be frozen: each of its patterns is printed to an audio file
+and the track plays the prints instead of running its engine and its
+chain, which saves CPU. The pads still play the sound live (the engine
+wakes while notes sound and sleeps again a second after it falls quiet).
+Level, pan, sends, mute, solo and punches stay live. Unfreezing is at
+once and keeps the prints.
+
+**PRINT sheet.** Sample Record on a PLUGIN or MIDI track opens it. On a
+kit, Sample Record opens Record as before; B3 PRINT there opens the same
+sheet. The pads are the track's patterns of the bank in view
+(Minus / Plus: the bank): lit ones are printed (a snowflake in the
+corner, the one playing ringed), a tap leaves one out or takes it back,
+B2 ALL lights every pattern with notes (again: none). K1 TAP: Post FX
+(engine and chain) or Pre FX (the engine alone; the chain runs live on
+the print). K2 TAIL: Loop (two passes printed, the second kept, so a tail
+wraps into the start), Ring (one pass, then its tail until it falls
+silent, 10 s at most) or Cut (one pass). K3 is empty. Beside the pads:
+how many patterns are lit, what the prints take on the card, and the
+share of a block the track takes now (what freezing saves). B1 CANCEL,
+B3 FREEZE (Push too). Shift + B3 is kept for DEEP FREEZE (not built yet).
+
+While prints are made the header shows PRINTING n/m, each pad its print's
+progress (a ring filling; done ones solid with a snowflake), and the
+column the speed against real time and the time left. The track plays
+live until its last print is ready, then switches on a bar line and the
+sheet closes ("Track N frozen"). B1 calls the prints off and nothing
+changes. A MIDI track's sheet says MIDI TRACKS: Later (its prints need
+its synth's audio back in real time) and B3 does nothing.
+
+**Seq held + Sample Record.** While Seq stays down, each pattern pad
+freezes or thaws its pattern of the selected track. The Sequence sheet
+shows PRINT, the frozen patterns ice white with a snowflake, FROZEN n of
+m and CPU. On the release of Seq the prints are made and the track
+freezes with those patterns (none left: it plays live again). Patterns
+not frozen play live.
+
+**A frozen track.** Tracks shows a snowflake in place of its engine and
+its strip; the header's CPU chip is the share of each block all tracks
+take. Stage (its sound pages; MIX and SENDS stay live) shows the print of
+the pattern playing with its playhead, FREEZE and PADS PLAY LIVE, and
+what the print holds (tap, tail, bars). Cards whose values a print holds
+are dim with a snowflake on every page. The Sequence sheet marks frozen
+patterns with a snowflake; with Seq held their pads light white.
+
+**Editing a frozen track.** Anything a print is made of (its sound and
+plug-in's values, arp and chords, a kit pad, its chain at Post FX, a
+frozen pattern's notes, motion, length, Q or swing, the track's speed)
+asks "Unfreeze track N?" first: B3 UNFREEZE, B1 CANCEL. A turned card
+asks before it changes; any other edit is put back as it was and asks.
+Seq Record and a Sample Record take on a frozen track ask the same.
+Unfrozen, edit, then freeze again: patterns whose notes, sound and chain
+did not change keep their prints, so only the edited ones are printed
+again.
+
+**How prints are made.** A print host runs beside the live one on a
+spare core at the lowest priority (`shell/print_engine.h`), one pattern
+at a time, faster than real time, into `<project> Prints/Track N A1.wav`
+(32-bit float at the device's rate). With effects on its chain a track
+is printed at its own level and pan, as the chain hears them live (a
+Compressor, Drive or Tape reacts to the level it is fed); playback then
+takes the level and pan relative to those. A track with an empty chain
+is printed at unity and centred. Each print has a record (PRNT) with a
+hash of what made it; a freeze (FRZN) keeps its tap, tail and patterns
+with the project. Not handled yet: Save As does not copy the Prints
+folder (the prints are made again); Knob FX on kit pads, a Sidechain key
+pad on a frozen track; chance and random trig conditions print once.
+
+Remote: `melodee-print TRACK [patterns] [pre|post] [loop|ring|cut]`,
+`melodee-print status|cancel`, `melodee-freeze TRACK [patterns]
+[pre|post] [loop|ring|cut]`, `melodee-freeze [status]`,
+`melodee-unfreeze TRACK`.
 
 ### Sampler
 

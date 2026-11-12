@@ -122,6 +122,7 @@ struct ConfirmSheet {
     juce::String chip, name;             // "P2" in `chip_colour`; "TRACK 3"
     juce::Colour chip_colour = colour::text;
     bool undo = false;                   // Shift + Minus brings it back
+    juce::Colour accent = colour::rec;   // the ring and the glyph: red for a loss, ice for a freeze's question
 };
 void confirm_sheet(Paint& p, const ConfirmSheet& s);
 

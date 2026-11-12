@@ -16,6 +16,7 @@ void Context::preset_turn(int at) {
     std::array<uint16_t, max_listed> list {};
     unsigned count = sound_list(track(), ui, list);
     if (!count || !track().used()) return;
+    if (frozen_edit(UndoScope {UndoScope::Kind::Sound, uint8_t(ui.track % track_count), 0})) return; // freeze plan F2c
     ui.preset_cursor = uint16_t(std::clamp(at, 0, int(count) - 1));
     ui.preset_due = std::max<uint32_t>(now + stage_preset_ms, 1);
 }

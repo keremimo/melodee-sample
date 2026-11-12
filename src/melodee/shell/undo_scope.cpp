@@ -82,6 +82,31 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     }
 }
 
+bool print_covers(const std::array<TrackFreeze, track_count>& freeze, const UndoScope& s) {
+    using S = UndoScope::Kind;
+    const unsigned t = s.track % track_count;
+    switch (s.kind) {
+    case S::Sound: case S::Pad: return freeze[t].frozen();
+    case S::Pattern: return freeze[t].frozen() && freeze[t].plays(s.index);
+    case S::Chain:
+        if (s.index < track_count) return freeze[s.index].frozen() && freeze[s.index].tap == PrintTap::PostFx; // Pre FX prints hold no chain
+        if (s.index >= pad_chain_base) return freeze[(s.index - pad_chain_base) / sampler_pads % track_count].frozen();
+        return false;
+    default: return false;
+    }
+}
+
+UndoScope freeze_scope(const Project& project, const UiState& ui, const Binding& b) {
+    switch (b.kind) {
+    case Kind::PatternBars: case Kind::PatternLength: case Kind::Division: case Kind::Swing: case Kind::TcShift: case Kind::TcSwing:
+        return pattern_scope(project, ui);
+    case Kind::TrackSpeed: case Kind::StageSound: case Kind::PluginParam: case Kind::ArpMode: case Kind::ArpRate: case Kind::ArpOctaves:
+    case Kind::ArpGate: case Kind::ArpHold: case Kind::ChordType: case Kind::ChordVoicing: case Kind::ChordInvert: case Kind::ChordOn:
+        return of(UndoScope::Kind::Sound, ui); // the plug-in's values, the arp and chords play into the print
+    default: return binding_scope(project, ui, b);
+    }
+}
+
 UndoScope pattern_scope(const Project& project, const UiState& ui) {
     return of(UndoScope::Kind::Pattern, ui, project.tracks[ui.track % track_count].pattern % pattern_count);
 }

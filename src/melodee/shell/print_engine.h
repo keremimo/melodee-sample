@@ -46,6 +46,10 @@ struct PrintJob {
     uint32_t serial = 0;                 // the freeze it is for (the shell drops one a later freeze replaced)
 };
 
+// Freeze plan F2c: a print's first pass in small, for Stage: the loudest of each column, 0..255 full scale.
+constexpr unsigned print_peak_columns = 96;
+using PrintPeaks = std::array<uint8_t, print_peak_columns>;
+
 // Freeze plan F2b: a frozen track's prints ready to play, or why not.
 struct FreezeReady {
     std::string project_path;
@@ -53,6 +57,7 @@ struct FreezeReady {
     uint32_t serial = 0;
     FreezePack* pack = nullptr; // the caller's to send or give back (discard()); nullptr: failed
     std::string error;
+    std::vector<std::pair<uint8_t, PrintPeaks>> peaks; // freeze plan F2c: each pattern's print, in small
 };
 
 struct PrintResult {
@@ -64,6 +69,22 @@ struct PrintResult {
     double times_real = 0; // the pattern's frames rendered against the wall time of the rendering alone
     double host_mb = 0;    // the print host's resident memory (and its rack's plug-ins), measured as it was made
     uint64_t bytes = 0;    // the file's
+};
+
+// Freeze plan F2c: how the job under way goes, for the PRINT sheet.
+struct PrintProgress {
+    bool busy = false;
+    uint8_t track = 0;
+    bool freeze = false;
+    uint32_t serial = 0;       // the freeze it is for
+    int16_t pattern = -1;      // the pattern printing now, -1 none
+    float fraction = 0;        // of it, rendered
+    float times_real = 0;      // its speed against real time (0: not known yet)
+    float seconds_left = 0;    // the job's, estimated from the pattern printing now
+    std::array<uint64_t, (pattern_count + 63) / 64> done {}, failed {}; // the job's patterns through (made or unchanged), and failed
+    uint16_t count = 0, through = 0;   // the job's patterns, and how many are through
+    bool is_done(unsigned p) const { p %= pattern_count; return (done[p / 64] >> (p % 64)) & 1; }
+    bool is_failed(unsigned p) const { p %= pattern_count; return (failed[p / 64] >> (p % 64)) & 1; }
 };
 
 class PrintEngine {
@@ -88,6 +109,8 @@ public:
     // Any thread: what it is doing and the latest results, a line each (`melodee-print status`); a line of its own.
     std::string status() const;
     void note(const std::string& line);
+    // Any thread: the job under way, as far as it has gone (freeze plan F2c).
+    PrintProgress progress() const;
 
 private:
     void run();
@@ -104,6 +127,7 @@ private:
     std::deque<PrintResult> results;   // under lock
     std::deque<std::string> lines;     // under lock: the latest results
     std::string doing;                 // under lock
+    PrintProgress shown;               // under lock
     bool stopping = false;             // under lock
     std::atomic<bool> running {false}, cancelled {false};
     std::thread thread;

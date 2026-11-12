@@ -24,6 +24,7 @@ struct KnobCard {
     bool focus = false;    // Stage: the card the wheel fine-edits (Push moves it), ringed
     bool knob_fx = false;  // Knob FX owns the pot: drawn in white with the knob glyph, never the track's colours
     bool fader = false;    // the fader just moved this card's value (round 3): the fader glyph in its corner
+    bool frozen = false;   // freeze plan F2c: a frozen track's print holds this value: dim, a snowflake in its corner
     juce::Colour shade = colour::text, track = colour::text;
 };
 void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards);

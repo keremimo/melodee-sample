@@ -38,7 +38,9 @@ void draw(Paint& p, const Snapshot& s) {
                                                                                              : juce::String(input_source_name(in.source))).toUpperCase()));
     if (s.speaker_quieted) h.left.push_back(pill(Icon::SpeakerOff, "", colour::amber));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"MONITOR", "INPUT", ""}, -1, c};
+    bool kit = s.track().engine == EngineKind::Sampler;
+    SoftKeys keys {{"MONITOR", "INPUT", kit ? "PRINT" : ""}, -1, c}; // B3 PRINT (freeze plan F2c): the kit's PRINT sheet
+    if (kit) keys.glyphs[2] = Icon::Snow;
     keys.toggles = 1;
     keys.lit = in.monitor != Monitor::Off ? 1 : 0;
     keys.leds[0] = in.monitor == Monitor::Auto ? colour::amber : colour::play;
@@ -126,13 +128,15 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     if (!down || c.track().engine != EngineKind::Sampler) return;
     if (c.ui.erase) { c.notice("Erase a pad on Pads or Trim"); return; } // here the pads record; nothing is erased by accident
+    if (c.frozen_edit(c.ui.track)) return; // freeze plan F2c: a take onto a frozen kit asks first
     c.record_pad(c.track().bank % sampler_banks * 16 + pad);
 }
 void soft(Context& c, int key) {
     if (key == 0) c.cycle_monitor();
     if (key == 1) c.open(PageId::InputConfig);
+    if (key == 2 && c.track().engine == EngineKind::Sampler && !c.host_recording()) c.open_print_sheet(); // freeze plan F2c
 }
-void push(Context& c) { c.record_press(); }
+void push(Context& c) { if (!c.frozen_edit(c.ui.track)) c.record_press(); }
 } // namespace
 
 const PageSpec record_page {draw, pad, no_wheel, push, soft, [](Context&, int) {}};

@@ -60,6 +60,11 @@ bool ask_button(Context& c, SurfaceButton button) {
     } else if (kind == UiState::Ask::ErasePunches) c.erase_punches(); // Erase + KEEP on Pad FX (pad-fx C)
     else if (kind == UiState::Ask::ClearTrack) clear_track(c, unsigned(ui.ask_target)); // Pad Bank held + Erase + pad
     else if (kind == UiState::Ask::InstallUpdate) begin_update(c); // shell/update.h
+    else if (kind == UiState::Ask::Unfreeze) { // freeze plan F2c: live again at once; its prints stay for the next freeze
+        unsigned t = unsigned(ui.ask_target) % track_count;
+        c.unfreeze(t);
+        c.notice("Track " + std::to_string(t + 1) + " live");
+    }
     return true;
 }
 
@@ -77,6 +82,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::ErasePunches: return "Erase kept punches?";
     case UiState::Ask::ClearTrack: return "Clear track " + std::to_string(ui.ask_target % track_count + 1) + "?";
     case UiState::Ask::InstallUpdate: return std::string("Update to ") + ui.update.version + "?";
+    case UiState::Ask::Unfreeze: return "Unfreeze track " + std::to_string(ui.ask_target % track_count + 1) + "?";
     default: return {};
     }
 }
@@ -104,6 +110,7 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     if (ui.ask == UiState::Ask::ClearPattern) return "Its notes and motion go; Shift + Minus brings them back.";
     if (ui.ask == UiState::Ask::ClearTrack) return "Its sound and patterns go; Shift + Minus brings them back.";
     if (ui.ask == UiState::Ask::InstallUpdate) return "The project is saved first, then Melodee restarts.";
+    if (ui.ask == UiState::Ask::Unfreeze) return "Its sound plays live again; prints stay until what made them changes.";
     if (ui.ask == UiState::Ask::NewProject)
         return ui.ask_target == 1 ? "Changes are saved first." : ui.ask_target == 2 ? "Unsaved changes are lost." : "The open project closes.";
     return {};

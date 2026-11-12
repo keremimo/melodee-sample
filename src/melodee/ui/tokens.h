@@ -17,7 +17,8 @@ namespace colour {
 inline const juce::Colour bg = hex(0x17141F), panel = hex(0x1D1926), surf = hex(0x221E2C), raised = hex(0x262033),
     quiet = hex(0x1A1722), line = hex(0x2E2939), text = hex(0xF3EEF8), sec = hex(0xC9C2D6), mid = hex(0x9A93A8),
     dim = hex(0x5A5468), rec = hex(0xFF4848), amber = hex(0xFFC145),
-    play = hex(0x5FD97A); // the transport playing (the place bar), apart from any track's colour
+    play = hex(0x5FD97A), // the transport playing (the place bar), apart from any track's colour
+    ice = hex(0xBFE3FF);  // freeze plan F2c: a print, a frozen track or pattern
 }
 
 // Track colours 1-16 with their knob shades, and the Looper's L1-L4: ui/shades.h (the pads use them too).

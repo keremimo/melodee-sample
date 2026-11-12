@@ -21,6 +21,7 @@
 #include "melodee/shell/seq_layer.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/shell.h"
+#include "melodee/shell/print_engine.h"
 #include <filesystem>
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/step_edit.h"
@@ -322,6 +323,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         TrackTaps taps;
         if (!host.taps(taps) || taps.track != ui.track % track_count) taps = TrackTaps {};
         PadScene scene {ui, project, *patterns_, host, taps, pad_facts(), now, &pad_let_go, count_beat_at};
+        scene.freeze = &context_.prints.freeze; // freeze plan F2c
+        if (ui.page == PageId::Print && context_.printer) {
+            auto job = context_.printer->progress();
+            if (job.busy && job.freeze && job.track == ui.print_sheet.track) { scene.printed = job.done; scene.printing = job.pattern; }
+        }
         std::array<pad_light::Look, 16> looks;
         pad_looks(scene, looks);
         uint64_t rungs = 0, hues = 0;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/pages/common.h"
+#include "melodee/shell/undo_scope.h"
 #include "melodee/shell/midi_ports.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/arp.h"
@@ -99,6 +100,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         c.shade = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_shade(l, n) : ui::knob_shade(s.ui.track, n);
         c.track = neutral || c.knob_fx ? ui::colour::text : loop ? ui::loop_colour(l) : colour_of(s);
         c.fill = b.fraction();
+        c.frozen = print_covers(s.freeze, freeze_scope(s.project, s.ui, b)); // freeze plan F2c
         const auto& pot = s.ui.pots[n];
         if (pot.position >= 0 && !pot.engaged && pot.bound == b.key(s.ui.track)) {
             c.state = ui::KnobCard::State::Pickup;
@@ -202,6 +204,8 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.value = names[unsigned(b.value) % unsigned(FollowAction::Count)];
         break;
     }
+    case Kind::PrintTapPick: c.label = "TAP"; c.value = b.value ? "Pre FX" : "Post FX"; break; // freeze plan F2c, the PRINT sheet
+    case Kind::PrintTailPick: c.label = "TAIL"; c.value = b.value == 2 ? "Cut" : b.value == 1 ? "Ring" : "Loop"; break;
     case Kind::FollowAfter: c.label = "AFTER"; c.value = juce::String(b.value % 64 + 1); c.unit = b.value >= 64 ? (b.value == 64 ? "play" : "plays") : (b.value == 0 ? "bar" : "bars"); break;
     case Kind::FollowChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::PatternProgram: { // the pattern in hand's own program, as PROGRAM shows one

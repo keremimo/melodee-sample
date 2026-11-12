@@ -32,6 +32,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
     ConfirmSheet sheet;
     juce::String verb = "ERASE", cancel = "CANCEL";
     Icon verb_glyph = Icon::Trash;
+    juce::Colour accent = colour::rec; // the verb's: red for a loss
     const juce::String undo_line = "Undo brings them back.";
     switch (s.ui.ask) {
     case Ask::EraseKeyEvents: { // Erase + a pad
@@ -136,6 +137,19 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         sheet.chip_colour = colour::sec;
         verb = "INSTALL"; verb_glyph = Icon::Check; cancel = "LATER";
         break;
+    case Ask::Unfreeze: { // freeze plan F2c: an edit of a frozen track
+        unsigned which = unsigned(s.ui.ask_target) % track_count;
+        sheet.icon = Icon::Snow;
+        sheet.accent = colour::ice;
+        sheet.title = "Unfreeze track " + juce::String(which + 1) + "?";
+        sheet.lines = {"Its sound plays live again.", "Prints stay until what made them changes."};
+        unsigned kept = s.prints_kept[which];
+        sheet.chip = count_of(kept, "PRINT", "PRINTS");
+        sheet.chip_colour = colour::ice;
+        sheet.name = "TRACK " + juce::String(which + 1);
+        verb = "UNFREEZE"; verb_glyph = Icon::Snow; accent = colour::ice;
+        break;
+    }
     default: return;
     }
 
@@ -145,9 +159,9 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         p.fill(x + 8, zone::soft_y + 2, column - 16, zone::soft_h - 4, colour::raised, 4);
     }
     bool on_verb = s.ui.ask_pick == 2; // the wheel's key, barred; Push presses it
-    SoftKeys keys {{cancel, "", verb}, on_verb ? 2 : 0, on_verb ? colour::rec : colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{cancel, "", verb}, on_verb ? 2 : 0, on_verb ? accent : colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     keys.glyphs[2] = verb_glyph;
-    keys.tints[2] = colour::rec;
+    keys.tints[2] = accent;
     soft_keys(p, keys);
     p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
     p.dim_zone(zone::knobs_y, zone::knobs_h);
