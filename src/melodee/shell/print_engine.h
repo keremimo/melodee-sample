@@ -43,6 +43,7 @@ struct PrintJob {
     PrintTable known;                    // the prints as they stand
     // Freeze plan F2b: once printed, the patterns' prints mapped for the audio thread to play (a FreezeReady).
     bool freeze = false;
+    bool deep = false;                   // freeze plan F2d: its pack plays as a deep freeze (FreezePack::deep)
     uint32_t serial = 0;                 // the freeze it is for (the shell drops one a later freeze replaced)
 };
 

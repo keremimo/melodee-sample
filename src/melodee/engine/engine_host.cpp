@@ -422,6 +422,7 @@ void EngineHost::apply(const Command& c) {
         slot.plugin.attach(slot.kind == EngineKind::Plugin ? runner_of(slot.plugin_entry) : nullptr);
         break;
     case Type::NoteOn:
+        if (slot.freeze && slot.freeze->deep) break; // freeze plan F2d: a deep-frozen track's pads play nothing
         if (slot.freeze) { wake(slot); slot.hand.set(c.index & 0xff); } // freeze plan F2b: a hand wakes a frozen track's engine
         if (c.index <= 127 || slot.kind == EngineKind::Sampler) engine_note_on(slot, c.index, c.value);
         if (c.pattern != 1) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now + block_at, -1); // a pad's note (not one from MIDI in)
@@ -648,6 +649,7 @@ void EngineHost::apply(const Command& c) {
         break;
     }
     case Type::ArpKey:
+        if (c.value && slot.freeze && slot.freeze->deep) break; // freeze plan F2d
         if (c.value && slot.freeze) wake(slot);
         if (c.value) slot.arp.press(c.index, c.value); else slot.arp.release(c.index);
         if (!slot.arp.count) slot.arp.position = 0;
@@ -716,6 +718,7 @@ void EngineHost::apply(const Command& c) {
         bounce_ticks = bounce_song ? 0 : std::max<uint32_t>(c.position, 1);
         break;
     case Type::PadNote:
+        if (slot.freeze && slot.freeze->deep) break; // freeze plan F2d
         if (slot.freeze) wake(slot);
         if (slot.engine == &slot.sampler) {
             EngineCall call;
@@ -776,6 +779,7 @@ void EngineHost::apply(const Command& c) {
         break;
     }
     case Type::Audition:
+        if (slot.freeze && slot.freeze->deep) break; // freeze plan F2d
         if (slot.freeze) wake(slot);
         if (slot.engine == &slot.sampler) {
             EngineCall call;
@@ -1016,7 +1020,7 @@ void EngineHost::print_tick(unsigned, Slot& slot, uint32_t at, uint32_t length) 
     PrintClip* clip = slot.freeze->clips[slot.pattern % pattern_count];
     if (clip && (clip->rate != uint32_t(std::lround(rate)) || std::fabs(double(clip->pass) - pattern_frames(length)) > 64)) clip = nullptr;
     slot.print_on = clip != nullptr;
-    if (!clip) wake(slot);
+    if (!clip && !slot.freeze->deep) wake(slot); // freeze plan F2d: a deep freeze stays asleep (its plug-ins are gone)
     slot.print.follow(clip, at, pattern_frames(at), tick_samples(tick_now), rate);
 }
 
@@ -2283,7 +2287,8 @@ void EngineHost::tick() {
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
         if (sound && (at == 0 || !pattern.motion.empty() || slot.locks_on)) play_motion(t, slot, pattern, at);
         if (slot.freeze && sound) print_tick(t, slot, at, length); // freeze plan F2b
-        const bool seq = sound && !slot.print_on; // its print plays the notes: they go out by MIDI alone
+        // Its print plays the notes: they go out by MIDI alone (freeze plan F2d: a deep freeze's engine never hears them).
+        const bool seq = sound && !slot.print_on && !(slot.freeze && slot.freeze->deep);
         const auto& events = pattern.events;
         Slot::Held holding; // this tick's own Slide or Tie, for the notes of a later one
         bool lanes = !pattern.lanes.empty();
@@ -2594,7 +2599,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         if (slot.print_fed && post)
             for (unsigned f = 0; f < frames; ++f) { slot.left[f] += slot.print_l[f] * slot.print_mix_l.at(f); slot.right[f] += slot.print_r[f] * slot.print_mix_r.at(f); }
         if (frozen && !asleep) { // asleep after a second below the floor, nothing held by hand and no pattern played live
-            bool keep = slot.hand.any() || slot.arp.count || (running && !slot.silent && !slot.print_on);
+            bool keep = !slot.freeze->deep && (slot.hand.any() || slot.arp.count || (running && !slot.silent && !slot.print_on));
             slot.quiet = keep || awake_peak >= sleep_floor ? 0 : slot.quiet + frames;
             if (slot.quiet >= uint32_t(dsp::sample_rate())) slot.awake = false;
         }

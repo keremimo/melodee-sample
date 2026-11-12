@@ -42,8 +42,9 @@ void cell(Paint& p, const Snapshot& s, unsigned t, float x, float y, int copying
     if (selected) p.fill(x, y, 2.5f, cell_h, c, 1);
     p.text(number, x + 6, y + 2, 20, 16, plain(muted ? colour::dim : c, type::body, Weight::Bold));
     p.text("P" + juce::String(track.pattern + 1), x + 6, y + 16, 24, 14, plain(colour::dim, type::small, Weight::Medium));
-    bool frozen = s.freeze[t].frozen(); // freeze plan F2c: a snowflake in place of the engine
-    icon(p, muted ? Icon::SpeakerOff : frozen ? Icon::Snow : engine_icon(track.engine), x + 26, y + 5, 12,
+    bool frozen = s.freeze[t].frozen(); // freeze plan F2c: a snowflake in place of the engine (F2d: on a tile, deep)
+    Icon snow = s.freeze[t].state == FreezeState::Deep ? Icon::DeepSnow : Icon::Snow;
+    icon(p, muted ? Icon::SpeakerOff : frozen ? snow : engine_icon(track.engine), x + 26, y + 5, 12,
          muted ? colour::rec : frozen ? colour::ice : c, 1.4f);
     if (!muted) column(p, x + cell_w - 6, y + 4, 3, cell_h - 8, track.mix.level / 127.0f, c);
     // What it takes of a block (roadmap P2), along the bottom: the whole width a core's whole block, in the load's colour.
@@ -61,7 +62,8 @@ void strip(Paint& p, const Snapshot& s) {
     auto c = track_colour(t);
     p.text(juce::String(t + 1), x + 6, y + 3, 20, 16, plain(c, type::body, Weight::Bold));
     if (!track.used()) return;
-    if (s.freeze[t].frozen()) icon(p, Icon::Snow, x + strip_w - 17, y + 4, 12, colour::ice, 1.5f); // freeze plan F2c
+    if (s.freeze[t].frozen()) // freeze plan F2c (F2d: deep, on a tile)
+        icon(p, s.freeze[t].state == FreezeState::Deep ? Icon::DeepSnow : Icon::Snow, x + strip_w - 17, y + 4, 12, colour::ice, 1.5f);
     auto name = plain(colour::text, type::small, Weight::SemiBold);
     float iw = strip_w - 12;
     auto lines = p.wrap(name_case(track.name), name, iw, 2);

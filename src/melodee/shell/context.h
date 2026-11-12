@@ -16,6 +16,7 @@
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/ui_state.h"
 #include <array>
+#include <atomic>
 #include <bitset>
 #include <vector>
 #include <memory>
@@ -308,6 +309,7 @@ public:
         PrintTap tap = PrintTap::PostFx;
         PrintTail tail = PrintTail::Loop;
         enum Mode : uint8_t { Print, Freeze, Unfreeze } mode = Print; // freeze plan F2b: the same ask freezes the track
+        bool deep = false; // freeze plan F2d: a deep freeze (every pattern with notes, Post FX)
     };
     void print(const PrintAsk& ask);
     void print_tick();
@@ -323,13 +325,28 @@ public:
     bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
     std::array<uint32_t, track_count> freeze_serial {};
     uint32_t freeze_waiting = 0;
+    // Freeze plan F2d: a deep freeze also lets go of the track's plug-in and its chain's plug-ins (PluginRack::sync's
+    // `asleep`): its pads play nothing and only its prints sound. `deep_hold`: deep-frozen tracks whose plug-ins stay
+    // until their prints play and the engine sleeps (`deep_sent`: when their pack went, ms). Unfreezing one thaws it:
+    // `thawing` tracks reload their plug-ins with the state they were let go with, the prints playing meanwhile, and go
+    // live once every one is open (thaw_tick()). plugins_asleep(): the tracks whose plug-ins are let go now.
+    bool deep(unsigned track) const { return prints.freeze[track % track_count].state == FreezeState::Deep; }
+    uint32_t deep_hold = 0, thawing = 0;
+    std::array<uint32_t, track_count> deep_sent {}, thaw_since {}, thaw_ready {};
+    uint32_t thaw_took = 0; // ms, the last thaw's
+    // For `melodee-freeze status` (any thread): the deep-frozen tracks, the thawing ones, the last thaw's ms.
+    std::atomic<uint32_t> deep_now {0}, thawing_now {0}, thaw_took_now {0};
+    uint32_t plugins_asleep() const;
+    void thaw_tick();
+    void go_live(unsigned track); // the freeze dropped at once (unfreeze() of a track not deep, or a thaw done)
     // Freeze plan F2c (shell/print_sheet.cpp). The PRINT sheet: opened by Sample Record on a PLUGIN or MIDI track (B3
     // PRINT on a kit's Record), its pads the patterns of the bank in view (a tap lights or leaves one out, B2 ALL), B3
     // FREEZE prints and freezes them, B1 CANCEL closes it or calls the prints off with nothing changed.
     void open_print_sheet();
     void print_sheet_pad(unsigned pad);
     void print_sheet_all();
-    void print_sheet_go();
+    void print_sheet_go(bool deep_freeze = false); // freeze plan F2d: Shift + B3 DEEP FREEZE
+    void deep_freeze(unsigned track);              // Shift + B3 on a frozen track's Stage
     void print_sheet_cancel();
     // Seq held + Sample Record: while Seq stays down each pattern pad freezes or thaws its pattern; on its release the
     // track is frozen as they stand (prints made first), or unfrozen when none is left.

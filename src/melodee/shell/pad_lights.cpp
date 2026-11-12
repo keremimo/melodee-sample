@@ -700,7 +700,10 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::Punch: look = punch_look(s, pad); break;
             case PageId::FlexBeat: look = flex_look(s, pad); break;
             case PageId::PadPunch: look = pad_punch_look(s, snd, pad); break;
-            default: look = play_look(s, snd, pad); break; // the track's own pads
+            default: // the track's own pads (freeze plan F2d: dark on a deep-frozen track, they play nothing)
+                if (s.freeze && (*s.freeze)[selected_index(s) % track_count].state == FreezeState::Deep) break;
+                look = play_look(s, snd, pad);
+                break;
             }
             break;
         }

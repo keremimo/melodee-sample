@@ -42,7 +42,9 @@ ProjectStore::~ProjectStore() {
 
 void ProjectStore::push(Request* request) { if (!requests.push(request)) delete request; }
 void ProjectStore::list(const std::string& f) { push(new Request {Request::Kind::List, f, {}}); }
-void ProjectStore::save(const std::string& path, std::vector<uint8_t> bytes) { push(new Request {Request::Kind::Save, path, std::move(bytes)}); }
+void ProjectStore::save(const std::string& path, std::vector<uint8_t> bytes, const std::string& from) {
+    push(new Request {Request::Kind::Save, path, std::move(bytes), from});
+}
 void ProjectStore::load(const std::string& path) { push(new Request {Request::Kind::Load, path, {}}); }
 void ProjectStore::duplicate(const std::string& path) { push(new Request {Request::Kind::Duplicate, path, {}}); }
 void ProjectStore::remove(const std::string& path) { push(new Request {Request::Kind::Remove, path, {}}); }
@@ -236,6 +238,20 @@ void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
         else fs::rename(source, target, error);
     }
 }
+// Freeze plan F2d: Save As takes the prints along, so a frozen track plays them under the new name without printing
+// again (a print still being written, a .part, stays behind).
+void copy_prints(const fs::path& from, const fs::path& to) {
+    std::error_code error;
+    auto source = folder_of(from, " Prints");
+    if (!fs::is_directory(source, error)) return;
+    auto target = folder_of(to, " Prints");
+    fs::create_directories(target, error);
+    for (const auto& entry : fs::directory_iterator(source, error)) {
+        std::error_code e;
+        if (!entry.is_regular_file(e) || entry.path().extension() == ".part") continue;
+        fs::copy_file(entry.path(), target / entry.path().filename(), fs::copy_options::overwrite_existing, e);
+    }
+}
 } // namespace
 
 void ProjectStore::run(Request& r) {
@@ -255,6 +271,7 @@ void ProjectStore::run(Request& r) {
         }
         fs::rename(temporary, r.path, error);
         if (error) { publish_message("Could not save"); return; }
+        if (!r.from.empty() && r.from != r.path) copy_prints(r.from, r.path); // Save As (freeze plan F2d)
         remember(r.path); // only the open project is saved, and before the count moves, so a leave after it keeps it
         saved.fetch_add(1, std::memory_order_release);
         break;

@@ -20,6 +20,9 @@
 #include <filesystem>
 #include <system_error>
 #include <unistd.h>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 namespace melodee {
 namespace fs = std::filesystem;
@@ -302,6 +305,7 @@ PluginRack::~PluginRack() {
         if (!stage.empty()) fs::remove_all(stage, e);
     }
     if (racks.fetch_sub(1) == 1) message_thread().stop();
+    give_back_memory();
 }
 
 void PluginRack::push(Job job) {
@@ -314,43 +318,42 @@ void PluginRack::push(Job job) {
 
 bool PluginRack::referenced(const Project& project, unsigned entry) const { return plugin_used_by(project, entry); }
 
-void PluginRack::sync(const Project& project) {
+bool PluginRack::asleep(unsigned entry) const {
+    std::lock_guard<std::mutex> held(lock);
+    return entry < max_plugins && entries[entry].asleep;
+}
+
+void PluginRack::sync(const Project& project, uint32_t asleep) {
     double rate = dsp::sample_rate();
     std::vector<Job> wanted;
+    bool moved = false;
     {
         std::lock_guard<std::mutex> held(lock);
         for (unsigned e = 0; e < max_plugins; ++e) {
             auto& entry = entries[e];
             std::string want = project.plugins[e].used() && referenced(project, e) ? project.plugins[e].path : "";
             int32_t id = want.empty() ? 0 : project.plugins[e].id;
-            bool same = want == entry.path && id == entry.id;
-            bool rerate = !want.empty() && same && entry.rate != 0 && entry.rate != rate && entry.status == PluginStatus::Ready;
-            bool again = entry.reload && !want.empty();
-            entry.reload = false;
-            if (same && !rerate && !again) continue;
-            if (rerate && entry.live) { // keep what it is now through the reload
+            // Freeze plan F2d: used only by deep-frozen tracks, it sleeps (plugin/plugin_sleep.h).
+            bool only_asleep = !want.empty() && asleep && !plugin_used_awake(project, e, asleep);
+            auto step = plan_plugin(entry, want, id, only_asleep, rate, entry.live != nullptr);
+            if (step == PluginStep::Keep) continue;
+            moved = true;
+            entry.error.clear();
+            switch (step) {
+            case PluginStep::Keep: case PluginStep::Changed: break;
+            case PluginStep::Sleep: wanted.push_back({Job::Kind::Sleep, e, entry.generation, {}, 0}); break;
+            case PluginStep::Unload: wanted.push_back({Job::Kind::Unload, e, entry.generation, {}, 0}); break;
+            case PluginStep::Rerate: { // keep what it is now through the reload
                 juce::MemoryBlock block;
                 entry.live->instance->getStateInformation(block);
                 entry.state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
-            } else if (!same && !entry.path.empty() && !want.empty()) {
-                entry.state.clear(); // another plug-in in this entry: its own defaults
+                [[fallthrough]];
             }
-            entry.path = want;
-            entry.id = id;
-            entry.rate = rate;
-            ++entry.generation;
-            entry.error.clear();
-            if (want.empty()) {
-                entry.status = PluginStatus::None;
-                entry.state.clear();
-                wanted.push_back({Job::Kind::Unload, e, entry.generation, {}, 0});
-            } else {
-                entry.status = PluginStatus::Loading;
-                wanted.push_back({Job::Kind::Load, e, entry.generation, want, rate, id});
+            case PluginStep::Load: wanted.push_back({Job::Kind::Load, e, entry.generation, want, rate, id}); break;
             }
         }
     }
-    if (wanted.empty()) return;
+    if (!moved) return;
     changed();
     for (auto& job : wanted) push(std::move(job));
 }
@@ -400,6 +403,13 @@ std::string PluginRack::summary() const {
         const auto& entry = entries[e];
         if (entry.path.empty()) continue;
         auto status = entry.status;
+        if (entry.asleep) { // freeze plan F2d
+            std::string name = entry.file.name.empty() ? fs::path(entry.path).stem().string() : entry.file.name;
+            for (auto& ch : name) if (ch == ' ' || ch == ',' || ch == ':') ch = '_';
+            if (!out.empty()) out += ',';
+            out += std::to_string(e) + ":asleep:" + name + ':' + format_tag(entry.file.format) + ":0";
+            continue;
+        }
         if (auto* h = entry.live)
             if (auto* bridged = dynamic_cast<Vst2BridgeInstance*>(h->instance.get()); bridged && bridged->bridgeDied()) status = PluginStatus::Crashed;
         std::string name = entry.file.name.empty() ? fs::path(entry.path).stem().string() : entry.file.name;
@@ -646,6 +656,7 @@ void PluginRack::run() {
         switch (job.kind) {
         case Job::Kind::Load: load(job); break;
         case Job::Kind::Unload: unload(job.entry, job.generation); break;
+        case Job::Kind::Sleep: sleep(job.entry, job.generation); break;
         case Job::Kind::Browse: {
             std::string from;
             {
@@ -923,6 +934,31 @@ void PluginRack::unload(unsigned entry, uint32_t generation) {
     changed();
 }
 
+// Freeze plan F2d: the plug-in's state as it is now kept for when it wakes (one still opening keeps the state it was
+// to open with), then let go. The audio thread hands it back and free_retired() frees it here, never on the MIDI or
+// audio thread.
+void PluginRack::sleep(unsigned entry, uint32_t generation) {
+    PluginHandle* old = nullptr;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        auto& e = entries[entry];
+        if (e.generation != generation || !e.asleep) return;
+        old = e.live;
+        e.live = nullptr;
+        if (old) {
+            juce::MemoryBlock block;
+            old->instance->getStateInformation(block);
+            e.state.assign(static_cast<const uint8_t*>(block.getData()), static_cast<const uint8_t*>(block.getData()) + block.getSize());
+            retiring.push_back(old);
+        }
+    }
+    if (old && !offer(entry, nullptr)) {
+        std::lock_guard<std::mutex> held(lock);
+        unoffered.emplace_back(entry, nullptr);
+    }
+    changed();
+}
+
 bool PluginRack::offer(unsigned entry, PluginHandle* handle) { return host.offer_plugin(entry, handle); }
 
 void PluginRack::free_retired() {
@@ -962,6 +998,17 @@ void PluginRack::destroy(PluginHandle* handle) {
     else owned.reset();
     std::error_code e;
     if (!stage.empty()) fs::remove_all(stage, e);
+    give_back_memory();
+}
+
+// Freeze plan F2d: what a plug-in freed goes back to the system (glibc keeps freed heap for the process otherwise,
+// so a deep freeze would save no RAM). The rack's thread: the audio thread never allocates, so it never waits here.
+void start_plugin_messages() { message_thread().start(); }
+
+void give_back_memory() {
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
 }
 
 } // namespace melodee

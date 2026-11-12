@@ -9,7 +9,9 @@
 // freezing saves of a block. B3 FREEZE prints them: then each pad shows its
 // print's progress, the column the speed and the time left; B1 calls it off
 // and nothing changes. Minus / Plus: the bank in view. A MIDI track's prints
-// need its audio back in real time: not yet.
+// need its audio back in real time: not yet. Shift + B3 DEEP FREEZE (freeze
+// plan F2d): every pattern with notes at Post FX, then the track's plug-ins
+// and its chain's are let go; its pads play nothing until it is unfrozen.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include <cmath>
@@ -46,22 +48,31 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.project.tracks[t];
     const auto c = track_colour(t);
     const bool midi = track.engine == EngineKind::Midi, printing = sheet.printing;
+    const bool deep = s.freeze[t].state == FreezeState::Deep; // freeze plan F2d
     const auto& job = s.print;
     const bool ours = job.busy && job.track == t && job.freeze; // the print engine works on this sheet's track
+    // Freeze plan F2d: with Shift held (DEEP FREEZE on B3) every pattern with notes is lit, as a deep freeze takes them all.
+    const bool all_lit = s.ui.shift && !printing;
+    auto lit_at = [&](unsigned n) { return all_lit || sheet.picked(n); };
     unsigned picked = 0, notes = 0;
-    for (unsigned n = 0; n < pattern_count; ++n) { notes += s.sketches[t][n].notes; picked += s.sketches[t][n].notes && sheet.picked(n); }
+    for (unsigned n = 0; n < pattern_count; ++n) { notes += s.sketches[t][n].notes; picked += s.sketches[t][n].notes && lit_at(n); }
 
     Header h = header_of(s);
     if (printing) h.left.push_back(pill(Icon::Snow, ours ? "PRINTING " + juce::String(job.through + (job.pattern >= 0)) + "/" + juce::String(job.count)
                                                         : juce::String("PRINTING"), colour::ice));
-    else h.left.push_back(chip(Icon::Snow, "PRINT", colour::ice));
+    else h.left.push_back(chip(deep ? Icon::DeepSnow : Icon::Snow, deep ? "DEEP" : "PRINT", colour::ice));
     h.left.push_back(bank_pill(s));
     h.right.push_back(tag_of(s, t));
     SoftKeys keys {{"CANCEL", printing ? "" : "ALL", printing ? "" : "FREEZE"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     if (!printing) {
         keys.glyphs[2] = Icon::Snow;
         keys.tints[2] = midi || !picked ? colour::dim : colour::ice;
-        if (s.ui.shift) { keys.labels = {"", "", "DEEP FREEZE"}; keys.icons = {}; keys.tints[2] = colour::dim; } // F2d: not yet
+        if (s.ui.shift) { // freeze plan F2d: the whole track, its plug-ins let go after
+            keys.labels = {"", "", "DEEP FREEZE"};
+            keys.icons = {};
+            keys.glyphs[2] = Icon::DeepSnow;
+            keys.tints[2] = midi || !notes || deep ? colour::dim : colour::ice;
+        }
     }
     frame(p, s, keys, h);
 
@@ -71,7 +82,7 @@ void draw(Paint& p, const Snapshot& s) {
     for (unsigned k = 0; k < pattern_pads; ++k) {
         unsigned n = s.ui.pad_pattern(k), row = 3 - k / 4, column = k % 4;
         float x = gx + column * (cell + gap), y = gy + row * (cell + gap);
-        bool has = s.sketches[t][n].notes, lit = has && sheet.picked(n);
+        bool has = s.sketches[t][n].notes, lit = has && lit_at(n);
         juce::Colour text = colour::dim;
         bool snow = false;
         if (printing && lit && ours && job.is_done(n)) { p.fill(x, y, cell, cell, c.withAlpha(0.8f), 5); text = colour::bg; snow = true; }
@@ -93,7 +104,8 @@ void draw(Paint& p, const Snapshot& s) {
         else p.fill(x, y, cell, cell, colour::quiet, 5);
         if (!printing && lit && n == live) p.ring(x, y, cell, cell, colour::text, 5, 1.5f); // the one playing
         p.text(juce::String(n + 1), x, y, cell, cell, plain(text, type::body, Weight::SemiBold), juce::Justification::centred);
-        if (snow) icon(p, Icon::Snow, x + cell - 11.5f, y + 2.5f, 9, colour::bg, 1.4f);
+        if (snow && deep) deep_snow(p, x + cell - 12.5f, y + 2.5f, 10, colour::bg, c, 1.3f);
+        else if (snow) icon(p, Icon::Snow, x + cell - 11.5f, y + 2.5f, 9, colour::bg, 1.4f);
     }
 
     // Beside them: what it costs and saves, or how the prints go.
@@ -118,7 +130,7 @@ void draw(Paint& p, const Snapshot& s) {
             block(p, x, y + 44, w, "MIDI TRACKS", "Later", "", colour::amber);
         } else {
             double bytes = 0;
-            for (unsigned n = 0; n < pattern_count; ++n) if (s.sketches[t][n].notes && sheet.picked(n)) bytes += print_bytes(s, t, n, sheet.tail);
+            for (unsigned n = 0; n < pattern_count; ++n) if (s.sketches[t][n].notes && lit_at(n)) bytes += print_bytes(s, t, n, sheet.tail);
             double mb = bytes / (1024.0 * 1024.0);
             block(p, x, y + 44, w, "CARD", mb >= 10 ? juce::String(int(std::lround(mb))) : juce::String(mb, 1), "MB", colour::text);
             float load = s.machine.track_load[t];
@@ -135,7 +147,7 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t, bool down) { if (down) c.print_sheet_pad(pad); }
 
 void soft(Context& c, int key) {
-    if (c.ui.shift) { if (key == 2 && !c.ui.print_sheet.printing) c.notice("Deep freeze: later"); return; } // F2d
+    if (c.ui.shift) { if (key == 2) c.print_sheet_go(true); return; } // freeze plan F2d: DEEP FREEZE
     if (key == 0) c.print_sheet_cancel();
     if (key == 1) c.print_sheet_all();
     if (key == 2) c.print_sheet_go();

@@ -43,7 +43,8 @@ float item(Paint& p, const HeaderItem& it, float x, bool measure_only) {
         float w = gw + tw + 8;
         if (!measure_only) {
             p.fill(x, top, w, item_h, it.kind == Kind::Pill ? colour::surf : it.colour, 3);
-            if (glyph) icon(p, it.icon, x + 4, header_mid - 5, 10, style.colour, 1.5f);
+            if (glyph && it.icon == Icon::DeepSnow && it.kind == Kind::Chip) deep_snow(p, x + 4, header_mid - 5, 10, colour::bg, it.colour, 1.5f); // on the chip's fill
+            else if (glyph) icon(p, it.icon, x + 4, header_mid - 5, 10, style.colour, 1.5f);
             if (tw > 0) p.text(it.text, x + 4 + gw, top, tw + 1, item_h, style);
         }
         return w;

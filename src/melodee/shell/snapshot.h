@@ -125,6 +125,7 @@ struct Snapshot {
     PrintProgress print {};
     std::array<float, track_count> live_load {};
     uint32_t printing_tracks = 0;
+    uint32_t thawing = 0; // freeze plan F2d: deep-frozen tracks whose plug-ins load again (a bit each)
     std::array<uint8_t, 96> print_peaks {}; // the selected track's pattern playing, its print in small (PrintPeaks)
     bool print_peaks_known = false;
     const Track& track() const { return project.tracks[ui.track % track_count]; }

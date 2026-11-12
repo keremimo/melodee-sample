@@ -25,12 +25,16 @@ enum class Icon : uint8_t {
     Cloud, Tape, Clock, Swap, Route, Bars, Sliders, Layers, Screen, File, Wheel,
     ArrowLeft, SpaceBar,
     Snow, // freeze plan F2c: a frozen track or pattern, a print
+    DeepSnow, // freeze plan F2d: a deep-frozen track, the snowflake cut out of a filled tile
     Count
 };
 
 // Draws `icon` in a `size` square with its top left at x, y; lines `stroke`
 // device pixels wide whatever the size.
 void icon(Paint& p, Icon icon, float x, float y, float size, juce::Colour c, float stroke = 1.4f);
+// Freeze plan F2d: the deep freeze glyph with its colours given (Icon::DeepSnow: a tile of `c`, the flake in the
+// background's colour); on a filled pad, a tile of the background with the flake in the pad's colour.
+void deep_snow(Paint& p, float x, float y, float size, juce::Colour tile, juce::Colour flake, float stroke = 1.4f);
 
 // SVG path data (absolute M L H V C Q A Z) as a JUCE path: the part of
 // juce_gui_basics' Drawable::parseSVGPath the glyphs need, kept here so the

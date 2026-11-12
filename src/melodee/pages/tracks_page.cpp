@@ -31,8 +31,9 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(used);
     float load = s.machine.track_load[s.ui.track % track_count]; // the track in hand's share of a block (roadmap P2)
     if (s.track().used()) {
-        bool frozen = s.freeze[s.ui.track % track_count].frozen();
-        h.right.push_back(pill(frozen ? Icon::Snow : Icon::Chip, juce::String(int(std::lround(load * 100))) + " %", frozen ? colour::ice : load_colour(load)));
+        const auto& f = s.freeze[s.ui.track % track_count];
+        bool frozen = f.frozen();
+        h.right.push_back(pill(f.state == FreezeState::Deep ? Icon::DeepSnow : frozen ? Icon::Snow : Icon::Chip, juce::String(int(std::lround(load * 100))) + " %", frozen ? colour::ice : load_colour(load)));
     }
     h.right.push_back(label(s.project.name));
     SoftKeys keys {{"TRACKS", "LOOPER", "SENDS"}, 0, colour_of(s)};

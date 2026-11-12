@@ -126,14 +126,16 @@ void Context::print_sheet_all() {
     sheet.picks = sheet.picks == notes ? decltype(notes) {} : notes; // all, or (all lit already) none
 }
 
-void Context::print_sheet_go() {
+void Context::print_sheet_go(bool deep_freeze) {
     auto& sheet = ui.print_sheet;
     const unsigned t = sheet.track % track_count;
     if (sheet.printing) return;
     if (project.tracks[t].engine == EngineKind::Midi) { notice("MIDI tracks: later"); return; }
     if (project_path.empty()) { notice("Save the project first"); return; }
     if (!printer) return;
-    if (none_of(sheet.picks)) { notice("No pattern lit"); return; }
+    if (deep_freeze && deep(t)) { notice(track_word(t) + " is deep frozen"); return; }
+    // Freeze plan F2d: a deep freeze takes every pattern with notes, lit or not, at Post FX.
+    if (none_of(deep_freeze ? with_notes(patterns, t) : sheet.picks)) { notice(deep_freeze ? "No pattern with notes" : "No pattern lit"); return; }
     print_was = prints.freeze[t];
     PrintAsk ask;
     ask.track = uint8_t(t);
@@ -141,6 +143,8 @@ void Context::print_sheet_go() {
     ask.tap = sheet.tap;
     ask.tail = sheet.tail;
     ask.mode = PrintAsk::Freeze;
+    ask.deep = deep_freeze;
+    if (deep_freeze) { sheet.picks = with_notes(patterns, t); sheet.tap = PrintTap::PostFx; }
     if (!frozen(t)) live_load[t] = host.track_load(t); // what it takes live now: what freezing saves
     freeze(ask);
     if (!frozen(t)) return; // refused (notes went with the printer)
@@ -161,7 +165,7 @@ void Context::print_sheet_cancel() {
         if (now.track == t && now.freeze) printer->cancel();
     }
     if (print_was.frozen()) prints.freeze[t] = print_was;
-    else unfreeze(t);
+    else go_live(t); // nothing was let go yet (freeze plan F2d: a deep freeze's plug-ins wait for its print)
     sheet.printing = false;
     notice("Print called off");
     back();
@@ -175,6 +179,8 @@ void Context::seq_print_start() {
     ui.seq_used = true;
     if (!tr.used() || tr.engine == EngineKind::Midi) { notice(tr.used() ? "MIDI tracks: later" : "Empty track"); return; }
     if (project_path.empty()) { notice("Save the project first"); return; }
+    if (deep(t)) { notice(track_word(t) + " is deep frozen: whole track"); return; } // freeze plan F2d: no pattern alone
+
     ui.seq_print = true;
     ui.seq_frozen = frozen(t) ? prints.freeze[t].patterns : decltype(ui.seq_frozen) {};
 }
@@ -209,6 +215,27 @@ void Context::seq_print_end() {
     if (!frozen(t)) live_load[t] = host.track_load(t);
     freeze(ask);
     if (frozen(t)) { freeze_last[t] = prints.freeze[t]; notice("Printing " + track_word(t)); }
+}
+
+// ---- freeze plan F2d: Shift + B3 DEEP FREEZE on a frozen track's Stage
+
+void Context::deep_freeze(unsigned track) {
+    const unsigned t = track % track_count;
+    const auto& tr = project.tracks[t];
+    if (!tr.used() || tr.engine == EngineKind::Midi) { notice(tr.used() ? "MIDI tracks: later" : "Empty track"); return; }
+    if (project_path.empty()) { notice("Save the project first"); return; }
+    if (deep(t)) { notice(track_word(t) + " is deep frozen"); return; }
+    if (none_of(with_notes(patterns, t))) { notice("No pattern with notes"); return; }
+    const auto& f = frozen(t) ? prints.freeze[t] : freeze_last[t];
+    PrintAsk ask;
+    ask.track = uint8_t(t);
+    ask.all = true;
+    ask.tail = f.tail;
+    ask.mode = PrintAsk::Freeze;
+    ask.deep = true;
+    if (!frozen(t)) live_load[t] = host.track_load(t);
+    freeze(ask);
+    if (deep(t)) { freeze_last[t] = prints.freeze[t]; notice("Deep freezing " + track_word(t)); }
 }
 
 } // namespace melodee

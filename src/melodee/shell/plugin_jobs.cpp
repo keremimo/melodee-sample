@@ -129,7 +129,7 @@ void Context::choose_plugin(const PluginFile& file) {
     }
     ui.plugin_row[size_t(entry)] = 0;
     dirty = true;
-    plugins->sync(project);
+    plugins->sync(project, plugins_asleep());
     notice("Loading " + file.name);
     open(ui.plugin_back);
 }
@@ -185,7 +185,7 @@ void Context::plugins_tick(uint32_t at) {
         plugins->set_card(root.empty() ? std::string() : std::filesystem::path(root).parent_path().string());
     }
     split_shared_plugins();
-    plugins->sync(project);
+    plugins->sync(project, plugins_asleep());
     if (ui.page == PageId::Plugins && plugins->changes() != plugin_view_seen) { // the picker's rows, and where going up lands
         plugin_view_seen = plugins->changes();
         auto view = plugins->view();

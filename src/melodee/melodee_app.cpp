@@ -237,7 +237,11 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
             for (unsigned t = 0; t < melodee::track_count; ++t) if ((b >> t) & 1) out += (out.empty() ? "" : ",") + std::to_string(t + 1);
             return out.empty() ? std::string("-") : out;
         };
-        std::string s = "OK frozen=" + bits(host.frozen_tracks()) + " print_playing=" + bits(host.printing_tracks())
+        auto& ctx = shell.context(); // freeze plan F2d: its atomics only (this is not the MIDI thread)
+        std::string s = "OK frozen=" + bits(host.frozen_tracks()) + " deep=" + bits(ctx.deep_now.load(std::memory_order_relaxed))
+                      + " thawing=" + bits(ctx.thawing_now.load(std::memory_order_relaxed))
+                      + " thaw_ms=" + std::to_string(ctx.thaw_took_now.load(std::memory_order_relaxed)) + " plugins=" + plugins.summary()
+                      + " print_playing=" + bits(host.printing_tracks())
                       + " engine_asleep=" + bits(host.sleeping_tracks()) + " print_underruns=" + std::to_string(host.print_underruns())
                       + " print_waits=" + std::to_string(host.print_waits())
                       + " stream_underruns=" + std::to_string(const_cast<melodee::EngineHost&>(host).streams().underruns())
@@ -255,10 +259,11 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         std::string word;
         int track = 0;
         if (!(words >> track) || track < 1 || track > int(melodee::track_count))
-            return "ERR " + action + " TRACK [A1,B2..|1..128|all] [pre|post] [loop|ring|cut]";
+            return "ERR " + action + " TRACK [A1,B2..|1..128|all] [pre|post] [loop|ring|cut]" + (freezing ? " [deep]" : "");
         ask.track = uint8_t(track - 1);
         while (words >> word) {
-            if (word == "pre" || word == "post") ask.tap = word == "pre" ? melodee::PrintTap::PreFx : melodee::PrintTap::PostFx;
+            if (word == "deep" && freezing) ask.deep = true; // freeze plan F2d: every pattern with notes, its plug-ins let go
+            else if (word == "pre" || word == "post") ask.tap = word == "pre" ? melodee::PrintTap::PreFx : melodee::PrintTap::PostFx;
             else if (word == "loop") ask.tail = melodee::PrintTail::Loop;
             else if (word == "ring") ask.tail = melodee::PrintTail::Ring;
             else if (word == "cut") ask.tail = melodee::PrintTail::Cut;

@@ -7,6 +7,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/plugin/plugin_rack.h"
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -35,9 +36,11 @@
 //   stream  16 print streams (44.1 kHz float stereo) and 24 voices (int16 stereo) read from files on the card as the
 //           stream pager would, in real time: read times, lowest buffer, underruns (dir, seconds, hold_ms)
 //   memory  what one host costs (lean=1: a print host, F2a)
+//   close   racks with the same plug-in closed one at a time, each timed; a hang aborts (F2d)
 //   project the bench's busy project as a project file for the app (F2a's check on the MPC): its four samples written
 //           as WAVs in <card>/Samples/<name>, the project in <card>/Melodee/Projects/<name>.mldp, track 16 a PLUGIN
-//           track on `plugin` (a path from the card's top) playing an arpeggio (card, name, plugin)
+//           track on `plugin` (a path from the card's top) playing an arpeggio (card, name, plugin); effect=PATH puts
+//           a plug-in effect on its chain, with preset program=N in its saved state
 // Nothing opens the audio device. Run on the MPC beside the running app (and a --melodee-dsp-bench for load).
 namespace melodee {
 
@@ -204,10 +207,35 @@ int project(const Args& a) {
     p->tracks[15] = poly->tracks[0];
     b->at[15][0] = poly_bank->at[0][0];
     std::snprintf(p->name, sizeof(p->name), "%s", name.c_str());
+    // kits=N (F2d): only the first N kit tracks kept, a lighter project
+    for (unsigned t = unsigned(std::clamp(a.num("kits", 15), 0.0, 15.0)); t < 15; ++t) { p->tracks[t] = Track {}; for (auto& q : b->at[t]) q = Pattern {}; }
+    // effect=PATH (F2d): a plug-in effect first on track 16's chain; program=N picks its preset N, opened here once so
+    // the project keeps the state it loaded.
+    PluginStates states;
+    std::string effect = a.get("effect", "");
+    if (!effect.empty()) {
+        std::snprintf(p->plugins[1].path, sizeof(p->plugins[1].path), "%s", effect.c_str());
+        std::snprintf(p->plugins[1].name, sizeof(p->plugins[1].name), "%s", fs_name(effect).c_str());
+        p->tracks[15].fx.slots[0] = {plugin_effect_kind, false, {1, 0, 0, 0, 0, 0}};
+        int program = int(a.num("program", -1));
+        Rig rig;
+        double took = 0;
+        std::string why;
+        auto opened = std::make_unique<Project>(*p);
+        for (auto& ref : opened->plugins) // card paths as the app resolves them
+            if (ref.used() && ref.path[0] != '/') { std::string full = card + "/" + ref.path; std::snprintf(ref.path, sizeof(ref.path), "%s", full.c_str()); }
+        if (!open_rig(rig, *opened, *b, 48000, data, took, why)) { std::printf("MELODEE_PRINT_PROJECT failed=%s\n", why.c_str()); return 1; }
+        for (unsigned n = 0; n < 200 && rig.rack->status(1) != PluginStatus::Ready; ++n) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (program >= 0) rig.rack->select_program(1, program);
+        std::vector<int32_t> out(EngineHost::block * 2);
+        auto t0 = Clock::now();
+        while (since(t0) < 4) { rig.host->render(out.data(), EngineHost::block, 0.7f); drain(*rig.host); std::this_thread::sleep_for(std::chrono::milliseconds(2)); }
+        states = rig.rack->states();
+    }
     std::string dir = card + "/Melodee/Projects", file = dir + "/" + name + ".mldp";
     mkdir((card + "/Melodee").c_str(), 0755);
     mkdir(dir.c_str(), 0755);
-    auto bytes = save_project(*p, *b);
+    auto bytes = save_project(*p, *b, &states);
     FILE* f = std::fopen(file.c_str(), "wb");
     if (!f || std::fwrite(bytes.data(), 1, bytes.size(), f) != bytes.size()) { std::printf("MELODEE_PRINT_PROJECT failed=%s\n", file.c_str()); return 1; }
     std::fclose(f);
@@ -350,6 +378,69 @@ int plugin(const Args& a) {
     return 0;
 }
 
+// Plug-ins closed while others of the same are open (F2d: a deep freeze unloads one beside the print host's): `count`
+// racks open `plugin` as an effect, each picks program `program` (-1 none), plays `wait_ms`, then the racks close one
+// at a time (reverse=1 newest first). A close over 15 s is a hang: the watchdog aborts, so a debugger sees every
+// thread. `rounds` times.
+int close_racks(const Args& a) {
+    std::string path = a.get("plugin", "");
+    if (path.empty()) { std::fprintf(stderr, "print-spike close: plugin=PATH\n"); return 1; }
+    unsigned rate = unsigned(a.num("rate", 48000)), count = unsigned(std::max(1.0, a.num("count", 2)));
+    int program = int(a.num("program", -1));
+    unsigned wait_ms = unsigned(a.num("wait_ms", 0)), rounds = unsigned(std::max(1.0, a.num("rounds", 1)));
+    bool reverse = a.num("reverse", 0) != 0;
+    auto samples = bench_samples();
+    auto p = std::make_unique<Project>();
+    auto b = std::make_unique<PatternBank>();
+    plugin_project(*p, *b, path, a.num("effect", 1) != 0);
+    std::atomic<int> closing {-1};
+    std::atomic<bool> done {false};
+    std::thread watchdog([&] {
+        int was = -1;
+        auto since_change = Clock::now();
+        while (!done.load()) {
+            int now = closing.load();
+            if (now != was) { was = now; since_change = Clock::now(); }
+            if (now >= 0 && since(since_change) > 15) {
+                std::printf("MELODEE_PRINT_CLOSE hang rig=%d\n", now);
+                std::fflush(stdout);
+                std::abort();
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
+    double worst = 0;
+    for (unsigned round = 0; round < rounds; ++round) {
+        std::vector<Rig> rigs(count);
+        for (unsigned n = 0; n < count; ++n) {
+            double took = 0;
+            std::string why;
+            if (!open_rig(rigs[n], *p, *b, rate, samples, took, why)) { std::printf("MELODEE_PRINT_CLOSE open failed=%s\n", why.c_str()); done = true; watchdog.join(); return 1; }
+            if (program >= 0) rigs[n].rack->select_program(0, program);
+        }
+        std::vector<int32_t> out(EngineHost::block * 2);
+        auto t0 = Clock::now();
+        while (since(t0) * 1000 < wait_ms)
+            for (auto& r : rigs) { r.host->render(out.data(), EngineHost::block, 0.7f); drain(*r.host); }
+        for (unsigned k = 0; k < count; ++k) {
+            unsigned n = reverse ? count - 1 - k : k;
+            closing = int(round * count + n);
+            auto c0 = Clock::now();
+            rigs[n].rack.reset();
+            rigs[n].host.reset();
+            double took = since(c0);
+            worst = std::max(worst, took);
+            std::fprintf(stderr, "spike: round %u closed %u in %.3f s\n", round, n, took);
+            closing = -1;
+        }
+    }
+    done = true;
+    watchdog.join();
+    std::printf("MELODEE_PRINT_CLOSE plugin=%s count=%u program=%d wait_ms=%u rounds=%u worst_close_s=%.3f\n", path.c_str(), count, program,
+                wait_ms, rounds, worst);
+    return 0;
+}
+
 // The stream pager's job without the engine: each stream consumed in real time from a buffer of `hold` that one
 // thread tops up from its file a chunk at a time, oldest-first.
 int stream(const Args& a) {
@@ -442,6 +533,7 @@ int print_spike(int argc, char** argv) {
     if (mode == "speed") return speed(a);
     if (mode == "plugin") return plugin(a);
     if (mode == "stream") return stream(a);
+    if (mode == "close") return close_racks(a);
     if (mode == "project") return project(a);
     std::fprintf(stderr, "print-spike: no mode %s\n", mode.c_str());
     return 1;

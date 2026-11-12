@@ -4,6 +4,7 @@
 #include "melodee/model/project.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_panel.h"
+#include "melodee/plugin/plugin_sleep.h"
 #include <array>
 #include <atomic>
 #include <condition_variable>
@@ -36,6 +37,12 @@ class PluginHandle;
 
 using PluginStates = std::array<std::vector<uint8_t>, max_plugins>;
 
+// Heap freed back to the system (after a plug-in is freed; freeze plan F2d). Not on the audio thread.
+void give_back_memory();
+// JUCE's message thread for VST3 plug-ins started now (it lasts while any rack does), so a print host's rack does not
+// start it among its own threads (shell/print_engine.cpp).
+void start_plugin_messages();
+
 class PluginRack {
 public:
     // `stage`: put before its plug-ins' folder names under the stage root, so two racks (the live one and a print
@@ -47,8 +54,12 @@ public:
 
     // MIDI thread: load what the project uses and is not loaded, let go of what
     // it no longer uses; at a new device rate, everything again (keeping its
-    // state). Cheap when nothing changed.
-    void sync(const Project& project);
+    // state). Cheap when nothing changed. Freeze plan F2d: `asleep`, a bit a
+    // deep-frozen track: an entry used by those tracks alone is not loaded, or
+    // is let go with its state kept as it was (saved with the project
+    // untouched), and loads with that state once its track wakes.
+    void sync(const Project& project, uint32_t asleep = 0);
+    bool asleep(unsigned entry) const;
     // A project's file was read: the states it carried, each used the next
     // time its entry loads (sync() right after).
     void set_states(PluginStates states);
@@ -96,20 +107,13 @@ public:
     Usage usage() const;
 
 private:
-    struct Entry {
-        std::string path;                 // what is loaded or loading; empty: none
-        int32_t id = 0;                   // which plug-in of its bundle (0: the first)
-        uint32_t generation = 0;          // bumped at each change, so a slow load that lost the race is dropped
-        double rate = 0;                  // what it was opened at
+    struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
-        PluginStatus status = PluginStatus::None;
         std::string error;
-        std::vector<uint8_t> state;       // to load with
-        bool reload = false;              // a new project: open it again (with `state`) even where the path is the same
         PluginFile file;
     };
     struct Job {
-        enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program } kind = Kind::Browse;
+        enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program, Sleep } kind = Kind::Browse;
         unsigned entry = 0;
         uint32_t generation = 0;
         std::string path;
@@ -119,6 +123,7 @@ private:
     void run();                                     // the rack's thread
     void load(const Job& job);
     void unload(unsigned entry, uint32_t generation);
+    void sleep(unsigned entry, uint32_t generation); // freeze plan F2d: its state taken, then let go as unload() does
     void switch_program(unsigned entry, uint32_t generation, int program);
     std::string use_plugin_home();                  // before a plug-in opens: $HOME on the card; it ("" no card)
     void list(const std::string& folder, int came_from);

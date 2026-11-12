@@ -670,6 +670,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.print = context_.printer ? context_.printer->progress() : PrintProgress {};
     out.live_load = context_.live_load;
     out.printing_tracks = host.printing_tracks();
+    out.thawing = context_.thawing; // freeze plan F2d
     {
         unsigned t = ui_.track % track_count, live = (host.playing() ? unsigned(host.pattern_of(t)) : project_->tracks[t].pattern) % pattern_count;
         out.print_peaks_known = false;

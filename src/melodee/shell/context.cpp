@@ -67,7 +67,7 @@ void Context::save_project_to(const std::string& path) {
     free_unused_samples();        // and no slot nothing uses (roadmap P3)
     PluginStates states;
     if (plugins) states = plugins->states(); // each plug-in's state as it is now, beside the project
-    store->save(path, melodee::save_project(project, patterns, &states, &prints));
+    store->save(path, melodee::save_project(project, patterns, &states, &prints), project_path); // Save As: its prints copied (F2d)
     project_path = path;
     dirty = false;
 }
@@ -104,6 +104,8 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     send({Type::AllNotesOff, 255});
     prints = next_prints ? *next_prints : PrintTable {}; // a print still under way for the last project is dropped (print_tick)
     freeze_waiting = 0; // freeze plan F2b: its frozen tracks play live until their prints are checked and mapped again
+    deep_hold = thawing = 0; // freeze plan F2d: its deep-frozen tracks' plug-ins are never loaded (plugins_asleep())
+    deep_sent.fill(0);
     for (unsigned t = 0; t < track_count; ++t) { ++freeze_serial[t]; if (frozen(t)) freeze_waiting |= 1u << t; }
     if (plugins) plugins->set_states(plugin_states ? *plugin_states : PluginStates {});
     project = next;

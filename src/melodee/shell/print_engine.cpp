@@ -19,12 +19,32 @@
 #include <sched.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <set>
 #include <unistd.h>
 
 namespace melodee {
 namespace fs = std::filesystem;
 
 namespace {
+// Freeze plan F2d: threads a print's plug-ins start (TONE3000's workers and model loaders) run at SCHED_IDLE like
+// the print thread, not at the priority of the thread that opened them (the plug-ins' message thread): at normal
+// priority they took turns with the live copy's own workers, which its audio waits for. The process's threads now,
+// and those not in `before` put at SCHED_IDLE.
+std::set<long> task_ids() {
+    std::set<long> out;
+    std::error_code e;
+    for (const auto& entry : fs::directory_iterator("/proc/self/task", e)) out.insert(std::atol(entry.path().filename().c_str()));
+    return out;
+}
+void idle_new_threads(const std::set<long>& before, std::set<long>& done) {
+#if defined(__linux__)
+    sched_param none {};
+    for (long tid : task_ids())
+        if (!before.count(tid) && done.insert(tid).second) sched_setscheduler(pid_t(tid), SCHED_IDLE, &none);
+#else
+    (void)before; (void)done;
+#endif
+}
 using Clock = std::chrono::steady_clock;
 double since(Clock::time_point t0) { return std::chrono::duration<double>(Clock::now() - t0).count(); }
 
@@ -246,6 +266,7 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
     auto pack = std::make_unique<FreezePack>();
     pack->track = uint8_t(job.track);
     pack->tap = job.tap;
+    pack->deep = job.deep; // freeze plan F2d
     { // freeze plan F2c: what its prints were made at (a print whose hash still matches was made at these too)
         Mix m = print_mix(job.project->tracks[job.track % track_count]);
         pack->level = m.level; pack->pan = m.pan;
@@ -368,9 +389,12 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     }
     idle();
     std::unique_ptr<PluginRack> rack;
+    std::set<long> threads_before, threads_idle; // freeze plan F2d: the print's plug-ins' threads at SCHED_IDLE
     bool plugins = false;
     for (const auto& ref : project->plugins) plugins |= ref.used();
     if (plugins) { // its own rack: the plug-ins opened again, staged apart from the live rack's
+        start_plugin_messages(); // a thread of the live rack's, not one of the print's
+        threads_before = task_ids();
         rack = std::make_unique<PluginRack>(*host, "print-");
         rack->set_card(job.card_top);
         rack->set_states(job.states);
@@ -391,6 +415,7 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
             else std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
         idle(); // the plug-in offered is in place
+        idle_new_threads(threads_before, threads_idle);
     }
     r.host_mb = double(rss_kb() - rss0) / 1024.0;
     PrintAudio audio;
@@ -422,6 +447,7 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
                 shown.seconds_left = speed > 0 ? float((std::max(0.0, double(total) - rendered) + double(left) * double(total)) / rate / speed) : 0;
             }
             ++blocks;
+            if (rack && (blocks & 63) == 1) idle_new_threads(threads_before, threads_idle); // workers started on the way
             return !cancelled.load();
         });
         rendering = since(r0);

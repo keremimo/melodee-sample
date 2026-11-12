@@ -139,10 +139,12 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         break;
     case Ask::Unfreeze: { // freeze plan F2c: an edit of a frozen track
         unsigned which = unsigned(s.ui.ask_target) % track_count;
-        sheet.icon = Icon::Snow;
+        const bool deep = s.freeze[which].state == FreezeState::Deep; // freeze plan F2d: thawed first
+        sheet.icon = deep ? Icon::DeepSnow : Icon::Snow;
         sheet.accent = colour::ice;
         sheet.title = "Unfreeze track " + juce::String(which + 1) + "?";
-        sheet.lines = {"Its sound plays live again.", "Prints stay until what made them changes."};
+        if (deep) sheet.lines = {"Its plug-ins load again,", "then it plays live."};
+        else sheet.lines = {"Its sound plays live again.", "Prints stay until what made them changes."};
         unsigned kept = s.prints_kept[which];
         sheet.chip = count_of(kept, "PRINT", "PRINTS");
         sheet.chip_colour = colour::ice;

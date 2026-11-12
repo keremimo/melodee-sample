@@ -55,7 +55,7 @@ struct Shape { juce::Path stroke, fill; };
 Shape make(Icon icon) {
     std::string s, f; // stroked, filled
     switch (icon) {
-    case Icon::None: case Icon::Count: break;
+    case Icon::None: case Icon::Count: case Icon::DeepSnow: break; // DeepSnow: drawn by icon() from Snow
     case Icon::Play: f = "M7 4 L20 12 L7 20 Z"; break;
     case Icon::Stop: f = box(5, 5, 14, 14, 1.5f); break;
     case Icon::Rec: f = circle(12, 12, 7); break;
@@ -225,8 +225,16 @@ juce::Path svg_path(const char* data) {
     return path;
 }
 
+void deep_snow(Paint& p, float x, float y, float size, juce::Colour tile, juce::Colour flake, float stroke) {
+    p.g.setColour(tile);
+    p.g.fillRoundedRectangle(x, y, size, size, size * 0.22f);
+    float in = size * 0.14f;
+    icon(p, Icon::Snow, x + in, y + in, size - 2 * in, flake, std::max(1.0f, stroke * 0.9f));
+}
+
 void icon(Paint& p, Icon which, float x, float y, float size, juce::Colour c, float stroke) {
     if (which == Icon::None) return;
+    if (which == Icon::DeepSnow) { deep_snow(p, x, y, size, c, colour::bg, stroke); return; }
     const auto& s = shape(which);
     auto place = juce::AffineTransform::scale(size / 24.0f).translated(x, y);
     p.g.setColour(c);

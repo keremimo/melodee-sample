@@ -543,6 +543,15 @@ void frozen_scene(Snapshot& s) {
         s.print_peaks[n] = uint8_t(255 * level * std::exp(-0.45f * float(in_note)));
     }
 }
+// Freeze plan F2d: track 3 deep frozen, every pattern with notes printed (P1-P4, P9, P10), its plug-ins let go.
+void deep_scene(Snapshot& s) {
+    frozen_scene(s);
+    auto& f = s.freeze[2];
+    f.state = FreezeState::Deep;
+    for (unsigned n : {0u, 1u, 2u, 3u, 8u, 9u}) f.set(n, true);
+    s.prints_kept[2] = 6;
+    s.machine.track_load[2] = 0.002f;
+}
 
 // Stage on track 12, a MIDI track to a synth on USB-C, channel 3.
 void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
@@ -903,9 +912,28 @@ const Preview previews[] {
          s.machine.render_load = 0.41f;
      }},
     {"stagefrozen", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); }}, // the print of P2 playing; the sound's cards dim
-    {"stagefrozenshift", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); s.ui.shift = true; }}, // Shift + B3: deep freeze, later
+    {"stagefrozenshift", [](Shell&, Snapshot& s) { frozen_scene(s); on_stage(s, 2, 1, 0); s.ui.shift = true; }}, // Shift + B3: DEEP FREEZE
     {"askunfreeze", [](Shell&, Snapshot& s) { // a sound card turned on a frozen track
          frozen_scene(s); on_stage(s, 2, 1, 0);
+         s.ui.ask = UiState::Ask::Unfreeze; s.ui.ask_target = 2;
+     }},
+    // Freeze plan F2d: deep freeze. Shift on the PRINT sheet, a deep-frozen track's Stage, Tracks and Seq sheet, its
+    // plug-ins loading again (THAWING), and the question an edit of it asks.
+    {"printdeep", [](Shell&, Snapshot& s) { print_scene(s); s.ui.shift = true; }},
+    {"deepfreeze", [](Shell&, Snapshot& s) { deep_scene(s); on_stage(s, 2, 1, 0); }},
+    {"thawing", [](Shell&, Snapshot& s) { deep_scene(s); on_stage(s, 2, 1, 0); s.thawing = 1u << 2; }},
+    {"tracksdeep", [](Shell&, Snapshot& s) { // track 3 deep frozen, track 5 frozen
+         deep_scene(s);
+         s.ui.page = PageId::Tracks;
+         auto& five = s.freeze[4];
+         five.state = FreezeState::Frozen; five.set(0, true);
+         const float loads[] {0.04f, 0.11f, 0.002f, 0.02f, 0.006f, 0.09f, 0.03f, 0.05f};
+         for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
+         s.machine.render_load = 0.33f;
+     }},
+    {"seqdeep", [](Shell&, Snapshot& s) { deep_scene(s); s.ui.page = PageId::Stage; s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; }},
+    {"askthaw", [](Shell&, Snapshot& s) {
+         deep_scene(s); on_stage(s, 2, 1, 0);
          s.ui.ask = UiState::Ask::Unfreeze; s.ui.ask_target = 2;
      }},
     {"seqbank", [](Shell&, Snapshot& s) { // Seq held + Pad Bank: bank B, track 3 plays P18, P20 waits for the bar

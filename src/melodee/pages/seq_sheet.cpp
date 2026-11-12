@@ -67,7 +67,10 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
         else p.fill(x, y, cell, cell, colour::quiet, 5);
         if (copying) p.ring(x - 1, y - 1, cell + 2, cell + 2, colour::text, 6, 1.5f);
         p.text(juce::String(n + 1), x, y, cell, cell, plain(text, type::body, Weight::SemiBold), juce::Justification::centred);
-        if (ice) icon(p, Icon::Snow, x + cell - 11.5f, y + 2.5f, 9, playing ? colour::bg : colour::ice, 1.4f);
+        if (ice && frozen.state == FreezeState::Deep && !printing) { // freeze plan F2d
+            if (playing) deep_snow(p, x + cell - 12.5f, y + 2.5f, 10, colour::bg, c, 1.3f);
+            else icon(p, Icon::DeepSnow, x + cell - 12.5f, y + 2.5f, 10, colour::ice, 1.3f);
+        } else if (ice) icon(p, Icon::Snow, x + cell - 11.5f, y + 2.5f, 9, playing ? colour::bg : colour::ice, 1.4f);
         if (track.chained()) // its place in the chain, small in the corner
             for (unsigned k = 0; k < track.chain_count; ++k)
                 if (track.chain[k] == n) {

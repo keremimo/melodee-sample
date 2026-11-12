@@ -815,7 +815,8 @@ void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift
 }
 
 // Freeze plan F2c: Stage of a frozen track (its sound pages; MIX and SENDS stay live): the print of the pattern
-// playing, bar by bar with the playhead, over FREEZE and PADS PLAY LIVE and what the print holds.
+// playing, bar by bar with the playhead, over FREEZE and PADS PLAY LIVE and what the print holds. A deep freeze
+// (F2d): DEEP FREEZE and PADS OFF, or THAWING while its plug-ins load again.
 bool frozen_view(const Snapshot& s, const StagePage& page) {
     const auto& f = s.freeze[s.ui.track % track_count];
     return f.frozen() && s.track().used() && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends;
@@ -854,9 +855,11 @@ void frozen_picture(Paint& p, const Snapshot& s) {
     }
     // FREEZE and what still plays live, then what the print holds.
     auto ice = caps_text(colour::ice), mid = caps_text(colour::mid);
-    juce::String freeze = "FREEZE", pads = "PADS PLAY LIVE";
+    const bool deep = f.state == FreezeState::Deep, thawing = (s.thawing >> t) & 1;
+    juce::String freeze = deep ? "DEEP FREEZE" : "FREEZE", pads = thawing ? "THAWING" : deep ? "PADS OFF" : "PADS PLAY LIVE";
+    if (thawing) mid = caps_text(colour::ice);
     float fw = p.width(freeze, ice), gw = p.width(pads, mid), lx = (zone::width - (14 + fw + 14 + gw)) / 2, ly = y + h + 8;
-    icon(p, Icon::Snow, lx, ly + 1, 11, colour::ice, 1.5f);
+    icon(p, deep ? Icon::DeepSnow : Icon::Snow, lx, ly + 1, 11, colour::ice, 1.5f);
     p.text(freeze, lx + 14, ly, fw + 2, 13, ice);
     p.text(pads, lx + 14 + fw + 14, ly, gw + 2, 13, mid);
     juce::String held = juce::String(f.tap == PrintTap::PreFx ? "PRE FX" : "POST FX") + dot
@@ -918,11 +921,17 @@ void draw(Paint& p, const Snapshot& s) {
     if (frozen) {
         h.left.clear();
         unsigned live = (s.playing ? s.playing_patterns[s.ui.track % track_count] : t.pattern) % pattern_count;
-        h.left.push_back(chip(Icon::Snow, "P" + juce::String(live + 1), colour::ice));
+        const unsigned t = s.ui.track % track_count;
+        const bool deep = s.freeze[t].state == FreezeState::Deep;
+        h.left.push_back(chip(deep ? Icon::DeepSnow : Icon::Snow, "P" + juce::String(live + 1), colour::ice));
     }
     h.right.push_back(tag_of(s, s.ui.track));
     auto keys = stage_keys(s);
-    if (frozen && s.ui.shift) { keys = SoftKeys {{"", "", "DEEP FREEZE"}, -1, c}; keys.glyphs[2] = Icon::Snow; keys.tints[2] = colour::dim; } // F2d
+    if (frozen && s.ui.shift) { // freeze plan F2d: B3 DEEP FREEZE, the plug-ins let go
+        bool deep = s.freeze[s.ui.track % track_count].state == FreezeState::Deep;
+        keys = SoftKeys {{"", "", deep ? "" : "DEEP FREEZE"}, -1, c};
+        if (!deep) { keys.glyphs[2] = Icon::DeepSnow; keys.tints[2] = colour::ice; }
+    }
     if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler && !instrument_pad(s)) // the old Trim's Shift jobs on B1 and B2
         { keys = SoftKeys {{"LOOP LOCK", "NORMALIZE", ""}, -1, c}; keys.toggles = 1; keys.lit = sampler_pad(s).loop_lock ? 1 : 0; keys.leds[0] = c; }
     if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
@@ -951,7 +960,7 @@ void draw(Paint& p, const Snapshot& s) {
 void soft(Context& c, int key) {
     const auto& page = stage_page_now(c.ui, c.track());
     if (c.ui.shift && c.frozen(c.ui.track) && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends) {
-        if (key == 2) c.notice("Deep freeze: later"); // freeze plan F2d
+        if (key == 2) c.deep_freeze(c.ui.track); // freeze plan F2d
         return;
     }
     const auto& last = c.track().pads[c.track().last_pad % sampler_pads];

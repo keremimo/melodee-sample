@@ -215,6 +215,7 @@ grammar (`shell/pad_light.h`):
 | Song | The lane picked Full, a clip under the cursor Mid, clips elsewhere Dim, not in the song Faint |
 | Seq held | The pattern playing Full, queued blinking, with notes Dim, frozen white (Dim; playing Full); + Shift a column, white by how many tracks hold notes there; + Erase red; a copy's source white, where it lands Faint (red where it replaces); + Sample Record the patterns to freeze white |
 | PRINT sheet | Patterns lit for printing Full, others with notes Faint; printing: done white, the one printing blinking white, waiting Dim |
+| A deep-frozen track | Its own pads dark: they play nothing |
 | Steps | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end dark, the playhead white (red while recording); on a kit the last pad's lane |
 | Step Edit | The step's events by velocity, the chosen one white |
 | Roll | The note in focus white, the cursor's step Full, notes elsewhere Dim, none Faint |
@@ -823,7 +824,7 @@ wraps into the start), Ring (one pass, then its tail until it falls
 silent, 10 s at most) or Cut (one pass). K3 is empty. Beside the pads:
 how many patterns are lit, what the prints take on the card, and the
 share of a block the track takes now (what freezing saves). B1 CANCEL,
-B3 FREEZE (Push too). Shift + B3 is kept for DEEP FREEZE (not built yet).
+B3 FREEZE (Push too), Shift + B3 DEEP FREEZE (below).
 
 While prints are made the header shows PRINTING n/m, each pad its print's
 progress (a ring filling; done ones solid with a snowflake), and the
@@ -848,6 +849,32 @@ what the print holds (tap, tail, bars). Cards whose values a print holds
 are dim with a snowflake on every page. The Sequence sheet marks frozen
 patterns with a snowflake; with Seq held their pads light white.
 
+**Deep freeze.** Shift + B3 DEEP FREEZE on the PRINT sheet, or on a
+frozen track's Stage, freezes the whole track (every pattern with notes,
+whatever is lit, at Post FX) and then unloads the track's plug-in and the
+plug-ins on its chain, which saves their RAM as well as the CPU. They are
+let go once the print plays and the engine has been quiet for a second
+(8 s at most). The pads play nothing and stay dark, MIDI keyboard notes
+and the arp too; a pattern without a print is silent. The glyph is the
+snowflake on a filled ice tile, on Tracks, Stage, the Sequence sheet and
+the PRINT sheet; Stage shows DEEP FREEZE and PADS OFF. Seq held + Sample
+Record does not pick patterns on a deep-frozen track. A plug-in a bus or
+the master also uses stays loaded. Built-in chain effects and a kit's
+samples stay in memory.
+
+Unfreezing asks "Unfreeze track N?" as for a freeze. On B3 the track
+thaws: Stage shows THAWING while the plug-ins load again, off the audio
+thread, with the state they had when they were unloaded; the prints play
+meanwhile. Once every plug-in has been open for 1.5 s (time for work a
+plug-in does after loading its state, such as TONE3000 preparing its
+models) the track plays live ("Track N live"). One that does not open in 30 s, or fails, goes live anyway and
+says so.
+
+A project saved with a deep-frozen track keeps that (FRZN state 2). Opened,
+the track's plug-ins are not loaded at all; their saved state stays in the
+file as it was, so a thaw later restores it exactly. Files from before deep
+freeze open with a normal freeze.
+
 **Editing a frozen track.** Anything a print is made of (its sound and
 plug-in's values, arp and chords, a kit pad, its chain at Post FX, a
 frozen pattern's notes, motion, length, Q or swing, the track's speed)
@@ -859,7 +886,8 @@ did not change keep their prints, so only the edited ones are printed
 again.
 
 **How prints are made.** A print host runs beside the live one on a
-spare core at the lowest priority (`shell/print_engine.h`), one pattern
+spare core at the lowest priority, with the threads its plug-ins start
+(`shell/print_engine.h`), one pattern
 at a time, faster than real time, into `<project> Prints/Track N A1.wav`
 (32-bit float at the device's rate). With effects on its chain a track
 is printed at its own level and pan, as the chain hears them live (a
@@ -867,14 +895,16 @@ Compressor, Drive or Tape reacts to the level it is fed); playback then
 takes the level and pan relative to those. A track with an empty chain
 is printed at unity and centred. Each print has a record (PRNT) with a
 hash of what made it; a freeze (FRZN) keeps its tap, tail and patterns
-with the project. Not handled yet: Save As does not copy the Prints
-folder (the prints are made again); Knob FX on kit pads, a Sidechain key
-pad on a frozen track; chance and random trig conditions print once.
+with the project. Save As copies the Prints folder beside the new file.
+Not handled yet: Knob FX on kit pads, a Sidechain key pad on a frozen
+track; chance and random trig conditions print once.
 
 Remote: `melodee-print TRACK [patterns] [pre|post] [loop|ring|cut]`,
 `melodee-print status|cancel`, `melodee-freeze TRACK [patterns]
-[pre|post] [loop|ring|cut]`, `melodee-freeze [status]`,
-`melodee-unfreeze TRACK`.
+[pre|post] [loop|ring|cut] [deep]`, `melodee-freeze [status]` (frozen,
+deep and thawing tracks, the last thaw in ms, the plug-ins with `asleep`
+for unloaded ones), `melodee-unfreeze TRACK` (a deep-frozen track thaws
+first).
 
 ### Sampler
 

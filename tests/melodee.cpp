@@ -29,6 +29,7 @@
 #include "melodee/engine/print_render.h"
 #include "melodee/model/print.h"
 #include "melodee/engine/plugin_engine.h"
+#include "melodee/plugin/plugin_sleep.h"
 #include "melodee/plugin/rate_bridge.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/pad_fx_info.h"
@@ -12025,6 +12026,52 @@ void freeze_f2b() {
         CHECK(heard > 1000);
         for (size_t f = 0; f < size_t(hit) * 128; ++f) CHECK(woke.l[f] == live.l[f]);
     }
+    // Freeze plan F2d: a deep freeze plays its prints as a freeze does, sample for sample, but nothing wakes the
+    // engine: a hand's note, a pad, the arp go nowhere, and a pattern without a print stays silent and asleep.
+    {
+        auto* pack = pack_of(*project, PrintTail::Loop, PrintTap::PostFx);
+        pack->deep = true;
+        const unsigned second = unsigned(rate / 128), hit = second + 40, off = hit + 20;
+        std::vector<uint32_t> asleep(blocks);
+        auto deep = run(*project, pack, [&](EngineHost& host, unsigned b) {
+            if (b) asleep[b - 1] = host.sleeping_tracks() & 1;
+            if (b == hit) {
+                host.send({Command::Type::NoteOn, 0, 0, uint16_t(pad + 3), 100});
+                Command hand {Command::Type::PadNote, 0, 0, 2, 100};
+                host.send(hand);
+                host.send({Command::Type::ArpKey, 0, 0, 60, 100});
+            }
+            if (b == off) { host.send({Command::Type::NoteOff, 0, 0, uint16_t(pad + 3), 0}); host.send({Command::Type::ArpKey, 0, 0, 60, 0}); }
+        });
+        CHECK(differ(live, deep) == 0);
+        CHECK(asleep[second + 5] && asleep[hit] && asleep[off] && asleep[blocks - 2]);
+    }
+    {
+        auto* pack = pack_of(*project, PrintTail::Loop, PrintTap::PostFx);
+        pack->deep = true;
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        CHECK(host->offer_sample(0, &tone));
+        host->set_print_tap(0, true);
+        Command c {Command::Type::Freeze, 0}; c.freeze = pack;
+        CHECK(host->send(c));
+        host->send({Command::Type::Pattern, 0, 0, 0, 2}); // A3: no print
+        host->send({Command::Type::Play});
+        std::vector<int32_t> o(256);
+        float loudest = 0;
+        for (unsigned b = 0; b < unsigned(3 * rate / 128); ++b) {
+            host->render(o.data(), 128, 1);
+            for (unsigned f = 0; f < 128; ++f) loudest = std::max(loudest, std::fabs(host->print_left()[f]));
+        }
+        CHECK(loudest < 1e-6f && (host->sleeping_tracks() & 1) && !(host->printing_tracks() & 1));
+        host->send({Command::Type::Freeze, 0}); // unfrozen: live again, the pack handed back
+        host->render(o.data(), 128, 1);
+        CHECK(host->frozen_tracks() == 0 && host->sleeping_tracks() == 0);
+        FreezePack* back = nullptr;
+        for (unsigned b = 0; b < 20 && !host->take_done_freeze(back); ++b) host->render(o.data(), 128, 1);
+        CHECK(back == pack);
+        delete back;
+    }
     {   // a pattern with no print plays live, the engine kept awake while it plays; unfrozen, the pack comes back
         auto* pack = pack_of(*project, PrintTail::Loop, PrintTap::PostFx);
         auto host = std::make_unique<EngineHost>();
@@ -12146,6 +12193,91 @@ void freeze_f2b() {
     std::puts("freeze ok");
 }
 
+// Freeze plan F2d: a deep freeze in the file and in the plug-in rack's bookkeeping (plugin/plugin_sleep.h). FRZN
+// keeps Deep; the plug-in states go and come back byte for byte. A project opened with a deep-frozen track never
+// loads that track's plug-ins (its own and its chain's), keeps their state as the file had it, and loads them with
+// it when the track thaws; one let go while loaded loads again with the state it had then. A plug-in a bus also uses
+// stays.
+void deep_freeze_f2d() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto name = [&](unsigned e, const char* path) {
+        std::snprintf(project->plugins[e].path, sizeof(project->plugins[e].path), "%s", path);
+        std::snprintf(project->plugins[e].name, sizeof(project->plugins[e].name), "%s", path);
+    };
+    name(0, "Plugins/Poly"); name(1, "Plugins/Amp"); name(2, "Plugins/Hall");
+    load_sound(project->tracks[1], EngineKind::Plugin, 0);
+    project->tracks[1].plugin = 0;
+    project->tracks[1].fx.slots[0] = {plugin_effect_kind, false, {1, 0, 0, 0, 0, 0}};
+    project->tracks[1].fx.slots[1] = {plugin_effect_kind, false, {2, 0, 0, 0, 0, 0}};
+    project->buses[0].fx.slots[0] = {plugin_effect_kind, false, {2, 0, 0, 0, 0, 0}};
+    put(bank->at[1][0], 0, 60, 100);
+    put(bank->at[1][3], 4, 64, 90);
+    const uint32_t deep = 1u << 1;
+    CHECK(plugin_used_by(*project, 0) && plugin_used_by(*project, 1) && plugin_used_by(*project, 2));
+    CHECK(!plugin_used_awake(*project, 0, deep) && !plugin_used_awake(*project, 1, deep) && plugin_used_awake(*project, 2, deep));
+    CHECK(plugin_used_awake(*project, 0, 0) && plugin_used_awake(*project, 1, 0));
+
+    // FRZN: Deep goes and comes back, every pattern with notes; the states untouched.
+    PrintTable table;
+    auto& f = table.freeze[1];
+    f.state = FreezeState::Deep; f.tap = PrintTap::PostFx; f.tail = PrintTail::Ring;
+    f.set(0, true); f.set(3, true);
+    std::array<std::vector<uint8_t>, max_plugins> states;
+    states[0] = {7, 0, 255, 3, 9, 9, 9};
+    states[1].assign(70000, 0);
+    for (size_t n = 0; n < states[1].size(); ++n) states[1][n] = uint8_t(n * 31 + 7);
+    states[2] = {1};
+    auto bytes = save_project(*project, *bank, &states, &table);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    std::array<std::vector<uint8_t>, max_plugins> read_states;
+    PrintTable read;
+    CHECK(load_project(bytes, *back, *back_bank, nullptr, &read_states, &read).empty());
+    CHECK(read == table && read.freeze[1].state == FreezeState::Deep && read.freeze[1].plays(3) && !read.freeze[1].plays(1));
+    CHECK(read_states == states);
+    { // a freeze of an older build (state 1) reads as a freeze, not a deep one
+        PrintTable older = table;
+        older.freeze[1].state = FreezeState::Frozen;
+        CHECK(load_project(save_project(*project, *bank, &states, &older), *back, *back_bank, nullptr, nullptr, &read).empty());
+        CHECK(read.freeze[1].state == FreezeState::Frozen);
+    }
+
+    // The rack, as sync() runs it with the project just opened: entries 0 and 1 sleep, never loaded; 2 loads.
+    std::array<PluginPlan, 3> plan;
+    for (unsigned e = 0; e < 3; ++e) { plan[e].state = read_states[e]; plan[e].reload = true; }
+    auto step = [&](unsigned e, uint32_t asleep, double rate, bool loaded) {
+        std::string want = plugin_used_by(*back, e) ? back->plugins[e].path : "";
+        bool only = !want.empty() && asleep && !plugin_used_awake(*back, e, asleep);
+        return plan_plugin(plan[e], want, 0, only, rate, loaded);
+    };
+    CHECK(step(0, deep, 48000, false) == PluginStep::Changed && plan[0].asleep && plan[0].status == PluginStatus::None);
+    CHECK(step(1, deep, 48000, false) == PluginStep::Changed && plan[1].asleep);
+    CHECK(step(2, deep, 48000, false) == PluginStep::Load && !plan[2].asleep);
+    for (unsigned tick = 0; tick < 3; ++tick) CHECK(step(0, deep, 48000, false) == PluginStep::Keep && step(1, deep, 48000, false) == PluginStep::Keep);
+    CHECK(step(0, deep, 96000, false) == PluginStep::Keep); // a new rate: still not loaded
+    CHECK(plan[0].state == states[0] && plan[1].state == states[1]); // saved again as they came
+    // Thawed: both load, with the file's state, at the rate now.
+    CHECK(step(0, 0, 96000, false) == PluginStep::Load && plan[0].state == states[0] && plan[0].rate == 96000 && plan[0].status == PluginStatus::Loading);
+    CHECK(step(1, 0, 96000, false) == PluginStep::Load && plan[1].state == states[1]);
+    plan[0].status = plan[1].status = PluginStatus::Ready;
+    CHECK(step(0, 0, 96000, true) == PluginStep::Keep && step(1, 0, 96000, true) == PluginStep::Keep);
+    // Deep frozen again while loaded: let go (Sleep: the rack takes the state it has now), a load under way dropped.
+    uint32_t was = plan[0].generation;
+    CHECK(step(0, deep, 96000, true) == PluginStep::Sleep && plan[0].generation == was + 1 && plan[0].asleep);
+    plan[0].state = {42, 43}; // what the rack took from the plug-in as it let go
+    CHECK(step(0, deep, 96000, false) == PluginStep::Keep);
+    CHECK(step(0, 0, 96000, false) == PluginStep::Load && plan[0].state == std::vector<uint8_t>({42, 43}));
+    // Deep frozen while still loading: let go too, the state it was loading with kept.
+    plan[1].status = PluginStatus::Loading;
+    auto loading_with = plan[1].state;
+    CHECK(step(1, deep, 96000, false) == PluginStep::Sleep && plan[1].state == loading_with);
+    // The track's plug-in taken off while asleep: let go entirely.
+    back->tracks[1].fx.slots[0] = {};
+    CHECK(step(1, deep, 96000, false) == PluginStep::Unload && !plan[1].asleep && plan[1].state.empty());
+    std::puts("deep freeze ok");
+}
+
 int main() {
     tempo_lane_p5();
     capture_p5();
@@ -12153,6 +12285,7 @@ int main() {
     banks_f1();
     prints_f2a();
     freeze_f2b();
+    deep_freeze_f2d();
     exports_p4();
     midi_tracks_p4();
     modulators_p4();

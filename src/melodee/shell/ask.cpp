@@ -62,8 +62,9 @@ bool ask_button(Context& c, SurfaceButton button) {
     else if (kind == UiState::Ask::InstallUpdate) begin_update(c); // shell/update.h
     else if (kind == UiState::Ask::Unfreeze) { // freeze plan F2c: live again at once; its prints stay for the next freeze
         unsigned t = unsigned(ui.ask_target) % track_count;
+        bool thaw = c.deep(t) && !((c.deep_hold >> t) & 1); // freeze plan F2d: its plug-ins load first
         c.unfreeze(t);
-        c.notice("Track " + std::to_string(t + 1) + " live");
+        c.notice(thaw ? "Thawing track " + std::to_string(t + 1) : "Track " + std::to_string(t + 1) + " live");
     }
     return true;
 }

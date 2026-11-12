@@ -44,7 +44,8 @@ public:
 
     // MIDI thread.
     void list(const std::string& folder);   // relative to the root; "" is the root
-    void save(const std::string& path, std::vector<uint8_t> bytes);
+    // `from`: the file it was saved as before (Save As, freeze plan F2d): its Prints folder copied beside the new one.
+    void save(const std::string& path, std::vector<uint8_t> bytes, const std::string& from = "");
     void load(const std::string& path);
     void duplicate(const std::string& path);
     void remove(const std::string& path);
@@ -96,6 +97,7 @@ private:
         enum class Kind : uint8_t { List, Save, Load, Duplicate, Remove, NewFolder, OpenAtStart, Opened, Settings, Rename, SaveSound, Move } kind;
         std::string path;
         std::vector<uint8_t> bytes;
+        std::string from = {}; // Save: the project's file before (Save As), whose prints come along
     };
     void push(Request* request);
     void run(Request& request);
