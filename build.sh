@@ -7,8 +7,11 @@ set -eu
 cd "$(dirname "$0")"
 [ -f base/base.mk ] || git submodule update --init
 python3 tools/dependencies.py
+# The version the Credits page shows: ./release.sh names it, else git describe.
+MELODEE_VERSION=$(printf %s "${MELODEE_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}" | tr -cd 'A-Za-z0-9._+-')
+export MELODEE_VERSION
 docker build --platform linux/arm64 -t sample-base-builder base/tools
 # Melodee's own image on top: the plug-in support pack's cross compiler and GUI libraries.
 docker build --platform linux/arm64 -t melodee-builder tools/plugin_support
-docker run --rm --platform linux/arm64 -v "$PWD:/work" melodee-builder \
+docker run --rm --platform linux/arm64 -v "$PWD:/work" -e MELODEE_VERSION melodee-builder \
     sh -c 'make -j4 && python3 -m unittest discover -s tests -v && build/melodee --self-test build/test.wav && build/melodee --melodee-monkey && mkdir -p build/melodee-preview && build/melodee --melodee-preview build/melodee-preview'
