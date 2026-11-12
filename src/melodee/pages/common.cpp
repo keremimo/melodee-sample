@@ -352,7 +352,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::PadSustain: c.label = "SUSTAIN"; c.value = juce::String(b.value); c.unit = "%"; break;
-    case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(int(s.tempo) / 10); c.unit = "bpm"; break;
+    case Kind::Tempo: c.label = "TEMPO"; c.value = juce::String(int(s.tempo) / 10); c.unit = "BPM"; break;
     case Kind::NameSuggest: {
         std::array<const char*, max_suggestions> names {};
         unsigned count = name_suggestions(s.ui.name, names);
