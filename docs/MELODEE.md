@@ -229,10 +229,13 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   bank). Track 1 starts as a PROPHET, track 5 an empty kit, track 6 a 909
   with a beat.
   - **A synth** (PROPHET, FM6, CZ, SID): B1 **PRESET → TONE → MIX → SENDS**, B2
-    **SHAPE**, B3 **ARP → CHORD → its own page → FX**. PRESET: the sound before,
-    the one in hand with its star, the one after, where it sits; K1 or the
-    wheel walks the sounds and the one turned to loads once the turning
-    has stopped 250 ms; K2 the list (all, starred, recent), K3 the engine;
+    **SHAPE**, B3 **ARP → CHORD → its own page → FX**. PRESET: the sound's
+    name at poster size with its star, over its scope (a note of it rendered
+    again whenever the sound or a knob changes); while pads are held the
+    chord they make, named (Dm7, C/E, Gsus4), and its notes under it; the
+    sounds before and after it small in the corners. K1 or the wheel walks
+    the sounds and the one turned to (amber) loads once the turning has
+    stopped 250 ms; K2 the list (all, starred, recent), K3 the engine;
     Push opens Sounds. TONE: the engine's three favourites (PROPHET and SID
     draw the filter). MIX: level, pan and the quick send into bus A; its
     meter carries the five steps of the meter LEDs as a scale. SENDS: a

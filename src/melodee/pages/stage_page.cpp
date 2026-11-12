@@ -16,6 +16,10 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/kit909.h"
+#include "melodee/engine/sid.h"
+#include "melodee/engine/cz.h"
+#include "melodee/engine/fm6.h"
+#include "melodee/engine/prophet.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/model/chords.h"
@@ -29,6 +33,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <memory>
 #include <vector>
 
 namespace melodee {
@@ -94,6 +99,39 @@ void axis(Paint& p, float y, const juce::String& left, const juce::String& middl
 }
 
 // PRESET: the sound before, the one in hand (turned to, or loaded) with its star, the one after; where it sits.
+// stage-preset B (round 2): the sound as a scope, rendered offline whenever the sound or its knobs change (kept on
+// the screen thread): a note (C3; the 909's kick) a tenth of a second in, 1024 frames of it, scaled to its peak.
+struct SoundScope { std::array<float, 154> wave {}; uint64_t key = ~0ull; bool shown = false; };
+const SoundScope& sound_scope(const Track& t) {
+    static SoundScope cached;
+    const auto& info = engine_info(t.engine);
+    uint64_t key = uint64_t(t.engine) + 1;
+    for (unsigned id = 0; id < info.param_count; ++id) key = key * 1000003ull + uint64_t(t.params[id] + 100000);
+    if (key == cached.key) return cached;
+    cached.key = key;
+    std::unique_ptr<Engine> e;
+    switch (t.engine) {
+    case EngineKind::Prophet: e = std::make_unique<ProphetEngine>(); break;
+    case EngineKind::Fm6: e = std::make_unique<Fm6Engine>(); break;
+    case EngineKind::Cz: e = std::make_unique<CzEngine>(); break;
+    case EngineKind::Sid: e = std::make_unique<SidEngine>(); break;
+    case EngineKind::Kit909: e = std::make_unique<Kit909Engine>(); break;
+    default: cached.shown = false; return cached;
+    }
+    for (unsigned id = 0; id < info.param_count; ++id) e->set_param(int(id), t.params[id]);
+    e->note_on(t.engine == EngineKind::Kit909 ? 36 : 48, 100);
+    std::vector<float> audio(5120, 0.0f);
+    e->render(audio.data(), unsigned(audio.size()));
+    float peak = 1e-6f;
+    for (unsigned n = 4096; n < audio.size(); ++n) peak = std::max(peak, std::fabs(audio[n]));
+    for (unsigned n = 0; n < cached.wave.size(); ++n) cached.wave[n] = audio[4096 + n * 1024 / cached.wave.size()] / peak;
+    cached.shown = peak > 1e-4f;
+    return cached;
+}
+
+// PRESET (round 2, stage-preset B "sound poster"): the sound's name at poster size over its scope, a star when it is
+// starred; while pads are held the chord they make and its notes under it; the sounds before and after it, small,
+// in the corners. The wheel or K1 walks them (the one turned to loads once the turning stops).
 void preset_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     const auto& info = engine_info(t.engine);
@@ -109,38 +147,54 @@ void preset_picture(Paint& p, const Snapshot& s) {
     if (s.ui.preset_due) at = std::min<int>(s.ui.preset_cursor, int(count) - 1);
     else for (unsigned n = 0; n < count; ++n) if (list[n] == t.preset) at = int(n);
     auto name_of = [&](unsigned sound) { return sound < info.sound_count ? name_case(info.sounds[sound].name) : "Own sound " + juce::String(sound - info.sound_count + 1); };
-    auto number = [&](int n) { char text[16]; std::snprintf(text, sizeof(text), "%02d", n + 1); return juce::String(text); };
-    float y = top + 13;
-    auto side_row = [&](int n) {
-        if (n >= 0 && n < int(count)) {
-            p.text(number(int(list[size_t(n)])), px + 9, y, 22, 26, plain(colour::mid, type::small, Weight::SemiBold));
-            auto name = name_of(list[size_t(n)]);
-            p.text(name, px + 36, y, pw - 44, 26, p.fit(name, plain(colour::mid, type::list, Weight::Medium), pw - 44, type::floor));
+    // The scope, behind.
+    const auto& scope = sound_scope(t);
+    if (scope.shown && !s.ui.preset_due) {
+        float y0 = top + 30, h = 92, cy = y0 + h / 2;
+        juce::Path wave;
+        for (unsigned n = 0; n < scope.wave.size(); ++n) {
+            float x = px + pw * float(n) / float(scope.wave.size() - 1), y = cy - scope.wave[n] * h / 2;
+            if (n) wave.lineTo(x, y); else wave.startNewSubPath(x, y);
         }
-        y += 28;
-    };
-    side_row(at - 1);
-    p.fill(px, y, pw, 36, colour::surf, 4);
-    p.g.saveState();
-    p.g.reduceClipRegion(juce::Rectangle<int>(int(px), int(y), 3, 36));
-    p.fill(px, y, 8, 36, c, 4);
-    p.g.restoreState();
+        p.g.setColour(c.withAlpha(0.38f));
+        p.g.strokePath(wave, juce::PathStrokeType(2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    // The name at poster size, the star after it.
     unsigned sound = list[size_t(at)];
     bool starred = s.ui.settings.favourite(unsigned(t.engine), sound);
-    p.text(number(int(sound)), px + 9, y, 22, 36, plain(colour::sec, type::small, Weight::SemiBold));
     auto name = name_of(sound);
-    float room = pw - 44 - (starred ? 22 : 0);
-    p.text(name, px + 36, y, room, 36, p.fit(name, plain(colour::text, type::title, Weight::SemiBold), room, type::floor));
-    if (starred) star(p, px + pw - 14, y + 18, 7, c);
-    y += 38;
-    side_row(at + 1);
-    float by = bottom - 16;
-    juce::String where = number(at) + " / " + number(int(count) - 1);
-    auto style = caps_text(colour::mid);
-    float ww = p.width(where, style);
-    p.fill(px, by + 5, pw - ww - 12, 3, colour::line, 1.5f);
-    p.fill(px, by + 5, (pw - ww - 12) * (at + 1) / float(count), 3, c, 1.5f);
-    p.text(where, px + pw - ww - 1, by, ww + 1, 14, style);
+    auto poster = p.fit(name, plain(s.ui.preset_due ? colour::amber : colour::text, 30, Weight::SemiBold), pw - 30, type::title);
+    float nw = std::min(p.width(name, poster), pw - 30);
+    p.text(name, px + 4, top + 14, nw, 36, poster);
+    if (starred) icon(p, Icon::Star, px + 4 + nw + 8, top + 22, 16, c, 1.5f);
+    // The chord the pads hold, and its notes.
+    std::array<int, 16> held {};
+    unsigned heard = 0;
+    for (unsigned n = 0; n < 16; ++n) if (s.held_keys[n] >= 0 && (s.ui.held_pads & (1u << n))) held[heard++] = s.held_keys[n];
+    if (heard) {
+        std::sort(held.begin(), held.begin() + heard);
+        juce::String chord = name_chord(held.data(), heard), notes;
+        for (unsigned n = 0; n < heard; ++n) notes += (n ? "  " : "") + juce::String(note_name(held[n]));
+        float x = px + 6;
+        if (chord.isNotEmpty()) {
+            auto cs = plain(c, type::list, Weight::SemiBold);
+            p.text(chord, x, top + 54, 90, 18, cs);
+            x += std::min(p.width(chord, cs), 90.0f) + 8;
+        }
+        p.text(notes, x, top + 55, px + pw - x, 16, p.fit(notes, plain(colour::sec, type::body), px + pw - x, type::floor));
+    }
+    // The sounds either side, small, in the corners.
+    auto side = plain(colour::mid, type::body);
+    if (at > 0) {
+        icon(p, Icon::ChevronLeft, px, bottom - 16, 10, colour::dim, 1.6f);
+        auto before = name_of(list[size_t(at - 1)]);
+        p.text(before, px + 13, bottom - 19, pw / 2 - 20, 16, p.fit(before, side, pw / 2 - 20, type::floor));
+    }
+    if (at + 1 < int(count)) {
+        icon(p, Icon::ChevronRight, px + pw - 10, bottom - 16, 10, colour::dim, 1.6f);
+        auto after = name_of(list[size_t(at + 1)]);
+        p.text(after, px + pw / 2, bottom - 19, pw / 2 - 13, 16, p.fit(after, side, pw / 2 - 20, type::floor), juce::Justification::centredRight);
+    }
 }
 
 // TONE on a filter: the curve from 20 Hz to 20 kHz with the cutoff marked.

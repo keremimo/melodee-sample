@@ -1109,6 +1109,11 @@ void helpers() {
     CHECK(keys[0] == 43 && keys[3] == 52); // first inversion: E goes up
     track.chord_type = 4; track.chord_invert = 0;
     CHECK(chord_notes(project, track, 0, keys) == 3 && keys[2] == keys[0] + 12 && chord_name(project, track, 0) == "D5");
+    { // Any keys held together, named (stage-preset B): the shape over a root, the bass after a slash when it is not the root.
+        const int dm7[] {38, 41, 45, 48}, c[] {48, 52, 55}, c_e[] {52, 55, 60}, one[] {60}, odd[] {60, 61}, gsus4[] {43, 48, 50};
+        CHECK(name_chord(dm7, 4) == "Dm7" && name_chord(c, 3) == "C" && name_chord(c_e, 3) == "C/E");
+        CHECK(name_chord(one, 1).empty() && name_chord(odd, 2).empty() && name_chord(gsus4, 3) == "Gsus4");
+    }
     // The arp: up, down and up-down over two keys and two octaves.
     Arp a;
     a.press(64, 90); a.press(60, 100);

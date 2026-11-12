@@ -545,6 +545,11 @@ struct Preview {
 
 const Preview previews[] {
     {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }}, // track 1: B1 PRESET
+    {"stagepresetchord", [](Shell&, Snapshot& s) { // stage-preset B: pads held, the chord they make named under the sound
+         s.ui.page = PageId::Stage; s.playing = true;
+         const int keys[] {38, 41, 45, 48}; // D2 F2 A2 C3: Dm7
+         for (unsigned n = 0; n < 4; ++n) { s.held_keys[n] = int16_t(keys[n]); s.ui.held_pads = uint16_t(s.ui.held_pads | 1u << n); }
+     }},
     // The place bar (shell/place_bar.h) on the kit's Pads, its pattern slot 8 made 4 bars long (no other preview
     // plays it): playing, at the top; recording, at the bottom; stopped, held where Shift + Play carries on.
     {"placebar", [](Shell& shell, Snapshot& s) {

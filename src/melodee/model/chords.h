@@ -73,4 +73,36 @@ inline std::string chord_name(const Project& project, const Track& track, unsign
     return name;
 }
 
+// Any keys held together, named (round 2, stage-preset B, as the FM-1 firmware names a chord): the shape their pitch
+// classes make over a root, the lowest key's first, with a slash and the bass where another root explains them;
+// "" for fewer than two pitch classes or a shape it does not know.
+inline std::string name_chord(const int* keys, unsigned count) {
+    unsigned mask = 0, classes = 0;
+    int lowest = 128;
+    for (unsigned n = 0; n < count; ++n) {
+        if (keys[n] < 0) continue;
+        mask |= 1u << (unsigned(keys[n]) % 12);
+        lowest = std::min(lowest, keys[n]);
+    }
+    for (unsigned b = 0; b < 12; ++b) classes += (mask >> b) & 1;
+    if (classes < 2) return "";
+    struct Shape { unsigned bits; const char* suffix; };
+    static const Shape shapes[] {
+        {0x091, ""}, {0x089, "m"}, {0x491, "7"}, {0x891, "maj7"}, {0x489, "m7"}, {0x049, "dim"}, {0x111, "aug"},
+        {0x085, "sus2"}, {0x0A1, "sus4"}, {0x081, "5"}, {0x291, "6"}, {0x289, "m6"}, {0x249, "dim7"}, {0x449, "m7b5"},
+        {0x095, "add9"}, {0x08D, "m(add9)"}, {0x495, "9"}, {0x895, "maj9"}, {0x48D, "m9"}, {0x4A1, "7sus4"}, {0x889, "m(maj7)"},
+    };
+    unsigned bass = unsigned(lowest) % 12;
+    for (unsigned k = 0; k < 12; ++k) {
+        unsigned root = (bass + k) % 12;
+        unsigned rotated = ((mask >> root) | (mask << (12 - root))) & 0xFFF;
+        for (const auto& shape : shapes)
+            if (rotated == shape.bits) {
+                std::string name = std::string(note_letter(root)) + shape.suffix;
+                return root == bass ? name : name + "/" + note_letter(bass);
+            }
+    }
+    return "";
+}
+
 } // namespace melodee
