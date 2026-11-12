@@ -60,9 +60,7 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
         return std::to_string(count) + (count == 1 ? " event" : " events") + where + " go.";
     }
     if (ui.ask == UiState::Ask::EraseLane) {
-        const auto& m = project.motion;
-        for (unsigned n = 0; n < m.count; ++n)
-            count += m.events[n].same_lane(uint8_t(ui.track), t.pattern, uint8_t(lane_param(int(ui.ask_target))), uint8_t(lane_pad(int(ui.ask_target))));
+        count = pattern.lane_points(lane_param(int(ui.ask_target)), lane_pad(int(ui.ask_target)));
         return std::to_string(count) + (count == 1 ? " move" : " moves") + where + " go.";
     }
     if (ui.ask == UiState::Ask::ResetSettings) return "Every setting as Melodee comes; projects stay.";

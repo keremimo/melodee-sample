@@ -11,7 +11,7 @@ constexpr unsigned pattern_count = 16;   // per track
 constexpr unsigned max_bars = 128;       // per pattern, as on the MPC
 constexpr unsigned bar_steps = 16;       // steps the Steps and Roll pages show at a time
 constexpr unsigned notes_per_step = 4;   // a chord on one step
-constexpr unsigned motion_events = 256;  // open question 2: per project (as drawn) or per pattern
+constexpr unsigned motion_points = 8192; // a pattern's Motion since roadmap P1: points at tick resolution, locks among them
 constexpr unsigned mod_routes = 8;       // open question 1: 8 drawn, 16 offered
 constexpr unsigned max_params = 96;      // engine parameters a track stores
 // Which engine parameters a file's values cover: 0 before phase 1d added pad

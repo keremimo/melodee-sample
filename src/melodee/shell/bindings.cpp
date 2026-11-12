@@ -151,6 +151,41 @@ Binding lane_binding(const Track& track, unsigned t, int lane) {
     return engine_param(track, param);
 }
 
+std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t tick) {
+    unsigned t = ui.track % track_count;
+    const auto& track = project.tracks[t];
+    auto lanes = motion_lanes(project, ui, pattern);
+    std::array<Binding, 3> out;
+    for (unsigned k = 0; k < 3; ++k) {
+        if (lanes[k] < 0) continue;
+        Binding b = lane_binding(track, t, lanes[k]);
+        if (!b.bound()) continue;
+        const MotionPoint* lock = pattern.lock_at(tick, lane_param(lanes[k]), lane_pad(lanes[k]));
+        out[k] = {Kind::Lock, lanes[k], b.min, b.max, lock ? int(lock->value) : b.value};
+    }
+    return out;
+}
+
+bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold) {
+    const auto& track = project.tracks[ui.track % track_count];
+    unsigned q = pattern.q();
+    if (ui.page == PageId::Steps && ui.held_step >= 0) { // the step, as long as its longest note on its lane (a step at least)
+        unsigned st = unsigned(ui.held_step) % pattern.steps();
+        tick = st * q; hold = q;
+        int lane = steps_lane(track);
+        for (size_t n = pattern.lower(tick); n < pattern.events.size() && pattern.events[n].tick < tick + q; ++n)
+            if (lane < 0 || pattern.events[n].key == lane) hold = std::max<uint32_t>(hold, pattern.events[n].length);
+        return true;
+    }
+    if (ui.page == PageId::Roll && ui.held_note >= 0) { // the note in focus, as long as it is
+        int at = roll_focus(pattern, ui);
+        if (at < 0) return false;
+        tick = pattern.events[size_t(at)].tick; hold = std::max<uint32_t>(pattern.events[size_t(at)].length, 1);
+        return true;
+    }
+    return false;
+}
+
 int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::Param) return motion_lane(unsigned(b.id));
     if (b.kind == Kind::ModWheel) return motion_lane(motion_wheel);
@@ -160,7 +195,7 @@ int binding_lane(const Track& track, const Binding& b) {
     return -1;
 }
 
-std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
+std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const Pattern& pattern) {
     const auto& track = project.tracks[ui.track % track_count];
     const auto& info = engine_info(track.engine);
     std::array<int, 3> lanes {-1, -1, -1};
@@ -170,15 +205,12 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui) {
         for (unsigned k = 0; k < n; ++k) if (lanes[k] == param) return;
         lanes[n++] = param;
     };
-    const auto& motion = project.motion;
     bool kit = track.engine == EngineKind::Sampler;
     unsigned pad = track.last_pad % sampler_pads;
-    for (unsigned e = 0; e < motion.count; ++e) {
-        const auto& ev = motion.events[e];
-        if (ev.track != ui.track || ev.pattern != track.pattern) continue;
-        bool pad_lane = pad_param_of(ev.param) >= 0;
-        if (pad_lane && ev.pad != pad) continue; // another pad's lane: shown when that pad is the last hit
-        add(motion_lane(ev.param, pad_lane ? ev.pad : 0));
+    for (const auto& m : pattern.motion) {
+        bool pad_lane = pad_param_of(m.param) >= 0;
+        if (pad_lane && m.pad != pad) continue; // another pad's lane: shown when that pad is the last hit
+        add(motion_lane(m.param, pad_lane ? m.pad : 0));
     }
     if (kit && track.pads[pad].used()) // a kit: the last pad's tune, level and pan, as on Pads
         for (auto p : {PadParam::Pitch, PadParam::Level, PadParam::Pan}) add(motion_lane(motion_pad_param(p), pad));
@@ -558,7 +590,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {param(track, row[0]), param(track, row[1]), param(track, row[2])};
     }
     case PageId::Motion: {
-        auto lanes = motion_lanes(project, ui);
+        auto lanes = motion_lanes(project, ui, pattern);
         unsigned t = ui.track % track_count;
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
@@ -700,12 +732,14 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         int at = roll_focus(pattern, ui);
         if (at < 0) return {};
         const auto& e = pattern.events[size_t(at)];
+        if (ui.held_note >= 0) return lock_cards(project, ui, pattern, e.tick); // its pad held: locks there (roadmap P1)
         if (ui.trig_cards) return trig_cards(e, false); // B2 again: its ratchet and ramp
         unsigned q = pattern.q(), steps = std::max(1u, (e.length + q / 2) / q);
         return {Binding {Kind::EventLength, 0, 1, 64, int(std::min(steps, 64u))}, Binding {Kind::EventVelocity, 0, 1, 127, e.velocity},
                 Binding {Kind::EventChance, 0, 0, 100, e.chance}};
     }
     case PageId::Steps: { // the step in hand; on a kit its lane's note (the last pad's), as the pads show it
+        if (ui.held_step >= 0) return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q()); // held: locks
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
         int n = lane_event(pattern, at, steps_lane(track));
         if (n < 0) return {};

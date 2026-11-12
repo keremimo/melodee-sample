@@ -53,6 +53,10 @@ public:
         moved = true;
     }
     void restore_pads() { if (moved) { pads = base; moved = false; } }
+    // One of a pad's own values back to the kit's (a Motion lock ending, roadmap P1).
+    void restore_pad(unsigned pad, PadParam which) {
+        if (pad < sampler_pads) set_pad_param(pads[pad], which, pad_param_value(base[pad], which));
+    }
     // Mute: a muted pad does not start and what it plays fades out now.
     void set_pad_mute(unsigned pad, bool on);
     void set_pad_mutes(const std::array<uint64_t, (sampler_pads + 63) / 64>& bits);

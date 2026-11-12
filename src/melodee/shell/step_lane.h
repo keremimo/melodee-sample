@@ -70,6 +70,16 @@ template <class Edit> bool edit_lane(Pattern& p, unsigned s, int lane, Edit&& ed
     return any;
 }
 
+// Whether a Motion lock (roadmap P1) starts in ticks [from, to): on a kit pad's own values only that pad's (`pad`, 0..127;
+// -1 any), the track's other lanes always.
+inline bool lock_in(const Pattern& p, uint32_t from, uint32_t to, int pad) {
+    for (size_t n = p.motion_lower(from); n < p.motion.size() && p.motion[n].tick < to; ++n) {
+        const auto& m = p.motion[n];
+        if (m.lock() && (pad < 0 || m.param < motion_pad_base || m.param == motion_wheel || m.pad == pad)) return true;
+    }
+    return false;
+}
+
 // A note of `lane` at the start of step `s`, a step long; false when the pattern is full.
 inline bool add_lane_note(Pattern& p, unsigned s, uint8_t lane, uint8_t velocity) {
     Event e;

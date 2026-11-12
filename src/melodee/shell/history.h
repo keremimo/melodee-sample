@@ -56,6 +56,13 @@ struct SoundState {
 // The master's performance effects: Knob FX's effect (its targets and the mode
 // are performance, left out), the compressor, the MPC Pad FX's K1-K3, Flex
 // Beat and the punches' depth, snap and tail.
+// One track's patterns' Motion (roadmap P1: each pattern's own), for an edit that clears lanes across them.
+struct TrackMotion {
+    uint8_t track = 0;
+    std::array<std::vector<MotionPoint>, pattern_count> lanes;
+    bool operator==(const TrackMotion& o) const { return track == o.track && lanes == o.lanes; }
+};
+
 struct MasterState {
     uint8_t knob_choice = 0, knob_kind = 0;
     bool knob_bypass = false;
@@ -99,7 +106,7 @@ struct Edit {
     int16_t pattern = -1;         // a pattern of the track, or -1
     std::unique_ptr<Pattern> pattern_before, pattern_after;
     std::unique_ptr<Song> song_before, song_after;       // a take into the song
-    std::unique_ptr<Motion> motion_before, motion_after; // pot moves recorded, or doubled
+    std::unique_ptr<TrackMotion> motion_before, motion_after; // a track's patterns' motion (an effect moved or removed)
     std::unique_ptr<TrackState> track_before, track_after; // a track copied onto this one (`track`)
     // One pattern number across tracks (Song -> new pattern): `column`, each changed track's pattern.
     int16_t column = -1;

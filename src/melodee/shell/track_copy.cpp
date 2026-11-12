@@ -17,7 +17,7 @@ void restore_track(Context& c, unsigned t, const TrackState& state) {
     c.project.tracks[t] = state.track;
     c.patterns.at[t] = state.patterns;
     c.free_retired();
-    auto* pack = new TrackPack(t, state.track, state.patterns, c.project.motion);
+    auto* pack = new TrackPack(t, state.track, state.patterns); // their motion in them
     Command load {Command::Type::TrackLoad, uint8_t(t)};
     load.track_pack = pack;
     if (!c.host.send(load)) delete pack;
@@ -33,19 +33,9 @@ void copy_track(Context& c, unsigned from, unsigned to) {
     edit.track_before = std::make_unique<TrackState>(track_state(c, to));
     auto next = std::make_unique<TrackState>(track_state(c, from));
     next->track.mix = c.project.tracks[to].mix; // the target keeps its strip
-    // Motion: the target's lanes go, the source's come with its patterns.
-    auto& motion = c.project.motion;
-    Motion moved;
-    for (unsigned n = 0; n < motion.count; ++n) if (motion.events[n].track != to) moved.write(motion.events[n]);
-    bool full = false;
-    for (unsigned n = 0; n < motion.count; ++n)
-        if (motion.events[n].track == from) { auto e = motion.events[n]; e.track = uint8_t(to); full |= !moved.write(e); }
-    motion = moved;
-    restore_track(c, to, *next);
+    restore_track(c, to, *next); // the source's motion comes in its patterns
     edit.track_after = std::move(next);
-    if (std::memcmp(edit.motion_before.get(), &motion, sizeof(Motion)) != 0) edit.motion_after = std::make_unique<Motion>(motion);
-    else edit.motion_before.reset();
-    c.notice(full ? what + ": motion full" : what);
+    c.notice(what);
     c.edits.push(std::move(edit));
 }
 

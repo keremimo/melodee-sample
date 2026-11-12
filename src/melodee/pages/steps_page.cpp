@@ -2,8 +2,9 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // STEPS (B1 on a sequence page, or Seq held + B1): the pads are the sixteen steps of the bar in view, pad 1
 // bottom left. Tap a pad: the step on (with the last note played) or off.
-// Hold a pad: that step is on the cards (length, velocity, chance; on a kit
-// the last pad's note in it) and the wheel changes its pitch. B1 again: the
+// The step in hand is on the cards (length, velocity, chance; on a kit the
+// last pad's note in it). Hold a pad: the cards lock the Motion lanes on that
+// step (roadmap P1) and the wheel changes its pitch. B1 again: the
 // TRIG row, K1 the ratchet's hits, K2 their velocity ramp, Shift + K2 a kit
 // pad's pitch ramp. Minus / Plus change bar; Erase + pad clears.
 // The picture is the bar as a drum machine draws it: sixteen columns in
@@ -40,6 +41,7 @@ void draw(Paint& p, const Snapshot& s) {
         step += juce::String::fromUTF8(" \xc2\xb7 \xc3\x97") + juce::String(pattern.events[size_t(in_hand)].hits());
     if (in_hand >= 0 && pattern.events[size_t(in_hand)].condition != trig_always) // its trig condition
         step += juce::String::fromUTF8(" \xc2\xb7 ") + trig_name(pattern.events[size_t(in_hand)].condition);
+    if (held) step += juce::String::fromUTF8(" \xc2\xb7 LOCK"); // held: the pots lock it (roadmap P1)
     h.left.push_back(pill(step, c));
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 0, c};
@@ -98,6 +100,9 @@ void draw(Paint& p, const Snapshot& s) {
         }
         if (step.empty()) continue;
         int lane_note = lane_event(pattern, st, steps_lane(s.track()));
+        int kit_pad = steps_lane(s.track()) >= 0 ? steps_lane(s.track()) - int(sampler_first_note) : -1;
+        if (lock_in(pattern, st * pattern.q(), (st + 1) * pattern.q(), kit_pad)) // a Motion lock: a square at its top
+            p.fill(x + 2, top + 2, 4, 4, here ? colour::text : colour::sec, 1);
         if (lane_note >= 0 && pattern.events[size_t(lane_note)].condition != trig_always) // a trig condition: a ring at its foot
             p.ring(x + colw / 2 - 3, top + ch - 9, 6, 6, here ? colour::text : colour::sec, 3, 1.2f);
         if (step.flags & step_accent) p.circle(x + colw / 2, top - 6.5f, 2, c);      // an accent: a dot over it

@@ -497,7 +497,9 @@ hold to steer, Shift + Seq to zoom in**.
   the view scrolls a step at a time, and dots on its edges mark notes above
   and below. The note at the cursor is in focus, drawn white and named in
   the header; K1 its length, K2 velocity, K3 chance (ROLL again: its
-  ratchet, drawn as its hits along the note). A pad writes its note
+  ratchet, drawn as its hits along the note). A pad held on the note in
+  focus turns the cards to locks on it, as a step held on Steps (header
+  LOCK; a locked note has a square at its start). A pad writes its note
   at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
   is the pads' octave (Shift: down). Erase tapped alone deletes the note in
   focus; Erase + pad asks, then erases that key's notes. Push opens its
@@ -521,11 +523,20 @@ hold to steer, Shift + Seq to zoom in**.
   header's. On a kit the pads are the last pad's lane: a tap sets or clears
   that pad's note and leaves the others' (Roll edits the whole kit), the
   cards are that pad's note in the step, and
-  the wheel moves a held step's note to the next pad, the lane with it. Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
-  playing sixteenth; a kit pad's level, tune, pan, envelopes, filter and
-  more are lanes of that pad; Erase + pot asks, then clears the lane), all
-  three on one large graph in their knobs' colours, the one in hand heavy;
-  the cards are its legend.
+  the wheel moves a held step's note to the next pad, the lane with it.
+  **Held, a step is locked**: while a pad is down the cards are the Motion
+  page's three lanes, each showing its lock on that step (else the track's
+  own value), and a turn writes a lock there, for as long as the step's
+  longest note on its lane (a step at least); a locked step has a square
+  at its top. Motion the lanes of recorded pot moves (Seq Record + a pot
+  writes at the playing tick; a kit pad's level, tune, pan, envelopes,
+  filter and more are lanes of that pad; Erase + pot asks, then clears the
+  lane, locks too), all three on one large graph in their knobs' colours,
+  the one in hand heavy, each lock a short raised bar at its value for as
+  long as it holds; the cards are its legend. Motion is each pattern's own
+  (up to 8192 points, at tick resolution): it goes with the pattern when it
+  is copied, doubled, halved or sped up, and a lock's lane goes back to what
+  it holds as recorded (else the track's value) when the lock ends.
 - **Time Correct** (Shift + Pad 14): the selected pattern onto Q; pads pick
   whose notes move, B2 all; K1 Q, K2 shift ±48 ticks, K3 swing; B3 DO IT.
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):
@@ -1141,7 +1152,7 @@ of the card (beside `Samples/`), in any folders under it.
 
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
-  `MOT2` / `MOTP` / `MOTW` motion, `TIME`, `PAD4` / `KITX` / `PMUT` kits,
+  `MOTK` each pattern's motion (older files' `MOT2` / `MOTP` / `MOTW` land in their patterns), `TIME`, `PAD4` / `KITX` / `PMUT` kits,
   `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
   four sends; TRAK keeps the largest for older builds), `LVLE` (16 Levels' ends) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in
@@ -1205,7 +1216,7 @@ hand on their frame / after it / the latest by, frames), `melodee_pattern_ticks`
 `melodee_ticks`, `melodee_song_bar`, `melodee_song_clips`); Step Edit
 (`melodee_step`, `melodee_event`, `melodee_event_tick`); `melodee_ask` (0
 none, 1 erase a pad's events, 2 erase a lane, 3 reset settings, 4 new
-project, 5 take the card back); `melodee_motion`; the last pad
+project, 5 take the card back); `melodee_motion` (the pattern's points); the last pad
 (`melodee_last_pad`, `melodee_pad_loop` .. `melodee_pad_gain`,
 `melodee_pad_slots`, `melodee_pad_start`, `melodee_pad_end`,
 `melodee_pad_name`), 16 Levels (`melodee_levels`, `melodee_levels_kind`);
@@ -1259,4 +1270,4 @@ sides meet prints a `MELODEE_TEXT` line, and any such line fails the run.
 `python3 device.py install-sd --app melodee` (see README) starts it from
 the card at every boot; leaving it returns to stock until the next boot.
 Limits that are single constants (`model/limits.h`): 16 tracks, 16
-patterns a track, 8 mod routes, 256 motion events a project, 64 samples.
+patterns a track, 8 mod routes, 8192 motion points a pattern, 64 samples.

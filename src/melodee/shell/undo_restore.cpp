@@ -18,6 +18,7 @@ bool same(const SoundState& a, const SoundState& b) { return a == b; }
 bool same(const MasterState& a, const MasterState& b) { return a == b; }
 bool same(const ChopState& a, const ChopState& b) { return a == b; }
 bool same(const Pattern& a, const Pattern& b) { return a == b; } // its events are on the heap
+bool same(const TrackMotion& a, const TrackMotion& b) { return a == b; } // and its motion
 } // namespace
 
 // What the scope holds now, as the edit's before.
@@ -31,7 +32,7 @@ std::unique_ptr<Edit> Context::scope_edit(const UndoScope& s, const std::string&
     case S::Mix: e->mix_before = std::make_unique<MixState>(mix_of(project)); break;
     case S::Chain:
         e->chain = int16_t(s.index); e->chain_before = std::make_unique<Chain>(project.chain(s.index));
-        if (!ui.recording) e->motion_before = std::make_unique<Motion>(project.motion); // moving or removing an effect clears its lanes
+        if (!ui.recording && s.index < track_count) e->motion_before = std::make_unique<TrackMotion>(track_motion(s.index)); // moving or removing an effect clears its lanes
         break;
     case S::Master: e->master_before = std::make_unique<MasterState>(master_of(project)); break;
     case S::Sound: e->sound_before = std::make_unique<SoundState>(sound_of(project.tracks[s.track])); break;
@@ -61,7 +62,7 @@ bool Context::finish_scope(Edit& e) {
     };
     if (e.pattern >= 0) part(e.pattern_before, e.pattern_after, patterns.at[e.track % track_count][unsigned(e.pattern) % pattern_count]);
     if (e.chain >= 0) part(e.chain_before, e.chain_after, project.chain(unsigned(e.chain)));
-    if (e.motion_before) part(e.motion_before, e.motion_after, project.motion);
+    if (e.motion_before) part(e.motion_before, e.motion_after, track_motion(e.motion_before->track));
     part(e.mix_before, e.mix_after, mix_of(project));
     part(e.master_before, e.master_after, master_of(project));
     part(e.sound_before, e.sound_after, sound_of(project.tracks[e.track]));

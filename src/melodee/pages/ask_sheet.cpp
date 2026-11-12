@@ -16,17 +16,7 @@ using namespace ui;
 
 namespace {
 
-// The motion events of one track's pattern (all its lanes), or of one lane.
-unsigned motion_moves(const Project& project, unsigned track, unsigned pattern, int lane = -1) {
-    unsigned count = 0;
-    const auto& m = project.motion;
-    for (unsigned n = 0; n < m.count; ++n) {
-        const auto& e = m.events[n];
-        if (lane < 0) count += e.track == track && e.pattern == pattern;
-        else count += e.same_lane(uint8_t(track), uint8_t(pattern), uint8_t(lane_param(lane)), uint8_t(lane_pad(lane)));
-    }
-    return count;
-}
+
 
 // "1 note", "24 notes".
 juce::String count_of(unsigned n, const char* one, const char* many) { return juce::String(n) + " " + (n == 1 ? one : many); }
@@ -56,7 +46,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         break;
     }
     case Ask::EraseLane: { // Erase + a pot on Motion
-        unsigned moves = motion_moves(s.project, track, playing, int(s.ui.ask_target));
+        unsigned moves = s.pattern.lane_points(lane_param(int(s.ui.ask_target)), lane_pad(int(s.ui.ask_target))); // the selected pattern's
         sheet.icon = Icon::Motion;
         sheet.title = "Erase this lane?";
         sheet.lines = {count_of(moves, "move", "moves") + " of " + name_case(juce::String(lane_name(t, int(s.ui.ask_target)))) + (moves == 1 ? " goes." : " go."),
@@ -69,7 +59,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
     }
     case Ask::ClearPattern: { // Seq held + Erase + a pad
         unsigned pattern = unsigned(s.ui.ask_target) % pattern_count;
-        unsigned notes = s.sketches[track][pattern].count, moves = motion_moves(s.project, track, pattern);
+        unsigned notes = s.sketches[track][pattern].count, moves = s.sketches[track][pattern].moves;
         juce::String what = count_of(notes, "note", "notes");
         if (moves) what += " and " + count_of(moves, "motion move", "motion moves");
         sheet.title = "Clear pattern " + juce::String(pattern + 1) + "?";

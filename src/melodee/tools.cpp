@@ -172,9 +172,14 @@ void board_project(Shell& shell) {
     for (unsigned r = 0; r < 6; ++r) project.tracks[0].mods[r] = routes[r];
     // Motion on CUTOFF and RESO, as drawn on the Motion board.
     const int cutoff[] {40, 44, 52, 60, 72, 80, 84, 80, 70, 62, 54, 48, 44, 50, 58, 62};
-    for (unsigned n = 0; n < 16; ++n) project.motion.write({0, 1, uint16_t(n * 4), uint8_t(prophet::Cutoff), int16_t(cutoff[n])});
+    auto point = [&](unsigned sixteenth, unsigned param, int value) {
+        MotionPoint m;
+        m.tick = sixteenth * sixteenth_ticks; m.param = uint8_t(param); m.value = int16_t(value);
+        shell.patterns().at[0][1].write_motion(m);
+    };
+    for (unsigned n = 0; n < 16; ++n) point(n * 4, prophet::Cutoff, cutoff[n]);
     const int reso[] {40, 52, 60, 52, 40, 35};
-    for (unsigned n = 0; n < 6; ++n) project.motion.write({0, 1, uint16_t(24 + n * 4), uint8_t(prophet::Resonance), int16_t(reso[n])});
+    for (unsigned n = 0; n < 6; ++n) point(24 + n * 4, prophet::Resonance, reso[n]);
 }
 
 // A two-bar break for the sampler previews: twelve hits fading away, drawn as its overview.
@@ -335,15 +340,22 @@ void roll_bass(Shell& shell, Snapshot& s, unsigned step, uint8_t key) {
 
 // Motion on the kit: pad A09's level and tune recorded over pattern 1, and
 // A01's level (not shown: A09 is the last pad hit).
-void pad_motion_kit(Shell&, Snapshot& s) {
+void pad_motion_kit(Shell& shell, Snapshot& s) {
     s.ui.page = PageId::Motion; s.ui.track = 3; s.playing = true; s.position = 9 * sixteenth_ticks; s.ui.recording = true;
     auto& t = s.project.tracks[3];
     t.pattern = 0; t.last_pad = 8;
+    auto& p = shell.patterns().at[3][0];
+    p.motion.clear();
+    auto point = [&](unsigned sixteenth, PadParam which, int value, unsigned pad) {
+        MotionPoint m;
+        m.tick = sixteenth * sixteenth_ticks; m.param = uint8_t(motion_pad_param(which)); m.value = int16_t(value); m.pad = uint8_t(pad);
+        p.write_motion(m);
+    };
     const int level[] {100, 84, 62, 50, 70, 96, 110, 120};
-    for (unsigned n = 0; n < 8; ++n) s.project.motion.write({3, 0, uint16_t(n * 2), uint8_t(motion_pad_param(PadParam::Level)), int16_t(level[n]), 8});
+    for (unsigned n = 0; n < 8; ++n) point(n * 2, PadParam::Level, level[n], 8);
     const int tune[] {0, 0, 5, 7, -5, 0};
-    for (unsigned n = 0; n < 6; ++n) s.project.motion.write({3, 0, uint16_t(2 + n * 2), uint8_t(motion_pad_param(PadParam::Pitch)), int16_t(tune[n]), 8});
-    s.project.motion.write({3, 0, 4, uint8_t(motion_pad_param(PadParam::Level)), 40, 0});
+    for (unsigned n = 0; n < 6; ++n) point(2 + n * 2, PadParam::Pitch, tune[n], 8);
+    point(4, PadParam::Level, 40, 0);
 }
 
 // Knob FX with list entry `entry` loaded, at its initial values (as Context::knob_fx_load does).
@@ -1501,6 +1513,28 @@ const Preview previews[] {
              if (e.tick == 48) e.condition = uint8_t(trig_fill);
          }
          s.ui.trig_cards = true; s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"stepslock", [](Shell& shell, Snapshot& s) { // step 5 held on the kit's hat lane: the cards lock the hat's level, tune and pan there
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2; s.ui.held_step = 4;
+         auto& p = shell.patterns().at[3][0];
+         auto lock = [&](uint32_t tick, PadParam which, int value) {
+             MotionPoint m;
+             m.tick = tick; m.param = uint8_t(motion_pad_param(which)); m.pad = 2; m.value = int16_t(value); m.hold = 24;
+             p.write_motion(m);
+         };
+         lock(96, PadParam::Pitch, 5); lock(96, PadParam::Level, 70); lock(144, PadParam::Pitch, -3);
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"motionlocks", [](Shell& shell, Snapshot& s) { // Motion with locks: the hat's tune recorded, two steps locked over it
+         pad_motion_kit(shell, s);
+         auto& p = shell.patterns().at[3][0];
+         for (auto [tick, value] : {std::pair<uint32_t, int>{3 * sixteenth_ticks, 12}, {11 * sixteenth_ticks, -9}}) {
+             MotionPoint m;
+             m.tick = tick; m.param = uint8_t(motion_pad_param(PadParam::Pitch)); m.pad = 8; m.value = int16_t(value); m.hold = sixteenth_ticks;
+             p.write_motion(m);
+         }
+         s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
 };
 

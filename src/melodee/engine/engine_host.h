@@ -56,17 +56,16 @@ struct ProjectPack {
 };
 
 // One track for the audio thread to take whole, without stopping (a track
-// copy, or its undo): the track, its sixteen patterns and the project's
-// motion after the change. Made and freed like a ProjectPack.
+// copy, or its undo): the track and its sixteen patterns, their motion in
+// them. Made and freed like a ProjectPack.
 struct TrackPack {
-    TrackPack(unsigned track, const Track& value, const std::array<Pattern, pattern_count>& patterns, const Motion& motion);
+    TrackPack(unsigned track, const Track& value, const std::array<Pattern, pattern_count>& patterns);
     ~TrackPack();
     TrackPack(const TrackPack&) = delete;
     TrackPack& operator=(const TrackPack&) = delete;
     uint8_t track = 0;
     Track value;
     PlayPatterns patterns {};
-    Motion motion;
 };
 
 class EngineHost {
@@ -241,6 +240,10 @@ private:
         bool moved = false;                       // motion changed a value since Play
         float wheel = 0;                          // the mod wheel as the fader left it, 0..1
         bool wheel_moved = false;                 // and motion moved it since (parity phase 8)
+        // Motion's locks playing (roadmap P1): a lane, and the ticks before it goes back.
+        struct Lock { int16_t param = -1; uint8_t pad = 0; uint32_t left = 0; };
+        std::array<Lock, 16> locks {};
+        unsigned locks_on = 0;
         float buffer[block] {};
         float left[block] {}, right[block] {};
         float knob_pad_l[block] {}, knob_pad_r[block] {}; // a kit's pads under Knob FX, as the sampler left them
@@ -277,7 +280,9 @@ private:
     void arp_tick();   // the arps' own clock, running whether the song plays or not
     void bar_start();  // launches queued patterns, or follows the song
     double tick_samples(uint32_t at) const;
-    void play_motion(unsigned track, Slot& slot, unsigned at);
+    void play_motion(unsigned track, Slot& slot, const Pattern& pattern, uint32_t at);
+    void move_lane(unsigned track, Slot& slot, unsigned param, unsigned pad, int value); // a Motion lane to `value`
+    void restore_lane(unsigned track, Slot& slot, unsigned param, unsigned pad);        // and back to the track's own
     void restore(Slot& slot);
     void schedule_off(Slot& slot, int key, int32_t samples);
     void run_offs(Slot& slot, unsigned frames);
@@ -481,7 +486,6 @@ private:
     void keep_sources(const int32_t* input, const float* usb, unsigned frames); // this block's sources for the loops' next one
     void publish_taps(unsigned frames);         // the watched track's voices, for the screen
     std::array<PlayPatterns, track_count> patterns {};
-    Motion motion;
     Song song;
     bool song_mode = false;
     unsigned song_bar_now = 0;

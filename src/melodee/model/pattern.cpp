@@ -73,13 +73,58 @@ void Pattern::set_step(unsigned s, const Step& value) {
 
 void Pattern::sort() { std::stable_sort(events.begin(), events.end(), before); }
 
-void Pattern::cut(uint32_t tick) { events.erase(events.begin() + long(lower(tick)), events.end()); }
+void Pattern::cut(uint32_t tick) {
+    events.erase(events.begin() + long(lower(tick)), events.end());
+    motion.erase(motion.begin() + long(motion_lower(tick)), motion.end());
+}
+
+namespace {
+bool motion_before(const MotionPoint& a, const MotionPoint& b) {
+    return a.tick != b.tick ? a.tick < b.tick : a.param != b.param ? a.param < b.param : a.pad < b.pad;
+}
+} // namespace
+
+bool Pattern::write_motion(const MotionPoint& m) {
+    auto at = std::lower_bound(motion.begin(), motion.end(), m, motion_before);
+    if (at != motion.end() && at->tick == m.tick && at->on(m.param, m.pad)) { *at = m; return true; }
+    if (motion.size() >= motion_points) return false;
+    motion.insert(at, m);
+    return true;
+}
+
+bool Pattern::clear_lane(unsigned param, unsigned pad) {
+    auto before = motion.size();
+    motion.erase(std::remove_if(motion.begin(), motion.end(), [&](const MotionPoint& m) { return m.on(param, pad); }), motion.end());
+    return motion.size() != before;
+}
+
+unsigned Pattern::lane_points(unsigned param, unsigned pad) const {
+    unsigned n = 0;
+    for (const auto& m : motion) n += m.on(param, pad);
+    return n;
+}
+
+const MotionPoint* Pattern::lock_at(uint32_t tick, unsigned param, unsigned pad) const {
+    for (size_t n = motion_lower(tick); n < motion.size() && motion[n].tick == tick; ++n)
+        if (motion[n].on(param, pad) && motion[n].lock()) return &motion[n];
+    return nullptr;
+}
+
+int Pattern::lane_value(uint32_t tick, unsigned param, unsigned pad, int own) const {
+    for (size_t n = std::min(motion_lower(tick + 1), motion.size()); n-- > 0;)
+        if (motion[n].on(param, pad) && !motion[n].lock()) return motion[n].value;
+    return own;
+}
+
+void Pattern::sort_motion() { std::stable_sort(motion.begin(), motion.end(), motion_before); }
 
 bool double_pattern(Pattern& p, uint32_t max_length, bool copy) {
     if (p.length * 2 > max_length) return false;
     p.cut(p.length); // nothing hidden past the end comes back
     size_t count = copy ? p.events.size() : 0;
     for (size_t n = 0; n < count && p.events.size() < max_pattern_events; ++n) { Event e = p.events[n]; e.tick += p.length; p.events.push_back(e); }
+    size_t points = copy ? p.motion.size() : 0; // its motion too, as far as there is room
+    for (size_t n = 0; n < points && p.motion.size() < motion_points; ++n) { MotionPoint m = p.motion[n]; m.tick += p.length; p.motion.push_back(m); }
     p.length *= 2;
     return true;
 }
@@ -100,6 +145,14 @@ void scale_pattern(Pattern& p, bool slower) {
     }
     p.events.clear();
     for (const auto& e : moved) p.add(e);
+    std::vector<MotionPoint> points; // its motion with them
+    for (auto m : p.motion) {
+        m.tick = slower ? m.tick * 2 : m.tick / 2;
+        m.hold = uint16_t(slower ? std::min<unsigned>(m.hold * 2u, 0xffff) : (m.hold ? std::max<unsigned>(m.hold / 2u, 1) : 0));
+        if (m.tick < p.length) points.push_back(m);
+    }
+    p.motion.clear();
+    for (const auto& m : points) p.write_motion(m);
 }
 
 uint32_t quantise_tick(const Pattern& p, uint32_t tick) { return quantise_tick(p, tick, p.q()); }

@@ -65,7 +65,8 @@ struct Binding {
         // Ratchets (roadmap P1), on the TRIG row of Steps (B1 again) and Roll (B2 again): Steps' step in hand (on a
         // kit its lane's notes), Roll's note in focus; the pitch ramp a kit pad's (Shift + K2).
         StepRatchet, StepRamp, StepPitchRamp, EventRatchet, EventRamp, EventPitchRamp,
-        StepCondition, EventCondition // the TRIG row's K3: a trig condition (model/trig.h), 0..trig_count - 1
+        StepCondition, EventCondition, // the TRIG row's K3: a trig condition (model/trig.h), 0..trig_count - 1
+        Lock // a step held on Steps or a pad held on Roll's note in focus: a Motion lane (id) locked there (roadmap P1)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -98,7 +99,7 @@ constexpr unsigned lane_pad(int lane) { return unsigned(lane) >> 8; }
 // The three lanes the Motion page shows: those holding motion on the
 // track's playing pattern first (a kit's pad lanes of the last pad hit),
 // then on a kit the last pad's tune, level and pan, else the favourites.
-std::array<int, 3> motion_lanes(const Project& project, const UiState& ui);
+std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const Pattern& pattern);
 // What a lane is: its description and the track's own value; info is
 // nullptr when there is no such parameter (or a pad value phase 4 brings).
 struct MotionParam { const struct ParamInfo* info = nullptr; int value = 0; };
@@ -106,6 +107,11 @@ MotionParam motion_param(const Track& track, int lane);
 std::string lane_name(const Track& track, int lane); // "CUTOFF", "A03 LEVEL"
 // The card for a lane on the Motion page.
 Binding lane_binding(const Track& track, unsigned track_index, int lane);
+// Roadmap P1: the cards while a step (Steps) or a note (Roll, its pad held) is held: the Motion page's three lanes,
+// each showing its lock at `tick` (else the track's own value); a turn writes the lock (Context::write_lock).
+std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t tick);
+// The tick a held step or note locks at and how long the lock holds; false when nothing is held.
+bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold);
 // The chain a page shows: the selected track's, its bus's, or the master's.
 unsigned page_chain(const Project& project, const UiState& ui);
 // Patterns' K1: lengths in bars, as on the MPC (Shift + K1 any bar count).

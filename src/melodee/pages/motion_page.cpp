@@ -7,7 +7,10 @@
 // last pad's own: level, tune, pan, envelope), then on a kit that pad's
 // tune, level and pan, else the track's favourites. The picture is one large
 // graph of the pattern with all three lanes on it, each in its knob's colour,
-// the one in hand heavy and the others thin; the cards are its legend.
+// the one in hand heavy and the others thin; the cards are its legend. Motion
+// is the pattern's own (roadmap P1), at tick resolution; a lock (a pot turned
+// with a step or note held on Steps or Roll) is drawn as a short raised bar
+// at its value for as long as it holds.
 #include "melodee/model/limits.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/pages/common.h"
@@ -21,10 +24,10 @@ using namespace ui;
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
-    const auto& motion = s.project.motion;
+    const auto& motion = s.pattern.motion;
     auto c = colour_of(s);
     Header h = header_of(s);
-    h.left.push_back(pill(Icon::Motion, juce::String(motion.count) + " / " + juce::String(motion_events)));
+    h.left.push_back(pill(Icon::Motion, juce::String(unsigned(motion.size()))));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{"STEPS", "ROLL", "MOTION"}, 2, c}, h);
 
@@ -36,7 +39,8 @@ void draw(Paint& p, const Snapshot& s) {
     for (unsigned b = 1; b < beats && beats <= 64; ++b) // the beats, the bars bolder
         p.fill(x + w * float(b * beat) / length - 0.5f, y, b * beat % bar ? 1.0f : 1.5f, gh, colour::bg.withAlpha(b * beat % bar ? 0.5f : 1.0f));
     for (float q : {0.25f, 0.5f, 0.75f}) p.fill(x, y + gh * q - 0.5f, w, 1, colour::bg);
-    auto lanes = motion_lanes(s.project, s.ui);
+    auto lanes = motion_lanes(s.project, s.ui, s.pattern);
+    auto x_of = [&](uint32_t tick) { return x + w * float(std::min<uint32_t>(tick, length)) / float(length); };
     int hand = s.ui.turning >= 0 && s.now - s.ui.turned_at < 1500 ? s.ui.turning : s.ui.last_pot >= 0 ? s.ui.last_pot % 3 : 0;
     float playhead_y = -1;
     for (unsigned order = 0; order < 3; ++order) { // the one in hand last, over the others
@@ -48,31 +52,32 @@ void draw(Paint& p, const Snapshot& s) {
         if (!mp.info) continue;
         const auto& pi = *mp.info;
         auto y_of = [&](int v) { return y + gh - 3 - gauge_of(pi, v) * (gh - 6); };
-        // The track's own value until the first event, then each event holds.
+        // The track's own value until the first point, then each point holds; locks drawn apart, over the line.
         juce::Path line;
         int value = mp.value;
         line.startNewSubPath(x, y_of(value));
-        std::array<std::pair<uint16_t, int16_t>, motion_events> at {};
-        unsigned count = 0, sixteenths = std::max(1u, (length + sixteenth_ticks - 1) / sixteenth_ticks);
-        for (unsigned e = 0; e < motion.count; ++e) {
-            const auto& ev = motion.events[e];
-            if (ev.same_lane(s.ui.track, track.pattern, uint8_t(lane_param(param)), uint8_t(lane_pad(param))) && ev.step < sixteenths)
-                at[count++] = {ev.step, ev.value};
-        }
-        std::sort(at.begin(), at.begin() + count);
-        float play_x = s.playing ? x + w * float(s.position % length) / length : -1;
+        unsigned lp = lane_param(param), lk = lane_pad(param);
+        uint32_t play_at = s.playing ? uint32_t(s.position % length) : 0;
         int value_now = value;
-        for (unsigned k = 0; k < count; ++k) {
-            float ex = x + w * at[k].first / sixteenths;
-            if (ex <= play_x) value_now = at[k].second;
+        for (const auto& m : motion) {
+            if (!m.on(lp, lk) || m.lock() || m.tick >= length) continue;
+            float ex = x_of(m.tick);
+            if (s.playing && m.tick <= play_at) value_now = m.value;
             line.lineTo(ex, y_of(value));
-            value = at[k].second;
+            value = m.value;
             line.lineTo(ex, y_of(value));
         }
         line.lineTo(x + w, y_of(value));
         bool in_hand = int(lane) == hand;
-        p.g.setColour(knob_shade(s.ui.track, lane).withAlpha(in_hand ? 1.0f : 0.7f));
+        auto shade = knob_shade(s.ui.track, lane);
+        p.g.setColour(shade.withAlpha(in_hand ? 1.0f : 0.7f));
         p.g.strokePath(line, juce::PathStrokeType(in_hand ? 2.2f : 1.2f, juce::PathStrokeType::mitered, juce::PathStrokeType::butt));
+        for (const auto& m : motion) { // locks: a bar at the value for as long as each holds
+            if (!m.on(lp, lk) || !m.lock() || m.tick >= length) continue;
+            float lx = x_of(m.tick), lw = std::max(x_of(m.tick + m.hold) - lx, 3.0f), ly = y_of(m.value);
+            p.fill(lx, ly - (in_hand ? 2.5f : 1.5f), lw, in_hand ? 5.0f : 3.0f, shade.withAlpha(in_hand ? 1.0f : 0.7f), 1.5f);
+            if (s.playing && play_at >= m.tick && play_at < m.tick + m.hold) value_now = m.value;
+        }
         if (in_hand && s.playing) playhead_y = y_of(value_now);
     }
     if (s.playing) { // where it plays, the lane in hand's value there

@@ -100,6 +100,23 @@ behaviour changed.
   Why: a kit's pads are its voices, as Elektron's tracks are.
 - P1: trig conditions sit on the TRIG row's K3, beside the main row's K3
   chance.
+- P1: Motion lives in each pattern (`Pattern::motion`, MOTK), sorted by
+  tick, 8192 points a pattern, found by binary search each tick; edits reach
+  the audio thread as the pattern's copy (`PatternData`), recorded moves at
+  most every 40 ms (`Context::flush_motion` on the MIDI loop). Why: no
+  per-event commands to keep two lists equal, and copies, doubles and track
+  copies carry their motion for nothing. New files keep Motion only in
+  MOTK, so builds from before P1 lose it (older files still load).
+- P1: a lock is a Motion point with a hold: the lane holds its value from
+  the step for as long as the step's longest note on its lane (a step at
+  least; on Roll the note's length), then goes back to its recorded value
+  there, else the track's own. Why: the sound changes for that step's notes
+  only, as an Elektron lock does, without rewriting what Motion records.
+- P1: holding a step on Steps now turns the cards to locks (the Motion
+  page's three lanes); the step's own length, velocity and chance are the
+  cursor step's cards when no pad is held (a tap that creates a step, or
+  the wheel). On Roll a pad held on the note in focus does the same. Step
+  Edit gets none: round 2 makes it step entry.
 
 ## Waiting for a hand check
 
@@ -112,6 +129,10 @@ behaviour changed.
 - P1: ratchets by ear: a hat at 2-8 hits with a ramp down and up, a kit
   pad's pitch ramp (a tom rising), a synth note ratcheted; say if the
   hits' gate (a tenth short, as a note's) wants to be shorter on synths.
+- P1: locks by ear: a kit's hat with its tune locked up on one step and its
+  level down on another, a synth's cutoff locked on one note of a line;
+  say if a lock should last until the lane's next note instead of its own
+  note's length.
 - P1: Fill by hand: Play held while playing for a bar, FILL steps heard and
   NOT FILL ones dropped, back on release; say if Play's hold should wait a
   moment (a tap does nothing while playing).
@@ -158,7 +179,7 @@ behaviour, write the code fresh for this app.
   FIRST, PRE / NOT PRE, NEI / NOT NEI, beside chance; a pass counter a
   track (a kit lane of its own length counts its own); a held control for
   Fill.
-- [ ] Per-step locks and Motion depth: Motion is 256 events for the whole
+- [x] Per-step locks and Motion depth: Motion is 256 events for the whole
   project at sixteenth resolution, found by a linear scan
   (`model/project.h`). Store it per pattern with room for thousands, at
   tick resolution; holding a step on Steps (or the note in focus on Roll /

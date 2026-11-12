@@ -23,6 +23,7 @@ struct PatternSketch {
     uint32_t length = 16 * sixteenth_ticks;
     bool notes = false;
     uint16_t count = 0; // its notes, for the question before it is cleared
+    uint16_t moves = 0; // its Motion points (roadmap P1: the pattern's own), the same
     std::array<uint8_t, 64> keys {};
 };
 

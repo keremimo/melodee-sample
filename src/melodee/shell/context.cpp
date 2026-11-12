@@ -610,6 +610,13 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EventRamp: set_event_ramp(*this, value); break;
     case Kind::EventPitchRamp: set_event_pitch_ramp(*this, value); break;
     case Kind::EventCondition: set_event_condition(*this, value); break;
+    case Kind::Lock: { // a step or a note held: the lane locked there (roadmap P1)
+        uint32_t tick = 0, hold = 0;
+        if (!lock_place(project, ui, pattern(), tick, hold)) break;
+        write_lock(int(b.id), tick, uint16_t(std::min<uint32_t>(hold, 0xffff)), value);
+        ui.held_edited = true; // Steps: letting the step go keeps it
+        break;
+    }
     case Kind::StageSound: preset_turn(value); break;
     case Kind::SoundList: ui.sounds_filter = uint8_t(value); ui.preset_due = 0; break;
     case Kind::ArpGate: t.arp_gate = uint8_t(value); send({Type::Arp, ui.track, 0, 4, int16_t(value)}); break;
@@ -854,17 +861,42 @@ void Context::sync_pattern(unsigned t, unsigned p) {
     dirty = true;
 }
 
+// Seq Record + a pot: a point of the playing pattern's Motion at the tick playing (roadmap P1: tick resolution).
 void Context::record_motion(int lane, int value) {
     if (!ui.recording || !host.playing() || host.count_in() || lane < 0) return;
     auto& t = track();
-    MotionEvent e;
-    e.track = ui.track; e.pattern = t.pattern; e.param = uint8_t(lane_param(lane)); e.value = int16_t(value);
-    e.pad = uint8_t(lane_pad(lane) % sampler_pads);
-    e.step = uint16_t(uint32_t(std::max(host.position_of(ui.track), 0)) % pattern().length / sixteenth_ticks);
-    if (!project.motion.write(e)) return; // full: the move still sounds, it is just not kept
-    Command c {Type::MotionWrite};
-    c.motion = e;
-    send(c);
+    auto& p = pattern();
+    MotionPoint m;
+    m.tick = uint32_t(std::max(host.position_of(ui.track), 0)) % std::max<uint32_t>(p.length, 1);
+    m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
+    if (!p.write_motion(m)) return; // full: the move still sounds, it is just not kept
+    sync_motion(ui.track, t.pattern);
+}
+
+void Context::write_lock(int lane, uint32_t tick, uint16_t hold, int value) {
+    if (lane < 0) return;
+    auto& t = track();
+    auto& p = pattern();
+    MotionPoint m;
+    m.tick = tick % std::max<uint32_t>(p.length, 1); m.hold = std::max<uint16_t>(hold, 1);
+    m.param = uint8_t(lane_param(lane)); m.pad = uint8_t(lane_pad(lane) % sampler_pads); m.value = int16_t(value);
+    if (!p.write_motion(m)) { notice("Motion full"); return; }
+    sync_motion(ui.track, t.pattern);
+}
+
+void Context::sync_motion(unsigned t, unsigned p) {
+    int which = int((t % track_count) << 8 | (p % pattern_count));
+    if (motion_waiting >= 0 && motion_waiting != which) sync_pattern(unsigned(motion_waiting) >> 8, unsigned(motion_waiting) & 0xff);
+    motion_waiting = which;
+    dirty = true;
+    flush_motion();
+}
+
+void Context::flush_motion() {
+    if (motion_waiting < 0 || now - motion_synced < motion_sync_ms) return;
+    sync_pattern(unsigned(motion_waiting) >> 8, unsigned(motion_waiting) & 0xff);
+    motion_waiting = -1;
+    motion_synced = now;
 }
 
 // A kit pad's own value turned while recording: a lane of that pad (the last hit).
@@ -877,12 +909,8 @@ void Context::clear_lane(int lane) {
     if (lane < 0) return;
     auto& t = track();
     std::string what = "Erase " + lane_name(t, lane) + " motion";
-    edit_pattern(ui.track, t.pattern, what.c_str(), [&] { // one undo (the motion is in every edit), or part of a take
-        uint8_t param = uint8_t(lane_param(lane)), pad = uint8_t(lane_pad(lane) % sampler_pads);
-        project.motion.clear(ui.track, t.pattern, param, pad);
-        Command c {Type::MotionClear};
-        c.motion.track = ui.track; c.motion.pattern = t.pattern; c.motion.param = param; c.motion.pad = pad;
-        send(c);
+    edit_pattern(ui.track, t.pattern, what.c_str(), [&] { // one undo (the pattern holds its motion), or part of a take
+        if (pattern().clear_lane(lane_param(lane), lane_pad(lane) % sampler_pads)) sync_pattern(ui.track, t.pattern);
     });
     notice(what);
 }
@@ -1073,7 +1101,6 @@ Edit Context::begin_edit(const char* what, unsigned t, int p, bool song) {
     edit.what = what; edit.track = uint8_t(t % track_count);
     if (p >= 0) { edit.pattern = int16_t(unsigned(p) % pattern_count); edit.pattern_before = std::make_unique<Pattern>(patterns.at[edit.track][edit.pattern]); }
     if (song) edit.song_before = std::make_unique<Song>(project.song);
-    edit.motion_before = std::make_unique<Motion>(project.motion);
     return edit;
 }
 
@@ -1093,7 +1120,8 @@ void Context::commit_edit(Edit&& edit) {
         else edit.song_before.reset();
     }
     if (edit.motion_before) {
-        if (std::memcmp(edit.motion_before.get(), &project.motion, sizeof(Motion)) != 0) { edit.motion_after = std::make_unique<Motion>(project.motion); changed = true; }
+        auto now_motion = track_motion(edit.motion_before->track);
+        if (!(now_motion == *edit.motion_before)) { edit.motion_after = std::make_unique<TrackMotion>(std::move(now_motion)); changed = true; }
         else edit.motion_before.reset();
     }
     if (changed) edits.push(std::move(edit));
@@ -1105,18 +1133,19 @@ void Context::restore_song(const Song& value) {
     sync_punches();
 }
 
-void Context::restore_motion(const Motion& value) {
-    auto& motion = project.motion;
-    for (unsigned n = 0; n < motion.count; ++n) { // every lane there is now goes
-        Command c {Type::MotionClear};
-        c.motion = motion.events[n];
-        send(c);
-    }
-    motion = value;
-    for (unsigned n = 0; n < motion.count; ++n) {
-        Command c {Type::MotionWrite};
-        c.motion = motion.events[n];
-        send(c);
+TrackMotion Context::track_motion(unsigned t) const {
+    TrackMotion m;
+    m.track = uint8_t(t % track_count);
+    for (unsigned p = 0; p < pattern_count; ++p) m.lanes[p] = patterns.at[m.track][p].motion;
+    return m;
+}
+
+void Context::restore_motion(const TrackMotion& value) {
+    for (unsigned p = 0; p < pattern_count; ++p) {
+        auto& pattern = patterns.at[value.track % track_count][p];
+        if (pattern.motion == value.lanes[p]) continue;
+        pattern.motion = value.lanes[p];
+        sync_pattern(value.track, p);
     }
 }
 
@@ -1289,14 +1318,12 @@ void Context::chop_to_pads() {
 // hold something else, so it goes.
 void Context::clear_fx_motion(unsigned n) {
     if (n >= track_count) return;
-    auto& motion = project.motion;
-    for (unsigned e = 0; e < motion.count;) {
-        const auto ev = motion.events[e];
-        if (ev.track != n || ev.param < motion_fx_base || ev.param >= motion_pad_base) { ++e; continue; } // pad lanes stay
-        motion.clear(ev.track, ev.pattern, ev.param, ev.pad);
-        Command c {Type::MotionClear};
-        c.motion = ev;
-        send(c);
+    for (unsigned p = 0; p < pattern_count; ++p) {
+        auto& motion = patterns.at[n][p].motion;
+        auto before = motion.size();
+        motion.erase(std::remove_if(motion.begin(), motion.end(), [](const MotionPoint& m) { // pad lanes stay
+            return m.param >= motion_fx_base && m.param < motion_pad_base; }), motion.end());
+        if (motion.size() != before) sync_pattern(n, p);
     }
 }
 
@@ -1485,36 +1512,9 @@ void Context::double_length() {
 
 void Context::double_notes() {
     auto& p = pattern();
-    uint32_t length = p.length;
     bool copy = ui.settings.double_copies;
-    if (!double_pattern(p, project.max_length(), copy)) return;
+    if (!double_pattern(p, project.max_length(), copy)) return; // its motion too (Settings' Empty: the new half bare)
     sync_pattern(ui.track, track().pattern);
-    if (!copy) return; // Settings' Double Seq "Empty": the new half starts bare, motion too
-    // Its motion too, as far as there is room.
-    auto& motion = project.motion;
-    unsigned sixteenths = length / sixteenth_ticks, events = motion.count;
-    for (unsigned n = 0; n < events; ++n) {
-        MotionEvent e = motion.events[n];
-        if (e.track != ui.track || e.pattern != track().pattern || e.step >= sixteenths) continue;
-        e.step = uint16_t(e.step + sixteenths);
-        if (!motion.write(e)) break;
-        Command c {Type::MotionWrite};
-        c.motion = e;
-        send(c);
-    }
-}
-
-// Motion of a pattern at and past a sixteenth goes (Half Seq, Half Speed).
-void Context::erase_motion_from(unsigned t, unsigned p, unsigned step) {
-    auto& motion = project.motion;
-    Motion kept;
-    bool gone = false;
-    for (unsigned n = 0; n < motion.count; ++n) {
-        const auto& e = motion.events[n];
-        if (e.track == t && e.pattern == p && e.step >= step) gone = true;
-        else kept.write(e);
-    }
-    if (gone) restore_motion(kept);
 }
 
 void Context::half_length() {
@@ -1522,9 +1522,8 @@ void Context::half_length() {
     uint32_t half = std::max<uint32_t>(p.length / 2, 1);
     if (half == p.length) return;
     edit_pattern(ui.track, track().pattern, "Half Seq", [&] {
-        half_pattern(p);
+        half_pattern(p); // its motion past the half goes with the notes
         sync_pattern(ui.track, track().pattern);
-        erase_motion_from(ui.track, track().pattern, (half + sixteenth_ticks - 1) / sixteenth_ticks);
     });
     notice("Half Seq");
 }
@@ -1543,20 +1542,8 @@ void Context::double_speed() {
 // or half; the pattern keeps its length, and what falls past its end goes.
 void Context::scale_notes(bool slower) {
     auto& p = pattern();
-    scale_pattern(p, slower);
+    scale_pattern(p, slower); // its motion with the notes
     sync_pattern(ui.track, track().pattern);
-    auto& motion = project.motion;
-    Motion kept;
-    unsigned end = (p.length + sixteenth_ticks - 1) / sixteenth_ticks;
-    for (unsigned n = 0; n < motion.count; ++n) {
-        MotionEvent e = motion.events[n];
-        if (e.track == ui.track && e.pattern == track().pattern) {
-            e.step = uint16_t(slower ? e.step * 2 : e.step / 2);
-            if (e.step >= end) continue;
-        }
-        kept.write(e);
-    }
-    restore_motion(kept);
 }
 
 // Time Correct's Do It: the chosen notes onto the nearest step of Q, every

@@ -101,6 +101,7 @@ void Shell::midi_lost() {
 void Shell::midi_output(MidiOutput& out, MidiIo::Clock::time_point at, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;
+    context_.flush_motion(); // recorded Motion the audio thread has not had yet (roadmap P1)
     midi_io.pump(context_, out, at);
 }
 
@@ -369,9 +370,8 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         return;
     }
     if (ui_.erase && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane, once B3 says so (as on the MPC)
-        int lane = motion_lanes(*project_, ui_)[n];
-        uint8_t param = uint8_t(lane_param(lane)), kit = uint8_t(lane_pad(lane) % sampler_pads);
-        if (lane >= 0 && project_->motion.has(ui_.track, context_.track().pattern, param, kit)) ask(context_, UiState::Ask::EraseLane, lane);
+        int lane = motion_lanes(*project_, ui_, context_.pattern())[n];
+        if (lane >= 0 && context_.pattern().has_lane(lane_param(lane), lane_pad(lane) % sampler_pads)) ask(context_, UiState::Ask::EraseLane, lane);
         else context_.notice("No motion on " + lane_name(context_.track(), lane));
         return;
     }
@@ -420,6 +420,7 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         // all it started: its notes, the step it held on Steps, the pattern it held under Seq.
         context_.release_pad(pad);
         if (ui_.held_step >= 0 && unsigned(ui_.held_step) % bar_steps == pad % 16) ui_.held_step = -1;
+        if (ui_.held_note == int(pad % 16)) ui_.held_note = -1; // Roll's note held for its locks
         if (ui_.pattern_held == int(pad % 16)) ui_.pattern_held = -1;
         context_.close_hold(pad);
         return;
@@ -565,6 +566,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             sketch.length = pattern.length; sketch.keys.fill(0);
             sketch.notes = !pattern.empty();
             sketch.count = uint16_t(std::min<size_t>(pattern.events.size(), 0xffff));
+            sketch.moves = uint16_t(std::min<size_t>(pattern.motion.size(), 0xffff));
             for (const auto& e : pattern.events) { // the first note of each of the first 64 sixteenths
                 unsigned k = e.tick / sixteenth_ticks;
                 if (k >= sketch.keys.size() || e.tick >= pattern.length) break;

@@ -162,7 +162,8 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.end(at);
         for (unsigned p = 0; p < pattern_count; ++p) { // each pattern's notes, on the 96-a-quarter clock
             const auto& pattern = patterns.at[t][p];
-            bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty();
+            bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty() &&
+                         pattern.motion.empty();
             if (plain) continue;
             at = w.begin("EVNT");
             w.u8(t); w.u8(p); w.u32(pattern.length); w.u8(unsigned(pattern.division));
@@ -198,51 +199,18 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                     if (pattern.events[n].condition != trig_always) { w.u32(n); w.u8(pattern.events[n].condition); }
                 w.end(at);
             }
+            if (!pattern.motion.empty()) { // Motion (roadmap P1): the pattern's own points at their ticks, locks with their hold
+                at = w.begin("MOTK");
+                w.u8(t); w.u8(p); w.u32(uint32_t(pattern.motion.size()));
+                for (const auto& m : pattern.motion) { w.u32(m.tick); w.u8(m.param); w.u8(m.pad); w.i16(m.value); w.u16(m.hold); }
+                w.end(at);
+            }
         }
     }
     at = w.begin("TIME"); // time signature, BPM per pattern
     w.u8(project.signature); w.u8(project.seq_tempo);
     for (auto v : project.pattern_tempo) w.u16(v);
     w.end(at);
-    // Motion: engine and effect lanes in MOT2 (steps in sixteenths; MOTN
-    // counted the pattern's own steps), a kit pad's lanes in MOTP with their
-    // pad, so files from before parity phase 3 and the builds that read them
-    // never meet a pad lane.
-    // The mod wheel's lane (parity phase 8) goes in MOTW the same way.
-    unsigned pad_lanes = 0, wheel_lanes = 0;
-    for (unsigned n = 0; n < project.motion.count; ++n) {
-        const auto& e = project.motion.events[n];
-        pad_lanes += pad_param_of(e.param) >= 0;
-        wheel_lanes += e.param == motion_wheel;
-    }
-    at = w.begin("MOT2");
-    w.u16(uint16_t(project.motion.count - pad_lanes - wheel_lanes));
-    for (unsigned n = 0; n < project.motion.count; ++n) {
-        const auto& e = project.motion.events[n];
-        if (e.param >= motion_pad_base) continue;
-        w.u8(e.track); w.u8(e.pattern); w.u16(e.step); w.u8(e.param); w.i16(e.value);
-    }
-    w.end(at);
-    if (pad_lanes) {
-        at = w.begin("MOTP"); // pad lanes: track, pattern, sixteenth, kit pad, which value (PadParam), value
-        w.u16(uint16_t(pad_lanes));
-        for (unsigned n = 0; n < project.motion.count; ++n) {
-            const auto& e = project.motion.events[n];
-            if (pad_param_of(e.param) < 0) continue;
-            w.u8(e.track); w.u8(e.pattern); w.u16(e.step); w.u8(e.pad); w.u8(uint8_t(e.param - motion_pad_base)); w.i16(e.value);
-        }
-        w.end(at);
-    }
-    if (wheel_lanes) {
-        at = w.begin("MOTW"); // the mod wheel: track, pattern, sixteenth, value 0..127
-        w.u16(uint16_t(wheel_lanes));
-        for (unsigned n = 0; n < project.motion.count; ++n) {
-            const auto& e = project.motion.events[n];
-            if (e.param != motion_wheel) continue;
-            w.u8(e.track); w.u8(e.pattern); w.u16(e.step); w.i16(e.value);
-        }
-        w.end(at);
-    }
     at = w.begin("SONG");
     const auto& song = project.song;
     w.u16(song.count);
@@ -442,7 +410,10 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
     std::array<bool, track_count> pad4 {};  // tracks whose pads had a PAD4 section
-    std::vector<MotionEvent> legacy_motion; // MOTN: steps of each pattern's division, turned into sixteenths at the end
+    // Motion before roadmap P1 (MOT2, MOTP, MOTW: the project's, on sixteenths; MOTN: steps of each pattern's division),
+    // laid into the patterns at the end, once their lengths and divisions are known.
+    struct LegacyMotion { uint8_t track = 0, pattern = 0, param = 0, pad = 0; uint16_t step = 0; int16_t value = 0; bool division = false; };
+    std::vector<LegacyMotion> legacy_motion;
     Reader file(data.data() + 8, data.size() - 8);
     while (!file.done() && file.ok) {
         char tag[5];
@@ -574,34 +545,47 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 unsigned condition = r.u8();
                 if (r.ok && place < pattern.events.size() && condition < trig_count) pattern.events[place].condition = uint8_t(condition);
             }
-        } else if (name == "MOTN" || name == "MOT2") {
-            bool legacy = name == "MOTN";
+        } else if (name == "MOTK") { // Motion (roadmap P1): a pattern's points at their ticks
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            uint32_t count = std::min<uint32_t>(r.u32(), motion_points);
+            pattern.motion.clear();
+            pattern.motion.reserve(count);
+            for (uint32_t k = 0; k < count && r.ok; ++k) {
+                MotionPoint m;
+                m.tick = r.u32(); m.param = uint8_t(r.u8()); m.pad = uint8_t(r.u8() % sampler_pads); m.value = int16_t(r.i16());
+                m.hold = uint16_t(r.u16());
+                if (r.ok) pattern.motion.push_back(m);
+            }
+            pattern.sort_motion();
+        } else if (name == "MOTN" || name == "MOT2") { // the project's Motion before roadmap P1
+            bool division = name == "MOTN";
             unsigned count = r.u16();
             for (unsigned k = 0; k < count && r.ok; ++k) {
-                MotionEvent e;
+                LegacyMotion e;
                 e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
-                e.param = uint8_t(r.u8()); e.value = int16_t(r.i16());
+                e.param = uint8_t(r.u8()); e.value = int16_t(r.i16()); e.division = division;
                 if (e.param >= motion_pad_base) continue; // pad lanes live in MOTP
-                if (legacy) legacy_motion.push_back(e);
-                else project->motion.write(e);
+                if (r.ok) legacy_motion.push_back(e);
             }
         } else if (name == "MOTP") { // a kit pad's lanes (parity phase 3)
             unsigned count = r.u16();
             for (unsigned k = 0; k < count && r.ok; ++k) {
-                MotionEvent e;
+                LegacyMotion e;
                 e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
                 e.pad = uint8_t(r.u8() % sampler_pads);
                 unsigned which = r.u8();
                 e.value = int16_t(r.i16());
-                if (r.ok && which < pad_param_count) { e.param = uint8_t(motion_pad_param(PadParam(which))); project->motion.write(e); }
+                if (r.ok && which < pad_param_count) { e.param = uint8_t(motion_pad_param(PadParam(which))); legacy_motion.push_back(e); }
             }
         } else if (name == "MOTW") { // the mod wheel's lane (parity phase 8)
             unsigned count = r.u16();
             for (unsigned k = 0; k < count && r.ok; ++k) {
-                MotionEvent e;
+                LegacyMotion e;
                 e.track = uint8_t(r.u8() % track_count); e.pattern = uint8_t(r.u8() % pattern_count); e.step = uint16_t(r.u16());
                 e.param = uint8_t(motion_wheel); e.value = int16_t(std::clamp<int>(r.i16(), 0, 127));
-                if (r.ok) project->motion.write(e);
+                if (r.ok) legacy_motion.push_back(e);
             }
         } else if (name == "SNDS") { // a track's four sends (round 2); without it the one TRAK holds
             unsigned t = r.u8(), buses = r.u8();
@@ -784,10 +768,12 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     if (!file.ok) return "damaged file";
     for (unsigned t = 0; t < track_count; ++t) // before parity phase 4 a pad's decay ran from its start
         if (!pad4[t]) for (auto& pad : project->tracks[t].pads) pad.decay_from_start = true;
-    for (auto e : legacy_motion) { // the pattern's own steps into sixteenths
-        unsigned q = patterns->at[e.track][e.pattern].q();
-        e.step = uint16_t((e.step * q + sixteenth_ticks / 2) / sixteenth_ticks);
-        project->motion.write(e);
+    for (const auto& e : legacy_motion) { // into its pattern, at its sixteenth (MOTN's step of Q to the nearest sixteenth)
+        auto& pattern = patterns->at[e.track][e.pattern];
+        uint32_t sixteenth = e.division ? (uint32_t(e.step) * pattern.q() + sixteenth_ticks / 2) / sixteenth_ticks : e.step;
+        MotionPoint m;
+        m.tick = sixteenth * sixteenth_ticks; m.param = e.param; m.pad = e.pad; m.value = e.value;
+        pattern.write_motion(m);
     }
     target = *project;
     target_patterns = *patterns;

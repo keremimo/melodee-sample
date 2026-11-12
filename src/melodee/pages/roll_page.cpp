@@ -24,6 +24,7 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/step_edit.h"
+#include "melodee/shell/step_lane.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 
@@ -55,6 +56,7 @@ void draw(Paint& p, const Snapshot& s) {
     bool kit = track.engine == EngineKind::Sampler || track.engine == EngineKind::Kit909; // lanes of pads, not keys
     Header h = header_of(s);
     if (!ui.recording) {
+        if (focused && ui.held_note >= 0) h.left.push_back(pill("LOCK", c)); // its pad held: the pots lock it (roadmap P1)
         if (focused) h.left.push_back(chip(Icon::Note, juce::String(key_label(track, focused->key)), c)); // where it sits: the place bar's
         else h.left.push_back(pill("BAR " + juce::String(cursor * q / bar + 1) + " / " + juce::String((pattern.length + bar - 1) / bar)));
     }
@@ -143,6 +145,9 @@ void draw(Paint& p, const Snapshot& s) {
             }
         }
         if (on) p.ring(x - 1, y - 1, w + 2, hgt + 2, c, 3, 1.2f);
+        bool kit_lane = track.engine == EngineKind::Sampler;
+        if (w > 6 && lock_in(pattern, e.tick, e.tick + 1, kit_lane ? int(e.key) - int(sampler_first_note) : -1)) // a Motion lock on it
+            p.fill(x + 1, y + 1, 3, 3, on ? c : colour::bg, 0.5f);
         if (e.condition != trig_always && w > 8) // a trig condition: a ring at its end
             p.ring(x + w - 6, y + hgt / 2 - 2.5f, 5, 5, on ? c : colour::bg, 2.5f, 1.2f);
         if ((e.flags & step_accent) && w > 6) p.fill(x + 1.5f, y + 1.5f, 2, hgt - 3, on ? c : colour::bg, 1);
@@ -196,11 +201,13 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
         return;
     }
     c.play_pad(pad, velocity, down);
+    if (!down && c.ui.held_note == int(pad)) c.ui.held_note = -1; // its cards back from the locks
     if (!down || !c.track().used()) return;
     if (c.ui.sheet_open) c.ui.sheet_open = false; // a pad leaves the sheet and writes as ever
     if (c.ui.recording && c.host.playing()) return; // played in live by Seq Record
     int v = c.track().layout == PadLayout::Levels ? level_velocity(pad) : velocity;
     roll_write(c, pad_key(c.project, c.track(), pad), uint8_t(v));
+    if (roll_focus(c.pattern(), c.ui) >= 0) c.ui.held_note = int8_t(pad); // held on its note: the pots lock it (roadmap P1)
 }
 
 void wheel(Context& c, int delta) {

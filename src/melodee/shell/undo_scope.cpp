@@ -65,7 +65,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::SongPattern: case Kind::SongLength: return b.id >= 0 ? of(S::Song, ui) : UndoScope {};
     case Kind::StepLength: case Kind::StepVelocity: case Kind::StepChance: case Kind::EventVelocity: case Kind::EventLength:
     case Kind::EventChance: case Kind::StepRatchet: case Kind::StepRamp: case Kind::StepPitchRamp: case Kind::EventRatchet:
-    case Kind::EventRamp: case Kind::EventPitchRamp: case Kind::StepCondition: case Kind::EventCondition:
+    case Kind::EventRamp: case Kind::EventPitchRamp: case Kind::StepCondition: case Kind::EventCondition: case Kind::Lock:
         return pattern_scope(project, ui);
     default: return {};
     }

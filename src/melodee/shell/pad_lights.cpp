@@ -348,11 +348,8 @@ Look time_correct_look(const PadScene& s, const std::array<bool, 192>& keys, uns
 // Motion on a kit: the pads with recorded motion in this pattern.
 std::array<bool, 192> pads_moving(const PadScene& s) {
     std::array<bool, 192> out {};
-    const auto& m = s.project.motion;
-    for (unsigned n = 0; n < m.count; ++n) {
-        const auto& e = m.events[n];
-        if (e.track == selected_index(s) && e.pattern == selected(s).pattern && pad_param_of(e.param) >= 0) out[e.pad % 192] = true;
-    }
+    for (const auto& m : shown(s).motion)
+        if (pad_param_of(m.param) >= 0) out[m.pad % 192] = true;
     return out;
 }
 Look motion_look(const PadScene& s, const Heard& snd, const std::array<bool, 192>& moving, unsigned pad) {

@@ -98,16 +98,32 @@ struct Step {
     const Note* first() const { for (auto& n : notes) if (n.velocity) return &n; return nullptr; }
 };
 
+// A point of Motion (roadmap P1: kept by its pattern, at tick resolution): from `tick` on, a lane holds `value`. A
+// lane is an engine parameter, an effect's on the track's chain or the mod wheel (`param`, model/limits.h's
+// motion_* numbers), or a kit pad's own value on `pad`. A lock (`hold` above 0: a pot turned with a step or note
+// held) holds for that many ticks only, then the lane goes back to what it was.
+struct MotionPoint {
+    uint32_t tick = 0;
+    uint8_t param = 0, pad = 0;
+    int16_t value = 0;
+    uint16_t hold = 0;
+    bool lock() const { return hold > 0; }
+    bool on(unsigned p, unsigned k) const { return param == p && pad == k; }
+    bool operator==(const MotionPoint& o) const { return tick == o.tick && param == o.param && pad == o.pad && value == o.value && hold == o.hold; }
+    bool operator!=(const MotionPoint& o) const { return !(*this == o); }
+};
+
 struct Pattern {
     uint32_t length = 16 * sixteenth_ticks; // ticks
     Division division = Division::Sixteenth; // Q
     std::vector<Event> events;               // by tick, then key
+    std::vector<MotionPoint> motion;         // by tick, then lane; at most motion_points
 
     unsigned q() const { return division_ticks(division); }
     // Steps of Q the pattern holds (a last part step counts).
     unsigned steps() const { return std::max(1u, unsigned((length + q() - 1) / q())); }
     bool empty() const { return events.empty() || events.front().tick >= length; }
-    bool operator==(const Pattern& o) const { return length == o.length && division == o.division && events == o.events; }
+    bool operator==(const Pattern& o) const { return length == o.length && division == o.division && events == o.events && motion == o.motion; }
     bool operator!=(const Pattern& o) const { return !(*this == o); }
     // The first event at or after `tick`.
     size_t lower(uint32_t tick) const {
@@ -125,8 +141,24 @@ struct Pattern {
     void set_step(unsigned s, const Step& value);
     // Keeps the events in order after they were moved in place.
     void sort();
-    // Drops every note from `tick` on.
+    // Drops every note (and Motion point) from `tick` on.
     void cut(uint32_t tick);
+
+    // Motion (roadmap P1). The first point at or after `tick`.
+    size_t motion_lower(uint32_t tick) const {
+        return size_t(std::lower_bound(motion.begin(), motion.end(), tick, [](const MotionPoint& m, uint32_t t) { return m.tick < t; }) - motion.begin());
+    }
+    // Puts a point in its place; one on the same tick and lane is replaced. False when full.
+    bool write_motion(const MotionPoint& m);
+    // A lane's points: removed (locks too: false when there were none), counted, or any there.
+    bool clear_lane(unsigned param, unsigned pad);
+    unsigned lane_points(unsigned param, unsigned pad) const;
+    bool has_lane(unsigned param, unsigned pad) const { return lane_points(param, pad) > 0; }
+    // The lock on a lane at `tick`, if one starts there.
+    const MotionPoint* lock_at(uint32_t tick, unsigned param, unsigned pad) const;
+    // What a lane holds at `tick` as recorded (locks aside): the last point at or before it, else `own`.
+    int lane_value(uint32_t tick, unsigned param, unsigned pad, int own) const;
+    void sort_motion();
 };
 
 // The events starting in step `step` of a pattern's Q: events[first, first + count) (Step Edit lists them).

@@ -46,7 +46,7 @@ void erase_lane(Context& c, const FaderJob& job) {
     const auto& track = c.track();
     int lane = binding_lane(track, job.binding);
     if (lane < 0) { c.notice("No motion lane for the fader here"); return; }
-    if (c.project.motion.has(c.ui.track, track.pattern, uint8_t(lane_param(lane)), uint8_t(lane_pad(lane) % sampler_pads)))
+    if (c.pattern().has_lane(lane_param(lane), lane_pad(lane) % sampler_pads))
         ask(c, UiState::Ask::EraseLane, lane);
     else c.notice("No motion on " + lane_name(track, lane));
 }

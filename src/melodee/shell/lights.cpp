@@ -165,7 +165,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             step_events_now.store(in.count, std::memory_order_relaxed);
             event_tick.store(chosen >= 0 ? shown.events[size_t(chosen)].tick : 0, std::memory_order_relaxed);
             ask_now.store(uint32_t(ui_.ask), std::memory_order_relaxed);
-            motion_now.store(project_->motion.count, std::memory_order_relaxed);
+            motion_now.store(uint32_t(shown.motion.size()), std::memory_order_relaxed); // the pattern's Motion points (roadmap P1)
             if (ui_.page == PageId::Roll) { // the view as the page draws it
                 UiState roll = ui_;
                 roll_follow(shown, roll);

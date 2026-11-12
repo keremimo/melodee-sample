@@ -158,6 +158,15 @@ public:
     void record_motion(int lane, int value);
     void record_pad_motion(PadParam which, int value);
     void clear_lane(int lane);
+    // Roadmap P1: Motion is each pattern's own. A pot turned with a step (Steps) or a note (Roll, a pad held on it)
+    // held writes a lock there: `lane` holds `value` from `tick` for `hold` ticks. Recorded moves reach the audio
+    // thread at most every motion_sync_ms (a pattern copy each), flush_motion() sending the last when it is due.
+    void write_lock(int lane, uint32_t tick, uint16_t hold, int value);
+    void sync_motion(unsigned track, unsigned pattern);
+    void flush_motion();
+    static constexpr uint32_t motion_sync_ms = 40;
+    int motion_waiting = -1;  // track << 8 | pattern whose recorded motion the audio thread has not had yet
+    uint32_t motion_synced = 0;
     // Undo and redo (Shift + Minus / Plus): pad deletes and copies, takes,
     // and pattern edits made through edit_pattern() go into the one history.
     History edits;
@@ -165,7 +174,8 @@ public:
     void commit_edit(Edit&& edit);                                    // as it is after; kept if anything changed
     void apply_edit(const Edit& edit, bool after);
     void restore_song(const Song& value);
-    void restore_motion(const Motion& value);
+    void restore_motion(const TrackMotion& value); // a track's patterns' motion as it was (an effect moved or removed)
+    TrackMotion track_motion(unsigned track) const;
     void undo();
     void redo();
     // Parity phase 10 (shell/undo_scope.cpp): a pot's turns are one step per control, closed by another control, any
@@ -417,7 +427,6 @@ private:
     unsigned tap_count = 0;
     void record(int key, int velocity);
     void record_release(int key);
-    void erase_motion_from(unsigned track, unsigned pattern, unsigned step); // motion at and past a sixteenth
 };
 
 } // namespace melodee

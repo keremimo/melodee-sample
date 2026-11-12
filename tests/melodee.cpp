@@ -97,6 +97,12 @@ float peak_of(const std::vector<float>& v, size_t from = 0, size_t to = SIZE_MAX
     for (size_t n = from; n < std::min(to, v.size()); ++n) { CHECK(std::isfinite(v[n])); peak = std::max(peak, std::fabs(v[n])); }
     return peak;
 }
+// A point of Motion (roadmap P1: the pattern's own) on sixteenth `sixteenth`; a lock with `hold` ticks.
+MotionPoint point(unsigned sixteenth, unsigned param, int value, unsigned pad = 0, unsigned hold = 0) {
+    MotionPoint m;
+    m.tick = sixteenth * sixteenth_ticks; m.param = uint8_t(param); m.value = int16_t(value); m.pad = uint8_t(pad); m.hold = uint16_t(hold);
+    return m;
+}
 // One note on step `step` of the pattern's Q, in place of what the step held.
 void put(Pattern& p, unsigned step, uint8_t key, uint8_t velocity, uint8_t length = 1, uint8_t flags = 0) {
     Step s;
@@ -280,16 +286,18 @@ void sequenced_legato() {
     }
 }
 void motion() {
-    // The store: a second write at the same place replaces, clear drops one lane, and it fills at the limit.
-    Motion m;
-    CHECK(m.write({0, 0, 4, prophet::Cutoff, 10}) && m.write({0, 0, 4, prophet::Cutoff, 20}) && m.count == 1);
-    CHECK(m.events[0].value == 20);
-    CHECK(m.write({0, 0, 8, prophet::Resonance, 5}) && m.write({1, 0, 8, prophet::Cutoff, 5}));
-    m.clear(0, 0, prophet::Cutoff);
-    CHECK(m.count == 2 && !m.has(0, 0, prophet::Cutoff) && m.has(0, 0, prophet::Resonance) && m.has(1, 0, prophet::Cutoff));
-    Motion full;
-    for (unsigned n = 0; n < motion_events; ++n) CHECK(full.write({0, 0, uint16_t(n), 0, 0}));
-    CHECK(!full.write({0, 0, 999, 0, 0}) && full.count == motion_events);
+    // The store (a pattern's own since roadmap P1): a second write at the same place replaces, clear drops one lane,
+    // and it fills at the limit.
+    Pattern m;
+    CHECK(m.write_motion(point(4, prophet::Cutoff, 10)) && m.write_motion(point(4, prophet::Cutoff, 20)) && m.motion.size() == 1);
+    CHECK(m.motion[0].value == 20);
+    CHECK(m.write_motion(point(8, prophet::Resonance, 5)) && m.write_motion(point(2, prophet::Cutoff, 5)));
+    CHECK(m.motion[0].tick == 2 * sixteenth_ticks && m.motion[2].param == prophet::Resonance); // in order of ticks
+    CHECK(m.clear_lane(prophet::Cutoff, 0) && m.motion.size() == 1 && !m.has_lane(prophet::Cutoff, 0) && m.has_lane(prophet::Resonance, 0));
+    Pattern full;
+    for (unsigned n = 0; n < motion_points; ++n) { MotionPoint p; p.tick = n; CHECK(full.write_motion(p)); }
+    MotionPoint over; over.tick = motion_points;
+    CHECK(!full.write_motion(over) && full.motion.size() == motion_points);
 
     // Played: the cutoff closed by motion from step 0 makes a held line much quieter,
     // and Stop gives the track its own value back.
@@ -298,7 +306,7 @@ void motion() {
         auto bank = std::make_unique<PatternBank>();
         load_sound(project->tracks[0], EngineKind::Prophet, 0);
         for (unsigned s = 0; s < 16; ++s) put(bank->at[0][0], s, 57, 100);
-        if (closed) project->motion.write({0, 0, 0, prophet::Cutoff, 0});
+        if (closed) bank->at[0][0].write_motion(point(0, prophet::Cutoff, 0));
         EngineHost host;
         host.load(*project, *bank);
         host.send({Command::Type::Play});
@@ -942,11 +950,11 @@ void sampler_kit() {
         const auto& info = effect_info(EffectKind::Filter);
         for (unsigned q = 0; q < effect_params; ++q) slot.params[q] = info.params[q].label ? info.params[q].initial : 0;
         slot.params[0] = 100;
-        project->motion.write({0, 0, 8, uint8_t(motion_fx_param(0, 0)), 0});
+        bank->at[0][0].write_motion(point(8, motion_fx_param(0, 0), 0));
         CHECK(motion_param(project->tracks[0], int(motion_fx_param(0, 0))).info == &info.params[0]);
         CHECK(!motion_param(project->tracks[0], int(motion_fx_param(1, 0))).info); // no effect in slot 2
         UiState ui;
-        auto lanes = motion_lanes(*project, ui);
+        auto lanes = motion_lanes(*project, ui, bank->at[0][0]);
         CHECK(lanes[0] == int(motion_fx_param(0, 0)));
         EngineHost host;
         host.load(*project, *bank);
@@ -1051,7 +1059,7 @@ void project_files() {
     std::snprintf(project->samples[2].path, sizeof(project->samples[2].path), "/media/card/Samples/Kick.wav");
     bank->at[0][3].length = 96 * 48; bank->at[0][3].division = Division::Eighth;
     bank->at[0][3].add({95 * 48 + 5, 40, 64, 77, 100, step_tie}); // five ticks late, Rec Quantize off
-    project->motion.write({0, 3, 7, prophet::Resonance, 61});
+    bank->at[0][3].write_motion(point(7, prophet::Resonance, 61));
     project->song.place({0, 3, 8, 4, true});
     project->song.step_marker(8);
     project->song.loop_start = 8; project->song.loop_end = 12;
@@ -1072,7 +1080,7 @@ void project_files() {
     CHECK(copy_bank->at[0][3].length == 96 * 48 && copy_bank->at[0][3].division == Division::Eighth);
     CHECK(copy_bank->at[0][3].events.size() == 1 && copy_bank->at[0][3].events[0] == Event({95 * 48 + 5, 40, 64, 77, 100, step_tie}));
     CHECK(copy_bank->at[0][3].step(95).notes[0].key == 64 && copy_bank->at[0][3].step(95).notes[0].offset == 5);
-    CHECK(copy->motion.count == 1 && copy->motion.events[0].value == 61);
+    CHECK(copy_bank->at[0][3].motion.size() == 1 && copy_bank->at[0][3].motion[0].value == 61 && copy_bank->at[0][3] == bank->at[0][3]);
     CHECK(copy->song.count == 1 && copy->song.clips[0].muted && copy->song.marker_count == 1 && copy->song.loop_end == 12);
     CHECK(copy->buses[1].level == 33 && copy->buses[1].fx.slots[0].kind == uint8_t(EffectKind::Room));
     CHECK(copy->master.slots[0].kind == uint8_t(EffectKind::Limiter));
@@ -1743,7 +1751,7 @@ void parity_1c() {
     load_sound(synth, EngineKind::Prophet, 1);
     std::array<Pattern, pattern_count> patterns {};
     put(patterns[0], 0, 48, 110);
-    auto pack = std::make_unique<TrackPack>(2, synth, patterns, Motion {});
+    auto pack = std::make_unique<TrackPack>(2, synth, patterns);
     Command load {Command::Type::TrackLoad, 2};
     load.track_pack = pack.get();
     CHECK(host->send(load));
@@ -1848,16 +1856,16 @@ void timing() {
         const auto& old = bank->at[0][3];
         CHECK(old.length == 32 * 48 && old.division == Division::Eighth && old.events.size() == 1);
         CHECK(old.events[0] == Event({5 * 48, 2 * 48, 60, 100, 100, step_accent}));
-        CHECK(project.motion.count == 1 && project.motion.events[0].step == 10); // eighth 5 is sixteenth 10
+        CHECK(old.motion.size() == 1 && old.motion[0].tick == 10 * sixteenth_ticks); // eighth 5 is sixteenth 10, in its pattern
         // Saved again it is an event list (EVNT), and loads the same.
         project.signature = 12; project.seq_tempo = true; project.pattern_tempo[3] = 905;
         auto data = save_project(project, *bank);
-        for (const char* tag : {"EVNT", "MOT2", "TIME"}) CHECK(std::search(data.begin(), data.end(), tag, tag + 4) != data.end());
+        for (const char* tag : {"EVNT", "MOTK", "TIME"}) CHECK(std::search(data.begin(), data.end(), tag, tag + 4) != data.end());
         const char* patt = "PATT";
         CHECK(std::search(data.begin(), data.end(), patt, patt + 4) == data.end());
         Project again; auto again_bank = std::make_unique<PatternBank>();
         CHECK(load_project(data, again, *again_bank).empty());
-        CHECK(again_bank->at[0][3] == old && again.motion.events[0].step == 10);
+        CHECK(again_bank->at[0][3] == old && again_bank->at[0][3].motion[0].tick == 10 * sixteenth_ticks);
         CHECK(again.signature == 12 && again.time_signature().beats == 7 && again.bar_ticks() == 336 && again.seq_tempo && again.pattern_tempo[3] == 905);
         CHECK(again.tempo_of(3) == 905 && again.tempo_of(2) == again.tempo);
     }
@@ -2011,12 +2019,12 @@ void step_edit_and_pad_motion() {
     // Pad lanes: one lane per pad, apart from the same value on another pad and from engine lanes.
     unsigned level = motion_pad_param(PadParam::Level), tune = motion_pad_param(PadParam::Pitch);
     CHECK(level >= motion_fx_base + track_slots * 6 && pad_param_of(level) == int(PadParam::Level) && pad_param_of(prophet::Cutoff) < 0);
-    Motion m;
-    CHECK(m.write({4, 0, 0, uint8_t(level), 20, 9}) && m.write({4, 0, 0, uint8_t(level), 90, 2}) && m.write({4, 0, 8, uint8_t(level), 64, 9}));
-    CHECK(m.write({4, 0, 0, uint8_t(level), 30, 9}) && m.count == 3 && m.events[0].value == 30); // the same place: replaced
-    CHECK(m.has(4, 0, uint8_t(level), 9) && m.has(4, 0, uint8_t(level), 2) && !m.has(4, 0, uint8_t(level), 3) && !m.has(4, 0, uint8_t(tune), 9));
-    m.clear(4, 0, uint8_t(level), 9);
-    CHECK(m.count == 1 && m.events[0].pad == 2);
+    Pattern m;
+    CHECK(m.write_motion(point(0, level, 20, 9)) && m.write_motion(point(0, level, 90, 2)) && m.write_motion(point(8, level, 64, 9)));
+    CHECK(m.write_motion(point(0, level, 30, 9)) && m.motion.size() == 3 && m.motion[1].value == 30); // the same place: replaced
+    CHECK(m.has_lane(level, 9) && m.has_lane(level, 2) && !m.has_lane(level, 3) && !m.has_lane(tune, 9));
+    m.clear_lane(level, 9);
+    CHECK(m.motion.size() == 1 && m.motion[0].pad == 2);
 
     // The kit's lanes on Motion: the last pad's recorded ones first, then its tune, level and pan.
     auto project = std::make_unique<Project>();
@@ -2025,11 +2033,11 @@ void step_edit_and_pad_motion() {
     auto& kit = project->tracks[4];
     kit.pads[9].sample = 0; kit.pads[9].level = 100; kit.pads[2].sample = 0;
     kit.last_pad = 9;
-    project->motion.write({4, 0, 4, uint8_t(level), 0, 9});
-    project->motion.write({4, 0, 2, uint8_t(motion_pad_param(PadParam::Attack)), 50, 2}); // pad 3's: not shown while pad 10 is the last
+    bank->at[4][0].write_motion(point(4, level, 0, 9));
+    bank->at[4][0].write_motion(point(2, motion_pad_param(PadParam::Attack), 50, 2)); // pad 3's: not shown while pad 10 is the last
     UiState kit_ui;
     kit_ui.track = 4;
-    auto lanes = motion_lanes(*project, kit_ui);
+    auto lanes = motion_lanes(*project, kit_ui, bank->at[4][0]);
     CHECK(lanes[0] == motion_lane(level, 9) && lanes[1] == motion_lane(tune, 9) && lanes[2] == motion_lane(motion_pad_param(PadParam::Pan), 9));
     CHECK(lane_name(kit, lanes[0]) == "A10 LEVEL" && motion_param(kit, lanes[0]).value == 100);
     auto card = lane_binding(kit, 4, lanes[0]);
@@ -2037,22 +2045,17 @@ void step_edit_and_pad_motion() {
     CHECK(motion_param(kit, motion_lane(motion_pad_param(PadParam::VelocitySense), 9)).info); // parity phase 4 gave pads it
     CHECK(!motion_param(project->tracks[0], motion_lane(level, 9)).info);                      // not a kit
     kit.last_pad = 2;
-    CHECK(motion_lanes(*project, kit_ui)[0] == motion_lane(motion_pad_param(PadParam::Attack), 2));
+    CHECK(motion_lanes(*project, kit_ui, bank->at[4][0])[0] == motion_lane(motion_pad_param(PadParam::Attack), 2));
     kit.last_pad = 9;
 
-    // The file: pad lanes in their own MOTP section, so a file without it (or an older build) keeps the rest.
-    project->motion.write({0, 0, 3, uint8_t(prophet::Cutoff), 77});
+    // The file: each pattern's Motion in a MOTK of its own (roadmap P1), pad lanes with their pad.
+    bank->at[0][0].write_motion(point(3, prophet::Cutoff, 77));
     auto data = save_project(*project, *bank);
     auto back = std::make_unique<Project>();
     auto back_bank = std::make_unique<PatternBank>();
-    CHECK(load_project(data, *back, *back_bank).empty() && back->motion.count == 3);
-    CHECK(back->motion.has(4, 0, uint8_t(level), 9) && back->motion.has(4, 0, uint8_t(motion_pad_param(PadParam::Attack)), 2));
-    CHECK(back->motion.has(0, 0, uint8_t(prophet::Cutoff)));
-    auto older = data;
-    bool renamed = false;
-    for (size_t n = 0; n + 4 <= older.size() && !renamed; ++n)
-        if (std::memcmp(&older[n], "MOTP", 4) == 0) { std::memcpy(&older[n], "XXXX", 4); renamed = true; }
-    CHECK(renamed && load_project(older, *back, *back_bank).empty() && back->motion.count == 1 && back->motion.events[0].param == prophet::Cutoff);
+    CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[4][0].motion.size() == 2);
+    CHECK(back_bank->at[4][0].has_lane(level, 9) && back_bank->at[4][0].has_lane(motion_pad_param(PadParam::Attack), 2));
+    CHECK(back_bank->at[0][0].has_lane(prophet::Cutoff, 0) && back_bank->at[0][0] == bank->at[0][0]);
 
     // The audio side: pad 10's level held at 0 from step 4 silences its hits there, and Stop gives it back.
     SampleData data_wav;
@@ -2060,11 +2063,10 @@ void step_edit_and_pad_motion() {
     data_wav.left.assign(44100, 0.5f); data_wav.right.assign(44100, 0.5f);
     for (unsigned n = 0; n < 44100; ++n) data_wav.left[n] = data_wav.right[n] = float(std::sin(n * 0.05) * 0.5);
     auto quiet = std::make_unique<Project>(*project);
-    quiet->motion = Motion {};
-    quiet->motion.write({4, 0, 4, uint8_t(level), 0, 9});
     quiet->tracks[4].pads[9].end = 2000; quiet->tracks[4].pads[9].play = PadPlay::OneShot;
     auto& beat = bank->at[4][0];
     beat = Pattern {};
+    beat.write_motion(point(4, level, 0, 9));
     for (unsigned st : {0u, 8u}) beat.add({st * sixteenth_ticks, uint16_t(sixteenth_ticks), uint8_t(sampler_first_note + 9), 120, 100, 0});
     EngineHost host;
     host.load(*quiet, *bank);
@@ -3238,9 +3240,7 @@ void fader_and_takeover() {
         kit.fader_learned = {FaderLearn::Lane, uint16_t(motion_pad_param(PadParam::FilterCutoff)), uint8_t(EngineKind::Sampler), 2};
         kit.fader_pin = true;
         synth.fader_learned = {FaderLearn::Send, 3, uint8_t(EngineKind::Prophet), 0}; // learned, on its default target: FADR all the same
-        MotionEvent wheel; wheel.track = 2; wheel.pattern = 0; wheel.step = 4; wheel.param = uint8_t(motion_wheel); wheel.value = 90;
-        MotionEvent cutoff; cutoff.track = 2; cutoff.pattern = 0; cutoff.step = 2; cutoff.param = 3; cutoff.value = 40;
-        project->motion.write(wheel); project->motion.write(cutoff);
+        patterns->at[2][0].write_motion(point(4, motion_wheel, 90)); patterns->at[2][0].write_motion(point(2, 3, 40));
         auto bytes = save_project(*project, *patterns);
         auto loaded = std::make_unique<Project>();
         CHECK(load_project(bytes, *loaded, *patterns).empty());
@@ -3250,7 +3250,7 @@ void fader_and_takeover() {
         CHECK(kl.what == FaderLearn::Lane && kl.lane == motion_pad_param(PadParam::FilterCutoff) && kl.pot == 2 && loaded->tracks[3].fader_pin);
         CHECK(loaded->tracks[2].fader_learned.what == FaderLearn::Send && loaded->tracks[2].fader_learned.lane == 3 && !loaded->tracks[2].fader_pin);
         CHECK(!loaded->tracks[0].fader_learned.learned() && !loaded->tracks[0].fader_pin);
-        CHECK(loaded->motion.count == 2 && loaded->motion.has(2, 0, uint8_t(motion_wheel), 0) && loaded->motion.has(2, 0, 3, 0));
+        CHECK(patterns->at[2][0].motion.size() == 2 && patterns->at[2][0].has_lane(motion_wheel, 0) && patterns->at[2][0].has_lane(3, 0));
         for (size_t n = 0; n + 4 <= bytes.size(); ++n)
             if (std::memcmp(&bytes[n], "FADR", 4) == 0 || std::memcmp(&bytes[n], "MOTW", 4) == 0) std::memcpy(&bytes[n], "XXXX", 4);
         auto older = std::make_unique<Project>();
@@ -3272,7 +3272,7 @@ void fader_and_takeover() {
         CHECK(load_project(three, *before_c, *patterns).empty());
         CHECK(before_c->tracks[3].fader_target == uint8_t(FaderTarget::PadCutoff) && !before_c->tracks[3].fader_on);
         CHECK(!before_c->tracks[3].fader_learned.learned() && !before_c->tracks[3].fader_pin && !before_c->tracks[2].fader_learned.learned());
-        CHECK(older->motion.count == 1 && older->motion.has(2, 0, 3, 0)); // MOT2 never held the wheel
+        CHECK(patterns->at[2][0].motion.size() == 2); // the wheel's lane is in the pattern's MOTK with the rest (roadmap P1)
     }
 }
 
@@ -7360,9 +7360,118 @@ void trig_conditions() {
     }
 }
 
+// Motion as each pattern's own at tick resolution, and locks (roadmap P1).
+void pattern_motion() {
+    using namespace midi_track;
+    const double tick = 44100 * 60.0 / 120 / 96;
+    // A MIDI track's CC lane shows Motion as it plays: a point on tick 5, a lock on tick 48 for a sixteenth over the
+    // point's value (back to it after), and a lock on another CC lane with nothing recorded (back to the track's own).
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        auto& t = project->tracks[0];
+        t.params[Port] = UsbC; t.params[Channel] = 1; t.params[CcNumber1] = 74; t.params[CcNumber2] = 71; t.params[Cc2] = 33;
+        project->tempo = 1200;
+        auto& p = bank->at[0][0];
+        p.length = ticks_per_quarter;
+        MotionPoint a; a.tick = 5; a.param = uint8_t(Cc1); a.value = 20;
+        MotionPoint lock = point(2, Cc1, 100, 0, sixteenth_ticks);
+        MotionPoint other = point(3, Cc2, 90, 0, 6);
+        CHECK(p.write_motion(a) && p.write_motion(lock) && p.write_motion(other));
+        CHECK(p.lock_at(48, Cc1, 0) && !p.lock_at(5, Cc1, 0) && p.lane_value(60, Cc1, 0, -1) == 20 && p.lane_value(4, Cc1, 0, -1) == -1);
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        std::vector<MidiOutEvent> ccs;
+        for (unsigned b = 0; b < 170; ++b) { // a beat (22050 frames)
+            host.render(out.data(), 128, 1);
+            MidiOutEvent e;
+            while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::Control) ccs.push_back(e);
+        }
+        auto at = [&](uint8_t cc, uint8_t value) {
+            for (const auto& e : ccs) if (e.a == cc && e.b == value) return int64_t(e.frame);
+            return int64_t(-1);
+        };
+        int64_t start = at(74, 20) - std::llround(5 * tick); // the point on tick 5 sets the run's frames
+        CHECK(at(74, 20) > 0 && std::llabs(at(74, 100) - start - std::llround(48 * tick)) <= 2);
+        CHECK(std::llabs(at(74, 20) - start - std::llround(5 * tick)) <= 2);
+        unsigned back20 = 0;
+        for (const auto& e : ccs) back20 += e.a == 74 && e.b == 20;
+        CHECK(back20 == 2); // tick 5, then the lock's end at tick 72
+        CHECK(at(71, 90) > 0 && at(71, 33) > at(71, 90) && std::llabs(at(71, 33) - at(71, 90) - std::llround(6 * tick)) <= 2);
+    }
+    // A pattern's edits carry its Motion: doubled with the notes, halved, at half and double speed.
+    {
+        Pattern p;
+        p.length = 16 * sixteenth_ticks;
+        p.write_motion(point(2, prophet::Cutoff, 10)); p.write_motion(point(12, prophet::Cutoff, 90, 0, 12));
+        CHECK(double_pattern(p, 128 * 384) && p.motion.size() == 4 && p.motion[2].tick == 18 * sixteenth_ticks && p.motion[3].hold == 12);
+        half_pattern(p);
+        CHECK(p.motion.size() == 2);
+        scale_pattern(p, true); // half speed: twice as far apart; past the end goes
+        CHECK(p.motion.size() == 1 && p.motion[0].tick == 4 * sixteenth_ticks);
+        p.write_motion(point(10, prophet::Cutoff, 50, 0, 8));
+        scale_pattern(p, false);
+        CHECK(p.motion.size() == 2 && p.motion[1].tick == 5 * sixteenth_ticks && p.motion[1].hold == 4);
+    }
+    // The file: a pattern's points in MOTK with their ticks and holds; Motion from before (MOT2, MOTP, MOTW on
+    // sixteenths of the project's one list) lands in its patterns.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        MotionPoint fine; fine.tick = 7; fine.param = prophet::Cutoff; fine.value = 66;
+        bank->at[3][2].write_motion(fine); bank->at[3][2].write_motion(point(4, motion_pad_param(PadParam::Level), 30, 9, 24));
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[3][2] == bank->at[3][2] && back_bank->at[3][2].motion[1].hold == 24);
+        std::vector<uint8_t> old(data.begin(), data.begin() + 8); // the magic, then sections as builds before P1 wrote them
+        auto section = [&](const char* tag, const std::vector<uint8_t>& body) {
+            old.insert(old.end(), tag, tag + 4);
+            for (int k = 0; k < 4; ++k) old.push_back(uint8_t(body.size() >> (8 * k)));
+            old.insert(old.end(), body.begin(), body.end());
+        };
+        section("MOT2", {1, 0, 2, 5, 6, 0, uint8_t(prophet::Resonance), 44, 0});       // track 3, pattern 6, sixteenth 6
+        section("MOTP", {1, 0, 2, 5, 1, 0, 9, uint8_t(PadParam::Pitch), 3, 0});       // pad 10's tune on sixteenth 1
+        section("MOTW", {1, 0, 2, 5, 3, 0, 100, 0});                                  // the mod wheel on sixteenth 3
+        auto legacy = std::make_unique<PatternBank>();
+        CHECK(load_project(old, *back, *legacy).empty());
+        const auto& m = legacy->at[2][5].motion;
+        CHECK(m.size() == 3 && m[0].tick == sixteenth_ticks && m[0].param == motion_pad_param(PadParam::Pitch) && m[0].pad == 9 && m[0].value == 3);
+        CHECK(m[1].tick == 3 * sixteenth_ticks && m[1].param == motion_wheel && m[1].value == 100);
+        CHECK(m[2].tick == 6 * sixteenth_ticks && m[2].param == prophet::Resonance && m[2].value == 44 && !m[2].lock());
+    }
+    // The cards while a step is held on Steps (or a note's pad on Roll): the Motion page's lanes, each its lock there
+    // or the track's own value; the lock holds as long as the step's longest note on the lane, a step at least.
+    {
+        auto project = std::make_unique<Project>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        UiState ui;
+        Pattern q;
+        put(q, 3, 60, 100, 2);
+        q.write_motion(point(3, prophet::Cutoff, 12, 0, 48));
+        ui.page = PageId::Steps; ui.held_step = 3; ui.step_cursor = 3;
+        auto cards = page_bindings(*project, ui, q, false);
+        const auto& info = engine_info(EngineKind::Prophet);
+        CHECK(cards[0].kind == Binding::Kind::Lock && cards[0].id == motion_lane(prophet::Cutoff) && cards[0].value == 12);
+        CHECK(cards[1].kind == Binding::Kind::Lock && cards[1].id == motion_lane(unsigned(info.favourites[1])));
+        CHECK(cards[1].value == project->tracks[0].params[size_t(info.favourites[1])]);
+        uint32_t tick = 0, hold = 0;
+        CHECK(lock_place(*project, ui, q, tick, hold) && tick == 3 * sixteenth_ticks && hold == 2 * sixteenth_ticks);
+        ui.held_step = -1;
+        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::StepLength && !lock_place(*project, ui, q, tick, hold));
+        ui.page = PageId::Roll; ui.roll_key = 60; ui.held_note = 4;
+        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::Lock && lock_place(*project, ui, q, tick, hold) && hold == 48);
+    }
+}
+
 int main() {
     ratchets();
     trig_conditions();
+    pattern_motion();
     plugins();
     voice_taps();
     voice_heads();

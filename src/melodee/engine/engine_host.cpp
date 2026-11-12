@@ -33,8 +33,8 @@ ProjectPack::ProjectPack(const Project& project, const PatternBank& bank) : proj
     for (unsigned t = 0; t < track_count; ++t) patterns[t] = copy_patterns(bank.at[t]);
 }
 ProjectPack::~ProjectPack() { for (auto& t : patterns) free_patterns(t); }
-TrackPack::TrackPack(unsigned track, const Track& value, const std::array<Pattern, pattern_count>& from, const Motion& motion)
-    : track(uint8_t(track)), value(value), patterns(copy_patterns(from)), motion(motion) {}
+TrackPack::TrackPack(unsigned track, const Track& value, const std::array<Pattern, pattern_count>& from)
+    : track(uint8_t(track)), value(value), patterns(copy_patterns(from)) {}
 TrackPack::~TrackPack() { free_patterns(patterns); }
 
 EngineHost::EngineHost() {
@@ -85,7 +85,6 @@ void EngineHost::load_state(const Project& project, bool keep_loops) {
     // Pad FX's K1-K3 and Flex Beat's settings.
     mpc_params = project.pad_fx_params;
     flex_mode = project.flex.mode; flex_mix = project.flex.mix; flex_quantize = project.flex.quantize;
-    motion = project.motion;
     song = project.song;
     global_tempo = project.tempo; swing = project.swing;
     seq_tempo = project.seq_tempo; pattern_tempo = project.pattern_tempo;
@@ -347,7 +346,6 @@ void EngineHost::apply(const Command& c) {
         if (slot.engine) slot.engine->set_param(c.index, c.value);
         if (slot.kind == EngineKind::Midi) midi_param(c.track % track_count, c.index, c.value, frame_now);
         break;
-    case Type::MotionWrite: motion.write(c.motion); break;
     case Type::Mod: if (slot.engine && c.index < mod_routes) slot.engine->set_mod(c.index, c.route); break;
     case Type::FxKind:
         if (c.track < chain_count && c.index < max_slots) {
@@ -388,7 +386,6 @@ void EngineHost::apply(const Command& c) {
             if (target.engine) target.engine->all_notes_off();
             load_track(pack.track, pack.value);
             std::swap(patterns[pack.track % track_count], c.track_pack->patterns); // the pack takes the old ones back to be freed
-            motion = pack.motion;
             if (!done_tracks.push(c.track_pack)) {} // the MIDI thread frees it; a full queue only leaks one
         }
         break;
@@ -623,7 +620,6 @@ void EngineHost::apply(const Command& c) {
         }
         break;
     }
-    case Type::MotionClear: motion.clear(c.motion.track, c.motion.pattern, c.motion.param, c.motion.pad); break;
     case Type::Wheel:
         slot.wheel = std::clamp(c.value / 1000.0f, 0.0f, 1.0f);
         if (slot.engine) slot.engine->set_wheel(slot.wheel);
@@ -801,6 +797,8 @@ void EngineHost::restore(Slot& slot) {
         slot.fx_moved = false;
     }
     if (slot.kind == EngineKind::Sampler) slot.sampler.restore_pads(); // a kit pad's own values, if motion moved them
+    for (auto& l : slot.locks) l.param = -1; // locks end with everything they moved
+    slot.locks_on = 0;
     if (slot.wheel_moved && slot.engine) slot.engine->set_wheel(slot.wheel); // the mod wheel, back where the fader left it
     slot.wheel_moved = false;
     if (!slot.moved || !slot.engine) return;
@@ -808,30 +806,69 @@ void EngineHost::restore(Slot& slot) {
     slot.moved = false;
 }
 
-// Motion at sixteenth `at` of the track's pattern: each lane starts the
-// pattern at the track's own value, then follows its events.
-void EngineHost::play_motion(unsigned t, Slot& slot, unsigned at) {
+// Motion at tick `at` of the track's pattern (roadmap P1: the pattern's own, at
+// tick resolution): each lane starts the pattern at the track's own value,
+// then follows its points; a lock holds for its ticks, then its lane goes
+// back to what it holds as recorded there (else the track's own value).
+void EngineHost::play_motion(unsigned t, Slot& slot, const Pattern& pattern, uint32_t at) {
     if (at == 0) restore(slot);
-    for (unsigned n = 0; n < motion.count; ++n) {
-        const auto& e = motion.events[n];
-        if (e.track != t || e.pattern != slot.pattern || e.step != at) continue;
-        if (e.param == motion_wheel) { // the mod wheel's lane (parity phase 8)
-            if (slot.engine) { slot.engine->set_wheel(std::clamp(e.value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
-            continue;
+    if (slot.locks_on)
+        for (auto& l : slot.locks) {
+            if (l.param < 0 || --l.left > 0) continue;
+            unsigned param = unsigned(l.param), pad = l.pad;
+            l.param = -1; --slot.locks_on;
+            constexpr int none = INT32_MIN;
+            int value = pattern.lane_value(at, param, pad, none);
+            if (value == none) restore_lane(t, slot, param, pad);
+            else move_lane(t, slot, param, pad, value);
         }
-        if (e.param >= motion_pad_base) { // a kit pad's own value
-            if (slot.kind == EngineKind::Sampler) slot.sampler.move_pad(e.pad, PadParam(e.param - motion_pad_base), e.value);
-            continue;
-        }
-        if (e.param >= motion_fx_base) { // one of the track's effects
-            unsigned k = (e.param - motion_fx_base) / effect_params, q = (e.param - motion_fx_base) % effect_params;
-            if (k < max_slots) { fx[t][k].set_param(q, e.value); slot.fx_moved = true; }
-            continue;
-        }
-        slot.engine->set_param(e.param, e.value);
-        if (slot.kind == EngineKind::Midi) midi_param(t, e.param, e.value, frame_now + block_at); // a CC lane plays out
-        slot.moved = true;
+    for (size_t n = pattern.motion_lower(at); n < pattern.motion.size() && pattern.motion[n].tick == at; ++n) {
+        const auto& m = pattern.motion[n];
+        move_lane(t, slot, m.param, m.pad, m.value);
+        if (!m.lock()) continue;
+        bool again = false; // a lock already on this lane starts over; else a free one
+        for (auto& l : slot.locks)
+            if (l.param == m.param && l.pad == m.pad) { l.left = m.hold; again = true; }
+        if (again) continue;
+        for (auto& l : slot.locks)
+            if (l.param < 0) { l = {int16_t(m.param), m.pad, m.hold}; ++slot.locks_on; break; }
     }
+}
+
+void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad, int value) {
+    if (param == motion_wheel) { // the mod wheel's lane (parity phase 8)
+        if (slot.engine) { slot.engine->set_wheel(std::clamp(value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
+        return;
+    }
+    if (param >= motion_pad_base) { // a kit pad's own value
+        if (slot.kind == EngineKind::Sampler) slot.sampler.move_pad(pad, PadParam(param - motion_pad_base), value);
+        return;
+    }
+    if (param >= motion_fx_base) { // one of the track's effects
+        unsigned k = (param - motion_fx_base) / effect_params, q = (param - motion_fx_base) % effect_params;
+        if (k < max_slots) { fx[t][k].set_param(q, value); slot.fx_moved = true; }
+        return;
+    }
+    if (!slot.engine) return;
+    slot.engine->set_param(int(param), value);
+    if (slot.kind == EngineKind::Midi) midi_param(t, int(param), value, frame_now + block_at); // a CC lane plays out
+    slot.moved = true;
+}
+
+void EngineHost::restore_lane(unsigned t, Slot& slot, unsigned param, unsigned pad) {
+    if (param == motion_wheel) { if (slot.engine) slot.engine->set_wheel(slot.wheel); return; }
+    if (param >= motion_pad_base) {
+        if (slot.kind == EngineKind::Sampler) slot.sampler.restore_pad(pad, PadParam(param - motion_pad_base));
+        return;
+    }
+    if (param >= motion_fx_base) {
+        unsigned k = (param - motion_fx_base) / effect_params, q = (param - motion_fx_base) % effect_params;
+        if (k < max_slots) fx[t][k].set_param(q, slot.fx_base[k][q]);
+        return;
+    }
+    if (!slot.engine || param >= max_params) return;
+    slot.engine->set_param(int(param), slot.base[param]);
+    if (slot.kind == EngineKind::Midi) midi_param(t, int(param), slot.base[param], frame_now + block_at);
 }
 
 // Swing stretches the first sixteenth of every eighth and shortens the second.
@@ -1223,7 +1260,7 @@ void EngineHost::tick() {
         uint32_t pass = (tick_now - slot.start) / length; // trig conditions count the pattern's passes from where it began
         positions_now[t].store(int(at), std::memory_order_relaxed);
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
-        if (sound && motion.count && at % sixteenth_ticks == 0) play_motion(t, slot, at / sixteenth_ticks);
+        if (sound && (at == 0 || !pattern.motion.empty() || slot.locks_on)) play_motion(t, slot, pattern, at);
         const auto& events = pattern.events;
         Slot::Held holding; // this tick's own Slide or Tie, for the notes of a later one
         for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n) {

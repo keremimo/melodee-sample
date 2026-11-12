@@ -32,8 +32,6 @@ struct Command {
         SongLoop,    // index = first bar, value = bar after the last (equal: no loop)
         Tempo,       // value = tenths of a BPM
         Swing,       // value = percent
-        MotionWrite, // motion: Motion::write(motion)
-        MotionClear, // motion: Motion::clear(track, pattern, param, pad)
         Mod,         // track, index = route, route
         FxKind,      // track = chain, index = slot, value = EffectKind (its initial values come with it)
         FxParam,     // track = chain, index = slot, pattern = parameter, value
@@ -68,7 +66,7 @@ struct Command {
         SongPunchCount, // value = punches in use
         SongRecord,     // value: Seq Record on (a song playing on past its end keeps going, for launches written into it)
         PadMute,        // track, index = kit pad (0xffff: every pad), value: muted
-        TrackLoad,      // track_pack: one whole track (sound, kit, patterns) and the motion; handed back like Reload's
+        TrackLoad,      // track_pack: one whole track (sound, kit, patterns with their motion); handed back like Reload's
         Monitor,        // value: the input source heard with the mix (not the mix itself)
         LoopMonitor,    // value: Monitor (Input Config's): when a loop on a hardware input of its own hears it
         BounceArm,      // the next Play renders: value 0 the patterns for `position` ticks, 1 the song to its end and its tail
@@ -115,8 +113,7 @@ struct Command {
     int16_t value = 0;
     uint32_t position = 0;
     uint32_t micros = 0; // MtcIn
-    Pattern* data = nullptr;
-    MotionEvent motion {};
+    Pattern* data = nullptr; // with its Motion (roadmap P1: a pattern's own)
     ModRoute route {};
     Clip clip {};
     PadSound pad {};
