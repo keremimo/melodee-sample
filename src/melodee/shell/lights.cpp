@@ -46,7 +46,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     if (library_ && library_->generation() != library_seen) {
         library_seen = library_->generation();
         for (unsigned n = 0; n < sample_slots; ++n)
-            if (project_->samples[n].used()) project_->samples[n].frames = library_->slot(n).frames;
+            if (project_->samples[n].used()) {
+                const auto shown = library_->slot(n);
+                project_->samples[n].frames = shown.frames;
+                project_->samples[n].zones = uint16_t(std::min<size_t>(shown.shapes.size(), 0xffff));
+            }
         ui_.files_count = uint16_t(std::min<size_t>(library_->files().size(), 0xffff));
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
     }

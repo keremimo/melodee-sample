@@ -82,6 +82,9 @@ struct Binding {
         // Pad layers (roadmap P3), the last pad hit: the layer in hand 0-3, its velocities, its tune and level over the
         // pad's (hundredths of a dB in steps of a tenth), and how a hit picks its layers (model/sampler.h LayerPlay).
         LayerPick, LayerLow, LayerHigh, LayerPitch, LayerGain, LayerPlayMode,
+        // Round 3 "instrument C", Stage's ZONES on a pad holding an instrument: the zone in hand (UiState::zone), its
+        // trim's tune (cents) and level (tenths of a dB) on the last pad (model/sampler.h ZoneTrim).
+        ZonePick, ZoneTune, ZoneLevel,
         PadLoopXfade, // roadmap P3, PLAY's Shift + K3: the last pad's loop seam crossfade, ms (0 none)
         FxKey,        // roadmap P4, a Compressor's or Gate's third row: what keys it (model/project.h fx_key_*), id as FxParam's
         // Roadmap P4, the MOD page (model/modulators.h): the modulator in hand, its kind, an LFO's shape, clock and rate

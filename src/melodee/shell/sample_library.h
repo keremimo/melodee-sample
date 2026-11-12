@@ -9,6 +9,7 @@
 #include "melodee/model/looper.h"
 #include "melodee/model/sampler.h"
 #include "melodee/shell/sample_cache.h"
+#include "melodee/shell/zone_shapes.h"
 #include "surface/midi.h"
 #include <array>
 #include <atomic>
@@ -62,6 +63,11 @@ struct LoadedSample {
     uint8_t low_key = 127, high_key = 0;
     std::string ignored;     // what it asked for and is not played, named
     std::array<uint16_t, 128> map {}; // for each key, the velocities it has (a bit for each 8)
+    // Round 3 "instrument C": each zone as Stage draws it, how far each of its files got, its velocity layers and the
+    // longest round robin.
+    std::vector<ZoneShape> shapes;
+    std::vector<PartState> part_state;
+    unsigned layers = 1, rounds = 0;
     std::array<int8_t, 4> stages {{-1, -1, -1, -1}}; // the pad's attack, decay, sustain, release, -1: none named
     int8_t velocity = 100;   // the pad's Velocity Sense
 };
@@ -166,6 +172,10 @@ public:
     };
     void view(View& out) const;
     LoadedSample slot(unsigned n) const;
+    // Round 3 "instrument C": the zone of slot `n`'s instrument a press of `key` at `velocity` reaches (-1 none),
+    // and zone `zone`'s file as its regions name it ("" none). Under the lock.
+    int zone_at(unsigned n, int key, int velocity) const;
+    std::string zone_file(unsigned n, unsigned zone) const;
     // Pads (round 2, pads B): slot `n`'s waveform between two frames (to 0: its end) in `columns` peaks
     // 0..255, from the overview it keeps; false when the slot holds no audio.
     bool thumbnail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const;
@@ -268,6 +278,7 @@ private:
     std::vector<float> render_chunk;
     std::vector<std::unique_ptr<SampleData>> owned; // service thread: every sample the audio thread may hold
     std::array<const SampleData*, sample_slots> data_of {}; // under `lock`: what each slot holds now, for peak()
+    std::array<std::vector<std::string>, sample_slots> part_names; // under `lock`: an instrument's files (zone_file)
     std::string root_seen, card_top;
     unsigned ticks = 0;
     mutable std::mutex lock;

@@ -34,6 +34,18 @@ bool SampleLibrary::load(unsigned slot, const std::string& path) {
 
 void SampleLibrary::view(View& out) const { std::lock_guard<std::mutex> guard(lock); out = known; }
 LoadedSample SampleLibrary::slot(unsigned n) const { std::lock_guard<std::mutex> guard(lock); return known.slots[n % sample_slots]; }
+int SampleLibrary::zone_at(unsigned n, int key, int velocity) const {
+    std::lock_guard<std::mutex> guard(lock);
+    const auto& s = known.slots[n % sample_slots];
+    return s.instrument ? melodee::zone_at(s.shapes, key, velocity) : -1;
+}
+std::string SampleLibrary::zone_file(unsigned n, unsigned zone) const {
+    std::lock_guard<std::mutex> guard(lock);
+    const auto& s = known.slots[n % sample_slots];
+    const auto& names = part_names[n % sample_slots];
+    if (!s.instrument || zone >= s.shapes.size() || s.shapes[zone].part >= names.size()) return {};
+    return names[s.shapes[zone].part];
+}
 bool SampleLibrary::thumbnail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const {
     std::lock_guard<std::mutex> guard(lock);
     const auto& s = known.slots[n % sample_slots];

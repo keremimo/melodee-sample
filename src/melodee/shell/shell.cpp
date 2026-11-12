@@ -568,6 +568,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         const auto& t = project_->tracks[ui_.track];
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
         out.sample = slot < sample_slots ? library_->slot(slot) : LoadedSample {};
+        out.zone_file = out.sample.instrument && ui_.page != PageId::Chop ? library_->zone_file(slot, ui_.zone) : std::string();
         out.pad_waves_shown = 0;
         if (ui_.page == PageId::Pads && t.engine == EngineKind::Sampler) // pads B: the bank's sixteen waveforms
             for (unsigned n = 0; n < 16; ++n) {

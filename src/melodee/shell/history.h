@@ -19,11 +19,29 @@ namespace melodee {
 struct PadState {
     PadSound sound;
     Chain chain;
+    std::vector<ZoneTrim> trims; // round 3 "instrument C": its instrument's zones trimmed (their pad as kept, not re-read)
 };
-inline PadState pad_state(const Track& t, unsigned pad) { return {t.pads[pad % sampler_pads], t.pad_fx.at[pad % sampler_pads]}; }
+inline PadState pad_state(const Track& t, unsigned pad) {
+    PadState s {t.pads[pad % sampler_pads], t.pad_fx.at[pad % sampler_pads], {}};
+    for (const auto& z : t.zone_trims) if (z.used() && z.pad == pad % sampler_pads) s.trims.push_back(z);
+    return s;
+}
+// A pad's state onto kit pad `pad` (its own, or another's when copied or moved): its trims go with it, a free
+// track's trims allowing.
 inline void set_pad_state(Track& t, unsigned pad, const PadState& s) {
     t.pads[pad % sampler_pads] = s.sound;
     t.pad_fx.at[pad % sampler_pads] = s.chain;
+    clear_trims(t.zone_trims, pad % sampler_pads);
+    for (const auto& z : s.trims) set_trim(t.zone_trims, pad % sampler_pads, z.zone, z.slot, z.tune, z.level);
+}
+inline bool same_trims(const PadState& a, const PadState& b) {
+    if (a.trims.size() != b.trims.size()) return false;
+    for (const auto& z : a.trims) {
+        bool found = false;
+        for (const auto& o : b.trims) if (o.zone == z.zone && o.slot == z.slot && o.tune == z.tune && o.level == z.level) { found = true; break; }
+        if (!found) return false;
+    }
+    return true;
 }
 
 // A whole track and its sixteen patterns, for a track copy (Shift + Erase with Pad Bank held).

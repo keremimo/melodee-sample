@@ -480,6 +480,14 @@ void layers_picture(Paint& p, const Snapshot& s) {
     }
 }
 
+// A kit whose last pad holds a multisampled instrument (round 3 "instrument C": its TRIM is ZONES).
+bool instrument_pad(const Snapshot& s) {
+    const auto& t = s.track();
+    if (t.engine != EngineKind::Sampler) return false;
+    const auto& pad = t.pads[t.last_pad % sampler_pads];
+    return pad.used() && s.project.samples[pad.sample % sample_slots].instrument();
+}
+
 // How the pad's layers play, as an LED-less pill in the header (Shift + K1 turns it).
 HeaderItem layers_pill(const Snapshot& s) {
     const auto& pad = sampler_pad(s);
@@ -507,7 +515,7 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     float wx = px + 13, ww = pw - 26, wy = top + 20, wh = zone::picture_h - 40;
     char label[4];
     pad_label(t.last_pad, label);
-    if (pad.used() && s.sample.instrument) { instrument_picture(p, s, wx, wy, ww, wh); return; }
+    if (pad.used() && s.sample.instrument) { instrument_picture(p, s, page.kind); return; }
     if (page.kind == StageKind::Layers && pad.used()) { layers_picture(p, s); return; }
     if (!pad.used() || !s.sample.frames) {
         p.text(label, px, wy + 14, pw, 26, plain(colour::text, type::title, Weight::SemiBold), juce::Justification::centred);
@@ -805,6 +813,7 @@ ui::SoftKeys stage_keys(const Snapshot& s) {
     for (unsigned n = 0; n < 3; ++n) {
         unsigned sub = n == at.group ? at.sub : 0;
         keys.labels[n] = stage_page_at(t, n, sub).key;
+        if (stage_page_at(t, n, sub).kind == StageKind::Trim && instrument_pad(s)) keys.labels[n] = "ZONES"; // round 3 "instrument C"
         keys.dots[n] = uint8_t(stage_count(g, n) > 1 ? stage_count(g, n) : 0);
         keys.dot_at[n] = uint8_t(sub);
     }
@@ -847,7 +856,7 @@ void draw(Paint& p, const Snapshot& s) {
     }
     h.right.push_back(tag_of(s, s.ui.track));
     auto keys = stage_keys(s);
-    if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler) // the old Trim's Shift jobs on B1 and B2
+    if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler && !instrument_pad(s)) // the old Trim's Shift jobs on B1 and B2
         { keys = SoftKeys {{"LOOP LOCK", "NORMALIZE", ""}, -1, c}; keys.toggles = 1; keys.lit = sampler_pad(s).loop_lock ? 1 : 0; keys.leds[0] = c; }
     if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
     if (!t.used()) { keys.active = stage_focus(s.ui, t); keys.dots = {}; } // the doors: the one Push makes lit
@@ -873,7 +882,9 @@ void draw(Paint& p, const Snapshot& s) {
 
 void soft(Context& c, int key) {
     const auto& page = stage_page_now(c.ui, c.track());
-    if (c.ui.shift && page.kind == StageKind::Trim && c.track().engine == EngineKind::Sampler) {
+    const auto& last = c.track().pads[c.track().last_pad % sampler_pads];
+    const bool zones = last.used() && c.project.samples[last.sample % sample_slots].instrument(); // ZONES: no Trim jobs
+    if (c.ui.shift && page.kind == StageKind::Trim && c.track().engine == EngineKind::Sampler && !zones) {
         if (key == 0) c.toggle_loop_lock(); // Shift + B1, as on the MPC's Trim
         if (key == 1) c.normalize();        // Shift + B2
         return;

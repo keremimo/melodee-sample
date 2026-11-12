@@ -197,6 +197,7 @@ struct UiState {
     bool preview = false;       // B3: each file plays as the cursor lands on it
     uint8_t trim_zoom = 0;      // Trim: 0 whole sample .. 4 sixteen times closer
     uint8_t pad_layer = 0;      // Layers (roadmap P3): the layer in hand, 0-3
+    uint16_t zone = 0;          // Stage's ZONES (round 3 "instrument C"): the instrument's zone in hand; the key played picks it
     int8_t layer_load = -1;     // Samples opened by Layers' LOAD: the layer Push loads onto (1-3); -1 the pad
     uint8_t trim_focus = 0;     // and where it closes in: 0 the start, 1 the end, 2 the loop point (Shift + K1-K3)
     bool sample_held = false;   // Sample held: a pad picks a kit pad without playing it (as on the MPC)

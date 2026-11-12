@@ -247,7 +247,45 @@ void choir_pad(Snapshot& s, unsigned pad) {
     m.name = ref.name; m.path = ref.path; m.instrument = true; m.ready = true;
     m.zones = 22; m.parts = 22; m.parts_ready = 22; m.low_key = 24; m.high_key = 108;
     for (unsigned key = 24; key <= 108; ++key) m.map[key] = 0xffff;
+    for (unsigned n = 0; n < 22; ++n) { // a zone a file, over C1..C8 (round 3 "instrument C")
+        ZoneShape z;
+        z.low_key = uint8_t(24 + n * 85 / 22); z.high_key = uint8_t(24 + (n + 1) * 85 / 22 - 1);
+        z.root = uint8_t(z.low_key + (z.high_key - z.low_key + 1) / 2); z.part = uint16_t(n);
+        m.shapes.push_back(z);
+    }
+    m.part_state.assign(22, PartState::Landed);
+    ref.zones = 22;
     s.sample = m;
+    s.ui.zone = 9; s.zone_file = "Boys Ah C4"; // C4's zone, A#3..C#4
+}
+
+// The same pad holding a felt piano SFZ: A0..C8 in 30 key ranges, three velocity layers, two turns of round robin.
+void piano_pad(Snapshot& s, unsigned pad) {
+    auto& sound = s.project.tracks[3].pads[pad % sampler_pads];
+    auto& ref = s.project.samples[sound.sample % sample_slots];
+    std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Felt Piano/Felt Piano.sfz");
+    std::snprintf(ref.name, sizeof(ref.name), "FELT PIANO");
+    ref.frames = 0;
+    sound.play = PadPlay::Gate; sound.start = sound.end = 0;
+    LoadedSample m;
+    m.name = ref.name; m.path = ref.path; m.instrument = true; m.ready = true;
+    static const uint8_t layers[3][2] {{1, 48}, {49, 96}, {97, 127}};
+    for (unsigned n = 0; n < 30; ++n)
+        for (unsigned v = 0; v < 3; ++v)
+            for (unsigned turn = 1; turn <= 2; ++turn) {
+                ZoneShape z;
+                z.low_key = uint8_t(21 + n * 88 / 30); z.high_key = uint8_t(21 + (n + 1) * 88 / 30 - 1);
+                z.root = uint8_t(z.low_key + (z.high_key - z.low_key + 1) / 2);
+                z.low_velocity = layers[v][0]; z.high_velocity = layers[v][1]; z.round = uint8_t(turn);
+                z.part = uint16_t(m.shapes.size());
+                m.shapes.push_back(z);
+            }
+    m.zones = m.parts = m.parts_ready = unsigned(m.shapes.size());
+    m.part_state.assign(m.shapes.size(), PartState::Landed);
+    m.low_key = 21; m.high_key = 108; m.layers = 3; m.rounds = 2;
+    ref.zones = uint16_t(m.shapes.size());
+    s.sample = m;
+    s.ui.zone = uint16_t(zone_at(m.shapes, 60, 100)); s.zone_file = "Felt C4 mf rr1";
 }
 
 // A voice of the kit's pad A09 heard `into` frames into its region, its envelope `level` (shell/playheads.h, as the
@@ -1034,9 +1072,44 @@ const Preview previews[] {
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
-    {"triminstrument", [](Shell&, Snapshot& s) { // TRIM on a pad holding an .exs: its keys and velocities in place of a waveform
+    {"triminstrument", [](Shell&, Snapshot& s) { // ZONES (TRIM's place) on a pad holding an .exs: a tile a zone over its keys, the one in hand named
          on_stage(s, 3, 0, 0); s.playing = true; choir_pad(s, 8);
          s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"zonestrimmed", [](Shell&, Snapshot& s) { // ZONES: the zone in hand tuned 12 cents up and 1.5 dB down (round 3 "instrument C")
+         on_stage(s, 3, 0, 0); s.playing = true; choir_pad(s, 8);
+         auto& t = s.project.tracks[3];
+         set_trim(t.zone_trims, 8, 9, t.pads[8].sample, 12, -15);
+         s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"zoneslayered", [](Shell&, Snapshot& s) { // ZONES on a layered SFZ: three velocity rows, round robin, C4 at velocity 100's zone in hand
+         on_stage(s, 3, 0, 0); s.playing = true; piano_pad(s, 8);
+     }},
+    {"zonesreading", [](Shell&, Snapshot& s) { // ZONES while its files are first read: outlines until each lands, the ring
+         on_stage(s, 3, 0, 0); choir_pad(s, 8);
+         for (unsigned n = 12; n < 22; ++n) s.sample.part_state[n] = PartState::Waiting;
+         s.sample.parts_ready = 12;
+     }},
+    {"zonesproblems", [](Shell&, Snapshot& s) { // ZONES with three files missing, regions left out and opcodes it does not play
+         on_stage(s, 3, 0, 0); choir_pad(s, 8);
+         for (unsigned n : {5u, 6u, 15u}) s.sample.part_state[n] = PartState::Failed;
+         s.sample.parts_ready = 19; s.sample.parts_failed = 3; s.sample.error = "Files missing";
+         s.sample.left = 4; s.sample.ignored = "cutoff2, eg06_time1, lfo01_freq";
+     }},
+    {"instrumentampenv", [](Shell&, Snapshot& s) { // AMP ENV on an instrument: the key strip, the envelope under it
+         on_stage(s, 3, 0, 3); s.playing = true; choir_pad(s, 8);
+         auto& pad = s.project.tracks[3].pads[8]; pad.attack = 30; pad.decay = 100; pad.release = 55; pad.velocity_sense = 60;
+     }},
+    {"instrumenttune", [](Shell&, Snapshot& s) { // TUNE on an instrument, Semi -5: two octaves round the key a hit plays, C4 outlined
+         on_stage(s, 3, 1, 0); s.playing = true; choir_pad(s, 8);
+         s.project.tracks[3].pads[8].pitch = -5;
+     }},
+    {"instrumentfilter", [](Shell&, Snapshot& s) { // FILTER on an instrument: the strip, the pad's filter under it
+         on_stage(s, 3, 2, 0); s.playing = true; choir_pad(s, 8);
+         auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Lpf2; pad.cutoff = 70; pad.resonance = 40;
+     }},
+    {"instrumentmix", [](Shell&, Snapshot& s) { // MIX on an instrument: the map, the zone a hit plays lit
+         on_stage(s, 3, 0, 2); s.playing = true; choir_pad(s, 8);
      }},
     {"trimplaying", [](Shell&, Snapshot& s) { // TRIM while the pad plays: the head, its wake, the time heard
          on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample();

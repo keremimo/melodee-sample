@@ -48,6 +48,13 @@ public:
     void set_pager(StreamPager* streams) { pager = streams; } // nullptr: instruments' frames are all safe to read (tests)
     void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) pads[pad] = base[pad] = sound; }
     bool pad_used(unsigned pad) const { return pad < sampler_pads && pads[pad].used(); } // a sample on it
+    // Round 3 "instrument C": the track's zone trims (model/sampler.h), as a whole or one; a zone of pad `pad`
+    // at UINT32_MAX lets every trim of the pad go. A zone starting hears its trim.
+    void set_trims(const ZoneTrims& all) { trims = all; }
+    void set_trim(unsigned pad, uint32_t zone, unsigned slot, int tune, int level) {
+        if (zone == UINT32_MAX) clear_trims(trims, pad);
+        else melodee::set_trim(trims, pad, zone, slot, tune, level);
+    }
     // Motion on a pad's own values (model/pad_params.h): the value plays
     // until the pad's lane moves again or restore_pads() gives every pad its
     // own values back (the pattern's start, Stop). Hits after it hear it.
@@ -213,6 +220,7 @@ private:
     const Table* samples = nullptr;
     StreamPager* pager = nullptr;
     std::array<PadSound, sampler_pads> pads {}, base {}; // as they play (motion), and as the kit holds them
+    ZoneTrims trims {};
     std::array<uint8_t, sampler_pads> layer_turn {};    // Cycle: the layer each pad plays next
     // Roadmap P3, an instrument's release samples: each key's last press, how hard and when (frames played).
     std::array<uint8_t, 128> key_velocity {};

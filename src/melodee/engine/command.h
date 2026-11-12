@@ -116,7 +116,11 @@ struct Command {
         MidiAudio,
         // Roadmap P4, a modulator (model/modulators.h): track = which; pattern 255 its settings, packed by
         // pack_modulator(), else target `pattern` packed by pack_mod_target() (value: where its lane stands as set).
-        Modulator
+        Modulator,
+        // Round 3 "instrument C": track, index = kit pad, position = the zone (UINT32_MAX: every trim of the pad
+        // let go), micros = its sample slot, value = level in tenths of a dB, pattern = tune in cents + 128
+        // (model/sampler.h ZoneTrim, zone_trim_command())
+        ZoneTrim
 
     };
     Command() = default;
@@ -141,6 +145,12 @@ struct Command {
     bool timed = false;
     uint32_t at = 0;
 };
+
+inline Command zone_trim_command(unsigned track, const ZoneTrim& z) {
+    Command c {Command::Type::ZoneTrim, uint8_t(track), uint8_t(int(z.tune) + 128), uint16_t(z.pad), int16_t(z.level)};
+    c.position = z.zone; c.micros = z.slot;
+    return c;
+}
 
 // Roadmap P4: a modulator to the audio thread as small commands (a Command stays small: thousands wait in a queue).
 inline Command pack_modulator(unsigned n, const Modulator& m) {

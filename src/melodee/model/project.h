@@ -265,6 +265,11 @@ struct Track {
     int8_t transpose = 0; // Shift + Minus / Plus: the pads moved by semitones, -12..12
     // A sampler track's kit (unused by the synth engines).
     std::array<PadSound, sampler_pads> pads {};
+    ZoneTrims zone_trims {}; // round 3 "instrument C": its pads' instruments' zones trimmed (model/sampler.h)
+    // The trims whose pad holds another sample now (a kit loaded over it): let go.
+    void drop_stale_trims() {
+        for (auto& z : zone_trims) if (z.used() && pads[z.pad % sampler_pads].sample != z.slot) z = ZoneTrim {};
+    }
     uint8_t bank = 0;     // the bank the pads play, 0..7: A-H
     uint8_t last_pad = 0; // the kit pad hit last (0..127): what the pots and Trim edit
     // Mute (mode) on a kit page: kit pads muted, a bit each. A muted pad is not

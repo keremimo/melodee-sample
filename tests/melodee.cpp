@@ -61,6 +61,7 @@
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/shell/sampler_map.h"
+#include "melodee/shell/zone_shapes.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/roll.h"
@@ -6562,6 +6563,103 @@ double zone_hz(const std::vector<float>& x, size_t from, size_t to) {
     return rises * double(dsp::model_rate) / double(to - from);
 }
 
+// Round 3 "instrument C": Stage's ZONES. The zone a key reaches, velocity layers counted, and a zone's trim (tune in
+// cents, level in tenths of a dB) heard on its pad's instrument alone, kept in ZTRM and in a pad's undo state.
+void instrument_zones_r3() {
+    { // the zone in hand follows the key played; release samples and later round-robin turns are not it
+        std::vector<ZoneShape> z(5);
+        z[0].low_key = 0; z[0].high_key = 59;
+        z[1].low_key = 60; z[1].high_key = 71; z[1].high_velocity = 64; z[1].round = 2;
+        z[2].low_key = 60; z[2].high_key = 71; z[2].high_velocity = 64; z[2].round = 1;
+        z[3].low_key = 60; z[3].high_key = 71; z[3].low_velocity = 65;
+        z[4].low_key = 60; z[4].high_key = 71; z[4].flags = ZoneShape::Release;
+        CHECK(zone_at(z, 40, 100) == 0 && zone_at(z, 64, 30) == 2 && zone_at(z, 64, 100) == 3 && zone_at(z, 100, 100) == -1);
+        CHECK(zone_layers(z) == 2); // 1-64 and 65-127 on one key; turns of one range and the release count once
+        CHECK(zone_layers({}) == 1);
+    }
+    { // the table: one trim a pad's zone, none when both are 0, full at max_zone_trims; stale ones dropped
+        ZoneTrims trims {};
+        CHECK(set_trim(trims, 8, 3, 5, 12, -15));
+        const ZoneTrim* t = find_trim(trims, 8, 3, 5);
+        CHECK(t && t->tune == 12 && t->level == -15 && !find_trim(trims, 8, 3, 6) && !find_trim(trims, 9, 3, 5));
+        CHECK(set_trim(trims, 8, 3, 5, 500, -900)); // clamped
+        CHECK(find_trim(trims, 8, 3, 5)->tune == zone_trim_cents && find_trim(trims, 8, 3, 5)->level == zone_trim_low);
+        CHECK(set_trim(trims, 8, 3, 5, 0, 0) && !find_trim(trims, 8, 3, 5));
+        for (unsigned n = 0; n < max_zone_trims; ++n) CHECK(set_trim(trims, 1, n, 5, 1, 0));
+        CHECK(!set_trim(trims, 2, 0, 5, 1, 0) && set_trim(trims, 2, 0, 5, 0, 0)); // full: a new one refused, none is fine
+        clear_trims(trims, 1);
+        CHECK(std::none_of(trims.begin(), trims.end(), [](const ZoneTrim& z) { return z.used(); }));
+        auto track = std::make_unique<Track>();
+        track->pads[4].sample = 7;
+        set_trim(track->zone_trims, 4, 0, 7, 10, 0);
+        set_trim(track->zone_trims, 4, 1, 6, 10, 0); // made on another instrument
+        track->drop_stale_trims();
+        CHECK(find_trim(track->zone_trims, 4, 0, 7) && !find_trim(track->zone_trims, 4, 1, 6));
+        // a pad's undo state carries its trims; set onto another pad they go with it
+        PadState state = pad_state(*track, 4);
+        CHECK(state.trims.size() == 1 && same_trims(state, pad_state(*track, 4)) && !same_trims(state, pad_state(*track, 5)));
+        set_pad_state(*track, 9, state);
+        CHECK(find_trim(track->zone_trims, 9, 0, 7) && find_trim(track->zone_trims, 4, 0, 7));
+        set_pad_state(*track, 4, PadState {});
+        CHECK(!find_trim(track->zone_trims, 4, 0, 7));
+    }
+    { // the engine hears a zone's trim on its pad's instrument, not another's
+        ZoneRig r;
+        r.part(zone_tone(220, 0.5f, 44100)); r.part(zone_tone(440, 0.5f, 44100));
+        auto& low = r.zone(0); low.low_key = 0; low.high_key = 65; low.root = 60;
+        auto& high = r.zone(1); high.low_key = 66; high.high_key = 127; high.root = 72;
+        r.build();
+        r.key(0);
+        auto plain = r.run(8000);
+        r.engine->silence();
+        r.engine->set_trim(0, 0, 3, 100, -60); // zone 0 of slot 3 on pad 0: a semitone up, 6 dB down
+        r.key(0);
+        auto trimmed = r.run(8000);
+        CHECK(std::fabs(zone_hz(trimmed, 800, 8000) - 220 * std::pow(2.0, 1 / 12.0)) < 8);
+        CHECK(std::fabs(zone_rms(trimmed, 2000, 8000) / zone_rms(plain, 2000, 8000) - 0.501) < 0.03);
+        r.engine->silence();
+        r.key(12); // zone 1: untouched
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 440) < 10);
+        r.engine->silence();
+        r.engine->set_trim(0, UINT32_MAX, 0, 0, 0); // the pad's trims let go
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 220) < 8);
+        r.engine->silence();
+        r.engine->set_trim(0, 0, 4, 100, 0); // made on slot 4: the pad holds slot 3, so not heard
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 220) < 8);
+        // the whole table at once, as a project or track load gives it
+        r.engine->silence();
+        ZoneTrims all {};
+        set_trim(all, 0, 0, 3, -100, 0);
+        r.engine->set_trims(all);
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 220 * std::pow(2.0, -1 / 12.0)) < 8);
+        // as a command: index the pad, position the zone, micros the slot, pattern cents + 128, value tenths of a dB
+        ZoneTrim z; z.pad = 9; z.zone = 300; z.slot = 12; z.tune = -37; z.level = -105;
+        Command c = zone_trim_command(2, z);
+        CHECK(c.type == Command::Type::ZoneTrim && c.track == 2 && c.index == 9 && c.position == 300 && c.micros == 12);
+        CHECK(int(c.pattern) - 128 == -37 && c.value == -105);
+    }
+    { // ZTRM: a track's trims kept; one made on a sample the pad no longer holds is not
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[3], EngineKind::Sampler, 0);
+        project->tracks[3].pads[8].sample = 5;
+        set_trim(project->tracks[3].zone_trims, 8, 300, 5, -42, 35);
+        set_trim(project->tracks[3].zone_trims, 8, 2, 6, 10, 0); // stale
+        auto file = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(file, *back, *back_bank).empty());
+        const ZoneTrim* t = find_trim(back->tracks[3].zone_trims, 8, 300, 5);
+        CHECK(t && t->tune == -42 && t->level == 35 && !find_trim(back->tracks[3].zone_trims, 8, 2, 6));
+        std::string text(file.begin(), file.end());
+        file[text.find("ZTRM")] = 'X';
+        CHECK(load_project(file, *back, *back_bank).empty() && !find_trim(back->tracks[3].zone_trims, 8, 300, 5));
+    }
+}
+
 void sampler_zones() {
     { // a key plays its zone in tune, whichever zone it is
         ZoneRig r;
@@ -10606,6 +10704,7 @@ int main() {
     overload_guard();
     sample_rates_p2();
     sampler_zones();
+    instrument_zones_r3();
     note_pitches();
     track_source();
     zero_snap();

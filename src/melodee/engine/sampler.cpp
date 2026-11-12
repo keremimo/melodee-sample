@@ -106,7 +106,11 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     // Warp on by Pitch leaves the pad's Semi and Fine out, as the MPC does.
     const bool tape = p[FollowHow] == 2, warped = !zone && sound.warped();
     // A zone is in tune by its key from its root; the key has the pad's Semi and the note in it.
+    // Round 3 "instrument C": the zone's trim on this pad, cents and tenths of a dB over the file's own.
+    const ZoneTrim* trim = zone && multi && pad >= 0 && pad < int(sampler_pads)
+                         ? find_trim(trims, unsigned(pad), unsigned(zone - multi->zones.data()), sound.sample) : nullptr;
     const double own_tune = zone ? (key - int(zone->root)) * zone->keytrack / 100.0 + zone->tune / 100.0 + sound.fine / 100.0
+                                       + (trim ? trim->tune / 100.0 : 0.0)
                           : warped && tape ? 0.0 : sound.pitch + sound.fine / 100.0;
     v.step = std::exp2((own_tune + (zone ? 0 : semitones) + p[Tune]) / 12.0);
     v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
@@ -153,7 +157,8 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     float sense = sound.velocity_sense / 100.0f, curve = 0.25f + 0.75f * std::clamp(velocity, 0, 127) / 127.0f;
     float velocity_gain = 1.0f - sense * (1.0f - curve);
     v.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f) * accent;
-    if (zone) v.gain *= std::pow(10.0f, zone->gain / 20.0f) * zone_crossfade(*zone, key, std::clamp(velocity, 1, 127)); // its xfin / xfout
+    if (zone) v.gain *= std::pow(10.0f, (zone->gain + (trim ? trim->level / 10.0f : 0.0f)) / 20.0f)
+                      * zone_crossfade(*zone, key, std::clamp(velocity, 1, 127)); // its xfin / xfout
     float angle = (std::clamp<float>(float(sound.pan) + (zone ? zone->pan * 50.0f : 0.0f), -50.0f, 50.0f) + 50) / 100.0f * dsp::pi / 2;
     v.left = std::cos(angle); v.right = std::sin(angle); // constant power: centre is -3 dB a side, as the stock MPC plays it
     // The pad's envelope; the kit's DECAY scales every pad's decay. A one shot

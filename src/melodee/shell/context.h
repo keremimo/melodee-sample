@@ -231,6 +231,7 @@ public:
     void copy_pad(unsigned from, unsigned to);               // Shift + Erase, pad, pad: sound and effects
     void restore_pattern(unsigned track, unsigned pattern, const Pattern& value);
     void restore_pad(unsigned track, unsigned kit, const PadState& value);
+    void send_trims(unsigned track, unsigned kit); // round 3 "instrument C": the pad's zone trims, afresh
     // Runs `change` on a pattern of a track (and its motion) and keeps it as one edit, if it changed anything.
     // During a take on that same pattern it is part of the take instead: one undo for both.
     template <class Change> void edit_pattern(unsigned t, unsigned p, const char* what, Change&& change) {
@@ -465,6 +466,9 @@ public:
     std::vector<LandingPad> landing_pads;
     void land_instruments();
     bool refuse_instrument(const char* job);                 // true, and says so, when the last pad holds one
+    // Stage's ZONES (round 3 "instrument C"): a press of kit pad `kit` of the selected track, `semitones` from its
+    // note, at `velocity`: when the pad holds an instrument, the zone it reaches is the zone in hand.
+    void follow_zone(unsigned kit, int semitones, int velocity);
     bool from_midi = false;                                 // note() is playing what came in: not echoed out
     uint16_t midi_echo = 0;                                 // roadmap P4 (M3): but echoed on these MIDI tracks' own ports
     void change_midi(unsigned row, int way);                // one step along a MIDI Config row (shell/midi_config_rows.h)

@@ -200,6 +200,15 @@ void Context::note(unsigned t, int key, int velocity) {
     bool quiet = from_midi && !((midi_echo >> (t % track_count)) & 1); // a MIDI track echoes what came in (roadmap P4, M3)
     Command c {velocity ? Type::NoteOn : Type::NoteOff, uint8_t(t), uint8_t(quiet ? 1 : 0), uint16_t(key), int16_t(velocity)};
     send(c);
+    if (velocity && t % track_count == ui.track && project.tracks[ui.track].engine == EngineKind::Sampler && (key & 0xff) >= int(sampler_first_note))
+        follow_zone(unsigned((key & 0xff) - int(sampler_first_note)), int8_t(uint8_t(key >> 8)), velocity);
+}
+
+void Context::follow_zone(unsigned kit, int semitones, int velocity) {
+    const auto& sound = track().pads[kit % sampler_pads];
+    if (!library || !sound.used() || !project.samples[sound.sample % sample_slots].instrument()) return;
+    int zone = library->zone_at(sound.sample, std::clamp(60 + int(sound.pitch) + semitones, 0, 127), velocity);
+    if (zone >= 0) ui.zone = uint16_t(zone);
 }
 
 // One key of a pad press, to the arp when it is on, else straight to the
@@ -259,6 +268,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
             Command c {Type::PadNote, ui.track, uint8_t(level.semitones + 64), t.levels_pad, int16_t(v)};
             c.position = uint32_t(level.cutoff + 1);
             send(c);
+            follow_zone(t.levels_pad, level.semitones, v);
             record(pad_keys[pad][0], v, level.cutoff); // with its cutoff (roadmap P3)
             return;
         }
@@ -545,6 +555,22 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadBeats: pad().beats = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::PadLoopXfade: pad().loop_xfade = uint8_t(std::clamp(value, 0, int(max_loop_xfade))); send_pad(ui.track, t.last_pad); break;
     case Kind::LayerPick: ui.pad_layer = uint8_t(unsigned(value) % pad_layers); break;
+    case Kind::ZonePick: ui.zone = uint16_t(std::max(value, 0)); break;
+    case Kind::ZoneTune: case Kind::ZoneLevel: { // round 3 "instrument C": the zone in hand's trim on the last pad
+        const unsigned kit = t.last_pad % sampler_pads, zone = unsigned(std::max(b.id, 0)), slot = pad().sample;
+        t.drop_stale_trims();
+        const ZoneTrim* now = find_trim(t.zone_trims, kit, zone, slot);
+        int tune = now ? now->tune : 0, level = now ? now->level : 0;
+        (b.kind == Kind::ZoneTune ? tune : level) = value;
+        if (!set_trim(t.zone_trims, kit, zone, slot, tune, level)) { notice("Zone trims full"); break; }
+        ZoneTrim sent;
+        sent.pad = uint8_t(kit); sent.zone = uint16_t(zone); sent.slot = uint8_t(slot);
+        if (const ZoneTrim* kept = find_trim(t.zone_trims, kit, zone, slot)) sent = *kept;
+        else { sent.tune = 0; sent.level = 0; } // none left: the engine lets it go
+        send(zone_trim_command(ui.track, sent));
+        dirty = true;
+        break;
+    }
     case Kind::LayerLow: case Kind::LayerHigh: { // a layer's velocities: the other end moves along rather than cross
         unsigned n = unsigned(b.id) % pad_layers;
         uint8_t& low = n ? pad().layers[n - 1].low : pad().low_velocity;
@@ -1141,7 +1167,18 @@ void Context::restore_pad(unsigned t, unsigned kit, const PadState& value) {
     t %= track_count; kit %= sampler_pads;
     set_pad_state(project.tracks[t], kit, value);
     send_pad(t, kit);
+    send_trims(t, kit);
     sync_chain(pad_chain(t, kit));
+}
+
+// Round 3 "instrument C": kit pad `kit`'s zone trims to the audio thread, afresh (the pad's first let go).
+void Context::send_trims(unsigned t, unsigned kit) {
+    t %= track_count; kit %= sampler_pads;
+    Command clear {Type::ZoneTrim, uint8_t(t), 0, uint16_t(kit)};
+    clear.position = UINT32_MAX;
+    send(clear);
+    for (const auto& z : project.tracks[t].zone_trims)
+        if (z.used() && z.pad == kit) send(zone_trim_command(t, z));
 }
 
 void Context::delete_pad(unsigned kit) {

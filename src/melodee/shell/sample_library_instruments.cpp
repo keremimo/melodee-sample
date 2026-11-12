@@ -300,6 +300,16 @@ void SampleLibrary::begin_instrument(const Request& request) {
         region.zone.part = found->second;
         l.zones[found->second].push_back(uint16_t(n));
         multi->zones.push_back(region.zone);
+        { // as Stage draws it (round 3 "instrument C")
+            const auto& z = region.zone;
+            ZoneShape shape;
+            shape.low_key = z.low_key; shape.high_key = z.high_key; shape.low_velocity = z.low_velocity; shape.high_velocity = z.high_velocity;
+            shape.root = z.root; shape.part = z.part;
+            shape.flags = uint8_t((z.on_release ? ZoneShape::Release : 0) | (z.switch_key >= 0 ? ZoneShape::Switched : 0));
+            shape.round = z.sequence_length > 1 ? uint8_t(std::min<uint32_t>(z.sequence, 255)) : 0;
+            loaded.rounds = std::max(loaded.rounds, z.sequence_length > 1 ? std::min<unsigned>(z.sequence_length, 255) : 0u);
+            loaded.shapes.push_back(shape);
+        }
         loaded.low_key = std::min(loaded.low_key, region.zone.low_key);
         loaded.high_key = std::max(loaded.high_key, region.zone.high_key);
         for (unsigned key = region.zone.low_key; key <= region.zone.high_key; ++key)
@@ -313,6 +323,8 @@ void SampleLibrary::begin_instrument(const Request& request) {
     l.multi = multi;
     loaded.zones = unsigned(multi->zones.size());
     loaded.parts = multi->part_count;
+    loaded.part_state.assign(multi->part_count, PartState::Waiting);
+    loaded.layers = zone_layers(loaded.shapes);
     loaded.left = l.read.left;
     loaded.ignored = joined(l.read.ignored);
     const auto& e = l.read.envelope;
@@ -329,6 +341,7 @@ void SampleLibrary::begin_instrument(const Request& request) {
         std::lock_guard<std::mutex> guard(lock);
         data_of[request.slot % sample_slots] = data.get();
         known.slots[request.slot] = loaded;
+        part_names[request.slot % sample_slots] = l.names;
         changes.fetch_add(1, std::memory_order_release);
     }
     owned.push_back(std::move(data));
@@ -399,6 +412,7 @@ void SampleLibrary::land_next() {
         auto& shown = known.slots[slot];
         if (landed) ++shown.parts_ready;
         else { ++shown.parts_failed; if (shown.error.empty()) shown.error = why; }
+        if (index < shown.part_state.size()) shown.part_state[index] = landed ? PartState::Landed : PartState::Failed;
         changes.fetch_add(1, std::memory_order_release);
     }
     if (done) landings.erase(landings.begin());

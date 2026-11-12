@@ -812,8 +812,23 @@ the file holds, to the bit.
   that play from then on (the default first). A hit plays key 60 plus the
   pad's Semi. **16 Levels** on the pad plays it: Tune or Scale for notes,
   Velocity through its layers; while 16 Levels is on it, a MIDI keyboard plays
-  it at real pitch. Stage's TRIM shows its keys and velocities, how far it has
-  been read and anything not played. Samples may be WAV, FLAC, Ogg or AIFF; a
+  it at real pitch. On such a pad Stage's TRIM is **ZONES** (round 3
+  "instrument C"): a tile a zone over a keyboard of its range (keys across,
+  velocities up, a dot at each root), its format, zones, files, velocity
+  layers and round robin above, the zone in hand outlined with its file,
+  keys, root and velocities under it. The key played (a pad, 16 Levels, a
+  MIDI keyboard) picks the zone in hand, as a hit picks the pad; K1 walks
+  them; K2 TUNE (-100..100 cents) and K3 LEVEL (-24..+12 dB) trim that zone
+  on this pad without touching the file (one undo a turn, as the pad's other
+  values; up to 64 a track, kept in the file's ZTRM; a trim made on another
+  instrument is not heard and is let go at the next trim or save). A file
+  still being read is an outline (a ring counts them), a silent one amber,
+  and what it asked for that is not played is named in chips (with the
+  regions left out). AMP ENV, FILT ENV, TUNE, FILTER and KIT FILT keep a
+  strip of the same keys on top, the key a hit plays lit, and draw their own
+  picture under it (the envelope, two octaves round that key with C4
+  outlined once Semi moved it, the filter); the other kit pages draw the map.
+  Samples may be WAV, FLAC, Ogg or AIFF; a
   loop may come from the region, a WAV's `smpl` chunk or one kept in a FLAC.
   The first load decodes each file once into `Melodee/Cache`; after that
   opening is near instant and audio streams from the card (a third of a
@@ -917,6 +932,7 @@ the file holds, to the bit.
   Record, Shift + Pad 13) lands there.
   - Trim: K1 start, K2 end, K3 loop point; Shift + K1–K3 zoom at that
     handle; Shift + B1 Loop Lock; Shift + B2 Normalize (a gain, one undo).
+    On a pad holding an instrument it is ZONES (above, SFZ instruments).
   - Layers (roadmap P3): up to four samples on a pad. Layer 1 is the pad's
     own sample and region; layers 2–4 each play another sample (its whole
     file, or the region an MPC program gave it) with a tune and level of

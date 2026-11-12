@@ -325,7 +325,16 @@ bool knob_owns(const Project& project, const UiState& ui) { return project.knob_
 std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& track, const UiState& ui, PageId page, bool row2) {
     const auto& pad = track.pads[track.last_pad % sampler_pads];
     if (page == PageId::Trim) { // K1 start, K2 end, K3 the loop point (Shift: zoom at each)
-        uint32_t frames = pad.used() ? project.samples[pad.sample % sample_slots].frames : 0;
+        const auto& ref = project.samples[pad.sample % sample_slots];
+        if (pad.used() && ref.instrument()) { // round 3 "instrument C": ZONES, K1 the zone in hand, K2 / K3 its trim
+            if (!ref.zones) return {};
+            unsigned zone = std::min<unsigned>(ui.zone, ref.zones - 1u);
+            const ZoneTrim* trim = find_trim(track.zone_trims, track.last_pad % sampler_pads, zone, pad.sample);
+            return {Binding {Kind::ZonePick, 0, 0, int(ref.zones) - 1, int(zone)},
+                    Binding {Kind::ZoneTune, int32_t(zone), -zone_trim_cents, zone_trim_cents, trim ? trim->tune : 0},
+                    Binding {Kind::ZoneLevel, int32_t(zone), zone_trim_low, zone_trim_high, trim ? trim->level : 0}};
+        }
+        uint32_t frames = pad.used() ? ref.frames : 0;
         if (!frames) return {};
         int length = ms(frames), window = std::max(4, length >> ui.trim_zoom);
         int start = ms(pad.start), end = pad.end ? ms(pad.end) : length;
@@ -384,9 +393,12 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
 
 // Their Shift + K cards, as on the MPC: zoom on Trim, the kit's volume on Mix, Decay From on the envelopes,
 // # Beats on Tune, Pad Link on Play; on Stage's CLOUD, Cloud's row 2 (scan, spread, on or off).
-std::array<Binding, 3> pad_page_shift(const Track& track, const UiState& ui, PageId page) {
-    if (page == PageId::Trim) return {trim_zoom(ui, 0), trim_zoom(ui, 1), trim_zoom(ui, 2)};
+std::array<Binding, 3> pad_page_shift(const Project& project, const Track& track, const UiState& ui, PageId page) {
     const auto& pad = track.pads[track.last_pad % sampler_pads];
+    if (page == PageId::Trim) {
+        if (pad.used() && project.samples[pad.sample % sample_slots].instrument()) return {}; // ZONES: nothing to zoom
+        return {trim_zoom(ui, 0), trim_zoom(ui, 1), trim_zoom(ui, 2)};
+    }
     if (track.engine != EngineKind::Sampler) return {};
     switch (page) {
     case PageId::PadMix: return {Binding {}, param(track, sampler::Level), Binding {}};
@@ -436,7 +448,7 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
     const auto& page = stage_page_now(ui, track);
     using SK = StageKind;
     if (PageId kit = stage_kit_page(page.kind); kit != PageId::Count) {
-        if (shift_row) return page.kind == SK::PadMix ? std::array<Binding, 3> {} : pad_page_shift(track, ui, kit);
+        if (shift_row) return page.kind == SK::PadMix ? std::array<Binding, 3> {} : pad_page_shift(project, track, ui, kit);
         auto cards = pad_page_bindings(project, track, ui, kit, false);
         if (page.kind == SK::PadMix && track.pads[track.last_pad % sampler_pads].used()) cards[1] = param(track, sampler::Level); // K2 the kit's volume
         return cards;
@@ -577,7 +589,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     }
     case PageId::Trim: case PageId::PadMix: case PageId::EnvelopePage: case PageId::FilterEnvPage: case PageId::PadPage: case PageId::PlayPage:
     case PageId::LayersPage:
-        return pad_page_shift(track, ui, ui.page);
+        return pad_page_shift(project, track, ui, ui.page);
     case PageId::ModPage: { // roadmap P4: a modulator's kind, then an LFO's shape and clock or a follower's source and fall; a macro target's low
         if (ui.mod_view == 1) {
             const auto& g = project.macros[ui.macro_index % macro_count].targets[ui.macro_target % macro_targets];

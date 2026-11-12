@@ -53,7 +53,7 @@ bool Context::finish_scope(Edit& e) {
     bool changed = false;
     if (e.pad >= 0) {
         e.pad_after = pad_state(project.tracks[e.track], unsigned(e.pad));
-        changed |= !same(e.pad_after.sound, e.pad_before.sound) || !same(e.pad_after.chain, e.pad_before.chain);
+        changed |= !same(e.pad_after.sound, e.pad_before.sound) || !same(e.pad_after.chain, e.pad_before.chain) || !same_trims(e.pad_after, e.pad_before);
     }
     auto part = [&](auto& before, auto& after, const auto& now) {
         if (!before) return;

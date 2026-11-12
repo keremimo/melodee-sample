@@ -38,7 +38,11 @@ juce::Colour load_colour(float load);                   // a load's: green, ambe
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
 juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
-void instrument_picture(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h); // an SFZ on the pad: its keys and velocities
+// Stage on a kit pad holding an instrument (an SFZ, EXS, keygroup; round 3 "instrument C", pages/instrument_map.cpp):
+// ZONES (Trim's place) the whole map; the envelopes, Tune and the filters a key strip over their own drawing; the
+// rest the map.
+enum class StageKind : uint8_t;
+void instrument_picture(ui::Paint& p, const Snapshot& s, StageKind kind);
 // The input source as Record and Input Config name it: "Rear", or a track's "Track 3 Prophet" (with_tap: "Track 3 Post").
 juce::String input_name(const Snapshot& s, bool with_tap);
 juce::String engine_word(EngineKind kind); // "Prophet", "FM6"

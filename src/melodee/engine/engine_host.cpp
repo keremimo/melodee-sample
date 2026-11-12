@@ -245,6 +245,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
     slot.base = track.params;
     if (slot.engine) for (unsigned r = 0; r < mod_routes; ++r) slot.engine->set_mod(r, track.mods[r]);
     for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad(pad, track.pads[pad]);
+    slot.sampler.set_trims(track.zone_trims);
     slot.sampler.set_pad_mutes(track.pad_mutes);
     if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
     apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
@@ -427,6 +428,9 @@ void EngineHost::apply(const Command& c) {
     case Type::Pad:
         slot.sampler.set_pad(c.index, c.pad);
         if (mods_on) for (unsigned p = 0; p < pad_param_count; ++p) mod_note(c.track % track_count, motion_pad_param(PadParam(p)), c.index, pad_param_value(c.pad, PadParam(p)), true);
+        break;
+    case Type::ZoneTrim: // round 3 "instrument C"
+        slot.sampler.set_trim(c.index, c.position, c.micros, int(c.pattern) - 128, c.value);
         break;
     case Type::PadMute:
         if (c.index == 0xffff) for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad_mute(pad, c.value != 0);

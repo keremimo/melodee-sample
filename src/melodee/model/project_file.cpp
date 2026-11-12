@@ -525,6 +525,16 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used() && !tr.pads[n].plain_layers()) write_layers(w, n, tr.pads[n]);
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // instruments' zones trimmed (round 3 "instrument C"): pad, slot, zone, cents, tenths of a dB
+        const auto& tr = project.tracks[t];
+        auto live = [&](const ZoneTrim& z) { return z.used() && tr.pads[z.pad % sampler_pads].sample == z.slot; }; // stale ones not kept
+        unsigned used = unsigned(std::count_if(tr.zone_trims.begin(), tr.zone_trims.end(), live));
+        if (!used) continue;
+        at = w.begin("ZTRM");
+        w.u8(t); w.u8(used);
+        for (const auto& z : tr.zone_trims) if (live(z)) { w.u8(z.pad); w.u8(z.slot); w.u16(z.zone); w.u8(uint8_t(z.tune)); w.i16(z.level); }
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // the four sends of a track that sends to more than one bus (round 2)
         const auto& sends = project.tracks[t].mix.sends;
         if (std::count_if(sends.begin(), sends.end(), [](uint8_t v) { return v > 0; }) < 2) continue; // TRAK says it already
@@ -758,6 +768,15 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             if (t >= track_count) continue;
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_layers(r, project->tracks[t].pads.data(), sampler_pads, sample_slots);
+        } else if (name == "ZTRM") { // instruments' zones trimmed (round 3 "instrument C"); without it none are
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) {
+                unsigned pad = r.u8(), slot = r.u8(), zone = r.u16();
+                int tune = int8_t(uint8_t(r.u8())), level = r.i16();
+                if (r.ok && pad < sampler_pads && slot < sample_slots) set_trim(project->tracks[t].zone_trims, pad, zone, slot, tune, level);
+            }
         } else if (name == "PMUT") {
             unsigned t = r.u8();
             if (t >= track_count) continue;

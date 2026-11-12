@@ -147,10 +147,49 @@ inline PadSound layer_sound(const PadSound& sound, unsigned n) {
     return one;
 }
 
+// Round 3 "instrument C": one zone of the instrument on a kit pad, tuned or turned up or down from its file's own
+// (Stage's ZONES, K2 and K3), so one sample out of tune or too loud is put right without touching the file. A track
+// keeps up to max_zone_trims (the file's ZTRM section); pad 0xff is a free one. `slot` is the instrument it was made
+// on: once the pad holds another, the trim is not heard (and is dropped at the next trim or save).
+constexpr unsigned max_zone_trims = 64;
+constexpr int zone_trim_cents = 100;                  // TUNE: -100..100 cents
+constexpr int zone_trim_low = -240, zone_trim_high = 120; // LEVEL: tenths of a dB
+struct ZoneTrim {
+    uint8_t pad = 0xff;  // kit pad 0..127
+    uint8_t slot = 0;    // the project's sample slot holding the instrument
+    uint16_t zone = 0;   // the zone's place in its instrument
+    int8_t tune = 0;     // cents
+    int16_t level = 0;   // tenths of a dB
+    bool used() const { return pad != 0xff; }
+};
+using ZoneTrims = std::array<ZoneTrim, max_zone_trims>;
+inline const ZoneTrim* find_trim(const ZoneTrims& trims, unsigned pad, unsigned zone, unsigned slot) {
+    for (const auto& t : trims) if (t.used() && t.pad == pad && t.zone == zone && t.slot == slot) return &t;
+    return nullptr;
+}
+// Zone `zone` of pad `pad`'s instrument (sample slot `slot`) at `tune` and `level`: a trim of none is taken away;
+// false when every trim is in use.
+inline bool set_trim(ZoneTrims& trims, unsigned pad, unsigned zone, unsigned slot, int tune, int level) {
+    ZoneTrim* free = nullptr;
+    for (auto& t : trims) {
+        if (t.used() && t.pad == pad && t.zone == zone) { free = &t; break; }
+        if (!t.used() && !free) free = &t;
+    }
+    const bool none = !tune && !level;
+    if (!free) return none;
+    if (none) { if (free->used()) *free = ZoneTrim {}; return true; }
+    free->pad = uint8_t(pad); free->zone = uint16_t(zone); free->slot = uint8_t(slot);
+    free->tune = int8_t(std::clamp(tune, -zone_trim_cents, zone_trim_cents));
+    free->level = int16_t(std::clamp(level, zone_trim_low, zone_trim_high));
+    return true;
+}
+inline void clear_trims(ZoneTrims& trims, unsigned pad) { for (auto& t : trims) if (t.used() && t.pad == pad) t = ZoneTrim {}; }
+
 struct SampleRef {
     char path[160] {};  // on the card; empty: free
     char name[28] {};
     uint32_t frames = 0; // at 44.1 kHz, once loaded
+    uint16_t zones = 0;  // a multisampled instrument's zones, once read (round 3 "instrument C": Stage's ZONES walks them)
     bool used() const { return path[0] != 0; }
     // A multisampled instrument, by what it is called: an .sfz, an MPC keygroup
     // program (.xpm, the MPC 3's .xty), a Logic EXS24 instrument (.exs), one
