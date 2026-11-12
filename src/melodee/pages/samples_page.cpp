@@ -38,7 +38,9 @@ void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
     Header h = header_of(s);
     Drive drive = Drive(s.ui.files_drive);
-    h.left.push_back(chip(drive_name(drive), c));
+    auto drive_chip = chip(drive_name(drive), c);
+    drive_chip.spare = true; // a long folder name keeps its room: B2 names the other drive
+    h.left.push_back(drive_chip);
     h.left.push_back(pill(folder_title(s) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(s.files.size()), c));
     h.right.push_back(tag_of(s, s.ui.track));
     juce::String other = drive == Drive::Card ? "INTERNAL" : "CARD";

@@ -27,7 +27,9 @@ void draw(Paint& p, const Snapshot& s) {
     char hand[4]; pad_label(track.last_pad, hand);
     auto hand_name = track.pads[track.last_pad % sampler_pads].used() ? pad_name(s, track.last_pad % sampler_pads, true) : juce::String("Empty");
     h.left.push_back(chip(juce::String(hand) + " " + hand_name, c));
-    h.left.push_back(pill(juce::String("BANK ") + char('A' + bank)));
+    auto bank_pill = pill(juce::String("BANK ") + char('A' + bank));
+    bank_pill.spare = true; // a long sample name keeps its room: the bank lights say the bank too
+    h.left.push_back(bank_pill);
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, play_keys(s, 2), h);
 

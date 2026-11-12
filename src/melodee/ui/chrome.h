@@ -50,6 +50,7 @@ struct HeaderItem {
     juce::String engine;               // Tag: the engine name in capitals
     Glyph glyph = Glyph::Led;          // Sign: which, in `colour`
     Icon icon = Icon::None;            // Pill, Chip: a glyph before the text (or alone)
+    bool spare = false;                // a page's item that is left out when a long name leaves it no room
 };
 inline HeaderItem pill(juce::String text, juce::Colour c = colour::mid) { return {HeaderItem::Kind::Pill, text, c, 0, {}}; }
 inline HeaderItem chip(juce::String text, juce::Colour c) { return {HeaderItem::Kind::Chip, text, c, 0, {}}; }
