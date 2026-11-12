@@ -96,8 +96,10 @@ on MPC OS devices that load Open MPC plug-ins.
 | [Quickstart](docs/QUICKSTART.md) | Install, first start, a first beat, saving |
 | [User guide](docs/GUIDE.md) | Every page and control, and a chapter for users of the stock app |
 | [Reference](docs/MELODEE.md) | The complete control reference, file formats and internals |
-| [Looper](docs/LOOPER.md) | How the Looper works |
-| [MIDI tracks](docs/MIDI_TRACKS.md) | MIDI tracks in detail |
+
+The design notes for the [Looper](docs/LOOPER.md) and
+[MIDI tracks](docs/MIDI_TRACKS.md) record the choices made while each was
+built. They are for developers; the user guide covers both.
 
 ## Build from source
 

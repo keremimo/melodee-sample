@@ -686,8 +686,9 @@ Edit on a MIDI track has more pages: eight **SLOTS** pages with 24 knobs
 (CC, 14-bit CC, pitch bend, channel pressure or NRPN), **EXPRESS** (pitch
 bend and pad pressure), **PADS** (Keys or Drums with General MIDI drum
 names), **AUDIO** (route an input into the track's mixer strip) and
-**SYSEX** (send a `.syx` file from the `SysEx` folder on the card). See
-[MIDI_TRACKS.md](MIDI_TRACKS.md).
+**SYSEX** (send a `.syx` file from the `SysEx` folder on the card). For
+how MIDI tracks were designed, see the
+[MIDI tracks design notes](MIDI_TRACKS.md).
 
 ## Sequencing
 
@@ -988,7 +989,8 @@ a note at bar 1) and **STOP** / **PLAY** at once.
 the selected loop's effect chain.
 
 Loops are saved with the project, in a folder next to the project file.
-See [LOOPER.md](LOOPER.md) for more.
+For how the Looper was designed, see the
+[Looper design notes](LOOPER.md).
 
 ## Mixer and effects
 
