@@ -278,6 +278,76 @@ behaviour changed.
   after a product). Left: control steps (filters retuned every 8 or 16
   frames) only come more often; Prophet, CZ, SID, FM6 and the 909 leave
   Melodee. Why: Kerem, "I don't wanna force 44.1khz for anything".
+- P3: pad layers are the pad's own sample and region (layer 1) plus three
+  `PadLayer`s, each a sample, region, velocity range and tune, level and pan
+  over the pad's; every other value (envelope, filter, play, loop, warp,
+  Pad FX) is the pad's over all of them, a layer looping from its own start.
+  Velocity plays every layer its velocity reaches (two ranges that overlap
+  both play: the MPC's), Cycle the next layer that holds a sample, Random
+  one. A pad playing an instrument keeps its zones and ignores layers; a
+  layer takes only a plain sample (LOAD refuses an instrument). Why: the
+  MPC's own layer grammar, and one slot a layer keeps them in the project's
+  sample table, chop, trim and save paths as any pad's sample.
+- P3: LAYERS sits after TRIM in B1 on Stage and on the sampler pages (the
+  samples a pad plays belong with its region): Stage's kit B1 is now five
+  pages (TRIM, LAYERS, MIX, AMP ENV, SENDS), the one cycle allowed past
+  four. K1 the layer in hand, K2 / K3 its velocities (unbound under Cycle
+  and Random, where they do nothing), Shift + K1 Velocity / Cycle / Random,
+  Shift + K2 / K3 the layer's tune and level (layer 1's are TUNE's and
+  MIX's); Shift + B1 LOAD opens Samples and its Push loads onto the layer in
+  hand and comes back (one undo), Shift + B2 CLEAR. Why: knobs set, keys
+  act; no row 2, which Stage's kit pages do not have.
+- P3: an MPC drum pad of two to four layers (`.xpm`, `.xty`, `.xpj`) is
+  turned onto pad layers after the import, only where the project's free
+  slots hold all its layers' files (its streamed instrument's slot given
+  back); a pad of more layers, a note-off pad, or one that no longer fits
+  stays the streamed `<file>#<pad>` instrument as before. Why: a pad that
+  loads today never fails to load (64 slots across the whole project), and
+  where it fits it becomes editable on LAYERS.
+- P3: Chop keeps one chop a sample, of the region last chopped
+  (`Project::chops`, CHOP), copied in when Chop moves to another region and
+  at every save, given back when Chop opens that region again; a slot taken
+  by another file drops its chop. Why: the MPC keeps slices with the sample;
+  a chop of every region would grow without bound and is not what Chop shows.
+- P3: a save frees a slot when no pad's layer plays it, no undo or redo
+  step could bring a pad back onto it, no file being made holds it and Chop
+  is not on it; the library lets its audio go. Nothing is deleted from the
+  card. Why: undo after a save must still play what it restores.
+- P3: Pad Link follows each linked pad's own link through the bank, each
+  pad once; a muted pad is silent but links on; a looping one shot hit again
+  stops only itself, as before.
+- P3: a note Seq Record writes from 16 Levels Filter keeps its cutoff
+  (`Event::cutoff`, LVCF) and plays at it; the cutoff rides to the sampler
+  in the note's bits 16-23 (`pad_note(key, semitones, cutoff)`), note offs
+  unchanged, so no new call on the audio thread. A slide into such a note
+  plays it at the pad's own cutoff.
+- P3: a loop's seam crossfade is a pad's own time, 0-250 ms (PLAY's Shift +
+  K3, XFADE, either row; PXFD), off by default so every loop already made
+  sounds as it did. Linear (constant gain, as the seam's two sides are
+  alike), into what lies before the loop point; with nothing there, just
+  after the turn out of what follows the end; with neither, a dip to nothing
+  and back. Why: time, not frames, so 48 and 96 kHz fade as long as 44.1.
+- P3: Resample on the Song page renders the song (Shift + Pad 11, then a
+  pad), as the mixdown plays it, into a slot; past 60 s its first 60 s land
+  and the song is stopped there. Why: the printed Resample keeps its job,
+  the page in view says whose.
+- P3: SFZ release samples play at the press's velocity, `rt_decay` dB down
+  a second held, never on the press; EXS release groups and MPC note-off
+  keygroups became release samples too. Crossfades use the format's power
+  curve as a square root. A keyswitch press sounds nothing and cuts nothing;
+  a range not named is the keys the zones switch on, the default sw_default
+  else its lowest; the keyswitch is the instrument's (every pad playing it
+  shares it). `sw_down`, `sw_up`, `sw_previous` are named and not followed.
+- P3: SF2 is read by Melodee's own reader (`engine/sf2.cpp`): JUCE has no
+  SoundFont support and inMusic's open-source packages hold libsndfile, FLAC
+  and mpg123 but no SoundFont or DecentSampler reader. The browser opens an
+  `.sf2` as a folder of its presets; the file is mapped, never read whole,
+  and only the preset loaded has its sounds laid out in `Melodee/Cache`, then
+  streamed and mlock-pinned as an SFZ's. `.dspreset` XML is read with JUCE's
+  XmlDocument into a plain tree, then as an SFZ.
+- P3: status gains `melodee_pad_layers`, `melodee_layer_play`,
+  `melodee_pad_xfade`, `melodee_voices` and `melodee_voice_slots` for remote
+  checks.
 
 ## Waiting for a hand check
 
@@ -320,6 +390,23 @@ behaviour changed.
   playheads sit on the waveform as at 44.1 kHz.
 - P2: the Tracks cells' load bars and Settings' AUDIO DSP row at a glance
   while a busy project plays.
+- P3: layers by ear: a kit pad split soft / hard by velocity, a snare's
+  hits in Cycle and Random, LOAD and CLEAR by hand; the Dirty Drummer kit's
+  layered pads (now pad layers, their volume folded into the pad's gain)
+  against how they sounded streamed.
+- P3: XFADE by ear on a sustained loop that clicks at its seam, and on the
+  whole-file dip; say whether new loops want a default (10 ms?) and whether
+  linear or equal power suits.
+- P3: a 16 Levels Filter sweep recorded with Seq Record plays back at the
+  cutoffs heard.
+- P3: Chop a break, save, open again: Chop shows the same slices; a kit
+  loaded, pads erased, saved: `melodee_pad_slots` falls, and undo after the
+  save still plays what it restores.
+- P3: Resample on Song, a short song and one past 60 s, onto a pad.
+- P3: instruments by ear: an SFZ piano with release noise (`trigger=release`,
+  `rt_decay`), a keyswitched SFZ, velocity crossfades; a General MIDI `.sf2`
+  (the preset list, a piano, a stereo preset, how long the first load
+  takes) and a DecentSampler preset with tags and release samples.
 
 ## P0: timing
 
@@ -406,7 +493,7 @@ behaviour, write the code fresh for this app.
 
 ## P3: sampler
 
-- [ ] Pad layers: up to four samples a pad, by velocity range, cycle or
+- [x] Pad layers: up to four samples a pad, by velocity range, cycle or
   random (MPC programs' layers keep working as they do).
 - [x] Chop's slices kept with the project.
 - [x] Sample slots nothing uses any more freed on save.
@@ -512,3 +599,27 @@ behaviour, write the code fresh for this app.
   (`plugin/rate_bridge.h`). Host tests `synths_as_plugins`; the tests that
   used PROPHET as a sound play PLUGIN tracks through a test tone runner, or
   kits.
+
+- 2026-11-12, P3 sampler: pad layers (a32c7db), Pad Link chains (72c7369),
+  a loop seam crossfade (5ab0389), Resample on Song (0f987a5), SFZ release
+  samples, crossfades and keyswitches with SF2 and DecentSampler presets
+  (a8fa82b), Chop's slices kept with the project (8a4baa2), unused slots
+  freed on save (2ce9550), 16 Levels' cutoff kept by Seq Record (bcd49ee),
+  status fields for remote checks (3cbcfe1; a commit race in it dropped
+  7e3d406's Stage tweak, restored by the watcher in bb5fe6f). Host tests
+  `pad_layers_p3`, `pad_link_chains`, `loop_seams`, `instrument_p3`,
+  `instrument_formats_p3` (a SoundFont built in the test), `chop_kept`,
+  `samples_used`, `levels_cutoff_kept`; `sampler_kit`'s engine hosts moved
+  to the heap (its frame passed 8 MB at -O2 once `PadSound` grew). Each
+  commit's host tests ran in a snapshot of its own tree; ./build.sh on the
+  shared tree passed after items 4-8 and again after 2, 3 and 5 (make, the
+  8 unit tests, self-test, monkey 12 x 3000 moves, 237-238 previews with no
+  text issues). On the MPC (48 kHz, three periods, remote presses): the
+  Dirty Drummer kit's Load Kit put pad A01's four MPC layers onto pad layers
+  in Cycle (55 slots); with Loop on, successive hits played layer slots 2,
+  3, 0, 1, one voice each; LAYERS' Shift + K1 to Velocity played all four at
+  once (`melodee_voice_slots=0,1,2,3`); A01 linked to A02 linked to A03
+  played three voices (slots 2, 4, 8) from one hit; PLAY's Shift + K3 set
+  XFADE to 20 ms; LAYERS drawn on the device as in the previews; 0 xruns, 0
+  dropped, 0 stream underruns. Every edit undone after; the project there was
+  not saved. No base changes; no pushes owed.
