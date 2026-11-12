@@ -64,6 +64,10 @@ constexpr bool is_master_lane(unsigned param) { return param >= motion_master_fx
 // lane of its own, kept in the file's MOTW section.
 constexpr unsigned motion_wheel = 255;
 static_assert(motion_mix_end <= motion_wheel, "the mix's lanes fit below the mod wheel's");
+// Just below it, a PLUGIN track's pitch bend as the fader moves it (-64..63; a MIDI track's bend is its own BEND
+// parameter). Kept in MOTK with the rest.
+constexpr unsigned motion_bend = 254;
+static_assert(motion_mix_end <= motion_bend, "the mix's lanes fit below the pitch bend's");
 // Plug-ins (docs/MELODEE.md, Plug-ins): a project's table of them. Each entry
 // is one loaded instance, played by a PLUGIN track or sitting in a chain.
 constexpr unsigned max_plugins = 32;

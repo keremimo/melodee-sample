@@ -1221,7 +1221,13 @@ the track's favourites, the one it follows ringed; B1 back, B2 PIN, B3 off /
 on with its LED. The wheel or −/+ walks the stock targets instead (a dot
 each): the MPC's Pad Volume, Pad Pan, Pad Tune, Pad Attack, Pad Decay /
 Release, Pad Cutoff (the last pad's) and Kit Volume on a kit, then on every
-track Mod Wheel, Track Level, Track Pan and Send A–D (the track's own mix,
+track Mod Wheel, then Pitch Bend on a plug-in or MIDI track (a MIDI track's
+is its BEND, a plug-in's its own PITCH BEND lane on Motion; the plug-in has
+to play pitch bend itself, as Melodee Poly, PD and Chip do and Nekobi does
+not). A bend has a wide middle, 21 of the fader's 128 places, that is no
+bend, always picks up, and springs back to the middle once no note is held
+on its track and the fader has been still for a second; the fader then picks
+it up again from the middle. Then Track Level, Track Pan and Send A–D (the track's own mix,
 as Tracks and Sends show it). Until a pot or the wheel picks, a kit takes Pad Volume
 and a synth the mod wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
 send, Knob FX from A to B, Compressor its amount,

@@ -100,7 +100,8 @@ struct Binding {
         FollowAction, FollowOther, FollowAfter, FollowChance,
         // Roadmap P5, Song's Shift + K1 / K2: the tempo lane's point at the cursor's bar, its tempo in whole BPM (29: none
         // there; with none, the lane's tempo there) and its shape (0 a step on its bar, 1 a ramp from the point before).
-        SongTempo, SongTempoShape
+        SongTempo, SongTempoShape,
+        PitchBend // a PLUGIN track's pitch bend (the fader's Pitch Bend), -64..63 around the centre
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

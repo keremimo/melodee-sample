@@ -1541,6 +1541,11 @@ const Preview previews[] {
          auto& t = s.project.tracks[2];
          t.fader_target = uint8_t(FaderTarget::SendB); t.mix.sends[1] = 35;
      }},
+    {"faderbend", [](Shell&, Snapshot& s) { // a plug-in track's fader on Pitch Bend, bent a little up
+         s.ui.page = PageId::FaderPage; s.ui.track = 2;
+         auto& t = s.project.tracks[2];
+         t.fader_target = uint8_t(FaderTarget::PitchBend); t.bend = 20;
+     }},
     {"fadersynth", [](Shell&, Snapshot& s) { // a synth track with its fader off
          s.ui.page = PageId::FaderPage; s.ui.track = 2;
          auto& t = s.project.tracks[2];

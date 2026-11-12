@@ -42,7 +42,7 @@ using Type = Command::Type;
 void Context::send(const Command& command) {
     // Anything but playing changes the project (the metronome is Melodee's setting, not the project's).
     switch (command.type) {
-    case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Pressure:
+    case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Bend: case Type::Pressure:
     case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
     case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded:
     case Type::Click: break;
@@ -681,6 +681,11 @@ void Context::apply(const Binding& b, int value) {
         t.wheel = uint8_t(value);
         send({Type::Wheel, ui.track, 0, 0, int16_t(value * 1000 / 127)});
         record_motion(motion_wheel, value);
+        break;
+    case Kind::PitchBend: // a plug-in track's pitch bend from the fader, its own lane too (a MIDI track's is its BEND)
+        t.bend = int8_t(std::clamp(value, -64, 63));
+        send({Type::Bend, ui.track, 0, 0, int16_t(t.bend * 128)});
+        record_motion(motion_bend, t.bend);
         break;
     case Kind::Tempo: set_tempo(value * 10); break;
     case Kind::NameSuggest: {

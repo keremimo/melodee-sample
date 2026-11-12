@@ -304,12 +304,12 @@ private:
     // frame, kept for the track's job to make at that frame (play_calls()).
     struct EngineCall {
         enum class Op : uint8_t { NoteOn, NoteOff, Slide, Param, Wheel, Pressure, Mod, PlayPad, Audition, MovePad, RestorePad,
-                                  RestorePads, PadFxParam };
+                                  RestorePads, PadFxParam, Bend };
         Op op = Op::NoteOn;
         bool flag = false;  // Slide: glide
         uint16_t frame = 0; // into the block
         int32_t a = 0, b = 0, c = 0, d = 0;
-        float x = 1;        // NoteOn, Slide: the accent's gain; Wheel, Pressure: the value
+        float x = 1;        // NoteOn, Slide: the accent's gain; Wheel, Pressure, Bend: the value
     };
     static constexpr unsigned calls_a_block = 384; // a track's, more than a pattern's start (every value back) needs
     struct Slot {
@@ -345,6 +345,8 @@ private:
         bool moved = false;                       // motion changed a value since Play
         float wheel = 0;                          // the mod wheel as the fader left it, 0..1
         bool wheel_moved = false;                 // and motion moved it since (parity phase 8)
+        float bend = 0;                           // a PLUGIN track's pitch bend as the fader left it, -1..1
+        bool bend_moved = false;                  // and motion moved it since
         // Motion's locks playing (roadmap P1): a lane, and the ticks before it goes back.
         struct Lock { int16_t param = -1; uint8_t pad = 0; uint32_t left = 0; };
         std::array<Lock, 16> locks {};
@@ -387,6 +389,7 @@ private:
     void engine_slide(Slot& slot, int from, int to, int velocity, bool glide, float accent);
     void engine_param(Slot& slot, int id, int value);
     void engine_wheel(Slot& slot, float value);
+    void engine_bend(Slot& slot, float value); // -1..1
     void engine_pressure(Slot& slot, int key, float value);
     void make_call(unsigned t, Slot& slot, const EngineCall& call); // one kept call, now
     void render_engine(unsigned t, Slot& slot, unsigned at, unsigned frames); // the engine's frames [at, at + frames)

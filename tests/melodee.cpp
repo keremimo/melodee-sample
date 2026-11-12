@@ -3191,7 +3191,8 @@ void fader_and_takeover() {
     synth.fader_target = uint8_t(FaderTarget::PadPan);
     CHECK(fader_target(synth) == FaderTarget::ModWheel);
     // The track's mix goes on every track: a synth walks its mod wheel, level, pan and a send into each bus.
-    CHECK(!fader_needs_kit(FaderTarget::TrackLevel) && !fader_needs_kit(FaderTarget::SendD) && fader_needs_kit(FaderTarget::KitVolume));
+    CHECK(fader_takes(EngineKind::Midi, FaderTarget::TrackLevel) && fader_takes(EngineKind::Plugin, FaderTarget::SendD)
+          && !fader_takes(EngineKind::Plugin, FaderTarget::KitVolume) && fader_takes(EngineKind::Sampler, FaderTarget::TrackPan));
     synth.mix.level = 80; synth.mix.pan = -12; synth.mix.sends[1] = 35;
     synth.fader_target = uint8_t(FaderTarget::TrackLevel);
     CHECK(fader_target(synth) == FaderTarget::TrackLevel);
@@ -3210,6 +3211,77 @@ void fader_and_takeover() {
         kit.fader_target = fader_by_engine;
     }
     synth.fader_target = fader_by_engine;
+    // Pitch Bend: a plug-in's, or a MIDI track's own BEND, never a kit's; the wheel meets it beside the mod wheel.
+    CHECK(fader_takes(EngineKind::Plugin, FaderTarget::PitchBend) && fader_takes(EngineKind::Midi, FaderTarget::PitchBend)
+          && !fader_takes(EngineKind::Sampler, FaderTarget::PitchBend)
+          && fader_order[fader_place(FaderTarget::ModWheel) + 1] == FaderTarget::PitchBend);
+    synth.params[midi_track::Bend] = -20;
+    auto bend = fader_target_binding(synth, FaderTarget::PitchBend);
+    CHECK(bend.kind == Kind::Param && bend.id == midi_track::Bend && bend.value == -20 && bend.min == -64 && bend.max == 63);
+    synth.params[midi_track::Bend] = 0;
+    CHECK(!fader_target_binding(kit, FaderTarget::PitchBend).bound());
+    kit.fader_target = uint8_t(FaderTarget::PitchBend);
+    CHECK(fader_target(kit) == FaderTarget::PadVolume);
+    kit.fader_target = fader_by_engine;
+    {
+        Track plug;
+        ::synth(plug, 0);
+        plug.bend = 12; plug.fader_target = uint8_t(FaderTarget::PitchBend);
+        auto b = fader_target_binding(plug, fader_target(plug));
+        CHECK(b.kind == Kind::PitchBend && b.value == 12 && b.min == -64 && b.max == 63 && b.at(64) == 0); // the fader's middle: no bend
+        CHECK(binding_lane(plug, b) == motion_lane(motion_bend) && lane_name(plug, motion_lane(motion_bend)) == "PITCH BEND"
+              && lane_binding(plug, 0, motion_lane(motion_bend)).kind == Kind::PitchBend);
+        CHECK(lane_name(synth, motion_lane(motion_bend)) == "lane"); // a MIDI track bends by its BEND lane
+        auto learned = fader_learnable(plug, 0, b); // fader C: learned as its lane, the card back from it
+        CHECK(learned.what == FaderLearn::Lane && learned.lane == motion_bend);
+        plug.fader_learned = learned;
+        CHECK(fader_learned_binding(plug, 0).kind == Kind::PitchBend && fader_learned_binding(plug, 0).value == 12);
+    }
+    { // Its wide middle (Kerem): 54..74 is no bend, the rest spread so nothing jumps at the middle's edges; the ends reach the ends.
+        FaderJob j; j.bend = true;
+        CHECK(fader_reach(j, 64) == 64 && fader_reach(j, 54) == 64 && fader_reach(j, 74) == 64 && fader_reach(j, -1) == -1);
+        Binding b {Kind::PitchBend, 0, -64, 63, 0};
+        CHECK(b.at(fader_reach(j, 75)) == 1 && b.at(fader_reach(j, 53)) == -1 && b.at(fader_reach(j, 127)) == 63 && b.at(fader_reach(j, 0)) == -64);
+        bool onward = true;
+        for (int p = 1; p < 128; ++p) onward &= fader_reach(j, p) >= fader_reach(j, p - 1);
+        CHECK(onward);
+        j.bend = false;
+        CHECK(fader_reach(j, 70) == 70);
+        UiState at; at.track = 2; at.page = PageId::Stage; // a MIDI track's BEND is a bend too; pan is not
+        synth.fader_target = uint8_t(FaderTarget::PitchBend);
+        auto job = fader_job(*project, at);
+        CHECK(job.bend && job.centred && job.binding.kind == Kind::Param && job.binding.id == midi_track::Bend);
+        synth.fader_target = uint8_t(FaderTarget::TrackPan);
+        CHECK(!fader_job(*project, at).bend);
+        synth.fader_target = fader_by_engine;
+    }
+    { // The plug-in hears it as pitch bend: by hand, from its lane while playing, and back where the fader left it on Stop.
+        auto proj = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        ::synth(proj->tracks[0], 0);
+        bank->at[0][0].write_motion(point(0, motion_bend, -64));
+        EngineHost host;
+        host.load(*proj, *bank);
+        auto tones = std::make_unique<Tones>();
+        tones->offer(host, *proj);
+        std::vector<int32_t> out(256);
+        auto run = [&](unsigned blocks) { for (unsigned n = 0; n < blocks; ++n) host.render(out.data(), 128, 1); };
+        auto last_bend = [&] {
+            int v = -1;
+            for (auto& m : tones->at[0].heard) if ((m.status & 0xf0) == 0xe0) v = m.a | m.b << 7;
+            return v;
+        };
+        run(2);
+        host.send({Command::Type::Bend, 0, 0, 0, int16_t(32 * 128)}); // +32 of the card's 63
+        run(2);
+        CHECK(last_bend() == 12288);
+        host.send({Command::Type::Play});
+        run(8);
+        CHECK(last_bend() == 0); // the lane's -64: all the way down
+        host.send({Command::Type::Stop});
+        run(4);
+        CHECK(last_bend() == 12288);
+    }
 
     // What it drives: the track's target, or the page's own job.
     UiState ui; ui.track = 3; ui.page = PageId::Stage;

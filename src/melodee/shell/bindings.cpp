@@ -103,8 +103,9 @@ Binding filter_second(const PadSound& pad, bool other) {
 }
 } // namespace
 
-// The mod wheel's lane, as Motion shows it (parity phase 8).
+// The mod wheel's lane, as Motion shows it (parity phase 8), and a plug-in track's pitch bend.
 const ParamInfo wheel_info {"MOD WHEEL", 0, 127, 0, Format::Number};
+const ParamInfo bend_info {"PITCH BEND", -64, 63, 0, Format::Number};
 
 // Roadmap P4: the mix's lanes as Motion shows them.
 const ParamInfo level_info {"LEVEL", 0, 127, 100, Format::Level};
@@ -118,6 +119,7 @@ MotionParam motion_param(const Track& track, int lane, const Project* project) {
     if (lane < 0) return {};
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {&wheel_info, track.wheel};
+    if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin ? MotionParam {&bend_info, track.bend} : MotionParam {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4
         unsigned p = unsigned(param);
         if (p == motion_level) return {&level_info, track.mix.level};
@@ -163,6 +165,7 @@ std::string lane_name(const Track& track, int lane, const Project* project) {
 Binding lane_binding(const Track& track, unsigned t, int lane, const Project* project) {
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
+    if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4: the card that turns it (the selected track's strip, the master's, a return)
         auto m = motion_param(track, lane, project);
         if (!m.info) return {};
@@ -241,6 +244,7 @@ Binding nudge_card(const Pattern& pattern, const Event& e) {
 int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::Param) return motion_lane(unsigned(b.id));
     if (b.kind == Kind::ModWheel) return motion_lane(motion_wheel);
+    if (b.kind == Kind::PitchBend) return motion_lane(motion_bend);
     if (track.engine != EngineKind::Sampler) return -1;
     for (unsigned p = 0; p < pad_param_count; ++p) // a kit pad's own value: its lane on the last pad hit
         if (pad_kind(PadParam(p)) == b.kind) return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads);

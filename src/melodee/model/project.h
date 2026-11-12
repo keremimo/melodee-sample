@@ -311,6 +311,7 @@ struct Track {
     FaderLearned fader_learned; // fader C: the pot it follows, over the target above while there is one
     bool fader_pin = false;     // PIN: what it has stays, whatever pot turns next
     uint8_t wheel = 0;    // the mod wheel as the fader left it, 0..127 (played, not saved)
+    int8_t bend = 0;      // a PLUGIN track's pitch bend as the fader left it, -64..63 (played, not saved)
     uint8_t midi_channel = 0; // MIDI Config: 0 none, 1..16 notes on it play this track; its notes go out on it (parity phase 9)
     uint8_t plugin = no_plugin; // a PLUGIN track: the entry of Project::plugins it plays
     uint8_t speed = speed_normal; // its patterns' playback speed (roadmap P1), an index into speeds: x1/2 .. x2

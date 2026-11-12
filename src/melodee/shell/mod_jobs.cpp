@@ -108,7 +108,7 @@ void set_lane(Context& c, unsigned t, unsigned param, unsigned pad, int value) {
         else c.set_effect_param(master_chain, (param - motion_master_fx_base) / 6, (param - motion_master_fx_base) % 6, value);
         return;
     }
-    if (param == motion_wheel) return; // the fader's own
+    if (param == motion_wheel || param == motion_bend) return; // the fader's own
     if (int which = pad_param_of(param); which >= 0) {
         auto& sound = track.pads[pad % sampler_pads];
         set_pad_param(sound, PadParam(which), value);

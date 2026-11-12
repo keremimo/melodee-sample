@@ -544,6 +544,10 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
         break;
     case Kind::ModWheel: c.label = "MOD WHEEL"; c.value = juce::String(b.value); break;
+    case Kind::PitchBend: // centred as a pan: 0 in the middle, a sign either side
+        c.label = "PITCH BEND"; c.bipolar = true;
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        break;
     case Kind::StageSound:
         std::snprintf(text, sizeof(text), "%02d", b.value + 1);
         c.label = "SOUND"; c.value = text; c.unit = "/ " + juce::String(b.max + 1);

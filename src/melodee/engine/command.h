@@ -125,7 +125,9 @@ struct Command {
         ZoneTrim,
         // A project load (EngineHost::park): position = the park's serial. The audio thread fades out, then plays
         // silence touching nothing of its state, and takes no more commands, until resume() lets it go.
-        Park
+        Park,
+        // A PLUGIN track's pitch bend (the fader's Pitch Bend): track, value -8192..8191 around the centre.
+        Bend
 
     };
     Command() = default;

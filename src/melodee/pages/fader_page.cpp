@@ -6,8 +6,9 @@
 // of the track's, not just eight; without PIN it follows the pot turned
 // last. The wheel (or Minus / Plus) walks the stock targets instead: the
 // MPC's eight (Pad Volume, Pan, Tune, Attack, Decay / Release, Cutoff, Kit
-// Volume, Mod Wheel; a synth has the mod wheel alone), then the track's
-// Level, Pan and Sends A-D on every track, and a pot turned after takes over
+// Volume, Mod Wheel; a synth has the mod wheel alone), Pitch Bend on a
+// plug-in or MIDI track, then the track's Level, Pan and Sends A-D on every
+// track (model/fader.h fader_order), and a pot turned after takes over
 // again. B1 back, B2 PIN, B3 the fader off and on for the track (pages with
 // a job of their own keep it). The pads play, so a hit picks the pad.
 // Picture: the pot it follows in that pot's shade (a stock target: its
@@ -26,7 +27,7 @@ using namespace ui;
 
 Icon target_icon(FaderTarget t) { // the stock targets' glyphs
     static const Icon icons[] {Icon::Speaker, Icon::Swap, Icon::Note, Icon::Dynamics, Icon::Dirt, Icon::Tone, Icon::Pads, Icon::Wheel,
-                               Icon::Sliders, Icon::Swap, Icon::Route, Icon::Route, Icon::Route, Icon::Route};
+                               Icon::Sliders, Icon::Swap, Icon::Route, Icon::Route, Icon::Route, Icon::Route, Icon::Slide};
     static_assert(sizeof(icons) / sizeof(icons[0]) == fader_targets, "a glyph for each target");
     return unsigned(t) < fader_targets ? icons[unsigned(t)] : Icon::Fader;
 }
@@ -59,13 +60,16 @@ void draw(Paint& p, const Snapshot& s) {
         juce::String value = shown.card.value + (shown.card.unit.isNotEmpty() ? " " + shown.card.unit : juce::String());
         p.text(value, cx - 70, gy + gs + 24, 140, 15, plain(shown.waiting ? colour::mid : colour::sec, type::body), juce::Justification::centred);
     }
-    if (!learned && on) { // the targets the wheel walks on this track, the one it has lit
-        bool kit = t.engine == EngineKind::Sampler;
-        unsigned first = kit ? 0 : unsigned(FaderTarget::ModWheel), count = fader_targets - first;
+    if (!learned && on) { // the targets the wheel walks on this track, in its order, the one it has lit
+        unsigned count = 0;
+        for (auto target : fader_order) count += fader_takes(t.engine, target);
         constexpr float dot = 4, gap = 5;
-        float x0 = cx - (count * dot + (count - 1) * gap) / 2;
-        for (unsigned n = 0; n < count; ++n)
-            p.fill(x0 + n * (dot + gap), gy + gs + 45, dot, dot, first + n == unsigned(fader_target(t)) ? colour::text : colour::line, 2);
+        float x = cx - (count * dot + (count - 1) * gap) / 2;
+        for (auto target : fader_order) {
+            if (!fader_takes(t.engine, target)) continue;
+            p.fill(x, gy + gs + 45, dot, dot, target == fader_target(t) ? colour::text : colour::line, 2);
+            x += dot + gap;
+        }
     }
 
     // The dashed arrow to the fader; PIN sits on it while it holds.
@@ -89,6 +93,10 @@ void draw(Paint& p, const Snapshot& s) {
     // (takeover), where the hand has it, hollow, and an arrow the way to move.
     constexpr float sx = 241, top = 52, slot_h = 124;
     p.fill(sx + 9, top, 6, slot_h, colour::line, 3);
+    if (on && job.bend) { // a pitch bend's wide middle: no bend anywhere in it
+        float zone = slot_h * float(2 * bend_snap + 1) / 127.0f;
+        p.fill(sx + 5, top + slot_h / 2 - zone / 2, 14, zone, colour::line, 3);
+    }
     if (shown.value && on) {
         float level = std::clamp(shown.card.fill, 0.0f, 1.0f), at = top + slot_h * (1 - level);
         if (shown.card.bipolar) p.fill(sx + 2, top + slot_h / 2 - 0.5f, 20, 1, colour::mid);

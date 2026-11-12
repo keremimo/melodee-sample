@@ -234,7 +234,7 @@ bool EngineHost::mid_block(Command::Type type) {
     using Type = Command::Type;
     switch (type) {
     case Type::NoteOn: case Type::NoteOff: case Type::PadNote: case Type::ArpKey: case Type::Pressure: case Type::Audition:
-    case Type::Param: case Type::Wheel: case Type::Mod: case Type::Level: case Type::Pan: case Type::FxParam:
+    case Type::Param: case Type::Wheel: case Type::Bend: case Type::Mod: case Type::Level: case Type::Pan: case Type::FxParam:
     case Type::PadFxParam: case Type::PatternData: case Type::Recorded:
         return true;
     default:
@@ -765,6 +765,10 @@ void EngineHost::apply(const Command& c) {
             emit(e);
         }
         break;
+    case Type::Bend: // the fader's pitch bend on a PLUGIN track (a MIDI track's goes out as its BEND)
+        slot.bend = std::clamp(c.value / 8192.0f, -1.0f, 1.0f);
+        engine_bend(slot, slot.bend);
+        break;
     case Type::Level: slot.mix_level = c.value; set_level(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_level, 0, c.value, true); break; // roadmap P4: kept, Motion borrows it
     case Type::Pan: slot.mix_pan = c.value; set_pan(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_pan, 0, c.value, true); break;
     case Type::Send: // index: the bus
@@ -943,6 +947,7 @@ void EngineHost::make_call(unsigned t, Slot& slot, const EngineCall& c) {
     case Op::Slide: e->set_accent(c.x); e->slide(c.a, c.b, c.c, c.flag); e->set_accent(1); break;
     case Op::Param: e->set_param(c.a, c.b); break;
     case Op::Wheel: e->set_wheel(c.x); break;
+    case Op::Bend: e->set_bend(c.x); break;
     case Op::Pressure: e->set_pressure(c.a, c.x); break;
     case Op::Mod: e->set_mod(unsigned(c.a), ModRoute {uint8_t(c.b), uint8_t(c.c), int8_t(c.d)}); break;
     case Op::PlayPad: if (e == &slot.sampler) slot.sampler.play_pad(unsigned(c.a), c.b, c.c, c.d); break;
@@ -982,6 +987,12 @@ void EngineHost::engine_param(Slot& slot, int id, int value) {
 void EngineHost::engine_wheel(Slot& slot, float value) {
     EngineCall call;
     call.op = EngineCall::Op::Wheel; call.x = value;
+    if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
+}
+
+void EngineHost::engine_bend(Slot& slot, float value) {
+    EngineCall call;
+    call.op = EngineCall::Op::Bend; call.x = value;
     if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
 }
 
@@ -1140,6 +1151,7 @@ void EngineHost::mod_write(unsigned t, unsigned param, unsigned pad, int value) 
         return;
     }
     if (param == motion_wheel) { if (slot.engine) engine_wheel(slot, std::clamp(value / 127.0f, 0.0f, 1.0f)); return; }
+    if (param == motion_bend) { if (slot.engine) engine_bend(slot, std::clamp(value / 64.0f, -1.0f, 1.0f)); return; }
     if (int which = pad_param_of(param); which >= 0) {
         if (slot.kind == EngineKind::Sampler) slot.sampler.move_pad(pad % sampler_pads, PadParam(which), value);
         return;
@@ -1329,6 +1341,8 @@ void EngineHost::restore(Slot& slot) {
     }
     if (slot.wheel_moved) engine_wheel(slot, slot.wheel); // the mod wheel, back where the fader left it
     slot.wheel_moved = false;
+    if (slot.bend_moved) engine_bend(slot, slot.bend); // and the pitch bend
+    slot.bend_moved = false;
     if (!slot.moved || !slot.engine) return;
     for (unsigned p = 0; p < max_params; ++p) engine_param(slot, int(p), slot.base[p]);
     slot.moved = false;
@@ -1404,6 +1418,10 @@ void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad,
         if (slot.engine) { engine_wheel(slot, std::clamp(value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
         return;
     }
+    if (param == motion_bend) { // a plug-in track's pitch bend lane
+        if (slot.engine) { engine_bend(slot, std::clamp(value / 64.0f, -1.0f, 1.0f)); slot.bend_moved = true; }
+        return;
+    }
     if (param >= motion_pad_base) { // a kit pad's own value
         if (slot.kind == EngineKind::Sampler) {
             EngineCall call;
@@ -1427,6 +1445,7 @@ void EngineHost::restore_lane(unsigned t, Slot& slot, unsigned param, unsigned p
     if (mods_on) mod_back(t, int(param), pad); // roadmap P4: modulated around its own again
     if (is_mix_lane(param)) { restore_mix(slot, param); return; } // roadmap P4
     if (param == motion_wheel) { engine_wheel(slot, slot.wheel); return; }
+    if (param == motion_bend) { engine_bend(slot, slot.bend); return; }
     if (param >= motion_pad_base) {
         if (slot.kind == EngineKind::Sampler) {
             EngineCall call;

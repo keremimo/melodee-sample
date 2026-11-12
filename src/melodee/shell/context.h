@@ -483,6 +483,9 @@ public:
     void midi_key(unsigned t, int note, int velocity, bool down);
     void midi_release_all();                                // the input went away: every note it holds ends
     std::array<std::bitset<128>, track_count> midi_held {};  // keys MIDI in holds, by track
+    // Whether a note is held on track `t`: a key MIDI in holds there, or a pad (they play the selected track).
+    bool holds_notes(unsigned t) const { return midi_held[t % track_count].any() || (t % track_count == ui.track % track_count && held_pads()); }
+    uint16_t fader_bent = 0; // tracks whose pitch bend the fader moved: shell/fader.cpp brings each back to the middle
     std::array<std::array<int32_t, 128>, track_count> midi_played {}; // what each of them plays
     bool midi_every_key(const Track& tr) const;              // 16 Levels on an instrument: the whole keyboard is that pad
     // An instrument loaded onto a pad: its envelope and velocity go onto the pad once read.

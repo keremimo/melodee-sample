@@ -30,5 +30,9 @@ void toggle_fader(Context& c);
 void learn_fader(Context& c, const Binding& b, unsigned pot);
 void step_fader_target(Context& c, int delta);
 void toggle_fader_pin(Context& c);
+// A pitch bend the fader moved goes back to the middle once its track holds no note and the fader has been
+// still for bend_rest_ms (shell/fader_job.h); the fader then picks it up from the middle. Called on the MIDI
+// thread's beat (Shell::midi_output).
+void fader_rest(Context& c);
 
 } // namespace melodee

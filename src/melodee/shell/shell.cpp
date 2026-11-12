@@ -104,6 +104,7 @@ void Shell::midi_lost() {
 void Shell::midi_output(MidiOutput& out, MidiIo::Clock::time_point at, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;
+    fader_rest(context_); // a pitch bend the fader left, back to the middle once nothing holds it there
     context_.flush_motion(); // recorded Motion the audio thread has not had yet (roadmap P1)
     context_.take_arp_notes(); // and Note Repeat's notes under Seq Record
     midi_io.pump(context_, out, at);

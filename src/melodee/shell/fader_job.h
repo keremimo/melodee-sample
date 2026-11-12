@@ -24,7 +24,18 @@ struct FaderJob {
     bool centred = false;         // a value either side of a middle (pan, tune): the light is brightest there
     bool learned = false;         // Target: the pot it learned (fader C), not one of the eight
     bool pad = false;             // Target: the last pad hit's own value (its name carries the pad)
+    bool bend = false;            // a pitch bend (a plug-in's, a MIDI track's BEND): a wide middle, Pickup, springs back
 };
+
+// Pitch bend on the fader (Kerem): the middle `bend_snap` places either side of 64 are no bend, the rest of the
+// travel spread over the bend's range so nothing jumps at the edge of that middle; it always picks up (from the
+// middle once it sprang back), and goes back to the middle `bend_rest_ms` after the fader last moved, once no
+// note is held on its track.
+constexpr int bend_snap = 10;
+constexpr uint32_t bend_rest_ms = 1000;
+// Where the fader at `position` (0..127) reaches for `job`: itself, or for a bend the place its value sits at.
+int fader_reach(const FaderJob& job, int position);
+bool is_bend(const Track& track, const Binding& b); // a plug-in's PITCH BEND or a MIDI track's BEND
 
 FaderJob fader_job(const Project& project, const UiState& ui);
 // The track's own target as a card (whatever the page): pad values of the last pad hit.

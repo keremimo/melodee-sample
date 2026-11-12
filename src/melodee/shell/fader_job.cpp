@@ -3,6 +3,7 @@
 #include "melodee/shell/fader_job.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/model/pad_params.h"
 #include <algorithm>
@@ -23,6 +24,13 @@ Binding fader_target_binding(const Track& track, FaderTarget target) {
         unsigned bus = unsigned(target) - unsigned(FaderTarget::SendA);
         return {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]};
     }
+    case FaderTarget::PitchBend: // a plug-in's bend; a MIDI track's own BEND (its lane, sent as pitch bend)
+        if (track.engine == EngineKind::Plugin) return {Kind::PitchBend, 0, -64, 63, track.bend};
+        if (track.engine == EngineKind::Midi) {
+            const auto& p = engine_info(track.engine).params[midi_track::Bend];
+            return {Kind::Param, midi_track::Bend, p.min, p.max, track.params[midi_track::Bend]};
+        }
+        return {};
     default: break;
     }
     if (track.engine != EngineKind::Sampler) return {};
@@ -89,6 +97,18 @@ Binding fader_learned_binding(const Track& track, unsigned t) {
     return {};
 }
 
+bool is_bend(const Track& track, const Binding& b) {
+    return b.kind == Kind::PitchBend || (b.kind == Kind::Param && b.id == midi_track::Bend && track.engine == EngineKind::Midi);
+}
+
+int fader_reach(const FaderJob& job, int position) {
+    if (!job.bend || position < 0) return position;
+    int d = position - 64;
+    if (std::abs(d) <= bend_snap) return 64;
+    if (d > 0) return 64 + (63 * (d - bend_snap) + (63 - bend_snap) / 2) / (63 - bend_snap); // 75..127 to 65..127
+    return 64 - (64 * (-d - bend_snap) + (64 - bend_snap) / 2) / (64 - bend_snap);           // 53..0 to 63..0
+}
+
 FaderJob fader_job(const Project& project, const UiState& ui) {
     const auto& track = project.tracks[ui.track % track_count];
     FaderJob job;
@@ -116,6 +136,7 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
         job.pad = fader_pad_target(target);
     }
     job.centred = job.binding.bound() && job.binding.min < 0 && job.binding.max > 0; // pan, tune: either side of a middle
+    job.bend = job.binding.bound() && is_bend(track, job.binding);
     return job;
 }
 

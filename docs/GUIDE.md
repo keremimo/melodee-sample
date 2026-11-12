@@ -1114,7 +1114,12 @@ Press **SHIFT** + **Pad 9** to open the **Fader** page.
 - Turn the encoder to choose a fader target. On a kit track: Pad Volume,
   Pad Pan, Pad Tune, Pad Attack, Pad Decay, Pad Cutoff, Kit Volume. On
   every track: Mod Wheel, Track Level, Track Pan, Send A, Send B, Send C,
-  Send D.
+  Send D. On a plug-in or MIDI track: Pitch Bend, after Mod Wheel.
+
+On Pitch Bend, the wide middle of the fader is no bend. When you let go of
+your notes and leave the fader still for a second, the bend springs back to
+the middle; bring the fader back through the middle to bend again. The
+plug-in must respond to pitch bend (Melodee Poly, PD and Chip do).
 
 The fader light shows the value. With **SEQ RECORD** on, the fader records
 Motion.
