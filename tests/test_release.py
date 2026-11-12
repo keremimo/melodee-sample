@@ -41,7 +41,12 @@ class ReleaseTests(unittest.TestCase):
     def test_nothing_private_ships(self):
         for name, data in self.collect().items():
             make_release.scan(name, data)
-        self.assertIn(b"v0.1.0-alpha.1", self.collect()["README.txt"])
+        self.assertIn(b"v0.1.0-alpha.1", self.collect()["autorun/melodee/README.txt"])
+
+    def test_zip_is_the_autorun_folder_alone(self):
+        files = self.collect()
+        self.assertEqual({name.split("/")[0] for name in files}, {"autorun"})
+        self.assertIn("autorun/melodee/licenses/LICENSE-AGPL-3.0.txt", files)
 
 
 if __name__ == "__main__":

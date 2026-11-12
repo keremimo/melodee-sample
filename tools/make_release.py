@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Make a Melodee release zip: an autorun folder to copy to the root of the
-MPC Sample's microSD card, plus a README, the licences and the source note.
+"""Make a Melodee release zip: one autorun folder and nothing else, to unzip
+or copy to the top of the MPC Sample's microSD card. The README, licences
+and source note ride inside it, in autorun/melodee/.
 
 At boot the stock app runs autorun/autorun.sh (signed in autorun.check, the
 firmware's salted digest). It hands autorun/melodee/ to the base's SD boot
@@ -83,15 +84,18 @@ def collect(binary, version, commit):
     files["autorun/autorun.sh"] = script.encode()
     files["autorun/autorun.json"] = manifest.encode()
     files["autorun/autorun.check"] = device.autorun_check(manifest, script).encode()
-    files["README.txt"] = readme(version, commit)
-    files["licenses/LICENSE-AGPL-3.0.txt"] = (ROOT / "LICENSE").read_bytes()
-    files["licenses/THIRD_PARTY.md"] = (ROOT / "THIRD_PARTY.md").read_bytes()
-    files["licenses/Rubik-OFL.txt"] = (ROOT / "build/deps/rubik/OFL.txt").read_bytes()
-    files["licenses/JUCE-LICENSE.md"] = (ROOT / "build/deps/JUCE/LICENSE.md").read_bytes()
+    # Beside the files sd-worker.sh checks, so the zip unpacks to the one autorun folder.
+    files[f"{PACKAGE}/README.txt"] = readme(version, commit)
+    licenses = f"{PACKAGE}/licenses"
+    files[f"{licenses}/LICENSE-AGPL-3.0.txt"] = (ROOT / "LICENSE").read_bytes()
+    files[f"{licenses}/THIRD_PARTY.md"] = (ROOT / "THIRD_PARTY.md").read_bytes()
+    files[f"{licenses}/Rubik-OFL.txt"] = (ROOT / "build/deps/rubik/OFL.txt").read_bytes()
+    files[f"{licenses}/JUCE-LICENSE.md"] = (ROOT / "build/deps/JUCE/LICENSE.md").read_bytes()
     # Plug-ins (docs/MELODEE.md): the VST3 SDK inside JUCE, and the armhf runtime inside the binary's support pack.
-    files["licenses/VST3-SDK-LICENSE.txt"] = (ROOT / "build/deps/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK/LICENSE.txt").read_bytes()
+    files[f"{licenses}/VST3-SDK-LICENSE.txt"] = (ROOT / "build/deps/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK/LICENSE.txt").read_bytes()
     for path in sorted((ROOT / "build/plugin-support/licenses").glob("*")):
-        files[f"licenses/armhf-runtime/{path.name}"] = path.read_bytes()
+        files[f"{licenses}/armhf-runtime/{path.name}"] = path.read_bytes()
+    assert all(name.startswith("autorun/") for name in files), "the zip is the autorun folder alone"
     return files
 
 
