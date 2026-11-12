@@ -86,7 +86,15 @@ struct TrackPack {
 class EngineHost {
 public:
     EngineHost();
+    // A print host (freeze plan F2a, shell/print_engine.h): one track's engine, chain and sequencer, rendered beside
+    // the live host on another thread. It makes none of the buffers a print never uses (Sample Record's take, Audio
+    // Recall, the mixdown's ring, the punches' histories, delay compensation's lines), holds `delay_blocks` of the
+    // effects' delay memory, keeps its own effect clock, never sets the device's rate (a rate other than the one it
+    // was made at leaves it silent), and renders on the calling thread alone.
+    struct Lean { unsigned delay_blocks = 0; };
+    explicit EngineHost(Lean lean);
     ~EngineHost();
+    bool lean() const { return is_lean; }
     EngineHost(const EngineHost&) = delete;
     EngineHost& operator=(const EngineHost&) = delete;
     // Before the audio thread starts: the whole project and its patterns.
@@ -183,6 +191,18 @@ public:
     // Roadmap P4: stems beside the next render (StemRing, the service thread's; nullptr: none), taken while it runs.
     void set_stems(StemRing* ring) { stem_ring.store(ring, std::memory_order_release); }
     const Bounce& bounce() const { return render_out; }
+    // A print host: track `track` taken each block as the Track input source does, after its chain (`post`) or as its
+    // engine left it; print_left() / print_right() hold the block just rendered.
+    void set_print_tap(unsigned track, bool post) {
+        source_track.store(track % track_count, std::memory_order_relaxed);
+        source_post.store(post, std::memory_order_relaxed);
+        source_now.store(unsigned(InputSource::Track), std::memory_order_relaxed);
+    }
+    const float* print_left() const { return tap_l; }
+    const float* print_right() const { return tap_r; }
+    // Device frames from Play (from the top) to the frame tick `ticks` plays on, at the tempo and swing playing now,
+    // placed as render() places each tick (its frames counted up to each one).
+    uint64_t tick_frame(uint32_t ticks) const;
     unsigned record_source() const { return source_now.load(std::memory_order_relaxed); } // InputSource
     unsigned record_track() const { return source_track.load(std::memory_order_relaxed); } // InputSource::Track: which
     bool record_post() const { return source_post.load(std::memory_order_relaxed); }      // and after its chain
@@ -295,6 +315,10 @@ public:
     static constexpr unsigned block = 128;
 
 private:
+    EngineHost(bool lean, unsigned delay_blocks);
+    const bool is_lean = false;
+    EffectClock own_clock;                // a print host's
+    EffectClock* fx_clock = &effect_clock; // the clock its effects hear: the live one, or own_clock
     struct PendingOff { int32_t key = -1; int32_t samples = 0; }; // a pad's key, with an instrument's semitones over it
     struct PendingOn { int16_t key = -1, velocity = 0, from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
     // A ratchet's hit still to come (roadmap P1): `samples` frames on it plays `key` (as the engine plays it; a kit
@@ -621,7 +645,10 @@ private:
     uint8_t punch_target = 255;
     // Pad FX (parity phase 7b): four punches held at once, in series on their target, each with its own grid wait.
     static constexpr unsigned live_slots = 4;
-    struct Live { Punch punch; PendingPunch pending; uint8_t target = 255; };
+    struct Live {
+        explicit Live(bool history = true) : punch(history) {}
+        Punch punch; PendingPunch pending; uint8_t target = 255;
+    };
     std::array<Live, live_slots> live;
     std::array<std::array<int16_t, punch_params>, 16> mpc_params {}; // the MPC's Pad FX: K1-K3 each
     const int16_t* params_of(PunchKind kind) const { return punch_is_mpc(kind) ? mpc_params[unsigned(kind) - punch_mpc_first].data() : nullptr; }
@@ -643,6 +670,7 @@ private:
     // ones and let go after its length (`due` until then). A live punch wins: while one sounds the kept ones are
     // quiet, and they come back for the rest of their length when it lets go.
     struct Kept {
+        explicit Kept(bool history = true) : punch(history) {}
         Punch punch;
         uint8_t target = 255;
         uint32_t until = 0;

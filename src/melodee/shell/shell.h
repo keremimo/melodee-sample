@@ -76,6 +76,8 @@ public:
     void set_store(ProjectStore* store) { store_ = store; context_.store = store; }
     void set_input(InputRoute* input) { input_ = input; context_.input = input; }
     void set_plugins(PluginRack* plugins) { context_.plugins = plugins; } // the app's plug-in rack (plugin/plugin_rack.h)
+    void set_printer(PrintEngine* printer) { context_.printer = printer; } // the app's print engine (shell/print_engine.h)
+    void print(const Context::PrintAsk& ask) { context_.print(ask); }     // MIDI thread: `melodee-print`
     // SD card access (parity phase 10b): the MIDI thread asks, the service thread lends.
     CardLink& card() { return card_link; }
     // Updates from the card (shell/update.h): written by the service thread, read by the MIDI thread.

@@ -25,6 +25,8 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/print_render.h"
+#include "melodee/model/print.h"
 #include "melodee/engine/plugin_engine.h"
 #include "melodee/plugin/rate_bridge.h"
 #include "melodee/engine/punch.h"
@@ -11396,11 +11398,210 @@ void live_pad_values() {
     }
 }
 
+// Freeze plan F2a: prints. A print host (EngineHost::Lean) holding one track of a project plays it as the whole
+// project's host plays that track, sample for sample, after its chain; the hash moves with what made the print and
+// nothing else; PRNT keeps the records; the ticks fall where tick_frame() says; a plug-in's latency is taken out.
+void prints_f2a() {
+    const float rate = dsp::sample_rate();
+    // Two kits: track 1 through an Echo and a Pumper (tempo-synced) with a send into a reverb bus, playing pattern 4;
+    // track 2 its own beat. Track 1 at unity and centred, as a print plays it.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    tone_kit(*project, 0); tone_kit(*project, 1);
+    auto& t1 = project->tracks[0];
+    t1.fx.slots[0] = {uint8_t(EffectKind::Echo), false, {40, 50, 50, 50, 0, 0}};
+    t1.fx.slots[1] = {uint8_t(EffectKind::Pumper), false, {4, 50, 60, 20, 20, 50}};
+    t1.mix.sends[0] = 40;
+    t1.pattern = 3;
+    project->buses[0].fx.slots[0] = {uint8_t(EffectKind::Reverb), false, {70, 50, 40, 50, 0, 0}};
+    project->swing = 58;
+    project->tempo = 1333;
+    for (unsigned s = 0; s < 16; s += 3) put(bank->at[0][3], s, uint8_t(sampler_first_note + s % 4), uint8_t(70 + s));
+    for (unsigned s = 0; s < 16; s += 2) put(bank->at[1][0], s, uint8_t(sampler_first_note + 1), 90);
+    put(bank->at[0][0], 0, uint8_t(sampler_first_note), 100); // another pattern of track 1: not played
+    auto tone = tone_sample();
+    const uint32_t ticks = played_pattern(bank->at[0][3], t1.speed).length;
+
+    // The whole project, track 1 taken after its chain as the Track source takes it.
+    auto live = std::make_unique<EngineHost>();
+    live->load(*project, *bank);
+    CHECK(live->offer_sample(0, &tone));
+    live->set_print_tap(0, true);
+    std::vector<int32_t> out(256);
+    live->send({Command::Type::Play}); // the sample taken in at the first block's start, before Play
+    std::vector<float> heard_l, heard_r;
+    live->render(out.data(), 128, 1);
+    const uint64_t pass = live->tick_frame(ticks);
+    CHECK(pass > 44100 && pass < 3 * 44100);
+    for (unsigned f = 0; f < 128; ++f) { heard_l.push_back(live->print_left()[f]); heard_r.push_back(live->print_right()[f]); }
+    while (heard_l.size() < 2 * pass + 256) {
+        live->render(out.data(), 128, 1);
+        for (unsigned f = 0; f < 128; ++f) { heard_l.push_back(live->print_left()[f]); heard_r.push_back(live->print_right()[f]); }
+    }
+    CHECK(peak_of(heard_l, size_t(pass), size_t(2 * pass)) > 0.05f);
+
+    auto print = [&](PrintTail tail, PrintTap tap = PrintTap::PostFx) {
+        auto p = std::make_unique<Project>(*project);
+        auto b = std::make_unique<PatternBank>(*bank);
+        print_project(*p, *b, 0, 3);
+        CHECK(!p->tracks[1].used() && b->at[0][0].empty() && !b->at[0][3].empty() && p->tracks[0].pattern == 3);
+        CHECK(p->buses[0].fx.slots[0].kind == 0 && p->tracks[0].mix.sends[0] == 0);
+        auto host = std::make_unique<EngineHost>(EngineHost::Lean {2});
+        CHECK(host->lean() && host->delay_blocks_free() == 2);
+        host->load(*p, *b);
+        CHECK(host->offer_sample(0, &tone));
+        return render_print(*host, 0, ticks, tap, tail);
+    };
+    auto loop = print(PrintTail::Loop);
+    CHECK(loop.error.empty() && loop.pass == pass && loop.latency == 0 && loop.left.size() == pass);
+    uint64_t differ = 0;
+    for (uint64_t f = 0; f < pass; ++f) differ += loop.left[f] != heard_l[pass + f] || loop.right[f] != heard_r[pass + f];
+    CHECK(differ == 0); // the second pass, with the first's echoes in it, as heard
+    auto cut = print(PrintTail::Cut);
+    differ = 0;
+    for (uint64_t f = 0; f < pass; ++f) differ += cut.left[f] != heard_l[f] || cut.right[f] != heard_r[f];
+    CHECK(cut.left.size() == pass && differ == 0);
+    auto ring = print(PrintTail::Ring); // the sequencer stops where the pass ends: the echoes ring out, then quiet
+    CHECK(ring.left.size() > pass + uint64_t(0.3 * rate) && ring.left.size() < pass + uint64_t(9 * rate));
+    CHECK(peak_of(ring.left, size_t(pass + uint64_t(0.1 * rate))) > 0.01f);
+    for (uint64_t f = 0; f < pass - pass % 128; ++f) CHECK(ring.left[f] == cut.left[f]); // its last block is split
+    auto pre = print(PrintTail::Cut, PrintTap::PreFx); // the engine alone: no echo after the last hit
+    CHECK(pre.left.size() == pass && peak_of(pre.left) > 0.05f && pre.left != cut.left);
+    CHECK(model_frames_of(pass, rate) == uint32_t(std::llround(double(pass) * 44100 / rate)));
+
+    // A print host's own effect clock: rendering one beside the live host on the same thread, at another tempo, with
+    // a Pumper of its own, leaves what the live host plays as it was.
+    {
+        auto again = std::make_unique<EngineHost>();
+        again->load(*project, *bank);
+        CHECK(again->offer_sample(0, &tone));
+        auto other = std::make_unique<Project>(*project);
+        auto ob = std::make_unique<PatternBank>(*bank);
+        print_project(*other, *ob, 0, 3);
+        other->tempo = 900;
+        auto beside = std::make_unique<EngineHost>(EngineHost::Lean {2});
+        beside->load(*other, *ob);
+        CHECK(beside->offer_sample(0, &tone));
+        again->set_print_tap(0, true);
+        std::vector<int32_t> o(256);
+        again->send({Command::Type::Play}); beside->send({Command::Type::Play});
+        differ = 0;
+        for (uint64_t at = 0; at < 2 * pass; at += 128) {
+            beside->render(o.data(), 128, 1);
+            again->render(o.data(), 128, 1);
+            for (unsigned f = 0; f < 128; ++f) differ += again->print_left()[f] != heard_l[at + f];
+        }
+        CHECK(differ == 0);
+    }
+
+    // Each tick on the frame tick_frame() says: one frame a render, the tick count watched.
+    {
+        auto p = std::make_unique<Project>();
+        auto b = std::make_unique<PatternBank>();
+        tone_kit(*p, 0);
+        p->tempo = 1777; p->swing = 63;
+        b->at[0][0].length = 4 * sixteenth_ticks;
+        auto host = std::make_unique<EngineHost>();
+        host->load(*p, *b);
+        host->send({Command::Type::Play});
+        std::vector<int32_t> o(2);
+        std::vector<uint64_t> at;
+        for (uint64_t f = 0; at.size() < 40; ++f) {
+            uint32_t before = host->ticks();
+            host->render(o.data(), 1, 1);
+            if (host->ticks() > before) at.push_back(f);
+        }
+        for (uint32_t k = 0; k < at.size(); ++k) CHECK(host->tick_frame(k) == at[k]);
+    }
+
+    // The hash: what makes the print moves it, the mix, other tracks and other patterns do not.
+    auto states = std::array<std::vector<uint8_t>, max_plugins> {};
+    auto hash = [&](const Project& p, const PatternBank& b, PrintTap tap = PrintTap::PostFx, PrintTail tail = PrintTail::Loop,
+                    unsigned at = 48000) {
+        auto q = std::make_unique<Project>(p);
+        auto k = std::make_unique<PatternBank>(b);
+        print_project(*q, *k, 0, 3);
+        return print_hash(*q, *k, states, tap, tail, at);
+    };
+    const uint64_t h = hash(*project, *bank);
+    CHECK(h == hash(*project, *bank));
+    auto changed = [&](const std::function<void(Project&, PatternBank&)>& change) {
+        auto p = std::make_unique<Project>(*project);
+        auto b = std::make_unique<PatternBank>(*bank);
+        change(*p, *b);
+        return hash(*p, *b) != h;
+    };
+    CHECK(!changed([](Project& p, PatternBank&) { p.tracks[0].mix.level = 64; p.tracks[0].mix.pan = -30; p.tracks[0].mix.sends[1] = 80; }));
+    CHECK(!changed([](Project& p, PatternBank&) { p.tracks[0].mix.mute = true; p.tracks[1].mix.solo = true; }));
+    CHECK(!changed([](Project& p, PatternBank&) { p.tracks[0].set_name("Drums"); p.tracks[0].last_pad = 7; p.name[0] = 'X'; }));
+    CHECK(!changed([](Project&, PatternBank& b) { put(b.at[1][0], 1, uint8_t(sampler_first_note), 50); }));     // another track's notes
+    CHECK(!changed([](Project&, PatternBank& b) { put(b.at[0][0], 5, uint8_t(sampler_first_note), 50); }));     // another pattern
+    CHECK(!changed([](Project& p, PatternBank&) { p.buses[0].fx.slots[0].params[0] = 10; p.master.slots[0] = {uint8_t(EffectKind::Drive), false, {}}; }));
+    CHECK(!changed([](Project&, PatternBank& b) { b.at[0][3].write_motion(point(2, motion_level, 40)); })); // a mix lane stays live
+    CHECK(changed([](Project&, PatternBank& b) { put(b.at[0][3], 1, uint8_t(sampler_first_note), 50); }));      // its notes
+    CHECK(changed([](Project&, PatternBank& b) { b.at[0][3].length = 8 * sixteenth_ticks; }));
+    CHECK(changed([](Project& p, PatternBank&) { p.tracks[0].pads[0].pitch = 3; }));                          // its sound
+    CHECK(changed([](Project& p, PatternBank&) { p.tracks[0].fx.slots[0].params[1] = 77; }));                 // its chain
+    CHECK(changed([](Project& p, PatternBank&) { p.tempo = 1200; }));
+    CHECK(changed([](Project& p, PatternBank&) { p.tracks[0].speed = 3; }));
+    CHECK(changed([](Project& p, PatternBank&) { std::snprintf(p.samples[0].path, sizeof(p.samples[0].path), "/media/card/Other.wav"); }));
+    CHECK(hash(*project, *bank, PrintTap::PreFx) != h && hash(*project, *bank, PrintTap::PostFx, PrintTail::Ring) != h);
+    CHECK(hash(*project, *bank, PrintTap::PostFx, PrintTail::Loop, 44100) != h); // printed at another rate
+    {   // a plug-in's state counts only where the track uses it
+        auto p = std::make_unique<Project>(*project);
+        std::snprintf(p->plugins[2].path, sizeof(p->plugins[2].path), "Plugins/Some Effect.vst3");
+        uint64_t unused = hash(*p, *bank);
+        states[2] = {1, 2, 3};
+        CHECK(hash(*p, *bank) == unused);
+        p->tracks[0].fx.slots[2] = {plugin_effect_kind, false, {2, 0, 0, 0, 0, 0}};
+        uint64_t used = hash(*p, *bank);
+        states[2] = {1, 2, 4};
+        CHECK(hash(*p, *bank) != used && used != unused);
+        states[2].clear();
+    }
+
+    // PRNT: the records go and come back with the project; a file without them loads with none.
+    PrintTable table;
+    PrintRecord a; a.track = 0; a.pattern = 3; a.frames = 88200; a.pass = 88200; a.hash = h; a.file = print_file_name(0, 3);
+    PrintRecord b2; b2.track = 5; b2.pattern = 127; b2.tap = PrintTap::PreFx; b2.tail = PrintTail::Ring; b2.frames = 99999; b2.pass = 44100;
+    b2.rate = 96000;
+    b2.hash = 0xfedcba9876543210ull; b2.file = print_file_name(5, 127);
+    table.put(b2); table.put(a);
+    CHECK(table.records.size() == 2 && table.records[0].track == 0 && table.find(5, 127) && !table.find(5, 126));
+    CHECK(a.file == "Track 1 A4.wav" && b2.file == "Track 6 H16.wav");
+    auto bytes = save_project(*project, *bank, nullptr, &table);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    PrintTable read;
+    CHECK(load_project(bytes, *back, *back_bank, nullptr, nullptr, &read).empty() && read == table);
+    CHECK(load_project(bytes, *back, *back_bank).empty() && back->tracks[0].pattern == 3); // as an older build reads it
+    CHECK(load_project(save_project(*project, *bank), *back, *back_bank, nullptr, nullptr, &read).empty() && read.records.empty());
+    CHECK(prints_folder("/media/card/Projects/Song.mldp") == "/media/card/Projects/Song Prints" && prints_folder("").empty());
+
+    // A plug-in 300 frames late: its print starts on the pattern's first tick all the same.
+    {
+        auto p = std::make_unique<Project>();
+        auto b = std::make_unique<PatternBank>();
+        synth(p->tracks[0], 0);
+        put(b->at[0][0], 0, 60, 100);
+        auto host = std::make_unique<EngineHost>(EngineHost::Lean {0});
+        host->load(*p, *b);
+        LatePlugin slow;
+        slow.late = 300;
+        CHECK(host->offer_plugin(0, &slow));
+        auto made = render_print(*host, 0, played_pattern(b->at[0][0], speed_normal).length, PrintTap::PostFx, PrintTail::Cut);
+        CHECK(made.error.empty() && made.latency == 300 && std::fabs(made.left[0] - 0.5f) < 1e-4f);
+        for (unsigned f = 1; f < 2000; ++f) CHECK(made.left[f] == 0.0f);
+    }
+    std::puts("prints ok");
+}
+
 int main() {
     tempo_lane_p5();
     capture_p5();
     scenes_p5();
     banks_f1();
+    prints_f2a();
     exports_p4();
     midi_tracks_p4();
     modulators_p4();

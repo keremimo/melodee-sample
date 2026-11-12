@@ -32,12 +32,13 @@ public:
     static constexpr float silence_seconds = 0.2f;           // a tail ends after 200 ms below -70 dB
     static constexpr uint32_t tail_seconds = 10;             // or after 10 s
 
-    Bounce() : ring_(new float[size_t(ring_frames) * 2]()) { set_rate(dsp::sample_rate()); }
+    // `ring` false: none made (a print host's, never cued).
+    explicit Bounce(bool ring = true) : ring_(ring ? new float[size_t(ring_frames) * 2]() : nullptr) { set_rate(dsp::sample_rate()); }
 
     // Audio thread (the engine host).
     void cue() {
         auto s = state_.load();
-        if (s != State::Idle) return;
+        if (s != State::Idle || !ring_) return;
         read_.store(0); write_.store(0); frames_.store(0);
         start_at = -1; stop_at = -1; tail_frames = 0; quiet = 0;
         render_rate_.store(device_rate, std::memory_order_relaxed);

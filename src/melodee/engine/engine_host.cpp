@@ -41,7 +41,14 @@ TrackPack::TrackPack(unsigned track, const Track& value, const std::array<Patter
     : track(uint8_t(track)), value(value), patterns(copy_patterns(from, value.speed)) {}
 TrackPack::~TrackPack() { free_patterns(patterns); }
 
-EngineHost::EngineHost() {
+EngineHost::EngineHost() : EngineHost(false, DelayPool::blocks) {}
+EngineHost::EngineHost(Lean lean) : EngineHost(true, lean.delay_blocks) {}
+
+EngineHost::EngineHost(bool lean, unsigned delay_blocks)
+    : is_lean(lean), fx_clock(lean ? &own_clock : &effect_clock), take(!lean), recall_ring(!lean), render_out(!lean),
+      punch(!lean), pad_punch(!lean), live {Live(!lean), Live(!lean), Live(!lean), Live(!lean)}, flex(!lean),
+      kept {Kept(!lean), Kept(!lean), Kept(!lean), Kept(!lean)}, pool(delay_blocks), lines(!lean) {
+    static_assert(live_slots == 4, "one Live and one Kept a slot above");
     for (auto& t : patterns) for (auto& p : t) p = new Pattern;
     for (auto& s : positions_now) s.store(-1);
     pad_fx = std::make_unique<std::array<SamplerEngine::PadEffects, track_count>>();
@@ -167,6 +174,7 @@ void EngineHost::set_audio_format(double frames_a_second, uint64_t latency_frame
     sync.set_rate(frames_a_second);
     float rate = float(frames_a_second);
     if (rate == dsp::sample_rate()) return;
+    if (is_lean) { reformatting = true; return; } // the rate is the live host's to set: silent, its print dropped
     dsp::device_rate.store(rate, std::memory_order_relaxed);
     take.set_rate(rate); recall_ring.set_rate(rate); render_out.set_rate(rate);
     reformatting = true;
@@ -1187,7 +1195,7 @@ void EngineHost::run_modulators(unsigned frames) {
             r.value = std::min(1.0f, r.env * 2);
         } else {
             double before = r.phase;
-            if (m.sync) r.phase = effect_clock.beats / lfo_division_quarters(m.division);
+            if (m.sync) r.phase = fx_clock->beats / lfo_division_quarters(m.division);
             else r.phase += lfo_hertz(m.rate) * frames / dsp::sample_rate();
             if (std::floor(r.phase) != std::floor(before)) { // a new cycle: a new random value for S&H and Drift
                 mod_seed ^= mod_seed << 13; mod_seed ^= mod_seed >> 17; mod_seed ^= mod_seed << 5;
@@ -1467,6 +1475,18 @@ void EngineHost::restore_lane(unsigned t, Slot& slot, unsigned param, unsigned p
 }
 
 // Swing stretches the first sixteenth of every eighth and shortens the second.
+uint64_t EngineHost::tick_frame(uint32_t ticks) const {
+    double until = 0;
+    uint64_t frame = 0;
+    for (uint32_t k = 0; k < ticks; ++k) {
+        until += tick_samples(k); // as tick() adds each tick's length
+        double run = std::ceil(until); // and render() plays up to the next one, until_tick going to 0 or just below
+        frame += uint64_t(run);
+        until -= run;
+    }
+    return frame;
+}
+
 double EngineHost::tick_samples(uint32_t at) const {
     double base = tick_length();
     return (at % (2 * sixteenth_ticks)) < sixteenth_ticks ? base * swing / 50.0 : base * (100 - swing) / 50.0;
@@ -2278,8 +2298,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         return;
     }
     // The clock tempo-synced effects follow: quarters since Play (on from where it was while stopped).
-    effect_clock.quarter = tick_length() * ticks_per_quarter;
-    if (running) effect_clock.beats = (double(tick_now) - std::max(until_tick, 0.0) / tick_length()) / ticks_per_quarter;
+    effect_clock_now = fx_clock; // this thread's effects hear this host's clock (a print host beside the live one)
+    fx_clock->quarter = tick_length() * ticks_per_quarter;
+    if (running) fx_clock->beats = (double(tick_now) - std::max(until_tick, 0.0) / tick_length()) / ticks_per_quarter;
     if (mods_on) run_modulators(frames); // roadmap P4: before the tracks' buffers are cleared (a follower hears the last block)
     // The arps' clock, at the block's start (within 3 ms of the beat).
     until_arp -= frames;
@@ -2660,7 +2681,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     }
     output_peak.store(peak, std::memory_order_relaxed);
     meter(out_levels[0], out_l); meter(out_levels[1], out_r);
-    if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
+    if (!running) fx_clock->beats += frames / fx_clock->quarter; // tempo-synced effects run on while stopped
     snap_mix = false;
     publish_taps(frames);
     if (key_sources) keep_keys(frames); // roadmap P4: keys a block late hear this one
@@ -2696,6 +2717,7 @@ void EngineHost::go_parked() {
 }
 
 void EngineHost::set_render_threads(unsigned count, uint64_t from_ns, bool pinned) {
+    if (is_lean) count = 0, pinned = false; // a print host renders on its own thread alone
     parallel_from_ns = from_ns;
     std::array<int, 8> cores {};
     for (unsigned n = 0; n < cores.size(); ++n) cores[n] = int(2 + n);

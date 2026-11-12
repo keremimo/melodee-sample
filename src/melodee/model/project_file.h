@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/print.h"
 #include "melodee/model/project.h"
 #include <array>
 #include <cstdint>
@@ -15,12 +16,14 @@
 namespace melodee {
 
 // `states`: each plug-in's state (plugin/plugin_rack.h), saved with its entry in PLUG; none: the paths alone.
+// `prints`: the project's prints (model/print.h), a PRNT section each.
 std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns,
-                                  const std::array<std::vector<uint8_t>, max_plugins>* states = nullptr);
+                                  const std::array<std::vector<uint8_t>, max_plugins>* states = nullptr, const PrintTable* prints = nullptr);
 // Empty on success; on failure the targets are left as they were.
 // `version`: the file's params_version (limits.h), 0 when it predates it. `states`: the plug-ins' states, when wanted.
+// `prints`: the project's prints, when wanted (none in a file from before them).
 std::string load_project(const std::vector<uint8_t>& data, Project& project, PatternBank& patterns, unsigned* version = nullptr,
-                         std::array<std::vector<uint8_t>, max_plugins>* states = nullptr);
+                         std::array<std::vector<uint8_t>, max_plugins>* states = nullptr, PrintTable* prints = nullptr);
 
 // A kit bank as a file (".mldb", in the card's Samples/Banks): sixteen pads,
 // their chains and the files they play, so one bank of a kit loads into any

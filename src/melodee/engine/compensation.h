@@ -23,13 +23,14 @@ public:
     // and the Sidechain's key pad (both leave their track before its chain).
     enum : unsigned { track0 = 0, loop0 = 16, bus0 = 20, knob = 24, direct = 25, aside = 26, key = 27, knob_pads = 28, key_pad = 29, count = 30 };
 
-    CompensationLines() : memory(new float[size_t(count) * 2 * most]()) {}
+    // `lines` false: none made (a print host's one track meets nothing): run() then passes the sound through.
+    explicit CompensationLines(bool lines = true) : memory(lines ? new float[size_t(count) * 2 * most]() : nullptr) {}
 
     // Line `n` on `frames` frames of left / right, in place, `delay` frames late. A delay that changed moves across
     // this block, the old reading fading into the new; a line not run in the block before starts from silence.
     // `block` counts the host's blocks (a line knows it was skipped).
     void run(unsigned n, float* left, float* right, unsigned frames, unsigned delay, uint64_t block) {
-        if (n >= count || !frames) return;
+        if (n >= count || !frames || !memory) return;
         auto& line = lines[n];
         float* l = memory.get() + size_t(n) * 2 * most;
         float* r = l + most;

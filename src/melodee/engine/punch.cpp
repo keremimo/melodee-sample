@@ -31,6 +31,7 @@ void Punch::clear() {
 }
 
 void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples, unsigned tail_mode, const int16_t* values) {
+    if (!left) return;
     kind = k; depth = d; bar = std::max(256.0, bar_samples); grid = std::clamp(grid_samples, 64.0, bar);
     set_params(values);
     held = true; fading = 0; age = begun = 0; lag = 0; speed = 1;
@@ -94,6 +95,7 @@ float Punch::read(const float* line, double back) const {
 }
 
 void Punch::process(float* l, float* r, unsigned frames) {
+    if (!left) return;
     constexpr float two_pi = 2 * dsp::pi;
     for (unsigned f = 0; f < frames; ++f) {
         float dry_l = l[f], dry_r = r[f];

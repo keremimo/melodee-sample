@@ -211,7 +211,8 @@ void read_step(Reader& r, Step& s) {
 }
 } // namespace
 
-std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns, const std::array<std::vector<uint8_t>, max_plugins>* states) {
+std::vector<uint8_t> save_project(const Project& project, const PatternBank& patterns, const std::array<std::vector<uint8_t>, max_plugins>* states,
+                                  const PrintTable* prints) {
     Writer w;
     w.out.insert(w.out.end(), magic, magic + 8);
     auto at = w.begin("PROJ");
@@ -661,12 +662,23 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.u8(n); w.text(s.path); w.text(s.name);
         w.end(at);
     }
+    if (prints)
+        for (const auto& p : prints->records) { // freeze plan F2a: a print, its file in "<project> Prints"
+            at = w.begin("PRNT");
+            w.u8(1); // the section's version
+            w.u8(p.track); w.u8(p.pattern); w.u8(unsigned(p.tap)); w.u8(unsigned(p.tail));
+            w.u32(p.frames); w.u32(p.pass); w.u32(uint32_t(p.hash)); w.u32(uint32_t(p.hash >> 32));
+            w.text(p.file.c_str());
+            w.u32(p.rate);
+            w.end(at);
+        }
     return w.out;
 }
 
 std::string load_project(const std::vector<uint8_t>& data, Project& target, PatternBank& target_patterns, unsigned* version,
-                         std::array<std::vector<uint8_t>, max_plugins>* states) {
+                         std::array<std::vector<uint8_t>, max_plugins>* states, PrintTable* target_prints) {
     std::array<std::vector<uint8_t>, max_plugins> plugin_states;
+    PrintTable prints;
     unsigned file_version = 0;
     if (data.size() < 8 || std::memcmp(data.data(), magic, 8)) return "not a Melodee project";
     auto project = std::make_unique<Project>();
@@ -1126,6 +1138,21 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             if (b >= bus_count) continue;
             project->buses[b].level = uint8_t(std::min(100u, r.u8()));
             read_chain(r, project->buses[b].fx);
+        } else if (name == "PRNT") { // freeze plan F2a: a print (model/print.h); a later version of it is skipped
+            if (r.u8() != 1) continue;
+            PrintRecord p;
+            p.track = uint8_t(r.u8()); p.pattern = uint8_t(r.u8());
+            unsigned tap = r.u8(), tail = r.u8();
+            p.frames = r.u32(); p.pass = r.u32();
+            uint32_t low = r.u32();
+            p.hash = uint64_t(low) | uint64_t(r.u32()) << 32;
+            char file[256];
+            r.text(file, sizeof(file));
+            p.file = file;
+            p.rate = r.u32();
+            if (!r.ok || p.rate < 8000 || p.track >= track_count || p.pattern >= pattern_count || tap > 1 || tail > 2 || p.file.empty()) continue;
+            p.tap = PrintTap(tap); p.tail = PrintTail(tail);
+            prints.put(p);
         } else if (name == "MSTR") {
             read_chain(r, project->master);
         } else if (name == "LOOP") { // the Looper (docs/LOOPER.md)
@@ -1252,6 +1279,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     target_patterns = *patterns;
     if (version) *version = file_version;
     if (states) *states = std::move(plugin_states);
+    if (target_prints) *target_prints = std::move(prints);
     return {};
 }
 

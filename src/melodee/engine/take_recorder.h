@@ -30,14 +30,18 @@ public:
     static constexpr uint32_t capacity = 60 * uint32_t(dsp::max_rate);      // its buffer: 60 s at the highest rate
     static constexpr unsigned columns = 128;
 
-    TakeRecorder() : left_(new float[capacity]()), right_(new float[capacity]()) { set_rate(dsp::sample_rate()); take_rate_.store(rate); }
+    // `buffer` false: none made (a print host's, never armed); arm() then does nothing.
+    explicit TakeRecorder(bool buffer = true)
+        : left_(buffer ? new float[capacity]() : nullptr), right_(buffer ? new float[capacity]() : nullptr) {
+        set_rate(dsp::sample_rate()); take_rate_.store(rate);
+    }
 
     // Audio thread (through the engine host's commands). Lengths are device frames.
     // threshold_db -96 or below: at once. cued: wait for go() instead of the level.
     // quiet_end (frames kept, 0 never): the take ends on its own once it has been
     // below silence_db that long after a sound, cut 10 ms after the last one.
     void arm(float threshold_db, uint32_t length, unsigned slot, bool cued = false, uint32_t quiet_end = 0, float silence_db = -60) {
-        if (state_.load() != State::Idle) return;
+        if (state_.load() != State::Idle || !left_) return;
         threshold = threshold_db <= -96 ? 0 : std::pow(10.0f, threshold_db / 20.0f);
         quiet = quiet_end;
         silence = std::pow(10.0f, silence_db / 20.0f);

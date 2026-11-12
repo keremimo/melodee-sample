@@ -184,16 +184,19 @@ void ProjectStore::service(Hardware& hardware) {
     }
 }
 
-// A project's loops (docs/LOOPER.md) sit beside it in "<name> Loops"; that folder belongs to the project, is not
-// listed, and goes wherever the project goes.
+// A project's loops (docs/LOOPER.md) sit beside it in "<name> Loops", and its prints (freeze plan F2a, model/print.h)
+// in "<name> Prints"; those folders belong to the project, are not listed, and go wherever the project goes.
 namespace {
-fs::path loops_of(const fs::path& project) { return project.parent_path() / (project.stem().string() + " Loops"); }
+constexpr const char* project_folders[] {" Loops", " Prints"};
+fs::path folder_of(const fs::path& project, const char* tail) { return project.parent_path() / (project.stem().string() + tail); }
 bool is_loops_folder(const fs::path& dir, const char* extension) {
     auto name = dir.filename().string();
-    const std::string tail = " Loops";
-    if (name.size() <= tail.size() || name.compare(name.size() - tail.size(), tail.size(), tail)) return false;
     std::error_code error;
-    return fs::exists(dir.parent_path() / (name.substr(0, name.size() - tail.size()) + extension), error);
+    for (std::string tail : project_folders)
+        if (name.size() > tail.size() && !name.compare(name.size() - tail.size(), tail.size(), tail) &&
+            fs::exists(dir.parent_path() / (name.substr(0, name.size() - tail.size()) + extension), error))
+            return true;
+    return false;
 }
 // An MPC project's samples, beside its .xpj: not a folder of projects.
 bool is_hidden_folder(const fs::path& dir, const char* extension) {
@@ -223,13 +226,15 @@ void import_mpc(LoadedProject& l) {
     else if (report.over_limit) l.note += ", some left out";
 }
 void carry_loops(const fs::path& from, const fs::path& to, bool copy) {
-    std::error_code error;
-    auto source = loops_of(from);
-    if (!fs::is_directory(source, error)) return;
-    auto target = loops_of(to);
-    fs::remove_all(target, error);
-    if (copy) fs::copy(source, target, fs::copy_options::recursive, error);
-    else fs::rename(source, target, error);
+    for (const char* tail : project_folders) {
+        std::error_code error;
+        auto source = folder_of(from, tail);
+        if (!fs::is_directory(source, error)) continue;
+        auto target = folder_of(to, tail);
+        fs::remove_all(target, error);
+        if (copy) fs::copy(source, target, fs::copy_options::recursive, error);
+        else fs::rename(source, target, error);
+    }
 }
 } // namespace
 
@@ -269,7 +274,7 @@ void ProjectStore::run(Request& r) {
     }
     case Request::Kind::Remove:
         fs::remove(r.path, error);
-        fs::remove_all(loops_of(r.path), error);
+        for (const char* tail : project_folders) fs::remove_all(folder_of(r.path, tail), error);
         break;
     case Request::Kind::NewFolder: {
         auto dir = write_dir(root, folder);

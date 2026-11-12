@@ -40,7 +40,8 @@ public:
     static constexpr unsigned history = 192000; // two seconds at 96 kHz
     // Every edge a punch makes (its start, Cut, a repeat's turn, a gate's) is faded over this long, so none clicks.
     static constexpr double seam_seconds = 0.002;
-    Punch() : left(new float[history]()), right(new float[history]()) {}
+    // `buffer` false: no history made (a print host's punches, never started): start() and process() do nothing.
+    explicit Punch(bool buffer = true) : left(buffer ? new float[history]() : nullptr), right(buffer ? new float[history]() : nullptr) {}
     // `bar` and `grid` in samples (the song's bar and the snap grid); depth
     // 0..1; tail 0 cut (over seam_seconds), 1 fade (60 ms), 2 ring (a second and a half).
     void start(PunchKind kind, float depth, double bar, double grid, unsigned tail, const int16_t* params = nullptr);

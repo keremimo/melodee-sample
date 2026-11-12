@@ -66,7 +66,7 @@ void Context::save_project_to(const std::string& path) {
     free_unused_samples();        // and no slot nothing uses (roadmap P3)
     PluginStates states;
     if (plugins) states = plugins->states(); // each plug-in's state as it is now, beside the project
-    store->save(path, melodee::save_project(project, patterns, &states));
+    store->save(path, melodee::save_project(project, patterns, &states, &prints));
     project_path = path;
     dirty = false;
 }
@@ -99,8 +99,9 @@ void Context::new_project() {
 }
 
 void Context::switch_to(const Project& next, const PatternBank& bank, const std::string& path,
-                        const std::array<std::vector<uint8_t>, max_plugins>* plugin_states) {
+                        const std::array<std::vector<uint8_t>, max_plugins>* plugin_states, const PrintTable* next_prints) {
     send({Type::AllNotesOff, 255});
+    prints = next_prints ? *next_prints : PrintTable {}; // a print still under way for the last project is dropped (print_tick)
     if (plugins) plugins->set_states(plugin_states ? *plugin_states : PluginStates {});
     project = next;
     patterns = bank;

@@ -38,7 +38,9 @@ using PluginStates = std::array<std::vector<uint8_t>, max_plugins>;
 
 class PluginRack {
 public:
-    explicit PluginRack(EngineHost& host);
+    // `stage`: put before its plug-ins' folder names under the stage root, so two racks (the live one and a print
+    // host's, shell/print_engine.h) never copy into the same folder.
+    explicit PluginRack(EngineHost& host, std::string stage = "");
     ~PluginRack(); // after the audio has stopped: frees every plug-in
     PluginRack(const PluginRack&) = delete;
     PluginRack& operator=(const PluginRack&) = delete;
@@ -144,6 +146,7 @@ private:
     struct Known { std::string path, name; int8_t instrument = 0; std::vector<Class> classes; };
     std::vector<Known> known;
     Known probe(const PluginFile& file);            // opens it just long enough to ask
+    std::string stage_tag;
     uint32_t stage_count = 0;
     std::atomic<unsigned> change_count {0};
     std::thread thread;

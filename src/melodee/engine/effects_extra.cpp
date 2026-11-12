@@ -173,6 +173,7 @@ void Effect::update_extra() {
 
 void Effect::process_extra(float* left, float* right, unsigned frames) {
     float* line_l = memory;
+    const EffectClock& clock = *effect_clock_now; // this thread's host's (a print host's own)
     for (unsigned f = 0; f < frames; ++f) {
         float l = left[f], r = right[f], wet_l = l, wet_r = r;
         switch (current) {
@@ -242,7 +243,7 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
         case K::Pumper: {
             // The gain dips on each beat of SPEED: down over ATTACK, held for HOLD, back up over RELEASE, curved by SHAPE.
             double length = pumper_quarters[std::clamp(p[0], 0, 10)];
-            double beats = effect_clock.beats + double(f) / effect_clock.quarter;
+            double beats = clock.beats + double(f) / clock.quarter;
             float t = float(beats / length - std::floor(beats / length));
             float A = 0.005f + p[3] / 100.0f * 0.2f, H = p[4] / 100.0f * 0.3f, R = std::max(0.02f, p[5] / 100.0f * (1 - A - H));
             float duck = 0;

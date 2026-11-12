@@ -103,12 +103,13 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             auto bank = std::make_unique<PatternBank>();
             unsigned version = 0;
             PluginStates plugin_states;
-            if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version, &plugin_states).empty()) {
+            PrintTable prints;
+            if (loaded->error.empty() && load_project(loaded->bytes, *project, *bank, &version, &plugin_states, &prints).empty()) {
                 for (auto& t : project->tracks) upgrade_params(t.engine, version, t.params); // older files: pad expression at its defaults
                 if (!context_.kit_from.empty() && context_.kit_from == loaded->path) // Load Kit: only its kit, onto the selected track
                     context_.load_kit(*project, std::filesystem::path(loaded->path).stem().string());
                 else if (loaded->imported) { context_.switch_to(*project, *bank, {}); context_.dirty = true; context_.notice(loaded->note); } // not saved yet: the .xpj stays as it is
-                else context_.switch_to(*project, *bank, loaded->path, &plugin_states);
+                else context_.switch_to(*project, *bank, loaded->path, &plugin_states, &prints);
             } else if (!loaded->note.empty()) context_.notice(loaded->note);
             if (context_.kit_from == loaded->path) context_.kit_from.clear();
         }
@@ -122,6 +123,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     if (ui_.exit_saved && now - off_saved_at >= 1000) power_off.store(true); // a second to read that it is saved
     context_.song_tick();
     context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
+    context_.print_tick();      // prints made (freeze plan F2a) into the project's records
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
     context_.chain_tick();    // pattern chains: the next queued in the last bar of the one playing (seq-sheet2 B)
     context_.follow_tick();   // roadmap P5: chains told to the audio thread, follow actions that came followed

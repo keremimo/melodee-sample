@@ -38,7 +38,9 @@ bool effect_needs_memory(EffectKind k) {
     }
 }
 
-DelayPool::DelayPool() : memory(new float[size_t(blocks) * block_floats]()) {}
+DelayPool::DelayPool(unsigned count) : memory(new float[size_t(std::min(count, blocks)) * block_floats]()) {
+    for (unsigned n = std::min(count, blocks); n < blocks; ++n) used[n] = true; // blocks it does not hold, never taken
+}
 float* DelayPool::take(bool& clean) {
     int pick = -1;
     for (unsigned n = 0; n < blocks; ++n) // a clean one first: nothing to clear
@@ -276,7 +278,7 @@ float Effect::sync_back(float limit) {
     int index = delay_sync_param(current);
     double quarters = index >= 0 ? delay_sync_quarters(p[size_t(index)]) : 0;
     if (quarters <= 0) { synced = 0; return float(delay); }
-    float target = std::clamp(float(quarters * effect_clock.quarter), 2.0f, limit);
+    float target = std::clamp(float(quarters * effect_clock_now->quarter), 2.0f, limit);
     if (synced <= 0) synced = target;
     synced += (target - synced) * glide[1]; // about 50 ms to a new tempo
     return synced;

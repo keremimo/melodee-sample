@@ -23,10 +23,13 @@ class RecallRing {
 public:
     static constexpr uint32_t seconds = 25, capacity = (seconds + 1) * uint32_t(dsp::max_rate);
 
-    RecallRing() : left_(new float[capacity]()), right_(new float[capacity]()) { set_rate(dsp::sample_rate()); }
+    // `buffer` false: none made (a print host's); write() then keeps nothing and copy() finds nothing.
+    explicit RecallRing(bool buffer = true)
+        : left_(buffer ? new float[capacity]() : nullptr), right_(buffer ? new float[capacity]() : nullptr) { set_rate(dsp::sample_rate()); }
 
     // Audio thread.
     void write(const float* l, const float* r, unsigned n) {
+        if (!left_) return;
         uint64_t at = written_.load(std::memory_order_relaxed);
         uint32_t i = uint32_t(at % held);
         for (unsigned f = 0; f < n; ++f) {

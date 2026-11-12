@@ -31,6 +31,7 @@ constexpr int bridge_block_ms = 40; // a 32-bit plug-in that has not answered by
 class MessageThread {
 public:
     void start() {
+        std::lock_guard<std::mutex> once(starting); // two racks' threads (the live one's and a print host's) may ask at once
         if (thread.joinable()) return;
         std::mutex m;
         std::condition_variable up;
@@ -46,6 +47,7 @@ public:
         up.wait(held, [&] { return ready; });
     }
     void stop() {
+        std::lock_guard<std::mutex> once(starting);
         if (!thread.joinable()) return;
         juce::MessageManager::getInstance()->stopDispatchLoop();
         thread.join();
@@ -55,8 +57,11 @@ public:
     template <class F> void run(F&& f) { if (running()) juce::MessageManager::callSync(std::forward<F>(f)); else f(); }
 private:
     std::thread thread;
+    std::mutex starting;
 };
 MessageThread& message_thread() { static MessageThread t; return t; }
+// Racks alive: the message thread stops with the last (a print host's rack goes while the live one plays on).
+std::atomic<unsigned> racks {0};
 
 void put(char* to, size_t room, const std::string& text) {
     std::snprintf(to, room, "%s", text.c_str());
@@ -270,7 +275,8 @@ private:
     juce::MidiBuffer midi_in;
 };
 
-PluginRack::PluginRack(EngineHost& engine) : host(engine) {
+PluginRack::PluginRack(EngineHost& engine, std::string stage) : host(engine), stage_tag(std::move(stage)) {
+    racks.fetch_add(1);
     thread = std::thread([this] { run(); });
 }
 
@@ -295,7 +301,7 @@ PluginRack::~PluginRack() {
         std::error_code e;
         if (!stage.empty()) fs::remove_all(stage, e);
     }
-    message_thread().stop();
+    if (racks.fetch_sub(1) == 1) message_thread().stop();
 }
 
 void PluginRack::push(Job job) {
@@ -720,7 +726,7 @@ PluginRack::Known PluginRack::probe(const PluginFile& file) {
     found.path = file.path;
     int8_t kind = -1;
     std::string error;
-    fs::path stage = stage_root() / ("probe-" + std::to_string(++stage_count));
+    fs::path stage = stage_root() / (stage_tag + "probe-" + std::to_string(++stage_count));
     use_plugin_home();
     if (ensure_plugin_support() && stage_copy(file, stage, error)) {
         std::string library = staged_library(file, stage);
@@ -810,7 +816,7 @@ void PluginRack::load(const Job& job) {
     if (!file.loadable()) { fail(file.folder ? "Not a plug-in" : file.why); return; }
     if (!ensure_plugin_support()) { fail("Plug-in support missing"); return; }
     std::string home = use_plugin_home();
-    fs::path stage = stage_root() / ("e" + std::to_string(job.entry) + "-" + std::to_string(++stage_count));
+    fs::path stage = stage_root() / (stage_tag + "e" + std::to_string(job.entry) + "-" + std::to_string(++stage_count));
     std::string error;
     if (!stage_copy(file, stage, error)) { std::error_code e; fs::remove_all(stage, e); fail(error); return; }
     std::string library = staged_library(file, stage);

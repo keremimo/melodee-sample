@@ -4,6 +4,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/sample_data.h"
+#include "melodee/model/project_file.h"
 #include "melodee/plugin/plugin_rack.h"
 #include <algorithm>
 #include <chrono>
@@ -33,6 +34,10 @@
 //           effect=1 for an effect on a kit track, seconds, rate)
 //   stream  16 print streams (44.1 kHz float stereo) and 24 voices (int16 stereo) read from files on the card as the
 //           stream pager would, in real time: read times, lowest buffer, underruns (dir, seconds, hold_ms)
+//   memory  what one host costs (lean=1: a print host, F2a)
+//   project the bench's busy project as a project file for the app (F2a's check on the MPC): its four samples written
+//           as WAVs in <card>/Samples/<name>, the project in <card>/Melodee/Projects/<name>.mldp, track 16 a PLUGIN
+//           track on `plugin` (a path from the card's top) playing an arpeggio (card, name, plugin)
 // Nothing opens the audio device. Run on the MPC beside the running app (and a --melodee-dsp-bench for load).
 namespace melodee {
 
@@ -113,6 +118,8 @@ void plugin_project(Project& p, PatternBank& b, const std::string& path, bool ef
     p.tempo = 1240;
 }
 
+std::string fs_name(const std::string& path) { auto at = path.find_last_of('/'); return at == std::string::npos ? path : path.substr(at + 1); }
+
 struct Rig {
     std::unique_ptr<EngineHost> host;
     std::unique_ptr<PluginRack> rack;
@@ -139,11 +146,13 @@ bool open_rig(Rig& r, const Project& p, const PatternBank& b, unsigned rate, con
 }
 
 // What one host costs: RSS before it, once made, once loaded with one kit track, after a second of playing.
+// lean=1: a print host (EngineHost::Lean, freeze plan F2a) with the delay blocks its one track needs.
 int memory(const Args& a) {
     unsigned rate = unsigned(a.num("rate", 48000));
+    bool lean = a.num("lean", 0) != 0;
     auto samples = bench_samples();
     long r0 = rss_kb();
-    auto host = std::make_unique<EngineHost>();
+    auto host = lean ? std::make_unique<EngineHost>(EngineHost::Lean {unsigned(a.num("delay_blocks", 2))}) : std::make_unique<EngineHost>();
     long r1 = rss_kb();
     auto p = std::make_unique<Project>();
     auto b = std::make_unique<PatternBank>();
@@ -161,8 +170,48 @@ int memory(const Args& a) {
     std::vector<int32_t> out(EngineHost::block * 2);
     for (unsigned n = 0; n < rate / EngineHost::block; ++n) { host->render(out.data(), EngineHost::block, 0.7f); drain(*host); }
     long r3 = rss_kb();
-    std::printf("MELODEE_PRINT_MEMORY sizeof_host_mb=%.1f base_mb=%.1f made_mb=%.1f loaded_mb=%.1f playing_mb=%.1f\n", sizeof(EngineHost) / 1048576.0,
-                r0 / 1024.0, (r1 - r0) / 1024.0, (r2 - r1) / 1024.0, (r3 - r2) / 1024.0);
+    std::printf("MELODEE_PRINT_MEMORY lean=%d sizeof_host_mb=%.1f base_mb=%.1f made_mb=%.1f loaded_mb=%.1f playing_mb=%.1f\n", int(lean),
+                sizeof(EngineHost) / 1048576.0, r0 / 1024.0, (r1 - r0) / 1024.0, (r2 - r1) / 1024.0, (r3 - r2) / 1024.0);
+    return 0;
+}
+
+int project(const Args& a) {
+    std::string card = a.get("card", ""), name = a.get("name", "Print Test");
+    std::string plugin = a.get("plugin", "Plugins/Ellic Studio - VST - Melodee Poly");
+    if (card.empty()) { std::fprintf(stderr, "print-spike project: card=DIR (the card's top)\n"); return 1; }
+    auto p = std::make_unique<Project>();
+    auto b = std::make_unique<PatternBank>();
+    busy_project(*p, *b);
+    std::string samples = card + "/Samples/" + name;
+    mkdir((card + "/Samples").c_str(), 0755);
+    mkdir(samples.c_str(), 0755);
+    auto data = bench_samples();
+    const char* names[] {"Tone", "Noise", "Sweep", "Thump"};
+    for (unsigned s = 0; s < 4; ++s) {
+        std::string path = samples + "/" + names[s] + ".wav";
+        std::string error = write_wav(path, data[s]);
+        if (!error.empty()) { std::printf("MELODEE_PRINT_PROJECT failed=%s\n", error.c_str()); return 1; }
+        std::snprintf(p->samples[s].path, sizeof(p->samples[s].path), "%s", path.c_str());
+        std::snprintf(p->samples[s].name, sizeof(p->samples[s].name), "%s", names[s]);
+        p->samples[s].frames = data[s].frames;
+    }
+    // Track 16: the plug-in, its own arpeggio (plugin_project's) in place of the kit.
+    auto poly = std::make_unique<Project>();
+    auto poly_bank = std::make_unique<PatternBank>();
+    plugin_project(*poly, *poly_bank, plugin, false);
+    p->plugins[0] = poly->plugins[0];
+    std::snprintf(p->plugins[0].name, sizeof(p->plugins[0].name), "%s", fs_name(plugin).c_str());
+    p->tracks[15] = poly->tracks[0];
+    b->at[15][0] = poly_bank->at[0][0];
+    std::snprintf(p->name, sizeof(p->name), "%s", name.c_str());
+    std::string dir = card + "/Melodee/Projects", file = dir + "/" + name + ".mldp";
+    mkdir((card + "/Melodee").c_str(), 0755);
+    mkdir(dir.c_str(), 0755);
+    auto bytes = save_project(*p, *b);
+    FILE* f = std::fopen(file.c_str(), "wb");
+    if (!f || std::fwrite(bytes.data(), 1, bytes.size(), f) != bytes.size()) { std::printf("MELODEE_PRINT_PROJECT failed=%s\n", file.c_str()); return 1; }
+    std::fclose(f);
+    std::printf("MELODEE_PRINT_PROJECT file=%s bytes=%zu\n", file.c_str(), bytes.size());
     return 0;
 }
 
@@ -393,6 +442,7 @@ int print_spike(int argc, char** argv) {
     if (mode == "speed") return speed(a);
     if (mode == "plugin") return plugin(a);
     if (mode == "stream") return stream(a);
+    if (mode == "project") return project(a);
     std::fprintf(stderr, "print-spike: no mode %s\n", mode.c_str());
     return 1;
 }

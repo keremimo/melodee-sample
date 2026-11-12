@@ -20,7 +20,8 @@ public:
     static constexpr unsigned blocks = 48;
     static constexpr unsigned half = 144000;          // 1.5 s at 96 kHz (3.3 s at 44.1), one channel
     static constexpr unsigned block_floats = 2 * half;
-    DelayPool();
+    // `count` blocks (a print host's pool holds only what its one track's chains need).
+    explicit DelayPool(unsigned count = blocks);
     // A free block (nullptr when none is), never cleared here: one never written since it was cleared first
     // (`clean` true), else the effect clears it a slice a block (Effect::process), so a project's load or a new kind
     // never stops the audio thread for the 1.1 MB a block holds.
@@ -41,7 +42,10 @@ struct EffectClock {
     double quarter = 22050; // samples a quarter note
     double beats = 0;       // quarter notes since Play (running on while stopped), at the block's start
 };
+// The live host's clock, which its render workers read too. A print host (EngineHost::Lean) renders beside it on
+// another thread with its own: it points effect_clock_now at that for its thread at the start of each block.
 inline EffectClock effect_clock;
+inline thread_local const EffectClock* effect_clock_now = &effect_clock;
 
 bool effect_needs_memory(EffectKind kind); // delay memory from the pool
 

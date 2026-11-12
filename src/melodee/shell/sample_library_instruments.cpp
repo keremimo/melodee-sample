@@ -448,14 +448,32 @@ void SampleLibrary::hear_instrument(const std::string& path) {
     preview_count.fetch_add(1, std::memory_order_release);
 }
 
+std::array<const SampleData*, sample_slots> SampleLibrary::hold_samples() {
+    std::lock_guard<std::mutex> guard(lock);
+    ++print_holds;
+    return data_of;
+}
+
+void SampleLibrary::release_samples() {
+    std::lock_guard<std::mutex> guard(lock);
+    if (print_holds) --print_holds;
+}
+
 bool SampleLibrary::reap() {
     bool any = false;
+    bool held = false;
+    {
+        std::lock_guard<std::mutex> guard(lock);
+        held = print_holds > 0;
+    }
+    if (!held) held_back.clear(); // no print plays them any more
     const SampleData* gone = nullptr;
     while (host.take_retired(gone)) {
         any = true;
         {
             std::lock_guard<std::mutex> guard(lock);
             for (auto& d : data_of) if (d == gone) d = nullptr;
+            held = print_holds > 0;
         }
         auto it = std::find_if(owned.begin(), owned.end(), [&](const auto& p) { return p.get() == gone; });
         if (it == owned.end()) continue;
@@ -464,6 +482,7 @@ bool SampleLibrary::reap() {
             host.streams().flush();
             landings.erase(std::remove_if(landings.begin(), landings.end(), [&](const Landing& l) { return l.multi == (*it)->multi; }), landings.end());
         }
+        if (held) held_back.push_back(std::move(*it)); // a print host may still play it
         owned.erase(it);
     }
     return any;

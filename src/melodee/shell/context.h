@@ -30,6 +30,7 @@ namespace melodee {
 
 class EngineHost;
 class PluginRack;
+class PrintEngine;
 struct PluginFile;
 class SampleLibrary;
 class ProjectStore;
@@ -292,6 +293,20 @@ public:
     uint32_t plugin_panel_at = 0;
     unsigned plugin_view_seen = ~0u;
     bool plugin_came_back = true; // false after going up, until the cursor lands on the folder it came out of
+    // Prints (freeze plan F2a, shell/print_jobs.cpp): the engine (set by the app), the project's prints (PRNT, saved
+    // and loaded with it), patterns of one track to print (a bit each; none: the one it plays), and their results
+    // taken in, often, from the shell's tick.
+    PrintEngine* printer = nullptr;
+    PrintTable prints;
+    struct PrintAsk {
+        uint8_t track = 0;
+        std::array<uint64_t, (pattern_count + 63) / 64> patterns {};
+        bool all = false; // every pattern of the track with notes
+        PrintTap tap = PrintTap::PostFx;
+        PrintTail tail = PrintTail::Loop;
+    };
+    void print(const PrintAsk& ask);
+    void print_tick();
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     // Projects on the card
@@ -318,8 +333,9 @@ public:
     std::string bank_from;                    // the file Load Bank waits for
     // Switches the whole app to `project`: the audio thread gets a copy, samples reload.
     // `plugin_states`: what its file kept of each plug-in (none: each opens at its defaults).
+    // `prints`: what its file kept of its prints (none: none).
     void switch_to(const Project& project, const PatternBank& patterns, const std::string& path,
-                   const std::array<std::vector<uint8_t>, max_plugins>* plugin_states = nullptr);
+                   const std::array<std::vector<uint8_t>, max_plugins>* plugin_states = nullptr, const PrintTable* prints = nullptr);
     // The device's rate changed (Settings' SAMPLE RATE): the same project again, so the audio thread works out every
     // engine and effect anew at it. It stops playback. False when the queue was full (try again).
     bool reformat();

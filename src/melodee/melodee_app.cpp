@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sched.h>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -44,9 +45,10 @@ bool request_power_off() {
 
 
 MelodeeApp::MelodeeApp()
-    : shell(host), library(host), plugins(host), frame(std::make_unique<melodee::Snapshot>()) {
+    : shell(host), library(host), plugins(host), printer(&library), frame(std::make_unique<melodee::Snapshot>()) {
     shell.set_library(&library);
     shell.set_plugins(&plugins);
+    shell.set_printer(&printer);
     shell.set_store(&store);
     shell.set_input(&input_route);
     // The card's settings now, not first on the service thread: the runtime opens the audio device with
@@ -146,6 +148,8 @@ void MelodeeApp::lights(SurfaceLights& lights, Clock::time_point) {
     auto remote_ns = [] { return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count()); };
     melodee::LooperAsk looper_ask;
     while (remote_looper.pop(looper_ask)) shell.looper_ask(looper_ask, now_ms());
+    melodee::Context::PrintAsk print_ask;
+    while (remote_print.pop(print_ask)) shell.print(print_ask);
     Remote remote;
     while (presses.pop(remote)) {
         if (remote.kind == 1) { // the wheel
@@ -217,6 +221,42 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         if (argument == "serial" || argument == "parallel") host.set_render_parallel(argument == "parallel");
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";
         return std::string("OK melodee-render ") + (host.render_parallel() ? "parallel" : "serial");
+    }
+    if (action == "melodee-print") { // freeze plan F2a: prints of one track's patterns, before any page asks for them
+        if (argument.empty() || argument == "status") return "OK " + printer.status();
+        if (argument == "cancel") { printer.cancel(); return "OK melodee-print cancel"; }
+        melodee::Context::PrintAsk ask;
+        std::istringstream words(argument);
+        std::string word;
+        int track = 0;
+        if (!(words >> track) || track < 1 || track > int(melodee::track_count))
+            return "ERR melodee-print TRACK [A1,B2..|1..128|all] [pre|post] [loop|ring|cut]";
+        ask.track = uint8_t(track - 1);
+        while (words >> word) {
+            if (word == "pre" || word == "post") ask.tap = word == "pre" ? melodee::PrintTap::PreFx : melodee::PrintTap::PostFx;
+            else if (word == "loop") ask.tail = melodee::PrintTail::Loop;
+            else if (word == "ring") ask.tail = melodee::PrintTail::Ring;
+            else if (word == "cut") ask.tail = melodee::PrintTail::Cut;
+            else if (word == "all") ask.all = true;
+            else {
+                std::istringstream list(word);
+                std::string one;
+                while (std::getline(list, one, ',')) {
+                    int p = -1;
+                    if (one.size() >= 2 && std::toupper(static_cast<unsigned char>(one[0])) >= 'A' &&
+                        std::toupper(static_cast<unsigned char>(one[0])) < 'A' + int(melodee::pattern_banks)) {
+                        int pad = std::atoi(one.c_str() + 1);
+                        if (pad >= 1 && pad <= int(melodee::pattern_pads)) p = (std::toupper(static_cast<unsigned char>(one[0])) - 'A') * int(melodee::pattern_pads) + pad - 1;
+                    } else if (!one.empty() && std::isdigit(static_cast<unsigned char>(one[0]))) {
+                        int n = std::atoi(one.c_str());
+                        if (n >= 1 && n <= int(melodee::pattern_count)) p = n - 1;
+                    }
+                    if (p < 0) return "ERR melodee-print: no pattern " + one;
+                    ask.patterns[unsigned(p) / 64] |= uint64_t(1) << (unsigned(p) % 64);
+                }
+            }
+        }
+        return remote_print.push(ask) ? "OK melodee-print " + argument : "ERR busy";
     }
     if (action == "melodee-update") { // melodee-update [DIR|card]: check for an update now, in DIR instead of the card
         update_override = argument == "card" ? std::string() : argument;

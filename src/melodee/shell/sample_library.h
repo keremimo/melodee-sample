@@ -134,6 +134,10 @@ public:
     void install(const std::string& path);
     // Changes each time the list or a loaded sample changes.
     unsigned generation() const { return changes.load(std::memory_order_acquire); }
+    // Freeze plan F2a, any thread: each slot's sample now (nullptr: none), for a print host to play, held until
+    // release_samples(): one the audio thread lets go of meanwhile is freed only after that.
+    std::array<const SampleData*, sample_slots> hold_samples();
+    void release_samples();
 
     // Service thread, every few milliseconds: files, loads, finished takes, recalls and renders.
     void service(Hardware& hardware);
@@ -286,6 +290,8 @@ private:
     std::vector<float> render_chunk;
     std::vector<std::unique_ptr<SampleData>> owned; // service thread: every sample the audio thread may hold
     std::array<const SampleData*, sample_slots> data_of {}; // under `lock`: what each slot holds now, for peak()
+    unsigned print_holds = 0;                                // under `lock`: hold_samples() not released yet
+    std::vector<std::unique_ptr<SampleData>> held_back;      // service thread: let go of by the audio thread while held
     std::array<std::vector<std::string>, sample_slots> part_names; // under `lock`: an instrument's files (zone_file)
     std::string root_seen, card_top;
     unsigned ticks = 0;
