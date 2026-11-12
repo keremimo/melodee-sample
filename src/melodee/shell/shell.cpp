@@ -3,6 +3,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/looper_jobs.h"
+#include "melodee/shell/looper_chord.h"
 #include "melodee/shell/input_route.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/common.h"
@@ -45,6 +46,7 @@ void let_go(Context& c, Button b) {
     case Button::Erase: ui.erase = false; break;
     case Button::Sample: ui.sample_held = false; break;
     case Button::Loop: ui.loop_held = ui.loop_grip = ui.loop_shift_held = false; break;
+    case Button::SixteenLevels: ui.levels_held = ui.levels_used = false; break;
     case Button::NoteRepeat: repeat_button(c, false); break; // held, the repeat ends with it
     default: break;
     }
@@ -185,7 +187,22 @@ void Shell::press(Button b, bool pressed) {
         return;
     }
     if (b == Button::Sample) { if (!ui.exit_open) sample_button(context_, true); return; } // shell/sample_mode.cpp: held, a pad picks a kit pad
-    if (b == Button::Loop && (!ui.exit_open || !pressed)) { loop_press(context_, pressed); return; } // twice: the Looper; held: the loop grid (shell/looper_jobs.cpp)
+    if ((b == Button::Loop || b == Button::SixteenLevels) && (!ui.exit_open || !pressed)) {
+        // Loop and 16 Levels together, in either order: the Looper, and neither's own job (shell/looper_chord.h).
+        // 16 Levels alone acts on its release (the last pad on all sixteen; Shift: the type, as it goes down).
+        switch (looper_chord(ui, b, pressed)) {
+        case ChordAct::Looper: if (ui.shift) ui.shift_used = true; context_.open(PageId::Looper); end_copy_away(); return;
+        case ChordAct::Levels:
+            if (ui.shift) ui.shift_used = true;
+            if (!pressed && (ui.exit_open || ui.ask != UiState::Ask::None)) return; // let go under a sheet: nothing
+            levels_button(context_);
+            end_copy_away();
+            return;
+        case ChordAct::Nothing: return;
+        case ChordAct::Own: break;
+        }
+        if (b == Button::Loop) { loop_press(context_, pressed); return; } // held: the loop grid (shell/looper_jobs.cpp)
+    }
     if (b == Button::Erase) {
         ui.erase = pressed;
         if (!pressed) { // tapped on its own: on Roll the note in focus goes (one undo)
@@ -267,7 +284,6 @@ void Shell::press(Button b, bool pressed) {
         if (ui.page != PageId::Record) context_.open(PageId::Record);
         else context_.record_button();
         break;
-    case Button::SixteenLevels: levels_button(context_); break; // the last pad (or note) on all sixteen; Shift: the type
     case Button::Chop: if (song_buttons()) song_chop(context_); else chop_button(context_); break; // Chop on the last pad's sample; Shift: Note On; on Song the clip in two
     case Button::Play: // Shift: Continue; held while playing: Fill (roadmap P1)
         if (ui.shift) context_.play_continue();

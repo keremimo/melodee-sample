@@ -205,12 +205,13 @@ ends it and opens TRIM. Shift + Sample opens the full Input Config.
 
 Four audio loops that follow the tempo, on tracks of their own (L1–L4).
 
-**Open: Sample to Tracks, then B2 LOOPER.** The first time, the Looper is off: B3
+**Open: press Loop and 16 Levels together** (either first), from any page,
+or Sample to Tracks, then B2 LOOPER. The first time, the Looper is off: B3
 or Push turns it on (or hold Shift + Loop half a second). Held on any page,
 Loop turns the pads into the loop grid (below) for as long as it is down.
 
-Each row is one loop: its state (ARM, REC, DUB, PLAY, STOP), its
-waveform, its length and what it records. K1 picks the loop, K2 its length
+Each ring is one loop: its waveform bent round, a hand where it plays, its
+state (ARM, REC, DUB, PLAY, STOP) and its length. K1 picks the loop, K2 its length
 (Free or 1–16 bars, set before recording), K3 its level. A loop playing at
 a tempo other than the one it was recorded at shows that tempo in amber; it
 keeps its pitch and stays on the beat.
@@ -219,8 +220,9 @@ keeps its pitch and stays on the beat.
 
 To record a loop:
 
-1. Pick what it records: **B3 MORE**, then Push on **Source** steps through
-   Input, the tracks, the other loops and Mix. B1 closes the sheet.
+1. Pick what it records: **B3 MORE**, then turn **K1 SOURCE** through
+   Input, the tracks, the other loops, Mix and the inputs. B1 closes the
+   sheet (or leave it open: Push records from it too).
 2. Press **Play**, then **Push**. The loop arms and starts recording on the
    next bar.
 3. Push again: it closes on the next bar and plays. (A set length closes
@@ -231,12 +233,12 @@ The pads are the loops too, a column each: the top row records and
 overdubs, the next plays or stops on the next bar, the third undoes the
 last overdub, and the bottom row held clears the loop.
 
-**B3 MORE** opens the loop's sheet on what you most likely want (play or
-stop it on the next bar; before a take, where it records from), and its
-**B2 MORE** holds the rest: stop, undo, **Commit to pad** (the loop onto
-the next empty pad of the selected kit track, + a note at bar 1 if you
-like), clear and Looper off. **B2 MIX** is L1–L4's levels, pans and sends;
-Shift + Knob FX opens a loop's effects.
+**B3 MORE** opens the loop's sheet: K1 where it records from, K2 its
+length, K3 its level; **B2 COMMIT** puts the loop onto the next empty pad
+of the selected kit track, **B3** plays or stops it on the next bar. Hold
+Shift for the second row: **CLEAR** (asks), **+ NOTE** (commit and a note
+at bar 1) and **STOP** or **PLAY** at once. **B2 MIX** is L1–L4's levels,
+pans and sends; Shift + Knob FX opens a loop's effects.
 
 ![The loop's sheet](images/quickstart/loopersheet.png)
 

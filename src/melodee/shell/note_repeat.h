@@ -15,11 +15,12 @@ class Context;
 constexpr uint32_t repeat_hold_ms = 400;   // longer than this, Note Repeat was held, not tapped
 
 void repeat_button(Context& c, bool pressed);
-// Whether B1-B3 pick the rate here: repeat on, and not on Song, whose own keys stay.
+// Whether B1-B3 pick the rate here: repeat on, and not on Song or the Looper, whose own keys stay (the Looper's
+// pads are the loop grid, which repeats nothing).
 // On Stage only while Note Repeat is held: latched, B1-B3 stay Stage's (its ARP page has the rate on K2).
 inline bool repeat_keys(const Project& project, const UiState& ui) {
     if (ui.page == PageId::Stage) return project.tracks[ui.track % track_count].arp && ui.repeat_held;
-    return project.tracks[ui.track % track_count].arp && ui.page != PageId::Song;
+    return project.tracks[ui.track % track_count].arp && ui.page != PageId::Song && ui.page != PageId::Looper;
 }
 // The arp rate (engine/arp.h) B1-B3 pick: 1/8, 1/16, 1/32; with Shift, 1/8T, 1/16T, 1/32T. The lit key again
 // steps on (roadmap P1): B1 to 1/4, B3 to 1/64 (and their triplets), and back; B2 stays.

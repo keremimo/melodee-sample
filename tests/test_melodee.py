@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ["src/melodee/engine/prophet.cpp", "src/melodee/engine/prophet_info.cpp",
            "src/melodee/engine/engine_info.cpp", "src/melodee/engine/engine_host.cpp", "src/melodee/engine/looper.cpp",
-           "src/melodee/shell/bindings.cpp", "src/melodee/engine/effects.cpp", "src/melodee/engine/effects_extra.cpp", "src/melodee/engine/master_comp.cpp", "src/melodee/engine/effect_info.cpp",
+           "src/melodee/shell/bindings.cpp", "src/melodee/shell/loop_sheet.cpp", "src/melodee/engine/effects.cpp", "src/melodee/engine/effects_extra.cpp", "src/melodee/engine/master_comp.cpp", "src/melodee/engine/effect_info.cpp",
            "src/melodee/engine/sampler.cpp", "src/melodee/engine/sample_data.cpp", "src/melodee/engine/sfz.cpp", "src/melodee/engine/keygroup.cpp", "src/melodee/engine/exs.cpp", "src/melodee/engine/stream_pager.cpp", "src/melodee/engine/render_pool.cpp", "src/melodee/shell/sample_cache.cpp",
            "src/melodee/model/project_file.cpp", "src/melodee/model/pattern.cpp", "src/melodee/model/generators.cpp", "src/melodee/engine/kit909.cpp",
            "src/melodee/engine/fm6.cpp", "src/melodee/engine/sid.cpp",

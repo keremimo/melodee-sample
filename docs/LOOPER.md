@@ -18,7 +18,7 @@ Status: Kerem's answers of 2026-11-10. **Built** (L1–L5), checked on the MPC o
 | Question | Answer |
 | --- | --- |
 | Where a loop's audio goes | Four tracks of their own, **L1–L4**, there while the Looper is on: each a mix strip (level, pan, mute, solo, send and bus) and an effect chain of six, beside the sixteen tracks. The sixteen tracks keep every pad. |
-| How it opens | **Loop double-tapped** (within 450 ms) or **held** half a second opens the Looper page; a single tap keeps the MPC's job (the last pad's loop), and the first tap's toggle is taken back. **16 Levels** of type **Loop** (Shift + 16 Levels) opens it too, as in the plugin. |
+| How it opens | First answer: **Loop double-tapped** (within 450 ms) or **held** half a second, the first tap's toggle taken back. Since round 2 (no double taps, a tap acts on release) it is **LOOPER** on Tracks, and, Kerem 2026-11-12, **Loop and 16 Levels pressed together**, in either order, from any page ("I press both, I'm in looper"). **16 Levels** of type **Loop** (Shift + 16 Levels) opens it too, as in the plugin. |
 | Saved | With the project: each loop's audio as `Melodee/Projects/<project> Loops/Loop N.wav` (24-bit stereo, at the loop's own rate: the device's when it was taken), its values in the project file (frame counts in 44.1 kHz frames) (`LOOP`: settings and a self-sized record a loop; `LPMX`: L1–L4's strips and chains). The folder is not listed on Project and goes with its project (rename, move, duplicate, delete). A loop saved stopped comes back stopped. |
 
 ## What it does
@@ -93,30 +93,52 @@ again at the new rate; a loop with audio keeps its own.
 
 ## The page
 
-**Looper** (LOOPER on Tracks; 16 Levels of type Loop). Calm, as every
-page: the four loops as rows, each its tag (L1–L4 in its colour), its state
-as a word (ARM, REC, DUB, PLAY, STOP; a change waiting blinks), its
-waveform with the playhead, its length in bars and its source. The header
-shows bar.beat, the tempo and the selected loop's layers.
+**Looper** (LOOPER on Tracks; **Loop + 16 Levels** together from any page;
+16 Levels of type Loop). Calm, as every page: the four loops as rings, each
+its waveform bent round with a hand where it plays, its tag (L1–L4 in its
+colour), its state as a word (ARM, REC, DUB, PLAY, STOP; a change waiting
+blinks) and its length. The header shows the Quantize, the selected loop
+and its layers.
 
+- **Loop + 16 Levels**, pressed together in either order, Shift or not, open
+  the Looper from any page; neither does its own job then (Loop's release is
+  a hold's, and 16 Levels' toggle, which comes on its release, never comes).
+  16 Levels alone acts on its release; Shift + 16 Levels as it goes down.
 - **B1 LOOPS**: K1 the loop (also the wheel), K2 length, K3 level; Shift +
   K1 feedback, Shift + K2 Quantize, Shift + K3 After take.
 - **B2 MIX**: the four loop tracks as strips (level, pan, send and bus,
   meter, mute and solo); K1 level, K2 pan, K3 send, Shift + K3 the bus.
-- **B3 MORE**: the loop's sheet, opening on its likely job as a tile (Play or Stop on the boundary with audio in the
-  loop, Source before a take), B2 MORE for all of them: Source (Push steps it), Play / Stop at the
-  next boundary, Stop now, Undo / Redo last overdub (layers), Commit to pad,
-  Commit + note at bar 1, Clear loop (asks), Looper off (asks). B1 closes.
-- **Push**: record → close → overdub ⇄ play, on the selected loop.
+- **B3 MORE**: the loop's sheet, one screen with no list (below).
+- **Push**: record → close → overdub ⇄ play, on the selected loop, the
+  sheet open or not.
 - **Shift + Knob FX** on the Looper opens the selected loop's effect chain.
 - With the Looper off the page asks first: **B3 TURN ON**.
 - **Shift + Loop held** half a second turns the Looper on or off from any
   page (off asks first while a loop holds audio); a tap stays Reverse.
 
+**The loop's sheet** (B3 MORE, `shell/loop_sheet.h`; Kerem 2026-11-12: pads
+pick, pots set, keys act, Push one job). Three panels as the keys sit over
+them, for the selected loop:
+
+| Key | Press | With Shift held |
+| --- | --- | --- |
+| B1 | **BACK**: the page again (the panel under it is the loop itself, its ring, state and length) | **CLEAR** the loop (asks) |
+| B2 | **COMMIT**: the loop onto the kit's next empty pad (the panel names it: TO B01; PICK A KIT, KIT FULL) | **+ NOTE**: commit, a note at bar 1 as long as the loop, the loop stopped |
+| B3 | **PLAY** or **STOP** on the next boundary (NEXT BAR, NEXT BEAT, AT ONCE as Quantize says); a change waiting: **CANCEL** | **STOP** at once (a take closes on its whole bars), or **PLAY** at once a stopped loop |
+
+A key that would do nothing is dim. **K1 SOURCE** turns through what the
+loop can record (Input, the tracks there are, the other loops, Mix, Rear,
+Rear L/R, USB, USB L/R, Mic, skipping a clash; between takes), **K2 LENGTH**
+and **K3 LEVEL**; Shift + K1–K3 feedback, Quantize, After take, as on the
+page. The wheel and −/+ pick the loop, Push keeps its job, and the pads stay
+the loop grid. The sheet stays open after its jobs; B1 closes it. Moved
+from the old sheet's list: Undo / Redo last overdub is pads 5–8 (the layers
+stay in the header), and Looper off is Shift + Loop held.
+
 **Pads** on the Looper are the loop grid, and on any other page while Loop
-is held (lit from the press; half a second held, or a grid pad, takes the
-press's own loop toggle back, and letting Loop go gives the pads back); each
-column a loop, pad 1 bottom left:
+is held (lit from the press; letting Loop go gives the pads back, and after
+half a second held, or a grid pad, its release does nothing); each column a
+loop, pad 1 bottom left:
 
 | Pads | Press | Light |
 | --- | --- | --- |

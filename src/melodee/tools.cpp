@@ -485,6 +485,14 @@ void looper_scene(Snapshot& s) {
     s.project.loop_mix[3].solo = true; s.project.loop_mix[3].bus = 2; s.project.loop_mix[3].send = 55;
 }
 
+// The loop's sheet (B3 MORE) on loop `l`, no change waiting, with the kit (track 4) in hand: COMMIT lands on B01.
+void looper_sheet(Snapshot& s, unsigned l) {
+    looper_scene(s);
+    s.ui.loop_sheet = true; s.ui.loop = uint8_t(l); s.ui.track = 3;
+    s.loops[l].view.pending = Looper::Pending::None;
+    s.project.looper.loops[2].source = looper::source_mix; s.project.looper.loops[3].source = looper::source_loop(0); // as their views say
+}
+
 // Plug-ins (docs/MELODEE.md): a Plugins folder as the picker lists it, and a PLUGIN track's panel as the rack fills it.
 void plugin_listing(Snapshot& s) {
     auto& v = s.plugins;
@@ -652,8 +660,17 @@ const Preview previews[] {
     // The Looper (docs/LOOPER.md): four loops in every state, the loop tracks' MIX, the loop's sheet, off, a loop's chain.
     {"looper", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.turning = 1; s.ui.turned_at = s.now; }},
     {"loopermix", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.looper_view = 1; s.ui.loop = 2; }},
-    {"loopersheet", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.loop_sheet = true; s.ui.sheet_more = true; s.ui.loop_row = 3; }},
-    {"loopersheetlikely", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.loop_sheet = true; }}, // B3 MORE as it opens: the likely job
+    // B3 MORE, the loop's sheet: L3 stopped with the kit in hand (PLAY on the bar, COMMIT to B01, K1 its source);
+    // Shift held (CLEAR, + NOTE, PLAY at once); L1 overdubbing with a synth in hand (STOP, COMMIT dim); L3's play
+    // queued (CANCEL); an empty loop (only its cards).
+    {"loopersheet", [](Shell&, Snapshot& s) { looper_sheet(s, 2); }},
+    {"loopersheetshift", [](Shell&, Snapshot& s) { looper_sheet(s, 2); s.ui.shift = true; }},
+    {"loopersheetdub", [](Shell&, Snapshot& s) { looper_sheet(s, 0); s.ui.track = 0; }},
+    {"loopersheetqueued", [](Shell&, Snapshot& s) { looper_sheet(s, 2); s.loops[2].view.pending = Looper::Pending::Play; }},
+    {"loopersheetempty", [](Shell&, Snapshot& s) {
+         looper_sheet(s, 1);
+         s.loops[1].view = Looper::View {}; s.loops[1].view.ready = true;
+     }},
     {"loopershift", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.shift = true; }},
     {"looperoff", [](Shell&, Snapshot& s) { s.ui.page = PageId::Looper; }},
     {"looperempty", [](Shell&, Snapshot& s) { // just turned on: one loop playing, three empty

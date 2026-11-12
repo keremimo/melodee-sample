@@ -14,6 +14,7 @@
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/fader_job.h"
 #include "melodee/shell/input_choices.h"
+#include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/shell/stage_map.h"
@@ -260,6 +261,13 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.value = juce::String(b.value); c.unit = "%";
         break;
     case Kind::LoopBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
+    case Kind::LoopSource: { // the loop's sheet: where it records from, by name
+        std::array<uint8_t, looper::source_count> sources {};
+        unsigned own = 0, count = loop_sources(s.project, unsigned(b.id), sources, own);
+        c.label = "SOURCE";
+        c.value = juce::String(loop_source_name(sources[size_t(std::clamp(b.value, 0, int(count) - 1))]));
+        break;
+    }
     case Kind::BusReturn: c.label = "RETURN"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::PadPitch: c.label = "PITCH"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
     case Kind::PadLevel: c.label = "VOLUME"; c.value = decibels(b.value); c.unit = b.value > 0 ? "dB" : ""; break;

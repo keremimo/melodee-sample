@@ -108,7 +108,8 @@ private:
                                        B::WheelPush, B::Play, B::Stop, B::Mute, B::NoteRepeat, B::Loop, B::SixteenLevels, B::Chop,
                                        B::PadFx, B::KnobFx, B::SampleSelect, B::TapTempo, B::SampleRecord, B::SeqRecord};
             B b = weighted[pick(unsigned(std::size(weighted)))];
-            bool layer = b == B::Shift || b == B::Seq || b == B::PadBank || b == B::Erase || b == B::Sample || b == B::Loop;
+            bool layer = b == B::Shift || b == B::Seq || b == B::PadBank || b == B::Erase || b == B::Sample || b == B::Loop
+                      || b == B::SixteenLevels; // held a while, it meets Loop: the Looper (shell/looper_chord.h)
             if (held[size_t(b)] && layer && pick(3)) return;
             button(b, !held[size_t(b)]);
         } else if (r < 72) {
@@ -156,7 +157,8 @@ private:
                 c.pad_keys[p].fill(-1); // once
             }
         const std::pair<bool, B> layers[] {{ui.shift, B::Shift}, {ui.erase, B::Erase}, {ui.pad_bank, B::PadBank}, {ui.seq_held, B::Seq},
-                                           {ui.mute, B::Mute}, {ui.sample_held, B::Sample}, {ui.loop_held, B::Loop}, {ui.repeat_held, B::NoteRepeat}};
+                                           {ui.mute, B::Mute}, {ui.sample_held, B::Sample}, {ui.loop_held, B::Loop}, {ui.repeat_held, B::NoteRepeat},
+                                           {ui.levels_held, B::SixteenLevels}};
         for (const auto& [on, b] : layers)
             if (on && !held[size_t(b)]) fail(std::string(surface_buttons[size_t(b)].name) + " still held after it was let go");
     }

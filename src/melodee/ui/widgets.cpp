@@ -201,8 +201,9 @@ void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y, float h) 
         const auto& t = tiles[n];
         if (t.icon == Icon::None) continue;
         float x = n * column + 6, w = column - 12, cx = x + w / 2;
-        auto ground = t.primary ? colour::raised : colour::panel;
-        auto ink = t.primary ? t.colour : colour::mid;
+        auto ground = t.primary && !t.off ? colour::raised : colour::panel;
+        auto ink = t.off ? colour::dim : t.danger ? colour::rec : t.primary ? t.colour : colour::mid;
+        auto sub_ink = t.off ? colour::dim : colour::mid;
         p.fill(x, y, w, h, ground, 6);
         juce::Path caret; // up to its key, in the tile's own ground
         caret.addTriangle(cx - 5, y + 0.5f, cx, y - 5, cx + 5, y + 0.5f);
@@ -211,12 +212,12 @@ void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y, float h) 
         if (t.big.isNotEmpty()) {
             auto big = plain(ink, type::value, Weight::SemiBold);
             p.text(t.big, x + 4, y + 62, w - 8, 26, p.fit(t.big, big, w - 8, type::list), juce::Justification::centred);
-            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, y + 90, w - 8, 14, p.fit(t.sub, caps_text(colour::mid), w - 8, type::floor), juce::Justification::centred);
+            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, y + 90, w - 8, 14, p.fit(t.sub, caps_text(sub_ink), w - 8, type::floor), juce::Justification::centred);
         } else {
             auto word = caps_text(ink, type::body);
             float wy = t.sub.isNotEmpty() ? y + 68 : y + 74;
             p.text(t.word, x + 4, wy, w - 8, 18, p.fit(t.word, word, w - 8, type::floor), juce::Justification::centred);
-            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, wy + 20, w - 8, 14, p.fit(t.sub, caps_text(colour::mid), w - 8, type::floor), juce::Justification::centred);
+            if (t.sub.isNotEmpty()) p.text(t.sub, x + 4, wy + 20, w - 8, 14, p.fit(t.sub, caps_text(sub_ink), w - 8, type::floor), juce::Justification::centred);
         }
     }
 }

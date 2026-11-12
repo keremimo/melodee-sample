@@ -668,6 +668,12 @@ void Context::apply(const Binding& b, int value) {
     case Kind::LoopFeedback: looper_do(*this, looper::Do::Feedback, ui.loop, value); break;
     case Kind::LoopQuantize: looper_do(*this, looper::Do::Quantize, ui.loop, value); break;
     case Kind::LoopThen: looper_do(*this, looper::Do::Then, ui.loop, value); break;
+    case Kind::LoopSource: { // the loop's sheet, K1: one of the sources it can take (shell/loop_sheet.h)
+        std::array<uint8_t, looper::source_count> sources {};
+        unsigned at = 0, count = loop_sources(project, ui.loop, sources, at);
+        if (value >= 0 && unsigned(value) < count && unsigned(value) != at) looper_do(*this, looper::Do::Source, ui.loop, sources[size_t(value)]);
+        break;
+    }
     case Kind::LoopLevel: case Kind::LoopPan: case Kind::LoopSend: case Kind::LoopBus: set_loop_mix(*this, ui.loop, b.kind, value); break;
     case Kind::None: break;
     }

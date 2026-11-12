@@ -27,7 +27,7 @@ bool button_has_job(const Project& project, const UiState& ui, SurfaceButton but
     }
     switch (button) {
     case B::Chop: return kit && track.pads[track.last_pad % sampler_pads].used(); // the last pad's sample
-    case B::Loop: return true;         // the last pad's loop (a kit); twice, the Looper; held, the loop grid
+    case B::Loop: return true;         // the last pad's loop (a kit); held, the loop grid; with 16 Levels, the Looper
     case B::SampleRecord: return kit;  // Record; elsewhere it only says it wants a kit
     case B::Erase: // pads that clear, patterns with Seq held, steps, chop markers, a pot with a parameter, or Copy
         return kit_pads || erase_pots || ui.seq_held || ui.page == PageId::Steps || ui.page == PageId::StepEdit || ui.page == PageId::Chop

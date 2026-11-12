@@ -126,8 +126,8 @@ cards.
 | Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B3). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
-| Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). No double tap: the Looper is LOOPER on Tracks | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
-| 16 Levels | The last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper | The type: Velocity, Filter (kits), Tune, Scale, Loop |
+| Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
+| 16 Levels | On release, the last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Loop |
 | Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. Synth or 909: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
@@ -137,7 +137,7 @@ cards.
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into the next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
 | Play | Play from the start (on Song from the cursor); held while playing, Fill (FILL trig conditions play) | Continue from where it stopped or the wheel put it |
-| B1–B3 | The page's soft keys, named above them; with Note Repeat on, its rate (on Stage only while Note Repeat is held) | Page jobs (Stage's TRIM on a kit, Chop) |
+| B1–B3 | The page's soft keys, named above them; with Note Repeat on, its rate (on Stage only while Note Repeat is held; not on Song or the Looper) | Page jobs (Stage's TRIM on a kit, Chop) |
 | K1–K3 | The cards above them; Knob FX mode takes them for its effect | The card's second parameter (cards with the Shift icon) |
 | Pads | The page's job (most pages play the selected track) | The jobs printed under the pads |
 
@@ -416,7 +416,8 @@ Four tempo-synced audio loops on tracks of their own, **L1–L4**, there while
 the Looper is on ([LOOPER.md](LOOPER.md) has the design). Each loop track has
 a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
 
-- **Looper** (LOOPER on Tracks; 16 Levels of type Loop): off, it asks first
+- **Looper** (LOOPER on Tracks; Loop and 16 Levels pressed together, in
+  either order, from any page; 16 Levels of type Loop): off, it asks first
   (B3 or Push turns it on: 45 MB a loop, made in the background). **B1 LOOPS**:
   four rings, a loop each: its waveform bent round from twelve o'clock, a
   hand sweeping where it plays (in sync, the hands point the same way); red
@@ -428,16 +429,21 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
   K2 its length (Free, 1, 2, 4, 8, 16 bars; before a take), K3 its level;
   Shift + K1 feedback, Shift + K2 Quantize (Bar, Beat, Off), Shift + K3 After
   take (Play, Overdub, Stop). **B2 MIX**: L1–L4 as strips; K1 level, K2 pan,
-  K3 send, Shift + K3 the bus. **B3 MORE**: the loop's sheet, opening on
-  its likely job as a tile under B3 (PLAY or STOP on the boundary with
-  audio in the loop, SOURCE before a take; B3 or Push does it), its B2 MORE
-  listing them all: Source (Push
-  steps Input, the tracks there are, the other loops, Mix), Play / Stop at the
-  next boundary, Stop now, Undo / Redo last overdub (its layers), Commit to
-  pad, Commit + note at bar 1, Clear loop and Looper off (both ask). The
-  wheel and −/+ pick the loop (on the sheet its row). **Push**: record →
-  close → overdub ⇄ play; on a loop at another tempo it first fits it (Push
-  again cancels), then overdubs. Shift + Knob FX opens the loop track's chain
+  K3 send, Shift + K3 the bus. **B3 MORE**: the loop's sheet, one screen,
+  no list: three panels as the keys sit, under B1 the loop itself (its ring,
+  state and length), under B2 and B3 their jobs. **B1** BACK, **B2** COMMIT
+  (the loop onto the kit's next empty pad, which the panel names), **B3**
+  PLAY or STOP on the next boundary (a change waiting: CANCEL); with Shift
+  held **B1** CLEAR (asks), **B2** + NOTE (commit and a note at bar 1, the
+  loop stopped), **B3** STOP at once (a take closes on its whole bars) or
+  PLAY at once. A key that would do nothing is dim. **K1** SOURCE (Input,
+  the tracks there are, the other loops, Mix, the hardware inputs that do
+  not clash; between takes), **K2** length, **K3** level; Shift + K1–K3 as
+  on LOOPS. It stays open after its jobs. Undo / redo of the last overdub is
+  pads 5–8, Looper off Shift + Loop held. The wheel and −/+ pick the loop,
+  on the sheet too. **Push**: record → close → overdub ⇄ play, the sheet
+  open or not; on a loop at another tempo it first fits it (Push again
+  cancels), then overdubs. Shift + Knob FX opens the loop track's chain
   (B1 back to the Looper).
 - **Pads** on the Looper: a column a loop. 13–16 record / overdub / play (as
   Push), 9–12 play or stop on the next boundary (again cancels; Shift: at

@@ -77,6 +77,8 @@
 #include "melodee/engine/recall_ring.h"
 #include "melodee/engine/bounce.h"
 #include "melodee/engine/looper.h"
+#include "melodee/shell/looper_chord.h"
+#include "melodee/shell/loop_sheet.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -7753,6 +7755,135 @@ void pad_lights() {
     ui.exit_open = false;
 }
 
+// The Looper's way in and its loop sheet (docs/LOOPER.md): Loop and 16 Levels pressed together, in either order,
+// open it with neither's own job (shell/looper_chord.h); the sheet behind B3 MORE sets on the pots and acts on the
+// keys, every job of the old list still there (shell/loop_sheet.h).
+void looper_chord_and_sheet() {
+    using B = SurfaceButton;
+    // Loop first, then 16 Levels: the Looper; both releases do nothing (Loop's is a hold's, 16 Levels' is used).
+    UiState ui;
+    CHECK(looper_chord(ui, B::Loop, true) == ChordAct::Own);
+    ui.loop_held = true; ui.loop_grip = false; // as loop_press leaves it: a tap so far
+    CHECK(looper_chord(ui, B::SixteenLevels, true) == ChordAct::Looper);
+    CHECK(ui.loop_grip && ui.levels_held && ui.levels_used);
+    CHECK(looper_chord(ui, B::SixteenLevels, false) == ChordAct::Nothing && !ui.levels_held && !ui.levels_used);
+    CHECK(looper_chord(ui, B::Loop, false) == ChordAct::Own && ui.loop_grip); // loop_press: a grip lets go doing nothing
+    // 16 Levels first, then Loop: the same, and 16 Levels' toggle never comes.
+    ui = UiState {};
+    CHECK(looper_chord(ui, B::SixteenLevels, true) == ChordAct::Nothing && ui.levels_held && !ui.levels_used); // waits for its release
+    CHECK(looper_chord(ui, B::Loop, true) == ChordAct::Looper && ui.loop_held && ui.loop_grip && !ui.loop_shift_held);
+    CHECK(looper_chord(ui, B::Loop, false) == ChordAct::Own);
+    CHECK(looper_chord(ui, B::SixteenLevels, false) == ChordAct::Nothing);
+    // 16 Levels alone: its job on release; Shift + 16 Levels: the type as it goes down, its release nothing.
+    ui = UiState {};
+    CHECK(looper_chord(ui, B::SixteenLevels, true) == ChordAct::Nothing);
+    CHECK(looper_chord(ui, B::SixteenLevels, false) == ChordAct::Levels && !ui.levels_held);
+    ui.shift = true;
+    CHECK(looper_chord(ui, B::SixteenLevels, true) == ChordAct::Levels && ui.levels_used);
+    CHECK(looper_chord(ui, B::SixteenLevels, false) == ChordAct::Nothing);
+    // Shift + Loop down, then 16 Levels: still the Looper, and no Reverse or Looper on / off after it.
+    ui = UiState {}; ui.shift = true; ui.loop_shift_held = true;
+    CHECK(looper_chord(ui, B::SixteenLevels, true) == ChordAct::Looper && !ui.loop_shift_held && ui.loop_held && ui.loop_grip);
+    // 16 Levels held with Shift, then Loop: the Looper too.
+    ui = UiState {}; ui.shift = true;
+    CHECK(looper_chord(ui, B::SixteenLevels, true) == ChordAct::Levels);
+    ui.loop_shift_held = false;
+    CHECK(looper_chord(ui, B::Loop, true) == ChordAct::Looper && ui.loop_grip);
+    // Loop alone is Loop's, and other buttons are not the chord's.
+    ui = UiState {};
+    CHECK(looper_chord(ui, B::Loop, true) == ChordAct::Own && looper_chord(ui, B::Loop, false) == ChordAct::Own);
+    CHECK(looper_chord(ui, B::Chop, true) == ChordAct::Own && !ui.levels_held);
+
+    // The sheet's keys: B1 BACK, B2 COMMIT, B3 PLAY / STOP on the boundary; Shift: CLEAR, + NOTE, at once.
+    CHECK(loop_job(0, false) == LoopJob::Back && loop_job(1, false) == LoopJob::Commit && loop_job(2, false) == LoopJob::Toggle);
+    CHECK(loop_job(0, true) == LoopJob::Clear && loop_job(1, true) == LoopJob::CommitNote && loop_job(2, true) == LoopJob::Now);
+    // What each does in each state; BACK always.
+    using S = Looper::State;
+    auto view = [](S state, uint32_t length) { Looper::View v; v.state = state; v.length = length; return v; };
+    auto can = [&](LoopJob job, S state, uint32_t length, bool kit = true) { return loop_job_can(job, view(state, length), kit); };
+    for (auto state : {S::Empty, S::Armed, S::Recording, S::Playing, S::Overdub, S::Stopped}) CHECK(can(LoopJob::Back, state, 0));
+    // Empty: only BACK (and the cards).
+    CHECK(!can(LoopJob::Commit, S::Empty, 0) && !can(LoopJob::Toggle, S::Empty, 0) && !can(LoopJob::Clear, S::Empty, 0)
+          && !can(LoopJob::CommitNote, S::Empty, 0) && !can(LoopJob::Now, S::Empty, 0));
+    // Armed and the first take: no audio yet, so no PLAY / STOP on the boundary; STOP NOW cancels or closes; CLEAR asks.
+    CHECK(!can(LoopJob::Toggle, S::Armed, 0) && can(LoopJob::Now, S::Armed, 0) && can(LoopJob::Clear, S::Armed, 0));
+    CHECK(!can(LoopJob::Toggle, S::Recording, 0) && can(LoopJob::Now, S::Recording, 0) && !can(LoopJob::Commit, S::Recording, 0));
+    // Playing or stopped: everything; COMMIT and + NOTE only with a kit pad to land on; never while overdubbing.
+    for (auto job : {LoopJob::Commit, LoopJob::Toggle, LoopJob::Clear, LoopJob::CommitNote, LoopJob::Now}) {
+        CHECK(can(job, S::Playing, 44100) && can(job, S::Stopped, 44100));
+    }
+    CHECK(!can(LoopJob::Commit, S::Playing, 44100, false) && !can(LoopJob::CommitNote, S::Stopped, 44100, false));
+    CHECK(!can(LoopJob::Commit, S::Overdub, 44100) && can(LoopJob::Toggle, S::Overdub, 44100) && can(LoopJob::Now, S::Overdub, 44100));
+    // STOP or PLAY: a loop going on stops (Halt), a stopped one plays at once.
+    CHECK(loop_going(view(S::Armed, 0)) && loop_going(view(S::Recording, 0)) && loop_going(view(S::Playing, 1)) && loop_going(view(S::Overdub, 1)));
+    CHECK(!loop_going(view(S::Stopped, 1)) && !loop_going(view(S::Empty, 0)));
+    // The pad a commit lands on: the kit's next empty one after its last, round; none on a synth or a full kit.
+    Track kit; kit.engine = EngineKind::Sampler;
+    for (unsigned n = 0; n < 16; ++n) kit.pads[n].sample = uint16_t(n);
+    kit.last_pad = 8;
+    CHECK(commit_pad(kit) == 16);
+    kit.last_pad = sampler_pads - 1;
+    CHECK(commit_pad(kit) == 16);
+    kit.pads[sampler_pads - 1].sample = 3; kit.last_pad = 2;
+    CHECK(commit_pad(kit) == 16);
+    for (auto& p : kit.pads) p.sample = 1;
+    CHECK(commit_pad(kit) == -1);
+    Track synth; synth.engine = EngineKind::Prophet;
+    CHECK(commit_pad(synth) == -1);
+
+    // K1 SOURCE turns through what Push used to step: the input, the tracks there are, the other loops, the mix,
+    // the hardware inputs that do not clash; its own source always among them.
+    auto project = std::make_unique<Project>();
+    project->tracks[0].engine = EngineKind::Prophet; project->tracks[2].engine = EngineKind::Sampler;
+    std::array<uint8_t, looper::source_count> sources {};
+    unsigned at = 99, count = loop_sources(*project, 0, sources, at);
+    CHECK(count == 1 + 2 + 3 + 1 + unsigned(looper::direct_inputs.size()) && at == 0);
+    CHECK(sources[0] == looper::source_input && sources[1] == looper::source_track(0) && sources[2] == looper::source_track(2));
+    CHECK(sources[3] == looper::source_loop(1) && sources[5] == looper::source_loop(3) && sources[6] == looper::source_mix);
+    CHECK(sources[7] == looper::source_direct(0) && sources[count - 1] == looper::source_of(InputSource::Mic));
+    for (unsigned n = 0; n < count; ++n) CHECK(sources[n] != looper::source_loop(0)); // never itself
+    // L2 on the mic: L1 can no longer take the rear inputs (one converter), but the mic and USB still.
+    project->looper.loops[1].source = looper::source_of(InputSource::Mic);
+    count = loop_sources(*project, 0, sources, at);
+    CHECK(count == 7 + 4);
+    for (unsigned n = 0; n < count; ++n) CHECK(!loop_source_clashes(project->looper, 0, sources[n]));
+    CHECK(sources[count - 1] == looper::source_of(InputSource::Mic));
+    // A source that would be skipped stays while it is the loop's own (a track emptied since): K1 starts on it.
+    project->looper.loops[0].source = looper::source_track(5);
+    count = loop_sources(*project, 0, sources, at);
+    CHECK(sources[at] == looper::source_track(5) && at == 3 && count == 12);
+
+    // The cards: the sheet keeps the page's but for K1, the source in place of the loop; Shift as on the page,
+    // from LOOPS or MIX alike; the sheet shut, the page's own (MIX its strip); the Looper off, none.
+    project->looper.on = true;
+    project->looper.loops[1].bars = 4;
+    project->loop_mix[1].level = 90;
+    UiState lp; lp.page = PageId::Looper; lp.loop = 1; lp.loop_sheet = true;
+    Pattern pattern;
+    auto cards = page_bindings(*project, lp, pattern);
+    count = loop_sources(*project, 1, sources, at);
+    CHECK(cards[0].kind == Binding::Kind::LoopSource && cards[0].id == 1 && cards[0].max == int(count) - 1 && cards[0].value == int(at));
+    CHECK(sources[size_t(cards[0].value)] == looper::source_of(InputSource::Mic));
+    CHECK(cards[1].kind == Binding::Kind::LoopLength && looper::lengths[size_t(cards[1].value)] == 4);
+    CHECK(cards[2].kind == Binding::Kind::LoopLevel && cards[2].value == 90);
+    lp.looper_view = 1;
+    CHECK(page_bindings(*project, lp, pattern)[0].kind == Binding::Kind::LoopSource);
+    lp.shift = true;
+    auto second = page_bindings(*project, lp, pattern);
+    CHECK(second[0].kind == Binding::Kind::LoopFeedback && second[1].kind == Binding::Kind::LoopQuantize && second[2].kind == Binding::Kind::LoopThen);
+    lp.shift = false; lp.loop_sheet = false;
+    CHECK(page_bindings(*project, lp, pattern)[0].kind == Binding::Kind::LoopLevel); // MIX
+    lp.looper_view = 0;
+    CHECK(page_bindings(*project, lp, pattern)[0].kind == Binding::Kind::LoopPick);
+    project->looper.on = false; lp.loop_sheet = true;
+    CHECK(!page_bindings(*project, lp, pattern)[0].bound());
+    // Note Repeat latched leaves the Looper's keys alone (its pads repeat nothing there).
+    project->tracks[0].arp = true; lp.track = 0;
+    CHECK(!repeat_keys(*project, lp));
+    lp.page = PageId::Keys;
+    CHECK(repeat_keys(*project, lp));
+}
+
 // Roadmap P0: a hit lands in Seq Record where it was heard, and plays at its own frame, a block late.
 void hits_on_time() {
     // The place's arithmetic: counted back from the playhead and wrapped; a step snapped onto still to come or not.
@@ -8840,6 +8971,7 @@ int main() {
     shift_pads();
     pad_lights();
     button_remap();
+    looper_chord_and_sheet();
     parity_basics();
     history();
     names();

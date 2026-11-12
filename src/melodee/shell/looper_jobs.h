@@ -4,12 +4,13 @@
 #include "melodee/engine/looper.h"
 #include "melodee/model/project.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/loop_sheet.h"
 #include <cstdint>
 #include <string>
 
-// The Looper's controls (docs/LOOPER.md), on the MIDI thread: LOOPER on
-// Tracks opens its page, the pads there (and anywhere while Loop is held) are the loop grid, the page's
-// sheet (B3 MORE) holds the rest, and each ask keeps the project's values in
+// The Looper's controls (docs/LOOPER.md), on the MIDI thread: LOOPER on Tracks, or Loop and 16 Levels pressed
+// together (shell/looper_chord.h), opens its page, the pads there (and anywhere while Loop is held) are the loop
+// grid, the loop's sheet (B3 MORE, shell/loop_sheet.h) holds the rest, and each ask keeps the project's values in
 // step with what goes to the audio thread (Command::Looper).
 namespace melodee {
 
@@ -46,16 +47,9 @@ void commit_loop(Context& c, unsigned loop, bool note);
 // layers go into the project first), read back once it is opened.
 void save_loop_files(Context& c, const std::string& path);
 void load_loop_files(Context& c, const std::string& path);
-// The sheet (B3 MORE): its rows, and Push on the one under the cursor.
-enum class LoopRow : uint8_t { Source, Toggle, Stop, Undo, Commit, CommitNote, Clear, Off, Count };
-void loop_sheet_push(Context& c);
-// The next source a loop can record after `source`: the input, the tracks that exist, the other loops, the mix,
-// then the hardware inputs of its own (Rear, Rear L/R, USB, USB L/R, Mic) that do not clash with another loop's.
-uint8_t next_loop_source(const Project& project, unsigned loop, uint8_t source);
-// The mic and the rear line inputs share one ADC: one loop on each can never record at once.
-bool loop_source_clashes(const LooperSettings& looper, unsigned loop, uint8_t source);
-// What the loops' own hardware inputs need routed (InputRoute::need_*); none while the Looper is off.
-unsigned loop_input_needs(const LooperSettings& looper);
+// The loop's sheet (B3 MORE, shell/loop_sheet.h): B1-B3 (`key` 0-2), with Shift the second row, on the selected
+// loop. BACK closes it; the rest leave it open (CLEAR asks first); a job that would do nothing does nothing.
+void loop_sheet_key(Context& c, unsigned key);
 std::string loop_source_name(uint8_t source);  // "Input", "Track 3", "L2", "Mix", "Rear L", "USB"
 std::string loop_length_name(unsigned bars);   // "Free", "1 bar", "4 bars"
 // The remote's `melodee-looper` (docs/LOOPER.md): parsed where the command arrives (an error is said at once),

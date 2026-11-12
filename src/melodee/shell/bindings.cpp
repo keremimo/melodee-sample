@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/input_choices.h"
+#include "melodee/shell/loop_sheet.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/pad_fx_info.h"
@@ -468,10 +469,10 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     case PageId::Tracks: // Shift + K1: the strip in hand's playback speed (roadmap P1)
         if (!track.used()) return {};
         return {Binding {Kind::TrackSpeed, int(ui.track % track_count), 0, int(speed_count) - 1, track.speed % int(speed_count)}, Binding {}, Binding {}};
-    case PageId::Looper: { // Shift: feedback, Quantize, After take; on MIX Shift + K3 the bus
+    case PageId::Looper: { // Shift: feedback, Quantize, After take (the loop's sheet too); on MIX Shift + K3 the bus
         unsigned l = ui.loop % loop_tracks;
-        if (!project.looper.on || ui.loop_sheet) return {};
-        if (ui.looper_view == 1) return {Binding {}, Binding {}, Binding {Kind::LoopBus, int(l), 0, int(bus_count) - 1, project.loop_mix[l].bus}};
+        if (!project.looper.on) return {};
+        if (ui.looper_view == 1 && !ui.loop_sheet) return {Binding {}, Binding {}, Binding {Kind::LoopBus, int(l), 0, int(bus_count) - 1, project.loop_mix[l].bus}};
         return {Binding {Kind::LoopFeedback, int(l), 0, 100, project.looper.loops[l].feedback},
                 Binding {Kind::LoopQuantize, 0, 0, int(looper::Quantize::Count) - 1, project.looper.quantize},
                 Binding {Kind::LoopThen, 0, 0, int(looper::Then::Count) - 1, project.looper.then}};
@@ -574,18 +575,22 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::NameChar, 0, 0, int(NameEntry::charset_size()) - 1, int(ui.name.char_at())}, Binding {}};
     }
     if (ui.seq_held) return pattern_cards(project, pattern); // Seq held: the pattern's, on any page
-    if (ui.page == PageId::Looper) { // the Looper (docs/LOOPER.md): LOOPS, or the loop tracks' MIX
+    if (ui.page == PageId::Looper) { // the Looper (docs/LOOPER.md): LOOPS, the loop tracks' MIX, or the loop's sheet
         unsigned l = ui.loop % loop_tracks;
         const auto& m = project.loop_mix[l];
-        if (!project.looper.on || ui.loop_sheet) return {};
-        if (ui.looper_view == 1)
+        if (!project.looper.on) return {};
+        if (ui.looper_view == 1 && !ui.loop_sheet)
             return {Binding {Kind::LoopLevel, int(l), 0, 127, m.level}, Binding {Kind::LoopPan, int(l), -50, 50, m.pan},
                     Binding {Kind::LoopSend, int(l), 0, 100, m.send}};
         unsigned at = 0;
         for (unsigned n = 0; n < looper::lengths.size(); ++n) if (looper::lengths[n] == project.looper.loops[l].bars) at = n;
-        return {Binding {Kind::LoopPick, 0, 0, int(loop_tracks) - 1, int(l)},
-                Binding {Kind::LoopLength, int(l), 0, int(looper::lengths.size()) - 1, int(at)},
-                Binding {Kind::LoopLevel, int(l), 0, 127, m.level}};
+        Binding length {Kind::LoopLength, int(l), 0, int(looper::lengths.size()) - 1, int(at)}, level {Kind::LoopLevel, int(l), 0, 127, m.level};
+        if (ui.loop_sheet) { // the sheet: K1 the loop's source in place of the loop, which the wheel picks there
+            std::array<uint8_t, looper::source_count> sources {};
+            unsigned own = 0, count = loop_sources(project, l, sources, own);
+            return {Binding {Kind::LoopSource, int(l), 0, int(count) - 1, int(own)}, length, level};
+        }
+        return {Binding {Kind::LoopPick, 0, 0, int(loop_tracks) - 1, int(l)}, length, level};
     }
     switch (ui.page) {
     case PageId::Keys:

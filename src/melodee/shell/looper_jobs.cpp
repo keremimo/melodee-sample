@@ -5,7 +5,6 @@
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
-#include "melodee/shell/input_route.h"
 #include "melodee/shell/sample_mode.h"
 #include <algorithm>
 #include <cstdlib>
@@ -47,48 +46,9 @@ std::string loop_source_name(uint8_t source) {
     return "Input";
 }
 
-namespace {
-// The ADC route a loop's own input needs: 1 line, 2 mic, 0 none.
-unsigned adc_of(uint8_t source) {
-    if (!looper::source_is_direct(source)) return 0;
-    auto in = looper::direct_input(source);
-    return from_rear(in) ? InputRoute::need_line : in == InputSource::Mic ? InputRoute::need_mic : 0;
-}
-} // namespace
-
-bool loop_source_clashes(const LooperSettings& lp, unsigned loop, uint8_t source) {
-    unsigned adc = adc_of(source);
-    if (!adc) return false;
-    for (unsigned n = 0; n < loop_tracks; ++n)
-        if (n != loop % loop_tracks && adc_of(lp.loops[n].source) && adc_of(lp.loops[n].source) != adc) return true;
-    return false;
-}
-
-unsigned loop_input_needs(const LooperSettings& lp) {
-    if (!lp.on) return 0;
-    unsigned needs = 0;
-    for (const auto& l : lp.loops) {
-        needs |= adc_of(l.source);
-        if (looper::source_is_direct(l.source) && from_usb(looper::direct_input(l.source))) needs |= InputRoute::need_usb;
-    }
-    if ((needs & InputRoute::need_line) && (needs & InputRoute::need_mic)) needs &= ~InputRoute::need_mic; // never both (a file from elsewhere)
-    return needs;
-}
-
 std::string loop_length_name(unsigned bars) {
     if (!bars) return "Free";
     return std::to_string(bars) + (bars == 1 ? " bar" : " bars");
-}
-
-uint8_t next_loop_source(const Project& project, unsigned loop, uint8_t source) {
-    for (unsigned step = 0; step < looper::source_count; ++step) {
-        source = uint8_t((source + 1) % looper::source_count);
-        if (looper::source_is_track(source) && !project.tracks[source - 1].used()) continue;
-        if (source == looper::source_loop(loop)) continue;
-        if (loop_source_clashes(project.looper, loop, source)) continue;
-        return source;
-    }
-    return looper::source_input;
 }
 
 void looper_do(Context& c, Do what, unsigned loop, int value, uint32_t position) {
@@ -125,6 +85,7 @@ void looper_do(Context& c, Do what, unsigned loop, int value, uint32_t position)
 void set_looper(Context& c, bool on) {
     looper_do(c, Do::Enable, 0, on);
     if (!on) for (auto& l : c.project.looper.loops) l.frames = 0;
+    if (!on) c.ui.loop_sheet = false; // nothing left for it to be about
     c.notice(on ? "Looper on" : "Looper off");
 }
 
@@ -227,27 +188,21 @@ void loop_mute_pad(Context& c, unsigned pad) {
     else set_loop_mute(c, loop, !m.mute);
 }
 
-void loop_sheet_push(Context& c) {
+void loop_sheet_key(Context& c, unsigned key) {
     auto& ui = c.ui;
     unsigned loop = ui.loop % loop_tracks;
     auto v = c.host.looper().view(loop);
-    bool audio = v.length > 0;
-    switch (LoopRow(ui.loop_row % unsigned(LoopRow::Count))) {
-    case LoopRow::Source: // steps; the sheet stays
-        looper_do(c, Do::Source, loop, next_loop_source(c.project, loop, c.project.looper.loops[loop].source));
-        return;
-    case LoopRow::Toggle: if (!audio) return; looper_do(c, Do::Toggle, loop); break;
-    case LoopRow::Stop: looper_do(c, Do::Halt, loop); break;
-    case LoopRow::Undo: if (v.undo == looper::Undo::None) return; looper_do(c, Do::Undo, loop); break;
-    case LoopRow::Commit: case LoopRow::CommitNote:
-        if (!audio) return;
-        commit_loop(c, loop, LoopRow(ui.loop_row) == LoopRow::CommitNote);
-        break;
-    case LoopRow::Clear: if (v.state == Looper::State::Empty) return; ask(c, UiState::Ask::ClearLoop, int(loop)); break;
-    case LoopRow::Off: ask(c, UiState::Ask::LooperOff, 0); break;
-    case LoopRow::Count: break;
+    auto job = loop_job(key, ui.shift);
+    if (ui.shift) ui.shift_used = true;
+    switch (job) {
+    case LoopJob::Back: ui.loop_sheet = false; return;
+    case LoopJob::Commit: case LoopJob::CommitNote: commit_loop(c, loop, job == LoopJob::CommitNote); return; // says why when it cannot
+    default: break;
     }
-    ui.loop_sheet = false;
+    if (!loop_job_can(job, v, commit_pad(c.track()) >= 0)) return; // dim on the sheet: nothing to do
+    if (job == LoopJob::Toggle) looper_do(c, Do::Toggle, loop);              // on the boundary; again cancels
+    else if (job == LoopJob::Clear) ask(c, UiState::Ask::ClearLoop, int(loop));
+    else if (job == LoopJob::Now) looper_do(c, loop_going(v) ? Do::Halt : Do::Now, loop); // a take closes on its whole bars
 }
 
 void looper_tick(Context& c, uint32_t now) {

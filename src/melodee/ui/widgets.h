@@ -77,6 +77,8 @@ struct KeyTile {
     juce::String word, big, sub;
     bool primary = false;
     juce::Colour colour = colour::text;
+    bool off = false;    // it would do nothing here: dim
+    bool danger = false; // a loss (it asks first): its glyph and word in REC
 };
 void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y = zone::picture_y + 12, float h = 116);
 inline KeyTile word_tile(Icon i, juce::String word, bool primary = false, juce::Colour c = colour::text) {

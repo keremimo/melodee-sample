@@ -281,15 +281,18 @@ struct UiState {
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),
-    // its sheet (B3 MORE) and the row under the cursor; Loop down (held, the pads are the loop grid on any page,
+    // its sheet (B3 MORE, shell/loop_sheet.h); Loop down (held, the pads are the loop grid on any page,
     // loop_grip once held long or a grid pad hit: its release then does nothing) and whether it went down on Song;
     // the loop whose clear pad is held on the grid, since when; and the
     // loop whose chain FX Select shows (-1: the selected track's).
-    uint8_t loop = 0, looper_view = 0, loop_row = 0;
+    uint8_t loop = 0, looper_view = 0;
     bool loop_sheet = false;
     uint32_t loop_down = 0;
     bool loop_held = false, loop_grip = false, loop_on_song = false;
     bool loop_shift_held = false; // Shift + Loop down: let go soon, Reverse; held, the Looper on or off
+    // 16 Levels down: its job waits for the release; used once Loop came with it (the Looper, shell/looper_chord.h)
+    // or Shift + 16 Levels took the type at once, and the release then does nothing.
+    bool levels_held = false, levels_used = false;
     int8_t loop_clear = -1;
     uint32_t loop_clear_at = 0;
     int8_t fx_loop = -1;
