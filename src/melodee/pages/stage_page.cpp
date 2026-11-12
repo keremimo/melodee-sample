@@ -463,6 +463,79 @@ juce::String seconds(uint32_t frames) {
     return text;
 }
 
+// LAYERS (roadmap P3): the last pad's four layers as rows, the one in hand lit (K1), a sounding one tinted; each its
+// sample, its tune and level over the pad's, and on the right how a hit reaches it: Velocity its range across
+// 1-127 (K2 and K3 its ends), Cycle a dot a layer with its own turn lit, Random every dot half lit.
+void layers_picture(Paint& p, const Snapshot& s) {
+    const auto& t = s.track();
+    const auto& pad = sampler_pad(s);
+    auto c = colour_of(s);
+    const unsigned kit = t.last_pad % sampler_pads, hand = s.ui.pad_layer % pad_layers;
+    std::array<unsigned, pad_layers> turn {};
+    unsigned used = 0;
+    for (unsigned n = 0; n < pad_layers; ++n) turn[n] = pad.layer(n).used() ? used++ : pad_layers;
+    constexpr float gap = 4;
+    const float rh = (zone::picture_h - 6 - gap * (pad_layers - 1)) / pad_layers, lane_x = px + 168, lane_w = pw - 172;
+    for (unsigned n = 0; n < pad_layers; ++n) {
+        const PadLayer l = pad.layer(n);
+        const float y = top + 3 + n * (rh + gap);
+        const bool in_hand = n == hand, sounding = l.used() && pad_voices(s.heads, int(kit), l.sample).sounding > 0;
+        p.fill(px, y, pw, rh, sounding ? c.withAlpha(0.2f) : in_hand ? colour::raised : colour::surf, 5);
+        if (in_hand) p.ring(px, y, pw, rh, c, 5, 1.2f);
+        // the layer's number, filled in the track colour while in hand
+        if (in_hand) p.fill(px + 5, y + rh / 2 - 9, 18, 18, c, 4);
+        else p.ring(px + 5, y + rh / 2 - 9, 18, 18, l.used() ? colour::mid : colour::dim, 4, 1);
+        p.text(juce::String(n + 1), px + 5, y + rh / 2 - 9, 18, 18, plain(in_hand ? colour::bg : l.used() ? colour::sec : colour::dim, type::small, Weight::SemiBold),
+               juce::Justification::centred);
+        const float nx = px + 30, nw = lane_x - nx - 6;
+        if (!l.used()) { p.text(juce::String::fromUTF8("\xe2\x80\x94"), nx, y, nw, rh, plain(colour::dim, type::body)); continue; }
+        juce::String name = name_case(juce::String(s.project.samples[l.sample % sample_slots].name));
+        const bool offsets = n && (l.pitch || l.fine || l.gain);
+        p.text(name, nx, offsets ? y + 2 : y, nw, offsets ? 16 : rh, p.fit(name, plain(sounding || in_hand ? colour::text : colour::sec, type::body, Weight::Medium), nw, type::floor));
+        if (offsets) {
+            juce::String tune = l.pitch || l.fine ? (l.pitch >= 0 ? "+" : "") + juce::String(l.pitch) + " st" : juce::String();
+            juce::String level = l.gain ? (l.gain > 0 ? "+" : "") + juce::String(l.gain / 100.0, 1) + " dB" : juce::String();
+            juce::String both = tune + (tune.isNotEmpty() && level.isNotEmpty() ? dot : juce::String()) + level;
+            p.text(both, nx, y + rh - 15, nw, 13, plain(colour::mid, type::small));
+        }
+        const float ly = y + rh / 2;
+        if (pad.layer_play == LayerPlay::Velocity) { // 1..127 across the lane, the range filled, its ends in K2's and K3's shades
+            auto x_of = [&](int v) { return lane_x + lane_w * float(v - 1) / 126.0f; };
+            p.fill(lane_x, ly - 1, lane_w, 2, colour::line, 1);
+            float x0 = x_of(l.low), x1 = x_of(l.high);
+            p.fill(x0, ly - 5, std::max(3.0f, x1 - x0), 10, (in_hand ? c : colour::mid).withAlpha(in_hand ? 0.55f : 0.35f), 3);
+            p.fill(x0 - 1, ly - 7, 2, 14, in_hand ? knob_shade(s.ui.track, 1) : colour::mid);
+            p.fill(x1 - 1, ly - 7, 2, 14, in_hand ? knob_shade(s.ui.track, 2) : colour::mid);
+        } else { // a dot a sounding layer: Cycle lights this one's turn, Random every one at half
+            const float dx = 12, dw = dx * float(used - 1), x0 = lane_x + lane_w / 2 - dw / 2;
+            for (unsigned k = 0; k < used; ++k) {
+                bool mine = k == turn[n];
+                auto ink = pad.layer_play == LayerPlay::Cycle ? (mine ? (in_hand ? c : colour::sec) : colour::dim)
+                                                              : (in_hand ? c : colour::sec).withAlpha(0.5f);
+                p.circle(x0 + dx * k, ly, mine || pad.layer_play == LayerPlay::Random ? 3.5f : 2.5f, ink);
+            }
+        }
+    }
+}
+
+// How the pad's layers play, as an LED-less pill in the header (Shift + K1 turns it).
+HeaderItem layers_pill(const Snapshot& s) {
+    const auto& pad = sampler_pad(s);
+    unsigned count = 0;
+    for (unsigned n = 0; n < pad_layers; ++n) count += pad.layer(n).used();
+    return pill(juce::String(layer_play_name(pad.layer_play)), count > 1 ? colour_of(s) : colour::mid);
+}
+
+// Shift on LAYERS: B1 LOAD onto the layer in hand, B2 CLEAR it (dim on layer 1 or an empty layer).
+ui::SoftKeys layers_keys(const Snapshot& s) {
+    const auto& pad = sampler_pad(s);
+    unsigned n = s.ui.pad_layer % pad_layers;
+    SoftKeys keys {{"LOAD", "CLEAR", ""}, -1, colour_of(s)};
+    if (!n || !pad.layers[n - 1].used()) keys.tints[1] = colour::dim;
+    if (n && !pad.used()) keys.tints[0] = colour::dim;
+    return keys;
+}
+
 // A kit page: the last pad's sample, its volume on the left and pan on the right, chips for how it plays,
 // the region tinted; TRIM draws its handles (zoomed as Shift + K asks), the envelopes and the filter lie over it.
 void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
@@ -473,6 +546,7 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     char label[4];
     pad_label(t.last_pad, label);
     if (pad.used() && s.sample.instrument) { instrument_picture(p, s, wx, wy, ww, wh); return; }
+    if (page.kind == StageKind::Layers && pad.used()) { layers_picture(p, s); return; }
     if (!pad.used() || !s.sample.frames) {
         p.text(label, px, wy + 14, pw, 26, plain(colour::text, type::title, Weight::SemiBold), juce::Justification::centred);
         juce::String why = !pad.used() ? juce::String("EMPTY") : s.sample.error.empty() ? juce::String("LOADING") : juce::String(s.sample.error);
@@ -956,6 +1030,7 @@ void draw(Paint& p, const Snapshot& s) {
         h.left.push_back(kit_pill(s));
         if (page.kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
         if (page.kind == StageKind::Follow) h.left.push_back(follow_pill(s));
+        if (page.kind == StageKind::Layers) h.left.push_back(layers_pill(s));
     } else if (page.picture == StagePicture::Voice) {
         int hit = int(t.last_note) - 36;
         if (hit >= 0 && hit < int(kit909::Drums)) h.left.push_back(pill("PAD " + juce::String(hit + 1) + dot + juce::String(kit909::drum_name(unsigned(hit))), c));
@@ -967,6 +1042,7 @@ void draw(Paint& p, const Snapshot& s) {
     auto keys = stage_keys(s);
     if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler) // the old Trim's Shift jobs on B1 and B2
         { keys = SoftKeys {{"LOOP LOCK", "NORMALIZE", ""}, -1, c}; keys.toggles = 1; keys.lit = sampler_pad(s).loop_lock ? 1 : 0; keys.leds[0] = c; }
+    if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
     if (!t.used()) { keys.active = stage_focus(s.ui, t); keys.dots = {}; } // the doors: the one Push makes lit
     frame(p, s, keys, h);
     switch (page.picture) {
@@ -997,6 +1073,11 @@ void soft(Context& c, int key) {
     if (c.ui.shift && page.kind == StageKind::Trim && c.track().engine == EngineKind::Sampler) {
         if (key == 0) c.toggle_loop_lock(); // Shift + B1, as on the MPC's Trim
         if (key == 1) c.normalize();        // Shift + B2
+        return;
+    }
+    if (c.ui.shift && page.kind == StageKind::Layers && c.track().engine == EngineKind::Sampler) {
+        if (key == 0) c.layer_load();  // Shift + B1: Samples, Push onto the layer in hand
+        if (key == 1) c.layer_clear(); // Shift + B2
         return;
     }
     c.stage_tick(UINT32_MAX); // a sound still waiting to load lands first
@@ -1059,8 +1140,9 @@ void kit_page(Paint& p, const Snapshot& s, StageKind kind, int row) {
     h.left.push_back(kit_pill(s));
     if (kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
     if (kind == StageKind::Follow) h.left.push_back(follow_pill(s));
+    if (kind == StageKind::Layers) h.left.push_back(layers_pill(s));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, sampler_keys(s.ui.page, colour_of(s)), h);
+    frame(p, s, s.ui.shift && kind == StageKind::Layers ? layers_keys(s) : sampler_keys(s.ui.page, colour_of(s)), h);
     StagePage page {"", kind, StagePicture::Wave};
     wave_picture(p, s, page);
     if (row >= 0) page_dots(p, zone::width - zone::pad - 64, bottom - 9, 2, row, colour_of(s), true); // beside the length

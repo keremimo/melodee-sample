@@ -215,6 +215,7 @@ void import_mpc(LoadedProject& l) {
     l.error = program ? import_mpc_program(l.bytes, l.path, *project, report) : import_mpc_project(l.bytes, l.path, *project, *patterns, report);
     l.bytes.clear();
     if (!l.error.empty()) { l.note = l.error; return; }
+    layers_from_programs(*project); // roadmap P3: pads of two to four layers take them as their own where slots allow
     l.bytes = save_project(*project, *patterns);
     l.imported = true;
     l.note = "Opened a copy of " + fs::path(l.path).stem().string();

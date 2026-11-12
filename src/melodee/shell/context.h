@@ -149,6 +149,9 @@ public:
     void toggle_note_on();    // Shift + Chop: Note On (Gate) or One shot
     void toggle_loop_lock();  // Shift + B1 on Trim: the loop point back on the start, or free
     void normalize();         // Shift + B2 on Trim: the region's loudest point to 0 dB, one undo
+    void layer_load();        // Shift + B1 on Layers (roadmap P3): Samples, its Push onto the layer in hand
+    void layer_clear();       // Shift + B2 on Layers: the layer in hand (2-4) taken off the pad
+    void load_layer(const std::string& path, const std::string& name); // Push on Samples opened by layer_load()
     void toggle_warp_mode();  // Shift + Pad 15: Warp by Time stretch or Pitch (the kit's Follow how)
     void set_recording(bool on); // a take begins; when it ends it goes into the history
     void seq_record();           // Seq Record: stopped, arm (Play starts the take); playing, record at once; recording, stop recording

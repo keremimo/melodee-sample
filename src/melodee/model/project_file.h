@@ -30,7 +30,8 @@ struct BankFile {
     char name[name_length] {};
     std::array<PadSound, bank_pads> pads {};      // .sample: an entry of `samples`, or no_sample
     std::array<Chain, bank_pads> chains;          // each pad's own (PadFX)
-    std::array<SampleRef, bank_pads> samples {};  // the files, at most one a pad
+    // The files: the pads' own first (at most one a pad), then their layers' (roadmap P3, BLSM).
+    std::array<SampleRef, bank_pads * pad_layers> samples {};
     BankFile() { for (auto& c : chains) c.size = pad_slots; }
     unsigned used() const;                        // pads with a sound
 };

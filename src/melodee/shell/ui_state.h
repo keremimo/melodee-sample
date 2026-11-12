@@ -27,6 +27,7 @@ enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Pa
                             RecQuantize,                       // Shift + Pad 10: Rec Quantize on or off, and its grid
                             Plugins,                           // the plug-in picker: the card's Plugins folder (docs/MELODEE.md)
                             PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
+                            LayersPage,                        // roadmap P3: a kit pad's four layers
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -179,6 +180,8 @@ struct UiState {
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)
     bool preview = false;       // B3: each file plays as the cursor lands on it
     uint8_t trim_zoom = 0;      // Trim: 0 whole sample .. 4 sixteen times closer
+    uint8_t pad_layer = 0;      // Layers (roadmap P3): the layer in hand, 0-3
+    int8_t layer_load = -1;     // Samples opened by Layers' LOAD: the layer Push loads onto (1-3); -1 the pad
     uint8_t trim_focus = 0;     // and where it closes in: 0 the start, 1 the end, 2 the loop point (Shift + K1-K3)
     bool sample_held = false;   // Sample held: a pad picks a kit pad without playing it (as on the MPC)
     bool sample_used = false;   // a pad was picked meanwhile, so letting go opens no page

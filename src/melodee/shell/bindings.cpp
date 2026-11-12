@@ -302,6 +302,13 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
     }
     if (!pad.used()) return {};
     switch (page) {
+    case PageId::LayersPage: { // roadmap P3: K1 the layer in hand, K2 / K3 its velocities (Velocity alone)
+        unsigned n = ui.pad_layer % pad_layers;
+        const PadLayer l = pad.layer(n);
+        Binding pick {Kind::LayerPick, 0, 0, int(pad_layers) - 1, int(n)};
+        if (!l.used() || pad.layer_play != LayerPlay::Velocity) return {pick, Binding {}, Binding {}};
+        return {pick, Binding {Kind::LayerLow, int32_t(n), 1, 127, l.low}, Binding {Kind::LayerHigh, int32_t(n), 1, 127, l.high}};
+    }
     case PageId::PadMix: // K1 volume, K3 pan (Shift + K2 the kit's volume)
         return {Binding {Kind::PadLevel, 0, 0, 127, pad.level}, Binding {}, Binding {Kind::PadPan, 0, -50, 50, pad.pan}};
     case PageId::PadPage: { // Tune: semitones, cents, Warp (Shift + K3 # Beats); Warp on by Pitch has no Semi or Fine
@@ -345,6 +352,14 @@ std::array<Binding, 3> pad_page_shift(const Track& track, const UiState& ui, Pag
     case PageId::PlayPage:
         if (!pad.used() || ui.sampler_row) return {};
         return {Binding {}, Binding {Kind::PadLink, 0, 0, 16, pad.link}, Binding {}};
+    case PageId::LayersPage: { // Shift + K1 how a hit picks; Shift + K2 / K3 the layer's tune and level (layer 1's are the pad's)
+        if (!pad.used()) return {};
+        unsigned n = ui.pad_layer % pad_layers;
+        Binding play {Kind::LayerPlayMode, 0, 0, int(LayerPlay::Count) - 1, int(pad.layer_play)};
+        if (!n || !pad.layers[n - 1].used()) return {play, Binding {}, Binding {}};
+        const auto& l = pad.layers[n - 1];
+        return {play, Binding {Kind::LayerPitch, int32_t(n), -24, 24, l.pitch}, Binding {Kind::LayerGain, int32_t(n), -480, 120, l.gain / 10}};
+    }
     case PageId::CloudPage: return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
     default: return {};
     }
@@ -509,6 +524,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {Binding {}, Binding {Kind::EventPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, e.pitch_ramp}, Binding {}};
     }
     case PageId::Trim: case PageId::PadMix: case PageId::EnvelopePage: case PageId::FilterEnvPage: case PageId::PadPage: case PageId::PlayPage:
+    case PageId::LayersPage:
         return pad_page_shift(track, ui, ui.page);
     case PageId::Chop: { // Shift + K1 / K2 zoom at the slice's start or end; Shift + K3 the type's amount (Threshold as on the MPC)
         static const int lows[] {0, 2, 1}, highs[] {100, int(max_slices), 8};
@@ -712,6 +728,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::Tempo, 0, 30, 300, int(project.tempo_of(ui.lead_pattern) / 10)}, Binding {Kind::Swing, 0, 50, 75, project.swing},
                 Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
     case PageId::PadMix:
+    case PageId::LayersPage:
     case PageId::PadPage:
     case PageId::PlayPage:
     case PageId::EnvelopePage:

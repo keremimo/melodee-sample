@@ -12,7 +12,8 @@
 #include "melodee/model/sampler.h"
 #include <array>
 
-// SAMPLER: a kit of 128 pads, each a region of a sample, written for
+// SAMPLER: a kit of 128 pads, each a region of a sample (up to four, its
+// layers, picked by velocity, in turn or at random), written for
 // sample-base after the melodee-ios sampler's behaviour and the MPC
 // Sample's Sample Mode: gate (Note On) or one shot, loop and reverse, mute
 // groups (pads in a group cut each other), mono or poly, a linked pad,
@@ -168,6 +169,7 @@ private:
                const SampleZone* zone = nullptr, Multisample* multi = nullptr, int key = 60);
     void play(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
     void zones_on(Multisample& multi, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
+    void layers_on(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
     Multisample* multi_of(const PadSound& sound) const;
     void end_stream(Voice& v);
     void came_round(Voice& v);          // a zone's loop went back to its start
@@ -202,6 +204,7 @@ private:
     const Table* samples = nullptr;
     StreamPager* pager = nullptr;
     std::array<PadSound, sampler_pads> pads {}, base {}; // as they play (motion), and as the kit holds them
+    std::array<uint8_t, sampler_pads> layer_turn {};    // Cycle: the layer each pad plays next
     bool moved = false;
     std::array<uint64_t, (sampler_pads + 63) / 64> muted {};
     std::array<Voice, max_voices + spare_voices> voices {};

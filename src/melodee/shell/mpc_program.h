@@ -36,6 +36,11 @@ std::string import_mpc_program(const std::vector<uint8_t>& file, const std::stri
 // "<file>#<which>": the file and which pad, when the path names a pad of an MPC program or project.
 bool split_program_pad(const std::string& path, std::string& file, std::string& which);
 
+// Roadmap P3: each pad playing a program pad's layers as an instrument ("<file>#<which>") whose two to four layers'
+// files are all found, and fit in the project's free slots (the instrument's own slot given back), takes them as its
+// own layers (engine/keygroup.h keygroup_pad_layers()); the rest stream as before. Returns how many pads moved.
+unsigned layers_from_programs(Project& project);
+
 // Every layered pad of an .xpm or .xpj, by its "which". Empty and `error` set when it cannot be read.
 std::map<std::string, KeygroupInstrument> program_pads(const std::string& file, std::string& error);
 

@@ -134,6 +134,30 @@ void Context::toggle_loop_lock() {
     notice(pad->loop_lock ? "Loop Lock on" : "Loop Lock off");
 }
 
+// Layers (roadmap P3), Shift + B1: the browser, whose Push then loads onto the layer in hand
+// (layer 1: the pad itself, as Sample Select's Push does).
+void Context::layer_load() {
+    if (track().engine != EngineKind::Sampler) return;
+    unsigned n = ui.pad_layer % pad_layers;
+    if (n && !pad().used()) { notice("Layer 1 first"); return; }
+    if (n && project.samples[pad().sample % sample_slots].instrument()) { notice("An instrument has its own layers"); return; }
+    open(PageId::Samples);
+    ui.layer_load = n ? int8_t(n) : int8_t(-1);
+}
+
+// Shift + B2: the layer in hand off the pad (layer 1 is the pad's own sample).
+void Context::layer_clear() {
+    auto* pad = kit_pad(*this, "Clear layer");
+    if (!pad) return;
+    unsigned n = ui.pad_layer % pad_layers;
+    if (!n) { notice("Layer 1 is the pad's"); return; }
+    if (!pad->layers[n - 1].used()) { notice("Layer " + std::to_string(n + 1) + " is empty"); return; }
+    pad->layers[n - 1] = PadLayer {};
+    send_pad(ui.track, track().last_pad);
+    dirty = true;
+    notice("Layer " + std::to_string(n + 1) + " cleared");
+}
+
 // The region's loudest sample to 0 dB: a gain on the pad (the file is not
 // touched), one undo.
 void Context::normalize() {

@@ -227,8 +227,50 @@ void SamplerEngine::zones_on(Multisample& multi, const PadSound& sound, int pad,
     for (unsigned r = 0; r < count; ++r) start(free_voice(), sound, pad, velocity, semitones, cutoff, trigger, &multi.zones[reached[r]], &multi, key);
 }
 
+// A press of a pad with layers (roadmap P3): every layer its velocity reaches, the next in turn, or one at random;
+// a mono pad's last hit is cut once for all of them, so its layers never cut each other.
+void SamplerEngine::layers_on(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
+    std::array<uint8_t, pad_layers> used {};
+    unsigned count = 0;
+    for (unsigned n = 0; n < pad_layers; ++n) {
+        const PadLayer l = sound.layer(n);
+        if (!l.used() || l.sample > preview_slot || !(*samples)[l.sample] || (*samples)[l.sample]->multi) continue; // a layer is a plain sample
+        used[count++] = uint8_t(n);
+    }
+    if (!count) return;
+    std::array<uint8_t, pad_layers> picked {};
+    unsigned chosen = 0;
+    switch (sound.layer_play) {
+    case LayerPlay::Cycle: {
+        auto& turn = layer_turn[size_t(pad) % sampler_pads];
+        picked[chosen++] = used[turn % count];
+        turn = uint8_t((turn + 1) % count);
+        break;
+    }
+    case LayerPlay::Random:
+        seed = seed * 1664525u + 1013904223u;
+        picked[chosen++] = used[(seed >> 16) % count];
+        break;
+    default: {
+        const int vel = std::clamp(velocity, 1, 127);
+        for (unsigned k = 0; k < count; ++k) {
+            const PadLayer l = sound.layer(used[k]);
+            if (vel >= l.low && vel <= l.high) picked[chosen++] = used[k];
+        }
+        break;
+    }
+    }
+    if (sound.mono) for (auto& v : voices) if (v.pad == pad) v.choked = true;
+    for (unsigned k = 0; k < chosen; ++k) {
+        PadSound one = layer_sound(sound, picked[k]);
+        one.mono = false; // cut above, once
+        start(free_voice(), one, pad, velocity, semitones, cutoff, trigger);
+    }
+}
+
 void SamplerEngine::play(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger) {
     if (auto* multi = multi_of(sound)) zones_on(*multi, sound, pad, velocity, semitones, cutoff, trigger);
+    else if (sound.layered() && samples) layers_on(sound, pad, velocity, semitones, cutoff, trigger);
     else start(free_voice(), sound, pad, velocity, semitones, cutoff, trigger);
 }
 

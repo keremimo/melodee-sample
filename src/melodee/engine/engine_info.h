@@ -68,6 +68,7 @@ enum class StageKind : uint8_t {
     Voice,      // the drum the last pad played: its page of `voices` (pad_voice says which)
     Trim, PadMix, AmpEnv, Tune, Play, Filter, FiltEnv, // a kit: the last pad's Sample Mode values
     Follow, Cloud, KitFilter,                          // a kit: Melodee's own kit-wide pages
+    Layers,                                            // a kit: the last pad's four layers (roadmap P3)
     NewSynth, NewKit, NewMidi,                         // an empty track: what it becomes (Push)
 };
 // What the picture over the knobs draws.
@@ -88,7 +89,7 @@ struct StagePage {
     std::array<int8_t, 3> shift {{-1, -1, -1}};
 };
 struct StageGroup {
-    std::array<StagePage, 4> pages;
+    std::array<StagePage, 5> pages;
     uint8_t count;
 };
 struct StageGroups {

@@ -18,6 +18,10 @@
 //   speed, each from its own tempo worked out from its length as bars.
 // CLOUD (10 of 10): pads as clouds of grains while held: K1 where, K2 grain
 //   size, K3 grains a second; row 2 scan, spread and Cloud on or off.
+// LAYERS (roadmap P3, after Trim in B1's group): the pad's four layers; K1 the
+//   layer in hand, K2 / K3 its velocities; Shift + K1 Velocity, Cycle or
+//   Random, Shift + K2 / K3 the layer's tune and level; Shift + B1 LOAD onto
+//   it from Samples, Shift + B2 CLEAR it.
 #include "melodee/pages/sampler_common.h"
 
 namespace melodee {
@@ -31,6 +35,13 @@ void envelope_draw(Paint& p, const Snapshot& s) { kit_page(p, s, StageKind::AmpE
 void filter_draw(Paint& p, const Snapshot& s) { kit_page(p, s, StageKind::KitFilter, -1); }
 void follow_draw(Paint& p, const Snapshot& s) { kit_page(p, s, StageKind::Follow, -1); }
 void cloud_draw(Paint& p, const Snapshot& s) { kit_page(p, s, StageKind::Cloud, row(s)); }
+void layers_draw(Paint& p, const Snapshot& s) { kit_page(p, s, StageKind::Layers, -1); }
+// LAYERS (roadmap P3): Shift + B1 LOAD onto the layer in hand, Shift + B2 CLEAR it; the B keys else as the group's.
+void layers_soft(Context& c, int key) {
+    if (c.ui.shift && key == 0) { c.layer_load(); return; }
+    if (c.ui.shift && key == 1) { c.layer_clear(); return; }
+    sampler_soft(c, key);
+}
 } // namespace
 
 const PageSpec pad_edit_page {tune_draw, play_pad, sampler_wheel, sampler_push, sampler_soft, sampler_bank};
@@ -39,5 +50,6 @@ const PageSpec envelope_page {envelope_draw, play_pad, sampler_rows_wheel, sampl
 const PageSpec filter_page {filter_draw, play_pad, sampler_wheel, sampler_push, sampler_soft, sampler_bank};
 const PageSpec follow_page {follow_draw, play_pad, sampler_wheel, sampler_push, sampler_soft, sampler_bank};
 const PageSpec cloud_page {cloud_draw, play_pad, sampler_rows_wheel, sampler_push, sampler_soft, sampler_bank};
+const PageSpec layers_page {layers_draw, play_pad, sampler_wheel, sampler_push, layers_soft, sampler_bank};
 
 } // namespace melodee

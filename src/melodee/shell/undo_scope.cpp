@@ -57,6 +57,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::PadLoop: case Kind::PadMono: case Kind::PadLink: case Kind::PadOffset: case Kind::PadVelSense: case Kind::PadDecayFrom:
     case Kind::PadFilterType: case Kind::PadCutoff: case Kind::PadResonance: case Kind::PadFAttack: case Kind::PadFDecay:
     case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: case Kind::PadWarp: case Kind::PadBeats:
+    case Kind::LayerLow: case Kind::LayerHigh: case Kind::LayerPitch: case Kind::LayerGain: case Kind::LayerPlayMode:
         return pad_scope(ui, project);
     case Kind::ChopMode: case Kind::ChopAmount: case Kind::ChopStart: case Kind::ChopEnd: return of(S::Chop, ui);
     case Kind::KnobParam: case Kind::CompAttack: case Kind::CompRelease: case Kind::CompAmount: case Kind::CompBoost:
@@ -92,7 +93,7 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
     case PageId::KnobFx: case PageId::Compressor: case PageId::FlexBeat: case PageId::Punch: return of(S::Master, ui);
     case PageId::Chop: return ui.chop_armed && pad ? UndoScope {} : of(S::Chop, ui); // Manual's taps are one take, not a step each
     case PageId::Trim: case PageId::PadMix: case PageId::EnvelopePage: case PageId::PadPage: case PageId::PlayPage:
-    case PageId::PadFilterPage: case PageId::FilterEnvPage: case PageId::Pads: case PageId::PadPunch:
+    case PageId::PadFilterPage: case PageId::FilterEnvPage: case PageId::Pads: case PageId::PadPunch: case PageId::LayersPage:
         return pad_scope(ui, project);
     case PageId::Edit: return of(S::Sound, ui);
     case PageId::Roll: case PageId::Steps: case PageId::StepEdit: return pattern_scope(project, ui); // notes written, toggled, moved

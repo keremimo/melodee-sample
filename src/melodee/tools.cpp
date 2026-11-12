@@ -438,6 +438,19 @@ void sent_notes(Snapshot& s, unsigned track) {
     s.ui.sent_next = uint8_t(n);
 }
 
+// Roadmap P3: the dust kit's pad A09 with three layers (the break's slice, the snare up two, the hat), layer 2 in hand
+// and sounding.
+void layered_pad(Snapshot& s, LayerPlay play) {
+    auto& pad = s.project.tracks[3].pads[8];
+    pad.layer_play = play; pad.low_velocity = 1; pad.high_velocity = 63;
+    pad.layers[0].sample = 1; pad.layers[0].low = 64; pad.layers[0].high = 110; pad.layers[0].pitch = 2; pad.layers[0].gain = -300;
+    pad.layers[1].sample = 2; pad.layers[1].low = 100; pad.layers[1].high = 127;
+    s.ui.pad_layer = 1;
+    PlayHead& h = s.heads[0];
+    h = PlayHead {};
+    h.serial = 41; h.pad = 8; h.slot = 1; h.from = 0; h.to = 26460; h.at = 6000; h.level = 0.8f; h.wake = 1; h.step = 1;
+}
+
 void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
     s.ui.page = PageId::Stage; s.ui.track = uint8_t(track);
     s.ui.stage_group[track] = uint8_t(group); s.ui.stage_sub[track] = uint8_t(sub);
@@ -605,9 +618,11 @@ const Preview previews[] {
      }},
     {"stagesid", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[7], EngineKind::Sid, 1); on_stage(s, 7, 0, 1); s.playing = true; }},
     {"stagecztone", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 2, 2); s.playing = true; }},
-    {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
+    {"stagekitlayers", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; layered_pad(s, LayerPlay::Velocity); }},
+    {"stagekitlayersshift", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); layered_pad(s, LayerPlay::Random); s.ui.shift = true; }},
+    {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
     {"stagekitampenv", [](Shell&, Snapshot& s) {
-         on_stage(s, 3, 0, 2); s.sample = break_sample(); s.playing = true;
+         on_stage(s, 3, 0, 3); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.attack = 20; pad.decay = 70; pad.velocity_sense = 60;
      }},
     {"stagekittune", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 0); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pitch = -2; }},
@@ -1473,6 +1488,10 @@ const Preview previews[] {
      }},
     {"pad", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.pitch = 3; pad.fine = -8; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+    {"layers", [](Shell&, Snapshot& s) { s.ui.page = PageId::LayersPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         layered_pad(s, LayerPlay::Velocity); s.ui.turning = 1; s.ui.turned_at = s.now; }},
+    {"layerscycle", [](Shell&, Snapshot& s) { s.ui.page = PageId::LayersPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
+         layered_pad(s, LayerPlay::Cycle); s.ui.pad_layer = 2; }},
     {"play", [](Shell&, Snapshot& s) { s.ui.page = PageId::PlayPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.last_pad = 3; t.pads[2].group = 1; t.pads[3].group = 1; t.pads[3].link = 7; t.pads[3].offset = 25; t.pads[3].loop = true;
          s.ui.turning = 0; s.ui.turned_at = s.now; }},

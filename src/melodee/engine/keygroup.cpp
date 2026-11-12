@@ -327,4 +327,62 @@ void keygroup_pad(const KeygroupInstrument& instrument, double to_model, PadSoun
         pad.gain = int16_t(std::clamp(std::lround(keygroup_decibels(*volume) * 100), -9600l, 1200l));
 }
 
+bool keygroup_pad_layers(const KeygroupInstrument& instrument, const std::array<uint16_t, pad_layers>& slots,
+                         const std::array<double, pad_layers>& to_model, PadSound& pad) {
+    const auto& t = instrument.tags;
+    const auto layers = keygroup_layers(instrument);
+    if (layers.size() < 2 || layers.size() > pad_layers || int_at(t, "TriggerMode").value_or(-1) == 1) return false;
+    const int play = int_at(t, "ZonePlay").value_or(1);
+    struct Read { uint32_t start = 0, end = 0; double cents = 0, db = 0; int pan = 0; uint8_t low = 1, high = 127; };
+    std::array<Read, pad_layers> read {};
+    for (size_t n = 0; n < layers.size(); ++n) {
+        const auto& l = *layers[n];
+        const auto frame = [&](int at) { return uint32_t(std::max(std::lround(at * to_model[n]), 0l)); };
+        auto start = int_at(l, "SliceStart");
+        if (!start) start = int_at(l, "SampleStart");
+        auto end = int_at(l, "SliceEnd");
+        if (!end) end = int_at(l, "SampleEnd");
+        auto& r = read[n];
+        r.start = start && *start > 0 ? frame(*start) : 0;
+        r.end = end && *end > 0 ? frame(*end) : 0;
+        r.cents = layer_cents(l);
+        r.db = keygroup_decibels(number_at(l, "Volume").value_or(1));
+        r.pan = mpc_pan(number_at(l, "Pan").value_or(0.5));
+        r.low = clamped<uint8_t>(int_at(l, "VelStart").value_or(1), 1, 127);
+        r.high = clamped<uint8_t>(int_at(l, "VelEnd").value_or(127), 1, 127);
+        if (r.low > r.high) std::swap(r.low, r.high);
+    }
+    auto split = [](double cents, int8_t& semis, int8_t& fine) {
+        const int whole = int(std::lround(cents / 100));
+        semis = int8_t(std::clamp(whole, -48, 48));
+        fine = int8_t(std::clamp(int(std::lround(cents - 100.0 * whole)), -99, 99));
+    };
+    // Layer 1 is the pad: its tune, volume and pan over the pad's own.
+    const auto& first = *layers[0];
+    split(pad.pitch * 100.0 + pad.fine + read[0].cents, pad.pitch, pad.fine);
+    pad.gain = int16_t(std::clamp(std::lround(read[0].db * 100), -9600l, 1200l));
+    pad.pan = int8_t(std::clamp(pad.pan + read[0].pan, -50, 50));
+    pad.sample = slots[0];
+    pad.start = read[0].start; pad.end = read[0].end;
+    pad.reverse = int_at(first, "Direction").value_or(0) == 1;
+    if (int_at(first, "SliceLoop").value_or(0) > 0) {
+        pad.loop = true;
+        pad.loop_lock = false;
+        pad.loop_start = uint32_t(std::max(std::lround(std::max(int_at(first, "SliceLoopStart").value_or(0), 0) * to_model[0]), 0l));
+    }
+    pad.layer_play = play == 0 ? LayerPlay::Cycle : play == 2 ? LayerPlay::Random : LayerPlay::Velocity;
+    pad.low_velocity = read[0].low; pad.high_velocity = read[0].high;
+    pad.layers = {};
+    for (size_t n = 1; n < layers.size(); ++n) {
+        auto& l = pad.layers[n - 1];
+        l.sample = slots[n];
+        l.start = read[n].start; l.end = read[n].end;
+        split(read[n].cents - read[0].cents, l.pitch, l.fine);
+        l.gain = int16_t(std::clamp(std::lround((read[n].db - read[0].db) * 100), -9600l, 2400l));
+        l.pan = int8_t(std::clamp(read[n].pan - read[0].pan, -50, 50));
+        l.low = read[n].low; l.high = read[n].high;
+    }
+    return true;
+}
+
 } // namespace melodee

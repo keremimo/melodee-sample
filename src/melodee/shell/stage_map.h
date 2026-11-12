@@ -77,6 +77,7 @@ constexpr PageId stage_kit_page(StageKind kind) {
     case StageKind::Follow: return PageId::FollowPage;
     case StageKind::Cloud: return PageId::CloudPage;
     case StageKind::KitFilter: return PageId::FilterPage;
+    case StageKind::Layers: return PageId::LayersPage;
     default: return PageId::Count;
     }
 }

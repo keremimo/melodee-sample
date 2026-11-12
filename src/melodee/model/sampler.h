@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cmath>
@@ -49,6 +50,28 @@ inline float volume_db(int level) {
 }
 inline float volume_gain(int level) { return level <= 0 ? 0.0f : std::pow(10.0f, volume_db(level) / 20.0f); }
 
+// Pad layers (roadmap P3): up to four samples on a pad. Layer 1 is the pad's
+// own sample and region; layers 2-4 are each a region of another sample with
+// its tune, level and pan over the pad's. A hit plays every layer its velocity
+// reaches (Velocity, the MPC's default), the next in turn (Cycle) or one at
+// random (Random), as the MPC's layers play. Every other value of the pad
+// (envelope, filter, play, loop, warp) is the pad's and goes over each.
+constexpr unsigned pad_layers = 4;
+enum class LayerPlay : uint8_t { Velocity, Cycle, Random, Count };
+inline const char* layer_play_name(LayerPlay l) {
+    static const char* const names[] {"VELOCITY", "CYCLE", "RANDOM"};
+    return names[unsigned(l) % unsigned(LayerPlay::Count)];
+}
+struct PadLayer {
+    uint16_t sample = no_sample;  // index into Project::samples
+    uint32_t start = 0, end = 0;  // 44.1 kHz frames; end 0 means the sample's end
+    int8_t pitch = 0, fine = 0;   // semitones and cents over the pad's
+    int16_t gain = 0;             // hundredths of a dB over the pad's
+    int8_t pan = 0;               // over the pad's, -50..50
+    uint8_t low = 1, high = 127;  // the velocities it plays under Velocity
+    bool used() const { return sample != no_sample; }
+};
+
 struct PadSound {
     uint16_t sample = no_sample;  // index into Project::samples
     uint32_t start = 0, end = 0;  // frames; end 0 means the sample's end
@@ -79,10 +102,47 @@ struct PadSound {
     uint8_t warp = warp_off;      // warp_off, warp_seq, or 50..200 %
     uint8_t beats = 0;            // # Beats for Warp's Seq, 0 from its length
     int16_t gain = 0;             // hundredths of a dB: Normalize (Shift + B2 on Trim)
+    // Roadmap P3: layers 2-4 (the file's LAYR section), layer 1's velocities, and how a hit picks.
+    std::array<PadLayer, pad_layers - 1> layers {};
+    uint8_t low_velocity = 1, high_velocity = 127;
+    LayerPlay layer_play = LayerPlay::Velocity;
     uint32_t loop_point() const { return loop_lock ? start : loop_start; }
     bool used() const { return sample != no_sample; }
     bool warped() const { return warp == warp_seq || warp >= warp_min; }
+    // Layer n (0-3) as a PadLayer: 0 is the pad's own sample and region, at no offset.
+    PadLayer layer(unsigned n) const {
+        if (n) return layers[(n - 1) % (pad_layers - 1)];
+        PadLayer own;
+        own.sample = sample; own.start = start; own.end = end; own.low = low_velocity; own.high = high_velocity;
+        return own;
+    }
+    bool layered() const {
+        for (const auto& l : layers) if (l.used()) return true;
+        return false;
+    }
+    // Whether any layer plays sample slot `slot`.
+    bool plays(uint16_t slot) const {
+        if (sample == slot) return true;
+        for (const auto& l : layers) if (l.used() && l.sample == slot) return true;
+        return false;
+    }
+    // Whether the layer and play values are as a new pad has them (LAYR need not hold this pad).
+    bool plain_layers() const { return !layered() && low_velocity == 1 && high_velocity == 127 && layer_play == LayerPlay::Velocity; }
 };
+// Pad `sound` as layer n of it plays: that layer's sample and region, its offsets over the pad's.
+inline PadSound layer_sound(const PadSound& sound, unsigned n) {
+    if (!n) return sound;
+    const PadLayer& l = sound.layers[(n - 1) % (pad_layers - 1)];
+    PadSound one = sound;
+    one.sample = l.sample; one.start = l.start; one.end = l.end;
+    one.pitch = int8_t(std::clamp(sound.pitch + l.pitch, -48, 48));
+    one.fine = int8_t(std::clamp(sound.fine + l.fine, -99, 99));
+    one.gain = int16_t(std::clamp(sound.gain + l.gain, -9600, 6000));
+    one.pan = int8_t(std::clamp(sound.pan + l.pan, -50, 50));
+    one.loop_lock = true; // a layer loops from its own start
+    one.layers = {};
+    return one;
+}
 
 struct SampleRef {
     char path[160] {};  // on the card; empty: free

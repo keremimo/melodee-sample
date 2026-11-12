@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/sfz.h"
 #include "melodee/model/sampler.h"
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -45,6 +46,16 @@ std::string keygroup_sample(const KeygroupTags& layer);
 // layer's tune, region (frames of the source times `to_model`), loop and
 // direction too, the pad then playing its file alone.
 void keygroup_pad(const KeygroupInstrument& instrument, double to_model, PadSound& pad);
+
+// Roadmap P3: a drum pad of two to four layers as the kit pad's own layers,
+// over what keygroup_pad() (or an .xpj's pad) set: layer 1 is the pad's
+// sample, region, loop and direction, its tune, volume and pan folded into the
+// pad's; layers 2-4 play `slots[n]` with their tune, volume and pan as
+// offsets from layer 1's and their velocities; ZonePlay picks Velocity, Cycle
+// or Random. `to_model[n]` scales a layer's frames to 44.1 kHz. False (the pad
+// untouched) when the pad does not fit: another layer count, or a note-off pad.
+bool keygroup_pad_layers(const KeygroupInstrument& instrument, const std::array<uint16_t, pad_layers>& slots,
+                         const std::array<double, pad_layers>& to_model, PadSound& pad);
 
 // An envelope stage's 0..1 as seconds: 1 ms to 100 s, logarithmically.
 double keygroup_seconds(double value);

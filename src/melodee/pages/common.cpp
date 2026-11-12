@@ -323,6 +323,17 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::PadBeats: c.label = "# BEATS"; c.value = b.value ? juce::String(b.value) : juce::String("Auto"); break;
+    case Kind::LayerPick: { // roadmap P3: the layer in hand, empty ones said so
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        c.label = "LAYER"; c.value = juce::String(b.value + 1);
+        if (!pad.layer(unsigned(b.value) % pad_layers).used()) c.unit = "empty";
+        break;
+    }
+    case Kind::LayerLow: c.label = "VEL LOW"; c.value = juce::String(b.value); break;
+    case Kind::LayerHigh: c.label = "VEL HIGH"; c.value = juce::String(b.value); break;
+    case Kind::LayerPitch: c.label = "TUNE"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
+    case Kind::LayerGain: c.label = "LEVEL"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value / 10.0, 1); c.unit = "dB"; c.bipolar = true; break;
+    case Kind::LayerPlayMode: c.label = "PLAY"; c.value = name_case(juce::String(layer_play_name(LayerPlay(b.value)))); break;
     case Kind::ChopMode: c.label = "CHOP TYPE"; c.value = chop_mode_name(ChopMode(b.value)); break;
     case Kind::ChopAmount: {
         auto mode = ChopMode(b.id);

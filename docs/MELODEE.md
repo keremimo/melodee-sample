@@ -281,7 +281,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     effect picker; Shift + Knob FX adds effects), all six slots drawn with
     their family glyphs.
   - **A kit**: Akai's pages in Akai's order on the last pad hit, B1 **TRIM →
-    MIX → AMP ENV → SENDS** (SENDS the kit track's four), B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
+    LAYERS → MIX → AMP ENV → SENDS** (LAYERS the pad's four samples; SENDS the kit track's four), B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
     FILT ENV → KIT FILT** (Melodee's own pages join Akai's): the pad's
     waveform with its volume on the left and pan on the right, chips for
     how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
@@ -359,7 +359,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   shapes; a pad that sounds lights and a head runs through it, the pad in
   hand (filled) and the bank are named in the header; K1 pitch, K2 level, K3 pan;
   Shift + K1 and K2 the project's root and scale; Push opens the map of the
-  ten sample pages.
+  sample pages.
 - **Sounds** (Sample Select on a synth or 909): the factory sounds and one's
   own for the engine, names in Title Case, the loaded one with a check at
   its right edge; K1 jumps (as on every list; the engine is Stage PRESET's
@@ -774,9 +774,12 @@ the file holds, to the bit.
 - **MPC drum programs** (`.xpm` or `.xty` of type Drum, tagged KIT): Push loads the
   program as the selected kit track's kit, as Load Kit does (one undo), each
   instrument onto its pad (1 is A01, 17 is B01). A pad of one layer plays its
-  WAV; one of more (a cycle of hits, velocity layers, a random pick) plays its
-  layers as an instrument named `<program>.xpm#<pad>`, streamed from the card
-  as an SFZ is. Carried over: the pad's volume, pan, tune, play type (One
+  WAV; one of two to four layers takes them as its own pad layers (roadmap
+  P3: Velocity, Cycle or Random as ZonePlay says, each layer's file, region,
+  velocities, tune, volume and pan) while the project's free sample slots
+  hold every layer's file; one of more, or one the slots no longer hold,
+  plays its layers as an instrument named `<program>.xpm#<pad>`, streamed
+  from the card as an SFZ is, as before. MPC projects (`.xpj`) alike. Carried over: the pad's volume, pan, tune, play type (One
   Shot, Note On), mono, mute group, envelope, velocity, filter (a one-pole as
   the two-pole kind) and filter envelope; each layer's tune, volume, pan,
   region and loop. Shift + pad on it says Push loads a kit.
@@ -796,9 +799,9 @@ the file holds, to the bit.
   their chains replace that bank's, their mutes cleared; the other banks,
   the kit's own values and the patterns stay. Each file takes a sample slot
   once; a pad without a free slot stays empty and is counted. One undo.
-- **The ten sample pages**, in the MPC's groups: **B1** Trim → Mix → Amp
-  Env, **B2** Tune → Play → Follow → Cloud, **B3** Filter → Filt Env → Kit
-  filter. A B key goes round its group, or opens its first page from
+- **The eleven sample pages**, in the MPC's groups: **B1** Trim → Layers →
+  Mix → Amp Env, **B2** Tune → Play → Follow → Cloud, **B3** Filter → Filt
+  Env → Kit filter. A B key goes round its group, or opens its first page from
   elsewhere; a dot a page under each key, as on Stage. **Push** opens the
   page map (three columns; wheel, Push jumps, a B key or Shift + Push
   closes); Push on Pads opens it too. Trim itself lives on Stage (a kit's
@@ -806,6 +809,28 @@ the file holds, to the bit.
   Record, Shift + Pad 13) lands there.
   - Trim: K1 start, K2 end, K3 loop point; Shift + K1–K3 zoom at that
     handle; Shift + B1 Loop Lock; Shift + B2 Normalize (a gain, one undo).
+  - Layers (roadmap P3): up to four samples on a pad. Layer 1 is the pad's
+    own sample and region; layers 2–4 each play another sample (its whole
+    file, or the region an MPC program gave it) with a tune and level of
+    their own over the pad's. A hit plays every layer its velocity reaches
+    (**Velocity**, the MPC's default: two ranges that overlap both play),
+    the next layer in turn (**Cycle**, round the layers that hold a sample)
+    or one at random (**Random**). Everything else (envelope, filter, play,
+    loop from each layer's own start, warp, Pad FX) is the pad's, over
+    every layer. K1 the layer in hand, K2 / K3 its lowest and highest
+    velocity (Velocity only: the other end moves along rather than cross);
+    Shift + K1 Velocity, Cycle or Random, Shift + K2 / K3 the layer's tune
+    (±24 st) and level (−48..+12 dB; layer 1's are Tune's and Mix's).
+    Shift + B1 **LOAD** opens Samples, whose Push loads the file onto the
+    layer in hand and comes back (one undo; a layer keeps its tune, level
+    and velocities when its sample changes; an instrument is refused);
+    Shift + B2 **CLEAR** takes the layer off (layer 1 is the pad). The
+    picture: a row a layer, the one in hand outlined, one heard tinted, each
+    with its sample's name, its offsets, and on the right its velocity range
+    across 1–127 (K2 and K3 its ends) or, under Cycle and Random, a dot a
+    layer with its own turn lit. The header pill says how a hit picks. A
+    pad playing an instrument (SFZ, keygroup) has its zones instead. Kept in
+    the file's `LAYR` section and bank files' `BLSM` / `BLYR`.
   - Mix: K1 volume in dB (−inf, −74..+6) with its meter, K3 pan, Shift + K2
     kit volume.
   - Amp Env: attack, decay (One shot) or release (Note On), velocity
@@ -1166,7 +1191,7 @@ while following.
   in capitals; names of sounds, pads, effects and projects in Title Case
   (a factory name stored in capitals is shown so, roman numerals and
   acronyms kept); setting rows in sentence case; units as written (Hz,
-  kHz, dB, ms, s, st, ct, BPM). The ten sample pages draw with Stage's own kit picture: the pad's
+  kHz, dB, ms, s, st, ct, BPM). The sample pages draw with Stage's own kit picture: the pad's
   region fills the width, the file a strip above with the region bracketed.
 - **Header**: transport (play triangle, stop square, the red dot while
   recording, a red ring while Seq Record is armed), tempo, at most two

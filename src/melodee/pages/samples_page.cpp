@@ -75,7 +75,7 @@ void draw(Paint& p, const Snapshot& s) {
             for (unsigned n = 0; n < sample_slots && r.pad.isEmpty(); ++n) // which pad of this kit plays it
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)
-                        if (track.pads[k].sample == n) { char label[4]; pad_label(k, label); r.pad = juce::String(label); break; }
+                        if (track.pads[k].plays(uint16_t(n))) { char label[4]; pad_label(k, label); r.pad = juce::String(label); break; }
         }
         if (r.current && heard.shown && !file.folder && !file.bank) { // the time heard of its length
             char now[16], of[24];

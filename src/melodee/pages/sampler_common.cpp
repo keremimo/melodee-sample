@@ -12,8 +12,8 @@ using namespace ui;
 // The MPC's Sample Mode groups (parity phase 10): B1 Trim / Mix / Amp Env, B2 Tune / Play, B3 Filter / Filt Env;
 // Melodee's own pages join the group they belong with: Follow and Cloud B2's, Kit filter B3's.
 constexpr const PageId* order = sampler_order;
-const char* keys[sampler_page_count] {"TRIM", "MIX", "AMP ENV", "TUNE", "PLAY", "FOLLOW", "CLOUD", "FILTER", "FILT ENV", "KIT FILT"};
-const char* titles[sampler_page_count] {"Trim", "Mix", "Amp env", "Tune", "Play", "Follow", "Cloud", "Filter", "Filter env", "Kit filter"};
+const char* keys[sampler_page_count] {"TRIM", "LAYERS", "MIX", "AMP ENV", "TUNE", "PLAY", "FOLLOW", "CLOUD", "FILTER", "FILT ENV", "KIT FILT"};
+const char* titles[sampler_page_count] {"Trim", "Layers", "Mix", "Amp env", "Tune", "Play", "Follow", "Cloud", "Filter", "Filter env", "Kit filter"};
 } // namespace
 
 // A group's key: the page in view, else the group's first page; a dot a page under it, as on Stage.
@@ -35,7 +35,7 @@ void sampler_soft(Context& c, int key) {
     c.ui.sampler_row = 0;
 }
 
-// Push: the page map of all ten (as Edit's), the wheel moves, Push jumps; Shift + Push or a B key closes it.
+// Push: the page map of all of them (as Edit's), the wheel moves, Push jumps; Shift + Push or a B key closes it.
 void sampler_push(Context& c) {
     if (!c.ui.map_open) { c.ui.map_open = true; c.ui.map_cursor = uint8_t(sampler_index(c.ui.page)); return; }
     c.ui.map_open = false;

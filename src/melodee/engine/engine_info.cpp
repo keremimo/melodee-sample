@@ -83,7 +83,7 @@ const StageGroups& stage_groups(EngineKind kind) {
     // A kit: the MPC's Sample Mode pages in Akai's order, on the last pad hit; Melodee's own join
     // the group they belong with, as on the sampler pages: Follow and Cloud B2's, Kit filter B3's.
     static const StageGroups kit {{{
-        {{{{"TRIM", K::Trim, P::Wave}, {"MIX", K::PadMix, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}, stage_sends}}, 4},
+        {{{{"TRIM", K::Trim, P::Wave}, {"LAYERS", K::Layers, P::Wave}, {"MIX", K::PadMix, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}, stage_sends}}, 5},
         {{{{"TUNE", K::Tune, P::Wave}, {"PLAY", K::Play, P::Wave}, {"FOLLOW", K::Follow, P::Wave}, {"CLOUD", K::Cloud, P::Wave}}}, 4},
         {{{{"FILTER", K::Filter, P::Wave}, {"FILT ENV", K::FiltEnv, P::Wave}, {"KIT FILT", K::KitFilter, P::Wave}}}, 3},
     }}};

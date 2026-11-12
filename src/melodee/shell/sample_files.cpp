@@ -144,9 +144,39 @@ void Context::save_sample_as(const std::string& name) {
     notice("Saving " + name);
 }
 
+// A file onto layer ui.layer_load (2-4) of the last pad (roadmap P3): its sample and region new, its tune, level
+// and velocities kept when the layer had a sample; one undo; then back to the page LOAD came from.
+void Context::load_layer(const std::string& path, const std::string& name) {
+    auto& t = track();
+    unsigned kit = t.last_pad % sampler_pads, n = unsigned(std::max<int>(ui.layer_load, 1)) % pad_layers;
+    if (!n) n = 1;
+    ui.layer_load = -1;
+    SampleRef asked;
+    std::snprintf(asked.path, sizeof(asked.path), "%s", path.c_str());
+    if (asked.instrument()) { notice("Layers take samples"); return; }
+    if (!t.pads[kit].used()) { notice("Layer 1 first"); return; }
+    int slot = sample_slot(path, name);
+    if (slot < 0) { notice("Samples full (64)"); return; }
+    Edit edit;
+    edit.track = ui.track; edit.pad = int16_t(kit);
+    edit.pad_before = pad_state(t, kit);
+    edit.pad_after = edit.pad_before;
+    auto& layer = edit.pad_after.sound.layers[n - 1];
+    if (!layer.used()) layer = PadLayer {};
+    layer.sample = uint16_t(slot); layer.start = layer.end = 0;
+    char label[4]; pad_label(kit, label);
+    edit.what = "Load " + std::string(label) + " L" + std::to_string(n + 1);
+    restore_pad(ui.track, kit, edit.pad_after);
+    edits.push(std::move(edit));
+    dirty = true;
+    notice("Loaded " + std::string(label) + " layer " + std::to_string(n + 1));
+    back();
+}
+
 void Context::load_file(const std::string& path, const std::string& name, bool next_empty) {
     auto& t = track();
     if (t.engine != EngineKind::Sampler) return;
+    if (ui.layer_load > 0 && !next_empty) { load_layer(path, name); return; }
     int kit = next_empty ? next_empty_pad(t.last_pad) : int(t.last_pad % sampler_pads);
     if (kit < 0) { notice("No empty pad"); return; }
     int slot = sample_slot(path, name);

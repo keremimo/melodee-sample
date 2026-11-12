@@ -911,7 +911,8 @@ void sampler_kit() {
         auto back = std::make_unique<Project>();
         CHECK(load_project(bytes, *back, *bank).empty());
         CHECK(back->song.punch_count == 1 && back->song.punches[0].bar == 1 && back->song.punches[0].step == 4 && back->song.punches[0].length == 2);
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*back, *bank);
         host.send({Command::Type::Play, 0, 0, 0, 1});
         std::vector<int32_t> out(256);
@@ -932,7 +933,8 @@ void sampler_kit() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         project->song.place({0, 0, 0, 1, false});
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         host.send({Command::Type::SongRecord, 0, 0, 0, 1});
         host.send({Command::Type::Play, 0, 0, 0, 1});
@@ -960,7 +962,8 @@ void sampler_kit() {
         UiState ui;
         auto lanes = motion_lanes(*project, ui, bank->at[0][0]);
         CHECK(lanes[0] == int(motion_fx_param(0, 0)));
-        EngineHost host;
+        auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+        auto& host = *host_held;
         host.load(*project, *bank);
         host.send({Command::Type::Play});
         std::vector<int32_t> out(256);
@@ -1004,7 +1007,8 @@ void sampler_kit() {
         CHECK(back->tracks[4].pad_fx.at[16].count() == 0);
     }
     // The host takes a sample from the service side and gives the old one back.
-    EngineHost host;
+    auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
+    auto& host = *host_held;
     SampleData other;
     CHECK(host.offer_sample(3, &data) && host.offer_sample(3, &other));
     std::vector<int32_t> out(256);
@@ -3919,8 +3923,9 @@ void card_access() {
 }
 
 void projects_and_polish() {
-    // B1 Trim -> Mix -> Amp Env, B2 Tune -> Play -> Follow -> Cloud, B3 Filter -> Filt Env -> Kit filter; another group's key: its first.
-    CHECK(sampler_next(PageId::Trim, 0) == PageId::PadMix && sampler_next(PageId::PadMix, 0) == PageId::EnvelopePage);
+    // B1 Trim -> Layers -> Mix -> Amp Env, B2 Tune -> Play -> Follow -> Cloud, B3 Filter -> Filt Env -> Kit filter; another group's key: its first.
+    CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadMix);
+    CHECK(sampler_next(PageId::PadMix, 0) == PageId::EnvelopePage);
     CHECK(sampler_next(PageId::EnvelopePage, 0) == PageId::Trim);
     CHECK(sampler_next(PageId::Trim, 1) == PageId::PadPage && sampler_next(PageId::PadPage, 1) == PageId::PlayPage);
     CHECK(sampler_next(PageId::PlayPage, 1) == PageId::FollowPage && sampler_next(PageId::CloudPage, 1) == PageId::PadPage);
@@ -4787,12 +4792,13 @@ void midi_tracks() {
 // Stage, context aware (shell/stage_map.h, the engines' stage tables, bindings.cpp).
 void stage() {
     using K = Binding::Kind;
-    // Every engine's table: three buttons of one to four pages, each named, its parameters the engine's own.
+    // Every engine's table: three buttons of one to four pages (a kit's B1 five: LAYERS beside TRIM, roadmap P3),
+    // each named, its parameters the engine's own.
     for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) {
         const auto& g = stage_groups(EngineKind(k));
         const auto& info = engine_info(EngineKind(k));
         for (const auto& group : g.groups) {
-            CHECK(group.count >= 1 && group.count <= 4);
+            CHECK(group.count >= 1 && group.count <= (EngineKind(k) == EngineKind::Sampler && &group == &g.groups[0] ? 5 : 4));
             for (unsigned n = 0; n < group.count; ++n) {
                 const auto& page = group.pages[n];
                 CHECK(page.key && std::strlen(page.key) > 0);
@@ -4882,9 +4888,11 @@ void stage() {
     stage_go(ui, 0, 0);
     CHECK(cards(false)[0].kind == K::PadStart && cards(false)[1].kind == K::PadEnd && cards(false)[2].kind == K::PadLoopPoint);
     CHECK(cards(true)[0].kind == K::TrimZoom);
-    stage_go(ui, 0, 1);
-    CHECK(cards(false)[0].kind == K::PadLevel && cards(false)[1].kind == K::Param && cards(false)[1].id == sampler::Level && cards(false)[2].kind == K::PadPan);
+    stage_go(ui, 0, 1); // LAYERS (roadmap P3): the layer in hand, its velocities; Shift + K1 how a hit picks
+    CHECK(key() == "LAYERS" && cards(false)[0].kind == K::LayerPick && cards(false)[1].kind == K::LayerLow && cards(true)[0].kind == K::LayerPlayMode);
     stage_go(ui, 0, 2);
+    CHECK(cards(false)[0].kind == K::PadLevel && cards(false)[1].kind == K::Param && cards(false)[1].id == sampler::Level && cards(false)[2].kind == K::PadPan);
+    stage_go(ui, 0, 3);
     CHECK(cards(false)[0].kind == K::PadAttack && cards(true)[1].kind == K::PadDecayFrom);
     stage_go(ui, 1, 0);
     CHECK(cards(false)[0].kind == K::PadPitch && cards(true)[2].kind == K::PadBeats);
@@ -9023,7 +9031,163 @@ void track_speed() {
     }
 }
 
+// Roadmap P3: up to four samples a pad, picked by velocity, in turn or at random; kept in LAYR and bank files;
+// an MPC drum pad of two to four layers mapped onto them.
+void pad_layers_p3() {
+    std::array<SampleData, 3> data;
+    for (unsigned n = 0; n < 3; ++n) {
+        data[n].frames = 44100;
+        data[n].left.assign(data[n].frames, 0.1f * (n + 1)); data[n].right.assign(data[n].frames, 0.1f * (n + 1));
+    }
+    SamplerEngine::Table table {};
+    table[4] = &data[0]; table[5] = &data[1]; table[6] = &data[2];
+    std::vector<float> l(128, 0), r(128, 0);
+    auto block = [&](SamplerEngine& e) { std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f); e.render_stereo(l.data(), r.data(), 128); };
+    // The slots the voices started by one hit play (the newest `count`), lowest first.
+    auto hit = [&](SamplerEngine& e, int velocity) {
+        e.note_on(int(sampler_first_note) + 2, velocity);
+        block(e);
+        TrackTaps t; t.track = 0; e.taps(t);
+        std::vector<uint16_t> slots;
+        uint32_t newest = t.count ? t.voice[0].serial : 0;
+        for (unsigned n = 0; n < t.count; ++n)
+            if (newest - t.voice[n].serial < 4 && !(t.voice[n].flags & tap::Choked)) slots.push_back(t.voice[n].slot);
+        std::sort(slots.begin(), slots.end());
+        e.all_notes_off(); e.silence();
+        return slots;
+    };
+    PadSound pad;
+    pad.sample = 4; pad.low_velocity = 1; pad.high_velocity = 63;
+    pad.layers[0].sample = 5; pad.layers[0].low = 64; pad.layers[0].high = 127;
+    pad.layers[1].sample = 6; pad.layers[1].low = 100; pad.layers[1].high = 127;
+    CHECK(pad.layered() && pad.plays(6) && !pad.plays(7) && !pad.plain_layers());
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        e.set_pad(2, pad);
+        CHECK((hit(e, 40) == std::vector<uint16_t> {4}));
+        CHECK((hit(e, 80) == std::vector<uint16_t> {5}));
+        CHECK((hit(e, 110) == std::vector<uint16_t> {5, 6})); // two ranges reach it: both play
+        PadSound mono = pad;
+        mono.mono = true;
+        e.set_pad(2, mono);
+        CHECK((hit(e, 110) == std::vector<uint16_t> {5, 6})); // a mono pad's layers never cut each other
+    }
+    {
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound cycle = pad;
+        cycle.layer_play = LayerPlay::Cycle;
+        cycle.layers[0] = PadLayer {}; // a gap: Cycle goes round the layers that hold a sample
+        cycle.layers[1].low = cycle.layers[1].high = 127;
+        e.set_pad(2, cycle);
+        CHECK((hit(e, 10) == std::vector<uint16_t> {4}) && (hit(e, 10) == std::vector<uint16_t> {6}) && (hit(e, 10) == std::vector<uint16_t> {4}));
+        PadSound random = pad;
+        random.layer_play = LayerPlay::Random;
+        e.set_pad(2, random);
+        std::array<unsigned, 3> seen {};
+        for (unsigned n = 0; n < 60; ++n) {
+            auto slots = hit(e, 64);
+            CHECK(slots.size() == 1);
+            if (slots.size() == 1) ++seen[slots[0] - 4u];
+        }
+        CHECK(seen[0] > 5 && seen[1] > 5 && seen[2] > 5);
+    }
+    {   // A layer's offsets go over the pad's; its region and loop point are its own.
+        PadSound one = pad;
+        one.pitch = 2; one.gain = 100; one.pan = 10; one.start = 500; one.loop_lock = false; one.loop_start = 900;
+        one.layers[1].pitch = -3; one.layers[1].gain = -600; one.layers[1].pan = -20; one.layers[1].start = 50;
+        PadSound as = layer_sound(one, 2);
+        CHECK(as.sample == 6 && as.start == 50 && as.pitch == -1 && as.gain == -500 && as.pan == -10 && as.loop_point() == 50 && !as.layered());
+        CHECK(layer_sound(one, 0).sample == 4 && layer_sound(one, 0).loop_point() == 900);
+    }
+    {   // The project file: LAYR; without it every pad plays its one sample.
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[3], EngineKind::Sampler, 0);
+        PadSound saved = pad;
+        saved.layer_play = LayerPlay::Random;
+        saved.layers[1].pitch = -7; saved.layers[1].fine = 12; saved.layers[1].gain = -350; saved.layers[1].pan = 9; saved.layers[1].end = 2000;
+        project->tracks[3].pads[70] = saved;
+        project->tracks[3].pads[1].sample = 4; // plain: no LAYR record
+        auto file = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(file, *back, *back_bank).empty());
+        const auto& b = back->tracks[3].pads[70];
+        CHECK(b.layer_play == LayerPlay::Random && b.low_velocity == 1 && b.high_velocity == 63);
+        CHECK(b.layers[0].sample == 5 && b.layers[0].low == 64 && b.layers[1].sample == 6 && b.layers[1].pitch == -7 && b.layers[1].fine == 12);
+        CHECK(b.layers[1].gain == -350 && b.layers[1].pan == 9 && b.layers[1].end == 2000 && !b.layers[2].used());
+        CHECK(back->tracks[3].pads[1].plain_layers());
+        std::string text(file.begin(), file.end());
+        file[text.find("LAYR")] = 'X';
+        CHECK(load_project(file, *back, *back_bank).empty() && !back->tracks[3].pads[70].layered() && back->tracks[3].pads[70].sample == 4);
+        // A bank file carries them: the layers' files after the pads' own.
+        std::snprintf(project->samples[4].path, sizeof(project->samples[4].path), "a.wav");
+        std::snprintf(project->samples[5].path, sizeof(project->samples[5].path), "b.wav");
+        std::snprintf(project->samples[6].path, sizeof(project->samples[6].path), "c.wav");
+        auto bank_file = bank_of(*project, 3, 4, "LAYERED"); // bank E: pads 64-79
+        CHECK(bank_file.pads[6].sample == 0 && bank_file.pads[6].layers[0].sample == bank_pads && bank_file.pads[6].layers[1].sample == bank_pads + 1);
+        BankFile loaded;
+        CHECK(load_bank(save_bank(bank_file), loaded));
+        CHECK(loaded.pads[6].layers[1].pitch == -7 && std::string(loaded.samples[bank_pads + 1].path) == "c.wav");
+        auto into_held = std::make_unique<Track>();
+        auto& into = *into_held;
+        load_sound(into, EngineKind::Sampler, 0);
+        std::map<std::string, int> given {{"a.wav", 10}, {"b.wav", 11}, {"c.wav", 12}};
+        auto got = import_bank(loaded, 1, into, [&](const SampleRef& ref) { return given[ref.path]; });
+        CHECK(got.pads == 1 && into.pads[22].sample == 10 && into.pads[22].layers[0].sample == 11 && into.pads[22].layers[1].sample == 12);
+    }
+    {   // The Layers page: K1 the layer, K2 / K3 its velocities under Velocity alone; Shift + K1 how a hit picks.
+        auto held = std::make_unique<Project>();
+        auto& project = *held;
+        load_sound(project.tracks[1], EngineKind::Sampler, 0);
+        project.tracks[1].pads[9] = pad;
+        project.tracks[1].last_pad = 9;
+        UiState ui;
+        ui.track = 1; ui.page = PageId::LayersPage; ui.pad_layer = 2;
+        Pattern none;
+        auto cards = base_bindings(project, ui, none);
+        CHECK(cards[0].kind == Binding::Kind::LayerPick && cards[0].value == 2 && cards[1].kind == Binding::Kind::LayerLow && cards[1].value == 100);
+        auto shifted = shift_bindings(project, ui, none);
+        CHECK(shifted[0].kind == Binding::Kind::LayerPlayMode && shifted[1].kind == Binding::Kind::LayerPitch && shifted[2].kind == Binding::Kind::LayerGain);
+        project.tracks[1].pads[9].layer_play = LayerPlay::Cycle;
+        CHECK(!base_bindings(project, ui, none)[1].bound());
+        CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadMix);
+        CHECK(stage_kit_page(StageKind::Layers) == PageId::LayersPage);
+    }
+    {   // An MPC drum pad of three velocity layers onto the pad's own layers.
+        KeygroupInstrument snare;
+        snare.number = 2;
+        snare.tags = {{"ZonePlay", "1"}, {"TriggerMode", "0"}, {"Volume", "0.707946"}, {"Pan", "0.5"}, {"TuneCoarse", "1"}};
+        const char* names[] {"soft", "mid", "hard"};
+        const char* volumes[] {"0.5", "1.0", "1.0"};
+        for (unsigned n = 0; n < 3; ++n)
+            snare.layers.push_back({{"Active", "True"}, {"SampleName", names[n]}, {"VelStart", std::to_string(n * 43)}, {"VelEnd", std::to_string(n * 43 + 42)},
+                                    {"Volume", volumes[n]}, {"Pan", n == 2 ? "0.7" : "0.5"}, {"TuneCoarse", n == 1 ? "2" : "0"}, {"SliceStart", "100"},
+                                    {"SliceEnd", "0"}});
+        PadSound mapped;
+        keygroup_pad(snare, 1.0, mapped);
+        CHECK(keygroup_pad_layers(snare, {20, 21, 22, 0}, {1.0, 2.0, 1.0, 1.0}, mapped));
+        CHECK(mapped.sample == 20 && mapped.start == 100 && mapped.pitch == 1 && mapped.layer_play == LayerPlay::Velocity);
+        CHECK(mapped.low_velocity == 1 && mapped.high_velocity == 42 && mapped.gain == int16_t(std::lround(20 * std::log10(0.5) * 100)));
+        CHECK(mapped.layers[0].sample == 21 && mapped.layers[0].start == 200 && mapped.layers[0].pitch == 2 && mapped.layers[0].low == 43 && mapped.layers[0].high == 85);
+        CHECK(mapped.layers[0].gain == -mapped.gain && mapped.layers[1].pan == 20 && !mapped.layers[2].used());
+        snare.tags["ZonePlay"] = "0";
+        PadSound cycled;
+        CHECK(keygroup_pad_layers(snare, {1, 2, 3, 0}, {1.0, 1.0, 1.0, 1.0}, cycled) && cycled.layer_play == LayerPlay::Cycle);
+        snare.tags["TriggerMode"] = "1";
+        PadSound off;
+        CHECK(!keygroup_pad_layers(snare, {1, 2, 3, 0}, {1.0, 1.0, 1.0, 1.0}, off) && !off.used());
+        KeygroupInstrument five = snare;
+        five.tags["TriggerMode"] = "0";
+        for (unsigned n = 0; n < 2; ++n) five.layers.push_back(five.layers[0]);
+        CHECK(!keygroup_pad_layers(five, {1, 2, 3, 4}, {1.0, 1.0, 1.0, 1.0}, off)); // five: streamed as an instrument still
+    }
+}
+
 int main() {
+    pad_layers_p3();
     track_speed();
     generators();
     feel_p1();

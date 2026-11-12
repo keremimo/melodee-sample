@@ -128,6 +128,7 @@ void Context::open(PageId page) {
     ui.move_open = false;
     ui.map_open = false;
     ui.loop_sheet = false;
+    ui.layer_load = -1; // Layers' LOAD sets it after opening Samples
     ui.fx_loop = -1; // FX Select on a loop track is set by its caller after this
     ui.picker_open = false;
     ui.song_export = false;
@@ -511,6 +512,20 @@ void Context::apply(const Binding& b, int value) {
         send_pad(ui.track, t.last_pad);
         break;
     case Kind::PadBeats: pad().beats = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::LayerPick: ui.pad_layer = uint8_t(unsigned(value) % pad_layers); break;
+    case Kind::LayerLow: case Kind::LayerHigh: { // a layer's velocities: the other end moves along rather than cross
+        unsigned n = unsigned(b.id) % pad_layers;
+        uint8_t& low = n ? pad().layers[n - 1].low : pad().low_velocity;
+        uint8_t& high = n ? pad().layers[n - 1].high : pad().high_velocity;
+        uint8_t v = uint8_t(std::clamp(value, 1, 127));
+        if (b.kind == Kind::LayerLow) { low = v; high = std::max(high, v); }
+        else { high = v; low = std::min(low, v); }
+        send_pad(ui.track, t.last_pad);
+        break;
+    }
+    case Kind::LayerPitch: if (b.id > 0) pad().layers[size_t(b.id - 1) % (pad_layers - 1)].pitch = int8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::LayerGain: if (b.id > 0) pad().layers[size_t(b.id - 1) % (pad_layers - 1)].gain = int16_t(value * 10); send_pad(ui.track, t.last_pad); break;
+    case Kind::LayerPlayMode: pad().layer_play = LayerPlay(std::clamp(value, 0, int(LayerPlay::Count) - 1)); send_pad(ui.track, t.last_pad); break;
     case Kind::PadOffset: case Kind::PadVelSense: case Kind::PadCutoff: case Kind::PadResonance:
     case Kind::PadFAttack: case Kind::PadFDecay: case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: {
         // values Motion records as lanes of the pad

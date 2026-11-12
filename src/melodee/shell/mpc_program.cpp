@@ -179,6 +179,57 @@ std::string import_mpc_program(const std::vector<uint8_t>& file, const std::stri
     return {};
 }
 
+unsigned layers_from_programs(Project& project) {
+    unsigned moved = 0;
+    for (auto& track : project.tracks)
+        for (auto& pad : track.pads) {
+            if (!pad.used()) continue;
+            const unsigned own = pad.sample % sample_slots;
+            std::string file, which, error;
+            if (!split_program_pad(project.samples[own].path, file, which)) continue;
+            auto pads = program_pads(file, error);
+            auto found = pads.find(which);
+            if (found == pads.end()) continue;
+            const auto layers = keygroup_layers(found->second);
+            if (layers.size() < 2 || layers.size() > pad_layers) continue;
+            std::array<std::string, pad_layers> paths;
+            bool all = true;
+            for (size_t n = 0; n < layers.size() && all; ++n) {
+                auto at = found_beside(fs::path(file).parent_path(), keygroup_sample(*layers[n]));
+                all = !at.empty() && at.string().size() < sizeof(SampleRef::path);
+                if (all) paths[n] = at.string();
+            }
+            if (!all) continue;
+            // The slots it would need: files not in the project yet, each once; its instrument's slot comes free
+            // when no other pad plays it.
+            unsigned sharing = 0, free = 0, wanted = 0;
+            for (const auto& t : project.tracks) for (const auto& p : t.pads) sharing += p.used() && p.plays(uint16_t(own));
+            for (const auto& ref : project.samples) free += !ref.used();
+            if (sharing == 1) ++free;
+            for (size_t n = 0; n < layers.size(); ++n) {
+                bool known = std::any_of(project.samples.begin(), project.samples.end(), [&](const SampleRef& r) { return r.used() && paths[n] == r.path; });
+                bool earlier = std::find(paths.begin(), paths.begin() + long(n), paths[n]) != paths.begin() + long(n);
+                wanted += !known && !earlier;
+            }
+            if (wanted > free) continue;
+            std::array<uint16_t, pad_layers> slots {};
+            std::array<double, pad_layers> to_model {};
+            to_model.fill(1.0);
+            PadSound made = pad;
+            if (!keygroup_pad_layers(found->second, slots, to_model, made)) continue; // a note-off pad: as it was
+            if (sharing == 1) project.samples[own] = SampleRef {};
+            for (size_t n = 0; n < layers.size(); ++n) {
+                slots[n] = uint16_t(slot_for(project, paths[n], fs::path(paths[n]).stem().string()));
+                if (unsigned rate = mpc_wav_rate(paths[n])) to_model[n] = double(dsp::model_rate) / rate;
+            }
+            made = pad;
+            keygroup_pad_layers(found->second, slots, to_model, made);
+            pad = made;
+            ++moved;
+        }
+    return moved;
+}
+
 bool split_program_pad(const std::string& path, std::string& file, std::string& which) {
     auto mark = path.rfind('#');
     if (mark == std::string::npos || mark + 1 >= path.size()) return false;

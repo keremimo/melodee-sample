@@ -45,6 +45,13 @@ KitImport import_kit(const Project& from, unsigned track, Track& into, const std
             if (mapped[s] < 0) { pad = PadSound {}; into.pad_fx.at[n] = Chain {{}, pad_slots}; ++result.missing; }
             else { pad.sample = uint16_t(mapped[s]); ++result.pads; }
         }
+        for (auto& l : pad.layers) { // its layers' files too (roadmap P3); a layer without a slot is left out
+            if (!l.used()) continue;
+            unsigned s = l.sample % sample_slots;
+            if (mapped[s] == -2) mapped[s] = from.samples[s].used() ? slot_for(from.samples[s]) : -1;
+            if (mapped[s] < 0 || !pad.used()) l = PadLayer {};
+            else l.sample = uint16_t(mapped[s]);
+        }
         into.pads[n] = pad;
     }
     return result;
@@ -52,17 +59,24 @@ KitImport import_kit(const Project& from, unsigned track, Track& into, const std
 
 KitImport import_bank(const BankFile& from, unsigned bank, Track& into, const std::function<int(const SampleRef&)>& slot_for) {
     KitImport result;
-    std::array<int, bank_pads> mapped;
+    std::array<int, std::tuple_size_v<decltype(from.samples)>> mapped;
     mapped.fill(-2); // -2 not asked yet
     for (unsigned k = 0; k < bank_pads; ++k) {
         unsigned n = (bank % sampler_banks) * bank_pads + k;
         PadSound pad = from.pads[k];
         Chain chain = from.chains[k];
         if (pad.used()) {
-            unsigned s = pad.sample % bank_pads;
+            unsigned s = pad.sample % mapped.size();
             if (mapped[s] == -2) mapped[s] = from.samples[s].used() ? slot_for(from.samples[s]) : -1;
             if (mapped[s] < 0) { pad = PadSound {}; ++result.missing; }
             else { pad.sample = uint16_t(mapped[s]); ++result.pads; }
+        }
+        for (auto& l : pad.layers) { // layers (roadmap P3)
+            if (!l.used()) continue;
+            unsigned s = l.sample % mapped.size();
+            if (mapped[s] == -2) mapped[s] = from.samples[s].used() ? slot_for(from.samples[s]) : -1;
+            if (mapped[s] < 0 || !pad.used()) l = PadLayer {};
+            else l.sample = uint16_t(mapped[s]);
         }
         if (!pad.used()) chain = Chain {{}, pad_slots};
         into.pads[n] = pad;
