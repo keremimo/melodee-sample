@@ -15,7 +15,7 @@ Melodee does not change anything on the MPC itself. It runs from files on
 the card. Choose **MPC APP** on its Exit screen, or remove its `autorun`
 folder from the card, and the stock app runs as before.
 
-Melodee is in alpha. Back up your card before you install it.
+Back up your card before you install Melodee.
 
 New to Melodee? Start with the [quickstart](docs/QUICKSTART.md). For every
 page and control, read the [user guide](docs/GUIDE.md).
@@ -66,8 +66,8 @@ page and control, read the [user guide](docs/GUIDE.md).
    [Releases](https://github.com/keremimo/melodee-sample/releases).
 2. Back up the card. If the card already has an `autorun` folder at its top
    level, move it somewhere safe.
-3. Copy the `autorun` folder from the zip to the top level of the card. Do
-   not edit or rename anything inside it.
+3. Unzip it. The zip holds one folder, `autorun`. Copy that folder to the
+   top level of the card. Do not edit or rename anything inside it.
 4. Put the card in the MPC and switch it on. The stock app starts first.
    A few seconds later Melodee starts.
 
@@ -85,9 +85,13 @@ any subfolders. Melodee loads:
 Plug-ins built only for Windows or macOS do not run on the MPC. The
 plug-in picker shows them dimmed, with the reason.
 
-The Melodee synths are separate downloads. Copy each plug-in folder (for
-example `Ellic Studio - VST - Melodee Poly`) into `Plugins`. They also run
-on MPC OS devices that load Open MPC plug-ins.
+The Melodee synths are free downloads:
+[Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
+[Melodee Chip](https://github.com/keremimo/mpc-vst-melodee-chip/releases/latest). From each release, download the
+`-mpc-sample.zip`, unzip it and copy the plug-in folder inside (for example
+`Ellic Studio - VST - Melodee Poly`) into `Plugins`. The synths also run on
+MPC OS devices that load Open MPC plug-ins; those devices use the
+`-mpc-aarch64.zip` or `-mpc-armv7.zip`.
 
 ## Documentation
 

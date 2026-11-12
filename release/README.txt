@@ -6,9 +6,9 @@ stock app: one track per pad, each a kit of samples, a VST3 or VST2
 instrument, or a MIDI track. Patterns, scenes and a song, a looper, a mixer
 and effect chains that take VST effects.
 
-THIS IS AN ALPHA. Expect rough edges and the odd crash. A crash, or any
-failure to start, puts the stock MPC app back; nothing on the MPC itself is
-changed, only files on the microSD card. Back up the card first anyway.
+Melodee changes nothing on the MPC itself, only files on the microSD card.
+If it fails to start, or crashes, the stock MPC app comes back. Back up the
+card before you install it.
 
 
 Requirements
@@ -23,19 +23,22 @@ Install
 1. Back up the card. If it already has a folder named "autorun" at its top
    level (MPC Sample Plugins uses one, for example), move it somewhere
    safe: Melodee's replaces it.
-2. Copy the "autorun" folder from this zip to the top level of the card,
-   so the card has autorun/autorun.sh, autorun/autorun.json,
-   autorun/autorun.check and autorun/melodee/.
-   Do not edit or rename anything inside it: the MPC refuses an autorun
-   whose files changed.
+2. Unzip the release. It holds one folder, "autorun". Copy that folder to
+   the top level of the card. Do not edit or rename anything inside it:
+   the MPC refuses an autorun whose files changed.
 3. Put the card in the MPC and switch it on. The stock app starts first;
    a few seconds later Melodee takes over the screen.
 
-Projects are saved on the card in Melodee/Projects.
+Projects are saved on the card in Melodee/Projects. Put samples in a
+folder named "Samples" at the top level of the card.
 
 Plug-ins: put VST3 and VST2 plug-ins built for 64-bit or 32-bit ARM Linux,
 and Open MPC plug-ins, in a folder named "Plugins" at the top level of the
-card. The Melodee Poly, PD and Chip synths are separate downloads.
+card. Melodee's own synths, Melodee Poly, Melodee PD and Melodee Chip, are
+free downloads:
+https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest
+https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest
+https://github.com/keremimo/mpc-vst-melodee-chip/releases/latest
 
 New to Melodee? The quickstart, with pictures of each screen:
 https://github.com/keremimo/melodee-sample/blob/main/docs/QUICKSTART.md
@@ -54,9 +57,11 @@ Back to the stock app
 
 Reporting problems
 ------------------
-Say what you pressed, what you saw and the version line below. If Melodee
-did not start at all, check that the firmware is 1.3.0.12 and that the
-autorun folder sits at the top level of the card.
+Say what you pressed, what you saw and the version (Settings, ABOUT,
+press B3 for the credits, or the line below). If Melodee did not start at
+all, check that the firmware is 1.3.0.12 and that the autorun folder sits
+at the top level of the card.
+Issues: https://github.com/keremimo/melodee-sample/issues
 
 
 Version and source
@@ -66,6 +71,7 @@ Source code: {source}
 Built on sample-base: https://github.com/keremimo/sample-base
 
 Melodee is free software under the GNU Affero General Public License,
-version 3 (licenses/LICENSE-AGPL-3.0.txt). It uses JUCE under the AGPLv3
-and embeds the Rubik typeface under the SIL Open Font License 1.1; see
-licenses/. Not affiliated with or endorsed by inMusic or Akai Professional.
+version 3 (licenses/LICENSE-AGPL-3.0.txt, in this folder). It uses JUCE
+under the AGPLv3 and embeds the Rubik typeface under the SIL Open Font
+License 1.1; see licenses/. Not affiliated with or endorsed by inMusic or
+Akai Professional.

@@ -23,16 +23,17 @@ You need:
 - A microSD card.
 - The release zip, `Melodee-MPC-Sample-<version>.zip`.
 
-The zip contains an `autorun` folder, a `README.txt` and the licences.
+The zip holds one folder, `autorun`. Its `README.txt` and the licences are
+inside it, in `autorun/melodee/`.
 
 To install Melodee:
 
 1. Back up the card. If it has an `autorun` folder at its top level, move
    that folder somewhere safe. Melodee's `autorun` folder replaces it.
-2. Copy the `autorun` folder from the zip to the top level of the card. The
-   card now has `autorun/autorun.sh` and `autorun/melodee/`. Do not edit or
-   rename anything inside `autorun`: the MPC does not start an autorun whose
-   files have changed.
+2. Unzip the release and copy the `autorun` folder to the top level of the
+   card. The card now has `autorun/autorun.sh` and `autorun/melodee/`. Do
+   not edit or rename anything inside `autorun`: the MPC does not start an
+   autorun whose files have changed.
 3. Optional: to use plug-ins, make a folder named `Plugins` at the top level
    of the card and copy your plug-ins into it. See
    [Plug-ins](GUIDE.md#plug-ins) for what runs.
@@ -169,7 +170,8 @@ you hit.
 
 Melodee loads VST3 and VST2 instruments built for the MPC's ARM processor,
 including the Melodee Poly, Melodee PD and Melodee Chip synths. Put them in
-the `Plugins` folder on the card first (see [step 1](#1-install)).
+the `Plugins` folder on the card first (see [step 1](#1-install)). The
+Melodee synths are free downloads; see [Plug-ins](GUIDE.md#plug-ins).
 
 1. Hold **PAD BANK** and press pad 2 to select track 2.
 2. Press **SAMPLE**. An empty track shows three choices: **SYNTH** (a
