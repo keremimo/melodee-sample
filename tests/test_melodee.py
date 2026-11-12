@@ -14,7 +14,7 @@ SOURCES = ["src/melodee/engine/engine_info.cpp", "src/melodee/engine/engine_host
            "src/melodee/shell/page_stack.cpp", "src/melodee/shell/button_jobs.cpp", "src/melodee/shell/roll.cpp",
            "src/melodee/shell/shift_pad_jobs.cpp", "src/melodee/shell/fader_job.cpp", "src/melodee/shell/midi_route.cpp", "src/melodee/shell/mtc_in.cpp",
            "src/melodee/shell/undo_scope.cpp", "src/melodee/shell/project_kits.cpp", "src/melodee/shell/card_access.cpp",
-           "src/melodee/shell/pad_lights.cpp", "src/melodee/plugin/tone3000.cpp"]
+           "src/melodee/shell/pad_lights.cpp", "src/melodee/plugin/tone3000.cpp", "src/melodee/plugin/nam.cpp"]
 
 
 class MelodeeTests(unittest.TestCase):

@@ -1725,6 +1725,20 @@ of the card (beside `Samples/`), in any folders under it.
   use `.config` there, which a Mac's Finder hides (Cmd-Shift-. shows it):
   TONE3000 reads its presets from `.config/TONE3000/Presets` when it
   opens.
+- **Neural Amp Modeler.** The amp sim: the official plug-in by Steven
+  Atkinson, built for the MPC without its editor
+  (fork `mpc-vst-nam-official`, its `linux/README.md`). Its
+  Model and Cab parameters pick files from `Neural Amp Modeler/Models`
+  (`.nam`) and `Neural Amp Modeler/IRs` (`.wav`) in Plugin Data, which
+  Melodee makes before it opens (`plugin/nam.h`); a turn loads the file on
+  the plug-in's own thread, and the state keeps its path. Slim, the size an
+  A2 capture plays at, is held at 0 (lite) after its state loads and kept
+  off the page: full costs about four times lite. The page starts Model,
+  Cab, Output, then Bass, Middle, Treble; long names are shorter on the
+  cards (Gate, Tone, Cab on, Out mode, Calibrate, Cal level). On the MPC
+  (48 kHz) a lite capture takes about 17% of a block, an IR of 8192 taps
+  (where the build cuts a WAV IR) about 17%; printed beside its live copy
+  it caused no xruns, and a deep freeze and thaw left RSS within 0.2 MB.
 - **TONE3000: lite captures.** TONE3000 plays each amp capture (NAM A2) at
   one of two sizes, lite or full. The size is kept in the preset, not on a
   knob. Full takes about three times the CPU of lite here and crackles, so

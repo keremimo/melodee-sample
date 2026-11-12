@@ -6,6 +6,7 @@
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
 #include "melodee/plugin/rate_bridge.h"
+#include "melodee/plugin/nam.h"
 #include "melodee/plugin/tone3000.h"
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_instance.h"
@@ -261,6 +262,7 @@ public:
     const double plugin_rate;            // what the plug-in itself runs at (an Open MPC one: 44.1 kHz)
     std::vector<int> shown;              // parameter indices the pages show, in order
     bool qlinks = false;
+    bool nam = false;                    // Neural Amp Modeler: shorter card names (plugin/nam.h)
     std::atomic<float> load {0};         // share of a block's time
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
@@ -500,7 +502,8 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
     auto read = [&](size_t at, PluginPanelParam& card) {
         auto* p = params[h->shown[at]];
         card.used = true;
-        put(card.name, sizeof(card.name), p->getName(int(sizeof(card.name) - 1)).trim().toStdString());
+        std::string name = p->getName(int(sizeof(card.name) - 1)).trim().toStdString();
+        put(card.name, sizeof(card.name), h->nam ? nam_card_name(name) : name);
         float v = p->getValue();
         put(card.text, sizeof(card.text), tidy(p->getText(v, 64).trim().toStdString()));
         card.value = int16_t(std::lround(std::clamp(v, 0.0f, 1.0f) * plugin_param_max));
@@ -838,6 +841,7 @@ void PluginRack::load(const Job& job) {
     double rate = file.fixed_rate ? double(file.fixed_rate) : device_rate; // what the plug-in itself runs at
     int block = int(EngineHost::block);
     bool tone3000 = false; // its NAM blocks always lite (plugin/tone3000.h)
+    bool nam = false;      // Neural Amp Modeler: Slim held at lite, its folders made (plugin/nam.h)
     if (file.format == PluginFormat::Vst3) {
         message_thread().start();
         juce::VST3PluginFormatHeadless format;
@@ -852,6 +856,8 @@ void PluginRack::load(const Job& job) {
         else {
             tone3000 = is_tone3000(chosen->name.toStdString());
             if (tone3000) tone3000_lite_presets(home); // before it lists them
+            nam = is_nam(chosen->name.toStdString());
+            if (nam) nam_folders(home); // before it lists them
             instance = format.createInstanceFromDescription(*chosen, rate, block, why);
         }
     } else if (file.format == PluginFormat::Vst2) {
@@ -873,6 +879,9 @@ void PluginRack::load(const Job& job) {
         if (tone3000) tone3000_lite_state(state); // a project saved before, or with a full block
         instance->setStateInformation(state.data(), int(state.size()));
     }
+    if (nam) // a capture at lite whatever the state said; the plug-in takes it in warm_up(), before the audio thread
+        for (auto* p : instance->getParameters())
+            if (p->getName(64) == nam_slim_name() && p->getValue() != 0.0f) p->setValue(0.0f);
     juce::PluginDescription description;
     instance->fillInPluginDescription(description);
     bool is_instrument = description.isInstrument || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);
@@ -890,6 +899,14 @@ void PluginRack::load(const Job& job) {
             handle->shown = std::move(ordered);
             handle->qlinks = true;
         }
+    }
+    if (nam) {
+        std::vector<std::string> names;
+        for (int i : handle->shown) names.push_back(handle->instance->getParameters()[i]->getName(64).toStdString());
+        std::vector<int> ordered;
+        for (size_t at : nam_page_order(names)) ordered.push_back(handle->shown[at]);
+        handle->shown = std::move(ordered);
+        handle->nam = true;
     }
     handle->warm_up(); // before the audio thread first runs it
 

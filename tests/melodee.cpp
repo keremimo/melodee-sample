@@ -95,6 +95,7 @@
 #include "melodee/shell/loop_sheet.h"
 #include "melodee/plugin/drum_map.h"
 #include "melodee/plugin/plugin_files.h"
+#include "melodee/plugin/nam.h"
 #include "melodee/plugin/tone3000.h"
 #include <algorithm>
 #include <tuple>
@@ -8084,6 +8085,26 @@ void tone3000_always_lite() {
     fs::remove_all(home);
 }
 
+// Neural Amp Modeler (plugin/nam.h): its page Model, Cab and Output first, the tone stack next, the rest in its own
+// order and Slim (held at lite) left out; long names shorter on the cards; its two folders made under the home.
+void nam_page() {
+    namespace fs = std::filesystem;
+    const std::vector<std::string> names {"Input", "Threshold", "Bass", "Middle", "Treble", "Output", "NoiseGateActive",
+                                          "ToneStack", "IRToggle", "CalibrateInput", "InputCalibrationLevel", "OutputMode",
+                                          "Slim", "Model", "Cab"};
+    CHECK((nam_page_order(names) == std::vector<size_t> {13, 14, 5, 2, 3, 4, 0, 1, 6, 7, 8, 11, 9, 10}));
+    CHECK((nam_page_order({"Slim", "Drive", "Model"}) == std::vector<size_t> {2, 1})); // a parameter it does not know: after
+    CHECK(nam_page_order({}).empty());
+    CHECK(nam_card_name("NoiseGateActive") == "Gate" && nam_card_name("InputCalibrationLevel") == "Cal level");
+    CHECK(nam_card_name("Model") == "Model" && is_nam("NeuralAmpModeler") && !is_nam("TONE3000"));
+    auto home = fs::temp_directory_path() / ("melodee-nam-" + std::to_string(getpid()));
+    nam_folders(home);
+    CHECK(fs::is_directory(home / "Neural Amp Modeler" / "Models") && fs::is_directory(home / "Neural Amp Modeler" / "IRs"));
+    nam_folders(home); // there already
+    nam_folders({});
+    fs::remove_all(home);
+}
+
 // An Open MPC skin's Q-Link pages (plugin/plugin_files.h): a "Column" page (every toolkit skin) is read in its
 // layout's slot order, Q-Links 13, 9, 5, 1, 14, ... 4, so each three are one K1-K3 row as the skin shows them; any
 // other direction in Q-Link number order. -1 skipped, each parameter once.
@@ -12407,6 +12428,7 @@ int main() {
     kit_lanes();
     plugins();
     tone3000_always_lite();
+    nam_page();
     qlink_pages();
     synths_as_plugins();
     voice_taps();
