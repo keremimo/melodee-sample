@@ -20,8 +20,9 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& f = s.project.flex;
     Header h = header_of(s);
     h.left.push_back(pill("FLEX BEAT"));
-    h.left.push_back(pill(f.mode ? "LOOP" : "ONE SHOT", colour::mid));
-    if (!s.playing) h.left.push_back(pill("PRESS PLAY", colour::mid));
+    // Two chips at most: stopped, what it waits for (it plays over a running transport only); playing, its mode (K1's).
+    if (!s.playing) h.left.push_back(pill(Icon::Play, "PRESS PLAY", colour::amber));
+    else h.left.push_back(pill(f.mode ? "LOOP" : "ONE SHOT", colour::mid));
     h.right.push_back(label("MASTER", colour::mid));
     SoftKeys keys {{"", "", "QUANTIZE"}, -1, c};
     keys.toggles = 4; // on or off: its LED
