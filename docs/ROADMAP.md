@@ -70,6 +70,25 @@ behaviour changed.
   (an open at that priority could hold a core from the audio threads),
   with `SCHED_RESET_ON_FORK` so threads the plug-in starts stay normal; a
   state is read or written one parameter a lock, blocks passing between.
+- P1: ratchets, their ramp and (next) trig conditions sit on a second row of
+  cards, the TRIG row, reached by pressing the lit editor key again (STEPS
+  on Steps, ROLL on Roll), Stage's cycle grammar with its dots: K1 hits, K2
+  velocity ramp, Shift + K2 a kit pad's pitch ramp. Why: knobs set values;
+  round 2 (agreed with its session) turns Step Edit into step entry and
+  puts NUDGE on Roll's Shift + K1, so neither Step Edit nor a Shift row
+  carries them.
+- P1: a ratchet's hits spread evenly over the note's length (no swing
+  inside), each held as a one-hit note of that length is, each on its own
+  frame (the render loop splits the block there, as for ticks); the chance
+  is rolled once for all, an accent lifts each; the ramp goes evenly from
+  the note's velocity to the last hit's (iOS's rule). Slide and Tie wait for
+  a note of one hit. Why: the hand-off of a held note into the next note
+  only works from a single note; ratchets are drums' job.
+- P1: the pitch ramp is a kit pad's only (the sampler; not the 909, whose
+  drums have no tune per hit), as the roadmap had it.
+- P1: on a kit, Steps' cards (length, velocity, chance and the TRIG row) are
+  the last pad's note in the step, not the step's first note. Why: Steps on
+  a kit shows and toggles that pad's lane, so its cards follow it.
 
 ## Waiting for a hand check
 
@@ -79,6 +98,9 @@ behaviour changed.
   by ear; and a MIDI keyboard's notes the same.
 - P0: an armv7 VST2 plug-in (Acid-303 in the project now on the MPC)
   playing while its parameters are turned on its page: no dropouts.
+- P1: ratchets by ear: a hat at 2-8 hits with a ramp down and up, a kit
+  pad's pitch ramp (a tom rising), a synth note ratcheted; say if the
+  hits' gate (a tenth short, as a note's) wants to be shorter on synths.
 
 ## P0: timing
 
@@ -113,7 +135,7 @@ Reference: melodee-ios (the sibling checkout `../melodee-ios`,
 has ratchets, conditions, lane lengths and Euclid already; port the
 behaviour, write the code fresh for this app.
 
-- [ ] Ratchet: `Event` gains a ratchet (1–8 hits inside the note's length)
+- [x] Ratchet: `Event` gains a ratchet (1–8 hits inside the note's length)
   and a ramp (−100..100, the last hit's velocity in percent of the
   note's); on a kit also a pitch ramp if it fits. The repeats play through
   the late-note path the arp uses (`run_late`). File section, Steps / Step

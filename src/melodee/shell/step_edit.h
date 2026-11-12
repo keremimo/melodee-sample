@@ -48,6 +48,11 @@ void nudge_event(Context& c, int ticks);
 void set_event_velocity(Context& c, int velocity);
 void set_event_length(Context& c, int steps);
 void set_event_chance(Context& c, int chance); // Roll's K3, percent
+// Ratchets (roadmap P1): Roll's Shift + K1 / K2 and Step Edit's TRIG row: hits 1..8, the velocity ramp
+// (-100..100 %), a kit pad's pitch ramp (semitones).
+void set_event_ratchet(Context& c, int hits);
+void set_event_ramp(Context& c, int ramp);
+void set_event_pitch_ramp(Context& c, int semitones);
 // B3: the selected event goes (one undo, or part of a take).
 void erase_event(Context& c);
 // Erase + pad, once B3 says so: every event of `key` in the pattern (one undo, or part of a take).

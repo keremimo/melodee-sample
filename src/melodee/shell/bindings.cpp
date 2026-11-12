@@ -15,6 +15,7 @@
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/step_edit.h"
+#include "melodee/shell/step_lane.h"
 #include "melodee/shell/roll.h"
 #include <algorithm>
 
@@ -390,6 +391,12 @@ bool levels_in_scale(const UiState& ui, const Track& track) {
 } // namespace
 
 namespace {
+// The TRIG row of Steps (`step`: its step in hand's notes) and Roll (the note in focus), roadmap P1: K1 the ratchet's
+// hits, K2 its velocity ramp.
+std::array<Binding, 3> trig_cards(const Event& e, bool step) {
+    return {Binding {step ? Kind::StepRatchet : Kind::EventRatchet, 0, 1, int(max_ratchet), int(e.hits())},
+            Binding {step ? Kind::StepRamp : Kind::EventRamp, 0, -100, 100, e.ramp}, Binding {}};
+}
 // Patterns' cards, and Seq held's on any page (shell/seq_layer.h): the selected track's pattern,
 // K1 length by the bar, K2 Q, K3 swing; Shift: any bar count, the time signature, the metronome's level (as on the MPC).
 std::array<Binding, 3> pattern_cards(const Project& project, const Pattern& pattern) {
@@ -434,6 +441,18 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
             length = {Kind::EventLength, 0, 1, 64, int(std::min(steps, 64u))};
         }
         return {length, Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature}, Binding {}};
+    }
+    case PageId::Steps: { // the TRIG row: Shift + K2 a kit pad's pitch ramp (its lane's note)
+        if (!ui.trig_cards || track.engine != EngineKind::Sampler) return {};
+        int n = lane_event(pattern, unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps(), steps_lane(track));
+        if (n < 0) return {};
+        return {Binding {}, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
+    }
+    case PageId::Roll: { // the TRIG row: Shift + K2 a kit pad's pitch ramp (the note in focus)
+        if (!ui.trig_cards || track.engine != EngineKind::Sampler) return {};
+        int at = roll_focus(pattern, ui);
+        if (at < 0) return {};
+        return {Binding {}, Binding {Kind::EventPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(at)].pitch_ramp}, Binding {}};
     }
     case PageId::Trim: case PageId::PadMix: case PageId::EnvelopePage: case PageId::FilterEnvPage: case PageId::PadPage: case PageId::PlayPage:
         return pad_page_shift(track, ui, ui.page);
@@ -680,17 +699,20 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         int at = roll_focus(pattern, ui);
         if (at < 0) return {};
         const auto& e = pattern.events[size_t(at)];
+        if (ui.trig_cards) return trig_cards(e, false); // B2 again: its ratchet and ramp
         unsigned q = pattern.q(), steps = std::max(1u, (e.length + q / 2) / q);
         return {Binding {Kind::EventLength, 0, 1, 64, int(std::min(steps, 64u))}, Binding {Kind::EventVelocity, 0, 1, 127, e.velocity},
                 Binding {Kind::EventChance, 0, 0, 100, e.chance}};
     }
-    case PageId::Steps: {
+    case PageId::Steps: { // the step in hand; on a kit its lane's note (the last pad's), as the pads show it
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
-        const auto step = pattern.step(at);
-        if (step.empty()) return {};
-        const Note* note = step.first();
-        return {Binding {Kind::StepLength, 0, 1, 16, step.length}, Binding {Kind::StepVelocity, 0, 1, 127, note->velocity},
-                Binding {Kind::StepChance, 0, 0, 100, step.chance}};
+        int n = lane_event(pattern, at, steps_lane(track));
+        if (n < 0) return {};
+        const auto& e = pattern.events[size_t(n)];
+        if (ui.trig_cards) return trig_cards(e, true); // B1 again: its ratchet and ramp
+        unsigned q = pattern.q(), length = std::clamp<unsigned>((e.length + q / 2) / q, 1, 16);
+        return {Binding {Kind::StepLength, 0, 1, 16, int(length)}, Binding {Kind::StepVelocity, 0, 1, 127, e.velocity},
+                Binding {Kind::StepChance, 0, 0, 100, e.chance}};
     }
     case PageId::Stage: return stage_bindings(project, ui, false);
     // System pages: their rows take the wheel; no pots, so no cards (never the synth's favourites there). The Fader

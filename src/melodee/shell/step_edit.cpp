@@ -101,6 +101,30 @@ void set_event_chance(Context& c, int chance) {
     c.sync_pattern(c.ui.track, c.track().pattern);
 }
 
+namespace {
+// The selected event (on Roll the note in focus) through `edit`, and the pattern to the audio thread.
+template <class Edit> void edit_selected(Context& c, Edit&& edit) {
+    auto& pattern = c.pattern();
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui);
+    int at = selected_event(pattern, c.ui);
+    if (at < 0) return;
+    edit(pattern.events[size_t(at)]);
+    c.sync_pattern(c.ui.track, c.track().pattern);
+}
+} // namespace
+
+void set_event_ratchet(Context& c, int hits) {
+    edit_selected(c, [&](Event& e) { e.ratchet = uint8_t(std::clamp<int>(hits, 1, int(max_ratchet))); });
+}
+
+void set_event_ramp(Context& c, int ramp) {
+    edit_selected(c, [&](Event& e) { e.ramp = int8_t(std::clamp(ramp, -100, 100)); });
+}
+
+void set_event_pitch_ramp(Context& c, int semitones) {
+    edit_selected(c, [&](Event& e) { e.pitch_ramp = int8_t(std::clamp(semitones, -max_pitch_ramp, max_pitch_ramp)); });
+}
+
 void erase_event(Context& c) {
     auto& pattern = c.pattern();
     int at = selected_event(pattern, c.ui);

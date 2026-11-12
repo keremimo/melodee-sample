@@ -2,11 +2,14 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // STEPS (B1 on a sequence page, or Seq held + B1): the pads are the sixteen steps of the bar in view, pad 1
 // bottom left. Tap a pad: the step on (with the last note played) or off.
-// Hold a pad: that step is on the cards (length, velocity, chance) and the
-// wheel changes its pitch. Minus / Plus change bar; Erase + pad clears.
+// Hold a pad: that step is on the cards (length, velocity, chance; on a kit
+// the last pad's note in it) and the wheel changes its pitch. B1 again: the
+// TRIG row, K1 the ratchet's hits, K2 their velocity ramp, Shift + K2 a kit
+// pad's pitch ramp. Minus / Plus change bar; Erase + pad clears.
 // The picture is the bar as a drum machine draws it: sixteen columns in
 // four beats, each stacking its notes by pitch, taller for harder hits, a dot
-// over it for an accent, an arc under it for a tie; the numbers under them,
+// over it for an accent, an arc under it for a tie, a ratchet as its hits
+// side by side as tall as they play; the numbers under them,
 // the step in hand lit; the pattern's bars as blocks at the foot.
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
@@ -32,9 +35,14 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     juce::String step = "STEP " + juce::String(highlight + 1);
     if (const Note* n = cur.first()) step += juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(note_name(n->key));
+    int in_hand = lane_event(pattern, unsigned(std::max(highlight, 0)) % pattern.steps(), steps_lane(s.track()));
+    if (in_hand >= 0 && pattern.events[size_t(in_hand)].hits() > 1) // a ratchet: its hits
+        step += juce::String::fromUTF8(" \xc2\xb7 \xc3\x97") + juce::String(pattern.events[size_t(in_hand)].hits());
     h.left.push_back(pill(step, c));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"STEPS", "ROLL", "MOTION"}, 0, c}, h);
+    SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 0, c};
+    keys.dots[0] = 2; keys.dot_at[0] = s.ui.trig_cards ? 1 : 0; // STEPS again: the TRIG row of cards
+    frame(p, s, keys, h);
 
     // Pitch as rows of the project's scale, six of them centred on the bar's notes.
     std::array<uint8_t, 12> degrees {};
@@ -68,11 +76,23 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(juce::String(k + 1), x - 2, top + ch + 2, colw + 4, 14, number, juce::Justification::centred);
         if (!inside) continue;
         const auto& step = pattern.step(st);
-        for (auto& n : step.notes) { // each note at its pitch's row, as tall as it is hard
-            if (!n.velocity) continue;
-            int row = std::clamp(index_of(n.key) - base, 0, rows - 1);
-            float v = n.velocity / 127.0f, bh = 4 + 7 * v, ry = top + ch - (row + 0.5f) * (ch / rows) - bh / 2;
-            p.fill(x + 1.5f, ry, colw - 3, bh, here ? colour::text : c, 2);
+        auto in = step_events(pattern, st);
+        for (unsigned k = 0; k < in.count && k < notes_per_step; ++k) { // each note at its pitch's row, as tall as it is hard
+            const auto& e = pattern.events[in.first + k];
+            int row = std::clamp(index_of(e.key) - base, 0, rows - 1);
+            float cy = top + ch - (row + 0.5f) * (ch / rows);
+            unsigned hits = e.hits();
+            if (hits == 1) {
+                float bh = 4 + 7 * e.velocity / 127.0f;
+                p.fill(x + 1.5f, cy - bh / 2, colw - 3, bh, here ? colour::text : c, 2);
+                continue;
+            }
+            // A ratchet: its hits side by side, each as tall as it plays (the ramp).
+            float gap = 0.75f, hw = (colw - 3 - gap * (hits - 1)) / hits;
+            for (unsigned n = 0; n < hits; ++n) {
+                float bh = 4 + 7 * e.hit_velocity(e.velocity, n) / 127.0f;
+                p.fill(x + 1.5f + n * (hw + gap), cy - bh / 2, hw, bh, here ? colour::text : c, 1);
+            }
         }
         if (step.empty()) continue;
         if (step.flags & step_accent) p.circle(x + colw / 2, top - 6.5f, 2, c);      // an accent: a dot over it
@@ -168,6 +188,7 @@ void nudge(Context& c, int way) {
 }
 
 void soft(Context& c, int key) {
+    if (key == 0) { c.ui.trig_cards = !c.ui.trig_cards; return; } // STEPS again: the step's TRIG cards, or back
     static const PageId pages[] {PageId::Steps, PageId::Roll, PageId::Motion};
     c.open(pages[key % 3]);
 }

@@ -7,7 +7,9 @@
 // to a step. The cursor is a step of Q (the wheel; Shift + wheel note to
 // note) and a pitch (Minus / Plus: the chord in the step, then a semitone);
 // the note there is in focus, drawn white, and the cards edit it (K1 length,
-// K2 velocity, K3 chance). The view scrolls with the cursor a step at a time;
+// K2 velocity, K3 chance; B2 again the TRIG row: K1 a ratchet's hits, drawn
+// along the note, K2 their velocity ramp, Shift + K2 a kit pad's pitch ramp).
+// The view scrolls with the cursor a step at a time;
 // dots on the top and bottom edges mark notes above and below it. Pads write
 // their note at the cursor, NEW NOTE long, or focus it; Pad Bank moves their
 // octave (Shift: down). Erase tapped alone deletes the note in focus. Push
@@ -59,6 +61,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, ui.track));
     bool sheet = ui.sheet_open && focused;
     SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 1, c};
+    keys.dots[1] = 2; keys.dot_at[1] = ui.trig_cards ? 1 : 0; // ROLL again: the TRIG row of cards
     if (sheet && ui.sheet_more) keys = SoftKeys {{"BACK", "", "DO IT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
     else if (sheet) { // the likely job, Accent, under B3; MORE the rest
         keys = SoftKeys {{"BACK", "MORE", "ACCENT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
@@ -126,7 +129,19 @@ void draw(Paint& p, const Snapshot& s) {
         float x = std::max(x_of(e.tick), gutter) + 1, xe = std::min(x_of(end), right + 1), y = top + r * row_h + 1;
         float w = std::max(xe - x - 1, 2.0f), hgt = row_h - 2.5f;
         bool on = int(n) == focus;
-        p.fill(x, y, w, hgt, on ? colour::text : c.withAlpha(0.4f + e.velocity / 127.0f * 0.6f), 2.5f);
+        unsigned hits = e.hits();
+        if (hits == 1) {
+            p.fill(x, y, w, hgt, on ? colour::text : c.withAlpha(0.4f + e.velocity / 127.0f * 0.6f), 2.5f);
+        } else { // a ratchet: its hits along the note, each as strong as it plays (the ramp)
+            float each = float(e.length) / float(hits) / float(q) * column;
+            for (unsigned k = 0; k < hits; ++k) {
+                float hx = x_of(e.tick) + 1 + k * each, hxe = std::min(hx + std::max(each - 1.0f, 1.0f), right + 1);
+                if (hxe <= gutter || hx >= right + 1) continue;
+                hx = std::max(hx, gutter + 1);
+                float v = e.hit_velocity(e.velocity, k) / 127.0f;
+                p.fill(hx, y, std::max(hxe - hx, 1.0f), hgt, on ? colour::text : c.withAlpha(0.4f + v * 0.6f), 1.5f);
+            }
+        }
         if (on) p.ring(x - 1, y - 1, w + 2, hgt + 2, c, 3, 1.2f);
         if ((e.flags & step_accent) && w > 6) p.fill(x + 1.5f, y + 1.5f, 2, hgt - 3, on ? c : colour::bg, 1);
     }
@@ -225,6 +240,7 @@ void soft(Context& c, int key) {
         if (key == 2) do_row(c);
         return;
     }
+    if (key == 1) { c.ui.trig_cards = !c.ui.trig_cards; return; } // ROLL again: the note's TRIG cards, or back
     static const PageId pages[] {PageId::Steps, PageId::Roll, PageId::Motion};
     c.open(pages[key % 3]);
 }

@@ -61,7 +61,10 @@ struct Binding {
         // shares; on MIX the loop track's strip (id: the loop).
         LoopPick, LoopLength, LoopLevel, LoopFeedback, LoopQuantize, LoopThen, LoopPan, LoopSend, LoopBus,
         RecGrid,                                   // REC QUANTIZE (Shift + Pad 10): 0 the pattern's Q, else 1 + a Division
-        PluginParam                                // a plug-in's parameter (docs/MELODEE.md), id: plugin_binding(), 0..plugin_param_max
+        PluginParam,                               // a plug-in's parameter (docs/MELODEE.md), id: plugin_binding(), 0..plugin_param_max
+        // Ratchets (roadmap P1), on the TRIG row of Steps (B1 again) and Roll (B2 again): Steps' step in hand (on a
+        // kit its lane's notes), Roll's note in focus; the pitch ramp a kit pad's (Shift + K2).
+        StepRatchet, StepRamp, StepPitchRamp, EventRatchet, EventRamp, EventPitchRamp
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

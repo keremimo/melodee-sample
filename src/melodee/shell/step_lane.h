@@ -52,6 +52,24 @@ inline bool move_lane(Pattern& p, unsigned s, int lane, uint8_t to) {
     return count > 0;
 }
 
+// The first note of `lane` (any key: -1) starting in step `s`: its index in the events, or -1. Steps' cards
+// show it (on a kit the last pad's note, not the step's first).
+inline int lane_event(const Pattern& p, unsigned s, int lane) {
+    uint32_t start = uint32_t(s) * p.q(), end = std::min<uint32_t>(start + p.q(), p.length);
+    for (size_t n = p.lower(start); n < p.events.size() && p.events[n].tick < end; ++n)
+        if (lane < 0 || p.events[n].key == lane) return int(n);
+    return -1;
+}
+
+// Each note of `lane` (any key: -1) starting in step `s` through `edit`; false when it held none.
+template <class Edit> bool edit_lane(Pattern& p, unsigned s, int lane, Edit&& edit) {
+    uint32_t start = uint32_t(s) * p.q(), end = std::min<uint32_t>(start + p.q(), p.length);
+    bool any = false;
+    for (size_t n = p.lower(start); n < p.events.size() && p.events[n].tick < end; ++n)
+        if (lane < 0 || p.events[n].key == lane) { edit(p.events[n]); any = true; }
+    return any;
+}
+
 // A note of `lane` at the start of step `s`, a step long; false when the pattern is full.
 inline bool add_lane_note(Pattern& p, unsigned s, uint8_t lane, uint8_t velocity) {
     Event e;

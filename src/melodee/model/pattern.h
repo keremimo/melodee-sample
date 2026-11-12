@@ -40,16 +40,41 @@ inline Division legacy_division(unsigned value) {
 
 enum StepFlag : uint8_t { step_accent = 1, step_slide = 2, step_tie = 4 };
 
+// A ratchet (roadmap P1): a note played as so many hits spread evenly over its length.
+constexpr unsigned max_ratchet = 8;
+constexpr int max_pitch_ramp = 24; // semitones a kit pad's last hit sits from its first
+
 // One note of the pattern: where it starts, how long it is held (ticks).
 struct Event {
     uint32_t tick = 0;
     uint16_t length = sixteenth_ticks;
     uint8_t key = 0, velocity = 100, chance = 100, flags = 0;
     int8_t pitch = 0; // a sampler pad's: semitones from its root (16 Levels, an instrument's keys)
+    // Ratchet: hits inside its length, 1..8; the last hit's velocity in percent off the note's (-100..100), the
+    // hits between going evenly; on a kit pad the last hit's semitones over the first (-24..24) too.
+    uint8_t ratchet = 1;
+    int8_t ramp = 0, pitch_ramp = 0;
     bool operator==(const Event& o) const {
-        return tick == o.tick && length == o.length && key == o.key && velocity == o.velocity && chance == o.chance && flags == o.flags && pitch == o.pitch;
+        return tick == o.tick && length == o.length && key == o.key && velocity == o.velocity && chance == o.chance && flags == o.flags &&
+               pitch == o.pitch && ratchet == o.ratchet && ramp == o.ramp && pitch_ramp == o.pitch_ramp;
     }
     bool operator!=(const Event& o) const { return !(*this == o); }
+    unsigned hits() const { return std::clamp<unsigned>(ratchet, 1, max_ratchet); }
+    // Hit `n` of the ratchet (0 the first): how hard, and its semitones over `pitch` (a kit pad's ramp).
+    int hit_velocity(int played, unsigned n) const {
+        unsigned last = hits() - 1;
+        if (!last || !ramp) return played;
+        double scale = 1.0 + ramp / 100.0 * double(std::min(n, last)) / double(last);
+        return std::clamp(int(played * scale + 0.5), 1, 127);
+    }
+    int hit_pitch(unsigned n) const {
+        unsigned last = hits() - 1;
+        if (!last || !pitch_ramp) return 0;
+        double at = pitch_ramp * double(std::min(n, last)) / double(last);
+        return int(at < 0 ? at - 0.5 : at + 0.5);
+    }
+    // Copies what plays it besides where and which (chance, flags, the ratchet), for a note rewritten in place.
+    void take_play(const Event& o) { chance = o.chance; flags = o.flags; ratchet = o.ratchet; ramp = o.ramp; pitch_ramp = o.pitch_ramp; }
 };
 
 // The pages' view of one step: up to four notes starting in it.
@@ -62,6 +87,8 @@ struct Step {
     uint8_t length = 1;    // in steps of the pattern's Q
     uint8_t chance = 100;  // percent
     uint8_t flags = 0;
+    uint8_t ratchet = 1;   // the first note's (Event::ratchet); set_step keeps each note's own
+    int8_t ramp = 0;
     bool empty() const { for (auto n : notes) if (n.velocity) return false; return true; }
     const Note* first() const { for (auto& n : notes) if (n.velocity) return &n; return nullptr; }
 };

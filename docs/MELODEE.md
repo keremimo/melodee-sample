@@ -407,10 +407,20 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
 ### Sequencing
 
 The clock runs at 96 ticks a quarter. A pattern is a list of note events
-(tick, length, key, velocity, chance, accent / slide / tie) up to 128 bars
-of the project's time signature; its **Q** (1/4 .. 1/64 with triplets) is
-only the grid. Swing (50–75 %) stretches the first sixteenth of each
-eighth.
+(tick, length, key, velocity, chance, accent / slide / tie, a ratchet) up
+to 128 bars of the project's time signature; its **Q** (1/4 .. 1/64 with
+triplets) is only the grid. Swing (50–75 %) stretches the first sixteenth
+of each eighth.
+
+A **ratchet** plays a note as 1–8 hits spread evenly over its length, each
+on its own frame and held as a note of that length would be; the chance is
+rolled once for all of them, an accent lifts every one. Its **ramp**
+(−100..100 %) sets the last hit's velocity against the note's, the hits
+between going evenly; on a kit pad a **pitch ramp** (−24..24 semitones)
+does the same to its tune. Slide and Tie wait for a note of one hit. The
+editors' TRIG row holds them: the lit key again (STEPS on Steps, ROLL on
+Roll) turns the cards to K1 the hits, K2 the ramp, Shift + K2 the pitch
+ramp (a kit); again, back. Files keep them in RTCH.
 
 Seq has three levels and a layer (`shell/seq_layer.h`): **tap to look,
 hold to steer, Shift + Seq to zoom in**.
@@ -472,7 +482,8 @@ hold to steer, Shift + Seq to zoom in**.
   step's), −/+ walk the chord in the step and then a semitone;
   the view scrolls a step at a time, and dots on its edges mark notes above
   and below. The note at the cursor is in focus, drawn white and named in
-  the header; K1 its length, K2 velocity, K3 chance. A pad writes its note
+  the header; K1 its length, K2 velocity, K3 chance (ROLL again: its
+  ratchet, drawn as its hits along the note). A pad writes its note
   at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
   is the pads' octave (Shift: down). Erase tapped alone deletes the note in
   focus; Erase + pad asks, then erases that key's notes. Push opens its
@@ -489,11 +500,13 @@ hold to steer, Shift + Seq to zoom in**.
   lane, the cursor's always); it opens on the last pad's lane.
 - **Steps, Motion** (B1, B3): Steps the bar's steps
   on the pads, drawn as a drum machine draws a bar: sixteen columns in four
-  beats, each stacking its notes by pitch, taller for harder hits, a dot
+  beats, each stacking its notes by pitch, taller for harder hits (a
+  ratchet as its hits side by side, each as tall as it plays), a dot
   over it for an accent, an arc under it for a tie, the numbers under them
   and the pattern's bars as blocks at the foot; the step in hand is the
   header's. On a kit the pads are the last pad's lane: a tap sets or clears
-  that pad's note and leaves the others' (Roll edits the whole kit), and
+  that pad's note and leaves the others' (Roll edits the whole kit), the
+  cards are that pad's note in the step, and
   the wheel moves a held step's note to the next pad, the lane with it. Motion the lanes of recorded pot moves (Seq Record + a pot writes at the
   playing sixteenth; a kit pad's level, tune, pan, envelopes, filter and
   more are lanes of that pad; Erase + pot asks, then clears the lane), all

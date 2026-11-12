@@ -4,6 +4,7 @@
 #include "melodee/model/pad_params.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/step_edit.h"
+#include "melodee/shell/step_lane.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
@@ -410,14 +411,25 @@ void Context::apply(const Binding& b, int value) {
     case Kind::Audition: ui.audition_velocity = uint8_t(value); break;
     case Kind::StepLength:
     case Kind::StepVelocity:
-    case Kind::StepChance: {
-        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern().steps();
-        Step step = pattern().step(at);
-        if (step.empty()) break;
-        if (b.kind == Kind::StepLength) step.length = uint8_t(value);
-        else if (b.kind == Kind::StepChance) step.chance = uint8_t(value);
-        else for (auto& n : step.notes) if (n.velocity) n.velocity = uint8_t(value);
-        set_step(ui.track, at, step);
+    case Kind::StepChance:
+    case Kind::StepRatchet:
+    case Kind::StepRamp:
+    case Kind::StepPitchRamp: { // the step in hand's notes, on a kit its lane's (the last pad's)
+        auto& p = pattern();
+        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % p.steps();
+        uint32_t q = p.q();
+        bool any = edit_lane(p, at, steps_lane(t), [&](Event& e) {
+            switch (b.kind) {
+            case Kind::StepLength: e.length = uint16_t(std::clamp<uint32_t>(uint32_t(std::max(value, 1)) * q, 1, 0xffff)); break;
+            case Kind::StepVelocity: e.velocity = uint8_t(std::clamp(value, 1, 127)); break;
+            case Kind::StepChance: e.chance = uint8_t(std::clamp(value, 0, 100)); break;
+            case Kind::StepRatchet: e.ratchet = uint8_t(std::clamp<int>(value, 1, int(max_ratchet))); break;
+            case Kind::StepPitchRamp: e.pitch_ramp = int8_t(std::clamp(value, -max_pitch_ramp, max_pitch_ramp)); break;
+            default: e.ramp = int8_t(std::clamp(value, -100, 100)); break;
+            }
+        });
+        if (!any) break;
+        sync_pattern(ui.track, t.pattern);
         ui.held_edited = true;
         break;
     }
@@ -592,6 +604,9 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EventVelocity: set_event_velocity(*this, value); break;
     case Kind::EventLength: set_event_length(*this, value); break;
     case Kind::EventChance: set_event_chance(*this, value); break;
+    case Kind::EventRatchet: set_event_ratchet(*this, value); break;
+    case Kind::EventRamp: set_event_ramp(*this, value); break;
+    case Kind::EventPitchRamp: set_event_pitch_ramp(*this, value); break;
     case Kind::StageSound: preset_turn(value); break;
     case Kind::SoundList: ui.sounds_filter = uint8_t(value); ui.preset_due = 0; break;
     case Kind::ArpGate: t.arp_gate = uint8_t(value); send({Type::Arp, ui.track, 0, 4, int16_t(value)}); break;

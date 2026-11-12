@@ -657,6 +657,7 @@ void EngineHost::apply(const Command& c) {
         if (running) break;
         mtc_off(); // MTC in places it right after (MtcIn locate)
         running = true; until_tick = 0;
+        drop_hits();
         tick_now = c.value == 1 ? 0 : c.position;
         arp_ticks = 0; until_arp = 0; // the repeats line up with the bar, so their swing falls with the sequencer's
         song_mode = c.value == 1; song_bar_now = c.index;
@@ -675,6 +676,7 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Stop:
         running = false;
+        drop_hits(); // a ratchet's hits still to come go with it
         mtc_off();
         sync_stop(frame_now);
         midi_all_off(255, frame_now);
@@ -945,6 +947,44 @@ void EngineHost::run_late(Slot& slot, unsigned frames) {
     late.key = -1;
 }
 
+void EngineHost::run_hits(unsigned t, Slot& slot, unsigned frames) {
+    if (!slot.hits_waiting) return;
+    for (auto& h : slot.hits) {
+        if (h.key < 0) continue;
+        if (h.samples > 0) { h.samples -= int32_t(frames); continue; } // its frame comes later in or after this run
+        PendingHit hit = h;
+        h.key = -1;
+        --slot.hits_waiting;
+        play_hit(t, slot, hit, frame_now + block_at);
+    }
+}
+
+void EngineHost::play_hit(unsigned t, Slot& slot, const PendingHit& hit, uint64_t at) {
+    if (slot.engine) {
+        slot.engine->set_accent(hit.accent ? expression::accent_gain : 1.0f);
+        slot.engine->note_on(hit.key, hit.velocity);
+        slot.engine->set_accent(1);
+        schedule_off(slot, hit.key, hit.length);
+    }
+    if (hit.midi >= 0) midi_note(t, hit.midi, hit.velocity, at, hit.length);
+}
+
+unsigned EngineHost::next_hit() const {
+    int32_t next = INT32_MAX;
+    for (const auto& slot : slots) {
+        if (!slot.hits_waiting) continue;
+        for (const auto& h : slot.hits) if (h.key >= 0 && h.samples > 0) next = std::min(next, h.samples);
+    }
+    return unsigned(next);
+}
+
+void EngineHost::drop_hits() {
+    for (auto& slot : slots) {
+        for (auto& h : slot.hits) h.key = -1;
+        slot.hits_waiting = 0;
+    }
+}
+
 void EngineHost::arp_note(Slot& slot, int key, int velocity, int from, int32_t length) {
     slot.engine->note_on(key, velocity);
     float pressure = slot.arp.pressure_of(from);
@@ -1172,8 +1212,12 @@ void EngineHost::tick() {
             if (e.chance < 100 && (random >> 8) % 100 >= e.chance) continue;
             // Held for its length, a touch short; with Slide or Tie, until the next note starts (and past
             // it, so that note finds it held and takes it over: no new attack; a slide glides there).
-            bool legato = e.flags & (step_slide | step_tie);
-            double ticks = e.length - std::min<unsigned>(pattern.q(), e.length) * 0.1;
+            // A ratchet: its hits spread over its length, each held as long as a hit of that length would be;
+            // Slide and Tie wait for a note of one hit.
+            unsigned hits = e.hits();
+            bool legato = hits == 1 && (e.flags & (step_slide | step_tie));
+            double each = double(e.length) / hits;
+            double ticks = each - std::min<double>(pattern.q(), each) * 0.1;
             if (legato) {
                 size_t next = n + 1;
                 while (next < events.size() && events[next].tick == at) ++next;
@@ -1201,6 +1245,18 @@ void EngineHost::tick() {
             if (from.midi != e.key || !midi_hold(t, e.key, samples, frame_now + block_at))
                 midi_note(t, e.key, velocity, frame_now + block_at, samples);
             if (legato) holding = {int16_t(played), int16_t(e.key), (e.flags & step_slide) != 0};
+            for (unsigned k = 1; k < hits; ++k) { // the ratchet's other hits, each on its frame (run_hits)
+                if (slot.hits_waiting == slot.hits.size()) break;
+                PendingHit hit;
+                hit.key = pad_note(e.key, std::clamp(e.pitch + e.hit_pitch(k), -48, 48));
+                hit.midi = int16_t(e.key);
+                hit.velocity = uint8_t(e.hit_velocity(velocity, k));
+                hit.accent = accent;
+                hit.samples = std::max<int32_t>(1, int32_t(std::lround(k * each * tick_length())));
+                hit.length = samples;
+                for (auto& h : slot.hits)
+                    if (h.key < 0) { h = hit; ++slot.hits_waiting; break; }
+            }
         }
         if (holding.key >= 0) slot.held = holding;
     }
@@ -1336,6 +1392,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 n = std::min<unsigned>(n, unsigned(std::ceil(until_tick / speed)));
             }
         }
+        // Ratchets' hits on their frames: the run ends where the next one is due.
+        n = std::min(n, next_hit());
+        block_at = done;
+        for (unsigned t = 0; t < track_count; ++t) run_hits(t, slots[t], n);
         // Note-offs and late arp notes first, track by track (they may send MIDI out), then the engines, each
         // track's apart: on the render workers too when there is enough to share (render_pool.h).
         for (auto& slot : slots) {

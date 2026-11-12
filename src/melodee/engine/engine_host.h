@@ -204,6 +204,9 @@ public:
 private:
     struct PendingOff { int32_t key = -1; int32_t samples = 0; }; // a pad's key, with an instrument's semitones over it
     struct PendingOn { int16_t key = -1, velocity = 0, from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
+    // A ratchet's hit still to come (roadmap P1): `samples` frames on it plays `key` (as the engine plays it; a kit
+    // pad's semitones over it) and `midi` out, for `length` frames.
+    struct PendingHit { int32_t key = -1; int16_t midi = -1; uint8_t velocity = 0; bool accent = false; int32_t samples = 0, length = 0; };
     struct Slot {
         EngineKind kind = EngineKind::None;
         ProphetEngine prophet;
@@ -239,6 +242,8 @@ private:
         bool knob_pad_fed = false;                         // and some sub-block of this block put something there
         Arp arp;
         PendingOn arp_late;
+        std::array<PendingHit, 32> hits {}; // ratchets' hits to come, each on its frame
+        unsigned hits_waiting = 0;
         int arp_played = -1, arp_from = -1; // the arp's last note and the held key it came from
         // Notes Seq Record just wrote ahead of the playhead (Rec Quantize), already heard live: skipped once.
         struct Skip { int32_t key = -1; uint8_t pattern = 0; uint32_t tick = 0, until = 0; };
@@ -247,6 +252,12 @@ private:
     void load_track(unsigned t, const Track& track); // a whole track's sound, kit, mix and effects
     void load_state(const Project& project, bool keep_loops = false); // all but the patterns (keep_loops: the same project at a new rate)
     void run_late(Slot& slot, unsigned frames);       // a swung arp note, when its time comes
+    // Ratchets: the hits due now (at block_at) play, the rest come `frames` nearer; the frames to the next one due
+    // (the render loop splits there, so each lands on its frame); and every one dropped (Stop, Play).
+    void run_hits(unsigned t, Slot& slot, unsigned frames);
+    unsigned next_hit() const;
+    void drop_hits();
+    void play_hit(unsigned t, Slot& slot, const PendingHit& hit, uint64_t at);
     void arp_note(Slot& slot, int key, int velocity, int from, int32_t length); // with its pad's pressure
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);

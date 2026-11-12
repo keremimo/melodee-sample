@@ -1441,6 +1441,21 @@ const Preview previews[] {
          roll_bass(shell, s, 30, 55);
          s.ui.roll_top = 63;
      }},
+    // Roadmap P1 (drums and sequencer): these rewrite the shell's patterns too.
+    {"rollratchet", [](Shell& shell, Snapshot& s) { // Roll's TRIG row (B2 again): the note in focus a ratchet of four, ramped down
+         roll_bass(shell, s, 24, 57);
+         auto& p = shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count];
+         for (auto& e : p.events) if (e.tick == 24 * sixteenth_ticks && e.key == 57) { e.ratchet = 4; e.ramp = -50; }
+         for (auto& e : p.events) if (e.tick == 34 * sixteenth_ticks) { e.ratchet = 3; e.ramp = 60; }
+         s.ui.trig_cards = true; s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"stepsratchet", [](Shell& shell, Snapshot& s) { // Steps' TRIG row on the kit, the hat's lane: step 5 a ratchet of three rising, Shift held
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         for (auto& e : shell.patterns().at[3][0].events) if (e.tick == 96 && e.key == sampler_first_note + 2) { e.ratchet = 3; e.ramp = 40; e.pitch_ramp = 5; }
+         for (auto& e : shell.patterns().at[3][0].events) if (e.tick == 144) { e.ratchet = 2; }
+         s.ui.trig_cards = true; s.ui.shift = true;
+     }},
 };
 
 void draw(juce::Graphics& g, const Snapshot& s) {

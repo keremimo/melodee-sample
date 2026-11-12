@@ -151,6 +151,16 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
     case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
     case Kind::StepChance: case Kind::EventChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::StepRatchet: case Kind::EventRatchet: // ratchets (roadmap P1)
+        c.label = "RATCHET"; c.value = b.value <= 1 ? juce::String("Off") : juce::String::fromUTF8("\xc3\x97") + juce::String(b.value);
+        break;
+    case Kind::StepRamp: case Kind::EventRamp: case Kind::StepPitchRamp: case Kind::EventPitchRamp: {
+        bool pitch = b.kind == Kind::StepPitchRamp || b.kind == Kind::EventPitchRamp;
+        c.label = pitch ? "PITCH RAMP" : "RAMP"; c.bipolar = true;
+        c.unit = pitch ? "st" : "%";
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        break;
+    }
     case Kind::ModSource: c.label = "SOURCE"; c.value = mod_source_name(ModSource(b.value)); break;
     case Kind::ModDest: {
         const char* name = mod_dest_label(engine_info(track.engine), ModDest(b.value));

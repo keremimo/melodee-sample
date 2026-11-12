@@ -178,6 +178,17 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                     if (pattern.events[n].pitch) { w.u32(n); w.u8(uint8_t(pattern.events[n].pitch)); }
                 w.end(at);
             }
+            uint32_t ratchets = 0;
+            for (const auto& e : pattern.events) ratchets += e.hits() > 1 || e.ramp || e.pitch_ramp;
+            if (ratchets) { // ratchets (roadmap P1), by their place in EVNT: hits, velocity ramp, pitch ramp
+                at = w.begin("RTCH");
+                w.u8(t); w.u8(p); w.u32(ratchets);
+                for (uint32_t n = 0; n < pattern.events.size(); ++n) {
+                    const auto& e = pattern.events[n];
+                    if (e.hits() > 1 || e.ramp || e.pitch_ramp) { w.u32(n); w.u8(e.hits()); w.u8(uint8_t(e.ramp)); w.u8(uint8_t(e.pitch_ramp)); }
+                }
+                w.end(at);
+            }
         }
     }
     at = w.begin("TIME"); // time signature, BPM per pattern
@@ -524,6 +535,21 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint32_t place = r.u32();
                 auto pitch = int8_t(uint8_t(r.u8()));
                 if (r.ok && place < pattern.events.size()) pattern.events[place].pitch = pitch;
+            }
+        } else if (name == "RTCH") { // ratchets (roadmap P1); without it every note plays once
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            uint32_t count = std::min<uint32_t>(r.u32(), max_pattern_events);
+            for (uint32_t k = 0; k < count && r.ok; ++k) {
+                uint32_t place = r.u32();
+                unsigned hits = r.u8();
+                auto ramp = int8_t(uint8_t(r.u8())), pitch_ramp = int8_t(uint8_t(r.u8()));
+                if (!r.ok || place >= pattern.events.size()) continue;
+                auto& e = pattern.events[place];
+                e.ratchet = uint8_t(std::clamp<unsigned>(hits, 1, max_ratchet));
+                e.ramp = int8_t(std::clamp<int>(ramp, -100, 100));
+                e.pitch_ramp = int8_t(std::clamp<int>(pitch_ramp, -max_pitch_ramp, max_pitch_ramp));
             }
         } else if (name == "MOTN" || name == "MOT2") {
             bool legacy = name == "MOTN";

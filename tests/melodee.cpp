@@ -7084,7 +7084,158 @@ void hits_on_time() {
     }
 }
 
+// Roadmap P1: what a pattern's notes play, beyond once on their tick. The note-on frames and velocities a track sends
+// out over MIDI while its pattern `p` plays for `blocks` blocks, at 120 BPM and 44.1 kHz.
+std::vector<MidiOutEvent> played_notes(const Pattern& p, unsigned blocks, EngineKind engine = EngineKind::Midi,
+                                       const std::function<void(EngineHost&, unsigned)>& each = {}) {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[0], engine, 0);
+    if (engine == EngineKind::Midi) { project->tracks[0].params[midi_track::Port] = midi_track::UsbC; project->tracks[0].params[midi_track::Channel] = 1; }
+    project->tempo = 1200;
+    bank->at[0][0] = p;
+    EngineHost host;
+    host.load(*project, *bank);
+    host.set_audio_format(44100, 384);
+    if (engine != EngineKind::Midi) host.send({Command::Type::MidiTrack, 0, 0, 1, 1}); // Pad MIDI Out: always
+    host.send({Command::Type::Play});
+    std::vector<int32_t> out(256);
+    std::vector<MidiOutEvent> notes;
+    for (unsigned b = 0; b < blocks; ++b) {
+        if (each) each(host, b);
+        host.render(out.data(), 128, 1);
+        MidiOutEvent e;
+        while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn) notes.push_back(e);
+    }
+    return notes;
+}
+
+void ratchets() {
+    const double tick = 44100 * 60.0 / 120 / 96; // 229.6875 frames
+    // The hits' velocities: the ramp ends the last at so much of the note's, the hits between evenly.
+    Event e;
+    e.velocity = 100; e.ratchet = 4; e.ramp = -50;
+    CHECK(e.hits() == 4 && e.hit_velocity(100, 0) == 100 && e.hit_velocity(100, 1) == 83 && e.hit_velocity(100, 3) == 50);
+    e.ramp = 100;
+    CHECK(e.hit_velocity(100, 3) == 127 && e.hit_velocity(40, 3) == 80); // up to twice, at most 127
+    e.pitch_ramp = 7;
+    CHECK(e.hit_pitch(0) == 0 && e.hit_pitch(1) == 2 && e.hit_pitch(3) == 7);
+    e.pitch_ramp = -5;
+    CHECK(e.hit_pitch(2) == -3);
+    e.ratchet = 0; CHECK(e.hits() == 1); e.ratchet = 40; CHECK(e.hits() == max_ratchet);
+
+    // A step rewritten (Steps' wheel) keeps each note's ratchet; a new note plays once.
+    Pattern p;
+    put(p, 2, 60, 100);
+    p.events[0].ratchet = 3; p.events[0].ramp = 20;
+    Step s = p.step(2);
+    CHECK(s.ratchet == 3 && s.ramp == 20);
+    s.notes[0].key = 62; s.notes[1] = {64, 90};
+    p.set_step(2, s);
+    CHECK(p.events.size() == 2 && p.events[0].key == 62 && p.events[0].ratchet == 3 && p.events[0].ramp == 20 && p.events[1].ratchet == 3);
+    put(p, 5, 60, 100);
+    CHECK(p.events.back().tick == 5 * sixteenth_ticks && p.events.back().ratchet == 1);
+
+    // Played: four hits over a sixteenth, a frame apart as six ticks are, ramped down to half; a note of one hit
+    // between; out over MIDI as heard.
+    {
+        Pattern q;
+        Event r;
+        r.tick = 0; r.length = sixteenth_ticks; r.key = 60; r.velocity = 100; r.ratchet = 4; r.ramp = -50;
+        q.add(r);
+        Event one;
+        one.tick = 2 * sixteenth_ticks; one.key = 62; one.velocity = 90;
+        q.add(one);
+        auto notes = played_notes(q, 100); // 12800 frames: past step 3 (11025)
+        CHECK(notes.size() == 5);
+        const int velocities[] {100, 83, 67, 50};
+        for (unsigned k = 0; k < 4; ++k) {
+            CHECK(notes[k].a == 60 && notes[k].b == velocities[k]);
+            CHECK(std::llabs(int64_t(notes[k].frame - notes[0].frame) - std::llround(k * 6 * tick)) <= 1); // on its frame, not a block start
+        }
+        CHECK(notes[4].a == 62 && notes[4].b == 90 && std::llabs(int64_t(notes[4].frame - notes[0].frame) - std::llround(48 * tick)) <= 1);
+    }
+    // Stopped in the middle: the hits still to come go with it.
+    {
+        Pattern q;
+        Event r;
+        r.length = 4 * sixteenth_ticks; r.key = 60; r.ratchet = 8; // a hit every 12 ticks (2756 frames)
+        q.add(r);
+        auto notes = played_notes(q, 60, EngineKind::Midi, [](EngineHost& host, unsigned b) { if (b == 30) host.send({Command::Type::Stop}); });
+        CHECK(notes.size() == 2); // 0 and 2756; 5512 comes after the stop at 3840
+    }
+    // A kit: the hits play on the sampler too (and go out on its MIDI channel).
+    {
+        Pattern q;
+        Event r;
+        r.key = uint8_t(sampler_first_note + 2); r.length = sixteenth_ticks; r.ratchet = 2; r.pitch_ramp = 12;
+        q.add(r);
+        auto notes = played_notes(q, 60, EngineKind::Sampler);
+        CHECK(notes.size() == 2 && notes[0].a == sampler_first_note + 2 && notes[1].a == sampler_first_note + 2);
+    }
+
+    // The file: ratchets in RTCH by their place in EVNT; a file without it plays every note once.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        auto& q = bank->at[2][5];
+        put(q, 0, 40, 100); put(q, 4, 42, 100); put(q, 8, 44, 100);
+        q.events[1].ratchet = 5; q.events[1].ramp = -30; q.events[1].pitch_ramp = -12;
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[2][5] == q);
+        const auto& b = back_bank->at[2][5].events;
+        CHECK(b[1].ratchet == 5 && b[1].ramp == -30 && b[1].pitch_ramp == -12 && b[0].ratchet == 1 && b[2].ratchet == 1);
+        std::string text(data.begin(), data.end());
+        auto at = text.find("RTCH");
+        CHECK(at != std::string::npos);
+        data[at] = 'X'; // an older build's view: a section it skips
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[2][5].events[1].ratchet == 1);
+    }
+
+    // The cards: the TRIG row of Steps (B1 again) and Roll (B2 again), K1 hits and K2 the ramp; Shift + K2 a kit
+    // pad's pitch ramp. Roll's Shift row is otherwise left alone.
+    {
+        auto project = std::make_unique<Project>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        load_sound(project->tracks[3], EngineKind::Sampler, 0);
+        UiState ui;
+        Pattern q;
+        put(q, 1, 60, 100);
+        q.events[0].ratchet = 3; q.events[0].ramp = -40;
+        ui.page = PageId::Steps; ui.step_cursor = 1;
+        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::StepLength); // the main row: its length
+        ui.trig_cards = true;
+        auto trig = page_bindings(*project, ui, q, false);
+        CHECK(trig[0].kind == Binding::Kind::StepRatchet && trig[0].value == 3 && trig[0].min == 1 && trig[0].max == 8);
+        CHECK(trig[1].kind == Binding::Kind::StepRamp && trig[1].value == -40);
+        CHECK(!shift_bindings(*project, ui, q)[1].bound()); // a synth has no pitch ramp
+        ui.page = PageId::Roll; ui.step_cursor = 1; ui.roll_key = 60;
+        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::EventRatchet);
+        ui.trig_cards = false;
+        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::EventLength && !shift_bindings(*project, ui, q)[0].bound());
+        ui.track = 3; ui.page = PageId::Steps; ui.trig_cards = true;
+        Pattern kit;
+        Event hit;
+        hit.tick = sixteenth_ticks; hit.key = uint8_t(sampler_first_note); hit.pitch_ramp = 5;
+        kit.add(hit);
+        project->tracks[3].last_pad = 0;
+        CHECK(page_bindings(*project, ui, kit, true)[1].kind == Binding::Kind::StepPitchRamp && page_bindings(*project, ui, kit, true)[1].value == 5);
+        // Steps on a kit: the cards are the last pad's note in the step, not the step's first.
+        Event other = hit;
+        other.key = uint8_t(sampler_first_note + 4); other.velocity = 30; other.pitch_ramp = 0;
+        Event first = hit;
+        first.key = uint8_t(sampler_first_note + 1); first.velocity = 50;
+        kit.add(other); kit.add(first);
+        project->tracks[3].last_pad = 4;
+        ui.page = PageId::Steps; ui.trig_cards = false;
+        CHECK(page_bindings(*project, ui, kit, false)[1].value == 30);
+    }
+}
+
 int main() {
+    ratchets();
     plugins();
     voice_taps();
     voice_heads();
