@@ -100,6 +100,11 @@ void Context::follow_to_column() {
     notice("Follow to " + std::to_string(count) + (count == 1 ? " track" : " tracks"));
 }
 
+unsigned Context::tempo_now() const {
+    if (!project.song.tempo.empty() && host.song_playing() && host.playing()) return host.tempo_now(); // the lane's, as it plays
+    return project.tempo_of(ui.lead_pattern);
+}
+
 // Roadmap P5: the song's tempo lane, from Song's Shift + K1 (the tempo at the cursor's bar; under 30 BPM none there)
 // and Shift + K2 (stepped to on its bar, or ramped to from the point before); one undo a turn, the song's.
 void Context::set_song_tempo(unsigned bar, int tenths) {

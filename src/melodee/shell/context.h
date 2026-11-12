@@ -274,7 +274,7 @@ public:
     void set_signature(unsigned index);                      // the project's; patterns of whole bars keep their bar count
     void set_seq_tempo(bool on);                             // Push on Tempo: BPM per pattern (SEQ) or global (GBL)
     void locate(int way);                                    // the wheel on Patterns: by a beat (Shift: by Q)
-    unsigned tempo_now() const { return project.tempo_of(ui.lead_pattern); }
+    unsigned tempo_now() const; // the project's (BPM per pattern: the lead's); roadmap P5: the song's lane where it plays
     // Plug-ins (shell/plugin_jobs.cpp, docs/MELODEE.md): the rack (set by the app); the picker opened for the selected
     // PLUGIN track's instrument or for a chain's slot; Push on a plug-in there; a card's value; the rack kept in step
     // with the project and the panel of the plug-in in view refreshed (often, from the shell's tick).

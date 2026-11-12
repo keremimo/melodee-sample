@@ -102,10 +102,11 @@ inline CaptureWindow capture_window(const CaptureRing& ring, const CaptureAsk& a
         w.start = start; w.length = ask.bars ? ask.bars * bar : end - start;
         return w;
     }
-    // Played stopped: from the phrase's first note (within the bars asked), at the tempo now.
+    // Played stopped: from the phrase's first note (within the bars asked back from where the last note ended, as
+    // the transport's bars count back from the bar after it), at the tempo now.
     double bar_ms = bar * ask.tick_ms;
-    uint32_t first = last.at, prev = last.at, reach = last.at + last.length;
-    double earliest = ask.bars ? double(ask.now) - ask.bars * bar_ms : -1e18;
+    uint32_t first = last.at, prev = last.at, reach = last.length ? last.at + last.length : ask.now;
+    double earliest = ask.bars ? double(reach) - ask.bars * bar_ms : -1e18;
     for (unsigned n = newest + 1; n < ring.count(); ++n) {
         const PlayedNote& p = ring.newest(n);
         if (!wanted(p)) continue;

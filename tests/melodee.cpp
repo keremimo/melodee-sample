@@ -10741,9 +10741,12 @@ void capture_p5() {
     CHECK(lay_capture(*loose, 4, sw, still, melody) && melody.events.size() == 3 && melody.events[0].tick == 0 &&
           melody.events[1].tick == ticks_per_quarter && melody.events[2].tick == bar + 9 * sixteenth_ticks); // 3100 ms in: 595 ticks, the nearest sixteenth
     CHECK(melody.events[0].length == 2 * sixteenth_ticks && melody.events[1].length == 2 * sixteenth_ticks);
-    still.bars = 1; // a bar back from now: the second bar's note alone, its own downbeat
+    still.bars = 1; // a bar back from where the last note ended: the second bar's note alone, its own downbeat
     sw = capture_window(*loose, still);
     CHECK(sw.start == 12100 && sw.length == bar && lay_capture(*loose, 4, sw, still, melody) && melody.events.size() == 1 && melody.events[0].tick == 0);
+    still.bars = 2; still.now = 30000; // asked long after: still the last two bars played, not two bars back from now
+    sw = capture_window(*loose, still);
+    CHECK(sw.start == 9000 && sw.length == 2 * bar && lay_capture(*loose, 4, sw, still, melody) && melody.events.size() == 3);
     // The ring goes round: minutes of notes, the oldest let go, nothing made as it plays.
     auto full = std::make_unique<CaptureRing>();
     for (unsigned n = 0; n < capture_size + 100; ++n) full->press(n % 3, 60, 100, n, 1, n * 24);
