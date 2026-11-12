@@ -6,6 +6,9 @@
 //   pattern (with every other track's playing alongside) is played from its
 //   start and rendered onto that pad, as Akai's editing_sequences page has
 //   it. Up to 60 s, the longest sample a pad loads. One undo.
+// - Resample on Song (roadmap P3): then a pad; the song from its first bar to
+//   its end (and its tails, as a mixdown has them) onto that pad, its first
+//   60 s when it is longer. One undo.
 // - Audio mixdown (Song, B1 Export, B2): the song from its first bar to its
 //   end, loop or not, and on until its tails fall silent, as
 //   Melodee/Mixdowns/<name>.wav on the card.
@@ -28,11 +31,39 @@ void Context::resample() {
     if (ui.rendering) { notice("Rendering already"); return; }
     if (ui.resample_pick) { ui.resample_pick = false; notice("Resample off"); return; }
     if (track().engine != EngineKind::Sampler) { notice("Resample: pick a kit track"); return; }
-    bool notes = false; // the patterns the tracks play: any notes to render?
+    const bool song = ui.page == PageId::Song && project.song.length(); // roadmap P3: on Song, the song
+    bool notes = song; // the patterns the tracks play: any notes to render?
     for (unsigned t = 0; t < track_count && !notes; ++t) notes = project.tracks[t].used() && !patterns.at[t][project.tracks[t].pattern % pattern_count].empty();
     if (!notes) { notice("Resample: no notes to play"); return; }
     ui.resample_pick = true;
-    notice("Resample: tap a pad");
+    ui.resample_song = song;
+    notice(song ? "Resample song: tap a pad" : "Resample: tap a pad");
+}
+
+// Roadmap P3: the song onto `kit`, as the mixdown plays it (from bar 1, once, loop or not, on through its tails), into
+// a slot instead of a file; past 60 s its first 60 s, the song then stopped.
+void Context::resample_song(unsigned kit) {
+    double tick_frames = 44100.0 * 60.0 / (tempo_now() / 10.0) / ticks_per_quarter;
+    double song_frames = double(project.song.length()) * project.bar_ticks() * tick_frames;
+    bool cut = song_frames > TakeRecorder::max_frames;
+    int slot = hold_file("RESAMPLE", ui.track, int(kit), 1);
+    if (slot < 0) { notice("Resample: samples full"); return; }
+    SampleLibrary::Render job;
+    job.slot = uint8_t(slot);
+    job.frames = uint32_t(std::min<double>(song_frames, TakeRecorder::max_frames)) + 1;
+    if (!library->render(job)) { drop_file(slot); notice("Resample: busy"); return; }
+    ui.render_resume = false;
+    if (ui.recording) set_recording(false);
+    ui.rec_armed = false;
+    send({Type::Stop});
+    send({Type::BounceArm, 0, 0, 0, 1});
+    send({Type::Play, 0, 0, 0, 1}); // the song from bar 1
+    played_song = true;
+    ui.rendering = 3; ui.render_pad = int16_t(kit); ui.render_slot = int16_t(slot); ui.render_track = ui.track;
+    // 60 s of 44.1 kHz frames, and a moment for the last of them to be drained
+    ui.render_stop_at = cut ? (now + uint32_t(uint64_t(TakeRecorder::max_frames) * 1000 / 44100) + 500) | 1 : 0;
+    render_started = false; render_since = now;
+    notice(pad_text(cut ? "Song 60 s to" : "Song to", kit));
 }
 
 void Context::resample_pad(unsigned kit) {
@@ -40,6 +71,7 @@ void Context::resample_pad(unsigned kit) {
     if (!library || track().engine != EngineKind::Sampler) return;
     if (host_recording()) { notice("Resample: a take runs"); return; }
     kit %= sampler_pads;
+    if (ui.resample_song) { ui.resample_song = false; resample_song(kit); return; }
     // The pattern's length, at most 60 s at the tempo in play.
     double tick_frames = 44100.0 * 60.0 / (tempo_now() / 10.0) / ticks_per_quarter;
     uint32_t ticks = std::max<uint32_t>(pattern().length, 1);
@@ -92,6 +124,8 @@ void Context::mixdown(const std::string& name) {
 // what was playing play on.
 void Context::render_tick(uint32_t at) {
     if (!ui.rendering) return;
+    // A song onto a pad past 60 s: its first 60 s are in; the rest is not wanted (roadmap P3).
+    if (ui.rendering == 3 && ui.render_stop_at && int32_t(at - ui.render_stop_at) >= 0) { ui.render_stop_at = 0; if (host.playing()) send({Type::Stop}); }
     auto state = host.bounce().state();
     if (state != Bounce::State::Idle) { render_started = true; render_since = at; }
     // A pattern render ends on its last frame; the transport is stopped then, not at the next pass.

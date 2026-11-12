@@ -915,7 +915,11 @@ the file holds, to the bit.
   One undo.
 - **Resample** (Shift + Pad 11, then a pad): the selected track's pattern
   with every track playing, rendered in real time onto that pad
-  (`Samples/Recorded/RESAMPLE n.wav`, up to 60 s). One undo.
+  (`Samples/Recorded/RESAMPLE n.wav`, up to 60 s). One undo. On **Song**
+  (roadmap P3) it is the song's: from bar 1 to its end, once, loop or not,
+  on through its tails as the mixdown plays it, onto the pad tapped (the
+  header says SONG: TAP A PAD); a song past 60 s gives its first 60 s and
+  stops there.
 
 ### Effects
 

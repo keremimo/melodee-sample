@@ -340,6 +340,7 @@ public:
     // Renders of the mix (parity phase 6, shell/render.cpp): Resample (Shift + Pad 11, then a pad) and the song's mixdown.
     void resample();                                      // Shift + Pad 11: wait for the pad (again: not)
     void resample_pad(unsigned kit);                      // the pad: the pattern rendered onto it
+    void resample_song(unsigned kit);                     // roadmap P3: Resample on Song, the song rendered onto the pad
     void mixdown(const std::string& name);                // Song's export, Audio mixdown, after the Name sheet
     void render_tick(uint32_t at);                        // a render ended: transport back as it was
     bool render_started = false;

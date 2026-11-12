@@ -82,8 +82,17 @@ void SampleLibrary::drain_render() {
     const uint32_t most = uint32_t(uint64_t(TakeRecorder::max_frames) * render_rate / uint32_t(dsp::model_rate));
     for (unsigned n; (n = bounce.pop(render_chunk.data(), 16384)) > 0;) {
         if (render_job.to_file) { if (!render_path.empty()) render_file.add(render_chunk.data(), n); }
-        else if (render_data && render_data->left.size() + n <= most)
-            for (unsigned f = 0; f < n; ++f) { render_data->left.push_back(render_chunk[2 * f]); render_data->right.push_back(render_chunk[2 * f + 1]); }
+        else if (render_data && render_data->left.size() < most)
+            for (unsigned f = 0; f < n && render_data->left.size() < most; ++f) {
+                render_data->left.push_back(render_chunk[2 * f]); render_data->right.push_back(render_chunk[2 * f + 1]);
+            }
+    }
+    // Into a slot and full (a song past 60 s, roadmap P3): it lands now; what still comes is dropped as it ends.
+    if (!render_job.to_file && render_data && render_data->left.size() >= most) {
+        rendering = false;
+        render_data->frames = uint32_t(render_data->left.size());
+        land(render_job.slot, std::move(render_data), render_rate, "Recorded", "RESAMPLE", "Resample");
+        return;
     }
     auto state = bounce.state();
     bool ended = state == Bounce::State::Done || state == Bounce::State::Cancelled || state == Bounce::State::Failed;

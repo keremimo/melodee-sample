@@ -44,9 +44,9 @@ ui::Header header_of(const Snapshot& s) {
     if (s.ui.rendering) {
         unsigned seconds = s.render_frames / 44100;
         char clock[32];
-        std::snprintf(clock, sizeof(clock), "%s %u:%02u", s.ui.rendering == 1 ? "RESAMPLE" : "MIXDOWN", seconds / 60, seconds % 60);
+        std::snprintf(clock, sizeof(clock), "%s %u:%02u", s.ui.rendering == 2 ? "MIXDOWN" : "RESAMPLE", seconds / 60, seconds % 60);
         h.left.push_back(ui::chip(clock, ui::colour::rec));
-    } else if (s.ui.resample_pick) h.left.push_back(ui::chip("RESAMPLE: TAP A PAD", ui::colour::rec));
+    } else if (s.ui.resample_pick) h.left.push_back(ui::chip(s.ui.resample_song ? "SONG: TAP A PAD" : "RESAMPLE: TAP A PAD", ui::colour::rec));
     return h;
 }
 

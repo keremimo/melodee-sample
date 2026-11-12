@@ -215,9 +215,11 @@ struct UiState {
     uint8_t rec_chops = 0;
     // Resample (Shift + Pad 11): waiting for the pad to render onto; then the render's pad (-1 none).
     bool resample_pick = false;
+    bool resample_song = false;          // roadmap P3: the pick is the song's (Resample on Song), not the pattern's
+    uint32_t render_stop_at = 0;         // a song past 60 s onto a pad: ms when its first 60 s are in and it stops (0 none)
     int16_t render_pad = -1, render_slot = -1;
     uint8_t render_track = 0;
-    uint8_t rendering = 0;               // 0 none, 1 Resample, 2 the song's mixdown
+    uint8_t rendering = 0;               // 0 none, 1 Resample, 2 the song's mixdown, 3 the song onto a pad (roadmap P3)
     bool render_resume = false;          // Resample stopped what was playing: Play it again afterwards
     bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
     bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
