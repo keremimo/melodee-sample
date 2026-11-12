@@ -451,12 +451,59 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     }
 }
 
+void midi_route(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h) {
+    using namespace ui;
+    const auto& t = s.track();
+    auto c = colour_of(s);
+    unsigned outputs = s.ui.midi_outputs, devices = (outputs >> 8) & 255;
+    Icon port = Icon::Din; // the MIDI Out jack; a computer over USB-C; every USB device
+    bool missing = false;
+    switch (midi_track::dest_of(t.params[midi_track::Port])) {
+    case MidiDest::UsbC: port = Icon::Laptop; missing = !(outputs & 2); break;
+    case MidiDest::AllUsb: port = Icon::Usb; missing = !devices && !(outputs & 2); break;
+    default: break;
+    }
+    constexpr float g = 24;
+    float cy = y + 30, x0 = x + 28, x1 = x + w / 2, x2 = x + w - 46;
+    float a0 = x0 + g / 2 + 8, a1 = x1 - g / 2 - 8, b0 = x1 + g / 2 + 8, b1 = x2 - g / 2 - 8;
+    bool sending = s.ui.track_out_at[s.ui.track] && s.now - s.ui.track_out_at[s.ui.track] < 150;
+    p.fill(a0, cy - 0.8f, a1 - a0, 1.6f, c.withAlpha(sending ? 1.0f : 0.45f), 0.8f);
+    p.fill(b0, cy - 0.8f, b1 - b0, 1.6f, c.withAlpha(sending ? 1.0f : 0.45f), 0.8f);
+    icon(p, Icon::Pads, x0 - g / 2, cy - g / 2, g, colour::sec, 1.4f);
+    icon(p, missing ? Icon::Warn : port, x1 - g / 2, cy - g / 2, g, missing ? colour::amber : c, 1.4f);
+    icon(p, Icon::Keyboard, x2 - g / 2, cy - g / 2, g, colour::text, 1.4f);
+    juce::String name = t.name[0] ? name_case(juce::String(t.name)) : juce::String("MIDI");
+    p.text(name, x2 - 60, cy + g / 2 + 6, 120, 16, p.fit(name, plain(colour::text, type::body, Weight::SemiBold), 112, type::floor),
+           juce::Justification::centred);
+    // Notes on their way out: a dot each, from the track to the instrument in 0.7 s, brighter for harder.
+    constexpr uint32_t travel = 700, shown = 4000;
+    float span = (a1 - a0) + (b1 - b0);
+    for (const auto& n : s.ui.sent_notes) {
+        if (n.track != s.ui.track || !n.at || s.now - n.at > travel) continue;
+        float d = span * float(s.now - n.at) / travel, dx = d < a1 - a0 ? a0 + d : b0 + (d - (a1 - a0));
+        p.circle(dx, cy, 2.6f, c.withAlpha(0.45f + 0.55f * n.velocity / 127.0f));
+    }
+    // The last notes sent: four seconds, newest on the right, each as long as it was held.
+    float ry = y + h - 60, rh = 58;
+    p.fill(x, ry, w, rh, colour::quiet, 4);
+    int lo = 127, hi = 0;
+    for (const auto& n : s.ui.sent_notes)
+        if (n.track == s.ui.track && n.at && s.now - n.at < shown) { lo = std::min<int>(lo, n.key); hi = std::max<int>(hi, n.key); }
+    if (hi < lo) return;
+    lo -= 2; hi += 2;
+    for (const auto& n : s.ui.sent_notes) {
+        if (n.track != s.ui.track || !n.at || s.now - n.at >= shown) continue;
+        float nx0 = x + w - w * float(s.now - n.at) / shown, nx1 = n.until ? x + w - w * float(s.now - std::min(n.until, s.now)) / shown : x + w;
+        float ny = ry + 4 + (rh - 12) * (1 - float(n.key - lo) / float(hi - lo));
+        p.fill(nx0, ny, std::max(2.0f, nx1 - nx0), 4, c.withAlpha(0.5f + 0.5f * n.velocity / 127.0f), 2);
+    }
+}
+
 FaderShown fader_shown(const Snapshot& s) {
     FaderShown out;
     auto job = fader_job(s.project, s.ui);
     const auto& t = s.track();
     if (job.source == FaderJob::Source::None) { out.what = "OFF"; out.off = true; return out; }
-    if (job.source == FaderJob::Source::Nudge) { out.what = "NUDGE"; return out; }
     char pad[4];
     pad_label(t.last_pad % sampler_pads, pad);
     bool kit_pad = job.source == FaderJob::Source::Target && job.pad; // the last pad's own value: its name carries the pad

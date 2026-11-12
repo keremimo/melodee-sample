@@ -243,37 +243,8 @@ void bars_picture(Paint& p, const Snapshot& s, const EditPage& page) {
 
 void mixer_picture(Paint& p, const Snapshot& s, const EditPage& page) { bars_picture(p, s, page); }
 
-// A MIDI track's DEVICE page (docs/MIDI_TRACKS.md): the track on the left, where its notes land on the right, the line
-// between lit in the track's colour as they leave. The knobs show the port and channel; this says what they mean.
-void route_picture(Paint& p, const Snapshot& s) {
-    const auto& t = s.track();
-    auto c = colour_of(s);
-    bool sending = s.ui.track_out_at[s.ui.track] && s.now - s.ui.track_out_at[s.ui.track] < 150;
-    float cy = py + 26, left = px + 6, right = px + pw - 6; // the block centred in what the title leaves
-    p.fill(left + 10, cy - 1, right - left - 20, 2, sending ? c : colour::line, 1);
-    p.circle(left, cy, 6, c);
-    p.circle(right, cy, 6, sending ? c : colour::mid);
-
-    p.text("TRACK " + juce::String(s.ui.track + 1), px, cy + 14, 140, 14, caps_text(c));
-    juce::String name = t.name[0] ? juce::String(t.name) : juce::String("MIDI");
-    p.text(name, px, cy + 30, 140, 18, p.fit(name, plain(colour::text, type::body, Weight::Medium), 140, type::floor));
-
-    unsigned outputs = s.ui.midi_outputs, devices = (outputs >> 8) & 255;
-    juce::String where, how;
-    switch (midi_track::dest_of(t.params[midi_track::Port])) {
-    case MidiDest::UsbC: where = "Computer"; how = (outputs & 2) ? "over USB-C" : "USB-C not set up"; break;
-    case MidiDest::AllUsb:
-        where = "Every USB device";
-        how = devices ? "USB-C + " + juce::String(devices) + (devices == 1 ? " device" : " devices") : "USB-C, no device plugged in";
-        break;
-    default: where = "MIDI Out jack"; how = "1/8\" jacks"; break;
-    }
-    float rw = 168, rx = px + pw - rw;
-    p.text(where, rx, cy + 12, rw, 26, p.fit(where, plain(colour::text, type::title, Weight::SemiBold), rw, type::list),
-           juce::Justification::centredRight);
-    p.text(how, rx, cy + 40, rw, 18, p.fit(how, plain(colour::sec, type::body, Weight::Medium), rw, type::floor),
-           juce::Justification::centredRight);
-}
+// A MIDI track's DEVICE page (docs/MIDI_TRACKS.md; round 2, midi-track A): the route as Stage draws it (common.cpp).
+void route_picture(Paint& p, const Snapshot& s) { midi_route(p, s, px, py, pw, ph); }
 
 // MOD MATRIX: eight routes, all on one screen; the wheel picks the route.
 void mod_picture(Paint& p, const Snapshot& s) {

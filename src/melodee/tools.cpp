@@ -416,6 +416,20 @@ void kick_bar(Snapshot& s, float at, float depth) {
     s.comp_bar_at = int(at * comp_bar_columns);
 }
 
+// midi-track A: what a MIDI track sent over the last four seconds, a bass line and a chord, two notes on their way now.
+void sent_notes(Snapshot& s, unsigned track) {
+    const struct { int ago, held; uint8_t key, velocity; } line[] {
+        {3900, 300, 40, 100}, {3450, 250, 43, 80}, {3000, 600, 45, 110}, {2300, 250, 40, 90}, {1900, 700, 52, 70}, {1900, 700, 55, 70},
+        {1900, 700, 59, 70}, {1050, 300, 47, 104}, {600, 260, 45, 96}, {260, 0, 40, 120}, {90, 0, 52, 84},
+    };
+    unsigned n = 0;
+    for (const auto& l : line) {
+        uint32_t at = s.now - uint32_t(l.ago);
+        s.ui.sent_notes[n++] = {uint8_t(track), l.key, l.velocity, at, l.held ? at + uint32_t(l.held) : 0};
+    }
+    s.ui.sent_next = uint8_t(n);
+}
+
 void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
     s.ui.page = PageId::Stage; s.ui.track = uint8_t(track);
     s.ui.stage_group[track] = uint8_t(group); s.ui.stage_sub[track] = uint8_t(sub);
@@ -606,7 +620,7 @@ const Preview previews[] {
     {"stage909levels", [](Shell&, Snapshot& s) { stage_909(s, 0, 2); }},
     {"stage909mix", [](Shell&, Snapshot& s) { stage_909(s, 1, 0); }},
     {"stage909fx", [](Shell&, Snapshot& s) { stage_909(s, 2, 0); }},
-    {"stagemidi", [](Shell&, Snapshot& s) { stage_midi(s, 0, 0); s.ui.track_out_at[11] = s.now; }},
+    {"stagemidi", [](Shell&, Snapshot& s) { stage_midi(s, 0, 0); s.ui.track_out_at[11] = s.now; sent_notes(s, 11); }},
     {"stagemidiprogram", [](Shell&, Snapshot& s) { stage_midi(s, 0, 1); s.ui.turning = 2; s.ui.turned_at = s.now; }},
     {"stagemidicc", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); }},
     {"stagemidiccshift", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); s.ui.shift = true; }},
@@ -1356,6 +1370,7 @@ const Preview previews[] {
          load_sound(t, EngineKind::Midi, 0);
          t.params[midi_track::Port] = midi_track::AllUsb; t.params[midi_track::Channel] = 2;
          s.ui.midi_outputs = 1 | 2 | 1 << 8; s.ui.track_out_at[4] = s.now;
+         sent_notes(s, 4);
      }},
     {"midipanic", [](Shell&, Snapshot& s) { // MIDI Config's MIDI Panic under the cursor
          s.ui.page = PageId::MidiConfig; s.ui.midi_cursor = PanicRow; s.ui.midi_out_at = s.now;

@@ -350,10 +350,21 @@ void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
     using K = MidiOutEvent::Kind;
     switch (e.kind) {
     case K::NoteOn:
-        if (send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest) && e.track < track_count)
+        if (send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest) && e.track < track_count) {
             c.ui.track_out_at[e.track] = c.now;
+            auto& sent = c.ui.sent_notes[c.ui.sent_next++ % c.ui.sent_notes.size()]; // midi-track A: kept for the picture
+            sent = {e.track, e.a, e.b, c.now ? c.now : 1, 0};
+            c.ui.sent_next %= uint8_t(c.ui.sent_notes.size());
+        }
         break;
-    case K::NoteOff: send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest); break;
+    case K::NoteOff:
+        send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest);
+        if (e.track < track_count) // the newest of its notes still held lets go
+            for (unsigned n = 1; n <= c.ui.sent_notes.size(); ++n) {
+                auto& sent = c.ui.sent_notes[(c.ui.sent_next + c.ui.sent_notes.size() - n) % c.ui.sent_notes.size()];
+                if (sent.track == e.track && sent.key == e.a && !sent.until) { sent.until = c.now ? c.now : 1; break; }
+            }
+        break;
     case K::Control: // a MIDI track's CC or bank select (Stage)
         if (send_all(c, out, packet_of(juce::MidiMessage::controllerEvent(e.channel, e.a, e.b)), e.dest) && e.track < track_count)
             c.ui.track_out_at[e.track] = c.now;

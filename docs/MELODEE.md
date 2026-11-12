@@ -284,7 +284,13 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     the drum the last pad played (Snare, Clap and Rim share a page) and the
     B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the
     toms, hats and cymbals on Shift.
-  - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 **ARP → CHORD**. PROGRAM:
+  - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 **ARP → CHORD**. DEVICE
+    (and Edit's DEVICE alike): the route, alive. The track, its port (the
+    MIDI Out jack, a computer over USB-C, every USB device; amber when
+    nothing is there) and the instrument as glyphs on one line, notes
+    travelling along it as they go out, the instrument's name (the track's)
+    under it, and the last four seconds of notes sent as a roll underneath;
+    K1 port and K2 channel on the cards. PROGRAM:
     bank MSB, bank LSB and program (each Off until set), sent on a change
     and when the track loads. CC: three controllers on K1–K3 with their
     General MIDI names (74 Brightness, 71 Resonance, 1 Mod wheel at first),

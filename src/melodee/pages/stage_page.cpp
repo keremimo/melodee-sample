@@ -694,45 +694,8 @@ void levels_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     }
 }
 
-// DEVICE (MIDI): the track, its port, its channel, the line lit as notes leave.
-void route_picture(Paint& p, const Snapshot& s) {
-    const auto& t = s.track();
-    auto c = colour_of(s);
-    bool sending = s.ui.track_out_at[s.ui.track] && s.now - s.ui.track_out_at[s.ui.track] < 150;
-    static const char* ports[] {"External", "USB-C", "All USB"};
-    struct Box { juce::String cap, text; bool lit; };
-    Box boxes[] {{"TRACK", juce::String(s.ui.track + 1), true},
-                 {"PORT", ports[unsigned(t.params[midi_track::Port]) % 3], false},
-                 {"CHANNEL", juce::String(t.params[midi_track::Channel]), false}};
-    float arrow = 22, bw = (pw - 2 * arrow) / 3, y = top + 30, h = 50;
-    for (unsigned n = 0; n < 3; ++n) {
-        float x = px + n * (bw + arrow);
-        p.fill(x, y, bw, h, colour::surf, 4);
-        if (sending && n) p.ring(x, y, bw, h, c, 4);
-        p.text(boxes[n].cap, x + 8, y + 6, bw - 16, 14, caps_text(colour::mid));
-        p.text(boxes[n].text, x + 8, y + 22, bw - 16, 22, p.fit(boxes[n].text, plain(n == 0 ? c : colour::text, type::list, Weight::SemiBold), bw - 16, type::floor));
-        if (n == 2) break;
-        float ax = x + bw + 4, ay = y + h / 2;
-        juce::Path a;
-        a.startNewSubPath(ax, ay); a.lineTo(ax + arrow - 8, ay);
-        a.startNewSubPath(ax + arrow - 12, ay - 4); a.lineTo(ax + arrow - 8, ay); a.lineTo(ax + arrow - 12, ay + 4);
-        p.g.setColour(sending ? c : colour::mid);
-        p.g.strokePath(a, juce::PathStrokeType(1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    // Where it lands, under the port: the computer, devices on USB (counted), or the jack; amber when nothing is there.
-    unsigned outputs = s.ui.midi_outputs, devices = (outputs >> 8) & 255;
-    Icon where = Icon::Jack;
-    juce::String count;
-    bool missing = false;
-    switch (midi_track::dest_of(t.params[midi_track::Port])) {
-    case MidiDest::UsbC: where = Icon::Laptop; missing = !(outputs & 2); break;
-    case MidiDest::AllUsb: where = Icon::Usb; count = juce::String(devices + ((outputs & 2) ? 1 : 0)); missing = !devices && !(outputs & 2); break;
-    default: break;
-    }
-    float wx = px + bw + arrow + bw / 2, wy = y + h + 14;
-    icon(p, missing ? Icon::Warn : where, wx - 11 - (count.isNotEmpty() ? 10 : 0), wy, 22, missing ? colour::amber : colour::sec, 1.5f);
-    if (count.isNotEmpty() && !missing) p.text(count, wx + 4, wy + 3, 30, 16, plain(colour::sec, type::body, Weight::SemiBold));
-}
+// DEVICE (MIDI; round 2, midi-track A): the route, alive (common.cpp's midi_route(), Edit's DEVICE alike).
+void route_picture(Paint& p, const Snapshot& s) { midi_route(p, s, px, top + 4, pw, bottom - top - 8); }
 
 // PROGRAM (MIDI): the program sent, big, and its bank.
 void program_picture(Paint& p, const Snapshot& s) {

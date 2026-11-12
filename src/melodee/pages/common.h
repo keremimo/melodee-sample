@@ -28,6 +28,10 @@ struct FaderShown {
     bool waiting = false; // takeover: the fader has not met the value yet
 };
 FaderShown fader_shown(const Snapshot& s);
+// midi-track A (round 2): a MIDI track's route as Stage and Edit draw it in x, y, w, h: the track, its port and the
+// instrument as glyphs on one line, notes travelling along it as they go out, the instrument's name, and the last
+// notes sent as a roll underneath (four seconds, newest on the right). Port and channel are the cards'.
+void midi_route(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
 ui::SoftKeys play_keys(const Snapshot& s, int active); // STAGE TRACKS KEYS (PADS on a kit)
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),

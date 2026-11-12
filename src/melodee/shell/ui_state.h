@@ -113,6 +113,11 @@ struct UiState {
     bool midi_editing = false;                // and its value open (the wheel changes it)
     uint32_t midi_in_at = 0, midi_out_at = 0; // ms: MIDI last came in, went out (the page's lights)
     std::array<uint32_t, track_count> track_out_at {}; // ms: a MIDI track last sent on its own port (Edit's DEVICE picture)
+    // midi-track A (round 2): the last notes MIDI tracks sent, for their DEVICE picture: the track, key and velocity,
+    // when it went out and when it was let go (0: still held), ms. A ring, newest at sent_next - 1.
+    struct SentNote { uint8_t track = 255, key = 0, velocity = 0; uint32_t at = 0, until = 0; };
+    std::array<SentNote, 32> sent_notes {};
+    uint8_t sent_next = 0;
     // The MIDI outputs open now, for the DEVICE picture: bit 0 the jacks, bit 1 USB-C's gadget, bits 8-15 USB host devices.
     uint32_t midi_outputs = 0;
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
