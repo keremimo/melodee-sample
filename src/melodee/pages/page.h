@@ -34,7 +34,7 @@ void draw_exit_sheet(ui::Paint& p, const Snapshot& s);
 void draw_loading_sheet(ui::Paint& p, const Snapshot& s); // a project loading: built, then its samples coming in
 void draw_ask_sheet(ui::Paint& p, const Snapshot& s);  // a question before an erase (shell/ask.cpp)
 void draw_notice(ui::Paint& p, const Snapshot& s);     // copying a pad, or what an undo did
-void draw_fader_card(ui::Paint& p, const Snapshot& s); // for a moment after the fader moves: what it drives here
+void draw_fader_header(ui::Paint& p, const Snapshot& s); // for a moment after the fader moves: what it drives, when no K card shows it
 void draw_name_sheet(ui::Paint& p, const Snapshot& s); // while ui.name is open
 void draw_sampler_map(ui::Paint& p, const Snapshot& s); // the sampler pages' map (Push), parity phase 10
 void draw_place_bar(ui::Paint& p, const Snapshot& s);   // where the music is, last of all (shell/place_bar.h)

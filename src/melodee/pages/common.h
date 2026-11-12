@@ -28,6 +28,10 @@ struct FaderShown {
     bool waiting = false; // takeover: the fader has not met the value yet
 };
 FaderShown fader_shown(const Snapshot& s);
+// Round 3 (fader readout B): the fader moved in the last 1.5 s (not on the Fader page, which says it on the page),
+// and the K card it moved (shell/fader_job.h fader_twin), or -1: none shows the value, or Shift is held.
+bool fader_moved(const Snapshot& s);
+int fader_card(const Snapshot& s);
 // midi-track A (round 2): a MIDI track's route as Stage and Edit draw it in x, y, w, h: the track, its port and the
 // instrument as glyphs on one line, notes travelling along it as they go out, the instrument's name, and the last
 // notes sent as a roll underneath (four seconds, newest on the right). Port and channel are the cards'.

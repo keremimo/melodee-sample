@@ -40,5 +40,8 @@ bool fader_learned_pad(const FaderLearned& learned); // a kit pad's own value (i
 // How bright the fader light is for the job, 0..1: the value's place, or its
 // nearness to the middle for pan and tune; 0 with no job.
 float fader_light_level(const FaderJob& job);
+// Round 3 (fader readout B): which of the page's K1-K3 shows the value the fader drives, 0-2, or -1 where none
+// does. That card says the fader moved; with none the header does (pages/overlays.cpp).
+int fader_twin(const FaderJob& job, const std::array<Binding, 3>& cards);
 
 } // namespace melodee

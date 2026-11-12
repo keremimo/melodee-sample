@@ -1226,8 +1226,9 @@ and a synth the mod wheel. Pages with an obvious job keep it: Tracks the track's
 send, Knob FX from A to B, Compressor its amount,
 Flex Beat its mix. The fader takes a value over by Fader takeover (Pickup
 by default); Seq Record writes the lane of what it moves; Erase + fader
-asks to erase that lane. A card at the picture's bottom right says what it
-drives for a moment after it moves.
+asks to erase that lane. For a moment after it moves, the K card showing
+what it drives lights as if turned, with the fader's glyph; where no card
+shows it, the header says what and how much.
 
 ### MIDI and sync
 

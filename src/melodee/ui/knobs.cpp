@@ -36,7 +36,7 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
             if (c.focus && c.state == State::Rest) p.ring(x + 0.5f, top + 0.5f, w - 1, h - 1, c.shade.withAlpha(0.6f), 3); // the wheel's card
         }
         float inner = x + 6, iw = w - 12;
-        float lw = iw - (c.shift ? 9 : 0) - (c.knob_fx ? 12 : 0);
+        float lw = iw - (c.shift ? 9 : 0) - (c.knob_fx ? 12 : 0) - (c.fader ? 12 : 0);
         // A plug-in's own name: capitals where they fit, else mixed case (narrower, as on Stage), else mixed case over
         // two lines with the value a size smaller beneath, so no name is cut.
         auto mixed = plain(c.shade, type::small, Weight::SemiBold);
@@ -55,6 +55,9 @@ void knob_strip(Paint& p, const std::array<KnobCard, 3>& cards) {
         }
         if (c.shift) shift_mark(p, x + w - 12, top + 5.5f, c.shift == 2 ? c.shade : colour::mid, c.shift == 2);
         if (c.knob_fx) icon(p, Icon::Knob, x + w - (c.shift ? 24 : 15), top + 4, 10, colour::text, 1.4f);
+        if (c.fader) // left of the Shift icon and the knob glyph; mid until the fader reaches the value (takeover)
+            icon(p, Icon::Fader, x + w - 15 - (c.shift ? 9 : 0) - (c.knob_fx ? 12 : 0), top + 4, 10,
+                 c.state == State::Pickup ? colour::mid : c.shade, 1.4f);
         bool low = two.size() == 2; // under a two-line name the value sits lower and a size smaller
         auto value = plain(c.state == State::Pickup ? colour::dim : colour::text, low ? type::list : type::value, Weight::Medium);
         auto unit = plain(colour::mid, type::body);

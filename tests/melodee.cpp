@@ -3226,6 +3226,20 @@ void fader_and_takeover() {
     kit.last_pad = 8;
     kit.fader_target = uint8_t(FaderTarget::KitVolume);
     CHECK(fader_job(*project, ui).binding.kind == Kind::Param && fader_job(*project, ui).binding.id == sampler::Level);
+    { // Round 3 (fader readout B): the K card showing the fader's value says it moved; with none the header does.
+        Pattern pattern;
+        UiState at; at.track = 3; at.page = PageId::Tracks;
+        CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == 1); // LEVEL, K2
+        at.page = PageId::Pads; // the last pad's PITCH, VOLUME, PAN
+        CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == -1); // Kit Volume: no card
+        kit.fader_target = uint8_t(FaderTarget::PadVolume);
+        CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == 1);
+        kit.fader_target = uint8_t(FaderTarget::PadPan);
+        CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == 2);
+        kit.fader_on = false;
+        CHECK(fader_twin(fader_job(*project, at), page_bindings(*project, at, pattern)) == -1);
+        kit.fader_on = true; kit.fader_target = uint8_t(FaderTarget::KitVolume);
+    }
     // The light: the value's place; pan and tune brightest at the middle.
     kit.fader_target = uint8_t(FaderTarget::PadPan);
     CHECK(std::fabs(fader_light_level(fader_job(*project, ui)) - 1) < 0.02f);

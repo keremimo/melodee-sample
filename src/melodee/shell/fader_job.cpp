@@ -118,4 +118,11 @@ float fader_light_level(const FaderJob& job) {
     return 0.06f + 0.94f * f; // never quite dark while the fader has a job
 }
 
+int fader_twin(const FaderJob& job, const std::array<Binding, 3>& cards) {
+    if (job.source == FaderJob::Source::None || !job.binding.bound()) return -1;
+    for (unsigned n = 0; n < cards.size(); ++n)
+        if (cards[n].bound() && cards[n].kind == job.binding.kind && cards[n].id == job.binding.id) return int(n);
+    return -1;
+}
+
 } // namespace melodee

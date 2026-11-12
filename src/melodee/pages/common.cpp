@@ -78,6 +78,7 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
     Binding followed; // the Fader page (fader C): the card the fader follows, ringed
     if (s.ui.page == PageId::FaderPage)
         if (auto job = fader_job(s.project, s.ui); job.source == FaderJob::Source::Target) followed = job.binding;
+    int moved = fader_card(s); // the fader just moved this card's value: it says so, not a card of the fader's own
     for (unsigned n = 0; n < 3; ++n) {
         const auto& b = bindings[n];
         auto& c = cards[n];
@@ -102,9 +103,24 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
         } else {
             c.state = ui::KnobCard::State::Rest;
         }
+        if (int(n) == moved) { // as a pot turning, or hollow with the fader's place until it reaches the value
+            const auto& f = s.ui.fader;
+            c.fader = true;
+            c.state = f.position >= 0 && !f.engaged ? ui::KnobCard::State::Pickup : ui::KnobCard::State::Turning;
+            c.pot = c.state == ui::KnobCard::State::Pickup ? f.position / 127.0f : -1;
+        }
         describe_card(s, b, c);
     }
     return cards;
+}
+
+bool fader_moved(const Snapshot& s) {
+    return s.ui.fader_moved_at && s.now - s.ui.fader_moved_at <= 1500 && s.ui.page != PageId::FaderPage;
+}
+
+int fader_card(const Snapshot& s) {
+    if (!fader_moved(s) || s.ui.shift) return -1; // Shift shows the cards' second jobs: the header says it
+    return fader_twin(fader_job(s.project, s.ui), page_bindings(s.project, s.ui, s.pattern));
 }
 
 // A card's label, value and unit for a Binding (the knob strip, the fader's card).

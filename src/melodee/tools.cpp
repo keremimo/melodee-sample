@@ -1541,17 +1541,27 @@ const Preview previews[] {
          auto& t = s.project.tracks[2];
          t.fader_on = false; t.wheel = 70;
      }},
-    {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Tracks: the selected track's level
+    {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Tracks: the selected track's level, on K2's card
          s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
          s.ui.fader = {90, true, 1}; s.ui.fader_moved_at = s.now;
          s.project.tracks[2].mix.level = 90;
          const float meters[] {0.5f, 0.42f, 0.2f, 0, 0.6f, 0.25f, 0.3f, 0.05f, 0.18f, 0.08f};
          for (unsigned t = 0; t < 10; ++t) s.meters[t] = meters[t];
      }},
-    {"faderpickup", [](Shell&, Snapshot& s) { // the fader moved on the kit's Pads page: A09's volume, not reached yet
+    {"faderpickup", [](Shell&, Snapshot& s) { // the fader moved on the kit's Pads page: A09's volume on K2, not reached yet
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          s.project.tracks[3].pads[8].level = 100;
          s.ui.fader = {40, false, 1}; s.ui.fader_moved_at = s.now;
+     }},
+    {"faderheader", [](Shell&, Snapshot& s) { // the fader on Kit Volume, which no card on Pads shows: the header says it
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         s.project.tracks[3].fader_target = uint8_t(FaderTarget::KitVolume);
+         s.ui.fader = {100, true, 1}; s.ui.fader_moved_at = s.now;
+     }},
+    {"faderheaderwait", [](Shell&, Snapshot& s) { // a synth's mod wheel on its Keys page, the fader not there yet
+         s.ui.page = PageId::Keys; s.ui.track = 2; s.playing = true;
+         s.project.tracks[2].wheel = 70;
+         s.ui.fader = {20, false, 1}; s.ui.fader_moved_at = s.now;
      }},
     {"fadersettings", [](Shell&, Snapshot& s) { // Settings: the three takeover rows, the fader's open
          s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 1; s.ui.settings_cursor = Settings::FaderTakeover; s.ui.settings_editing = true;
