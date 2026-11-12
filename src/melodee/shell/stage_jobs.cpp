@@ -51,9 +51,7 @@ void Context::stage_new() {
         stage_go(ui, 0, 0); // TRIM
         switch (ui.new_source % new_sources) {
         case 0: open(PageId::Samples); if (library) library->rescan(); break; // Sample Select
-        case 1: open(PageId::Record); break;                                  // Sample Record
-        case 2: audio_recall(); break;                                        // the input's last 25 s onto pad A01
-        default: resample(); break;                                           // Resample: then a pad
+        default: open(PageId::Record); break;                                 // Sample Record
         }
         break;
     case StageKind::NewMidi:
