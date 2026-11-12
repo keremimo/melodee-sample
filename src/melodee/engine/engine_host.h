@@ -496,6 +496,7 @@ private:
     MidiQueue<512, ArpWritten> arp_written;     // its notes for Seq Record
     bool click = false;
     float click_level = 0.4f, click_env = 0, click_phase = 0, click_step = 0;
+    float click_fall = 0.9985f; // the blip's fall a frame: 0.9985 a 44.1 kHz frame, the same time at any rate
     float record_l[block] {}, record_r[block] {};
     float tap_l[block] {}, tap_r[block] {}; // the Track source this block
     // Punch: one on the master or a track, one on a single sampler pad. A

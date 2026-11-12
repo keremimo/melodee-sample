@@ -72,9 +72,11 @@ public:
         float peak_l = 0, peak_r = 0;
         for (unsigned f = 0; f < n; ++f) { peak_l = std::max(peak_l, std::fabs(l[f])); peak_r = std::max(peak_r, std::fabs(r[f])); }
         float peak = std::max(peak_l, peak_r);
-        level_.store(std::max(peak, level_.load(std::memory_order_relaxed) * 0.95f), std::memory_order_relaxed);
-        level_l_.store(std::max(peak_l, level_l_.load(std::memory_order_relaxed) * 0.95f), std::memory_order_relaxed);
-        level_r_.store(std::max(peak_r, level_r_.load(std::memory_order_relaxed) * 0.95f), std::memory_order_relaxed);
+        // The meter falls 0.95 a 128-frame block at 44.1 kHz: the same time at any rate and block.
+        const float fall = n == 128 && rate == unsigned(dsp::model_rate) ? 0.95f : std::pow(0.95f, float(n) * dsp::model_rate / (128.0f * float(rate)));
+        level_.store(std::max(peak, level_.load(std::memory_order_relaxed) * fall), std::memory_order_relaxed);
+        level_l_.store(std::max(peak_l, level_l_.load(std::memory_order_relaxed) * fall), std::memory_order_relaxed);
+        level_r_.store(std::max(peak_r, level_r_.load(std::memory_order_relaxed) * fall), std::memory_order_relaxed);
         auto s = state_.load();
         if (s == State::Armed && peak >= threshold) s = State::Recording, state_.store(s);
         if (s != State::Recording) return;

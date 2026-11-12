@@ -2062,6 +2062,23 @@ void timing() {
         render(*host, 3 * 22050 / 128); // past the bar
         CHECK(host->count_in() == 0 && host->position_of(0) >= 0);
     }
+    // The metronome's blip lasts as long at 96 kHz as at 44.1 kHz (it fell a fixed step a frame).
+    {
+        double lasted[2] {};
+        for (unsigned k = 0; k < 2; ++k) {
+            const float rate = k ? 96000.0f : 44100.0f;
+            dsp::device_rate.store(rate);
+            auto host = host_with(Pattern {});
+            host->send({Command::Type::Play, 1}); // the count-in's first click, nothing else playing
+            auto left = render(*host, unsigned(0.4f * rate) / 128);
+            size_t last = 0;
+            for (size_t n = 0; n < left.size(); ++n) if (std::fabs(left[n]) > 0.002f) last = n;
+            lasted[k] = double(last) / rate;
+        }
+        dsp::device_rate.store(44100.0f);
+        if (!(lasted[0] > 0.03 && std::fabs(lasted[0] - lasted[1]) < 0.002)) std::fprintf(stderr, "click %g s / %g s\n", lasted[0], lasted[1]);
+        CHECK(lasted[0] > 0.03 && std::fabs(lasted[0] - lasted[1]) < 0.002);
+    }
     // Time signature 3/4: a queued pattern starts after three beats, not four.
     {
         auto host = host_with(Pattern {});
@@ -4174,6 +4191,15 @@ void device_rates() {
             if (!(std::fabs(float(all.size()) - rate) < 600 && std::fabs(hz - 441) < 5)) std::fprintf(stderr, "%g: %zu frames %f Hz\n", double(rate), all.size(), double(hz));
             CHECK(std::fabs(float(all.size()) - rate) < 600 && std::fabs(hz - 441) < 5);
         }
+    }
+    // The Record meter falls in the same time at any rate: 0.95 a 128-frame block at 44.1 kHz.
+    {
+        dsp::device_rate.store(96000.0f);
+        auto take = std::make_unique<TakeRecorder>();
+        std::vector<float> loud(128, 1.0f), quiet(128, 0.0f);
+        take->process(loud.data(), loud.data(), 128);
+        for (unsigned b = 0; b < 75; ++b) take->process(quiet.data(), quiet.data(), 128); // 0.1 s
+        CHECK(std::fabs(take->level() - std::pow(0.95f, 75 * 128 / (96000.0f / 44100.0f) / 128)) < 1e-3f);
     }
     // A take at 96 kHz is kept as it came, never converted on its way in: a second is 96000 frames of its own, 44100
     // as the project counts them. As a sample its 44.1 kHz frames are converted once, band-limited: 1 kHz stays

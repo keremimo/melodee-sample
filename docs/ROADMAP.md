@@ -242,7 +242,11 @@ behaviour changed.
   20 MB, render ring 8 MB: 40 MB more than before) rather than remade on
   the audio thread at a rate change; a take or render running when the
   rate changes ends there. Plug-ins (reloaded at the new rate) and Monitor
-  (the source straight into the mix) already ran at the device's rate.
+  (the source straight into the mix) already ran at the device's rate; the
+  metronome's blip and the Record meter fell a fixed step a frame or a
+  block (twice as fast at 96 kHz) and now take the same time at any rate,
+  unchanged at 44.1 kHz. Effects with such steps (Knob FX Vinyl and Tape,
+  Pad FX Vinyl) are proposed as a session of their own.
   Loops are not part of this: the Looper keeps 44.1 kHz (its memory,
   180 MB, would grow to 393 MB at 96 kHz); Kerem to choose.
 

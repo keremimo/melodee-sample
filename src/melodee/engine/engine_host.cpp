@@ -1492,6 +1492,7 @@ void EngineHost::tick() {
         if (done % beat == 0) {
             click_env = 1; click_phase = 0;
             click_step = (done == 0 ? 1568.0f : 1046.0f) / dsp::sample_rate();
+            click_fall = std::pow(0.9985f, dsp::model_rate / dsp::sample_rate());
             count_beat.store(done / beat + 1, std::memory_order_relaxed);
         }
         --count_left;
@@ -1516,6 +1517,7 @@ void EngineHost::tick() {
     if (click && tick_now % beat == 0) {
         click_env = 1; click_phase = 0;
         click_step = (tick_now % bar == 0 ? 1568.0f : 1046.0f) / dsp::sample_rate();
+        click_fall = std::pow(0.9985f, dsp::model_rate / dsp::sample_rate());
     }
     // A pattern render ends after its ticks, on the frame.
     if (!bounce_song && render_out.running() && tick_now >= bounce_ticks) render_out.finish(block_at);
@@ -1993,7 +1995,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         if (click_env > 0.0005f) { // a short blip on top of the mix
             float blip = std::sin(2 * dsp::pi * click_phase) * click_env * click_level * 0.5f;
             click_phase += click_step; click_phase -= std::floor(click_phase);
-            click_env *= 0.9985f;
+            click_env *= click_fall;
             master_l[f] += blip; master_r[f] += blip;
         }
         out_l = std::max(out_l, std::fabs(master_l[f])); out_r = std::max(out_r, std::fabs(master_r[f])); // the mix, for the meters
