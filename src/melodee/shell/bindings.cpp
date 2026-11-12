@@ -693,8 +693,9 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::StepChance, 0, 0, 100, step.chance}};
     }
     case PageId::Stage: return stage_bindings(project, ui, false);
-    // System pages: their rows take the wheel; no pots, so no cards (never the synth's favourites there).
-    case PageId::SettingsPage: case PageId::About: case PageId::MidiConfig: case PageId::FaderPage: return {};
+    // System pages: their rows take the wheel; no pots, so no cards (never the synth's favourites there). The Fader
+    // page keeps the favourites (fader C): a pot turned there is what the fader learns.
+    case PageId::SettingsPage: case PageId::About: case PageId::MidiConfig: return {};
     case PageId::Tracks: // the strip in hand: K1 the track, K2 its level, K3 its pan
         return {Binding {Kind::TrackPick, 0, 0, int(track_count) - 1, ui.track % int(track_count)},
                 Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan}};

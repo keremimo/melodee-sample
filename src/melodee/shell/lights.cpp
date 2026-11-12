@@ -221,7 +221,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             unsigned light = unsigned(fader_light_level(job) * 100 + 0.5f);
             fader_bits.store(uint32_t(fader_target(t)) | uint32_t(t.fader_on) << 4 | uint32_t(job.source) << 5 | uint32_t(ui_.fader.engaged) << 7
                              | uint32_t(ui_.settings.knob_takeover) << 8 | uint32_t(ui_.settings.knob_fx_takeover) << 10
-                             | uint32_t(ui_.settings.fader_takeover) << 12 | uint32_t(light & 0x7f) << 16 | uint32_t(t.wheel & 0x7f) << 24,
+                             | uint32_t(ui_.settings.fader_takeover) << 12 | uint32_t(job.learned) << 14 | uint32_t(t.fader_pin) << 15 // fader C
+                             | uint32_t(light & 0x7f) << 16 | uint32_t(t.wheel & 0x7f) << 24,
                              std::memory_order_relaxed);
             fader_value.store(uint32_t(uint16_t(int16_t(job.binding.value))) | uint32_t(job.binding.kind) << 16, std::memory_order_relaxed);
             fader_at.store(ui_.fader.position, std::memory_order_relaxed);

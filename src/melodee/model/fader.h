@@ -9,7 +9,10 @@
 // Volume and Mod Wheel is the last pad hit's own value. Plain data: the
 // track keeps the choice (Track::fader_target), the shell turns it into a
 // card (shell/fader_job.h). New targets go at the end: the file keeps them
-// by this number (FADR).
+// by this number (FADR). Round 2 (fader C): the fader also learns the pot
+// turned last on its track (Track::fader_learned), which goes over the
+// target until the wheel on the Fader page picks one of these again; PIN
+// keeps what it has.
 namespace melodee {
 
 enum class FaderTarget : uint8_t { PadVolume, PadPan, PadTune, PadAttack, PadDecay, PadCutoff, KitVolume, ModWheel, Count };

@@ -77,12 +77,16 @@ std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
     auto bindings = page_bindings(s.project, s.ui, s.pattern);
     auto second = shift_bindings(s.project, s.ui, s.pattern);
     std::array<ui::KnobCard, 3> cards;
+    Binding followed; // the Fader page (fader C): the card the fader follows, ringed
+    if (s.ui.page == PageId::FaderPage)
+        if (auto job = fader_job(s.project, s.ui); job.source == FaderJob::Source::Target) followed = job.binding;
     for (unsigned n = 0; n < 3; ++n) {
         const auto& b = bindings[n];
         auto& c = cards[n];
         if (!b.bound()) continue;
         if (second[n].bound()) c.shift = s.ui.shift ? 2 : 1;
         if (s.ui.page == PageId::Stage) c.focus = int(n) == stage_focus(s.ui, s.track()); // the wheel's card
+        if (s.ui.page == PageId::FaderPage) c.focus = followed.bound() && followed.kind == b.kind && followed.id == b.id;
         // A bus or the master belongs to no track: its cards are neutral.
         bool neutral = s.ui.page == PageId::Bus || s.ui.page == PageId::Master;
         bool loop = s.ui.page == PageId::Looper || (s.ui.page == PageId::Rack && s.ui.fx_loop >= 0); // L1-L4: their own colours
@@ -434,7 +438,7 @@ FaderShown fader_shown(const Snapshot& s) {
     if (job.source == FaderJob::Source::Nudge) { out.what = "NUDGE"; return out; }
     char pad[4];
     pad_label(t.last_pad % sampler_pads, pad);
-    bool kit_pad = job.source == FaderJob::Source::Target && fader_target(t) != FaderTarget::KitVolume && fader_target(t) != FaderTarget::ModWheel;
+    bool kit_pad = job.source == FaderJob::Source::Target && job.pad; // the last pad's own value: its name carries the pad
     if (!job.binding.bound()) { out.what = kit_pad ? juce::String(pad) + " EMPTY" : juce::String("NOTHING"); return out; }
     out.value = true;
     out.card.fill = job.binding.fraction();
@@ -442,6 +446,10 @@ FaderShown fader_shown(const Snapshot& s) {
     describe_card(s, job.binding, out.card);
     if (job.binding.kind == Binding::Kind::Param && job.binding.id == sampler::Level && t.engine == EngineKind::Sampler) out.card.label = "KIT VOLUME";
     out.what = kit_pad ? juce::String(pad) + " " + out.card.label : out.card.label;
+    if (job.learned && job.binding.kind == Binding::Kind::FxParam) { // an effect's value (fader C): which effect
+        const auto& slot = t.fx.slots[size_t(unsigned(job.binding.id) % 64 / 8 % track_slots)];
+        out.what = juce::String(effect_info(EffectKind(slot.kind)).name).toUpperCase() + " " + out.card.label;
+    }
     const auto& f = s.ui.fader;
     out.waiting = f.position >= 0 && !f.engaged;
     if (out.waiting) { out.card.state = ui::KnobCard::State::Pickup; out.card.pot = f.position / 127.0f; }

@@ -4,6 +4,7 @@
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/sampler.h"
+#include "melodee/model/pad_params.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -48,6 +49,51 @@ Binding fader_target_binding(const Track& track, FaderTarget target) {
     }
 }
 
+bool fader_learned_pad(const FaderLearned& learned) {
+    return learned.what == FaderLearn::Lane && pad_param_of(lane_param(learned.lane)) >= 0;
+}
+
+FaderLearned fader_learnable(const Track& track, unsigned t, const Binding& b) {
+    FaderLearned l;
+    l.engine = uint8_t(track.engine);
+    switch (b.kind) {
+    case Kind::Level: l.what = FaderLearn::Level; return l;
+    case Kind::Pan: l.what = FaderLearn::Pan; return l;
+    case Kind::Send: l.what = FaderLearn::Send; l.lane = uint16_t(unsigned(b.id) % bus_count); return l;
+    case Kind::FxParam: { // an effect on the track's own chain (its bus's, the master's or a pad's are not the track's)
+        unsigned chain = unsigned(b.id) / 64, slot = unsigned(b.id) % 64 / 8, q = unsigned(b.id) % 8;
+        if (chain != t || slot >= track_slots || q >= effect_params) return {};
+        l.what = FaderLearn::Lane; l.lane = uint16_t(motion_fx_param(slot, q));
+        return l;
+    }
+    default: break;
+    }
+    int lane = binding_lane(track, b); // an engine parameter, a kit pad's own value on the last pad, the mod wheel
+    if (lane < 0) return {};
+    l.what = FaderLearn::Lane;
+    l.lane = uint16_t(pad_param_of(lane_param(lane)) >= 0 ? lane_param(lane) : unsigned(lane)); // a pad's: whichever is hit last
+    return l;
+}
+
+Binding fader_learned_binding(const Track& track, unsigned t) {
+    const auto& l = track.fader_learned;
+    switch (l.what) {
+    case FaderLearn::Level: return {Kind::Level, 0, 0, 127, track.mix.level};
+    case FaderLearn::Pan: return {Kind::Pan, 0, -50, 50, track.mix.pan};
+    case FaderLearn::Send: { unsigned bus = l.lane % bus_count; return {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]}; }
+    case FaderLearn::Lane: {
+        unsigned param = lane_param(l.lane);
+        if (param < motion_fx_base && l.engine != uint8_t(track.engine)) return {}; // another engine's parameter
+        if (pad_param_of(param) < 0) return lane_binding(track, t, int(l.lane));
+        unsigned pad = track.last_pad % sampler_pads;
+        if (track.engine != EngineKind::Sampler || !track.pads[pad].used()) return {};
+        return lane_binding(track, t, motion_lane(param, pad));
+    }
+    case FaderLearn::None: break;
+    }
+    return {};
+}
+
 FaderJob fader_job(const Project& project, const UiState& ui) {
     const auto& track = project.tracks[ui.track % track_count];
     FaderJob job;
@@ -65,8 +111,17 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
     }
     if (!track.used() || !track.fader_on) return job;
     job.source = FaderJob::Source::Target;
-    job.binding = fader_target_binding(track, fader_target(track));
-    job.centred = job.binding.kind == Kind::PadPan || job.binding.kind == Kind::PadPitch;
+    if (track.fader_learned.learned()) { // fader C: the pot it learned, while that is still one of the track's values
+        auto learned = fader_learned_binding(track, ui.track % track_count);
+        bool pad = fader_learned_pad(track.fader_learned) && track.engine == EngineKind::Sampler; // an empty last pad: nothing to drive
+        if (learned.bound() || pad) { job.binding = learned; job.learned = true; job.pad = pad; }
+    }
+    if (!job.learned) {
+        auto target = fader_target(track);
+        job.binding = fader_target_binding(track, target);
+        job.pad = target != FaderTarget::KitVolume && target != FaderTarget::ModWheel;
+    }
+    job.centred = job.binding.bound() && job.binding.min < 0 && job.binding.max > 0; // pan, tune: either side of a middle
     return job;
 }
 

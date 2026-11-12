@@ -84,8 +84,36 @@ void set_fader_target(Context& c, unsigned target) {
         return;
     }
     t.fader_target = uint8_t(target);
+    t.fader_learned = {}; // the pot it followed gives way
     t.fader_on = true;
     c.notice("Fader: " + std::string(fader_target_name(FaderTarget(target))));
+}
+
+void learn_fader(Context& c, const Binding& b, unsigned pot) {
+    auto& t = c.track();
+    if (!t.used() || t.fader_pin) return;
+    auto learned = fader_learnable(t, c.ui.track, b);
+    if (!learned.learned()) return; // not one of the track's values (a tempo, a pattern's length, a bus's effect): it keeps what it has
+    learned.pot = uint8_t(pot % 3);
+    t.fader_learned = learned;
+}
+
+void step_fader_target(Context& c, int delta) { // over the targets the track can take, from the one it has
+    auto& t = c.track();
+    if (!t.used() || delta == 0) return;
+    bool kit = t.engine == EngineKind::Sampler;
+    int at = int(fader_target(t)), step = delta > 0 ? 1 : -1;
+    for (int left = std::abs(delta); left > 0; --left)
+        for (int n = at + step; n >= 0 && n < int(fader_targets); n += step)
+            if (kit || !fader_needs_kit(FaderTarget(n))) { at = n; break; }
+    set_fader_target(c, unsigned(at));
+}
+
+void toggle_fader_pin(Context& c) {
+    auto& t = c.track();
+    if (!t.used()) return;
+    t.fader_pin = !t.fader_pin;
+    c.notice(t.fader_pin ? "Fader pinned" : "Fader follows the pots");
 }
 
 void toggle_fader(Context& c) {

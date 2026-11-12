@@ -352,9 +352,11 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     }
     for (unsigned t = 0; t < track_count; ++t) { // the fader's target where one is picked, or it is off (parity phase 8)
         const auto& tr = project.tracks[t];
-        if (tr.fader_target == fader_by_engine && tr.fader_on) continue;
+        if (tr.fader_target == fader_by_engine && tr.fader_on && !tr.fader_learned.learned() && !tr.fader_pin) continue;
         at = w.begin("FADR");
         w.u8(t); w.u8(tr.fader_target); w.u8(tr.fader_on);
+        const auto& l = tr.fader_learned; // fader C, after what older builds read: the pot it learned, and PIN
+        w.u8(uint8_t(l.what)); w.u16(l.lane); w.u8(l.engine); w.u8(l.pot); w.u8(tr.fader_pin);
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // a MIDI track (docs/MIDI_TRACKS.md): its port and channel are in TRAK's params
@@ -570,6 +572,12 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             if (!r.ok || t >= track_count) continue;
             project->tracks[t].fader_target = uint8_t(target < fader_targets ? target : fader_by_engine);
             project->tracks[t].fader_on = on != 0;
+            if (r.done()) continue; // older files end here: nothing learned
+            unsigned what = r.u8(), lane = r.u16(), engine = r.u8(), pot = r.u8(), pin = r.u8(); // fader C
+            if (r.ok && what <= unsigned(FaderLearn::Send)) {
+                project->tracks[t].fader_learned = {FaderLearn(what), uint16_t(lane), uint8_t(engine), uint8_t(pot % 3)};
+                project->tracks[t].fader_pin = pin != 0;
+            }
         } else if (name == "MIDT") { // a MIDI track; TRAK, before it, said None
             unsigned t = r.u8(), version = r.u8();
             if (r.ok && t < track_count && version >= 1) {

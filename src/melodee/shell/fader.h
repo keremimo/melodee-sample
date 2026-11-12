@@ -14,6 +14,7 @@
 namespace melodee {
 
 class Context;
+struct Binding;
 
 void fader_move(Context& c, int value, bool syncing);
 // Whether the fader still has to take over the value it drives now (a page
@@ -22,5 +23,12 @@ void fader_check(Context& c);
 // The Fader page: pick the selected track's target (pad targets on kit tracks only), B3 on / off.
 void set_fader_target(Context& c, unsigned target);
 void toggle_fader(Context& c);
+// Fader C (round 2): a pot turned on the selected track (`pot` 0..2) with
+// card `b`: unless PIN holds what it has, the fader follows it where it is
+// one of the track's values. The wheel on the Fader page walks the eight
+// targets the track can take instead (the learned pot gives way); B2 PIN.
+void learn_fader(Context& c, const Binding& b, unsigned pot);
+void step_fader_target(Context& c, int delta);
+void toggle_fader_pin(Context& c);
 
 } // namespace melodee

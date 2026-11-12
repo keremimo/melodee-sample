@@ -1210,18 +1210,28 @@ const Preview previews[] {
          s.flex_playing = 2; s.ui.flex_chosen = 2; s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
     // Parity phase 8: the fader.
-    {"fader", [](Shell&, Snapshot& s) { // Shift + Pad 9 on the kit: Pad Pan on A09, the fader still to reach it (Pickup)
+    {"fader", [](Shell&, Snapshot& s) { // Shift + Pad 9 on the kit (fader C): it follows K2's Filter, still to reach it (Pickup)
          s.ui.page = PageId::FaderPage; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3];
-         t.fader_target = uint8_t(FaderTarget::PadPan); t.pads[8].pan = -18;
-         s.ui.fader_cursor = uint8_t(FaderTarget::PadPan);
+         t.params[sampler::Filter] = 62;
+         t.fader_learned = {FaderLearn::Lane, uint16_t(sampler::Filter), uint8_t(t.engine), 1};
          s.ui.fader = {100, false, 1};
      }},
-    {"fadersynth", [](Shell&, Snapshot& s) { // a synth track with its fader off: the pad targets are for kits
+    {"faderstock", [](Shell&, Snapshot& s) { // the wheel walked the kit's eight to Pad Pan on A09
+         s.ui.page = PageId::FaderPage; s.ui.track = 3; s.sample = break_sample();
+         auto& t = s.project.tracks[3];
+         t.fader_target = uint8_t(FaderTarget::PadPan); t.pads[8].pan = -18;
+     }},
+    {"faderpin", [](Shell&, Snapshot& s) { // a synth's fader pinned to the chorus's mix, learned from Rack's K3
+         s.ui.page = PageId::FaderPage; s.ui.track = 2;
+         auto& t = s.project.tracks[2];
+         t.fader_learned = {FaderLearn::Lane, uint16_t(motion_fx_param(0, 2)), uint8_t(t.engine), 2};
+         t.fader_pin = true;
+     }},
+    {"fadersynth", [](Shell&, Snapshot& s) { // a synth track with its fader off
          s.ui.page = PageId::FaderPage; s.ui.track = 2;
          auto& t = s.project.tracks[2];
          t.fader_on = false; t.wheel = 70;
-         s.ui.fader_cursor = 2;
      }},
     {"fadercard", [](Shell&, Snapshot& s) { // the fader moved on Tracks: the selected track's level
          s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;

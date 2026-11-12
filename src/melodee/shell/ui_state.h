@@ -106,7 +106,6 @@ struct UiState {
     // and whether it has met the value it drives (takeover), when it last moved (its card shows a moment).
     Pot fader;
     uint32_t fader_moved_at = 0;
-    uint8_t fader_cursor = 0;                 // the Fader page: the target under the cursor
     uint8_t midi_cursor = 0;                  // MIDI Config: the row under the cursor (shell/midi_config_rows.h)
     bool midi_editing = false;                // and its value open (the wheel changes it)
     uint32_t midi_in_at = 0, midi_out_at = 0; // ms: MIDI last came in, went out (the page's lights)

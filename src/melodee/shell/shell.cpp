@@ -375,6 +375,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         pot.engaged = false; pot.bound = 0;
         return;
     }
+    learn_fader(context_, b, n); // fader C: the fader follows the pot turned last, unless PIN holds it
     int value = 0;
     if (takeover_move(pot_takeover(b), pot, before, position, b, value)) context_.apply(b, value);
 }
@@ -685,6 +686,7 @@ std::string Shell::fx_summary() const {
 std::string Shell::fader_summary() const {
     uint32_t f = fader_bits.load(std::memory_order_relaxed), v = fader_value.load(std::memory_order_relaxed);
     return " melodee_fader_target=" + std::to_string(f & 0xf) + " melodee_fader_on=" + std::to_string((f >> 4) & 1)
+         + " melodee_fader_learned=" + std::to_string((f >> 14) & 1) + " melodee_fader_pin=" + std::to_string((f >> 15) & 1) // fader C
          + " melodee_fader_job=" + std::to_string((f >> 5) & 3) + " melodee_fader_engaged=" + std::to_string((f >> 7) & 1)
          + " melodee_fader_kind=" + std::to_string(v >> 16) + " melodee_fader_value=" + std::to_string(int(int16_t(v & 0xffff)))
          + " melodee_fader_light=" + std::to_string((f >> 16) & 0x7f) + " melodee_wheel=" + std::to_string((f >> 24) & 0x7f)

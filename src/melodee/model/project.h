@@ -234,6 +234,19 @@ struct Song {
 
 enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Count };
 
+// Fader C (round 2): what the fader learned from the pot turned last on its
+// track (model/fader.h). Kept in the file (FADR) by these numbers: a Motion
+// lane (an engine parameter, an effect's on the track's chain, a kit pad's
+// own value, the mod wheel: shell/bindings.h) or a value of the track's mix.
+enum class FaderLearn : uint8_t { None, Lane, Level, Pan, Send };
+struct FaderLearned {
+    FaderLearn what = FaderLearn::None;
+    uint16_t lane = 0;  // Lane: the Motion lane, a kit pad's value on pad 0 (it follows the last pad hit); Send: the bus
+    uint8_t engine = 0; // the track's EngineKind as it learned: an engine parameter means nothing to another engine
+    uint8_t pot = 0;    // the pot it came from, K1-K3 as 0..2 (the Fader page draws it in that pot's shade)
+    bool learned() const { return what != FaderLearn::None; }
+};
+
 struct Track {
     EngineKind engine = EngineKind::None;
     uint16_t preset = 0;
@@ -279,6 +292,8 @@ struct Track {
     // until one is picked: the engine's default) and whether it has one at all.
     uint8_t fader_target = 255;
     bool fader_on = true;
+    FaderLearned fader_learned; // fader C: the pot it follows, over the target above while there is one
+    bool fader_pin = false;     // PIN: what it has stays, whatever pot turns next
     uint8_t wheel = 0;    // the mod wheel as the fader left it, 0..127 (played, not saved)
     uint8_t midi_channel = 0; // MIDI Config: 0 none, 1..16 notes on it play this track; its notes go out on it (parity phase 9)
     uint8_t plugin = no_plugin; // a PLUGIN track: the entry of Project::plugins it plays

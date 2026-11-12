@@ -3110,6 +3110,56 @@ void fader_and_takeover() {
     CHECK(binding_lane(kit, Binding {Kind::Level, 0, 0, 127, 0}) < 0);
     CHECK(lane_name(synth, motion_lane(motion_wheel)) == "MOD WHEEL" && lane_binding(synth, 2, motion_lane(motion_wheel)).kind == Kind::ModWheel);
 
+    // Fader C (round 2): it learns a pot turned on its track, any of the track's values (PIN and the wheel are the shell's).
+    {
+        using L = FaderLearn;
+        // What it can learn: an engine parameter, a pad's own value (whichever pad is hit last), the mix, the track's own effects.
+        CHECK(fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0}).what == L::Lane
+              && fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0}).lane == prophet::Cutoff);
+        CHECK(fader_learnable(synth, 2, Binding {Kind::Tempo, 0, 300, 3000, 1200}).what == L::None);       // not the track's
+        CHECK(fader_learnable(synth, 2, Binding {Kind::FxParam, 16 * 64 + 2, 0, 100, 0}).what == L::None); // its bus's effect
+        CHECK(fader_learnable(synth, 2, Binding {Kind::FxParam, 3 * 64 + 2, 0, 100, 0}).what == L::None);  // another track's
+        CHECK(fader_learnable(synth, 2, Binding {Kind::Send, 2, 0, 100, 0}).what == L::Send && fader_learnable(synth, 2, Binding {Kind::Send, 2, 0, 100, 0}).lane == 2);
+        CHECK(fader_learnable(kit, 3, Binding {Kind::PadCutoff, 0, 0, 100, 0}).lane == motion_pad_param(PadParam::FilterCutoff));
+        // The job: the learned card goes over the target, live.
+        UiState at; at.page = PageId::Stage; at.track = 2;
+        synth.params[prophet::Cutoff] = 70;
+        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0});
+        auto learned = fader_job(*project, at);
+        CHECK(learned.source == FaderJob::Source::Target && learned.learned && !learned.pad && learned.binding.kind == Kind::Param
+              && learned.binding.id == prophet::Cutoff && learned.binding.value == 70);
+        at.page = PageId::Tracks; CHECK(fader_job(*project, at).source == FaderJob::Source::Page); // a page's own job still wins
+        at.page = PageId::Stage;
+        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Pan, 0, -50, 50, 0});
+        CHECK(fader_job(*project, at).binding.kind == Kind::Pan && fader_job(*project, at).centred);
+        // One of the track's effects: until the effect goes, then the target again.
+        synth.fx.slots[0] = {uint8_t(EffectKind::Chorus), false, {30, 50, 40, 0, 0, 0}};
+        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::FxParam, 2 * 64 + 0 * 8 + 2, 0, 100, 40});
+        CHECK(synth.fader_learned.lane == motion_fx_param(0, 2));
+        learned = fader_job(*project, at);
+        CHECK(learned.learned && learned.binding.kind == Kind::FxParam && learned.binding.id == 2 * 64 + 2 && learned.binding.value == 40);
+        synth.fx.slots[0] = {};
+        learned = fader_job(*project, at);
+        CHECK(!learned.learned && learned.binding.kind == Kind::ModWheel);
+        // Another engine: its parameter means nothing there, so the target again.
+        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0});
+        load_sound(synth, EngineKind::Fm6, 0);
+        CHECK(!fader_job(*project, at).learned && fader_job(*project, at).binding.kind == Kind::ModWheel);
+        load_sound(synth, EngineKind::Prophet, 0);
+        CHECK(fader_job(*project, at).learned);
+        synth.fader_learned = {};
+        // A pad's own value follows the last pad hit; an empty one has nothing to drive, but stays learned.
+        at.track = 3; kit.last_pad = 8; kit.pads[8].cutoff = 33;
+        kit.fader_learned = fader_learnable(kit, 3, Binding {Kind::PadCutoff, 0, 0, 100, 0});
+        learned = fader_job(*project, at);
+        CHECK(learned.learned && learned.pad && learned.binding.kind == Kind::PadCutoff && learned.binding.value == 33);
+        CHECK(binding_lane(kit, learned.binding) == motion_lane(motion_pad_param(PadParam::FilterCutoff), 8)); // Seq Record: pad 9's lane
+        kit.last_pad = 9;
+        learned = fader_job(*project, at);
+        CHECK(learned.learned && learned.pad && !learned.binding.bound());
+        kit.last_pad = 8; kit.fader_learned = {};
+    }
+
     // Takeover: Pickup waits until the control reaches the value, Instant jumps, Scaled moves along and meets it.
     Binding b {Kind::Level, 0, 0, 127, 100};
     Pot pot; int out = -1;
@@ -3153,6 +3203,9 @@ void fader_and_takeover() {
     {
         auto patterns = std::make_unique<PatternBank>();
         kit.fader_target = uint8_t(FaderTarget::PadCutoff); kit.fader_on = false;
+        kit.fader_learned = {FaderLearn::Lane, uint16_t(motion_pad_param(PadParam::FilterCutoff)), uint8_t(EngineKind::Sampler), 2};
+        kit.fader_pin = true;
+        synth.fader_learned = {FaderLearn::Send, 3, uint8_t(EngineKind::Prophet), 0}; // learned, on its default target: FADR all the same
         MotionEvent wheel; wheel.track = 2; wheel.pattern = 0; wheel.step = 4; wheel.param = uint8_t(motion_wheel); wheel.value = 90;
         MotionEvent cutoff; cutoff.track = 2; cutoff.pattern = 0; cutoff.step = 2; cutoff.param = 3; cutoff.value = 40;
         project->motion.write(wheel); project->motion.write(cutoff);
@@ -3161,12 +3214,32 @@ void fader_and_takeover() {
         CHECK(load_project(bytes, *loaded, *patterns).empty());
         CHECK(loaded->tracks[3].fader_target == uint8_t(FaderTarget::PadCutoff) && !loaded->tracks[3].fader_on);
         CHECK(loaded->tracks[2].fader_target == fader_by_engine && loaded->tracks[2].fader_on);
+        const auto& kl = loaded->tracks[3].fader_learned;
+        CHECK(kl.what == FaderLearn::Lane && kl.lane == motion_pad_param(PadParam::FilterCutoff) && kl.pot == 2 && loaded->tracks[3].fader_pin);
+        CHECK(loaded->tracks[2].fader_learned.what == FaderLearn::Send && loaded->tracks[2].fader_learned.lane == 3 && !loaded->tracks[2].fader_pin);
+        CHECK(!loaded->tracks[0].fader_learned.learned() && !loaded->tracks[0].fader_pin);
         CHECK(loaded->motion.count == 2 && loaded->motion.has(2, 0, uint8_t(motion_wheel), 0) && loaded->motion.has(2, 0, 3, 0));
         for (size_t n = 0; n + 4 <= bytes.size(); ++n)
             if (std::memcmp(&bytes[n], "FADR", 4) == 0 || std::memcmp(&bytes[n], "MOTW", 4) == 0) std::memcpy(&bytes[n], "XXXX", 4);
         auto older = std::make_unique<Project>();
         CHECK(load_project(bytes, *older, *patterns).empty());
         CHECK(older->tracks[3].fader_target == fader_by_engine && older->tracks[3].fader_on && fader_target(older->tracks[3]) == FaderTarget::PadVolume);
+        CHECK(!older->tracks[3].fader_learned.learned() && !older->tracks[3].fader_pin);
+        // A FADR from before fader C, its three bytes alone: the target and on / off, nothing learned.
+        auto three = save_project(*project, *patterns);
+        for (size_t n = 0; n + 8 <= three.size(); ++n) {
+            if (std::memcmp(&three[n], "FADR", 4) != 0) continue;
+            uint32_t length = 0;
+            std::memcpy(&length, &three[n + 4], 4);
+            if (length <= 3) continue;
+            three.erase(three.begin() + long(n + 8 + 3), three.begin() + long(n + 8 + length));
+            length = 3;
+            std::memcpy(&three[n + 4], &length, 4);
+        }
+        auto before_c = std::make_unique<Project>();
+        CHECK(load_project(three, *before_c, *patterns).empty());
+        CHECK(before_c->tracks[3].fader_target == uint8_t(FaderTarget::PadCutoff) && !before_c->tracks[3].fader_on);
+        CHECK(!before_c->tracks[3].fader_learned.learned() && !before_c->tracks[3].fader_pin && !before_c->tracks[2].fader_learned.learned());
         CHECK(older->motion.count == 1 && older->motion.has(2, 0, 3, 0)); // MOT2 never held the wheel
     }
 }

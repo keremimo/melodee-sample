@@ -101,7 +101,7 @@ cards.
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
-| Fader | The track's target (Fader page), or the page's own job (Fader below); its light follows the value | |
+| Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns with Seq held, tracks with Pad Bank held |
 | Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B3). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
@@ -789,14 +789,20 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
 
 ### Fader
 
-Each track has a target, picked on the **Fader page** (Shift + Pad 9; wheel
-or −/+ move, Push picks, B3 off / on with its LED, B1 back; a synth lists
-the mod wheel alone, the one it can take; the fader is drawn with its value,
-and while it waits to pick a value up, where the hand has it and the way to
-move): Pad Volume, Pad Pan, Pad
-Tune, Pad Attack, Pad Decay / Release, Pad Cutoff (the last pad's), Kit
-Volume, Mod Wheel. Until picked, a kit takes Pad Volume and a synth the mod
-wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
+The fader follows the pot turned last on its track: any of the track's
+values (an engine parameter, an effect on its chain, a kit pad's own value
+on the last pad hit, its level, pan or a send); a pot on anything else (a
+tempo, a pattern's length, a bus's effect) leaves it where it is. **PIN**
+keeps what it has. The **Fader page** (Shift + Pad 9) shows what it
+follows: that pot's knob in its shade, its name and value, a dashed arrow
+to the fader (the pin on it while PIN holds), and while the fader waits to
+pick a value up, where the hand has it and the way to move. K1–K3 there are
+the track's favourites, the one it follows ringed; B1 back, B2 PIN, B3 off /
+on with its LED. The wheel or −/+ walks the MPC's eight targets instead (a
+dot each on a kit): Pad Volume, Pad Pan, Pad Tune, Pad Attack, Pad Decay /
+Release, Pad Cutoff (the last pad's), Kit Volume, Mod Wheel; a synth has
+the mod wheel alone. Until a pot or the wheel picks, a kit takes Pad Volume
+and a synth the mod wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
 send, Step Edit nudges, Knob FX its effect's MIX, Compressor its amount,
 Flex Beat its mix. The fader takes a value over by Fader takeover (Pickup
 by default); Seq Record writes the lane of what it moves; Erase + fader

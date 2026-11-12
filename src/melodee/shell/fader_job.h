@@ -19,12 +19,22 @@ struct FaderJob {
     enum class Source : uint8_t { None, Target, Page, Nudge };
     Source source = Source::None; // None: the track's target is off (or it has no track)
     Binding binding;              // the value; unbound for a nudge, or a pad target with no sample on the last pad
-    bool centred = false;         // pan and tune: the light is brightest at the middle
+    bool centred = false;         // a value either side of a middle (pan, tune): the light is brightest there
+    bool learned = false;         // Target: the pot it learned (fader C), not one of the eight
+    bool pad = false;             // Target: the last pad hit's own value (its name carries the pad)
 };
 
 FaderJob fader_job(const Project& project, const UiState& ui);
 // The track's own target as a card (whatever the page): pad values of the last pad hit.
 Binding fader_target_binding(const Track& track, FaderTarget target);
+// Fader C (round 2): what the fader can learn from a card turned on track `t`
+// (one of its values: an engine parameter, an effect's on its chain, a kit
+// pad's own value, the mod wheel, its level, pan or a send); None for the
+// rest. And the card it is now: unbound where it no longer is one (another
+// engine, the effect gone), or a pad's value with no sample on the last pad.
+FaderLearned fader_learnable(const Track& track, unsigned t, const Binding& b);
+Binding fader_learned_binding(const Track& track, unsigned t);
+bool fader_learned_pad(const FaderLearned& learned); // a kit pad's own value (it follows the last pad hit)
 // How bright the fader light is for the job, 0..1: the value's place, or its
 // nearness to the middle for pan and tune; 0 with no job.
 float fader_light_level(const FaderJob& job);
