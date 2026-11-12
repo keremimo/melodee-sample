@@ -157,6 +157,74 @@ behaviour changed.
   (`place_at`, the arp's notes, Rec Quantize's skips scaled). Speed is not
   part of undo, as the tempo is not. Why: one place for "how it plays";
   the pattern and its file keep what was written.
+- P2: one dispatch a block: the audio thread sequences the whole block
+  first; a call it makes to a track's engine past the block's first frame
+  is kept as an `EngineCall` with its frame (notes, slides, values, the
+  wheel, pressure, mod routes, kit pads, Motion's pad and effect values),
+  384 a track a block, and the track's job makes each at its frame between
+  render calls (`play_calls`). Calls at the first frame go straight in. A
+  full list goes in whole at the block's start, in order (counted). The
+  old way stays behind `set_one_dispatch(false)` for tests and comparing.
+  Why: one barrier, no per-tick wake-ups, and a plug-in track renders a
+  block in one bridge round trip.
+- P2: Prophet, SID, FM6 and CZ step their modulation on their own count
+  of frames (`engine.h` ControlStep: 16, 16, 128, 128), restarted by any
+  call that changes them, their LFOs moved on by the frames played since
+  the last step; a voice is let go at a step's end. Why: an engine then
+  sounds the same however the host cuts its block, so the test compares
+  both ways sample for sample (exact, not within a tolerance), and a
+  synth's modulation no longer jitters with other tracks' ticks. FM6 and
+  CZ at 128 cost what their once-a-block step cost.
+- P2: the workers never spin between blocks: woken as a block starts
+  (`RenderPool::wake`), they wait awake at most 200 µs, only while the
+  block is sequenced and between its two runs, then sleep. Why: measured
+  on the MPC, sleeping between blocks saves ~20 % of a core; waking them
+  at the block's start hides their wake-up (~70 µs) under the sequencing.
+  100 µs against 200 µs made no difference.
+- P2: the Looper is one job of the tracks' run (its loops, strips and
+  chains), not four jobs after the tracks: its loops play what came in the
+  block before, never this block's tracks, and `Looper::run` makes the four
+  together. Buses A–D and Knob FX are the second run, each a job; the
+  master's chain stays on the audio thread. Plug-ins are checked for two
+  places at once among the tracks and loops, and among the buses.
+- P2: floating stays the default (audio and three workers over four cores);
+  `MELODEE_RENDER_THREADS=pinned` puts the audio thread on core 1, two
+  workers on cores 2 and 3 and every other thread of Melodee's on core 0
+  (the service thread sweeps them every 2 s). Measured: the dsp bench's
+  mean block 1403–1592 µs floating against 1773–1836 µs pinned (pinned
+  overran its budget 33 times in 15 s once); the app with the MPC's
+  project, render load peak 24–26 % floating against 28.5 % pinned, the
+  same total CPU. The VST2 bridge is its own process and is not pinned.
+- P2: a track's load is its job's time (engine and chain) against a
+  block's period, held at its peak and falling as `render_load` does:
+  along each Tracks cell's bottom (the whole width a core's whole block,
+  green, amber from 60 %, red from 85 %) and as the header's pill for the
+  track in hand; Settings' AUDIO shows the blocks' share under its rows
+  with the dropouts beside it. A dropout (the runtime's xrun count rising)
+  makes the service thread note the busiest track then
+  (`melodee_dropout_track` / `_load`). Why: what the screen has, no new
+  timing on the audio thread.
+- P2: the overload guard engages at 85 % of a block's time and lets go
+  under 70 %: from 85 % each block the busiest track's oldest held voice is
+  let go, and every engine's released voices end their tails in about
+  30 ms (`Envelope::hurry`; a kit's pads are choked); between 70 and 85 %,
+  once engaged, the tails only. Effects' tails (reverbs, echoes) are left
+  alone. The 909 and plug-ins have no voices to give. It is off in
+  `EngineHost` unless asked (a test's output must not hang on its
+  computer's speed); Melodee and the bench turn it on.
+- P2: samples keep their 44.1 kHz frames (everything that reads a sample
+  but the voices still does) and gain a copy at the device's rate, made
+  once on the service thread as they are read: from the file itself, its
+  own frames when its rate is the device's, else one conversion with the
+  base's windowed sinc (`dsp/frame_ring.h`, 90 dB, already used for
+  USB-C: neither JUCE's interpolators nor inMusic's packages were needed).
+  The 44.1 kHz conversion at load is that sinc too (it was linear). Copies
+  share a 256 MB budget; past it, and for instruments streamed from the
+  card (their caches are 44.1 kHz), voices convert as before. A rate
+  change remakes each copy from its file, a slot a pass. Kerem asked on
+  the way (2026-11-12): nothing may force 44.1 kHz on what plays; it
+  doesn't, playback follows Settings' rate; takes and renders are still
+  saved at 44.1 kHz (follow-up below).
 
 ## Waiting for a hand check
 
@@ -186,6 +254,19 @@ behaviour changed.
 - P1: Fill by hand: Play held while playing for a bar, FILL steps heard and
   NOT FILL ones dropped, back on release; say if Play's hold should wait a
   moment (a tap does nothing while playing).
+- P2: the synths by ear after their own control steps: a Prophet with LFO
+  and vibrato, an FM6 and a CZ with the wheel and an LFO on pitch (their
+  modulation now steps every 128 frames from their last note, not at
+  every tick of the song): no zipper, nothing changed.
+- P2: the overload guard by ear: a project pushed past 85 % (stacked
+  unison Prophets): voices thin and tails shorten instead of crackles;
+  say if 85 / 70 % or the 30 ms tail suit, and whether reverb tails should
+  shorten too.
+- P2: samples at 48 and 96 kHz against 44.1: a kit, a long loop and
+  pitched pads sound the same or brighter, never duller; Trim and Chop's
+  playheads sit on the waveform as at 44.1 kHz.
+- P2: the Tracks cells' load bars and Settings' AUDIO DSP row at a glance
+  while a busy project plays.
 
 ## P0: timing
 
@@ -247,26 +328,26 @@ behaviour, write the code fresh for this app.
 
 ## P2: CPU scheduling
 
-- [ ] One dispatch a block: `EngineHost::render` splits the block at every
+- [x] One dispatch a block: `EngineHost::render` splits the block at every
   tick, events or not, and calls `workers.run` (a barrier) for each part,
   then once more for the chains. Engines take the block's events with
   frame offsets and render it whole; each track's engine and chain become
   one job; a block has one barrier. A test plays a busy project both ways
   and compares output sample for sample (or within float noise, said why).
-- [ ] With one dispatch, drop or shorten the workers' 200 µs spin
+- [x] With one dispatch, drop or shorten the workers' 200 µs spin
   (`engine/render_pool.cpp`); measure CPU before and after on the device.
-- [ ] Buses A–D, L1–L4 and their chains as parallel jobs after the tracks.
-- [ ] Core pinning, measured: today audio plus three workers float over
+- [x] Buses A–D, L1–L4 and their chains as parallel jobs after the tracks.
+- [x] Core pinning, measured: today audio plus three workers float over
   four cores at SCHED_FIFO. Try two workers with the audio thread on cores
   1–3 and the rest on core 0 against today's, on a busy project; keep the
   better as the default and the other on `$MELODEE_RENDER_THREADS` / a
   setting.
-- [ ] DSP load shown: each track's share of the block (`track_ns`) on
+- [x] DSP load shown: each track's share of the block (`track_ns`) on
   Tracks, the whole on Settings' AUDIO beside the dropouts; a dropout notes
   the busiest track in `status`.
-- [ ] Overload guard: as block time nears its budget, steal the oldest
+- [x] Overload guard: as block time nears its budget, steal the oldest
   voices and shorten tails before a dropout.
-- [ ] Samples resampled once at load to the device rate (projects keep
+- [x] Samples resampled once at load to the device rate (projects keep
   44.1 kHz frame counts, `engine/model_rate.h`), not per voice.
 
 ## P3: sampler
@@ -339,3 +420,29 @@ behaviour, write the code fresh for this app.
   VARY's Busier into the next empty pattern, Note Repeat at 1/64 and 16
   repeats written under Seq Record, a track at x2 and back. Pressure by
   hand and everything by ear wait above. No base changes; no pushes owed.
+- 2026-11-12, P2 CPU scheduling: one dispatch a block, the synths
+  stepping their modulation on their own frames so it sounds the same to
+  the sample as the old way (77f001f); no spin between blocks, the workers
+  woken at a block's start, and `--melodee-dsp-bench` (1a19f91); the
+  Looper beside the tracks, buses A–D and Knob FX as a second run
+  (3a3db0f); `MELODEE_RENDER_THREADS=pinned`, floating kept as default
+  (0db8461); DSP load on Tracks, Settings' AUDIO and `status` (65e05dc);
+  the overload guard (1fbca79, which also carried UI/UX's in-progress
+  `hand_punch` engine hunks, finished in their baf457b); samples played
+  from a copy at the device's rate, band-limited (55abe30). Host tests
+  `one_dispatch` (busy project both ways, equal to the sample, with and
+  without workers), `loops_and_buses_parallel`, `overload_guard`,
+  `sample_rates_p2`. HEAD 55abe30, built in a snapshot of HEAD (the shared
+  checkout held a peer's unfinished scales/levels work whose test failed
+  in ./build.sh): make, the 8 unit tests, self-test, monkey 12 x 3000
+  moves, 248 previews with no text issues. On the MPC (48 kHz, three
+  periods), the project there with its five plug-ins playing, each core
+  busy over 12-15 s: before P2 27.9 / 28.7 / 25.9 / 28.1 %; items 1-4
+  22.4 / 20.1 / 20.2 / 20.1 %; HEAD 24.3 / 24.1 / 24.0 / 24.0 %; render
+  load peak 24-26 % throughout (pinned: 28.5 %). `--melodee-dsp-bench`
+  (16 busy tracks, a block a period at FIFO 30, beside the running app):
+  the old way (every track cut at every tick, workers kept awake 200 µs
+  after every run) 208-215 % CPU, mean block 1377-1545 µs, p99 1551-1977;
+  HEAD 187-192 %, mean 1376-1487 µs, p99 1498-1796; none over budget. A
+  peer deployed the shared build over HEAD at 03:27 UTC; the MPC runs that.
+  No base changes; no pushes owed.
