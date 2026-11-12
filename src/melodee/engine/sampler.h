@@ -46,27 +46,31 @@ public:
     SamplerEngine();
     void set_samples(const Table* table) { samples = table; }
     void set_pager(StreamPager* streams) { pager = streams; } // nullptr: instruments' frames are all safe to read (tests)
-    void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) pads[pad] = base[pad] = sound; }
+    // A pad's sound. What the pad plays now hears it too (at the next render, gliding there: refresh), while it
+    // plays the same sample: its level, pan, tune, envelopes, filter, speed, play mode, region and loop.
+    void set_pad(unsigned pad, const PadSound& sound) { if (pad < sampler_pads) { pads[pad] = base[pad] = sound; mark(pad); } }
     bool pad_used(unsigned pad) const { return pad < sampler_pads && pads[pad].used(); } // a sample on it
     // Round 3 "instrument C": the track's zone trims (model/sampler.h), as a whole or one; a zone of pad `pad`
-    // at UINT32_MAX lets every trim of the pad go. A zone starting hears its trim.
-    void set_trims(const ZoneTrims& all) { trims = all; }
+    // at UINT32_MAX lets every trim of the pad go. A zone sounding hears its trim at once.
+    void set_trims(const ZoneTrims& all) { trims = all; retune_all = true; }
     void set_trim(unsigned pad, uint32_t zone, unsigned slot, int tune, int level) {
         if (zone == UINT32_MAX) clear_trims(trims, pad);
         else melodee::set_trim(trims, pad, zone, slot, tune, level);
+        mark(pad);
     }
     // Motion on a pad's own values (model/pad_params.h): the value plays
     // until the pad's lane moves again or restore_pads() gives every pad its
-    // own values back (the pattern's start, Stop). Hits after it hear it.
+    // own values back (the pattern's start, Stop). What the pad plays hears it.
     void move_pad(unsigned pad, PadParam which, int value) {
         if (pad >= sampler_pads) return;
         set_pad_param(pads[pad], which, value);
         moved = true;
+        mark(pad);
     }
-    void restore_pads() { if (moved) { pads = base; moved = false; } }
+    void restore_pads() { if (moved) { pads = base; moved = false; retune_all = true; } }
     // One of a pad's own values back to the kit's (a Motion lock ending, roadmap P1).
     void restore_pad(unsigned pad, PadParam which) {
-        if (pad < sampler_pads) set_pad_param(pads[pad], which, pad_param_value(base[pad], which));
+        if (pad < sampler_pads) { set_pad_param(pads[pad], which, pad_param_value(base[pad], which)); mark(pad); }
     }
     // Mute: a muted pad does not start and what it plays fades out now.
     void set_pad_mute(unsigned pad, bool on);
@@ -95,7 +99,7 @@ public:
     // TrackTaps::voices of them, then the cloud's grains. Audio thread, after render.
     void taps(TrackTaps& out) const;
     // The project's tempo, for Follow (tenths of a BPM).
-    void set_tempo(unsigned tenths) { tempo = tenths; }
+    void set_tempo(unsigned tenths) { if (tenths != tempo) { tempo = tenths; tempo_moved = true; } }
     // Pad Punch: the voices of `pad` go through `punch` on their own before
     // they join the kit (nullptr: none). The punch belongs to the host.
     void punch_pad(int pad, Punch* punch) { aside_pad = pad; aside = punch; }
@@ -177,7 +181,43 @@ private:
         unsigned since_tune = 0;
         dsp::Envelope filter_env;
         dsp::Envelope::Shape filter_shape;
+        // What its pad and the kit ask of it now (aim): a turned knob, Motion, a modulator or the tempo moves these
+        // while it plays, and the values above glide there over `gliding` more frames (glide), so the change is
+        // heard at once, without a step. What it was started with stays: how hard, the note, 16 Levels' cutoff,
+        // the sequencer's accent, its layer and zone, a release sample's fall.
+        struct Aim {
+            double step = 1, advance = 1;
+            float gain = 0, left = 0.7071f, right = 0.7071f;
+            float cutoff = 0, depth = 0, k1 = 1.4f, k2 = 1.4f, tail = 0, filter_tail = 0;
+            bool beats = false; // stretched, it would play Beats' whole segments (else Tones' windows)
+        } aim;
+        uint32_t gliding = 0;
+        uint8_t velocity = 0;
+        int8_t layer = -1;                  // the pad's layer it plays (layers_on), -1 the pad itself
+        int16_t levels_cutoff = -1;         // 16 Levels' cutoff it was hit with, -1 the pad's own
+        float accent = 1, fall = 1;         // the sequencer's accent; a release sample's rt_decay
+        bool native = false;                // reads the sample's copy at the device's rate (roadmap P2)
+        bool follows = false;               // its speed comes from the tempo (Warp's Seq, Follow)
+        Multisample* multi = nullptr;       // a zone's instrument, and the zone's place in it
+        uint32_t zone_index = 0;
     };
+    // Each pad whose sound changed since the last render (a bit a pad); `retune_all` for the kit's values.
+    std::array<uint64_t, (sampler_pads + 63) / 64> retune {};
+    bool retune_all = false, tempo_moved = false;
+    void mark(unsigned pad) { if (pad < sampler_pads) retune[pad / 64] |= uint64_t(1) << (pad % 64); }
+    bool marked(int pad) const { return retune_all || ((retune[unsigned(pad) / 64] >> (unsigned(pad) % 64)) & 1); }
+    // The glide: the share of the way left it goes a frame, and how many frames it takes, at the device's rate now.
+    float glide_rate = 0, glide_step = 0;
+    uint32_t glide_frames = 0;
+    void glide_setup();
+    void aim(Voice& v, const PadSound& sound, const SampleZone* zone, Multisample* multi, int key);
+    void settle(Voice& v);
+    void glide(Voice& v);
+    void reach(Voice& v, const PadSound& sound);      // a kit pad's region as the pad has it now, round where it plays
+    void loop_setup(Voice& v, const PadSound& sound); // its loop over its region, the edges' fades, the seam's crossfade
+    void begin_stretch(Voice& v, bool live);
+    void refresh(Voice& v);
+    void retune_voices();
     void hit(int pad, int velocity, int semitones, int cutoff);
     void start(Voice& v, const PadSound& sound, int pad, int velocity, int semitones = 0, int cutoff = -1, int trigger = -1,
                const SampleZone* zone = nullptr, Multisample* multi = nullptr, int key = 60);

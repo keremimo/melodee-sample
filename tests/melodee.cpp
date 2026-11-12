@@ -10863,6 +10863,167 @@ void tempo_lane_p5() {
     }
 }
 
+// A pad's values reach what it plays now, gliding there without a step: a knob (a Pad command), Motion, the kit's
+// values, the tempo, an instrument's trim, the pad's region. A new sample on the pad leaves what plays alone.
+void live_pad_values() {
+    // A second of DC on the left (each frame is the voice's gain heard), a fast sine on the right (a low pass shows).
+    SampleData data;
+    data.frames = 44100;
+    data.left.assign(44100, 0.5f); data.right.resize(44100);
+    for (unsigned n = 0; n < 44100; ++n) data.right[n] = float(std::sin(n * 1.0) * 0.5);
+    SampleData other = data;
+    SamplerEngine::Table table {};
+    table[3] = &data; table[4] = &other;
+    const int key = int(sampler_first_note);
+    struct Heard { float left = 0, right = 0, jump = 0; std::vector<float> l; };
+    // Renders `blocks` of 128: the last block's peaks and the largest step from frame to frame on the left.
+    auto run = [&](SamplerEngine& e, unsigned blocks) {
+        Heard h;
+        std::vector<float> l(128), r(128);
+        float last = -1;
+        for (unsigned b = 0; b < blocks; ++b) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            e.render_stereo(l.data(), r.data(), 128);
+            h.left = h.right = 0;
+            for (unsigned f = 0; f < 128; ++f) {
+                CHECK(std::isfinite(l[f]) && std::isfinite(r[f]));
+                if (last >= 0) h.jump = std::max(h.jump, std::fabs(l[f] - last));
+                last = l[f];
+                h.left = std::max(h.left, std::fabs(l[f])); h.right = std::max(h.right, std::fabs(r[f]));
+                h.l.push_back(l[f]);
+            }
+        }
+        return h;
+    };
+    auto tap = [](const SamplerEngine& e) { TrackTaps t; e.taps(t); return t; };
+    PadSound held;
+    held.sample = 3; held.play = PadPlay::Gate; held.velocity_sense = 0; held.attack = 0; held.release = 0;
+    auto engine_with = [&](const PadSound& pad) {
+        auto e = std::make_unique<SamplerEngine>();
+        e->set_samples(&table);
+        e->set_pad(0, pad);
+        e->note_on(key, 127);
+        return e;
+    };
+    { // the level turned down as it plays: down to nothing while held, gliding there
+        auto e = engine_with(held);
+        auto before = run(*e, 10);
+        CHECK(before.left > 0.3f);
+        PadSound quiet = held; quiet.level = 0;
+        e->set_pad(0, quiet);
+        auto after = run(*e, 30);
+        CHECK(e->sounding() && after.left < 1e-3f);
+        CHECK(after.jump < 0.01f); // no step: 0.35 down over 8 ms
+        CHECK(after.l[64] > 0.2f && after.l[64] < before.left); // under way after 64 frames, not there yet
+    }
+    { // the pad's filter closed as it plays: by a knob, then by Motion; the high side goes, the DC stays
+        PadSound open = held; open.filter = PadFilter::Lpf2; open.cutoff = 100;
+        auto e = engine_with(open);
+        auto before = run(*e, 10);
+        PadSound shut = open; shut.cutoff = 25;
+        e->set_pad(0, shut);
+        auto after = run(*e, 30);
+        CHECK(before.right > 0.2f && after.right < 0.25f * before.right);
+        CHECK(std::fabs(after.left - before.left) < 0.02f && after.jump < 0.01f);
+        e->move_pad(0, PadParam::FilterCutoff, 100); // Motion opens it again on the same note
+        CHECK(run(*e, 30).right > 0.8f * before.right);
+        e->restore_pads(); // the pattern's start: the kit's own cutoff, heard at once
+        CHECK(run(*e, 30).right < 0.25f * before.right);
+    }
+    { // pitch: the pad's Semi, then the kit's TUNE, retune the note held
+        auto e = engine_with(held);
+        run(*e, 4);
+        CHECK(std::fabs(tap(*e).voice[0].step - 1.0f) < 1e-4f);
+        PadSound up = held; up.pitch = 12;
+        e->set_pad(0, up);
+        run(*e, 1);
+        const float gliding = tap(*e).voice[0].step;
+        CHECK(gliding > 1.0f && gliding < 2.0f); // on its way
+        run(*e, 30);
+        CHECK(std::fabs(tap(*e).voice[0].step - 2.0f) < 1e-3f);
+        e->set_param(sampler::Tune, -12);
+        run(*e, 30);
+        CHECK(std::fabs(tap(*e).voice[0].step - 1.0f) < 1e-3f);
+    }
+    { // pan and the kit's level, heard on the note held
+        auto e = engine_with(held);
+        auto centre = run(*e, 10);
+        PadSound left = held; left.pan = -50;
+        e->set_pad(0, left);
+        auto panned = run(*e, 30);
+        CHECK(panned.right < 1e-3f && panned.left > 1.35f * centre.left && panned.jump < 0.01f);
+        e->set_param(sampler::Level, 0);
+        CHECK(run(*e, 30).left < 1e-3f && e->sounding());
+    }
+    { // a sustain turned while held: the envelope goes there at its decay, no step
+        PadSound sus = held; sus.decay = 0; sus.sustain = 100;
+        auto e = engine_with(sus);
+        auto full = run(*e, 10);
+        PadSound half = sus; half.sustain = 50;
+        e->set_pad(0, half);
+        auto after = run(*e, 30);
+        CHECK(std::fabs(after.left - 0.5f * full.left) < 0.01f && after.jump < 0.01f);
+    }
+    { // a new sample on the pad: what plays goes on as it was, the next hit plays the new one
+        auto e = engine_with(held);
+        run(*e, 4);
+        PadSound swapped = held; swapped.sample = 4; swapped.pitch = 12; swapped.level = 0;
+        e->set_pad(0, swapped);
+        auto still = run(*e, 30);
+        auto t = tap(*e);
+        CHECK(t.count == 1 && t.voice[0].slot == 3 && std::fabs(t.voice[0].step - 1.0f) < 1e-4f && still.left > 0.3f);
+    }
+    { // a one shot whose end is trimmed behind where it plays fades out at once, without a click
+        PadSound shot = held; shot.play = PadPlay::OneShot;
+        auto e = engine_with(shot);
+        run(*e, 20);
+        PadSound trimmed = shot; trimmed.end = 1000;
+        e->set_pad(0, trimmed);
+        auto gone = run(*e, 4);
+        CHECK(!e->sounding() && gone.jump < 0.02f);
+    }
+    { // a loop's end moved as it loops: it goes round its new loop
+        PadSound looped = held; looped.loop = true; looped.end = 4410;
+        auto e = engine_with(looped);
+        run(*e, 20);
+        PadSound shorter = looped; shorter.end = 2205;
+        e->set_pad(0, shorter);
+        run(*e, 60);
+        auto t = tap(*e);
+        CHECK(e->sounding() && t.count == 1 && t.voice[0].to == 2205 && t.voice[0].at < 2205);
+    }
+    { // Follow: a tempo change speeds a note that follows it, stretched from where it is, without a dip
+        PadSound follow = held; follow.own_tempo = 1200;
+        auto e = std::make_unique<SamplerEngine>();
+        e->set_samples(&table);
+        e->set_param(sampler::Follow, 1);
+        e->set_param(sampler::FollowHow, 1); // Tones: windows that sum to one
+        e->set_tempo(1200);
+        e->set_pad(0, follow);
+        e->note_on(key, 127);
+        auto before = run(*e, 10);
+        CHECK(!(tap(*e).voice[0].flags & tap::Stretch));
+        e->set_tempo(1800);
+        auto after = run(*e, 40);
+        auto t = tap(*e);
+        CHECK((t.voice[0].flags & tap::Stretch) && std::fabs(t.voice[0].step - 1.5f) < 1e-3f);
+        CHECK(std::fabs(after.left - before.left) < 0.02f && after.jump < 0.01f);
+    }
+    { // ZONES' trim on an instrument's zone, heard on the note held
+        ZoneRig r;
+        r.part(zone_tone(440, 0.5f, 44100));
+        r.zone(0).root = 60;
+        r.build(PadPlay::Gate);
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 440) < 8);
+        r.engine->set_trim(0, 0, 3, 100, 0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 440 * std::pow(2.0, 1 / 12.0)) < 8);
+        r.pad.cutoff = 100; r.pad.pitch = 12; // the pad's Semi moves the note held an octave
+        r.engine->set_pad(0, r.pad);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 880 * std::pow(2.0, 1 / 12.0)) < 14);
+    }
+}
+
 int main() {
     tempo_lane_p5();
     capture_p5();
@@ -10915,6 +11076,7 @@ int main() {
     sample_rates_p2();
     sampler_zones();
     instrument_zones_r3();
+    live_pad_values();
     note_pitches();
     track_source();
     zero_snap();
