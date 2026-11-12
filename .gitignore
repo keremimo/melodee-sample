@@ -6,6 +6,8 @@ __pycache__/
 *.o
 *.wav
 *.png
+# Doc pages' screenshots and diagrams are tracked (base/tools/check_private_files.py allows them).
+!docs/images/**/*.png
 *.log
 .DS_Store
 .env*
