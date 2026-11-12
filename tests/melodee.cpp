@@ -7045,13 +7045,27 @@ void pad_lights() {
     CHECK(is(0, Hue::Track, 3) && is(1, Hue::Track, 2) && is(7, Hue::Track, 3));
     project->tracks[0].layout = PadLayout::Chromatic; light({});
     CHECK(is(0, Hue::Track, 3) && is(1, Hue::Track, 1) && is(2, Hue::Track, 2));
+    project->tracks[0].transpose = 2; light({}); // the track's key goes with it: E major, G# in it, G out
+    CHECK(is(0, Hue::Track, 3) && is(4, Hue::Track, 2) && is(3, Hue::Track, 1));
+    project->tracks[0].transpose = 0;
     project->tracks[0].layout = PadLayout::Scale;
-    // 16 Levels: soft to loud; Tune as recorded white on pad 4, below Faint, an octave up Mid.
+    // 16 Levels: soft to loud; Tune and Scale the key's roots in the track's colour, its other notes white, out of it Faint.
     ui.track = 1; kit.levels = true; kit.levels_kind = uint8_t(LevelsKind::Velocity); light({});
     CHECK(is(0, Hue::Track, 1) && is(15, Hue::Track, 4) && looks[7].level < looks[8].level);
-    kit.levels_kind = uint8_t(LevelsKind::Tune); light({});
-    CHECK(is(3, Hue::White, 3) && is(0, Hue::Track, 1) && is(15, Hue::Track, 3));
+    kit.levels_kind = uint8_t(LevelsKind::Tune); light({}); // -3..12: the sample as recorded (pad 4) the root
+    CHECK(is(3, Hue::Track, 3) && is(15, Hue::Track, 3) && is(0, Hue::White, 2) && is(1, Hue::White, 1));
     kit.levels = false;
+    auto& synth = project->tracks[0]; // a synth from its last note: the pads that play D, wherever they fall
+    ui.track = 0; synth.levels = true; synth.levels_kind = uint8_t(LevelsKind::Scale); light({});
+    CHECK(is(0, Hue::Track, 3) && is(7, Hue::Track, 3) && is(1, Hue::White, 2));
+    synth.last_note = 45; light({}); // up from A: D on pads 4 and 11, G# out of D major
+    CHECK(is(3, Hue::Track, 3) && is(10, Hue::Track, 3) && is(0, Hue::White, 2) && is(6, Hue::White, 1));
+    synth.transpose = 2; light({}); // in E: E on pad 5, D out
+    CHECK(is(4, Hue::Track, 3) && is(3, Hue::White, 1));
+    synth.transpose = 0; synth.last_note = 50; synth.levels = false;
+    ui.track = 5; project->tracks[5].levels = true; light({}); // the 909's pads stay its drums
+    CHECK(is(1, Hue::Track, 4) && is(11, Hue::None, 0));
+    project->tracks[5].levels = false; ui.track = 1;
 
     // Tracks: picked Full, heard Dim, muted Faint red; a solo leaves the rest Faint.
     ui.page = PageId::Tracks; project->tracks[3].engine = EngineKind::Fm6; project->tracks[3].mix.mute = true; light({});

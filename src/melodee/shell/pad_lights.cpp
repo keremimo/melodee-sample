@@ -39,7 +39,10 @@ float meter(const PadScene& s, unsigned t) {
     float m = s.host.meter(t);
     return m > 0 ? std::clamp((20 * std::log10(m) + 48) / 48, 0.0f, 1.0f) : 0;
 }
-bool levels_on(const Track& t) { return t.levels || (t.engine != EngineKind::Sampler && t.layout == PadLayout::Levels); }
+// 16 Levels plays the pads; the 909's stay its drums on the page (Context::play_pad()).
+bool levels_on(const Track& t) {
+    return t.engine != EngineKind::Kit909 && (t.levels || (t.engine != EngineKind::Sampler && t.layout == PadLayout::Levels));
+}
 bool any_solo(const Project& p) {
     for (const auto& t : p.tracks) if (t.used() && t.mix.solo) return true;
     return false;
@@ -137,10 +140,11 @@ Look drum_base(const PadScene& s, unsigned pad) {
     if (pad >= 11) return {};
     return track(selected_index(s), int(pad) == int(t.last_note) - 36 ? full : dim);
 }
-bool in_scale(const Project& project, int key) {
-    int degree = ((key - int(project.root)) % 12 + 12) % 12;
-    return (scales()[project.scale % scales().size()].mask >> degree) & 1;
+// Where `key` sits in the track's key, 0 its root: the project's root moved by the track's transpose, as its Scale pads are.
+unsigned key_degree(const Project& project, const Track& t, int key) {
+    return unsigned(((key - int(project.root) - t.transpose) % 12 + 12) % 12);
 }
+bool in_key(const Project& project, unsigned degree) { return (scales()[project.scale % scales().size()].mask >> degree) & 1; }
 Look keys_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     if (!t.used()) return {};
@@ -153,7 +157,7 @@ Look keys_base(const PadScene& s, unsigned pad) {
             for (unsigned n = 0; n < count; ++n) if (keys[n] == note.key) return white(dim);
         }
     float level = note.root ? mid : dim;
-    if (t.layout == PadLayout::Chromatic && !note.root) level = in_scale(s.project, note.key) ? dim : faint;
+    if (t.layout == PadLayout::Chromatic && !note.root) level = in_key(s.project, key_degree(s.project, t, note.key)) ? dim : faint;
     return track(selected_index(s), level);
 }
 // 16 Levels: what each pad plays of the one sound, from the lowest pad's to the highest's.
@@ -164,10 +168,12 @@ Look levels_base(const PadScene& s, unsigned pad) {
     auto kind = LevelsKind(t.levels_kind % unsigned(LevelsKind::Count));
     if (!t.levels || (kind == LevelsKind::Filter && t.engine != EngineKind::Sampler)) kind = LevelsKind::Velocity;
     auto lv = levels_of(s.project, t, pad);
-    if (kind == LevelsKind::Tune || kind == LevelsKind::Scale) {
-        if (kind == LevelsKind::Tune && lv.semitones == 0) return white(mid); // as recorded
-        if (lv.semitones % 12 == 0) return track(at, mid);                   // a root, an octave
-        return track(at, kind == LevelsKind::Tune && lv.semitones < 0 ? faint : dim);
+    if (kind == LevelsKind::Tune || kind == LevelsKind::Scale) { // notes: the key's roots in the track's colour, its other notes white
+        // A synth's pad plays its last note moved; a kit's sample stands for the key's root as recorded (Scale goes up the key from it).
+        unsigned degree = t.engine == EngineKind::Sampler ? unsigned((lv.semitones % 12 + 12) % 12)
+                                                          : key_degree(s.project, t, std::clamp(int(t.last_note) + lv.semitones, 0, 127));
+        if (!degree) return track(at, mid);
+        return white(in_key(s.project, degree) ? dim : faint); // out of the key Faint
     }
     int low = lv.shown, high = lv.shown; // Velocity, Filter: soft to loud, closed to open
     for (unsigned n = 0; n < 16; ++n) { int v = levels_of(s.project, t, n).shown; low = std::min(low, v); high = std::max(high, v); }
