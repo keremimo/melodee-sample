@@ -307,10 +307,11 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     showing what it would make, the pot under it choosing: **SYNTH** (a
     PLUGIN track: the plug-in picker opens on the card's Plugins folder),
     **KIT** (K2 where its first sound comes from: samples on
-    the card, record the input, Audio Recall, Resample), **MIDI** (K3 the
-    port). The key under a tile makes that track at once; Push makes the
-    one of the pot touched last (its key lit), the wheel turns that pot's
-    list. Sound and channel are picked after, on Stage.
+    the card or record the input; Audio Recall and Resample stay on their
+    keys and need a kit track), **MIDI** (K3 the port). The key under a
+    tile makes that track at once; Push makes the one of the pot touched
+    last (its key lit), the wheel turns that pot's list. Sound and channel
+    are picked after, on Stage.
 - **Tracks** (Sample's second stop, the mixer): the sixteen tracks as the
   pads sit, each cell its number, the pattern it plays, its engine as a
   glyph and its level up the right edge (muted: a crossed speaker); the

@@ -653,7 +653,7 @@ const Preview previews[] {
     {"stagemidiccshift", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); s.ui.shift = true; }},
     {"stagemidiarp", [](Shell&, Snapshot& s) { stage_midi(s, 2, 0); }},
     {"stageemptysynth", [](Shell&, Snapshot& s) { on_stage(s, 12, 0, 0); s.ui.new_sound = 3; }},
-    {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); s.ui.last_pot = 1; s.ui.new_source = 2; }},
+    {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); s.ui.last_pot = 1; s.ui.new_source = 1; }},
     {"stageemptymidi", [](Shell&, Snapshot& s) { on_stage(s, 12, 2, 0); s.ui.new_channel = 3; s.ui.last_pot = 2; s.ui.new_port = 1; }},
     {"tracks", [](Shell&, Snapshot& s) { // Pad Bank tapped twice; each track's share of a block (roadmap P2), one heavy
         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;

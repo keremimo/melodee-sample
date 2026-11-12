@@ -75,6 +75,6 @@ constexpr PageId stage_kit_page(StageKind kind) {
 constexpr uint32_t stage_preset_ms = 250;
 
 // The empty track's KIT sources, as the MPC gets a sample onto a pad.
-constexpr unsigned new_sources = 4; // samples on the card, record the input, Audio Recall, Resample
+constexpr unsigned new_sources = 2; // samples on the card, record the input (Audio Recall and Resample stay on their keys)
 
 } // namespace melodee

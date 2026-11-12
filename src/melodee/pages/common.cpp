@@ -481,7 +481,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         std::snprintf(text, sizeof(text), "%02d", b.value + 1);
         c.label = "SOUND"; c.value = text; c.unit = "/ " + juce::String(b.max + 1);
         break;
-    case Kind::NewSource: { static const char* sources[] {"Card", "Input", "Recall", "Resample"}; c.label = "SOURCE"; c.value = sources[unsigned(b.value) % 4]; break; }
+    case Kind::NewSource: { static const char* sources[] {"Card", "Input"}; c.label = "SOURCE"; c.value = sources[unsigned(b.value) % new_sources]; break; }
     case Kind::NewPort: { static const char* ports[] {"External", "USB-C", "All USB"}; c.label = "PORT"; c.value = ports[unsigned(b.value) % 3]; break; }
     case Kind::NewChannel: c.label = "CHANNEL"; c.value = juce::String(b.value); break;
     case Kind::TrackPick:
