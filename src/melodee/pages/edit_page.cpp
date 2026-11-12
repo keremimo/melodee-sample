@@ -348,8 +348,10 @@ void draw(Paint& p, const Snapshot& s) {
         h.left.push_back(pill(Icon::Modulation, juce::String(used) + " / " + juce::String(mod_routes)));
     }
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{before.key, "MAP", after.key}, s.ui.map_open ? 1 : -1, c};
-    keys.glyphs[0] = Icon::ChevronLeft; keys.after[2] = Icon::ChevronRight;
+    // Either side, the pages before and after; with two pages (a MIDI track's) one key, B3, goes to the other.
+    SoftKeys keys {{count > 2 ? before.key : "", "MAP", count > 1 ? after.key : ""}, s.ui.map_open ? 1 : -1, c};
+    if (count > 2) keys.glyphs[0] = Icon::ChevronLeft;
+    if (count > 1) keys.after[2] = Icon::ChevronRight;
     keys.dots[1] = uint8_t(std::min(count, 16u)); keys.dot_at[1] = uint8_t(index);
     frame(p, s, keys, h);
     if (s.ui.map_open) { page_map(p, s, info); return; }
@@ -381,6 +383,7 @@ void soft(Context& c, int key) {
         c.ui.map_cursor = uint8_t(c.ui.edit_page[t] % count);
         return;
     }
+    if (key == 0 && count <= 2) return; // two pages: B3 alone goes to the other
     c.ui.map_open = false;
     c.ui.edit_page[t] = uint8_t((c.ui.edit_page[t] + (key == 0 ? count - 1 : 1)) % count);
     c.ui.edit_row[t] = 0;

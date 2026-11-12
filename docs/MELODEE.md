@@ -373,7 +373,8 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   row: the page is the header's chip, and its curve fills the picture with
   every parameter named at the point it moves, in its knob's colour while
   on the row the pots hold, dim otherwise; the rest are listed small at the
-  top left. B1 and B3 name the pages either side with chevrons; **B2 MAP**
+  top left. B1 and B3 name the pages either side with chevrons (with two
+  pages, a MIDI track's, B3 alone goes to the other); **B2 MAP**
   (its dots the page in view) opens the page map (wheel, Push jumps, B2 or
   Shift + Push closes).
 - **16 Levels**: on a kit the last pad on all sixteen pads, on a synth its
