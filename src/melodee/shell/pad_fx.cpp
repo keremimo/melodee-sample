@@ -33,7 +33,8 @@ void Context::sync_live() {
         if (ui.punch_sounding(e.kind)) continue;
         for (unsigned s = 0; s < 4; ++s) {
             if (ui.punch_slot[s] >= 0) continue;
-            Command on {Type::PunchOn, punch_target_now(), uint8_t(project.punch_snap | project.punch_tail << 4), uint16_t(e.kind), int16_t(e.depth)};
+            uint8_t timing = uint8_t(project.punch_snap | project.punch_tail << 4 | (project.punch_quantize ? 0 : 64));
+            Command on {Type::PunchOn, punch_target_now(), timing, uint16_t(e.kind), int16_t(e.depth)};
             on.position = s + 1;
             send(on);
             ui.punch_slot[s] = e.kind;
@@ -107,6 +108,14 @@ void Context::step_punch_bank(int way) {
     notice(std::string("Pad FX bank: ") + names[project.punch_bank % punch_banks]);
 }
 
+// Shift + B3: quantize on (while playing, a punch waits for its snap grid's next line, K2 SNAP's) or off (at once).
+// Only when punches start: the grid still sets a repeat's slice and a gate's steps, and letting go is at once either way.
+void Context::toggle_punch_quantize() {
+    project.punch_quantize = !project.punch_quantize;
+    dirty = true;
+    notice(project.punch_quantize ? "Pad FX quantize on" : "Pad FX quantize off");
+}
+
 bool Context::punch_pressure(unsigned pad, uint8_t value) {
     if (ui.page != PageId::Punch) return false;
     for (unsigned n = 0; n < ui.engaged_count; ++n) {
@@ -140,13 +149,13 @@ void Context::set_pad_fx_param(unsigned mpc, unsigned n, int value) {
     dirty = true;
 }
 
-// pad-fx C (round 2): a punch heard from the next line of its snap grid (where the engine starts it), while playing.
-// The first in a later pass of the selected track's pattern begins a new take: the last one's punches go, and one
-// still sounding carries on into it from the loop's start.
+// pad-fx C (round 2): a punch heard from the next line of its snap grid (where the engine starts it), while playing;
+// quantize off, from now. The first in a later pass of the selected track's pattern begins a new take: the last
+// one's punches go, and one still sounding carries on into it from the loop's start.
 void Context::open_span(int kind, uint8_t depth) {
     if (!host.playing() || kind < 0) return;
     unsigned snap = project.punch_snap & 3;
-    uint32_t grid = 16 * sixteenth_ticks / (4u << snap), now = host.ticks();
+    uint32_t grid = project.punch_quantize ? 16 * sixteenth_ticks / (4u << snap) : 1, now = host.ticks();
     uint64_t from = uint64_t((now + grid - 1) / grid) * grid;
     int position = host.position_of(ui.track % track_count);
     if (position >= 0) {

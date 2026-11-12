@@ -225,7 +225,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             for (unsigned n = 0; n < ui_.engaged_count; ++n) latched += ui_.engaged[n].latched;
             padfx_bits.store(uint32_t(project_->punch_bank % 4) | uint32_t(ui_.engaged_count & 0x1f) << 2 | uint32_t(latched & 0x1f) << 7
                              | uint32_t(uint8_t(ui_.punch_selected + 1)) << 12 | uint32_t(project_->flex.mode) << 20
-                             | uint32_t(project_->flex.quantize) << 21 | uint32_t(project_->flex.mix) << 22, std::memory_order_relaxed);
+                             | uint32_t(project_->flex.quantize) << 21 | uint32_t(project_->flex.mix) << 22
+                             | uint32_t(project_->punch_quantize) << 29, std::memory_order_relaxed);
             uint32_t slots = 0;
             for (unsigned n = 0; n < 4; ++n) slots |= uint32_t(uint8_t(ui_.punch_slot[n] + 1)) << (8 * n);
             punch_slots_bits.store(slots, std::memory_order_relaxed);

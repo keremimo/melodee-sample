@@ -779,7 +779,8 @@ std::string Shell::padfx_summary() const {
          + " melodee_latched=" + std::to_string((b >> 7) & 0x1f) + " melodee_punch_selected=" + std::to_string(int((b >> 12) & 0xff) - 1)
          + " melodee_punch_slots=" + kinds + " melodee_live=" + std::to_string(host.live_punches()) + " melodee_kept=" + std::to_string(host.kept_punches())
          + " melodee_flex=" + std::to_string(host.flex_playing()) + " melodee_flex_mode=" + std::to_string((b >> 20) & 1)
-         + " melodee_flex_quantize=" + std::to_string((b >> 21) & 1) + " melodee_flex_mix=" + std::to_string((b >> 22) & 0x7f);
+         + " melodee_flex_quantize=" + std::to_string((b >> 21) & 1) + " melodee_flex_mix=" + std::to_string((b >> 22) & 0x7f)
+         + " melodee_punch_quantize=" + std::to_string((b >> 29) & 1);
 }
 
 // Phase 6: Input Config, Sample Record, Audio Recall and renders.

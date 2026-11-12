@@ -158,7 +158,7 @@ void Context::restore_master(const MasterState& m) {
         project.punch_depth = m.punch_depth;
         if (ui.engaged_count) send({Type::PunchDepth, 254, 0, 0, int16_t(m.punch_depth)});
     }
-    project.punch_snap = m.punch_snap; project.punch_tail = m.punch_tail;
+    project.punch_snap = m.punch_snap; project.punch_tail = m.punch_tail; project.punch_quantize = m.punch_quantize;
 }
 
 void Context::restore_chain(unsigned n, const Chain& value) {

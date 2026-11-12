@@ -61,7 +61,8 @@ struct Command {
         ArpKey,      // track, index = key, value = velocity (0: let go)
         // Punch: track = the target (255 the master), index = PunchKind | pad << 8
         // (pad 1..64: that pad alone on a sampler track, 0: the whole target),
-        // value = depth 0..100, pattern = snap (0 1/4 .. 3 1/32) | tail << 4.
+        // value = depth 0..100, pattern = snap (0 1/4 .. 3 1/32) | tail << 4 | 64 when it starts at
+        // once while playing (Pad FX quantize off), not on the snap grid's next line.
         PunchOn, PunchOff, // PunchOff: track and index's pad as PunchOn's; track 254: whatever punch is on
         PunchDepth,        // index's pad as PunchOn's (0: the master or track punch), value = depth
         // A sampler pad's own chain: track, pattern = pad, index = slot | parameter << 8, value as FxKind/FxParam/FxBypass.

@@ -1165,7 +1165,11 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   MPC's sixteen in its order, then Melodee 1 and 2, named on the pads as
   they sit (sounding lit, latched underlined). Hold pads to punch, up to
   four at once (a fifth bypasses the oldest); pressure is depth. B1 LATCH
-  (its LED) keeps the last one on, B2 master or track. Over the pads, the
+  (its LED) keeps the last one on, B2 master or track. Shift + B3
+  QUANTIZE (its LED, on at first; saved with the project, one undo): on,
+  a punch pressed while playing starts on the snap grid's next line; off,
+  at once. Letting go is at once either way, and the snap grid still sets
+  a repeat's slice and a gate's steps. Over the pads, the
   bar the selected track's pattern is in: a row per punch, drawn where it
   sounds in the pass you play it. The punches of one pass are a take; a
   punch in a later pass begins a new one. Until **B3 KEEP** only live

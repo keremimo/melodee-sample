@@ -1497,6 +1497,10 @@ const Preview previews[] {
          uint32_t bar = s.project.bar_ticks();
          pattern.punches = {{0, bar / 4, 1, 2, 100, 2, 1}, {bar / 2, bar / 8, 5, 2, 100, 2, 1}, {bar * 13 / 16, bar / 8, 14, 2, 100, 2, 1}};
      }},
+    {"punchquantize", [](Shell&, Snapshot& s) { // Shift held: B3 QUANTIZE, its LED dark (punches start at once)
+         s.ui.page = PageId::Punch; s.ui.track = 0; s.playing = true; s.project.punch_bank = 2; s.ui.shift = true;
+         s.project.punch_quantize = false;
+     }},
     {"puncherase", [](Shell& shell, Snapshot& s) { // Erase held: the kept punches red, as Erase + pad takes them out
          s.ui.page = PageId::Punch; s.ui.track = 2; s.project.punch_target = 1; s.project.punch_bank = 0; s.ui.erase = true;
          auto& pattern = shell.patterns().at[2][s.project.tracks[2].pattern];

@@ -1253,6 +1253,40 @@ void kept_punches() {
         run_to(746);
         CHECK(host->kept_punches() == 0);
     }
+    { // Pad FX quantize (Shift + B3): playing, a live punch waits for its snap grid's next line (1/4 here: tick 96)
+      // while a kept one sounds on; with 64 in its timing (quantize off) it starts at once, the kept one giving way.
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        synth(project->tracks[0], 0);
+        project->tempo = 1200;
+        bank->at[0][0].length = project->bar_ticks();
+        bank->at[0][0].punches = {{0, project->bar_ticks(), uint8_t(PunchKind::Low), 255, 100, 2, 1}};
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        tones_for(*host, *project);
+        std::vector<int32_t> out(256);
+        host->send({Command::Type::Play});
+        unsigned blocks = 0;
+        auto run_to = [&](unsigned n) { for (; blocks < n; ++blocks) host->render(out.data(), 128, 1); }; // a tick is 229.7 samples
+        run_to(20); // tick 11
+        CHECK(host->kept_punches() == 1);
+        Command on {Command::Type::PunchOn, 255, uint8_t(0 | 1 << 4), uint16_t(PunchKind::Gate), 100};
+        on.position = 1;
+        host->send(on);
+        run_to(60); // tick 33: waiting for 96
+        CHECK(host->live_punches() == 1 && host->kept_punches() == 1);
+        run_to(180); // tick 100
+        CHECK(host->kept_punches() == 0);
+        Command off {Command::Type::PunchOff, 255};
+        off.position = 1;
+        host->send(off);
+        run_to(183); // tick 102: Low back
+        CHECK(host->live_punches() == 0 && host->kept_punches() == 1);
+        on.pattern = uint8_t(0 | 1 << 4 | 64);
+        host->send(on);
+        run_to(186); // tick 103, the next quarter 192
+        CHECK(host->live_punches() == 1 && host->kept_punches() == 0);
+    }
 }
 
 void punches() {
@@ -1361,6 +1395,7 @@ void punches() {
         auto project = std::make_unique<Project>();
         auto patterns = std::make_unique<PatternBank>();
         project->punch_target = 1; project->punch_bank = 1; project->punch_depth = 64; project->punch_snap = 3; project->punch_tail = 2;
+        project->punch_quantize = false;
         auto& pad = project->tracks[4].pads[9];
         pad.sample = 0; pad.punch = 15; pad.punch_rate = 1; pad.punch_depth = 33;
         std::strcpy(project->samples[0].path, "/x.wav");
@@ -1368,6 +1403,10 @@ void punches() {
         auto back = std::make_unique<Project>();
         CHECK(load_project(bytes, *back, *patterns).empty());
         CHECK(back->punch_target == 1 && back->punch_bank == 1 && back->punch_depth == 64 && back->punch_snap == 3 && back->punch_tail == 2);
+        CHECK(!back->punch_quantize);
+        project->punch_quantize = true;
+        auto again = std::make_unique<Project>();
+        CHECK(load_project(save_project(*project, *patterns), *again, *patterns).empty() && again->punch_quantize);
         const auto& p2 = back->tracks[4].pads[9];
         CHECK(p2.punch == 15 && p2.punch_rate == 1 && p2.punch_depth == 33);
     }
@@ -8258,6 +8297,8 @@ void track_move() {
     CHECK(button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
     tracks.page = PageId::Keys;
     CHECK(!button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && !button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
+    tracks.page = PageId::Punch; // Shift + B3 QUANTIZE on Pad FX
+    CHECK(!button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
 
     // The pads: the track picked white, a move's targets in their own colour (used Dim, empty Faint), a copy's used ones red.
     using namespace pad_light;

@@ -364,6 +364,7 @@ struct Project {
     // track), the bank in view, and K1-K3: depth, snap grid (0 1/4 .. 3 1/32), tail (cut, fade, ring).
     // punch_bank: 0 and 1 Melodee's own banks, 2 the MPC's sixteen (parity phase 7b; new projects start there).
     uint8_t punch_target = 0, punch_bank = 2, punch_depth = 100, punch_snap = 2, punch_tail = 0;
+    bool punch_quantize = true; // Shift + B3 on Pad FX: while playing, a punch waits for its snap grid's next line; off, at once
     PadFxParams pad_fx_params = pad_fx_defaults; // the MPC's Pad FX, K1-K3 each (parity phase 7b)
     FlexSettings flex;                           // Flex Beat (Shift + Pad FX)
     std::array<Track, track_count> tracks {};

@@ -1079,6 +1079,10 @@ pressure sets the depth.
 - **B2** switches between the master and the selected track.
 - **B3** (**KEEP**) records the punches of the last pass into the pattern.
   They play back with it. **ERASE** + pad removes a pad's kept punches.
+- **SHIFT** + **B3** (**QUANTIZE**) turns quantize on or off. On (the
+  default), a punch pressed while the sequence plays starts on the next
+  line of the **SNAP** grid. Off, it starts at once. Punches always stop
+  at once.
 
 Press **PAD FX** again on a kit for **Pad Punch**: each kit pad gets its
 own punch. **SHIFT** + **PAD FX** opens **Flex Beat**: pad 1 is Empty, pads

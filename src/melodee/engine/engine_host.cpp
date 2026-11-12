@@ -524,7 +524,7 @@ void EngineHost::apply(const Command& c) {
     case Type::PunchOn: {
         unsigned pad = c.index >> 8;
         PendingPunch p {true, c.track, PunchKind((c.index & 0xff) % punch_count), std::clamp<int>(c.value, 0, 100) / 100.0f,
-                        unsigned(c.pattern & 3), unsigned(c.pattern >> 4) % 3};
+                        unsigned(c.pattern & 3), unsigned((c.pattern >> 4) & 3) % 3};
         if (pad) { // one pad alone, at once: the pad's hit is the start
             if (c.track >= track_count) break;
             if (pad_punch_track >= 0 && pad_punch_track != c.track) slots[size_t(pad_punch_track)].sampler.punch_pad(-1, nullptr);
@@ -537,8 +537,8 @@ void EngineHost::apply(const Command& c) {
         unsigned s = c.position ? (c.position - 1) % live_slots : 0;
         live_punch = true;
         if (punch_from_song) { punch.stop(); punch_from_song = false; } // a punch by hand wins over the song's
-        if (running) live[s].pending = p;
-        else start_live(s, p);
+        if (running && !(c.pattern & 64)) live[s].pending = p; // quantized: from the snap grid's next line
+        else { live[s].pending.waiting = false; start_live(s, p); }
         break;
     }
     case Type::PunchOff:

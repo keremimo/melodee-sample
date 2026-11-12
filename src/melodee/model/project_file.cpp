@@ -411,6 +411,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             if (pad.punch) { w.u8(t); w.u8(n); w.u8(pad.punch); w.u8(pad.punch_rate); w.u8(pad.punch_depth); }
         }
     w.u8(255);
+    w.u8(project.punch_quantize); // after what older builds read: Pad FX quantize (Shift + B3)
     w.end(at);
     at = w.begin("KNFX"); // Knob FX (parity phase 7): the entry, its effect and values, bypass, the tracks and kit pads it is on
     {
@@ -1154,6 +1155,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 auto& pad = project->tracks[t].pads[r.u8() % sampler_pads];
                 pad.punch = uint8_t(std::min(punch_kinds, r.u8())); pad.punch_rate = uint8_t(r.u8() % 4); pad.punch_depth = uint8_t(std::min(100u, r.u8()));
             }
+            if (r.ok && !r.done()) project->punch_quantize = r.u8() != 0; // older files: quantized, as they played
         } else if (name == "KNFX") {
             auto& k = project->knob_fx;
             k.choice = uint8_t(r.u8()); k.kind = uint8_t(r.u8()); k.bypass = r.u8() != 0;

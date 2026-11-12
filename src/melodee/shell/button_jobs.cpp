@@ -58,7 +58,7 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
         if (kind == StageKind::Trim && last.used() && project.samples[last.sample % sample_slots].instrument()) return false; // ZONES (round 3)
         return kind == StageKind::Trim || kind == StageKind::Layers;
     }
-    case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks; // Merge; COPY on Tracks
+    case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks || ui.page == PageId::Punch; // Merge; COPY on Tracks; QUANTIZE on Pad FX
     case B::SampleRecord: return kit;                                            // Audio Recall
     case B::Erase: return kit_pads || ui.pad_bank || ui.seq_held || ui.copying != UiState::Copying::Off; // Copy (tracks with Pad Bank held, patterns with Seq)
     case B::KnobFx: case B::PadFx: return true;                                  // FX SELECT: Melodee's chains; Flex Beat

@@ -6,7 +6,9 @@
 //   to punch, up to four at once; a fifth bypasses the one engaged first
 //   until a newer one lets go. Pressure is each punch's depth. B1 LATCH keeps
 //   the punch pressed last at its depth (B1 again on it lets go; Push does the
-//   same). B2 aims them at the master or the selected track. An MPC punch in
+//   same). B2 aims them at the master or the selected track. Shift + B3
+//   QUANTIZE (on at first): while playing, a punch starts on its snap grid's
+//   next line; off, at once (letting go is at once either way). An MPC punch in
 //   hand: K1-K3 its own (Shift: depth, snap, tail); Melodee's: K1 depth, K2
 //   snap grid, K3 tail. Round 2, pad-fx C "punches you can keep": over the
 //   named pads, the bar the selected track's pattern is in, a row per punch
@@ -79,6 +81,11 @@ void punch_draw(Paint& p, const Snapshot& s) {
     keys.toggles = 1 | 4;
     keys.lit = uint8_t((latched ? 1 : 0) | (waiting ? 4 : 0));
     keys.glyphs = {Icon::None, Icon::None, Icon::Check};
+    if (s.ui.shift) { // Shift + B3: quantize, as Flex Beat's B3 (its LED says which)
+        keys = SoftKeys {{"", "", "QUANTIZE"}, -1, c};
+        keys.toggles = 4;
+        keys.lit = s.project.punch_quantize ? 4 : 0;
+    }
     frame(p, s, keys, h);
 
     // Across the top, the bar the selected track's pattern is in: what was punched in this pass of it, as it is
@@ -168,6 +175,11 @@ void punch_pad(Context& c, unsigned pad, uint8_t, bool down) {
     c.punch_pad(pad, down);
 }
 void punch_soft(Context& c, int key) {
+    if (c.ui.shift) { // Shift + B3: quantize on or off; B1 and B2 have no Shift job
+        c.ui.shift_used = true;
+        if (key == 2) c.toggle_punch_quantize();
+        return;
+    }
     if (key == 0) { c.latch_punch(); return; }
     if (key == 1) { c.set_punch_target(c.project.punch_target ? 0 : 1); return; }
     if (c.ui.erase) { // Erase + KEEP: the kept punches go, once B3 says so
