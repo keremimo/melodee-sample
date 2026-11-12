@@ -52,7 +52,9 @@ public:
     PunchKind kind_now() const { return kind; }
     // Run while it is off too: the history then always holds what just played, for the next start.
     void process(float* l, float* r, unsigned frames);
-    void clear(); // forget the history (a project switch)
+    // Forget the history (a project switch): what came before reads as silence from here, without wiping its
+    // 1.5 MB on the audio thread (a project load clears ten of them).
+    void clear();
     // The frames a repeat's turn crossfades over at the device's rate now (the frames a slice is long),
     // shorter for a short slice; for tests.
     static double seam_frames(double slice) { return std::max(1.0, std::min(seam_seconds * dsp::sample_rate(), slice / 4)); }
@@ -82,6 +84,7 @@ private:
     float read(const float* line, double back) const;
     std::unique_ptr<float[]> left, right;
     unsigned write = 0;
+    unsigned fresh = 0; // frames written into the history since clear() (at most `history`): older ones read as 0
     bool held = false, frozen = false;
     bool relive = false; // Rev Stepper: a new slice let through after its turns, faded in
     PunchKind kind = PunchKind::Loop4;

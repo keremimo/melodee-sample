@@ -1279,6 +1279,28 @@ void punches() {
         for (unsigned at = 0; at < loop * 3; ++at) { l[0] = r[0] = signal(at); punch.process(l.data(), r.data(), 1); out.push_back(l[0]); }
         CHECK(peak_of(out, loop + 2, 2 * loop - 2) == 0 && peak_of(out, 2 * loop + 2, 3 * loop - 2) > 0.1f);
     }
+    // clear() (a project switch): what played before it reads as silence, though nothing is wiped; Echo repeats
+    // what came two grid steps back, so without the clear it plays the noise again.
+    for (bool cleared : {false, true}) {
+        Punch punch;
+        std::vector<float> l(128), r(128);
+        unsigned at = 0;
+        auto block = [&](bool sound) {
+            for (unsigned f = 0; f < 128; ++f) l[f] = r[f] = sound ? signal(at + f) : 0.0f;
+            punch.process(l.data(), r.data(), 128);
+            at += 128;
+        };
+        for (unsigned b = 0; b < 200; ++b) block(true);
+        if (cleared) punch.clear();
+        for (unsigned b = 0; b < 4; ++b) block(false); // a little silence since
+        punch.start(PunchKind::Echo, 1, bar, bar / 16, 0);
+        float peak = 0;
+        for (unsigned b = 0; b < 40; ++b) {
+            block(false);
+            for (unsigned f = 0; f < 128; ++f) peak = std::max(peak, std::fabs(l[f]));
+        }
+        CHECK(cleared ? peak == 0 : peak > 0.1f);
+    }
     // Half depth: halfway between dry and wet (the gate's closed half).
     {
         Punch punch;

@@ -26,8 +26,7 @@ const char* punch_title(PunchKind kind) {
 }
 
 void Punch::clear() {
-    std::fill(left.get(), left.get() + history, 0.0f);
-    std::fill(right.get(), right.get() + history, 0.0f);
+    fresh = 0; // read() hears nothing older than this
     held = frozen = false; fading = 0;
 }
 
@@ -85,7 +84,9 @@ void Punch::backwards(double since, float& wet_l, float& wet_r) const {
 }
 
 float Punch::read(const float* line, double back) const {
-    double at = double(write) + history - std::clamp(back, 1.0, double(history - 2));
+    back = std::clamp(back, 1.0, double(history - 2));
+    if (back > double(fresh)) return 0; // from before clear(): silence, as a wiped history was
+    double at = double(write) + history - back;
     unsigned i = unsigned(at);
     float frac = float(at - i);
     unsigned a = i % history, b = (i + 1) % history;
@@ -221,7 +222,10 @@ void Punch::process(float* l, float* r, unsigned frames) {
             ++age; ++begun;
             if (!held) fading = std::max(0.0f, fading - fade_step);
         }
-        if (!frozen && !lines && ++write >= history) write = 0;
+        if (!frozen && !lines) {
+            if (++write >= history) write = 0;
+            if (fresh < history) ++fresh;
+        }
     }
 }
 
