@@ -9,7 +9,8 @@
 // mix and sends, arp and chord, effects; a MIDI track device and program, CC,
 // arp and chord; an empty track what it becomes. The wheel fine-edits the card touched last
 // (PRESET: walks the sounds; an empty track: walks its list), Push moves to the next card (PRESET: the Sounds
-// list; FX: the next effect, or with none yet the effect picker; an empty track: makes it), Shift + Push is Back.
+// list; FX: the next effect, or with none yet the effect picker; an empty track: makes it; a PLUGIN track: the
+// plug-in's own values, Edit), Shift + Push is Back.
 // The pads play the track; on a kit the pad played is the pad edited.
 #include "melodee/engine/arp.h"
 #include "melodee/engine/dsp.h"
@@ -920,6 +921,7 @@ void push(Context& c) {
         slot = uint8_t((slot + 1) % t.fx.count());
         return;
     }
+    if (t.engine == EngineKind::Plugin) { c.open(PageId::Edit); return; } // its own values, without Sample to Keys first
     auto cards = page_bindings(c.project, c.ui, c.pattern(), false);
     int from = stage_focus(c.ui, t);
     for (int k = 1; k <= 3; ++k) { // the next card that holds something
