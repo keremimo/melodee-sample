@@ -580,6 +580,18 @@ hold to steer, Shift + Seq to zoom in**.
   (up to 8192 points, at tick resolution): it goes with the pattern when it
   is copied, doubled, halved or sped up, and a lock's lane goes back to what
   it holds as recorded (else the track's value) when the lock ends.
+- **A pattern's feel** (roadmap P1): how its notes play without rewriting
+  them, heard at once and saved with the pattern (FEEL): STRENGTH (0–100 %
+  toward the nearest step of its Q, its SWING 50–75 % on every second
+  step of a straight Q), HUMANIZE (each note early or late by up to a
+  quarter of a step) and HUMAN VEL (softer or harder by up to 20), each a
+  fixed offset a note so the pattern plays the same pass after pass, and a
+  GROOVE taken from another pattern (any track's: how far each of its
+  sixteenths falls off the grid and how hard it plays against its mean,
+  folded onto 64 steps at most) laid on its notes by AMOUNT. The audio
+  thread plays the pattern with its feel laid on (`feel_pattern`); Steps,
+  Roll and the file keep the notes as written. Time Correct's page holds
+  the cards (`feel_cards`).
 - **Time Correct** (Shift + Pad 14): the selected pattern onto Q; pads pick
   whose notes move, B2 all; K1 Q, K2 shift ±48 ticks, K3 swing; B3 DO IT.
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):

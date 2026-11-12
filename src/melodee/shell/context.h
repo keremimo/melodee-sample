@@ -165,6 +165,9 @@ public:
     void sync_motion(unsigned track, unsigned pattern);
     void flush_motion();
     void take_arp_notes(); // Seq Record: the arp's (Note Repeat's) notes as they played, into their patterns
+    // A feel value (roadmap P1, Binding::Kind FeelStrength .. GrooveAmount) of the selected track's pattern playing,
+    // heard at once: the audio thread gets its notes as they now play (shell/feel_jobs.cpp).
+    void set_feel(Binding::Kind kind, int value);
     static constexpr uint32_t motion_sync_ms = 40;
     int motion_waiting = -1;  // track << 8 | pattern whose recorded motion the audio thread has not had yet
     uint32_t motion_synced = 0;

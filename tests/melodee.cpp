@@ -7634,7 +7634,83 @@ void note_repeat_p1() {
     }
 }
 
+// A pattern's feel (roadmap P1): strength toward Q, swing, humanize and a groove from another pattern, heard live.
+void feel_p1() {
+    auto note = [](Pattern& p, uint32_t tick, uint8_t key, uint8_t velocity) {
+        Event e;
+        e.tick = tick; e.key = key; e.velocity = velocity; e.length = 6;
+        p.add(e);
+    };
+    Pattern p;
+    note(p, 5, 60, 100); note(p, 30, 62, 100); note(p, 50, 64, 100);
+    CHECK(feel_pattern(p) == p); // plain: as written
+    p.feel.strength = 100;
+    auto played = feel_pattern(p);
+    CHECK(played.events[0].tick == 0 && played.events[1].tick == 24 && played.events[2].tick == 48);
+    CHECK(p.events[0].tick == 5); // the notes as written stay
+    p.feel.strength = 50;
+    played = feel_pattern(p);
+    CHECK(played.events[0].tick == 3 && played.events[1].tick == 27 && played.events[2].tick == 49);
+    p.feel.strength = 100; p.feel.swing = 75; // every second sixteenth half a sixteenth late
+    played = feel_pattern(p);
+    CHECK(played.events[1].tick == 36 && played.events[2].tick == 48);
+    // Humanize: each note a little early or late (at most a quarter of a step) and softer or harder (at most 20),
+    // the same each time it is laid, until its amount changes.
+    Pattern h;
+    for (unsigned n = 0; n < 16; ++n) note(h, n * 24 + 12, uint8_t(40 + n), 100);
+    h.feel.humanize = 100; h.feel.humanize_velocity = 100;
+    auto a = feel_pattern(h), b = feel_pattern(h);
+    CHECK(a == b);
+    unsigned moved = 0, louder = 0, softer = 0;
+    for (const auto& e : a.events) {
+        int off = int(e.tick) - int((e.key - 40) * 24 + 12);
+        CHECK(std::abs(off) <= 6 && std::abs(int(e.velocity) - 100) <= 20);
+        moved += off != 0; louder += e.velocity > 100; softer += e.velocity < 100;
+    }
+    CHECK(moved >= 8 && louder >= 2 && softer >= 2);
+    // A groove taken from a pattern: its second sixteenth four ticks late and soft, laid on another's notes.
+    Pattern source;
+    for (unsigned n = 0; n < 16; ++n) note(source, n * 24 + (n % 2 ? 4 : 0), 36, n % 2 ? 60 : 120);
+    Pattern bass;
+    note(bass, 0, 40, 100); note(bass, 24, 41, 100);
+    groove_of(source, bass.feel);
+    CHECK(bass.feel.groove_offsets.size() == 16 && bass.feel.groove_offsets[1] == 4 && bass.feel.groove_offsets[0] == 0);
+    CHECK(bass.feel.groove_levels[0] == 133 && bass.feel.groove_levels[1] == 67);
+    played = feel_pattern(bass);
+    CHECK(played.events[0].tick == 0 && played.events[0].velocity == 127 && played.events[1].tick == 28 && played.events[1].velocity == 67);
+    bass.feel.groove_amount = 50;
+    played = feel_pattern(bass);
+    CHECK(played.events[1].tick == 26 && played.events[1].velocity == 84);
+    // Heard: the audio thread plays the feel (a note written on tick 5, at strength 100 on tick 0's frame).
+    {
+        Pattern q;
+        note(q, 5, 60, 100); note(q, 2 * 24, 62, 100);
+        q.feel.strength = 100;
+        auto notes = played_notes(q, 120);
+        const double tick = 44100 * 60.0 / 120 / 96;
+        CHECK(notes.size() == 2 && std::llabs(int64_t(notes[1].frame - notes[0].frame) - std::llround(48 * tick)) <= 2);
+    }
+    // The cards Time Correct's page lays out.
+    CHECK(feel_cards(bass, 0)[0].kind == Binding::Kind::FeelStrength && feel_cards(bass, 1)[1].kind == Binding::Kind::GrooveFrom &&
+          feel_cards(bass, 1)[2].value == 50 && feel_cards(bass, 1)[1].max == int(track_count * pattern_count));
+    // The file: FEEL with its groove; without it the notes play as written.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        bank->at[5][3] = bass;
+        bank->at[5][3].feel.groove_from = 1 + 2 * pattern_count + 7; bank->at[5][3].feel.humanize = 30; bank->at[5][3].feel.swing = 66;
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[5][3] == bank->at[5][3]);
+        std::string text(data.begin(), data.end());
+        data[text.find("FEEL")] = 'X';
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[5][3].feel.plain());
+    }
+}
+
 int main() {
+    feel_p1();
     note_repeat_p1();
     ratchets();
     trig_conditions();

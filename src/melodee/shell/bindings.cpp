@@ -166,6 +166,16 @@ std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, con
     return out;
 }
 
+std::array<Binding, 3> feel_cards(const Pattern& pattern, unsigned row) {
+    const auto& f = pattern.feel;
+    if (row % 2 == 0)
+        return {Binding {Kind::FeelStrength, 0, 0, 100, f.strength}, Binding {Kind::FeelSwing, 0, 50, 75, f.swing},
+                Binding {Kind::FeelHumanize, 0, 0, 100, f.humanize}};
+    return {Binding {Kind::FeelVelocity, 0, 0, 100, f.humanize_velocity},
+            Binding {Kind::GrooveFrom, 0, 0, int(track_count * pattern_count), f.groove_from},
+            Binding {Kind::GrooveAmount, 0, 0, 100, f.groove_amount}};
+}
+
 bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold) {
     const auto& track = project.tracks[ui.track % track_count];
     unsigned q = pattern.q();

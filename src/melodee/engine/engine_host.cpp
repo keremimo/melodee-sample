@@ -24,7 +24,7 @@ float level_gain(int level) { float x = std::clamp(level, 0, 127) / 100.0f; retu
 
 PlayPatterns copy_patterns(const std::array<Pattern, pattern_count>& from) {
     PlayPatterns out {};
-    for (unsigned p = 0; p < pattern_count; ++p) out[p] = new Pattern(from[p]);
+    for (unsigned p = 0; p < pattern_count; ++p) out[p] = new Pattern(feel_pattern(from[p])); // as it plays (roadmap P1, its feel)
     return out;
 }
 void free_patterns(PlayPatterns& patterns) { for (auto& p : patterns) { delete p; p = nullptr; } }
@@ -56,7 +56,7 @@ EngineHost::~EngineHost() {
 // Before the audio thread runs: copies into the patterns it already holds.
 void EngineHost::load(const Project& project, const PatternBank& bank) {
     for (unsigned t = 0; t < track_count; ++t)
-        for (unsigned p = 0; p < pattern_count; ++p) *patterns[t][p] = bank.at[t][p];
+        for (unsigned p = 0; p < pattern_count; ++p) *patterns[t][p] = feel_pattern(bank.at[t][p]);
     load_state(project);
 }
 

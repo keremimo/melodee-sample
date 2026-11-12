@@ -132,6 +132,16 @@ behaviour changed.
   written by the audio thread's count (`arp_origin` + its ticks, so on the
   grid even with swing) and the press is not written. Why: what is heard
   is what is kept; a press with Note Repeat on makes no sound of its own.
+- P1 (with round 2's session, its Time Correct C pick "strength, heard
+  live"): humanize and the groove are a pattern's `Feel`, with strength and
+  swing, applied to the copy the audio thread plays (`feel_pattern` in
+  `Context::sync_pattern`, the packs and `EngineHost::load`), never to the
+  notes; humanize is a fixed offset a note (seeded by its tick and key), so
+  a pass sounds like the last until the amount changes; a groove is a copy
+  taken from the pattern picked, by sixteenths, 64 at most. P1 built the
+  model, file (FEEL), cards (`feel_cards`) and their kinds; round 2 lays
+  them out on Time Correct's page. Why: one timing path for both, and
+  turning an amount back takes it back.
 
 ## Waiting for a hand check
 
@@ -151,6 +161,10 @@ behaviour changed.
 - P1: Note Repeat by hand: a pad held lightly and hard (the repeats follow
   the pressure; say if the curve wants to be steeper or start higher),
   1/4 and 1/64 on B1 / B3 again, and a take with Seq Record kept as notes.
+- P1: the feel by ear, once round 2 has it on Time Correct's page:
+  strength from 0 to 100 on a loose take, humanize on a straight hat (say
+  if a quarter of a step at 100 is too much), a drum pattern's groove laid
+  on a bass line.
 - P1: Fill by hand: Play held while playing for a bar, FILL steps heard and
   NOT FILL ones dropped, back on release; say if Play's hold should wait a
   moment (a tap does nothing while playing).
@@ -206,7 +220,7 @@ behaviour, write the code fresh for this app.
 - [x] Kit lanes of their own length (polymeter inside a kit).
 - [x] Note Repeat: pad pressure sets the repeats' velocity (as the MPC),
   1/4 and 1/64 rates, the repeats written as notes under Seq Record.
-- [ ] Humanize in Time Correct (a random timing and velocity amount) and a
+- [x] Humanize in Time Correct (a random timing and velocity amount) and a
   groove taken from one pattern and laid on another.
 - [ ] Generators: Euclid on a kit lane (hits, steps, rotate); a pattern's
   variations (thinner, busier, humanised, reversed, an octave up / down).

@@ -121,19 +121,44 @@ struct LaneLength {
     bool operator==(const LaneLength& o) const { return key == o.key && length == o.length; }
 };
 
+// A pattern's feel (roadmap P1, Time Correct heard live): how its notes play without rewriting them. The audio thread
+// plays feel_pattern() of the pattern; the pages and the file keep the notes as written.
+struct Feel {
+    uint8_t strength = 0;          // 0..100: notes drawn that far toward the nearest step of the pattern's Q
+    uint8_t swing = 50;            // 50..75: with strength, every second step of a straight Q that late, as Time Correct swings
+    uint8_t humanize = 0;          // 0..100: each note early or late, up to a quarter of a step of Q (fixed per note)
+    uint8_t humanize_velocity = 0; // 0..100: each note softer or harder, up to 20
+    // A groove taken from another pattern (groove_of()): how far each of its steps falls off the grid and how hard it
+    // plays against the mean, laid on these notes by the step nearest each, `groove_amount` of it.
+    uint16_t groove_from = 0;      // 0 none; else 1 + track * pattern_count + pattern, where it was taken from
+    uint8_t groove_amount = 100;
+    uint16_t groove_step = sixteenth_ticks;
+    std::vector<int8_t> groove_offsets;  // ticks, within half a step
+    std::vector<uint8_t> groove_levels;  // percent, 25..175
+    bool plain() const { return !strength && !humanize && !humanize_velocity && (groove_offsets.empty() || !groove_amount); }
+    bool operator==(const Feel& o) const {
+        return strength == o.strength && swing == o.swing && humanize == o.humanize && humanize_velocity == o.humanize_velocity &&
+               groove_from == o.groove_from && groove_amount == o.groove_amount && groove_step == o.groove_step &&
+               groove_offsets == o.groove_offsets && groove_levels == o.groove_levels;
+    }
+    bool operator!=(const Feel& o) const { return !(*this == o); }
+};
+
 struct Pattern {
     uint32_t length = 16 * sixteenth_ticks; // ticks
     Division division = Division::Sixteenth; // Q
     std::vector<Event> events;               // by tick, then key
     std::vector<MotionPoint> motion;         // by tick, then lane; at most motion_points
     std::vector<LaneLength> lanes;           // keys looping on their own, by key
+    Feel feel;                               // how its notes play (roadmap P1)
 
     unsigned q() const { return division_ticks(division); }
     // Steps of Q the pattern holds (a last part step counts).
     unsigned steps() const { return std::max(1u, unsigned((length + q() - 1) / q())); }
     bool empty() const { return events.empty() || events.front().tick >= length; }
     bool operator==(const Pattern& o) const {
-        return length == o.length && division == o.division && events == o.events && motion == o.motion && lanes == o.lanes;
+        return length == o.length && division == o.division && events == o.events && motion == o.motion && lanes == o.lanes &&
+               feel == o.feel;
     }
     bool operator!=(const Pattern& o) const { return !(*this == o); }
     // The first event at or after `tick`.
@@ -181,6 +206,11 @@ struct Pattern {
     void set_lane_length(unsigned key, uint32_t ticks);
     void fit_lanes(); // after the pattern's length changed: lanes as long as it, or longer, go
 };
+
+// Roadmap P1, the feel: the pattern as the audio thread plays it (its notes moved and their velocities scaled as its
+// Feel says; the same pattern when plain), and a groove taken from a pattern's notes (none when it has none).
+Pattern feel_pattern(const Pattern& p);
+void groove_of(const Pattern& source, Feel& feel);
 
 // The events starting in step `step` of a pattern's Q: events[first, first + count) (Step Edit lists them).
 struct StepEvents { size_t first = 0; unsigned count = 0; };

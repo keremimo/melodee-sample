@@ -163,7 +163,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned p = 0; p < pattern_count; ++p) { // each pattern's notes, on the 96-a-quarter clock
             const auto& pattern = patterns.at[t][p];
             bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty() &&
-                         pattern.motion.empty() && pattern.lanes.empty();
+                         pattern.motion.empty() && pattern.lanes.empty() && pattern.feel == Feel {};
             if (plain) continue;
             at = w.begin("EVNT");
             w.u8(t); w.u8(p); w.u32(pattern.length); w.u8(unsigned(pattern.division));
@@ -197,6 +197,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                 w.u8(t); w.u8(p); w.u32(conditions);
                 for (uint32_t n = 0; n < pattern.events.size(); ++n)
                     if (pattern.events[n].condition != trig_always) { w.u32(n); w.u8(pattern.events[n].condition); }
+                w.end(at);
+            }
+            if (pattern.feel != Feel {}) { // its feel (roadmap P1): strength, swing, humanize, its groove
+                const auto& f = pattern.feel;
+                at = w.begin("FEEL");
+                w.u8(t); w.u8(p); w.u8(f.strength); w.u8(f.swing); w.u8(f.humanize); w.u8(f.humanize_velocity);
+                w.u16(f.groove_from); w.u8(f.groove_amount); w.u16(f.groove_step);
+                w.u8(unsigned(f.groove_offsets.size()));
+                for (size_t n = 0; n < f.groove_offsets.size(); ++n) { w.u8(uint8_t(f.groove_offsets[n])); w.u8(n < f.groove_levels.size() ? f.groove_levels[n] : 100); }
                 w.end(at);
             }
             if (!pattern.lanes.empty()) { // kit lanes of their own length (roadmap P1): key, ticks
@@ -551,6 +560,20 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 unsigned condition = r.u8();
                 if (r.ok && place < pattern.events.size() && condition < trig_count) pattern.events[place].condition = uint8_t(condition);
             }
+        } else if (name == "FEEL") { // a pattern's feel (roadmap P1); without it its notes play as written
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            Feel f;
+            f.strength = uint8_t(std::min(100u, r.u8())); f.swing = uint8_t(std::clamp(r.u8(), 50u, 75u));
+            f.humanize = uint8_t(std::min(100u, r.u8())); f.humanize_velocity = uint8_t(std::min(100u, r.u8()));
+            f.groove_from = uint16_t(r.u16()); f.groove_amount = uint8_t(std::min(100u, r.u8()));
+            f.groove_step = uint16_t(std::clamp(r.u16(), 1u, 4u * ticks_per_quarter));
+            unsigned steps = std::min(r.u8(), 64u);
+            for (unsigned k = 0; k < steps && r.ok; ++k) {
+                f.groove_offsets.push_back(int8_t(uint8_t(r.u8())));
+                f.groove_levels.push_back(uint8_t(std::clamp(r.u8(), 25u, 175u)));
+            }
+            if (r.ok) patterns->at[t][p].feel = f;
         } else if (name == "LANE") { // kit lanes of their own length (roadmap P1); without it every key loops with the pattern
             unsigned t = r.u8(), p = r.u8();
             if (t >= track_count || p >= pattern_count) continue;

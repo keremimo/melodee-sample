@@ -159,6 +159,16 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
         c.unit = std::abs(b.value) == 1 ? "tick" : "ticks";
         break;
+    case Kind::FeelStrength: c.label = "STRENGTH"; c.value = juce::String(b.value); c.unit = "%"; break; // a pattern's feel (roadmap P1)
+    case Kind::FeelSwing: c.label = "SWING"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::FeelHumanize: c.label = "HUMANIZE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::FeelVelocity: c.label = "HUMAN VEL"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::GrooveFrom: // a groove taken from track T's pattern P
+        c.label = "GROOVE";
+        c.value = b.value <= 0 ? juce::String("Off")
+                               : "T" + juce::String((b.value - 1) / int(pattern_count) + 1) + " P" + juce::String((b.value - 1) % int(pattern_count) + 1);
+        break;
+    case Kind::GrooveAmount: c.label = "AMOUNT"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::LaneLength: // a kit lane's own length (roadmap P1); as long as the pattern: none of its own
         c.label = "LANE"; c.value = b.value >= int(s.pattern.steps()) ? juce::String("All") : juce::String(b.value); c.unit = b.value >= int(s.pattern.steps()) ? "" : "steps";
         break;

@@ -69,7 +69,11 @@ struct Binding {
         LaneLength, // Steps on a kit, Shift + K1: the last pad's lane's own length in steps of Q (the pattern's: none)
         // Step Edit as step entry (round 2, step-edit2 C): what a pad writes at the caret, length in steps of Q,
         // velocity (0: as played), chance; Roll's Shift + K1 NUDGE: the note in focus off its grid line, in ticks.
-        EntryLength, EntryVelocity, EntryChance, EventNudge
+        EntryLength, EntryVelocity, EntryChance, EventNudge,
+        // A pattern's feel (roadmap P1, model/pattern.h Feel), heard live: strength toward Q 0..100, its swing 50..75,
+        // humanize timing and velocity 0..100, a groove taken from a pattern (0 none, else 1 + track * 16 + pattern)
+        // and how much of it 0..100. The selected track's pattern playing.
+        FeelStrength, FeelSwing, FeelHumanize, FeelVelocity, GrooveFrom, GrooveAmount
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -113,6 +117,9 @@ Binding lane_binding(const Track& track, unsigned track_index, int lane);
 // Roadmap P1: the cards while a step (Steps) or a note (Roll, its pad held) is held: the Motion page's three lanes,
 // each showing its lock at `tick` (else the track's own value); a turn writes the lock (Context::write_lock).
 std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t tick);
+// Roadmap P1, a pattern's feel (model/pattern.h Feel) as cards, for Time Correct's page (round 2) to lay out: row 0
+// strength, swing, humanize; row 1 humanize's velocity, the groove (where from) and how much of it.
+std::array<Binding, 3> feel_cards(const Pattern& pattern, unsigned row);
 // The tick a held step or note locks at and how long the lock holds; false when nothing is held.
 bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold);
 // The chain a page shows: the selected track's, its bus's, or the master's.

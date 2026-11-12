@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/model/pattern.h"
+#include <cmath>
 
 namespace melodee {
 namespace {
@@ -180,6 +181,76 @@ uint32_t quantise_tick(const Pattern& p, uint32_t tick, unsigned grid) {
 
 void time_correct_all(Pattern& p, const std::array<uint64_t, 3>* keys, unsigned swing, int shift) {
     time_correct(p, [keys](unsigned key) { return !keys || (key < 192 && (((*keys)[key / 64] >> (key % 64)) & 1)); }, swing, shift);
+}
+
+namespace {
+// A note's own random numbers, from where it is (the same each time, so a pattern plays the same feel pass after pass
+// until its amount changes): two in -1..1, mostly small (the sum of two).
+double humanize_draw(const Event& e, unsigned salt) {
+    uint32_t h = e.tick * 2654435761u ^ (uint32_t(e.key) << 16 | uint32_t(uint8_t(e.pitch)) << 8) ^ salt * 40503u;
+    auto next = [&] { h ^= h << 13; h ^= h >> 17; h ^= h << 5; return double(h % 10001) / 10000.0; };
+    return next() + next() - 1.0;
+}
+} // namespace
+
+Pattern feel_pattern(const Pattern& p) {
+    if (p.feel.plain()) return p;
+    Pattern out = p;
+    const auto& f = p.feel;
+    double q = p.q(), late = division_triplet(p.division) ? 0 : q * (double(std::clamp<unsigned>(f.swing, 50, 75)) - 50) / 50.0;
+    unsigned steps = unsigned(f.groove_offsets.size());
+    out.events.clear();
+    out.events.reserve(p.events.size());
+    for (auto e : p.events) {
+        if (e.tick >= p.length) continue;
+        double t = e.tick;
+        if (f.strength) { // toward the nearest step of Q, the second of each pair late by the swing
+            double step = std::floor(t / q + 0.5), target = step * q + (std::fmod(step, 2.0) == 1.0 ? late : 0.0);
+            t += (target - t) * f.strength / 100.0;
+        }
+        double velocity = e.velocity;
+        if (steps && f.groove_amount) { // the groove's step nearest the note as written
+            unsigned at = unsigned(std::floor(double(e.tick) / std::max<uint16_t>(f.groove_step, 1) + 0.5)) % steps;
+            t += f.groove_offsets[at] * f.groove_amount / 100.0;
+            double level = (at < f.groove_levels.size() ? f.groove_levels[at] : 100) / 100.0;
+            velocity *= 1.0 + (level - 1.0) * f.groove_amount / 100.0;
+        }
+        if (f.humanize) t += humanize_draw(e, 1) * q / 4.0 * f.humanize / 100.0;
+        if (f.humanize_velocity) velocity += humanize_draw(e, 2) * 20.0 * f.humanize_velocity / 100.0;
+        int64_t loop = std::max<uint32_t>(p.lane_length(e.key), 1), at = int64_t(std::floor(t + 0.5));
+        e.tick = uint32_t(((at % loop) + loop) % loop); // round its loop (a kit lane's own): early on the first step plays at the end
+        e.velocity = uint8_t(std::clamp(int(velocity + 0.5), 1, 127));
+        out.add(e);
+    }
+    return out;
+}
+
+void groove_of(const Pattern& source, Feel& feel) {
+    unsigned step = std::max<unsigned>(feel.groove_step, 1);
+    unsigned steps = std::clamp<unsigned>((std::min<uint32_t>(source.length, 64 * step) + step / 2) / step, 1, 64);
+    double span = double(steps) * step;
+    std::vector<double> offsets(steps, 0.0), levels(steps, 0.0);
+    std::vector<unsigned> counts(steps, 0);
+    double heard = 0;
+    unsigned count = 0;
+    for (const auto& e : source.events) { // each hit to the step nearest it, a longer pattern folded onto the first steps
+        if (e.tick >= source.length) break;
+        double at = std::fmod(double(e.tick), span), near = std::floor(at / step + 0.5);
+        unsigned index = unsigned(near) % steps;
+        offsets[index] += at - near * step;
+        levels[index] += e.velocity;
+        ++counts[index];
+        heard += e.velocity;
+        ++count;
+    }
+    feel.groove_offsets.clear(); feel.groove_levels.clear();
+    if (!count) return;
+    double mean = heard / count;
+    for (unsigned n = 0; n < steps; ++n) {
+        double offset = counts[n] ? offsets[n] / counts[n] : 0.0, level = counts[n] ? levels[n] / counts[n] / mean : 1.0;
+        feel.groove_offsets.push_back(int8_t(std::clamp(int(std::lround(offset)), -int(step) / 2, int(step) / 2)));
+        feel.groove_levels.push_back(uint8_t(std::clamp(int(std::lround(level * 100)), 25, 175)));
+    }
 }
 
 StepEvents step_events(const Pattern& pattern, unsigned step) {
