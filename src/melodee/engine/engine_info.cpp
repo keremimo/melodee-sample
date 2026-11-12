@@ -29,24 +29,57 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const Sound kits[] {{"NEW KIT", {{{-1, 0}}}}};
     static const EngineInfo sampler {EngineKind::Sampler, "SAMPLER", true, kit_params, sampler::Count, nullptr, 0,
                                      {sampler::Tune, sampler::Filter, sampler::Decay}, kits, 1};
-    // MIDI (docs/MIDI_TRACKS.md, phase M1): where the track's notes go out; bank and
-    // program (Off sends none), three controllers for Stage's CC page.
-    static const char* const midi_ports[] {"External", "USB-C", "All USB"};
-    static const ParamInfo midi_params[] {
-        {"PORT", 0, midi_track::PortCount - 1, midi_track::External, Format::Choice, midi_ports},
-        {"CHANNEL", 1, 16, 1, Format::Number, nullptr},
-        {"BANK MSB", 0, 128, 0, Format::Bank, nullptr}, {"BANK LSB", 0, 128, 0, Format::Bank, nullptr},
-        {"PROGRAM", 0, 128, 0, Format::Program, nullptr},
-        {"CC NUMBER", 0, 127, 74, Format::CcNumber, nullptr}, {"CC NUMBER", 0, 127, 71, Format::CcNumber, nullptr},
-        {"CC NUMBER", 0, 127, 1, Format::CcNumber, nullptr},
-        {"CC", 0, 127, 64, Format::Number, nullptr}, {"CC", 0, 127, 64, Format::Number, nullptr}, {"CC", 0, 127, 0, Format::Number, nullptr},
-    };
-    static const EditPage midi_pages[] {
-        {"Device", "DEVICE", Picture::Route, {{{midi_track::Port, midi_track::Channel, -1}, {-1, -1, -1}, {-1, -1, -1}}}},
-        {"Program", "PROGRAM", Picture::Bars, {{{midi_track::BankMsb, midi_track::BankLsb, midi_track::Program}, {-1, -1, -1}, {-1, -1, -1}}}},
-    };
+    // MIDI (docs/MIDI_TRACKS.md): where the track's notes go out; bank and program (Off sends none); 24 knob slots
+    // (the first three on Stage's CC page), each slot's address; pressure, bend, delay, pads, an input as its sound,
+    // SysEx on load, each pattern's own program (roadmap P4, M2-M5).
+    static const char* const midi_ports[] {"External", "USB-C", "All USB", "USB device"};
+    static const char* const pressure_outs[] {"Poly", "Channel", "Off"};
+    static const char* const audio_ins[] {"None", "Rear L", "Rear R", "Rear", "Mic", "USB"};
+    static const auto midi_params = [] {
+        using namespace midi_track;
+        std::array<ParamInfo, Count> p {};
+        p[Port] = {"PORT", 0, PortCount - 1, External, Format::Choice, midi_ports};
+        p[Channel] = {"CHANNEL", 1, 16, 1, Format::Number, nullptr};
+        p[BankMsb] = {"BANK MSB", 0, 128, 0, Format::Bank, nullptr};
+        p[BankLsb] = {"BANK LSB", 0, 128, 0, Format::Bank, nullptr};
+        p[Program] = {"PROGRAM", 0, 128, 0, Format::Program, nullptr};
+        const int16_t first[3] {74, 71, 1}, value[3] {64, 64, 0};
+        for (int k = 0; k < slots; ++k) {
+            p[size_t(slot_address(k))] = {"SLOT", -1, address_last, int16_t(k < 3 ? first[k] : -1), Format::MidiSlot, nullptr};
+            p[size_t(slot_value(k))] = {"CC", 0, 127, int16_t(k < 3 ? value[k] : 0), Format::Number, nullptr};
+        }
+        p[PressureOut] = {"PRESSURE", 0, 2, PressurePoly, Format::Choice, pressure_outs};
+        p[Bend] = {"BEND", -64, 63, 0, Format::Number, nullptr};
+        p[Delay] = {"DELAY", -50, 50, 0, Format::Ms, nullptr};
+        p[AudioIn] = {"INPUT", 0, AudioCount - 1, AudioNone, Format::Choice, audio_ins};
+        p[AudioMonitor] = {"MONITOR", 0, 1, 1, Format::Switch, nullptr};
+        p[AudioLevel] = {"LEVEL", 0, 127, 100, Format::Level, nullptr};
+        p[SysexOnLoad] = {"ON LOAD", 0, 1, 0, Format::Switch, nullptr};
+        for (int n = 0; n < 16; ++n) p[size_t(PatternProgram0 + n)] = {"PATTERN PROG", 0, 128, 0, Format::Program, nullptr};
+        return p;
+    }();
+    static const auto midi_pages = [] {
+        using namespace midi_track;
+        std::array<EditPage, 6 + slot_pages> pages {};
+        constexpr int8_t no = -1;
+        pages[0] = {"Device", "DEVICE", Picture::Route, {{{Port, Channel, Delay}, {no, no, no}, {no, no, no}}}};
+        // PROGRAM's second row: K3 the pattern playing's own program (shell/bindings.cpp turns it to that pattern's).
+        pages[1] = {"Program", "PROGRAM", Picture::Bars, {{{BankMsb, BankLsb, Program}, {no, no, PatternProgram0}, {no, no, no}}}};
+        static const char* const slot_titles[] {"Slots 1", "Slots 2", "Slots 3", "Slots 4", "Slots 5", "Slots 6", "Slots 7", "Slots 8"};
+        static const char* const slot_keys[] {"SLOTS 1", "SLOTS 2", "SLOTS 3", "SLOTS 4", "SLOTS 5", "SLOTS 6", "SLOTS 7", "SLOTS 8"};
+        for (int s = 0; s < slot_pages; ++s) // values on the first row, what each sends on the second (Minus / Plus)
+            pages[size_t(2 + s)] = {slot_titles[s], slot_keys[s], Picture::Bars,
+                                    {{{int8_t(slot_value(3 * s)), int8_t(slot_value(3 * s + 1)), int8_t(slot_value(3 * s + 2))},
+                                      {int8_t(slot_address(3 * s)), int8_t(slot_address(3 * s + 1)), int8_t(slot_address(3 * s + 2))}, {no, no, no}}}};
+        // PADS: K2 the last pad's note on Drum (shell/bindings.cpp); EXPRESS: bend and pressure; AUDIO; SYSEX.
+        pages[2 + slot_pages] = {"Pads", "PADS", Picture::Pads, {{{no, no, no}, {no, no, no}, {no, no, no}}}}; // K1 Keys / Drum, K2 a drum's note (bindings)
+        pages[3 + slot_pages] = {"Express", "EXPRESS", Picture::Bars, {{{Bend, PressureOut, no}, {no, no, no}, {no, no, no}}}};
+        pages[4 + slot_pages] = {"Audio", "AUDIO", Picture::Bars, {{{AudioIn, AudioMonitor, AudioLevel}, {no, no, no}, {no, no, no}}}};
+        pages[5 + slot_pages] = {"SysEx", "SYSEX", Picture::Bars, {{{no, SysexOnLoad, no}, {no, no, no}, {no, no, no}}}};
+        return pages;
+    }();
     static const Sound midi_sounds[] {{"MIDI OUT", {{{-1, 0}}}}};
-    static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params, midi_track::Count, midi_pages, 2,
+    static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params.data(), midi_track::Count, midi_pages.data(), unsigned(midi_pages.size()),
                                   {midi_track::Port, midi_track::Channel, -1}, midi_sounds, 1, nullptr, 0, false};
     // PLUGIN (docs/MELODEE.md, Plug-ins): a plug-in instrument from the card; its parameters are its own (the
     // rack's), so the engine states none here and its Edit page draws the plug-in's. Melodee's synths are plug-ins
@@ -203,6 +236,18 @@ Shown show(const ParamInfo& p, int v) {
     case Format::Bank: return {v ? std::to_string(v - 1) : "Off", ""};
     case Format::Program: return {v ? std::to_string(v) : "Off", ""};
     case Format::CcNumber: return {std::to_string(v), ""};
+    case Format::MidiSlot: {
+        using namespace midi_track;
+        switch (slot_kind(v)) {
+        case SlotKind::Off: return {"Off", ""};
+        case SlotKind::Cc: return {std::to_string(v), "CC"};
+        case SlotKind::Cc14: return {std::to_string(slot_number(v)), "CC14"};
+        case SlotKind::PitchBend: return {"Bend", ""};
+        case SlotKind::ChannelPressure: return {"Press", ""};
+        case SlotKind::Nrpn: return {std::to_string(slot_number(v)), "NRPN"};
+        }
+        return {"", ""};
+    }
     case Format::Number:
     default: return {std::to_string(v), ""};
     }

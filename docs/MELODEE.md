@@ -1168,6 +1168,28 @@ while following.
   DEVICE page: External, USB-C, All USB; 1–16), whatever Pad MIDI Out
   says. Muted or soloed out, a new port or channel, a pattern launched,
   another engine or Stop: the notes it holds end.
+- **MIDI tracks, roadmap P4** (M2-M5): DEVICE's K1 also lists each USB
+  device connected by name (its port's) and, gone, keeps it OFFLINE
+  while its messages go to every USB output; K3 DELAY (-50..+50 ms, never
+  earlier than the output's latency). Eight SLOTS pages: three knobs a
+  page (24 in all; Stage's CC the first three), the wheel's second row
+  each slot's address: a CC, a 14-bit CC (0-31), pitch bend, channel
+  pressure or NRPN (0-1023); a knob's 0-127 spans the message's whole
+  range; at most one message a slot every 2 ms (the latest goes);
+  recorded and played as Motion. EXPRESS: BEND (a lane too) and how pad
+  pressure goes out (Poly, Channel, Off); the fader's mod wheel is CC 1.
+  PROGRAM's second row: this pattern's own program, sent (with the
+  track's banks) as it launches, ahead of its notes. PADS: Keys or Drums,
+  and on Drums the last pad's note (K2), the bank's map drawn with
+  General MIDI names. MIDI in on a MIDI track goes out again on its port
+  and channel (notes, pressure, bend, CCs; a CC a slot sends turns that
+  slot, recorded under Seq Record) unless it would loop back (its input
+  is the track's output on its channel); Thru skips what was echoed.
+  AUDIO: an input (Rear L / R, Rear, Mic, USB) as the track's sound
+  through its strip, chain, sends, stems and bounce, MONITOR and LEVEL;
+  IN USE while the ADC is routed to the other input. SYSEX: a `.syx` from
+  the card's `SysEx` folder (K1), ON LOAD, Push sends it in pieces paced
+  for the jacks while everything else waits behind it.
 
 ### Project and system
 

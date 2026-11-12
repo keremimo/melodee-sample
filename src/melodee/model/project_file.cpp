@@ -555,7 +555,11 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     for (unsigned t = 0; t < track_count; ++t) { // a MIDI track (docs/MIDI_TRACKS.md): its port and channel are in TRAK's params
         if (project.tracks[t].engine != EngineKind::Midi) continue;
         at = w.begin("MIDT");
-        w.u8(t); w.u8(2); // the section's version: 2 has bank, program and the CCs in TRAK's params; later ones add more after it
+        w.u8(t); w.u8(3); // the section's version: 2 has bank, program and the CCs in TRAK's params; 3 the rest of roadmap P4's
+        const auto& midi = project.tracks[t].midi;
+        w.text(midi.device);
+        for (auto n : midi.drum_note) w.u8(n);
+        w.text(midi.sysex);
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // a PLUGIN track and the entry of PLUG it plays; TRAK said None
@@ -977,6 +981,13 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 const auto& info = engine_info(EngineKind::Midi);
                 if (version < 2) // before Stage: bank, program and the CCs at their initial values, not the zeros the file holds
                     for (unsigned p = midi_track::routing_params; p < info.param_count; ++p) tr.params[p] = info.params[p].initial;
+                else if (version < 3) // before roadmap P4: its slots past the third, expression, delay, audio and SysEx at theirs
+                    for (unsigned p = midi_track::Cc3 + 1; p < info.param_count; ++p) tr.params[p] = info.params[p].initial;
+                if (version >= 3) {
+                    r.text(tr.midi.device, sizeof(tr.midi.device));
+                    for (auto& n : tr.midi.drum_note) n = uint8_t(std::min(r.u8(), 127u));
+                    r.text(tr.midi.sysex, sizeof(tr.midi.sysex));
+                }
             }
         } else if (name == "PLGT") { // a PLUGIN track; TRAK, before it, said None
             unsigned t = r.u8(), entry = r.u8();

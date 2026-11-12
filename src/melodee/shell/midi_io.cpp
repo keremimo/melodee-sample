@@ -102,8 +102,25 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     if (!packet.size || !port_is(config.port, port.driver, port.surface)) return;
     ins.fetch_add(1, std::memory_order_relaxed);
     c.ui.midi_in_at = c.now;
-    if (config.thru && thru_count < thru.size()) thru[thru_count++] = packet;
     juce::MidiMessage m(packet.bytes.data(), int(packet.size));
+    // Roadmap P4 (docs/MIDI_TRACKS.md M3): a channel message for a MIDI track goes out again on its own port and channel
+    // (notes, pressure, bend; CCs as they came), unless it would come straight back in (the input is one of its
+    // outputs and the channel is its own: the instrument wants Local Off); Thru then skips it, so nothing doubles.
+    uint16_t echo = 0;
+    if (packet.size <= 3 && packet.bytes[0] >= 0x80 && packet.bytes[0] < 0xf0 && !m.isProgramChange()) {
+        std::array<uint8_t, track_count> own {};
+        for (unsigned t = 0; t < track_count; ++t) own[t] = c.project.tracks[t].midi_channel;
+        uint16_t tracks = note_tracks(config, own, c.ui.track, unsigned(m.getChannel()));
+        for (unsigned t = 0; t < track_count; ++t) {
+            const auto& tr = c.project.tracks[t];
+            if (!((tracks >> t) & 1) || tr.engine != EngineKind::Midi) continue;
+            bool back = dest_is(midi_track::dest_of(tr.params[midi_track::Port]), config.port, port.driver, port.surface) &&
+                        m.getChannel() == tr.params[midi_track::Channel];
+            if (!back) echo = uint16_t(echo | 1u << t); else echo_guarded.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+    c.midi_echo = echo;
+    if (config.thru && !echo && thru_count < thru.size()) thru[thru_count++] = packet;
     last_in.store((unsigned(packet.bytes[0]) << 16) | (packet.size > 1 ? unsigned(packet.bytes[1]) << 8 : 0) |
                   (packet.size > 2 ? packet.bytes[2] : 0), std::memory_order_relaxed);
 
@@ -193,6 +210,8 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         }
         return;
     }
+    if (echo && (m.isPitchWheel() || (m.isController() && m.getControllerNumber() != 1) || ((m.isAftertouch() || m.isChannelPressure()) && !c.ui.settings.pressure)))
+        echo_raw(c, packet.bytes.data(), packet.size, echo, packet.timestamp_ns); // what the engine does not play: on each MIDI track's port and channel
     if (m.isAftertouch() || m.isChannelPressure()) {
         if (!config.pad_in || !c.ui.settings.pressure) return;
         int value = m.isAftertouch() ? m.getAfterTouchValue() : m.getChannelPressureValue();
@@ -218,6 +237,41 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
                 for (int k = 0; k < 128; ++k) if (c.midi_held[t].test(size_t(k))) c.midi_key(t, k, 0, false);
             }
         }
+    }
+}
+
+// Roadmap P4 (docs/MIDI_TRACKS.md M3).
+void MidiIo::echo_raw(Context& c, const uint8_t* bytes, unsigned size, uint16_t tracks, uint64_t ns) {
+    if (size < 2) return;
+    unsigned type = bytes[0] & 0xf0, a = bytes[1], b = size > 2 ? bytes[2] : 0;
+    for (unsigned t = 0; t < track_count; ++t) {
+        if (!((tracks >> t) & 1)) continue;
+        auto& tr = c.project.tracks[t];
+        if (type == 0xb0) { // a CC: the slot that sends it turns, else it goes on as it came
+            int slot = -1;
+            for (int k = 0; k < midi_track::slots && slot < 0; ++k) {
+                int address = tr.params[size_t(midi_track::slot_address(k))];
+                if (midi_track::slot_kind(address) == midi_track::SlotKind::Cc && midi_track::slot_number(address) == int(a)) slot = k;
+            }
+            if (slot >= 0) {
+                int id = midi_track::slot_value(slot);
+                c.set_param(t, id, int(b));
+                if (t == c.ui.track) c.record_motion(id, int(b));
+                echoed.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+        }
+        if (type == 0xe0) { // the bend: BEND, -64..63 from its 14 bits
+            int value = int((a | b << 7) >> 7) - 64;
+            c.set_param(t, midi_track::Bend, value);
+            if (t == c.ui.track) c.record_motion(midi_track::Bend, value);
+            echoed.fetch_add(1, std::memory_order_relaxed);
+            continue;
+        }
+        Command e {Type::MidiEcho, uint8_t(t), 0, uint16_t(type), int16_t(b)};
+        e.position = a;
+        c.host.send_at(e, ns);
+        echoed.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
@@ -313,11 +367,20 @@ void MidiIo::configure(Context& c, bool force) {
     configured = true;
 }
 
-bool MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest) {
+bool MidiIo::send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest, int track) {
     const auto& config = c.ui.settings.midi;
     bool sent = false;
-    for (const auto& port : out.ports())
-        if (port.output && dest_is(dest, config.port, port.driver, port.surface)) sent |= out.send(port.address, packet);
+    if (dest == MidiDest::UsbDevice && track >= 0 && track < int(track_count)) { // roadmap P4 (M4): the device by its name
+        const char* name = c.project.tracks[size_t(track)].midi.device;
+        for (const auto& port : out.ports())
+            if (port.output && !port.surface && name[0] && port.name == name) sent |= out.send(port.address, packet);
+        uint32_t bit = 1u << track, was = offline_tracks.load(std::memory_order_relaxed);
+        offline_tracks.store(sent ? was & ~bit : was | bit, std::memory_order_relaxed);
+        if (!sent) dest = MidiDest::AllUsb; // not there: every USB output until it comes back (Kerem)
+    }
+    if (!sent)
+        for (const auto& port : out.ports())
+            if (port.output && dest_is(dest, config.port, port.driver, port.surface)) sent |= out.send(port.address, packet);
     if (!sent) return false;
     outs.fetch_add(1, std::memory_order_relaxed); c.ui.midi_out_at = c.now;
     if (dest == MidiDest::Config) return true;
@@ -348,9 +411,30 @@ void MidiIo::panic(Context& c, MidiOutput& out) {
 
 void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
     using K = MidiOutEvent::Kind;
+    auto track_send = [&](const juce::MidiMessage& m) { // a MIDI track's message on its own port
+        bool sent = send_all(c, out, packet_of(m), e.dest, e.track < track_count ? int(e.track) : -1);
+        if (sent && e.track < track_count) c.ui.track_out_at[e.track] = c.now;
+        return sent;
+    };
     switch (e.kind) {
+    // Roadmap P4 (docs/MIDI_TRACKS.md M2): a slot's 14-bit CC, NRPN, bend and pressure.
+    case K::Cc14:
+        track_send(juce::MidiMessage::controllerEvent(e.channel, e.a, int(e.value >> 7) & 127));
+        track_send(juce::MidiMessage::controllerEvent(e.channel, e.a + 32, int(e.value) & 127));
+        break;
+    case K::Nrpn: {
+        unsigned number = e.value >> 14, data = e.value & 0x3fff;
+        track_send(juce::MidiMessage::controllerEvent(e.channel, 99, int(number >> 7) & 127));
+        track_send(juce::MidiMessage::controllerEvent(e.channel, 98, int(number) & 127));
+        track_send(juce::MidiMessage::controllerEvent(e.channel, 6, int(data >> 7) & 127));
+        track_send(juce::MidiMessage::controllerEvent(e.channel, 38, int(data) & 127));
+        break;
+    }
+    case K::PitchBend: track_send(juce::MidiMessage::pitchWheel(e.channel, int(e.value & 0x3fff))); break;
+    case K::ChannelPressure: track_send(juce::MidiMessage::channelPressureChange(e.channel, e.b)); break;
+    case K::PolyPressure: track_send(juce::MidiMessage::aftertouchChange(e.channel, e.a, e.b)); break;
     case K::NoteOn:
-        if (send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest) && e.track < track_count) {
+        if (send_all(c, out, packet_of(juce::MidiMessage::noteOn(e.channel, e.a, juce::uint8(e.b))), e.dest, e.track < track_count ? int(e.track) : -1) && e.track < track_count) {
             c.ui.track_out_at[e.track] = c.now;
             auto& sent = c.ui.sent_notes[c.ui.sent_next++ % c.ui.sent_notes.size()]; // midi-track A: kept for the picture
             sent = {e.track, e.a, e.b, c.now ? c.now : 1, 0};
@@ -358,7 +442,7 @@ void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
         }
         break;
     case K::NoteOff:
-        send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest);
+        send_all(c, out, packet_of(juce::MidiMessage::noteOff(e.channel, e.a)), e.dest, e.track < track_count ? int(e.track) : -1);
         if (e.track < track_count) // the newest of its notes still held lets go
             for (unsigned n = 1; n <= c.ui.sent_notes.size(); ++n) {
                 auto& sent = c.ui.sent_notes[(c.ui.sent_next + c.ui.sent_notes.size() - n) % c.ui.sent_notes.size()];
@@ -366,12 +450,10 @@ void MidiIo::deliver(Context& c, MidiOutput& out, const MidiOutEvent& e) {
             }
         break;
     case K::Control: // a MIDI track's CC or bank select (Stage)
-        if (send_all(c, out, packet_of(juce::MidiMessage::controllerEvent(e.channel, e.a, e.b)), e.dest) && e.track < track_count)
-            c.ui.track_out_at[e.track] = c.now;
+        track_send(juce::MidiMessage::controllerEvent(e.channel, e.a, e.b));
         break;
     case K::Program:
-        if (send_all(c, out, packet_of(juce::MidiMessage::programChange(e.channel, e.a)), e.dest) && e.track < track_count)
-            c.ui.track_out_at[e.track] = c.now;
+        track_send(juce::MidiMessage::programChange(e.channel, e.a));
         break;
     case K::Clock: send_all(c, out, packet_of(juce::MidiMessage::midiClock())); break;
     case K::Start: send_all(c, out, packet_of(juce::MidiMessage::midiStart())); break;
@@ -415,15 +497,51 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
     for (unsigned n = 0; n < thru_count; ++n) send_all(c, out, thru[n]);
     thru_count = 0;
     if (panics_done != c.midi_panics) { panics_done = c.midi_panics; panic(c, out); }
-    { // the outputs there now, for Edit's DEVICE picture (a handful of ports: cheap every pass)
+    { // the outputs there now, for Edit's DEVICE picture (a handful of ports: cheap every pass); USB devices by name (M4)
         uint32_t bits = 0, devices = 0;
         for (const auto& port : out.ports()) {
             if (!port.output || port.surface) continue;
             if (port.driver == "SerialMIDI") bits |= 1;
             else if (port.driver == "MIDI Gadget") bits |= 2;
-            else ++devices;
+            else {
+                if (devices < c.ui.usb_devices.size()) std::snprintf(c.ui.usb_devices[devices].data(), 32, "%s", port.name.c_str());
+                ++devices;
+            }
         }
+        c.ui.usb_device_count = uint8_t(std::min<size_t>(devices, c.ui.usb_devices.size()));
         c.ui.midi_outputs = bits | std::min(devices, 255u) << 8;
+    }
+    // Roadmap P4 (docs/MIDI_TRACKS.md M4): SysEx in pieces on the track's port, paced on the jacks (31,250 baud: 320 us a
+    // byte); while it goes out every other message waits behind it, so none lands inside it.
+    if (!sysex.active && !c.sysex_queue.empty()) {
+        sysex.track = c.sysex_queue.front().track;
+        sysex.bytes = std::move(c.sysex_queue.front().bytes);
+        c.sysex_queue.erase(c.sysex_queue.begin());
+        sysex.at = 0; sysex.next_ns = 0; sysex.active = true;
+        if (c.host.playing()) c.notice("SysEx going out: notes wait");
+    }
+    if (sysex.active) {
+        int64_t at_ns = ns_of(now);
+        const auto& tr = c.project.tracks[sysex.track % track_count];
+        MidiDest dest = midi_track::dest_of(tr.params[midi_track::Port]);
+        bool din = dest == MidiDest::External;
+        if (at_ns >= sysex.next_ns) {
+            MidiPacket piece;
+            piece.size = unsigned(std::min<size_t>(piece.bytes.size(), sysex.bytes.size() - sysex.at));
+            std::copy(sysex.bytes.begin() + long(sysex.at), sysex.bytes.begin() + long(sysex.at + piece.size), piece.bytes.begin());
+            send_all(c, out, piece, dest, int(sysex.track));
+            sysex.at += piece.size;
+            sysex.next_ns = at_ns + int64_t(piece.size) * (din ? 320000 : 20000);
+            sysex_bytes.fetch_add(piece.size, std::memory_order_relaxed);
+        }
+        c.ui.sysex_percent[sysex.track % track_count] = uint8_t(std::max<size_t>(1, sysex.at * 100 / std::max<size_t>(sysex.bytes.size(), 1)));
+        if (sysex.at >= sysex.bytes.size()) {
+            sysex.active = false; sysex.bytes.clear();
+            c.ui.sysex_percent[sysex.track % track_count] = 0;
+            sysex_sent.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            out.wake_at(Clock::time_point(std::chrono::nanoseconds(sysex.next_ns)));
+        }
     }
     const auto& clock = c.host.audio_clock();
     int64_t now_ns = ns_of(now);
@@ -436,9 +554,9 @@ void MidiIo::pump(Context& c, MidiOutput& out, Clock::time_point now) {
         pending[at] = {due, e};
         ++pending_count;
     }
-    // Due within a fifth of a millisecond: now (the next wake-up would be later than that).
+    // Due within a fifth of a millisecond: now (the next wake-up would be later than that); none while SysEx goes out.
     unsigned sent = 0;
-    while (sent < pending_count && pending[sent].due <= now_ns + 200000) {
+    while (!sysex.active && sent < pending_count && pending[sent].due <= now_ns + 200000) {
         // How late this thread sends against when the frame is heard (USB or the UART add their own after).
         int64_t late = std::max<int64_t>(0, now_ns - pending[sent].due);
         late_sum += late; ++late_count; late_max = std::max(late_max, late);
@@ -472,7 +590,13 @@ std::string MidiIo::summary(const EngineHost& host) const {
                               std::to_string(host.mtc_error_us()) + " melodee_mtc_trim_ppm=" + std::to_string(host.mtc_trim_ppm()) +
                               " melodee_mtc_places=" + std::to_string(host.mtc_places()) + " melodee_ticks=" +
                               std::to_string(host.ticks()) + " melodee_song_bar=" + std::to_string(host.song_bar());
-    return " melodee_midi_in=" + std::to_string(ins.load()) + " melodee_midi_out=" + std::to_string(outs.load()) +
+    // Roadmap P4 (docs/MIDI_TRACKS.md M2-M4): MIDI tracks' slot messages sent / thinned, MIDI in echoed / held back by the
+    // loop guard, tracks whose USB device is missing (a bit each), SysEx files sent and their bytes.
+    std::string tracks = " melodee_midi_slots=" + std::to_string(host.slots_sent()) + "/" + std::to_string(host.slots_thinned()) +
+                         " melodee_midi_echo=" + std::to_string(echoed.load()) + "/" + std::to_string(echo_guarded.load()) +
+                         " melodee_midi_offline=" + std::to_string(offline_tracks.load()) + " melodee_sysex=" +
+                         std::to_string(sysex_sent.load()) + "/" + std::to_string(sysex_bytes.load());
+    return tracks + " melodee_midi_in=" + std::to_string(ins.load()) + " melodee_midi_out=" + std::to_string(outs.load()) +
            " melodee_midi_last=" + last + " melodee_clock_in=" + std::to_string(pulses_in.load()) +
            " melodee_clock_jitter_us=" + std::to_string(jitter_in.load()) + " melodee_clock_bunched=" + std::to_string(bunched.load()) + " melodee_ext=" + std::to_string(int(ext_running.load())) + " melodee_ext_tempo=" + std::to_string(tempo_seen.load()) +
            " melodee_cv_pulses=" + std::to_string(cv_pulses.load()) + " melodee_cv_ok=" + std::to_string(int(cv_ok.load())) +

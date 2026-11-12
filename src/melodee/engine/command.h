@@ -106,6 +106,12 @@ struct Command {
         TrackSpeed,
         // Roadmap P4: track = chain, index = slot, value = what keys its Compressor or Gate (model/project.h fx_key_*; 0 itself).
         FxKey,
+        // Roadmap P4 (docs/MIDI_TRACKS.md M3): a MIDI track echoes what came in: index = the status's type (0xb0 CC,
+        // 0xa0 poly or 0xd0 channel pressure), position = its first data byte, value = its second.
+        MidiEcho,
+        // Roadmap P4 (M5): track, value = the input it plays as its sound (midi_track::AudioChoice; the shell sends none
+        // while the ADC is routed elsewhere: IN USE).
+        MidiAudio,
         // Roadmap P4, a modulator (model/modulators.h): track = which; pattern 255 its settings, packed by
         // pack_modulator(), else target `pattern` packed by pack_mod_target() (value: where its lane stands as set).
         Modulator

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // MIDI in and out on the MIDI thread (parity phase 9), as MIDI Config says.
 //
@@ -50,7 +51,16 @@ private:
     void follow_mtc(Context& c, const MtcReader::Event& e); // what time code did: start, place, keep on time, stop
     void send_mtc(Context& c, uint16_t what, const MtcReader::Event& e);
     // To every output of `dest` (MIDI Config's port, or a MIDI track's own).
-    bool send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest = MidiDest::Config); // true: sent somewhere
+    // A MIDI track's USB device (`track`, roadmap P4 M4) by its name; while it is not there, every USB output.
+    bool send_all(Context& c, MidiOutput& out, const MidiPacket& packet, MidiDest dest = MidiDest::Config, int track = -1); // true: sent somewhere
+    std::atomic<uint32_t> offline_tracks {0}; // a bit a MIDI track whose USB device is missing (sent to every USB output)
+    std::atomic<unsigned> echoed {0}, echo_guarded {0}; // roadmap P4 (M3): messages echoed on MIDI tracks, and held back (loop guard)
+    // A CC, bend or pressure (`bytes`) echoed on `tracks` (MIDI tracks); a CC a slot sends turns that slot (heard, and
+    // recorded under Seq Record on the selected track), as the bend does BEND.
+    void echo_raw(Context& c, const uint8_t* bytes, unsigned size, uint16_t tracks, uint64_t ns);
+    // Roadmap P4 (M4): the SysEx going out now (Context::sysex_queue's first): its track, bytes, how far, the next piece.
+    struct SysexSending { bool active = false; uint8_t track = 0; std::vector<uint8_t> bytes; size_t at = 0; int64_t next_ns = 0; } sysex;
+    std::atomic<unsigned> sysex_sent {0}, sysex_bytes {0};
     void panic(Context& c, MidiOutput& out); // All Sound Off, All Notes Off, pitch bend centre: every channel, every port
     struct Pending { int64_t due = 0; MidiOutEvent event; };
     std::array<Pending, 512> pending {}; // sorted by when it is heard

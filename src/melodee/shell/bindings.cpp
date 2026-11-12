@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/midi_ports.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/loop_sheet.h"
 #include "melodee/engine/arp.h"
@@ -693,6 +694,26 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         }
         const auto& page = edit_page_at(info, ui.edit_page[ui.track]);
         const auto& row = page.rows[ui.edit_row[ui.track] % std::max(page.row_count(), 1u)];
+        if (track.engine == EngineKind::Midi) { // roadmap P4 (docs/MIDI_TRACKS.md M3): this pattern's program; the pads
+            if (std::string(page.key) == "PADS") {
+                Binding note {};
+                if (drum_pads(track)) { unsigned pad = track.last_pad % sampler_pads; note = {Kind::MidiDrumNote, int32_t(pad), 0, 127, track.midi.drum_note[pad]}; }
+                return {Binding {Kind::Layout, 0, 0, int(PadLayout::Count) - 1, int(track.layout)}, note, Binding {}};
+            }
+            if (std::string(page.key) == "SYSEX") // K1 the file (the card's SysEx folder), K2 on load; Push sends it
+                return {Binding {Kind::MidiSysexFile, 0, 0, std::max<int>(ui.sysex_count, 1), midi_sysex_choice(ui, track)},
+                        param(track, midi_track::SysexOnLoad), Binding {}};
+            std::array<Binding, 3> out {param(track, row[0]), param(track, row[1]), param(track, row[2])};
+            for (auto& b : out)
+                if (b.kind == Kind::Param && b.id == midi_track::Port) // the devices by name
+                    b = {Kind::MidiPort, 0, 0, int(midi_port_count(ui, track)) - 1, midi_port_index(ui, track)};
+            for (auto& b : out)
+                if (b.kind == Kind::Param && b.id == midi_track::PatternProgram0) {
+                    b.id = int32_t(midi_track::PatternProgram0 + track.pattern % pattern_count);
+                    b.value = track.params[size_t(b.id)];
+                }
+            return out;
+        }
         return {param(track, row[0]), param(track, row[1]), param(track, row[2])};
     }
     case PageId::Motion: {

@@ -10,8 +10,10 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/model/mod_matrix.h"
+#include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/midi_track_jobs.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 #include <cmath>
@@ -50,12 +52,43 @@ void bars_picture(Paint& p, const Snapshot& s, const EditPage& page) {
             const auto& param = info.params[id];
             float x = px + n * (cw + 8), y = py + r * row_h;
             auto shown = show(param, v[size_t(id)]);
-            p.text(param.label, x, y, cw, 10, caps_text(shade_of(s, page, id)));
+            juce::String label = param.label;
+            if (s.track().engine == EngineKind::Midi) { // a slot by what it sends; this pattern's program (roadmap P4)
+                if (midi_track::is_cc(id)) label = midi_track::slot_label(v[size_t(midi_track::slot_address(id - midi_track::Cc1))]);
+                else if (midi_track::slot_of_address(id) >= 0) label = "SLOT " + juce::String(midi_track::slot_of_address(id) + 1);
+                else if (id == midi_track::PatternProgram0) {
+                    int own = midi_track::PatternProgram0 + int(s.track().pattern % pattern_count);
+                    label = "P" + juce::String(s.track().pattern % pattern_count + 1) + " PROG";
+                    shown = show(param, v[size_t(own)]);
+                }
+            }
+            p.text(label, x, y, cw, 10, caps_text(shade_of(s, page, id)));
             p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x, y + 10, cw, 13, plain(colour::sec, type::small, Weight::Medium));
             gauge(p, x, y + 25, cw, gauge_of(param, v[size_t(id)]), shade_of(s, page, id));
         }
 }
 
+
+// A MIDI track's PADS page (roadmap P4, M3): the bank's sixteen pads as on the panel, each its note and its General MIDI
+// name on Drum, the last one hit raised; on Keys its keys.
+void drum_map_picture(Paint& p, const Snapshot& s) {
+    const auto& t = s.track();
+    auto c = colour_of(s);
+    float cw = (pw - 3 * 4) / 4, ch = (ph - 3 * 4) / 4;
+    for (unsigned pad = 0; pad < 16; ++pad) {
+        unsigned col = pad % 4, row = 3 - pad / 4; // pad 1 bottom left
+        float x = px + col * (cw + 4), y = py + row * (ch + 4);
+        int key = pad_note(s.project, t, pad).key;
+        bool last = drum_pads(t) && t.last_pad % sampler_pads == 16 * drum_bank(t) + pad;
+        p.fill(x, y, cw, ch, last ? c.withAlpha(0.25f) : colour::surf, 3);
+        if (last) p.ring(x, y, cw, ch, c, 3, 1.2f);
+        const char* gm = drum_pads(t) ? gm_drum_name(unsigned(key)) : nullptr;
+        juce::String name = gm ? juce::String(gm) : juce::String(note_name(key));
+        auto style = plain(last ? colour::text : colour::sec, type::small, Weight::Medium);
+        p.text(name, x + 3, y + 2, cw - 6, ch / 2, p.fit(name, style, cw - 6, type::floor));
+        p.text(juce::String(key), x + 3, y + ch / 2, cw - 6, ch / 2 - 2, plain(colour::mid, type::small));
+    }
+}
 
 // A MIDI track's DEVICE page (docs/MIDI_TRACKS.md; round 2, midi-track A): the route as Stage draws it (common.cpp).
 void route_picture(Paint& p, const Snapshot& s) { midi_route(p, s, px, py, pw, ph); }
@@ -167,6 +200,7 @@ void draw(Paint& p, const Snapshot& s) {
     switch (page.picture) {
     case Picture::Bars: bars_picture(p, s, page); break;
     case Picture::Route: route_picture(p, s); break;
+    case Picture::Pads: drum_map_picture(p, s); break;
     case Picture::Mod: break;
     }
 }
@@ -222,6 +256,10 @@ void push(Context& c) {
         c.ui.edit_page[t] = c.ui.map_cursor;
         c.ui.edit_row[t] = 0;
         c.ui.map_open = false;
+        return;
+    }
+    if (c.track().engine == EngineKind::Midi && std::string(edit_page_at(info, c.ui.edit_page[t]).key) == "SYSEX") { // roadmap P4: SEND
+        send_sysex(c, t);
         return;
     }
     if (is_mod_page(info, c.ui.edit_page[t])) {

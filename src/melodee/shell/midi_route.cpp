@@ -19,6 +19,7 @@ bool dest_is(MidiDest dest, MidiPort config, const std::string& driver, bool sur
     case MidiDest::External: return driver == "SerialMIDI";
     case MidiDest::UsbC: return driver == "MIDI Gadget";
     case MidiDest::AllUsb: return driver != "SerialMIDI";
+    case MidiDest::UsbDevice: return driver != "SerialMIDI" && driver != "MIDI Gadget"; // the device by name is MidiIo's to find
     default: return port_is(config, driver, surface);
     }
 }

@@ -31,6 +31,7 @@ enum class Format : uint8_t {
     Bank,      // a MIDI bank select: 0 Off (not sent), 1..128 as 0..127
     Program,   // a MIDI program: 0 Off (not sent), 1..128 as numbered
     CcNumber,  // a MIDI controller number 0..127, "CC 74"
+    MidiSlot,  // a MIDI track's slot address (engine/midi_engine.h): "CC 74", "CC14 1", "BEND", "PRESS", "NRPN 12"; -1 none
 };
 
 struct ParamInfo {
@@ -42,7 +43,8 @@ struct ParamInfo {
 
 // What the picture on an Edit page draws.
 // Route: a MIDI track's notes leaving for its port (docs/MIDI_TRACKS.md).
-enum class Picture : uint8_t { Bars, Mod, Route };
+// Pads: a MIDI track's Drum map, the bank's sixteen pads with their notes (roadmap P4, M3).
+enum class Picture : uint8_t { Bars, Mod, Route, Pads };
 
 struct EditPage {
     const char* title; // as the page and the page map name it

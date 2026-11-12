@@ -88,7 +88,10 @@ struct Binding {
         // (free: 0..100; on the clock: a division), a follower's source (tracks, buses) and rise and fall, the target in
         // hand's depth; a macro, its value (every target with it), the target in hand's low and high.
         ModPick, ModKind, ModShape, ModSync, ModRate, ModInput, ModAttack, ModRelease, ModDepth,
-        MacroPick, MacroValue, MacroLow, MacroHigh
+        MacroPick, MacroValue, MacroLow, MacroHigh,
+        MidiDrumNote, // roadmap P4 (M3), a MIDI track's Drum pads: the note pad `id` (16 bank + pad) plays, Edit's PADS K2
+        MidiPort,     // roadmap P4 (M4), DEVICE's K1: External, USB-C, each USB device by name, All USB (shell/midi_track_jobs.h)
+        MidiSysexFile // roadmap P4 (M4), SYSEX's K1: a .syx of the card's SysEx folder (0 none)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

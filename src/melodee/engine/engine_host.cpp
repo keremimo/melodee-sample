@@ -291,6 +291,8 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
     slot.arp.top = kind == EngineKind::Sampler ? int(sampler_last_key) : 127; // a kit's notes run past 127
     for (auto& off : slot.offs) off.key = -1;
     slot.held = {};
+    slot.midi.audio = midi_track::AudioNone; // the shell says again what it plays (roadmap P4, M5)
+    slot.program_sent = -1;
 }
 
 bool EngineHost::loop_strip_command(const Command& c) {
@@ -364,6 +366,18 @@ void EngineHost::apply(const Command& c) {
             EngineCall call;
             call.op = EngineCall::Op::Mod; call.a = c.index; call.b = c.route.source; call.c = c.route.destination; call.d = c.route.amount;
             if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
+        }
+        break;
+    case Type::MidiAudio: slot.midi.audio = std::clamp<int>(c.value, 0, midi_track::AudioCount - 1); break; // roadmap P4 (M5)
+    case Type::MidiEcho: // roadmap P4 (M3): what came in, on the MIDI track's own port and channel
+        if (slot.kind == EngineKind::Midi) {
+            MidiOutEvent e {MidiOutEvent::Kind::Control, uint8_t(std::clamp<int>(slot.base[midi_track::Channel], 1, 16)), uint8_t(c.position & 0x7f),
+                            uint8_t(c.value & 0x7f), 0, frame_now + block_at};
+            if (c.index == 0xa0) e.kind = MidiOutEvent::Kind::PolyPressure;
+            else if (c.index == 0xd0) { e.kind = MidiOutEvent::Kind::ChannelPressure; e.b = e.a; }
+            else if (c.index != 0xb0) break;
+            e.dest = midi_track::dest_of(slot.base[midi_track::Port]); e.track = c.track % track_count;
+            emit(e);
         }
         break;
     case Type::Modulator: // roadmap P4
@@ -662,6 +676,14 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Pressure: {
         if (!slot.engine) break;
+        if (slot.kind == EngineKind::Midi && slot.base[midi_track::PressureOut] != midi_track::PressureOff && c.index < 128) { // roadmap P4 (M2)
+            bool poly = slot.base[midi_track::PressureOut] == midi_track::PressurePoly;
+            MidiOutEvent e {poly ? MidiOutEvent::Kind::PolyPressure : MidiOutEvent::Kind::ChannelPressure,
+                            uint8_t(std::clamp<int>(slot.base[midi_track::Channel], 1, 16)), uint8_t(c.index), uint8_t(std::clamp<int>(c.value, 0, 127)), 0,
+                            frame_now + block_at};
+            e.dest = midi_track::dest_of(slot.base[midi_track::Port]); e.track = c.track % track_count;
+            emit(e);
+        }
         float value = std::clamp<int>(c.value, 0, 127) / 127.0f;
         engine_pressure(slot, c.index, value);
         // The arp's notes follow the pressure of the key they came from, while it is held.
@@ -675,6 +697,12 @@ void EngineHost::apply(const Command& c) {
     case Type::Wheel:
         slot.wheel = std::clamp(c.value / 1000.0f, 0.0f, 1.0f);
         engine_wheel(slot, slot.wheel);
+        if (slot.kind == EngineKind::Midi) { // roadmap P4 (M2): the fader's or MIDI in's mod wheel as CC 1
+            MidiOutEvent e {MidiOutEvent::Kind::Control, uint8_t(std::clamp<int>(slot.base[midi_track::Channel], 1, 16)), 1,
+                            uint8_t(std::lround(slot.wheel * 127)), 0, frame_now + block_at};
+            e.dest = midi_track::dest_of(slot.base[midi_track::Port]); e.track = c.track % track_count;
+            emit(e);
+        }
         break;
     case Type::Level: slot.mix_level = c.value; set_level(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_level, 0, c.value, true); break; // roadmap P4: kept, Motion borrows it
     case Type::Pan: slot.mix_pan = c.value; set_pan(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_pan, 0, c.value, true); break;
@@ -697,6 +725,7 @@ void EngineHost::apply(const Command& c) {
         if (running && !song_mode) slot.queued = uint8_t(c.value % pattern_count);
         else if (!song_mode) { slot.pattern = uint8_t(c.value % pattern_count); slot.queued = 255; lead = slot.pattern; follow_tempo(); }
         patterns_now[c.track % track_count].store(slot.pattern, std::memory_order_relaxed);
+        if (!running && slot.kind == EngineKind::Midi) midi_program(c.track % track_count, frame_now, false); // roadmap P4: its own program
         break;
     case Type::SongClip: if (c.index < song_clips) song.clips[c.index] = c.clip; break;
     case Type::SongCount: song.count = uint16_t(std::clamp<int>(c.value, 0, song_clips)); break;
@@ -1340,6 +1369,7 @@ void EngineHost::bar_start() {
             if (slot.queued == 255) continue;
             if (slot.kind == EngineKind::Midi && slot.queued != slot.pattern) midi_all_off(t, frame_now + block_at); // the old pattern's notes end
             slot.pattern = slot.queued; slot.queued = 255; slot.start = tick_now;
+            if (slot.kind == EngineKind::Midi) midi_program(t, frame_now + block_at, false); // roadmap P4: a pattern's own program, ahead of its notes
             patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
             lead = slot.pattern;
         }
@@ -1371,6 +1401,7 @@ void EngineHost::clips_at_bar(bool force) {
             // A clip starts (or the loop came back into it): its pattern from where the clip says.
             slot.clip = index;
             slot.pattern = clip.pattern;
+            if (slot.kind == EngineKind::Midi) midi_program(t, frame_now + block_at, false); // roadmap P4
             slot.start = bar_tick - (song_bar_now - clip.bar) * bar;
             patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
         }
@@ -1572,19 +1603,104 @@ void EngineHost::midi_param(unsigned t, int id, int value, uint64_t at) {
     t %= track_count;
     if (!is_midi(t)) return;
     const auto& base = slots[t].base;
-    if (is_program(id)) { midi_program(t, at); return; }
+    if (is_program(id) || (id >= PatternProgram0 && id < PatternProgram0 + 16)) { midi_program(t, at, false); return; }
+    if (id == Bend) { // pitch bend: -64..63 around the centre
+        MidiOutEvent e {MidiOutEvent::Kind::PitchBend, uint8_t(std::clamp<int>(base[Channel], 1, 16)), 0, 0, uint32_t(std::clamp((value + 64) * 128, 0, 16383)), at};
+        e.dest = dest_of(base[Port]); e.track = uint8_t(t);
+        emit(e);
+        return;
+    }
     if (!is_cc(id)) return;
-    MidiOutEvent e {MidiOutEvent::Kind::Control, uint8_t(std::clamp<int>(base[Channel], 1, 16)),
-                    uint8_t(std::clamp<int>(base[CcNumber1 + (id - Cc1)], 0, 127)), uint8_t(std::clamp(value, 0, 127)), 0, at};
-    e.dest = dest_of(base[Port]); e.track = uint8_t(t);
-    emit(e);
+    midi_slot(t, id - Cc1, value, at);
 }
 
-void EngineHost::midi_program(unsigned t, uint64_t at) {
+// Roadmap P4 (docs/MIDI_TRACKS.md M2): a slot's value as its address says, at most one message a slot every 2 ms (the
+// latest waits for its time; DIN carries about a thousand a second and a turn must not starve the notes).
+void EngineHost::midi_slot(unsigned t, int slot, int value, uint64_t at) {
+    using namespace midi_track;
+    auto& s = slots[t % track_count];
+    if (slot < 0 || slot >= midi_track::slots) return;
+    auto& thin = s.thin[size_t(slot)];
+    uint64_t gap = uint64_t(dsp::sample_rate() * 0.002);
+    if (thin.last && at < thin.last + gap) {
+        if (thin.pending >= 0) cc_thinned.fetch_add(1, std::memory_order_relaxed);
+        thin.pending = value;
+        return;
+    }
+    thin.last = std::max<uint64_t>(at, 1);
+    thin.pending = -1;
+    int address = s.base[size_t(slot_address(slot))];
+    uint8_t channel = uint8_t(std::clamp<int>(s.base[Channel], 1, 16));
+    MidiOutEvent e {MidiOutEvent::Kind::Control, channel, 0, 0, 0, at};
+    int v = std::clamp(value, 0, 127), wide = std::min(v * 129, 16383); // a knob's 0-127 over 14 bits, ends to ends
+    switch (slot_kind(address)) {
+    case SlotKind::Off: return;
+    case SlotKind::Cc: e.a = uint8_t(slot_number(address)); e.b = uint8_t(v); break;
+    case SlotKind::Cc14: e.kind = MidiOutEvent::Kind::Cc14; e.a = uint8_t(slot_number(address)); e.value = uint32_t(wide); break;
+    case SlotKind::PitchBend: e.kind = MidiOutEvent::Kind::PitchBend; e.value = uint32_t(std::min(v * 128, 16383)); break; // 64: the centre
+    case SlotKind::ChannelPressure: e.kind = MidiOutEvent::Kind::ChannelPressure; e.b = uint8_t(v); break;
+    case SlotKind::Nrpn: e.kind = MidiOutEvent::Kind::Nrpn; e.value = uint32_t(slot_number(address)) << 14 | uint32_t(wide); break;
+    }
+    e.dest = dest_of(s.base[Port]); e.track = uint8_t(t % track_count);
+    emit(e);
+    cc_sent.fetch_add(1, std::memory_order_relaxed);
+}
+
+void EngineHost::midi_thinned(unsigned frames) {
+    uint64_t gap = uint64_t(dsp::sample_rate() * 0.002), end = frame_now + frames;
+    for (unsigned t = 0; t < track_count; ++t) {
+        if (!is_midi(t)) continue;
+        auto& s = slots[t];
+        for (int k = 0; k < int(s.thin.size()); ++k) {
+            auto& thin = s.thin[size_t(k)];
+            if (thin.pending < 0 || thin.last + gap >= end) continue;
+            int value = thin.pending;
+            uint64_t at = std::max(thin.last + gap, frame_now);
+            thin.last = 0; // its time has come: it goes
+            midi_slot(t, k, value, at);
+        }
+    }
+}
+
+// Roadmap P4 (docs/MIDI_TRACKS.md M5): a MIDI track's input as its sound, at its LEVEL (MONITOR off: silent), into its
+// engine before the block renders; from there on it is any track's (chain, sends, stems, bounce).
+void EngineHost::midi_inputs(const int32_t* input, const float* usb, unsigned frames) {
+    constexpr float scale = 1.0f / 2147483648.0f;
+    for (auto& s : slots) {
+        if (s.kind != EngineKind::Midi || s.midi.audio == midi_track::AudioNone) continue;
+        float g = s.base[midi_track::AudioMonitor] ? level_gain(s.base[midi_track::AudioLevel]) : 0.0f;
+        for (unsigned f = 0; f < frames && f < 128; ++f) {
+            float l = 0, r = 0;
+            if (s.midi.audio == midi_track::AudioUsb) { if (usb) { l = usb[2 * f]; r = usb[2 * f + 1]; } }
+            else if (input) { l = input[2 * f] * scale; r = input[2 * f + 1] * scale; }
+            switch (s.midi.audio) {
+            case midi_track::AudioRearL: r = l; break;
+            case midi_track::AudioRearR: l = r; break;
+            case midi_track::AudioMic: l = r = (l + r) * 0.5f; break;
+            default: break;
+            }
+            s.midi.in_l[f] = l * g; s.midi.in_r[f] = r * g;
+        }
+    }
+}
+
+int64_t EngineHost::track_delay(unsigned t) const {
+    int ms = slots[t % track_count].base[midi_track::Delay];
+    if (!ms || !is_midi(t)) return 0;
+    int64_t frames = int64_t(std::lround(ms * dsp::sample_rate() / 1000.0));
+    return std::max<int64_t>(frames, -int64_t(clock.latency_frames())); // decided as its block renders: no earlier than that
+}
+
+void EngineHost::midi_program(unsigned t, uint64_t at, bool force) {
     using namespace midi_track;
     t %= track_count;
-    const auto& base = slots[t].base;
-    if (!base[Program]) return; // Off: the device keeps its own
+    auto& slot = slots[t];
+    const auto& base = slot.base;
+    int own = base[size_t(PatternProgram0 + slot.pattern % pattern_count)]; // the pattern's own, else the track's
+    int program = own ? own : base[Program];
+    if (!program) return; // Off: the device keeps its own
+    if (!force && program == slot.program_sent) return;
+    slot.program_sent = program;
     uint8_t channel = uint8_t(std::clamp<int>(base[Channel], 1, 16));
     auto out = [&](MidiOutEvent::Kind kind, int a, int b) {
         MidiOutEvent e {kind, channel, uint8_t(a), uint8_t(b), 0, at};
@@ -1593,7 +1709,7 @@ void EngineHost::midi_program(unsigned t, uint64_t at) {
     };
     if (base[BankMsb]) out(MidiOutEvent::Kind::Control, 0, std::clamp<int>(base[BankMsb] - 1, 0, 127));
     if (base[BankLsb]) out(MidiOutEvent::Kind::Control, 32, std::clamp<int>(base[BankLsb] - 1, 0, 127));
-    out(MidiOutEvent::Kind::Program, std::clamp<int>(base[Program] - 1, 0, 127), 0);
+    out(MidiOutEvent::Kind::Program, std::clamp<int>(program - 1, 0, 127), 0);
 }
 
 void EngineHost::midi_note_off(unsigned t, int key, uint64_t at) {
@@ -1941,6 +2057,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     unsigned next_command = take_commands(0, frames);
     plan_compensation(); // roadmap P4: how late each path plays this block
     plan_keys();         // and which chains wait for the tracks keying them
+    midi_thinned(frames); // MIDI tracks' slot values that waited their 2 ms
+    midi_inputs(input, usb, frames); // and their inputs as their sound
     ++block_count;
     auto block_start = std::chrono::steady_clock::now();
     // The tracks' own work goes to the render workers too once it is worth waking them for, and never while one

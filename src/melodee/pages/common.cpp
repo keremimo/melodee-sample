@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/pages/common.h"
+#include "melodee/shell/midi_ports.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
@@ -117,8 +118,12 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         auto shown = show(p, b.value);
         c.label = p.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(p);
         c.fill = gauge_of(p, b.value);
-        if (track.engine == EngineKind::Midi && midi_track::is_cc(b.id)) // a controller by its number: "CC 74"
-            c.label = "CC " + juce::String(track.params[size_t(midi_track::CcNumber1 + (b.id - midi_track::Cc1))]);
+        if (track.engine == EngineKind::Midi && midi_track::is_cc(b.id)) // a slot by what it sends: "CC 74", "BEND" (roadmap P4)
+            c.label = midi_track::slot_label(track.params[size_t(midi_track::slot_address(b.id - midi_track::Cc1))]);
+        if (track.engine == EngineKind::Midi && midi_track::slot_of_address(b.id) >= 0) c.label = "SLOT " + juce::String(midi_track::slot_of_address(b.id) + 1);
+        if (track.engine == EngineKind::Midi && b.id >= midi_track::PatternProgram0) c.label = "P" + juce::String(b.id - midi_track::PatternProgram0 + 1) + " PROG";
+        if (track.engine == EngineKind::Midi && b.id == midi_track::AudioIn && ((s.ui.midi_in_use >> (s.ui.track % track_count)) & 1))
+            c.unit = "IN USE"; // the ADC is routed to the other input: silent until it is free (roadmap P4, M5)
         if (track.engine == EngineKind::Sampler && b.id == sampler::Level) c.label = "KIT VOLUME";
         break;
     }
@@ -268,6 +273,24 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         auto m = motion_param(s.project.tracks[g.track % track_count], motion_lane(g.param, g.pad), &s.project);
         if (m.info) { auto shown = show(*m.info, b.value); c.value = shown.value; c.unit = shown.unit; c.fill = gauge_of(*m.info, b.value); }
         else c.value = juce::String(b.value);
+        break;
+    }
+    case Kind::MidiPort: { // roadmap P4 (M4): the port, a USB device by its name; one not there now OFFLINE (all USB meanwhile)
+        bool offline = false;
+        c.value = midi_port_text(s.ui, track, b.value, &offline);
+        c.label = offline ? "OFFLINE" : "PORT"; // its notes go to every USB output meanwhile
+        break;
+    }
+    case Kind::MidiSysexFile:
+        if (unsigned sending = s.ui.sysex_percent[s.ui.track % track_count]) { c.label = "SENDING"; c.value = juce::String(sending); c.unit = "%"; break; }
+        c.label = "FILE";
+        c.value = track.midi.sysex[0] ? juce::String(track.midi.sysex).upToLastOccurrenceOf(".", false, false) : juce::String("None");
+        break;
+    case Kind::MidiDrumNote: { // roadmap P4 (M3): a drum pad's note, by its General MIDI name where it has one
+        c.label = "NOTE";
+        const char* gm = gm_drum_name(unsigned(b.value));
+        c.value = gm ? juce::String(gm) : juce::String(b.value);
+        c.unit = gm ? juce::String(b.value) : juce::String();
         break;
     }
     case Kind::FxKey: // roadmap P4: what keys a Compressor or Gate

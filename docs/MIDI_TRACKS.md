@@ -5,8 +5,8 @@ It makes no sound of its own: its pads, patterns, knobs, motion and the
 song drive an external instrument on a port and channel of its own, and it
 can take an audio input back as its sound so the instrument sits in the mix.
 
-Status: Kerem's answers of 2026-11-10. **M1 built** (see "Phases"); M2–M5
-still design.
+Status: Kerem's answers of 2026-11-10. **M1 built**; **M2–M5 built** in
+roadmap P4 (2026-11-12, see "Phases" and "As built in P4").
 
 ## Decisions (Kerem, 2026-11-10)
 
@@ -289,7 +289,48 @@ chunked paced sending, on load and on demand.
 **M5: audio back.** The AUDIO page, inputs into the strip, route conflicts
 (`IN USE`), stems and bounce.
 
-## Open questions (ask before the phase that needs them)
+## As built in P4 (2026-11-12)
+
+What the build changed from the design above, each a call P4 made under the
+roadmap's rules (docs/ROADMAP.md "Decisions made by sessions"):
+
+- **Slots are parameters, their definitions too.** `MidiDevice` holds only
+  what is no number (`model/midi_track.h`: the device's name, the drum map,
+  the SysEx file). A slot's address is a parameter (one number: -1 off,
+  CC 0-119, 14-bit CC 0-31, pitch bend, channel pressure, NRPN 0-1023), so
+  undo, track copy and the file come for free. Slot values are parameters
+  8-31 (slots 1-3 where Stage's CC page had them).
+- **Defining a slot** is the SLOTS page's second row (the wheel), not
+  Shift + Kn; a range per slot and the Name sheet are not built: a knob's
+  0-127 spans the message's range, and the card names the slot by what it
+  sends ("CC 74", "NRPN 300", "BEND").
+- **Bend** is a parameter (EXPRESS, -64..63) and a Motion lane; the fader
+  reaches it by learning its pot (fader C), not a new Pitch Bend target.
+- **Drum map** on PADS: K1 the layout, K2 the last pad's note; names are
+  General MIDI's (shortened to fit a pad), not typed.
+- **SysEx** files live in the card's `SysEx` folder (K1 picks one), not
+  beside the project; sent whole in 256-byte pieces through the base's
+  existing send (no base change), paced at 320 µs a byte on the jacks, and
+  every other message waits behind it.
+- **USB devices** are listed by their ALSA port's name each MIDI pass; a
+  missing device sends to every USB output and shows OFFLINE.
+- **Audio back**: the shell decides the input against the ADC's route
+  (InputRoute's needs now include MIDI tracks'): a track asking for the
+  input the route is not on gets none (IN USE).
+
+## Open questions (decided in P4)
+
+1. Panic's binding: left as built (MIDI Config's row and `melodee-midi
+   panic`); no printed button taken.
+2. USB devices to test with: none plugged in; name matching and the
+   offline fallback wait for a hand check.
+3. Slot templates: none; every MIDI track starts with CC 74, 71 and 1 on
+   its first three slots, as Stage's CC page did, the rest off.
+4. Bounce with MIDI tracks: real time, as every bounce already is; a MIDI
+   track's input is recorded live.
+5. Patterns store notes, not pads: kept.
+
+## Open questions as first asked (2026-11-10)
 
 1. **Panic's binding.** M1 built it as a MIDI Config row plus
    `melodee-midi panic` (no printed button taken). Should Shift + Stop do

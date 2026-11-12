@@ -48,6 +48,7 @@
 #include "melodee/engine/midi_out.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/shell/takeover.h"
+#include "melodee/shell/midi_ports.h"
 #include "melodee/model/fader.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/shell/history.h"
@@ -4504,7 +4505,7 @@ void midi_tracks() {
     {
         const auto& info = engine_info(EngineKind::Midi);
         CHECK(info.available && std::string(info.name) == "MIDI" && info.param_count == midi_track::Count);
-        CHECK(edit_page_count(info) == 2 && !is_mod_page(info, 0) && !is_mod_page(info, 1));
+        CHECK(edit_page_count(info) == 6 + unsigned(midi_track::slot_pages) && !is_mod_page(info, 0) && !is_mod_page(info, 1)); // roadmap P4: slots, pads, express, audio, SysEx
         Track t;
         load_sound(t, EngineKind::Midi, 0);
         CHECK(t.engine == EngineKind::Midi && t.params[midi_track::Port] == midi_track::External && t.params[midi_track::Channel] == 1 &&
@@ -4823,7 +4824,7 @@ void stage() {
     CHECK(back->tracks[3].params[midi_track::Program] == 12 && back->tracks[3].params[midi_track::BankMsb] == 3 &&
           back->tracks[3].params[midi_track::Cc2] == 20 && back->tracks[3].params[midi_track::CcNumber3] == 7);
     auto tag = std::search(bytes.begin(), bytes.end(), "MIDT", "MIDT" + 4);
-    CHECK(tag != bytes.end() && tag[8] == 3 && tag[9] == 2);
+    CHECK(tag != bytes.end() && tag[8] == 3 && tag[9] == 3); // version 3 since roadmap P4 (device, drum map, SysEx after it)
     tag[9] = 1; // as a file from before Stage: its zeros are no CC 0s
     auto older = std::make_unique<Project>();
     CHECK(load_project(bytes, *older, *bank).empty());
@@ -10140,7 +10141,140 @@ void modulators_p4() {
     host->render(out.data(), 128, 1);
 }
 
+// Roadmap P4, MIDI tracks M2-M5 (docs/MIDI_TRACKS.md): slots of every kind with CC thinning, bend, pressure, the mod
+// wheel, each pattern's own program at its launch, the track's delay, Drum pads' map, USB devices by name, an input
+// as the track's sound, and MIDT's version 3.
+void midi_tracks_p4() {
+    using namespace midi_track;
+    using E = MidiOutEvent::Kind;
+    CHECK(slot_kind(-1) == SlotKind::Off && slot_kind(74) == SlotKind::Cc && slot_kind(address_cc14 + 1) == SlotKind::Cc14 &&
+          slot_number(address_cc14 + 1) == 1 && slot_kind(address_bend) == SlotKind::PitchBend && slot_kind(address_nrpn + 300) == SlotKind::Nrpn &&
+          slot_number(address_nrpn + 300) == 300 && slot_label(74) == "CC 74" && slot_label(address_bend) == "BEND");
+    CHECK(slot_value(23) < SlotAddress4 && slot_address(23) < PressureOut && Count <= int(max_params) && slot_of_address(slot_address(10)) == 10);
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& tr = project->tracks[0];
+    tr.engine = EngineKind::Midi;
+    const auto& info = engine_info(EngineKind::Midi);
+    for (unsigned p = 0; p < info.param_count; ++p) tr.params[p] = info.params[p].initial;
+    tr.params[Channel] = 5;
+    tr.params[slot_address(3)] = int16_t(address_cc14 + 2);
+    tr.params[slot_address(4)] = int16_t(address_nrpn + 300);
+    tr.params[slot_address(5)] = int16_t(address_pressure);
+    tr.params[PatternProgram0 + 1] = 21; // pattern 2's own program
+    tr.params[Program] = 5;
+    // The file: MIDT 3 keeps the device's name, the drum map and the SysEx file.
+    std::snprintf(tr.midi.device, sizeof(tr.midi.device), "%s", "Minilogue XD");
+    tr.midi.drum_note[17] = 42;
+    std::snprintf(tr.midi.sysex, sizeof(tr.midi.sysex), "%s", "bank-a.syx");
+    {
+        auto bytes = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(bytes, *back, *back_bank).empty());
+        const auto& b = back->tracks[0];
+        CHECK(b.engine == EngineKind::Midi && std::string(b.midi.device) == "Minilogue XD" && b.midi.drum_note[17] == 42 && b.midi.drum_note[0] == 36 &&
+              std::string(b.midi.sysex) == "bank-a.syx" && b.params[slot_address(4)] == address_nrpn + 300 && b.params[PatternProgram0 + 1] == 21);
+    }
+    // Drum pads play the map; a USB device by name, offline when it is gone.
+    {
+        Track d = tr;
+        use_drum_pads(d);
+        d.bank = 1;
+        CHECK(drum_key(d, 1) == 42 && drum_key(d, 0) == 36 + 16);
+        UiState ui;
+        std::snprintf(ui.usb_devices[0].data(), 32, "%s", "TR-8S");
+        ui.usb_device_count = 1;
+        d.params[Port] = UsbDevice;
+        CHECK(midi_port_count(ui, d) == 5 && midi_port_index(ui, d) == 3); // External, USB-C, TR-8S, Minilogue XD (offline), All USB
+        bool offline = false;
+        CHECK(midi_port_text(ui, d, 3, &offline) == "Minilogue XD" && offline && midi_port_text(ui, d, 2) == "TR-8S" && midi_port_text(ui, d, 4) == "All USB");
+    }
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    std::vector<int32_t> out(256);
+    std::vector<MidiOutEvent> got;
+    uint64_t rendered = 0;
+    auto run = [&](unsigned blocks, const int32_t* input = nullptr, float* stems = nullptr) {
+        for (unsigned n = 0; n < blocks; ++n) { host->render(out.data(), 128, 1, input, stems); rendered += 128; }
+        MidiOutEvent e;
+        while (host->take_midi(e)) got.push_back(e);
+    };
+    run(2);
+    got.clear();
+    // Slots: a 14-bit CC, NRPN, channel pressure; two turns within 2 ms: the second waits, then goes.
+    host->send({Command::Type::Param, 0, 0, uint16_t(slot_value(3)), 100});
+    host->send({Command::Type::Param, 0, 0, uint16_t(slot_value(4)), 127});
+    host->send({Command::Type::Param, 0, 0, uint16_t(slot_value(5)), 40});
+    host->send({Command::Type::Param, 0, 0, uint16_t(slot_value(0)), 10});
+    host->send({Command::Type::Param, 0, 0, uint16_t(slot_value(0)), 11});
+    run(1);
+    auto find = [&](E kind) { for (const auto& e : got) if (e.kind == kind) return &e; return static_cast<const MidiOutEvent*>(nullptr); };
+    const auto* cc14 = find(E::Cc14);
+    const auto* nrpn = find(E::Nrpn);
+    const auto* press = find(E::ChannelPressure);
+    CHECK(cc14 && cc14->a == 2 && cc14->value == 100 * 129 && cc14->channel == 5);
+    CHECK(nrpn && (nrpn->value >> 14) == 300 && (nrpn->value & 0x3fff) == 16383 && press && press->b == 40);
+    std::vector<MidiOutEvent> controls; // the second turn waited its 2 ms, then went (here, inside the same block)
+    for (const auto& e : got) if (e.kind == E::Control && e.a == 74) controls.push_back(e);
+    CHECK(controls.size() == 2 && controls[0].b == 10 && controls[1].b == 11 &&
+          controls[1].frame >= controls[0].frame + uint64_t(dsp::sample_rate() * 0.002));
+    got.clear();
+    run(2);
+    // Bend, pressure (poly, then channel, then off) and the mod wheel.
+    host->send({Command::Type::Param, 0, 0, uint16_t(Bend), 0});
+    host->send({Command::Type::Pressure, 0, 0, 60, 90});
+    host->send({Command::Type::Wheel, 0, 0, 0, 500});
+    run(1);
+    CHECK(find(E::PitchBend) && find(E::PitchBend)->value == 8192 && find(E::PolyPressure) && find(E::PolyPressure)->a == 60 && find(E::PolyPressure)->b == 90);
+    CHECK(find(E::Control) && find(E::Control)->a == 1 && find(E::Control)->b == 64);
+    got.clear();
+    host->send({Command::Type::Param, 0, 0, uint16_t(PressureOut), PressureOff});
+    host->send({Command::Type::Pressure, 0, 0, 60, 30});
+    run(1);
+    CHECK(!find(E::PolyPressure) && !find(E::ChannelPressure));
+    // A pattern's own program at its launch; back to the track's.
+    got.clear();
+    host->send({Command::Type::Pattern, 0, 0, 0, 1});
+    run(1);
+    CHECK(find(E::Program) && find(E::Program)->a == 20);
+    got.clear();
+    host->send({Command::Type::Pattern, 0, 0, 0, 0});
+    run(1);
+    CHECK(find(E::Program) && find(E::Program)->a == 4);
+    // DELAY: +10 ms later; -50 ms no earlier than the output's latency.
+    got.clear();
+    host->send({Command::Type::Param, 0, 0, uint16_t(Delay), 10});
+    uint64_t at = rendered;
+    host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+    run(1);
+    CHECK(find(E::NoteOn) && find(E::NoteOn)->frame == at + uint64_t(std::lround(10 * dsp::sample_rate() / 1000.0)));
+    got.clear();
+    host->send({Command::Type::NoteOff, 0, 0, 60, 0});
+    host->send({Command::Type::Param, 0, 0, uint16_t(Delay), -50});
+    run(1);
+    got.clear();
+    at = rendered;
+    host->send({Command::Type::NoteOn, 0, 0, 62, 100});
+    run(1);
+    CHECK(find(E::NoteOn) && find(E::NoteOn)->frame == at - host->audio_clock().latency_frames());
+    // An input as the track's sound: the rear inputs into its stem, at its LEVEL.
+    host->send({Command::Type::MidiAudio, 0, 0, 0, AudioRear});
+    std::vector<int32_t> input(256, int32_t(0.25 * 2147483647.0));
+    std::vector<float> stems(size_t(track_count) * EngineHost::block);
+    run(4, input.data(), stems.data());
+    float most = 0;
+    for (unsigned f = 0; f < 128; ++f) most = std::max(most, std::fabs(stems[f]));
+    CHECK(most > 0.15f);
+    host->send({Command::Type::MidiAudio, 0, 0, 0, AudioNone});
+    run(2, input.data(), stems.data());
+    most = 0;
+    for (unsigned f = 0; f < 128; ++f) most = std::max(most, std::fabs(stems[f]));
+    CHECK(most < 1e-4f);
+}
+
 int main() {
+    midi_tracks_p4();
     modulators_p4();
     delay_pool_clears();
     mix_motion_p4();

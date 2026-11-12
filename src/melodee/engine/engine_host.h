@@ -261,6 +261,9 @@ public:
     unsigned master_latency() const { return pdc_master.load(std::memory_order_relaxed); }
     // Any thread: delay blocks free in the effects' pool (a delay, reverb or chorus with none passes its sound through).
     unsigned delay_blocks_free() const { return pool.free_blocks(); }
+    // Any thread (roadmap P4): MIDI tracks' slot messages sent, and those a later value replaced before their time.
+    uint32_t slots_sent() const { return cc_sent.load(std::memory_order_relaxed); }
+    uint32_t slots_thinned() const { return cc_thinned.load(std::memory_order_relaxed); }
     // Any thread (roadmap P4): modulator `n`'s value now (an LFO's -1..1, a follower's 0..1), for its page.
     float modulator_value(unsigned n) const { return mod_now[n % modulator_count].load(std::memory_order_relaxed); }
 
@@ -339,6 +342,11 @@ private:
         std::array<Skip, 8> skips {};
         std::array<EngineCall, calls_a_block> calls {}; // this block's, in the order made (roadmap P2)
         unsigned call_count = 0;
+        // Roadmap P4, a MIDI track's slots (docs/MIDI_TRACKS.md M2): at most one message a slot every 2 ms, the latest
+        // value waiting (`pending`, -1 none) until its time; the program last sent (0 none), so a launch sends a change.
+        struct Thin { uint64_t last = 0; int pending = -1; };
+        std::array<Thin, 24> thin {};
+        int program_sent = -1;
     };
     // The sequencing pass's calls to a track's engine: straight in at the block's first frame (nothing of it rendered
     // yet) or the old way (every track rendered up to each tick), else kept for its job, at block_at (roadmap P2).
@@ -419,10 +427,13 @@ private:
     double tick_length() const { return dsp::sample_rate() * 60.0 / (tempo / 10.0) / ticks_per_quarter; } // device frames a clock tick
     double arp_tick_length() const { return tick_length() * (ticks_per_quarter / arp_ticks_per_quarter); }
     // MIDI out and sync (parity phase 9).
-    // Roadmap P4: out as late as everything heard is held back (compensation()), so outside gear lines up with it.
+    // Roadmap P4: out as late as everything heard is held back (compensation()), so outside gear lines up with it; a
+    // MIDI track's own by its DELAY too (docs/MIDI_TRACKS.md M4: early by no more than the output's latency).
+    int64_t track_delay(unsigned t) const;
     void emit(const MidiOutEvent& e) {
         MidiOutEvent late = e;
         late.frame += pdc.total;
+        if (late.track < track_count && late.dest != MidiDest::Config) late.frame = uint64_t(std::max<int64_t>(0, int64_t(late.frame) + track_delay(late.track)));
         if (!midi_events.push(late)) midi_lost.fetch_add(1, std::memory_order_relaxed);
     }
     bool out_wanted(unsigned t, int key) const;                              // this note of this track goes out
@@ -437,7 +448,11 @@ private:
     // A MIDI track's own parameter beyond port and channel: a controller value goes out as a CC; bank and
     // program (any of the three) as the bank selects that are on, then the program, when it is on.
     void midi_param(unsigned t, int id, int value, uint64_t at);
-    void midi_program(unsigned t, uint64_t at);
+    void midi_program(unsigned t, uint64_t at, bool force = true); // force: even when it is what was sent last
+    void midi_slot(unsigned t, int slot, int value, uint64_t at);  // a slot's value as what its address says
+    void midi_thinned(unsigned frames);                            // slots' values that waited, when their time comes
+    void midi_inputs(const int32_t* input, const float* usb, unsigned frames); // MIDI tracks' inputs as their sound (M5)
+    std::atomic<uint32_t> cc_sent {0}, cc_thinned {0};
     void sync_stop(uint64_t at);
     void ext_release(uint64_t at);                                           // clock pulses whose frame has come
     std::atomic<unsigned> format_serial {0};

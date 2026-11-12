@@ -19,7 +19,7 @@ enum class MidiSync : uint8_t { Off, Clock, Mtc, Count };
 // Where one message goes out: MIDI Config's port (pads on audio tracks, the
 // clocks, Thru), or a MIDI track's own (docs/MIDI_TRACKS.md): the 1/8" jacks,
 // USB-C's gadget alone, or every USB output (the gadget and USB host devices).
-enum class MidiDest : uint8_t { Config, External, UsbC, AllUsb, Count };
+enum class MidiDest : uint8_t { Config, External, UsbC, AllUsb, UsbDevice, Count }; // UsbDevice: a MIDI track's named device (roadmap P4)
 
 struct MidiConfig {
     MidiPort port = MidiPort::External;

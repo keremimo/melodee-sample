@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/mod_jobs.h"
+#include "melodee/shell/midi_track_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/shell/input_choices.h"
@@ -123,6 +124,8 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     samples_to_load = 0; // every sample slot again, a few each tick
     slots_waiting.clear();
     load_loop_files(*this, path); // its loops, from beside its file (docs/LOOPER.md)
+    midi_audio_sent.fill(0);      // roadmap P4 (M5): the MIDI tracks' inputs told again
+    sysex_on_load(*this);         // and their SysEx sent where ON LOAD says (M4)
 }
 
 bool Context::reformat() {
@@ -194,7 +197,8 @@ void Context::select_track(unsigned t) {
 void Context::note(unsigned t, int key, int velocity) {
     int top = project.tracks[t % track_count].engine == EngineKind::Sampler ? int(sampler_last_key) : 127; // kit pads in banks F-H
     if (key < 0 || (key & 0xff) > top) return;
-    Command c {velocity ? Type::NoteOn : Type::NoteOff, uint8_t(t), uint8_t(from_midi ? 1 : 0), uint16_t(key), int16_t(velocity)};
+    bool quiet = from_midi && !((midi_echo >> (t % track_count)) & 1); // a MIDI track echoes what came in (roadmap P4, M3)
+    Command c {velocity ? Type::NoteOn : Type::NoteOff, uint8_t(t), uint8_t(quiet ? 1 : 0), uint16_t(key), int16_t(velocity)};
     send(c);
 }
 
@@ -277,6 +281,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
     std::array<int, notes_per_step> keys {};
     unsigned count = 1;
     keys[0] = pad_note(project, t, pad).key;
+    if (drum_pads(t) && t.engine == EngineKind::Midi) t.last_pad = uint8_t(16 * drum_bank(t) + pad % 16); // the drum PADS' K2 maps (roadmap P4)
     if (t.chord && t.layout != PadLayout::Levels) count = chord_notes(project, t, pad, keys);
     if (t.layout != PadLayout::Levels) t.last_note = uint8_t(std::clamp(keys[0], 0, 127));
     for (unsigned n = 0; n < count; ++n) {
@@ -398,11 +403,12 @@ void Context::apply(const Binding& b, int value) {
     touch_gesture(b); // one undo step per control's turns (shell/undo_scope.cpp)
     learn_lane(*this, b); // roadmap P4: what ADD on the MOD page takes
     if (mod_binding(*this, b, value)) return;
+    if (midi_binding(*this, b, value)) return; // roadmap P4: a MIDI track's device and SysEx file
     auto& t = track();
     switch (b.kind) {
     case Kind::Param:
         set_param(ui.track, b.id, value);
-        if (t.engine != EngineKind::Midi || midi_track::is_cc(b.id)) record_motion(b.id, value); // of a MIDI track's own, only its CCs are lanes
+        if (t.engine != EngineKind::Midi || midi_track::is_cc(b.id) || b.id == midi_track::Bend) record_motion(b.id, value); // of a MIDI track's own, its slots and bend are lanes
         if (t.engine == EngineKind::Sampler && b.id == sampler::Follow && value) follow_tempos();
         break;
     case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); record_motion(int(motion_level), value); break;
@@ -503,9 +509,10 @@ void Context::apply(const Binding& b, int value) {
         break;
     }
     case Kind::FxKey: set_effect_key(unsigned(b.id) / 64, (unsigned(b.id) / 8) % 8, unsigned(value)); break; // roadmap P4
+    case Kind::MidiDrumNote: t.midi.drum_note[unsigned(b.id) % sampler_pads] = uint8_t(std::clamp(value, 0, 127)); dirty = true; break; // roadmap P4 (M3)
     case Kind::ModPick: case Kind::ModKind: case Kind::ModShape: case Kind::ModSync: case Kind::ModRate: case Kind::ModInput:
     case Kind::ModAttack: case Kind::ModRelease: case Kind::ModDepth: case Kind::MacroPick: case Kind::MacroValue: case Kind::MacroLow:
-    case Kind::MacroHigh: break; // roadmap P4: mod_binding() took them, above
+    case Kind::MacroHigh: case Kind::MidiPort: case Kind::MidiSysexFile: break; // roadmap P4: mod_binding() and midi_binding() took them, above
     case Kind::PluginParam: set_plugin_param(b.id, value); break;
     case Kind::SendBus: ui.sends_bus = uint8_t(unsigned(value) % bus_count); break; // the bus in view on Sends
     case Kind::BusReturn: set_return(unsigned(b.id), value); record_motion(int(motion_return(unsigned(b.id))), value); break; // roadmap P4

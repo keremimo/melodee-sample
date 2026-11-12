@@ -25,6 +25,10 @@ struct MidiOutEvent {
         MtcFull,             // value = frames at 25 fps since 0:00:00:00 (a full-frame SysEx)
         CvHigh, CvLow,       // SYNC OUT (CV_CLK_OUT)
         Control, Program,    // a MIDI track's (Stage's CC and PROGRAM pages): a = controller, b = value; a = program
+        // Roadmap P4 (docs/MIDI_TRACKS.md M2): a slot's 14-bit CC (a = its number 0-31, value 0-16383: MSB, then LSB at
+        // a + 32), NRPN (value = number << 14 | data, as CC 99, 98, 6, 38), pitch bend (value 0-16383), channel
+        // pressure (b), poly pressure (a = key, b).
+        Cc14, Nrpn, PitchBend, ChannelPressure, PolyPressure,
     };
     Kind kind = Kind::NoteOn;
     uint8_t channel = 1, a = 0, b = 0;

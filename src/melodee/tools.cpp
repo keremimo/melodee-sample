@@ -1493,6 +1493,54 @@ const Preview previews[] {
          s.ui.midi_outputs = 1 | 2 | 1 << 8; s.ui.track_out_at[4] = s.now;
          sent_notes(s, 4);
      }},
+    // Roadmap P4 (docs/MIDI_TRACKS.md M2-M5): a MIDI track's device by name gone offline, its slots, its Drum map, its
+    // input taken elsewhere, its SysEx going out.
+    {"mididevice", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Edit; s.ui.track = 4; s.ui.edit_page[4] = 0; s.playing = true;
+         auto& t = s.project.tracks[4];
+         load_sound(t, EngineKind::Midi, 0);
+         t.params[midi_track::Port] = midi_track::UsbDevice; t.params[midi_track::Channel] = 1; t.params[midi_track::Delay] = -8;
+         std::snprintf(t.midi.device, sizeof(t.midi.device), "%s", "minilogue xd");
+         std::snprintf(s.ui.usb_devices[0].data(), 32, "%s", "TR-8S");
+         s.ui.usb_device_count = 1; s.ui.midi_outputs = 1 | 2 | 1 << 8;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"midislots", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Edit; s.ui.track = 4; s.ui.edit_page[4] = 3; s.playing = true;
+         auto& t = s.project.tracks[4];
+         load_sound(t, EngineKind::Midi, 0);
+         t.params[midi_track::slot_address(3)] = int16_t(midi_track::address_cc14 + 5);
+         t.params[midi_track::slot_address(4)] = int16_t(midi_track::address_nrpn + 300);
+         t.params[midi_track::slot_address(5)] = int16_t(midi_track::address_bend);
+         t.params[midi_track::slot_value(3)] = 90; t.params[midi_track::slot_value(4)] = 40; t.params[midi_track::slot_value(5)] = 64;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"mididrum", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Edit; s.ui.track = 4; s.playing = true;
+         auto& t = s.project.tracks[4];
+         load_sound(t, EngineKind::Midi, 0);
+         use_drum_pads(t);
+         t.midi.drum_note[2] = 39; t.last_pad = 2;
+         s.ui.edit_page[4] = uint8_t(2 + midi_track::slot_pages);
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"midiaudio", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Edit; s.ui.track = 4; s.playing = true;
+         auto& t = s.project.tracks[4];
+         load_sound(t, EngineKind::Midi, 0);
+         t.params[midi_track::AudioIn] = midi_track::AudioMic;
+         s.ui.midi_in_use = 1 << 4;
+         s.ui.edit_page[4] = uint8_t(4 + midi_track::slot_pages);
+     }},
+    {"midisysex", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Edit; s.ui.track = 4; s.playing = true;
+         auto& t = s.project.tracks[4];
+         load_sound(t, EngineKind::Midi, 0);
+         std::snprintf(t.midi.sysex, sizeof(t.midi.sysex), "%s", "jupiter-bank.syx");
+         t.params[midi_track::SysexOnLoad] = 1;
+         s.ui.sysex_percent[4] = 37;
+         s.ui.edit_page[4] = uint8_t(5 + midi_track::slot_pages);
+     }},
     {"midipanic", [](Shell&, Snapshot& s) { // MIDI Config's MIDI Panic under the cursor
          s.ui.page = PageId::MidiConfig; s.ui.midi_cursor = PanicRow; s.ui.midi_out_at = s.now;
      }},

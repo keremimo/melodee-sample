@@ -305,6 +305,12 @@ public:
     bool reformat();
     unsigned samples_to_load = sample_slots; // next sample slot to (re)load after a switch
     std::vector<uint8_t> slots_waiting;      // slots sample_slot() named while the library's queue was full: asked for again each pass
+    // Roadmap P4 (docs/MIDI_TRACKS.md M4-M5): SysEx files read for MIDI tracks, waiting for MidiIo to send them; the
+    // input each MIDI track was last told it plays, and when (sent again a second on, a track reload forgets it).
+    struct SysexOut { uint8_t track = 0; std::vector<uint8_t> bytes; };
+    std::vector<SysexOut> sysex_queue;
+    std::array<int8_t, track_count> midi_audio_sent {};
+    uint32_t midi_audio_at = 0;
     PadSound& pad() { return track().pads[track().last_pad % sampler_pads]; }
     void send_pad(unsigned track, unsigned pad);
     int sample_slot(const std::string& path, const std::string& name); // the project's slot for a file, asking for it to load
@@ -448,6 +454,7 @@ public:
     void land_instruments();
     bool refuse_instrument(const char* job);                 // true, and says so, when the last pad holds one
     bool from_midi = false;                                 // note() is playing what came in: not echoed out
+    uint16_t midi_echo = 0;                                 // roadmap P4 (M3): but echoed on these MIDI tracks' own ports
     void change_midi(unsigned row, int way);                // one step along a MIDI Config row (shell/midi_config_rows.h)
     void reset_settings();                                  // MIDI Config's Reset Factory Settings, after B3
     // MIDI Panic (MIDI Config's row, `melodee-midi panic`): every note here ends, and MIDI out sends All Sound Off,

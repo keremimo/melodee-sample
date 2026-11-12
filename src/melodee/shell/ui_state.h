@@ -134,6 +134,16 @@ struct UiState {
     uint8_t sent_next = 0;
     // The MIDI outputs open now, for the DEVICE picture: bit 0 the jacks, bit 1 USB-C's gadget, bits 8-15 USB host devices.
     uint32_t midi_outputs = 0;
+    // Roadmap P4 (docs/MIDI_TRACKS.md M4-M5): the USB MIDI devices connected (by name, as their ports say), the .syx
+    // files in the card's SysEx folder, each MIDI track's SysEx sending (percent, 0 none) and whether its input is
+    // taken by the ADC's route elsewhere (IN USE), a bit a track.
+    std::array<std::array<char, 32>, 6> usb_devices {};
+    uint8_t usb_device_count = 0;
+    std::array<std::array<char, 32>, 16> sysex_names {};
+    uint8_t sysex_count = 0;
+    bool sysex_listed = false;
+    std::array<uint8_t, track_count> sysex_percent {};
+    uint16_t midi_in_use = 0;
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
     bool sheet_open = false;  // a sheet behind Push: Roll's note, a chain's device, a project's file

@@ -43,7 +43,10 @@ inline bool drum_pads(const Track& track) {
     return track.layout == PadLayout::Drums && track.engine != EngineKind::Sampler && track.engine != EngineKind::None;
 }
 inline unsigned drum_bank(const Track& track) { return track.bank % drum_banks; }
-inline int drum_key(const Track& track, unsigned pad) { return int(drum_first_key + 16 * drum_bank(track) + pad % 16); }
+inline int drum_key(const Track& track, unsigned pad) {
+    if (track.engine == EngineKind::Midi) return track.midi.drum_note[(16 * drum_bank(track) + pad % 16) % sampler_pads]; // its drum map (roadmap P4, M3)
+    return int(drum_first_key + 16 * drum_bank(track) + pad % 16);
+}
 // The pad (0..63, A01..D16) a drum key sits on, -1 for none.
 inline int drum_pad_of(int key) { return key >= int(drum_first_key) && key <= int(drum_last_key) ? key - int(drum_first_key) : -1; }
 

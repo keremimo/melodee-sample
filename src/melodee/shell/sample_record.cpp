@@ -23,6 +23,7 @@
 //   service thread.
 #include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
+#include "melodee/shell/midi_track_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/input_route.h"
@@ -224,9 +225,10 @@ void Context::record_tick(uint32_t at) {
     }
     // Loops on a hardware input of their own: routed too, heard as Monitor says (the mic quiets the speaker then).
     if (loop_monitor_sent != int(in.monitor)) { send({Type::LoopMonitor, 0, 0, 0, int16_t(in.monitor)}); loop_monitor_sent = int(in.monitor); }
-    unsigned loops = loop_input_needs(project.looper);
+    unsigned loops = loop_input_needs(project.looper), midi_needs = midi_input_needs(project); // roadmap P4 (M5): MIDI tracks' inputs too
     bool loop_mic = (loops & InputRoute::need_mic) && in.monitor != Monitor::Off;
-    if (input) input->want(in.source, in.mutes_speaker(page) || loop_mic, loops);
+    if (input) input->want(in.source, in.mutes_speaker(page) || loop_mic, loops | midi_needs);
+    midi_audio_tick(*this, loops | midi_needs, in.source == InputSource::Mic);
     // The engine hears the settings as loaded from the card (and after a take, a source changed meanwhile).
     if (host.recorder().state() == State::Idle
         && (host.record_source() != unsigned(in.source)
