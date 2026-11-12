@@ -1136,7 +1136,8 @@ while following.
   keeps.
 - **Exit** (Power, short): a tile under each key. B3 MPC APP saves the
   project first, then returns to the stock app; B2 POWER OFF saves it, then
-  turns the MPC off; the header says SAVED (or NO CARD); B1 stays
+  turns the MPC off; the header says UNSAVED while there are changes and
+  SAVED once they are kept (or NO CARD); B1 stays
   (and calls off a save still on its way). At the next start Melodee opens
   the project set to open at start, or else the one last opened or saved.
 

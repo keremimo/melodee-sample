@@ -143,6 +143,7 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
     h.playing = false; h.recording = false;
     if (!card) h.left.push_back(pill(Icon::Card, "NO CARD", colour::amber));
     else if (s.ui.exit_off && !s.ui.exit_saved) h.left.push_back(pill(Icon::Rec, "SAVING", colour::amber));
+    else if (!s.ui.exit_off && s.dirty) h.left.push_back(pill(Icon::Rec, "UNSAVED", colour::amber)); // as Project says it: OFF and MPC APP save it first
     else h.left.push_back(pill(Icon::Check, s.project_path.empty() ? "SAVED AS NEW" : "SAVED", colour::play));
     h.right.push_back(label(s.project.name));
     header(p, h);
@@ -150,7 +151,7 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
         key_tiles(p, {KeyTile {}, word_tile(Icon::Power, s.ui.exit_saved || !card ? "TURNING OFF" : "SAVING", true), KeyTile {}});
         return;
     }
-    key_tiles(p, {word_tile(Icon::Back, "STAY", false, colour::sec), word_tile(Icon::Power, "OFF"), word_tile(Icon::Mpc, "MPC APP", true)});
+    key_tiles(p, {word_tile(Icon::Back, "STAY", false, colour::sec), word_tile(Icon::Power, "POWER OFF"), word_tile(Icon::Mpc, "MPC APP", true)});
 }
 
 } // namespace melodee
