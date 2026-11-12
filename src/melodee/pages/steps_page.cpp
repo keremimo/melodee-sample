@@ -15,7 +15,9 @@
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/model/generators.h"
 #include "melodee/shell/step_lane.h"
+#include "melodee/ui/widgets.h"
 #include <algorithm>
 
 namespace melodee {
@@ -43,11 +45,17 @@ void draw(Paint& p, const Snapshot& s) {
         step += juce::String::fromUTF8(" \xc2\xb7 ") + trig_name(pattern.events[size_t(in_hand)].condition);
     if (held) step += juce::String::fromUTF8(" \xc2\xb7 LOCK"); // held: the pots lock it (roadmap P1)
     h.left.push_back(pill(step, c));
+    if (s.ui.euclid_cards && steps_lane(s.track()) >= 0) // the EUCLID row: the lane's rhythm, E(hits, steps)
+        if (const EuclidLane* e = euclid_of(pattern, unsigned(steps_lane(s.track()))))
+            h.left.push_back(pill("E(" + juce::String(e->hits) + "," + juce::String(e->steps) + ")"));
     if (steps_lane(s.track()) >= 0 && pattern.own_lane(unsigned(steps_lane(s.track())))) // its lane loops on its own
         h.left.push_back(pill("LANE " + juce::String((pattern.lane_length(unsigned(steps_lane(s.track()))) + pattern.q() - 1) / pattern.q())));
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 0, c};
-    keys.dots[0] = 2; keys.dot_at[0] = s.ui.trig_cards ? 1 : 0; // STEPS again: the TRIG row of cards
+    bool kit_lane = steps_lane(s.track()) >= 0;
+    keys.dots[0] = kit_lane ? 3 : 2; // STEPS again: the TRIG row of cards; on a kit again the EUCLID row (roadmap P1)
+    keys.dot_at[0] = s.ui.euclid_cards && kit_lane ? 2 : s.ui.trig_cards ? 1 : 0;
+    if (s.ui.sheet_open) keys = SoftKeys {{"BACK", "", "DO IT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
     frame(p, s, keys, h);
 
     // Pitch as rows of the project's scale, six of them centred on the bar's notes.
@@ -121,6 +129,20 @@ void draw(Paint& p, const Snapshot& s) {
         }
         if (step.flags & step_slide) icon(p, Icon::Slide, x + colw - 9, top + 2, 8, colour::sec, 1.6f); // a slide: its sign
     }
+    if (s.ui.sheet_open) { // Push: VARY, a variation of the pattern into the next empty one (roadmap P1)
+        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
+        MenuSheet m;
+        m.title = "INTO THE NEXT EMPTY PATTERN"; m.accent = c;
+        bool kit = s.track().engine == EngineKind::Sampler || s.track().engine == EngineKind::Kit909;
+        for (unsigned v = 0; v < unsigned(Variation::Count); ++v) {
+            bool here = variation_on_kit(Variation(v)) || !kit;
+            m.rows[v] = {variation_name(Variation(v)), v < 3 ? juce::String(s.ui.vary_amount) + " %" : juce::String(), false, false, !here};
+        }
+        m.count = unsigned(Variation::Count); m.current = s.ui.sheet_row % m.count;
+        m.detail = {};
+        wide_sheet(p, m, "VARY", c); // two columns: the cards (K1 the amount) stay in view
+        return;
+    }
     // The pattern's bars as blocks at the foot, the one in view lit.
     unsigned shown = std::min(bars, 8u), window = bar / shown * shown;
     float bw = (zone::width - 2 * zone::pad - (shown - 1) * 3.0f) / shown, by = zone::picture_y + zone::picture_h - 8;
@@ -135,6 +157,7 @@ void clear_step(Context& c, unsigned st, int lane) {
 }
 
 void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
+    if (down) c.ui.sheet_open = false; // a pad leaves the VARY sheet and does its job
     auto& pattern = c.pattern();
     unsigned st = unsigned(c.ui.steps_bar) * bar_steps + pad % 16;
     if (st >= pattern.steps()) return;
@@ -166,6 +189,7 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
 }
 
 void wheel(Context& c, int delta) {
+    if (c.ui.sheet_open) { c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(Variation::Count) - 1)); return; }
     auto& pattern = c.pattern();
     if (c.ui.held_step >= 0 && steps_lane(c.track()) >= 0) {
         // A kit: the lane's note moves to the next pad (not onto one already there), and the lane with it.
@@ -204,13 +228,29 @@ void nudge(Context& c, int way) {
     c.ui.step_cursor = int16_t(c.ui.steps_bar * bar_steps + c.ui.step_cursor % bar_steps);
 }
 
+void push(Context& c) { // VARY: Push opens it on the row last used; there Push makes it
+    if (c.ui.sheet_open) { c.ui.sheet_open = false; c.vary(Variation(c.ui.sheet_row % unsigned(Variation::Count))); return; }
+    c.ui.sheet_open = true;
+}
+
 void soft(Context& c, int key) {
-    if (key == 0) { c.ui.trig_cards = !c.ui.trig_cards; return; } // STEPS again: the step's TRIG cards, or back
+    if (c.ui.sheet_open) { // BACK, -, DO IT
+        if (key == 0) c.ui.sheet_open = false;
+        if (key == 2) push(c);
+        return;
+    }
+    if (key == 0) { // STEPS again: the step's TRIG cards, on a kit then the lane's EUCLID ones, and back
+        bool kit = steps_lane(c.track()) >= 0;
+        if (!c.ui.trig_cards && !c.ui.euclid_cards) c.ui.trig_cards = true;
+        else if (c.ui.trig_cards && kit) { c.ui.trig_cards = false; c.ui.euclid_cards = true; }
+        else { c.ui.trig_cards = false; c.ui.euclid_cards = false; }
+        return;
+    }
     static const PageId pages[] {PageId::Steps, PageId::Roll, PageId::Motion};
     c.open(pages[key % 3]);
 }
 } // namespace
 
-const PageSpec steps_page {draw, pad, wheel, no_push, soft, nudge};
+const PageSpec steps_page {draw, pad, wheel, push, soft, nudge};
 
 } // namespace melodee

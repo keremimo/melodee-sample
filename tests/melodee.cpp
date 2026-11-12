@@ -32,6 +32,7 @@
 #include "melodee/engine/arp.h"
 #include "melodee/model/chords.h"
 #include "melodee/model/project_file.h"
+#include "melodee/model/generators.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
@@ -7709,7 +7710,78 @@ void feel_p1() {
     }
 }
 
+// Generators (roadmap P1): Euclid on a kit lane, and a pattern's variations.
+void generators() {
+    auto text = [](const std::vector<bool>& r) { std::string s; for (bool b : r) s += b ? 'x' : '.'; return s; };
+    CHECK(text(euclid(3, 8)) == "x..x..x." && text(euclid(5, 8)) == "x.xx.xx." && text(euclid(3, 4)) == "x.xx");
+    CHECK(text(euclid(3, 8, 1)) == ".x..x..x" && text(euclid(0, 4)) == "...." && text(euclid(9, 4)) == "xxxx");
+    CHECK(euclid(4, 200).size() == euclid_max_steps);
+    // Laid on a kit lane: its notes as the rhythm's hits, a step of Q each, the lane looping on its own; the other
+    // lanes left alone; the rhythm kept for the cards.
+    Pattern p;
+    uint8_t hat = uint8_t(sampler_first_note + 2), kick = uint8_t(sampler_first_note);
+    put(p, 0, kick, 120);
+    put(p, 5, hat, 90); // the hat's old note goes
+    CHECK(lay_euclid(p, hat, 3, 8, 0));
+    unsigned hats = 0;
+    for (const auto& e : p.events) if (e.key == hat) { CHECK(e.tick % (3 * sixteenth_ticks) == 0 && e.tick < 8 * sixteenth_ticks); ++hats; }
+    CHECK(hats == 3 && p.events.size() == 4 && p.lane_length(hat) == 8 * sixteenth_ticks && !p.own_lane(kick));
+    const EuclidLane* e = euclid_of(p, hat);
+    CHECK(e && e->hits == 3 && e->steps == 8 && e->rotate == 0 && !euclid_of(p, kick));
+    CHECK(lay_euclid(p, hat, 16, 16, 3) && p.lanes.empty() && euclid_of(p, hat)->hits == 16 && euclid_of(p, hat)->rotate == 3);
+    // The cards: Steps' EUCLID row on a kit.
+    {
+        auto project = std::make_unique<Project>();
+        load_sound(project->tracks[3], EngineKind::Sampler, 0);
+        project->tracks[3].last_pad = 2;
+        UiState ui;
+        ui.track = 3; ui.page = PageId::Steps; ui.euclid_cards = true;
+        auto cards = page_bindings(*project, ui, p, false);
+        CHECK(cards[0].kind == Binding::Kind::EuclidHits && cards[0].value == 16 && cards[1].kind == Binding::Kind::EuclidSteps && cards[2].value == 3);
+        ui.sheet_open = true; ui.euclid_cards = false;
+        CHECK(page_bindings(*project, ui, p, false)[0].kind == Binding::Kind::VaryAmount);
+    }
+    // Variations.
+    VaryPlace place;
+    place.root = 0; place.degree_count = scale_degrees(0, place.degrees);
+    Pattern line;
+    for (unsigned s : {0u, 3u, 4u, 7u, 8u, 12u}) put(line, s, uint8_t(60 + s), uint8_t(s == 0 ? 120 : 80));
+    auto thin = vary_pattern(line, Variation::Thinner, 0.5, 1, place);
+    CHECK(thin.events.size() == 3 && thin.events[0].tick == 0); // the weakest half go, the bar's first stays
+    auto busy = vary_pattern(line, Variation::Busier, 1.0, 1, place);
+    CHECK(busy.events.size() > line.events.size());
+    for (const auto& n : busy.events) CHECK(n.tick < line.length);
+    auto loose = vary_pattern(line, Variation::Humanised, 1.0, 7, place);
+    CHECK(loose.events.size() == line.events.size() && loose != line);
+    for (size_t n = 0; n < loose.events.size(); ++n) CHECK(std::abs(int(loose.events[n].tick) - int(line.events[n].tick)) <= 6);
+    CHECK(vary_pattern(line, Variation::Humanised, 1.0, 7, place) == loose); // the same dice, the same pattern
+    auto back = vary_pattern(line, Variation::Reversed, 1.0, 1, place);
+    CHECK(back.events.size() == line.events.size() && back.events.front().tick == 3 * sixteenth_ticks && back.events.back().tick == 15 * sixteenth_ticks);
+    CHECK(vary_pattern(back, Variation::Reversed, 1.0, 1, place).events == line.events); // twice is as it was
+    auto up = vary_pattern(line, Variation::OctaveUp, 1.0, 1, place);
+    CHECK(up.events[0].key == 72 && vary_pattern(line, Variation::OctaveDown, 1.0, 1, place).events[0].key == 48);
+    Pattern kit;
+    put(kit, 0, kick, 120); put(kit, 4, kick, 120); put(kit, 8, kick, 120);
+    VaryPlace drums = place;
+    drums.kit = true;
+    CHECK(vary_pattern(kit, Variation::OctaveUp, 1.0, 1, drums) == kit); // a kit's keys are pads
+    auto fills = vary_pattern(kit, Variation::Busier, 1.0, 3, drums);
+    CHECK(fills.events.size() > kit.events.size());
+    for (const auto& n : fills.events) CHECK(n.key == kick && (n.velocity == 120 || n.velocity == 60));
+    // The file: EUCL keeps the rhythms laid.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        bank->at[3][4] = p;
+        auto data = save_project(*project, *bank);
+        auto copy = std::make_unique<Project>();
+        auto copy_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *copy, *copy_bank).empty() && copy_bank->at[3][4] == p);
+    }
+}
+
 int main() {
+    generators();
     feel_p1();
     note_repeat_p1();
     ratchets();

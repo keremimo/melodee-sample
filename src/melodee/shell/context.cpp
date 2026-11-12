@@ -611,6 +611,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EntryVelocity: ui.entry_velocity = uint8_t(std::clamp(value, 0, 127)); break;
     case Kind::EntryChance: ui.entry_chance = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::EventNudge: set_event_nudge(*this, value); break;                             // Roll's Shift + K1
+    case Kind::EuclidHits: case Kind::EuclidSteps: case Kind::EuclidRotate: set_euclid(b.kind, value); break;
+    case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FeelStrength: case Kind::FeelSwing: case Kind::FeelHumanize: case Kind::FeelVelocity: case Kind::GrooveFrom:
     case Kind::GrooveAmount:
         set_feel(b.kind, value);

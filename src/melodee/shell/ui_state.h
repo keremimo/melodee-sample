@@ -110,6 +110,8 @@ struct UiState {
     bool trig_cards = false;                  // Steps and Roll: their lit key again turns the cards to the note's TRIG row (roadmap P1)
     bool fill = false;                        // Play held while playing: Fill (FILL trig conditions play)
     int8_t held_note = -1;                    // Roll: the pad held on the note in focus (its cards lock it, roadmap P1)
+    bool euclid_cards = false;                // Steps on a kit, STEPS a third time: the EUCLID row of the last pad's lane (roadmap P1)
+    uint8_t vary_amount = 30;                 // Steps' VARY sheet (Push): how far thinner, busier, humanised go, percent
     // The fader (shell/fader.cpp): where it sits (-1 until it moves)
     // and whether it has met the value it drives (takeover), when it last moved (its card shows a moment).
     Pot fader;

@@ -1596,6 +1596,16 @@ const Preview previews[] {
          }
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"stepseuclid", [](Shell& shell, Snapshot& s) { // STEPS a third time on the kit: the hat's lane as E(5,8), K1 turning its hits
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         lay_euclid(shell.patterns().at[3][0], uint8_t(sampler_first_note + 2), 5, 8, 0, 90);
+         s.ui.euclid_cards = true; s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"stepsvary", [](Shell& shell, Snapshot& s) { // Push on Steps: VARY, Busier picked, amount 30 %
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Steps; s.ui.sheet_open = true; s.ui.sheet_row = 1;
+     }},
     {"repeatrates", [](Shell&, Snapshot& s) { // Note Repeat on the kit's Pads at 1/64: B3 pressed again (dots under B1 and B3)
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true;
          s.project.tracks[3].arp = true; s.project.tracks[3].arp_rate = 8;

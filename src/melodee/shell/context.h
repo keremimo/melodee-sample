@@ -8,6 +8,7 @@
 #include "melodee/model/pad_params.h"
 #include "melodee/model/project.h"
 #include "melodee/model/project_file.h"
+#include "melodee/model/generators.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/history.h"
 #include "melodee/shell/page_stack.h"
@@ -168,6 +169,10 @@ public:
     // A feel value (roadmap P1, Binding::Kind FeelStrength .. GrooveAmount) of the selected track's pattern playing,
     // heard at once: the audio thread gets its notes as they now play (shell/feel_jobs.cpp).
     void set_feel(Binding::Kind kind, int value);
+    // Generators (roadmap P1, shell/generator_jobs.cpp): Steps' EUCLID row on the last pad's lane, and its VARY sheet's
+    // variations of the pattern into the next empty one.
+    void set_euclid(Binding::Kind kind, int value);
+    void vary(Variation v);
     static constexpr uint32_t motion_sync_ms = 40;
     int motion_waiting = -1;  // track << 8 | pattern whose recorded motion the audio thread has not had yet
     uint32_t motion_synced = 0;

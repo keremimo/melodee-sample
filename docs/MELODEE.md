@@ -567,6 +567,17 @@ hold to steer, Shift + Seq to zoom in**.
   began, polymeter inside the kit, and counts its own passes for trig
   conditions; Steps darkens what lies past it, its playhead goes round with
   it and the header names it (LANE 6). Files keep lanes in LANE.
+  On a kit STEPS a third time (after the TRIG row) is the **EUCLID** row of
+  the last pad's lane: K1 hits, K2 steps (1–64), K3 rotation; each turn
+  lays that rhythm on the lane at once as notes a step of Q each (its old
+  notes go, one undo), the lane looping over its steps on its own; the
+  header names it (E(5,8)) and EUCL keeps it with the pattern. **Push** opens
+  **VARY**: Thinner (the weakest notes by where they fall in the bar and
+  how hard), Busier (a kit: softer hits beside a lane's; a line: passing
+  notes in the project's key), Humanised, Reversed, Octave up and down (not
+  on a kit); the wheel picks, K1 the amount of the first three, B3 DO IT or
+  Push makes it into the next empty pattern, which plays from the next bar
+  (one undo); B1 or a pad backs out.
   **Held, a step is locked**: while a pad is down the cards are the Motion
   page's three lanes, each showing its lock on that step (else the track's
   own value), and a turn writes a lock there, for as long as the step's

@@ -16,6 +16,7 @@
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
+#include "melodee/model/generators.h"
 #include "melodee/shell/roll.h"
 #include <algorithm>
 
@@ -490,7 +491,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     }
     case PageId::Steps: { // a kit: Shift + K1 the lane's own length; on the TRIG row Shift + K2 its note's pitch ramp
         int lane = steps_lane(track);
-        if (lane < 0) return {};
+        if (lane < 0 || ui.sheet_open) return {}; // the VARY sheet has its amount alone
         unsigned q = pattern.q(), steps = pattern.steps();
         unsigned own = std::clamp<unsigned>((pattern.lane_length(unsigned(lane)) + q - 1) / q, 1, steps);
         Binding length = {Kind::LaneLength, lane, 1, int(std::max(steps, 2u)), int(own)};
@@ -750,6 +751,14 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Steps: { // the step in hand; on a kit its lane's note (the last pad's), as the pads show it
         if (ui.held_step >= 0) return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q()); // held: locks
+        if (ui.sheet_open) return {Binding {Kind::VaryAmount, 0, 0, 100, ui.vary_amount}, Binding {}, Binding {}}; // the VARY sheet
+        if (ui.euclid_cards && steps_lane(track) >= 0) { // the EUCLID row: the last pad's lane's rhythm (roadmap P1)
+            unsigned key = unsigned(steps_lane(track));
+            const EuclidLane* e = euclid_of(pattern, key);
+            int steps = e ? e->steps : int(std::min(pattern.steps(), euclid_max_steps));
+            return {Binding {Kind::EuclidHits, int(key), 0, steps, e ? e->hits : 0}, Binding {Kind::EuclidSteps, int(key), 1, int(euclid_max_steps), steps},
+                    Binding {Kind::EuclidRotate, int(key), 0, std::max(steps - 1, 1), e ? e->rotate : 0}};
+        }
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
         int n = lane_event(pattern, at, steps_lane(track));
         if (n < 0) return {};

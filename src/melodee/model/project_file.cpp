@@ -163,7 +163,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned p = 0; p < pattern_count; ++p) { // each pattern's notes, on the 96-a-quarter clock
             const auto& pattern = patterns.at[t][p];
             bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty() &&
-                         pattern.motion.empty() && pattern.lanes.empty() && pattern.feel == Feel {};
+                         pattern.motion.empty() && pattern.lanes.empty() && pattern.feel == Feel {} && pattern.euclids.empty();
             if (plain) continue;
             at = w.begin("EVNT");
             w.u8(t); w.u8(p); w.u32(pattern.length); w.u8(unsigned(pattern.division));
@@ -206,6 +206,12 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                 w.u16(f.groove_from); w.u8(f.groove_amount); w.u16(f.groove_step);
                 w.u8(unsigned(f.groove_offsets.size()));
                 for (size_t n = 0; n < f.groove_offsets.size(); ++n) { w.u8(uint8_t(f.groove_offsets[n])); w.u8(n < f.groove_levels.size() ? f.groove_levels[n] : 100); }
+                w.end(at);
+            }
+            if (!pattern.euclids.empty()) { // the Euclidean rhythms laid on its kit lanes (roadmap P1): key, hits, steps, rotation
+                at = w.begin("EUCL");
+                w.u8(t); w.u8(p); w.u8(unsigned(pattern.euclids.size()));
+                for (const auto& e : pattern.euclids) { w.u8(e.key); w.u8(e.hits); w.u8(e.steps); w.u8(e.rotate); }
                 w.end(at);
             }
             if (!pattern.lanes.empty()) { // kit lanes of their own length (roadmap P1): key, ticks
@@ -559,6 +565,19 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint32_t place = r.u32();
                 unsigned condition = r.u8();
                 if (r.ok && place < pattern.events.size() && condition < trig_count) pattern.events[place].condition = uint8_t(condition);
+            }
+        } else if (name == "EUCL") { // Euclidean rhythms laid on kit lanes (roadmap P1); their notes are in EVNT either way
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            unsigned count = r.u8();
+            pattern.euclids.clear();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                EuclidLane e;
+                e.key = uint8_t(r.u8());
+                unsigned hits = r.u8(), steps = std::clamp(r.u8(), 1u, 64u), rotate = r.u8();
+                e.steps = uint8_t(steps); e.hits = uint8_t(std::min(hits, steps)); e.rotate = uint8_t(rotate % steps);
+                if (r.ok) pattern.euclids.push_back(e);
             }
         } else if (name == "FEEL") { // a pattern's feel (roadmap P1); without it its notes play as written
             unsigned t = r.u8(), p = r.u8();

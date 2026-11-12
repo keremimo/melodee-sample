@@ -73,7 +73,10 @@ struct Binding {
         // A pattern's feel (roadmap P1, model/pattern.h Feel), heard live: strength toward Q 0..100, its swing 50..75,
         // humanize timing and velocity 0..100, a groove taken from a pattern (0 none, else 1 + track * 16 + pattern)
         // and how much of it 0..100. The selected track's pattern playing.
-        FeelStrength, FeelSwing, FeelHumanize, FeelVelocity, GrooveFrom, GrooveAmount
+        FeelStrength, FeelSwing, FeelHumanize, FeelVelocity, GrooveFrom, GrooveAmount,
+        // Generators (roadmap P1): Steps' EUCLID row on a kit (the last pad's lane: hits, steps, rotation) and the VARY
+        // sheet's amount (percent).
+        EuclidHits, EuclidSteps, EuclidRotate, VaryAmount
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

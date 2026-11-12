@@ -121,6 +121,12 @@ struct LaneLength {
     bool operator==(const LaneLength& o) const { return key == o.key && length == o.length; }
 };
 
+// The Euclidean rhythm last laid on a kit lane (roadmap P1, model/generators.h): its hits over its steps, turned.
+struct EuclidLane {
+    uint8_t key = 0, hits = 0, steps = 16, rotate = 0;
+    bool operator==(const EuclidLane& o) const { return key == o.key && hits == o.hits && steps == o.steps && rotate == o.rotate; }
+};
+
 // A pattern's feel (roadmap P1, Time Correct heard live): how its notes play without rewriting them. The audio thread
 // plays feel_pattern() of the pattern; the pages and the file keep the notes as written.
 struct Feel {
@@ -151,6 +157,7 @@ struct Pattern {
     std::vector<MotionPoint> motion;         // by tick, then lane; at most motion_points
     std::vector<LaneLength> lanes;           // keys looping on their own, by key
     Feel feel;                               // how its notes play (roadmap P1)
+    std::vector<EuclidLane> euclids;         // the rhythms laid on its kit lanes, by key (roadmap P1)
 
     unsigned q() const { return division_ticks(division); }
     // Steps of Q the pattern holds (a last part step counts).
@@ -158,7 +165,7 @@ struct Pattern {
     bool empty() const { return events.empty() || events.front().tick >= length; }
     bool operator==(const Pattern& o) const {
         return length == o.length && division == o.division && events == o.events && motion == o.motion && lanes == o.lanes &&
-               feel == o.feel;
+               feel == o.feel && euclids == o.euclids;
     }
     bool operator!=(const Pattern& o) const { return !(*this == o); }
     // The first event at or after `tick`.

@@ -165,6 +165,9 @@ behaviour changed.
   strength from 0 to 100 on a loose take, humanize on a straight hat (say
   if a quarter of a step at 100 is too much), a drum pattern's groove laid
   on a bass line.
+- P1: generators by ear: Euclid rhythms on a kit's hat and rim against a
+  4/4 kick (E(3,8), E(5,12), rotated), and each variation of a beat and a
+  bass line; say if Busier or Humanised at 30 % is too much or too little.
 - P1: Fill by hand: Play held while playing for a bar, FILL steps heard and
   NOT FILL ones dropped, back on release; say if Play's hold should wait a
   moment (a tap does nothing while playing).
@@ -222,7 +225,7 @@ behaviour, write the code fresh for this app.
   1/4 and 1/64 rates, the repeats written as notes under Seq Record.
 - [x] Humanize in Time Correct (a random timing and velocity amount) and a
   groove taken from one pattern and laid on another.
-- [ ] Generators: Euclid on a kit lane (hits, steps, rotate); a pattern's
+- [x] Generators: Euclid on a kit lane (hits, steps, rotate); a pattern's
   variations (thinner, busier, humanised, reversed, an octave up / down).
 - [ ] A track's playback speed (×½, ×¾, ×1, ×3/2, ×2) without rewriting
   its notes.

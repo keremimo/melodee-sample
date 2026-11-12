@@ -67,7 +67,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::EventChance: case Kind::StepRatchet: case Kind::StepRamp: case Kind::StepPitchRamp: case Kind::EventRatchet:
     case Kind::EventRamp: case Kind::EventPitchRamp: case Kind::StepCondition: case Kind::EventCondition: case Kind::Lock:
     case Kind::LaneLength: case Kind::FeelStrength: case Kind::FeelSwing: case Kind::FeelHumanize: case Kind::FeelVelocity:
-    case Kind::GrooveFrom: case Kind::GrooveAmount: case Kind::EventNudge:
+    case Kind::GrooveFrom: case Kind::GrooveAmount: case Kind::EuclidHits: case Kind::EuclidSteps: case Kind::EuclidRotate: case Kind::EventNudge:
         return pattern_scope(project, ui);
     default: return {};
     }
