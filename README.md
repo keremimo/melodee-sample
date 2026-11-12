@@ -62,6 +62,11 @@ git -C base pull origin main
 git add base
 ```
 
+## Support
+
+Melodee is free. If it earns a place in your setup, you can buy me a
+coffee on [Ko-fi](https://ko-fi.com/keremimo).
+
 ## Licence
 
 AGPL-3.0-only (`LICENSE`); JUCE under AGPLv3, Rubik under the SIL OFL 1.1
