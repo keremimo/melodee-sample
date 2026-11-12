@@ -1662,9 +1662,9 @@ void parity_1c() {
 
     // Note Repeat: B1-B3 1/8, 1/16, 1/32; Shift: triplets. Swing on every second straight note.
     CHECK(std::string(arp_rate_name(repeat_rate(0, false))) == "1/8" && std::string(arp_rate_name(repeat_rate(2, false))) == "1/32");
-    CHECK(std::string(arp_rate_name(repeat_rate(1, true))) == "1/16T" && arp_rate_ticks(repeat_rate(2, true)) == 2);
+    CHECK(std::string(arp_rate_name(repeat_rate(1, true))) == "1/16T" && arp_rate_ticks(repeat_rate(2, true)) == 8); // 96 a quarter since P1
     for (unsigned r = 1; r < arp_rates; ++r) CHECK(arp_rate_ticks(r) < arp_rate_ticks(r - 1)); // slowest first, as K2 turns
-    CHECK(arp_swing_ticks(4, 1, 75) == 3.0 && arp_swing_ticks(4, 2, 75) == 0 && arp_swing_ticks(5, 1, 75) == 0 && arp_swing_ticks(4, 1, 50) == 0);
+    CHECK(arp_swing_ticks(4, 1, 75) == 12.0 && arp_swing_ticks(4, 2, 75) == 0 && arp_swing_ticks(5, 1, 75) == 0 && arp_swing_ticks(4, 1, 50) == 0);
     auto project = std::make_unique<Project>();
     UiState ui;
     ui.page = PageId::Keys;
@@ -7581,7 +7581,61 @@ void kit_lanes() {
     }
 }
 
+// Note Repeat (roadmap P1): 1/4 and 1/64, the pad's pressure as the repeats' velocity, and its notes kept by Seq Record.
+void note_repeat_p1() {
+    // B1 and B3 again step to 1/4 and 1/64 (with Shift their triplets) and back; B2 stays.
+    CHECK(std::string(arp_rate_name(repeat_next(repeat_rate(0, false), 0, false))) == "1/4" && repeat_next(0, 0, false) == repeat_rate(0, false));
+    CHECK(std::string(arp_rate_name(repeat_next(6, 2, false))) == "1/64" && std::string(arp_rate_name(repeat_next(7, 2, true))) == "1/64T");
+    CHECK(repeat_next(4, 1, false) == 4 && repeat_next(2, 1, false) == 4 && repeat_next(8, 0, false) == 2); // another key: its first
+    CHECK(repeat_shown(8, 2, false) == 8 && repeat_shown(4, 2, false) == 6 && arp_rate_ticks(8) == 6 && arp_rate_ticks(9) == 4);
+    using namespace midi_track;
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    load_sound(project->tracks[0], EngineKind::Midi, 0);
+    project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+    project->tempo = 1200;
+    EngineHost host;
+    host.load(*project, *bank);
+    host.set_audio_format(44100, 384);
+    host.send({Command::Type::Arp, 0, 0, 2, 4}); // 1/16
+    host.send({Command::Type::Arp, 0, 0, 0, 1});
+    host.send({Command::Type::SongRecord, 0, 0, 0, 1});
+    host.send({Command::Type::Play});
+    host.send({Command::Type::ArpKey, 0, 0, 60, 100});
+    std::vector<int32_t> out(256);
+    std::vector<MidiOutEvent> ons;
+    auto play = [&](unsigned blocks) {
+        for (unsigned b = 0; b < blocks; ++b) {
+            host.render(out.data(), 128, 1);
+            MidiOutEvent e;
+            while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn) ons.push_back(e);
+        }
+    };
+    play(100);                                                // two sixteenths, as struck
+    host.send({Command::Type::Pressure, 0, 0, 60, 64});       // pressed half way
+    play(100);
+    host.send({Command::Type::Arp, 0, 0, 5, 0});              // Full Level: the pressure is no velocity
+    play(100);
+    CHECK(ons.size() == 7 && ons[0].b == 100 && ons[1].b == 100); // a sixteenth is 5512.5 frames: two in each phase, three in the last
+    bool half = false, full_again = false;
+    for (size_t n = 1; n < ons.size(); ++n) {
+        if (ons[n].b == 64) half = true;
+        if (half && ons[n].b == 100) full_again = true;
+    }
+    CHECK(half && full_again);
+    // Seq Record kept each repeat where it fell, a sixteenth apart, as long as the arp held it, as hard as it played.
+    EngineHost::ArpWritten w;
+    std::vector<EngineHost::ArpWritten> kept;
+    while (host.take_arp_written(w)) kept.push_back(w);
+    CHECK(kept.size() == ons.size());
+    for (size_t n = 0; n < kept.size(); ++n) {
+        CHECK(kept[n].track == 0 && kept[n].pattern == 0 && kept[n].key == 60 && kept[n].tick == n * sixteenth_ticks % 384);
+        CHECK(kept[n].velocity == ons[n].b && kept[n].length == sixteenth_ticks * 60 / 100);
+    }
+}
+
 int main() {
+    note_repeat_p1();
     ratchets();
     trig_conditions();
     pattern_motion();

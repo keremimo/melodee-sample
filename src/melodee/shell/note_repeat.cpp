@@ -29,7 +29,7 @@ void repeat_button(Context& c, bool pressed) {
 bool repeat_soft(Context& c, int key) {
     if (!repeat_keys(c.project, c.ui)) return false;
     auto& t = c.track();
-    t.arp_rate = uint8_t(repeat_rate(key, c.ui.shift));
+    t.arp_rate = uint8_t(repeat_next(t.arp_rate, key, c.ui.shift)); // the lit key again: 1/4 or 1/64
     c.send({Command::Type::Arp, c.ui.track, 0, 2, int16_t(t.arp_rate)});
     c.notice(std::string("Repeat ") + arp_rate_name(t.arp_rate));
     return true;

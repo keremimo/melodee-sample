@@ -164,6 +164,7 @@ public:
     void write_lock(int lane, uint32_t tick, uint16_t hold, int value);
     void sync_motion(unsigned track, unsigned pattern);
     void flush_motion();
+    void take_arp_notes(); // Seq Record: the arp's (Note Repeat's) notes as they played, into their patterns
     static constexpr uint32_t motion_sync_ms = 40;
     int motion_waiting = -1;  // track << 8 | pattern whose recorded motion the audio thread has not had yet
     uint32_t motion_synced = 0;

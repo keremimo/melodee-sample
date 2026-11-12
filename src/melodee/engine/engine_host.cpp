@@ -482,6 +482,7 @@ void EngineHost::apply(const Command& c) {
         case 2: a.rate = unsigned(c.value) % arp_rates; break;
         case 3: a.octaves = unsigned(std::clamp<int>(c.value, 1, 4)); break;
         case 4: a.gate = unsigned(std::clamp<int>(c.value, 5, 100)); break;
+        case 5: a.pressure_velocity = c.value != 0; break;
         }
         break;
     }
@@ -657,6 +658,7 @@ void EngineHost::apply(const Command& c) {
         for (auto& s : slots) { s.weighed = s.went = false; s.keys_weighed = {}; s.keys_went = {}; } // PRE and NEI start afresh
         tick_now = c.value == 1 ? 0 : c.position;
         arp_ticks = 0; until_arp = 0; // the repeats line up with the bar, so their swing falls with the sequencer's
+        arp_origin = tick_now;         // and Seq Record writes each where it fell (roadmap P1)
         song_mode = c.value == 1; song_bar_now = c.index;
         count_left = c.track == 1 ? bar : 0;
         count_beat.store(count_left ? 1 : 0, std::memory_order_relaxed);
@@ -716,6 +718,7 @@ void EngineHost::apply(const Command& c) {
         if (!running || song_mode) break;
         sync_stop(frame_now); // the clocks go on from the new place: Song Position and Continue
         tick_now = c.position; until_tick = 0; // the new place plays at once
+        arp_ticks = 0; until_arp = 0; arp_origin = tick_now; // the repeats from it
         loop_restart = true;
         for (auto& s : slots) { s.start = 0; for (auto& skip : s.skips) skip.key = -1; }
         tick_count.store(tick_now, std::memory_order_relaxed);
@@ -963,12 +966,22 @@ void EngineHost::mtc_place(double seconds) {
 
 void EngineHost::arp_tick() {
     for (auto& slot : slots) {
+        unsigned t = unsigned(&slot - slots.data());
         auto& a = slot.arp;
         if (!a.on || !slot.engine) continue;
         unsigned rate = arp_rate_ticks(a.rate);
         if (arp_ticks % rate) continue;
         int velocity = 0, key = a.next(velocity);
         if (key < 0) continue;
+        velocity = a.velocity_of(a.from, velocity); // a held pad's pressure, as on the MPC (roadmap P1)
+        if (song_recording && running && !count_left && !slot.silent) { // Seq Record: the repeat goes into the pattern as a note
+            const auto& p = *patterns[t][slot.pattern];
+            int64_t len = std::max<uint32_t>(p.length, 1), at = (int64_t(arp_origin) + arp_ticks - int64_t(slot.start)) % len;
+            ArpWritten w;
+            w.track = uint8_t(t); w.pattern = slot.pattern; w.key = uint16_t(key); w.velocity = uint8_t(std::clamp(velocity, 1, 127));
+            w.tick = uint32_t(at < 0 ? at + len : at); w.length = uint16_t(std::max(1u, rate * a.gate / 100));
+            if (!arp_written.push(w)) {}
+        }
         auto length = std::max<int32_t>(64, int32_t(arp_tick_length() * rate * a.gate / 100.0));
         double late = arp_swing_ticks(a.rate, (arp_ticks % (4 * arp_ticks_per_quarter)) / rate, swing); // every second straight note, as the project swings
         if (late > 0) { slot.arp_late = {int16_t(key), int16_t(velocity), int16_t(a.from), int32_t(arp_tick_length() * late), length}; continue; }

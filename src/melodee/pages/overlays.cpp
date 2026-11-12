@@ -32,18 +32,24 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     draw_place_bar(p, s); // over everything: where the music is stays in view
 }
 
-// Note Repeat on: B1-B3 are its rate, 1/8, 1/16, 1/32, and with Shift held their triplets.
+// Note Repeat on: B1-B3 are its rate, 1/8, 1/16, 1/32, and with Shift held their triplets; B1 and B3 again 1/4 and
+// 1/64 (dots under them, roadmap P1).
 void draw_repeat_keys(Paint& p, const Snapshot& s) {
     bool shift = s.ui.shift;
-    std::array<juce::String, 3> labels;
     int active = -1;
+    unsigned now = s.track().arp_rate;
+    SoftKeys keys {{}, -1, colour_of(s)};
     for (int k = 0; k < 3; ++k) {
-        unsigned rate = repeat_rate(k, shift);
-        labels[size_t(k)] = arp_rate_name(rate);
-        if (s.track().arp_rate == rate) active = k;
+        unsigned rate = repeat_shown(now, k, shift);
+        keys.labels[size_t(k)] = arp_rate_name(rate);
+        if (now == rate) active = k;
+        if (repeat_other(k, shift) != repeat_rate(k, shift)) { // B1 and B3 again: 1/4 and 1/64 (roadmap P1)
+            keys.dots[size_t(k)] = 2; keys.dot_at[size_t(k)] = uint8_t(now == repeat_other(k, shift) ? 1 : 0);
+        }
     }
+    keys.active = active;
     p.fill(0, zone::soft_y, zone::width, zone::soft_h, colour::bg);
-    soft_keys(p, {labels, active, colour_of(s)});
+    soft_keys(p, keys);
 }
 
 void draw_shift_layer(Paint& p, const Snapshot& s) {

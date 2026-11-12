@@ -186,7 +186,7 @@ void Context::key(int k, int velocity, bool down) {
     }
     if (!down) record_release(k);
     if (down) {
-        record(k, velocity);
+        if (!t.arp) record(k, velocity); // with the arp on the press is not heard: its notes are written as they play (take_arp_notes)
         history[history_at % history.size()] = {ui.track, uint8_t(k), uint8_t(velocity), now, 0};
         ++history_at;
     } else {
@@ -901,6 +901,25 @@ void Context::sync_motion(unsigned t, unsigned p) {
     flush_motion();
 }
 
+// Seq Record with the arp on (Note Repeat): each note it played goes into the pattern it fell in, where it fell, as
+// long as the arp held it (roadmap P1); one pattern copy for the audio thread for all that came.
+void Context::take_arp_notes() {
+    EngineHost::ArpWritten w;
+    int synced = -1;
+    while (host.take_arp_written(w)) {
+        if (!ui.recording) continue;
+        auto& p = patterns.at[w.track % track_count][w.pattern % pattern_count];
+        Event e;
+        e.tick = w.tick % std::max<uint32_t>(p.length, 1); e.length = std::max<uint16_t>(w.length, 1);
+        e.key = uint8_t(w.key & 0xff); e.pitch = int8_t(w.key >> 8); e.velocity = uint8_t(std::clamp<int>(w.velocity, 1, 127));
+        if (!p.add(e)) { notice("Pattern full"); continue; }
+        int which = int(w.track % track_count) << 8 | int(w.pattern % pattern_count);
+        if (synced >= 0 && synced != which) sync_pattern(unsigned(synced) >> 8, unsigned(synced) & 0xff);
+        synced = which;
+    }
+    if (synced >= 0) sync_pattern(unsigned(synced) >> 8, unsigned(synced) & 0xff);
+}
+
 void Context::flush_motion() {
     if (motion_waiting < 0 || now - motion_synced < motion_sync_ms) return;
     sync_pattern(unsigned(motion_waiting) >> 8, unsigned(motion_waiting) & 0xff);
@@ -1425,6 +1444,7 @@ void Context::set_arp(unsigned track, bool on) {
         send({Type::Arp, n, 0, 1, t.arp_mode}); send({Type::Arp, n, 0, 2, t.arp_rate});
         send({Type::Arp, n, 0, 3, int16_t(t.engine == EngineKind::Sampler ? 1 : t.arp_octaves)}); // a kit repeats its pad
         send({Type::Arp, n, 0, 4, t.arp_gate});
+        send({Type::Arp, n, 0, 5, int16_t(!ui.settings.full_level())}); // pressure sets the repeats' velocity, unless Full Level
     }
     send({Type::Arp, n, 0, 0, int16_t(on)});
 }

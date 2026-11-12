@@ -202,6 +202,9 @@ public:
     int mtc_error_us() const { return mtc_error_now.load(std::memory_order_relaxed); }
     int mtc_trim_ppm() const { return mtc_ppm.load(std::memory_order_relaxed); }
     unsigned mtc_places() const { return mtc_placed.load(std::memory_order_relaxed); } // locates done (Start, jumps, catch-ups)
+    // MIDI thread (roadmap P1): a note the arp (Note Repeat) played while Seq Record was on, for the pattern it fell in.
+    struct ArpWritten { uint8_t track = 0, pattern = 0; uint16_t key = 0; uint8_t velocity = 0; uint32_t tick = 0; uint16_t length = 0; };
+    bool take_arp_written(ArpWritten& note) { return arp_written.pop(note); }
     // MIDI thread: a pattern copy the audio thread played until a newer one came (PatternData), to free.
     bool take_retired_pattern(Pattern*& pattern) { return retired_patterns.pop(pattern); }
 
@@ -404,6 +407,8 @@ private:
     void select_input(const int32_t* input, const float* usb, unsigned frames); // into record_l / record_r
     double until_arp = 0;
     uint32_t arp_ticks = 0;
+    uint32_t arp_origin = 0;                    // the sequencer's tick at the arp's tick 0 (Play, a locate)
+    MidiQueue<512, ArpWritten> arp_written;     // its notes for Seq Record
     bool click = false;
     float click_level = 0.4f, click_env = 0, click_phase = 0, click_step = 0;
     float record_l[block] {}, record_r[block] {};

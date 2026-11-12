@@ -17,13 +17,14 @@ inline const char* arp_mode_name(ArpMode m) {
     return names[unsigned(m) % unsigned(ArpMode::Count)];
 }
 // Rates in ticks, slowest first, each straight rate followed by its triplet:
-// 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T. Note Repeat's B1-B3 pick
-// 1/8, 1/16, 1/32 and, with Shift, their triplets (MELODEE_PARITY.md).
-constexpr unsigned arp_rates = 8;
-constexpr unsigned arp_ticks_per_quarter = 24; // the arp's own clock, apart from the sequencer's 96
-inline unsigned arp_rate_ticks(unsigned rate) { static const unsigned t[] {24, 16, 12, 8, 6, 4, 3, 2}; return t[rate % arp_rates]; }
+// 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, 1/64, 1/64T. Note Repeat's
+// B1-B3 pick 1/8, 1/16, 1/32 (B1 again 1/4, B3 again 1/64) and, with Shift,
+// their triplets (MELODEE_PARITY.md, roadmap P1).
+constexpr unsigned arp_rates = 10;
+constexpr unsigned arp_ticks_per_quarter = 96; // the arp's own clock, as fine as the sequencer's (1/64T is 4 of it)
+inline unsigned arp_rate_ticks(unsigned rate) { static const unsigned t[] {96, 64, 48, 32, 24, 16, 12, 8, 6, 4}; return t[rate % arp_rates]; }
 inline const char* arp_rate_name(unsigned rate) {
-    static const char* n[] {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T"};
+    static const char* n[] {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T", "1/64", "1/64T"};
     return n[rate % arp_rates];
 }
 inline bool arp_rate_triplet(unsigned rate) { return rate % 2 == 1; }
@@ -49,6 +50,13 @@ struct Arp {
     int sounding = -1;
     int from = -1;                             // the held key next() played last (before octaves)
     uint32_t seed = 7;
+    bool pressure_velocity = true;             // Note Repeat (roadmap P1): a held pad's pressure is its repeats' velocity (not with Full Level)
+
+    // How hard the next note of `key` plays: as the pad's pressure while it reports one, else as it was struck.
+    int velocity_of(int key, int struck) const {
+        float p = pressure_velocity ? pressure_of(key) : 0.0f;
+        return p > 0 ? std::clamp(int(p * 127.0f + 0.5f), 1, 127) : struck;
+    }
 
     void press(int key, int vel) {
         for (unsigned n = 0; n < count; ++n) if (order[n] == key) return;

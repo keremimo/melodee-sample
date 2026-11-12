@@ -1596,6 +1596,10 @@ const Preview previews[] {
          }
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"repeatrates", [](Shell&, Snapshot& s) { // Note Repeat on the kit's Pads at 1/64: B3 pressed again (dots under B1 and B3)
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true;
+         s.project.tracks[3].arp = true; s.project.tracks[3].arp_rate = 8;
+     }},
     {"stepslane", [](Shell& shell, Snapshot& s) { // Shift + K1 on the kit's Steps: the hat's lane loops over six steps of the bar's sixteen
          step_edit_kit(shell, s);
          s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;

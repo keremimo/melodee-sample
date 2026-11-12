@@ -21,8 +21,21 @@ inline bool repeat_keys(const Project& project, const UiState& ui) {
     if (ui.page == PageId::Stage) return project.tracks[ui.track % track_count].arp && ui.repeat_held;
     return project.tracks[ui.track % track_count].arp && ui.page != PageId::Song;
 }
-// The arp rate (engine/arp.h) B1-B3 pick: 1/8, 1/16, 1/32; with Shift, 1/8T, 1/16T, 1/32T.
+// The arp rate (engine/arp.h) B1-B3 pick: 1/8, 1/16, 1/32; with Shift, 1/8T, 1/16T, 1/32T. The lit key again
+// steps on (roadmap P1): B1 to 1/4, B3 to 1/64 (and their triplets), and back; B2 stays.
 inline unsigned repeat_rate(int key, bool shift) { return 2 + 2 * (unsigned(key) % 3) + (shift ? 1 : 0); }
+inline unsigned repeat_other(int key, bool shift) {
+    unsigned k = unsigned(key) % 3;
+    return k == 0 ? 0u + (shift ? 1 : 0) : k == 2 ? 8u + (shift ? 1 : 0) : repeat_rate(key, shift);
+}
+// The rate a press of B1-B3 gives while `current` plays, and what that key shows.
+inline unsigned repeat_next(unsigned current, int key, bool shift) {
+    unsigned a = repeat_rate(key, shift), b = repeat_other(key, shift);
+    return current == a && b != a ? b : a;
+}
+inline unsigned repeat_shown(unsigned current, int key, bool shift) {
+    return current == repeat_other(key, shift) ? current : repeat_rate(key, shift);
+}
 // B1-B3 while repeat_keys(): sets the rate; false when the page's own keys should answer.
 bool repeat_soft(Context& c, int key);
 

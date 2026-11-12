@@ -365,8 +365,13 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   above all), − / + move the pads an octave (three down to five up, kept
   with the track).
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
-  (Shift: their triplets); straight rates swing with the project. It is the
-  track's arp; a kit repeats the held pad.
+  (Shift: their triplets); the lit B1 again is 1/4, the lit B3 again 1/64
+  (dots under them), and back; straight rates swing with the project. It is
+  the track's arp; a kit repeats the held pad. The repeats play as hard as
+  the pad is pressed (its pressure, once it reports one; with Full Level at
+  127), as on the MPC; under Seq Record each repeat is written as a note
+  where it fell, as long as the arp held it (the press itself is not, as it
+  is not heard).
 - **Tempo** (hold Tap Tempo): K1 tempo, K2 swing, K3 click level, Shift + K1
   and K2 the project's root and scale from any track; B1 halves,
   B3 doubles, B2 CLICK the metronome Off / On / Rec (its LED green on,

@@ -102,6 +102,7 @@ void Shell::midi_output(MidiOutput& out, MidiIo::Clock::time_point at, uint32_t 
     std::lock_guard<std::mutex> guard(lock);
     context_.now = now;
     context_.flush_motion(); // recorded Motion the audio thread has not had yet (roadmap P1)
+    context_.take_arp_notes(); // and Note Repeat's notes under Seq Record
     midi_io.pump(context_, out, at);
 }
 

@@ -124,6 +124,14 @@ behaviour changed.
   length stay but are not heard. The 909 and synths have no lanes (Steps
   there edits whole steps). Why: Shift + K is the card's second parameter,
   and the lane's length is its length card's.
+- P1: Note Repeat's 1/4 and 1/64 are the lit B1 and B3 pressed again
+  (Stage's "lit key again steps on", dots under them), Shift their
+  triplets. The arp's clock went from 24 to 96 ticks a quarter to hold
+  1/64T. Pressure sets velocity once the pad reports some (before that the
+  strike's), off under Full Level. Under Seq Record the arp's notes are
+  written by the audio thread's count (`arp_origin` + its ticks, so on the
+  grid even with swing) and the press is not written. Why: what is heard
+  is what is kept; a press with Note Repeat on makes no sound of its own.
 
 ## Waiting for a hand check
 
@@ -140,6 +148,9 @@ behaviour changed.
   level down on another, a synth's cutoff locked on one note of a line;
   say if a lock should last until the lane's next note instead of its own
   note's length.
+- P1: Note Repeat by hand: a pad held lightly and hard (the repeats follow
+  the pressure; say if the curve wants to be steeper or start higher),
+  1/4 and 1/64 on B1 / B3 again, and a take with Seq Record kept as notes.
 - P1: Fill by hand: Play held while playing for a bar, FILL steps heard and
   NOT FILL ones dropped, back on release; say if Play's hold should wait a
   moment (a tap does nothing while playing).
@@ -193,7 +204,7 @@ behaviour, write the code fresh for this app.
   Step Edit) and turning a pot writes a lock on that step. Old `MOTN`
   sections still load.
 - [x] Kit lanes of their own length (polymeter inside a kit).
-- [ ] Note Repeat: pad pressure sets the repeats' velocity (as the MPC),
+- [x] Note Repeat: pad pressure sets the repeats' velocity (as the MPC),
   1/4 and 1/64 rates, the repeats written as notes under Seq Record.
 - [ ] Humanize in Time Correct (a random timing and velocity amount) and a
   groove taken from one pattern and laid on another.
