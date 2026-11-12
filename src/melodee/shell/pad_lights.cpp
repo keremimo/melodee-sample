@@ -473,6 +473,11 @@ Look punch_look(const PadScene& s, unsigned pad) {
     int kind = punch_on_pad(s.project.punch_bank, pad);
     if (kind < 0) return {};
     unsigned at = selected_index(s);
+    if (ui.erase) { // Erase held (pad-fx C): the pads whose punch the pattern keeps red, as Erase + pad takes them out
+        const auto& kept = s.patterns.at[at % track_count][selected(s).pattern % pattern_count].punches;
+        bool any = std::any_of(kept.begin(), kept.end(), [&](const PatternPunch& e) { return e.kind == uint8_t(kind); });
+        return any ? red(dim) : Look {};
+    }
     auto colour = [&](float level) { return s.project.punch_target ? track(at, level) : white(level); }; // white: on the master
     int engaged = ui.engaged_at(kind);
     if (engaged >= 0 && ui.engaged[unsigned(engaged)].pad >= 0) // held: as bright as it is pressed

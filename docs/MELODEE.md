@@ -223,7 +223,7 @@ grammar (`shell/pad_light.h`):
 | Motion on a kit | The last pad Full, pads with recorded motion Mid |
 | Chop | The slices, the one in hand Full, flaring as they play; Manual armed: pad 1 flashing red; cutting: pad 1 white, the rest white Faint; + Erase the slices that would go Faint red |
 | Record, Resample | The take's pad red (flashing while it waits), cuts white; Resample's empty pads pulse |
-| Punch | A held punch white as deep as it is pressed, latched Full, waiting blinking |
+| Punch | A held punch white as deep as it is pressed, latched Full, waiting blinking; Erase held: the punches the pattern keeps Dim red, the rest dark |
 | Knob FX, Flex Beat, Pad Punch, sidechain | On or playing Full, the rest Dim or Faint, empty dark |
 | Shift held | The jobs white (above) |
 | Erase held on a kit | Stopped: the pads that would empty Faint red; playing: the pads with notes Dim red, flaring as they play |
@@ -939,7 +939,9 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   like Motion, drawn quieter, four at once, on the grid and tail they were
   played with (kept in `KEPT`). A live punch wins: while one sounds the
   kept ones are quiet, and they come back for the rest of their length
-  after. Erase + KEEP takes them out, asked first.
+  after. Erase + pad takes that pad's kept punches out (one undo; while
+  Erase is held the kept ones show red, on the pads and the screen), and
+  Erase + KEEP takes them all, asked first.
   An MPC punch's K1–K3 are its own, Shift + K1–K3 depth, snap, tail.
 - **Flex Beat** (Shift + Pad FX): a time effect over the master for a bar;
   pad 1 Empty, 2–16 fifteen effects; K1 One Shot / Loop, K3 mix, B3

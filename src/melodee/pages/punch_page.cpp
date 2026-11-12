@@ -136,7 +136,8 @@ void punch_draw(Paint& p, const Snapshot& s) {
     if (pos >= 0) p.fill(bx + bw * float(uint32_t(pos) - b0) / bar - 0.5f, sy, 1, sh, colour::text.withAlpha(0.7f)); // the playhead
 
     // Below, the pads as they sit on the MPC: each punch by name, in its row's colour while it is in the bar; the
-    // ones sounding lit, the ones waiting raised, a latched one underlined, the one in hand ringed.
+    // ones sounding lit, the ones waiting raised, a latched one underlined, the one in hand ringed. Erase held: the
+    // ones the pattern keeps red (Erase + pad takes them out), the rest dim.
     constexpr float gap = 3, gy = sy + sh + 5, gh = zone::knobs_y - 2 - gy;
     constexpr float cw = (sw - 3 * gap) / 4, ch = (gh - 3 * gap) / 4;
     for (unsigned n = 0; n < 16; ++n) {
@@ -148,13 +149,18 @@ void punch_draw(Paint& p, const Snapshot& s) {
         p.fill(x, y, cw, ch, on ? c : waiting ? colour::raised : colour::surf, 3);
         if (kind == selected) p.ring(x, y, cw, ch, on ? colour::bg : c, 3, 1.5f);
         if (latch) p.fill(x + 5, y + ch - 3, cw - 10, 1.5f, on ? colour::bg : c, 0.75f);
-        auto style = plain(on ? colour::bg : row >= 0 ? knob_shade(s.ui.track, unsigned(row)) : colour::text, type::small, Weight::SemiBold);
+        bool kept = std::any_of(pattern.punches.begin(), pattern.punches.end(), [&](const PatternPunch& k) { return k.kind == uint8_t(kind); });
+        auto ink = s.ui.erase ? (kept ? colour::rec : colour::dim) : on ? colour::bg : row >= 0 ? knob_shade(s.ui.track, unsigned(row)) : colour::text;
+        auto style = plain(ink, type::small, Weight::SemiBold);
         juce::String name = cell_name(p, punch_title(PunchKind(kind)), style, cw - 8);
         p.text(name, x + 5, y - 0.5f, cw - 8, ch, p.fit(name, style, cw - 8, type::floor));
     }
 }
 
-void punch_pad(Context& c, unsigned pad, uint8_t, bool down) { c.punch_pad(pad, down); }
+void punch_pad(Context& c, unsigned pad, uint8_t, bool down) {
+    if (down && c.ui.erase) { c.erase_kept_punch(pad); return; } // Erase + pad: its kept punches go (a release still lets go)
+    c.punch_pad(pad, down);
+}
 void punch_soft(Context& c, int key) {
     if (key == 0) { c.latch_punch(); return; }
     if (key == 1) { c.set_punch_target(c.project.punch_target ? 0 : 1); return; }

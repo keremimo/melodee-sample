@@ -1336,6 +1336,12 @@ const Preview previews[] {
          uint32_t bar = s.project.bar_ticks();
          pattern.punches = {{0, bar / 4, 1, 2, 100, 2, 1}, {bar / 2, bar / 8, 5, 2, 100, 2, 1}, {bar * 13 / 16, bar / 8, 14, 2, 100, 2, 1}};
      }},
+    {"puncherase", [](Shell& shell, Snapshot& s) { // Erase held: the kept punches red, as Erase + pad takes them out
+         s.ui.page = PageId::Punch; s.ui.track = 2; s.project.punch_target = 1; s.project.punch_bank = 0; s.ui.erase = true;
+         auto& pattern = shell.patterns().at[2][s.project.tracks[2].pattern];
+         uint32_t bar = s.project.bar_ticks();
+         pattern.punches = {{0, bar / 4, 1, 2, 100, 2, 1}, {bar / 2, bar / 8, 5, 2, 100, 2, 1}, {bar * 13 / 16, bar / 8, 14, 2, 100, 2, 1}};
+     }},
     // Parity phase 7b: the MPC's Pad FX, five engaged (the first bypassed), and Flex Beat.
     {"padfxmpc", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Punch; s.ui.track = 0; s.playing = true; s.project.punch_bank = 2; s.project.punch_target = 0;

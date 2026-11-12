@@ -112,6 +112,7 @@ public:
     void close_span(int kind);
     void keep_punches();
     void erase_punches();
+    void erase_kept_punch(unsigned pad); // Erase + pad: that pad's punch out of the pattern wherever it is kept (one undo)
     uint8_t punch_target_now() const;
     void flex_pad(unsigned pad);                            // Flex Beat: pad 1 Empty, 2-16 its effects
     void set_flex(unsigned what, int value);                // as Command::FlexBeat's index: 1 mode, 2 mix, 3 quantize

@@ -7459,6 +7459,14 @@ void pad_lights() {
     CHECK(is(0, Hue::Track, 2) && is(12, Hue::None, 0));
     ui.page = PageId::FlexBeat; light({});
     CHECK(is(0, Hue::White, 4) && is(1, Hue::White, 2));
+    // Pad FX with Erase held (round 2, pad-fx C): the pads whose punch the pattern keeps red, the rest dark.
+    ui.page = PageId::Punch; project->punch_bank = 0; ui.erase = true;
+    bank->at[1][kit.pattern].punches = {{0, 96, uint8_t(PunchKind::Low), 255, 100, 2, 1}};
+    light({});
+    CHECK(is(8, Hue::Red, 2) && is(4, Hue::None, 0));
+    ui.erase = false; light({});
+    CHECK(looks[8].hue != Hue::Red);
+    bank->at[1][kit.pattern].punches.clear();
     ui.page = PageId::Stage;
 
     // Shift: the panel's jobs white, dark where they cannot act.

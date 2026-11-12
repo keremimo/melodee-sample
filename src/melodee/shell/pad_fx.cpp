@@ -215,6 +215,22 @@ void Context::keep_punches() {
     notice(added == 1 ? std::string("Punch kept") : std::to_string(added) + " punches kept");
 }
 
+// Erase + pad on Pad FX (pad-fx C): the pad's punch taken out of the selected track's pattern wherever it is kept.
+void Context::erase_kept_punch(unsigned pad) {
+    int kind = punch_on_pad(project.punch_bank, pad);
+    if (kind < 0) return;
+    unsigned t = ui.track % track_count, n = track().pattern % pattern_count;
+    auto& punches = patterns.at[t][n].punches;
+    auto is = [&](const PatternPunch& e) { return e.kind == uint8_t(kind); };
+    std::string name = punch_title(PunchKind(kind));
+    if (std::none_of(punches.begin(), punches.end(), is)) { notice(name + " not kept"); return; }
+    edit_pattern(t, n, "Erase punches", [&] {
+        punches.erase(std::remove_if(punches.begin(), punches.end(), is), punches.end());
+        sync_pattern(t, n);
+    });
+    notice(name + " erased");
+}
+
 void Context::erase_punches() {
     unsigned t = ui.track % track_count, n = track().pattern % pattern_count;
     if (patterns.at[t][n].punches.empty()) return;
