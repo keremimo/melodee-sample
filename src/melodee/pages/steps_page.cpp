@@ -115,7 +115,7 @@ void draw(Paint& p, const Snapshot& s) {
         }
         if (step.empty()) continue;
         int lane_note = lane_event(pattern, st, steps_lane(s.track()));
-        int kit_pad = steps_lane(s.track()) >= 0 ? steps_lane(s.track()) - int(sampler_first_note) : -1;
+        int kit_pad = s.track().engine == EngineKind::Sampler && steps_lane(s.track()) >= 0 ? steps_lane(s.track()) - int(sampler_first_note) : -1;
         if (lock_in(pattern, st * pattern.q(), (st + 1) * pattern.q(), kit_pad)) // a Motion lock: a square at its top
             p.fill(x + 2, top + 2, 4, 4, here ? colour::text : colour::sec, 1);
         if (lane_note >= 0 && pattern.events[size_t(lane_note)].condition != trig_always) // a trig condition: a ring at its foot
@@ -133,7 +133,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
         MenuSheet m;
         m.title = "INTO THE NEXT EMPTY PATTERN"; m.accent = c;
-        bool kit = s.track().engine == EngineKind::Sampler;
+        bool kit = s.track().engine == EngineKind::Sampler || drum_pads(s.track());
         for (unsigned v = 0; v < unsigned(Variation::Count); ++v) {
             bool here = variation_on_kit(Variation(v)) || !kit;
             m.rows[v] = {variation_name(Variation(v)), v < 3 ? juce::String(s.ui.vary_amount) + " %" : juce::String(), false, false, !here};
@@ -192,13 +192,14 @@ void wheel(Context& c, int delta) {
     if (c.ui.sheet_open) { c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(Variation::Count) - 1)); return; }
     auto& pattern = c.pattern();
     if (c.ui.held_step >= 0 && steps_lane(c.track()) >= 0) {
-        // A kit: the lane's note moves to the next pad (not onto one already there), and the lane with it.
+        // A kit (or Drums pads): the lane's note moves to the next pad (not onto one already there), and the lane with it.
         auto& t = c.track();
-        int lane = steps_lane(t), to = std::clamp(lane + delta, int(sampler_first_note), int(sampler_last_key));
+        bool kit = t.engine == EngineKind::Sampler;
+        int lane = steps_lane(t), to = std::clamp(lane + delta, int(kit ? sampler_first_note : drum_first_key), int(kit ? sampler_last_key : drum_last_key));
         unsigned st = unsigned(c.ui.held_step);
         if (to != lane && !step_velocity(pattern, st, to) && move_lane(pattern, st, lane, uint8_t(to))) {
             t.last_note = uint8_t(to);
-            t.last_pad = uint8_t(to - int(sampler_first_note));
+            if (kit) t.last_pad = uint8_t(to - int(sampler_first_note));
             c.sync_pattern(c.ui.track, t.pattern);
         }
         c.ui.held_edited = true;

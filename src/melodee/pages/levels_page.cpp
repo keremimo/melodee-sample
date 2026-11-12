@@ -120,6 +120,7 @@ void soft(Context& c, int key) {
     bool kit = t.engine == EngineKind::Sampler;
     auto kind = LevelsKind(t.levels_kind % unsigned(LevelsKind::Count));
     if (key == 1 && !kit) return;
+    if (key == 2 && drum_pads(t)) return; // Drums pads: Velocity alone
     LevelsKind next = key == 0 ? LevelsKind::Velocity
                     : key == 1 ? LevelsKind::Filter
                     : (kind == LevelsKind::Scale ? LevelsKind::Tune : LevelsKind::Scale);

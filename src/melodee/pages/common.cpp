@@ -458,7 +458,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::ChordOn: c.label = "CHORD"; c.value = b.value ? "On" : "Off"; break;
     case Kind::LevelsType: {
         std::array<LevelsKind, 4> types {};
-        levels_types(track.engine == EngineKind::Sampler, types);
+        levels_types(track, types);
         c.label = "TYPE"; c.value = levels_kind_name(types[size_t(b.value) % types.size()]);
         break;
     }
@@ -582,7 +582,15 @@ void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::
 }
 
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down) { c.play_pad(pad, velocity, down); }
-void octave(Context& c, int way) { auto& t = c.track(); t.octave = int8_t(std::clamp(t.octave + way, 0, 7)); }
+void octave(Context& c, int way) {
+    auto& t = c.track();
+    if (drum_pads(t)) { // Drums pads: − / + the bank, A-D
+        t.bank = uint8_t(std::clamp(int(drum_bank(t)) + way, 0, int(drum_banks) - 1));
+        c.notice(std::string("Bank ") + char('A' + drum_bank(t)));
+        return;
+    }
+    t.octave = int8_t(std::clamp(t.octave + way, 0, 7));
+}
 void no_wheel(Context&, int) {}
 void no_push(Context&) {}
 void play_soft(Context& c, int key) {

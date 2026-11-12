@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/pattern.h"
 #include "melodee/model/project.h"
+#include "melodee/model/scales.h"
 #include <algorithm>
 
 // Steps (pages/steps_page.cpp) on a kit shows and toggles one lane, the last
@@ -11,8 +12,14 @@
 // on the whole step. The pads light the same (shell/pad_lights.cpp).
 namespace melodee {
 
-// The key Steps works on: the last pad's on a kit, -1 for the whole step.
-inline int steps_lane(const Track& t) { return t.engine == EngineKind::Sampler && !t.levels ? int(t.step_note()) : -1; }
+// The key Steps works on: the last pad's on a kit or on Drums pads (its drum; pad 1 of the bank before any), -1 for
+// the whole step.
+inline int steps_lane(const Track& t) {
+    if (t.levels) return -1;
+    if (t.engine == EngineKind::Sampler) return int(t.step_note());
+    if (drum_pads(t)) return drum_pad_of(t.last_note) >= 0 ? int(t.last_note) : drum_key(t, 0);
+    return -1;
+}
 
 // The loudest note starting in step `s` on `lane` (on any key: -1), 0 none; an accent counts as 127.
 inline unsigned step_velocity(const Pattern& p, unsigned s, int lane) {

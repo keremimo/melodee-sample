@@ -53,6 +53,20 @@ struct PluginPrograms {
     bool loading = false;          // a pick still on its way to the plug-in
 };
 
+// A drum plug-in's voices as the selected track's Drums pads reach them (plugin/drum_map.h): the name on each of
+// keys 36-99 (pads A01-D16), "" where it has none. The shell keeps the selected track's in the UI state for the Keys
+// page and the pad lights; `entry` no_plugin: none.
+struct DrumVoices {
+    static constexpr unsigned first = 36, keys = 64;
+    uint8_t entry = no_plugin;
+    std::array<std::array<char, 16>, keys> names {};
+    bool any() const { for (const auto& n : names) if (n[0]) return true; return false; }
+    const char* at(int key) const { // nullptr: no voice there
+        unsigned k = unsigned(key - int(first));
+        return key >= int(first) && k < keys && names[k][0] ? names[k].data() : nullptr;
+    }
+};
+
 constexpr int plugin_param_max = 1000; // a card's range for a plug-in parameter
 // A plug-in card's binding id: the entry and the parameter's place in the plug-in's list of shown ones.
 constexpr int32_t plugin_binding(unsigned entry, unsigned shown) { return int32_t(entry << 16 | shown); }

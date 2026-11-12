@@ -37,6 +37,11 @@ std::string key_label(const Track& t, int key) {
         pad_label(unsigned(key) - sampler_first_note, label);
         return label;
     }
+    if (drum_pads(t) && drum_pad_of(key) >= 0) { // Drums pads: the pad as a kit's (A01 is 36)
+        char label[4];
+        pad_label(unsigned(drum_pad_of(key)), label);
+        return label;
+    }
     return note_name(key);
 }
 

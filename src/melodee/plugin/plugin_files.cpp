@@ -73,6 +73,20 @@ void describe_vst3(PluginFile& f) {
     f.instrument = vst3_instrument(bundle);
 }
 
+// A drum machine's voices, from its library (at most 32 MB of it): only an instrument, or one not known yet.
+void read_drums(PluginFile& f, const std::string& library) {
+    if (f.instrument == 0) return;
+    std::error_code error;
+    auto size = fs::file_size(library, error);
+    std::ifstream in(library, std::ios::binary);
+    if (error || !in) return;
+    std::string bytes;
+    bytes.resize(size_t(std::min<std::uintmax_t>(size, 32u << 20)));
+    in.read(bytes.data(), std::streamsize(bytes.size()));
+    bytes.resize(size_t(std::max<std::streamsize>(in.gcount(), 0)));
+    f.drums = drum_voices_in(bytes);
+}
+
 void describe_library(PluginFile& f, const std::string& library) {
     switch (arm_elf(library)) {
     case 2: f.format = PluginFormat::Vst2; f.library = library; break;
@@ -100,6 +114,7 @@ bool describe_open_mpc(PluginFile& f) {
     }
     if (so.empty()) { f.format = PluginFormat::Vst2; f.why = "No library in the folder"; return true; }
     describe_library(f, (folder / so).string());
+    read_drums(f, (folder / so).string());
     return true;
 }
 } // namespace
@@ -135,6 +150,7 @@ PluginFile describe_plugin(const std::string& path) {
     }
     f.name = stem(path);
     describe_library(f, path);
+    read_drums(f, path);
     return f;
 }
 

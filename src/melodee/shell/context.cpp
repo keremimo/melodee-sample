@@ -391,7 +391,10 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::Root: project.root = uint8_t(value); break;
     case Kind::Scale: project.scale = uint8_t(value); break;
-    case Kind::Layout: t.layout = PadLayout(value); break;
+    case Kind::Layout:
+        if (PadLayout(value) == PadLayout::Drums) use_drum_pads(t);
+        else t.layout = PadLayout(value);
+        break;
     case Kind::Transpose: t.transpose = int8_t(std::clamp(value, -12, 12)); break;
     case Kind::Engine: {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
@@ -653,7 +656,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::ChordOn: t.chord = value != 0; break; // Shift + K1 on Stage's CHORD
     case Kind::LevelsType: { // K1 on 16 Levels: Scale, Tune, Velocity (and Filter on a kit)
         std::array<LevelsKind, 4> types {};
-        unsigned count = levels_types(t.engine == EngineKind::Sampler, types);
+        unsigned count = levels_types(t, types);
         t.levels_kind = uint8_t(types[unsigned(std::clamp(value, 0, int(count) - 1))]);
         ui.levels_hit = -1;
         break;

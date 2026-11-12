@@ -24,6 +24,7 @@ inline void sort_notes(std::array<int, notes_per_step>& keys, unsigned n) {
 
 // The chord on pad `pad` of a track; returns how many notes (up to four).
 inline unsigned chord_notes(const Project& project, const Track& track, unsigned pad, std::array<int, notes_per_step>& out) {
+    if (track.layout == PadLayout::Drums) { out[0] = pad_note(project, track, pad).key; return 1; } // a drum is no chord's root
     std::array<uint8_t, 12> degrees {};
     unsigned count = scale_degrees(project.scale, degrees);
     int base = 12 * (track.octave + 1) + project.root + track.transpose; // as the pads' (pad_note()): the pad's note is the root

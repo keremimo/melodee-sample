@@ -70,6 +70,8 @@ public:
     void select_program(unsigned entry, int program);
     PluginStatus status(unsigned entry) const;
     int instrument(unsigned entry) const; // 1, 0, or -1 while not known
+    // A drum plug-in's voices (plugin/drum_map.h) on `entry`; none for any other.
+    void drum_voices(unsigned entry, DrumVoices& out) const;
 
     // The picker. set_card(): the card's top folder ("" none), from the sample
     // library; the picker starts in its Plugins folder.

@@ -331,7 +331,19 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   filled in the track's colour, the pad played white; the key and scale are
   the header's chip, the octave beside it. K1 root, K2 scale, K3 layout;
   octave on −/+; Shift + K3 transposes the pads −12..+12 (kept with the
-  track). Push opens Edit.
+  track). Push opens Edit. The layout is each track's own; the key is the
+  project's.
+- **Drums** (K3's last layout): a drum plug-in's or MIDI drum machine's pads
+  play as a kit's, notes 36 up whatever the key, octave or transpose: pad 1
+  of bank A is 36 (the MPC's and Ableton's drum-rack notes), pad n of the
+  bank in view 36 + 16 × bank + n, banks A–D (to 99) on Pad Bank or −/+, lit
+  on the bank lights. The chip says DRUMS, the pill the bank; each pad
+  names the plug-in's voice there (else its note), a pad with no voice
+  dark, the drum hit last in the track's colour, and the pads light the
+  same. Steps works one drum's lane at a time as on a kit (the drum hit
+  last); Roll draws pad lanes; chords play the pad's note alone; 16 Levels
+  is Velocity alone (another pitch would be another drum); the variations
+  that move octaves are left out, as on a kit.
 - **Pads** (Sample's third stop on a kit): the bank as the pads sit, each
   pad drawing its own waveform from start to end, so a kit is known by its
   shapes; a pad that sounds lights and a head runs through it, the pad in
@@ -1325,6 +1337,14 @@ of the card (beside `Samples/`), in any folders under it.
   the picker. Open MPC plug-ins put their skin's Q-Link pages first.
   MIDI-CC stand-ins, host settings and the plug-in's own bypass (the slot
   has one) are left out.
+- **Drum machines.** An Open MPC drum machine that states its voices (8W8,
+  9W9 and their siblings carry their screen's map in the library,
+  `"pad_layout":"drums"` with each voice's name and note) turns its track's
+  pads to Drums when it is picked, and Keys names its voices. They carry a
+  map for each Note Map setting; Melodee names the one they start on (the
+  drum rack from 36: 8W8's Rack 36, 9W9's Drum Rack), so keep Note Map
+  there. Any other drum plug-in plays on Drums too: K3 on Keys. Picking a
+  plug-in that is no drum machine puts a Drums track back on Scale.
 - **Bundles of several.** A bundle holding many plug-ins (LSP's VST3 holds
   198) lists as one row, the plug glyph with its count and a chevron; Push
   opens it, a row for each. Every row is a glyph first (folder, plug, a

@@ -672,7 +672,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::Levels: { // K1 the type, K2 and K3 the two ends (pad 1's and pad 16's), or of type Scale the key
         std::array<LevelsKind, 4> types {};
-        unsigned count = levels_types(track.engine == EngineKind::Sampler, types), at = 0;
+        unsigned count = levels_types(track, types), at = 0;
         auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
         for (unsigned n = 0; n < count; ++n) if (types[n] == kind) at = n;
         if (kind == LevelsKind::Loop || (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler)) return {};

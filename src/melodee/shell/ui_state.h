@@ -171,6 +171,7 @@ struct UiState {
     PageId plugin_back = PageId::Stage;          // where B1 (Back) at the top and a load go
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
+    DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)
     // PRESETS: the entry whose programs it lists, the row under the cursor, and where B1 goes back to.
     uint8_t presets_entry = no_plugin;
     uint16_t presets_cursor = 0;

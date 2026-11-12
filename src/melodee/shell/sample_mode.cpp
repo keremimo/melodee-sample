@@ -86,8 +86,10 @@ void levels_button(Context& c) {
         static const LevelsKind kit_order[] {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Filter, LevelsKind::Loop};
         static const LevelsKind synth_order[] {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Loop};
         static const LevelsKind empty_order[] {LevelsKind::Scale, LevelsKind::Loop};
-        const LevelsKind* order = !t.used() ? empty_order : kit ? kit_order : synth_order;
-        unsigned count = !t.used() ? 2 : kit ? 5 : 4, at = 0;
+        static const LevelsKind drum_order[] {LevelsKind::Velocity, LevelsKind::Loop}; // Drums pads: another pitch is another drum
+        bool drums = drum_pads(t);
+        const LevelsKind* order = !t.used() ? empty_order : kit ? kit_order : drums ? drum_order : synth_order;
+        unsigned count = !t.used() ? 2 : kit ? 5 : drums ? 2 : 4, at = 0;
         for (unsigned n = 0; n < count; ++n) if (unsigned(order[n]) == t.levels_kind) at = n;
         t.levels_kind = uint8_t(order[(at + 1) % count]);
         ui.levels_hit = -1;
@@ -97,6 +99,7 @@ void levels_button(Context& c) {
     if (ui.page == PageId::Levels) { t.levels = false; c.open(kit ? PageId::Pads : PageId::Keys); return; }
     // A kit: its last pad on all sixteen; a synth: its last note.
     if (!kit && t.levels_kind == unsigned(LevelsKind::Filter)) t.levels_kind = uint8_t(LevelsKind::Velocity);
+    if (drum_pads(t)) t.levels_kind = uint8_t(LevelsKind::Velocity); // Loop went to the Looper above
     t.levels = true;
     if (kit) t.levels_pad = t.last_pad;
     ui.levels_hit = -1;

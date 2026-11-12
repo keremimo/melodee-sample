@@ -689,6 +689,15 @@ const Preview previews[] {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"keysdrums", [](Shell&, Snapshot& s) { // Keys on Drums pads: a drum plug-in's eleven voices (9W9's), Low Tom last, Snare held
+         s.ui.page = PageId::Keys; s.playing = true;
+         auto& t = s.project.tracks[0];
+         use_drum_pads(t); t.last_note = 38;
+         const char* voices[] {"Bass Drum", "Snare", "Low Tom", "Med Tom", "Hi Tom", "Rim Shot", "Hand Clap", "Closed Hat", "Open Hat", "Crash", "Ride"};
+         s.ui.drum_voices.entry = t.plugin;
+         for (unsigned k = 0; k < 11; ++k) std::snprintf(s.ui.drum_voices.names[k].data(), s.ui.drum_voices.names[k].size(), "%s", voices[k]);
+         s.ui.held_pads = 1u << 1;
+     }},
     {"transpose", [](Shell&, Snapshot& s) { // Keys, Shift + K3 turning: Transpose on the Shift card
          s.ui.page = PageId::Keys; s.ui.shift = true; s.ui.shift_used = true; s.project.tracks[0].transpose = -3; s.playing = true;
          s.ui.turning = 2; s.ui.turned_at = s.now;

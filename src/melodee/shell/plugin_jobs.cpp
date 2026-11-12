@@ -13,6 +13,7 @@
 // of the rest, so undo, a project switch or a removed effect need nothing more.
 #include "melodee/shell/context.h"
 #include "melodee/engine/effect_info.h"
+#include "melodee/model/scales.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/sample_library.h"
@@ -113,6 +114,8 @@ void Context::choose_plugin(const PluginFile& file) {
         tr.plugin = uint8_t(entry);
         send({Type::TrackPlugin, uint8_t(t), 0, 0, int16_t(entry)});
         if (tr.engine != EngineKind::Plugin) load_sound(t, EngineKind::Plugin, 0);
+        if (!file.drums.empty()) use_drum_pads(tr); // a drum machine (8W8, 9W9...): its pads as a kit's, 36 up
+        else if (tr.layout == PadLayout::Drums) tr.layout = PadLayout::Scale; // a drum machine's pads, gone with it
         std::string name = file.name;
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return char(std::toupper(ch)); });
         tr.set_name(name.c_str());
@@ -192,6 +195,11 @@ void Context::plugins_tick(uint32_t at) {
     }
     if (at - plugin_panel_at < 50) return; // the cards' texts twenty times a second
     plugin_panel_at = at;
+    { // the selected track's drum voices, for Keys and the pad lights (loaded after the pick, so asked each time)
+        const auto& t = track();
+        if (t.engine == EngineKind::Plugin && drum_pads(t)) plugins->drum_voices(t.plugin, ui.drum_voices);
+        else if (ui.drum_voices.entry != no_plugin) ui.drum_voices = DrumVoices {};
+    }
     int entry = plugin_in_focus();
     if (entry < 0) { ui.plugin_panel = PluginPanel {}; return; }
     plugins->panel(unsigned(entry), ui.plugin_row[size_t(entry)], ui.plugin_panel);

@@ -7,6 +7,12 @@
 // note, when the layout is that). K1 root, K2 scale, K3 layout; Shift + K3
 // transposes the pads by semitones. Minus / Plus the octave. Push opens
 // Edit, the engine's every page.
+//
+// Drums (K3's last layout; a drum plug-in picks it itself): the pads as a
+// kit's, notes 36 up whatever the key, each named by the plug-in's voice
+// there (else its note, a pad without a voice dark), the drum hit last in the
+// track's colour. The chip says DRUMS, the pill the bank; Minus / Plus (and
+// Pad Bank) step the bank, A-D.
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -20,15 +26,19 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
     auto c = colour_of(s);
     Header h = header_of(s);
-    { // the key the pads play in: the root and the scale (or Chromatic, or 16 Levels' note)
+    bool drums = drum_pads(track);
+    if (drums) {
+        h.left.push_back(chip("DRUMS", c));
+        h.left.push_back(pill(juce::String("BANK ") + juce::String::charToString(juce::juce_wchar('A' + drum_bank(track)))));
+    } else { // the key the pads play in: the root and the scale (or Chromatic, or 16 Levels' note)
         juce::String key = track.layout == PadLayout::Levels ? juce::String(note_name(track.last_note)) + " LEVELS"
                          : juce::String(note_letter(s.project.root)) + " " + (track.layout == PadLayout::Chromatic ? juce::String("Chromatic")
                                                                                                                     : juce::String(scales()[s.project.scale % scales().size()].name));
         h.left.push_back(chip(key, c));
+        juce::String octave = "OCT " + juce::String(track.octave);
+        if (track.transpose) octave += juce::String::fromUTF8(" \xc2\xb7 ") + (track.transpose > 0 ? "+" : juce::String::fromUTF8("\xe2\x88\x92")) + juce::String(std::abs(track.transpose)) + " st";
+        h.left.push_back(pill(octave));
     }
-    juce::String octave = "OCT " + juce::String(track.octave);
-    if (track.transpose) octave += juce::String::fromUTF8(" \xc2\xb7 ") + (track.transpose > 0 ? "+" : juce::String::fromUTF8("\xe2\x88\x92")) + juce::String(std::abs(track.transpose)) + " st";
-    h.left.push_back(pill(octave));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, play_keys(s, 2), h);
 
@@ -46,6 +56,15 @@ void draw(Paint& p, const Snapshot& s) {
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
         bool held = s.ui.held_pads & (1u << pad);
         auto note = pad_note(s.project, track, pad);
+        if (drums) { // the voice there by name, else its note; no voice at all: dark
+            const char* voice = s.ui.drum_voices.at(note.key);
+            bool last = note.key == int(track.last_note), silent = !voice && s.ui.drum_voices.any();
+            p.fill(x, y, w, ch, held ? colour::text : last ? c : silent ? colour::quiet : colour::surf, 3);
+            juce::String label = voice ? juce::String(voice) : juce::String(note_name(note.key));
+            auto style = plain(held || last ? colour::bg : silent ? colour::dim : colour::text, type::body, Weight::SemiBold);
+            p.text(label, x + 7, y, w - 14, ch, p.fit(label, style, w - 14, type::floor));
+            continue;
+        }
         p.fill(x, y, w, ch, held ? colour::text : note.root ? c : colour::surf, 3);
         auto fg = held || note.root ? colour::bg : colour::text;
         p.text(note_name(note.key), x + 7, y, w - 30, ch, plain(fg, type::list, Weight::SemiBold));

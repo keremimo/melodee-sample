@@ -200,7 +200,9 @@ struct Song {
     }
 };
 
-enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Count };
+// Drums: a drum plug-in's or drum machine's pads, as a kit's (model/scales.h pad_note()). Files keep the number:
+// new layouts go on the end.
+enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Drums, Count };
 
 constexpr unsigned max_chain = 8; // a track's pattern chain (seq-sheet2 B), patterns in the order played
 // A chained pattern in its last bar (`position` ticks into its `length`), when the next is queued for the bar line,

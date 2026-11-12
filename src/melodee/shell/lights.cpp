@@ -291,9 +291,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                    && (ui.page == PageId::Compressor || ui.page == PageId::FlexBeat || ui.page == PageId::KnobFx);
         lights.fader(level <= 0 ? Rgb {} : master ? led_colour::white(level) : pad_light::track(ui.track, level).rgb);
     }
-    // Bank lights A-H: the sampler track's bank in view.
+    // Bank lights A-H: the sampler track's bank in view, or the Drums pads' (A-D).
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
-        lights.bank(bank, track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks);
+        lights.bank(bank, (track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks) || (drum_pads(track) && bank == drum_bank(track)));
     { // The meters beside the screen, as on the MPC: the input source while Record or Input Config is in view or a
       // take waits or runs (what is about to be sampled), else main out.
         using S = TakeRecorder::State;

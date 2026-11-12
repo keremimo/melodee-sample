@@ -29,9 +29,23 @@ inline const char* note_letter(unsigned pitch_class) {
 inline std::string note_name(int key) { return std::string(note_letter(unsigned(key) % 12)) + std::to_string(key / 12 - 1); }
 
 inline const char* layout_name(PadLayout layout) {
-    static const char* names[] {"Scale", "Chromatic", "Chords", "16 Levels"};
+    static const char* names[] {"Scale", "Chromatic", "Chords", "16 Levels", "Drums"};
     return names[unsigned(layout) % unsigned(PadLayout::Count)];
 }
+
+// Drums (a plug-in or MIDI track): the pads play as a kit's do, whatever the
+// key, the octave or the transpose: pad 1 of bank A is note 36 and pad n of
+// the bank in view 36 + 16 * bank + n, the MPC's and Ableton's drum-rack
+// notes (8W8's "Rack 36"). Banks A-D, so every note stays MIDI's (36-99).
+constexpr unsigned drum_banks = 4;
+constexpr unsigned drum_first_key = 36, drum_last_key = drum_first_key + 16 * drum_banks - 1;
+inline bool drum_pads(const Track& track) {
+    return track.layout == PadLayout::Drums && track.engine != EngineKind::Sampler && track.engine != EngineKind::None;
+}
+inline unsigned drum_bank(const Track& track) { return track.bank % drum_banks; }
+inline int drum_key(const Track& track, unsigned pad) { return int(drum_first_key + 16 * drum_bank(track) + pad % 16); }
+// The pad (0..63, A01..D16) a drum key sits on, -1 for none.
+inline int drum_pad_of(int key) { return key >= int(drum_first_key) && key <= int(drum_last_key) ? key - int(drum_first_key) : -1; }
 
 // The scale's semitone offsets above the root, in order.
 inline unsigned scale_degrees(unsigned scale, std::array<uint8_t, 12>& out) {
@@ -48,6 +62,7 @@ inline PadNote pad_note(const Project& project, const Track& track, unsigned pad
     switch (track.layout) {
     case PadLayout::Chromatic: return {base + int(pad), pad % 12 == 0};
     case PadLayout::Levels: return {track.last_note, false};
+    case PadLayout::Drums: return {drum_key(track, pad), false};
     case PadLayout::Scale:
     case PadLayout::Chords:
     default: {
@@ -97,6 +112,17 @@ inline unsigned levels_types(bool kit, std::array<LevelsKind, 4>& out) {
     out = {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Filter};
     return kit ? 4 : 3;
 }
+// A track becoming Drums (K3 on Keys, or a drum plug-in loaded): its bank one of A-D, its 16 Levels in velocity.
+inline void use_drum_pads(Track& track) {
+    track.layout = PadLayout::Drums;
+    track.bank = uint8_t(drum_bank(track));
+    if (track.levels_kind != unsigned(LevelsKind::Loop)) track.levels_kind = uint8_t(LevelsKind::Velocity);
+}
+// A track's types: Drums pads have Velocity alone (another pitch is another drum).
+inline unsigned levels_types(const Track& track, std::array<LevelsKind, 4>& out) {
+    if (drum_pads(track)) { out = {LevelsKind::Velocity, LevelsKind::Velocity, LevelsKind::Velocity, LevelsKind::Velocity}; return 1; }
+    return levels_types(track.engine == EngineKind::Sampler, out);
+}
 // Pad `pad` (0..15) of the way from `low` (pad 1) to `high` (pad 16), rounded.
 inline int level_between(int low, int high, unsigned pad) {
     return low + int(std::lround(double(high - low) * double(pad % 16) / 15.0));
@@ -117,7 +143,7 @@ inline Level levels_of(const Project& project, const Track& track, unsigned pad)
     Level out;
     auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
     if (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler) kind = LevelsKind::Velocity; // a synth has no pad filter
-    if (kind == LevelsKind::Loop) kind = LevelsKind::Velocity;
+    if (kind == LevelsKind::Loop || drum_pads(track)) kind = LevelsKind::Velocity;
     const auto& ends = track.levels_ends[unsigned(kind) % 4];
     int at = level_between(ends[0], ends[1], pad);
     switch (kind) {

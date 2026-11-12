@@ -77,6 +77,7 @@
 #include "melodee/engine/looper.h"
 #include "melodee/shell/looper_chord.h"
 #include "melodee/shell/loop_sheet.h"
+#include "melodee/plugin/drum_map.h"
 #include <algorithm>
 #include <tuple>
 #include <array>
@@ -7823,6 +7824,103 @@ void pad_lights() {
     ui.exit_open = false;
 }
 
+// Drums pads (model/scales.h, docs/MELODEE.md Keys): a drum plug-in's or MIDI drum machine's pads play as a kit's,
+// 36 + 16 * bank + pad whatever the key, one lane a drum on Steps, 16 Levels in velocity alone; a drum plug-in says
+// so in its library (plugin/drum_map.h) and the pads light as a kit's.
+void drum_layout() {
+    auto project = std::make_unique<Project>();
+    project->root = 9; project->scale = 1; // A minor: a synth's pads skip and move; Drums pads do not
+    auto& t = project->tracks[0];
+    t.engine = EngineKind::Plugin; t.octave = 4; t.transpose = 3;
+    CHECK(pad_note(*project, t, 0).key != 36 && !drum_pads(t));
+    use_drum_pads(t);
+    CHECK(drum_pads(t) && t.layout == PadLayout::Drums && std::string(layout_name(t.layout)) == "Drums");
+    for (unsigned pad = 0; pad < 16; ++pad) CHECK(pad_note(*project, t, pad).key == int(36 + pad) && !pad_note(*project, t, pad).root);
+    // The layout is the track's own: another track keeps its key and its Scale pads.
+    auto& other = project->tracks[1];
+    other.engine = EngineKind::Plugin; other.octave = 4;
+    CHECK(other.layout == PadLayout::Scale && !drum_pads(other) && pad_note(*project, other, 0).key == 69 && pad_note(*project, other, 1).key == 71);
+    t.bank = 3; CHECK(pad_note(*project, t, 0).key == 84 && pad_note(*project, t, 15).key == 99); // bank D: MIDI's to 99
+    t.bank = 6; use_drum_pads(t); CHECK(t.bank == 2 && pad_note(*project, t, 0).key == 68);    // A-D only
+    t.bank = 0;
+    CHECK(drum_pad_of(36) == 0 && drum_pad_of(99) == 63 && drum_pad_of(35) < 0 && drum_pad_of(100) < 0);
+    // A drum is no chord's root: one note, the pad's.
+    t.chord = true; t.chord_type = 1;
+    std::array<int, notes_per_step> keys {};
+    CHECK(chord_notes(*project, t, 4, keys) == 1 && keys[0] == 40);
+    // Steps: the last drum's lane (pad 1 of the bank before any); a synth's whole step.
+    t.last_note = 42; CHECK(steps_lane(t) == 42);
+    t.last_note = 20; CHECK(steps_lane(t) == 36);
+    t.levels = true; CHECK(steps_lane(t) == -1); t.levels = false;
+    auto synth = t; synth.layout = PadLayout::Scale; CHECK(steps_lane(synth) == -1 && !drum_pads(synth));
+    auto empty = Track {}; empty.layout = PadLayout::Drums; CHECK(!drum_pads(empty)); // nothing to play
+    auto kit = Track {}; kit.engine = EngineKind::Sampler; kit.layout = PadLayout::Drums; CHECK(!drum_pads(kit));
+    // 16 Levels: Velocity alone, whatever type the track kept (another pitch is another drum).
+    t.levels_kind = uint8_t(LevelsKind::Scale);
+    use_drum_pads(t); CHECK(t.levels_kind == uint8_t(LevelsKind::Velocity));
+    t.levels_kind = uint8_t(LevelsKind::Loop); use_drum_pads(t); CHECK(t.levels_kind == uint8_t(LevelsKind::Loop));
+    t.levels_kind = uint8_t(LevelsKind::Tune);
+    auto level = levels_of(*project, t, 15);
+    CHECK(level.key < 0 && level.semitones == 0 && level.velocity > 0);
+    std::array<LevelsKind, 4> types {};
+    CHECK(levels_types(t, types) == 1 && types[0] == LevelsKind::Velocity && levels_types(synth, types) == 3);
+    // K3 on Keys reaches Drums.
+    UiState ui; ui.page = PageId::Keys; ui.track = 0;
+    Pattern pattern;
+    CHECK(page_bindings(*project, ui, pattern)[2].kind == Binding::Kind::Layout && page_bindings(*project, ui, pattern)[2].max == int(PadLayout::Drums));
+    // The project keeps it: a MIDI track to a drum machine, on bank C.
+    {
+        auto saved = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(saved->tracks[4], EngineKind::Midi, 0);
+        use_drum_pads(saved->tracks[4]); saved->tracks[4].bank = 2;
+        auto bytes = save_project(*saved, *bank);
+        auto back = std::make_unique<Project>();
+        CHECK(load_project(bytes, *back, *bank).empty());
+        CHECK(back->tracks[4].layout == PadLayout::Drums && drum_bank(back->tracks[4]) == 2 && pad_note(*back, back->tracks[4], 1).key == 69);
+    }
+
+    // The library's maps: 8W8 carries GM's and Rack 36's; the pads play Rack 36's (all sixteen on bank A).
+    std::string so = "\x7f" "ELF junk {\"pad_layout\":\"keys\",\"levels\":{\"a\":{\"name\":\"A\",\"note\":40}}}"; // not drums
+    so.push_back('\0');
+    so += R"({"pad_layout":"drums","focus_param":"x","levels":{"bd":{"name":"Bass Drum","knobs":["bd_tune",1,true,null],)"
+          R"("params":[{"key":"bd_tune","label":"Tune"}],"note":36,"role":"kick"},"sd":{"name":"Snare","note":38},)"
+          R"("rev":{"name":"Reverb","knobs":["rev_decay"]},"root":{"name":"8W8","params":[{"level":"bd"}]}}})";
+    so.push_back('\0');
+    so += R"({ "pad_layout" : "drums", "levels" : { "bd" : { "name" : "Bass Drum", "note" : 36 }, "sd" : { "name" : "Sn\"are", "note" : 37 },)"
+          R"( "cp" : { "name" : "Hand Clap", "note" : 47.0 }, "bad" : { "name" : "Way Up", "note" : 200 } } })";
+    so.push_back('\0');
+    so += R"({"pad_layout":"drums","levels":{"bd":{"name":"Cut)"; // cut short: no map
+    auto maps = drum_maps_in(so);
+    CHECK(maps.size() == 2 && maps[0].size() == 2 && maps[0][1].key == 38 && maps[0][1].name == "Snare");
+    CHECK(maps[1].size() == 3 && maps[1][1].name == "Sn\"are" && maps[1][2].key == 47);
+    auto voices = drum_voices_in(so); // more on bank A wins: three against two
+    CHECK(voices.size() == 3 && voices[2].key == 47);
+    CHECK(drum_voices_in("no maps here").empty() && drum_voices_in("").empty());
+    std::string rack = R"({"pad_layout":"drums","levels":{"a":{"name":"Lo","note":36},"b":{"name":"Hi","note":37},"c":{"name":"Up","note":38}}})";
+    voices = drum_voices_in(so + '\0' + rack); // three each on bank A: the one spanning fewer keys (9W9's Rack over its GM)
+    CHECK(voices.size() == 3 && voices[0].name == "Lo");
+
+    // The pads light as a kit's: the drum hit last Full, the rest Dim; with the plug-in's voices, a pad without one dark.
+    using namespace pad_light;
+    auto bank = std::make_unique<PatternBank>();
+    EngineHost host;
+    TrackTaps taps;
+    UiState lit; lit.track = 0; lit.page = PageId::Keys;
+    t.layout = PadLayout::Drums; t.last_note = 38; t.chord = false;
+    std::array<Look, 16> looks;
+    auto light = [&] { PadScene scene {lit, *project, *bank, host, taps, PadFacts {}, 1000, nullptr, 0}; pad_looks(scene, looks); };
+    auto is = [&](unsigned pad, Hue hue, unsigned r) { return looks[pad].hue == hue && rung(looks[pad].level) == r; };
+    light();
+    CHECK(is(2, Hue::Track, 4) && is(0, Hue::Track, 2) && is(15, Hue::Track, 2));
+    lit.drum_voices.entry = 0;
+    std::snprintf(lit.drum_voices.names[0].data(), 16, "Bass Drum");
+    std::snprintf(lit.drum_voices.names[2].data(), 16, "Low Tom");
+    CHECK(lit.drum_voices.any() && std::string(lit.drum_voices.at(36)) == "Bass Drum" && !lit.drum_voices.at(37) && !lit.drum_voices.at(200));
+    light();
+    CHECK(is(2, Hue::Track, 4) && is(0, Hue::Track, 2) && is(1, Hue::None, 0));
+}
+
 // The Looper's way in and its loop sheet (docs/LOOPER.md): Loop and 16 Levels pressed together, in either order,
 // open it with neither's own job (shell/looper_chord.h); the sheet behind B3 MORE sets on the pots and acts on the
 // keys, every job of the old list still there (shell/loop_sheet.h).
@@ -9448,6 +9546,7 @@ int main() {
     parity_1c();
     shift_pads();
     pad_lights();
+    drum_layout();
     button_remap();
     looper_chord_and_sheet();
     parity_basics();

@@ -53,7 +53,7 @@ void draw(Paint& p, const Snapshot& s) {
     const Event* focused = focus >= 0 ? &pattern.events[size_t(focus)] : nullptr;
 
     const auto& track = s.track();
-    bool kit = track.engine == EngineKind::Sampler; // lanes of pads, not keys
+    bool kit = track.engine == EngineKind::Sampler || drum_pads(track); // lanes of pads, not keys (Drums pads too: 36 is A01)
     Header h = header_of(s);
     if (!ui.recording) {
         if (focused && ui.held_note >= 0) h.left.push_back(pill("LOCK", c)); // its pad held: the pots lock it (roadmap P1)

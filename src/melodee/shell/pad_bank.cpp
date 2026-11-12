@@ -21,7 +21,8 @@ void step_octave(Context& c, int way) {
 
 void step_bank(Context& c, int way) {
     auto& t = c.track();
-    t.bank = uint8_t((int(t.bank % sampler_banks) + way % int(sampler_banks) + int(sampler_banks)) % int(sampler_banks));
+    int banks = drum_pads(t) ? int(drum_banks) : int(sampler_banks); // Drums pads: A-D, MIDI's notes 36-99
+    t.bank = uint8_t((int(t.bank % banks) + way % banks + banks) % banks);
 }
 
 void pad_bank_button(Context& c, bool pressed) {
@@ -32,7 +33,7 @@ void pad_bank_button(Context& c, bool pressed) {
     if (ui.pad_bank_used) return; // held for a pad, a jump or a copy: no step
     if (ui.shift) ui.shift_used = true;
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
-    if (c.track().engine == EngineKind::Sampler) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
+    if (c.track().engine == EngineKind::Sampler || drum_pads(c.track())) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
     if (ui.page == PageId::Roll) step_octave(c, ui.shift ? -1 : 1); // Roll on a synth: −/+ are its pitch
 }
 
@@ -41,8 +42,8 @@ bool pad_bank_move(Context& c, int way) {
     if (!ui.pad_bank || !way) return false;
     ui.pad_bank_used = true;
     if (ui.page == PageId::Punch) c.step_punch_bank(way);
-    else if (c.track().engine == EngineKind::Sampler) { step_bank(c, way); say_bank(c); }
-    else c.notice("Banks: kit tracks");
+    else if (c.track().engine == EngineKind::Sampler || drum_pads(c.track())) { step_bank(c, way); say_bank(c); }
+    else c.notice("Banks: kit and Drums tracks");
     return true;
 }
 

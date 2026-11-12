@@ -152,6 +152,10 @@ Look keys_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     if (!t.used()) return {};
     int key = pad_note(s.project, t, pad).key;
+    if (drum_pads(t)) { // Drums pads: lit as a kit's, the drum hit last Full; a pad the plug-in has no voice on, dark
+        if (s.ui.drum_voices.any() && !s.ui.drum_voices.at(key)) return {};
+        return track(selected_index(s), key == int(t.last_note) ? full : dim);
+    }
     if (t.layout == PadLayout::Chords) // a held pad's chord: its other notes white Full, as the pad held
         for (unsigned h = 0; h < 16; ++h) {
             if (h == pad || !held(s, h)) continue;
@@ -437,7 +441,7 @@ Look record_keys_look(const PadScene& s, unsigned pad) {
         return track(from, t.pads[kit].used() ? dim : faint);
     }
     const auto& source = s.project.tracks[from];
-    if (levels_on(source) || !source.used()) return track(from, dim); // its levels: the one note
+    if (levels_on(source) || !source.used() || drum_pads(source)) return track(from, dim); // its levels: the one note; its drums
     int key = pad_note(s.project, source, pad).key; // its keys, as on its own pages
     return note_look(s.project, from, key_degree(s.project, source, key));
 }

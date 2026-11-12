@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/plugin/drum_map.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -36,6 +37,9 @@ struct PluginFile {
     // own with its `id` (JUCE's unique id for it). 0 plugins: not known yet.
     unsigned plugins = 0;
     int32_t id = 0;
+    // A drum machine's voices (plugin/drum_map.h), read from its library; empty for any other plug-in. A PLUGIN track
+    // given one plays its pads as Drums.
+    std::vector<DrumVoice> drums;
     bool loadable() const { return !folder && why.empty(); }
     bool several() const { return plugins > 1 && id == 0; }
 };

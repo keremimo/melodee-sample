@@ -404,6 +404,18 @@ int PluginRack::instrument(unsigned entry) const {
     return e.file.instrument;
 }
 
+void PluginRack::drum_voices(unsigned entry, DrumVoices& out) const {
+    out = {};
+    if (entry >= max_plugins) return;
+    out.entry = uint8_t(entry);
+    std::lock_guard<std::mutex> held(lock);
+    for (const auto& v : entries[entry].file.drums) {
+        unsigned k = unsigned(v.key) - DrumVoices::first;
+        if (v.key < DrumVoices::first || k >= DrumVoices::keys) continue;
+        put(out.names[k].data(), out.names[k].size(), v.name);
+    }
+}
+
 void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
     out = {};
     out.entry = uint8_t(entry);
