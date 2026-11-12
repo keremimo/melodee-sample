@@ -9480,7 +9480,33 @@ void instrument_formats_p3() {
     }
 }
 
+// Roadmap P3: Chop's slices kept with the project (CHOP; older files: none, a damaged one dropped).
+void chop_kept() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    std::snprintf(project->samples[7].path, sizeof(project->samples[7].path), "break.wav");
+    auto& c = project->chops[7];
+    c.from = 1000; c.to = 90000; c.mode = ChopMode::Manual; c.amount = 0;
+    c.slices.count = 3; c.slices.start = {}; c.slices.start[0] = 1000; c.slices.start[1] = 20000; c.slices.start[2] = 51000; c.slices.last = 90000;
+    project->chops[9] = c; // a chop of a slot holding nothing is not kept
+    auto file = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(file, *back, *back_bank).empty());
+    const auto& k = back->chops[7];
+    CHECK(k.used() && k.from == 1000 && k.to == 90000 && k.mode == ChopMode::Manual && k.slices.count == 3 && k.slices.start[2] == 51000);
+    CHECK(k.slices.last == 90000 && k.slices.end(2, 100000) == 90000 && !back->chops[9].used());
+    std::string text(file.begin(), file.end());
+    auto damaged = file;
+    size_t at = text.find("CHOP") + 8 + 1 + 4 + 4 + 1 + 2 + 1 + 4; // to its first start
+    damaged[at + 4] = 0xff; damaged[at + 5] = 0xff; damaged[at + 6] = 0xff; damaged[at + 7] = 0x7f; // the second start before the first
+    CHECK(load_project(damaged, *back, *back_bank).empty() && !back->chops[7].used());
+    file[text.find("CHOP")] = 'X';
+    CHECK(load_project(file, *back, *back_bank).empty() && !back->chops[7].used());
+}
+
 int main() {
+    chop_kept();
     pad_link_chains();
     loop_seams();
     instrument_p3();

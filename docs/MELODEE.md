@@ -900,7 +900,10 @@ the file holds, to the bit.
   the strongest hit. Shift + B1 Extract (`Samples/Edits/<NAME>-Slice n.wav`
   onto the next empty pad), Shift + B2 Split, Shift + B3 Merge; Erase + pad
   takes a slice out. B3 TO PADS lays the slices on pads, B1 CANCEL drops
-  the chop. The slices are bands, every other one a shade darker, the one
+  the chop. The slices are kept with the project (roadmap P3, the file's
+  `CHOP`): each sample keeps the chop of the region last chopped, its type,
+  amount and slices, so Chop on that region again, after a save and a load
+  too, finds them as they were left rather than cut afresh. The slices are bands, every other one a shade darker, the one
   in hand lit with the pad it lands on as a chip over it and its length at
   the bottom right; the header counts them (scissors).
   The slice a pad plays lights faintly in the track colour with a head

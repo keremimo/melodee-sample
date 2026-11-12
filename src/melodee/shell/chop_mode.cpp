@@ -46,6 +46,33 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
     audition(sl.start[pad], sl.end(pad, frames));
 }
 
+// Roadmap P3: the slices kept with the project, a sample's chop of one region each (the last region chopped).
+void Context::keep_chop() {
+    if (ui.chop_sample >= sample_slots || !ui.slices.count) return;
+    auto& kept = project.chops[ui.chop_sample];
+    SampleChop now;
+    now.from = ui.chop_from; now.to = ui.chop_to; now.mode = ui.chop_mode;
+    now.amount = int16_t(ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()]);
+    now.slices = ui.slices;
+    if (kept.from == now.from && kept.to == now.to && kept.mode == now.mode && kept.amount == now.amount && kept.slices.count == now.slices.count
+        && kept.slices.last == now.slices.last && kept.slices.start == now.slices.start)
+        return;
+    kept = now;
+    dirty = true;
+}
+
+bool Context::restore_chop() {
+    if (ui.chop_sample >= sample_slots) return false;
+    const auto& kept = project.chops[ui.chop_sample];
+    if (!kept.used() || kept.from != ui.chop_from || kept.to != ui.chop_to) return false;
+    ui.slices = kept.slices;
+    ui.chop_mode = kept.mode;
+    ui.chop_amount[size_t(kept.mode) % ui.chop_amount.size()] = kept.amount;
+    ui.chop_armed = false;
+    ui.chop_take_at = 0;
+    return true;
+}
+
 uint32_t Context::zero_cut(uint32_t frame) const {
     if (!ui.settings.zero_snap || !library || ui.chop_sample >= sample_slots) return frame;
     return library->zero_crossing(ui.chop_sample, frame);

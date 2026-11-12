@@ -538,6 +538,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (auto bits : tr.pad_mutes) { w.u32(uint32_t(bits)); w.u32(uint32_t(bits >> 32)); }
         w.end(at);
     }
+    for (unsigned n = 0; n < sample_slots; ++n) { // a sample's chop (roadmap P3): its region, type, amount and slices
+        const auto& c = project.chops[n];
+        if (!c.used() || !project.samples[n].used()) continue;
+        at = w.begin("CHOP");
+        w.u8(n); w.u32(c.from); w.u32(c.to); w.u8(unsigned(c.mode)); w.i16(c.amount);
+        w.u8(c.slices.count); w.u32(c.slices.last);
+        for (unsigned k = 0; k < c.slices.count; ++k) w.u32(c.slices.start[k]);
+        w.end(at);
+    }
     for (unsigned n = 0; n < sample_slots; ++n) {
         const auto& s = project.samples[n];
         if (!s.used()) continue;
@@ -610,6 +619,20 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             pad4[t] = true;
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_pad4(r, project->tracks[t].pads.data(), sampler_pads);
+        } else if (name == "CHOP") { // a sample's chop (roadmap P3); without it Chop cuts afresh
+            unsigned n = r.u8();
+            SampleChop c;
+            c.from = r.u32(); c.to = r.u32();
+            c.mode = ChopMode(std::min(r.u8(), unsigned(ChopMode::Count) - 1));
+            c.amount = int16_t(r.i16());
+            unsigned count = std::min(r.u8(), max_slices);
+            c.slices.count = count; c.slices.last = r.u32();
+            bool sorted = true;
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                c.slices.start[k] = r.u32();
+                sorted = sorted && (!k || c.slices.start[k] > c.slices.start[k - 1]);
+            }
+            if (r.ok && sorted && n < sample_slots) project->chops[n] = c; // a damaged one is cut afresh
         } else if (name == "PXFD") { // loop seam crossfades (roadmap P3); without it no pad's seam is faded
             unsigned t = r.u8();
             if (t >= track_count) continue;

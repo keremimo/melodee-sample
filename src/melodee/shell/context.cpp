@@ -56,6 +56,7 @@ void Context::save_project_to(const std::string& path) {
     auto name = std::filesystem::path(path).stem().string();
     std::snprintf(project.name, sizeof(project.name), "%s", name.c_str());
     save_loop_files(*this, path); // the loops' lengths into the project, their audio beside it (docs/LOOPER.md)
+    keep_chop();                  // Chop's slices with it (roadmap P3)
     PluginStates states;
     if (plugins) states = plugins->states(); // each plug-in's state as it is now, beside the project
     store->save(path, melodee::save_project(project, patterns, &states));
@@ -1312,6 +1313,7 @@ int Context::sample_slot(const std::string& path, const std::string& name) {
     }
     if (free < 0 || !library) return -1;
     auto& ref = project.samples[size_t(free)];
+    project.chops[size_t(free)] = SampleChop {}; // a chop of what the slot held before is not this file's
     std::strncpy(ref.path, path.c_str(), sizeof(ref.path) - 1);
     std::strncpy(ref.name, name.c_str(), sizeof(ref.name) - 1);
     ref.frames = 0; // known once loaded

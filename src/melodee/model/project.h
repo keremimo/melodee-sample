@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/chop_slices.h"
 #include "melodee/model/compressor.h"
 #include "melodee/model/knob_fx.h"
 #include "melodee/model/limits.h"
@@ -336,6 +337,7 @@ struct Project {
     Song song;              // (Motion is each pattern's own since roadmap P1: Pattern::motion)
     std::array<Bus, bus_count> buses {};
     std::array<SampleRef, sample_slots> samples {};
+    std::array<SampleChop, sample_slots> chops {}; // roadmap P3: each sample's chop, as Chop left it (CHOP)
     std::array<PluginRef, max_plugins> plugins {};
     Chain master {{}, master_slots};
     // The Looper (docs/LOOPER.md): its settings, and its four tracks' strips and chains.

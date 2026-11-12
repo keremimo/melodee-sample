@@ -41,6 +41,7 @@ int hold_slot(Project& project, const std::string& name) {
         std::snprintf(ref.path, sizeof(ref.path), "%s", writing);
         std::snprintf(ref.name, sizeof(ref.name), "%s", name.c_str());
         ref.frames = 0;
+        project.chops[n] = SampleChop {}; // roadmap P3: no chop of what the slot held before
         return int(n);
     }
     return -1;
