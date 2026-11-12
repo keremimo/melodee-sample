@@ -921,10 +921,14 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   four at once (a fifth bypasses the oldest); pressure is depth. B1 LATCH
   (its LED) keeps the last one on, B2 master or track. Over the pads, the
   bar the selected track's pattern is in: a row per punch, drawn where it
-  sounds as you play. **B3 KEEP** keeps the last pass's punches in that
-  pattern, each where it fell (one undo), and they loop with it like
-  Motion, drawn quieter, four at once, on the grid and tail they were
-  played with (kept in `KEPT`); Erase + KEEP takes them out, asked first.
+  sounds in the pass you play it. The punches of one pass are a take; a
+  punch in a later pass begins a new one. Until **B3 KEEP** only live
+  punches sound (KEEP's LED lit while a take waits); KEEP lays the take in
+  that pattern, each punch where it fell (one undo), and they loop with it
+  like Motion, drawn quieter, four at once, on the grid and tail they were
+  played with (kept in `KEPT`). A live punch wins: while one sounds the
+  kept ones are quiet, and they come back for the rest of their length
+  after. Erase + KEEP takes them out, asked first.
   An MPC punch's K1–K3 are its own, Shift + K1–K3 depth, snap, tail.
 - **Flex Beat** (Shift + Pad FX): a time effect over the master for a bar;
   pad 1 Empty, 2–16 fifteen effects; K1 One Shot / Loop, K3 mix, B3

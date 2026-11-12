@@ -1258,7 +1258,7 @@ void engine_levels() {
 // Round 2, pad-fx C: punches kept with a pattern. What was heard becomes the pattern's punches where they fell,
 // they go with the pattern through its speed, Double / Half Seq and Half / Double Speed, and the file keeps them
 // (a pattern holding nothing else too); the host plays them on their ticks, several at once, each let go after its
-// length.
+// length, and quiet while a live punch sounds.
 void kept_punches() {
     { // heard_punches: now 900, 132 ticks into the pass (begun at 768); the last pass is 516 .. 900.
         const PunchSpan spans[] {
@@ -1344,8 +1344,20 @@ void kept_punches() {
         CHECK(host->kept_punches() == 0);
         run_to(700); // the next pass
         CHECK(host->kept_punches() == 1);
+        // A live punch wins: from its grid line (408) the kept ones are quiet, Stutter due there too; let go, both
+        // come back for the rest of their length.
+        Command on {Command::Type::PunchOn, 255, uint8_t(2 | 1 << 4), uint16_t(PunchKind::Gate), 100};
+        on.position = 1;
+        host->send(on);
+        run_to(740); // tick 412
+        CHECK(host->live_punches() == 1 && host->kept_punches() == 0);
+        Command off {Command::Type::PunchOff, 255};
+        off.position = 1;
+        host->send(off);
+        run_to(745); // tick 414: Low (to 432) and Stutter (to 504) again
+        CHECK(host->live_punches() == 0 && host->kept_punches() == 3);
         host->send({Command::Type::Stop});
-        run_to(701);
+        run_to(746);
         CHECK(host->kept_punches() == 0);
     }
 }

@@ -14,8 +14,8 @@
 //   sounds in the pass it is played. The punches of one pass are a take; a
 //   punch in a later pass begins a new one. Until B3 KEEP only the live
 //   punches sound (its LED lit while a take waits); KEEP lays the take in
-//   the pattern, looping with it like Motion (drawn quieter); Erase + KEEP
-//   takes them out.
+//   the pattern, looping with it like Motion (drawn quieter), quiet while a
+//   live punch sounds; Erase + KEEP takes them out.
 // PAD PUNCH (Pad FX again, or B3): each kit pad carries a punch of its own;
 //   hit the pad and it alone plays punched while the kit runs on. Pressure
 //   is depth. K1 picks the punch of the last pad hit, K2 its rate, K3 the
