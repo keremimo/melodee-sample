@@ -77,7 +77,8 @@ void EngineHost::load_state(const Project& project, bool keep_loops) {
             fx_key[n][k] = s.key < fx_keys ? s.key : 0;
         }
     }
-    for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
+    for (unsigned b = 0; b < bus_count; ++b) { returns[b] = project.buses[b].level / 100.0f; returns_base[b] = project.buses[b].level; }
+    for (unsigned k = 0; k < max_slots; ++k) master_base[k] = project.master.slots[k].params; // roadmap P4: Motion borrows them
     // Knob FX and the master compressor.
     const auto& k = project.knob_fx;
     knob.set_kind(EffectKind(k.kind), pool);
@@ -242,7 +243,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
     if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
     apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
     apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
-    for (unsigned b = 0; b < bus_count; ++b) slot.sends[b] = track.mix.sends[b] / 100.0f;
+    for (unsigned b = 0; b < bus_count; ++b) { slot.sends[b] = track.mix.sends[b] / 100.0f; slot.mix_sends[b] = track.mix.sends[b]; }
     slot.mute = track.mix.mute; slot.solo = track.mix.solo;
     slot.pattern = track.pattern;
     patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
@@ -375,6 +376,7 @@ void EngineHost::apply(const Command& c) {
         if (c.track < chain_count && c.index < max_slots) {
             fx[c.track][c.index].set_param(c.pattern, c.value);
             if (c.track < track_count && c.pattern < effect_params) slots[c.track].fx_base[c.index][c.pattern] = c.value;
+            if (c.track == master_chain && c.pattern < effect_params) master_base[c.index][c.pattern] = c.value; // roadmap P4
         }
         break;
     case Type::FxBypass: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_bypass(c.value != 0); break;
@@ -392,7 +394,9 @@ void EngineHost::apply(const Command& c) {
         break;
     }
     case Type::SendBus: break; // a track sends into every bus (Send's index), so none is picked
-    case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
+    case Type::Return:
+        if (c.index < bus_count) { returns_base[c.index] = int16_t(std::clamp<int>(c.value, 0, 100)); returns[c.index] = returns_base[c.index] / 100.0f; }
+        break;
     case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;
     case Type::PadMute:
         if (c.index == 0xffff) for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad_mute(pad, c.value != 0);
@@ -656,13 +660,12 @@ void EngineHost::apply(const Command& c) {
         slot.wheel = std::clamp(c.value / 1000.0f, 0.0f, 1.0f);
         engine_wheel(slot, slot.wheel);
         break;
-    case Type::Level: slot.gain = level_gain(c.value); break;
-    case Type::Pan: {
-        float angle = (std::clamp<int>(c.value, -50, 50) + 50) / 100.0f * dsp::pi / 2;
-        slot.pan_left = std::cos(angle); slot.pan_right = std::sin(angle);
+    case Type::Level: slot.mix_level = c.value; set_level(slot, c.value); break; // roadmap P4: kept, Motion borrows it
+    case Type::Pan: slot.mix_pan = c.value; set_pan(slot, c.value); break;
+    case Type::Send: // index: the bus
+        slot.mix_sends[c.index % bus_count] = int16_t(std::clamp<int>(c.value, 0, 100));
+        slot.sends[c.index % bus_count] = std::clamp<int>(c.value, 0, 100) / 100.0f;
         break;
-    }
-    case Type::Send: slot.sends[c.index % bus_count] = std::clamp<int>(c.value, 0, 100) / 100.0f; break; // index: the bus
     case Type::Mute: slot.mute = c.value != 0; midi_silenced(); break;
     case Type::Solo: slot.solo = c.value != 0; midi_silenced(); break;
     case Type::PatternData:
@@ -1058,6 +1061,16 @@ void EngineHost::restore(Slot& slot) {
     }
     for (auto& l : slot.locks) l.param = -1; // locks end with everything they moved
     slot.locks_on = 0;
+    if (slot.mix_moved) { // roadmap P4: the strip back where it was set
+        set_level(slot, slot.mix_level); set_pan(slot, slot.mix_pan);
+        for (unsigned b = 0; b < bus_count; ++b) slot.sends[b] = slot.mix_sends[b] / 100.0f;
+        slot.mix_moved = false;
+    }
+    if (slot.master_moved) { // and the master's chain and returns
+        for (unsigned k = 0; k < max_slots; ++k) for (unsigned q = 0; q < effect_params; ++q) fx[master_chain][k].set_param(q, master_base[k][q]);
+        for (unsigned b = 0; b < bus_count; ++b) returns[b] = returns_base[b] / 100.0f;
+        slot.master_moved = false;
+    }
     if (slot.wheel_moved) engine_wheel(slot, slot.wheel); // the mod wheel, back where the fader left it
     slot.wheel_moved = false;
     if (!slot.moved || !slot.engine) return;
@@ -1094,7 +1107,42 @@ void EngineHost::play_motion(unsigned t, Slot& slot, const Pattern& pattern, uin
     }
 }
 
+void EngineHost::set_level(Slot& slot, int level) { slot.gain = level_gain(level); }
+void EngineHost::set_pan(Slot& slot, int pan) {
+    float angle = (std::clamp<int>(pan, -50, 50) + 50) / 100.0f * dsp::pi / 2;
+    slot.pan_left = std::cos(angle); slot.pan_right = std::sin(angle);
+}
+
+// Roadmap P4: Motion on the mix. The track's strip eases there as a turned knob does (Ease); the master's chain and
+// the returns as set from the shell.
+void EngineHost::move_mix(unsigned, Slot& slot, unsigned param, int value) {
+    if (param == motion_level) { set_level(slot, value); slot.mix_moved = true; }
+    else if (param == motion_pan) { set_pan(slot, value); slot.mix_moved = true; }
+    else if (param < motion_master_fx_base) { slot.sends[(param - motion_send(0)) % bus_count] = std::clamp(value, 0, 100) / 100.0f; slot.mix_moved = true; }
+    else if (param < motion_return_base) {
+        unsigned k = (param - motion_master_fx_base) / effect_params, q = (param - motion_master_fx_base) % effect_params;
+        if (k < max_slots) { fx[master_chain][k].set_param(q, value); slot.master_moved = true; }
+    } else {
+        returns[(param - motion_return_base) % bus_count] = std::clamp(value, 0, 100) / 100.0f;
+        slot.master_moved = true;
+    }
+}
+
+void EngineHost::restore_mix(Slot& slot, unsigned param) {
+    if (param == motion_level) set_level(slot, slot.mix_level);
+    else if (param == motion_pan) set_pan(slot, slot.mix_pan);
+    else if (param < motion_master_fx_base) { unsigned b = (param - motion_send(0)) % bus_count; slot.sends[b] = slot.mix_sends[b] / 100.0f; }
+    else if (param < motion_return_base) {
+        unsigned k = (param - motion_master_fx_base) / effect_params, q = (param - motion_master_fx_base) % effect_params;
+        if (k < max_slots) fx[master_chain][k].set_param(q, master_base[k][q]);
+    } else {
+        unsigned b = (param - motion_return_base) % bus_count;
+        returns[b] = returns_base[b] / 100.0f;
+    }
+}
+
 void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad, int value) {
+    if (is_mix_lane(param)) { move_mix(t, slot, param, value); return; } // roadmap P4
     if (param == motion_wheel) { // the mod wheel's lane (parity phase 8)
         if (slot.engine) { engine_wheel(slot, std::clamp(value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
         return;
@@ -1119,6 +1167,7 @@ void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad,
 }
 
 void EngineHost::restore_lane(unsigned t, Slot& slot, unsigned param, unsigned pad) {
+    if (is_mix_lane(param)) { restore_mix(slot, param); return; } // roadmap P4
     if (param == motion_wheel) { engine_wheel(slot, slot.wheel); return; }
     if (param >= motion_pad_base) {
         if (slot.kind == EngineKind::Sampler) {

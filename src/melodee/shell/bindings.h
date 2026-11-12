@@ -123,10 +123,12 @@ struct MotionParam { const struct ParamInfo* info = nullptr; int value = 0; };
 // Roadmap P4: the rows of cards an effect in chain `chain` has (Minus / Plus step them): its parameters' one or two,
 // and a Compressor's or Gate's KEY after them (not on a kit pad's chain).
 unsigned effect_rows(const EffectSlot& s, unsigned chain);
-MotionParam motion_param(const Track& track, int lane);
-std::string lane_name(const Track& track, int lane); // "CUTOFF", "A03 LEVEL"
+// Roadmap P4: the mix's lanes (model/limits.h motion_mix_base on) need `project` for the master's chain and the
+// returns; without it they are none.
+MotionParam motion_param(const Track& track, int lane, const Project* project = nullptr);
+std::string lane_name(const Track& track, int lane, const Project* project = nullptr); // "CUTOFF", "A03 LEVEL", "SEND B"
 // The card for a lane on the Motion page.
-Binding lane_binding(const Track& track, unsigned track_index, int lane);
+Binding lane_binding(const Track& track, unsigned track_index, int lane, const Project* project = nullptr);
 // Roadmap P1: the cards while a step (Steps) or a note (Roll, its pad held) is held: the Motion page's three lanes,
 // each showing its lock at `tick` (else the track's own value); a turn writes the lock (Context::write_lock).
 std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t tick);

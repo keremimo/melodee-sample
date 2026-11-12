@@ -175,7 +175,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = "LANE"; c.value = b.value >= int(s.pattern.steps()) ? juce::String("All") : juce::String(b.value); c.unit = b.value >= int(s.pattern.steps()) ? "" : "steps";
         break;
     case Kind::Lock: { // a lane locked on the step or note held (roadmap P1): as the lane's own card
-        auto m = motion_param(track, int(b.id));
+        auto m = motion_param(track, int(b.id), &s.project);
         if (!m.info) break;
         auto shown = show(*m.info, b.value);
         c.label = m.info->label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(*m.info); c.fill = gauge_of(*m.info, b.value);

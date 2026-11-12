@@ -48,7 +48,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (lane > 2) continue;
         int param = lanes[lane]; // a lane: a parameter, or a kit pad's value on one pad (bindings.h)
         if (param < 0) continue;
-        auto mp = motion_param(track, param);
+        auto mp = motion_param(track, param, &s.project);
         if (!mp.info) continue;
         const auto& pi = *mp.info;
         auto y_of = [&](int v) { return y + gh - 3 - gauge_of(pi, v) * (gh - 6); };

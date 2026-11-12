@@ -385,7 +385,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     if (ui_.erase && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane, once B3 says so (as on the MPC)
         int lane = motion_lanes(*project_, ui_, context_.pattern())[n];
         if (lane >= 0 && context_.pattern().has_lane(lane_param(lane), lane_pad(lane) % sampler_pads)) ask(context_, UiState::Ask::EraseLane, lane);
-        else context_.notice("No motion on " + lane_name(context_.track(), lane));
+        else context_.notice("No motion on " + lane_name(context_.track(), lane, project_.get()));
         return;
     }
     if (ui_.erase && b.kind == Binding::Kind::Param) { // Erase + pot: back to the initial value

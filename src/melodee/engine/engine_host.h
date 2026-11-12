@@ -305,6 +305,11 @@ private:
         std::array<int16_t, max_params> base {}; // the track's own values; motion only borrows them
         std::array<std::array<int16_t, effect_params>, max_slots> fx_base {}; // and its effects'
         bool fx_moved = false;
+        // Roadmap P4, the mix's lanes: the track's own level, pan and sends as set (Motion only borrows them), and
+        // whether Motion moved them, or the master's values, since.
+        int16_t mix_level = 100, mix_pan = 0;
+        std::array<int16_t, bus_count> mix_sends {};
+        bool mix_moved = false, master_moved = false;
         bool moved = false;                       // motion changed a value since Play
         float wheel = 0;                          // the mod wheel as the fader left it, 0..1
         bool wheel_moved = false;                 // and motion moved it since (parity phase 8)
@@ -375,6 +380,14 @@ private:
     void move_lane(unsigned track, Slot& slot, unsigned param, unsigned pad, int value); // a Motion lane to `value`
     void restore_lane(unsigned track, Slot& slot, unsigned param, unsigned pad);        // and back to the track's own
     void restore(Slot& slot);
+    // Roadmap P4: a mix lane of track `t` to `value` (its level, pan or a send; the master's chain or a return), and
+    // back to the track's own (the master's as set).
+    void move_mix(unsigned t, Slot& slot, unsigned param, int value);
+    void restore_mix(Slot& slot, unsigned param);
+    void set_level(Slot& slot, int level);
+    void set_pan(Slot& slot, int pan);
+    std::array<std::array<int16_t, effect_params>, max_slots> master_base {}; // the master chain's values as set
+    std::array<int16_t, bus_count> returns_base {70, 70, 70, 70};             // the returns as set
     void schedule_off(Slot& slot, int key, int32_t samples);
     void run_offs(Slot& slot, unsigned frames);
     void cancel_off(Slot& slot, int key);

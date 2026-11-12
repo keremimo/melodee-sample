@@ -21,6 +21,7 @@ enum class PadParam : uint8_t {
 };
 constexpr unsigned pad_param_count = unsigned(PadParam::Count);
 static_assert(motion_pad_base + pad_param_count <= motion_wheel, "pad lanes must fit a motion event's parameter byte, below the mod wheel's lane");
+static_assert(motion_pad_base + pad_param_count <= motion_mix_base, "pad lanes end before the mix's (roadmap P4)");
 
 // The motion parameter of a pad lane, and back (-1: not a pad lane).
 constexpr unsigned motion_pad_param(PadParam p) { return motion_pad_base + unsigned(p); }

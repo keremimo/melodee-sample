@@ -402,12 +402,13 @@ void Context::apply(const Binding& b, int value) {
         if (t.engine != EngineKind::Midi || midi_track::is_cc(b.id)) record_motion(b.id, value); // of a MIDI track's own, only its CCs are lanes
         if (t.engine == EngineKind::Sampler && b.id == sampler::Follow && value) follow_tempos();
         break;
-    case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); break;
-    case Kind::Pan: t.mix.pan = int8_t(value); send({Type::Pan, ui.track, 0, 0, int16_t(value)}); break;
+    case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); record_motion(int(motion_level), value); break;
+    case Kind::Pan: t.mix.pan = int8_t(value); send({Type::Pan, ui.track, 0, 0, int16_t(value)}); record_motion(int(motion_pan), value); break;
     case Kind::Send: { // a track's send into bus b.id (round 2: one into each bus)
         unsigned bus = unsigned(b.id) % bus_count;
         t.mix.sends[bus] = uint8_t(std::clamp(value, 0, 100));
         send({Type::Send, ui.track, 0, uint16_t(bus), int16_t(t.mix.sends[bus])});
+        record_motion(int(motion_send(bus)), t.mix.sends[bus]); // roadmap P4: the mix's lanes
         break;
     }
     case Kind::Root: project.root = uint8_t(value); break;
@@ -495,12 +496,13 @@ void Context::apply(const Binding& b, int value) {
         unsigned chain = unsigned(b.id) / 64, slot = (unsigned(b.id) / 8) % 8, q = unsigned(b.id) % 8;
         set_effect_param(chain, slot, q, value);
         if (chain == ui.track) record_motion(int(motion_fx_param(slot, q)), value); // the track's own effects land in Motion
+        else if (chain == master_chain) record_motion(int(motion_master_fx(slot, q)), value); // and the master's (roadmap P4)
         break;
     }
     case Kind::FxKey: set_effect_key(unsigned(b.id) / 64, (unsigned(b.id) / 8) % 8, unsigned(value)); break; // roadmap P4
     case Kind::PluginParam: set_plugin_param(b.id, value); break;
     case Kind::SendBus: ui.sends_bus = uint8_t(unsigned(value) % bus_count); break; // the bus in view on Sends
-    case Kind::BusReturn: set_return(unsigned(b.id), value); break;
+    case Kind::BusReturn: set_return(unsigned(b.id), value); record_motion(int(motion_return(unsigned(b.id))), value); break; // roadmap P4
     case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pitch, value); break;
     case Kind::PadLevel: pad().level = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Level, value); break;
     case Kind::PadPan: pad().pan = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pan, value); break;
@@ -984,7 +986,7 @@ void Context::record_pad_motion(PadParam which, int value) {
 void Context::clear_lane(int lane) {
     if (lane < 0) return;
     auto& t = track();
-    std::string what = "Erase " + lane_name(t, lane) + " motion";
+    std::string what = "Erase " + lane_name(t, lane, &project) + " motion";
     edit_pattern(ui.track, t.pattern, what.c_str(), [&] { // one undo (the pattern holds its motion), or part of a take
         if (pattern().clear_lane(lane_param(lane), lane_pad(lane) % sampler_pads)) sync_pattern(ui.track, t.pattern);
     });

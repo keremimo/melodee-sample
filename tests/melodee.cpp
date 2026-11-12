@@ -9933,7 +9933,82 @@ void delay_sync_p4() {
     effect_clock.quarter = quarter;
 }
 
+// Roadmap P4: Motion lanes on the mix. A track's level, pan and sends and the master's values (its chain, the returns)
+// written as points of the track's pattern and played as other Motion; Stop puts them back where they were set.
+void mix_motion_p4() {
+    // The lanes as the pages name them.
+    {
+        auto project = std::make_unique<Project>();
+        auto& track = project->tracks[0];
+        track.mix.level = 90; track.mix.sends[1] = 40;
+        project->master.slots[0] = EffectSlot {uint8_t(EffectKind::Width), false, {80, 0, 0, 0, 0, 0}};
+        project->buses[2].level = 55;
+        CHECK(lane_name(track, int(motion_level)) == "LEVEL" && motion_param(track, int(motion_level)).value == 90);
+        CHECK(lane_name(track, int(motion_send(1))) == "SEND B" && motion_param(track, int(motion_send(1))).value == 40);
+        CHECK(!motion_param(track, int(motion_return(2))).info); // the master's need the project
+        CHECK(motion_param(track, int(motion_return(2)), project.get()).value == 55);
+        CHECK(lane_name(track, int(motion_master_fx(0, 0)), project.get()) == "MASTER " + std::string(effect_info(EffectKind::Width).params[0].label));
+        auto b = lane_binding(track, 0, int(motion_master_fx(0, 0)), project.get());
+        CHECK(b.kind == Binding::Kind::FxParam && b.id == int(master_chain * 64) && b.value == 80);
+        CHECK(lane_binding(track, 0, int(motion_send(3)), project.get()).kind == Binding::Kind::Send);
+        CHECK(is_mix_lane(motion_level) && is_master_lane(motion_return(0)) && !is_mix_lane(motion_wheel) && pad_param_of(motion_level) < 0);
+        // The file keeps them as any lane.
+        auto bank = std::make_unique<PatternBank>();
+        MotionPoint m; m.tick = 48; m.param = uint8_t(motion_return(1)); m.value = 30;
+        bank->at[0][0].write_motion(m);
+        auto data = save_project(*project, *bank);
+        auto copy = std::make_unique<Project>();
+        auto copy_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *copy, *copy_bank).empty() && copy_bank->at[0][0].motion.size() == 1 && copy_bank->at[0][0].motion[0] == m);
+    }
+    // The host: a held tone whose level lane is 0 for the first half bar and 100 after.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    project->tracks[0].engine = EngineKind::Plugin; project->tracks[0].plugin = 0;
+    project->tracks[0].mix.sends[0] = 100;
+    project->buses[0].level = 100;
+    auto& pattern = bank->at[0][0];
+    pattern.length = 4 * ticks_per_quarter;
+    Event e; e.tick = 0; e.length = uint16_t(4 * ticks_per_quarter - 4); e.key = 60;
+    pattern.add(e);
+    for (auto [tick, value] : {std::pair<uint32_t, int>{0, 0}, {2 * ticks_per_quarter, 100}}) {
+        MotionPoint m; m.tick = tick; m.param = uint8_t(motion_level); m.value = int16_t(value);
+        pattern.write_motion(m);
+    }
+    { MotionPoint m; m.tick = 0; m.param = uint8_t(motion_return(0)); m.value = 0; pattern.write_motion(m); } // the return shut
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    FakePlugin tone;
+    CHECK(host->offer_plugin(0, &tone));
+    std::vector<int32_t> out(256);
+    std::vector<float> stems(size_t(track_count) * EngineHost::block);
+    float early = 0, late = 0, mix_late = 0;
+    host->send({Command::Type::Play, 0, 0, 0, 0});
+    for (unsigned n = 0; n < 400; ++n) {
+        host->render(out.data(), 128, 1, nullptr, stems.data());
+        int at = host->position_of(0);
+        float stem = 0, mix = 0;
+        for (unsigned f = 0; f < 128; ++f) { stem = std::max(stem, std::fabs(stems[f])); mix = std::max(mix, std::fabs(out[2 * f] / 2147483648.0f)); }
+        if (at > 20 && at < 180) early = std::max(early, stem);
+        if (at > 220 && at < 370) { late = std::max(late, stem); mix_late = std::max(mix_late, mix); }
+    }
+    CHECK(early < 0.01f && late > 0.1f);
+    CHECK(mix_late < late * 1.2f); // the return held at 0: the bus not heard beside the track
+    // Stop: the level and the return back to the track's own; the bus heard again.
+    host->send({Command::Type::Stop});
+    host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+    float stem = 0, mix = 0;
+    for (unsigned n = 0; n < 20; ++n) {
+        host->render(out.data(), 128, 1, nullptr, stems.data());
+        for (unsigned f = 0; f < 128; ++f) { stem = std::max(stem, std::fabs(stems[f])); mix = std::max(mix, std::fabs(out[2 * f] / 2147483648.0f)); }
+    }
+    CHECK(stem > 0.1f && mix > mix_late * 1.2f); // the bus beside the track again (the mix soft clips)
+    CHECK(host->offer_plugin(0, nullptr));
+    host->render(out.data(), 128, 1);
+}
+
 int main() {
+    mix_motion_p4();
     delay_sync_p4();
     keyed_dynamics_p4();
     delay_compensation_p4();

@@ -105,10 +105,32 @@ Binding filter_second(const PadSound& pad, bool other) {
 // The mod wheel's lane, as Motion shows it (parity phase 8).
 const ParamInfo wheel_info {"MOD WHEEL", 0, 127, 0, Format::Number};
 
-MotionParam motion_param(const Track& track, int lane) {
+// Roadmap P4: the mix's lanes as Motion shows them.
+const ParamInfo level_info {"LEVEL", 0, 127, 100, Format::Level};
+const ParamInfo pan_info {"PAN", -50, 50, 0, Format::Number};
+const std::array<ParamInfo, bus_count> send_infos {{{"SEND A", 0, 100, 0, Format::Percent}, {"SEND B", 0, 100, 0, Format::Percent},
+                                                     {"SEND C", 0, 100, 0, Format::Percent}, {"SEND D", 0, 100, 0, Format::Percent}}};
+const std::array<ParamInfo, bus_count> return_infos {{{"RETURN A", 0, 100, 70, Format::Percent}, {"RETURN B", 0, 100, 70, Format::Percent},
+                                                       {"RETURN C", 0, 100, 70, Format::Percent}, {"RETURN D", 0, 100, 70, Format::Percent}}};
+
+MotionParam motion_param(const Track& track, int lane, const Project* project) {
     if (lane < 0) return {};
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {&wheel_info, track.wheel};
+    if (is_mix_lane(unsigned(param))) { // roadmap P4
+        unsigned p = unsigned(param);
+        if (p == motion_level) return {&level_info, track.mix.level};
+        if (p == motion_pan) return {&pan_info, track.mix.pan};
+        if (p < motion_master_fx_base) return {&send_infos[(p - motion_send(0)) % bus_count], track.mix.sends[(p - motion_send(0)) % bus_count]};
+        if (!project) return {};
+        if (p >= motion_return_base) { unsigned b = (p - motion_return_base) % bus_count; return {&return_infos[b], project->buses[b].level}; }
+        unsigned slot = (p - motion_master_fx_base) / effect_params, q = (p - motion_master_fx_base) % effect_params;
+        if (slot >= project->master.count()) return {};
+        const auto& s = project->master.slots[slot];
+        const auto& pi = effect_info(EffectKind(s.kind)).params[q];
+        if (!pi.label || s.kind == plugin_effect_kind) return {};
+        return {&pi, s.params[q]};
+    }
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // a kit pad's own value
         auto p = PadParam(which);
         if (track.engine != EngineKind::Sampler) return {};
@@ -127,18 +149,30 @@ MotionParam motion_param(const Track& track, int lane) {
     return {&pi, s.params[q]};
 }
 
-std::string lane_name(const Track& track, int lane) {
-    auto m = motion_param(track, lane);
+std::string lane_name(const Track& track, int lane, const Project* project) {
+    auto m = motion_param(track, lane, project);
     if (!m.info) return "lane";
+    if (is_master_lane(lane_param(lane)) && lane_param(lane) < motion_return_base) return std::string("MASTER ") + m.info->label; // roadmap P4
     if (pad_param_of(lane_param(lane)) < 0) return m.info->label;
     char label[4];
     pad_label(lane_pad(lane), label);
     return std::string(label) + " " + m.info->label;
 }
 
-Binding lane_binding(const Track& track, unsigned t, int lane) {
+Binding lane_binding(const Track& track, unsigned t, int lane, const Project* project) {
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
+    if (is_mix_lane(unsigned(param))) { // roadmap P4: the card that turns it (the selected track's strip, the master's, a return)
+        auto m = motion_param(track, lane, project);
+        if (!m.info) return {};
+        unsigned p = unsigned(param);
+        if (p == motion_level) return {Kind::Level, 0, 0, 127, m.value};
+        if (p == motion_pan) return {Kind::Pan, 0, -50, 50, m.value};
+        if (p < motion_master_fx_base) return {Kind::Send, int32_t((p - motion_send(0)) % bus_count), 0, 100, m.value};
+        if (p >= motion_return_base) return {Kind::BusReturn, int32_t((p - motion_return_base) % bus_count), 0, 100, m.value};
+        unsigned slot = (p - motion_master_fx_base) / effect_params, q = (p - motion_master_fx_base) % effect_params;
+        return {Kind::FxParam, int32_t(master_chain * 64 + slot * 8 + q), m.info->min, m.info->max, m.value};
+    }
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // the pad's card, as on the sampler pages (they edit the last pad hit)
         auto m = motion_param(track, lane);
         if (!m.info || lane_pad(lane) != track.last_pad % sampler_pads) return {};
@@ -160,7 +194,7 @@ std::array<Binding, 3> lock_cards(const Project& project, const UiState& ui, con
     std::array<Binding, 3> out;
     for (unsigned k = 0; k < 3; ++k) {
         if (lanes[k] < 0) continue;
-        Binding b = lane_binding(track, t, lanes[k]);
+        Binding b = lane_binding(track, t, lanes[k], &project);
         if (!b.bound()) continue;
         const MotionPoint* lock = pattern.lock_at(tick, lane_param(lanes[k]), lane_pad(lanes[k]));
         out[k] = {Kind::Lock, lanes[k], b.min, b.max, lock ? int(lock->value) : b.value};
@@ -218,7 +252,7 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const
     std::array<int, 3> lanes {-1, -1, -1};
     unsigned n = 0;
     auto add = [&](int param) {
-        if (!motion_param(track, param).info || n == lanes.size()) return;
+        if (!motion_param(track, param, &project).info || n == lanes.size()) return;
         for (unsigned k = 0; k < n; ++k) if (lanes[k] == param) return;
         lanes[n++] = param;
     };

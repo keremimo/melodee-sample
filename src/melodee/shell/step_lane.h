@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/pad_params.h"
 #include "melodee/model/pattern.h"
 #include "melodee/model/project.h"
 #include "melodee/model/scales.h"
@@ -82,7 +83,7 @@ template <class Edit> bool edit_lane(Pattern& p, unsigned s, int lane, Edit&& ed
 inline bool lock_in(const Pattern& p, uint32_t from, uint32_t to, int pad) {
     for (size_t n = p.motion_lower(from); n < p.motion.size() && p.motion[n].tick < to; ++n) {
         const auto& m = p.motion[n];
-        if (m.lock() && (pad < 0 || m.param < motion_pad_base || m.param == motion_wheel || m.pad == pad)) return true;
+        if (m.lock() && (pad < 0 || pad_param_of(m.param) < 0 || m.pad == pad)) return true;
     }
     return false;
 }

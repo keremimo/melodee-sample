@@ -46,9 +46,23 @@ constexpr unsigned motion_fx_param(unsigned slot, unsigned parameter) { return m
 // Then a kit pad's own values (model/pad_params.h), each lane on one pad
 // (MotionEvent::pad): motion_pad_base + PadParam.
 constexpr unsigned motion_pad_base = motion_fx_base + track_slots * 6;
+// Roadmap P4: the mix's own lanes, kept with the track's pattern as any lane: the track's level, pan and four sends;
+// then the master's chain's effect parameters (motion_master_fx(slot, parameter)) and the buses' returns. A track's
+// pattern moving the master's values moves them for the whole mix (the track in hand when they were recorded).
+constexpr unsigned motion_mix_base = 160;
+constexpr unsigned motion_level = motion_mix_base, motion_pan = motion_mix_base + 1;
+constexpr unsigned motion_send(unsigned bus) { return motion_mix_base + 2 + bus % 4; }
+constexpr unsigned motion_master_fx_base = motion_mix_base + 6;
+constexpr unsigned motion_master_fx(unsigned slot, unsigned parameter) { return motion_master_fx_base + slot * 6 + parameter; }
+constexpr unsigned motion_return_base = motion_master_fx_base + master_slots * 6;
+constexpr unsigned motion_return(unsigned bus) { return motion_return_base + bus % 4; }
+constexpr unsigned motion_mix_end = motion_return_base + bus_count; // past the last
+constexpr bool is_mix_lane(unsigned param) { return param >= motion_mix_base && param < motion_mix_end; }
+constexpr bool is_master_lane(unsigned param) { return param >= motion_master_fx_base && param < motion_mix_end; }
 // Last, the track's mod wheel as the fader moves it (parity phase 8): one
 // lane of its own, kept in the file's MOTW section.
 constexpr unsigned motion_wheel = 255;
+static_assert(motion_mix_end <= motion_wheel, "the mix's lanes fit below the mod wheel's");
 // Plug-ins (docs/MELODEE.md, Plug-ins): a project's table of them. Each entry
 // is one loaded instance, played by a PLUGIN track or sitting in a chain.
 constexpr unsigned max_plugins = 32;

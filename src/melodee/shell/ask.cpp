@@ -42,7 +42,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     const auto& t = project.tracks[ui.track % track_count];
     switch (ui.ask) {
     case UiState::Ask::EraseKeyEvents: return "Erase " + key_label(t, int(ui.ask_target)) + " events?";
-    case UiState::Ask::EraseLane: return "Erase " + lane_name(t, int(ui.ask_target)) + " motion?";
+    case UiState::Ask::EraseLane: return "Erase " + lane_name(t, int(ui.ask_target), &project) + " motion?";
     case UiState::Ask::ResetSettings: return "Reset factory settings?";
     case UiState::Ask::NewProject: return "New project?";
     case UiState::Ask::TakeCardBack: return "Take the card back anyway?";

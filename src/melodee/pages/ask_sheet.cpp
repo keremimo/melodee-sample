@@ -50,7 +50,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         unsigned moves = s.pattern.lane_points(lane_param(int(s.ui.ask_target)), lane_pad(int(s.ui.ask_target))); // the selected pattern's
         sheet.icon = Icon::Motion;
         sheet.title = "Erase this lane?";
-        sheet.lines = {count_of(moves, "move", "moves") + " of " + name_case(juce::String(lane_name(t, int(s.ui.ask_target)))) + (moves == 1 ? " goes." : " go."),
+        sheet.lines = {count_of(moves, "move", "moves") + " of " + name_case(juce::String(lane_name(t, int(s.ui.ask_target), &s.project))) + (moves == 1 ? " goes." : " go."),
                        moves == 1 ? juce::String("Undo brings it back.") : undo_line};
         sheet.chip = "P" + juce::String(playing + 1);
         sheet.chip_colour = colour_of(s);

@@ -633,6 +633,15 @@ hold to steer, Shift + Seq to zoom in**.
   (up to 8192 points, at tick resolution): it goes with the pattern when it
   is copied, doubled, halved or sped up, and a lock's lane goes back to what
   it holds as recorded (else the track's value) when the lock ends.
+- **The mix in Motion** (roadmap P4): with Seq Record on, a track's LEVEL,
+  PAN and SEND A–D turned on Stage, Tracks or Sends write lanes of the
+  selected track's pattern, and so do the master chain's parameters (FX
+  Select's MASTER) and the buses' RETURNs: those land in the selected
+  track's pattern too, and while it plays they move the master's values
+  for the whole mix. They play as other lanes (the strip eases there as a
+  turned knob does), show on Motion's graph as LEVEL, SEND B, MASTER WIDTH,
+  RETURN A, and go back where they were set on Stop and at the pattern's
+  start, as every lane does.
 - **A pattern's feel** (roadmap P1): how its notes play without rewriting
   them, heard at once and saved with the pattern (FEEL): STRENGTH (0–100 %
   toward the nearest step of its Q, its SWING 50–75 % on every second
