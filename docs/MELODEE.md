@@ -273,7 +273,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     + B1 Loop Lock, Shift + B2 Normalize), the envelopes and the filter lie
     over the region. MIX: volume, kit volume, pan; Shift + K2 on AMP ENV and
     FILT ENV decay from start or end, Shift + K3 on TUNE # Beats, Shift + K2
-    on PLAY Pad Link. FOLLOW: on, mode (Beats, Tones, Tape), pitch; the
+    on PLAY Pad Link, Shift + K3 on PLAY the loop's seam crossfade. FOLLOW: on, mode (Beats, Tones, Tape), pitch; the
     project's beats drawn over the pad's region in amber (the bar's first
     brighter), as many as # Beats says or its length at the tempo, and the
     sample's own hits as dots above, each joined to the beat it is moved
@@ -823,6 +823,12 @@ the file holds, to the bit.
     Note On, reverse, loop. Pad Link chains (roadmap P3): a linked pad's own
     link plays too, and so on through the bank, each pad once (a chain that
     comes back round stops there; a muted pad is silent but links on).
+    Shift + K3 (either row) **XFADE** (roadmap P3): the loop's seam
+    crossfaded over 0–250 ms, the same time at any rate: as the end nears it
+    fades into what lies before the loop point (reversed: past the end);
+    with nothing there, just after the turn out of what follows the end;
+    with neither (the whole file looping), a dip to nothing and back over
+    that time. Off by default, so a loop already seamless stays as it was.
   - Filter (Off, Classic, LPF2/4, HPF2/4, BPF2/4) and Filt Env (up to seven
     octaves; Shift + K2 decay from).
   - Melodee's Follow (the kit keeps the project's tempo: Beats, Tones or

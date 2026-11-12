@@ -412,7 +412,7 @@ behaviour, write the code fresh for this app.
 - [ ] Sample slots nothing uses any more freed on save.
 - [x] Pad Link through more than one pad.
 - [ ] Seq Record keeps a 16 Levels pad's cutoff.
-- [ ] A short crossfade at a loop's seam.
+- [x] A short crossfade at a loop's seam.
 - [ ] Resample of the song onto a pad.
 - [ ] SFZ: release samples (`trigger=release`), crossfades (`xfin_*` /
   `xfout_*`), keyswitches; SF2 and `.dspreset` instruments.

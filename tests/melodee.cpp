@@ -9116,8 +9116,85 @@ void pad_link_chains() {
 }
 
 
+// Roadmap P3: a loop's seam crossfaded over a time (not a count of frames): with audio before the loop point, after
+// the end, or (neither) a dip; never the jump an unfaded seam makes.
+void loop_seams() {
+    SampleData data;
+    data.frames = 44100;
+    data.left.resize(data.frames);
+    for (uint32_t n = 0; n < data.frames; ++n) data.left[n] = float(n) / float(data.frames); // a ramp: every seam a jump
+    data.right = data.left;
+    SamplerEngine::Table table {};
+    table[1] = &data;
+    auto biggest_step = [&](PadSound pad) {
+        auto engine = std::make_unique<SamplerEngine>();
+        engine->set_samples(&table);
+        engine->set_pad(0, pad);
+        engine->note_on(int(sampler_first_note), 127);
+        std::vector<float> l(128), r(128);
+        float last = 0, most = 0;
+        for (unsigned b = 0; b < 600; ++b) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            engine->render_stereo(l.data(), r.data(), 128);
+            for (unsigned f = 0; f < 128; ++f) {
+                if (b * 128 + f > 2000) most = std::max(most, std::fabs(l[f] - last)); // past the attack
+                last = l[f];
+            }
+        }
+        return most;
+    };
+    PadSound pad;
+    pad.sample = 1; pad.loop = true; pad.decay = 100; pad.velocity_sense = 0;
+    // Before the loop point there is audio: the end fades into what precedes the loop point.
+    PadSound before = pad;
+    before.end = 20000; before.loop_lock = false; before.loop_start = 10000;
+    const float jump = biggest_step(before);
+    before.loop_xfade = 10;
+    CHECK(jump > 0.1f && biggest_step(before) < jump / 100);
+    // None before it (the loop from the start), but audio after the end: the turn fades out of what follows the end.
+    PadSound after = pad;
+    after.end = 20000;
+    const float jump2 = biggest_step(after);
+    after.loop_xfade = 10;
+    CHECK(jump2 > 0.2f && biggest_step(after) < jump2 / 50);
+    // The whole file: a dip to nothing and back.
+    PadSound whole = pad;
+    const float jump3 = biggest_step(whole);
+    whole.loop_xfade = 20;
+    CHECK(jump3 > 0.5f && biggest_step(whole) < jump3 / 50);
+    // Reversed, before its loop point there is the end's far side: no jump either.
+    PadSound back = before;
+    back.reverse = true;
+    back.loop_xfade = 0;
+    const float jump4 = biggest_step(back);
+    back.loop_xfade = 10;
+    CHECK(jump4 > 0.1f && biggest_step(back) < jump4 / 50);
+    // PLAY's Shift + K3, both rows; the file's PXFD (older files: none).
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    project->tracks[2].engine = EngineKind::Sampler;
+    project->tracks[2].pads[5] = before;
+    project->tracks[2].last_pad = 5;
+    UiState ui;
+    ui.track = 2; ui.page = PageId::PlayPage;
+    Pattern none;
+    auto shifted = shift_bindings(*project, ui, none);
+    CHECK(shifted[1].kind == Binding::Kind::PadLink && shifted[2].kind == Binding::Kind::PadLoopXfade && shifted[2].value == 10);
+    ui.sampler_row = 1;
+    CHECK(!shift_bindings(*project, ui, none)[1].bound() && shift_bindings(*project, ui, none)[2].kind == Binding::Kind::PadLoopXfade);
+    auto file = save_project(*project, *bank);
+    auto loaded = std::make_unique<Project>();
+    auto loaded_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(file, *loaded, *loaded_bank).empty() && loaded->tracks[2].pads[5].loop_xfade == 10);
+    std::string text(file.begin(), file.end());
+    file[text.find("PXFD")] = 'X';
+    CHECK(load_project(file, *loaded, *loaded_bank).empty() && loaded->tracks[2].pads[5].loop_xfade == 0);
+}
+
+
 int main() {
     pad_link_chains();
+    loop_seams();
     pad_layers_p3();
     track_speed();
     generators();

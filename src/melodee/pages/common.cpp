@@ -325,6 +325,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::LayerLow: c.label = "VEL LOW"; c.value = juce::String(b.value); break;
+    case Kind::PadLoopXfade: c.label = "XFADE"; c.value = b.value ? juce::String(b.value) : juce::String("Off"); c.unit = b.value ? "ms" : ""; break;
     case Kind::LayerHigh: c.label = "VEL HIGH"; c.value = juce::String(b.value); break;
     case Kind::LayerPitch: c.label = "TUNE"; c.value = juce::String(b.value); c.unit = "st"; c.bipolar = true; break;
     case Kind::LayerGain: c.label = "LEVEL"; c.value = (b.value > 0 ? "+" : "") + juce::String(b.value / 10.0, 1); c.unit = "dB"; c.bipolar = true; break;

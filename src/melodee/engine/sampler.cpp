@@ -88,6 +88,19 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.loop_at = std::clamp(at_rate(sound.loop_point()), v.start, v.end - 2);
         v.edge_in = !v.loop && v.start > 0;              // the file's own start and end need no fade
         v.edge_out = !v.loop && v.end < total;
+        v.total = total;
+        if (v.loop && sound.loop_xfade) { // roadmap P3: its time in the frames it reads, at most half the loop
+            const double read_rate = ready ? double(data->play_rate) : double(dsp::model_rate);
+            const uint32_t span = v.end - v.loop_at;
+            const uint32_t want = std::min<uint32_t>(uint32_t(std::lround(sound.loop_xfade / 1000.0 * read_rate)), span / 2);
+            const uint32_t before = v.reverse ? total - v.end : v.loop_at;  // across the seam on its near side
+            const uint32_t after = v.reverse ? v.loop_at : total - v.end;   // across it once round
+            if (want >= 2) {
+                if (before > want) { v.xfade_kind = 1; v.xfade = want; }
+                else if (after > want + 1) { v.xfade_kind = 2; v.xfade = want; }
+                else { v.xfade_kind = 3; v.xfade = std::max<uint32_t>(2, std::min(want, span / 4)); }
+            }
+        }
     }
     // Warp's mode is the kit's FollowHow: Tape is Pitch, the others Time stretch.
     // Warp on by Pitch leaves the pad's Semi and Fine out, as the MPC does.
@@ -407,6 +420,53 @@ float SamplerEngine::edge_gain(const Voice& v, double at) {
     return float(std::clamp(g, 0.0, 1.0));
 }
 
+// Roadmap P3: a kit pad loop's frame at `at` near its seam, crossfaded (linear, so a loop already seamless stays
+// level) with the frame a loop's length away across the seam: before the loop point as the end nears (1), or past
+// the end just after the turn (2); with nothing across it in the file, a dip down and up again (3).
+void SamplerEngine::seam(const Voice& v, const float* l, const float* r, double at, float& out_l, float& out_r) {
+    const double span = double(v.end - v.loop_at), x = double(v.xfade);
+    auto other = [&](double from, float& ol, float& orr) { // another place in the file, read with its fraction
+        unsigned i = unsigned(std::max(0.0, from));
+        unsigned j = std::min(i + 1, v.total - 1);
+        float frac = float(from - i);
+        ol = l[i] + (l[j] - l[i]) * frac;
+        orr = r[i] + (r[j] - r[i]) * frac;
+    };
+    // How far into the fade it is, 0..1 (-1: outside it), and where across the seam it reads.
+    double into = -1, across = 0;
+    const bool back = v.reverse;
+    switch (v.xfade_kind) {
+    case 1:
+        if (!back && at >= v.end - x) { into = (at - (v.end - x)) / x; across = at - span; }
+        if (back && at < v.loop_at + x) { into = ((v.loop_at + x) - at) / x; across = at + span; }
+        break;
+    case 2:
+        if (!v.turned) break;
+        if (!back && at < v.loop_at + x) { into = 1 - (at - v.loop_at) / x; across = at + span; }
+        if (back && at >= v.end - x) { into = 1 - ((v.end - 1) - at) / x; across = at - span; }
+        break;
+    case 3: { // a dip: down to nothing at the seam and up again after the turn
+        double gain = 1;
+        if (!back) {
+            gain = std::min(gain, (v.end - at) / x);
+            if (v.turned) gain = std::min(gain, (at - v.loop_at) / x);
+        } else {
+            gain = std::min(gain, (at - v.loop_at) / x);
+            if (v.turned) gain = std::min(gain, (v.end - at) / x);
+        }
+        gain = std::clamp(gain, 0.0, 1.0);
+        out_l *= float(gain); out_r *= float(gain);
+        return;
+    }
+    default: return;
+    }
+    if (into < 0) return;
+    float w = float(std::clamp(into, 0.0, 1.0)), ol = 0, orr = 0;
+    other(across, ol, orr);
+    out_l += (ol - out_l) * w;
+    out_r += (orr - out_r) * w;
+}
+
 // One frame of a voice: through the pad's filter (its cutoff moved by its
 // envelope, retuned every 16 frames), the amp and the pan.
 void SamplerEngine::voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f) {
@@ -468,7 +528,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             if (v.reverse) while (v.place < v.loop_at) { v.place += span; turned = true; }
             else while (v.place >= v.end) { v.place -= span; turned = true; }
             if (turned) {
-                v.wrapped = true;
+                v.wrapped = true; v.turned = true;
                 if (v.beats) { // a fresh segment from the loop point; the one playing fades out over its edge meanwhile
                     unsigned playing = v.next_tap ^ 1;
                     if (v.tap_on[playing] && v.window > edge) v.tap_age[playing] = std::max(v.tap_age[playing], v.window - edge);
@@ -513,8 +573,10 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             unsigned i = unsigned(at);
             float frac = float(at - i);
             unsigned j = i + 1 < v.end ? i + 1 : pad_loop ? v.loop_at : v.end - 1; // a loop's seam read across
-            sum_l += (l[i] + (l[j] - l[i]) * frac) * w;
-            sum_r += (r[i] + (r[j] - r[i]) * frac) * w;
+            float tl = l[i] + (l[j] - l[i]) * frac, tr = r[i] + (r[j] - r[i]) * frac;
+            if (pad_loop && v.xfade_kind) seam(v, l, r, at, tl, tr);
+            sum_l += tl * w;
+            sum_r += tr * w;
             v.tap[t] += way * v.step;
             ++v.tap_age[t];
         }
@@ -701,8 +763,8 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         const double span = double(v.end - v.loop_at);
         for (unsigned f = from; f < frames; ++f) {
             if (v.loop) {
-                if (v.reverse) while (v.position < v.loop_at) { v.position += span; v.wrapped = true; }
-                else while (v.position >= v.end) { v.position -= span; v.wrapped = true; }
+                if (v.reverse) while (v.position < v.loop_at) { v.position += span; v.wrapped = v.turned = true; }
+                else while (v.position >= v.end) { v.position -= span; v.wrapped = v.turned = true; }
             } else if (v.reverse ? v.position < v.start : v.position >= v.end - 1) { v.pad = -1; break; }
             unsigned i = unsigned(v.position);
             float frac = float(v.position - i);
@@ -710,7 +772,9 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             float a = v.env.next(v.shape) * v.gain * v.fade;
             if (v.edge_in || v.edge_out) a *= edge_gain(v, v.position);
             if (v.choked) { v.fade -= edge_step; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
-            voice_out(v, l[i] + (l[j] - l[i]) * frac, r[i] + (r[j] - r[i]) * frac, a, frames_left(v, v.position, v.step), to_l, to_r, f);
+            float sl = l[i] + (l[j] - l[i]) * frac, sr = r[i] + (r[j] - r[i]) * frac;
+            if (v.xfade_kind) seam(v, l, r, v.position, sl, sr);
+            voice_out(v, sl, sr, a, frames_left(v, v.position, v.step), to_l, to_r, f);
             v.position += v.reverse ? -v.step : v.step;
             if (!v.env.active()) { v.pad = -1; break; }
         }

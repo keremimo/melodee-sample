@@ -503,6 +503,7 @@ void Context::apply(const Binding& b, int value) {
         send_pad(ui.track, t.last_pad);
         break;
     case Kind::PadBeats: pad().beats = uint8_t(value); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadLoopXfade: pad().loop_xfade = uint8_t(std::clamp(value, 0, int(max_loop_xfade))); send_pad(ui.track, t.last_pad); break;
     case Kind::LayerPick: ui.pad_layer = uint8_t(unsigned(value) % pad_layers); break;
     case Kind::LayerLow: case Kind::LayerHigh: { // a layer's velocities: the other end moves along rather than cross
         unsigned n = unsigned(b.id) % pad_layers;

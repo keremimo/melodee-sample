@@ -81,7 +81,8 @@ struct Binding {
         LoopSource, // the Looper's loop sheet, K1: the loop's source, an index into loop_sources() (shell/loop_sheet.h), id the loop
         // Pad layers (roadmap P3), the last pad hit: the layer in hand 0-3, its velocities, its tune and level over the
         // pad's (hundredths of a dB in steps of a tenth), and how a hit picks its layers (model/sampler.h LayerPlay).
-        LayerPick, LayerLow, LayerHigh, LayerPitch, LayerGain, LayerPlayMode
+        LayerPick, LayerLow, LayerHigh, LayerPitch, LayerGain, LayerPlayMode,
+        PadLoopXfade // roadmap P3, PLAY's Shift + K3: the last pad's loop seam crossfade, ms (0 none)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

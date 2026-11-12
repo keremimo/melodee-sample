@@ -349,9 +349,10 @@ std::array<Binding, 3> pad_page_shift(const Track& track, const UiState& ui, Pag
     case PageId::PadPage:
         if (!pad.used()) return {};
         return {Binding {}, Binding {}, Binding {Kind::PadBeats, 0, 0, int(max_pad_beats), pad.beats}};
-    case PageId::PlayPage:
-        if (!pad.used() || ui.sampler_row) return {};
-        return {Binding {}, Binding {Kind::PadLink, 0, 0, 16, pad.link}, Binding {}};
+    case PageId::PlayPage: // Shift + K2 Pad Link (row 1), Shift + K3 the loop's seam crossfade (roadmap P3)
+        if (!pad.used()) return {};
+        return {Binding {}, ui.sampler_row ? Binding {} : Binding {Kind::PadLink, 0, 0, 16, pad.link},
+                Binding {Kind::PadLoopXfade, 0, 0, int(max_loop_xfade), pad.loop_xfade}};
     case PageId::LayersPage: { // Shift + K1 how a hit picks; Shift + K2 / K3 the layer's tune and level (layer 1's are the pad's)
         if (!pad.used()) return {};
         unsigned n = ui.pad_layer % pad_layers;

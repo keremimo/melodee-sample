@@ -444,6 +444,16 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad4(w, n, tr.pads[n]);
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // kit pads whose loop's seam is crossfaded (roadmap P3): pad, milliseconds
+        const auto& tr = project.tracks[t];
+        unsigned used = 0;
+        for (const auto& pad : tr.pads) used += pad.used() && pad.loop_xfade;
+        if (!used) continue;
+        at = w.begin("PXFD");
+        w.u8(t); w.u8(used);
+        for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used() && tr.pads[n].loop_xfade) { w.u8(n); w.u8(tr.pads[n].loop_xfade); }
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // kit pads with layers, or layer values of their own (roadmap P3)
         const auto& tr = project.tracks[t];
         unsigned used = 0;
@@ -600,6 +610,14 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             pad4[t] = true;
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_pad4(r, project->tracks[t].pads.data(), sampler_pads);
+        } else if (name == "PXFD") { // loop seam crossfades (roadmap P3); without it no pad's seam is faded
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) {
+                unsigned n = r.u8(), ms = r.u8();
+                project->tracks[t].pads[n % sampler_pads].loop_xfade = uint8_t(std::min(ms, max_loop_xfade));
+            }
         } else if (name == "LAYR") { // pad layers (roadmap P3); without it every pad plays its one sample
             unsigned t = r.u8();
             if (t >= track_count) continue;
@@ -1041,6 +1059,14 @@ std::vector<uint8_t> save_bank(const BankFile& bank) {
             if (bank.samples[k].used()) { w.u8(k); w.text(bank.samples[k].path); w.text(bank.samples[k].name); w.u32(bank.samples[k].frames); }
         w.end(at);
     }
+    unsigned faded = 0; // loop seam crossfades (roadmap P3): pad, milliseconds
+    for (const auto& pad : bank.pads) faded += pad.used() && pad.loop_xfade;
+    if (faded) {
+        at = w.begin("BXFD");
+        w.u8(faded);
+        for (unsigned k = 0; k < bank_pads; ++k) if (bank.pads[k].used() && bank.pads[k].loop_xfade) { w.u8(k); w.u8(bank.pads[k].loop_xfade); }
+        w.end(at);
+    }
     if (layered) {
         at = w.begin("BLYR");
         w.u8(layered);
@@ -1084,6 +1110,9 @@ bool load_bank(const std::vector<uint8_t>& data, BankFile& out) {
                 auto& ref = bank.samples[r.u8() % bank.samples.size()];
                 r.text(ref.path, sizeof(ref.path)); r.text(ref.name, sizeof(ref.name)); ref.frames = r.u32();
             }
+        } else if (name == "BXFD") {
+            unsigned faded = r.u8();
+            for (unsigned k = 0; k < faded && r.ok; ++k) { unsigned n = r.u8(), ms = r.u8(); bank.pads[n % bank_pads].loop_xfade = uint8_t(std::min(ms, max_loop_xfade)); }
         } else if (name == "BLYR") {
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_layers(r, bank.pads.data(), bank_pads, unsigned(bank.samples.size()));

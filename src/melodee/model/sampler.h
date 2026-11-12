@@ -39,6 +39,7 @@ inline const char* pad_filter_name(PadFilter f) {
 // Warp (Tune page, K3): off, locked to the sequence's tempo, or 50..200 % of its length.
 constexpr uint8_t warp_off = 0, warp_seq = 1, warp_min = 50, warp_max = 200;
 constexpr unsigned max_pad_beats = 64; // # Beats: 0 works it out from the length
+constexpr unsigned max_loop_xfade = 250; // ms: a loop's seam crossfade (roadmap P3)
 
 // Volume as the MPC shows it: 0 is -inf, 1..100 run -74..0 dB, 100..127
 // run 0..+6 dB. Pad volume and kit volume both use it.
@@ -106,6 +107,8 @@ struct PadSound {
     std::array<PadLayer, pad_layers - 1> layers {};
     uint8_t low_velocity = 1, high_velocity = 127;
     LayerPlay layer_play = LayerPlay::Velocity;
+    // Roadmap P3: a loop's seam crossfaded over this many milliseconds (0 none), the same time at any rate (PXFD).
+    uint8_t loop_xfade = 0;
     uint32_t loop_point() const { return loop_lock ? start : loop_start; }
     bool used() const { return sample != no_sample; }
     bool warped() const { return warp == warp_seq || warp >= warp_min; }

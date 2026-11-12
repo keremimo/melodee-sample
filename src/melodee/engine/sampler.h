@@ -145,6 +145,13 @@ private:
         // Loop: after the end (or, reversed, the loop point) it goes on from the loop point (or the end).
         bool loop = false;
         uint32_t loop_at = 0;
+        // Roadmap P3, a kit pad's loop seam crossfaded over `xfade` frames of what it reads: 1 with what lies before
+        // the loop point (reversed: past the end), at the seam's near side; 2 after the turn, with what follows the
+        // end (reversed: before the loop point); 3, with neither in the file, a dip either side. `turned` once it has
+        // gone round; `total` the frames it may read.
+        uint8_t xfade_kind = 0;
+        bool turned = false;
+        uint32_t xfade = 0, total = 0;
         // A one shot's region edges inside the file (a chop's slices, a trimmed
         // pad): faded over slice_edge so a cut mid-wave does not click.
         bool edge_in = false, edge_out = false;
@@ -177,6 +184,7 @@ private:
     void play_zone(Voice& v, float* to_l, float* to_r, unsigned from, unsigned frames);
     float frames_left(const Voice& v, double at, double speed) const; // output frames to the end, for the fades
     static float edge_gain(const Voice& v, double at);                // the region edges' fades, 0..1
+    static void seam(const Voice& v, const float* l, const float* r, double at, float& out_l, float& out_r); // a loop's crossfade
     void voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f);
     Voice& free_voice();
 
