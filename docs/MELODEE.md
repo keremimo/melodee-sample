@@ -1250,7 +1250,8 @@ here ends, and All Sound Off, All Notes Off and pitch bend centre go out on
 every channel of every port) and Reset Factory Settings (B3 YES, B1 NO). The header shows IN / OUT as MIDI passes, EXT CLOCK or EXT MTC
 while following.
 
-- **In**: notes and pressure, CC 1 as the mod wheel, All Notes Off; a kit
+- **In**: notes and pressure, CC 1 as the mod wheel, the pitch wheel (a
+  plug-in track's PITCH BEND at full resolution, a MIDI track's BEND), All Notes Off; a kit
   hears note 36 as A01; notes record under Seq Record like pads. Clock in:
   Start, Continue from Song Position, Stop, the tempo from the pulses. MTC
   in (24, 25, 29.97 df, 30 fps): follows after two whole codes agree, from

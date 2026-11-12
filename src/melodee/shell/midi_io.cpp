@@ -214,6 +214,18 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     }
     if (echo && (m.isPitchWheel() || (m.isController() && m.getControllerNumber() != 1) || ((m.isAftertouch() || m.isChannelPressure()) && !c.ui.settings.pressure)))
         echo_raw(c, packet.bytes.data(), packet.size, echo, packet.timestamp_ns); // what the engine does not play: on each MIDI track's port and channel
+    if (m.isPitchWheel()) { // a keyboard's pitch wheel, whole, on the PLUGIN tracks it plays (a MIDI track's went out above as its BEND)
+        int value = m.getPitchWheelValue() - 8192; // -8192..8191
+        for (unsigned t = 0; t < track_count; ++t) {
+            auto& tr = c.project.tracks[t];
+            if (!((tracks >> t) & 1) || tr.engine != EngineKind::Plugin) continue;
+            tr.bend = int8_t(std::clamp(value / 128, -64, 63)); // as the fader's card and the PITCH BEND lane show it
+            c.fader_bent = uint16_t(c.fader_bent & ~(1u << t)); // the wheel springs back by itself: the fader's return gives way
+            c.send({Type::Bend, uint8_t(t), 0, 0, int16_t(value)});
+            if (t == c.ui.track % track_count) c.record_motion(int(motion_bend), tr.bend);
+        }
+        return;
+    }
     if (m.isAftertouch() || m.isChannelPressure()) {
         if (!config.pad_in || !c.ui.settings.pressure) return;
         int value = m.isAftertouch() ? m.getAfterTouchValue() : m.getChannelPressureValue();

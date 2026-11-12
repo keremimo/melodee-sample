@@ -1146,7 +1146,8 @@ push to edit it, and press **−** / **+** to change it.
 | MIDI panic | Ends every note on every channel and port |
 | Reset factory settings | Asks first |
 
-- **MIDI in**: notes, pressure, CC 1 (mod wheel) and All Notes Off. A kit
+- **MIDI in**: notes, pressure, CC 1 (mod wheel), the pitch wheel (on plug-in
+  and MIDI tracks) and All Notes Off. A kit
   plays note 36 as pad A01. Notes record with **SEQ RECORD**.
 - **MIDI clock in**: Start, Continue, Stop and tempo. The header shows **EXT
   CLOCK**.
