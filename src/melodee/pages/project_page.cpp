@@ -317,7 +317,7 @@ void wheel(Context& c, int delta) {
         const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
         std::array<Action, 8> list {};
         unsigned n = actions(e && e->path == c.project_path, list, e && e->mpc());
-        if (!c.ui.sheet_more) { c.ui.sheet_more = true; c.ui.sheet_row = 0; return; } // turning on the likely tile: all of them
+        if (!c.ui.sheet_more) return; // the likely tile: a turn opens nothing (B2 MORE lists the rest)
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(n) - 1));
         c.ui.delete_armed = false;
         return;

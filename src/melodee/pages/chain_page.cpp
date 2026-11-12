@@ -203,7 +203,7 @@ void wheel(Context& c, int delta) {
     }
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     if (ui.sheet_open) {
-        if (!ui.sheet_more) { ui.sheet_more = true; ui.sheet_row = 0; return; } // turning on the likely tile: all of them
+        if (!ui.sheet_more) return; // the likely tile: a turn opens nothing (B2 MORE lists the rest)
         const auto& chain = c.project.chain(n);
         unsigned k = std::min<unsigned>(ui.fx_cursor[at], chain.size - 1);
         Actions actions {};

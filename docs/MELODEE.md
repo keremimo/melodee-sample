@@ -1157,7 +1157,8 @@ while following.
   and the undo keys. Choices under the keys are plain tiles without
   outlines, the likely one a shade lighter. A sheet behind Push (a
   project's, a note's, an effect's, a loop's) opens on the action most
-  likely wanted as the tile under B3, B2 MORE listing the rest. Lists show
+  likely wanted as the tile under B3, B2 MORE listing the rest (a turn of
+  the wheel there opens nothing). Lists show
   what a row is as a glyph before its name and its facts at the right
   edge; K1 jumps through every list, the other pots draw nothing. Words: labels, keys and chips
   in capitals; names of sounds, pads, effects and projects in Title Case
