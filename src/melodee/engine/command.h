@@ -32,6 +32,8 @@ struct Command {
         SongLoop,    // index = first bar, value = bar after the last (equal: no loop)
         Chained,     // roadmap P5: track, value = it plays a pattern chain (its patterns' follow actions wait)
         SceneTempo,  // roadmap P5: value = a scene's tempo (tenths of a BPM), taking over on the bar its patterns launch
+        SongTempo,   // roadmap P5: the song's tempo lane, point `index`: position = its bar, value = tempo, pattern = ramp
+        SongTempoCount, // value = the lane's points in use
         Tempo,       // value = tenths of a BPM
         Swing,       // value = percent
         Mod,         // track, index = route, route

@@ -684,6 +684,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::TrackSpeed: set_speed(unsigned(b.id), value); break;
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
+    case Kind::SongTempo: set_song_tempo(ui.song_cursor, value < 30 ? 0 : value * 10); break; // roadmap P5: under 30 BPM, none
+    case Kind::SongTempoShape: set_song_tempo_shape(ui.song_cursor, value != 0); break;
     case Kind::FeelStrength: case Kind::FeelSwing: case Kind::FeelHumanize: case Kind::FeelVelocity: case Kind::GrooveFrom:
     case Kind::GrooveAmount:
         set_feel(b.kind, value);
@@ -1541,6 +1543,13 @@ void Context::sync_song() {
     }
     send({Type::SongCount, 0, 0, 0, int16_t(song.count)});
     send({Type::SongLoop, 0, 0, song.loop_start, int16_t(song.loop_end)});
+    for (unsigned n = 0; n < song.tempo.count; ++n) { // roadmap P5: its tempo lane
+        const auto& p = song.tempo.points[n];
+        Command c {Type::SongTempo, 0, uint8_t(p.ramp), uint16_t(n), int16_t(p.tempo)};
+        c.position = p.bar;
+        send(c);
+    }
+    send({Type::SongTempoCount, 0, 0, 0, int16_t(song.tempo.count)});
 }
 
 // On the Song page Play plays the arrangement from the cursor; elsewhere the

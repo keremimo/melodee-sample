@@ -568,6 +568,13 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < tr.chain_count; ++n) w.u8(tr.chain[n]);
         w.end(at);
     }
+    if (!project.song.tempo.empty()) { // the song's tempo lane (roadmap P5): bar, tempo, ramp
+        const auto& lane = project.song.tempo;
+        at = w.begin("TMPL");
+        w.u8(lane.count);
+        for (unsigned n = 0; n < lane.count; ++n) { w.u16(lane.points[n].bar); w.u16(lane.points[n].tempo); w.u8(lane.points[n].ramp); }
+        w.end(at);
+    }
     for (unsigned n = 0; n < pattern_count; ++n) { // scenes (roadmap P5): a column's name and tempo, where it has either
         const auto& scene = project.scenes[n];
         if (scene.plain()) continue;
@@ -1002,6 +1009,14 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 project->tracks[t].fader_learned = {FaderLearn(what), uint16_t(lane), uint8_t(engine), uint8_t(pot % 3)};
                 project->tracks[t].fader_pin = pin != 0;
             }
+        } else if (name == "TMPL") { // the song's tempo lane (roadmap P5); without it the project's tempo throughout
+            unsigned count = r.u8();
+            TempoLane lane;
+            for (unsigned n = 0; n < count && r.ok; ++n) {
+                unsigned bar = r.u16(), tempo = r.u16(), ramp = r.u8();
+                if (r.ok) lane.set(bar, tempo, ramp != 0);
+            }
+            if (r.ok) project->song.tempo = lane;
         } else if (name == "SCNE") { // a scene's name and tempo (roadmap P5); without it the column alone
             unsigned n = r.u8();
             Scene scene;

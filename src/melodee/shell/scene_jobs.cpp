@@ -100,6 +100,30 @@ void Context::follow_to_column() {
     notice("Follow to " + std::to_string(count) + (count == 1 ? " track" : " tracks"));
 }
 
+// Roadmap P5: the song's tempo lane, from Song's Shift + K1 (the tempo at the cursor's bar; under 30 BPM none there)
+// and Shift + K2 (stepped to on its bar, or ramped to from the point before); one undo a turn, the song's.
+void Context::set_song_tempo(unsigned bar, int tenths) {
+    auto& lane = project.song.tempo;
+    if (tenths <= 0) { if (!lane.erase(bar)) return; }
+    else {
+        int at = lane.at_bar(bar);
+        bool ramp = at >= 0 && lane.points[size_t(at)].ramp;
+        if (at >= 0 && lane.points[size_t(at)].tempo == unsigned(tenths)) return;
+        if (!lane.set(bar, unsigned(tenths), ramp)) { notice("Tempo lane full"); return; }
+    }
+    sync_song();
+    dirty = true;
+}
+
+void Context::set_song_tempo_shape(unsigned bar, bool ramp) {
+    auto& lane = project.song.tempo;
+    int at = lane.at_bar(bar);
+    if (at < 0 || lane.points[size_t(at)].ramp == ramp) return;
+    lane.points[size_t(at)].ramp = ramp;
+    sync_song();
+    dirty = true;
+}
+
 // MIDI thread, often: a chained track's follow actions wait (the chain is its order, docs/ROADMAP.md P5), and a
 // follow action that came moves the track's pattern to the one it brought.
 void Context::follow_tick() {

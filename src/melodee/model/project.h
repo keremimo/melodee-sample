@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/tempo_lane.h"
 #include "melodee/model/chop_slices.h"
 #include "melodee/model/compressor.h"
 #include "melodee/model/knob_fx.h"
@@ -122,6 +123,7 @@ struct SongPunch {
     uint8_t step = 0, length = 1, kind = 0, target = 255, depth = 100;
 };
 struct Song {
+    TempoLane tempo; // roadmap P5: tempo changes over the song, stepped or ramped (TMPL)
     std::array<Clip, song_clips> clips {};
     uint16_t count = 0;
     std::array<Marker, song_markers> markers {};

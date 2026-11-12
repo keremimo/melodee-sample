@@ -21,8 +21,13 @@ struct SmfTrack {
 constexpr unsigned smf_ppq = 96;
 
 // Format 1: a first track with the tempo (tenths of a BPM) and time signature (beats over unit), then one track a
-// SmfTrack, each its name and notes on its channel.
-std::vector<uint8_t> write_smf(const std::vector<SmfTrack>& tracks, unsigned tempo_tenths, unsigned beats, unsigned unit);
+// SmfTrack, each its name and notes on its channel. Roadmap P5: `changes`, the tempo after that (tick, tenths, in
+// order: the song's tempo lane), go in the first track too.
+using SmfTempos = std::vector<std::pair<uint32_t, unsigned>>;
+std::vector<uint8_t> write_smf(const std::vector<SmfTrack>& tracks, unsigned tempo_tenths, unsigned beats, unsigned unit,
+                               const SmfTempos& changes = {});
+// Roadmap P5: the song's tempo lane as tempo changes, every sixteenth a ramp moves by a tenth or more; none without one.
+SmfTempos smf_tempos(const Project& project);
 // Format 0 or 1, any division (ticks a quarter; SMPTE time is refused): every note, at 96 ticks a quarter, a track
 // each MTrk with notes (format 0: one a channel); the first tempo found (tenths of a BPM; 0 none). False and `why`
 // when it is no MIDI file.

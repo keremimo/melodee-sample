@@ -406,6 +406,9 @@ private:
     void follow(unsigned t);
     FollowDice dice;
     uint16_t scene_tempo = 0; // a scene's tempo waiting for the bar its patterns launch on (0 none)
+    // Roadmap P5: the song's tempo lane where the song plays now (0: none, or not the song), worked out each tick.
+    uint16_t lane_tempo = 0;
+    void follow_lane();
     double tick_samples(uint32_t at) const;
     void play_motion(unsigned track, Slot& slot, const Pattern& pattern, uint32_t at);
     void move_lane(unsigned track, Slot& slot, unsigned param, unsigned pad, int value); // a Motion lane to `value`

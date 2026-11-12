@@ -17,7 +17,7 @@ void export_midi(Context& c, const std::string& name) {
     auto tracks = smf_tracks(c.project, c.patterns);
     if (tracks.empty()) { c.notice("MIDI file: no notes"); return; }
     auto ts = c.project.time_signature();
-    auto bytes = write_smf(tracks, c.project.tempo, ts.beats, ts.unit);
+    auto bytes = write_smf(tracks, c.project.tempo, ts.beats, ts.unit, smf_tempos(c.project)); // roadmap P5: the tempo lane too
     std::error_code error;
     std::string folder = top + "/Melodee/MIDI";
     fs::create_directories(folder, error);

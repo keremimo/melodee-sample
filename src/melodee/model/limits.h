@@ -31,6 +31,7 @@ constexpr unsigned song_clips = 256;    // clips in the arrange view
 constexpr unsigned song_markers = 16;
 constexpr unsigned song_punches = 128;  // punches written into the song (Seq Record)
 constexpr unsigned song_bars = 999;
+constexpr unsigned song_tempo_points = 64; // roadmap P5: the song's tempo lane (model/tempo_lane.h)
 // Effects along the signal (open question 5: slot counts and four buses).
 constexpr unsigned track_slots = 6, bus_slots = 6, master_slots = 6, bus_count = 4;
 constexpr unsigned max_slots = 6;

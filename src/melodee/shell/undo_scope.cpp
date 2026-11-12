@@ -69,6 +69,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::PadFxParam: case Kind::FlexMode: case Kind::FlexMix: case Kind::PunchDepth: case Kind::PunchSnap: case Kind::PunchTail:
         return of(S::Master, ui);
     case Kind::SongPattern: case Kind::SongLength: return b.id >= 0 ? of(S::Song, ui) : UndoScope {};
+    case Kind::SongTempo: case Kind::SongTempoShape: return of(S::Song, ui); // roadmap P5: the song's tempo lane
     case Kind::StepLength: case Kind::StepVelocity: case Kind::StepChance: case Kind::EventVelocity: case Kind::EventLength:
     case Kind::EventChance: case Kind::StepRatchet: case Kind::StepRamp: case Kind::StepPitchRamp: case Kind::EventRatchet:
     case Kind::EventRamp: case Kind::EventPitchRamp: case Kind::StepCondition: case Kind::EventCondition: case Kind::Lock:

@@ -753,7 +753,22 @@ hold to steer, Shift + Seq to zoom in**.
   splits at the cursor, **Erase** deletes, **Note Repeat** repeats to the
   next marker, **Loop** loops its bars (again, or on empty time, off). Each
   is one undo. Shift + Push adds a marker
-  (on a marker, names it). Play here plays the song from the cursor. **B1
+  (on a marker, names it). Play here plays the song from the cursor.
+  **Tempo lane** (roadmap P5): Shift + K1 BAR TEMPO sets the tempo from
+  the cursor's bar (with no point there the card shows the lane's tempo
+  and a turn adds one; under 30 BPM, Off, takes it away), Shift + K2 SHAPE
+  a Step on its bar or a Ramp, even across the bars from the point before
+  (the first from bar 1 at the project's tempo); 64 points, one undo a
+  turn, kept in TMPL. Before the first point the project's tempo plays.
+  With points the lane is an amber strip over the tracks (one track lane
+  fewer), its tempo at the cursor beside it, and the header's clock counts
+  through it. While the song plays the audio thread works it out a tick at
+  a time, so everything on the clock follows: the delays' SYNC, LFOs on
+  the clock, the arps, the click and count-in, MIDI clock out, Seq
+  Record's places, a mixdown and its stems; a MIDI file carries it as
+  tempo changes (every sixteenth a ramp moves); MTC in places the song
+  through it. MIDI clock in still leads; BPM per pattern waits while the
+  song with a lane plays. **B1
   Export**: B2 audio mixdown (Name sheet; once through, tails up to 10 s,
   `Melodee/Mixdowns/<name>.wav`, 32-bit float at the device's rate so a mix
   past full scale is kept, not clipped; Stop drops it), B3 New pattern

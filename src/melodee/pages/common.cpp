@@ -184,6 +184,10 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     }
     case Kind::FollowAfter: c.label = "AFTER"; c.value = juce::String(b.value % 64 + 1); c.unit = b.value >= 64 ? (b.value == 64 ? "play" : "plays") : (b.value == 0 ? "bar" : "bars"); break;
     case Kind::FollowChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::SongTempo: // roadmap P5: the tempo lane at the cursor; with no point there a turn makes one
+        c.label = "BAR TEMPO"; c.value = b.value < 30 ? juce::String("Off") : juce::String(b.value); c.unit = b.value < 30 ? "" : s.project.song.tempo.at_bar(s.ui.song_cursor) >= 0 ? "BPM" : "add";
+        break;
+    case Kind::SongTempoShape: c.label = "SHAPE"; c.value = b.value ? "Ramp" : "Step"; break;
     case Kind::LaneLength: // a kit lane's own length (roadmap P1); as long as the pattern: none of its own
         c.label = "LANE"; c.value = b.value >= int(s.pattern.steps()) ? juce::String("All") : juce::String(b.value); c.unit = b.value >= int(s.pattern.steps()) ? "" : "steps";
         break;

@@ -13,12 +13,16 @@
 // Erase deletes it, Note Repeat repeats it to the next marker, Loop loops
 // its bars. K1 zoom. Minus / Plus jump between markers (or clip edges while
 // there are none). Shift + Push adds a marker at the cursor, or names it.
-// Play here plays the song from the cursor.
+// Play here plays the song from the cursor. Shift + K1 sets the tempo lane at
+// the cursor's bar (roadmap P5; under 30 BPM, none there), Shift + K2 its
+// shape, a step on its bar or a ramp from the point before; with points the
+// lane is a strip over the tracks, its tempo at the cursor beside it.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace melodee {
@@ -28,6 +32,7 @@ using namespace ui;
 // the selected track.
 constexpr unsigned lanes = 6;
 constexpr float x0 = 34, x1 = zone::width - zone::pad, lane_top = zone::picture_y + 29, lane_h = 15, lane_gap = 1;
+constexpr float strip_h = 14; // roadmap P5: the tempo lane, over the tracks (one track lane fewer while it has points)
 
 unsigned zoom_of(const UiState& ui) { return song_zooms[ui.song_zoom % (sizeof(song_zooms) / sizeof(song_zooms[0]))]; }
 // The first bar in view: the remembered one, moved just enough to show the cursor.
@@ -37,8 +42,8 @@ unsigned view_of(const UiState& ui) {
     if (ui.song_cursor >= view + zoom) view = ui.song_cursor - zoom + 1;
     return view;
 }
-juce::String clock_of(unsigned bar, unsigned tempo_tenths, unsigned bar_ticks) {
-    unsigned seconds = unsigned(bar * (double(bar_ticks) / ticks_per_quarter) * 600.0 / tempo_tenths + 0.5);
+juce::String clock_of(const Song& song, unsigned bar, unsigned tempo_tenths, unsigned bar_ticks) { // through the tempo lane (roadmap P5)
+    unsigned seconds = unsigned(song.tempo.seconds(bar, double(bar_ticks) / ticks_per_quarter, std::max(tempo_tenths, 300u)) + 0.5);
     char text[16];
     std::snprintf(text, sizeof(text), "%u:%02u", seconds / 60, seconds % 60);
     return text;
@@ -94,7 +99,7 @@ void draw(Paint& p, const Snapshot& s) {
     float bw = (x1 - x0) / zoom;
     int selected_clip = song.clip_at(s.ui.track, cursor);
     Header h = header_of(s);
-    h.left.push_back(pill("BAR " + juce::String(cursor + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + clock_of(cursor, s.project.tempo, s.project.bar_ticks())));
+    h.left.push_back(pill("BAR " + juce::String(cursor + 1) + juce::String::fromUTF8(" \xc2\xb7 ") + clock_of(song, cursor, s.project.tempo, s.project.bar_ticks())));
     if (zoom == song_zooms[0]) h.left.push_back(pill("SNAP 1 BAR"));
     // Following MIDI clock or MTC in, its chip takes the loop's room (the ruler's brace still shows the loop).
     else if (song.looping() && !s.following) h.left.push_back(pill("LOOP " + juce::String(song.loop_start + 1) + dash() + juce::String(song.loop_end), colour::text));
@@ -110,7 +115,7 @@ void draw(Paint& p, const Snapshot& s) {
         frame(p, s, keys, h);
         p.dim_zone(zone::picture_y, zone::picture_h, 0.86f);
         p.dim_zone(zone::knobs_y, zone::knobs_h);
-        unsigned bars = song.length(), seconds = unsigned(bars * (double(s.project.bar_ticks()) / ticks_per_quarter) * 600.0 / std::max(1u, s.tempo) + 0.5);
+        unsigned bars = song.length(), seconds = unsigned(song.tempo.seconds(bars, double(s.project.bar_ticks()) / ticks_per_quarter, std::max(300u, unsigned(s.project.tempo))) + 0.5);
         if (!bars && kind != 4) { // nothing to export yet (a MIDI file takes the patterns playing)
             icon(p, Icon::Pattern, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::amber, 1.4f);
             p.text("EMPTY SONG", 0, zone::picture_y + 80, zone::width, 14, caps_text(colour::amber), juce::Justification::centred);
@@ -155,11 +160,59 @@ void draw(Paint& p, const Snapshot& s) {
             p.fill(rx - 1, lane_top - 4, 1, 3, colour::sec);
         }
     }
-    // Lanes: six tracks in view, the selected one among them.
-    unsigned first = std::min<unsigned>(s.ui.track >= 2 ? s.ui.track - 2 : 0, track_count - lanes);
-    for (unsigned row = 0; row < lanes; ++row) {
+    // Roadmap P5: the tempo lane, a strip over the tracks: its line across the view (a step straight up or down on
+    // its bar, a ramp sloping from the point before), a dot a point (the cursor's ringed), the tempo at the cursor.
+    bool tempo_lane = !song.tempo.empty();
+    float tracks_top = lane_top + (tempo_lane ? strip_h + 2 : 0);
+    unsigned shown = tempo_lane ? lanes - 1 : lanes;
+    if (tempo_lane) {
+        const auto& lane = song.tempo;
+        double low = lane.at(view, s.project.tempo), high = low; // the tempos in view, at least 10 BPM tall
+        auto take = [&](double t) { low = std::min(low, t); high = std::max(high, t); };
+        take(lane.at(view + zoom, s.project.tempo));
+        for (unsigned n = 0; n < lane.count; ++n)
+            if (lane.points[n].bar > view && lane.points[n].bar < view + zoom) { take(lane.points[n].tempo); take(lane.at(lane.points[n].bar - 0.001, s.project.tempo)); }
+        if (high - low < 100) { double mid = (high + low) / 2; low = mid - 50; high = mid + 50; }
+        float sy = lane_top, sh = strip_h;
+        auto y_of = [&](double tempo) { return sy + sh - 2 - float((tempo - low) / (high - low)) * (sh - 4); };
+        auto x_of = [&](double bar) { return x0 + float(bar - view) * bw; };
+        p.fill(x0, sy, x1 - x0, sh, colour::quiet, 2);
+        juce::Path line;
+        double now = lane.at(view, s.project.tempo);
+        line.startNewSubPath(x0, y_of(now));
+        for (unsigned n = 0; n < lane.count; ++n) {
+            const auto& pt = lane.points[n];
+            if (pt.bar <= view) continue;
+            if (pt.bar >= view + zoom) { // past the view: where its ramp has got to at the view's end
+                if (pt.ramp) line.lineTo(x1, y_of(lane.at(view + zoom, s.project.tempo)));
+                else line.lineTo(x1, y_of(now));
+                now = -1;
+                break;
+            }
+            float px = x_of(pt.bar);
+            if (pt.ramp) line.lineTo(px, y_of(pt.tempo));
+            else { line.lineTo(px, y_of(now)); line.lineTo(px, y_of(pt.tempo)); }
+            now = pt.tempo;
+        }
+        if (now >= 0) line.lineTo(x1, y_of(now));
+        p.g.setColour(colour::amber);
+        p.g.strokePath(line, juce::PathStrokeType(1.5f));
+        for (unsigned n = 0; n < lane.count; ++n) {
+            const auto& pt = lane.points[n];
+            if (pt.bar < view || pt.bar >= view + zoom) continue;
+            float px = x_of(pt.bar), py = y_of(pt.tempo);
+            if (pt.bar == cursor) p.ring(px - 3.5f, py - 3.5f, 7, 7, colour::text, 3.5f, 1.2f);
+            p.fill(px - 2, py - 2, 4, 4, colour::amber, 2);
+        }
+        double here = lane.at(cursor, s.project.tempo);
+        p.text(juce::String(int(std::lround(here / 10))), zone::pad, sy, 26, sh, plain(colour::amber, type::small, Weight::SemiBold),
+               juce::Justification::centred);
+    }
+    // Lanes: six tracks in view (five under the tempo lane), the selected one among them.
+    unsigned first = std::min<unsigned>(s.ui.track >= 2 ? s.ui.track - 2 : 0, track_count - shown);
+    for (unsigned row = 0; row < shown; ++row) {
         unsigned t = first + row;
-        float y = lane_top + row * (lane_h + lane_gap);
+        float y = tracks_top + row * (lane_h + lane_gap);
         auto tc = track_colour(t);
         bool selected = t == s.ui.track;
         if (selected) p.fill(zone::pad, y, 22, lane_h, tc, 3);
@@ -168,7 +221,7 @@ void draw(Paint& p, const Snapshot& s) {
         for (unsigned n = 0; n < song.count; ++n)
             if (song.clips[n].track == t) draw_clip(p, s, song.clips[n], y, view, bw, int(n) == selected_clip);
     }
-    float bottom = lane_top + lanes * (lane_h + lane_gap);
+    float bottom = tracks_top + shown * (lane_h + lane_gap);
     p.fill(x0 - 1, lane_top - 2, 0.5f, bottom - lane_top + 2, colour::line);
     // The cursor, and the playhead when the song plays.
     float cx = x0 + (float(cursor) - float(view)) * bw;

@@ -28,7 +28,8 @@ void meta(std::vector<uint8_t>& body, uint8_t type, const std::vector<uint8_t>& 
 }
 } // namespace
 
-std::vector<uint8_t> write_smf(const std::vector<SmfTrack>& tracks, unsigned tempo_tenths, unsigned beats, unsigned unit) {
+std::vector<uint8_t> write_smf(const std::vector<SmfTrack>& tracks, unsigned tempo_tenths, unsigned beats, unsigned unit,
+                               const SmfTempos& changes) {
     std::vector<uint8_t> out;
     std::vector<uint8_t> header;
     be16(header, 1); be16(header, uint32_t(tracks.size() + 1)); be16(header, smf_ppq);
@@ -40,6 +41,13 @@ std::vector<uint8_t> write_smf(const std::vector<SmfTrack>& tracks, unsigned tem
         unsigned power = 0;
         while ((1u << power) < std::max(unit, 1u) && power < 6) ++power;
         meta(body, 0x58, {uint8_t(std::clamp(beats, 1u, 64u)), uint8_t(power), 24, 8});
+        uint32_t last = 0;
+        for (const auto& [tick, tenths] : changes) { // roadmap P5: the tempo lane
+            uint32_t at = std::max(tick, last), us = uint32_t(std::lround(60000000.0 * 10.0 / std::max(tenths, 10u)));
+            vlq(body, at - last); body.push_back(0xff); body.push_back(0x51); vlq(body, 3);
+            body.push_back(uint8_t(us >> 16)); body.push_back(uint8_t(us >> 8)); body.push_back(uint8_t(us));
+            last = at;
+        }
         meta(body, 0x2f, {});
         chunk(out, "MTrk", body);
     }
@@ -65,6 +73,21 @@ std::vector<uint8_t> write_smf(const std::vector<SmfTrack>& tracks, unsigned tem
         }
         vlq(body, 0); body.push_back(0xff); body.push_back(0x2f); body.push_back(0);
         chunk(out, "MTrk", body);
+    }
+    return out;
+}
+
+SmfTempos smf_tempos(const Project& project) {
+    SmfTempos out;
+    const auto& lane = project.song.tempo;
+    unsigned bars = project.song.length();
+    if (lane.empty() || !bars) return out;
+    uint32_t bar = std::max(1u, project.bar_ticks());
+    long was = std::lround(lane.at(0, project.tempo));
+    if (was != long(project.tempo)) out.push_back({0, unsigned(was)});
+    for (uint32_t tick = sixteenth_ticks; tick < bars * bar; tick += sixteenth_ticks) {
+        long now = std::lround(lane.at(double(tick) / bar, project.tempo));
+        if (now != was) { out.push_back({tick, unsigned(now)}); was = now; }
     }
     return out;
 }

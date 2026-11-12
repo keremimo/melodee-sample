@@ -897,6 +897,18 @@ const Preview previews[] {
     {"songshift", [](Shell&, Snapshot& s) { // and with Shift held
          s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 26; s.ui.song_view = 16; s.ui.shift = true;
      }},
+    // Roadmap P5: the song's tempo lane, a step up on bar 9, a ramp to 140 on bar 17, a step down on bar 25; the
+    // cursor on the ramp's point, Shift held: its tempo and shape on K1 and K2.
+    {"songtempo", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 16; s.ui.song_view = 4; s.ui.song_zoom = 2; s.ui.shift = true;
+         s.project.song.tempo.set(8, 1280, false); s.project.song.tempo.set(16, 1400, true); s.project.song.tempo.set(24, 1000, false);
+         s.playing = s.song_playing = true; s.song_bar = 13; s.ticks = 48 * 4;
+     }},
+    {"songtempoadd", [](Shell&, Snapshot& s) { // the cursor between points: Shift + K1 adds one at the lane's tempo there
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 12; s.ui.song_view = 4; s.ui.song_zoom = 2; s.ui.shift = true;
+         s.project.song.tempo.set(8, 1280, false); s.project.song.tempo.set(16, 1400, true);
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"rack", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 1; s.playing = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;

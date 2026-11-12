@@ -559,6 +559,14 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {tap, Binding {}, Binding {Kind::RecGain, 0, -12, 24, in.gain}};
     }
     case PageId::Patterns: return pattern_shift_cards(project, ui, pattern);
+    case PageId::Song: { // roadmap P5: the tempo lane at the cursor's bar: its tempo, and (a point there) its shape
+        if (ui.song_export) return {};
+        const auto& lane = project.song.tempo;
+        int at = lane.at_bar(ui.song_cursor);
+        int tempo = at >= 0 ? (lane.points[size_t(at)].tempo + 5) / 10 : int(std::lround(lane.at(ui.song_cursor, project.tempo) / 10));
+        Binding shape = at >= 0 ? Binding {Kind::SongTempoShape, 0, 0, 1, int(lane.points[size_t(at)].ramp)} : Binding {};
+        return {Binding {Kind::SongTempo, 0, 29, 300, tempo}, shape, Binding {}};
+    }
     case PageId::Scenes: // roadmap P5: Shift + K1 the follow action's second, on the odds the first leaves
         if (!track.used()) return {};
         return {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}};

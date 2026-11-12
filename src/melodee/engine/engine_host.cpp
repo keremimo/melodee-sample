@@ -132,11 +132,23 @@ void EngineHost::set_audio_format(double frames_a_second, uint64_t latency_frame
 
 void EngineHost::follow_tempo() {
     unsigned own = pattern_tempo[lead % pattern_count];
-    uint16_t now = uint16_t(ext_on && ext_tempo ? ext_tempo : seq_tempo && own ? own : global_tempo); // MIDI clock in leads
+    // MIDI clock in leads; then the song's tempo lane while the song plays (roadmap P5); then BPM per pattern.
+    uint16_t now = uint16_t(ext_on && ext_tempo ? ext_tempo : song_mode && lane_tempo ? lane_tempo : seq_tempo && own ? own : global_tempo);
     if (now == tempo) return;
     tempo = now;
     for (auto& s : slots) s.sampler.set_tempo(tempo);
     tempo_shown.store(tempo, std::memory_order_relaxed);
+}
+
+// Roadmap P5: while the song plays, the tempo its lane has where it is now (a ramp worked out a tick at a time).
+void EngineHost::follow_lane() {
+    if (song_mode && !song.tempo.empty()) {
+        double at = double(song_bar_now) + double(tick_now % std::max(bar, 1u)) / std::max(bar, 1u);
+        lane_tempo = uint16_t(std::clamp<long>(std::lround(song.tempo.at(at, global_tempo)), 300, 3000));
+    } else {
+        lane_tempo = 0;
+    }
+    follow_tempo();
 }
 
 void EngineHost::retire(Pattern* pattern) {
@@ -749,6 +761,14 @@ void EngineHost::apply(const Command& c) {
         if (slot.chained) slot.follow_do = 0;
         else if (running && !song_mode && !slot.silent) plan_follow(c.track % track_count);
         break;
+    case Type::SongTempo: // roadmap P5: the song's tempo lane, a point at a time (sync_song)
+        if (c.index < song_tempo_points)
+            song.tempo.points[c.index] = {uint16_t(std::min<uint32_t>(c.position, song_bars - 1)), uint16_t(std::clamp<int>(c.value, 300, 3000)), c.pattern != 0};
+        break;
+    case Type::SongTempoCount:
+        song.tempo.count = uint8_t(std::clamp<int>(c.value, 0, int(song_tempo_points)));
+        follow_lane();
+        break;
     case Type::SceneTempo: // roadmap P5: on the bar the scene's patterns launch on; stopped, at once
         if (running && !song_mode) scene_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
         else { global_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000)); scene_tempo = 0; follow_tempo(); }
@@ -773,6 +793,7 @@ void EngineHost::apply(const Command& c) {
         in_song.store(song_mode, std::memory_order_relaxed);
         stopped_now.store(0, std::memory_order_relaxed);
         for (unsigned t = 0; t < track_count; ++t) plan_follow(t); // roadmap P5: from each pattern's top (not in the song)
+        follow_lane(); // roadmap P5: the song's tempo where it starts, its count-in too
         if (render_out.cued()) { // a render starts with the first frame played
             if (bounce_song != song_mode || count_left) render_out.cancel();
             else render_out.begin(0);
@@ -792,6 +813,7 @@ void EngineHost::apply(const Command& c) {
         for (auto& k : kept) { if (k.on) k.punch.stop(); k.on = k.due = false; } // pad-fx C
         song_mode = false;
         in_song.store(false, std::memory_order_relaxed);
+        follow_lane(); // roadmap P5: the project's tempo again
         for (unsigned t = 0; t < track_count; ++t) {
             positions_now[t].store(-1, std::memory_order_relaxed);
             for (auto& skip : slots[t].skips) skip.key = -1;
@@ -809,7 +831,7 @@ void EngineHost::apply(const Command& c) {
     case Type::Tempo:
         global_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
         scene_tempo = 0; // set by hand after a scene's: the hand's
-        follow_tempo();
+        follow_lane();   // the song's lane starts from it (roadmap P5)
         break;
     case Type::PatternTempo:
         pattern_tempo[c.index % pattern_count] = uint16_t(c.value ? std::clamp<int>(c.value, 300, 3000) : 0);
@@ -1495,6 +1517,8 @@ void EngineHost::mtc_off() {
 // as many times as fits). Song: the bar and the tick in it, round the loop as the song plays it; past its end, it stops.
 void EngineHost::mtc_place(double seconds) {
     double ticks = std::max(0.0, seconds) * tempo / 10.0 / 60.0 * ticks_per_quarter;
+    if (song_mode && !song.tempo.empty()) // roadmap P5: through the song's tempo lane, bar by bar
+        ticks = song.tempo.bars_at(std::max(0.0, seconds), double(bar) / ticks_per_quarter, global_tempo) * bar;
     auto at = uint32_t(std::ceil(ticks - 1e-9));
     sync_stop(frame_now); // the clocks out go on from the new place
     count_left = 0; count_beat.store(0, std::memory_order_relaxed);
@@ -2036,6 +2060,7 @@ void EngineHost::tick() {
     if (!bounce_song && render_out.running() && tick_now >= bounce_ticks) render_out.finish(block_at);
     if (tick_now % bar == 0) bar_start();
     if (!running) return;
+    if (song_mode && !song.tempo.empty()) follow_lane(); // roadmap P5: the tempo lane, this tick's tempo before its length
     if (!song_mode) // roadmap P5: follow actions due on this tick, before the tick's notes (a launch waiting for its bar first)
         for (unsigned t = 0; t < track_count; ++t) {
             auto& slot = slots[t];

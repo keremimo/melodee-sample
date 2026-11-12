@@ -10738,7 +10738,117 @@ void capture_p5() {
     static_assert(sizeof(CaptureRing) < 256 * 1024, "the ring stays small");
 }
 
+// Roadmap P5: the song's tempo lane, stepped or ramped; the audio thread follows it a tick at a time while the song
+// plays, so everything on the clock does; kept in TMPL; a MIDI file carries it.
+void tempo_lane_p5() {
+    TempoLane lane;
+    CHECK(lane.empty() && lane.at(5, 1200) == 1200);
+    CHECK(lane.set(8, 1400, true) && lane.set(4, 1000, false) && lane.set(12, 900, false) && lane.count == 3);
+    CHECK(lane.points[0].bar == 4 && lane.points[1].bar == 8 && lane.points[2].bar == 12);
+    CHECK(lane.set(8, 1600, true) && lane.count == 3 && lane.points[1].tempo == 1600); // the bar's point replaced
+    CHECK(lane.at(3.9, 1200) == 1200 && lane.at(4, 1200) == 1000 && lane.at(6, 1200) == 1300 && lane.at(8, 1200) == 1600 &&
+          lane.at(11.5, 1200) == 1600 && lane.at(12, 1200) == 900 && lane.at(400, 1200) == 900);
+    CHECK(lane.at_bar(8) == 1 && lane.at_bar(9) == -1 && lane.erase(8) && !lane.erase(8) && lane.count == 2);
+    CHECK(lane.at(6, 1200) == 1000); // with the ramp gone, the step's tempo holds
+    TempoLane first; first.set(2, 1800, true); // a ramp from bar 1 at the project's tempo
+    CHECK(std::fabs(first.at(1, 1200) - 1500) < 1e-9);
+    // Seconds: four bars of 4/4 at 120 BPM are 8 s; a ramp 120 -> 240 over two bars takes 4 s * ln 2.
+    TempoLane plain;
+    CHECK(std::fabs(plain.seconds(4, 4, 1200) - 8) < 1e-9);
+    TempoLane ramp; ramp.set(2, 2400, true);
+    CHECK(std::fabs(ramp.seconds(2, 4, 1200) - 4 * std::log(2.0)) < 1e-6 && std::fabs(ramp.seconds(3, 4, 1200) - (4 * std::log(2.0) + 1)) < 1e-6);
+    CHECK(std::fabs(ramp.bars_at(ramp.seconds(1.37, 4, 1200), 4, 1200) - 1.37) < 1e-6);
+    // The file: TMPL; without it the project's tempo throughout.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->song.tempo.set(16, 1335, true); project->song.tempo.set(3, 900, false);
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back->song.tempo == project->song.tempo);
+        std::string text(data.begin(), data.end());
+        data[text.find("TMPL")] = 'X';
+        CHECK(load_project(data, *back, *back_bank).empty() && back->song.tempo.empty());
+    }
+    // Song's Shift + K1 / K2: the point at the cursor (none: the lane's tempo there, no shape).
+    {
+        auto project = std::make_unique<Project>();
+        project->tempo = 1200;
+        project->song.tempo.set(4, 1500, true);
+        UiState ui;
+        ui.page = PageId::Song; ui.song_cursor = 4;
+        Pattern none;
+        auto cards = shift_bindings(*project, ui, none);
+        CHECK(cards[0].kind == Binding::Kind::SongTempo && cards[0].value == 150 && cards[0].min == 29 &&
+              cards[1].kind == Binding::Kind::SongTempoShape && cards[1].value == 1);
+        ui.song_cursor = 2;
+        cards = shift_bindings(*project, ui, none);
+        CHECK(cards[0].value == 135 && !cards[1].bound());
+    }
+    // Heard: a MIDI track's note each bar of a four-bar clip, the lane stepping to 60 BPM on bar 2 and ramping to 240
+    // over bars 3 and 4. Bar 1 lasts 2 s, bar 2 4 s; the click's clock (the effects') follows; the tempo shown too.
+    {
+        using namespace midi_track;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+        project->tempo = 1200;
+        put(bank->at[0][0], 0, 60, 100);
+        project->song.place({0, 0, 0, 6, false});
+        project->song.tempo.set(1, 600, false);
+        project->song.tempo.set(2, 600, false);
+        project->song.tempo.set(4, 2400, true);
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        tones_for(*host, *project);
+        host->set_audio_format(44100, 384);
+        Command play {Command::Type::Play, 0, 0, 0, 1};
+        host->send(play);
+        std::vector<int32_t> buffer(256);
+        std::vector<uint64_t> ons;
+        double quarter_in_bar2 = 0;
+        unsigned tempo_in_bar2 = 0, tempo_mid_ramp = 0;
+        for (unsigned b = 0; b < 4200 && ons.size() < 5; ++b) {
+            host->render(buffer.data(), 128, 1);
+            MidiOutEvent e;
+            while (host->take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn) ons.push_back(e.frame);
+            if (host->song_bar() == 1 && host->ticks() % 384 >= 100 && !tempo_in_bar2) { tempo_in_bar2 = host->tempo_now(); quarter_in_bar2 = effect_clock.quarter; }
+            if (host->song_bar() == 2 && host->ticks() % 384 == 192) tempo_mid_ramp = host->tempo_now();
+        }
+        CHECK(ons.size() >= 4);
+        if (ons.size() >= 4) {
+            CHECK(std::llabs(int64_t(ons[1] - ons[0]) - 88200) <= 2);  // bar 1 at 120 BPM
+            CHECK(std::llabs(int64_t(ons[2] - ons[1]) - 176400) <= 2); // bar 2 at 60
+            const auto& lane = project->song.tempo; // bar 3, the first half of the ramp 60 -> 240 over bars 3 and 4
+            double ramp = (lane.seconds(3, 4, 1200) - lane.seconds(2, 4, 1200)) * 44100;
+            CHECK(std::fabs(double(ons[3] - ons[2]) - ramp) < 0.002 * ramp); // within the ramp's tenths' steps
+        }
+        CHECK(tempo_in_bar2 == 600 && std::fabs(quarter_in_bar2 - 44100) < 1);
+        CHECK(tempo_mid_ramp >= 1000 && tempo_mid_ramp <= 1400); // half way through bar 3: 60 + 180 / 4 = 105 BPM
+        host->send({Command::Type::Stop});
+        host->render(buffer.data(), 128, 1);
+        CHECK(host->tempo_now() == 1200); // the patterns: the project's
+    }
+    // A MIDI file of the song: a tempo change where the lane steps, and as the ramp moves.
+    {
+        auto project = std::make_unique<Project>();
+        project->tempo = 1200;
+        project->song.place({0, 0, 0, 4, false});
+        project->song.tempo.set(1, 900, false);
+        project->song.tempo.set(3, 1200, true);
+        auto tempos = smf_tempos(*project);
+        CHECK(!tempos.empty() && tempos[0].first == 384 && tempos[0].second == 900 && tempos.back().second == 1200 && tempos.size() > 10);
+        auto bytes = write_smf({}, 1200, 4, 4, tempos);
+        unsigned count = 0;
+        for (size_t n = 0; n + 2 < bytes.size(); ++n) count += bytes[n] == 0xff && bytes[n + 1] == 0x51 && bytes[n + 2] == 3;
+        CHECK(count == tempos.size() + 1);
+    }
+}
+
 int main() {
+    tempo_lane_p5();
     capture_p5();
     scenes_p5();
     exports_p4();
