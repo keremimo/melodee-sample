@@ -130,6 +130,7 @@ int dsp_bench(int argc, char** argv) {
     host.set_render_threads(threads, 150000, pinned);
     host.set_one_dispatch(whole);
     host.set_render_spin(spin, linger);
+    host.set_overload_guard(true); // as Melodee runs
     host.load(*project, *bank);
     host.set_audio_format(rate, 384);
     {
@@ -186,10 +187,10 @@ int dsp_bench(int argc, char** argv) {
     for (float us : took) mean += us;
     mean /= std::max<size_t>(took.size(), 1);
     auto at = [&](double q) { return sorted.empty() ? 0.0f : sorted[std::min(sorted.size() - 1, size_t(q * sorted.size()))]; };
-    std::printf("MELODEE_DSP_BENCH mode=%s linger=%d pin=%d threads=%u spin=%u tracks=%u rate=%u realtime=%d blocks=%u period_us=%.0f "
+    std::printf("MELODEE_DSP_BENCH guard=%u/%u mode=%s linger=%d pin=%d threads=%u spin=%u tracks=%u rate=%u realtime=%d blocks=%u period_us=%.0f "
                 "mean_us=%.0f p50_us=%.0f p99_us=%.0f max_us=%.0f over=%u cpu_pct=%.1f audio_thread_pct=%.1f workers_pct=%.1f "
                 "parallel_blocks=%llu calls_lost=%u\n",
-                whole ? "whole" : "split", int(linger), int(pinned), threads, spin, tracks, rate, int(realtime), blocks, period_ns / 1000.0, mean, at(0.5),
+                host.guard_steals(), host.guard_blocks(), whole ? "whole" : "split", int(linger), int(pinned), threads, spin, tracks, rate, int(realtime), blocks, period_ns / 1000.0, mean, at(0.5),
                 at(0.99), sorted.empty() ? 0.0f : sorted.back(), over, 100 * cpu / wall, 100 * own / wall, 100 * (cpu - own) / wall,
                 (unsigned long long)host.render_parallel_blocks(), host.calls_lost());
     return 0;

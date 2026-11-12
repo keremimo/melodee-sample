@@ -166,6 +166,13 @@ public:
     // (the peak, falling slowly, as render_load()); and the busiest track now (-1: none takes any).
     float track_load(unsigned t) const { return track_loads[t % track_count].load(std::memory_order_relaxed); }
     int busiest_track() const;
+    // Any thread (roadmap P2), the overload guard: on (Melodee's) or off (the default: a test's output must not hang
+    // on how fast its computer is); the voices it stole and the blocks it lightened, since start.
+    void set_overload_guard(bool on) { guard_allowed.store(on, std::memory_order_relaxed); }
+    uint32_t guard_steals() const { return guard_stolen.load(std::memory_order_relaxed); }
+    uint32_t guard_blocks() const { return guard_eased.load(std::memory_order_relaxed); }
+    // Tests: every block counted as taking `share` of its time (below 0: as measured).
+    void set_guard_test_share(float share) { guard_test.store(share, std::memory_order_relaxed); }
     uint64_t render_parallel_blocks() const { return parallel_blocks.load(std::memory_order_relaxed); }
     // The Looper (docs/LOOPER.md): its loops play into the tracks L1-L4, after the sixteen.
     Looper& looper() { return loops; }
@@ -517,10 +524,21 @@ private:
     uint32_t song_punch_until = 0; // the tick a song punch lets go
     void play_song_punches();      // on each sixteenth of the song: punches written there
     // pad-fx C (round 2): punches kept with patterns, four at once, each in series on its target before the live
-    // ones (a punch by hand plays over them) and let go after its length.
-    struct Kept { Punch punch; uint8_t target = 255; uint32_t until = 0; bool on = false; };
+    // ones and let go after its length (`due` until then). A live punch wins: while one sounds the kept ones are
+    // quiet, and they come back for the rest of their length when it lets go.
+    struct Kept {
+        Punch punch;
+        uint8_t target = 255;
+        uint32_t until = 0;
+        bool on = false, due = false;
+        PunchKind kind {};
+        float depth = 1;
+        unsigned snap = 2, tail = 1;
+    };
     std::array<Kept, live_slots> kept;
     void play_pattern_punches(const Pattern& pattern, uint32_t at); // a track's pattern at `at`: punches kept there
+    void sound_kept(Kept& k);                                       // a kept punch heard (again)
+    bool hand_punch() const;                                        // a live punch sounds
     void start_punch(const PendingPunch& p);
     double bar_length() const { return tick_length() * bar; }
     std::array<Slot, track_count> slots;
@@ -537,6 +555,15 @@ private:
     uint64_t track_work_ns = 0;
     std::atomic<float> block_load {0};
     std::array<std::atomic<float>, track_count> track_loads {};
+    // The overload guard (roadmap P2): from guard_on of a block's time the next block starts with the busiest track's
+    // oldest voice stolen and every released voice's tail hurried; down to guard_off the tails stay hurried.
+    static constexpr float guard_on = 0.85f, guard_off = 0.7f;
+    float last_share = 0; // the last block's time against its budget
+    bool guarding = false;
+    std::atomic<uint32_t> guard_stolen {0}, guard_eased {0};
+    std::atomic<float> guard_test {-1};
+    std::atomic<bool> guard_allowed {false};
+    void guard();
     std::atomic<bool> parallel_allowed {true};
     std::atomic<uint64_t> parallel_blocks {0};
     bool plugin_in_two_places() const;

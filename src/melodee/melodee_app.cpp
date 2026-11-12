@@ -61,6 +61,7 @@ MelodeeApp::MelodeeApp()
         workers = pinned ? 2u : unsigned(std::clamp(std::atoi(own), 0, 7));
     }
     host.set_render_threads(workers, 150000, pinned);
+    host.set_overload_guard(true); // near a block's time, voices go before a dropout comes (roadmap P2)
 }
 
 // A dropout (roadmap P2): the busiest track as it came, its share of a block (both held at their recent peak).
@@ -444,5 +445,6 @@ std::string MelodeeApp::status() const {
          + " melodee_render_parallel=" + std::to_string(host.render_parallel_blocks())
          + " melodee_dropout_track=" + std::to_string(dropout_track.load(std::memory_order_relaxed)) // the busiest at the last dropout
          + " melodee_dropout_load=" + std::to_string(dropout_load.load(std::memory_order_relaxed))   // its share then, tenths of a percent
+         + " melodee_guard=" + std::to_string(host.guard_steals()) + "/" + std::to_string(host.guard_blocks()) // voices stolen / blocks eased
          + " " + shell.summary();
 }

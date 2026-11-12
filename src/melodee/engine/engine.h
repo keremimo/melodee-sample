@@ -52,6 +52,9 @@ public:
         note_off(from);
     }
     virtual void render(float* out, unsigned frames) = 0;
+    // Roadmap P2, the overload guard (EngineHost): the blocks are near their time, so the next ones must be lighter.
+    // Every voice already let go ends its tail in a few tens of ms; with `steal` the oldest held voice too.
+    virtual bool relieve(bool /*steal*/) { return false; } // true: a voice was stolen
     // An engine with its own stereo picture (the sampler's pad pans) renders
     // both sides itself; the track's pan then works as a balance.
     virtual bool stereo() const { return false; }

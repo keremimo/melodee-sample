@@ -82,6 +82,12 @@ one owner per piece of state.
   every thread floats over the four (measured faster on the MPC).
   `--melodee-dsp-bench` plays a busy project as the audio thread would and
   prints block times and CPU, for comparing on the MPC.
+- **Overload guard**: a block that took 85 % of its time or more makes the
+  next lighter before one runs late: the busiest track (its engine and
+  chain, last block) gives up its oldest voice, faded in tens of ms, and
+  every engine's released voices end their tails as fast (a kit's pads
+  let go are choked). Until the blocks come back under 70 % the tails stay
+  short and no more voices go. The 909 and plug-ins have none to give.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
@@ -1328,7 +1334,8 @@ and Melodee's:
 time against its budget, tenths of a percent), `melodee_render_parallel`
 (blocks the workers helped with), `melodee_dropout_track` and
 `melodee_dropout_load` (at the last dropout the busiest track, 1–16, 0
-none, and its share of a block in tenths of a percent), the
+none, and its share of a block in tenths of a percent), `melodee_guard`
+(voices the overload guard stole / blocks it lightened), the
 page and track, the lit buttons (`melodee_buttons=seq:2,stop:1`, 1 faint,
 2 bright) and pads (`melodee_pads=2:t4`: hue and rung, Pad lights above), the meters (`melodee_meter=3,1,out`:
 left and right as masks, bit 0 the bottom LED, then `out` or `in`); the sequencer (`melodee_rec`,

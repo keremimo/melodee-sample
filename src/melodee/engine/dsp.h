@@ -95,9 +95,14 @@ struct Envelope {
     enum class Stage : uint8_t { Idle, Attack, Decay, Sustain, Release };
     Stage stage = Stage::Idle;
     float level = 0;
+    bool hurried = false; // the overload guard's (roadmap P2): released in about 30 ms, whatever its own release
     struct Shape { float attack = 0.999f, decay = 0.999f, release = 0.999f, sustain = 1; };
     static float coefficient(float seconds) { return std::exp(-1.0f / std::max(seconds * sample_rate(), 1.0f) * 3.0f); }
-    void gate(bool on) { stage = on ? Stage::Attack : (stage == Stage::Idle ? Stage::Idle : Stage::Release); }
+    void gate(bool on) {
+        if (on) hurried = false;
+        stage = on ? Stage::Attack : (stage == Stage::Idle ? Stage::Idle : Stage::Release);
+    }
+    void hurry() { if (stage != Stage::Idle) { stage = Stage::Release; hurried = true; } }
     float next(const Shape& s) {
         switch (stage) {
         case Stage::Attack:
@@ -110,7 +115,7 @@ struct Envelope {
             break;
         case Stage::Sustain: level = s.sustain; break;
         case Stage::Release:
-            level = level * s.release;
+            level = level * (hurried ? 0.993f : s.release); // hurried: -40 dB in about 1300 frames
             if (level < 1e-4f) { level = 0; stage = Stage::Idle; }
             break;
         case Stage::Idle: level = 0; break;

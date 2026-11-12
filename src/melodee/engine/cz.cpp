@@ -211,6 +211,20 @@ void CzEngine::all_notes_off() { step.restart(); for (auto& v : voices) if (v.he
 void CzEngine::silence() { step.restart(); for (auto& v : voices) v = Voice {}; }
 bool CzEngine::sounding() const { for (auto& v : voices) if (v.key >= 0) return true; return false; }
 
+// The overload guard (Engine::relieve): tails hurried; with `steal`, the oldest held voice let go and hurried too.
+bool CzEngine::relieve(bool steal) {
+    step.restart();
+    Voice* oldest = nullptr;
+    for (auto& v : voices) {
+        if (v.key < 0) continue;
+        if (!v.held) { v.dca.hurry(); v.dcw.hurry(); continue; }
+        if (!oldest || v.age < oldest->age) oldest = &v;
+    }
+    if (!steal || !oldest) return false;
+    oldest->held = false; oldest->dca.hurry(); oldest->dcw.hurry();
+    return true;
+}
+
 void CzEngine::render(float* out, unsigned frames) {
     if (dirty) update();
     unsigned line = unsigned(p[Line]);

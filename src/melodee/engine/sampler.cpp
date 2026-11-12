@@ -553,6 +553,20 @@ SamplerEngine::Lane* SamplerEngine::lane_for(int pad) {
     return free;
 }
 
+// The overload guard (Engine::relieve): a pad already let go (its envelope releasing) fades out at once, as a choke
+// does; with `steal`, the oldest voice too.
+bool SamplerEngine::relieve(bool steal) {
+    Voice* oldest = nullptr;
+    for (auto& v : voices) {
+        if (v.pad < 0 || v.choked) continue;
+        if (v.env.stage == dsp::Envelope::Stage::Release) { v.choked = true; continue; }
+        if (!oldest || v.age < oldest->age) oldest = &v;
+    }
+    if (!steal || !oldest) return false;
+    oldest->choked = true;
+    return true;
+}
+
 void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     // Clouds: their voices only place grains; the grains play.
     for (auto& v : voices) {

@@ -45,6 +45,7 @@ public:
     void set_accent(float gain) override { accent = gain; }
     void slide(int from, int to, int velocity, bool glide) override;
     void render(float* out, unsigned frames) override;
+    bool relieve(bool steal) override;
     bool sounding() const override;
 
 private:

@@ -206,6 +206,20 @@ void ProphetEngine::control(Voice& v) {
     v.gain = std::max(0.0f, expression::velocity_gain(v.velocity, p[VelAmp] / 100.0f) * (1.0f + at(m, ModDest::AmpLevel))) * v.accent;
 }
 
+// The overload guard (Engine::relieve): tails hurried; with `steal`, the oldest held voice let go and hurried too.
+bool ProphetEngine::relieve(bool steal) {
+    step.restart();
+    Voice* oldest = nullptr;
+    for (auto& v : voices) {
+        if (!v.amp_env.active()) continue;
+        if (!v.held) { v.amp_env.hurry(); continue; }
+        if (!oldest || v.age < oldest->age) oldest = &v;
+    }
+    if (!steal || !oldest) return false;
+    oldest->held = false; oldest->amp_env.hurry();
+    return true;
+}
+
 void ProphetEngine::render(float* out, unsigned frames) {
     if (dirty) update();
     // Unison stacks every voice on one key: their detuned sum, as loud as one voice (output_trim.h).

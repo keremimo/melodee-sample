@@ -188,6 +188,20 @@ void Fm6Engine::all_notes_off() { step.restart(); for (auto& v : voices) if (v.h
 void Fm6Engine::silence() { step.restart(); for (auto& v : voices) v = Voice {}; }
 bool Fm6Engine::sounding() const { for (auto& v : voices) if (v.key >= 0) return true; return false; }
 
+// The overload guard (Engine::relieve): tails hurried; with `steal`, the oldest held voice let go and hurried too.
+bool Fm6Engine::relieve(bool steal) {
+    step.restart();
+    Voice* oldest = nullptr;
+    for (auto& v : voices) {
+        if (v.key < 0) continue;
+        if (!v.held) { for (auto& e : v.env) e.hurry(); continue; }
+        if (!oldest || v.age < oldest->age) oldest = &v;
+    }
+    if (!steal || !oldest) return false;
+    oldest->held = false; for (auto& e : oldest->env) e.hurry();
+    return true;
+}
+
 void Fm6Engine::render(float* out, unsigned frames) {
     if (dirty) update();
     using expression::at;

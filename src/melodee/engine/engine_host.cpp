@@ -712,7 +712,7 @@ void EngineHost::apply(const Command& c) {
         cue_track = -1;
         count_left = 0; count_beat.store(0, std::memory_order_relaxed);
         if (punch_from_song) { punch.stop(); punch_from_song = false; }
-        for (auto& k : kept) if (k.on) { k.punch.stop(); k.on = false; } // pad-fx C
+        for (auto& k : kept) { if (k.on) k.punch.stop(); k.on = k.due = false; } // pad-fx C
         song_mode = false;
         in_song.store(false, std::memory_order_relaxed);
         for (unsigned t = 0; t < track_count; ++t) {
@@ -1385,20 +1385,36 @@ void EngineHost::play_song_punches() {
     }
 }
 
-// pad-fx C (round 2): punches kept with a track's pattern, each started on its tick as the pattern plays, in a kept
-// slot of its own (a free one, else the one ending soonest), and let go after its length.
+// pad-fx C (round 2): punches kept with a track's pattern, each due from its tick as the pattern plays, in a kept
+// slot of its own (a free one, else the one ending soonest), and let go after its length; heard at once unless a
+// live punch sounds (it wins).
 void EngineHost::play_pattern_punches(const Pattern& pattern, uint32_t at) {
+    bool hand = hand_punch();
     for (const auto& e : pattern.punches) {
         if (e.tick != at) continue;
         Kept* slot = nullptr;
-        for (auto& k : kept) if (!k.on) { slot = &k; break; }
+        for (auto& k : kept) if (!k.due) { slot = &k; break; }
         if (!slot) { slot = &kept[0]; for (auto& k : kept) if (k.until < slot->until) slot = &k; }
         if (e.target != slot->target) { slot->punch.clear(); slot->target = e.target; } // a new signal: the old history is not its own
-        auto kind = PunchKind(e.kind % punch_count);
-        slot->punch.start(kind, e.depth / 100.0f, bar_length(), bar_length() / (4u << (e.snap & 3)), e.tail % 3, params_of(kind));
-        slot->on = true;
+        slot->kind = PunchKind(e.kind % punch_count);
+        slot->depth = e.depth / 100.0f;
+        slot->snap = e.snap & 3u;
+        slot->tail = e.tail % 3u;
+        slot->due = true;
         slot->until = tick_now + std::max<uint32_t>(1, e.length);
+        if (!hand) sound_kept(*slot);
+        else if (slot->on) { slot->punch.stop(); slot->on = false; }
     }
+}
+
+void EngineHost::sound_kept(Kept& k) {
+    k.punch.start(k.kind, k.depth, bar_length(), bar_length() / (4u << k.snap), k.tail, params_of(k.kind));
+    k.on = true;
+}
+
+bool EngineHost::hand_punch() const {
+    for (const auto& l : live) if (l.punch.on()) return true;
+    return false;
 }
 
 // One note of a track's pattern on its tick: `at` where it starts in a loop of `loop` ticks (the pattern's, or its
@@ -1504,7 +1520,14 @@ void EngineHost::tick() {
     if (tick_now % bar == 0) bar_start();
     if (!running) return;
     if (song_mode && tick_now % sixteenth_ticks == 0) play_song_punches();
-    for (auto& k : kept) if (k.on && tick_now >= k.until) { k.punch.stop(); k.on = false; } // pad-fx C: a kept punch's length
+    { // pad-fx C: a kept punch's length; a live punch wins while it sounds, the kept ones back for the rest of theirs after
+        bool hand = hand_punch();
+        for (auto& k : kept) {
+            if (k.due && tick_now >= k.until) k.due = false;
+            if (k.on && (!k.due || hand)) { k.punch.stop(); k.on = false; }
+            else if (!k.on && k.due && !hand) sound_kept(k);
+        }
+    }
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         bool sound = slot.engine != nullptr, midi = out_channel[t] && out_mode[t]; // an empty track may still play MIDI out
@@ -1624,6 +1647,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // wake-up is not added to the block's time; after the block's last run they sleep until the next.
     bool whole = whole_blocks.load(std::memory_order_relaxed);
     if (whole && parallel) workers.wake();
+    guard(); // the overload guard, at the block's first frame (roadmap P2)
     track_ns.fill(0);
     if (reformatting) { // a new rate: silent until the Reload has built everything again at it
         std::fill(out, out + 2 * frames, 0);
@@ -1992,6 +2016,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         for (unsigned j = k; j > 0 && track_ns[order[j]] > track_ns[order[j - 1]]; --j) std::swap(order[j], order[j - 1]);
     double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - block_start).count();
     float share = float(took * dsp::sample_rate() / std::max(frames, 1u));
+    float tested = guard_test.load(std::memory_order_relaxed);
+    last_share = tested >= 0 ? tested : share;
     float shown = block_load.load(std::memory_order_relaxed) * 0.995f;
     block_load.store(std::max(share, shown), std::memory_order_relaxed);
     for (unsigned t = 0; t < track_count; ++t) { // each track's own, the same way (roadmap P2)
@@ -2007,6 +2033,23 @@ void EngineHost::set_render_threads(unsigned count, uint64_t from_ns, bool pinne
     for (unsigned n = 0; n < cores.size(); ++n) cores[n] = int(2 + n);
     pin_audio = pinned ? 1 : -1;
     workers.start(count, render_priority, pinned ? cores.data() : nullptr);
+}
+
+// The overload guard (roadmap P2): a block that took nearly its whole time makes the next ones lighter before one runs
+// late. From guard_on the busiest track of the last block (its engine and chain) gives up its oldest voice, and every
+// engine's released voices end their tails in a few tens of ms; down to guard_off the tails are still hurried. Audio
+// thread, at a block's first frame (the engines told at once: nothing of the block is rendered yet).
+void EngineHost::guard() {
+    if (!guard_allowed.load(std::memory_order_relaxed)) { guarding = false; return; }
+    if (float tested = guard_test.load(std::memory_order_relaxed); tested >= 0) last_share = tested;
+    bool over = last_share >= guard_on;
+    guarding = over || (guarding && last_share >= guard_off);
+    if (!guarding) return;
+    int busiest = -1;
+    for (unsigned k = 0; k < track_count && busiest < 0; ++k) if (slots[order[k]].engine && track_ns[order[k]]) busiest = order[k];
+    for (unsigned t = 0; t < track_count; ++t)
+        if (slots[t].engine && slots[t].engine->relieve(over && int(t) == busiest)) guard_stolen.fetch_add(1, std::memory_order_relaxed);
+    guard_eased.fetch_add(1, std::memory_order_relaxed);
 }
 
 int EngineHost::busiest_track() const {

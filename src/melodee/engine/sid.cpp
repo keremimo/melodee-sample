@@ -116,6 +116,20 @@ void SidEngine::all_notes_off() { step.restart(); for (auto& v : voices) if (v.h
 void SidEngine::silence() { step.restart(); for (auto& v : voices) v = Voice {}; }
 bool SidEngine::sounding() const { for (auto& v : voices) if (v.key >= 0) return true; return false; }
 
+// The overload guard (Engine::relieve): tails hurried; with `steal`, the oldest held voice let go and hurried too.
+bool SidEngine::relieve(bool steal) {
+    step.restart();
+    Voice* oldest = nullptr;
+    for (auto& v : voices) {
+        if (v.key < 0) continue;
+        if (!v.held) { v.env.hurry(); continue; }
+        if (!oldest || v.age < oldest->age) oldest = &v;
+    }
+    if (!steal || !oldest) return false;
+    oldest->held = false; oldest->env.hurry();
+    return true;
+}
+
 void SidEngine::render(float* out, unsigned frames) {
     if (dirty) update();
     bool old_chip = p[Model] == 1;

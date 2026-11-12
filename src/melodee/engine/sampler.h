@@ -79,6 +79,7 @@ public:
     void silence() override;
     void set_param(int id, int value) override;
     void render(float* out, unsigned frames) override; // mono fold, for callers that want one channel
+    bool relieve(bool steal) override; // the overload guard: released pads choked, with `steal` the oldest voice too
     bool stereo() const override { return true; }
     void render_stereo(float* left, float* right, unsigned frames) override;
     bool sounding() const override;

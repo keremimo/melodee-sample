@@ -5943,6 +5943,53 @@ void one_dispatch() {
     CHECK(new_stems == old_stems);                             // and every track's stem the same, to the sample
 }
 
+// Roadmap P2, the overload guard: blocks near their time make the next ones lighter. Over 85 % the busiest track gives
+// up its oldest voice each block (eight held notes gone in eight blocks, the oldest first, each fading in tens of ms,
+// not a click); between 70 and 85 % no voice is stolen but a released note's long tail ends in tens of ms; under 70 %
+// a tail rings as long as its release says.
+void overload_guard() {
+    using namespace prophet;
+    auto p = std::make_unique<Project>();
+    auto b = std::make_unique<PatternBank>();
+    load_sound(p->tracks[0], EngineKind::Prophet, 0);
+    p->tracks[0].params[Voices] = 8;
+    p->tracks[0].params[AmpRelease] = 90; // a long tail
+    EngineHost host;
+    host.set_overload_guard(true);
+    host.load(*p, *b);
+    std::vector<int32_t> out(256);
+    auto loud = [&](unsigned blocks) {
+        float most = 0;
+        for (unsigned n = 0; n < blocks; ++n) { host.render(out.data(), 128, 1); for (auto x : out) most = std::max(most, std::fabs(x / 2147483648.0f)); }
+        return most;
+    };
+    for (uint16_t key = 48; key < 56; ++key) host.send({Command::Type::NoteOn, 0, 0, key, 100});
+    CHECK(loud(20) > 0.05f);
+    host.set_guard_test_share(0.9f);
+    loud(4);
+    CHECK(host.guard_steals() == 4 && host.guard_blocks() == 4); // one voice a block, from the busiest (the only) track
+    CHECK(loud(4) > 0.01f);                                        // four still held
+    loud(8);
+    CHECK(host.guard_steals() == 8);                              // every held voice gone, then nothing left to take
+    CHECK(loud(10) < 1e-4f);                                       // faded out, quickly
+    // Tails: a released note rings on (AmpRelease 90) unless the guard is easing the blocks: over 85 % as it is let
+    // go, then 75 % (still easing, as it came down from over 85 %), nothing held to steal.
+    auto tail = [&](float first, float then) {
+        host.set_guard_test_share(0.5f);
+        host.send({Command::Type::NoteOn, 0, 0, 60, 100});
+        loud(20);
+        host.set_guard_test_share(first);
+        host.send({Command::Type::NoteOff, 0, 0, 60});
+        loud(1);
+        host.set_guard_test_share(then);
+        loud(11); // 1536 frames in all, 35 ms at 44.1 kHz
+        return loud(1);
+    };
+    uint32_t stolen = host.guard_steals();
+    CHECK(tail(0.9f, 0.75f) < 1e-4f && host.guard_steals() == stolen); // hurried, nothing stolen
+    CHECK(tail(0.75f, 0.75f) > 0.01f);                                   // 75 % from below: no guard, the whole release
+}
+
 // Roadmap P2: the Looper's four loops and their chains beside the tracks, then the buses' chains and Knob FX each a
 // job of a second run: the same, to the sample, with the workers as without, and as the old way.
 void loops_and_buses_parallel() {
@@ -8412,6 +8459,7 @@ int main() {
     parallel_render();
     one_dispatch();
     loops_and_buses_parallel();
+    overload_guard();
     sampler_zones();
     note_pitches();
     track_source();
