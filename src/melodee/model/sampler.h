@@ -92,7 +92,7 @@ struct PadSound {
     bool loop_lock = true;        // Loop Lock (Shift + B1 on Trim): the loop point is the start
     uint32_t loop_start = 0;      // frames, when not locked
     bool mono = false;            // a new hit stops the pad's last one (else Poly: they overlap)
-    uint8_t link = 0;             // Pad Link: 1..16 a pad of the same bank played with it, 0 none
+    uint8_t link = 0;             // Pad Link: 1..16 a pad of the same bank played with it, 0 none (it links on: roadmap P3)
     uint8_t offset = 0;           // 0..100: the start waits up to a sixteenth after the hit
     uint8_t velocity_sense = 100; // 0..100: 0 every hit full, 100 soft hits quietest
     bool decay_from_start = false; // One shot: decay from the start (ADSR), else over the decay before the end (MPC's default)

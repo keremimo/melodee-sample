@@ -410,7 +410,7 @@ behaviour, write the code fresh for this app.
   random (MPC programs' layers keep working as they do).
 - [ ] Chop's slices kept with the project.
 - [ ] Sample slots nothing uses any more freed on save.
-- [ ] Pad Link through more than one pad.
+- [x] Pad Link through more than one pad.
 - [ ] Seq Record keeps a 16 Levels pad's cutoff.
 - [ ] A short crossfade at a loop's seam.
 - [ ] Resample of the song onto a pad.

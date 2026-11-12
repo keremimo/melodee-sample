@@ -820,7 +820,9 @@ the file holds, to the bit.
     Warp Off a higher note plays faster and shorter (Follow's PITCH Stretch
     keeps the length for the whole kit).
   - Play: Mono / Poly, mute group 1–16, offset; Shift + K2 Pad Link; row 2
-    Note On, reverse, loop.
+    Note On, reverse, loop. Pad Link chains (roadmap P3): a linked pad's own
+    link plays too, and so on through the bank, each pad once (a chain that
+    comes back round stops there; a muted pad is silent but links on).
   - Filter (Off, Classic, LPF2/4, HPF2/4, BPF2/4) and Filt Env (up to seven
     octaves; Shift + K2 decay from).
   - Melodee's Follow (the kit keeps the project's tempo: Beats, Tones or

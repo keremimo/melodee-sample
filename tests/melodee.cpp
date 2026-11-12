@@ -9079,7 +9079,45 @@ void pad_layers_p3() {
     }
 }
 
+// Roadmap P3: Pad Link through more than one pad, round the bank once; a muted pad links on.
+void pad_link_chains() {
+    SampleData data;
+    data.frames = 44100;
+    data.left.assign(data.frames, 0.3f); data.right = data.left;
+    SamplerEngine::Table table {};
+    table[1] = &data;
+    auto engine = std::make_unique<SamplerEngine>();
+    engine->set_samples(&table);
+    std::vector<float> l(128), r(128);
+    auto pads_heard = [&](int hit) {
+        engine->note_on(int(sampler_first_note) + hit, 100);
+        std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+        engine->render_stereo(l.data(), r.data(), 128);
+        TrackTaps t; t.track = 0; engine->taps(t);
+        std::vector<int> pads;
+        for (unsigned n = 0; n < t.count; ++n) pads.push_back(t.voice[n].pad);
+        std::sort(pads.begin(), pads.end());
+        engine->silence();
+        return pads;
+    };
+    PadSound pad;
+    pad.sample = 1;
+    PadSound a = pad, b = pad, c = pad;
+    a.link = 2; b.link = 3; c.link = 1; // A01 -> A02 -> A03 -> back to A01: each once
+    engine->set_pad(0, a); engine->set_pad(1, b); engine->set_pad(2, c);
+    CHECK((pads_heard(0) == std::vector<int> {0, 1, 2}));
+    CHECK((pads_heard(1) == std::vector<int> {0, 1, 2}));
+    engine->set_pad_mute(1, true); // A02 silent, A03 still reached through it
+    CHECK((pads_heard(0) == std::vector<int> {0, 2}));
+    engine->set_pad_mute(1, false);
+    PadSound d = pad; d.link = 2; // B01 -> B02: a link stays in its own bank
+    engine->set_pad(16, d); engine->set_pad(17, pad);
+    CHECK((pads_heard(16) == std::vector<int> {16, 17}));
+}
+
+
 int main() {
+    pad_link_chains();
     pad_layers_p3();
     track_speed();
     generators();

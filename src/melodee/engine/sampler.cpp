@@ -275,7 +275,9 @@ void SamplerEngine::play(const PadSound& sound, int pad, int velocity, int semit
 }
 
 // A kit pad hit: a one shot that loops stops instead when it is playing;
-// its linked pad (same bank) plays with it.
+// its linked pad (same bank) plays with it, and that pad's linked pad, and so
+// on through the bank (roadmap P3), each pad once: a chain that comes back
+// round to a pad already played stops there.
 void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff) {
     if (pad < 0 || pad >= int(sampler_pads) || pad_muted(unsigned(pad))) return;
     const auto& sound = pads[size_t(pad)];
@@ -288,9 +290,13 @@ void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff) {
         if (stopped) return;
     }
     play(sound, pad, velocity, semitones, cutoff, -1);
-    if (sound.link) {
-        int linked = pad / 16 * 16 + (sound.link - 1) % 16;
-        if (linked != pad && !pad_muted(unsigned(linked))) play(pads[size_t(linked)], linked, velocity, 0, -1, pad);
+    uint32_t played = 1u << (pad % 16); // a bit a pad of the bank
+    for (int at = pad; pads[size_t(at)].link;) {
+        const int linked = pad / 16 * 16 + (pads[size_t(at)].link - 1) % 16;
+        if (played & (1u << (linked % 16))) break; // round to a pad already played
+        played |= 1u << (linked % 16);
+        if (!pad_muted(unsigned(linked))) play(pads[size_t(linked)], linked, velocity, 0, -1, pad); // a muted pad is silent but links on
+        at = linked;
     }
 }
 
