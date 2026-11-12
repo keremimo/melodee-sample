@@ -181,6 +181,7 @@ bool owned_data(const fs::path& dir) {
     return false;
 }
 bool is_expansion(const fs::path& path) { return upper(path.extension().string()) == ".XPN"; } // an MPC expansion: a zip to install
+bool is_midi_file(const fs::path& path) { auto e = upper(path.extension().string()); return e == ".MID" || e == ".MIDI" || e == ".SMF"; } // roadmap P4
 // A folder's folders, WAV files and bank files, appended; hidden ones and lost+found left out.
 // card_top: the card's own top folder, where its boot folder (autorun, what starts the app) is no sample's.
 void list_into(const std::string& folder, std::vector<SampleFile>& out, bool card_top = false) {
@@ -197,9 +198,11 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out, bool car
         bool instrument = !folder_here && is_instrument(it->path());
         bool expansion = !folder_here && is_expansion(it->path());
         bool presets = !folder_here && is_sf2(it->path().string()); // roadmap P3: an .sf2 opens as a folder of its presets
-        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument || expansion || presets))) continue;
+        bool midi = !folder_here && is_midi_file(it->path());
+        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument || expansion || presets || midi))) continue;
         SampleFile f;
         f.path = it->path().string(); f.folder = folder_here || presets; f.bank = bank; f.instrument = instrument; f.expansion = expansion;
+        f.midi = midi;
         f.presets = presets;
         if (instrument && is_drum_program(f.path)) { f.kit = true; f.instrument = false; }
         f.name = upper(folder_here ? name : it->path().stem().string()).substr(0, 26);

@@ -1684,6 +1684,30 @@ void EngineHost::midi_inputs(const int32_t* input, const float* usb, unsigned fr
     }
 }
 
+// Roadmap P4, stems to the card: each track as it joins the mix (after its chain, level, pan and mute, eased as heard)
+// and each bus's return, the same frames as the mixdown.
+void EngineHost::take_stems(unsigned frames) {
+    StemRing* ring = stem_ring.load(std::memory_order_acquire);
+    unsigned from = 0, to = 0;
+    if (!ring || !render_out.span(frames, from, to)) return;
+    static thread_local float l[StemRing::stem_count][block], r[StemRing::stem_count][block];
+    std::array<const float*, StemRing::stem_count> left {}, right {};
+    uint32_t mask = ring->mask();
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& slot = slots[t];
+        if (!((mask >> t) & 1) || !slot.engine) continue;
+        for (unsigned f = 0; f < frames; ++f) { float a = slot.audible.at(f); l[t][f] = slot.left[f] * a; r[t][f] = slot.right[f] * a; }
+        left[t] = l[t]; right[t] = r[t];
+    }
+    for (unsigned b = 0; b < bus_count; ++b) {
+        unsigned s = track_count + b;
+        if (!((mask >> s) & 1)) continue;
+        for (unsigned f = 0; f < frames; ++f) { float g = returns_now[b].at(f); l[s][f] = bus_l[b][f] * g; r[s][f] = bus_r[b][f] * g; }
+        left[s] = l[s]; right[s] = r[s];
+    }
+    ring->write(left.data(), right.data(), from, to);
+}
+
 int64_t EngineHost::track_delay(unsigned t) const {
     int ms = slots[t % track_count].base[midi_track::Delay];
     if (!ms || !is_midi(t)) return 0;
@@ -2430,6 +2454,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     }
     recall_ring.write(record_l, record_r, frames);
     keep_sources(input, usb, frames);
+    take_stems(frames); // roadmap P4: the stems by the same bounds, before the bounce moves on
     render_out.process(master_l, master_r, frames);
     // Monitor: the source heard with the mix (never the mix itself, heard already), eased in and out.
     monitor_now.aim(monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample)

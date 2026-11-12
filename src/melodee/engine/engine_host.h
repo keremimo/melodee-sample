@@ -179,6 +179,8 @@ public:
     RecallRing& recall() { return recall_ring; }
     const RecallRing& recall() const { return recall_ring; }
     Bounce& bounce() { return render_out; }
+    // Roadmap P4: stems beside the next render (StemRing, the service thread's; nullptr: none), taken while it runs.
+    void set_stems(StemRing* ring) { stem_ring.store(ring, std::memory_order_release); }
     const Bounce& bounce() const { return render_out; }
     unsigned record_source() const { return source_now.load(std::memory_order_relaxed); } // InputSource
     unsigned record_track() const { return source_track.load(std::memory_order_relaxed); } // InputSource::Track: which
@@ -534,6 +536,8 @@ private:
     TakeRecorder take;
     RecallRing recall_ring; // Audio Recall: the source, always
     Bounce render_out;      // Resample and the song's mixdown
+    std::atomic<StemRing*> stem_ring {nullptr}; // roadmap P4: stems beside it (each track as it joins the mix, the returns)
+    void take_stems(unsigned frames);
     std::atomic<unsigned> source_now {1};
     std::atomic<unsigned> source_track {0};
     std::atomic<bool> source_post {true};

@@ -102,13 +102,16 @@ void draw(Paint& p, const Snapshot& s) {
 
     if (s.ui.song_export) {
         // Export (B1), as on the MPC: B2 an audio mixdown, B3 a new pattern; a tile under each says what it makes.
-        SoftKeys keys {{"CANCEL", "MIXDOWN", "PATTERN"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
-        keys.glyphs = {Icon::None, Icon::Wav, Icon::Pattern};
+        // Roadmap P4: the wheel picks what B2 makes: the mixdown as float, 24 or 16 bits, the stems, or a MIDI file.
+        static const char* const b2[] {"MIXDOWN", "MIXDOWN", "MIXDOWN", "STEMS", "MIDI FILE"};
+        unsigned kind = s.ui.export_kind % 5;
+        SoftKeys keys {{"CANCEL", b2[kind], "PATTERN"}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+        keys.glyphs = {Icon::None, kind == 4 ? Icon::Note : kind == 3 ? Icon::Layers : Icon::Wav, Icon::Pattern};
         frame(p, s, keys, h);
         p.dim_zone(zone::picture_y, zone::picture_h, 0.86f);
         p.dim_zone(zone::knobs_y, zone::knobs_h);
         unsigned bars = song.length(), seconds = unsigned(bars * (double(s.project.bar_ticks()) / ticks_per_quarter) * 600.0 / std::max(1u, s.tempo) + 0.5);
-        if (!bars) { // nothing to export yet
+        if (!bars && kind != 4) { // nothing to export yet (a MIDI file takes the patterns playing)
             icon(p, Icon::Pattern, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::amber, 1.4f);
             p.text("EMPTY SONG", 0, zone::picture_y + 80, zone::width, 14, caps_text(colour::amber), juce::Justification::centred);
             return;
@@ -120,7 +123,11 @@ void draw(Paint& p, const Snapshot& s) {
             if (!used) free = n;
         }
         juce::String length = juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
-        key_tiles(p, {KeyTile {}, value_tile(Icon::Wav, length, "32-BIT FLOAT", true), // as WavStream writes it, kept unclipped
+        unsigned stems = 0;
+        for (const auto& tr : s.project.tracks) stems += tr.used();
+        static const char* const formats[] {"32-BIT FLOAT", "24-BIT DITHER", "16-BIT DITHER", "", "SMF 96 PPQ"};
+        juce::String sub = kind == 3 ? juce::String(stems) + " STEMS" : juce::String(formats[kind]);
+        key_tiles(p, {KeyTile {}, value_tile(kind == 4 ? Icon::Note : kind == 3 ? Icon::Layers : Icon::Wav, bars ? length : juce::String("P"), sub, true), // the wheel picks
                       value_tile(Icon::Pattern, free < pattern_count ? "P" + juce::String(free + 1) : juce::String("FULL"),
                                  juce::String(bars) + (bars == 1 ? " BAR" : " BARS"))});
         return;
@@ -248,7 +255,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 }
 
 void wheel(Context& c, int delta) {
-    if (c.ui.song_export) return;
+    if (c.ui.song_export) { c.ui.export_kind = uint8_t(std::clamp(int(c.ui.export_kind) + delta, 0, 4)); return; } // what B2 makes (roadmap P4)
     c.ui.song_cursor = uint16_t(std::clamp<int>(c.ui.song_cursor + delta, 0, int(song_bars) - 1));
     c.ui.song_view = uint16_t(view_of(c.ui));
 }

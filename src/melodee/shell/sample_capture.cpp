@@ -58,11 +58,26 @@ void SampleLibrary::drain_render() {
                 std::string top = card();
                 std::error_code error;
                 std::string folder = top + "/Melodee/Mixdowns";
-                if (!top.empty()) fs::create_directories(folder, error);
-                render_path = top.empty() ? std::string() : free_name(folder, render_job.name);
-                if (render_path.empty() || !render_file.open(render_path, render_rate)) { // at the device's rate
+                if (render_job.stems && !top.empty()) { // roadmap P4: a folder of its own, the mix beside the stems
+                    std::string stems = top + "/Melodee/Stems";
+                    fs::create_directories(stems, error);
+                    folder = free_name(stems, render_job.name, "");
+                    fs::create_directories(folder, error);
+                } else if (!top.empty()) fs::create_directories(folder, error);
+                render_path = top.empty() ? std::string() : render_job.stems ? folder + "/Mix.wav" : free_name(folder, render_job.name);
+                if (render_path.empty() || !render_file.open(render_path, render_rate, render_job.bits)) { // at the device's rate
                     render_path.clear();
                     finish(top.empty() ? "Mixdown: no card" : "Mixdown: cannot write");
+                }
+                stem_open = 0;
+                if (render_job.stems && stems_ring && !render_path.empty()) {
+                    uint32_t mask = stems_ring->mask();
+                    for (unsigned s = 0; s < StemRing::stem_count; ++s) {
+                        if (!((mask >> s) & 1)) continue;
+                        char file[64];
+                        std::snprintf(file, sizeof(file), "%02u %s.wav", s + 1, render_job.stem_names[s].data());
+                        if (stem_files[s].open(folder + "/" + file, render_rate)) stem_open |= 1u << s;
+                    }
                 }
             } else {
                 render_data = std::make_unique<SampleData>();
@@ -80,6 +95,7 @@ void SampleLibrary::drain_render() {
     render_chunk.resize(2 * 16384);
     // Everything there is now, a chunk at a time; into a slot, as long as a pad's sample may be (60 s).
     const uint32_t most = uint32_t(uint64_t(TakeRecorder::max_frames) * render_rate / uint32_t(dsp::model_rate));
+    if (stem_open) drain_stems(false);
     for (unsigned n; (n = bounce.pop(render_chunk.data(), 16384)) > 0;) {
         if (render_job.to_file) { if (!render_path.empty()) render_file.add(render_chunk.data(), n); }
         else if (render_data && render_data->left.size() < most)
@@ -99,9 +115,16 @@ void SampleLibrary::drain_render() {
     if (!ended || !bounce.drained()) return;
     rendering = false;
     bounce.release();
+    if (stem_open) drain_stems(true);
+    host.set_stems(nullptr);
     if (render_job.to_file) {
         if (render_path.empty()) return; // said already
         bool kept = render_file.close() && state == Bounce::State::Done && render_file.frames() > 0;
+        if (render_job.stems) { // roadmap P4: the folder stays with what it holds; a stem that could not keep up is said
+            if (stems_ring && stems_ring->failed()) { finish("Stems: card too slow"); return; }
+            finish(kept ? "Stems " + fs::path(render_path).parent_path().filename().string() : "Stems stopped");
+            return;
+        }
         if (!kept) {
             std::error_code error;
             fs::remove(render_path, error);
@@ -118,6 +141,23 @@ void SampleLibrary::drain_render() {
     }
     render_data->frames = uint32_t(render_data->left.size());
     land(render_job.slot, std::move(render_data), render_rate, "Recorded", "RESAMPLE", "Resample");
+}
+
+// Roadmap P4: the stems' frames as they come, each into its file (closed with the mix, `last`).
+void SampleLibrary::drain_stems(bool last) {
+    constexpr unsigned chunk = 4096;
+    stem_chunk.resize(size_t(StemRing::stem_count) * 2 * chunk);
+    for (unsigned n; (n = stems_ring->pop(stem_chunk.data(), chunk)) > 0;)
+        for (unsigned s = 0; s < StemRing::stem_count; ++s)
+            if ((stem_open >> s) & 1) stem_files[s].add(stem_chunk.data() + size_t(s) * 2 * chunk, n);
+    if (!last) return;
+    for (unsigned s = 0; s < StemRing::stem_count; ++s) if ((stem_open >> s) & 1) stem_files[s].close();
+    stem_open = 0;
+}
+
+StemRing* SampleLibrary::stem_ring() {
+    if (!stems_ring) stems_ring = std::make_unique<StemRing>();
+    return stems_ring.get();
 }
 
 bool SampleLibrary::busy() const {

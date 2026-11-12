@@ -22,6 +22,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/smf_jobs.h"
 #include <cstdio>
 
 namespace melodee {
@@ -100,6 +101,7 @@ void Context::resample_pad(unsigned kit) {
 
 void Context::mixdown(const std::string& name) {
     if (!library) return;
+    if (ui.export_kind == 4) { export_midi(*this, name); return; } // roadmap P4: a MIDI file, written at once
     if (ui.rendering) { notice("Rendering already"); return; }
     if (!project.song.length()) { notice("Mixdown: the song is empty"); return; }
     if (library->card().empty()) { notice("Mixdown: no card"); return; }
@@ -107,7 +109,29 @@ void Context::mixdown(const std::string& name) {
     SampleLibrary::Render job;
     job.to_file = true;
     std::snprintf(job.name, sizeof(job.name), "%s", name.c_str());
-    if (!library->render(job)) { notice("Mixdown: busy"); return; }
+    // Roadmap P4: 24 or 16 bits (dithered: the only integer files Melodee renders), or the stems beside a float mix.
+    job.bits = uint8_t(ui.export_kind == 1 ? 24 : ui.export_kind == 2 ? 16 : 32);
+    job.stems = ui.export_kind == 3;
+    if (job.stems) {
+        uint32_t mask = 0;
+        for (unsigned t = 0; t < track_count; ++t) {
+            const auto& tr = project.tracks[t];
+            if (!tr.used()) continue;
+            mask |= 1u << t;
+            std::snprintf(job.stem_names[t].data(), 24, "%s", tr.name[0] ? tr.name : ("Track " + std::to_string(t + 1)).c_str());
+        }
+        for (unsigned b = 0; b < bus_count; ++b) { // a bus something sends into
+            bool fed = false;
+            for (const auto& tr : project.tracks) fed |= tr.used() && tr.mix.sends[b] > 0;
+            if (!fed) continue;
+            mask |= 1u << (track_count + b);
+            std::snprintf(job.stem_names[track_count + b].data(), 24, "Bus %c", char('A' + b));
+        }
+        StemRing* ring = library->stem_ring();
+        ring->arm(mask);
+        host.set_stems(ring);
+    }
+    if (!library->render(job)) { host.set_stems(nullptr); notice("Mixdown: busy"); return; }
     if (ui.recording) set_recording(false);
     ui.rec_armed = false;
     send({Type::Stop});

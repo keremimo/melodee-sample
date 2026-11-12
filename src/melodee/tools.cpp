@@ -1180,6 +1180,14 @@ const Preview previews[] {
          Clip clip; clip.track = 2; clip.pattern = 0; clip.bar = 0; clip.bars = 16;
          s.project.song.place(clip);
      }},
+    {"songstems", [](Shell&, Snapshot& s) { // roadmap P4: Export with the wheel on STEMS
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 0; s.ui.song_export = true; s.ui.export_kind = 3;
+         Clip clip; clip.track = 2; clip.pattern = 0; clip.bar = 0; clip.bars = 16;
+         s.project.song.place(clip);
+     }},
+    {"songmidifile", [](Shell&, Snapshot& s) { // roadmap P4: Export with the wheel on MIDI FILE, no song: the patterns
+         s.ui.page = PageId::Song; s.ui.track = 2; s.ui.song_cursor = 0; s.ui.song_export = true; s.ui.export_kind = 4;
+     }},
     {"mixdownname", [](Shell&, Snapshot& s) { // Export, B2: the mixdown's name
          s.ui.page = PageId::Song; s.ui.track = 2;
          s.ui.name.start(NameTarget::Mixdown, "Night drive", 31, false);

@@ -367,7 +367,7 @@ void Context::preview_cursor() {
     if (!library) return;
     auto files = library->files();
     const SampleFile* file = ui.files_cursor < files.size() ? &files[ui.files_cursor] : nullptr;
-    std::string path = ui.preview && file && !file->folder && !file->bank ? file->path : std::string();
+    std::string path = ui.preview && file && !file->folder && !file->bank && !file->midi ? file->path : std::string(); // a MIDI file has no sound to preview
     if (previewing >= 0) { // what played stops as the cursor moves on
         Command stop {Command::Type::Audition, uint8_t(previewing)};
         stop.pad.sample = no_sample;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/bounce.h"
 #include "melodee/shell/expansion_install.h"
 #include "melodee/engine/recall_ring.h"
 #include "melodee/engine/sample_data.h"
@@ -46,6 +47,7 @@ struct SampleFile {
     bool kit = false;        // an MPC drum program (".xpm", ".xty"): Push loads it onto the track as Load Kit does
     bool expansion = false;  // an MPC expansion (".xpn"): Push installs it onto the card
     bool presets = false;    // a SoundFont (".sf2", roadmap P3): listed as a folder, its presets inside it
+    bool midi = false;       // a Standard MIDI File (".mid", roadmap P4): Push lays its notes on the track's pattern
 };
 struct LoadedSample {
     std::string name, path, error;
@@ -131,8 +133,16 @@ public:
     // n.wav), or straight into Melodee/Mixdowns/<name>.wav on the card (the
     // song). `frames`: how long it should run, to make room up front.
     bool recall(unsigned slot, const RecallOptions& options) { return recalls.push({uint8_t(slot), options}); }
-    struct Render { bool to_file = false; uint8_t slot = 0; uint32_t frames = 0; char name[40] {}; };
+    // Roadmap P4: a mixdown's file as 32-bit float (bits 32) or integer PCM (24, 16: dithered); stems beside it (each
+    // track and bus the engine host's StemRing takes, as Melodee/Stems/<name>/NN <stem>.wav, the mix as Mix.wav).
+    struct Render {
+        bool to_file = false; uint8_t slot = 0; uint32_t frames = 0; char name[40] {};
+        uint8_t bits = 32;
+        bool stems = false;
+        std::array<std::array<char, 24>, StemRing::stem_count> stem_names {};
+    };
     bool render(const Render& job) { return renders.push(job); }
+    StemRing* stem_ring(); // MIDI thread: made the first time stems are wanted (21 MB), kept after
     std::string card() const; // the card's top folder; empty without one
 
     // The Looper (docs/LOOPER.md, shell/looper_files.cpp). Commit to pad: loop `loop` into slot `slot`, as
@@ -249,6 +259,11 @@ private:
     void loop_service(); // a step of the commit and the file jobs, never waiting
     std::unique_ptr<SampleData> render_data;
     WavStream render_file;
+    std::unique_ptr<StemRing> stems_ring;                       // roadmap P4
+    std::array<WavStream, StemRing::stem_count> stem_files;
+    uint32_t stem_open = 0;                                     // the stems being written, a bit each
+    std::vector<float> stem_chunk;
+    void drain_stems(bool last);
     std::string render_path;
     std::vector<float> render_chunk;
     std::vector<std::unique_ptr<SampleData>> owned; // service thread: every sample the audio thread may hold

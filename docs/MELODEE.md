@@ -714,7 +714,21 @@ hold to steer, Shift + Seq to zoom in**.
   Export**: B2 audio mixdown (Name sheet; once through, tails up to 10 s,
   `Melodee/Mixdowns/<name>.wav`, 32-bit float at the device's rate so a mix
   past full scale is kept, not clipped; Stop drops it), B3 New pattern
-  (the song laid end to end into the first free pattern number).
+  (the song laid end to end into the first free pattern number). Roadmap
+  P4: the wheel picks what B2 makes: the mixdown as 32-bit float, 24-bit
+  or 16-bit (integer PCM, TPDF dithered, a step's worth: the only files
+  Melodee dithers; float needs none), STEMS (`Melodee/Stems/<name>/`: the
+  mix as `Mix.wav` and each track with a sound, `NN <name>.wav`, as it
+  joins the mix after its chain, level, pan and mute, and each bus a
+  track sends into, after its chain at its return; all 32-bit float,
+  the same frames, in one real-time pass), or a MIDI FILE
+  (`Melodee/MIDI/<name>.mid`, format 1 at 96 ticks a quarter, the tempo
+  and time signature first: the song's tracks as they play it, or with no
+  song each track's pattern once; a kit's pads as notes 36 on, on channel
+  10, a MIDI track on its own). A `.mid` in the browser (a note glyph,
+  MIDI) loads with Push: every note onto the selected track's pattern
+  playing, as many bars as they take (128 at most), one undo; a kit takes
+  notes 36 on as its pads.
 
 ### Sampler
 
@@ -1547,7 +1561,9 @@ of the card (beside `Samples/`), in any folders under it.
   source's name, size and date; the least lately played go past 4 GB. Safe to
   delete: they are made again.
 - `Melodee/Projects/**/<project> Loops/Loop N.wav`: a project's loops.
-  `Melodee/Mixdowns/` holds song mixdowns.
+  `Melodee/Mixdowns/` holds song mixdowns, `Melodee/Stems/` stems,
+  `Melodee/MIDI/` MIDI files, `SysEx/` (at the card's top) a MIDI track's
+  `.syx` files.
 
 Nothing is created on the card until something is saved. On a host,
 `$MELODEE_PROJECTS`, `$MELODEE_SAMPLES` and `$MELODEE_INTERNAL` stand in

@@ -31,6 +31,7 @@
 #include "melodee/model/chords.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
+#include "melodee/model/smf.h"
 #include "melodee/model/lane_value.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
@@ -10273,7 +10274,108 @@ void midi_tracks_p4() {
     CHECK(most < 1e-4f);
 }
 
+// Roadmap P4: exports and imports. Standard MIDI Files out and in, a mixdown in integer PCM dithered, stems beside it.
+void exports_p4() {
+    // A MIDI file written and read back: the notes, their channel and the tempo.
+    {
+        std::vector<SmfTrack> tracks(2);
+        tracks[0].name = "BASS"; tracks[0].channel = 2;
+        tracks[0].notes = {{0, 48, 36, 100}, {96, 24, 43, 90}, {96, 96, 48, 80}};
+        tracks[1].name = "KIT"; tracks[1].channel = 10;
+        tracks[1].notes = {{0, 12, 36, 127}, {48, 12, 38, 110}};
+        auto bytes = write_smf(tracks, 1284, 3, 4);
+        std::vector<SmfTrack> back;
+        std::string why;
+        unsigned tempo = 0;
+        CHECK(read_smf(bytes, back, why, &tempo) && back.size() == 2 && tempo == 1284);
+        CHECK(back[0].name == "BASS" && back[0].channel == 2 && back[0].notes.size() == 3 && back[0].notes[1].tick == 96 &&
+              back[0].notes[1].key == 43 && back[0].notes[1].length == 24 && back[0].notes[2].length == 96 && back[0].notes[1].velocity == 90);
+        CHECK(back[1].channel == 10 && back[1].notes[1].key == 38 && back[1].notes[1].tick == 48);
+        // Another division, running status and a note on at velocity 0 as its off: 480 a quarter becomes 96.
+        std::vector<uint8_t> other {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xe0,
+                                    'M', 'T', 'r', 'k', 0, 0, 0, 16,
+                                    0x00, 0x91, 60, 100, 0x83, 0x60, 60, 0, 0x00, 62, 90, 0x81, 0x70, 62, 0, 0x00};
+        // (the last byte is padding the length covers)
+        CHECK(read_smf(other, back, why) && back.size() == 1 && back[0].channel == 2 && back[0].notes.size() == 2);
+        CHECK(back[0].notes[0].tick == 0 && back[0].notes[0].length == 96 && back[0].notes[1].tick == 96 && back[0].notes[1].length == 48);
+        CHECK(!read_smf({1, 2, 3}, back, why) && why == "not a MIDI file");
+    }
+    // A project's tracks as a MIDI file (no song: the patterns playing), and one laid on a kit's pattern.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->tracks[0].engine = EngineKind::Sampler; project->tracks[0].set_name("DRUMS");
+        project->tracks[3].engine = EngineKind::Plugin; project->tracks[3].midi_channel = 5;
+        Event kick; kick.tick = 0; kick.key = uint8_t(sampler_first_note); kick.length = 12;
+        Event snare = kick; snare.tick = 96; snare.key = uint8_t(sampler_first_note + 2);
+        bank->at[0][0].add(kick); bank->at[0][0].add(snare);
+        Event note = kick; note.key = 64; note.length = 192;
+        bank->at[3][0].add(note);
+        auto tracks = smf_tracks(*project, *bank);
+        CHECK(tracks.size() == 2 && tracks[0].channel == 10 && tracks[0].name == "DRUMS" && tracks[0].notes[1].key == 38 && tracks[1].channel == 5);
+        Pattern laid;
+        CHECK(smf_pattern(tracks, project->tracks[0], project->bar_ticks(), laid));
+        CHECK(laid.length == project->bar_ticks() && laid.events.size() == 3 && laid.events[0].key == sampler_first_note); // the 64 too: pad 29
+        Track empty_kit; empty_kit.engine = EngineKind::Sampler;
+        std::vector<SmfTrack> high(1);
+        high[0].notes = {{0, 10, 20, 100}};
+        CHECK(!smf_pattern(high, empty_kit, 384, laid)); // below the kit's first pad
+    }
+    // A mixdown in 16-bit PCM: dithered (a step either way at most around silence), the format says 16 bits.
+    {
+        auto dir = std::filesystem::temp_directory_path() / "melodee-p4-dither.wav";
+        WavStream wav;
+        CHECK(wav.open(dir.string(), 48000, 16));
+        std::vector<float> frames(2 * 4800, 0.0f);
+        CHECK(wav.add(frames.data(), 4800) && wav.close() && wav.frames() == 4800);
+        std::ifstream in(dir, std::ios::binary);
+        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        CHECK(bytes.size() == 44 + 4800 * 4 && bytes[20] == 1 && bytes[34] == 16 && bytes[24] == uint8_t(48000 & 0xff));
+        int lowest = 0, highest = 0;
+        unsigned nonzero = 0;
+        for (size_t at = 44; at + 1 < bytes.size(); at += 2) {
+            int v = int16_t(uint16_t(bytes[at] | bytes[at + 1] << 8));
+            lowest = std::min(lowest, v); highest = std::max(highest, v); nonzero += v != 0;
+        }
+        CHECK(lowest >= -1 && highest <= 1 && nonzero > 1000); // TPDF: noise of a step, never more
+        std::filesystem::remove(dir);
+    }
+    // Stems beside the mixdown: each track as it joins the mix, the same frames.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->tracks[0].engine = EngineKind::Plugin; project->tracks[0].plugin = 0;
+        auto& p = bank->at[0][0];
+        p.length = 4 * ticks_per_quarter;
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        FakePlugin tone;
+        CHECK(host->offer_plugin(0, &tone));
+        auto ring = std::make_unique<StemRing>();
+        ring->arm(1u << 0 | 1u << 5);
+        host->set_stems(ring.get());
+        Command arm {Command::Type::BounceArm, 0, 0, 0, 0};
+        arm.position = ticks_per_quarter / 2; // an eighth: a quarter of a second at 120
+        host->send(arm);
+        host->send({Command::Type::Play, 0});
+        host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+        std::vector<int32_t> out(256);
+        for (unsigned n = 0; n < 200; ++n) host->render(out.data(), 128, 1);
+        CHECK(host->bounce().state() == Bounce::State::Done && host->bounce().taken() > 0);
+        std::vector<float> got(size_t(StemRing::stem_count) * 2 * 65536);
+        unsigned frames = ring->pop(got.data(), 65536);
+        CHECK(frames == host->bounce().taken() && !ring->failed());
+        float loud = 0, quiet = 0;
+        for (unsigned f = 0; f < frames; ++f) { loud = std::max(loud, std::fabs(got[2 * f])); quiet = std::max(quiet, std::fabs(got[size_t(5) * 2 * 65536 + 2 * f])); }
+        CHECK(loud > 0.1f && quiet == 0);
+        host->set_stems(nullptr);
+        CHECK(host->offer_plugin(0, nullptr));
+        host->render(out.data(), 128, 1);
+    }
+}
+
 int main() {
+    exports_p4();
     midi_tracks_p4();
     modulators_p4();
     delay_pool_clears();

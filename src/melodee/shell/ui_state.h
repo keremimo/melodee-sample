@@ -144,6 +144,9 @@ struct UiState {
     bool sysex_listed = false;
     std::array<uint8_t, track_count> sysex_percent {};
     uint16_t midi_in_use = 0;
+    // Roadmap P4, Song's Export: what B2 makes, the wheel's pick: a mixdown as 32-bit float, 24-bit or 16-bit (both
+    // dithered), the stems, or a MIDI file.
+    uint8_t export_kind = 0;
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
     bool sheet_open = false;  // a sheet behind Push: Roll's note, a chain's device, a project's file

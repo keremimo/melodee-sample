@@ -17,8 +17,8 @@ namespace melodee {
 
 void Context::song_export_soft(int key) {
     ui.song_export = false;
-    if (key == 1) {
-        if (!project.song.length()) { notice("Mixdown: the song is empty"); return; }
+    if (key == 1) { // roadmap P4: the wheel picked what (a MIDI file needs no song: the patterns playing then)
+        if (!project.song.length() && ui.export_kind != 4) { notice("Mixdown: the song is empty"); return; }
         open_name(NameTarget::Mixdown, project.name[0] ? project.name : "Song", sizeof(project.name) - 1, false);
     }
     if (key == 2) song_to_pattern();

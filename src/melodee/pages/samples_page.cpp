@@ -13,6 +13,7 @@
 // file as the cursor lands on it. Shift + pad loads the file onto the
 // kit's next empty pad (here instead of the printed Shift + pad jobs). K2
 // jumps. The pads play the kit.
+#include "melodee/shell/smf_jobs.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/engine/dsp.h"
@@ -71,6 +72,7 @@ void draw(Paint& p, const Snapshot& s) {
         else if (file.kit) { r.icon = Icon::Pads; r.fact = format; }
         else if (file.expansion) { r.icon = Icon::ArrowDown; r.fact = format; } // Push installs it
         else if (file.instrument) { r.icon = Icon::Keyboard; r.fact = format; }
+        else if (file.midi) { r.icon = Icon::Note; r.fact = "MIDI"; } // roadmap P4: Push lays it on the pattern
         else {
             r.icon = Icon::Wav;
             for (unsigned n = 0; n < sample_slots && r.pad.isEmpty(); ++n) // which pad of this kit plays it
@@ -106,6 +108,7 @@ void push(Context& c) {
     else if (file.bank) c.load_bank_file(file.path, file.name);
     else if (file.kit) c.load_kit_file(file.path, file.name);
     else if (file.expansion) c.library->install(file.path);
+    else if (file.midi) import_midi(c, file.path); // roadmap P4: its notes onto the track's pattern
     else c.load_file(file.path, file.name, false);
 }
 
@@ -127,6 +130,7 @@ bool samples_shift_pad(Context& c) {
     if (file.bank) { c.notice("Push loads a bank"); return true; }
     if (file.kit) { c.notice("Push loads a kit"); return true; }
     if (file.expansion) { c.notice("Push installs it"); return true; }
+    if (file.midi) { c.notice("Push lays it on the pattern"); return true; }
     c.load_file(file.path, file.name, true);
     return true;
 }

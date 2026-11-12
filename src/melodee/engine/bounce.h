@@ -60,6 +60,15 @@ public:
         if (s == State::Tail) state_.store(State::Done);
         else if (s == State::Cued || s == State::Running) state_.store(State::Cancelled);
     }
+    // Roadmap P4: the frames of a block of `n` that process() will take (stems are taken by the same bounds), none when
+    // no render runs. Audio thread, before process().
+    bool span(unsigned n, unsigned& from, unsigned& to) const {
+        auto s = state_.load(std::memory_order_relaxed);
+        if (s != State::Running && s != State::Tail) return false;
+        from = start_at >= 0 ? std::min<unsigned>(unsigned(start_at), n) : 0;
+        to = stop_at >= 0 ? std::min<unsigned>(unsigned(stop_at), n) : n;
+        return to > from;
+    }
     // After each block is mixed: the frames of it that belong to the render.
     void process(const float* l, const float* r, unsigned n) {
         auto s = state_.load(std::memory_order_relaxed);
@@ -123,6 +132,52 @@ private:
     std::atomic<uint32_t> frames_ {0};
     int start_at = -1, stop_at = -1; // audio thread: this block's bounds
     uint32_t tail_frames = 0, quiet = 0;
+};
+
+// Roadmap P4, stems to the card: each track (after its chain, level, pan and mute, as it joins the mix) and each bus's
+// return, stereo, the same frames as the mixdown beside them; up to stem_count of them, those in `mask` taken. Made by
+// the service thread when first wanted (21 MB), handed to the engine host, which writes; the service thread reads.
+class StemRing {
+public:
+    static constexpr unsigned stem_count = 20;      // tracks 0-15, buses A-D
+    static constexpr uint32_t ring_frames = 1u << 17; // 2.7 s at 48 kHz: the service thread drains every pass
+    StemRing() : ring_(new float[size_t(ring_frames) * stem_count * 2]()) {}
+    // Service thread, before the render is armed: which stems, from the start.
+    void arm(uint32_t mask) { mask_.store(mask); read_.store(0); write_.store(0); failed_.store(false); }
+    uint32_t mask() const { return mask_.load(std::memory_order_relaxed); }
+    // Audio thread: frames [from, to) of this block, stem s's left and right at `l[s]`, `r[s]` (nullptr: silence).
+    void write(const float* const* l, const float* const* r, unsigned from, unsigned to) {
+        uint64_t w = write_.load(std::memory_order_relaxed), rd = read_.load(std::memory_order_acquire);
+        if (w + (to - from) - rd > ring_frames) { failed_.store(true, std::memory_order_relaxed); return; }
+        uint32_t m = mask_.load(std::memory_order_relaxed);
+        for (unsigned f = from; f < to; ++f) {
+            float* frame = ring_.get() + size_t((w + f - from) % ring_frames) * stem_count * 2;
+            for (unsigned s = 0; s < stem_count; ++s) {
+                bool on = ((m >> s) & 1) && l[s];
+                frame[2 * s] = on ? l[s][f] : 0.0f; frame[2 * s + 1] = on ? r[s][f] : 0.0f;
+            }
+        }
+        write_.store(w + (to - from), std::memory_order_release);
+    }
+    // Service thread: up to `max` frames of stem `s` and every other into `out` (a stem's frames apart, interleaved
+    // stereo, stem_count blocks of 2 * max floats); the count.
+    unsigned pop(float* out, unsigned max) {
+        uint64_t rd = read_.load(std::memory_order_relaxed), w = write_.load(std::memory_order_acquire);
+        unsigned n = unsigned(std::min<uint64_t>(w - rd, max));
+        for (unsigned f = 0; f < n; ++f) {
+            const float* frame = ring_.get() + size_t((rd + f) % ring_frames) * stem_count * 2;
+            for (unsigned s = 0; s < stem_count; ++s) { out[size_t(s) * 2 * max + 2 * f] = frame[2 * s]; out[size_t(s) * 2 * max + 2 * f + 1] = frame[2 * s + 1]; }
+        }
+        read_.store(rd + n, std::memory_order_release);
+        return n;
+    }
+    bool drained() const { return read_.load(std::memory_order_acquire) == write_.load(std::memory_order_acquire); }
+    bool failed() const { return failed_.load(std::memory_order_relaxed); }
+private:
+    std::unique_ptr<float[]> ring_;
+    std::atomic<uint32_t> mask_ {0};
+    std::atomic<uint64_t> read_ {0}, write_ {0};
+    std::atomic<bool> failed_ {false};
 };
 
 } // namespace melodee

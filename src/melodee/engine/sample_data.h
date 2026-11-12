@@ -86,19 +86,21 @@ void as_written(SampleData& sample);
 std::string keep_capture(SampleData& sample, unsigned rate, const std::string& path, float play_at);
 // Stereo 32-bit float at `rate` Hz written as it comes (the song's mixdown,
 // kept whole however loud): open, add interleaved stereo frames, then close,
-// which puts the lengths in the header.
+// which puts the lengths in the header. Roadmap P4: or integer PCM, 24 or 16
+// bits, TPDF dithered (only there: a float file needs none) and clipped.
 class WavStream {
 public:
     ~WavStream() { close(); }
-    bool open(const std::string& path, unsigned rate = 44100);
+    bool open(const std::string& path, unsigned rate = 44100, unsigned bits = 32);
     bool add(const float* interleaved, unsigned frames);
     bool close(); // false when anything failed
     uint32_t frames() const { return written; }
 private:
     std::FILE* file = nullptr;
     uint32_t written = 0;
-    unsigned rate = 44100;
+    unsigned rate = 44100, bits = 32;
     bool failed = false;
+    uint32_t noise = 0x9e3779b9u; // the dither's
 };
 void make_overview(const SampleData& sample, Overview& out);
 // The hits, strongest kept, sorted by frame; the first is always frame 0.
