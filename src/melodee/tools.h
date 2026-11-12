@@ -25,7 +25,11 @@
 //   --mpc-install FILE.xpn DIR       installs an MPC expansion into DIR/<its title>
 //   --instrument-read FILE           reads an .sfz, .xpm, .xty or .exs as the sample library does
 //                                    and prints its zones, their samples found
+//   --melodee-monkey [SEED COUNT MOVES]  random presses, holds and releases of every control
+//                                    (src/melodee/monkey.cpp); fails when a layer, a note, a
+//                                    held step or pattern outlives the hand that held it
 // Returns the exit code, or nothing when argv names neither.
 namespace melodee {
 std::optional<int> run_tool(int argc, char** argv);
+int monkey(unsigned first, unsigned seeds, unsigned moves); // --melodee-monkey: seeds first.., the failures' moves printed
 }

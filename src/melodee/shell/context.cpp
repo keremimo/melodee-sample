@@ -78,8 +78,10 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     patterns = bank;
     auto keep = ui.pots;
     auto settings = ui.settings; // Melodee's own: they belong to no project
+    auto pads_down = ui.held_pads; // the hand on the pads stays where it is
     ui = UiState {};
     ui.pots = keep;
+    ui.held_pads = pads_down;
     ui.settings = settings;
     for (auto& pot : ui.pots) pot.bound = 0; // pick the new values up again
     edits.clear();                            // its edits were made to another project
@@ -194,16 +196,29 @@ void Context::key(int k, int velocity, bool down) {
     }
 }
 
-void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
+// Let go of whatever this pad started, on the track it played (as record_key() plays its source track).
+// A latched arp plays on, without the pad's pressure.
+void Context::release_pad(unsigned pad) {
     pad %= 16;
+    auto& keys = pad_keys[pad];
+    if (std::none_of(keys.begin(), keys.end(), [](int32_t k) { return k >= 0; })) return;
+    uint8_t selected = ui.track;
+    ui.track = uint8_t(pad_track[pad] % track_count);
     auto& t = track();
-    // Let go of whatever this pad started. A latched arp plays on, without the pad's pressure.
-    for (auto& k : pad_keys[pad])
+    for (auto& k : keys)
         if (k >= 0) {
             if (t.arp && t.arp_latch && t.engine != EngineKind::Sampler) send({Type::Pressure, ui.track, 0, uint16_t(k), 0});
             key(k, 0, false); k = -1;
         }
+    ui.track = selected;
+}
+
+void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
+    pad %= 16;
+    release_pad(pad);
     if (!down) return;
+    pad_track[pad] = ui.track;
+    auto& t = track();
     if (t.arp && t.arp_latch && !held_pads()) { // a fresh latch: the old keys go
         send({Type::Arp, ui.track, 0, 0, 0}); send({Type::Arp, ui.track, 0, 0, 1});
     }
@@ -786,8 +801,8 @@ void Context::pressure(unsigned pad, uint8_t value) {
         send({Type::PunchDepth, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8), int16_t(value * 100 / 127)});
         return;
     }
-    // Every note of a chord; a pad playing a Record take's source track presses that track's notes.
-    unsigned to = record_key_held(pad) && ui.settings.input.source == InputSource::Track ? ui.settings.input.track % track_count : ui.track;
+    // Every note of a chord, on the track the pad played (a Record take's source track presses that track's notes).
+    unsigned to = pad_track[pad] % track_count;
     for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, uint8_t(to), 0, uint16_t(k & 0xff), int16_t(value)});
 }
 
@@ -1345,17 +1360,19 @@ void Context::sync_song() {
 
 // On the Song page Play plays the arrangement from the cursor; elsewhere the
 // patterns (open question 4: Song's controls).
-void Context::set_arp(bool on) {
-    auto& t = track();
+void Context::set_arp(unsigned track, bool on) {
+    uint8_t n = uint8_t(track % track_count);
+    auto& t = project.tracks[n];
     t.arp = on;
-    // Notes held now stop; the arp starts with what is pressed next.
-    for (auto& pad : pad_keys) for (auto& k : pad) if (k >= 0) { note(ui.track, k, 0); k = -1; }
+    // Notes the pads hold on that track stop; the arp starts with what is pressed next.
+    for (unsigned p = 0; p < pad_keys.size(); ++p)
+        if (pad_track[p] == n) for (auto& k : pad_keys[p]) if (k >= 0) { note(n, k, 0); k = -1; }
     if (on) {
-        send({Type::Arp, ui.track, 0, 1, t.arp_mode}); send({Type::Arp, ui.track, 0, 2, t.arp_rate});
-        send({Type::Arp, ui.track, 0, 3, int16_t(t.engine == EngineKind::Sampler ? 1 : t.arp_octaves)}); // a kit repeats its pad
-        send({Type::Arp, ui.track, 0, 4, t.arp_gate});
+        send({Type::Arp, n, 0, 1, t.arp_mode}); send({Type::Arp, n, 0, 2, t.arp_rate});
+        send({Type::Arp, n, 0, 3, int16_t(t.engine == EngineKind::Sampler ? 1 : t.arp_octaves)}); // a kit repeats its pad
+        send({Type::Arp, n, 0, 4, t.arp_gate});
     }
-    send({Type::Arp, ui.track, 0, 0, int16_t(on)});
+    send({Type::Arp, n, 0, 0, int16_t(on)});
 }
 
 void Context::set_click(unsigned mode) {

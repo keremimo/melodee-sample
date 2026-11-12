@@ -26,6 +26,7 @@ void step_bank(Context& c, int way) {
 void pad_bank_button(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (pressed) { ui.pad_bank = true; ui.pad_bank_used = false; ui.pad_bank_down = c.now; return; }
+    if (!ui.pad_bank) return; // its press went elsewhere (a question took it): no step
     ui.pad_bank = false;
     if (ui.pad_bank_used) return; // held for a pad, a jump or a copy: no step
     if (ui.shift) ui.shift_used = true;

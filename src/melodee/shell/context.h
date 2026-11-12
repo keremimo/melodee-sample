@@ -357,7 +357,8 @@ public:
     struct Played { uint8_t track = 0, key = 0, velocity = 0; uint32_t at = 0, length = 0; };
     std::array<Played, 512> history {};
     unsigned history_at = 0;
-    void set_arp(bool on);
+    void set_arp(bool on) { set_arp(ui.track, on); }
+    void set_arp(unsigned track, bool on); // that track's arp (Note Repeat let go after the track changed)
     // The Looper (shell/looper_jobs.cpp): refusals already said, and whether a loop records (the metronome's Rec).
     std::array<unsigned, loop_tracks> loop_errors {};
     bool loop_click = false;
@@ -372,13 +373,18 @@ public:
     void tap_tempo();
     void set_tempo(int tenths);
 
-    // The keys each pad started (a chord has up to four), so a release ends them.
+    // The keys each pad started (a chord has up to four), so a release ends them, and the track they
+    // went to: the selected track may change while the pad is down (Pad Bank + pad, Tracks).
     std::array<std::array<int32_t, notes_per_step>, 16> pad_keys = [] {
         std::array<std::array<int32_t, notes_per_step>, 16> keys {};
         for (auto& pad : keys) pad.fill(-1);
         return keys;
     }();
+    std::array<uint8_t, 16> pad_track {};
     void key(int key, int velocity, bool down);
+    // Ends whatever `pad` still sounds, on the track it played. Every pad release comes here, whichever
+    // page or layer took it (the shell), so a page change while a pad is down never leaves a note on.
+    void release_pad(unsigned pad);
 
     // MIDI in (parity phase 9, shell/midi_io.cpp): a note on track `t` as its pads would play it, but straight (no chord,
     // layout or response curve) and never sent out again; on the selected track it records as a pad does under Seq Record.

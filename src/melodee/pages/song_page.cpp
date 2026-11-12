@@ -304,6 +304,7 @@ void song_chop(Context& c) {
     auto& song = c.project.song;
     int index = clip_index(c);
     if (index < 0 || c.ui.song_cursor <= song.clips[size_t(index)].bar) { c.notice("Chop: cursor inside a clip"); return; }
+    if (song.count >= song.clips.size()) { c.notice("Chop: the song is full"); return; } // the tail would be lost
     Clip clip = song.clips[size_t(index)];
     unsigned cursor = c.ui.song_cursor;
     song.clips[size_t(index)].bars = uint16_t(cursor - clip.bar);

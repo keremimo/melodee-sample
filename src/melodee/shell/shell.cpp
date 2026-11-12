@@ -32,6 +32,23 @@
 namespace melodee {
 namespace {
 using Button = SurfaceButton;
+
+// A button let go while the Name sheet or SD card access has the controls: what it held lets go, and its
+// tap does nothing (it went down before they took them). Left held, Erase would go on deleting and Seq or
+// Pad Bank would keep the pads once the sheet closes or the card comes back.
+void let_go(Context& c, Button b) {
+    auto& ui = c.ui;
+    switch (b) {
+    case Button::Seq: ui.seq_held = false; ui.seq_left = false; break;
+    case Button::PadBank: ui.pad_bank = false; break;
+    case Button::Mute: ui.mute = false; break;
+    case Button::Erase: ui.erase = false; break;
+    case Button::Sample: ui.sample_held = false; break;
+    case Button::Loop: ui.loop_held = ui.loop_grip = ui.loop_shift_held = false; break;
+    case Button::NoteRepeat: repeat_button(c, false); break; // held, the repeat ends with it
+    default: break;
+    }
+}
 } // namespace
 
 Shell::Shell(EngineHost& host)
@@ -118,7 +135,13 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
 // an edit of its own (parity phase 10); Shift and undo / redo themselves are not.
 void Shell::button(Button b, bool pressed) {
     if (card_owns_controls(ui_)) { // SD card access (shell/card_access.h): B1, the question's B3, Play and Stop
-        if (!pressed) { if (b == Button::Shift) ui_.shift = false; if (b == Button::Play || b == Button::Stop) press(b, pressed); return; }
+        if (!pressed) { // a button held as the card went away lets go, doing nothing
+            if (b == Button::Shift) ui_.shift = false;
+            if (b == Button::TapTempo) tap_held = false;
+            if (b == Button::Play || b == Button::Stop) press(b, pressed);
+            else let_go(context_, b);
+            return;
+        }
         auto r = card_press(ui_, b);
         if (r.request != CardRequest::None) card_link.request.store(uint8_t(r.request));
         if (r.leave) context_.open(PageId::Project);
@@ -137,7 +160,7 @@ void Shell::press(Button b, bool pressed) {
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
-        if (!pressed) return;
+        if (!pressed) { if (b == Button::TapTempo) tap_held = false; let_go(context_, b); return; }
         switch (b) {
         case Button::TopLeft: context_.cancel_name(); return;
         case Button::TopMiddle: if (!ui.name.caps_only) ui.name.lower = !ui.name.lower; return;
@@ -153,7 +176,7 @@ void Shell::press(Button b, bool pressed) {
     if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Seq Record, Push
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp
     if (b == Button::Mute) { mute_button(context_, pressed); return; }         // shell/mute_mode.cpp
-    if (b == Button::NoteRepeat && !ui.exit_open) { // shell/note_repeat.cpp; on Song the pads play nothing: it repeats the clip
+    if (b == Button::NoteRepeat && (!ui.exit_open || !pressed)) { // shell/note_repeat.cpp; on Song the pads play nothing: it repeats the clip
         if (pressed && song_buttons()) song_repeat(context_);
         else repeat_button(context_, pressed);
         return;
@@ -385,7 +408,16 @@ void Shell::pad(unsigned pad, uint8_t velocity, bool down) {
         context_.play_pad(pad, down ? ui_.settings.velocity(velocity) : 0, down);
         return;
     }
-    if (!down) { hit(pad, velocity, down); context_.close_hold(pad); return; }
+    if (!down) {
+        hit(pad, velocity, down);
+        // Whatever took the release (another page's pads, the Loop grid, the Name sheet), the pad lets go of
+        // all it started: its notes, the step it held on Steps, the pattern it held under Seq.
+        context_.release_pad(pad);
+        if (ui_.held_step >= 0 && unsigned(ui_.held_step) % bar_steps == pad % 16) ui_.held_step = -1;
+        if (ui_.pattern_held == int(pad % 16)) ui_.pattern_held = -1;
+        context_.close_hold(pad);
+        return;
+    }
     context_.open_hold(pad); // Roll, Steps, Step Edit: press to release is one step (then PageEdit stands aside)
     PageEdit step(context_, Button::Count, true);
     hit(pad, velocity, down);

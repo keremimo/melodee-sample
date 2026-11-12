@@ -68,6 +68,7 @@ struct UiState {
     bool mute_mode() const { return mute || mute_latch; }
     // Note Repeat (shell/note_repeat.cpp): a tap latches, a hold lasts while held.
     bool repeat_held = false, repeat_turned_on = false;
+    uint8_t repeat_track = 0;    // the track it went down on
     uint32_t repeat_down = 0;
     bool exit_open = false, recording = false;
     bool exit_off = false;         // the Exit sheet's POWER OFF chosen: saving, then the MPC turns off

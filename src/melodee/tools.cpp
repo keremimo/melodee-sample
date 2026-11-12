@@ -29,6 +29,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1682,6 +1683,10 @@ static int mpc_import(const char* path) {
 }
 
 std::optional<int> run_tool(int argc, char** argv) {
+    if (argc >= 2 && !std::strcmp(argv[1], "--melodee-monkey")) { // [SEED COUNT MOVES], build.sh's: 1 12 3000
+        auto arg = [&](int n, unsigned fallback) { return argc > n ? unsigned(std::strtoul(argv[n], nullptr, 10)) : fallback; };
+        return monkey(arg(2, 1), arg(3, 12), arg(4, 3000));
+    }
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-preview")) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return preview(argv[2], names);
