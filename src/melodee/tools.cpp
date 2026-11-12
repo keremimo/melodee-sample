@@ -1917,6 +1917,7 @@ std::optional<int> run_tool(int argc, char** argv) {
         return error.empty() ? 0 : 1;
     }
     if (argc == 3 && !std::strcmp(argv[1], "--melodee-boot")) return boot_frames(argv[2]);
+    if (argc >= 2 && !std::strcmp(argv[1], "--melodee-dsp-bench")) return dsp_bench(argc, argv);
     if (argc >= 3 && !std::strcmp(argv[1], "--melodee-bench")) {
         std::vector<std::string> names(argv + 3, argv + argc);
         return bench(unsigned(std::max(1, std::atoi(argv[2]))), names);

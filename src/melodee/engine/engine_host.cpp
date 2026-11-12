@@ -1588,6 +1588,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // plug-in plays in two places (it would be asked for two blocks at once).
     bool parallel = workers.workers() && parallel_allowed.load(std::memory_order_relaxed) && track_work_ns >= parallel_from_ns
                  && !plugin_in_two_places();
+    // One dispatch a block (roadmap P2): the workers woken now wait awake while this block is sequenced, so their
+    // wake-up is not added to the block's time; after the block's last run they sleep until the next.
+    bool whole = whole_blocks.load(std::memory_order_relaxed);
+    if (whole && parallel) workers.wake();
     track_ns.fill(0);
     if (reformatting) { // a new rate: silent until the Reload has built everything again at it
         std::fill(out, out + 2 * frames, 0);
@@ -1628,7 +1632,6 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // Render up to each step, play the step, carry on: steps land on the sample, and so do notes played by hand.
     // One dispatch a block (roadmap P2): this pass only sequences, each track's engine calls past the first frame
     // kept for its job below; the old way renders every track up to each step here.
-    bool whole = whole_blocks.load(std::memory_order_relaxed);
     deferring = whole;
     keyed_pad = pad_keyed;
     cut_count = 0;
@@ -1675,7 +1678,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (slot.engine == &slot.sampler) slot.knob_pad_fed |= slot.sampler.knob_fed();
             track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
         };
-        if (parallel) workers.run(active, engine_job);
+        if (parallel) workers.run(active, engine_job, true); // the old way keeps the workers awake between its runs
         else for (unsigned i = 0; i < active; ++i) engine_job(i);
         sync.run(frame_now + done, n, quarter_samples(), [&](const MidiOutEvent& e) { emit(e); });
         if (running && !held) {
@@ -1758,7 +1761,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     };
     if (whole && parallel) workers.run(active, track_job);
     else if (whole) for (unsigned i = 0; i < active; ++i) track_job(i);
-    else if (parallel) workers.run(active, chain_job);
+    else if (parallel) workers.run(active, chain_job, true);
     else for (unsigned i = 0; i < active; ++i) chain_job(i);
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];

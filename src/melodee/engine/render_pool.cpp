@@ -15,8 +15,6 @@
 
 namespace melodee {
 namespace {
-constexpr auto spin = std::chrono::microseconds(200); // a block's second run follows its first within this
-
 void relax() {
 #if defined(__aarch64__)
     asm volatile("yield");
@@ -89,10 +87,11 @@ bool RenderPool::claim(uint32_t gen) {
     return true;
 }
 
-void RenderPool::dispatch(unsigned count, Call job, void* job_context) {
+void RenderPool::dispatch(unsigned count, Call job, void* job_context, bool more) {
     count = std::min(count, 0xffffu);
     call = job;
     context = job_context;
+    lingering.store(more || linger_always.load(std::memory_order_relaxed), std::memory_order_relaxed); // a hint: read late, it is the next run's
     done.store(0, std::memory_order_relaxed);
     uint32_t gen = generation.load(std::memory_order_relaxed) + 1;
     ticket.store(uint64_t(gen) << 32 | uint64_t(count) << 16, std::memory_order_release);
@@ -103,6 +102,16 @@ void RenderPool::dispatch(unsigned count, Call job, void* job_context) {
     while (done.load(std::memory_order_acquire) < count) relax();
 }
 
+void RenderPool::wake() {
+    if (threads.empty()) return;
+    lingering.store(true, std::memory_order_relaxed);
+    done.store(0, std::memory_order_relaxed);
+    uint32_t gen = generation.load(std::memory_order_relaxed) + 1;
+    ticket.store(uint64_t(gen) << 32, std::memory_order_release); // a run of no jobs: woken, nothing to claim
+    generation.store(gen, std::memory_order_seq_cst);
+    if (sleepers.load(std::memory_order_seq_cst)) wake_all(generation);
+}
+
 void RenderPool::work() {
     flush_denormals();
 #if defined(__APPLE__)
@@ -110,10 +119,10 @@ void RenderPool::work() {
 #endif
     uint32_t seen = generation.load(std::memory_order_acquire);
     while (true) {
-        // Wait for the next run: spin a little (the block's next run is near), then sleep.
+        // Wait for the next run: awake a little when it follows within the block, else asleep at once.
         uint32_t gen = generation.load(std::memory_order_acquire);
-        if (gen == seen) {
-            auto until = std::chrono::steady_clock::now() + spin;
+        if (gen == seen && lingering.load(std::memory_order_relaxed)) {
+            auto until = std::chrono::steady_clock::now() + std::chrono::microseconds(spin_us.load(std::memory_order_relaxed));
             while ((gen = generation.load(std::memory_order_acquire)) == seen && std::chrono::steady_clock::now() < until) relax();
         }
         while (gen == seen) {

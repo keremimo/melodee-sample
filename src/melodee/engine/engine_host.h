@@ -139,6 +139,8 @@ public:
     // last block's took more than `from_ns` (all cores together; 0 always, for tests).
     void set_render_threads(unsigned count, uint64_t from_ns = 150000);
     unsigned render_threads() const { return workers.workers(); }
+    // Any thread: how long the workers wait awake for a run that follows within the block (render_pool.h).
+    void set_render_spin(unsigned us, bool always = false) { workers.set_spin(us); workers.set_linger_always(always); } // always: after every run, as before
     // Any thread: the workers used (true) or left asleep, from the next block; for comparing the two.
     void set_render_parallel(bool on) { parallel_allowed.store(on, std::memory_order_relaxed); }
     bool render_parallel() const { return parallel_allowed.load(std::memory_order_relaxed); }
