@@ -29,7 +29,7 @@ const EngineInfo& engine_info(EngineKind kind) {
         {"CLOUD", 0, 1, 0, Format::Switch, nullptr}, {"POSITION", 0, 100, 38, Format::Percent, nullptr},
         {"SIZE", 0, 100, 50, Format::Percent, nullptr}, {"DENSITY", 0, 100, 24, Format::Number, nullptr},
         {"SCAN", 0, 100, 50, Format::Percent, nullptr}, {"SPREAD", 0, 100, 12, Format::Cents, nullptr},
-        {"HOW", 0, 2, 0, Format::Choice, follow_hows}, {"PITCH", 0, 1, 0, Format::Choice, pitch_hows},
+        {"MODE", 0, 2, 0, Format::Choice, follow_hows}, {"PITCH", 0, 1, 0, Format::Choice, pitch_hows},
     };
     static const Sound kits[] {{"NEW KIT", {{{-1, 0}}}}};
     static const EngineInfo sampler {EngineKind::Sampler, "SAMPLER", true, kit_params, sampler::Count, nullptr, 0,

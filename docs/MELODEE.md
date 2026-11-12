@@ -262,7 +262,11 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     + B1 Loop Lock, Shift + B2 Normalize), the envelopes and the filter lie
     over the region. MIX: volume, kit volume, pan; Shift + K2 on AMP ENV and
     FILT ENV decay from start or end, Shift + K3 on TUNE # Beats, Shift + K2
-    on PLAY Pad Link. FOLLOW: on, how (Beats, Tones, Tape), pitch. CLOUD
+    on PLAY Pad Link. FOLLOW: on, mode (Beats, Tones, Tape), pitch; the
+    project's beats drawn over the pad's region in amber (the bar's first
+    brighter), as many as # Beats says or its length at the tempo, and the
+    sample's own hits as dots above, each joined to the beat it is moved
+    onto; Follow on or off is an LED in the header. CLOUD
     (the whole kit's pads as grain clouds): K1 position, K2 grain size, K3
     density, Shift + K1 scan, Shift + K2 spread, Shift + K3 Cloud on or off,
     the place and grains drawn on the wave. KIT FILT: cutoff, resonance,

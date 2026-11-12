@@ -13,6 +13,7 @@
 // list; FX: the next effect, or with none yet the effect picker; an empty track: makes it), Shift + Push is Back.
 // The pads play the track; on a kit the pad played is the pad edited.
 #include "melodee/engine/arp.h"
+#include "melodee/engine/dsp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/kit909.h"
 #include "melodee/engine/midi_engine.h"
@@ -433,11 +434,6 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         glyph(Icon::Loop, pad.loop);
         if (pad.loop && pad.loop_lock) glyph(Icon::Lock, true);
         glyph(Icon::Reverse, pad.reverse);
-        if (page.kind == StageKind::Follow) { // Cloud's LED is the header's
-            bool on = t.params[sampler::Follow];
-            draw_glyph(p, on ? Glyph::Led : Glyph::LedOff, gx, gy + 6, on ? c : colour::dim);
-            gx += 14;
-        }
         if (page.kind == StageKind::Trim && s.ui.trim_zoom)
             p.text(juce::String::fromUTF8("\xc3\x97") + juce::String(1 << s.ui.trim_zoom), gx, gy - 1, 30, 14, caps_text(c));
     };
@@ -494,6 +490,32 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     // A loop going round: for a moment a ghost stays at the place the head left (drawn last), so the jump reads as one.
     const float wrap = heard && (heard->flags & tap::Loop) ? heard->wrap : 0.0f;
     float loop_x = -1;
+    if (page.kind == StageKind::Follow && end > start) { // follow A: the grid on the wave
+        // The project's beats over the pad's region in amber (the bar's first brighter), as many as # Beats says or
+        // its length at the tempo; the sample's own hits as dots above, each joined to the beat it is moved onto.
+        double beat_frames = dsp::model_rate * 600.0 / std::max(1u, s.tempo);
+        unsigned beats = pad.beats ? pad.beats : unsigned(std::max(1L, std::lround((end - start) / beat_frames)));
+        beats = std::min(beats, max_pad_beats);
+        unsigned per_bar = std::max(1u, s.project.bar_ticks() / std::max(1u, s.project.beat_ticks()));
+        auto x_of = [&](double frame) { return wx + ww * float((frame / frames - from) / (to - from)); };
+        float xs = x_of(start), xe = x_of(end);
+        for (unsigned b = 0; b <= beats; ++b) {
+            float bx = xs + (xe - xs) * float(b) / float(beats);
+            p.fill(bx - 0.5f, wy, 1, wh, colour::amber.withAlpha(b % per_bar == 0 ? 0.85f : 0.4f));
+        }
+        for (unsigned n = 0; n < std::min<unsigned>(s.sample.hit_count, max_hits); ++n) {
+            const auto& hit = s.sample.hits[n];
+            if (hit.frame < start || hit.frame >= end) continue;
+            float hx = x_of(hit.frame);
+            unsigned onto = unsigned(std::lround(double(hit.frame - start) / double(end - start) * beats));
+            float bx = xs + (xe - xs) * float(onto) / float(beats);
+            juce::Path join;
+            join.startNewSubPath(hx, wy - 5); join.lineTo(bx, wy + 3);
+            p.g.setColour(c);
+            p.g.strokePath(join, juce::PathStrokeType(1.0f));
+            p.circle(hx, wy - 5, 2.6f, c);
+        }
+    }
     if (page.kind == StageKind::Trim) { // start, end and loop, each in the colour of its card (the flags over the wave)
         p.fill(sx, wy, 1.5f, wh, knob_shade(s.ui.track, 0));
         p.fill(ex - 1.5f, wy, 1.5f, wh, knob_shade(s.ui.track, 1));
@@ -787,6 +809,11 @@ HeaderItem cloud_pill(const Snapshot& s) {
     bool on = s.track().params[sampler::Cloud];
     return pill(on ? Icon::Rec : Icon::Ring, "CLOUD", on ? colour_of(s) : colour::mid);
 }
+// Follow (round 2, follow A): on or off as an LED in the header, as Cloud's.
+HeaderItem follow_pill(const Snapshot& s) {
+    bool on = s.track().params[sampler::Follow];
+    return pill(on ? Icon::Rec : Icon::Ring, "FOLLOW", on ? colour_of(s) : colour::mid);
+}
 
 // The kit header pill, Stage's and the sample pages' alike: the pad and its sample.
 HeaderItem kit_pill(const Snapshot& s) {
@@ -805,6 +832,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (stage_kit_page(page.kind) != PageId::Count) {
         h.left.push_back(kit_pill(s));
         if (page.kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
+        if (page.kind == StageKind::Follow) h.left.push_back(follow_pill(s));
     } else if (page.picture == StagePicture::Voice) {
         int hit = int(t.last_note) - 36;
         if (hit >= 0 && hit < int(kit909::Drums)) h.left.push_back(pill("PAD " + juce::String(hit + 1) + dot + juce::String(kit909::drum_name(unsigned(hit))), c));
@@ -906,6 +934,7 @@ void kit_page(Paint& p, const Snapshot& s, StageKind kind, int row) {
     Header h = header_of(s);
     h.left.push_back(kit_pill(s));
     if (kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
+    if (kind == StageKind::Follow) h.left.push_back(follow_pill(s));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, sampler_keys(s.ui.page, colour_of(s)), h);
     StagePage page {"", kind, StagePicture::Wave};
