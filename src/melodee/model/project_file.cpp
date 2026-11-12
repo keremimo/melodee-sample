@@ -1273,8 +1273,8 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
         if (!r.ok) return "damaged section " + name;
     }
     if (!file.ok) return "damaged file";
-    for (unsigned t = 0; t < track_count; ++t) // before parity phase 4 a pad's decay ran from its start
-        if (!pad4[t]) for (auto& pad : project->tracks[t].pads) pad.decay_from_start = true;
+    for (unsigned t = 0; t < track_count; ++t) // before parity phase 4 a pad's decay ran from its start, and pads were Poly
+        if (!pad4[t]) for (auto& pad : project->tracks[t].pads) { pad.decay_from_start = true; pad.mono = false; }
     for (unsigned t = 0; t < track_count; ++t) // PROPHET, CZ and SID as their plug-ins; FM6 and the 909 empty, patterns kept
         for (const auto& synth : legacy_synths)
             if (legacy[t] == synth.engine) open_as_plugin(*project, t, synth, file_version, plugin_states);

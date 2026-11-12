@@ -2290,8 +2290,11 @@ void sample_mode() {
         run(*e, 400);
         CHECK(!e->sounding());
     }
-    { // Mono: a second hit stops the first; Poly lets them sum.
+    { // Mono (a new pad's default): a second hit stops the first; Poly lets them sum. 16 Levels' notes at two
+      // pitches sum on a mono pad too (a chord).
         PadSound pad = base; pad.end = 40000;
+        CHECK(pad.mono);
+        pad.mono = false;
         auto poly = engine_with(pad);
         poly->note_on(key, 127); poly->note_on(key, 127);
         float both = run(*poly, 8, 2).first;
@@ -2300,6 +2303,16 @@ void sample_mode() {
         mono->note_on(key, 127); mono->note_on(key, 127);
         float one = run(*mono, 8, 2).first;
         CHECK(both > one * 1.7f && one > 0.1f);
+        auto chord = [&](bool is_mono, bool again) {
+            PadSound p = pad; p.mono = is_mono;
+            auto e = engine_with(p);
+            e->note_on(pad_note(key, 4), 127); e->note_on(pad_note(key, 7), 127);
+            if (again) e->note_on(pad_note(key, 7), 127); // the same pitch again: mono cuts its last
+            return run(*e, 8, 2).first;
+        };
+        float poly_chord = chord(false, false);
+        CHECK(std::fabs(chord(true, false) - poly_chord) < 1e-4f);
+        CHECK(std::fabs(chord(true, true) - poly_chord) < 1e-4f && chord(false, true) > poly_chord * 1.2f);
     }
     { // Velocity sensitivity: at 0 a soft hit is as loud as a hard one.
         PadSound pad = base;
@@ -6799,7 +6812,7 @@ struct ZoneRig {
     SampleData data;
     SamplerEngine::Table table {};
     std::unique_ptr<SamplerEngine> engine = std::make_unique<SamplerEngine>();
-    PadSound pad;
+    PadSound pad = [] { PadSound p; p.mono = false; return p; }(); // an instrument loads Poly (shell/sample_files.cpp)
     void part(std::vector<float> frames) { audio.push_back(std::move(frames)); }
     SampleZone& zone(uint16_t which = 0) { multi->zones.emplace_back(); multi->zones.back().part = which; return multi->zones.back(); }
     void build(PadPlay play = PadPlay::OneShot) {
@@ -7324,7 +7337,7 @@ void voice_taps() {
     {
         SamplerEngine e;
         e.set_samples(&table);
-        PadSound pad; pad.sample = 2; pad.start = 1000; pad.end = 20000;
+        PadSound pad; pad.sample = 2; pad.start = 1000; pad.end = 20000; pad.mono = false; // Poly: two hits sound
         e.set_pad(4, pad);
         e.note_on(int(sampler_first_note) + 4, 100);
         block(e);

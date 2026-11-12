@@ -92,7 +92,7 @@ struct PadSound {
     bool loop = false;            // Loop: after the end it plays on from the loop point
     bool loop_lock = true;        // Loop Lock (Shift + B1 on Trim): the loop point is the start
     uint32_t loop_start = 0;      // frames, when not locked
-    bool mono = false;            // a new hit stops the pad's last one (else Poly: they overlap)
+    bool mono = true;             // a new hit stops the pad's last one at the same pitch, so 16 Levels chords sound (else Poly: they overlap)
     uint8_t link = 0;             // Pad Link: 1..16 a pad of the same bank played with it, 0 none (it links on: roadmap P3)
     uint8_t offset = 0;           // 0..100: the start waits up to a sixteenth after the hit
     uint8_t velocity_sense = 100; // 0..100: 0 every hit full, 100 soft hits quietest

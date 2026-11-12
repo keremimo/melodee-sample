@@ -196,7 +196,7 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
     if (sound.sample != uint16_t(slot)) edit.pad_after.trims.clear(); // round 3: another file's zones are not these
     sound.sample = uint16_t(slot);
     if (project.samples[size_t(slot)].instrument()) { // played on keys: held while held, no region of its own
-        sound.play = PadPlay::Gate; sound.decay = 100; sound.sustain = 100;
+        sound.play = PadPlay::Gate; sound.decay = 100; sound.sustain = 100; sound.mono = false; // Poly: chords on Keys
         sound.loop = false; sound.warp = warp_off; sound.beats = 0;
         landing_pads.push_back({ui.track, uint8_t(kit), uint16_t(slot)});
     }
