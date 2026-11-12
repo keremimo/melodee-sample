@@ -26,7 +26,7 @@ inline void sort_notes(std::array<int, notes_per_step>& keys, unsigned n) {
 inline unsigned chord_notes(const Project& project, const Track& track, unsigned pad, std::array<int, notes_per_step>& out) {
     std::array<uint8_t, 12> degrees {};
     unsigned count = scale_degrees(project.scale, degrees);
-    int base = 12 * (track.octave + 1) + project.root;
+    int base = 12 * (track.octave + 1) + project.root + track.transpose; // as the pads' (pad_note()): the pad's note is the root
     // Chromatic has no thirds to stack: each pad is its own root with the major scale above it.
     std::array<uint8_t, 12> major {};
     unsigned major_count = count == 12 ? scale_degrees(0, major) : 0;
