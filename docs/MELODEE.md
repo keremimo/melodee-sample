@@ -392,6 +392,10 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   in its knob's colour; a tick a pad, the pad hit marked with its note or
   value. − / + move Scale an octave (a synth's pads with the track; a kit
   three down to five up, kept with the track), and a kit's Tune too.
+  On a kit pad (no arp), a MIDI keyboard plays that pad on every key
+  (`levels_key()`, shell/midi_route.h), whatever the type: key 60 a sample
+  as a C, the pad's Semi kept; an instrument at its real pitch, its Semi
+  undone. The keyboard's velocity plays as it comes.
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
   (Shift: their triplets); the lit B1 again is 1/4, the lit B3 again 1/64
   (dots under them), and back; straight rates swing with the project. It is

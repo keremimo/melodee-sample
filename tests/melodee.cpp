@@ -7317,6 +7317,18 @@ void note_pitches() {
     CHECK(ref.instrument());
     Track kit; kit.engine = EngineKind::Sampler;
     CHECK(note_key(kit, 20) == -1 && note_key(kit, 20, true) == 20 && note_key(kit, 127, true) == 127 && note_key(kit, 128, true) == -1);
+    // 16 Levels: the keyboard plays the 16 Levels pad, a single sample as well as an instrument (key 60 its root)
+    kit.levels_pad = 18; kit.pads[18].sample = 4; kit.pads[18].pitch = 3;
+    CHECK(levels_key(kit, 60, false) == -1); // 16 Levels off: the kit's pads
+    kit.levels = true;
+    const int note = int(sampler_first_note) + 18;
+    CHECK(levels_key(kit, 60, false) == note && levels_key(kit, 72, false) == pad_note(note, 12) && levels_key(kit, 20, false) == pad_note(note, -40));
+    CHECK(levels_key(kit, 63, true) == note && levels_key(kit, 60, true) == pad_note(note, -3)); // an instrument at real pitch
+    CHECK(levels_key(kit, 128, false) == -1);
+    kit.arp = true;
+    CHECK(levels_key(kit, 60, false) == -1);
+    kit.arp = false; kit.pads[18].sample = no_sample;
+    CHECK(levels_key(kit, 60, false) == -1); // an empty pad: the kit's pads
 }
 
 // The place bar (shell/place_bar.h): segments, place and tone from the snapshot, and its Settings row.

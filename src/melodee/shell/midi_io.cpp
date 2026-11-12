@@ -39,14 +39,12 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
     if (down) midi_held[t].set(size_t(k));
     else if (midi_held[t].test(size_t(k))) midi_held[t].reset(size_t(k));
     else return; // never started here (or already let go)
-    // An instrument under 16 Levels has the keyboard: the note is that pad, at the key
+    // A kit pad under 16 Levels has the keyboard: the note is that pad, at the key
     // played. Kept from the press, so its end finds it whatever has changed meanwhile.
     if (down) {
-        midi_played[t][size_t(k)] = k;
-        if (midi_every_key(tr)) {
-            const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
-            midi_played[t][size_t(k)] = pad_note(int(sampler_first_note + tr.levels_pad % sampler_pads), k - 60 - pad.pitch);
-        }
+        const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
+        int levels = levels_key(tr, k, project.samples[pad.sample % sample_slots].instrument());
+        midi_played[t][size_t(k)] = levels >= 0 ? levels : k;
     }
     const int played = midi_played[t][size_t(k)];
     from_midi = true;
@@ -63,11 +61,7 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
     from_midi = false;
 }
 
-bool Context::midi_every_key(const Track& tr) const {
-    if (tr.engine != EngineKind::Sampler || !tr.levels || tr.arp) return false;
-    const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
-    return pad.used() && project.samples[pad.sample % sample_slots].instrument();
-}
+bool Context::midi_every_key(const Track& tr) const { return levels_key(tr, 60, false) >= 0; }
 
 void Context::midi_release_all() {
     for (unsigned t = 0; t < track_count; ++t)

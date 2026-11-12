@@ -29,7 +29,12 @@ uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_c
 // The key a MIDI note plays on a track: a synth the note itself; a kit the
 // pad it names (36 = A01, as Melodee's own pad keys and its MIDI out), -1
 // below the first pad; a 909 its drums from 36 as its pads.
-int note_key(const Track& track, int note, bool every_key = false); // every_key: a kit pad playing an instrument on the keys
+int note_key(const Track& track, int note, bool every_key = false); // every_key: a kit pad on the keys under 16 Levels
+
+// 16 Levels on a kit (no arp): the whole keyboard plays the 16 Levels pad, key 60 its root. An instrument plays at its
+// real pitch (the pad's Semi undone); a single sample is a C, key 60 the pad as its pads play it. The pad note
+// (pad_note()) for `key`, or -1 when the keyboard plays the kit's pads.
+int levels_key(const Track& track, int key, bool instrument);
 
 // The channel a track's notes go out on (its own, else MIDI Config's Out) and
 // when (PadMidiOut), for Command::MidiTrack.

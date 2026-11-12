@@ -520,7 +520,7 @@ public:
     bool holds_notes(unsigned t) const { return midi_held[t % track_count].any() || (t % track_count == ui.track % track_count && held_pads()); }
     uint16_t fader_bent = 0; // tracks whose pitch bend the fader moved: shell/fader.cpp brings each back to the middle
     std::array<std::array<int32_t, 128>, track_count> midi_played {}; // what each of them plays
-    bool midi_every_key(const Track& tr) const;              // 16 Levels on an instrument: the whole keyboard is that pad
+    bool midi_every_key(const Track& tr) const;              // 16 Levels on a kit pad: the whole keyboard is that pad
     // An instrument loaded onto a pad: its envelope and velocity go onto the pad once read.
     struct LandingPad { uint8_t track = 0; uint8_t pad = 0; uint16_t slot = 0; };
     std::vector<LandingPad> landing_pads;

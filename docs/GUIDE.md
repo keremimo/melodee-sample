@@ -537,6 +537,10 @@ Use **K1** or **SHIFT** + **16 LEVELS** to choose the type:
 For Velocity, Filter and Tune, **K2** sets pad 1's value and **K3** pad 16's.
 Press **−** / **+** to change the octave in Scale and Tune.
 
+While 16 Levels is on a kit pad, a MIDI keyboard plays that pad on every key.
+C4 (key 60) plays a sample as the pad plays it; an instrument plays at its
+real pitch.
+
 ![16 Levels: Scale](images/screens/levelsscale.png)
 
 ### Loop, reverse and Note On

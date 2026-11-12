@@ -39,6 +39,14 @@ int note_key(const Track& track, int note, bool every_key) {
     return note;
 }
 
+int levels_key(const Track& track, int key, bool instrument) {
+    if (track.engine != EngineKind::Sampler || !track.levels || track.arp || key < 0 || key > 127) return -1;
+    const unsigned kit = track.levels_pad % sampler_pads;
+    const auto& pad = track.pads[kit];
+    if (!pad.used()) return -1;
+    return pad_note(int(sampler_first_note + kit), key - 60 - (instrument ? int(pad.pitch) : 0));
+}
+
 void ClockFollower::pulse(uint64_t ns) {
     if (count && ns - stamps[(count - 1) % stamps.size()] > 250000000ull) count = 0; // a pause: start over
     stamps[count % stamps.size()] = ns;
