@@ -4714,9 +4714,13 @@ void stage() {
     stage_go(ui, 0, 0);
     CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send && cards(false)[2].id == 0);
     CHECK(!shift_bindings(*project, ui, pattern)[2].bound()); // the quick send is A's; SENDS has all four
-    // SENDS (B1 again): sends A, B, C on K1-K3, D on Shift + K1.
+    // SENDS (B1 again): K1 the bus, K2 the send into it, K3 its return; every bus, D too, without Shift.
     stage_go(ui, 0, 1);
-    CHECK(key() == "SENDS" && cards(false)[0].kind == K::Send && cards(false)[1].id == 1 && cards(false)[2].id == 2 && cards(true)[0].id == 3);
+    ui.sends_bus = 0;
+    CHECK(key() == "SENDS" && cards(false)[0].kind == K::SendBus && cards(false)[1].kind == K::Send && cards(false)[1].id == 0);
+    CHECK(cards(false)[2].kind == K::BusReturn && cards(false)[2].id == 0 && !shift_bindings(*project, ui, pattern)[0].bound());
+    ui.sends_bus = 3;
+    CHECK(cards(false)[0].value == 3 && cards(false)[1].id == 3 && cards(false)[2].id == 3);
     // ARP: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold.
     stage_go(ui, 1, 0);
     CHECK(cards(false)[0].kind == K::ArpMode && cards(false)[1].kind == K::ArpRate && cards(true)[0].kind == K::ArpGate && cards(true)[2].kind == K::ArpHold);

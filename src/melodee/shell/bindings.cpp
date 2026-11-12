@@ -414,10 +414,12 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         if (shift_row) return {};
         return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
                 Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}};
-    case SK::Sends: // sends A, B and C on K1-K3, D on Shift + K1
-        if (shift_row) return {Binding {Kind::Send, 3, 0, 100, track.mix.sends[3]}, Binding {}, Binding {}};
-        return {Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}, Binding {Kind::Send, 1, 0, 100, track.mix.sends[1]},
-                Binding {Kind::Send, 2, 0, 100, track.mix.sends[2]}};
+    case SK::Sends: { // K1 the bus (A-D, the one Tracks' SENDS and Bus show too), K2 the track's send into it, K3 its return
+        if (shift_row) return {};
+        unsigned bus = ui.sends_bus % bus_count;
+        return {Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)}, Binding {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]},
+                Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
+    }
     case SK::Arp:
         if (shift_row) return {Binding {Kind::ArpGate, 0, 5, 100, track.arp_gate}, Binding {}, Binding {Kind::ArpHold, 0, 0, 1, track.arp_latch}};
         return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},

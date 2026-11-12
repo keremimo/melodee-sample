@@ -61,7 +61,7 @@ enum class StageKind : uint8_t {
     Params,     // engine parameters: `params` on K1-K3, `shift` on Shift + K1-K3
     Preset,     // the engine's sounds: K1 the sound (it loads once the turning stops), K2 the list, K3 the engine
     Mix,        // the track's level, pan and send A, the quick one
-    Sends,      // the track's four sends: A, B, C on K1-K3, D on Shift + K1 (round 2)
+    Sends,      // the track's four sends: K1 the bus (A-D), K2 the send into it, K3 its return
     Arp,        // the track's arp: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold
     Chord,      // one pad, one chord from the scale: type, voicing, inversion; Shift + K1 on or off, Shift + K3 hold
     Fx,         // a slot of the track's chain: its first row (Shift: the second); Push the next slot

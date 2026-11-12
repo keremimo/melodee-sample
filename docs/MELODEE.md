@@ -251,9 +251,11 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     synth's own values are on Edit (Push on Keys), the plug-in's pages. MIX:
     level, pan and the quick send into bus A; its meter carries the five
     steps of the meter LEDs as a scale. SENDS: a track sends into each of the
-    four buses, A, B and C on K1–K3, D on Shift + K1; the picture fans out
+    four buses: K1 picks the bus (A–D, the one Tracks' SENDS and Bus show
+    too), K2 sets the send into it, K3 its return; the picture fans out
     from the track to the four buses, each line as thick as its send, each
-    bus with its first effect and a bar of what it receives. ARP: mode (Up,
+    bus with its first effect and a bar of what it receives, the bus in view
+    on a chip in K1's shade with its line in K2's. ARP: mode (Up,
     Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift + K1
     gate, Shift + K3 hold; the header says whether it is on (Note Repeat
     turns it on); its picture is a keyboard along the foot with the keys

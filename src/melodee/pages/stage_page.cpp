@@ -259,7 +259,8 @@ void mix_picture(Paint& p, const Snapshot& s) {
 }
 
 // SENDS: the track's level on the left, a line from it to each of the four buses as thick as its send, each bus
-// with its first effect's glyph and name and a bar of what it receives; A, B, C in K1-K3's shades, D (Shift + K1) grey.
+// with its first effect's glyph and name and a bar of what it receives. The bus in view (K1) wears its letter on a
+// chip in K1's shade, its line and bar in K2's (the send); the other three grey.
 void sends_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     const auto& m = t.mix;
@@ -273,9 +274,12 @@ void sends_picture(Paint& p, const Snapshot& s) {
     float ox = mx + 14, oy = my + mh / 2;
     p.fill(mx + 8, oy - 1, ox - mx - 8, 2.5f, c, 1);
     constexpr float bx = zone::pad + 144, bw = zone::width - zone::pad - bx, bh = 30, gap = 4.5f;
-    for (unsigned b = 0; b < bus_count; ++b) {
+    unsigned in_view = s.ui.sends_bus % bus_count;
+    for (unsigned n = 0; n < bus_count; ++n) {
+        unsigned b = n == bus_count - 1 ? in_view : n < in_view ? n : n + 1; // the bus in view last, its line on top
+        bool picked = b == in_view;
         float by = top + 4 + b * (bh + gap), mid = by + bh / 2, amount = m.sends[b] / 100.0f;
-        auto shade = b < 3 ? knob_shade(s.ui.track, b) : colour::mid;
+        auto shade = picked ? knob_shade(s.ui.track, 1) : colour::mid;
         const auto& bus = s.project.buses[b];
         bool has_fx = bus.fx.slots[0].used();
         juce::Path line;
@@ -289,10 +293,16 @@ void sends_picture(Paint& p, const Snapshot& s) {
             juce::PathStrokeType(1).createDashedStroke(dashed, line, dash, 2);
             p.g.setColour(colour::dim); p.g.fillPath(dashed);
         }
-        p.fill(bx, by, bw, bh, colour::surf, 4);
+        p.fill(bx, by, bw, bh, picked ? colour::raised : colour::surf, 4);
         if (has_fx) icon(p, family_icon(effect_info(EffectKind(bus.fx.slots[0].kind)).family), bx + 8, by + 7, 16, amount > 0 ? shade : colour::mid, 1.5f);
         else p.circle(bx + 16, mid, 2, colour::dim);
-        p.text(juce::String::charToString(juce::juce_wchar('A' + b)), bx + 31, by, 14, bh, plain(has_fx ? colour::text : colour::dim, type::body, Weight::Bold));
+        auto letter = juce::String::charToString(juce::juce_wchar('A' + b));
+        if (picked) {
+            p.fill(bx + 29, mid - 8, 16, 16, knob_shade(s.ui.track, 0), 3);
+            p.text(letter, bx + 29, mid - 8, 16, 16, plain(colour::bg, type::body, Weight::Bold), juce::Justification::centred);
+        } else {
+            p.text(letter, bx + 31, by, 14, bh, plain(has_fx ? colour::text : colour::dim, type::body, Weight::Bold));
+        }
         if (has_fx) {
             juce::String fx(effect_info(EffectKind(bus.fx.slots[0].kind)).name);
             p.text(fx, bx + 46, by, bw - 66, bh, p.fit(fx, plain(colour::mid, type::body), bw - 66, type::floor));
