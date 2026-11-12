@@ -128,7 +128,11 @@ struct Command {
         // silence touching nothing of its state, and takes no more commands, until resume() lets it go.
         Park,
         // A PLUGIN track's pitch bend (the fader's Pitch Bend): track, value -8192..8191 around the centre.
-        Bend
+        Bend,
+        // Freeze plan F2b: track, freeze = its prints (engine/print_player.h) to play instead of its engine and chain,
+        // on the next bar while playing (value 1) or at once (0); none: it plays live again at once. The pack it
+        // replaces goes back to be freed (EngineHost::take_done_freeze).
+        Freeze
 
     };
     Command() = default;
@@ -145,7 +149,10 @@ struct Command {
     Clip clip {};
     PadSound pad {};
     SongPunch song_punch {};
-    struct ProjectPack* pack = nullptr;
+    union { // Reload's, or Freeze's (freeze plan F2b): one pointer, so a Command (thousands queued) stays as small
+        struct ProjectPack* pack = nullptr;
+        struct FreezePack* freeze;
+    };
     struct TrackPack* track_pack = nullptr;
     // A note played by hand or by MIDI in (EngineHost::send_at): it plays at frame `at` (the low 32 bits of the
     // audio thread's count), a block after the frame it came in at, so hits keep their spacing; whatever was sent

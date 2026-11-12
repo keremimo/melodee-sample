@@ -15,6 +15,7 @@ void send_track(Context& c, unsigned t) {
     Command load {Command::Type::TrackLoad, uint8_t(t)};
     load.track_pack = pack;
     if (!c.host.send(load)) delete pack;
+    c.refreeze(t); // freeze plan F2b: the audio thread's new track plays live until its prints are checked again
 }
 } // namespace
 
@@ -67,6 +68,12 @@ void trade_tracks(Context& c, unsigned a, unsigned b) {
     c.stage_tick(UINT32_MAX); // a sound still waiting to load lands on the track it was turned on first
     auto changed = swap_tracks(c.project, c.patterns, a, b);
     swap_track_views(c.ui, a, b);
+    { // freeze plan F2b: a frozen track stays frozen where it goes; its prints are made again under its new number
+        std::swap(c.prints.freeze[a], c.prints.freeze[b]);
+        auto& records = c.prints.records;
+        records.erase(std::remove_if(records.begin(), records.end(), [&](const PrintRecord& r) { return r.track == a || r.track == b; }),
+                      records.end());
+    }
     std::swap(c.chain_queued[a], c.chain_queued[b]);
     c.free_retired();
     send_track(c, a);

@@ -38,7 +38,7 @@ void StreamPager::run() {
         if (!pump()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
-int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed) {
+int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed, uint32_t safe) {
     Sending held(sending);
     for (unsigned n = 0; n < stream_count; ++n) {
         auto& s = slots[n];
@@ -47,7 +47,7 @@ int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed)
         s.closing = false;
         s.dead.store(false, std::memory_order_relaxed);
         s.reverse = reverse;
-        s.head = std::min(frame + stream_chunk, part.total);
+        s.head = uint32_t(std::min<uint64_t>(uint64_t(frame) + safe, part.total));
         s.at.store(frame, std::memory_order_relaxed);
         Message m;
         m.kind = Message::Open; m.stream = int16_t(n); m.reverse = reverse; m.part = &part; m.frame = frame; m.speed = speed;
@@ -58,10 +58,10 @@ int StreamPager::open(ZonePart& part, uint32_t frame, bool reverse, float speed)
     return -1;
 }
 
-void StreamPager::restart(int stream, uint32_t frame) {
+void StreamPager::restart(int stream, uint32_t frame, uint32_t safe) {
     Sending held(sending);
     auto& s = slots[size_t(stream)];
-    s.head = frame + stream_chunk;
+    s.head = uint32_t(std::min<uint64_t>(uint64_t(frame) + safe, UINT32_MAX));
     s.at.store(frame, std::memory_order_relaxed);
     Message m;
     m.kind = Message::Restart; m.stream = int16_t(stream); m.frame = frame; m.reverse = s.reverse;

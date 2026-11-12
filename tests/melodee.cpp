@@ -25,6 +25,7 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/print_player.h"
 #include "melodee/engine/print_render.h"
 #include "melodee/model/print.h"
 #include "melodee/engine/plugin_engine.h"
@@ -11752,12 +11753,253 @@ void prints_f2a() {
     std::puts("prints ok");
 }
 
+// Freeze plan F2b: a frozen track plays its prints instead of its engine and chain. At Post FX a kit's prints sound as
+// the live track does, sample for sample, across a loop's wrap and a pattern change; at Pre FX its chain runs live
+// after them; its level and pan still apply. The engine sleeps a second after it falls quiet, a hand wakes it in the
+// same block, a pattern without a print keeps it awake. FRZN keeps the freeze. A streamed print reads only what the
+// pager pinned.
+void freeze_f2b() {
+    const float rate = dsp::sample_rate();
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    tone_kit(*project, 0); tone_kit(*project, 1);
+    project->tempo = 1200; project->swing = 50;
+    // A1 and A2 of track 1: notes early in the bar (each pad plays its second of tone), so nothing sounds over a
+    // pattern's end; A3 has no print.
+    const uint8_t pad = uint8_t(sampler_first_note);
+    put(bank->at[0][0], 0, pad, 100); put(bank->at[0][0], 3, uint8_t(pad + 1), 90); put(bank->at[0][0], 5, uint8_t(pad + 2), 80);
+    put(bank->at[0][1], 2, uint8_t(pad + 3), 110); put(bank->at[0][1], 6, pad, 70);
+    put(bank->at[0][2], 0, uint8_t(pad + 1), 100);
+    for (unsigned s = 0; s < 16; s += 4) put(bank->at[1][0], s, uint8_t(pad + 1), 90);
+    auto tone = tone_sample();
+    const uint32_t ticks = played_pattern(bank->at[0][0], speed_normal).length;
+
+    // A print of track 1's pattern, as the print engine makes it, held whole.
+    auto clip_of = [&](const Project& from, unsigned pattern, PrintTail tail, PrintTap tap) {
+        auto p = std::make_unique<Project>(from);
+        auto b = std::make_unique<PatternBank>(*bank);
+        print_project(*p, *b, 0, pattern);
+        auto host = std::make_unique<EngineHost>(EngineHost::Lean {2});
+        host->load(*p, *b);
+        CHECK(host->offer_sample(0, &tone));
+        auto a = render_print(*host, 0, played_pattern(b->at[0][pattern], speed_normal).length, tap, tail);
+        CHECK(a.error.empty());
+        std::vector<float> frames(a.left.size() * 2);
+        for (size_t f = 0; f < a.left.size(); ++f) { frames[2 * f] = a.left[f]; frames[2 * f + 1] = a.right[f]; }
+        auto c = std::make_unique<PrintClip>();
+        c->hold_whole(std::move(frames), uint32_t(std::lround(rate)), uint32_t(a.pass), tail);
+        return c;
+    };
+    auto pack_of = [&](const Project& from, PrintTail tail, PrintTap tap) {
+        auto* pack = new FreezePack;
+        pack->tap = tap;
+        for (unsigned p : {0u, 1u}) { pack->owned.push_back(clip_of(from, p, tail, tap)); pack->clips[p] = pack->owned.back().get(); }
+        return pack;
+    };
+    // The project played, track 1 taken after its chain as the Track source takes it: A1 for two passes, then A2
+    // (launched in the second pass). Frozen on `pack` from the start when one is given. `each` before every block.
+    struct Run { std::vector<float> l, r; std::unique_ptr<EngineHost> host; };
+    const uint64_t pass = uint64_t(std::llround(ticks * 44100.0 * 60 / 120 / ticks_per_quarter * rate / 44100));
+    const unsigned blocks = unsigned((3 * pass + pass / 2) / 128);
+    auto run = [&](const Project& from, FreezePack* pack, const std::function<void(EngineHost&, unsigned)>& each = {}) {
+        Run out;
+        out.host = std::make_unique<EngineHost>();
+        auto& host = *out.host;
+        host.load(from, *bank);
+        CHECK(host.offer_sample(0, &tone));
+        host.set_print_tap(0, true);
+        if (pack) { Command c {Command::Type::Freeze, 0}; c.freeze = pack; CHECK(host.send(c)); }
+        host.send({Command::Type::Play});
+        std::vector<int32_t> o(256);
+        for (unsigned b = 0; b < blocks; ++b) {
+            if (b == unsigned(pass * 3 / 2 / 128)) host.send({Command::Type::Pattern, 0, 0, 0, 1});
+            if (each) each(host, b);
+            host.render(o.data(), 128, 1);
+            for (unsigned f = 0; f < 128; ++f) { out.l.push_back(host.print_left()[f]); out.r.push_back(host.print_right()[f]); }
+        }
+        return out;
+    };
+    auto differ = [](const Run& a, const Run& b, float by = 0) {
+        uint64_t n = 0;
+        for (size_t f = 0; f < a.l.size(); ++f) n += std::fabs(a.l[f] - b.l[f]) > by || std::fabs(a.r[f] - b.r[f]) > by;
+        return n;
+    };
+
+    auto live = run(*project, nullptr);
+    CHECK(live.host->pattern_of(0) == 1);
+    for (uint64_t p = 0; p < 3; ++p) CHECK(peak_of(live.l, size_t(p * pass), size_t((p + 1) * pass)) > 0.05f); // A1, A1, A2
+    CHECK(live.host->frozen_tracks() == 0 && live.host->sleeping_tracks() == 0);
+    {   // Post FX: the same, sample for sample, the engine asleep, its CPU gone from the track
+        auto frozen = run(*project, pack_of(*project, PrintTail::Loop, PrintTap::PostFx));
+        CHECK(differ(live, frozen) == 0);
+        CHECK(frozen.host->frozen_tracks() == 1 && frozen.host->printing_tracks() == 1 && frozen.host->sleeping_tracks() == 1);
+        CHECK(frozen.host->print_underruns() == 0 && frozen.host->print_waits() == 0);
+    }
+    {   // its level and pan after the print
+        auto mixed = std::make_unique<Project>(*project);
+        mixed->tracks[0].mix.level = 80; mixed->tracks[0].mix.pan = -20;
+        auto heard = run(*mixed, nullptr);
+        auto frozen = run(*mixed, pack_of(*project, PrintTail::Loop, PrintTap::PostFx));
+        CHECK(differ(heard, live, 1e-3f) > 0 && differ(heard, frozen, 1e-5f) == 0);
+    }
+    {   // Pre FX: the chain (an Echo, its repeats over the patterns' ends) runs on the print as it ran on the engine
+        auto echoed = std::make_unique<Project>(*project);
+        echoed->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {40, 50, 50, 50, 0, 0}};
+        auto heard = run(*echoed, nullptr);
+        auto frozen = run(*echoed, pack_of(*echoed, PrintTail::Loop, PrintTap::PreFx));
+        CHECK(differ(heard, live, 1e-3f) > 0 && differ(heard, frozen) == 0);
+    }
+
+    // Wake and sleep. Asleep a second after the freeze (it took over with nothing sounding); a hand's note wakes it in
+    // the same block and sounds over the print; a second after it falls quiet it sleeps again, not before.
+    {
+        auto* pack = pack_of(*project, PrintTail::Loop, PrintTap::PostFx);
+        const unsigned second = unsigned(rate / 128), hit = second + 40, off = hit + 20;
+        std::vector<uint32_t> asleep(blocks);
+        unsigned b_now = 0;
+        auto woke = run(*project, pack, [&](EngineHost& host, unsigned b) {
+            b_now = b;
+            if (b) asleep[b - 1] = host.sleeping_tracks() & 1;
+            if (b == hit) host.send({Command::Type::NoteOn, 0, 0, uint16_t(pad + 3), 100});
+            if (b == off) host.send({Command::Type::NoteOff, 0, 0, uint16_t(pad + 3), 0});
+        });
+        (void)b_now;
+        CHECK(!asleep[second - 10] && asleep[second + 5] && asleep[hit - 1]);
+        CHECK(!asleep[hit] && !asleep[off + second - 20]); // awake from its block on, held, then a second's quiet
+        CHECK(asleep[off + 2 * second] && asleep[blocks - 2]);
+        uint64_t heard = 0; // the hand's note over the print: the frames after it differ from the print alone
+        for (size_t f = size_t(hit) * 128; f < size_t(off) * 128; ++f) heard += woke.l[f] != live.l[f];
+        CHECK(heard > 1000);
+        for (size_t f = 0; f < size_t(hit) * 128; ++f) CHECK(woke.l[f] == live.l[f]);
+    }
+    {   // a pattern with no print plays live, the engine kept awake while it plays; unfrozen, the pack comes back
+        auto* pack = pack_of(*project, PrintTail::Loop, PrintTap::PostFx);
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        CHECK(host->offer_sample(0, &tone));
+        host->set_print_tap(0, true);
+        Command c {Command::Type::Freeze, 0}; c.freeze = pack;
+        CHECK(host->send(c));
+        host->send({Command::Type::Pattern, 0, 0, 0, 2});
+        host->send({Command::Type::Play});
+        std::vector<int32_t> o(256);
+        float loudest = 0;
+        for (unsigned b = 0; b < unsigned(3 * rate / 128); ++b) {
+            host->render(o.data(), 128, 1);
+            CHECK(!(host->sleeping_tracks() & 1) && !(host->printing_tracks() & 1));
+            for (unsigned f = 0; f < 128; ++f) loudest = std::max(loudest, std::fabs(host->print_left()[f]));
+        }
+        CHECK(loudest > 0.05f && host->frozen_tracks() == 1);
+        host->send({Command::Type::Pattern, 0, 0, 0, 0}); // A1 on the next bar: its print, and asleep a second on
+        for (unsigned b = 0; b < unsigned(4 * rate / 128); ++b) host->render(o.data(), 128, 1);
+        CHECK((host->printing_tracks() & 1) && (host->sleeping_tracks() & 1));
+        // Locate into the pattern: the print moves there with it.
+        Command locate {Command::Type::Locate}; locate.position = 3 * ticks / 4;
+        host->send(locate);
+        host->render(o.data(), 128, 1);
+        host->render(o.data(), 128, 1);
+        CHECK(host->printing_tracks() & 1);
+        host->send({Command::Type::Freeze, 0}); // unfrozen at once
+        host->render(o.data(), 128, 1);
+        CHECK(host->frozen_tracks() == 0 && host->sleeping_tracks() == 0);
+        FreezePack* back = nullptr;
+        for (unsigned b = 0; b < 20 && !host->take_done_freeze(back); ++b) host->render(o.data(), 128, 1);
+        CHECK(back == pack);
+        delete back;
+    }
+
+    // FRZN: a track's freeze goes and comes back with the project; a file without it loads with none; an older build
+    // reads the file and plays the track live.
+    {
+        PrintTable table;
+        auto& f = table.freeze[3];
+        f.state = FreezeState::Frozen; f.tap = PrintTap::PreFx; f.tail = PrintTail::Ring;
+        f.set(0, true); f.set(64, true); f.set(127, true);
+        CHECK(f.plays(127) && f.plays(64) && !f.plays(1) && table.freeze[0].state == FreezeState::None);
+        auto bytes = save_project(*project, *bank, nullptr, &table);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        PrintTable read;
+        CHECK(load_project(bytes, *back, *back_bank, nullptr, nullptr, &read).empty() && read == table && read.freeze[3].frozen());
+        CHECK(load_project(bytes, *back, *back_bank).empty()); // as an older build reads it
+        CHECK(load_project(save_project(*project, *bank), *back, *back_bank, nullptr, nullptr, &read).empty() && !read.freeze[3].frozen());
+    }
+
+    // A print's file: its frames on a page's boundary (a JUNK chunk before them), read back as written.
+    {
+        char name[] = "/tmp/melodee-print-XXXXXX";
+        int fd = mkstemp(name);
+        CHECK(fd >= 0);
+        close(fd);
+        WavStream wav;
+        std::vector<float> frames(2 * 1000);
+        for (size_t n = 0; n < frames.size(); ++n) frames[n] = float(n % 77) / 100.0f - 0.3f;
+        CHECK(wav.open(name, 44100, 32, 4096) && wav.add(frames.data(), 1000) && wav.close());
+        std::ifstream in(name, std::ios::binary | std::ios::ate);
+        CHECK(uint64_t(in.tellg()) == 4096 + 8000);
+        SampleData read;
+        CHECK(read_wav(name, read).empty() && read.frames == 1000 && read.left[999] == frames[1998] && read.right[5] == frames[11]);
+        std::remove(name);
+    }
+
+    // Streamed: a print read through the pager reads only pinned frames. Its first second is held: it starts at once;
+    // pumped, it keeps ahead; not pumped, the frames past what is pinned are silent and counted; a jump to where
+    // nothing is held waits, not counted as late.
+    {
+        std::vector<std::pair<uintptr_t, bool>> log;
+        pin_log = &log; pin_fails = false;
+        StreamPager pager(logged_pin);
+        const uint32_t frames = 6 * stream_chunk;
+        std::vector<float> data(2 * frames);
+        for (size_t n = 0; n < data.size(); ++n) data[n] = 0.25f;
+        PrintClip clip;
+        clip.part.left = clip.part.right = data.data();
+        clip.part.total = 2 * frames;
+        clip.part.pins.assign(clip.part.total / stream_chunk, 0);
+        clip.part.frames.store(clip.part.total);
+        clip.frames = frames; clip.pass = frames; clip.rate = uint32_t(rate); clip.tail = PrintTail::Loop;
+        CHECK(pager.hold(clip.part, 0, 2 * stream_chunk));
+        clip.held.push_back({0, 2 * stream_chunk});
+        CHECK(clip.safe_from(0) == 2 * stream_chunk && clip.safe_from(stream_chunk) == 0);
+        PrintPlayer player;
+        player.set_pager(&pager);
+        std::vector<float> l(128), r(128);
+        player.follow(&clip, 0, 0, 1e9, rate);
+        CHECK(player.playing());
+        float sum = 0;
+        for (unsigned b = 0; b < 2 * stream_chunk / 128; ++b) { // pumped as its thread would
+            std::fill(l.begin(), l.end(), 0.0f);
+            player.render(l.data(), r.data(), 128);
+            while (pager.pump()) {}
+            for (float v : l) sum += v;
+        }
+        CHECK(player.underruns == 0 && player.waits == 0 && std::fabs(sum - 0.25f * 2 * stream_chunk) < 1);
+        for (unsigned b = 0; b < 4 * stream_chunk / 128; ++b) player.render(l.data(), r.data(), 128); // the pager left behind
+        CHECK(player.underruns > 0);
+        const uint32_t late = player.underruns;
+        player.cut_all();
+        while (pager.pump()) {}
+        player.follow(&clip, 9, 4.5 * stream_chunk, 1e9, rate); // into the middle, nothing held there
+        player.render(l.data(), r.data(), 128);
+        CHECK(player.waits == 1 && player.underruns == late);
+        while (pager.pump()) {}
+        std::fill(l.begin(), l.end(), 0.0f);
+        player.render(l.data(), r.data(), 128);
+        CHECK(l[127] > 0.2f && player.underruns == late); // the pager has it now
+        player.cut_all();
+        while (pager.pump()) {}
+        pin_log = nullptr;
+    }
+    std::puts("freeze ok");
+}
+
 int main() {
     tempo_lane_p5();
     capture_p5();
     scenes_p5();
     banks_f1();
     prints_f2a();
+    freeze_f2b();
     exports_p4();
     midi_tracks_p4();
     modulators_p4();

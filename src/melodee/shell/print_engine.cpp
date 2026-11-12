@@ -3,7 +3,9 @@
 #include "melodee/shell/print_engine.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/engine/print_player.h"
 #include "melodee/engine/print_render.h"
+#include "melodee/engine/stream_pager.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/sample_library.h"
@@ -11,8 +13,12 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fcntl.h>
 #include <fstream>
 #include <sched.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace melodee {
 namespace fs = std::filesystem;
@@ -23,6 +29,34 @@ double since(Clock::time_point t0) { return std::chrono::duration<double>(Clock:
 
 constexpr double plugin_wait_seconds = 60; // a plug-in not open by then fails the print
 constexpr unsigned kept_lines = 8;
+constexpr unsigned print_data_at = 4096; // freeze plan F2b: a print's frames start on a page (WavStream's data_at)
+
+// A print file's frames: where they start and how many bytes, if it is stereo 32-bit float at `rate` with them on a
+// page's boundary (as print_one() writes it); false otherwise (an older print: printed again).
+bool print_layout(const std::string& path, unsigned rate, uint64_t& offset, uint64_t& bytes) {
+    std::ifstream in(path, std::ios::binary);
+    unsigned char h[12];
+    if (!in.read(reinterpret_cast<char*>(h), 12) || std::memcmp(h, "RIFF", 4) || std::memcmp(h + 8, "WAVE", 4)) return false;
+    auto u32 = [](const unsigned char* b) { return uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24; };
+    bool format = false;
+    uint64_t at = 12;
+    while (in.read(reinterpret_cast<char*>(h), 8)) {
+        uint32_t size = u32(h + 4);
+        if (!std::memcmp(h, "fmt ", 4)) {
+            unsigned char f[16];
+            if (size < 16 || !in.read(reinterpret_cast<char*>(f), 16)) return false;
+            format = (f[0] | f[1] << 8) == 3 && (f[2] | f[3] << 8) == 2 && u32(f + 4) == rate && (f[14] | f[15] << 8) == 32;
+            in.seekg(std::streamoff(at + 8 + size + (size & 1)));
+        } else if (!std::memcmp(h, "data", 4)) {
+            offset = at + 8; bytes = size;
+            return format && offset % print_data_at == 0;
+        } else {
+            in.seekg(std::streamoff(at + 8 + size + (size & 1)));
+        }
+        at += 8 + uint64_t(size) + (size & 1);
+    }
+    return false;
+}
 
 long rss_kb() {
     std::ifstream in("/proc/self/status");
@@ -67,6 +101,35 @@ PrintEngine::~PrintEngine() {
     cancelled.store(true);
     wake.notify_all();
     if (thread.joinable()) thread.join();
+    for (auto& r : ready) trash.push_back(r.pack);
+    ready.clear();
+    empty_trash();
+}
+
+bool PrintEngine::take_ready(FreezeReady& out) {
+    std::lock_guard<std::mutex> held(lock);
+    if (ready.empty()) return false;
+    out = std::move(ready.front());
+    ready.pop_front();
+    return true;
+}
+
+void PrintEngine::discard(FreezePack* pack) {
+    if (!pack) return;
+    std::lock_guard<std::mutex> held(lock);
+    trash.push_back(pack);
+    wake.notify_all();
+}
+
+void PrintEngine::empty_trash() {
+    std::vector<FreezePack*> going;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        going.swap(trash);
+    }
+    if (going.empty()) return;
+    if (pager) pager->flush(); // the pager has seen every close the audio thread sent: no pin of theirs is taken after
+    for (auto* pack : going) delete pack; // their files' mappings go with them
 }
 
 bool PrintEngine::start(PrintJob job) {
@@ -111,28 +174,110 @@ void PrintEngine::run() {
         std::unique_ptr<PrintJob> job;
         {
             std::unique_lock<std::mutex> held(lock);
-            wake.wait(held, [&] { return stopping || waiting; });
+            wake.wait(held, [&] { return stopping || waiting || !trash.empty(); });
             if (stopping) return;
             job = std::move(waiting);
         }
+        empty_trash();
+        if (!job) continue;
+        PrintTable known = job->known; // with each print made or found unchanged, for a freeze's pack
+        bool failed = false;
         auto samples = library ? library->hold_samples() : std::array<const SampleData*, sample_slots> {};
         for (uint8_t pattern : job->patterns) {
-            if (cancelled.load()) break;
+            if (cancelled.load()) { failed = true; break; }
+            empty_trash();
             {
                 std::lock_guard<std::mutex> held(lock);
                 doing = "track=" + std::to_string(job->track + 1) + " pattern=" + print_pattern_name(pattern);
             }
             PrintResult r = print_one(*job, pattern, samples);
+            if (r.error.empty()) known.put(r.record);
+            else failed = true;
             std::lock_guard<std::mutex> held(lock);
             lines.push_back(line_of(r));
             while (lines.size() > kept_lines) lines.pop_front();
             results.push_back(std::move(r));
         }
         if (library) library->release_samples();
+        if (job->freeze) { // freeze plan F2b: the prints mapped for the audio thread, or why not
+            FreezeReady f;
+            if (failed) {
+                f.project_path = job->project_path; f.track = job->track; f.serial = job->serial;
+                f.error = cancelled.load() ? "stopped" : "a print failed";
+            } else {
+                std::lock_guard<std::mutex> held(lock);
+                doing = "track=" + std::to_string(job->track + 1) + " mapping";
+            }
+            if (!failed) f = freeze_pack(*job, known);
+            std::lock_guard<std::mutex> held(lock);
+            lines.push_back("freeze track=" + std::to_string(job->track + 1) + (f.pack ? " ready" : " error=" + f.error));
+            while (lines.size() > kept_lines) lines.pop_front();
+            ready.push_back(std::move(f));
+        }
         std::lock_guard<std::mutex> held(lock);
         doing.clear();
         running.store(false, std::memory_order_release);
     }
+}
+
+// Freeze plan F2b: each print of the job's patterns mapped from the card, its first second and a chunk at each bar
+// line pinned (StreamPager::hold) so the audio thread can start it at once there.
+FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& known) {
+    FreezeReady f;
+    f.project_path = job.project_path; f.track = job.track; f.serial = job.serial;
+    auto pack = std::make_unique<FreezePack>();
+    pack->track = uint8_t(job.track);
+    pack->tap = job.tap;
+    const unsigned rate = unsigned(std::lround(dsp::sample_rate()));
+    const std::string folder = prints_folder(job.project_path);
+    const Track& track = job.project->tracks[job.track % track_count];
+    const unsigned bar = std::max(1u, job.project->bar_ticks());
+    for (uint8_t p : job.patterns) {
+        const PrintRecord* rec = known.find(job.track, p);
+        if (!rec) { f.error = "no print of " + print_pattern_name(p); return f; }
+        const std::string path = (fs::path(folder) / rec->file).string();
+        uint64_t offset = 0, bytes = 0;
+        if (rec->rate != rate || !print_layout(path, rate, offset, bytes)) { f.error = "print " + rec->file + " unreadable"; return f; }
+        int fd = ::open(path.c_str(), O_RDONLY);
+        struct stat st {};
+        if (fd < 0 || fstat(fd, &st) != 0 || uint64_t(st.st_size) < offset + bytes) { if (fd >= 0) ::close(fd); f.error = "cannot open " + rec->file; return f; }
+        void* map = mmap(nullptr, size_t(st.st_size), PROT_READ, MAP_SHARED, fd, 0);
+        ::close(fd);
+        if (map == MAP_FAILED) { f.error = "cannot map " + rec->file; return f; }
+        auto clip = std::make_unique<PrintClip>();
+        auto& part = clip->part;
+        part.mapping = map; part.mapping_bytes = size_t(st.st_size); // unmapped with the clip
+        clip->frames = uint32_t(std::min<uint64_t>(bytes / 8, rec->frames));
+        clip->rate = rate;
+        clip->tail = rec->tail;
+        clip->pass = uint32_t(std::llround(double(rec->pass) * rate / dsp::model_rate));
+        part.left = part.right = reinterpret_cast<const float*>(static_cast<const char*>(map) + offset);
+        part.total = 2 * clip->frames;
+        if (!part.total) { f.error = "empty print " + rec->file; return f; }
+        part.pins.assign((part.total - 1) / stream_chunk + 1, 0);
+        part.frames.store(part.total);
+        // Held: the first second, and two chunks from each bar line in the pass on.
+        auto hold = [&](uint32_t from_float, uint32_t floats) {
+            from_float -= from_float % stream_chunk;
+            uint32_t to = uint32_t(std::min<uint64_t>(uint64_t(from_float) + floats, part.total));
+            if (from_float >= to) return true;
+            if (!pager || !pager->hold(part, from_float, to - from_float)) return false;
+            uint32_t end = uint32_t(std::min<uint64_t>((uint64_t(to - 1) / stream_chunk + 1) * stream_chunk, part.total)); // whole chunks
+            clip->held.push_back({from_float, end});
+            return true;
+        };
+        bool held = hold(0, std::max<uint32_t>(2 * rate, 2 * stream_chunk));
+        const uint32_t ticks = std::max<uint32_t>(1, played_pattern(job.bank->at[job.track][p], track.speed).length);
+        for (uint32_t b = bar; held && b < ticks; b += bar) {
+            uint64_t frame = uint64_t(clip->pass) * b / ticks;
+            if (2 * frame >= 2 * uint64_t(rate)) held = hold(uint32_t(std::min<uint64_t>(2 * frame, part.total)), 2 * stream_chunk);
+        }
+        if (!held) { f.error = "cannot hold " + rec->file + " in memory"; return f; }
+        pack->clips[p] = clip.get();
+        pack->owned.push_back(std::move(clip));
+    }
+    f.pack = pack.release();
+    return f;
 }
 
 PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const std::array<const SampleData*, sample_slots>& samples) {
@@ -156,8 +301,9 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     const std::string folder = prints_folder(job.project_path);
     const fs::path path = fs::path(folder) / r.record.file;
     std::error_code e;
+    uint64_t offset = 0, bytes = 0;
     if (const auto* known = job.known.find(t, pattern); known && known->hash == r.record.hash && known->file == r.record.file &&
-                                                       fs::exists(path, e)) {
+                                                       fs::exists(path, e) && print_layout(path.string(), r.record.rate, offset, bytes)) {
         r.record = *known; // unchanged: never printed twice
         return r;
     }
@@ -242,7 +388,7 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     fs::create_directories(folder, e);
     const fs::path part = fs::path(folder) / (r.record.file + ".part");
     WavStream wav;
-    bool written = wav.open(part.string(), r.record.rate, 32);
+    bool written = wav.open(part.string(), r.record.rate, 32, print_data_at); // its frames on a page, for a freeze's mapping
     std::vector<float> interleaved(size_t(EngineHost::block) * 2);
     for (size_t at = 0; written && at < left.size(); at += EngineHost::block) {
         unsigned n = unsigned(std::min<size_t>(EngineHost::block, left.size() - at));

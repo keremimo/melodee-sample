@@ -26,7 +26,9 @@
 namespace melodee {
 
 class SampleLibrary;
+class StreamPager;
 struct SampleData;
+struct FreezePack;
 
 struct PrintJob {
     std::string project_path;            // whose prints (results for another project are dropped)
@@ -39,6 +41,18 @@ struct PrintJob {
     std::unique_ptr<PatternBank> bank;
     std::array<std::vector<uint8_t>, max_plugins> states; // each plug-in's state now (PluginRack::states())
     PrintTable known;                    // the prints as they stand
+    // Freeze plan F2b: once printed, the patterns' prints mapped for the audio thread to play (a FreezeReady).
+    bool freeze = false;
+    uint32_t serial = 0;                 // the freeze it is for (the shell drops one a later freeze replaced)
+};
+
+// Freeze plan F2b: a frozen track's prints ready to play, or why not.
+struct FreezeReady {
+    std::string project_path;
+    unsigned track = 0;
+    uint32_t serial = 0;
+    FreezePack* pack = nullptr; // the caller's to send or give back (discard()); nullptr: failed
+    std::string error;
 };
 
 struct PrintResult {
@@ -65,6 +79,12 @@ public:
     bool busy() const { return running.load(std::memory_order_acquire); }
     // MIDI thread: each pattern's result, in order.
     bool take(PrintResult& out);
+    // Freeze plan F2b. The pager the audio thread reads prints with (set before any freeze). MIDI thread: a freeze's
+    // prints ready; a pack the audio thread has finished with, freed on the print thread once the pager has let go of
+    // its streams (and its files' mappings with it).
+    void set_pager(StreamPager* p) { pager = p; }
+    bool take_ready(FreezeReady& out);
+    void discard(FreezePack* pack);
     // Any thread: what it is doing and the latest results, a line each (`melodee-print status`); a line of its own.
     std::string status() const;
     void note(const std::string& line);
@@ -72,7 +92,12 @@ public:
 private:
     void run();
     PrintResult print_one(const PrintJob& job, unsigned pattern, const std::array<const SampleData*, sample_slots>& samples);
+    FreezeReady freeze_pack(const PrintJob& job, const PrintTable& known);
+    void empty_trash(); // print thread: the packs discarded, freed
     SampleLibrary* library;
+    StreamPager* pager = nullptr;
+    std::deque<FreezeReady> ready;   // under lock
+    std::vector<FreezePack*> trash;  // under lock
     mutable std::mutex lock;
     std::condition_variable wake;
     std::unique_ptr<PrintJob> waiting; // under lock

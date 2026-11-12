@@ -218,14 +218,33 @@ std::string keep_capture(SampleData& s, unsigned rate, const std::string& path, 
     return failed;
 }
 
-bool WavStream::open(const std::string& path, unsigned at_rate, unsigned at_bits) {
+std::vector<unsigned char> WavStream::header(uint32_t frames) const {
+    std::vector<unsigned char> h(std::max(58u, data_at));
+    unsigned size = wav_header(h.data(), frames, bits == 32, rate, bits / 8);
+    if (data_at >= size + 8 && (data_at - size) % 2 == 0) { // a JUNK chunk between the format and the frames
+        unsigned char data[8];
+        std::memcpy(data, h.data() + size - 8, 8);
+        const unsigned junk_at = size - 8, pad = data_at - junk_at - 16;
+        auto put = [&](unsigned at, uint32_t v) { for (unsigned n = 0; n < 4; ++n) h[at + n] = uint8_t(v >> (8 * n)); };
+        std::memcpy(h.data() + junk_at, "JUNK", 4);
+        put(junk_at + 4, pad);
+        std::fill(h.begin() + junk_at + 8, h.begin() + junk_at + 8 + pad, 0);
+        std::memcpy(h.data() + data_at - 8, data, 8);
+        uint32_t riff = uint32_t(h[4]) | uint32_t(h[5]) << 8 | uint32_t(h[6]) << 16 | uint32_t(h[7]) << 24;
+        put(4, riff + (data_at - size));
+        size = data_at;
+    }
+    h.resize(size);
+    return h;
+}
+
+bool WavStream::open(const std::string& path, unsigned at_rate, unsigned at_bits, unsigned at_data) {
     close();
     file = std::fopen(path.c_str(), "wb");
-    written = 0; failed = !file; rate = at_rate;
+    written = 0; failed = !file; rate = at_rate; data_at = at_data;
     bits = at_bits == 16 || at_bits == 24 ? at_bits : 32;
-    unsigned char h[58];
-    unsigned size = wav_header(h, 0, bits == 32, rate, bits / 8);
-    if (file && std::fwrite(h, 1, size, file) != size) failed = true;
+    auto h = header(0);
+    if (file && std::fwrite(h.data(), 1, h.size(), file) != h.size()) failed = true;
     return !failed;
 }
 bool WavStream::add(const float* interleaved, unsigned frames) {
@@ -261,9 +280,8 @@ bool WavStream::add(const float* interleaved, unsigned frames) {
 }
 bool WavStream::close() {
     if (!file) return !failed;
-    unsigned char h[58];
-    unsigned size = wav_header(h, written, bits == 32, rate, bits / 8);
-    if (std::fseek(file, 0, SEEK_SET) != 0 || std::fwrite(h, 1, size, file) != size) failed = true;
+    auto h = header(written);
+    if (std::fseek(file, 0, SEEK_SET) != 0 || std::fwrite(h.data(), 1, h.size(), file) != h.size()) failed = true;
     if (std::fclose(file) != 0) failed = true;
     file = nullptr;
     return !failed;

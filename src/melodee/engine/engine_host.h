@@ -8,6 +8,7 @@
 #include "melodee/engine/master_comp.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/plugin_engine.h"
+#include "melodee/engine/print_player.h"
 #include "melodee/engine/effects.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/punch.h"
@@ -302,8 +303,23 @@ public:
     // Seq Record's placing follow it. track_latency(): a track's own path (its plug-in and chain).
     unsigned compensation() const { return pdc_total.load(std::memory_order_relaxed); }
     unsigned track_latency(unsigned t) const { return pdc_tracks[t % track_count].load(std::memory_order_relaxed); }
+    // A track's engine's own (a PLUGIN track's plug-in), before its chain (freeze plan F2b: a Pre FX print's).
+    unsigned engine_latency(unsigned t) const { return pdc_engines[t % track_count].load(std::memory_order_relaxed); }
     unsigned bus_latency(unsigned b) const { return pdc_buses[b % bus_count].load(std::memory_order_relaxed); }
     unsigned master_latency() const { return pdc_master.load(std::memory_order_relaxed); }
+    // Freeze plan F2b (engine/print_player.h). MIDI thread: a FreezePack the audio thread has finished with, to free
+    // once the pager has seen its streams closed (StreamPager::flush). Any thread: the tracks frozen now, those whose
+    // print plays now, and those whose engine sleeps (a bit each); print runs that met frames not pinned yet, and
+    // waits after a jump to where nothing was held.
+    bool take_done_freeze(FreezePack*& pack) { return done_freezes.pop(pack); }
+    uint32_t frozen_tracks() const { return frozen_now.load(std::memory_order_relaxed); }
+    uint32_t printing_tracks() const { return printing_now.load(std::memory_order_relaxed); }
+    uint32_t sleeping_tracks() const { return sleeping_now.load(std::memory_order_relaxed); }
+    uint32_t print_underruns() const { return print_under.load(std::memory_order_relaxed); }
+    uint32_t print_waits() const { return print_waited.load(std::memory_order_relaxed); }
+    // Frames from a pattern's top to its tick `ticks`, unrounded, at the tempo and swing playing now: where a print
+    // places that tick (its frame is this rounded up).
+    double pattern_frames(uint32_t ticks) const;
     // Any thread: delay blocks free in the effects' pool (a delay, reverb or chorus with none passes its sound through).
     unsigned delay_blocks_free() const { return pool.free_blocks(); }
     // Any thread (roadmap P4): MIDI tracks' slot messages sent, and those a later value replaced before their time.
@@ -323,7 +339,7 @@ private:
     struct PendingOn { int16_t key = -1, velocity = 0, from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
     // A ratchet's hit still to come (roadmap P1): `samples` frames on it plays `key` (as the engine plays it; a kit
     // pad's semitones over it) and `midi` out, for `length` frames.
-    struct PendingHit { int32_t key = -1; int16_t midi = -1; uint8_t velocity = 0; bool accent = false; int32_t samples = 0, length = 0; };
+    struct PendingHit { int32_t key = -1; int16_t midi = -1; uint8_t velocity = 0; bool accent = false, sound = true; int32_t samples = 0, length = 0; };
     // Roadmap P2, one dispatch a block: a call to a track's engine the sequencing pass made past the block's first
     // frame, kept for the track's job to make at that frame (play_calls()).
     struct EngineCall {
@@ -403,6 +419,22 @@ private:
         bool chained = false;
         uint8_t follow_do = 0;
         uint32_t follow_at = 0;
+        // Freeze plan F2b: the track's prints (none: it plays live), and ones unfrozen whose voices still fade; the
+        // voices; whether the print plays the pattern now (its notes then sequence nothing on the engine), the engine
+        // awake (hand notes or a live pattern; asleep its render and, after the print, its chain are skipped), the
+        // frames it has been quiet, keys held by hand; this block's print (print_l / print_r: its rows of
+        // EngineHost::print_frames, on the heap, so a host on a test's stack stays as small as it was) and its level
+        // and pan.
+        FreezePack* freeze = nullptr;
+        FreezePack* freeze_leaving = nullptr;
+        PrintPlayer print;
+        bool print_on = false, awake = true, print_post = true; // print_post: its prints' tap (kept for a fade's end)
+        uint32_t quiet = 0;
+        std::bitset<256> hand {};
+        float* print_l = nullptr;
+        float* print_r = nullptr;
+        bool print_fed = false;
+        Ease print_mix_l, print_mix_r;
     };
     // The sequencing pass's calls to a track's engine: straight in at the block's first frame (nothing of it rendered
     // yet) or the old way (every track rendered up to each tick), else kept for its job, at block_at (roadmap P2).
@@ -444,6 +476,20 @@ private:
                     Slot::Held& holding); // one note of the pattern on this tick (roadmap P1: a kit lane's loop its own)
     void arp_tick();   // the arps' own clock, running whether the song plays or not
     void bar_start();  // launches queued patterns, or follows the song
+    // Freeze plan F2b: track t plays `pack`'s prints from now (nullptr: live again), the one it played fading out;
+    // a pack handed back; the frozen tracks waiting for this bar; the engine woken by a hand.
+    void set_freeze(unsigned t, FreezePack* pack);
+    void retire_freeze(FreezePack* pack);
+    void freeze_at_bar();
+    void wake(Slot& slot) { slot.awake = true; slot.quiet = 0; }
+    void print_tick(unsigned t, Slot& slot, uint32_t at, uint32_t length);
+    std::unique_ptr<std::array<float, 2 * block * track_count>> print_frames;
+    std::array<FreezePack*, track_count> freeze_next {}; // waiting for the next bar
+    static constexpr float sleep_floor = 3.16e-5f; // -90 dB: a frozen track's engine below it a second sleeps
+    float pan_centre = 0.7071f;                    // set_pan()'s sides at the centre, as a print was made at
+    MidiQueue<64, FreezePack*> done_freezes;
+    std::array<FreezePack*, 16> freeze_limbo {};
+    std::atomic<uint32_t> frozen_now {0}, printing_now {0}, sleeping_now {0}, print_under {0}, print_waited {0};
     // Roadmap P5: track t's follow action planned from where its pattern started (dice rolled now), and brought.
     void plan_follow(unsigned t);
     void follow(unsigned t);
@@ -751,7 +797,7 @@ private:
     CompensationLines lines;
     uint64_t block_count = 0; // blocks rendered (a line skipped for a block starts again from silence)
     std::atomic<unsigned> pdc_total {0}, pdc_master {0};
-    std::array<std::atomic<unsigned>, track_count> pdc_tracks {};
+    std::array<std::atomic<unsigned>, track_count> pdc_tracks {}, pdc_engines {};
     std::array<std::atomic<unsigned>, bus_count> pdc_buses {};
     unsigned click_wait = 0; // frames the metronome's blip waits, as late as what it counts
     float knob_pad_sum_l[block] {}, knob_pad_sum_r[block] {}; // compensating: kits' pads into Knob FX, held back apart

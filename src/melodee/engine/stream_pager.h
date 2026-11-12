@@ -33,8 +33,10 @@ public:
     // restart(), close() and block() take a short spin lock, as kit tracks may
     // render on several cores at once; a stream's own calls (place(), limit(),
     // dead()) are its voice's alone. open() gives a stream, or -1 with none free.
-    int open(ZonePart& part, uint32_t frame, bool reverse, float speed);
-    void restart(int stream, uint32_t frame); // a loop came round to here
+    // `safe`: frames from `frame` on that are held already (hold()), read at once; past them the pager's word is
+    // waited for (a zone's start and loop are held a chunk; freeze plan F2b: a print's start and bar lines).
+    int open(ZonePart& part, uint32_t frame, bool reverse, float speed, uint32_t safe = stream_chunk);
+    void restart(int stream, uint32_t frame, uint32_t safe = stream_chunk); // a loop came round to here
     void place(int stream, uint32_t frame) { slots[size_t(stream)].at.store(frame, std::memory_order_relaxed); }
     // Reading forwards: frames below this are safe. Reversed: frames at or above it.
     uint32_t limit(int stream) const;

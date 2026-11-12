@@ -91,15 +91,18 @@ std::string keep_capture(SampleData& sample, unsigned rate, const std::string& p
 class WavStream {
 public:
     ~WavStream() { close(); }
-    bool open(const std::string& path, unsigned rate = 44100, unsigned bits = 32);
+    // `data_at` (freeze plan F2b's prints): the frames start that many bytes in (a JUNK chunk before them), a page's
+    // boundary, so a mapping of the file pins and lets go of whole pages of them; 0: right after the header.
+    bool open(const std::string& path, unsigned rate = 44100, unsigned bits = 32, unsigned data_at = 0);
     bool add(const float* interleaved, unsigned frames);
     bool close(); // false when anything failed
     uint32_t frames() const { return written; }
 private:
     std::FILE* file = nullptr;
     uint32_t written = 0;
-    unsigned rate = 44100, bits = 32;
+    unsigned rate = 44100, bits = 32, data_at = 0;
     bool failed = false;
+    std::vector<unsigned char> header(uint32_t frames) const;
     uint32_t noise = 0x9e3779b9u; // the dither's
 };
 void make_overview(const SampleData& sample, Overview& out);

@@ -40,7 +40,7 @@ public:
     void service(Hardware& hardware) override;                          // service thread
     void jack(const JackEvent& event, Hardware& hardware) override;     // service thread
     std::string command(const std::string& action, const std::string& argument, Hardware&) override;
-    std::string command_names() const override { return "melodee-press, melodee-midi, melodee-update, melodee-print"; }
+    std::string command_names() const override { return "melodee-press, melodee-midi, melodee-update, melodee-print, melodee-freeze, melodee-unfreeze"; }
     std::string status() const override;
     bool claims_wheel_push() const override { return true; }
     bool finished() const override { return shell.leaving() || power_off_failed.load(); }
@@ -90,8 +90,9 @@ private:
     struct RemoteMidi { bool usb = false; MidiPacket packet; };
     MidiQueue<16, RemoteMidi> remote_midi;
     MidiQueue<16, melodee::LooperAsk> remote_looper; // `melodee-looper`, parsed on arrival, done on the MIDI thread
-    // `melodee-print TRACK [PATTERNS|all] [pre|post] [loop|ring|cut]`, `status`, `cancel`: parsed on arrival, asked on
-    // the MIDI thread.
+    // `melodee-print TRACK [PATTERNS|all] [pre|post] [loop|ring|cut]`, `status`, `cancel`; `melodee-freeze` with the
+    // same words (freeze plan F2b; alone or `status`: what is frozen now) and `melodee-unfreeze TRACK`: parsed on
+    // arrival, asked on the MIDI thread.
     MidiQueue<4, melodee::Context::PrintAsk> remote_print;
     std::atomic<bool> panic_asked {false}; // `melodee-midi panic`
     bool power_known = false;

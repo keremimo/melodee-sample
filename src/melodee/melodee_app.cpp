@@ -49,6 +49,7 @@ MelodeeApp::MelodeeApp()
     shell.set_library(&library);
     shell.set_plugins(&plugins);
     shell.set_printer(&printer);
+    printer.set_pager(&host.streams()); // freeze plan F2b: prints are read through the instruments' pager
     shell.set_store(&store);
     shell.set_input(&input_route);
     // The card's settings now, not first on the service thread: the runtime opens the audio device with
@@ -222,15 +223,39 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";
         return std::string("OK melodee-render ") + (host.render_parallel() ? "parallel" : "serial");
     }
-    if (action == "melodee-print") { // freeze plan F2a: prints of one track's patterns, before any page asks for them
-        if (argument.empty() || argument == "status") return "OK " + printer.status();
-        if (argument == "cancel") { printer.cancel(); return "OK melodee-print cancel"; }
+    if (action == "melodee-unfreeze") { // freeze plan F2b: the track plays live again at once (its prints are kept)
+        int track = std::atoi(argument.c_str());
+        if (track < 1 || track > int(melodee::track_count)) return "ERR melodee-unfreeze TRACK";
         melodee::Context::PrintAsk ask;
+        ask.track = uint8_t(track - 1);
+        ask.mode = melodee::Context::PrintAsk::Unfreeze;
+        return remote_print.push(ask) ? "OK melodee-unfreeze " + argument : "ERR busy";
+    }
+    if (action == "melodee-freeze" && (argument.empty() || argument == "status")) { // what is frozen, playing and asleep now
+        auto bits = [](uint32_t b) {
+            std::string out;
+            for (unsigned t = 0; t < melodee::track_count; ++t) if ((b >> t) & 1) out += (out.empty() ? "" : ",") + std::to_string(t + 1);
+            return out.empty() ? std::string("-") : out;
+        };
+        std::string s = "OK frozen=" + bits(host.frozen_tracks()) + " print_playing=" + bits(host.printing_tracks())
+                      + " engine_asleep=" + bits(host.sleeping_tracks()) + " print_underruns=" + std::to_string(host.print_underruns())
+                      + " print_waits=" + std::to_string(host.print_waits())
+                      + " stream_underruns=" + std::to_string(const_cast<melodee::EngineHost&>(host).streams().underruns())
+                      + " render_load=" + std::to_string(int(std::lround(host.render_load() * 1000))) + " track_load=";
+        for (unsigned t = 0; t < melodee::track_count; ++t) s += (t ? "," : "") + std::to_string(int(std::lround(host.track_load(t) * 1000)));
+        return s + " | " + printer.status();
+    }
+    if (action == "melodee-print" || action == "melodee-freeze") { // freeze plan F2a / F2b: prints of one track's patterns, or the track frozen on them
+        const bool freezing = action == "melodee-freeze";
+        if (!freezing && (argument.empty() || argument == "status")) return "OK " + printer.status();
+        if (!freezing && argument == "cancel") { printer.cancel(); return "OK melodee-print cancel"; }
+        melodee::Context::PrintAsk ask;
+        if (freezing) ask.mode = melodee::Context::PrintAsk::Freeze;
         std::istringstream words(argument);
         std::string word;
         int track = 0;
         if (!(words >> track) || track < 1 || track > int(melodee::track_count))
-            return "ERR melodee-print TRACK [A1,B2..|1..128|all] [pre|post] [loop|ring|cut]";
+            return "ERR " + action + " TRACK [A1,B2..|1..128|all] [pre|post] [loop|ring|cut]";
         ask.track = uint8_t(track - 1);
         while (words >> word) {
             if (word == "pre" || word == "post") ask.tap = word == "pre" ? melodee::PrintTap::PreFx : melodee::PrintTap::PostFx;
@@ -251,12 +276,12 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
                         int n = std::atoi(one.c_str());
                         if (n >= 1 && n <= int(melodee::pattern_count)) p = n - 1;
                     }
-                    if (p < 0) return "ERR melodee-print: no pattern " + one;
+                    if (p < 0) return "ERR " + action + ": no pattern " + one;
                     ask.patterns[unsigned(p) / 64] |= uint64_t(1) << (unsigned(p) % 64);
                 }
             }
         }
-        return remote_print.push(ask) ? "OK melodee-print " + argument : "ERR busy";
+        return remote_print.push(ask) ? "OK " + action + " " + argument : "ERR busy";
     }
     if (action == "melodee-update") { // melodee-update [DIR|card]: check for an update now, in DIR instead of the card
         update_override = argument == "card" ? std::string() : argument;

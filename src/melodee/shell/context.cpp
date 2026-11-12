@@ -102,6 +102,8 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
                         const std::array<std::vector<uint8_t>, max_plugins>* plugin_states, const PrintTable* next_prints) {
     send({Type::AllNotesOff, 255});
     prints = next_prints ? *next_prints : PrintTable {}; // a print still under way for the last project is dropped (print_tick)
+    freeze_waiting = 0; // freeze plan F2b: its frozen tracks play live until their prints are checked and mapped again
+    for (unsigned t = 0; t < track_count; ++t) { ++freeze_serial[t]; if (frozen(t)) freeze_waiting |= 1u << t; }
     if (plugins) plugins->set_states(plugin_states ? *plugin_states : PluginStates {});
     project = next;
     patterns = bank;
@@ -367,6 +369,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
 // once by the audio thread, as it was heard live.
 void Context::record(int key, int velocity, int cutoff) {
     if (!ui.recording || !host.playing() || host.count_in()) return;
+    if (frozen(ui.track)) return; // freeze plan F2b: a frozen track takes no recording (for now)
     auto& p = pattern();
     int position = 0;
     uint32_t ticks = 0;
@@ -1032,6 +1035,7 @@ void Context::sync_pattern(unsigned t, unsigned p) {
 // Seq Record + a pot: a point of the playing pattern's Motion at the tick playing (roadmap P1: tick resolution).
 void Context::record_motion(int lane, int value) {
     if (!ui.recording || !host.playing() || host.count_in() || lane < 0) return;
+    if (frozen(ui.track)) return; // freeze plan F2b
     auto& t = track();
     auto& p = pattern();
     MotionPoint m;
@@ -1790,6 +1794,7 @@ void Context::set_recording(bool on) {
 // it records at once; recording, it stops recording and playback goes on.
 void Context::seq_record() {
     if (ui.recording) { set_recording(false); return; }
+    if (frozen(ui.track)) { notice("Track " + std::to_string(ui.track + 1) + " is frozen"); return; } // freeze plan F2b
     if (host.playing()) { set_recording(true); return; }
     ui.rec_armed = !ui.rec_armed;
 }

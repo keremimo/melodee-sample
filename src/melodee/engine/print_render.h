@@ -14,8 +14,8 @@
 // pattern from its first tick and keeps the track's sound at the tap: a pass
 // of the pattern (Cut), a pass and its tail (Ring), or the second of two
 // passes (Loop). What is kept is moved back by the track's own latency (a
-// plug-in's, a Limiter's look-ahead), so its first frame is the pattern's
-// first tick. A Ring print's sequencer stops on the frame the pass ends, so
+// plug-in's, a Limiter's look-ahead; at Pre FX its engine's alone), so its
+// first frame is the pattern's first tick. A Ring print's sequencer stops on the frame the pass ends, so
 // only the tail sounds after it. Frames are the device's; the shell converts
 // them to 44.1 kHz.
 namespace melodee {

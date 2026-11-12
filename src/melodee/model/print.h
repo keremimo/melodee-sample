@@ -40,12 +40,32 @@ struct PrintRecord {
     }
 };
 
-// A project's prints, a record a track and pattern, kept in that order.
+// Freeze plan F2b: a track frozen plays its prints instead of its engine and chain (engine/print_player.h); a
+// deep freeze (F2d) also unloads them. Each pattern frozen plays its print; the rest of the track's patterns play
+// live. Its prints are taken at `tap` and end as `tail` says.
+enum class FreezeState : uint8_t { None, Frozen, Deep };
+struct TrackFreeze {
+    FreezeState state = FreezeState::None;
+    PrintTap tap = PrintTap::PostFx;
+    PrintTail tail = PrintTail::Loop;
+    std::array<uint64_t, (pattern_count + 63) / 64> patterns {}; // a bit a pattern frozen
+    bool frozen() const { return state != FreezeState::None; }
+    bool plays(unsigned pattern) const { pattern %= pattern_count; return (patterns[pattern / 64] >> (pattern % 64)) & 1; }
+    void set(unsigned pattern, bool on) {
+        pattern %= pattern_count;
+        uint64_t bit = uint64_t(1) << (pattern % 64);
+        patterns[pattern / 64] = on ? patterns[pattern / 64] | bit : patterns[pattern / 64] & ~bit;
+    }
+    bool operator==(const TrackFreeze& o) const { return state == o.state && tap == o.tap && tail == o.tail && patterns == o.patterns; }
+};
+
+// A project's prints, a record a track and pattern, kept in that order; and each track's freeze (FRZN).
 struct PrintTable {
     std::vector<PrintRecord> records;
+    std::array<TrackFreeze, track_count> freeze {};
     const PrintRecord* find(unsigned track, unsigned pattern) const;
     void put(const PrintRecord& record); // in its place; one for the same track and pattern is replaced
-    bool operator==(const PrintTable& o) const { return records == o.records; }
+    bool operator==(const PrintTable& o) const { return records == o.records && freeze == o.freeze; }
 };
 
 // `project` and `bank` (copies) made into what a print of pattern `pattern` of track `track` plays: that track alone

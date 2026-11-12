@@ -304,9 +304,22 @@ public:
         bool all = false; // every pattern of the track with notes
         PrintTap tap = PrintTap::PostFx;
         PrintTail tail = PrintTail::Loop;
+        enum Mode : uint8_t { Print, Freeze, Unfreeze } mode = Print; // freeze plan F2b: the same ask freezes the track
     };
     void print(const PrintAsk& ask);
     void print_tick();
+    // Freeze plan F2b (shell/print_jobs.cpp): a track frozen plays its prints instead of its engine and chain (the
+    // patterns asked; none: every pattern with notes). What is missing or changed is printed first; the track plays
+    // live until every print is ready, then switches on a bar line. Unfreezing is at once and keeps the prints.
+    // Each freeze asked has a serial: the prints of one a later ask replaced are dropped. `freeze_waiting`: a bit a
+    // track whose prints wait for the print engine. refreeze(): the track's prints checked and played again (after
+    // the audio thread took the track anew: a copy, an undo, a move).
+    void freeze(const PrintAsk& ask);
+    void unfreeze(unsigned track);
+    void refreeze(unsigned track);
+    bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
+    std::array<uint32_t, track_count> freeze_serial {};
+    uint32_t freeze_waiting = 0;
     // Sampler tracks
     SampleLibrary* library = nullptr; // set by the app; the service thread reads the files
     // Projects on the card

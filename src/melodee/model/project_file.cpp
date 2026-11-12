@@ -672,6 +672,16 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             w.u32(p.rate);
             w.end(at);
         }
+    if (prints)
+        for (unsigned t = 0; t < track_count; ++t) { // freeze plan F2b: a frozen track (older builds skip it and play live)
+            const auto& f = prints->freeze[t];
+            if (!f.frozen()) continue;
+            at = w.begin("FRZN");
+            w.u8(1); // the section's version
+            w.u8(t); w.u8(unsigned(f.state)); w.u8(unsigned(f.tap)); w.u8(unsigned(f.tail));
+            for (auto word : f.patterns) { w.u32(uint32_t(word)); w.u32(uint32_t(word >> 32)); }
+            w.end(at);
+        }
     return w.out;
 }
 
@@ -1153,6 +1163,14 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             if (!r.ok || p.rate < 8000 || p.track >= track_count || p.pattern >= pattern_count || tap > 1 || tail > 2 || p.file.empty()) continue;
             p.tap = PrintTap(tap); p.tail = PrintTail(tail);
             prints.put(p);
+        } else if (name == "FRZN") { // freeze plan F2b: a frozen track; a later version of it is skipped (the track plays live)
+            if (r.u8() != 1) continue;
+            unsigned t = r.u8(), state = r.u8(), tap = r.u8(), tail = r.u8();
+            TrackFreeze f;
+            for (auto& word : f.patterns) { uint32_t low = r.u32(); word = uint64_t(low) | uint64_t(r.u32()) << 32; }
+            if (!r.ok || t >= track_count || state < 1 || state > 2 || tap > 1 || tail > 2) continue;
+            f.state = FreezeState(state); f.tap = PrintTap(tap); f.tail = PrintTail(tail);
+            prints.freeze[t] = f;
         } else if (name == "MSTR") {
             read_chain(r, project->master);
         } else if (name == "LOOP") { // the Looper (docs/LOOPER.md)

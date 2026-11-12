@@ -43,7 +43,7 @@ PrintAudio render_print(EngineHost& host, unsigned track, uint32_t ticks, PrintT
         drain(host);
         if (!planned) { // the first block has Play, the tempo and the track's latency in place
             a.pass = host.tick_frame(std::max<uint32_t>(ticks, 1));
-            a.latency = host.track_latency(track);
+            a.latency = tap == PrintTap::PreFx ? host.engine_latency(track) : host.track_latency(track); // Pre FX: before the chain
             from = (tail == PrintTail::Loop ? a.pass : 0) + a.latency;
             to = from + a.pass;
             a.left.reserve(size_t(a.pass)); a.right.reserve(size_t(a.pass));
