@@ -263,15 +263,18 @@ void EngineHost::load_track(unsigned t, const Track& track) {
         slot.fx_base[k] = s.params;
     }
     slot.fx_moved = false;
+    auto& kinds = pad_fx_kinds[t % track_count];
     for (unsigned pad = 0; pad < sampler_pads; ++pad) {
         const auto& chain = track.pad_fx.at[pad];
         for (unsigned k = 0; k < pad_slots; ++k) {
-            auto& effect = (*pad_fx)[t][pad][k];
             const auto& s = chain.slots[k];
-            if (!s.kind && effect.kind() == EffectKind::None) continue; // most pads have none
+            unsigned bit = pad * pad_slots + k;
+            if (!s.kind && !kinds.test(bit)) continue; // most pads have none, before and after: their effect not read
+            auto& effect = (*pad_fx)[t][pad][k];
             effect.set_kind(EffectKind(s.kind), pool, false);
             effect.set_params(s.params);
             effect.set_bypass(s.bypass);
+            kinds.set(bit, effect.kind() != EffectKind::None);
         }
     }
     auto& a = slot.arp;
@@ -411,7 +414,10 @@ void EngineHost::apply(const Command& c) {
         unsigned slot = c.index & 0xff, param = c.index >> 8;
         if (c.track >= track_count || c.pattern >= sampler_pads || slot >= pad_slots) break;
         auto& effect = (*pad_fx)[c.track][c.pattern][slot];
-        if (c.type == Type::PadFxKind) effect.set_kind(EffectKind(c.value), pool);
+        if (c.type == Type::PadFxKind) {
+            effect.set_kind(EffectKind(c.value), pool);
+            pad_fx_kinds[c.track].set(c.pattern * pad_slots + slot, effect.kind() != EffectKind::None);
+        }
         else if (c.type == Type::PadFxParam) {
             EngineCall call; // inside the sampler's render: at its frame
             call.op = EngineCall::Op::PadFxParam; call.a = c.pattern; call.b = int32_t(slot); call.c = int32_t(param); call.d = c.value;

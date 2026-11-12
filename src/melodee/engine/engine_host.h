@@ -22,6 +22,7 @@
 #include "surface/midi.h"
 #include <array>
 #include <atomic>
+#include <bitset>
 #include <cstdint>
 #include <memory>
 
@@ -202,6 +203,9 @@ public:
     uint32_t follows_of(unsigned track) const { return follows_now[track % track_count].load(std::memory_order_relaxed); }
     uint32_t stopped_tracks() const { return stopped_now.load(std::memory_order_relaxed); }
     bool punching() const { return punch_on.load(std::memory_order_relaxed); }
+    EffectKind pad_fx_kind(unsigned track, unsigned pad, unsigned slot) const { // for tests
+        return (*pad_fx)[track % track_count][pad % sampler_pads][slot % pad_slots].kind();
+    }
     float compression() const { return comp.reduction_db(); } // dB the master compressor takes off now
     void compressor_activity(float& level_db, float& reduce_db) { comp.take_activity(level_db, reduce_db); } // the page's picture
     unsigned flex_playing() const { return flex_now.load(std::memory_order_relaxed); } // Flex Beat's pad playing, 0 Empty
@@ -646,6 +650,10 @@ private:
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;
     std::unique_ptr<std::array<SamplerEngine::PadEffects, track_count>> pad_fx; // each sampler pad's chain
+    // Which of a track's pad effects have a kind (bit pad * pad_slots + slot): a load passes the rest without
+    // reading them, 8192 effects of about a kilobyte each (8 MB), cold, whose kind() took ~2.4 ms of a load's
+    // audio callback on the MPC.
+    std::array<std::bitset<sampler_pads * pad_slots>, track_count> pad_fx_kinds {};
     std::array<float, bus_count> returns {0.7f, 0.7f, 0.7f, 0.7f};
     std::array<Ease, bus_count> returns_now {};
     Ease volume_now, monitor_now; // main volume and Monitor as the block plays them

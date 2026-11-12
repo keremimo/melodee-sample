@@ -523,6 +523,23 @@ void arrange() {
     }
 }
 void effects() {
+    // Pad FX: a load sets each pad's chain and takes the last project's away, a pad that had one set by its project
+    // or by a command alike (the host keeps which pads have a kind, so a load passes the others unread).
+    {
+        auto host = std::make_unique<EngineHost>();
+        auto project = std::make_unique<Project>();
+        auto patterns = std::make_unique<PatternBank>();
+        project->tracks[2].pad_fx.at[5].slots[1] = EffectSlot(uint8_t(EffectKind::Tremolo));
+        host->load(*project, *patterns);
+        CHECK(host->pad_fx_kind(2, 5, 1) == EffectKind::Tremolo);
+        std::vector<int32_t> out(256);
+        host->send({Command::Type::PadFxKind, 7, 100, 2, int16_t(EffectKind::AutoPan)}); // bank G's pad 4
+        host->render(out.data(), 128, 1);
+        CHECK(host->pad_fx_kind(7, 100, 2) == EffectKind::AutoPan);
+        auto empty = std::make_unique<Project>();
+        host->load(*empty, *patterns);
+        CHECK(host->pad_fx_kind(2, 5, 1) == EffectKind::None && host->pad_fx_kind(7, 100, 2) == EffectKind::None);
+    }
     // Every built effect stays finite and bounded on a loud chord, at its initial values and at the extremes.
     DelayPool pool;
     for (unsigned k = 1; k < unsigned(EffectKind::Count); ++k) {
