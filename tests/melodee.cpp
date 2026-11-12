@@ -10049,6 +10049,23 @@ void delay_pool_clears() {
     Effect last;
     last.set_kind(EffectKind::Echo, *pool);
     CHECK(last.clearing() && pool->free_blocks() == 0);
+    // A project's load sets each effect's values at once, worked out once: it sounds as set one at a time.
+    auto twice = std::make_unique<DelayPool>();
+    for (auto kind : {EffectKind::Compressor, EffectKind::Reverb, EffectKind::Limiter, EffectKind::Formant, EffectKind::DiffDelay}) {
+        Effect one, all;
+        const std::array<int16_t, effect_params> values {-20, 6, 3, 40, 60, 80};
+        one.set_kind(kind, *twice);
+        for (unsigned q = 0; q < effect_params; ++q) one.set_param(q, values[q]);
+        all.set_kind(kind, *twice, false);
+        all.set_params(values);
+        for (unsigned n = 0; n < 20; ++n) {
+            std::array<float, 128> l1 {}, r1 {}, l2 {}, r2 {};
+            for (unsigned f = 0; f < 128; ++f) l1[f] = r1[f] = l2[f] = r2[f] = 0.5f * float(std::sin((n * 128 + f) * 0.031));
+            one.process(l1.data(), r1.data(), 128); all.process(l2.data(), r2.data(), 128);
+            CHECK(l1 == l2 && r1 == r2);
+        }
+        one.set_kind(EffectKind::None, *twice); all.set_kind(EffectKind::None, *twice);
+    }
 }
 
 // Roadmap P4: modulators (an LFO, free or on the clock, an envelope follower) on any lane, and macros.

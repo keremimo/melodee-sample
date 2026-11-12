@@ -60,7 +60,7 @@ void Effect::take_memory(DelayPool& pool) {
     cleared = memory && !clean ? 0 : DelayPool::block_floats;
 }
 
-void Effect::set_kind(EffectKind kind, DelayPool& pool) {
+void Effect::set_kind(EffectKind kind, DelayPool& pool, bool ready) {
     if (memory && !needs_memory(kind)) { pool.give(memory); memory = nullptr; }
     if (!memory && needs_memory(kind)) take_memory(pool); // cleared a slice a block if it is not clean (process())
     else if (memory) cleared = 0;                          // the same block, cleared the same way
@@ -70,7 +70,7 @@ void Effect::set_kind(EffectKind kind, DelayPool& pool) {
     for (unsigned n = 0; n < effect_params; ++n) p[n] = info.params[n].label ? info.params[n].initial : 0;
     on = bypass ? 0.0f : 1.0f; resting = false; // a new kind starts where Bypass is, not fading
     reset_state();
-    update();
+    if (ready) update();
 }
 
 void Effect::reset_state() {
@@ -85,6 +85,18 @@ void Effect::clear() {
     if (memory) cleared = 0; // a slice a block from the next process(), dry until done
     reset_state();
     update(); // Multi-chorus spreads its voices round the turn again
+}
+
+void Effect::set_params(const std::array<int16_t, effect_params>& values) {
+    const auto& info = effect_info(current);
+    for (unsigned n = 0; n < effect_params; ++n)
+        if (info.params[n].label) p[n] = std::clamp<int>(values[n], info.params[n].min, info.params[n].max);
+    if (current == K::Limiter && home) { // LOOKAHEAD: its line from the pool while it looks ahead (as set_param)
+        if (p[2] > 0 && !memory) take_memory(*home);
+        else if (p[2] == 0 && memory) { home->give(memory); memory = nullptr; }
+        write = 0;
+    }
+    update();
 }
 
 void Effect::set_param(unsigned index, int value) {

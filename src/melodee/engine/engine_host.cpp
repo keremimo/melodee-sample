@@ -72,8 +72,8 @@ void EngineHost::load_state(const Project& project, bool keep_loops) {
         const auto& chain = project.chain(n);
         for (unsigned k = 0; k < max_slots; ++k) {
             const auto& s = chain.slots[k];
-            fx[n][k].set_kind(EffectKind(s.kind), pool);
-            for (unsigned q = 0; q < effect_params; ++q) fx[n][k].set_param(q, s.params[q]);
+            fx[n][k].set_kind(EffectKind(s.kind), pool, false); // worked out once, with its values
+            fx[n][k].set_params(s.params);
             fx[n][k].set_bypass(s.bypass);
             fx_key[n][k] = s.key < fx_keys ? s.key : 0;
         }
@@ -82,9 +82,9 @@ void EngineHost::load_state(const Project& project, bool keep_loops) {
     for (unsigned k = 0; k < max_slots; ++k) master_base[k] = project.master.slots[k].params; // roadmap P4: Motion borrows them
     // Knob FX and the master compressor.
     const auto& k = project.knob_fx;
-    knob.set_kind(EffectKind(k.kind), pool);
-    knob_in.set_kind(EffectKind(k.kind), pool);
-    for (unsigned q = 0; q < effect_params; ++q) { knob.set_param(q, k.params[q]); knob_in.set_param(q, k.params[q]); }
+    knob.set_kind(EffectKind(k.kind), pool, false);
+    knob_in.set_kind(EffectKind(k.kind), pool, false);
+    knob.set_params(k.params); knob_in.set_params(k.params);
     knob_heard = k.active();
     knob_tracks = k.tracks;
     knob_pads = k.pads;
@@ -255,8 +255,8 @@ void EngineHost::load_track(unsigned t, const Track& track) {
     patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
     for (unsigned k = 0; k < max_slots; ++k) {
         const auto& s = track.fx.slots[k];
-        fx[t][k].set_kind(EffectKind(s.kind), pool);
-        for (unsigned q = 0; q < effect_params; ++q) fx[t][k].set_param(q, s.params[q]);
+        fx[t][k].set_kind(EffectKind(s.kind), pool, false); // worked out once, with its values
+        fx[t][k].set_params(s.params);
         fx[t][k].set_bypass(s.bypass);
         fx_key[t][k] = s.key < fx_keys ? s.key : 0;
         slot.fx_base[k] = s.params;
@@ -268,8 +268,8 @@ void EngineHost::load_track(unsigned t, const Track& track) {
             auto& effect = (*pad_fx)[t][pad][k];
             const auto& s = chain.slots[k];
             if (!s.kind && effect.kind() == EffectKind::None) continue; // most pads have none
-            effect.set_kind(EffectKind(s.kind), pool);
-            for (unsigned q = 0; q < effect_params; ++q) effect.set_param(q, s.params[q]);
+            effect.set_kind(EffectKind(s.kind), pool, false);
+            effect.set_params(s.params);
             effect.set_bypass(s.bypass);
         }
     }

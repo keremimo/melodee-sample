@@ -45,8 +45,10 @@ class Effect {
 public:
     // How long Bypass takes to fade the effect out or in again (a cut between wet and dry clicks).
     static constexpr float bypass_seconds = 0.01f;
-    void set_kind(EffectKind kind, DelayPool& pool); // sets the kind's initial parameters too
+    void set_kind(EffectKind kind, DelayPool& pool, bool ready = true); // sets the kind's initial parameters too (ready: worked out now)
     void set_param(unsigned index, int value);
+    // All six at once, worked out once (a project's load sets every effect: one update() each, not one a parameter).
+    void set_params(const std::array<int16_t, effect_params>& values);
     // Bypassed, the effect fades out over bypass_seconds, then rests; when it comes back it starts from
     // silence (clear()), never from the echoes and tails it held when it stopped.
     void set_bypass(bool on) { bypass = on; }
