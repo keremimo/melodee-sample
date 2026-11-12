@@ -361,9 +361,13 @@ a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
 
 - **Looper** (LOOPER on Tracks; 16 Levels of type Loop): off, it asks first
   (B3 or Push turns it on: 45 MB a loop, made in the background). **B1 LOOPS**:
-  a row a loop, its state as a word (ARM, REC, DUB, PLAY, STOP, FIT; a change
-  waiting blinks), its waveform and playhead, its length and source (a loop
-  at another tempo shows the tempo it was recorded at, amber); K1 the loop,
+  four rings, a loop each: its waveform bent round from twelve o'clock, a
+  hand sweeping where it plays (in sync, the hands point the same way); red
+  while recording (what is recorded so far), amber overdubbing, its colour
+  playing, grey stopped, a broken amber ring while armed. Under each its
+  state as a word (ARM, REC, DUB, PLAY, STOP, FIT; a change waiting blinks)
+  and its length (a loop at another tempo shows the tempo it was recorded
+  at, amber); K1 the loop,
   K2 its length (Free, 1, 2, 4, 8, 16 bars; before a take), K3 its level;
   Shift + K1 feedback, Shift + K2 Quantize (Bar, Beat, Off), Shift + K3 After
   take (Play, Overdub, Stop). **B2 MIX**: L1–L4 as strips; K1 level, K2 pan,

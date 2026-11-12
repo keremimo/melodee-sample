@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // LOOPER (Loop tapped twice; 16 Levels of type Loop): the four loops
-// (docs/LOOPER.md). B1 LOOPS: a row each, its tag, its state as a word, its
-// waveform and playhead, its length and source; K1 the loop, K2 its length,
+// (docs/LOOPER.md). B1 LOOPS (round 2, looper B): four rings, each loop's
+// waveform bent round, a hand sweeping where it plays, its state and length
+// under it; K1 the loop, K2 its length,
 // K3 its level (Shift: feedback, Quantize, After take). B2 MIX: the loop
 // tracks L1-L4 as strips; K1 level, K2 pan, K3 send (Shift: the bus). B3
 // MORE: the loop's sheet. Push records, closes, overdubs and plays the loop
@@ -44,70 +45,87 @@ void state_word(const Snapshot& s, const Snapshot::LoopShown& l, unsigned loop, 
         c = blink ? c : colour::dim;
 }
 
-// One loop's waveform, as the boards draw a sample: bars from the centre, the part played lit, and the playhead.
-void wave(Paint& p, const Snapshot::LoopShown& l, unsigned loop, float x, float y, float w, float h, bool selected) {
-    const auto& v = l.view;
-    float cy = y + h / 2;
-    p.fill(x, cy, w, 1, colour::line);
-    if (v.state == S::Empty || v.state == S::Armed || !v.span) return;
-    bool lit = v.state == S::Playing || v.state == S::Overdub || v.state == S::Recording;
-    auto c = v.state == S::Recording ? colour::rec : loop_colour(loop).withAlpha(lit ? (selected ? 1.0f : 0.8f) : 0.4f);
-    uint32_t span = std::max<uint32_t>(v.span, 1);
-    // During a take only what is recorded shows; a loop fills its width.
-    float shown = v.state == S::Recording ? std::min(1.0f, float(v.position) / float(span)) : 1.0f;
-    unsigned bars = unsigned(w / 2);
-    for (unsigned b = 0; b < bars; ++b) {
-        float at = float(b) / float(bars);
-        if (at > shown) break;
-        unsigned c0 = unsigned(at * looper::peak_columns), c1 = std::max(c0 + 1, unsigned(float(b + 1) / float(bars) * looper::peak_columns));
-        uint8_t peak = 0;
-        for (unsigned k = c0; k < c1 && k < looper::peak_columns; ++k) peak = std::max(peak, l.peaks[k]);
-        float bh = std::max(1.0f, peak / 255.0f * (h - 2));
-        p.fill(x + b * 2, cy - bh / 2, 1.5f, bh, c, 0.5f);
+// Its length: the bars it spans (Free while a first take runs), or beats where it is no whole bar.
+juce::String length_text(const Snapshot& s, const Looper::View& v) {
+    if (v.state == S::Recording && !v.bars) return "Free";
+    if (v.ticks > 0) {
+        double bars = v.ticks / std::max(1u, s.project.bar_ticks());
+        if (std::fabs(bars - std::round(bars)) > 0.01) return juce::String(v.ticks / s.project.beat_ticks(), 1) + " beats";
+        return loop_length_name(unsigned(std::lround(bars)));
     }
-    if (v.state != S::Recording && v.length) {
-        float px = x + w * float(v.position % v.length) / float(v.length);
-        p.fill(px, y, 1.5f, h, colour::text.withAlpha(lit ? 1.0f : 0.4f));
-    }
+    return loop_length_name(v.bars);
 }
 
+// Round 2 (looper B, "four rings"): each loop drawn as a loop, its waveform bent round a ring from twelve o'clock,
+// a hand sweeping where it plays (in sync, the hands point the same way). Red while recording (only what is
+// recorded so far), amber overdubbing, its colour playing, grey stopped, a broken amber ring while armed.
 void draw_loops(Paint& p, const Snapshot& s) {
-    constexpr float gap = 3, top = zone::picture_y + 2, rows_h = zone::picture_h - 4;
-    constexpr float row_h = (rows_h - 3 * gap) / 4;
-    constexpr float x = zone::pad, w = zone::width - 2 * zone::pad;
-    constexpr float tag_w = 44, info_w = 62;
+    constexpr float cy = zone::picture_y + 60, r = 28, two_pi = 6.2831853f;
+    constexpr unsigned ticks = 72;
     for (unsigned n = 0; n < loop_tracks; ++n) {
         const auto& l = s.loops[n];
         const auto& v = l.view;
-        float y = top + n * (row_h + gap);
+        float cx = zone::pad + 40 + n * 76;
         bool selected = n == s.ui.loop % loop_tracks;
-        p.fill(x, y, w, row_h, selected ? colour::raised : colour::quiet, 4);
-        if (selected) {
-            p.g.saveState();
-            p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), 3, int(row_h)));
-            p.fill(x, y, 8, row_h, loop_colour(n), 4);
-            p.g.restoreState();
+        if (selected) p.fill(cx - 37, zone::picture_y + 4, 74, zone::picture_h - 8, colour::raised, 4);
+        bool lit = v.state == S::Playing || v.state == S::Overdub || v.state == S::Recording;
+        auto c = v.state == S::Recording ? colour::rec : v.state == S::Overdub ? colour::amber
+               : v.state == S::Stopped ? colour::mid.withAlpha(0.6f) : loop_colour(n);
+        // The ring, broken while armed.
+        juce::Path ring;
+        ring.addCentredArc(cx, cy, r, r, 0, 0, two_pi, true);
+        if (v.state == S::Armed) {
+            juce::Path dashed;
+            const float dashes[] {3, 4};
+            juce::PathStrokeType(1.5f).createDashedStroke(dashed, ring, dashes, 2);
+            p.g.setColour((s.now / 250) % 2 ? colour::amber : colour::dim);
+            p.g.fillPath(dashed);
+        } else {
+            p.g.setColour(colour::line);
+            p.g.strokePath(ring, juce::PathStrokeType(1.5f));
         }
-        p.text("L" + juce::String(n + 1), x + 8, y + 2, tag_w - 8, 15, plain(loop_colour(n), type::list, Weight::Bold));
+        // The waveform, a tick a step round from twelve o'clock, as tall as its loudest column.
+        if (v.state != S::Empty && v.state != S::Armed && v.span) {
+            float shown = v.state == S::Recording ? std::min(1.0f, float(v.position) / float(std::max<uint32_t>(v.span, 1))) : 1.0f;
+            juce::Path wave;
+            for (unsigned k = 0; k < ticks; ++k) {
+                float at = float(k) / ticks;
+                if (at > shown) break;
+                unsigned c0 = k * looper::peak_columns / ticks, c1 = std::max(c0 + 1, (k + 1) * looper::peak_columns / ticks);
+                uint8_t peak = 0;
+                for (unsigned q = c0; q < c1 && q < looper::peak_columns; ++q) peak = std::max(peak, l.peaks[q]);
+                float len = 2 + peak / 255.0f * 14, a = at * two_pi - two_pi / 4;
+                wave.startNewSubPath(cx + (r - len / 2) * std::cos(a), cy + (r - len / 2) * std::sin(a));
+                wave.lineTo(cx + (r + len / 2) * std::cos(a), cy + (r + len / 2) * std::sin(a));
+            }
+            p.g.setColour(c.withMultipliedAlpha(lit && !selected ? 0.85f : 1.0f));
+            p.g.strokePath(wave, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        // The hand: where it plays (a take: how far it has come).
+        if (lit && v.length + v.span) {
+            uint32_t whole = v.state == S::Recording ? std::max<uint32_t>(v.span, 1) : std::max<uint32_t>(v.length, 1);
+            float a = float(v.position % whole) / float(whole) * two_pi - two_pi / 4;
+            juce::Path hand;
+            hand.startNewSubPath(cx, cy);
+            hand.lineTo(cx + 37 * std::cos(a), cy + 37 * std::sin(a));
+            p.g.setColour(colour::text);
+            p.g.strokePath(hand, juce::PathStrokeType(1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        p.circle(cx, cy, 13, selected ? colour::raised : colour::bg);
+        bool quiet = v.state == S::Empty || v.state == S::Stopped;
+        p.text("L" + juce::String(n + 1), cx - 13, cy - 8, 26, 16, plain(quiet ? colour::dim : loop_colour(n), type::body, Weight::Bold),
+               juce::Justification::centred);
+        // Under it: its state as a word in its colour, and its length (amber at another tempo, with the tempo).
         juce::String word; juce::Colour wc;
         state_word(s, l, n, word, wc);
-        if (word.isNotEmpty()) p.text(word, x + 8, y + 17, tag_w - 8, 12, caps_text(wc));
-        float wx = x + tag_w, ww = w - tag_w - info_w - 6;
-        wave(p, l, n, wx, y + 3, ww, row_h - 6, selected);
-        // Length (or the take so far) and source; a loop at another tempo says the tempo it was recorded at.
-        float ix = x + w - info_w - 4;
-        juce::String length = v.state == S::Recording && !v.bars ? juce::String("Free")
-                            : v.ticks > 0 ? juce::String(loop_length_name(unsigned(std::lround(v.ticks / std::max(1u, s.project.bar_ticks())))))
-                            : juce::String(loop_length_name(v.bars));
-        if (v.ticks > 0 && std::fabs(v.ticks / s.project.bar_ticks() - std::round(v.ticks / s.project.bar_ticks())) > 0.01)
-            length = juce::String(v.ticks / s.project.beat_ticks(), 1) + " beats";
-        p.text(length, ix, y + 2, info_w, 15, p.fit(length, plain(selected ? colour::text : colour::sec, type::body, Weight::Medium), info_w, type::floor),
-               juce::Justification::centredRight);
-        juce::String below = v.stretched ? juce::String(v.tempo % 10 ? juce::String(v.tempo / 10.0, 1) : juce::String(v.tempo / 10)) + " BPM"
-                                         : juce::String(loop_source_name(v.source));
-        auto style = plain(v.stretched ? colour::amber : colour::mid, type::small);
-        p.text(below, ix, y + 17, info_w, 12, p.fit(below, style, info_w, type::floor), juce::Justification::centredRight);
-        if (s.project.loop_mix[n].mute) p.fill(x, y, w, row_h, colour::bg.withAlpha(0.5f), 4);
+        if (word.isNotEmpty()) p.text(word, cx - 37, zone::picture_y + 106, 74, 13, caps_text(wc), juce::Justification::centred);
+        if (v.state != S::Empty) {
+            juce::String below = v.stretched ? juce::String(v.tempo % 10 ? juce::String(v.tempo / 10.0, 1) : juce::String(v.tempo / 10)) + " BPM"
+                                             : length_text(s, v);
+            auto style = plain(v.stretched ? colour::amber : selected ? colour::sec : colour::mid, type::small);
+            p.text(below, cx - 37, zone::picture_y + 121, 74, 13, p.fit(below, style, 70, type::floor), juce::Justification::centred);
+        }
+        if (s.project.loop_mix[n].mute) p.fill(cx - 37, zone::picture_y + 4, 74, zone::picture_h - 8, colour::bg.withAlpha(0.5f), 4);
     }
 }
 
