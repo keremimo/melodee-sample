@@ -1,4 +1,6 @@
-# Melodee for the MPC Sample
+<h1 align="center"><img src="docs/images/melodee-wordmark.png" alt="Melodee" width="404"></h1>
+
+<p align="center">A 16-track groovebox for the Akai MPC Sample</p>
 
 ![Melodee screens on the MPC Sample](docs/images/melodee-promo.png)
 
