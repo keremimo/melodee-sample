@@ -19,6 +19,7 @@ ProphetEngine::ProphetEngine() {
 
 void ProphetEngine::set_param(int id, int value) {
     if (id < 0 || id >= Count) return;
+    step.restart();
     const auto& info = prophet::info().params[id];
     p[size_t(id)] = std::clamp<int>(value, info.min, info.max);
     dirty = true;
@@ -55,6 +56,7 @@ ProphetEngine::Voice& ProphetEngine::allocate(int key) {
 }
 
 void ProphetEngine::set_pressure(int key, float value) {
+    step.restart();
     for (auto& v : voices) if (v.key == key && v.held) v.pressure = value;
 }
 
@@ -72,6 +74,7 @@ void ProphetEngine::start(Voice& v, int key, int velocity, bool retrigger) {
 }
 
 void ProphetEngine::note_on(int key, int velocity) {
+    step.restart();
     if (dirty) update();
     // Remember the held keys for mono and unison legato.
     if (stacked < stack.size()) {
@@ -101,6 +104,7 @@ void ProphetEngine::note_on(int key, int velocity) {
 // Slide or Tie from the sequencer (Engine::slide): the held voices of `from` go on as `to`. With the
 // GLIDE knob up they glide at its rate, as a played legato does; else a slide takes its own 60 ms.
 void ProphetEngine::slide(int from, int to, int velocity, bool glide) {
+    step.restart();
     if (dirty) update();
     bool found = false;
     for (auto& v : voices)
@@ -115,6 +119,7 @@ void ProphetEngine::slide(int from, int to, int velocity, bool glide) {
 }
 
 void ProphetEngine::note_off(int key) {
+    step.restart();
     unsigned w = 0;
     for (unsigned n = 0; n < stacked; ++n) if (stack[n] != key) stack[w++] = stack[n];
     stacked = w;
@@ -134,11 +139,13 @@ void ProphetEngine::note_off(int key) {
 }
 
 void ProphetEngine::all_notes_off() {
+    step.restart();
     stacked = 0;
     for (auto& v : voices) if (v.held) { v.held = false; v.amp_env.gate(false); v.filter_env.gate(false); }
 }
 
 void ProphetEngine::silence() {
+    step.restart();
     stacked = 0;
     for (auto& v : voices) {
         v.key = -1; v.held = false; v.amp_env = {}; v.filter_env = {}; v.filter.reset();
@@ -207,14 +214,24 @@ void ProphetEngine::render(float* out, unsigned frames) {
     float poly_b_fm = p[PolyFreqA] ? p[PolyOscB] / 100.0f * 2.0f : 0;
     float poly_b_pw = p[PolyPwA] ? p[PolyOscB] / 100.0f * 0.4f : 0;
     bool sync = p[Sync] != 0;
-    for (unsigned start = 0; start < frames; start += control_block) {
-        unsigned n = std::min(control_block, frames - start);
-        float rate_octaves = expression::lfo_rate_octaves(mods, wheel, lfo_value);
-        lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(rate_octaves), unsigned(p[LfoShape]), float(n) / dsp::sample_rate());
-        vibrato_value = vibrato.next(rate_hertz(p[VibRate]), n);
+    for (unsigned start = 0; start < frames;) {
+        // A control step on its own frames (engine.h ControlStep), not from this call's start.
+        bool stepping = step.starts(control_block);
+        if (stepping) {
+            unsigned moved = step.take();
+            float rate_octaves = expression::lfo_rate_octaves(mods, wheel, lfo_value);
+            lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(rate_octaves), unsigned(p[LfoShape]), float(moved) / dsp::sample_rate());
+            vibrato_value = vibrato.next(rate_hertz(p[VibRate]), moved);
+        }
+        unsigned n = step.run(frames - start);
         for (auto& v : voices) {
-            if (!v.amp_env.active()) { if (v.key >= 0 && !v.held) v.key = -1; continue; }
-            control(v);
+            if (stepping) { // the voices sounding as the step starts play it through
+                v.live = v.amp_env.active();
+                if (!v.live) { if (v.key >= 0 && !v.held) v.key = -1; continue; }
+                control(v);
+            } else if (!v.live) {
+                continue;
+            }
             for (unsigned f = 0; f < n; ++f) {
                 bool wrap_b, wrap_a;
                 float b = v.b.next(v.dt_b, v.mix_b, wrap_b);
@@ -230,6 +247,8 @@ void ProphetEngine::render(float* out, unsigned frames) {
                 out[start + f] += y * v.amp_env.next(amp_shape) * v.gain * output_gain;
             }
         }
+        step.played(n);
+        start += n;
     }
 }
 

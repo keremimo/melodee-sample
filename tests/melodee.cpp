@@ -5746,6 +5746,108 @@ void parallel_render() {
     for (int again = 0; again < 2; ++again) CHECK(render(3, nullptr) == alone);
 }
 
+// Roadmap P2, one dispatch a block: a busy project (six kinds of engine and a kit of samples; ratchets with ramps,
+// slides and ties, accents, Motion and locks on engine values, kit pads, effects and the wheel; an arp swung; notes,
+// pads and values in by hand at their frames, mid-block) plays the same as the old way, where every track was cut
+// wherever any track had a tick or a note and the workers were called for each run: the same to the sample, cut
+// where the old way cut it or whole between each engine's own calls (the synths step their modulation on their own
+// count of frames, engine.h ControlStep, not from each render call's start), with the workers or without.
+void one_dispatch() {
+    using namespace prophet;
+    SampleData tone;
+    tone.frames = 22050; tone.left.resize(22050); tone.right.resize(22050);
+    for (unsigned n = 0; n < 22050; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.05) * 0.4 * std::exp(-double(n) / 6000.0));
+    auto play = [&](bool whole, bool cut_as_split, unsigned workers, std::vector<float>* stems_out) {
+        auto p = std::make_unique<Project>();
+        auto b = std::make_unique<PatternBank>();
+        const EngineKind kinds[] {EngineKind::Prophet, EngineKind::Fm6, EngineKind::Cz, EngineKind::Sid,
+                                  EngineKind::Kit909, EngineKind::Sampler, EngineKind::Prophet, EngineKind::Fm6};
+        for (unsigned t = 0; t < 8; ++t) {
+            load_sound(p->tracks[t], kinds[t], kinds[t] == EngineKind::Sampler ? 0 : t % 3);
+            p->tracks[t].mix.pan = int8_t(int(t) * 12 - 42);
+            p->tracks[t].mix.sends[t % bus_count] = uint8_t(20 + t * 5);
+        }
+        p->tracks[7].fx.slots[0] = {uint8_t(EffectKind::Filter), false, {60, 50, 40, 50, 30, 0}};
+        p->tracks[1].fx.slots[0] = {uint8_t(EffectKind::Chorus), false, {60, 50, 40, 50, 30, 0}};
+        p->buses[0].fx.slots[0] = {uint8_t(EffectKind::Reverb), false, {70, 50, 40, 50, 0, 0}};
+        for (unsigned pad = 0; pad < 4; ++pad) { p->tracks[5].pads[pad].sample = 0; p->tracks[5].pads[pad].play = PadPlay::OneShot; }
+        p->tempo = 1370;
+        p->swing = 58;
+        auto& bass = b->at[0][0]; // slides, ties and an accent
+        put(bass, 0, 36, 100, 2, step_slide); put(bass, 2, 43, 90, 1, step_tie); put(bass, 3, 43, 80); put(bass, 6, 39, 110, 1, step_accent);
+        put(bass, 9, 41, 70, 3); put(bass, 13, 48, 100, 1, step_slide); put(bass, 14, 36, 90);
+        CHECK(bass.write_motion(point(1, Cutoff, 20)) && bass.write_motion(point(5, Cutoff, 90, 0, 6)) && bass.write_motion(point(10, Resonance, 70)));
+        CHECK(bass.write_motion(point(7, motion_wheel, 120)) && bass.write_motion(point(12, motion_wheel, 10)));
+        for (unsigned t : {1u, 3u, 6u}) {
+            auto& q = b->at[t][0];
+            for (unsigned s = 0; s < 16; s += 1 + t % 3) put(q, s, uint8_t(55 + (s * 5 + t) % 17), uint8_t(60 + s * 3), 1, s % 5 == 0 ? step_accent : 0);
+            q.events[1].ratchet = 3; q.events[1].ramp = -40;
+            q.events[3].ratchet = 5; q.events[3].ramp = 60;
+        }
+        CHECK(b->at[6][0].write_motion(point(2, Cutoff, 10, 0, 12)) && b->at[6][0].write_motion(point(9, EnvAmount, 80)));
+        CHECK(b->at[7][0].write_motion(point(4, motion_fx_base + 0, 10)) && b->at[7][0].write_motion(point(11, motion_fx_base + 1, 90, 0, 24)));
+        put(b->at[7][0], 0, 60, 100, 8); put(b->at[7][0], 8, 67, 100, 8);
+        auto& drums = b->at[4][0];
+        for (unsigned s = 0; s < 16; ++s) {
+            Step st;
+            st.notes[0] = {uint8_t(s % 4 == 0 ? 36 : s % 2 ? 42 : 38), uint8_t(80 + s)};
+            drums.set_step(s, st);
+        }
+        drums.events[2].ratchet = 4; drums.events[2].ramp = -60;
+        auto& kit = b->at[5][0];
+        for (unsigned s = 0; s < 16; s += 2) put(kit, s, uint8_t(sampler_first_note + s / 2 % 4), 100);
+        kit.events[1].ratchet = 3; kit.events[1].pitch_ramp = 7;
+        CHECK(kit.write_motion(point(3, motion_pad_base + unsigned(PadParam::Pitch), 5, 1)) &&
+              kit.write_motion(point(6, motion_pad_base + unsigned(PadParam::FilterCutoff), 30, 0, 12)));
+        EngineHost host;
+        host.set_render_threads(workers, 0);
+        host.set_one_dispatch(whole);
+        host.set_split_cuts(cut_as_split);
+        host.load(*p, *b);
+        CHECK(host.offer_sample(0, &tone));
+        host.send({Command::Type::Arp, 2, 0, 0, 1}); // the arp on the CZ, its keys held
+        host.send({Command::Type::Arp, 2, 0, 2, 3});
+        for (uint16_t key : {60, 64, 67}) host.send({Command::Type::ArpKey, 2, 0, key, 100});
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        std::vector<float> all, stems(size_t(track_count) * EngineHost::block);
+        auto timed = [&](Command c, uint64_t frame) { c.timed = true; c.at = uint32_t(frame); host.send(c); };
+        for (unsigned n = 0; n < 700; ++n) {
+            uint64_t at = uint64_t(n) * 128 + 128; // the next block's
+            if (n % 9 == 3) { // by hand, at their frames inside the next block, and values behind them
+                timed({Command::Type::NoteOn, 1, 0, uint16_t(70 + n % 5), 90}, at + 17 + n % 60);
+                host.send({Command::Type::Param, 1, 0, uint16_t(n % 7), int16_t(n % 100)});
+                timed({Command::Type::PadNote, 5, 64 + 3, 2, 110}, at + 40 + n % 50);
+                timed({Command::Type::Pressure, 0, 0, 36, int16_t(n % 127)}, at + 70);
+                timed({Command::Type::NoteOff, 1, 0, uint16_t(70 + (n + 4) % 5)}, at + 100);
+                host.send({Command::Type::Wheel, 6, 0, 0, int16_t(n * 7 % 1000)});
+                Command fx {Command::Type::PadFxParam, 5, 0, 0, int16_t(n % 90)};
+                host.send(fx);
+            }
+            host.render(out.data(), 128, 1, nullptr, stems.data());
+            for (unsigned f = 0; f < 256; ++f) all.push_back(out[f] / 2147483648.0f);
+            if (stems_out) stems_out->insert(stems_out->end(), stems.begin(), stems.begin() + 8 * 128);
+        }
+        CHECK(host.calls_lost() == 0);
+        return all;
+    };
+    std::vector<float> old_stems, new_stems;
+    auto old_way = play(false, false, 0, &old_stems);
+    float loudest = peak_of(old_way);
+    CHECK(loudest > 0.1f);                                     // it plays
+    for (unsigned t = 0; t < 8; ++t) { // every track sounds
+        float peak = 0;
+        for (size_t n = 0; n < old_stems.size() / 1024; ++n) peak = std::max(peak, peak_of(old_stems, n * 1024 + t * 128, n * 1024 + t * 128 + 128));
+        CHECK(peak > 0.01f);
+    }
+    CHECK(play(false, false, 3, nullptr) == old_way);          // the old way on the workers
+    CHECK(play(true, true, 0, nullptr) == old_way);            // each track cut where the old way cut it
+    CHECK(play(true, true, 3, nullptr) == old_way);
+    CHECK(play(true, false, 0, nullptr) == old_way);           // whole: each engine cut only at its own calls
+    CHECK(play(true, false, 3, &new_stems) == old_way);        // on the workers, one dispatch a block
+    CHECK(new_stems == old_stems);                             // and every track's stem the same, to the sample
+}
+
 void stream_pager() {
     std::vector<std::pair<uintptr_t, bool>> log;
     pin_log = &log; pin_fails = false;
@@ -8134,6 +8236,7 @@ int main() {
     sample_cache();
     stream_pager();
     parallel_render();
+    one_dispatch();
     sampler_zones();
     note_pitches();
     track_source();

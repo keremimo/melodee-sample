@@ -316,11 +316,11 @@ void EngineHost::apply(const Command& c) {
         slot.plugin.attach(slot.kind == EngineKind::Plugin ? runner_of(slot.plugin_entry) : nullptr);
         break;
     case Type::NoteOn:
-        if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_on(c.index, c.value);
+        if (c.index <= 127 || slot.kind == EngineKind::Sampler) engine_note_on(slot, c.index, c.value);
         if (c.pattern != 1) midi_note(c.track % track_count, c.index & 0xff, c.value, frame_now + block_at, -1); // a pad's note (not one from MIDI in)
         break;
     case Type::NoteOff:
-        if (slot.engine && (c.index <= 127 || slot.kind == EngineKind::Sampler)) slot.engine->note_off(c.index);
+        if (c.index <= 127 || slot.kind == EngineKind::Sampler) engine_note_off(slot, c.index);
         if (c.pattern != 1) midi_note_off(c.track % track_count, c.index & 0xff, frame_now + block_at);
         break;
     case Type::AllNotesOff:
@@ -347,10 +347,16 @@ void EngineHost::apply(const Command& c) {
         // A MIDI track's port or channel: what went out on the old one ends there.
         if (slot.kind == EngineKind::Midi && c.index < midi_track::routing_params && slot.base[c.index] != c.value) midi_all_off(c.track, frame_now);
         if (c.index < max_params) slot.base[c.index] = c.value;
-        if (slot.engine) slot.engine->set_param(c.index, c.value);
+        engine_param(slot, c.index, c.value);
         if (slot.kind == EngineKind::Midi) midi_param(c.track % track_count, c.index, c.value, frame_now);
         break;
-    case Type::Mod: if (slot.engine && c.index < mod_routes) slot.engine->set_mod(c.index, c.route); break;
+    case Type::Mod:
+        if (c.index < mod_routes) {
+            EngineCall call;
+            call.op = EngineCall::Op::Mod; call.a = c.index; call.b = c.route.source; call.c = c.route.destination; call.d = c.route.amount;
+            if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
+        }
+        break;
     case Type::FxKind:
         if (c.track < chain_count && c.index < max_slots) {
             fx[c.track][c.index].set_kind(EffectKind(c.value), pool);
@@ -372,7 +378,11 @@ void EngineHost::apply(const Command& c) {
         if (c.track >= track_count || c.pattern >= sampler_pads || slot >= pad_slots) break;
         auto& effect = (*pad_fx)[c.track][c.pattern][slot];
         if (c.type == Type::PadFxKind) effect.set_kind(EffectKind(c.value), pool);
-        else if (c.type == Type::PadFxParam) effect.set_param(param, c.value);
+        else if (c.type == Type::PadFxParam) {
+            EngineCall call; // inside the sampler's render: at its frame
+            call.op = EngineCall::Op::PadFxParam; call.a = c.pattern; call.b = int32_t(slot); call.c = int32_t(param); call.d = c.value;
+            if (!keep_call(slots[c.track], call)) effect.set_param(param, c.value);
+        }
         else effect.set_bypass(c.value != 0);
         break;
     }
@@ -557,7 +567,11 @@ void EngineHost::apply(const Command& c) {
         bounce_ticks = bounce_song ? 0 : std::max<uint32_t>(c.position, 1);
         break;
     case Type::PadNote:
-        if (slot.engine == &slot.sampler) slot.sampler.play_pad(c.index, c.value, int(c.pattern) - 64, int(c.position) - 1);
+        if (slot.engine == &slot.sampler) {
+            EngineCall call;
+            call.op = EngineCall::Op::PlayPad; call.a = c.index; call.b = c.value; call.c = int(c.pattern) - 64; call.d = int(c.position) - 1;
+            if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
+        }
         midi_note(c.track % track_count, int(sampler_first_note + c.index), c.value, frame_now + block_at, -1); // 16 Levels: the pad's note
         break;
     case Type::MidiTrack:
@@ -612,23 +626,27 @@ void EngineHost::apply(const Command& c) {
         break;
     }
     case Type::Audition:
-        if (slot.engine == &slot.sampler) slot.sampler.audition(c.pad.sample, c.pad.start, c.pad.end, c.value);
+        if (slot.engine == &slot.sampler) {
+            EngineCall call;
+            call.op = EngineCall::Op::Audition; call.a = c.pad.sample; call.b = int32_t(c.pad.start); call.c = int32_t(c.pad.end); call.d = c.value;
+            if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
+        }
         break;
     case Type::Pressure: {
         if (!slot.engine) break;
         float value = std::clamp<int>(c.value, 0, 127) / 127.0f;
-        slot.engine->set_pressure(c.index, value);
+        engine_pressure(slot, c.index, value);
         // The arp's notes follow the pressure of the key they came from, while it is held.
         if (slot.arp.on) {
             slot.arp.press_harder(c.index, value);
             if (slot.arp_from == int(c.index) && slot.arp_played >= 0 && slot.arp_played != int(c.index))
-                slot.engine->set_pressure(slot.arp_played, value);
+                engine_pressure(slot, slot.arp_played, value);
         }
         break;
     }
     case Type::Wheel:
         slot.wheel = std::clamp(c.value / 1000.0f, 0.0f, 1.0f);
-        if (slot.engine) slot.engine->set_wheel(slot.wheel);
+        engine_wheel(slot, slot.wheel);
         break;
     case Type::Level: slot.gain = level_gain(c.value); break;
     case Type::Pan: {
@@ -743,12 +761,125 @@ void EngineHost::apply(const Command& c) {
     }
 }
 
+// --- One dispatch a block (roadmap P2) ---
+
+// A call the sequencing pass makes to a track's engine: kept for the track's job, at its frame, once the pass is past
+// the block's first frame; false when it goes straight in (nothing of the block rendered yet, the old way, or no
+// engine to play it). A list that fills up goes in whole at the block's start, and the rest of the block's calls
+// after it, so their order holds and only their frames are lost (counted).
+bool EngineHost::keep_call(Slot& slot, const EngineCall& call) {
+    if (!deferring || !block_at || !slot.engine) return false;
+    if (slot.call_count == calls_a_block) {
+        unsigned t = unsigned(&slot - slots.data());
+        for (unsigned k = 0; k < slot.call_count; ++k) make_call(t, slot, slot.calls[k]);
+        slot.call_count = calls_a_block + 1; // full: straight in from now on
+        calls_full.fetch_add(1, std::memory_order_relaxed);
+    }
+    if (slot.call_count > calls_a_block) return false;
+    auto& kept = slot.calls[slot.call_count++];
+    kept = call;
+    kept.frame = uint16_t(block_at);
+    return true;
+}
+
+void EngineHost::make_call(unsigned t, Slot& slot, const EngineCall& c) {
+    using Op = EngineCall::Op;
+    Engine* e = slot.engine;
+    if (!e) return;
+    switch (c.op) {
+    case Op::NoteOn:
+        if (c.flag) e->set_accent(c.x);
+        e->note_on(c.a, c.b);
+        if (c.flag) e->set_accent(1);
+        break;
+    case Op::NoteOff: e->note_off(c.a); break;
+    case Op::Slide: e->set_accent(c.x); e->slide(c.a, c.b, c.c, c.flag); e->set_accent(1); break;
+    case Op::Param: e->set_param(c.a, c.b); break;
+    case Op::Wheel: e->set_wheel(c.x); break;
+    case Op::Pressure: e->set_pressure(c.a, c.x); break;
+    case Op::Mod: e->set_mod(unsigned(c.a), ModRoute {uint8_t(c.b), uint8_t(c.c), int8_t(c.d)}); break;
+    case Op::PlayPad: if (e == &slot.sampler) slot.sampler.play_pad(unsigned(c.a), c.b, c.c, c.d); break;
+    case Op::Audition: if (e == &slot.sampler) slot.sampler.audition(uint16_t(c.a), uint32_t(c.b), uint32_t(c.c), c.d); break;
+    case Op::MovePad: slot.sampler.move_pad(unsigned(c.a), PadParam(c.b), c.c); break;
+    case Op::RestorePad: slot.sampler.restore_pad(unsigned(c.a), PadParam(c.b)); break;
+    case Op::RestorePads: slot.sampler.restore_pads(); break;
+    case Op::PadFxParam: (*pad_fx)[t % track_count][unsigned(c.a) % sampler_pads][unsigned(c.b) % pad_slots].set_param(unsigned(c.c), c.d); break;
+    }
+}
+
+// accent < 0: none set around it (a note by hand); else the sequencer's, back to 1 after.
+void EngineHost::engine_note_on(Slot& slot, int key, int velocity, float accent) {
+    EngineCall call;
+    call.op = EngineCall::Op::NoteOn; call.a = key; call.b = velocity; call.flag = accent >= 0; call.x = accent;
+    if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
+}
+
+void EngineHost::engine_note_off(Slot& slot, int key) {
+    EngineCall call;
+    call.op = EngineCall::Op::NoteOff; call.a = key;
+    if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
+}
+
+void EngineHost::engine_slide(Slot& slot, int from, int to, int velocity, bool glide, float accent) {
+    EngineCall call;
+    call.op = EngineCall::Op::Slide; call.a = from; call.b = to; call.c = velocity; call.flag = glide; call.x = accent;
+    if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
+}
+
+void EngineHost::engine_param(Slot& slot, int id, int value) {
+    EngineCall call;
+    call.op = EngineCall::Op::Param; call.a = id; call.b = value;
+    if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
+}
+
+void EngineHost::engine_wheel(Slot& slot, float value) {
+    EngineCall call;
+    call.op = EngineCall::Op::Wheel; call.x = value;
+    if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
+}
+
+void EngineHost::engine_pressure(Slot& slot, int key, float value) {
+    EngineCall call;
+    call.op = EngineCall::Op::Pressure; call.a = key; call.x = value;
+    if (!keep_call(slot, call)) make_call(unsigned(&slot - slots.data()), slot, call);
+}
+
+// The engine's frames [at, at + frames) into its buffers; a kit's pads that go apart (Sidechain's key pad, Knob FX)
+// into theirs at the same frames.
+void EngineHost::render_engine(unsigned t, Slot& slot, unsigned at, unsigned frames) {
+    if (slot.engine == &slot.sampler) {
+        bool pad_key = keyed_pad == int(t);
+        slot.sampler.set_key_pad(pad_key ? int(comp.key_pad()) : -1, pad_key ? key_pad_l + at : nullptr, pad_key ? key_pad_r + at : nullptr);
+        slot.sampler.set_knob_out(knob_heard ? slot.knob_pad_l + at : nullptr, knob_heard ? slot.knob_pad_r + at : nullptr);
+    }
+    if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + at, slot.right + at, frames);
+    else slot.engine->render(slot.buffer + at, frames);
+    if (slot.engine == &slot.sampler) slot.knob_pad_fed |= slot.sampler.knob_fed();
+}
+
+// A track's engine over the whole block (its job): in runs from one kept call to the next, each call made on its frame.
+void EngineHost::play_calls(unsigned t, Slot& slot, unsigned frames) {
+    unsigned count = slot.call_count > calls_a_block ? 0 : slot.call_count, at = 0, k = 0, cut = 0; // spilled: all made
+    while (at < frames) {
+        while (k < count && slot.calls[k].frame <= at) make_call(t, slot, slot.calls[k++]);
+        unsigned to = k < count ? std::min<unsigned>(slot.calls[k].frame, frames) : frames;
+        if (split_cuts) { // tests: where the old way cut it too
+            while (cut < cut_count && cuts[cut] <= at) ++cut;
+            if (cut < cut_count) to = std::min<unsigned>(to, cuts[cut]);
+        }
+        render_engine(t, slot, at, to - at);
+        at = to;
+    }
+    while (k < count) make_call(t, slot, slot.calls[k++]); // none: every call falls inside the block
+    slot.call_count = 0;
+}
+
 void EngineHost::schedule_off(Slot& slot, int key, int32_t samples) {
     for (auto& off : slot.offs)
         if (off.key == key) { off.samples = samples; return; } // a retrigger moves its end
     for (auto& off : slot.offs)
         if (off.key < 0) { off.key = key; off.samples = samples; return; }
-    slot.engine->note_off(key); // no room: end it now rather than hang
+    engine_note_off(slot, key); // no room: end it now rather than hang
 }
 
 void EngineHost::cancel_off(Slot& slot, int key) {
@@ -760,7 +891,7 @@ void EngineHost::run_offs(Slot& slot, unsigned frames) {
         if (off.key < 0) continue;
         off.samples -= int32_t(frames);
         if (off.samples <= 0) {
-            if (slot.engine) slot.engine->note_off(off.key);
+            engine_note_off(slot, off.key);
             if (off.key == slot.held.key) slot.held = {}; // nothing took it over
             off.key = -1;
         }
@@ -807,13 +938,17 @@ void EngineHost::restore(Slot& slot) {
             for (unsigned q = 0; q < effect_params; ++q) fx[t][k].set_param(q, slot.fx_base[k][q]);
         slot.fx_moved = false;
     }
-    if (slot.kind == EngineKind::Sampler) slot.sampler.restore_pads(); // a kit pad's own values, if motion moved them
+    if (slot.kind == EngineKind::Sampler) { // a kit pad's own values, if motion moved them
+        EngineCall call;
+        call.op = EngineCall::Op::RestorePads;
+        if (!keep_call(slot, call)) slot.sampler.restore_pads();
+    }
     for (auto& l : slot.locks) l.param = -1; // locks end with everything they moved
     slot.locks_on = 0;
-    if (slot.wheel_moved && slot.engine) slot.engine->set_wheel(slot.wheel); // the mod wheel, back where the fader left it
+    if (slot.wheel_moved) engine_wheel(slot, slot.wheel); // the mod wheel, back where the fader left it
     slot.wheel_moved = false;
     if (!slot.moved || !slot.engine) return;
-    for (unsigned p = 0; p < max_params; ++p) slot.engine->set_param(int(p), slot.base[p]);
+    for (unsigned p = 0; p < max_params; ++p) engine_param(slot, int(p), slot.base[p]);
     slot.moved = false;
 }
 
@@ -848,11 +983,15 @@ void EngineHost::play_motion(unsigned t, Slot& slot, const Pattern& pattern, uin
 
 void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad, int value) {
     if (param == motion_wheel) { // the mod wheel's lane (parity phase 8)
-        if (slot.engine) { slot.engine->set_wheel(std::clamp(value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
+        if (slot.engine) { engine_wheel(slot, std::clamp(value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
         return;
     }
     if (param >= motion_pad_base) { // a kit pad's own value
-        if (slot.kind == EngineKind::Sampler) slot.sampler.move_pad(pad, PadParam(param - motion_pad_base), value);
+        if (slot.kind == EngineKind::Sampler) {
+            EngineCall call;
+            call.op = EngineCall::Op::MovePad; call.a = int32_t(pad); call.b = int32_t(param - motion_pad_base); call.c = value;
+            if (!keep_call(slot, call)) slot.sampler.move_pad(pad, PadParam(param - motion_pad_base), value);
+        }
         return;
     }
     if (param >= motion_fx_base) { // one of the track's effects
@@ -861,15 +1000,19 @@ void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad,
         return;
     }
     if (!slot.engine) return;
-    slot.engine->set_param(int(param), value);
+    engine_param(slot, int(param), value);
     if (slot.kind == EngineKind::Midi) midi_param(t, int(param), value, frame_now + block_at); // a CC lane plays out
     slot.moved = true;
 }
 
 void EngineHost::restore_lane(unsigned t, Slot& slot, unsigned param, unsigned pad) {
-    if (param == motion_wheel) { if (slot.engine) slot.engine->set_wheel(slot.wheel); return; }
+    if (param == motion_wheel) { engine_wheel(slot, slot.wheel); return; }
     if (param >= motion_pad_base) {
-        if (slot.kind == EngineKind::Sampler) slot.sampler.restore_pad(pad, PadParam(param - motion_pad_base));
+        if (slot.kind == EngineKind::Sampler) {
+            EngineCall call;
+            call.op = EngineCall::Op::RestorePad; call.a = int32_t(pad); call.b = int32_t(param - motion_pad_base);
+            if (!keep_call(slot, call)) slot.sampler.restore_pad(pad, PadParam(param - motion_pad_base));
+        }
         return;
     }
     if (param >= motion_fx_base) {
@@ -878,7 +1021,7 @@ void EngineHost::restore_lane(unsigned t, Slot& slot, unsigned param, unsigned p
         return;
     }
     if (!slot.engine || param >= max_params) return;
-    slot.engine->set_param(int(param), slot.base[param]);
+    engine_param(slot, int(param), slot.base[param]);
     if (slot.kind == EngineKind::Midi) midi_param(t, int(param), slot.base[param], frame_now + block_at);
 }
 
@@ -907,7 +1050,7 @@ void EngineHost::bar_start() {
     if ((rendering || !song.looping()) && !song_recording && song_bar_now >= std::max(song.length(), 1u)) { // the end of the song
         running = false;
         if (rendering) render_out.tail(); // on until the mix falls silent
-        for (auto& s : slots) { for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; } s.held = {}; }
+        for (auto& s : slots) { for (auto& off : s.offs) if (off.key >= 0) { engine_note_off(s, off.key); off.key = -1; } s.held = {}; }
         return;
     }
     clips_at_bar(false);
@@ -957,7 +1100,7 @@ void EngineHost::mtc_place(double seconds) {
             song_bar_now = b ? b - 1 : 0; // the first tick's bar_start() moves it on to b (and finds its end)
         } else if (!song.looping() && !song_recording && b >= std::max(song.length(), 1u)) {
             running = false; // past the song's end
-            for (auto& s : slots) { for (auto& off : s.offs) if (off.key >= 0 && s.engine) { s.engine->note_off(off.key); off.key = -1; } s.held = {}; }
+            for (auto& s : slots) { for (auto& off : s.offs) if (off.key >= 0) { engine_note_off(s, off.key); off.key = -1; } s.held = {}; }
         } else {
             song_bar_now = b;
             clips_at_bar(true);
@@ -1022,9 +1165,7 @@ void EngineHost::run_hits(unsigned t, Slot& slot, unsigned frames) {
 
 void EngineHost::play_hit(unsigned t, Slot& slot, const PendingHit& hit, uint64_t at) {
     if (slot.engine) {
-        slot.engine->set_accent(hit.accent ? expression::accent_gain : 1.0f);
-        slot.engine->note_on(hit.key, hit.velocity);
-        slot.engine->set_accent(1);
+        engine_note_on(slot, hit.key, hit.velocity, hit.accent ? expression::accent_gain : 1.0f);
         schedule_off(slot, hit.key, hit.length);
     }
     if (hit.midi >= 0) midi_note(t, hit.midi, hit.velocity, at, hit.length);
@@ -1067,9 +1208,9 @@ void EngineHost::drop_hits() {
 }
 
 void EngineHost::arp_note(Slot& slot, int key, int velocity, int from, int32_t length) {
-    slot.engine->note_on(key, velocity);
+    engine_note_on(slot, key, velocity);
     float pressure = slot.arp.pressure_of(from);
-    if (pressure > 0) slot.engine->set_pressure(key, pressure);
+    if (pressure > 0) engine_pressure(slot, key, pressure);
     slot.arp_played = key; slot.arp_from = from;
     schedule_off(slot, key, length);
     midi_note(unsigned(&slot - slots.data()), key, velocity, frame_now, length);
@@ -1276,14 +1417,13 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
     auto from = slot.held; // the note held into this tick takes this one, the first note on it
     slot.held = {};
     if (sound) {
-        slot.engine->set_accent(accent ? expression::accent_gain : 1.0f);
+        float gain = accent ? expression::accent_gain : 1.0f;
         if (from.key >= 0) {
-            slot.engine->slide(from.key, played, velocity, from.glide);
+            engine_slide(slot, from.key, played, velocity, from.glide, gain);
             if (from.key != played) cancel_off(slot, from.key);
         } else {
-            slot.engine->note_on(played, velocity);
+            engine_note_on(slot, played, velocity, gain);
         }
-        slot.engine->set_accent(1);
         schedule_off(slot, played, samples);
     }
     // MIDI: a tie onto the same key goes on; else the notes overlap, which a mono synth plays legato.
@@ -1486,6 +1626,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     loop_running = running; loop_counting = count_left > 0;
     loop_tick = running ? double(tick_now) - until_tick / tick_length() : 0;
     // Render up to each step, play the step, carry on: steps land on the sample, and so do notes played by hand.
+    // One dispatch a block (roadmap P2): this pass only sequences, each track's engine calls past the first frame
+    // kept for its job below; the old way renders every track up to each step here.
+    bool whole = whole_blocks.load(std::memory_order_relaxed);
+    deferring = whole;
+    keyed_pad = pad_keyed;
+    cut_count = 0;
     unsigned done = 0;
     while (done < frames) {
         if (next_command <= done) next_command = take_commands(done, frames);
@@ -1517,8 +1663,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 slot.sampler.set_knob_out(knob_heard ? slot.knob_pad_l + done : nullptr, knob_heard ? slot.knob_pad_r + done : nullptr);
             }
         }
+        cuts[cut_count++] = uint16_t(done); // a run starts here (at most one a frame)
         unsigned active = 0; // the heaviest first, so the longest job never starts last
-        for (unsigned k = 0; k < track_count; ++k) if (slots[order[k]].engine) sounding_tracks[active++] = order[k];
+        if (!whole) for (unsigned k = 0; k < track_count; ++k) if (slots[order[k]].engine) sounding_tracks[active++] = order[k];
         auto engine_job = [&](unsigned i) {
             unsigned t = sounding_tracks[i];
             auto& slot = slots[t];
@@ -1537,6 +1684,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         }
         done += n;
     }
+    deferring = false;
     midi_offs_due(frame_now + frames);
     if (!running && sync_started) sync_stop(frame_now + frames); // the song came to its end
     if (!running && mtc_on) mtc_off();                           // and MTC in no longer leads it
@@ -1600,7 +1748,17 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * slot.mix_l.at(f); key_r[f] = key_pad_r[f] * slot.mix_r.at(f); }
         track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
     };
-    if (parallel) workers.run(active, chain_job);
+    // One dispatch a block: each track's engine over the whole block, its calls at their frames, then its chain.
+    auto track_job = [&](unsigned i) {
+        unsigned t = sounding_tracks[i];
+        auto t0 = std::chrono::steady_clock::now();
+        play_calls(t, slots[t], frames);
+        track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        chain_job(i);
+    };
+    if (whole && parallel) workers.run(active, track_job);
+    else if (whole) for (unsigned i = 0; i < active; ++i) track_job(i);
+    else if (parallel) workers.run(active, chain_job);
     else for (unsigned i = 0; i < active; ++i) chain_job(i);
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];

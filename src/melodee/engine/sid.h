@@ -37,9 +37,9 @@ public:
     void all_notes_off() override;
     void silence() override;
     void set_param(int id, int value) override;
-    void set_bend(float value) override { bend = value; }
-    void set_wheel(float value) override { wheel = value; }
-    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; }
+    void set_bend(float value) override { bend = value; step.restart(); }
+    void set_wheel(float value) override { wheel = value; step.restart(); }
+    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; step.restart(); }
     void set_pressure(int key, float value) override;
     void set_accent(float gain) override { accent = gain; }
     void slide(int from, int to, int velocity, bool glide) override;
@@ -53,6 +53,7 @@ private:
         uint32_t age = 0;
         float accent = 1, slide = 0; // the sequencer's: a gain, and semitones off the key (expression::slide_settle)
         float velocity = 0, pressure = 0, touch = 0, random = 0, phase = 0, phase2 = 0, noise = 0, s1 = 0, s2 = 0;
+        float dt = 0, dt2 = 0, width = 0.5f, g = 0, k = 2, gain = 0; // the control step's: pitch, pulse width, filter, level
         dsp::Envelope env;
     };
     void update();
@@ -66,6 +67,7 @@ private:
     uint32_t clock = 0;
     float accent = 1; // for the notes started next (set_accent)
     bool dirty = true;
+    ControlStep step; // the modulation's own steps (roadmap P2)
 };
 
 } // namespace melodee

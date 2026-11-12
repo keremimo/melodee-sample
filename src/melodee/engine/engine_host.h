@@ -142,6 +142,16 @@ public:
     // Any thread: the workers used (true) or left asleep, from the next block; for comparing the two.
     void set_render_parallel(bool on) { parallel_allowed.store(on, std::memory_order_relaxed); }
     bool render_parallel() const { return parallel_allowed.load(std::memory_order_relaxed); }
+    // Any thread (roadmap P2), from the next block: one dispatch a block (true, the default), each track's engine over
+    // the whole block with its notes and values at their frames, then its chain, as one job; or the old way, every
+    // track cut wherever any track has a tick or a note and the workers called for each run, then for the chains.
+    void set_one_dispatch(bool on) { whole_blocks.store(on, std::memory_order_relaxed); }
+    bool one_dispatch() const { return whole_blocks.load(std::memory_order_relaxed); }
+    // Tests: one dispatch, but each track's engine cut wherever the old way cut every track, so the two sound the same
+    // to the sample (engines step their modulation from the start of each render call).
+    void set_split_cuts(bool on) { split_cuts = on; }
+    // Calls a track's job could not keep (its list full), made at the block's first frame instead.
+    uint32_t calls_lost() const { return calls_full.load(std::memory_order_relaxed); }
     // Any thread: the share of its time the latest blocks took (the peak, falling slowly), and how many blocks the
     // workers have helped with.
     float render_load() const { return block_load.load(std::memory_order_relaxed); }
@@ -235,6 +245,18 @@ private:
     // A ratchet's hit still to come (roadmap P1): `samples` frames on it plays `key` (as the engine plays it; a kit
     // pad's semitones over it) and `midi` out, for `length` frames.
     struct PendingHit { int32_t key = -1; int16_t midi = -1; uint8_t velocity = 0; bool accent = false; int32_t samples = 0, length = 0; };
+    // Roadmap P2, one dispatch a block: a call to a track's engine the sequencing pass made past the block's first
+    // frame, kept for the track's job to make at that frame (play_calls()).
+    struct EngineCall {
+        enum class Op : uint8_t { NoteOn, NoteOff, Slide, Param, Wheel, Pressure, Mod, PlayPad, Audition, MovePad, RestorePad,
+                                  RestorePads, PadFxParam };
+        Op op = Op::NoteOn;
+        bool flag = false;  // Slide: glide
+        uint16_t frame = 0; // into the block
+        int32_t a = 0, b = 0, c = 0, d = 0;
+        float x = 1;        // NoteOn, Slide: the accent's gain; Wheel, Pressure: the value
+    };
+    static constexpr unsigned calls_a_block = 384; // a track's, more than a pattern's start (every value back) needs
     struct Slot {
         EngineKind kind = EngineKind::None;
         ProphetEngine prophet;
@@ -288,7 +310,28 @@ private:
         // Notes Seq Record just wrote ahead of the playhead (Rec Quantize), already heard live: skipped once.
         struct Skip { int32_t key = -1; uint8_t pattern = 0; uint32_t tick = 0, until = 0; };
         std::array<Skip, 8> skips {};
+        std::array<EngineCall, calls_a_block> calls {}; // this block's, in the order made (roadmap P2)
+        unsigned call_count = 0;
     };
+    // The sequencing pass's calls to a track's engine: straight in at the block's first frame (nothing of it rendered
+    // yet) or the old way (every track rendered up to each tick), else kept for its job, at block_at (roadmap P2).
+    bool deferring = false; // the sequencing pass of a one-dispatch block is running
+    bool keep_call(Slot& slot, const EngineCall& call);
+    void engine_note_on(Slot& slot, int key, int velocity, float accent = 1);
+    void engine_note_off(Slot& slot, int key);
+    void engine_slide(Slot& slot, int from, int to, int velocity, bool glide, float accent);
+    void engine_param(Slot& slot, int id, int value);
+    void engine_wheel(Slot& slot, float value);
+    void engine_pressure(Slot& slot, int key, float value);
+    void make_call(unsigned t, Slot& slot, const EngineCall& call); // one kept call, now
+    void render_engine(unsigned t, Slot& slot, unsigned at, unsigned frames); // the engine's frames [at, at + frames)
+    void play_calls(unsigned t, Slot& slot, unsigned frames);   // the engine over the whole block, each call at its frame
+    std::atomic<bool> whole_blocks {true};
+    int keyed_pad = -1;                            // this block's: the Sidechain's key track, when its key is one kit pad
+    bool split_cuts = false;                       // tests: each job cut where the old way cut every track
+    std::array<uint16_t, block + 1> cuts {};       // this block's runs' starts, the old way's cuts
+    unsigned cut_count = 0;
+    std::atomic<uint32_t> calls_full {0};
     void load_track(unsigned t, const Track& track); // a whole track's sound, kit, mix and effects
     void load_state(const Project& project, bool keep_loops = false); // all but the patterns (keep_loops: the same project at a new rate)
     void run_late(Slot& slot, unsigned frames);       // a swung arp note, when its time comes

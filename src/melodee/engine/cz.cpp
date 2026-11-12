@@ -148,6 +148,7 @@ CzEngine::CzEngine() {
     update();
 }
 void CzEngine::set_param(int id, int value) {
+    step.restart();
     if (id < 0 || id >= Count) return;
     p[size_t(id)] = std::clamp<int>(value, info().params[id].min, info().params[id].max);
     dirty = true;
@@ -162,6 +163,7 @@ void CzEngine::update() {
 }
 
 void CzEngine::note_on(int key, int velocity) {
+    step.restart();
     if (dirty) update();
     Voice* v = nullptr;
     for (auto& x : voices) if (x.key == key) { v = &x; break; }
@@ -193,6 +195,7 @@ void CzEngine::note_on(int key, int velocity) {
 
 // Slide or Tie from the sequencer (Engine::slide): the held voice of `from` goes on as `to`.
 void CzEngine::slide(int from, int to, int velocity, bool glide) {
+    step.restart();
     bool found = false;
     for (auto& v : voices)
         if (v.key == from && v.held) {
@@ -202,49 +205,60 @@ void CzEngine::slide(int from, int to, int velocity, bool glide) {
         }
     if (!found) note_on(to, velocity);
 }
-void CzEngine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
-void CzEngine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.dcw.gate(false); v.dca.gate(false); } }
-void CzEngine::all_notes_off() { for (auto& v : voices) if (v.held) { v.held = false; v.dcw.gate(false); v.dca.gate(false); } }
-void CzEngine::silence() { for (auto& v : voices) v = Voice {}; }
+void CzEngine::set_pressure(int key, float value) { step.restart(); for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
+void CzEngine::note_off(int key) { step.restart(); for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.dcw.gate(false); v.dca.gate(false); } }
+void CzEngine::all_notes_off() { step.restart(); for (auto& v : voices) if (v.held) { v.held = false; v.dcw.gate(false); v.dca.gate(false); } }
+void CzEngine::silence() { step.restart(); for (auto& v : voices) v = Voice {}; }
 bool CzEngine::sounding() const { for (auto& v : voices) if (v.key >= 0) return true; return false; }
 
 void CzEngine::render(float* out, unsigned frames) {
     if (dirty) update();
     unsigned line = unsigned(p[Line]);
     bool both = line >= 2;
-    lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), frames);
-    for (auto& v : voices) {
-        if (v.key < 0) continue;
-        using expression::at;
-        expression::follow(v.touch, v.pressure, frames);
-        auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.dcw.level});
-        // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato.
-        v.slide = expression::slide_settle(v.slide, frames);
-        float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
-        // Line 1 (or 2 alone, a fifth of the detune up); with 1+1' or 1+2' the second line too, detuned.
-        float dt0 = dsp::midi_hz(key + (line == 1 ? p[Octave] * 12 : 0) + at(m, line == 1 ? ModDest::OscBPitch : ModDest::OscAPitch) * 12) / dsp::sample_rate();
-        float dt1 = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
-        float follow = 1 - p[KeyFollow] / 100.0f * std::clamp((key - 48) / 48.0f, 0.0f, 1.0f); // high notes bend less
-        float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel))
-            * (both ? 0.18f : 0.26f) * output_trim::cz * v.accent;
-        // Brightness: pressure and the matrix open the DCW.
-        float open = v.touch * p[AtBright] / 100.0f * 0.6f + at(m, ModDest::Cutoff);
-        for (unsigned f = 0; f < frames; ++f) {
-            float env = v.dcw.next(dcw_shape);
-            float d = std::clamp((p[Dcw] / 100.0f + env * p[DcwAmount] / 100.0f + wheel * 0.5f + open) * follow, 0.0f, 1.0f);
-            float sum = 0;
-            for (unsigned l = 0; l < (both ? 2u : 1u); ++l) {
-                float dt = l ? dt1 : dt0;
-                unsigned wave = v.second[l] && p[Wave2] ? unsigned(p[Wave2] - 1) : unsigned(p[Wave1]);
-                // Line 2 (1+2') plays the second wave throughout.
-                if (l == 1 && line == 3 && p[Wave2]) wave = unsigned(p[Wave2] - 1);
-                sum += shape(wave, v.phase[l], d) - mean_of(wave, d); // its offset taken out
-                v.phase[l] += dt;
-                if (v.phase[l] >= 1) { v.phase[l] -= 1; v.second[l] = !v.second[l]; }
+    for (unsigned start = 0; start < frames;) {
+        // A control step on its own count of frames (engine.h ControlStep), not from this call's start.
+        if (step.starts(control_frames)) {
+            unsigned moved = step.take();
+            lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), moved);
+            for (auto& v : voices) {
+                if (v.key < 0) continue;
+                using expression::at;
+                expression::follow(v.touch, v.pressure, moved);
+                auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.dcw.level});
+                // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato.
+                v.slide = expression::slide_settle(v.slide, moved);
+                float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+                // Line 1 (or 2 alone, a fifth of the detune up); with 1+1' or 1+2' the second line too, detuned.
+                v.dt[0] = dsp::midi_hz(key + (line == 1 ? p[Octave] * 12 : 0) + at(m, line == 1 ? ModDest::OscBPitch : ModDest::OscAPitch) * 12) / dsp::sample_rate();
+                v.dt[1] = dsp::midi_hz(key + p[Octave] * 12 + p[Detune] / 100.0f + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
+                v.follow = 1 - p[KeyFollow] / 100.0f * std::clamp((key - 48) / 48.0f, 0.0f, 1.0f); // high notes bend less
+                v.gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel))
+                    * (both ? 0.18f : 0.26f) * output_trim::cz * v.accent;
+                // Brightness: pressure and the matrix open the DCW.
+                v.open = v.touch * p[AtBright] / 100.0f * 0.6f + at(m, ModDest::Cutoff);
             }
-            out[f] += sum * v.dca.next(dca_shape) * gain;
         }
-        if (!v.dca.active()) v.key = -1;
+        unsigned n = step.run(frames - start);
+        for (auto& v : voices) {
+            if (v.key < 0) continue;
+            for (unsigned f = 0; f < n; ++f) {
+                float env = v.dcw.next(dcw_shape);
+                float d = std::clamp((p[Dcw] / 100.0f + env * p[DcwAmount] / 100.0f + wheel * 0.5f + v.open) * v.follow, 0.0f, 1.0f);
+                float sum = 0;
+                for (unsigned l = 0; l < (both ? 2u : 1u); ++l) {
+                    float dt = v.dt[l];
+                    unsigned wave = v.second[l] && p[Wave2] ? unsigned(p[Wave2] - 1) : unsigned(p[Wave1]);
+                    // Line 2 (1+2') plays the second wave throughout.
+                    if (l == 1 && line == 3 && p[Wave2]) wave = unsigned(p[Wave2] - 1);
+                    sum += shape(wave, v.phase[l], d) - mean_of(wave, d); // its offset taken out
+                    v.phase[l] += dt;
+                    if (v.phase[l] >= 1) { v.phase[l] -= 1; v.second[l] = !v.second[l]; }
+                }
+                out[start + f] += sum * v.dca.next(dca_shape) * v.gain;
+            }
+        }
+        if (step.played(n)) for (auto& v : voices) if (v.key >= 0 && !v.dca.active()) v.key = -1; // let go once a step
+        start += n;
     }
 }
 

@@ -70,6 +70,7 @@ using namespace sid;
 
 SidEngine::SidEngine() { for (unsigned n = 0; n < Count; ++n) p[n] = info().params[n].initial; update(); }
 void SidEngine::set_param(int id, int value) {
+    step.restart();
     if (id < 0 || id >= Count) return;
     p[size_t(id)] = std::clamp<int>(value, info().params[id].min, info().params[id].max);
     dirty = true;
@@ -82,6 +83,7 @@ void SidEngine::update() {
 }
 
 void SidEngine::note_on(int key, int velocity) {
+    step.restart();
     if (dirty) update();
     Voice* v = nullptr;
     for (auto& x : voices) if (x.key == key) { v = &x; break; }
@@ -98,6 +100,7 @@ void SidEngine::note_on(int key, int velocity) {
 
 // Slide or Tie from the sequencer (Engine::slide): the held voice of `from` goes on as `to`.
 void SidEngine::slide(int from, int to, int velocity, bool glide) {
+    step.restart();
     bool found = false;
     for (auto& v : voices)
         if (v.key == from && v.held) {
@@ -107,39 +110,47 @@ void SidEngine::slide(int from, int to, int velocity, bool glide) {
         }
     if (!found) note_on(to, velocity);
 }
-void SidEngine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
-void SidEngine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.env.gate(false); } }
-void SidEngine::all_notes_off() { for (auto& v : voices) if (v.held) { v.held = false; v.env.gate(false); } }
-void SidEngine::silence() { for (auto& v : voices) v = Voice {}; }
+void SidEngine::set_pressure(int key, float value) { step.restart(); for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
+void SidEngine::note_off(int key) { step.restart(); for (auto& v : voices) if (v.key == key && v.held) { v.held = false; v.env.gate(false); } }
+void SidEngine::all_notes_off() { step.restart(); for (auto& v : voices) if (v.held) { v.held = false; v.env.gate(false); } }
+void SidEngine::silence() { step.restart(); for (auto& v : voices) v = Voice {}; }
 bool SidEngine::sounding() const { for (auto& v : voices) if (v.key >= 0) return true; return false; }
 
 void SidEngine::render(float* out, unsigned frames) {
     if (dirty) update();
     bool old_chip = p[Model] == 1;
     float crush = p[Crush] / 100.0f, steps = std::exp2(12 - crush * 9); // down to three bits at the top
-    for (unsigned start = 0; start < frames; start += 16) {
-        unsigned n = std::min(16u, frames - start);
-        lfo += rate_hertz(p[PwmRate]) * n / dsp::sample_rate();
-        lfo -= std::floor(lfo);
-        float sweep = p[PulseWidth] / 100.0f + p[PwmDepth] / 100.0f * 0.45f * std::sin(2 * dsp::pi * lfo);
-        lfo_value = vibrato.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), n);
+    for (unsigned start = 0; start < frames;) {
+        // A control step of 16 frames on its own count (engine.h ControlStep), not from this call's start.
+        if (step.starts(16)) {
+            unsigned moved = step.take();
+            lfo += rate_hertz(p[PwmRate]) * moved / dsp::sample_rate();
+            lfo -= std::floor(lfo);
+            float sweep = p[PulseWidth] / 100.0f + p[PwmDepth] / 100.0f * 0.45f * std::sin(2 * dsp::pi * lfo);
+            lfo_value = vibrato.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), moved);
+            for (auto& v : voices) {
+                if (v.key < 0) continue;
+                using expression::at;
+                expression::follow(v.touch, v.pressure, moved);
+                auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env.level});
+                // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato.
+                v.slide = expression::slide_settle(v.slide, moved);
+                float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+                v.dt = std::min(dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate(), 0.45f);
+                v.dt2 = std::min(dsp::midi_hz(key + p[Detune] + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate(), 0.45f);
+                v.width = std::clamp(sweep + at(m, ModDest::PulseWidth) * 0.45f, 0.03f, 0.97f);
+                // The filter at this step: cutoff, the envelope's push, key tracking, pressure and the matrix, in octaves.
+                float octaves = p[Cutoff] / 100.0f * (old_chip ? 8.5f : 9.6f) + v.env.level * p[EnvAmount] / 100.0f * 5 + (key - 60) / 12.0f * p[KeyTrack] / 100.0f
+                    + v.touch * p[AtBright] / 100.0f * 4 + at(m, ModDest::Cutoff) * 5;
+                v.g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate() * 0.45f) / dsp::sample_rate());
+                v.k = 2 - 1.95f * std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f);
+                v.gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f * output_trim::sid * v.accent;
+            }
+        }
+        unsigned n = step.run(frames - start);
         for (auto& v : voices) {
             if (v.key < 0) continue;
-            using expression::at;
-            expression::follow(v.touch, v.pressure, n);
-            auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env.level});
-            // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato.
-            v.slide = expression::slide_settle(v.slide, n);
-            float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
-            float dt = std::min(dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate(), 0.45f);
-            float dt2 = std::min(dsp::midi_hz(key + p[Detune] + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate(), 0.45f);
-            float width = std::clamp(sweep + at(m, ModDest::PulseWidth) * 0.45f, 0.03f, 0.97f);
-            // The filter at this block: cutoff, the envelope's push, key tracking, pressure and the matrix, in octaves.
-            float octaves = p[Cutoff] / 100.0f * (old_chip ? 8.5f : 9.6f) + v.env.level * p[EnvAmount] / 100.0f * 5 + (key - 60) / 12.0f * p[KeyTrack] / 100.0f
-                + v.touch * p[AtBright] / 100.0f * 4 + at(m, ModDest::Cutoff) * 5;
-            float g = std::tan(dsp::pi * std::min(30.0f * std::exp2(octaves), dsp::sample_rate() * 0.45f) / dsp::sample_rate());
-            float k = 2 - 1.95f * std::clamp(p[Resonance] / 100.0f + at(m, ModDest::Resonance), 0.0f, 1.0f);
-            float gain = expression::velocity_gain(v.velocity, p[Velocity] / 100.0f) * std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * 0.3f * output_trim::sid * v.accent;
+            const float dt = v.dt, dt2 = v.dt2, width = v.width, g = v.g, k = v.k;
             for (unsigned f = 0; f < n; ++f) {
                 v.phase2 += dt2;
                 bool wrap2 = v.phase2 >= 1;
@@ -169,10 +180,11 @@ void SidEngine::render(float* out, unsigned frames) {
                     v.s1 = g * hp + bp; v.s2 = g * bp + lp;
                     y = p[Mode] == 0 ? lp : p[Mode] == 1 ? bp : hp;
                 }
-                out[start + f] += y * v.env.next(shape) * gain;
+                out[start + f] += y * v.env.next(shape) * v.gain;
             }
-            if (!v.env.active()) v.key = -1;
         }
+        if (step.played(n)) for (auto& v : voices) if (v.key >= 0 && !v.env.active()) v.key = -1; // let go once a step
+        start += n;
     }
 }
 

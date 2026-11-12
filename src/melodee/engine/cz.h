@@ -31,15 +31,16 @@ const EngineInfo& info();
 class CzEngine final : public Engine {
 public:
     static constexpr unsigned max_voices = 8;
+    static constexpr unsigned control_frames = 128; // modulation's step (ControlStep)
     CzEngine();
     void note_on(int key, int velocity) override;
     void note_off(int key) override;
     void all_notes_off() override;
     void silence() override;
     void set_param(int id, int value) override;
-    void set_bend(float value) override { bend = value; }
-    void set_wheel(float value) override { wheel = value; }
-    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; }
+    void set_bend(float value) override { bend = value; step.restart(); }
+    void set_wheel(float value) override { wheel = value; step.restart(); }
+    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; step.restart(); }
     void set_pressure(int key, float value) override;
     void set_accent(float gain) override { accent = gain; }
     void slide(int from, int to, int velocity, bool glide) override;
@@ -56,6 +57,8 @@ private:
         std::array<float, 2> phase {};
         std::array<bool, 2> second {}; // which of the two waves this cycle
         dsp::Envelope dcw, dca;
+        std::array<float, 2> dt {};             // the control step's: each line's phase step,
+        float follow = 1, gain = 0, open = 0;   // the DCW's key follow, the level and the brightness
     };
     void update();
     std::array<int, cz::Count> p {};
@@ -68,6 +71,7 @@ private:
     uint32_t clock = 0;
     float accent = 1; // for the notes started next (set_accent)
     bool dirty = true;
+    ControlStep step; // the modulation's own steps (roadmap P2)
 };
 
 } // namespace melodee

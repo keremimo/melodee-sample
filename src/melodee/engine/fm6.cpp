@@ -135,6 +135,7 @@ const SineTable sine;
 Fm6Engine::Fm6Engine() { for (unsigned n = 0; n < Count; ++n) p[n] = info().params[n].initial; update(); }
 
 void Fm6Engine::set_param(int id, int value) {
+    step.restart();
     if (id < 0 || id >= Count) return;
     p[size_t(id)] = std::clamp<int>(value, info().params[id].min, info().params[id].max);
     dirty = true;
@@ -154,6 +155,7 @@ void Fm6Engine::update() {
 }
 
 void Fm6Engine::note_on(int key, int velocity) {
+    step.restart();
     if (dirty) update();
     Voice* v = nullptr;
     for (auto& x : voices) if (x.key == key) { v = &x; break; }
@@ -170,6 +172,7 @@ void Fm6Engine::note_on(int key, int velocity) {
 
 // Slide or Tie from the sequencer (Engine::slide): the held voice of `from` goes on as `to`.
 void Fm6Engine::slide(int from, int to, int velocity, bool glide) {
+    step.restart();
     bool found = false;
     for (auto& v : voices)
         if (v.key == from && v.held) {
@@ -179,10 +182,10 @@ void Fm6Engine::slide(int from, int to, int velocity, bool glide) {
         }
     if (!found) note_on(to, velocity);
 }
-void Fm6Engine::set_pressure(int key, float value) { for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
-void Fm6Engine::note_off(int key) { for (auto& v : voices) if (v.key == key && v.held) { v.held = false; for (auto& e : v.env) e.gate(false); } }
-void Fm6Engine::all_notes_off() { for (auto& v : voices) if (v.held) { v.held = false; for (auto& e : v.env) e.gate(false); } }
-void Fm6Engine::silence() { for (auto& v : voices) v = Voice {}; }
+void Fm6Engine::set_pressure(int key, float value) { step.restart(); for (auto& v : voices) if (v.key == key && v.held) v.pressure = value; }
+void Fm6Engine::note_off(int key) { step.restart(); for (auto& v : voices) if (v.key == key && v.held) { v.held = false; for (auto& e : v.env) e.gate(false); } }
+void Fm6Engine::all_notes_off() { step.restart(); for (auto& v : voices) if (v.held) { v.held = false; for (auto& e : v.env) e.gate(false); } }
+void Fm6Engine::silence() { step.restart(); for (auto& v : voices) v = Voice {}; }
 bool Fm6Engine::sounding() const { for (auto& v : voices) if (v.key >= 0) return true; return false; }
 
 void Fm6Engine::render(float* out, unsigned frames) {
@@ -192,51 +195,65 @@ void Fm6Engine::render(float* out, unsigned frames) {
     unsigned carriers = 0;
     for (unsigned op = 0; op < ops; ++op) carriers += (r.carriers >> op) & 1;
     float volume = p[Volume] / 100.0f * 0.5f * output_trim::fm6 / std::sqrt(float(std::max(carriers, 1u)));
-    lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), frames);
-    for (auto& v : voices) {
-        if (v.key < 0) continue;
-        expression::follow(v.touch, v.pressure, frames);
-        auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env[0].level});
-        // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato; carriers and modulators can part.
-        v.slide = expression::slide_settle(v.slide, frames);
-        float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
-        float hz_carrier = dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate();
-        float hz_modulator = dsp::midi_hz(key + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
-        // Brightness: pressure and the matrix scale every modulator, as a DX patch's aftertouch into modulator levels.
-        float bright = std::min(8.0f, std::exp2(2 * (at(m, ModDest::Cutoff) + v.touch * p[AtBright] / 100.0f)));
-        float steps = std::clamp(p[Feedback] + at(m, ModDest::Resonance) * 7, 0.0f, 7.0f);
-        float feedback = steps > 0 ? std::exp2(steps - 7) * 0.8f : 0;
-        float amp = std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * v.accent;
-        std::array<float, ops> gain {}, step {};
-        float self = 0; // op 6's level into its own feedback
-        for (unsigned op = 0; op < ops; ++op) {
-            bool carrier = (r.carriers >> op) & 1;
-            float level = levels[op] * expression::velocity_gain(v.velocity, p[size_t(op_param(op, Velocity))] / 100.0f);
-            if (op == 5) self = level;
-            gain[op] = level * (carrier ? amp : bright * (2 + wheel * 2)); // a modulator turns in radians (x 2 pi in sine())
-            step[op] = (carrier ? hz_carrier : hz_modulator) * ratios[op];
-        }
-        for (unsigned f = 0; f < frames; ++f) {
-            float heard = 0;
-            // Operators 6 down to 1, so a modulator is ready before what it modulates.
-            for (int op = int(ops) - 1; op >= 0; --op) {
-                float mod = 0;
-                for (unsigned k = 0; k < ops; ++k) if ((r.into[size_t(op)] >> k) & 1) mod += v.out[k];
-                if (op == 5) mod += v.feedback * feedback;
-                float e = v.env[size_t(op)].next(shapes[size_t(op)]);
-                float s = sine(v.phase[size_t(op)] + mod * 0.6f);
-                v.phase[size_t(op)] += step[size_t(op)];
-                if (v.phase[size_t(op)] > 1) v.phase[size_t(op)] -= 1;
-                float o = s * e * gain[size_t(op)];
-                if (op == 5) v.feedback = (v.feedback + s * e * self) * 0.5f; // averaged, as feedback FM wants
-                v.out[size_t(op)] = o;
-                if ((r.carriers >> op) & 1) heard += o;
+    for (unsigned start = 0; start < frames;) {
+        // A control step on its own count of frames (engine.h ControlStep), not from this call's start.
+        if (step.starts(control_frames)) {
+            unsigned moved = step.take();
+            lfo_value = lfo.next(rate_hertz(p[LfoRate]) * std::exp2(expression::lfo_rate_octaves(mods, wheel, lfo_value)), moved);
+            for (auto& v : voices) {
+                if (v.key < 0) continue;
+                expression::follow(v.touch, v.pressure, moved);
+                auto m = expression::sums(mods, {lfo_value, v.velocity, v.touch, wheel, (v.key - 60.0f) / 60.0f, v.random, v.env[0].level});
+                // Pitch: a slide's way in, the bend, the matrix and pressure's vibrato; carriers and modulators can part.
+                v.slide = expression::slide_settle(v.slide, moved);
+                float key = v.key + v.slide + bend * 2 + at(m, ModDest::Pitch) * 12 + lfo_value * expression::vibrato_semitones(v.touch, p[AtVib]);
+                float hz_carrier = dsp::midi_hz(key + at(m, ModDest::OscAPitch) * 12) / dsp::sample_rate();
+                float hz_modulator = dsp::midi_hz(key + at(m, ModDest::OscBPitch) * 12) / dsp::sample_rate();
+                // Brightness: pressure and the matrix scale every modulator, as a DX patch's aftertouch into modulator levels.
+                float bright = std::min(8.0f, std::exp2(2 * (at(m, ModDest::Cutoff) + v.touch * p[AtBright] / 100.0f)));
+                float steps = std::clamp(p[Feedback] + at(m, ModDest::Resonance) * 7, 0.0f, 7.0f);
+                v.feedback_amount = steps > 0 ? std::exp2(steps - 7) * 0.8f : 0;
+                float amp = std::max(0.0f, 1 + at(m, ModDest::AmpLevel)) * v.accent;
+                for (unsigned op = 0; op < ops; ++op) {
+                    bool carrier = (r.carriers >> op) & 1;
+                    float level = levels[op] * expression::velocity_gain(v.velocity, p[size_t(op_param(op, Velocity))] / 100.0f);
+                    if (op == 5) v.self = level; // op 6's level into its own feedback
+                    v.gain[op] = level * (carrier ? amp : bright * (2 + wheel * 2)); // a modulator turns in radians (x 2 pi in sine())
+                    v.phase_step[op] = (carrier ? hz_carrier : hz_modulator) * ratios[op];
+                }
             }
-            out[f] += heard * volume;
         }
-        bool done = true;
-        for (unsigned op = 0; op < ops; ++op) if (((r.carriers >> op) & 1) && v.env[op].active()) done = false;
-        if (done && !v.held) v.key = -1;
+        unsigned n = step.run(frames - start);
+        for (auto& v : voices) {
+            if (v.key < 0) continue;
+            const float feedback = v.feedback_amount, self = v.self;
+            for (unsigned f = 0; f < n; ++f) {
+                float heard = 0;
+                // Operators 6 down to 1, so a modulator is ready before what it modulates.
+                for (int op = int(ops) - 1; op >= 0; --op) {
+                    float mod = 0;
+                    for (unsigned k = 0; k < ops; ++k) if ((r.into[size_t(op)] >> k) & 1) mod += v.out[k];
+                    if (op == 5) mod += v.feedback * feedback;
+                    float e = v.env[size_t(op)].next(shapes[size_t(op)]);
+                    float s = sine(v.phase[size_t(op)] + mod * 0.6f);
+                    v.phase[size_t(op)] += v.phase_step[size_t(op)];
+                    if (v.phase[size_t(op)] > 1) v.phase[size_t(op)] -= 1;
+                    float o = s * e * v.gain[size_t(op)];
+                    if (op == 5) v.feedback = (v.feedback + s * e * self) * 0.5f; // averaged, as feedback FM wants
+                    v.out[size_t(op)] = o;
+                    if ((r.carriers >> op) & 1) heard += o;
+                }
+                out[start + f] += heard * volume;
+            }
+        }
+        if (step.played(n)) // let go once a step, when every carrier has ended
+            for (auto& v : voices) {
+                if (v.key < 0) continue;
+                bool done = true;
+                for (unsigned op = 0; op < ops; ++op) if (((r.carriers >> op) & 1) && v.env[op].active()) done = false;
+                if (done && !v.held) v.key = -1;
+            }
+        start += n;
     }
 }
 

@@ -26,9 +26,9 @@ public:
     void all_notes_off() override;
     void silence() override;
     void set_param(int id, int value) override;
-    void set_wheel(float value) override { wheel = value; }
-    void set_bend(float value) override { bend = value; }
-    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; }
+    void set_wheel(float value) override { wheel = value; step.restart(); }
+    void set_bend(float value) override { bend = value; step.restart(); }
+    void set_mod(unsigned route, const ModRoute& value) override { if (route < mods.size()) mods[route] = value; step.restart(); }
     void set_pressure(int key, float value) override;
     void set_accent(float gain) override { accent = gain; }
     void slide(int from, int to, int velocity, bool glide) override;
@@ -49,6 +49,7 @@ private:
         float pressure = 0, touch = 0, random = 0; // mod sources of this voice; touch follows pressure smoothly
         float noise_mod = 0;            // the matrix's noise level, per control block
         dsp::Oscillator::Mix mix_a, mix_b;
+        bool live = false;              // sounding as the control step in hand began: it plays the step through
     };
     void update();        // derived values after a parameter change
     void control(Voice&); // per control block: pitch, filter, widths
@@ -66,6 +67,7 @@ private:
     expression::Vibrato vibrato; // pressure's own, apart from the LFO
     dsp::Noise noise;
     float lfo_value = 0, vibrato_value = 0;
+    ControlStep step; // the modulation's own steps (roadmap P2)
     dsp::Envelope::Shape amp_shape, filter_shape;
     float glide_coefficient = 1;
     float accent = 1; // for the notes started next (set_accent)
