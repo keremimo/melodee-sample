@@ -114,7 +114,7 @@ cards.
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
 | − / + | Lists move as the wheel does; on play pages the octave (a kit's 16 Levels in Tune or Scale too; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
 | Sample Record | Record (kit tracks); on Record it ends the take and opens Stage's TRIM on the pad | Audio Recall: the last 25 s onto the next empty pad |
-| Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into a pattern |
+| Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into the next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
 | Play | Play from the start (on Song from the cursor); held while playing, Fill (FILL trig conditions play) | Continue from where it stopped or the wheel put it |
 | B1–B3 | The page's soft keys, named above them; with Note Repeat on, its rate (on Stage only while Note Repeat is held) | Page jobs (Stage's TRIM on a kit, Chop) |
@@ -543,8 +543,13 @@ hold to steer, Shift + Seq to zoom in**.
   each one undo; the length stays for the speeds. Settings' Double Seq row
   picks what the new half holds: Copy notes (the MPC's way, motion too) or
   Empty.
-- **Recall** (Shift + Seq Record): the last 1–4 bars the pads played,
-  quantised into the first empty pattern; B3 or Push keeps it, B1 drops.
+- **Recall** (Shift + Seq Record): no page. The last bars the track's
+  pads played go into its next empty pattern, which then plays; one undo.
+  The page stays, and the header shows for a few seconds what landed (✓
+  P3) and the undo keys (Shift + −). How many bars (1, 2, 4, 8) and how
+  they go on the grid (as played, 1/16, 1/8) are Settings rows behind the
+  PADS door, beside Double Seq; bars follow the time signature. Nothing
+  played, or no pattern empty: a notice, and nothing changes.
 - **Song** (Shift + Pad 12): a lane per track, clips of patterns, markers,
   a loop brace, the cursor. K1 zoom (4–64 bars), K2 / K3 the next clip's
   pattern and length (or the clip's under the cursor); wheel by the bar,

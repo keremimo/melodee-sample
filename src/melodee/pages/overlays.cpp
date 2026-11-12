@@ -90,6 +90,15 @@ void draw_fader_card(Paint& p, const Snapshot& s) {
 void draw_notice(Paint& p, const Snapshot& s) {
     juce::String text;
     bool copying = s.ui.copying != UiState::Copying::Off;
+    if (!copying && s.ui.captured_at && s.now - s.ui.captured_at < 3000) { // Capture (capture C): what landed, and the undo keys
+        p.fill(0, zone::header_y, zone::width, zone::header_h, colour::bg);
+        Header h = header_of(s);
+        h.left.push_back(chip(Icon::Check, "P" + juce::String(s.ui.captured_pattern + 1), colour_of(s)));
+        h.left.push_back(pill(Icon::Undo, juce::String::fromUTF8("SHIFT \xe2\x88\x92")));
+        h.right.push_back(tag_of(s, s.ui.track));
+        header(p, h);
+        return;
+    }
     if (s.ui.copying == UiState::Copying::Pads) {
         char label[4]; pad_label(unsigned(std::max<int>(s.ui.copy_from, 0)), label);
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pad") : "Copy " + juce::String(label) + ": pick where";

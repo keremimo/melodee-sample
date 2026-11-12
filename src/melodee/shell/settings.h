@@ -31,7 +31,8 @@ inline const char* takeover_name(Takeover t) {
 }
 
 struct Settings {
-    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, Screen, PlaceBarRow, SampleRate,
+    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
+                         Screen, PlaceBarRow, SampleRate,
                          AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
@@ -40,6 +41,10 @@ struct Settings {
     uint8_t rec_grid = 0;     // and which grid: 0 the pattern's Q, else 1 + a Division, 1/4 .. 1/64 (grid_division(), model/pattern.h)
     bool zero_snap = true;    // Chop's cuts onto zero crossings (Chop's B2; shell/chop.h)
     bool double_copies = true; // Double Seq (Shift + Pad 3): the new half plays the notes again (the MPC's way), or starts empty
+    // Capture (Shift + Seq Record; round 2, capture C): how many of the last bars played it keeps, and how it puts
+    // them on the grid: 0 as played, 1 onto sixteenths, 2 onto eighths.
+    static constexpr std::array<uint8_t, 4> capture_lengths {{1, 2, 4, 8}};
+    uint8_t capture_bars = 2, capture_quantise = 1;
     uint8_t click = 0;        // the metronome: 0 off, 1 on, 2 only while Seq Record (Shift + Tap Tempo)
     uint8_t click_level = 40;
     bool full_level() const { return pad_response == 3; }
@@ -79,7 +84,7 @@ struct Settings {
 
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
-                                    "Fader takeover", "Double Seq", "Screen", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
+                                    "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Screen", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below"};
         return names[row % Rows];
     }
@@ -95,6 +100,8 @@ struct Settings {
         case KnobFxTakeover: return takeover_name(knob_fx_takeover);
         case FaderTakeover: return takeover_name(fader_takeover);
         case DoubleSeq: return double_copies ? "Copy notes" : "Empty";
+        case CaptureBars: return std::to_string(capture_bars) + (capture_bars == 1 ? " bar" : " bars");
+        case CaptureQuantize: return capture_quantise == 0 ? "As played" : capture_quantise == 1 ? "1/16" : "1/8";
         case PlaceBarRow: return place_bottom ? "Bottom" : "Top";
         case SampleRate: return audio_rate == 44100 ? "44.1 kHz" : std::to_string(audio_rate / 1000) + " kHz";
         case AudioBuffer: { // the frames queued, and how late that is heard at the rate chosen
@@ -122,6 +129,8 @@ struct Settings {
         case KnobFxTakeover: knob_fx_takeover = step_takeover(knob_fx_takeover, way); break;
         case FaderTakeover: fader_takeover = step_takeover(fader_takeover, way); break;
         case DoubleSeq: double_copies = !double_copies; break;
+        case CaptureBars: capture_bars = capture_lengths[step_in(capture_index(), unsigned(capture_lengths.size()), way)]; break;
+        case CaptureQuantize: capture_quantise = uint8_t(step_in(capture_quantise, 3, way)); break;
         case PlaceBarRow: place_bottom = !place_bottom; break;
         case Screen: screen = uint8_t(std::clamp(int(screen) + way * 10, 20, 100)); break;
         case SampleRate: audio_rate = rates[size_t(std::clamp(rate_index() + (way < 0 ? -1 : 1), 0, int(rates.size()) - 1))]; break;
@@ -134,6 +143,10 @@ struct Settings {
         case SilenceBelow: sampling.silence = uint8_t(step_in(sampling.silence, SamplingPrefs::silence_count, way)); break;
         default: break;
         }
+    }
+    unsigned capture_index() const {
+        for (unsigned n = 0; n < capture_lengths.size(); ++n) if (capture_lengths[n] == capture_bars) return n;
+        return 1;
     }
     // A list's next or previous entry, stopping at its ends.
     static unsigned step_in(unsigned at, unsigned count, int way) { return unsigned(std::clamp(int(at) + (way < 0 ? -1 : 1), 0, int(count) - 1)); }
@@ -167,6 +180,7 @@ struct Settings {
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize) << "\nrec_grid=" << int(rec_grid)
             << "\nzero_snap=" << int(zero_snap) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
+            << "\ncapture_bars=" << int(capture_bars) << "\ncapture_quantize=" << int(capture_quantise)
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
@@ -211,6 +225,8 @@ struct Settings {
             else if (key == "rec_grid") rec_grid = uint8_t(std::clamp(value, 0, 9)); // 0 Q, 1..9 a Division
             else if (key == "zero_snap") zero_snap = value != 0;
             else if (key == "double_copies") double_copies = value != 0;
+            else if (key == "capture_bars") { capture_bars = 1; for (auto n : capture_lengths) if (int(n) <= value) capture_bars = n; } // the nearest below
+            else if (key == "capture_quantize") capture_quantise = uint8_t(std::clamp(value, 0, 2));
             else if (key == "click") click = uint8_t(std::clamp(value, 0, 2));
             else if (key == "click_level") click_level = uint8_t(std::clamp(value, 0, 100));
             else if (key == "response_before") response_before = uint8_t(std::clamp(value, 0, 2));

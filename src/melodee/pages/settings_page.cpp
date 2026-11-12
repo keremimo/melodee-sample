@@ -2,7 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // SETTINGS (Shift + Pad 8): Melodee's own settings, kept on the card next
 //   to the projects, as seven doors (four by two): PADS (response, pressure,
-//   lights, what Double Seq puts in the new half), KNOBS (how the knobs,
+//   lights, what Double Seq puts in the new half, how many bars Capture keeps
+//   and how it puts them on the grid), KNOBS (how the knobs,
 //   Knob FX and the fader take over a value: Pickup, Scaled, Instant),
 //   SCREEN (palette, brightness, where the place bar sits), AUDIO (the
 //   sample rate and the buffer: longer rides out a slow moment without a
@@ -35,7 +36,8 @@ using namespace ui;
 struct Door { Icon icon; const char* name; std::array<int8_t, 6> rows; };
 constexpr int8_t none = -1;
 const std::array<Door, 7> doors {{
-    {Icon::Pads, "PADS", {Settings::PadResponse, Settings::PadPressure, Settings::PadLights, Settings::DoubleSeq, none, none}},
+    {Icon::Pads, "PADS", {Settings::PadResponse, Settings::PadPressure, Settings::PadLights, Settings::DoubleSeq, Settings::CaptureBars,
+                          Settings::CaptureQuantize}},
     {Icon::Knob, "KNOBS", {Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover, none, none, none}},
     {Icon::Screen, "SCREEN", {Settings::Palette, Settings::Screen, Settings::PlaceBarRow, none, none, none}},
     {Icon::Speaker, "AUDIO", {Settings::SampleRate, Settings::AudioBuffer, none, none, none, none}},

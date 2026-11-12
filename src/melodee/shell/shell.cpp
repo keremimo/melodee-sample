@@ -280,13 +280,7 @@ void Shell::press(Button b, bool pressed) {
         else context_.stop();
         break;
     case Button::SeqRecord:
-        if (ui.shift) { // Recall: the last bars played, into a pattern (Capture)
-            ui.capture_into = context_.track().pattern;
-            for (unsigned n = 0; n < pattern_count; ++n)
-                if (patterns_->at[ui.track][n].empty()) { ui.capture_into = uint8_t(n); break; }
-            context_.open(PageId::Capture);
-            break;
-        }
+        if (ui.shift) { context_.capture(); break; } // Recall: the last bars played, into the next empty pattern (Capture)
         context_.seq_record(); // arm, record now, or stop recording; a take is undone like any edit (Shift + Minus)
         break;
     case Button::TapTempo:
@@ -545,7 +539,6 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         out.speaker_quieted = input_ && input_->speaker_quieted();
         out.usb_state = input_ ? uint8_t(input_->usb_state()) : 0;
     }
-    if (ui_.page == PageId::Capture) { out.history = context_.history; out.history_at = context_.history_at; }
     for (unsigned n = 0; n < 16; ++n) out.held_keys[n] = context_.pad_keys[n][0];
     out.project_path = context_.project_path; out.project_folder = context_.project_folder; out.dirty = context_.dirty;
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);

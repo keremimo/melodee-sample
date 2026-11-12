@@ -1357,6 +1357,17 @@ void settings() {
     CHECK(c.double_copies && c.value_text(Settings::DoubleSeq) == "Copy notes");
     c.step(Settings::DoubleSeq, 1); CHECK(!c.double_copies && c.value_text(Settings::DoubleSeq) == "Empty");
     { Settings back; back.read(c.text()); CHECK(!back.double_copies); }
+    // Capture's rows (capture C, no page): bars 1, 2, 4, 8, and as played, 1/16 or 1/8; kept in the text.
+    CHECK(c.value_text(Settings::CaptureBars) == "2 bars" && c.value_text(Settings::CaptureQuantize) == "1/16");
+    c.step(Settings::CaptureBars, 1); CHECK(c.capture_bars == 4);
+    for (int n = 0; n < 3; ++n) c.step(Settings::CaptureBars, 1);
+    CHECK(c.capture_bars == 8);
+    for (int n = 0; n < 5; ++n) c.step(Settings::CaptureBars, -1);
+    CHECK(c.capture_bars == 1 && c.value_text(Settings::CaptureBars) == "1 bar");
+    c.step(Settings::CaptureQuantize, -1); CHECK(c.capture_quantise == 0 && c.value_text(Settings::CaptureQuantize) == "As played");
+    { Settings back; back.read(c.text()); CHECK(back.capture_bars == 1 && back.capture_quantise == 0); }
+    { Settings odd; odd.read("capture_bars=5\ncapture_quantize=9\n"); CHECK(odd.capture_bars == 4 && odd.capture_quantise == 2); }
+    CHECK(std::string(Settings::row_name(Settings::CaptureQuantize)) == "Capture quantize" && Settings::CaptureQuantize + 1 == Settings::Screen);
     // Favourites: starred sounds by engine, kept in the text; the Sounds page's FAVOURITES lists them.
     static_assert(Settings::engines == unsigned(EngineKind::Count), "a favourites row per engine");
     Settings f;

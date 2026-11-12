@@ -16,7 +16,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, Capture, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
+enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
@@ -207,7 +207,10 @@ struct UiState {
     uint8_t project_sort = 0;     // 0 newest first, 1 by name
     int8_t chord_pad = -1;        // Chord: the pad played last
     uint8_t sampler_row = 0;      // Envelope and Cloud: their second row
-    uint8_t capture_bars = 2, capture_quantise = 1, capture_into = 0; // Capture
+    // Capture (Shift + Seq Record; round 2, capture C, no page): the pattern the last bars went into and when,
+    // for the header a few seconds.
+    uint32_t captured_at = 0;
+    uint8_t captured_pattern = 0;
     uint16_t project_rows = 1;    // rows on the Project page, copied in by the shell
     // Pad FX (parity phase 7b): the punches engaged, oldest first (held, or latched with B1); the newest four sound,
     // the older ones wait bypassed until those let go. Which punch each live slot plays, and the one last pressed

@@ -31,7 +31,6 @@ struct Binding {
         Tempo, ClickLevel,                 // Tempo (Swing as on Length)
         ArpMode, ArpRate, ArpOctaves,      // Arp
         ChordType, ChordVoicing, ChordInvert, // Chord
-        CaptureBars, CaptureQuantise, CaptureInto, // Capture
         PadFine, PadPlayMode, PadGroup, PadReverse, PadAttack, PadDecay, PadRelease, PadSustain, // sampler pages
         PunchDepth, PunchSnap, PunchTail,          // Punch
         PadPunchKind, PadPunchRate, PadPunchDepth, // Pad Punch: the last pad hit

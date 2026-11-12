@@ -1094,15 +1094,9 @@ const Preview previews[] {
          preview_projects(s);
      }},
     {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.ui.settings.click = 1; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
-    {"capture", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Capture; s.ui.track = 0; s.playing = true; s.ui.capture_into = 2;
-         // Four bars of a bass line played on the pads, just now.
-         double step = 60000.0 / 124.0 / 4;
-         const int keys[] {38, 41, 36, 33, 45, 40, 38, 43};
-         for (unsigned n = 0; n < 40; ++n)
-             s.history[n] = {0, uint8_t(keys[n % 8] + (n % 5 == 0 ? 12 : 0)), 100, uint32_t(s.now - 64 * step + n * 1.6 * step), uint32_t(step * (1 + n % 3))};
-         s.history_at = 40;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
+    {"captured", [](Shell&, Snapshot& s) { // Shift + Seq Record on Steps (capture C): P3 took the last bars, the undo keys a moment
+         s.ui.page = PageId::Steps; s.ui.track = 0; s.playing = true;
+         s.ui.captured_pattern = 2; s.ui.captured_at = s.now;
      }},
     {"padfx", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::PadFx; s.ui.track = 3; s.playing = true; s.sample = break_sample();

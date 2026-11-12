@@ -582,9 +582,6 @@ void Context::apply(const Binding& b, int value) {
     case Kind::ChordType: t.chord_type = uint8_t(value); break;
     case Kind::ChordVoicing: t.chord_voicing = uint8_t(value); break;
     case Kind::ChordInvert: t.chord_invert = uint8_t(value); break;
-    case Kind::CaptureBars: ui.capture_bars = uint8_t(value); break;
-    case Kind::CaptureQuantise: ui.capture_quantise = uint8_t(value); break;
-    case Kind::CaptureInto: ui.capture_into = uint8_t(value); break;
     case Kind::RecSource: {
         unsigned code = input_choices(project, ui.track, ui.settings.input).code_at(value);
         if (code >= input_track_code) set_input_source(InputSource::Track, code - input_track_code);
@@ -1434,31 +1431,48 @@ void Context::send_click() {
 }
 
 void Context::capture() {
-    edit_pattern(ui.track, ui.capture_into, "Capture", [&] { capture_notes(); });
+    auto& t = track();
+    if (!t.used()) return;
+    int into = -1; // the next empty pattern after the one playing, round to the first
+    for (unsigned k = 1; k <= pattern_count && into < 0; ++k)
+        if (patterns.at[ui.track][(t.pattern + k) % pattern_count].empty()) into = int((t.pattern + k) % pattern_count);
+    if (into < 0) { notice("No empty pattern to capture into"); return; }
+    double tick_ms = 60000.0 / (tempo_now() / 10.0) / (4.0 * sixteenth_ticks);
+    double start = double(now) - double(project.bar_ticks()) * ui.settings.capture_bars * tick_ms;
+    bool played = false;
+    for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()) && !played; ++n)
+        played = history[n].track == ui.track && history[n].at >= start && history[n].at <= now;
+    if (!played) { notice("Nothing played to capture"); return; }
+    edit_pattern(ui.track, unsigned(into), "Capture", [&] { capture_notes(unsigned(into)); });
+    ui.captured_pattern = uint8_t(into);
+    ui.captured_at = now ? now : 1;
 }
 
-void Context::capture_notes() {
+void Context::capture_notes(unsigned into) {
     auto& t = track();
-    double step_ms = 60000.0 / (tempo_now() / 10.0) / 4;
-    double window = step_ms * bar_steps * ui.capture_bars, start = double(now) - window; // in sixteenths of 4/4
-    auto& p = patterns.at[ui.track][ui.capture_into % pattern_count];
+    const auto& set = ui.settings;
+    uint32_t span = project.bar_ticks() * set.capture_bars; // whole bars of the signature
+    double tick_ms = 60000.0 / (tempo_now() / 10.0) / (4.0 * sixteenth_ticks), start = double(now) - span * tick_ms;
+    // As played (to the tick), or onto sixteenths or eighths.
+    uint32_t grid = set.capture_quantise == 0 ? 1 : set.capture_quantise == 1 ? sixteenth_ticks : 2 * sixteenth_ticks;
+    auto& p = patterns.at[ui.track][into % pattern_count];
     p.events.clear();
     p.division = Division::Sixteenth;
-    p.length = uint32_t(bar_steps * ui.capture_bars) * sixteenth_ticks;
-    unsigned grid = ui.capture_quantise == 2 ? 2 : 1; // 1/16, or 1/8 (every other step)
-    unsigned steps = bar_steps * ui.capture_bars;
+    p.length = span;
     for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()); ++n) {
         const auto& h = history[n];
         if (h.track != ui.track || h.at < start || h.at > now) continue;
-        unsigned at = unsigned(std::lround((h.at - start) / step_ms / grid)) * grid;
-        if (at >= steps) at = steps - grid; // a note right at the end belongs to the last step
+        uint32_t at = uint32_t(std::lround((h.at - start) / tick_ms / grid)) * grid;
+        if (at >= span) at = span - grid; // a note right at the end belongs to the last place
+        double held = h.length ? h.length / tick_ms : double(sixteenth_ticks); // still held: a sixteenth
+        uint32_t length = uint32_t(std::max(1L, std::lround(held / grid))) * grid;
         Event e;
-        e.tick = at * sixteenth_ticks; e.key = h.key; e.velocity = h.velocity;
-        e.length = uint16_t(std::clamp<long>(std::lround((h.length ? h.length : step_ms) / step_ms), 1, 16) * sixteenth_ticks);
+        e.tick = at; e.key = h.key; e.velocity = h.velocity;
+        e.length = uint16_t(std::min<uint32_t>({length, span, 65535u}));
         p.add(e);
     }
-    sync_pattern(ui.track, ui.capture_into);
-    t.pattern = ui.capture_into; // and it plays from here
+    sync_pattern(ui.track, into);
+    t.pattern = uint8_t(into); // and it plays from here
     ui.lead_pattern = t.pattern;
     send({Type::Pattern, ui.track, 0, 0, int16_t(t.pattern)});
 }

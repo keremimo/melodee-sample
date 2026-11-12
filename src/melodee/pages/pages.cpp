@@ -31,7 +31,6 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Record: return record_page;
     case PageId::Project: return project_page;
     case PageId::Tempo: return tempo_page;
-    case PageId::Capture: return capture_page;
     case PageId::PadPage: return pad_edit_page;
     case PageId::PlayPage: return play_edit_page;
     case PageId::EnvelopePage: return envelope_page;

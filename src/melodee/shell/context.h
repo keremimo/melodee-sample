@@ -375,7 +375,9 @@ public:
     bool loop_click = false;
     void set_click(unsigned mode); // the metronome: 0 off, 1 on, 2 only while Seq Record
     void send_click();
-    // Capture: the selected track's last bars from the history into a pattern.
+    // Capture (Shift + Seq Record; round 2, capture C): the selected track's last bars, as many as Settings keeps,
+    // from the history into its next empty pattern, which then plays; one undo. Nothing played, or no pattern
+    // empty: a notice, and nothing changes.
     void capture();
     // Transport
     void play(bool external = false);          // external: MIDI clock in's Start (no count-in; the clock leads)
@@ -421,7 +423,7 @@ public:
 private:
     void double_notes();
     void scale_notes(bool slower);
-    void capture_notes();
+    void capture_notes(unsigned into);
     unsigned held_pads() const { unsigned n = 0; for (auto& pad : pad_keys) n += pad[0] >= 0; return n; }
     std::array<uint32_t, 4> taps {};
     unsigned tap_count = 0;

@@ -690,9 +690,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::Tempo:
         return {Binding {Kind::Tempo, 0, 30, 300, int(project.tempo_of(ui.lead_pattern) / 10)}, Binding {Kind::Swing, 0, 50, 75, project.swing},
                 Binding {Kind::ClickLevel, 0, 0, 100, ui.settings.click_level}};
-    case PageId::Capture:
-        return {Binding {Kind::CaptureBars, 0, 1, 4, ui.capture_bars}, Binding {Kind::CaptureQuantise, 0, 0, 2, ui.capture_quantise},
-                Binding {Kind::CaptureInto, 0, 0, int(pattern_count) - 1, ui.capture_into}};
     case PageId::PadMix:
     case PageId::PadPage:
     case PageId::PlayPage:
