@@ -10,6 +10,7 @@
 #include "melodee/plugin/vst2_instance.h"
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -170,6 +171,18 @@ public:
     unsigned latency() const override {
         int own = std::max(instance->getLatencySamples(), 0);
         return unsigned(std::lround(own * (sample_rate / plugin_rate))) + bridge.latency();
+    }
+    // Not on the audio thread: blocks of silence through it before it is offered (PluginRack::load), so its code and
+    // buffers are paged in, and whatever it does on its first calls is done, here rather than in the audio thread's
+    // first blocks with it.
+    void warm_up(unsigned blocks = 8) {
+        std::array<float, EngineHost::block> l {}, r {};
+        for (unsigned b = 0; b < blocks; ++b) {
+            l.fill(0.0f);
+            r.fill(0.0f);
+            render(l.data(), r.data(), EngineHost::block);
+        }
+        load.store(0.0f, std::memory_order_relaxed); // what it costs to play counts from here
     }
     void render(float* left, float* right, unsigned frames) override {
         frames = std::min(frames, EngineHost::block);
@@ -829,6 +842,7 @@ void PluginRack::load(const Job& job) {
             handle->qlinks = true;
         }
     }
+    handle->warm_up(); // before the audio thread first runs it
 
     PluginHandle* raw = handle.get();
     bool stale = false;

@@ -10,6 +10,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <linux/futex.h>
+#include <spawn.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -115,18 +116,17 @@ std::unique_ptr<Vst2BridgeInstance> Vst2BridgeInstance::load (const File& librar
     const auto loaderPath = loader.getFullPathName().toStdString();
     const auto runtimePath = runtime.getFullPathName().toStdString();
     const auto programPath = program.getFullPathName().toStdString();
-    const pid_t pid = fork();
-    if (pid == 0)
-    {
-        const char* args[] = { loaderPath.c_str(), "--library-path", runtimePath.c_str(), programPath.c_str(), fdText.c_str(), nullptr };
-        execv (args[0], const_cast<char* const*> (args));
-        _exit (127);
-    }
+    // posix_spawn, not fork(): a fork copies Melodee's page tables under the memory lock and makes each page the audio
+    // thread writes next a copy-on-write fault until the child execs; glibc's posix_spawn shares the memory until the
+    // exec. The memfd is inherited, as with fork.
+    const char* args[] = { loaderPath.c_str(), "--library-path", runtimePath.c_str(), programPath.c_str(), fdText.c_str(), nullptr };
+    pid_t pid = -1;
+    const int spawned = posix_spawn (&pid, args[0], nullptr, nullptr, const_cast<char* const*> (args), environ);
     close (fd);
-    if (pid < 0)
+    if (spawned != 0)
     {
         munmap (mapped, sizeof (bridge::Shared));
-        error = "fork failed";
+        error = "spawn: " + String (std::strerror (spawned));
         return {};
     }
 
