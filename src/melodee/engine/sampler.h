@@ -136,6 +136,7 @@ private:
         uint8_t group = 0;
         float gain = 0, left = 0.7071f, right = 0.7071f, fade = 1;
         uint32_t age = 0;
+        double scale = 1; // its frames a 44.1 kHz frame: above 1 when it plays a copy at the device's rate (roadmap P2)
         uint32_t sounded = 0;   // output frames it has played (Offset's wait not counted), for its tap
         bool wrapped = false;   // went round its loop in this block
         dsp::Envelope env;
@@ -189,6 +190,7 @@ private:
         double from = 0;
         int16_t pad = -1;
         uint16_t slot = 0xffff;
+        double scale = 1; // its voice's (Voice::scale)
     };
     void spawn(Voice& v);
     std::array<Grain, 48> grains {};

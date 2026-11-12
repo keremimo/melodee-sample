@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/sample_data.h"
+#include "melodee/engine/dsp.h"
+#include "dsp/frame_ring.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <memory>
 
 namespace melodee {
 namespace {
@@ -12,7 +15,7 @@ uint32_t u32(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8 | u
 uint16_t u16(const uint8_t* p) { return uint16_t(p[0] | p[1] << 8); }
 } // namespace
 
-std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info) {
+std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info, float play_at) {
     std::ifstream file(path, std::ios::binary);
     if (!file) return "cannot open";
     uint8_t head[12];
@@ -60,22 +63,51 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
         if (bits == 24) return int32_t(uint32_t(p[0]) << 8 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 24) / 2147483648.0f;
         return int32_t(u32(p)) / 2147483648.0f;
     };
-    // To 44.1 kHz, linearly; enough for one-shots and loops alike.
-    double ratio = double(rate) / 44100.0;
-    unsigned length = unsigned(frames / ratio);
-    out.left.assign(length, 0.0f); out.right.assign(length, 0.0f); out.frames = length;
-    for (unsigned n = 0; n < length; ++n) {
-        double at = n * ratio;
-        unsigned i = unsigned(at);
-        float frac = float(at - i);
-        unsigned j = std::min(i + 1, frames - 1);
-        for (unsigned ch = 0; ch < 2; ++ch) {
-            unsigned c = std::min(ch, channels - 1);
-            float v = sample(i, c) + (sample(j, c) - sample(i, c)) * frac;
-            (ch ? out.right : out.left)[n] = v;
-        }
-    }
+    // To 44.1 kHz, band-limited (roadmap P2; it was linear): straight through when it is at that rate already.
+    std::vector<float> l(frames), r(frames);
+    for (unsigned n = 0; n < frames; ++n) { l[n] = sample(n, 0); r[n] = sample(n, std::min(1u, channels - 1)); }
+    playback_from(out, l.data(), r.data(), frames, rate, play_at);
+    if (rate == unsigned(dsp::model_rate)) { out.left = std::move(l); out.right = std::move(r); }
+    else resample(l.data(), r.data(), frames, rate, unsigned(dsp::model_rate), out.left, out.right);
+    out.frames = uint32_t(out.left.size());
     return {};
+}
+
+void resample(const float* left, const float* right, uint32_t frames, unsigned from, unsigned to,
+              std::vector<float>& out_left, std::vector<float>& out_right) {
+    out_left.clear(); out_right.clear();
+    if (!frames || !from || !to) return;
+    const auto length = size_t(std::llround(double(frames) * to / from));
+    out_left.reserve(length); out_right.reserve(length);
+    // The converter's output n sits at input n * from / to (frame_ring.h): nothing to drop at the start; it only
+    // answers `half` frames late, so silence after the last frame lets the end out.
+    auto converter = std::make_unique<SincResampler<2>>();
+    converter->reset(from, to);
+    auto keep = [&](float l, float r) { if (out_left.size() < length) { out_left.push_back(l); out_right.push_back(r); } };
+    for (uint32_t n = 0; n < frames; ++n) converter->feed(left[n], right[n], keep);
+    for (unsigned n = 0; n <= SincResampler<2>::max_half && out_left.size() < length; ++n) converter->feed(0.0f, 0.0f, keep);
+    out_left.resize(length, 0.0f); out_right.resize(length, 0.0f);
+}
+
+void playback_from(SampleData& sample, const float* left, const float* right, uint32_t frames, unsigned rate, float play_at) {
+    sample.play_left = {}; sample.play_right = {};
+    sample.play_frames = 0; sample.play_rate = 0;
+    const auto to = unsigned(std::lround(play_at));
+    if (to < 8000 || to == unsigned(dsp::model_rate) || !frames) return;
+    if (rate == to) { sample.play_left.assign(left, left + frames); sample.play_right.assign(right, right + frames); }
+    else resample(left, right, frames, rate, to, sample.play_left, sample.play_right);
+    sample.play_frames = uint32_t(sample.play_left.size());
+    sample.play_rate = play_at;
+}
+
+void prepare_playback(SampleData& sample, float rate) {
+    sample.play_left = {}; sample.play_right = {};
+    sample.play_frames = 0; sample.play_rate = 0;
+    const auto to = unsigned(std::lround(rate));
+    if (sample.multi || !sample.frames || to == unsigned(dsp::model_rate) || to < 8000) return;
+    resample(sample.left.data(), sample.right.data(), sample.frames, unsigned(dsp::model_rate), to, sample.play_left, sample.play_right);
+    sample.play_frames = uint32_t(sample.play_left.size());
+    sample.play_rate = rate;
 }
 
 bool read_flac_loop(const std::string& path, WavInfo& info) {

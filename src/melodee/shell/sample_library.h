@@ -192,6 +192,12 @@ private:
     void cancel_landing(unsigned slot);
     void hear_instrument(const std::string& path);
     bool reap();       // what the audio thread has let go of; true if anything went
+    // Roadmap P2: a sample handed to the audio thread with its copy at the device's rate made first (while every
+    // copy together stays under playback_budget; past it the sampler converts that sample as it plays); and, when the
+    // device's rate has changed, one slot's sample a pass handed over again with its copy made anew.
+    static constexpr size_t playback_budget = size_t(256) << 20;
+    bool offer(unsigned slot, SampleData* data);
+    void refresh_playback();
     struct Landing {
         uint8_t slot = 0;
         std::string folder;

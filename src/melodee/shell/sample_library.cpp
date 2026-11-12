@@ -197,6 +197,7 @@ void SampleLibrary::service(Hardware& hardware) {
     loop_service(); // the Looper's commit and files (shell/looper_files.cpp)
     host.streams().start();
     reap(); // samples the audio thread has let go of
+    refresh_playback();
     land_next();
     Request request;
     SampleJob job;
@@ -416,7 +417,7 @@ void SampleLibrary::make(const SampleJob& job) {
     loaded.frames = data->frames;
     make_overview(*data, loaded.overview);
     loaded.hit_count = find_hits(*data, loaded.hits);
-    if (!host.offer_sample(job.target % sample_slots, data.get())) { fail("busy, try again"); return; }
+    if (!offer(job.target % sample_slots, data.get())) { fail("busy, try again"); return; }
     const SampleData* held = data.get();
     owned.push_back(std::move(data));
     loaded.ready = true;
@@ -436,8 +437,9 @@ void SampleLibrary::hear(const std::string& path) {
     if (preview.empty() && is_drum_program(path)) return; // a kit with no preview: nothing to hear
     if (preview.empty() && is_instrument(path)) { hear_instrument(path); return; }
     auto data = std::make_unique<SampleData>();
-    if (!(preview.empty() ? read_wav(path, *data, 30) : read_audio(preview, *data, 30, nullptr)).empty() || !data->frames) return;
-    if (!host.offer_sample(preview_slot, data.get())) return;
+    if (!(preview.empty() ? read_wav(path, *data, 30, nullptr, dsp::sample_rate()) : read_audio(preview, *data, 30, nullptr, dsp::sample_rate())).empty()
+        || !data->frames) return;
+    if (!offer(preview_slot, data.get())) return;
     owned.push_back(std::move(data));
     { std::lock_guard<std::mutex> guard(lock); preview_heard = path; }
     preview_count.fetch_add(1, std::memory_order_release);
@@ -454,6 +456,42 @@ void SampleLibrary::save_take() {
     unsigned slot = recorder.slot() % sample_slots;
     recorder.release();
     land(slot, std::move(data), "Recorded", "TAKE", "Take");
+}
+
+bool SampleLibrary::offer(unsigned slot, SampleData* data) {
+    if (data && !data->multi) {
+        const float rate = dsp::sample_rate();
+        size_t held = 0;
+        for (const auto& d : owned) held += d->play_bytes();
+        size_t wanted = size_t(double(data->frames) * rate / dsp::model_rate) * 2 * sizeof(float);
+        if (held + wanted > playback_budget) prepare_playback(*data, dsp::model_rate); // past the budget: none
+        else if (!data->plays_at(rate)) prepare_playback(*data, rate);                 // read from the file already, or made here
+    }
+    return host.offer_sample(slot, data);
+}
+
+void SampleLibrary::refresh_playback() {
+    const float rate = dsp::sample_rate();
+    size_t held = 0;
+    for (const auto& d : owned) held += d->play_bytes();
+    for (unsigned s = 0; s < sample_slots; ++s) {
+        const SampleData* now = nullptr;
+        std::string path;
+        { std::lock_guard<std::mutex> guard(lock); now = data_of[s]; path = known.slots[s].path; }
+        if (!now || now->multi || now->plays_at(rate)) continue;
+        bool stale = now->play_frames > 0; // made at another rate: none at 44.1 kHz, a new one elsewhere
+        bool fits = rate != dsp::model_rate && held + size_t(double(now->frames) * rate / dsp::model_rate) * 2 * sizeof(float) <= playback_budget;
+        if (!stale && !fits) continue;
+        // From its file again when it still reads the same (one conversion at most), else from its 44.1 kHz frames.
+        auto again = std::make_unique<SampleData>();
+        bool read = !path.empty() && !is_instrument(path) && read_audio(path, *again, 60, nullptr, rate).empty() && again->frames == now->frames
+                 && again->left == now->left;
+        if (!read) { again = std::make_unique<SampleData>(); again->left = now->left; again->right = now->right; again->frames = now->frames; }
+        if (!offer(s, again.get())) return; // the queue is full: next pass
+        { std::lock_guard<std::mutex> guard(lock); data_of[s] = again.get(); }
+        owned.push_back(std::move(again));
+        return; // one a pass
+    }
 }
 
 void SampleLibrary::land(unsigned slot, std::unique_ptr<SampleData> data, const char* folder, const char* stem, const char* what) {
@@ -481,7 +519,7 @@ void SampleLibrary::land(unsigned slot, std::unique_ptr<SampleData> data, const 
     make_overview(*data, loaded.overview);
     loaded.hit_count = find_hits(*data, loaded.hits);
     const SampleData* held = nullptr;
-    if (host.offer_sample(slot, data.get())) { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
+    if (offer(slot, data.get())) { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
     else { finish(std::string(what) + ": busy, try again", int(slot)); return; }
     if (!loaded.path.empty()) scan_wanted.store(true); // it shows in the browser
     std::lock_guard<std::mutex> guard(lock);
@@ -503,7 +541,7 @@ void SampleLibrary::read(const Request& request) {
     cancel_landing(request.slot);
     if (is_instrument(request.path)) { begin_instrument(request); return; }
     auto data = std::make_unique<SampleData>();
-    auto error = read_wav(request.path, *data);
+    auto error = read_wav(request.path, *data, 60, nullptr, dsp::sample_rate()); // the copy the device plays, from the file
     const SampleData* held = nullptr;
     LoadedSample loaded;
     loaded.path = request.path;
@@ -515,7 +553,7 @@ void SampleLibrary::read(const Request& request) {
         loaded.frames = data->frames;
         make_overview(*data, loaded.overview);
         loaded.hit_count = find_hits(*data, loaded.hits);
-        if (!host.offer_sample(request.slot, data.get())) { loaded.error = "busy, try again"; }
+        if (!offer(request.slot, data.get())) { loaded.error = "busy, try again"; }
         else { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
     }
     std::lock_guard<std::mutex> guard(lock);

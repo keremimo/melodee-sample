@@ -7,6 +7,6 @@
 namespace melodee {
 
 // An instrument's audio file, whatever its kind, at the project's rate; empty on success.
-std::string read_audio(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info);
+std::string read_audio(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info, float play_at = 0); // play_at: read_wav's
 
 } // namespace melodee

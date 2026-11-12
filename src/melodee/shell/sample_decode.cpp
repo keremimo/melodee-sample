@@ -32,8 +32,8 @@ juce::AudioFormatManager& formats() { // service thread only
 }
 } // namespace
 
-std::string read_audio(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info) {
-    if (!juce_kind(path)) return read_wav(path, out, max_seconds, info);
+std::string read_audio(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info, float play_at) {
+    if (!juce_kind(path)) return read_wav(path, out, max_seconds, info, play_at);
     std::unique_ptr<juce::AudioFormatReader> reader(formats().createReaderFor(juce::File(path)));
     if (!reader || reader->sampleRate < 8000 || reader->sampleRate > 192000 || !reader->numChannels) return "unsupported file";
     const unsigned channels = std::min(reader->numChannels, 2u);
@@ -45,20 +45,14 @@ std::string read_audio(const std::string& path, SampleData& out, unsigned max_se
         info->channels = channels; info->rate = unsigned(reader->sampleRate);
         read_flac_loop(path, *info); // nothing to find in anything but a FLAC made from a looped WAV
     }
-    // To the project's rate, linearly, as read_wav does.
-    const double ratio = reader->sampleRate / double(dsp::model_rate);
-    const auto length = uint32_t(frames / ratio);
-    out.left.assign(length, 0.0f); out.right.assign(length, 0.0f); out.frames = length;
-    for (uint32_t n = 0; n < length; ++n) {
-        double at = n * ratio;
-        int i = int(at);
-        float frac = float(at - i);
-        int j = std::min(i + 1, frames - 1);
-        for (unsigned ch = 0; ch < 2; ++ch) {
-            const float* side = audio.getReadPointer(int(std::min(ch, channels - 1)));
-            (ch ? out.right : out.left)[n] = side[i] + (side[j] - side[i]) * frac;
-        }
-    }
+    // To the project's rate, band-limited, as read_wav does (roadmap P2).
+    const float* l = audio.getReadPointer(0);
+    const float* r = audio.getReadPointer(int(channels - 1));
+    const auto rate = unsigned(std::lround(reader->sampleRate));
+    playback_from(out, l, r, uint32_t(frames), rate, play_at);
+    if (rate == unsigned(dsp::model_rate)) { out.left.assign(l, l + frames); out.right.assign(r, r + frames); }
+    else resample(l, r, uint32_t(frames), rate, unsigned(dsp::model_rate), out.left, out.right);
+    out.frames = uint32_t(out.left.size());
     return {};
 }
 

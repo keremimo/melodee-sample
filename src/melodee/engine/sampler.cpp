@@ -63,13 +63,19 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     end_stream(v);
     v = Voice {};
     v.pad = pad; v.trigger = trigger >= 0 ? trigger : pad; v.sample = data; v.slot = sound.sample;
-    const uint32_t total = part ? part->total : data->frames;
-    v.start = std::min(zone ? zone->start : sound.start, total - 1);
-    uint32_t end = zone ? zone->end : sound.end;
+    // Roadmap P2: a sample made ready at the device's rate plays from that copy, a frame each device frame (only its
+    // pitch moves the read on), the pad's 44.1 kHz frames scaled there; else (an instrument's zones, or no copy made)
+    // from its 44.1 kHz frames, each device frame reading that much further on.
+    const bool ready = !part && data->plays_at(dsp::sample_rate());
+    v.scale = ready ? double(data->play_rate) / dsp::model_rate : 1.0;
+    auto at_rate = [&](uint32_t frame) { return ready ? uint32_t(std::llround(frame * v.scale)) : frame; };
+    const uint32_t total = part ? part->total : ready ? data->play_frames : data->frames;
+    v.start = std::min(zone ? zone->start : at_rate(sound.start), total - 1);
+    uint32_t end = zone ? zone->end : at_rate(sound.end);
     v.end = end && end <= total ? end : total;
     if (v.end <= v.start + 1) { v.pad = -1; return; }
-    v.l = part ? part->left : data->left.data();
-    v.r = part ? part->right : data->right.data();
+    v.l = part ? part->left : ready ? data->play_left.data() : data->left.data();
+    v.r = part ? part->right : ready ? data->play_right.data() : data->right.data();
     v.reverse = sound.reverse;
     v.position = v.reverse ? v.end - 1 : v.start;
     if (zone) {
@@ -79,9 +85,9 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.loop_held = zone->loop == ZoneLoop::UntilReleased;
     } else {
         v.loop = sound.loop && pad < int(sampler_pads);
-        v.loop_at = std::clamp(sound.loop_point(), v.start, v.end - 2);
+        v.loop_at = std::clamp(at_rate(sound.loop_point()), v.start, v.end - 2);
         v.edge_in = !v.loop && v.start > 0;              // the file's own start and end need no fade
-        v.edge_out = !v.loop && v.end < data->frames;
+        v.edge_out = !v.loop && v.end < total;
     }
     // Warp's mode is the kit's FollowHow: Tape is Pitch, the others Time stretch.
     // Warp on by Pitch leaves the pad's Semi and Fine out, as the MPC does.
@@ -100,14 +106,14 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     double rate = 1.0, frames = double(v.end - v.start);
     if (zone) {} // no tempo of its own, and no Warp: a zone is one note of many
     else if (sound.warp == warp_seq) {
-        double own = sound.beats ? sound.beats * 60.0 * dsp::model_rate / frames * 10.0 : double(sound.own_tempo);
+        double own = sound.beats ? sound.beats * 60.0 * dsp::model_rate / (frames / v.scale) * 10.0 : double(sound.own_tempo);
         if (own > 0) rate = tempo / own;
     } else if (sound.warp >= warp_min) rate = 100.0 / sound.warp;
     else if (p[Follow] && sound.own_tempo) rate = double(tempo) / sound.own_tempo;
     const bool keep_length = p[PitchHow] == 1 || (warped && !tape);
     const bool shifted = std::fabs(v.step - 1.0) > 1e-6;
-    // Samples are at 44.1 kHz: at another device rate each output frame reads that much further along.
-    double per_frame = dsp::model_rate / dsp::sample_rate();
+    // At 44.1 kHz (no copy at the device's rate) each output frame reads that much further along.
+    double per_frame = ready ? 1.0 : dsp::model_rate / dsp::sample_rate();
     double pitch = (tape ? v.step * rate : v.step) * per_frame;        // what the taps read at
     double advance = rate * (keep_length ? 1.0 : v.step) * per_frame; // how fast the sound moves on
     v.step = pitch;
@@ -329,7 +335,7 @@ void SamplerEngine::spawn(Voice& v) {
     if (fit < std::min(double(length), 64.0)) at = std::max(double(v.start), top - 1 - double(length) * step);
     else length = uint32_t(std::min(double(length), fit));
     *g = Grain {v.sample, at, step, 0, std::max(length, 1u), v.gain * v.env.level, v.left, v.right,
-                v.l, v.r, v.start, uint32_t(top), ++grain_serial, at, int16_t(v.pad), uint16_t(v.slot)};
+                v.l, v.r, v.start, uint32_t(top), ++grain_serial, at, int16_t(v.pad), uint16_t(v.slot), v.scale};
 }
 
 // Output frames left before the region's end (reversed: its start), for
@@ -348,8 +354,8 @@ float SamplerEngine::frames_left(const Voice& v, double at, double speed) const 
 constexpr double slice_edge = 0.002 * dsp::model_rate;
 float SamplerEngine::edge_gain(const Voice& v, double at) {
     double g = 1;
-    if (v.edge_in) g = std::min(g, (at - v.start) / slice_edge);
-    if (v.edge_out) g = std::min(g, ((v.end - 1) - at) / slice_edge);
+    if (v.edge_in) g = std::min(g, (at - v.start) / (slice_edge * v.scale)); // 2 ms at the frames it reads
+    if (v.edge_out) g = std::min(g, ((v.end - 1) - at) / (slice_edge * v.scale));
     return float(std::clamp(g, 0.0, 1.0));
 }
 
@@ -736,6 +742,11 @@ void SamplerEngine::taps(TrackTaps& out) const {
         if (v.wait) flags |= tap::Waiting;
         if (v.choked) flags |= tap::Choked;
         t.flags = flags;
+        if (v.scale != 1) { // a copy at the device's rate: back to the 44.1 kHz frames the pages draw (roadmap P2)
+            auto model = [&](uint32_t f) { return uint32_t(std::llround(f / v.scale)); };
+            t.from = model(t.from); t.to = model(t.to); t.loop_at = model(t.loop_at); t.at = model(t.at);
+            t.step = float(t.step / v.scale);
+        }
     }
     // The newest grains (a partial sort of pointers, on the stack), each where it began and where it reads now.
     std::array<const Grain*, std::tuple_size_v<decltype(grains)>> playing {};
@@ -747,8 +758,8 @@ void SamplerEngine::taps(TrackTaps& out) const {
     out.grain_count = uint8_t(kept);
     for (unsigned i = 0; i < kept; ++i) {
         const Grain& g = *playing[i];
-        out.grain[i] = GrainTap {g.serial, uint32_t(std::max(0.0, g.from)), uint32_t(std::max(0.0, g.position)), g.age, g.length,
-                                 float(g.step), g.pad, g.slot};
+        out.grain[i] = GrainTap {g.serial, uint32_t(std::max(0.0, g.from / g.scale)), uint32_t(std::max(0.0, g.position / g.scale)), g.age,
+                                 g.length, float(g.step / g.scale), g.pad, g.slot};
     }
 }
 

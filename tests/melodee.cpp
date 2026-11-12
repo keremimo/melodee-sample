@@ -6006,6 +6006,86 @@ void overload_guard() {
     CHECK(tail(0.75f, 0.75f) > 0.01f);                                   // 75 % from below: no guard, the whole release
 }
 
+// Roadmap P2, samples at the device's rate: converted once, band-limited, never per voice. A copy lines up with its
+// 44.1 kHz frames (an impulse lands where its time says), passes DC and the audible band whole and keeps images out;
+// a file at the device's rate keeps its own frames; a voice at 48 kHz reads the copy a frame each frame, unpitched,
+// and its taps come back in 44.1 kHz frames.
+void sample_rates_p2() {
+    // The converter: an impulse at 44.1 kHz frame 1000 lands at 48 kHz frame 1088 (1000 x 48000 / 44100 = 1088.4).
+    std::vector<float> l(4410, 0.0f), r(4410, 0.0f), out_l, out_r;
+    l[1000] = r[1000] = 1;
+    resample(l.data(), r.data(), 4410, 44100, 48000, out_l, out_r);
+    CHECK(out_l.size() == 4800 && out_r.size() == 4800);
+    size_t peak = size_t(std::max_element(out_l.begin(), out_l.end()) - out_l.begin());
+    CHECK(peak == 1088 || peak == 1089);
+    // DC through whole; a 10 kHz tone kept at its level; 22 kHz (above 44.1's band) nothing to fold.
+    auto tone = [&](double hz, unsigned from, unsigned to) {
+        std::vector<float> a(from / 2), b, c;
+        for (size_t n = 0; n < a.size(); ++n) a[n] = float(hz ? std::sin(2 * M_PI * hz * double(n) / from) : 1.0);
+        resample(a.data(), a.data(), uint32_t(a.size()), from, to, b, c);
+        double sum = 0;
+        for (size_t n = b.size() / 4; n < b.size() * 3 / 4; ++n) sum += double(b[n]) * b[n];
+        return std::sqrt(sum / double(b.size() / 2));
+    };
+    CHECK(std::fabs(tone(0, 44100, 48000) - 1.0) < 1e-3);
+    CHECK(std::fabs(tone(10000, 44100, 48000) - std::sqrt(0.5)) < 0.01);
+    CHECK(tone(30000, 96000, 44100) < 1e-3); // above 44.1 kHz's band: kept out, not folded down to 14.1 kHz
+    // A sample's copy for 48 kHz, none at 44.1 kHz, none for an instrument.
+    SampleData s;
+    s.frames = 4410; s.left = l; s.right = r;
+    prepare_playback(s, 48000);
+    CHECK(s.plays_at(48000) && !s.plays_at(96000) && s.play_frames == 4800 && s.play_left[peak] == out_l[peak]);
+    prepare_playback(s, 44100);
+    CHECK(!s.play_frames && s.play_left.empty());
+    // A 48 kHz WAV read for a 48 kHz device: the copy it plays is the file's own frames; its 44.1 kHz frames the time.
+    const auto path = std::filesystem::temp_directory_path() / "melodee_p2_48k.wav";
+    {
+        std::ofstream file(path, std::ios::binary);
+        auto put = [&](uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) file.put(char((v >> (8 * n)) & 255)); };
+        const unsigned frames = 4800;
+        file.write("RIFF", 4); put(36 + frames * 4, 4); file.write("WAVEfmt ", 8);
+        put(16, 4); put(1, 2); put(2, 2); put(48000, 4); put(48000 * 4, 4); put(4, 2); put(16, 2);
+        file.write("data", 4); put(frames * 4, 4);
+        for (unsigned n = 0; n < frames; ++n) { int16_t v = int16_t((n % 100) * 300 - 15000); put(uint16_t(v), 2); put(uint16_t(v), 2); }
+    }
+    SampleData read;
+    CHECK(read_wav(path.string(), read, 60, nullptr, 48000).empty());
+    CHECK(read.frames == 4410 && read.plays_at(48000) && read.play_frames == 4800);
+    for (unsigned n = 0; n < 4800; ++n) CHECK(read.play_left[n] == float(int16_t((n % 100) * 300 - 15000)) / 32768.0f);
+    SampleData plain;
+    CHECK(read_wav(path.string(), plain).empty() && !plain.play_frames && plain.frames == 4410); // none asked for
+    std::filesystem::remove(path);
+    // A voice at 48 kHz: the copy, a frame each device frame, unpitched; its taps in 44.1 kHz frames.
+    const float was = dsp::device_rate.load();
+    dsp::device_rate.store(48000);
+    {
+        SampleData ramp;
+        ramp.frames = 44100; ramp.left.resize(44100); ramp.right.resize(44100);
+        for (unsigned n = 0; n < 44100; ++n) ramp.left[n] = ramp.right[n] = float(std::sin(n * 0.01) * 0.5);
+        prepare_playback(ramp, 48000);
+        SamplerEngine::Table table {};
+        table[0] = &ramp;
+        SamplerEngine engine;
+        engine.set_samples(&table);
+        engine.set_tempo(1200);
+        PadSound pad; pad.sample = 0; pad.play = PadPlay::OneShot; pad.start = 4410; // a tenth of a second in
+        engine.set_pad(0, pad);
+        engine.note_on(int(sampler_first_note), 127);
+        std::vector<float> a(4800, 0.0f), b(4800, 0.0f);
+        for (unsigned at = 0; at < 4800; at += 128) engine.render_stereo(a.data() + at, b.data() + at, std::min(128u, 4800 - at));
+        TrackTaps taps;
+        engine.taps(taps);
+        CHECK(taps.count == 1 && taps.voice[0].from == 4410 && std::abs(int(taps.voice[0].at) - (4410 + 4410)) <= 1); // 0.1 s on
+        CHECK(std::fabs(taps.voice[0].step - 44100.0f / 48000) < 1e-4f);
+        // What it played is the copy's own frames from 4800 (0.1 s at 48 kHz), only shaped by the pad's level and pan.
+        float ratio = 0;
+        for (unsigned f = 2400; f < 4800; ++f) if (std::fabs(ramp.play_left[4800 + f]) > 0.2f) { ratio = a[f] / ramp.play_left[4800 + f]; break; }
+        CHECK(ratio > 0.1f);
+        for (unsigned f = 2400; f < 4800; ++f) CHECK(std::fabs(a[f] - ramp.play_left[4800 + f] * ratio) < 1e-4f);
+    }
+    dsp::device_rate.store(was);
+}
+
 // Roadmap P2: the Looper's four loops and their chains beside the tracks, then the buses' chains and Knob FX each a
 // job of a second run: the same, to the sample, with the workers as without, and as the old way.
 void loops_and_buses_parallel() {
@@ -8476,6 +8556,7 @@ int main() {
     one_dispatch();
     loops_and_buses_parallel();
     overload_guard();
+    sample_rates_p2();
     sampler_zones();
     note_pitches();
     track_source();

@@ -18,7 +18,27 @@ struct SampleData {
     std::vector<float> left, right;
     uint32_t frames = 0;
     std::shared_ptr<Multisample> multi; // a multisampled instrument: no frames of its own, its zones' instead
+    // Roadmap P2: the same sound at the device's rate (prepare_playback()), made once before the audio thread has
+    // it; the sampler plays it a frame a frame, its 44.1 kHz positions scaled. None at 44.1 kHz, for an instrument,
+    // or past the library's budget: the 44.1 kHz frames are then read that much further each device frame.
+    std::vector<float> play_left, play_right;
+    uint32_t play_frames = 0;
+    float play_rate = 0;
+    bool plays_at(float rate) const { return play_frames && play_rate == rate; }
+    size_t play_bytes() const { return (play_left.capacity() + play_right.capacity()) * sizeof(float); }
 };
+
+// Band-limited rate conversion (the base's dsp::SincResampler: flat to 0.907 of the lower Nyquist, images 90 dB
+// down): `frames` of left and right at `from` Hz to `to` Hz, frame n of the result at n * from / to of the input
+// (no delay), as many as the ratio gives. Allocates: not for the audio thread.
+void resample(const float* left, const float* right, uint32_t frames, unsigned from, unsigned to,
+              std::vector<float>& out_left, std::vector<float>& out_right);
+// The device-rate copy of `sample` for `rate`, from its 44.1 kHz frames (dropped at 44.1 kHz, never for an
+// instrument). Before the audio thread has the sample.
+void prepare_playback(SampleData& sample, float rate);
+// The same straight from the file's own `frames` at `rate` Hz (read_wav, read_audio): the file's frames when they are
+// at `play_at` already.
+void playback_from(SampleData& sample, const float* left, const float* right, uint32_t frames, unsigned rate, float play_at);
 
 // What a file says of itself, beyond its frames: its rate and sides, and the
 // first loop of its smpl chunk (frames at its own rate, end past the last; -1 none).
@@ -36,7 +56,9 @@ constexpr unsigned max_hits = 128;
 // Reads a WAV file (PCM 16, 24 or 32 bit, or 32-bit float; mono or stereo;
 // any rate, converted to 44.1 kHz) of at most `max_seconds`. Returns an
 // empty message on success, else what went wrong.
-std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60, WavInfo* info = nullptr);
+// `play_at` (roadmap P2): the device's rate, for the copy it plays made straight from the file (its own frames when
+// the rates agree, else one conversion); 0 or 44.1 kHz none.
+std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60, WavInfo* info = nullptr, float play_at = 0);
 // The loop a FLAC file keeps from the WAV it was made of (flac --keep-foreign-metadata: an
 // APPLICATION block "riff" holding the smpl chunk), into `info`; false when it has none.
 bool read_flac_loop(const std::string& path, WavInfo& info);
