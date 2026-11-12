@@ -12,8 +12,9 @@
 //   and ABOUT. The wheel picks a door, Push or B3 opens it, B1 goes back.
 //   Behind a door its rows, one screen each: the wheel moves, Push opens a
 //   value and the wheel changes it, Push keeps it; Minus / Plus change the
-//   one under the cursor straight away; B1 back to the doors. The header
-//   says what the audio device runs at, and its dropouts (amber) if any.
+//   one under the cursor straight away; B1 back to the doors. The header of
+//   the doors and of AUDIO says what the audio device runs at, and its
+//   dropouts (amber) if any.
 // ABOUT (the seventh door; round 2, about C "how the machine is doing"): the
 //   page to open when something crackles. A row each: RENDER (each core's
 //   load as a meter, and the audio blocks' share of their time), AUDIO (the
@@ -82,7 +83,8 @@ void doors_draw(Paint& p, const Snapshot& s) {
 
 void rows_draw(Paint& p, const Snapshot& s) {
     const auto& d = door_of(s.ui);
-    Header h = settings_header(s);
+    bool audio = s.ui.settings_door % doors.size() == audio_door;
+    Header h = audio ? settings_header(s) : header_of(s); // what the device runs at: on AUDIO, the door it belongs to
     h.left.push_back(chip(d.icon, d.name, colour::text));
     frame(p, s, {{"BACK", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
     const auto& set = s.ui.settings;
