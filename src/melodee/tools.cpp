@@ -584,6 +584,9 @@ const Preview previews[] {
     {"stageshift", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.ui.shift = true; }}, // AMP ENV's Shift row
     {"stagefm6", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[5], EngineKind::Fm6, 1); on_stage(s, 5, 1, 0); s.playing = true; }},
     {"stagecz", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 1, 0); s.playing = true; }},
+    {"stagefm6touch", [](Shell&, Snapshot& s) { // stage-shape B: FM6's TOUCH, its rows under the voice strip
+         load_sound(s.project.tracks[5], EngineKind::Fm6, 1); on_stage(s, 5, 1, 2); s.playing = true;
+     }},
     {"stagesid", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[7], EngineKind::Sid, 1); on_stage(s, 7, 0, 1); s.playing = true; }},
     {"stagecztone", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 2, 2); s.playing = true; }},
     {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},

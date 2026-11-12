@@ -58,9 +58,9 @@ struct Row {
     bool bipolar = false;
     juce::Colour colour;
 };
-void rows(Paint& p, const juce::String& head, const std::vector<Row>& list, float label_w) {
+void rows(Paint& p, const juce::String& head, const std::vector<Row>& list, float label_w, float y0 = top, float y1 = bottom) {
     float rh = 20, gap = 15, h = list.size() * rh + (list.size() - 1) * gap + (head.isNotEmpty() ? 22 : 0);
-    float y = top + (zone::picture_h - h) / 2;
+    float y = y0 + (y1 - y0 - h) / 2;
     if (head.isNotEmpty()) { p.text(head, px, y, pw, 14, caps_text(colour::mid)); y += 22; }
     for (const auto& r : list) {
         float x = px;
@@ -198,15 +198,15 @@ void preset_picture(Paint& p, const Snapshot& s) {
 }
 
 // TONE on a filter: the curve from 20 Hz to 20 kHz with the cutoff marked.
-void filter_picture(Paint& p, const Snapshot& s, const StagePage& page) {
+void filter_picture(Paint& p, const Snapshot& s, const StagePage& page, float y0 = top, float y1 = bottom) {
     const auto& t = s.track();
     int cut = t.params[size_t(page.params[0])], res = t.params[size_t(page.params[1])];
     float hz = 20.0f * std::exp2(cut / 100.0f * 9.97f), q = 0.7f + res * 0.06f;
-    draw_filter_curve(p, px, top + 6, pw, zone::picture_h - 26, 0, 2, hz, q, colour_of(s), knob_shade(s.ui.track, 0));
+    draw_filter_curve(p, px, y0 + 6, pw, (y1 - y0) - 26, 0, 2, hz, q, colour_of(s), knob_shade(s.ui.track, 0));
 }
 
 // An envelope: attack, decay, sustain on K1-K3, release on Shift + K1; times on a square-root scale.
-void envelope_picture(Paint& p, const Snapshot& s, const StagePage& page) {
+void envelope_picture(Paint& p, const Snapshot& s, const StagePage& page, float top_y = top, float bottom_y = bottom) {
     const auto& t = s.track();
     const auto& info = engine_info(t.engine);
     auto time = [&](int id) {
@@ -217,7 +217,7 @@ void envelope_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     int a = page.params[0], d = page.params[1], su = page.params[2], r = page.shift[0];
     float level = su >= 0 ? t.params[size_t(su)] / float(std::max<int>(info.params[su].max, 1)) : 1;
     float wa = std::sqrt(time(a)), wd = std::sqrt(time(d)), wr = std::sqrt(time(r)), hold = 0.35f, total = wa + wd + wr + hold;
-    float x0 = px + 2, scale = (pw - 4) / total, y0 = top + 8, y1 = bottom - 8;
+    float x0 = px + 2, scale = (pw - 4) / total, y0 = top_y + 8, y1 = bottom_y - 8;
     float x1 = x0 + wa * scale, x2 = x1 + wd * scale, x3 = x2 + hold * scale, x4 = x3 + wr * scale;
     auto y_of = [&](float l) { return y1 - l * (y1 - y0); };
     juce::Path area;
@@ -233,10 +233,10 @@ void envelope_picture(Paint& p, const Snapshot& s, const StagePage& page) {
 }
 
 // LFO: its shape at its depth, the rate under it.
-void lfo_picture(Paint& p, const Snapshot& s, const StagePage& page) {
+void lfo_picture(Paint& p, const Snapshot& s, const StagePage& page, float y0 = top, float y1 = bottom) {
     const auto& t = s.track();
     int shape = t.params[size_t(page.params[1])], amount = t.params[size_t(page.params[2])];
-    float mid = top + zone::picture_h / 2.0f, amp = (zone::picture_h - 20) / 2.0f * std::max(0.15f, amount / 100.0f);
+    float mid = (y0 + y1) / 2.0f, amp = ((y1 - y0) - 20) / 2.0f * std::max(0.15f, amount / 100.0f);
     juce::Path line;
     for (int n = 0; n <= 300; ++n) {
         float phase = std::fmod(n / 100.0f, 1.0f), y;
@@ -838,13 +838,76 @@ void doors_picture(Paint& p, const Snapshot& s) {
     key_tiles(p, {synth, kit, midi});
 }
 
-void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift_row) {
+void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift_row, float y0 = top) {
     std::vector<Row> list;
     const auto& ids = shift_row ? page.shift : page.params;
     for (unsigned n = 0; n < 3; ++n) if (ids[n] >= 0) list.push_back(param_row(s, ids[n], n, !shift_row));
     if (list.empty()) return;
-    rows(p, {}, list, 96);
-    if (shift_row) icon(p, Icon::Shift, px, top + 6, 12, colour::mid, 1.4f); // the rows Shift + K1-K3 turn
+    rows(p, {}, list, 96, y0, bottom);
+    if (shift_row) icon(p, Icon::Shift, px, y0 + 6, 12, colour::mid, 1.4f); // the rows Shift + K1-K3 turn
+}
+
+// stage-shape B (round 2, "voice strip"): on a synth's SHAPE pages the whole voice as small live pictures across the
+// top, TONE's filter (where it has one) and each SHAPE page, the one in hand lit; the page's own picture below.
+// Returns how far down that picture starts (top when there is no strip).
+float shape_strip(Paint& p, const Snapshot& s, const StagePage& now) {
+    const auto& t = s.track();
+    if (t.engine != EngineKind::Prophet && t.engine != EngineKind::Fm6 && t.engine != EngineKind::Cz && t.engine != EngineKind::Sid) return top;
+    const auto& g = stage_groups(t.engine);
+    std::array<const StagePage*, 5> pages {};
+    unsigned n = 0;
+    bool in_shape = false;
+    for (unsigned k = 0; k < g.groups[1].count && k < 4; ++k) in_shape = in_shape || &g.groups[1].pages[k] == &now;
+    if (!in_shape) return top;
+    for (unsigned k = 0; k < g.groups[0].count; ++k)
+        if (g.groups[0].pages[k].picture == StagePicture::Filter && n < pages.size()) pages[n++] = &g.groups[0].pages[k];
+    for (unsigned k = 0; k < g.groups[1].count && n < pages.size(); ++k) pages[n++] = &g.groups[1].pages[k];
+    const auto& info = engine_info(t.engine);
+    auto c = colour_of(s);
+    constexpr float h = 30, gap = 7;
+    float w = (pw - gap * float(n - 1)) / float(n), y = top + 4;
+    auto value = [&](int id) { return id >= 0 ? gauge_of(info.params[id], t.params[size_t(id)]) : 0.0f; };
+    for (unsigned k = 0; k < n; ++k) {
+        const auto& page = *pages[k];
+        bool lit = &page == &now;
+        auto ink = lit ? c : colour::mid;
+        float x = px + k * (w + gap), ix = x + 7, iw = w - 14, iy = y + 6, ih = h - 12;
+        p.fill(x, y, w, h, lit ? c.withAlpha(0.18f) : colour::surf, 4);
+        juce::Path line;
+        switch (page.picture) {
+        case StagePicture::Envelope: { // attack, decay to sustain, a hold, release
+            float a = 0.15f + 0.85f * value(page.params[0]), d = 0.15f + 0.85f * value(page.params[1]), su = value(page.params[2]);
+            float r = 0.15f + 0.85f * value(page.shift[0]), total = a + d + 0.6f + r, sx = iw / total;
+            float x1 = ix + a * sx, x2 = x1 + d * sx, x3 = x2 + 0.6f * sx, x4 = x3 + r * sx;
+            line.startNewSubPath(ix, iy + ih); line.lineTo(x1, iy); line.lineTo(x2, iy + ih * (1 - su)); line.lineTo(x3, iy + ih * (1 - su)); line.lineTo(x4, iy + ih);
+            break;
+        }
+        case StagePicture::Filter: { // a low pass: flat, a bump at the cutoff by the resonance, then falling
+            float cut = value(page.params[0]), res = value(page.params[1]), cx = ix + iw * (0.15f + 0.7f * cut);
+            line.startNewSubPath(ix, iy + ih * 0.4f); line.lineTo(cx - iw * 0.08f, iy + ih * 0.4f);
+            line.quadraticTo(cx, iy + ih * (0.4f - 0.4f * res), cx + iw * 0.05f, iy + ih * 0.5f); line.lineTo(std::min(ix + iw, cx + iw * 0.3f), iy + ih);
+            break;
+        }
+        case StagePicture::Lfo: { // its shape, twice round
+            int shape = t.params[size_t(page.params[1])];
+            for (int m = 0; m <= 40; ++m) {
+                float ph = std::fmod(m / 20.0f, 1.0f), v = shape == 1 ? 2 * ph - 1 : shape == 2 ? (ph < 0.5f ? 1.0f : -1.0f) : 1 - 4 * std::fabs(ph - 0.5f);
+                float lx = ix + iw * m / 40.0f, ly = iy + ih / 2 - v * ih / 2;
+                if (m) line.lineTo(lx, ly); else line.startNewSubPath(lx, ly);
+            }
+            break;
+        }
+        default: // three bars, the page's K1-K3
+            for (unsigned b = 0; b < 3; ++b) {
+                float bh = std::max(2.0f, ih * value(page.params[b]));
+                p.fill(ix + iw * (0.2f + 0.25f * b), iy + ih - bh, 5, bh, ink, 1);
+            }
+            continue;
+        }
+        p.g.setColour(ink);
+        p.g.strokePath(line, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    return y + h + 6;
 }
 
 ui::SoftKeys stage_keys(const Snapshot& s) {
@@ -906,10 +969,12 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, keys, h);
     switch (page.picture) {
     case StagePicture::Preset: preset_picture(p, s); break;
-    case StagePicture::Filter: filter_picture(p, s, page); break;
-    case StagePicture::Envelope: envelope_picture(p, s, page); break;
-    case StagePicture::Lfo: lfo_picture(p, s, page); break;
-    case StagePicture::ShiftRows: bars_picture(p, s, page, true); break;
+    case StagePicture::Filter: filter_picture(p, s, page, shape_strip(p, s, page)); break;
+    case StagePicture::Envelope: envelope_picture(p, s, page, shape_strip(p, s, page)); break;
+    case StagePicture::Lfo: lfo_picture(p, s, page, shape_strip(p, s, page)); break;
+    case StagePicture::ShiftRows: case StagePicture::Bars: // under the strip where there is one
+        bars_picture(p, s, page, page.picture == StagePicture::ShiftRows, shape_strip(p, s, page));
+        break;
     case StagePicture::Mix: mix_picture(p, s); break;
     case StagePicture::Sends: sends_picture(p, s); break;
     case StagePicture::Arp: arp_picture(p, s); break;
@@ -922,7 +987,6 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Program: program_picture(p, s); break;
     case StagePicture::Cc: cc_picture(p, s); break;
     case StagePicture::Engines: case StagePicture::Sources: case StagePicture::Ports: doors_picture(p, s); break;
-    case StagePicture::Bars: bars_picture(p, s, page, false); break;
     }
 }
 
