@@ -108,6 +108,7 @@ struct Edit {
     std::unique_ptr<Song> song_before, song_after;       // a take into the song
     std::unique_ptr<TrackMotion> motion_before, motion_after; // a track's patterns' motion (an effect moved or removed)
     std::unique_ptr<TrackState> track_before, track_after; // a track copied onto this one (`track`)
+    int8_t swap_a = -1, swap_b = -1; // a track move: the two that traded places; undo and redo trade them again
     // One pattern number across tracks (Song -> new pattern): `column`, each changed track's pattern.
     int16_t column = -1;
     std::vector<std::pair<uint8_t, Pattern>> column_before, column_after;
@@ -139,6 +140,7 @@ public:
     size_t size() const { return undo_.size(); }
     const Edit* last() const { return undo_.empty() ? nullptr : &undo_.back(); }
     Edit* latest() { return undo_.empty() ? nullptr : &undo_.back(); }
+    const Edit* next() const { return redo_.empty() ? nullptr : &redo_.back(); } // what a redo would do
     // Every edit kept, to undo and to redo (roadmap P3: which sample slots they could bring back).
     template <typename F> void each(F&& f) const { for (const auto& e : undo_) f(e); for (const auto& e : redo_) f(e); }
     unsigned pushes = 0; // edits kept so far: a press that kept its own edit is not kept twice (shell/undo_scope.h)

@@ -111,7 +111,8 @@ void draw_notice(Paint& p, const Snapshot& s) {
     } else if (s.ui.copying == UiState::Copying::Patterns) {
         text = s.ui.copy_from < 0 ? juce::String("Copy: pick a pattern") : "Copy P" + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.copying == UiState::Copying::Tracks) {
-        text = s.ui.copy_from < 0 ? juce::String("Copy: pick a track") : "Copy track " + juce::String(s.ui.copy_from + 1) + ": pick where";
+        juce::String verb = s.ui.moving ? "Move" : "Copy";
+        text = s.ui.copy_from < 0 ? verb + ": pick a track" : verb + " track " + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.notice[0] && s.now - s.ui.notice_at < 1500) {
         text = juce::String::fromUTF8(s.ui.notice); // notices may hold an en dash or a middle dot
     } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here

@@ -214,8 +214,9 @@ bool queued(const PadScene& s, unsigned t) { return s.host.playing() && s.projec
 Look tracks_look(const PadScene& s, unsigned pad) {
     const auto& ui = s.ui;
     const auto& t = s.project.tracks[pad];
-    if (ui.copying == UiState::Copying::Tracks && ui.copy_from >= 0) { // where the copy goes
+    if (ui.copying == UiState::Copying::Tracks && ui.copy_from >= 0) { // where the copy goes, or the move
         if (ui.copy_from == int(pad)) return white(full);
+        if (ui.moving) return track(pad, t.used() ? dim : faint); // a track there trades places: nothing lost, no red
         return t.used() ? red(faint) : track(pad, faint);
     }
     if (ui.erase) return track_clearable(t, s.patterns.at[pad]) ? red(faint) : Look {}; // Erase held: the tracks Erase + pad would clear

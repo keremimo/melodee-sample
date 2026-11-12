@@ -20,6 +20,15 @@ TrackState track_state(const Context& c, unsigned t);
 // Sets the track and its patterns, then hands both, with the project's motion, to the audio thread.
 void restore_track(Context& c, unsigned t, const TrackState& state);
 
+// Track move (B2 MOVE with Pad Bank held, or Shift + B2 on Tracks, then two pads): `from` goes to `to` whole,
+// mix strip and all, as one undo; a track already at `to` trades places with it (shell/track_swap.h).
+void move_track(Context& c, unsigned from, unsigned to);
+// The two trade places and the audio thread hears both again, with all that names them: a move, its undo, its redo.
+void trade_tracks(Context& c, unsigned a, unsigned b);
+// Why a and b cannot trade places now, "" when they can: Seq Record's take, or a take that hears one of them
+// (a loop recording or overdubbing it, Sample Record from it) and would lose its source half way.
+std::string swap_waits(const Context& c, unsigned a, unsigned b);
+
 // Track clear (Erase + pad with Pad Bank held, asked first): the track empty
 // again as one undo. Its sound, kit and effects go, its sixteen patterns are
 // one bar of the project's time signature with nothing in them; it keeps its

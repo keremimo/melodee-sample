@@ -60,17 +60,25 @@ bool track_pad(Context& c, unsigned pad) {
         return true;
     }
     if (ui.copying != UiState::Copying::Tracks) { c.select_track(pad); return true; }
-    if (ui.copy_from < 0) { // the track to copy
-        if (!c.project.tracks[pad].used()) { c.notice("Track " + std::to_string(pad + 1) + " is empty"); return true; }
+    if (ui.copy_from < 0) { // the track to move or copy
+        if (!track_clearable(c.project.tracks[pad], c.patterns.at[pad])) { c.notice("Track " + std::to_string(pad + 1) + " is empty"); return true; }
         ui.copy_from = int8_t(pad);
         c.select_track(pad);
         return true;
     }
     if (unsigned(ui.copy_from) == pad) return true; // then where it goes
-    copy_track(c, unsigned(ui.copy_from), pad);
+    if (ui.moving) move_track(c, unsigned(ui.copy_from), pad); // the track in hand goes with it
+    else copy_track(c, unsigned(ui.copy_from), pad);
     c.select_track(pad);
     ui.stop_copying();
     return true;
+}
+
+bool track_soft(Context& c, int key) {
+    bool moving = c.ui.moving;
+    auto did = track_key(c.ui, key);
+    if (did == TrackKey::Ended) c.notice(moving ? "Move off" : "Copy off");
+    return did != TrackKey::Ignored;
 }
 
 } // namespace melodee

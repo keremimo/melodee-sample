@@ -1237,6 +1237,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (motion) restore_motion(*motion);
     const auto& whole = after ? e.track_after : e.track_before;
     if (whole) restore_track(*this, e.track, *whole); // last: its pack carries the motion as restored
+    if (e.swap_a >= 0) trade_tracks(*this, unsigned(e.swap_a), unsigned(e.swap_b)); // a move: the same swap again
     if (e.column >= 0)
         for (const auto& [t, value] : after ? e.column_after : e.column_before) restore_pattern(t, unsigned(e.column), value);
     const auto& chain = after ? e.chain_after : e.chain_before;
@@ -1253,6 +1254,8 @@ void Context::undo() {
     close_gesture();                        // a pot's turns just made are the step undone
     close_hold(hold.pad);                   // so is a held pad's note
     if (ui.recording) set_recording(false); // a take in progress ends, and is the edit undone
+    if (const Edit* last = edits.last(); last && last->swap_a >= 0) // a track move waits for a take that hears it
+        if (auto why = swap_waits(*this, unsigned(last->swap_a), unsigned(last->swap_b)); !why.empty()) { notice("Undo: " + why); return; }
     Edit* e = edits.undo();
     if (!e) { notice("Nothing to undo"); return; }
     apply_edit(*e, false);
@@ -1263,6 +1266,8 @@ void Context::redo() {
     close_gesture();
     close_hold(hold.pad);
     if (ui.recording) return; // a take in progress would be lost under it
+    if (const Edit* next = edits.next(); next && next->swap_a >= 0)
+        if (auto why = swap_waits(*this, unsigned(next->swap_a), unsigned(next->swap_b)); !why.empty()) { notice("Redo: " + why); return; }
     Edit* e = edits.redo();
     if (!e) { notice("Nothing to redo"); return; }
     apply_edit(*e, true);

@@ -7,8 +7,8 @@
 // its next bank, A-H round (Shift: the previous one; on Punch the other bank
 // of punches). Held: a pad picks that track, Minus / Plus or the wheel jump
 // banks, and after a second the screen shows the sixteen tracks (the pads are
-// the tracks at once); Shift + Erase then copies a
-// whole track, Erase + pad clears one (shell/track_copy.cpp). One job a tap, acted on release: no
+// the tracks at once); B2 MOVE moves a whole track to another pad, B3 COPY (or Shift + Erase, as printed)
+// copies one, Erase + pad clears one (shell/track_copy.cpp). One job a tap, acted on release: no
 // double tap (the Tracks page is Sample's second stop). MIDI thread.
 namespace melodee {
 
@@ -26,8 +26,37 @@ inline bool tracks_on_pads(const UiState& ui) { return ui.pad_bank || ui.copying
 inline bool track_overlay_shown(const UiState& ui, uint32_t now) {
     return ui.copying == UiState::Copying::Tracks || (ui.pad_bank && now - ui.pad_bank_down >= pad_bank_overlay_ms);
 }
-// A pad while tracks_on_pads(): picks that track, or the copy's track and
+// A pad while tracks_on_pads(): picks that track, or the move's or copy's track and
 // then where it goes; with Erase held, asks to clear it. False when the pads are not the tracks.
 bool track_pad(Context& c, unsigned pad);
+
+// A track move or copy waits for its two pads: the track, then where it goes (B2 MOVE, B3 COPY).
+inline void start_track_pick(UiState& ui, bool move) {
+    ui.stop_copying(); // a pad or pattern copy gives way
+    ui.copying = UiState::Copying::Tracks;
+    ui.moving = move;
+}
+// B1-B3 while the pads are the tracks (Pad Bank held, or a move or copy picking its tracks): B2 MOVE and B3 COPY
+// start one, or switch the one under way (its track kept), and again end it; B1 steps back, from where to the
+// track, then out. Ignored: the pads are not the tracks, the page's keys answer.
+enum class TrackKey : uint8_t { Ignored, Nothing, Started, Switched, Back, Ended };
+inline TrackKey track_key(UiState& ui, int key) {
+    if (!tracks_on_pads(ui)) return TrackKey::Ignored;
+    if (ui.pad_bank) ui.pad_bank_used = true; // its release steps no bank
+    bool picking = ui.copying == UiState::Copying::Tracks;
+    if (key == 0) {
+        if (!picking) return TrackKey::Nothing;
+        if (ui.copy_from >= 0) { ui.copy_from = -1; return TrackKey::Back; }
+        ui.stop_copying();
+        return TrackKey::Ended;
+    }
+    bool move = key == 1;
+    if (picking && ui.moving == move) { ui.stop_copying(); return TrackKey::Ended; }
+    if (picking) { ui.moving = move; return TrackKey::Switched; }
+    start_track_pick(ui, move);
+    return TrackKey::Started;
+}
+// B1-B3 through track_key(), with a notice when the move or copy ends. False when the page's keys answer.
+bool track_soft(Context& c, int key);
 
 } // namespace melodee

@@ -7,9 +7,11 @@
 // level, K3 its pan; the wheel or Minus / Plus the track, Push its Stage.
 // Each cell's bottom edge and the header show what a track takes of a block
 // (roadmap P2), so the heavy one is found before it crackles.
-// B2 LOOPER, B3 SENDS (every track's send to one bus).
+// B2 LOOPER, B3 SENDS (every track's send to one bus). Shift + B2 MOVE, Shift + B3 COPY: then a track's pad
+// and where it goes (shell/pad_bank.h, as Pad Bank held + B2 or B3 anywhere).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/pad_bank.h"
 #include <cmath>
 
 namespace melodee {
@@ -24,7 +26,12 @@ void draw(Paint& p, const Snapshot& s) {
     float load = s.machine.track_load[s.ui.track % track_count]; // the track in hand's share of a block (roadmap P2)
     if (s.track().used()) h.right.push_back(pill(Icon::Chip, juce::String(int(std::lround(load * 100))) + " %", load_colour(load)));
     h.right.push_back(label(s.project.name));
-    frame(p, s, {{"TRACKS", "LOOPER", "SENDS"}, 0, colour_of(s)}, h);
+    SoftKeys keys {{"TRACKS", "LOOPER", "SENDS"}, 0, colour_of(s)};
+    if (s.ui.shift) { // Shift: a track moved or copied to another pad
+        keys = SoftKeys {{"", "MOVE", "COPY"}, -1, colour_of(s)};
+        keys.glyphs[1] = Icon::Swap; keys.glyphs[2] = Icon::Copy;
+    }
+    frame(p, s, keys, h);
     track_grid(p, s);
 }
 
@@ -36,6 +43,10 @@ void wheel(Context& c, int delta) { c.select_track(unsigned(int(c.ui.track) + de
 void push(Context& c) { c.open(PageId::Stage); }
 
 void soft(Context& c, int key) {
+    if (c.ui.shift) { // MOVE, COPY: the pads are the tracks until both are picked
+        if (key > 0) start_track_pick(c.ui, key == 1);
+        return;
+    }
     if (key == 1) c.open(PageId::Looper);
     if (key == 2) c.open(PageId::Sends);
 }

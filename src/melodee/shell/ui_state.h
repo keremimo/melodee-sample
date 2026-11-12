@@ -279,7 +279,8 @@ struct UiState {
     Copying copying = Copying::Off;
     int8_t copy_from = -1;    // the kit pad, pattern or track picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns: the track the pattern is copied from
-    void stop_copying() { copying = Copying::Off; copy_from = -1; }
+    bool moving = false;      // Tracks: a move (B2 MOVE: the two trade places) instead of a copy (shell/track_swap.h)
+    void stop_copying() { copying = Copying::Off; copy_from = -1; moving = false; }
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.

@@ -68,6 +68,7 @@
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/track_copy.h"
+#include "melodee/shell/track_swap.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/model/input_config.h"
@@ -7828,6 +7829,97 @@ void pad_lights() {
     ui.exit_open = false;
 }
 
+// Track move (shell/track_swap.h, shell/pad_bank.h): two tracks trade places whole, and what names a track by its
+// number follows them; the same swap undoes it. B1-B3 while the pads are the tracks start, switch, step back and
+// end a move or copy; the pads light a move's targets without red (nothing is lost).
+void track_move() {
+    CHECK(swapped(3, 3, 7) == 7 && swapped(7, 3, 7) == 3 && swapped(5, 3, 7) == 5);
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& p = *project;
+    synth(p.tracks[2], 0);
+    p.tracks[2].mix.level = 90; p.tracks[2].midi_channel = 3;
+    p.tracks[6].engine = EngineKind::Sampler; p.tracks[6].pads[0].sample = 4;
+    put(bank->at[2][0], 0, 60, 100);
+    put(bank->at[6][1], 4, uint8_t(sampler_first_note), 90);
+    Clip a; a.track = 2; a.bar = 0; a.bars = 2; CHECK(p.song.place(a));
+    Clip b; b.track = 6; b.bar = 4; CHECK(p.song.place(b));
+    Clip other; other.track = 9; other.bar = 1; CHECK(p.song.place(other));
+    SongPunch on_track; on_track.target = 6; CHECK(p.song.add_punch(on_track));
+    SongPunch on_master; on_master.target = 255; CHECK(p.song.add_punch(on_master));
+    p.looper.loops[0].source = looper::source_track(2);
+    p.looper.loops[1].source = looper::source_mix;
+    p.knob_fx.set_track(2, true); p.knob_fx.set_pad(6, 0, true);
+    p.compressor.key = 6;
+
+    auto changed = swap_tracks(p, *bank, 2, 6);
+    CHECK(p.tracks[6].engine == EngineKind::Plugin && p.tracks[6].mix.level == 90 && p.tracks[6].midi_channel == 3);
+    CHECK(p.tracks[2].engine == EngineKind::Sampler && p.tracks[2].pads[0].sample == 4 && p.tracks[2].mix.level == 100);
+    CHECK(!bank->at[6][0].events.empty() && bank->at[2][0].events.empty() && !bank->at[2][1].events.empty());
+    CHECK(p.song.clip_at(6, 0) >= 0 && p.song.clip_at(2, 0) < 0 && p.song.clip_at(2, 4) >= 0 && p.song.clip_at(9, 1) >= 0);
+    CHECK(p.song.punches[0].target == 2 && p.song.punches[1].target == 255);
+    CHECK(p.looper.loops[0].source == looper::source_track(6) && p.looper.loops[1].source == looper::source_mix);
+    CHECK(p.knob_fx.track_on(6) && !p.knob_fx.track_on(2) && p.knob_fx.pad_on(2, 0) && !p.knob_fx.pad_on(6, 0));
+    CHECK(p.compressor.key == 2);
+    CHECK(changed.song && changed.punches && changed.loops == 1 && changed.knob && changed.key);
+    swap_tracks(p, *bank, 6, 2); // the undo: as it was
+    CHECK(p.tracks[2].engine == EngineKind::Plugin && p.tracks[2].mix.level == 90 && p.tracks[6].pads[0].sample == 4);
+    CHECK(!bank->at[2][0].events.empty() && p.song.clip_at(2, 0) >= 0 && p.song.clip_at(6, 4) >= 0 && p.song.punches[0].target == 6);
+    CHECK(p.looper.loops[0].source == looper::source_track(2) && p.knob_fx.track_on(2) && p.knob_fx.pad_on(6, 0) && p.compressor.key == 6);
+    // To an empty slot: a plain move, the slot it left empty; nothing that names neither changes.
+    changed = swap_tracks(p, *bank, 2, 11);
+    CHECK(p.tracks[11].engine == EngineKind::Plugin && !p.tracks[2].used() && p.song.clip_at(11, 0) >= 0 && p.song.clip_at(6, 4) >= 0);
+    CHECK(changed.song && !changed.punches && changed.loops == 1 && changed.knob && !changed.key);
+    changed = swap_tracks(p, *bank, 4, 4);
+    CHECK(!changed.song && !changed.punches && !changed.loops && !changed.knob && !changed.key);
+
+    // The screen's memory of each track goes with it, and the track in hand stays the one it was.
+    UiState ui;
+    ui.edit_page[2] = 3; ui.stage_group[6] = 1; ui.seq_editor[2] = 2; ui.track = 2;
+    swap_track_views(ui, 2, 6);
+    CHECK(ui.edit_page[6] == 3 && ui.edit_page[2] == 0 && ui.stage_group[2] == 1 && ui.seq_editor[6] == 2 && ui.track == 6);
+    swap_track_views(ui, 0, 1);
+    CHECK(ui.track == 6);
+
+    // B1-B3 with Pad Bank held: B2 MOVE, B3 COPY; B1 steps back, then out; the active key again ends it.
+    UiState held; held.pad_bank = true;
+    CHECK(track_key(held, 0) == TrackKey::Nothing && held.copying == UiState::Copying::Off && held.pad_bank_used);
+    CHECK(track_key(held, 1) == TrackKey::Started && held.copying == UiState::Copying::Tracks && held.moving && held.copy_from < 0);
+    held.copy_from = 3;
+    CHECK(track_key(held, 2) == TrackKey::Switched && !held.moving && held.copy_from == 3);
+    CHECK(track_key(held, 0) == TrackKey::Back && held.copy_from < 0 && held.copying == UiState::Copying::Tracks);
+    CHECK(track_key(held, 2) == TrackKey::Ended && held.copying == UiState::Copying::Off);
+    held.pad_bank = false;
+    CHECK(track_key(held, 1) == TrackKey::Ignored); // the page's keys answer
+    start_track_pick(held, true); // Shift + B2 on Tracks
+    CHECK(tracks_on_pads(held) && track_overlay_shown(held, 0) && held.moving);
+    CHECK(track_key(held, 0) == TrackKey::Ended && !held.moving && !tracks_on_pads(held));
+    held.copying = UiState::Copying::Pads; held.pad_bank = true;
+    CHECK(track_key(held, 2) == TrackKey::Started && held.copying == UiState::Copying::Tracks && !held.moving); // a pad copy gives way
+    held.moving = true; held.stop_copying();
+    CHECK(!held.moving && held.copy_from < 0);
+
+    // Shift on Tracks lights B2 and B3 (MOVE, COPY); elsewhere a synth track's B2 has no Shift job.
+    UiState tracks; tracks.page = PageId::Tracks; tracks.track = 11;
+    CHECK(button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
+    tracks.page = PageId::Keys;
+    CHECK(!button_has_shift_job(p, tracks, SurfaceButton::TopMiddle, false) && !button_has_shift_job(p, tracks, SurfaceButton::TopRight, false));
+
+    // The pads: the track picked white, a move's targets in their own colour (used Dim, empty Faint), a copy's used ones red.
+    using namespace pad_light;
+    EngineHost host;
+    TrackTaps taps;
+    std::array<Look, 16> looks;
+    UiState pick; pick.pad_bank = true;
+    start_track_pick(pick, true); pick.copy_from = 11;
+    auto light = [&] { PadScene scene {pick, p, *bank, host, taps, PadFacts {}, 1000, nullptr, 0}; pad_looks(scene, looks); };
+    light();
+    CHECK(looks[11].hue == Hue::White && rung(looks[11].level) == 4);
+    CHECK(looks[6].hue == Hue::Track && rung(looks[6].level) == 2 && looks[2].hue == Hue::Track && rung(looks[2].level) == 1);
+    pick.moving = false; light();
+    CHECK(looks[6].hue == Hue::Red && looks[2].hue == Hue::Track);
+}
+
 // Drums pads (model/scales.h, docs/MELODEE.md Keys): a drum plug-in's or MIDI drum machine's pads play as a kit's,
 // 36 + 16 * bank + pad whatever the key, one lane a drum on Steps, 16 Levels in velocity alone; a drum plug-in says
 // so in its library (plugin/drum_map.h) and the pads light as a kit's.
@@ -9798,6 +9890,7 @@ int main() {
     parity_1c();
     shift_pads();
     pad_lights();
+    track_move();
     drum_layout();
     button_remap();
     looper_chord_and_sheet();

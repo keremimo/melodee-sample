@@ -909,6 +909,13 @@ const Preview previews[] {
          s.ui.page = PageId::Stage; s.ui.track = 1; s.ui.pad_bank = true;
          s.ui.copying = UiState::Copying::Tracks; s.ui.copy_from = 1;
      }},
+    {"movetrack", [](Shell&, Snapshot& s) { // Pad Bank held, B2 MOVE, track 2 picked: where does it go (B1 back)
+         s.ui.page = PageId::Stage; s.ui.track = 1; s.ui.pad_bank = true;
+         s.ui.copying = UiState::Copying::Tracks; s.ui.moving = true; s.ui.copy_from = 1;
+     }},
+    {"tracksshift", [](Shell&, Snapshot& s) { // Tracks with Shift held: MOVE and COPY on B2 and B3
+         s.ui.page = PageId::Tracks; s.ui.track = 1; s.ui.shift = true;
+     }},
     {"cleartrack", [](Shell&, Snapshot& s) { // Pad Bank held + Erase + pad 1: B1 Cancel, B3 Clear
          s.ui.page = PageId::Stage; s.ui.track = 0; s.ui.pad_bank = true; s.ui.erase = true;
          s.ui.ask = UiState::Ask::ClearTrack; s.ui.ask_target = 0;

@@ -49,12 +49,13 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::Chop: return kit && project.tracks[ui.track % track_count].pads[project.tracks[ui.track % track_count].last_pad % sampler_pads].used(); // Note On
     case B::SixteenLevels: return project.tracks[ui.track % track_count].used(); // the 16 Levels type
     case B::TopLeft: case B::TopMiddle: { // Loop Lock, Normalize on a kit's Stage TRIM; Extract, Split on Chop; LOAD, CLEAR on LAYERS
+        if (button == B::TopMiddle && ui.page == PageId::Tracks) return true; // MOVE on Tracks
         if (!kit) return false;
         if (ui.page == PageId::Chop || ui.page == PageId::LayersPage) return true;
         auto kind = ui.page == PageId::Stage ? stage_page_now(ui, project.tracks[ui.track % track_count]).kind : StageKind::Params;
         return kind == StageKind::Trim || kind == StageKind::Layers;
     }
-    case B::TopRight: return ui.page == PageId::Chop && kit;                     // Merge
+    case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks; // Merge; COPY on Tracks
     case B::SampleRecord: return kit;                                            // Audio Recall
     case B::Erase: return kit_pads || ui.pad_bank || ui.seq_held || ui.copying != UiState::Copying::Off; // Copy (tracks with Pad Bank held, patterns with Seq)
     case B::KnobFx: case B::PadFx: return true;                                  // FX SELECT: Melodee's chains; Flex Beat

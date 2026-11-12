@@ -119,7 +119,7 @@ cards.
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
+| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns with Seq held, tracks with Pad Bank held. With Pad Bank held, Erase + pad clears a track |
 | Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B3). On Song, repeats the clip to the next marker | |
@@ -210,7 +210,7 @@ grammar (`shell/pad_light.h`):
 | A kit (play pages, the sample pages, the browser) | The selected pad Full (an empty one too), a sample Dim, empty dark, a muted pad Faint red; each flares as it sounds; held white, red while Seq Record writes it |
 | A synth or MIDI track | The key's roots in the track's colour (Mid), its other notes white Dim, out of the key (chromatic) white Faint; a held chord's notes white Full. The key is the track's: the project's moved by its transpose. Record with a synth as the source shows its keys the same way |
 | 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Scale the key's roots in the track's colour (Mid) from pad 1, its other notes white Dim; Tune the same, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); the pad hit last white as its sound fades |
-| Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces) |
+| Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces); a move's in their own colour, Dim where a track trades places |
 | Mute mode | Muted Dim red, heard Mid (kit pads flaring), soloed white, silenced by a solo Faint |
 | Song | The lane picked Full, a clip under the cursor Mid, clips elsewhere Dim, not in the song Faint |
 | Seq held | The pattern playing Full, queued blinking, with notes Dim; + Shift a column, white by how many tracks hold notes there; + Erase red; a copy's source white, where it lands Faint (red where it replaces) |
@@ -328,8 +328,8 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   motion as written, ×1½ turning sixteenths into sixteenth triplets; the
   header names it, Patterns too; kept in TSPD);
   the wheel or −/+ the track, Push its Stage; the fader is its level. **B2
-  LOOPER**, **B3 SENDS**. Pad Bank held + pad still picks a track from any
-  page, the same picture over it.
+  LOOPER**, **B3 SENDS**; with Shift, **MOVE** and **COPY** (below). Pad Bank
+  held + pad still picks a track from any page, the same picture over it.
 - **Keys** (Sample's third stop on a synth): the sixteen pads fill the
   picture, each its note large and its degree in the scale small, the roots
   filled in the track's colour, the pad played white; the key and scale are
@@ -1272,6 +1272,13 @@ while following.
   target; kit pads, patterns with Seq held, whole tracks with Pad Bank held
   (sound, kit, sixteen patterns and their motion; the target keeps its mix
   strip). Again, or Erase, leaves.
+- **Move** (B2 with Pad Bank held, or Shift + B2 on Tracks; B3 there is
+  Copy): the track, then where it goes. It moves whole, mix strip too; a
+  track already there trades places with it, so nothing is lost. The song's
+  clips and punches, the Looper's sources, Knob FX's tracks and pads, the
+  compressor's key and Input Config's track follow it. One undo. Not during
+  Seq Record, nor while a loop or Sample Record takes from either track.
+  While picking, B2 and B3 switch between moving and copying, B1 steps back.
 - **Undo** (Shift + −, redo Shift + +): the last 32 steps. A take is one; a
   pot's turns are one per control (closed by another control, a press or
   two seconds still); a press on a page is one step of what the page edits.

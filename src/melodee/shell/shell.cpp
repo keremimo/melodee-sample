@@ -217,12 +217,12 @@ void Shell::press(Button b, bool pressed) {
             if (ui.seq_held) ui.seq_used = true;
             auto kind = ui.pad_bank ? UiState::Copying::Tracks : ui.seq_held ? UiState::Copying::Patterns
                       : kit_pads() ? UiState::Copying::Pads : UiState::Copying::Off;
-            if (ui.copying != UiState::Copying::Off) { ui.stop_copying(); context_.notice("Copy off"); }
+            if (ui.copying != UiState::Copying::Off) { context_.notice(ui.moving ? "Move off" : "Copy off"); ui.stop_copying(); }
             else if (kind == UiState::Copying::Off) context_.notice("Copy: hold Seq or Pad Bank");
             else { ui.copying = kind; ui.copy_from = -1; }
-        } else if (ui.copying != UiState::Copying::Off) { // Erase alone leaves copying
+        } else if (ui.copying != UiState::Copying::Off) { // Erase alone leaves copying (or a track move)
+            context_.notice(ui.moving ? "Move off" : "Copy off");
             ui.stop_copying();
-            context_.notice("Copy off");
         } else if (song_buttons()) {
             song_erase(context_); // the clip under the cursor, one undo
         }
@@ -323,10 +323,11 @@ void Shell::press(Button b, bool pressed) {
         else if (record_track_keys()) context_.record_octave(1);
         else if (!pad_bank_move(context_, 1)) page.nudge(context_, 1);
         break;
+    // The pads the tracks (Pad Bank held, a track move or copy): B2 MOVE, B3 COPY, B1 back (shell/pad_bank.h).
     // Note Repeat on: B1-B3 are its rate (Shift: triplets), except on Arp and Chord.
-    case Button::TopLeft: if (!repeat_soft(context_, 0)) page.soft(context_, 0); break;
-    case Button::TopMiddle: if (!repeat_soft(context_, 1)) page.soft(context_, 1); break;
-    case Button::TopRight: if (!repeat_soft(context_, 2)) page.soft(context_, 2); break;
+    case Button::TopLeft: if (!track_soft(context_, 0) && !repeat_soft(context_, 0)) page.soft(context_, 0); break;
+    case Button::TopMiddle: if (!track_soft(context_, 1) && !repeat_soft(context_, 1)) page.soft(context_, 1); break;
+    case Button::TopRight: if (!track_soft(context_, 2) && !repeat_soft(context_, 2)) page.soft(context_, 2); break;
     case Button::WheelPush:
         if (ui.shift && ui.page == PageId::Song) song_marker(context_);
         else if (ui.shift && ui.page == PageId::Project && ui.project_list && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
