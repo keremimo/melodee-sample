@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/pad_bank.h"
 #include "melodee/model/scales.h"
+#include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/track_copy.h"
 #include <algorithm>
@@ -50,6 +51,13 @@ bool track_pad(Context& c, unsigned pad) {
     if (!tracks_on_pads(ui)) return false;
     pad %= track_count;
     if (ui.pad_bank) ui.pad_bank_used = true;
+    if (ui.erase && ui.copying != UiState::Copying::Tracks) { // Erase + pad: that track cleared, once B3 says so
+        c.select_track(pad);
+        if (ui.recording) c.notice("Clear track: not in a take");
+        else if (!track_clearable(c.project.tracks[pad], c.patterns.at[pad])) c.notice("Track " + std::to_string(pad + 1) + " is empty");
+        else ask(c, UiState::Ask::ClearTrack, int(pad));
+        return true;
+    }
     if (ui.copying != UiState::Copying::Tracks) { c.select_track(pad); return true; }
     if (ui.copy_from < 0) { // the track to copy
         if (!c.project.tracks[pad].used()) { c.notice("Track " + std::to_string(pad + 1) + " is empty"); return true; }

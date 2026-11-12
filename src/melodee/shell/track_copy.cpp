@@ -39,4 +39,21 @@ void copy_track(Context& c, unsigned from, unsigned to) {
     c.edits.push(std::move(edit));
 }
 
+void clear_track(Context& c, unsigned t) {
+    t %= track_count;
+    std::string name = "Track " + std::to_string(t + 1);
+    if (c.ui.recording) { c.notice("Clear track: not in a take"); return; }
+    if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) { c.notice(name + " is empty"); return; }
+    std::string what = "Clear track " + std::to_string(t + 1);
+    Edit edit = c.begin_edit(what.c_str(), t, -1, false);
+    edit.track_before = std::make_unique<TrackState>(track_state(c, t));
+    auto next = std::make_unique<TrackState>();
+    next->track.mix = c.project.tracks[t].mix; // the strip stays
+    for (auto& p : next->patterns) p.length = c.project.bar_ticks();
+    restore_track(c, t, *next);
+    edit.track_after = std::move(next);
+    c.notice(name + " cleared");
+    c.edits.push(std::move(edit));
+}
+
 } // namespace melodee

@@ -20,4 +20,18 @@ TrackState track_state(const Context& c, unsigned t);
 // Sets the track and its patterns, then hands both, with the project's motion, to the audio thread.
 void restore_track(Context& c, unsigned t, const TrackState& state);
 
+// Track clear (Erase + pad with Pad Bank held, asked first): the track empty
+// again as one undo. Its sound, kit and effects go, its sixteen patterns are
+// one bar of the project's time signature with nothing in them; it keeps its
+// mix strip, as a copy onto it does.
+void clear_track(Context& c, unsigned t);
+// Whether a clear would take anything: an engine, or a pattern's notes, motion or kept punches
+// (an empty track's patterns may still play MIDI out).
+inline bool track_clearable(const Track& track, const std::array<Pattern, pattern_count>& patterns) {
+    if (track.used()) return true;
+    for (const auto& p : patterns)
+        if (!p.events.empty() || !p.motion.empty() || !p.punches.empty()) return true;
+    return false;
+}
+
 } // namespace melodee

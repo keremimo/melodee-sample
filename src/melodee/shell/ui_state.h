@@ -277,7 +277,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches }; // ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack }; // ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),

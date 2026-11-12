@@ -5,6 +5,7 @@
 #include "melodee/shell/context.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/step_edit.h"
+#include "melodee/shell/track_copy.h"
 
 namespace melodee {
 
@@ -33,6 +34,7 @@ bool ask_button(Context& c, SurfaceButton button) {
         c.edit_pattern(ui.track, n, "Clear pattern", [&] { c.clear_pattern(ui.track, n); });
         c.notice("P" + std::to_string(n + 1) + " cleared");
     } else if (kind == UiState::Ask::ErasePunches) c.erase_punches(); // Erase + KEEP on Pad FX (pad-fx C)
+    else if (kind == UiState::Ask::ClearTrack) clear_track(c, unsigned(ui.ask_target)); // Pad Bank held + Erase + pad
     return true;
 }
 
@@ -48,6 +50,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::LooperOff: return "Turn the Looper off?";
     case UiState::Ask::ClearPattern: return "Clear P" + std::to_string(ui.ask_target % pattern_count + 1) + " of track " + std::to_string(ui.track % track_count + 1) + "?";
     case UiState::Ask::ErasePunches: return "Erase kept punches?";
+    case UiState::Ask::ClearTrack: return "Clear track " + std::to_string(ui.ask_target % track_count + 1) + "?";
     default: return {};
     }
 }
@@ -73,6 +76,7 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     if (ui.ask == UiState::Ask::ClearLoop) return "Its audio and its undo go.";
     if (ui.ask == UiState::Ask::LooperOff) return "Every loop goes, and L1-L4 with them.";
     if (ui.ask == UiState::Ask::ClearPattern) return "Its notes and motion go; Shift + Minus brings them back.";
+    if (ui.ask == UiState::Ask::ClearTrack) return "Its sound and patterns go; Shift + Minus brings them back.";
     if (ui.ask == UiState::Ask::NewProject)
         return ui.ask_target == 1 ? "Changes are saved first." : ui.ask_target == 2 ? "Unsaved changes are lost." : "The open project closes.";
     return {};

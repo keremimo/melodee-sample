@@ -69,6 +69,7 @@
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/track_copy.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/model/input_config.h"
@@ -7612,7 +7613,14 @@ void pad_lights() {
     CHECK(is(0, Hue::White, 2) && is(5, Hue::Track, 1));
     ui.page = PageId::Stage; ui.pad_bank = true; light(plays); // Pad Bank held: the tracks, on any page
     CHECK(is(1, Hue::Track, 4) && is(3, Hue::Red, 1));
-    ui.pad_bank = false;
+    // + Erase: what Erase + pad would clear Faint red, an empty track dark (its patterns' notes count: they play MIDI out).
+    ui.erase = true; light(plays);
+    CHECK(is(1, Hue::Red, 1) && is(3, Hue::Red, 1) && is(9, Hue::None, 0));
+    CHECK(track_clearable(project->tracks[1], bank->at[1]) && !track_clearable(project->tracks[9], bank->at[9]));
+    put(bank->at[9][4], 0, 60, 100); light(plays);
+    CHECK(is(9, Hue::Red, 1) && track_clearable(project->tracks[9], bank->at[9]));
+    bank->at[9][4] = Pattern {};
+    ui.erase = false; ui.pad_bank = false;
     // Mute mode: a kit's pads on a kit page, the tracks on Tracks; muted Dim red, a solo white.
     ui.mute = true; light(plays);
     CHECK(is(8, Hue::Red, 2) && is(0, Hue::Track, 3) && is(12, Hue::None, 0));
@@ -7713,6 +7721,9 @@ void pad_lights() {
     // A question: what it is about flashes red, the rest dark; Exit: every pad dark.
     ui.ask = UiState::Ask::ClearPattern; ui.ask_target = 2; ui.seq_held = true; light({}, 1000);
     CHECK(is(2, Hue::Red, 4) && is(0, Hue::None, 0));
+    ui.seq_held = false; ui.pad_bank = true; ui.ask = UiState::Ask::ClearTrack; ui.ask_target = 5; light({}, 1000); // Pad Bank held + Erase + pad 6
+    CHECK(is(5, Hue::Red, 4) && is(1, Hue::None, 0));
+    ui.pad_bank = false;
     ui.ask = UiState::Ask::None; ui.seq_held = false; ui.exit_open = true; light(plays);
     for (unsigned n = 0; n < 16; ++n) CHECK(!looks[n].lit());
     ui.exit_open = false;

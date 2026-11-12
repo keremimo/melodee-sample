@@ -120,9 +120,9 @@ cards.
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks. One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
+| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; with Shift + Erase, Copy takes tracks; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
-| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns with Seq held, tracks with Pad Bank held |
+| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns with Seq held, tracks with Pad Bank held. With Pad Bank held, Erase + pad clears a track |
 | Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B3). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
@@ -227,6 +227,7 @@ grammar (`shell/pad_light.h`):
 | Knob FX, Flex Beat, Pad Punch, sidechain | On or playing Full, the rest Dim or Faint, empty dark |
 | Shift held | The jobs white (above) |
 | Erase held on a kit | Stopped: the pads that would empty Faint red; playing: the pads with notes Dim red, flaring as they play |
+| Pad Bank + Erase held | The tracks Erase + pad would clear Faint red (a sound, or notes in its patterns), empty ones dark |
 | Shift + Erase on a kit | The pads that can be copied Dim; then the source white, where it lands Faint (red where it replaces) |
 | Name sheet | Keys white Dim, delete red, the key just typed bright for the retap window |
 | A question, Exit | The pad the question is about flashing red, the rest dark; Exit all dark |

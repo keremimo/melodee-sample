@@ -895,6 +895,10 @@ const Preview previews[] {
          s.ui.page = PageId::Stage; s.ui.track = 1; s.ui.pad_bank = true;
          s.ui.copying = UiState::Copying::Tracks; s.ui.copy_from = 1;
      }},
+    {"cleartrack", [](Shell&, Snapshot& s) { // Pad Bank held + Erase + pad 1: B1 Cancel, B3 Clear
+         s.ui.page = PageId::Stage; s.ui.track = 0; s.ui.pad_bank = true; s.ui.erase = true;
+         s.ui.ask = UiState::Ask::ClearTrack; s.ui.ask_target = 0;
+     }},
     {"repeat", [](Shell&, Snapshot& s) { // Note Repeat on, on Keys: 1/8, 1/16, 1/32 on B1-B3
          s.ui.page = PageId::Keys; s.playing = true; s.project.tracks[0].arp = true; s.project.tracks[0].arp_rate = 4;
          s.ui.held_pads = 1u << 4;

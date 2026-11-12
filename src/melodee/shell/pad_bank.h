@@ -8,7 +8,7 @@
 // of punches). Held: a pad picks that track, Minus / Plus or the wheel jump
 // banks, and after a second the screen shows the sixteen tracks (the pads are
 // the tracks at once); Shift + Erase then copies a
-// whole track (shell/track_copy.cpp). One job a tap, acted on release: no
+// whole track, Erase + pad clears one (shell/track_copy.cpp). One job a tap, acted on release: no
 // double tap (the Tracks page is Sample's second stop). MIDI thread.
 namespace melodee {
 
@@ -27,7 +27,7 @@ inline bool track_overlay_shown(const UiState& ui, uint32_t now) {
     return ui.copying == UiState::Copying::Tracks || (ui.pad_bank && now - ui.pad_bank_down >= pad_bank_overlay_ms);
 }
 // A pad while tracks_on_pads(): picks that track, or the copy's track and
-// then where it goes. False when the pads are not the tracks.
+// then where it goes; with Erase held, asks to clear it. False when the pads are not the tracks.
 bool track_pad(Context& c, unsigned pad);
 
 } // namespace melodee

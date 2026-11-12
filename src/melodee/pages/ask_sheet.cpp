@@ -6,6 +6,7 @@
 // what it is about as a chip at the foot, and the undo keys when it can be
 // undone; B1 CANCEL, B3 the verb in REC.
 #include "melodee/pages/common.h"
+#include "melodee/engine/engine_info.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/step_edit.h"
@@ -68,6 +69,22 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         sheet.chip = "P" + juce::String(pattern + 1);
         sheet.chip_colour = colour_of(s);
         sheet.name = "TRACK " + juce::String(track + 1);
+        sheet.undo = true;
+        verb = "CLEAR";
+        break;
+    }
+    case Ask::ClearTrack: { // Pad Bank held + Erase + a pad
+        unsigned which = unsigned(s.ui.ask_target) % track_count, filled = 0;
+        const auto& target = s.project.tracks[which];
+        for (const auto& sketch : s.sketches[which]) filled += sketch.count + sketch.moves > 0;
+        juce::String what = !target.used() ? juce::String("Its ") + count_of(filled, "pattern", "patterns")
+                          : juce::String(target.engine == EngineKind::Sampler ? "Its kit" : "Its sound") + (filled ? " and " + count_of(filled, "pattern", "patterns") : "");
+        bool one = target.used() ? !filled : filled == 1;
+        sheet.title = "Clear track " + juce::String(which + 1) + "?";
+        sheet.lines = {what + (one ? " goes." : " go."), one ? juce::String("Undo brings it back.") : undo_line};
+        sheet.chip = target.used() ? juce::String(engine_info(target.engine).name) : juce::String("EMPTY");
+        sheet.chip_colour = track_colour(which);
+        sheet.name = "TRACK " + juce::String(which + 1);
         sheet.undo = true;
         verb = "CLEAR";
         break;

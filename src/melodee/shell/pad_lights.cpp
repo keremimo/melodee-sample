@@ -15,6 +15,7 @@
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/track_copy.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
@@ -218,6 +219,7 @@ Look tracks_look(const PadScene& s, unsigned pad) {
         if (ui.copy_from == int(pad)) return white(full);
         return t.used() ? red(faint) : track(pad, faint);
     }
+    if (ui.erase) return track_clearable(t, s.patterns.at[pad]) ? red(faint) : Look {}; // Erase held: the tracks Erase + pad would clear
     if (!t.used()) return {};
     if (t.mix.mute) return red(faint);
     if (queued(s, pad)) return blink(s.now, blink_ms) ? track(pad, full) : track(pad, faint);
@@ -563,7 +565,7 @@ Look sheet_look(const PadScene& s, unsigned pad) {
     if (ui.exit_open) return {};
     bool about = false; // the pad the question is about
     switch (ui.ask) {
-    case A::ClearPattern: about = int(pad) == ui.ask_target; break;
+    case A::ClearPattern: case A::ClearTrack: about = int(pad) == ui.ask_target; break;
     case A::ClearLoop: about = int(pad % 4) == ui.ask_target; break;
     case A::EraseKeyEvents: about = pad_key(s.project, selected(s), pad) == ui.ask_target; break;
     default: break;
