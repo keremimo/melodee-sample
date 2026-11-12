@@ -188,9 +188,9 @@ grammar (`shell/pad_light.h`):
 
 | Context | The pads |
 | --- | --- |
-| A kit (play pages, the sample pages, the browser) | The last pad Full, a sample Dim, empty dark, a muted pad Faint red; each flares as it sounds; held white, red while Seq Record writes it |
+| A kit (play pages, the sample pages, the browser) | The selected pad Full (an empty one too), a sample Dim, empty dark, a muted pad Faint red; each flares as it sounds; held white, red while Seq Record writes it |
 | The 909 | Its eleven drums Dim, the last one played Full, flaring as they play |
-| A synth or MIDI track | Roots Mid, the scale Dim (chromatic: notes out of the scale Faint); a held chord's other notes white. The key is the track's: the project's moved by its transpose |
+| A synth or MIDI track | The key's roots in the track's colour (Mid), its other notes white Dim, out of the key (chromatic) white Faint; a held chord's notes white Full. The key is the track's: the project's moved by its transpose. Record with a synth as the source shows its keys the same way |
 | 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Tune and Scale the key's roots in the track's colour (Mid), its other notes white Dim, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); the pad hit last white as its sound fades; the 909 keeps its drums |
 | Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces) |
 | Mute mode | Muted Dim red, heard Mid (kit pads flaring), soloed white, silenced by a solo Faint |

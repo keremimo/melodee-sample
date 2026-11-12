@@ -7083,6 +7083,9 @@ void pad_lights() {
     light(plays);
     CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(12, Hue::None, 0) && is(8, Hue::Red, 1));
     ui.held_pads = 1u << 3; light(plays); CHECK(is(3, Hue::White, 4)); ui.held_pads = 0;
+    kit.last_pad = 13; light(plays); // an empty pad tapped: selected, in the track's colour
+    CHECK(is(13, Hue::Track, 4) && is(1, Hue::Track, 2) && is(12, Hue::None, 0));
+    kit.last_pad = 1;
     std::array<uint32_t, 16> let_go {};
     let_go[0] = 1000 + 1; // pad 1 let go at 1000 ms: it flares, and a second later it is Dim again
     light(plays, 1000, &let_go); CHECK(is(0, Hue::Track, 4));
@@ -7093,15 +7096,24 @@ void pad_lights() {
     // The 909: eleven drums, the last one played Full.
     ui.track = 5; project->tracks[5].last_note = 37; light({});
     CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(11, Hue::None, 0));
-    // A synth: roots Mid, the scale Dim; chromatic, the notes out of the scale Faint.
+    // A synth: the key's roots in its colour (Mid), its other notes white Dim; chromatic, notes out of the key white Faint.
     ui.track = 0; light({});
-    CHECK(is(0, Hue::Track, 3) && is(1, Hue::Track, 2) && is(7, Hue::Track, 3));
+    CHECK(is(0, Hue::Track, 3) && is(1, Hue::White, 2) && is(7, Hue::Track, 3));
     project->tracks[0].layout = PadLayout::Chromatic; light({});
-    CHECK(is(0, Hue::Track, 3) && is(1, Hue::Track, 1) && is(2, Hue::Track, 2));
+    CHECK(is(0, Hue::Track, 3) && is(1, Hue::White, 1) && is(2, Hue::White, 2));
     project->tracks[0].transpose = 2; light({}); // the track's key goes with it: E major, G# in it, G out
-    CHECK(is(0, Hue::Track, 3) && is(4, Hue::Track, 2) && is(3, Hue::Track, 1));
+    CHECK(is(0, Hue::Track, 3) && is(4, Hue::White, 2) && is(3, Hue::White, 1));
     project->tracks[0].transpose = 0;
+    project->tracks[0].layout = PadLayout::Chords; ui.held_pads = 1u; light({}); // D's seventh held: F#, A, C# white Full
+    CHECK(is(0, Hue::White, 4) && is(2, Hue::White, 4) && is(4, Hue::White, 4) && is(6, Hue::White, 4) && is(1, Hue::White, 2)
+          && is(7, Hue::Track, 3));
+    ui.held_pads = 0;
     project->tracks[0].layout = PadLayout::Scale;
+    auto input = ui.settings.input; // Record with the synth as its source: its keys, as on its own pages
+    ui.settings.input.source = InputSource::Track; ui.settings.input.track = 0;
+    PadFacts keys_in_take; keys_in_take.record_keys = true; light(keys_in_take);
+    CHECK(is(0, Hue::Track, 3) && is(1, Hue::White, 2));
+    ui.settings.input = input;
     // 16 Levels: soft to loud; Tune and Scale the key's roots in the track's colour, its other notes white, out of it Faint.
     ui.track = 1; kit.levels = true; kit.levels_kind = uint8_t(LevelsKind::Velocity); light({});
     CHECK(is(0, Hue::Track, 1) && is(15, Hue::Track, 4) && looks[7].level < looks[8].level);

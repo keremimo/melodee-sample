@@ -131,9 +131,10 @@ Look counting(const PadScene& s, const Look& look) {
 Look kit_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     unsigned kit = kit_of(t, pad);
-    if (!t.pads[kit].used()) return {};
-    if (t.pad_muted(kit)) return red(faint); // a muted pad says so on every page
-    return track(selected_index(s), kit == t.last_pad ? full : dim);
+    bool used = t.pads[kit].used();
+    if (used && t.pad_muted(kit)) return red(faint); // a muted pad says so on every page
+    if (kit == t.last_pad) return track(selected_index(s), full); // the pad selected, empty too: what the pages edit and load into
+    return used ? track(selected_index(s), dim) : Look {};
 }
 Look drum_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
@@ -145,20 +146,24 @@ unsigned key_degree(const Project& project, const Track& t, int key) {
     return unsigned(((key - int(project.root) - t.transpose) % 12 + 12) % 12);
 }
 bool in_key(const Project& project, unsigned degree) { return (scales()[project.scale % scales().size()].mask >> degree) & 1; }
+// A pad's note by its place in the key (Keys and 16 Levels alike): the key's roots in track `at`'s colour, its other
+// notes white, out of the key white Faint.
+Look note_look(const Project& project, unsigned at, unsigned degree) {
+    if (!degree) return track(at, mid);
+    return white(in_key(project, degree) ? dim : faint);
+}
 Look keys_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     if (!t.used()) return {};
-    auto note = pad_note(s.project, t, pad);
-    if (t.layout == PadLayout::Chords) // a held pad's chord: its other notes white
+    int key = pad_note(s.project, t, pad).key;
+    if (t.layout == PadLayout::Chords) // a held pad's chord: its other notes white Full, as the pad held
         for (unsigned h = 0; h < 16; ++h) {
             if (h == pad || !held(s, h)) continue;
             std::array<int, notes_per_step> keys {};
             unsigned count = chord_notes(s.project, t, h, keys);
-            for (unsigned n = 0; n < count; ++n) if (keys[n] == note.key) return white(dim);
+            for (unsigned n = 0; n < count; ++n) if (keys[n] == key) return white(full);
         }
-    float level = note.root ? mid : dim;
-    if (t.layout == PadLayout::Chromatic && !note.root) level = in_key(s.project, key_degree(s.project, t, note.key)) ? dim : faint;
-    return track(selected_index(s), level);
+    return note_look(s.project, selected_index(s), key_degree(s.project, t, key));
 }
 // 16 Levels: what each pad plays of the one sound, from the lowest pad's to the highest's.
 Look levels_base(const PadScene& s, unsigned pad) {
@@ -172,8 +177,7 @@ Look levels_base(const PadScene& s, unsigned pad) {
         // A synth's pad plays its last note moved; a kit's sample stands for the key's root as recorded (Scale goes up the key from it).
         unsigned degree = t.engine == EngineKind::Sampler ? unsigned((lv.semitones % 12 + 12) % 12)
                                                           : key_degree(s.project, t, std::clamp(int(t.last_note) + lv.semitones, 0, 127));
-        if (!degree) return track(at, mid);
-        return white(in_key(s.project, degree) ? dim : faint); // out of the key Faint
+        return note_look(s.project, at, degree);
     }
     int low = lv.shown, high = lv.shown; // Velocity, Filter: soft to loud, closed to open
     for (unsigned n = 0; n < 16; ++n) { int v = levels_of(s.project, t, n).shown; low = std::min(low, v); high = std::max(high, v); }
@@ -433,8 +437,11 @@ Look record_keys_look(const PadScene& s, unsigned pad) {
         if (ui.rec_pad == int(kit)) return red(full);
         return track(from, t.pads[kit].used() ? dim : faint);
     }
-    if (s.project.tracks[from].engine == EngineKind::Kit909 && pad >= 11) return {};
-    return track(from, dim);
+    const auto& source = s.project.tracks[from];
+    if (source.engine == EngineKind::Kit909) return pad < 11 ? track(from, dim) : Look {};
+    if (levels_on(source) || !source.used()) return track(from, dim); // its levels: the one note
+    int key = pad_note(s.project, source, pad).key; // its keys, as on its own pages
+    return note_look(s.project, from, key_degree(s.project, source, key));
 }
 
 // ---- effects
