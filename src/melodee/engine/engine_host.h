@@ -259,6 +259,8 @@ public:
     unsigned track_latency(unsigned t) const { return pdc_tracks[t % track_count].load(std::memory_order_relaxed); }
     unsigned bus_latency(unsigned b) const { return pdc_buses[b % bus_count].load(std::memory_order_relaxed); }
     unsigned master_latency() const { return pdc_master.load(std::memory_order_relaxed); }
+    // Any thread: delay blocks free in the effects' pool (a delay, reverb or chorus with none passes its sound through).
+    unsigned delay_blocks_free() const { return pool.free_blocks(); }
 
     static constexpr unsigned block = 128;
 

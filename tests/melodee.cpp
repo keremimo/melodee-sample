@@ -9925,6 +9925,7 @@ void delay_sync_p4() {
         effect_clock.quarter = 5512.5; // the tempo doubled: the echo glides to an eighth of a second
         echo_at(44100);
         echo.clear();
+        while (echo.clearing()) { std::array<float, 128> l {}, r {}; echo.process(l.data(), r.data(), 128); } // its line cleared a slice a block
         unsigned second = echo_at(16384);
         CHECK(second >= 5511 && second <= 5514);
         echo.set_param(unsigned(delay_sync_param(kind)), 0); // Off: TIME again
@@ -10007,7 +10008,48 @@ void mix_motion_p4() {
     host->render(out.data(), 128, 1);
 }
 
+// A project's load (every chain's effects set again) or a new kind never clears a 1.1 MB delay block on the audio
+// thread at once (about 0.2 ms each on the MPC: twenty of them a dropout): a block never written since it was cleared
+// is taken first, and one that was written is cleared a slice a block, the effect sounding as with an empty line.
+void delay_pool_clears() {
+    auto pool = std::make_unique<DelayPool>();
+    Effect a, b;
+    a.set_kind(EffectKind::Echo, *pool);
+    CHECK(!a.clearing() && pool->free_blocks() == DelayPool::blocks - 1);
+    a.set_param(2, 100); // all wet
+    std::array<float, 128> l {}, r {};
+    l[0] = r[0] = 1;
+    a.process(l.data(), r.data(), 128);
+    for (unsigned n = 0; n < 400; ++n) { l.fill(0); r.fill(0); a.process(l.data(), r.data(), 128); } // its line written
+    a.set_kind(EffectKind::Echo, *pool); // the same block, cleared a slice at a time
+    CHECK(a.clearing());
+    unsigned calls = 0;
+    float most = 0;
+    while (a.clearing() && calls < 100) {
+        l.fill(calls ? 0.0f : 0.5f); r.fill(calls ? 0.0f : 0.5f); // a sound while it clears: its dry share alone
+        a.process(l.data(), r.data(), 128);
+        ++calls;
+        for (float x : l) most = std::max(most, std::fabs(x));
+    }
+    CHECK(calls <= (DelayPool::block_floats + 16383) / 16384 && most < 0.5f * 0.75f); // the dry share only (MIX 30 % after set_kind)
+    for (unsigned n = 0; n < 2000; ++n) { // nothing of the old echoes comes back
+        l.fill(0); r.fill(0);
+        a.process(l.data(), r.data(), 128);
+        for (float x : l) CHECK(std::fabs(x) < 1e-6f);
+    }
+    // Given back, a written block is taken last; when it is the only one left it is cleared before it sounds.
+    a.set_kind(EffectKind::None, *pool);
+    b.set_kind(EffectKind::Echo, *pool);
+    CHECK(!b.clearing());
+    std::vector<std::unique_ptr<Effect>> rest;
+    while (pool->free_blocks() > 1) { rest.push_back(std::make_unique<Effect>()); rest.back()->set_kind(EffectKind::Reverb, *pool); CHECK(!rest.back()->clearing()); }
+    Effect last;
+    last.set_kind(EffectKind::Echo, *pool);
+    CHECK(last.clearing() && pool->free_blocks() == 0);
+}
+
 int main() {
+    delay_pool_clears();
     mix_motion_p4();
     delay_sync_p4();
     keyed_dynamics_p4();

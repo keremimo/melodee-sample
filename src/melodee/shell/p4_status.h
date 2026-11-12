@@ -14,7 +14,8 @@ inline std::string p4_summary(const EngineHost& host) {
     for (unsigned t = 0; t < track_count; ++t) tracks += (t ? "," : "") + std::to_string(host.track_latency(t));
     for (unsigned b = 0; b < bus_count; ++b) buses += (b ? "," : "") + std::to_string(host.bus_latency(b));
     return " melodee_pdc=" + std::to_string(host.compensation()) + " melodee_pdc_tracks=" + tracks + " melodee_pdc_buses=" + buses +
-           " melodee_pdc_master=" + std::to_string(host.master_latency());
+           " melodee_pdc_master=" + std::to_string(host.master_latency()) +
+           " melodee_fx_pool=" + std::to_string(host.delay_blocks_free()) + "/" + std::to_string(DelayPool::blocks); // free / all
 }
 
 } // namespace melodee

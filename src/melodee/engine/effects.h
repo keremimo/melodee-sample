@@ -20,11 +20,15 @@ public:
     static constexpr unsigned half = 144000;          // 1.5 s at 96 kHz (3.3 s at 44.1), one channel
     static constexpr unsigned block_floats = 2 * half;
     DelayPool();
-    float* take();       // nullptr when none is free
+    // A free block (nullptr when none is), never cleared here: one never written since it was cleared first
+    // (`clean` true), else the effect clears it a slice a block (Effect::process), so a project's load or a new kind
+    // never stops the audio thread for the 1.1 MB a block holds.
+    float* take(bool& clean);
     void give(float* block);
+    unsigned free_blocks() const { unsigned n = 0; for (bool u : used) n += !u; return n; }
 private:
     std::unique_ptr<float[]> memory;
-    std::array<bool, blocks> used {};
+    std::array<bool, blocks> used {}, dirty {};
 };
 
 // The song's clock as tempo-synced effects hear it (Pumper): the host sets
@@ -50,8 +54,10 @@ public:
     bool bypassed() const { return bypass; }
     int param(unsigned index) const { return index < effect_params ? p[index] : 0; }
     void process(float* left, float* right, unsigned frames);
-    // Forget everything it holds (delay lines, filters, envelopes), keeping its kind and parameters.
+    // Forget everything it holds (delay lines, filters, envelopes), keeping its kind and parameters. Its delay memory is
+    // cleared a slice a block from its next process(), which passes the sound through dry until it is all clear.
     void clear();
+    bool clearing() const { return memory && cleared < DelayPool::block_floats; }
     // Roadmap P4, delay compensation: frames its output lags its input (a Limiter's LOOKAHEAD; 0 for the rest, and
     // bypassed or out of memory).
     unsigned latency() const { return current == EffectKind::Limiter && memory && !bypass ? delay : 0; }
@@ -89,6 +95,9 @@ private:
     std::array<int, effect_params> p {};
     float* memory = nullptr;
     DelayPool* home = nullptr; // the pool set_kind() took from: a Limiter takes a block only once it looks ahead
+    unsigned cleared = DelayPool::block_floats; // of `memory`, floats cleared so far; all: ready
+    static constexpr unsigned clear_slice = 16384; // floats cleared a process() call: about 10 us on the MPC
+    void take_memory(DelayPool& pool);           // a block from the pool, to be cleared unless it is clean
     const float* key_l = nullptr; // set_key(): the detector's for this process() (roadmap P4)
     const float* key_r = nullptr;
     unsigned write = 0;

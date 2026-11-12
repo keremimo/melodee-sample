@@ -39,20 +39,31 @@ bool effect_needs_memory(EffectKind k) {
 }
 
 DelayPool::DelayPool() : memory(new float[size_t(blocks) * block_floats]()) {}
-float* DelayPool::take() {
-    for (unsigned n = 0; n < blocks; ++n)
-        if (!used[n]) { used[n] = true; float* block = memory.get() + size_t(n) * block_floats; std::fill(block, block + block_floats, 0.0f); return block; }
-    return nullptr;
+float* DelayPool::take(bool& clean) {
+    int pick = -1;
+    for (unsigned n = 0; n < blocks; ++n) // a clean one first: nothing to clear
+        if (!used[n] && (pick < 0 || (dirty[size_t(pick)] && !dirty[n]))) pick = int(n);
+    if (pick < 0) return nullptr;
+    used[size_t(pick)] = true;
+    clean = !dirty[size_t(pick)];
+    dirty[size_t(pick)] = true; // in use: written from now on
+    return memory.get() + size_t(pick) * block_floats;
 }
 void DelayPool::give(float* block) {
     if (!block) return;
     used[size_t((block - memory.get()) / block_floats)] = false;
 }
 
+void Effect::take_memory(DelayPool& pool) {
+    bool clean = false;
+    memory = pool.take(clean);
+    cleared = memory && !clean ? 0 : DelayPool::block_floats;
+}
+
 void Effect::set_kind(EffectKind kind, DelayPool& pool) {
     if (memory && !needs_memory(kind)) { pool.give(memory); memory = nullptr; }
-    if (!memory && needs_memory(kind)) memory = pool.take(); // clearing a block takes a moment, once per change
-    else if (memory) std::fill(memory, memory + DelayPool::block_floats, 0.0f);
+    if (!memory && needs_memory(kind)) take_memory(pool); // cleared a slice a block if it is not clean (process())
+    else if (memory) cleared = 0;                          // the same block, cleared the same way
     current = kind;
     home = &pool;
     const auto& info = effect_info(kind);
@@ -71,7 +82,7 @@ void Effect::reset_state() {
 }
 
 void Effect::clear() {
-    if (memory) std::fill(memory, memory + DelayPool::block_floats, 0.0f);
+    if (memory) cleared = 0; // a slice a block from the next process(), dry until done
     reset_state();
     update(); // Multi-chorus spreads its voices round the turn again
 }
@@ -82,7 +93,7 @@ void Effect::set_param(unsigned index, int value) {
     if (!info.label) return;
     p[index] = std::clamp<int>(value, info.min, info.max);
     if (current == K::Limiter && index == 2 && home) { // LOOKAHEAD: its line from the pool while it looks ahead
-        if (p[2] > 0 && !memory) memory = home->take();
+        if (p[2] > 0 && !memory) take_memory(*home);
         else if (p[2] == 0 && memory) { home->give(memory); memory = nullptr; }
         write = 0;
     }
@@ -259,6 +270,16 @@ void Effect::process(float* left, float* right, unsigned frames) {
     fade_step = 1.0f / std::max(bypass_seconds * fs(), 1.0f);
     if (bypass && on <= 0) { resting = true; return; }
     if (resting) { clear(); resting = false; }
+    if (memory && cleared < DelayPool::block_floats) { // a block being cleared, a slice a call: until it is done the effect
+        unsigned n = std::min(clear_slice, DelayPool::block_floats - cleared); // sounds as with an empty line (its dry share)
+        std::fill(memory + cleared, memory + cleared + n, 0.0f);
+        cleared += n;
+        if (cleared < DelayPool::block_floats) {
+            float keep = 1 - mix * on;
+            for (unsigned f = 0; f < frames; ++f) { left[f] *= keep; right[f] *= keep; }
+            return;
+        }
+    }
     if (current >= K::DiffDelay) { process_extra(left, right, frames); return; }
     const float* heard_l = keyed_l ? keyed_l : left; // a keyed Compressor or Gate hears its key (roadmap P4)
     const float* heard_r = keyed_r ? keyed_r : right;
