@@ -349,6 +349,73 @@ behaviour changed.
   `melodee_pad_xfade`, `melodee_voices` and `melodee_voice_slots` for remote
   checks.
 
+- P4: delay compensation is planned at every block's start from what each
+  path reports (a plug-in's latency, VST2's `initialDelay` through the
+  bridge's Info too, scaled to the device's rate; its rate converter's,
+  measured once with an impulse as it opens: at 48 kHz an effect's 148
+  frames, an instrument's none, as the converter runs it ahead; a Limiter's
+  LOOKAHEAD, 0-10 ms, its line from the pool only while above 0; bypassed
+  slots count none). Every track and loop track meets the latest of them,
+  the direct mix waits for the latest bus or Knob FX return, the master's
+  chain delays all alike; the lines (30, 16384 frames each, made at start)
+  ease across one block when a latency changes and start from silence after
+  a block unused. MIDI out, the click and Seq Record's placing move by the
+  whole; a MIDI track's own DELAY adds to it. Why: what is heard together is
+  what was played together, and outside gear lines up with it.
+- P4: a keyed Compressor or Gate keeps its key in its slot (`EffectSlot::key`,
+  FXKY; the struct gained a constructor so older brace inits still build),
+  set on the effect's last row of cards (KEY, after its parameters on −/+),
+  not a seventh parameter (a slot has six, Motion's numbering counts on it).
+  A track keyed by a track runs its chain after the others in the same block
+  (the key on time); a key that waits itself, a bus keying a track or bus,
+  and a loop track's key are a block late. The key is the source as it
+  leaves its chain at its level, muted or not, as the master's Sidechain.
+  Track moves remap keys (shell/track_swap.h).
+- P4: SYNC went on Echo and Ping pong (their fifth card) and Tape echo and
+  Diff delay (their sixth): 1/32 to 1/1 with triplets and dotted; the delay
+  follows the clock each block and glides there over 50 ms (a tape's bend,
+  not a click). A Diff delay on the clock takes its diffusers' delay off, so
+  its echo lands on the note. TIME's card shows the note value meanwhile.
+- P4: the mix's Motion lanes are numbers after the pad lanes (160 on: level,
+  pan, sends A-D, the master chain's 36 values, the four returns), points of
+  the selected track's pattern like any lane; the master's values recorded
+  there move the master for the whole mix while that pattern plays, and go
+  back to where they were set at its start and on Stop. Why: Motion lives in
+  patterns (P1), and the master has none of its own.
+- P4: modulators and macros are the project's (MODS, MACR), eight each, on a
+  MOD page reached by Motion's lit MOTION again (Stage's "lit key again"),
+  B1 MOD, B2 MACRO, B3 ADD the lane a pot turned last anywhere. A modulator
+  swings a lane around where it stands (as set, or where Motion has it: the
+  audio thread notes every set and every Motion move of a modulated lane)
+  each block, an LFO by ±half its depth of the lane's range, a follower by
+  its depth one way; four targets each. A macro is the shell's: its turn sets
+  each target as its own pot would (from low to high), eight each; its turn
+  is not an undo step, its settings and a modulator's are (with the
+  master's). A modulator reaches the audio thread as small packed commands
+  (a Modulator inside Command made the queue's commands too big for test
+  stacks).
+- P4, MIDI tracks: see docs/MIDI_TRACKS.md "As built in P4" and its open
+  questions decided there (no panic button taken, no slot templates, bounce
+  in real time, patterns keep notes). Slot definitions are parameters (an
+  address a slot: CC, 14-bit CC, bend, pressure, NRPN 0-1023) on each SLOTS
+  page's second row; no per-slot range or names; DELAY, a pattern's own
+  program, the input as sound and SysEx from the card's SysEx folder.
+- P4: exports are on Song's Export, the wheel picking what B2 makes:
+  mixdown as 32-bit float (as before), 24-bit or 16-bit integer PCM with
+  TPDF dither (a step's worth, the only place Melodee dithers: the float
+  mixdown, stems, takes and renders need none), STEMS (a folder with the mix
+  and each track and fed bus, float, in the same real-time pass: the engine
+  host fills a 21 MB ring made when first wanted), or a MIDI FILE (format 1,
+  96 ticks a quarter, the song's lanes or the patterns playing). A `.mid` in
+  the browser lays all its notes on the selected track's pattern playing.
+- P4 (asked by the VST-migration session, Kerem's dropouts on project loads):
+  a project load no longer clears delay memory or works effects out
+  on the audio thread at once: the pool hands out never-written blocks
+  first and an effect clears a written one 16384 floats a block (its wet
+  silent meanwhile), and each effect's six values are set and worked out
+  once (73472a5, 8cb3399). That session measured P7 / P8 loads at 0
+  dropouts in 6 after the first.
+
 ## Waiting for a hand check
 
 - P0: with Rec Quantize off, record pads against the metronome: notes sit
@@ -407,6 +474,30 @@ behaviour changed.
   `rt_decay`), a keyswitched SFZ, velocity crossfades; a General MIDI `.sf2`
   (the preset list, a piano, a stereo preset, how long the first load
   takes) and a DecentSampler preset with tags and release samples.
+
+- P4: delay compensation by ear and with a MIDI monitor: a plug-in effect
+  with latency (or a Limiter at LOOKAHEAD 10 ms) on one kit track, the other
+  tracks still on the beat with it; an Open MPC effect at 48 kHz; a MIDI
+  track's notes and MIDI clock late by `melodee_pdc` against before.
+- P4: a bass keyed by the kick (Compressor KEY 1), a pad gated by a hat
+  (Gate KEY), and a bus keyed by a track: say whether the block-late keys
+  (bus to track, loop tracks) are heard.
+- P4: SYNC 1/8D on a Delay with a tempo change mid-song (a pattern's own
+  BPM): the glide sounds like tape, not a click.
+- P4: the mix's Motion: a track's level and a send recorded with Seq
+  Record, a master Width or return moved by a pattern; Stop puts them back.
+- P4: an LFO on a cutoff (free and on the clock), a follower of the kick on
+  a pad's level, a macro on three lanes; say whether a modulator should
+  also show on Motion's graph.
+- P4: MIDI tracks with a real synth on the jacks and on USB: slots of each
+  kind (14-bit, NRPN, bend), thinning on a fast turn, a pattern's own
+  program at its launch, a Drum map, MIDI in echoed (and the loop guard with
+  Local On), DELAY ±, a USB device by name unplugged and back (OFFLINE),
+  SysEx on load and by Push on DIN (pacing), an input as the track's sound
+  and IN USE when the route is elsewhere.
+- P4: STEMS of a song (the folder, each file lining up with Mix.wav in a
+  DAW), a 16-bit mixdown (no audible noise floor change), a MIDI file
+  exported and opened in a DAW, and a `.mid` laid on a kit and a synth.
 
 ## P0: timing
 
@@ -506,15 +597,15 @@ behaviour, write the code fresh for this app.
 
 ## P4: mix, effects, MIDI
 
-- [ ] Plug-in delay compensation across tracks, buses and the master.
-- [ ] A compressor or gate on any chain keyed by another track.
-- [ ] SYNC on Delay and Diff Delay (note values from the song's clock).
-- [ ] Motion lanes for a track's level and send and the master's values.
-- [ ] Modulators: LFOs (free or on the clock) and envelope followers on
+- [x] Plug-in delay compensation across tracks, buses and the master.
+- [x] A compressor or gate on any chain keyed by another track.
+- [x] SYNC on Delay and Diff Delay (note values from the song's clock).
+- [x] Motion lanes for a track's level and send and the master's values.
+- [x] Modulators: LFOs (free or on the clock) and envelope followers on
   any parameter; macros.
-- [ ] MIDI tracks M2–M5 ([MIDI_TRACKS.md](MIDI_TRACKS.md)), its open
+- [x] MIDI tracks M2–M5 ([MIDI_TRACKS.md](MIDI_TRACKS.md)), its open
   questions decided as above.
-- [ ] Stems to the card, Standard MIDI Files in and out, dither on the
+- [x] Stems to the card, Standard MIDI Files in and out, dither on the
   mixdown.
 
 ## P5: performance and arrange
@@ -623,3 +714,26 @@ behaviour, write the code fresh for this app.
   XFADE to 20 ms; LAYERS drawn on the device as in the previews; 0 xruns, 0
   dropped, 0 stream underruns. Every edit undone after; the project there was
   not saved. No base changes; no pushes owed.
+
+- 2026-11-12, P4 mix, effects, MIDI: plug-in delay compensation (d7f5a06);
+  Compressor and Gate keyed by a track or bus (a2bf088); SYNC on the delays
+  (d36a09b); Motion lanes on the mix and the master (25cadc6); modulators
+  and macros on MOD (0df4209); MIDI tracks M2-M5 (6adf5e5); stems, a dithered
+  16 / 24-bit mixdown and MIDI files in and out (92184fe). Asked on the way
+  by the VST-migration session for Kerem's load dropouts, in this phase's
+  files: delay memory cleared a slice a block (73472a5) and effects set up
+  once a load (8cb3399). Host tests `delay_compensation_p4`,
+  `keyed_dynamics_p4`, `delay_sync_p4`, `mix_motion_p4`, `modulators_p4`,
+  `midi_tracks_p4`, `exports_p4`, `delay_pool_clears`. ./build.sh passed on
+  the shared tree before each commit (make, the 8 unit tests, self-test,
+  monkey 12 x 3000, up to 252 previews with no text issues; one run's
+  `overload_guard` failed under load and passed again unchanged); each
+  commit's exact tree also passed the host tests in a snapshot. On the MPC
+  (48 kHz, three periods; HEAD 8cb3399 deployed, sha256 729c9ad0…): the
+  project's five plug-ins all report no latency (`melodee_pdc=0`); a Limiter
+  at LOOKAHEAD 10 ms on track 1 made `melodee_pdc=480`, track 1's 480, the
+  pool 45/48, played 6 s with 0 xruns, undone back to 0 and 46/48; MOD drawn
+  as in the previews, ADD put an LFO on A01 PAN learned from Stage's MIX
+  (0.63 Hz), played with 0 xruns, then taken off. Every edit undone; the
+  project there was not saved. The VST-migration session verifies 7A loads
+  on that binary. No base changes; no pushes owed.
