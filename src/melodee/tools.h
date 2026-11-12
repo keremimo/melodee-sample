@@ -23,6 +23,8 @@
 //   --melodee-bench ROUNDS [PAGE...] times drawing each page, ROUNDS draws apiece
 //   --melodee-dsp-bench [KEY=VALUE...] a busy project rendered a block a period at real-time priority, with
 //                                    the render workers: block times and CPU (src/melodee/dsp_bench.cpp)
+//   --melodee-print-spike MODE [KEY=VALUE...] freeze plan F0: a track rendered by a second engine host
+//                                    (equal, speed, plugin, stream; src/melodee/print_spike.cpp)
 //   --mpc-import FILE.xpj|.xpm|.xty  reads an MPC Sample project or an MPC program and prints what came across
 //   --mpc-install FILE.xpn DIR       installs an MPC expansion into DIR/<its title>
 //   --instrument-read FILE           reads an .sfz, .xpm, .xty or .exs as the sample library does
@@ -35,4 +37,5 @@ namespace melodee {
 std::optional<int> run_tool(int argc, char** argv);
 int monkey(unsigned first, unsigned seeds, unsigned moves); // --melodee-monkey: seeds first.., the failures' moves printed
 int dsp_bench(int argc, char** argv); // --melodee-dsp-bench
+int print_spike(int argc, char** argv); // --melodee-print-spike
 }

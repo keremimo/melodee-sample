@@ -22,7 +22,6 @@
 // device's rate, at the audio thread's real-time priority, with the render workers; what each block took and what
 // the whole process spent, to compare ways of scheduling on the MPC. Nothing opens the audio device.
 namespace melodee {
-namespace {
 
 // Sixteen kits of samples (Melodee's own engine; its synths are plug-ins since they left it): three hits a step on
 // sixteenths with ratchets, Motion on the kit's values, two effects on every track, sends into buses A-D (reverbs and
@@ -57,6 +56,25 @@ void busy_project(Project& p, PatternBank& b) {
     p.tempo = 1240;
 }
 
+// Four samples for the kits: a tone, a noise burst, a falling sweep, a low thump, two seconds each.
+std::vector<SampleData> bench_samples() {
+    std::vector<SampleData> samples(4);
+    for (unsigned s = 0; s < 4; ++s) {
+        auto& d = samples[s];
+        d.frames = 88200; d.left.resize(d.frames); d.right.resize(d.frames);
+        uint32_t seed = 12345 + s;
+        for (uint32_t f = 0; f < d.frames; ++f) {
+            double t = f / 44100.0, fall = std::exp(-t * (3 + s));
+            seed = seed * 1664525u + 1013904223u;
+            double noise = int32_t(seed) / 2147483648.0;
+            double x = s == 0 ? std::sin(2 * M_PI * 440 * t) : s == 1 ? noise : s == 2 ? std::sin(2 * M_PI * (900 - 600 * t) * t) : std::sin(2 * M_PI * 55 * t);
+            d.left[f] = float(x * fall * 0.5); d.right[f] = float(x * fall * 0.45);
+        }
+    }
+    return samples;
+}
+
+namespace {
 double cpu_seconds(int who) {
     rusage r {};
     getrusage(who, &r);
@@ -100,20 +118,7 @@ int dsp_bench(int argc, char** argv) {
     auto bank = std::make_unique<PatternBank>();
     busy_project(*project, *bank);
     for (unsigned t = tracks; t < track_count; ++t) project->tracks[t] = Track {};
-    // Four samples for the kits: a tone, a noise burst, a falling sweep, a low thump, two seconds each.
-    std::vector<SampleData> samples(4);
-    for (unsigned s = 0; s < 4; ++s) {
-        auto& d = samples[s];
-        d.frames = 88200; d.left.resize(d.frames); d.right.resize(d.frames);
-        uint32_t seed = 12345 + s;
-        for (uint32_t f = 0; f < d.frames; ++f) {
-            double t = f / 44100.0, fall = std::exp(-t * (3 + s));
-            seed = seed * 1664525u + 1013904223u;
-            double noise = int32_t(seed) / 2147483648.0;
-            double x = s == 0 ? std::sin(2 * M_PI * 440 * t) : s == 1 ? noise : s == 2 ? std::sin(2 * M_PI * (900 - 600 * t) * t) : std::sin(2 * M_PI * 55 * t);
-            d.left[f] = float(x * fall * 0.5); d.right[f] = float(x * fall * 0.45);
-        }
-    }
+    auto samples = bench_samples();
     EngineHost host;
     host.set_render_threads(threads, 150000, pinned);
     host.set_one_dispatch(whole);
