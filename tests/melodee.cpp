@@ -2410,9 +2410,19 @@ void sample_mode() {
     kit.levels_kind = uint8_t(LevelsKind::Velocity);
     kit.levels_ends[unsigned(LevelsKind::Velocity)] = {40, 127};                    // sixteen levels between 40 and 127
     CHECK(levels_of(*project, kit, 0).velocity == 40 && levels_of(*project, kit, 15).velocity == 127 && levels_of(*project, kit, 8).velocity == 86);
+    // Scale: up the key from its root, pad 1 the root, the sample a C: D major from D, A major from the A below.
     kit.levels_kind = uint8_t(LevelsKind::Scale);
-    kit.levels_ends[unsigned(LevelsKind::Scale)] = {-2, 13};                        // down the scale below the root
-    CHECK(levels_of(*project, kit, 0).semitones == level_scale_semitones(*project, -2) + level_octave(kit) && level_scale_semitones(*project, -1) < 0);
+    auto old_root = project->root, old_scale = project->scale;
+    project->root = 2; project->scale = 0;
+    CHECK(levels_of(*project, kit, 0).semitones == 2 + level_octave(kit) && levels_of(*project, kit, 2).semitones == 6 + level_octave(kit) &&
+          levels_of(*project, kit, 7).semitones == 14 + level_octave(kit));
+    kit.levels_ends[unsigned(LevelsKind::Scale)] = {-2, 3}; // an older file's ends change nothing
+    CHECK(levels_of(*project, kit, 15).semitones == 28 + level_octave(kit));
+    project->root = 9;
+    CHECK(kit_root_shift(*project, kit) == -3 && levels_of(*project, kit, 0).semitones == -3 + level_octave(kit));
+    kit.transpose = 3; // the track's key: A moved to C
+    CHECK(levels_of(*project, kit, 0).semitones == level_octave(kit));
+    kit.transpose = 0; project->root = old_root; project->scale = old_scale;
     kit.levels_ends = Track {}.levels_ends;
     CHECK(Track {}.levels_kind == uint8_t(LevelsKind::Scale)); // a new track's 16 Levels go up the scale first
 
@@ -3993,8 +4003,8 @@ void projects_and_polish() {
         CHECK(pad_note(*p, t, 12).key == 72 && pad_note(*p, t, 12).root);
         t.levels_kind = uint8_t(LevelsKind::Velocity);
         CHECK(levels_of(*p, t, 15).semitones == 0); // Velocity: no pitch
-        t.levels_kind = uint8_t(LevelsKind::Scale);
-        CHECK(levels_of(*p, t, 15).semitones == 15);
+        t.levels_kind = uint8_t(LevelsKind::Scale); // up the key from its root in the track's octave: C Chromatic, pad 16 D#5
+        CHECK(levels_of(*p, t, 0).key == 60 && levels_of(*p, t, 15).key == 75 && levels_of(*p, t, 15).semitones == 0);
         // Chords in Chromatic: a major triad on each pad's own semitone, not a cluster.
         std::array<int, notes_per_step> keys {};
         t.chord_type = 0; t.chord_voicing = 0; t.chord_invert = 0;
@@ -4003,7 +4013,7 @@ void projects_and_polish() {
         t.chord_type = 5;
         CHECK(chord_notes(*p, t, 0, keys) == 4 && keys[3] == 74); // Dia 9
     }
-    // The project's key on a kit: Shift + K1 / K2 on Pads, Tempo and 16 Levels; of type Scale plain K1 / K2, even on an empty pad.
+    // The project's key on a kit: Shift + K1 / K2 on Pads and Tempo; 16 Levels of type Scale on K2 / K3, even on an empty pad.
     {
         auto p = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
@@ -4011,16 +4021,19 @@ void projects_and_polish() {
         UiState ui;
         Pattern pattern;
         using K = Binding::Kind;
-        for (PageId page : {PageId::Pads, PageId::Tempo, PageId::Levels}) {
+        for (PageId page : {PageId::Pads, PageId::Tempo}) {
             ui.page = page;
             auto shifted = page_bindings(*p, ui, pattern, true);
             CHECK(shifted[0].kind == K::Root && shifted[1].kind == K::Scale && shifted[1].max == 12);
         }
-        ui.page = PageId::Levels; // K1 the type, K2 and K3 the two ends; of type Scale the key on Shift + K1 and K2
+        ui.page = PageId::Levels; // K1 the type; of type Scale K2 the root and K3 the scale, of the others the two ends
         p->tracks[0].levels_kind = uint8_t(LevelsKind::Scale);
         auto levels = page_bindings(*p, ui, pattern, false);
-        CHECK(levels[0].kind == K::LevelsType && levels[1].kind == K::LevelsLow && levels[2].kind == K::LevelsHigh);
-        CHECK(levels[1].min == -14 && levels[2].value == 15 && page_bindings(*p, ui, pattern, true)[0].kind == K::Root);
+        CHECK(levels[0].kind == K::LevelsType && levels[1].kind == K::Root && levels[2].kind == K::Scale && levels[2].max == 12);
+        CHECK(page_bindings(*p, ui, pattern, true)[0].kind != K::Root); // Shift: the pad's own, not the key again
+        p->tracks[0].levels_kind = uint8_t(LevelsKind::Tune);
+        levels = page_bindings(*p, ui, pattern, false);
+        CHECK(levels[1].kind == K::LevelsLow && levels[2].kind == K::LevelsHigh && levels[2].value == 12);
     }
     // The metronome is Melodee's, not the project's: kept in the settings file; older files read Off at 40.
     {
@@ -5544,7 +5557,7 @@ void kit_levels_octave() {
     CHECK(levels_of(*project, kit, 3).semitones == 12 && levels_of(*project, kit, 3).shown == 12);
     kit.octave = -1;
     kit.levels_kind = uint8_t(LevelsKind::Scale);
-    CHECK(levels_of(*project, kit, 0).semitones == -36);
+    CHECK(levels_of(*project, kit, 0).semitones == 2 - 36); // the sample a C, the root D, three octaves down
     kit.levels_kind = uint8_t(LevelsKind::Velocity);
     CHECK(levels_of(*project, kit, 0).semitones == 0);
     auto& synth = project->tracks[1];
@@ -7358,14 +7371,16 @@ void pad_lights() {
     kit.levels_kind = uint8_t(LevelsKind::Tune); light({}); // -3..12: the sample as recorded (pad 4) the root
     CHECK(is(3, Hue::Track, 3) && is(15, Hue::Track, 3) && is(0, Hue::White, 2) && is(1, Hue::White, 1));
     kit.levels = false;
-    auto& synth = project->tracks[0]; // a synth from its last note: the pads that play D, wherever they fall
+    auto& synth = project->tracks[0]; // Scale: up the key from its root on pad 1, whatever the last note
     ui.track = 0; synth.levels = true; synth.levels_kind = uint8_t(LevelsKind::Scale); light({});
     CHECK(is(0, Hue::Track, 3) && is(7, Hue::Track, 3) && is(1, Hue::White, 2));
-    synth.last_note = 45; light({}); // up from A: D on pads 4 and 11, G# out of D major
-    CHECK(is(3, Hue::Track, 3) && is(10, Hue::Track, 3) && is(0, Hue::White, 2) && is(6, Hue::White, 1));
-    synth.transpose = 2; light({}); // in E: E on pad 5, D out
-    CHECK(is(4, Hue::Track, 3) && is(3, Hue::White, 1));
-    synth.transpose = 0; synth.last_note = 50; synth.levels = false;
+    synth.last_note = 45; synth.transpose = 2; light({}); // another last note, the key a tone up: the roots stay on pads 1, 8, 15
+    CHECK(is(0, Hue::Track, 3) && is(7, Hue::Track, 3) && is(14, Hue::Track, 3) && is(6, Hue::White, 2));
+    synth.transpose = 0; synth.levels_kind = uint8_t(LevelsKind::Tune); light({}); // Tune from the last note: F#2 up, D on pad 9, G# out of D major
+    CHECK(is(8, Hue::Track, 3) && is(0, Hue::White, 2) && is(2, Hue::White, 1));
+    synth.transpose = 2; light({}); // in E: E on pad 11, D out
+    CHECK(is(10, Hue::Track, 3) && is(8, Hue::White, 1));
+    synth.transpose = 0; synth.last_note = 50; synth.levels = false; synth.levels_kind = uint8_t(LevelsKind::Scale);
     ui.track = 5; project->tracks[5].levels = true; light({}); // the 909's pads stay its drums
     CHECK(is(1, Hue::Track, 4) && is(11, Hue::None, 0));
     project->tracks[5].levels = false; ui.track = 1;

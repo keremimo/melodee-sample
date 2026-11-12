@@ -242,6 +242,7 @@ struct Track {
     uint8_t levels_kind = 1; // LevelsKind (model/scales.h): Scale on a new track, as the most played (Kerem)
     // 16 Levels' two ends, pad 1's and pad 16's, for Velocity, Scale, Tune and Filter in LevelsKind's order
     // (velocity 1..127, scale steps, semitones, cutoff 0..100); the pads between go evenly from one to the other.
+    // Scale's are kept for older files but unused: it goes up the key from its root.
     std::array<std::array<int8_t, 2>, 4> levels_ends {{{8, 127}, {0, 15}, {-3, 12}, {0, 100}}};
     // Chord: one pad, one chord from the scale (up to four notes).
     bool chord = false, chord_hold = false;

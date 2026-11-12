@@ -67,11 +67,14 @@ inline int level_scale_step(const Project& project, unsigned pad) {
 }
 
 // 16 Levels (the MPC's types, and Melodee's scale): what pad 0..15 plays
-// of the one sound, evenly from pad 1's end to pad 16's (Track::levels_ends,
-// set on the page's K2 and K3): Velocity soft to loud; Scale up the
-// project's scale by steps; Tune by semitones (the original on pad 4 at
-// first; on a kit, a whole octave up or down by − / +); Filter the pad's
-// cutoff (kit pads only). velocity 0: the pad's own; cutoff -1: the pad's own.
+// of the one sound. Scale goes up the track's key from its root, pad 1 the
+// root (the key on the page's K2 and K3): a synth's pads play those notes in
+// the track's octave, a kit's sample counts as a C, moved the nearest way to
+// the root. The others go evenly from pad 1's end to pad 16's
+// (Track::levels_ends, set on K2 and K3): Velocity soft to loud; Tune by
+// semitones (the original on pad 4 at first); Filter the pad's cutoff (kit
+// pads only). On a kit − / + move Scale and Tune a whole octave. velocity 0:
+// the pad's own; cutoff -1: the pad's own; key -1: a synth's last note moved.
 // Loop: 16 Levels opens the Looper, its pads the loop grid (docs/LOOPER.md).
 enum class LevelsKind : uint8_t { Velocity, Scale, Tune, Filter, Loop, Count };
 inline const char* levels_kind_name(LevelsKind k) {
@@ -98,14 +101,13 @@ inline unsigned levels_types(bool kit, std::array<LevelsKind, 4>& out) {
 inline int level_between(int low, int high, unsigned pad) {
     return low + int(std::lround(double(high - low) * double(pad % 16) / 15.0));
 }
-// The semitones of scale step `step` above the root (below it when negative).
-inline int level_scale_semitones(const Project& project, int step) {
-    std::array<uint8_t, 12> degrees {};
-    int count = int(std::max(1u, scale_degrees(project.scale, degrees)));
-    int octave = step >= 0 ? step / count : -((-step + count - 1) / count);
-    return 12 * octave + degrees[size_t(step - octave * count)];
+// A kit's sample counts as a C: the semitones to the track's key root (the project's moved by its transpose), the
+// nearest way (−5 .. +6).
+inline int kit_root_shift(const Project& project, const Track& track) {
+    int root = ((int(project.root) + track.transpose) % 12 + 12) % 12;
+    return root > 6 ? root - 12 : root;
 }
-struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0; };
+struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0, key = -1; };
 // A kit pad's 16 Levels in pitch (Scale, Tune) an octave a step of the track's
 // octave, 2 as it is (− / + step it there); a synth's pads keep their own.
 constexpr int kit_level_octave = 2, kit_lowest_octave = -1, kit_highest_octave = 7;
@@ -119,7 +121,11 @@ inline Level levels_of(const Project& project, const Track& track, unsigned pad)
     const auto& ends = track.levels_ends[unsigned(kind) % 4];
     int at = level_between(ends[0], ends[1], pad);
     switch (kind) {
-    case LevelsKind::Scale: out.semitones = level_scale_semitones(project, at) + level_octave(track); out.shown = out.semitones; break;
+    case LevelsKind::Scale: // up the key from its root, pad 1 the root (no ends)
+        if (track.engine == EngineKind::Sampler) out.semitones = kit_root_shift(project, track) + level_scale_step(project, pad) + level_octave(track);
+        else out.key = std::clamp(12 * (track.octave + 1) + int(project.root) + track.transpose + level_scale_step(project, pad), 0, 127);
+        out.shown = out.key >= 0 ? out.key : out.semitones;
+        break;
     case LevelsKind::Tune: out.semitones = at + level_octave(track); out.shown = out.semitones; break;
     case LevelsKind::Filter: out.cutoff = std::clamp(at, 0, 100); out.shown = out.cutoff; break;
     case LevelsKind::Velocity:

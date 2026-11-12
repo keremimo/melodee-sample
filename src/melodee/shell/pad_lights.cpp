@@ -174,8 +174,10 @@ Look levels_base(const PadScene& s, unsigned pad) {
     if (!t.levels || (kind == LevelsKind::Filter && t.engine != EngineKind::Sampler)) kind = LevelsKind::Velocity;
     auto lv = levels_of(s.project, t, pad);
     if (kind == LevelsKind::Tune || kind == LevelsKind::Scale) { // notes: the key's roots in the track's colour, its other notes white
-        // A synth's pad plays its last note moved; a kit's sample stands for the key's root as recorded (Scale goes up the key from it).
-        unsigned degree = t.engine == EngineKind::Sampler ? unsigned((lv.semitones % 12 + 12) % 12)
+        // Scale goes up the key from its root on pad 1. Tune: a synth's pad plays its last note moved; a kit's sample
+        // stands for the key's root as recorded.
+        unsigned degree = kind == LevelsKind::Scale ? unsigned(level_scale_step(s.project, pad) % 12)
+                        : t.engine == EngineKind::Sampler ? unsigned((lv.semitones % 12 + 12) % 12)
                                                           : key_degree(s.project, t, std::clamp(int(t.last_note) + lv.semitones, 0, 127));
         return note_look(s.project, at, degree);
     }

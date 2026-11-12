@@ -249,10 +249,10 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         key(pad_keys[pad][0], velocity, true);
         return;
     }
-    if (t.levels) { // 16 Levels on a synth: the last note on all sixteen, soft to loud or in pitch
+    if (t.levels) { // 16 Levels on a synth: the last note on all sixteen, soft to loud or in pitch; Scale the key's notes
         auto level = levels_of(project, t, pad);
         ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(level.shown);
-        pad_keys[pad][0] = int16_t(std::clamp(int(t.last_note) + level.semitones, 0, 127));
+        pad_keys[pad][0] = int16_t(level.key >= 0 ? level.key : std::clamp(int(t.last_note) + level.semitones, 0, 127));
         key(pad_keys[pad][0], level.velocity ? level.velocity : velocity, true);
         return;
     }

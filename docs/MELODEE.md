@@ -211,7 +211,7 @@ grammar (`shell/pad_light.h`):
 | A kit (play pages, the sample pages, the browser) | The selected pad Full (an empty one too), a sample Dim, empty dark, a muted pad Faint red; each flares as it sounds; held white, red while Seq Record writes it |
 | The 909 | Its eleven drums Dim, the last one played Full, flaring as they play |
 | A synth or MIDI track | The key's roots in the track's colour (Mid), its other notes white Dim, out of the key (chromatic) white Faint; a held chord's notes white Full. The key is the track's: the project's moved by its transpose. Record with a synth as the source shows its keys the same way |
-| 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Tune and Scale the key's roots in the track's colour (Mid), its other notes white Dim, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); the pad hit last white as its sound fades; the 909 keeps its drums |
+| 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Scale the key's roots in the track's colour (Mid) from pad 1, its other notes white Dim; Tune the same, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); the pad hit last white as its sound fades; the 909 keeps its drums |
 | Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces) |
 | Mute mode | Muted Dim red, heard Mid (kit pads flaring), soloed white, silenced by a solo Faint |
 | Song | The lane picked Full, a clip under the cursor Mid, clips elsewhere Dim, not in the song Faint |
@@ -376,21 +376,24 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   (its dots the page in view) opens the page map (wheel, Push jumps, B2 or
   Shift + Push closes).
 - **16 Levels**: on a kit the last pad on all sixteen pads, on a synth its
-  last note. Melodee's Scale first (a new track's type: up the project's
-  scale by steps), Tune (semitones), Velocity, Filter (kit pads: the
-  cutoff). **K1** the type, **K2** pad 1's end, **K3** pad 16's: the pads
-  between go evenly from one to the other, kept for each type with the
-  track (sixteen levels between 40 and 127, a filter sweep over an octave,
-  two octaves of a scale; at first Velocity 8–127, Scale steps 0–15, Tune
-  −3 to +12 with the original on pad 4, Filter 0–100). Shift + K1–K3 the
-  pad's own pitch, volume and pan (of type Scale, Shift + K1 and K2 the
-  project's root and scale). Shift + 16 Levels or B1–B3 pick the type too:
-  B1 Velocity, B2 Filter (kits; nothing on a synth), B3 Scale and again
-  Tune, its two dots saying which. The picture is the ramp from end to end
-  with a handle at each in its knob's colour, a tick a pad, the pad hit
-  marked with its value. On a kit in Tune or Scale (an instrument's pad
-  above all), − / + move the pads an octave (three down to five up, kept
-  with the track).
+  last note. Melodee's Scale first (a new track's type), Tune (semitones),
+  Velocity, Filter (kit pads: the cutoff). **K1** the type. **Scale**:
+  **K2** the root, **K3** the scale (the project's key, as on Keys), pad 1
+  the root and each pad the next note of the scale up, no repeats: a synth
+  plays those notes in the track's octave; a kit's sample counts as a C,
+  moved the nearest way to the root (Shift + K1, the pad's own pitch, tunes
+  a sample that is not a C). The others: **K2** pad 1's end, **K3** pad
+  16's, the pads between evenly from one to the other, kept for each type
+  with the track (sixteen levels between 40 and 127, a filter sweep over an
+  octave; at first Velocity 8–127, Tune −3 to +12 with the original on pad
+  4, Filter 0–100). Shift + K1–K3 the pad's own pitch, volume and pan.
+  Shift + 16 Levels or B1–B3 pick the type too: B1 Velocity, B2 Filter
+  (kits; nothing on a synth), B3 Scale and again Tune, its two dots saying
+  which. The picture: Scale a step a pad at its height, the roots in the
+  track's colour; the others the ramp from end to end with a handle at each
+  in its knob's colour; a tick a pad, the pad hit marked with its note or
+  value. − / + move Scale an octave (a synth's pads with the track; a kit
+  three down to five up, kept with the track), and a kit's Tune too.
 - **Note Repeat** stays on the page: while on, B1–B3 are 1/8, 1/16, 1/32
   (Shift: their triplets); the lit B1 again is 1/4, the lit B3 again 1/64
   (dots under them), and back; straight rates swing with the project. It is

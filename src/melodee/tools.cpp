@@ -1516,10 +1516,15 @@ const Preview previews[] {
          s.ui.levels_hit = 3; s.ui.levels_value = 12;
          std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Octave +1"); s.ui.notice_at = s.now;
      }},
-    {"levelsscale", [](Shell&, Snapshot& s) { // 16 Levels up the scale on a kit: K1 and K2 are the key
+    {"levelsscale", [](Shell&, Snapshot& s) { // 16 Levels up the scale on a kit: K2 the root, K3 the scale, pad 1 the root
          s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1; t.levels_kind = uint8_t(LevelsKind::Scale);
          s.project.root = 0; s.project.scale = 7; s.ui.levels_hit = 5;
+     }},
+    {"levelsscalesynth", [](Shell&, Snapshot& s) { // and on a synth: D Dorian from D3 in the track's octave, pad 10 hit
+         s.ui.page = PageId::Levels; s.ui.track = 0; s.playing = true;
+         auto& t = s.project.tracks[0]; t.levels = true; t.levels_kind = uint8_t(LevelsKind::Scale); t.octave = 3;
+         s.project.root = 2; s.project.scale = 2; s.ui.levels_hit = 9;
      }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
     {"exitcard", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; s.projects.root = "/media/card/Melodee/Projects"; s.project_path = "/media/card/Melodee/Projects/Song.mldp"; }},
