@@ -1168,7 +1168,8 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   (its LED) keeps the last one on, B2 master or track. Shift + B3
   QUANTIZE (its LED, on at first; saved with the project, one undo): on,
   a punch pressed while playing starts on the snap grid's next line; off,
-  at once. Letting go is at once either way, and the snap grid still sets
+  at once, the header's magnet saying OFF (on the right: two chips at most
+  on the left). Letting go is at once either way, and the snap grid still sets
   a repeat's slice and a gate's steps. Over the pads, the
   bar the selected track's pattern is in: a row per punch, drawn where it
   sounds in the pass you play it. The punches of one pass are a take; a
