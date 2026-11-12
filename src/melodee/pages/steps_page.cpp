@@ -43,6 +43,8 @@ void draw(Paint& p, const Snapshot& s) {
         step += juce::String::fromUTF8(" \xc2\xb7 ") + trig_name(pattern.events[size_t(in_hand)].condition);
     if (held) step += juce::String::fromUTF8(" \xc2\xb7 LOCK"); // held: the pots lock it (roadmap P1)
     h.left.push_back(pill(step, c));
+    if (steps_lane(s.track()) >= 0 && pattern.own_lane(unsigned(steps_lane(s.track())))) // its lane loops on its own
+        h.left.push_back(pill("LANE " + juce::String((pattern.lane_length(unsigned(steps_lane(s.track()))) + pattern.q() - 1) / pattern.q())));
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 0, c};
     keys.dots[0] = 2; keys.dot_at[0] = s.ui.trig_cards ? 1 : 0; // STEPS again: the TRIG row of cards
@@ -69,12 +71,17 @@ void draw(Paint& p, const Snapshot& s) {
     int base = (lo + hi) / 2 - rows / 2 + 1;
     constexpr float top = zone::picture_y + 12, ch = 96, colw = 16.5f, stepw = 19.1f, beat_gap = 2.6f;
     auto x_of = [&](unsigned k) { return zone::pad + k * stepw + float(k / 4) * beat_gap; };
-    int playing_step = s.playing ? int((s.position % pattern.length) / pattern.q()) : -1;
+    // A kit lane of its own length (roadmap P1): its steps end sooner and its playhead goes round on its own.
+    int lane = steps_lane(s.track());
+    uint32_t loop = lane >= 0 ? pattern.lane_length(unsigned(lane)) : pattern.length;
+    unsigned lane_steps = std::max(1u, (loop + pattern.q() - 1) / pattern.q());
+    uint64_t elapsed = uint64_t(s.pass) * std::max<uint32_t>(pattern.length, 1) + s.position % std::max<uint32_t>(pattern.length, 1);
+    int playing_step = s.playing ? int((elapsed % std::max<uint32_t>(loop, 1)) / pattern.q()) : -1;
     for (unsigned k = 0; k < bar_steps; ++k) {
         unsigned st = first + k;
         float x = x_of(k);
-        bool inside = st < pattern.steps(), here = int(st) == highlight;
-        p.fill(x, top, colw, ch, here ? c.withAlpha(0.2f) : inside ? colour::quiet : colour::bg, 2);
+        bool inside = st < pattern.steps(), here = int(st) == highlight, past = st >= lane_steps; // past: the lane's end
+        p.fill(x, top, colw, ch, here ? c.withAlpha(0.2f) : inside && !past ? colour::quiet : colour::bg, 2);
         if (int(st) == playing_step) p.fill(x, top - 3, colw, 2, colour::text, 1); // where it plays now
         auto number = plain(here ? colour::text : k % 4 == 0 ? colour::sec : colour::dim, type::small, here || k % 4 == 0 ? Weight::Bold : Weight::Medium);
         p.text(juce::String(k + 1), x - 2, top + ch + 2, colw + 4, 14, number, juce::Justification::centred);
@@ -88,14 +95,14 @@ void draw(Paint& p, const Snapshot& s) {
             unsigned hits = e.hits();
             if (hits == 1) {
                 float bh = 4 + 7 * e.velocity / 127.0f;
-                p.fill(x + 1.5f, cy - bh / 2, colw - 3, bh, here ? colour::text : c, 2);
+                p.fill(x + 1.5f, cy - bh / 2, colw - 3, bh, here ? colour::text : past ? colour::line : c, 2);
                 continue;
             }
             // A ratchet: its hits side by side, each as tall as it plays (the ramp).
             float gap = 0.75f, hw = (colw - 3 - gap * (hits - 1)) / hits;
             for (unsigned n = 0; n < hits; ++n) {
                 float bh = 4 + 7 * e.hit_velocity(e.velocity, n) / 127.0f;
-                p.fill(x + 1.5f + n * (hw + gap), cy - bh / 2, hw, bh, here ? colour::text : c, 1);
+                p.fill(x + 1.5f + n * (hw + gap), cy - bh / 2, hw, bh, here ? colour::text : past ? colour::line : c, 1);
             }
         }
         if (step.empty()) continue;

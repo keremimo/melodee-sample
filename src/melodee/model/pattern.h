@@ -113,17 +113,28 @@ struct MotionPoint {
     bool operator!=(const MotionPoint& o) const { return !(*this == o); }
 };
 
+// A kit lane of its own length (roadmap P1, polymeter inside a kit): `key`'s notes loop over `length` ticks from
+// where the pattern began, shorter than the pattern; its passes counted on their own (trig conditions).
+struct LaneLength {
+    uint8_t key = 0;
+    uint32_t length = 0;
+    bool operator==(const LaneLength& o) const { return key == o.key && length == o.length; }
+};
+
 struct Pattern {
     uint32_t length = 16 * sixteenth_ticks; // ticks
     Division division = Division::Sixteenth; // Q
     std::vector<Event> events;               // by tick, then key
     std::vector<MotionPoint> motion;         // by tick, then lane; at most motion_points
+    std::vector<LaneLength> lanes;           // keys looping on their own, by key
 
     unsigned q() const { return division_ticks(division); }
     // Steps of Q the pattern holds (a last part step counts).
     unsigned steps() const { return std::max(1u, unsigned((length + q() - 1) / q())); }
     bool empty() const { return events.empty() || events.front().tick >= length; }
-    bool operator==(const Pattern& o) const { return length == o.length && division == o.division && events == o.events && motion == o.motion; }
+    bool operator==(const Pattern& o) const {
+        return length == o.length && division == o.division && events == o.events && motion == o.motion && lanes == o.lanes;
+    }
     bool operator!=(const Pattern& o) const { return !(*this == o); }
     // The first event at or after `tick`.
     size_t lower(uint32_t tick) const {
@@ -159,6 +170,16 @@ struct Pattern {
     // What a lane holds at `tick` as recorded (locks aside): the last point at or before it, else `own`.
     int lane_value(uint32_t tick, unsigned param, unsigned pad, int own) const;
     void sort_motion();
+
+    // Kit lanes (roadmap P1): the ticks `key` loops over (its own, else the pattern's), whether it has its own, and
+    // setting it (the pattern's length or more, or 0: none of its own).
+    uint32_t lane_length(unsigned key) const {
+        for (const auto& l : lanes) if (l.key == key) return std::max<uint32_t>(std::min(l.length, length), 1);
+        return length;
+    }
+    bool own_lane(unsigned key) const { return lane_length(key) < length; }
+    void set_lane_length(unsigned key, uint32_t ticks);
+    void fit_lanes(); // after the pattern's length changed: lanes as long as it, or longer, go
 };
 
 // The events starting in step `step` of a pattern's Q: events[first, first + count) (Step Edit lists them).

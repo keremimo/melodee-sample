@@ -1213,6 +1213,73 @@ void EngineHost::play_song_punches() {
     }
 }
 
+// One note of a track's pattern on its tick: `at` where it starts in a loop of `loop` ticks (the pattern's, or its
+// kit lane's own), on pass `pass` of that loop (trig conditions).
+void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size_t n, uint32_t at, uint32_t loop, uint32_t pass, bool sound,
+                            Slot::Held& holding) {
+    const auto& events = pattern.events;
+    const auto& e = events[n];
+    if (e.key > 127 && slot.kind != EngineKind::Sampler) return; // past 127: kit pads only
+    const int played = pad_note(e.key, e.pitch); // the key, and over it what a kit pad plays at
+    if (skipped(slot, unsigned(played), at)) return;
+    bool go = trig_plays(t, slot, e, pass);
+    if (trig_weighed(e.condition, e.chance)) { // how it went, for PRE and NEI after it
+        slot.weighed = true; slot.went = go;
+        uint64_t bit = uint64_t(1) << (e.key % 64);
+        auto& word = slot.keys_went[e.key / 64 % 4];
+        slot.keys_weighed[e.key / 64 % 4] |= bit;
+        word = go ? word | bit : word & ~bit;
+    }
+    if (!go) return;
+    // Held for its length, a touch short; with Slide or Tie, until the next note starts (and past
+    // it, so that note finds it held and takes it over: no new attack; a slide glides there).
+    // A ratchet: its hits spread over its length, each held as long as a hit of that length would be;
+    // Slide and Tie wait for a note of one hit.
+    unsigned hits = e.hits();
+    bool legato = hits == 1 && (e.flags & (step_slide | step_tie));
+    double each = double(e.length) / hits;
+    double ticks = each - std::min<double>(pattern.q(), each) * 0.1;
+    if (legato) {
+        size_t next = n + 1;
+        while (next < events.size() && events[next].tick == at) ++next;
+        uint32_t to = next < events.size() && events[next].tick < loop ? events[next].tick : events.front().tick + loop;
+        ticks = double(to - at) + sixteenth_ticks;
+    }
+    auto samples = std::max<int32_t>(int32_t(tick_length() * ticks), 64);
+    // Accent: louder, and harder where velocity moves the sound.
+    bool accent = e.flags & step_accent;
+    int velocity = accent ? std::min(127, e.velocity + 24) : e.velocity;
+    auto from = slot.held; // the note held into this tick takes this one, the first note on it
+    slot.held = {};
+    if (sound) {
+        slot.engine->set_accent(accent ? expression::accent_gain : 1.0f);
+        if (from.key >= 0) {
+            slot.engine->slide(from.key, played, velocity, from.glide);
+            if (from.key != played) cancel_off(slot, from.key);
+        } else {
+            slot.engine->note_on(played, velocity);
+        }
+        slot.engine->set_accent(1);
+        schedule_off(slot, played, samples);
+    }
+    // MIDI: a tie onto the same key goes on; else the notes overlap, which a mono synth plays legato.
+    if (from.midi != e.key || !midi_hold(t, e.key, samples, frame_now + block_at))
+        midi_note(t, e.key, velocity, frame_now + block_at, samples);
+    if (legato) holding = {int16_t(played), int16_t(e.key), (e.flags & step_slide) != 0};
+    for (unsigned k = 1; k < hits; ++k) { // the ratchet's other hits, each on its frame (run_hits)
+        if (slot.hits_waiting == slot.hits.size()) break;
+        PendingHit hit;
+        hit.key = pad_note(e.key, std::clamp(e.pitch + e.hit_pitch(k), -48, 48));
+        hit.midi = int16_t(e.key);
+        hit.velocity = uint8_t(e.hit_velocity(velocity, k));
+        hit.accent = accent;
+        hit.samples = std::max<int32_t>(1, int32_t(std::lround(k * each * tick_length())));
+        hit.length = samples;
+        for (auto& h : slot.hits)
+            if (h.key < 0) { h = hit; ++slot.hits_waiting; break; }
+    }
+}
+
 void EngineHost::tick() {
     // Count-In: a bar of the metronome before the song starts.
     if (count_left) {
@@ -1256,74 +1323,24 @@ void EngineHost::tick() {
         if ((!sound && !midi) || slot.silent) continue;
         const auto& pattern = *patterns[t][slot.pattern];
         uint32_t length = std::max<uint32_t>(pattern.length, 1);
-        uint32_t at = (tick_now - slot.start) % length;
-        uint32_t pass = (tick_now - slot.start) / length; // trig conditions count the pattern's passes from where it began
+        uint32_t elapsed = tick_now - slot.start;
+        uint32_t at = elapsed % length;
+        uint32_t pass = elapsed / length; // trig conditions count the pattern's passes from where it began
         positions_now[t].store(int(at), std::memory_order_relaxed);
+        passes_now[t].store(pass, std::memory_order_relaxed);
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
         if (sound && (at == 0 || !pattern.motion.empty() || slot.locks_on)) play_motion(t, slot, pattern, at);
         const auto& events = pattern.events;
         Slot::Held holding; // this tick's own Slide or Tie, for the notes of a later one
-        for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n) {
-            const auto& e = events[n];
-            if (e.key > 127 && slot.kind != EngineKind::Sampler) continue; // past 127: kit pads only
-            const int played = pad_note(e.key, e.pitch); // the key, and over it what a kit pad plays at
-            if (skipped(slot, unsigned(played), at)) continue;
-            bool go = trig_plays(t, slot, e, pass);
-            if (trig_weighed(e.condition, e.chance)) { // how it went, for PRE and NEI after it
-                slot.weighed = true; slot.went = go;
-                uint64_t bit = uint64_t(1) << (e.key % 64);
-                auto& word = slot.keys_went[e.key / 64 % 4];
-                slot.keys_weighed[e.key / 64 % 4] |= bit;
-                word = go ? word | bit : word & ~bit;
-            }
-            if (!go) continue;
-            // Held for its length, a touch short; with Slide or Tie, until the next note starts (and past
-            // it, so that note finds it held and takes it over: no new attack; a slide glides there).
-            // A ratchet: its hits spread over its length, each held as long as a hit of that length would be;
-            // Slide and Tie wait for a note of one hit.
-            unsigned hits = e.hits();
-            bool legato = hits == 1 && (e.flags & (step_slide | step_tie));
-            double each = double(e.length) / hits;
-            double ticks = each - std::min<double>(pattern.q(), each) * 0.1;
-            if (legato) {
-                size_t next = n + 1;
-                while (next < events.size() && events[next].tick == at) ++next;
-                uint32_t to = next < events.size() && events[next].tick < length ? events[next].tick : events.front().tick + length;
-                ticks = double(to - at) + sixteenth_ticks;
-            }
-            auto samples = std::max<int32_t>(int32_t(tick_length() * ticks), 64);
-            // Accent: louder, and harder where velocity moves the sound.
-            bool accent = e.flags & step_accent;
-            int velocity = accent ? std::min(127, e.velocity + 24) : e.velocity;
-            auto from = slot.held; // the note held into this tick takes this one, the first note on it
-            slot.held = {};
-            if (sound) {
-                slot.engine->set_accent(accent ? expression::accent_gain : 1.0f);
-                if (from.key >= 0) {
-                    slot.engine->slide(from.key, played, velocity, from.glide);
-                    if (from.key != played) cancel_off(slot, from.key);
-                } else {
-                    slot.engine->note_on(played, velocity);
-                }
-                slot.engine->set_accent(1);
-                schedule_off(slot, played, samples);
-            }
-            // MIDI: a tie onto the same key goes on; else the notes overlap, which a mono synth plays legato.
-            if (from.midi != e.key || !midi_hold(t, e.key, samples, frame_now + block_at))
-                midi_note(t, e.key, velocity, frame_now + block_at, samples);
-            if (legato) holding = {int16_t(played), int16_t(e.key), (e.flags & step_slide) != 0};
-            for (unsigned k = 1; k < hits; ++k) { // the ratchet's other hits, each on its frame (run_hits)
-                if (slot.hits_waiting == slot.hits.size()) break;
-                PendingHit hit;
-                hit.key = pad_note(e.key, std::clamp(e.pitch + e.hit_pitch(k), -48, 48));
-                hit.midi = int16_t(e.key);
-                hit.velocity = uint8_t(e.hit_velocity(velocity, k));
-                hit.accent = accent;
-                hit.samples = std::max<int32_t>(1, int32_t(std::lround(k * each * tick_length())));
-                hit.length = samples;
-                for (auto& h : slot.hits)
-                    if (h.key < 0) { h = hit; ++slot.hits_waiting; break; }
-            }
+        bool lanes = !pattern.lanes.empty();
+        for (size_t n = pattern.lower(at); n < events.size() && events[n].tick == at; ++n)
+            if (!lanes || !pattern.own_lane(events[n].key)) play_event(t, slot, pattern, n, at, length, pass, sound, holding);
+        for (const auto& l : pattern.lanes) { // kit lanes of their own length (roadmap P1): each loops, and counts its passes, alone
+            uint32_t loop = pattern.lane_length(l.key);
+            if (loop >= length) continue;
+            uint32_t lane_at = elapsed % loop;
+            for (size_t n = pattern.lower(lane_at); n < events.size() && events[n].tick == lane_at; ++n)
+                if (events[n].key == l.key) play_event(t, slot, pattern, n, lane_at, loop, elapsed / loop, sound, holding);
         }
         if (holding.key >= 0) slot.held = holding;
     }

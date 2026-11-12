@@ -607,6 +607,14 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EventRamp: set_event_ramp(*this, value); break;
     case Kind::EventPitchRamp: set_event_pitch_ramp(*this, value); break;
     case Kind::EventCondition: set_event_condition(*this, value); break;
+    case Kind::LaneLength: { // Steps on a kit: the last pad's lane loops over so many steps of Q (all of them: with the pattern)
+        auto& p = pattern();
+        uint32_t ticks = uint32_t(std::clamp(value, 1, int(p.steps()))) * p.q();
+        if (p.lane_length(unsigned(b.id)) == std::min(ticks, p.length)) break;
+        p.set_lane_length(unsigned(b.id), ticks);
+        sync_pattern(ui.track, t.pattern);
+        break;
+    }
     case Kind::Lock: { // a step or a note held: the lane locked there (roadmap P1)
         uint32_t tick = 0, hold = 0;
         if (!lock_place(project, ui, pattern(), tick, hold)) break;

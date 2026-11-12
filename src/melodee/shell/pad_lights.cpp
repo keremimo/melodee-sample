@@ -296,10 +296,13 @@ Look steps_look(const PadScene& s, unsigned pad) {
     const auto& ui = s.ui;
     const auto& p = shown(s);
     unsigned step = unsigned(ui.steps_bar) * bar_steps + pad;
-    if (step >= p.steps()) return {}; // past the pattern's end
+    int lane = steps_lane(selected(s));
+    uint32_t loop = lane >= 0 ? p.lane_length(unsigned(lane)) : p.length; // a kit lane of its own length (roadmap P1)
+    if (step >= p.steps() || step * p.q() >= loop) return {}; // past the pattern's (or the lane's) end
     if (int(step) == ui.held_step) return white(full);
     int position = s.host.position_of(selected_index(s));
-    if (s.host.playing() && position >= 0 && unsigned(position) / p.q() == step) return writing(s) ? red(mid) : white(mid);
+    uint64_t elapsed = uint64_t(s.host.pass_of(selected_index(s))) * std::max<uint32_t>(p.length, 1) + uint32_t(std::max(position, 0));
+    if (s.host.playing() && position >= 0 && elapsed % std::max<uint32_t>(loop, 1) / p.q() == step) return writing(s) ? red(mid) : white(mid);
     return velocity_look(selected_index(s), step_velocity(p, step, steps_lane(selected(s))));
 }
 Look step_edit_look(const PadScene& s, unsigned pad) {

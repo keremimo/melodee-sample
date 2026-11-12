@@ -163,7 +163,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned p = 0; p < pattern_count; ++p) { // each pattern's notes, on the 96-a-quarter clock
             const auto& pattern = patterns.at[t][p];
             bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty() &&
-                         pattern.motion.empty();
+                         pattern.motion.empty() && pattern.lanes.empty();
             if (plain) continue;
             at = w.begin("EVNT");
             w.u8(t); w.u8(p); w.u32(pattern.length); w.u8(unsigned(pattern.division));
@@ -197,6 +197,12 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                 w.u8(t); w.u8(p); w.u32(conditions);
                 for (uint32_t n = 0; n < pattern.events.size(); ++n)
                     if (pattern.events[n].condition != trig_always) { w.u32(n); w.u8(pattern.events[n].condition); }
+                w.end(at);
+            }
+            if (!pattern.lanes.empty()) { // kit lanes of their own length (roadmap P1): key, ticks
+                at = w.begin("LANE");
+                w.u8(t); w.u8(p); w.u8(unsigned(pattern.lanes.size()));
+                for (const auto& l : pattern.lanes) { w.u8(l.key); w.u32(l.length); }
                 w.end(at);
             }
             if (!pattern.motion.empty()) { // Motion (roadmap P1): the pattern's own points at their ticks, locks with their hold
@@ -544,6 +550,17 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint32_t place = r.u32();
                 unsigned condition = r.u8();
                 if (r.ok && place < pattern.events.size() && condition < trig_count) pattern.events[place].condition = uint8_t(condition);
+            }
+        } else if (name == "LANE") { // kit lanes of their own length (roadmap P1); without it every key loops with the pattern
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            unsigned count = r.u8();
+            pattern.lanes.clear();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                unsigned key = r.u8();
+                uint32_t ticks = r.u32();
+                if (r.ok) pattern.set_lane_length(key, ticks); // EVNT came first: the pattern's length is known
             }
         } else if (name == "MOTK") { // Motion (roadmap P1): a pattern's points at their ticks
             unsigned t = r.u8(), p = r.u8();

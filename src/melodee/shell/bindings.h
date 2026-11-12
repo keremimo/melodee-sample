@@ -65,7 +65,8 @@ struct Binding {
         // kit its lane's notes), Roll's note in focus; the pitch ramp a kit pad's (Shift + K2).
         StepRatchet, StepRamp, StepPitchRamp, EventRatchet, EventRamp, EventPitchRamp,
         StepCondition, EventCondition, // the TRIG row's K3: a trig condition (model/trig.h), 0..trig_count - 1
-        Lock // a step held on Steps or a pad held on Roll's note in focus: a Motion lane (id) locked there (roadmap P1)
+        Lock, // a step held on Steps or a pad held on Roll's note in focus: a Motion lane (id) locked there (roadmap P1)
+        LaneLength // Steps on a kit, Shift + K1: the last pad's lane's own length in steps of Q (the pattern's: none)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

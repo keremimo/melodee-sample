@@ -118,6 +118,18 @@ int Pattern::lane_value(uint32_t tick, unsigned param, unsigned pad, int own) co
 
 void Pattern::sort_motion() { std::stable_sort(motion.begin(), motion.end(), motion_before); }
 
+void Pattern::set_lane_length(unsigned key, uint32_t ticks) {
+    lanes.erase(std::remove_if(lanes.begin(), lanes.end(), [&](const LaneLength& l) { return l.key == key; }), lanes.end());
+    if (!ticks || ticks >= length) return;
+    LaneLength l;
+    l.key = uint8_t(key); l.length = ticks;
+    lanes.insert(std::lower_bound(lanes.begin(), lanes.end(), l, [](const LaneLength& a, const LaneLength& b) { return a.key < b.key; }), l);
+}
+
+void Pattern::fit_lanes() {
+    lanes.erase(std::remove_if(lanes.begin(), lanes.end(), [&](const LaneLength& l) { return !l.length || l.length >= length; }), lanes.end());
+}
+
 bool double_pattern(Pattern& p, uint32_t max_length, bool copy) {
     if (p.length * 2 > max_length) return false;
     p.cut(p.length); // nothing hidden past the end comes back
@@ -132,6 +144,7 @@ bool double_pattern(Pattern& p, uint32_t max_length, bool copy) {
 void half_pattern(Pattern& p) {
     p.length = std::max<uint32_t>(p.length / 2, 1);
     p.cut(p.length);
+    p.fit_lanes();
 }
 
 void scale_pattern(Pattern& p, bool slower) {
@@ -153,6 +166,8 @@ void scale_pattern(Pattern& p, bool slower) {
     }
     p.motion.clear();
     for (const auto& m : points) p.write_motion(m);
+    for (auto& l : p.lanes) l.length = slower ? l.length * 2 : std::max<uint32_t>(l.length / 2, 1); // its lanes with it
+    p.fit_lanes();
 }
 
 uint32_t quantise_tick(const Pattern& p, uint32_t tick) { return quantise_tick(p, tick, p.q()); }

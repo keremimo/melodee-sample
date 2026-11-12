@@ -545,13 +545,13 @@ hold to steer, Shift + Seq to zoom in**.
   and the pattern's bars as blocks at the foot; the step in hand is the
   header's. On a kit the pads are the last pad's lane: a tap sets or clears
   that pad's note and leaves the others' (Roll edits the whole kit), the
+  cards are that pad's note in the step, and
+  the wheel moves a held step's note to the next pad, the lane with it.
   Shift + K1 there is the lane's own **length** (LANE: 1 step to the
   pattern's, All): a shorter lane loops on its own from where the pattern
   began, polymeter inside the kit, and counts its own passes for trig
   conditions; Steps darkens what lies past it, its playhead goes round with
-  it and the header names it (LANE 6). Files keep lanes in LANE.diff --git a/src/melodee/engine/engine_host.h b/src/melodee/engine/engine_host.h
-  cards are that pad's note in the step, and
-  the wheel moves a held step's note to the next pad, the lane with it.
+  it and the header names it (LANE 6). Files keep lanes in LANE.
   **Held, a step is locked**: while a pad is down the cards are the Motion
   page's three lanes, each showing its lock on that step (else the track's
   own value), and a turn writes a lock there, for as long as the step's

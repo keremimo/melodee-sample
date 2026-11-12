@@ -151,6 +151,9 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
     case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
     case Kind::StepChance: case Kind::EventChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::LaneLength: // a kit lane's own length (roadmap P1); as long as the pattern: none of its own
+        c.label = "LANE"; c.value = b.value >= int(s.pattern.steps()) ? juce::String("All") : juce::String(b.value); c.unit = b.value >= int(s.pattern.steps()) ? "" : "steps";
+        break;
     case Kind::Lock: { // a lane locked on the step or note held (roadmap P1): as the lane's own card
         auto m = motion_param(track, int(b.id));
         if (!m.info) break;

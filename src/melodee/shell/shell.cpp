@@ -521,6 +521,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         out.playing_patterns[t] = uint8_t(host.pattern_of(t));
     }
     out.position = unsigned(std::max(out.positions[ui_.track], 0));
+    out.pass = host.pass_of(ui_.track);
     out.ticks = host.ticks();
     out.count_in = host.count_in();
     out.tempo = context_.tempo_now();

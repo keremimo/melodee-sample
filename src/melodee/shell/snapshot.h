@@ -34,6 +34,7 @@ struct Snapshot {
     std::array<bool, track_count> has_notes {}; // the playing pattern of each track holds notes
     bool playing = false;
     uint32_t position = 0;                   // where the selected track is in its pattern, ticks
+    uint32_t pass = 0;                       // and its pattern's passes since it began (a kit lane's place, roadmap P1)
     std::array<int, track_count> positions {}; // each track's, -1 none
     unsigned count_in = 0;                   // the Count-In's beat, 0 none
     unsigned tempo = 1200;                   // tenths of a BPM, as it plays (BPM per pattern or global, or MIDI clock in's)

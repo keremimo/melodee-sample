@@ -475,11 +475,15 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         }
         return {length, Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature}, Binding {}};
     }
-    case PageId::Steps: { // the TRIG row: Shift + K2 a kit pad's pitch ramp (its lane's note)
-        if (!ui.trig_cards || track.engine != EngineKind::Sampler) return {};
-        int n = lane_event(pattern, unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps(), steps_lane(track));
-        if (n < 0) return {};
-        return {Binding {}, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
+    case PageId::Steps: { // a kit: Shift + K1 the lane's own length; on the TRIG row Shift + K2 its note's pitch ramp
+        int lane = steps_lane(track);
+        if (lane < 0) return {};
+        unsigned q = pattern.q(), steps = pattern.steps();
+        unsigned own = std::clamp<unsigned>((pattern.lane_length(unsigned(lane)) + q - 1) / q, 1, steps);
+        Binding length = {Kind::LaneLength, lane, 1, int(std::max(steps, 2u)), int(own)};
+        int n = lane_event(pattern, unsigned(std::max<int>(ui.step_cursor, 0)) % steps, lane);
+        if (!ui.trig_cards || n < 0) return {length, Binding {}, Binding {}};
+        return {length, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
     }
     case PageId::Roll: { // the TRIG row: Shift + K2 a kit pad's pitch ramp (the note in focus)
         if (!ui.trig_cards || track.engine != EngineKind::Sampler) return {};

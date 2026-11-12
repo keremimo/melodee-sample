@@ -117,6 +117,13 @@ behaviour changed.
   cursor step's cards when no pad is held (a tap that creates a step, or
   the wheel). On Roll a pad held on the note in focus does the same. Step
   Edit gets none: round 2 makes it step entry.
+- P1: a kit lane's own length is set on Steps (the lane view) with Shift +
+  K1, in steps of Q, the pattern's length meaning none; it loops from
+  where the pattern began (not from the bar), so a 3-step hat drifts
+  against a 16-step kick and meets it again after 48. Its notes past its
+  length stay but are not heard. The 909 and synths have no lanes (Steps
+  there edits whole steps). Why: Shift + K is the card's second parameter,
+  and the lane's length is its length card's.
 
 ## Waiting for a hand check
 
@@ -185,7 +192,7 @@ behaviour, write the code fresh for this app.
   tick resolution; holding a step on Steps (or the note in focus on Roll /
   Step Edit) and turning a pot writes a lock on that step. Old `MOTN`
   sections still load.
-- [ ] Kit lanes of their own length (polymeter inside a kit).
+- [x] Kit lanes of their own length (polymeter inside a kit).
 - [ ] Note Repeat: pad pressure sets the repeats' velocity (as the MPC),
   1/4 and 1/64 rates, the repeats written as notes under Seq Record.
 - [ ] Humanize in Time Correct (a random timing and velocity amount) and a

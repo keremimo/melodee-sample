@@ -1564,14 +1564,6 @@ const Preview previews[] {
     {"stepslock", [](Shell& shell, Snapshot& s) { // step 5 held on the kit's hat lane: the cards lock the hat's level, tune and pan there
          step_edit_kit(shell, s);
          s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2; s.ui.held_step = 4;
-    {"stepslane", [](Shell& shell, Snapshot& s) { // Shift + K1 on the kit's Steps: the hat's lane loops over six steps of the bar's sixteen
-         step_edit_kit(shell, s);
-         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
-         auto& p = shell.patterns().at[3][0];
-         p.set_lane_length(sampler_first_note + 2, 6 * sixteenth_ticks);
-         s.position = 9 * sixteenth_ticks; s.pass = 0; // the hat's lane at its step 4 while the pattern is at 10
-         s.ui.shift = true; s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
          auto& p = shell.patterns().at[3][0];
          auto lock = [&](uint32_t tick, PadParam which, int value) {
              MotionPoint m;
@@ -1590,6 +1582,14 @@ const Preview previews[] {
              p.write_motion(m);
          }
          s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"stepslane", [](Shell& shell, Snapshot& s) { // Shift + K1 on the kit's Steps: the hat's lane loops over six steps of the bar's sixteen
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         auto& p = shell.patterns().at[3][0];
+         p.set_lane_length(sampler_first_note + 2, 6 * sixteenth_ticks);
+         s.position = 9 * sixteenth_ticks; s.pass = 0; // the hat's lane at its step 4 while the pattern is at 10
+         s.ui.shift = true; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
 };
 

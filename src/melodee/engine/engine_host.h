@@ -148,6 +148,8 @@ public:
     uint32_t ticks() const { return tick_count.load(std::memory_order_relaxed); } // clock ticks since Play, 96 a quarter
     // Where a track is in its pattern, in ticks; -1 while it plays none.
     int position_of(unsigned track) const { return positions_now[track % track_count].load(std::memory_order_relaxed); }
+    // And how many times its pattern has come round since it began (roadmap P1: a kit lane's place is from both).
+    uint32_t pass_of(unsigned track) const { return passes_now[track % track_count].load(std::memory_order_relaxed); }
     unsigned count_in() const { return count_beat.load(std::memory_order_relaxed); } // the count-in's beat now, 1..; 0 none
     unsigned tempo_now() const { return tempo_shown.load(std::memory_order_relaxed); } // tenths of a BPM, as it plays
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
@@ -277,6 +279,8 @@ private:
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
     void tick();       // plays whatever falls on this clock tick, then moves on
+    void play_event(unsigned t, Slot& slot, const Pattern& pattern, size_t n, uint32_t at, uint32_t loop, uint32_t pass, bool sound,
+                    Slot::Held& holding); // one note of the pattern on this tick (roadmap P1: a kit lane's loop its own)
     void arp_tick();   // the arps' own clock, running whether the song plays or not
     void bar_start();  // launches queued patterns, or follows the song
     double tick_samples(uint32_t at) const;
@@ -505,6 +509,7 @@ private:
     std::atomic<bool> is_playing {false};
     std::atomic<uint32_t> tick_count {0};
     std::array<std::atomic<int>, track_count> positions_now {};
+    std::array<std::atomic<uint32_t>, track_count> passes_now {};
     std::atomic<unsigned> count_beat {0};
     std::atomic<unsigned> tempo_shown {1200};
     std::array<std::atomic<unsigned>, track_count> patterns_now {};

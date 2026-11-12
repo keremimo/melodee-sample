@@ -7484,10 +7484,84 @@ void pattern_motion() {
     }
 }
 
+// Kit lanes of their own length (roadmap P1): polymeter inside a kit.
+void kit_lanes() {
+    // The model: a lane shorter than the pattern loops alone; as long, or longer, it has none of its own.
+    Pattern p;
+    p.length = 16 * sixteenth_ticks;
+    uint8_t a = uint8_t(sampler_first_note), b = uint8_t(sampler_first_note + 1);
+    p.set_lane_length(b, 3 * sixteenth_ticks);
+    CHECK(p.own_lane(b) && !p.own_lane(a) && p.lane_length(b) == 3 * sixteenth_ticks && p.lane_length(a) == p.length);
+    p.set_lane_length(b, p.length);
+    CHECK(!p.own_lane(b) && p.lanes.empty());
+    p.set_lane_length(b, 12 * sixteenth_ticks);
+    half_pattern(p); // 8 steps: a 12-step lane is no longer shorter
+    CHECK(p.lanes.empty());
+    p.set_lane_length(b, 3 * sixteenth_ticks);
+    scale_pattern(p, true); // half speed: the lane twice as long, as its notes are
+    CHECK(p.lane_length(b) == 6 * sixteenth_ticks);
+    // Played: A01 once a bar, A02 on a lane of three steps every three, its condition counting its own passes.
+    {
+        Pattern q;
+        q.length = 16 * sixteenth_ticks;
+        Event one;
+        one.key = a; one.length = 6;
+        q.add(one);
+        Event two = one;
+        two.key = b;
+        q.add(two);
+        Event three = one;
+        three.key = uint8_t(sampler_first_note + 2); three.condition = uint8_t(trig_of(1, 2));
+        q.add(three);
+        q.set_lane_length(b, 3 * sixteenth_ticks);
+        q.set_lane_length(three.key, 3 * sixteenth_ticks);
+        auto notes = played_notes(q, 680); // one bar: 88200 frames
+        std::map<int, std::vector<int64_t>> on;
+        const double step = 44100 * 60.0 / 120 / 4;
+        for (const auto& e : notes) on[e.a].push_back(std::llround((e.frame - notes[0].frame) / step));
+        CHECK((on[a] == std::vector<int64_t> {0}));
+        CHECK((on[b] == std::vector<int64_t> {0, 3, 6, 9, 12, 15}));
+        CHECK((on[three.key] == std::vector<int64_t> {0, 6, 12})); // 1:2 of its own passes
+    }
+    // The file: LANE after the pattern's notes; without it every key loops with the pattern.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        auto& q = bank->at[3][1];
+        put(q, 0, a, 100);
+        q.set_lane_length(b, 5 * sixteenth_ticks);
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[3][1] == q && back_bank->at[3][1].lane_length(b) == 5 * sixteenth_ticks);
+        std::string text(data.begin(), data.end());
+        data[text.find("LANE")] = 'X';
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[3][1].lanes.empty());
+    }
+    // Steps on a kit: Shift + K1 the last pad's lane's length in steps (the pattern's: All).
+    {
+        auto project = std::make_unique<Project>();
+        load_sound(project->tracks[3], EngineKind::Sampler, 0);
+        project->tracks[3].last_pad = 1;
+        UiState ui;
+        ui.track = 3; ui.page = PageId::Steps;
+        Pattern q;
+        q.set_lane_length(b, 6 * sixteenth_ticks);
+        auto shifted = shift_bindings(*project, ui, q);
+        CHECK(shifted[0].kind == Binding::Kind::LaneLength && shifted[0].id == b && shifted[0].value == 6 && shifted[0].max == 16);
+        project->tracks[3].last_pad = 0;
+        CHECK(shift_bindings(*project, ui, q)[0].value == 16);
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        ui.track = 0;
+        CHECK(!shift_bindings(*project, ui, q)[0].bound()); // a synth's Steps: the whole step, no lanes
+    }
+}
+
 int main() {
     ratchets();
     trig_conditions();
     pattern_motion();
+    kit_lanes();
     plugins();
     voice_taps();
     voice_heads();
