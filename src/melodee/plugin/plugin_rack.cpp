@@ -6,6 +6,7 @@
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
 #include "melodee/plugin/rate_bridge.h"
+#include "melodee/plugin/tone3000.h"
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_instance.h"
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
@@ -138,6 +139,27 @@ fs::path plugin_home(const std::string& card_top) {
     if (const char* own = std::getenv("MELODEE_PLUGIN_HOME")) return own;
     if (card_top.empty()) return {};
     return fs::path(card_top) / "Melodee" / "Plugin Data";
+}
+
+// A TONE3000 state as JUCE's VST3 host keeps it (VST3PluginState: the plug-in's
+// component and controller states in Base64), every NAM block lite
+// (plugin/tone3000.h).
+void tone3000_lite_state(std::vector<uint8_t>& state) {
+    auto xml = juce::AudioProcessor::getXmlFromBinary(state.data(), int(state.size()));
+    if (!xml) return;
+    bool changed = false;
+    for (auto* part : xml->getChildIterator()) {
+        juce::MemoryBlock data;
+        if (!data.fromBase64Encoding(part->getAllSubText())) continue;
+        if (!tone3000_lite(static_cast<uint8_t*>(data.getData()), data.getSize())) continue;
+        part->deleteAllTextElements();
+        part->addTextElement(data.toBase64Encoding());
+        changed = true;
+    }
+    if (!changed) return;
+    juce::MemoryBlock out;
+    juce::AudioProcessor::copyXmlToBinary(*xml, out);
+    state.assign(static_cast<const uint8_t*>(out.getData()), static_cast<const uint8_t*>(out.getData()) + out.getSize());
 }
 } // namespace
 
@@ -533,6 +555,8 @@ void PluginRack::switch_program(unsigned entry, uint32_t generation, int program
         instance = e.live->instance.get(); // freed only on this thread, so it outlives the switch
     }
     if (program >= 0 && program < instance->getNumPrograms()) {
+        // TONE3000 reads the preset's file now: one copied over it since it opened is made lite too.
+        if (is_tone3000(instance->getName().toStdString())) tone3000_lite_presets(use_plugin_home());
         if (instance->getCurrentProgram() == program && instance->getNumPrograms() > 1) {
             instance->setCurrentProgram(program == 0 ? 1 : 0);
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
@@ -550,20 +574,20 @@ void PluginRack::switch_program(unsigned entry, uint32_t generation, int program
 // Rack thread, before a plug-in's library opens: $HOME on the card, made if
 // missing. Set only when it moves, as other threads may
 // read the environment.
-void PluginRack::use_plugin_home() {
+std::string PluginRack::use_plugin_home() {
     std::string top;
     {
         std::lock_guard<std::mutex> held(lock);
         top = card_top;
     }
     fs::path home = plugin_home(top);
-    if (home.empty()) return;
+    if (home.empty()) return {};
     std::error_code e;
     fs::create_directories(home, e);
-    if (!fs::is_directory(home, e)) return;
+    if (!fs::is_directory(home, e)) return {};
     const char* now = std::getenv("HOME");
-    if (now && home == fs::path(now)) return;
-    setenv("HOME", home.c_str(), 1);
+    if (!now || home != fs::path(now)) setenv("HOME", home.c_str(), 1);
+    return home.string();
 }
 
 void PluginRack::set_card(const std::string& top) {
@@ -785,7 +809,7 @@ void PluginRack::load(const Job& job) {
     if (!fs::exists(path, missing)) { fail("Not on the card"); return; }
     if (!file.loadable()) { fail(file.folder ? "Not a plug-in" : file.why); return; }
     if (!ensure_plugin_support()) { fail("Plug-in support missing"); return; }
-    use_plugin_home();
+    std::string home = use_plugin_home();
     fs::path stage = stage_root() / ("e" + std::to_string(job.entry) + "-" + std::to_string(++stage_count));
     std::string error;
     if (!stage_copy(file, stage, error)) { std::error_code e; fs::remove_all(stage, e); fail(error); return; }
@@ -796,6 +820,7 @@ void PluginRack::load(const Job& job) {
     double device_rate = job.rate > 0 ? job.rate : 44100.0;
     double rate = file.fixed_rate ? double(file.fixed_rate) : device_rate; // what the plug-in itself runs at
     int block = int(EngineHost::block);
+    bool tone3000 = false; // its NAM blocks always lite (plugin/tone3000.h)
     if (file.format == PluginFormat::Vst3) {
         message_thread().start();
         juce::VST3PluginFormatHeadless format;
@@ -807,7 +832,11 @@ void PluginRack::load(const Job& job) {
             for (auto* t : types) if (t->uniqueId == job.id) chosen = t;
         }
         if (!chosen) why = types.isEmpty() ? "No plug-in in the bundle" : "No longer in its bundle";
-        else instance = format.createInstanceFromDescription(*chosen, rate, block, why);
+        else {
+            tone3000 = is_tone3000(chosen->name.toStdString());
+            if (tone3000) tone3000_lite_presets(home); // before it lists them
+            instance = format.createInstanceFromDescription(*chosen, rate, block, why);
+        }
     } else if (file.format == PluginFormat::Vst2) {
         instance = Vst2Instance::load(juce::File(library), rate, block, why);
     } else {
@@ -823,7 +852,10 @@ void PluginRack::load(const Job& job) {
         for (int b = 1; b < instance->getBusCount(input); ++b) instance->getBus(input, b)->enable(false);
     instance->setNonRealtime(false);
     instance->prepareToPlay(rate, block);
-    if (!state.empty()) instance->setStateInformation(state.data(), int(state.size()));
+    if (!state.empty()) {
+        if (tone3000) tone3000_lite_state(state); // a project saved before, or with a full block
+        instance->setStateInformation(state.data(), int(state.size()));
+    }
     juce::PluginDescription description;
     instance->fillInPluginDescription(description);
     bool is_instrument = description.isInstrument || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);

@@ -87,6 +87,7 @@
 #include "melodee/shell/looper_chord.h"
 #include "melodee/shell/loop_sheet.h"
 #include "melodee/plugin/drum_map.h"
+#include "melodee/plugin/tone3000.h"
 #include <algorithm>
 #include <tuple>
 #include <array>
@@ -7798,6 +7799,59 @@ struct FakePlugin final : PluginRunner {
 // values and routes the plug-in's state in a free entry; FM6 and 909 tracks open empty with their patterns. Open MPC
 // plug-ins run at 44.1 kHz (MPC OS's contract): at another device rate they are heard through a band-limited
 // conversion, so they play in tune, and an effect passes what it is given.
+// TONE3000's NAM blocks always lite (plugin/tone3000.h): each "slimSize" double set to 0 in its data and its
+// presets on the card, and nothing else.
+void tone3000_always_lite() {
+    namespace fs = std::filesystem;
+    auto size = [](double value) {
+        std::vector<uint8_t> out = {'s', 'l', 'i', 'm', 'S', 'i', 'z', 'e', 0, 1, 9, 4};
+        uint8_t bytes[8];
+        std::memcpy(bytes, &value, 8); // JUCE writes it little-endian, as both hosts are
+        out.insert(out.end(), bytes, bytes + 8);
+        return out;
+    };
+    auto add = [](std::vector<uint8_t>& to, const std::vector<uint8_t>& more) { to.insert(to.end(), more.begin(), more.end()); };
+    auto value_at = [](const std::vector<uint8_t>& data, size_t at) { double v; std::memcpy(&v, data.data() + at, 8); return v; };
+    std::vector<uint8_t> preset = {'T', '3', 'K', 'H'};
+    add(preset, size(1.0)); // full, at 4 + 12
+    preset.push_back('x');
+    add(preset, size(0.0)); // lite already, at 25 + 12
+    add(preset, {'s', 'l', 'i', 'm', 'S', 'i', 'z', 'e', 0, 1, 5, 1, 1, 0, 0, 0}); // an int, not a size TONE3000 writes
+    add(preset, size(0.5)); // at 61 + 12
+    const std::vector<uint8_t> original = preset;
+    std::vector<uint8_t> data = preset;
+    CHECK(tone3000_lite(data.data(), data.size()) == 2);
+    CHECK(value_at(data, 16) == 0.0 && value_at(data, 37) == 0.0 && value_at(data, 73) == 0.0);
+    for (size_t i = 0; i < data.size(); ++i)
+        if ((i < 16 || i >= 24) && (i < 73 || i >= 81)) CHECK(data[i] == original[i]);
+    CHECK(tone3000_lite(data.data(), data.size()) == 0);
+    std::vector<uint8_t> cut = size(1.0);
+    cut.pop_back(); // the double cut short at the end: left alone
+    CHECK(tone3000_lite(cut.data(), cut.size()) == 0);
+
+    auto home = fs::temp_directory_path() / ("melodee-tone3000-" + std::to_string(getpid()));
+    auto factory = home / ".config" / "TONE3000" / "Presets" / "Factory";
+    fs::create_directories(factory);
+    auto write = [](const fs::path& path, const std::vector<uint8_t>& bytes) {
+        std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+    };
+    auto read = [](const fs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::vector<uint8_t>(std::istreambuf_iterator<char>(in), {});
+    };
+    write(factory / "Crunch.t3kpreset", original);
+    write(home / ".config" / "TONE3000" / "Presets" / "Lite.t3kpreset", data);
+    write(factory / "Crunch.t3kpreset.tmp", original); // not a preset
+    CHECK(tone3000_lite_presets(home) == 1);
+    CHECK(read(factory / "Crunch.t3kpreset") == data && read(factory / "Crunch.t3kpreset.tmp") == original);
+    CHECK(tone3000_lite_presets(home) == 0);
+    write(factory / "Crunch.t3kpreset", original); // copied over again: read again
+    fs::last_write_time(factory / "Crunch.t3kpreset", fs::last_write_time(factory / "Crunch.t3kpreset") + std::chrono::seconds(2));
+    CHECK(tone3000_lite_presets(home) == 1 && read(factory / "Crunch.t3kpreset") == data);
+    CHECK(tone3000_lite_presets(home / "none") == 0 && tone3000_lite_presets({}) == 0);
+    fs::remove_all(home);
+}
+
 void synths_as_plugins() {
     {
         auto project = std::make_unique<Project>();
@@ -11291,6 +11345,7 @@ int main() {
     pattern_motion();
     kit_lanes();
     plugins();
+    tone3000_always_lite();
     synths_as_plugins();
     voice_taps();
     voice_heads();

@@ -231,3 +231,24 @@ presets list on PRESETS from `Melodee/Plugin Data/.config/TONE3000/Presets`
 Matchless Crunch takes 65% of a block with no xruns over 10 s; Marshall
 Bluesbreaker 45 to 58% and 5 to 6 xruns a second (its IR). Picking the
 loaded preset again reloads it (another goes through first).
+
+**A2 size (2026-11-12).** Every capture in the factory presets is a NAM
+`SlimmableContainer` with two WaveNets: lite (3 channels, `max_value` 0.5)
+and full. Each NAM block's `slimSize` in the preset picks one (0 lite,
+1 full); it is not a parameter. Ampeg Bass Drive (2 blocks), Bogner
+Fullstack, Matchless Crunch and Stereo Fuzz (1 each) ship full blocks. The
+same presets with every `slimSize` set to 0, 48 kHz, 128 frames, 8 s:
+
+| Preset | Size | Mean | p99 | Max | Over budget |
+| --- | --- | --- | --- | --- | --- |
+| Matchless Crunch | as shipped | 69.7% | 121% | 138% | 752 of 3000 |
+| Matchless Crunch | lite | 23.6% | 77% | 96% | 0 of 3000 |
+| Stereo Fuzz | as shipped | 92.6% | 133% | 172% | 1224 of 3000 |
+| Stereo Fuzz | lite | 35.8% | 87% | 110% | 2 of 3000 |
+| Bluesbreaker copy (all lite) | as shipped | 62.9% | 865% | 1041% | 60 of 3000 |
+
+TONE3000's multi-core setting (`multiCore` in `preferences.settings`, on by
+default in the release build) changes none of these by much: off, Matchless
+lite is 19.7% and Stereo Fuzz lite 51.5%. The Bluesbreaker's 20 to 28 ms
+blocks stay with lite: they are its 1.78 s stereo IR. Melodee makes every
+block lite (`src/melodee/plugin/tone3000.h`).

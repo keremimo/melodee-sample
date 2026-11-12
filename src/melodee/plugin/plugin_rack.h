@@ -118,7 +118,7 @@ private:
     void load(const Job& job);
     void unload(unsigned entry, uint32_t generation);
     void switch_program(unsigned entry, uint32_t generation, int program);
-    void use_plugin_home();                         // before a plug-in opens: $HOME on the card
+    std::string use_plugin_home();                  // before a plug-in opens: $HOME on the card; it ("" no card)
     void list(const std::string& folder, int came_from);
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back

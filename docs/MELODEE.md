@@ -1579,6 +1579,14 @@ of the card (beside `Samples/`), in any folders under it.
   use `.config` there, which a Mac's Finder hides (Cmd-Shift-. shows it):
   TONE3000 reads its presets from `.config/TONE3000/Presets` when it
   opens.
+- **TONE3000: lite captures.** TONE3000 plays each amp capture (NAM A2) at
+  one of two sizes, lite or full. The size is kept in the preset, not on a
+  knob. Full takes about three times the CPU of lite here and crackles, so
+  Melodee makes every capture lite (`plugin/tone3000.h`): the presets in
+  `.config/TONE3000/Presets` before TONE3000 opens and before a preset is
+  picked (only the size changes in the file), and a project's saved
+  TONE3000 before it loads. A long reverb IR (Marshall Bluesbreaker's
+  1.78 s) still crackles: that is the IR, not the capture.
 - **Open MPC's rate.** An Open MPC plug-in is written to MPC OS's contract,
   44.1 kHz whatever the host says. Melodee opens one at 44.1 kHz and, at 48
   or 96 kHz, hears it through the base's band-limited converter
