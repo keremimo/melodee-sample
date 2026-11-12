@@ -68,6 +68,13 @@ constexpr Machine machines[] {
 
 uint32_t next(uint32_t& seed) { seed = seed * 1664525u + 1013904223u; return seed; }
 float noise(uint32_t& seed) { return int32_t(next(seed)) * (1.0f / 2147483648.0f); }
+// A first-order allpass's coefficient written for 44.1 kHz, at the device's rate: its corner kept (bilinear).
+float allpass_at_rate(float d) {
+    const float r = dsp::model_frames();
+    if (r == 1.0f) return d;
+    const float t = std::tan(std::atan((1 - d) / (1 + d)) * r);
+    return (1 - t) / (1 + t);
+}
 } // namespace
 
 void Effect::update_extra() {
@@ -100,12 +107,12 @@ void Effect::update_extra() {
         b = std::pow(10.0f, -3.0f * comb_length[1] / (seconds * fs()));
         mix = pct(2);
         c = pct(3);                                    // width
-        d = 0.45f + pct(4) * 0.35f;                    // dispersion: the chirp's allpass coefficient
+        d = allpass_at_rate(0.45f + pct(4) * 0.35f);   // dispersion: the chirp's allpass coefficient
         e = std::exp(-two_pi * float(p[5]) / fs());      // low cut, a one-pole high pass
         damp = one_pole(4500);
         break;
     }
-    case K::Pumper: mix = 1; break;
+    case K::Pumper: mix = 1; glide[0] = dsp::step_per_frame(0.05f); break; // the gain's way to its aim
     case K::AmpSim: {
         float coefficients[5];
         for (unsigned side = 0; side < 2; ++side) {
@@ -124,6 +131,7 @@ void Effect::update_extra() {
     }
     case K::TubeDrive:
         a = db(pct(0) * 30); b = db(float(p[1])); c = pct(2) * 0.4f; // drive, headroom, the bias that adds even harmonics
+        glide[0] = dsp::step_per_frame(0.0015f);                     // the DC blocker, near 10 Hz
         break;
     case K::SoftClip: a = db(float(p[0])); b = db(float(p[3])); mix = pct(2); break;
     case K::Ensemble:
@@ -151,8 +159,13 @@ void Effect::update_extra() {
     case K::Vinyl:
         a = one_pole(2500 * std::exp2(pct(0) * 2.7f)); // tone: 2.5 to 16 kHz
         b = pct(1); c = pct(2);
+        fall[0] = dsp::fall_per_frame(0.93f);                                      // a crackle's fall, about 0.3 ms
+        glide = {dsp::step_per_frame(0.3f), dsp::step_per_frame(0.004f)};           // the hiss's band; the rumble cut near 30 Hz
         break;
-    case K::TapeEmu: a = pct(0); b = pct(1); c = pct(2); d = one_pole(12000); break;
+    case K::TapeEmu:
+        a = pct(0); b = pct(1); c = pct(2); d = one_pole(12000);
+        glide = {dsp::step_per_frame(0.0004f), dsp::step_per_frame(0.5f)};          // the pitch's wander toward its aim; the hiss's band
+        break;
     default: break;
     }
 }
@@ -232,7 +245,7 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
             else if (t < A + H) duck = 1;
             else if (t < A + H + R) duck = std::pow(1 - (t - A - H) / R, 1 + p[1] / 100.0f * 4);
             float target = 1 - p[2] / 100.0f * duck;
-            gain += (target - gain) * 0.05f;
+            gain += (target - gain) * glide[0];
             wet_l = l * gain; wet_r = r * gain;
             break;
         }
@@ -256,7 +269,7 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
                 float u = io[side] * a / b;
                 float y = (dsp::soft_clip(u + c) - dsp::soft_clip(c)) * b / std::sqrt(a);
                 float& dc = state[side];
-                dc += (y - dc) * 0.0015f;
+                dc += (y - dc) * glide[0];
                 io[side] = y - dc;
             }
             wet_l = io[0]; wet_r = io[1];
@@ -352,14 +365,15 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
             float& pop = state[0];
             float& pop_level = state[1];
             float& hiss = state[2];
-            if ((next(seed) >> 8) % 1000000 < unsigned(b * b * 900)) { pop = 1; pop_level = (0.1f + float((seed >> 4) % 100) / 220.0f) * b; }
-            float crackle = noise(seed) * pop * pop_level;
-            pop *= 0.93f;
-            hiss += (noise(seed) - hiss) * 0.3f;
+            // As many crackles a second, each as long and as loud, and the hiss as loud, at any rate (update()).
+            if ((next(seed) >> 8) % 1000000 < unsigned(b * b * 900) && dsp::kept(seed, keep)) { pop = 1; pop_level = (0.1f + float((seed >> 4) % 100) / 220.0f) * b; }
+            float crackle = noise(seed) * noise_gain * pop * pop_level; // the noise scaled where it comes in (exact at 44.1 kHz)
+            pop *= fall[0];
+            hiss += (noise(seed) * noise_gain - hiss) * glide[0];
             float surface = crackle + hiss * b * 0.006f;
             float& rumble_l = state[3];
             float& rumble_r = state[4];
-            rumble_l += (tone_l - rumble_l) * 0.004f; rumble_r += (tone_r - rumble_r) * 0.004f; // a high pass near 30 Hz
+            rumble_l += (tone_l - rumble_l) * glide[1]; rumble_r += (tone_r - rumble_r) * glide[1]; // a high pass near 30 Hz
             wet_l = tone_l - rumble_l + surface; wet_r = tone_r - rumble_r + surface;
             break;
         }
@@ -369,13 +383,13 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
             float& drift = state[0];
             float& aim = state[1];
             float& hiss = state[2];
-            if ((hold_count++ & 4095) == 0) aim = noise(seed);
-            drift += (aim - drift) * 0.0004f;
+            if (dsp::every_model_frames(hold_count++, 4096, ratio)) aim = noise(seed); // a new aim every 93 ms
+            drift += (aim - drift) * glide[0];
             line_l[write] = l; line_l[wobble_line + write] = r;
             float back = 0.008f * fs() + a * 0.003f * fs() * std::sin(two_pi * lfo) + c * 0.004f * fs() * drift;
             float x[2] {tap(line_l, wobble_line, write, back), tap(line_l + wobble_line, wobble_line, write, back)};
             if (++write >= wobble_line) write = 0;
-            hiss += (noise(seed) - hiss) * 0.5f;
+            hiss += (noise(seed) * noise_gain - hiss) * glide[1];
             for (unsigned side = 0; side < 2; ++side) x[side] = dsp::soft_clip(x[side] * 1.4f) / 1.4f + hiss * b * 0.01f;
             tone_l += (x[0] - tone_l) * d; tone_r += (x[1] - tone_r) * d;
             wet_l = tone_l; wet_r = tone_r;

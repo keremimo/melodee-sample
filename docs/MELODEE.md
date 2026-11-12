@@ -914,6 +914,12 @@ pong, Looper, Diff delay, Sample delay), modulation, dirt (Drive, Tape,
 Crush, Spit, Fuzz, Amp sim, Tube drive, Soft clipper, Vintage, Vinyl, Tape
 emulator), filters and EQ, dynamics (Compressor, Gate, Transient, Limiter,
 Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
+Every effect, Pad FX and the master's Color sound the same at 48 and 96 kHz
+as at 44.1 kHz: what each was written with a 44.1 kHz frame at a time (a
+fall, a smoothing, a filter's corner, a hold, a short delay, a chance a
+frame) is made the device's, so Vinyl crackles as often, Crush holds as
+long and a reverb's damping stays where it was; hiss and clicks stay as
+loud in what is heard. At 44.1 kHz they play to the bit as before.
 
 - **FX Select** (Shift + Knob FX, round Track → Sends → Bus → Master; B1 /
   B3 walk too, named with chevrons): Stage's six-slot strip (each slot its
@@ -1111,7 +1117,8 @@ while following.
   frames whatever the rate, so projects open the same at any rate; samples
   play from a copy at the device's rate, and takes, Audio Recall, Resample,
   mixdowns and loops are recorded and saved at it (Sampler, Looper). Plug-ins are loaded
-  again at the new rate, and Monitor hears the source at it. Kept in `Melodee/settings` with the project to open at
+  again at the new rate, Monitor hears the source at it, and effects keep
+  their timing at it (Effects). Kept in `Melodee/settings` with the project to open at
   start. **MIDI**: MIDI Config's page. **ABOUT**: how the machine is
   doing, the page to open when something crackles: RENDER (each core's load
   as a meter, the audio blocks' share of their time), AUDIO (rate and

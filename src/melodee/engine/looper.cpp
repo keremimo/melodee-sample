@@ -396,10 +396,11 @@ void Looper::take_written(Loop& l) {
 }
 
 void Looper::seam(Loop& l) {
-    if (!l.audio || l.length < 4 * looper::fade) return;
+    const unsigned fade = looper::frames_of(looper::fade, float(l.rate)); // at the loop's own rate
+    if (!l.audio || l.length < 4 * fade) return;
     float* a[2] {l.audio->left.get(), l.audio->right.get()};
-    for (unsigned k = 0; k < looper::fade; ++k) {
-        float g = float(k) / looper::fade;
+    for (unsigned k = 0; k < fade; ++k) {
+        float g = float(k) / fade;
         for (auto* c : a) { c[k] *= g; c[l.length - 1 - k] *= g; }
     }
 }
@@ -494,8 +495,8 @@ void Looper::play_frame(Loop& l, double tick, float& out_l, float& out_r) {
     out_l = out_r = 0;
     bool sound = (l.state == State::Playing || l.state == State::Overdub) && !halted && !l.clearing && l.length;
     float target = sound ? 1.0f : 0.0f;
-    if (l.gain < target) l.gain = std::min(target, l.gain + 1.0f / looper::ramp);
-    else if (l.gain > target) l.gain = std::max(target, l.gain - 1.0f / looper::ramp);
+    if (l.gain < target) l.gain = std::min(target, l.gain + 1.0f / ramp_frames);
+    else if (l.gain > target) l.gain = std::max(target, l.gain - 1.0f / ramp_frames);
     if (l.gain <= 0 || !l.length || l.ticks <= 0 || !l.audio) { l.was_stretched = false; return; }
     const float* al = l.audio->left.get();
     const float* ar = l.audio->right.get();
@@ -506,12 +507,12 @@ void Looper::play_frame(Loop& l, double tick, float& out_l, float& out_r) {
         if (!l.was_stretched) l.stretch.reset();
         l.stretch.frame(al, ar, l.length, at, ratio(l), a, b);
     } else {
-        if (l.was_stretched) l.xfade = looper::ramp;
+        if (l.was_stretched) l.xfade = ramp_frames;
         read(al, ar, l.length, at, a, b);
         if (l.xfade) { // from the stretch back to plain reading
             float c, d;
             l.stretch.frame(al, ar, l.length, at, ratio(l), c, d);
-            float g = float(l.xfade) / looper::ramp;
+            float g = float(l.xfade) / ramp_frames;
             a = a * (1 - g) + c * g; b = b * (1 - g) + d * g;
             --l.xfade;
         }
@@ -585,6 +586,7 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
     if (clock.rate != rate) {
         rate = clock.rate;
         memory_rate.store(rate, std::memory_order_release); // memory made from now on: 64 s at this rate
+        ramp_frames = looper::frames_of(looper::ramp, rate); fade_frames = looper::frames_of(looper::fade, rate);
         const float q[2] {0.5412f, 1.3066f};
         float w = 2 * dsp::pi * 19000.0f / rate, cw = std::cos(w);
         for (unsigned s = 0; s < 2; ++s) {
@@ -746,10 +748,10 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
                             in_r = biquad(lp_coef[s], l.lp[s * 2 + 1], in_r);
                         }
                     }
-                    if (l.write == Write::DubIn) { l.dub = std::min(1.0f, l.dub + 1.0f / looper::fade); if (l.dub >= 1) l.write = Write::Dub; }
+                    if (l.write == Write::DubIn) { l.dub = std::min(1.0f, l.dub + 1.0f / fade_frames); if (l.dub >= 1) l.write = Write::Dub; }
                     double x = l.write == Write::Take ? 0 : index_at(l, (halted ? tick : own_tick + k * per) - lag * per);
                     write_frame(l, n, x, in_l, in_r);
-                    if (l.write == Write::DubOut) { l.dub = std::max(0.0f, l.dub - 1.0f / looper::fade); if (l.dub <= 0) set_write(l, Write::Off); }
+                    if (l.write == Write::DubOut) { l.dub = std::max(0.0f, l.dub - 1.0f / fade_frames); if (l.dub <= 0) set_write(l, Write::Off); }
                 }
             }
             unsigned done = end - f;
@@ -876,9 +878,10 @@ void Looper::fit_render(Loop& l) {
         s.frame(al, ar, length, wrap(double(j) * per, length), 1.0, a, b);
         if (j >= 0) { dl[j] = a; dr[j] = b; }
     }
-    if (out >= 4 * looper::fade)
-        for (unsigned k = 0; k < looper::fade; ++k) { // the seam a touch softer
-            float g = 0.5f + 0.5f * float(k) / looper::fade;
+    const unsigned fade = looper::frames_of(looper::fade, float(l.rate)); // at the loop's own rate
+    if (out >= 4 * fade)
+        for (unsigned k = 0; k < fade; ++k) { // the seam a touch softer
+            float g = 0.5f + 0.5f * float(k) / fade;
             dl[k] *= g; dr[k] *= g; dl[out - 1 - k] *= g; dr[out - 1 - k] *= g;
         }
     l.fit.store(FitState::Done, std::memory_order_release);

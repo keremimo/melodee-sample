@@ -34,7 +34,8 @@ private:
     MasterComp s;
     float attack = 0.99f, release = 0.999f, threshold = 0, ratio = 1, makeup = 1, boost = 1;
     float env = 0, low_l = 0, low_r = 0, wobble = 0, gain = 1, step = 0;
-    static constexpr unsigned line = 512;
+    float low_step = 0.0085f, stretch = 1; // Color's at the device's rate (set()): its low pass's step, 44.1 kHz frames to its own
+    static constexpr unsigned line = 512;  // room for Color's wobble at 96 kHz
     float delay_l[line] {}, delay_r[line] {};
     unsigned at = 0;
     std::atomic<float> shown {0};

@@ -18,8 +18,8 @@ bool needs_memory(K k) { return effect_needs_memory(k); }
 // Room for 96 kHz: the reverb's lengths are Freeverb's at 44.1 kHz, stretched to the device's rate.
 constexpr unsigned pre_length = 9600, comb_base = 2 * pre_length, comb_room = 3500, pass_base = comb_base + 8 * comb_room, pass_room = 1540;
 float stretch() { return fs() / dsp::model_rate; } // 44.1 kHz lengths to the device's rate
-// Shimmer's shifter after the reverb's parts: a short line a side.
-constexpr unsigned shift_base = pass_base + 4 * pass_room, shift_room = 4096;
+// Shimmer's shifter after the reverb's parts: a short line a side, room for its window at 96 kHz.
+constexpr unsigned shift_base = pass_base + 4 * pass_room, shift_room = 4608;
 static_assert(shift_base + 2 * shift_room < DelayPool::block_floats, "shimmer fits in its block");
 // Formants of five vowels (A E I O U), Hz.
 constexpr float vowel_formants[5][3] {{800, 1150, 2900}, {400, 1700, 2600}, {280, 2200, 2950}, {450, 800, 2830}, {325, 700, 2530}};
@@ -87,6 +87,7 @@ void Effect::set_param(unsigned index, int value) {
 void Effect::update() {
     auto pct = [&](unsigned n) { return p[n] / 100.0f; };
     mix = 1;
+    ratio = dsp::rate_ratio(); keep = dsp::model_frames(); noise_gain = dsp::noise_level();
     switch (current) {
     case K::Room: case K::Reverb: case K::Plate: case K::Shimmer: {
         float scale = ((current == K::Plate ? 0.55f : current == K::Room ? 0.6f : 0.8f) + pct(0) * 0.4f) * stretch();
@@ -102,10 +103,11 @@ void Effect::update() {
         // Decay time to comb feedback: -60 dB after `seconds` through the average comb.
         float seconds = std::clamp(time_seconds(p[1]), 0.2f, 12.0f);
         feedback = std::pow(10.0f, -3.0f * (1250 * scale) / (seconds * fs()));
-        damp = pct(2) * (current == K::Plate ? 0.3f : 0.6f);
+        damp = dsp::fall_per_frame(pct(2) * (current == K::Plate ? 0.3f : 0.6f)); // the combs' low pass, its corner at any rate
         mix = pct(3);
         predelay = std::min(pre_length - 1, unsigned(pct(4) * 0.1f * fs()));
         if (current == K::Shimmer) { predelay = 0; d = pct(4) * 0.5f; } // how much of the octave goes round again
+        window = 2048.0f * dsp::device_frames(); // Shimmer's grains, 46 ms at any rate
         break;
     }
     case K::Looper:
@@ -145,7 +147,7 @@ void Effect::update() {
         mix = pct(current == K::Flanger ? 3 : 2);
         break;
     case K::Phaser: a = rate_hertz(p[0]); b = pct(1); c = pct(2); mix = pct(3); break;
-    case K::AutoPan: case K::Tremolo: a = rate_hertz(p[0]); b = pct(1); c = float(p[2]); break;
+    case K::AutoPan: case K::Tremolo: a = rate_hertz(p[0]); b = pct(1); c = float(p[2]); glide[0] = dsp::step_per_frame(0.01f); break;
     case K::Drive: case K::Fuzz:
         a = db(pct(0) * (current == K::Fuzz ? 40 : 24));
         b = 1 - std::exp(-two_pi * (1000 + pct(1) * 15000) / fs());
@@ -178,8 +180,14 @@ void Effect::update() {
         d = follow(time_seconds(p[3]) * 0.1f); e = follow(time_seconds(p[4]));
         mix = pct(5);
         break;
-    case K::Gate: a = db(float(p[0])); e = follow(time_seconds(p[1])); break;
-    case K::Transient: a = p[0] / 100.0f; b = p[1] / 100.0f; mix = pct(2); break;
+    case K::Gate: // its level's fall, and the gain's way up
+        a = db(float(p[0])); e = follow(time_seconds(p[1]));
+        fall[0] = dsp::fall_per_frame(0.999f); glide[0] = dsp::step_per_frame(0.05f);
+        break;
+    case K::Transient: // the fast and slow levels' falls
+        a = p[0] / 100.0f; b = p[1] / 100.0f; mix = pct(2);
+        fall = {dsp::fall_per_frame(0.98f), dsp::fall_per_frame(0.9995f)};
+        break;
     case K::Limiter: a = db(float(p[0])); e = follow(time_seconds(p[1]) * 0.5f); break;
     default: update_extra(); break;
     }
@@ -248,7 +256,6 @@ void Effect::process(float* left, float* right, unsigned frames) {
             float* sl = memory + shift_base;
             float* sr = sl + shift_room;
             sl[shift_at] = wet_l; sr[shift_at] = wet_r;
-            constexpr float window = 2048;
             shift_phase += 1; if (shift_phase >= window) shift_phase -= window;
             float out[2] {0, 0};
             for (float offset : {0.0f, window / 2}) {
@@ -305,15 +312,15 @@ void Effect::process(float* left, float* right, unsigned frames) {
         case K::Spit: {
             // Now and then a spit: a few milliseconds held, crushed and jumping in level.
             seed = seed * 1664525u + 1013904223u;
-            if (!spit_left && (seed >> 8) % 100000 < unsigned(a * a * 120)) {
-                spit_left = 90 + (seed >> 4) % 900;
+            if (!spit_left && (seed >> 8) % 100000 < unsigned(a * a * 120) && dsp::kept(seed, keep)) { // as often a second at any rate
+                spit_left = unsigned(float(90 + (seed >> 4) % 900) * dsp::device_frames());   // 2-22 ms
                 spit_gain = 0.4f + float((seed >> 12) % 100) / 60.0f;
             }
             float steps = std::exp2(10 - b * 7);
             if (spit_left) {
                 --spit_left;
                 unsigned every = 2 + unsigned(b * 14);
-                if (hold_count++ % every == 0) { hold_l = std::round(l * steps) / steps; hold_r = std::round(r * steps) / steps; }
+                if (dsp::every_model_frames(hold_count++, every, ratio)) { hold_l = std::round(l * steps) / steps; hold_r = std::round(r * steps) / steps; }
                 wet_l = dsp::soft_clip(hold_l * spit_gain * 2) * 0.6f; wet_r = dsp::soft_clip(hold_r * spit_gain * 2) * 0.6f;
             } else {
                 wet_l = dsp::soft_clip(l * (1 + b)) / (1 + b * 0.5f); wet_r = dsp::soft_clip(r * (1 + b)) / (1 + b * 0.5f);
@@ -380,7 +387,7 @@ void Effect::process(float* left, float* right, unsigned frames) {
         case K::Tremolo: {
             lfo += a / fs(); lfo -= std::floor(lfo);
             float wave = c ? (lfo < 0.5f ? 1.0f : -1.0f) : std::sin(two_pi * lfo);
-            gain += ((1 - b * (0.5f - 0.5f * wave)) - gain) * 0.01f; // smoothed, so the square does not click
+            gain += ((1 - b * (0.5f - 0.5f * wave)) - gain) * glide[0]; // smoothed, so the square does not click
             wet_l = l * gain; wet_r = r * gain;
             break;
         }
@@ -404,7 +411,7 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::Crush:
-            if (hold_count++ % delay == 0) { hold_l = std::round(l * a) / a; hold_r = std::round(r * a) / a; }
+            if (dsp::every_model_frames(hold_count++, delay, ratio)) { hold_l = std::round(l * a) / a; hold_r = std::round(r * a) / a; } // held RATE's 44.1 kHz frames
             wet_l = hold_l; wet_r = hold_r;
             break;
         case K::Eq:
@@ -439,16 +446,16 @@ void Effect::process(float* left, float* right, unsigned frames) {
         }
         case K::Gate: {
             float level = std::max(std::fabs(l), std::fabs(r));
-            env = level > env ? level : level + (env - level) * 0.999f;
+            env = level > env ? level : level + (env - level) * fall[0];
             float target = env > a ? 1.0f : 0.0f;
-            gain = target > gain ? gain + (target - gain) * 0.05f : target + (gain - target) * e;
+            gain = target > gain ? gain + (target - gain) * glide[0] : target + (gain - target) * e;
             wet_l = l * gain; wet_r = r * gain;
             break;
         }
         case K::Transient: {
             float level = std::max(std::fabs(l), std::fabs(r));
-            env = level > env ? level + (env - level) * 0.98f : level + (env - level) * 0.9995f;   // fast
-            env2 = level > env2 ? level + (env2 - level) * 0.9995f : level + (env2 - level) * 0.9995f; // slow
+            env = level > env ? level + (env - level) * fall[0] : level + (env - level) * fall[1];   // fast
+            env2 = level > env2 ? level + (env2 - level) * fall[1] : level + (env2 - level) * fall[1]; // slow
             float attack = (env - env2) / (env2 + 1e-3f), sustain = (env2 - env) / (env + 1e-3f);
             float g = std::clamp(1 + a * std::max(attack, 0.0f) + b * std::max(sustain, 0.0f), 0.0f, 4.0f);
             wet_l = l * g; wet_r = r * g;

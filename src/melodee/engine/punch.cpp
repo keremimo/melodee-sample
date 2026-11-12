@@ -35,6 +35,14 @@ void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples,
     kind = k; depth = d; bar = std::max(256.0, bar_samples); grid = std::clamp(grid_samples, 64.0, bar);
     set_params(values);
     held = true; fading = 0; age = begun = 0; lag = 0; speed = 1;
+    {
+        auto& pf = per_frame;
+        pf.stretch = dsp::device_frames(); pf.noise = dsp::noise_level(); pf.click = dsp::click_level(); pf.keep = dsp::model_frames();
+        pf.dc = dsp::step_per_frame(0.002f); pf.rumble = dsp::step_per_frame(0.004f);
+        pf.crackle = dsp::fall_per_frame(0.9f); pf.gate = dsp::step_per_frame(0.02f);
+        pf.damp = dsp::fall_per_frame(0.4f); pf.damp_in = pf.damp == 0.4f ? 0.6f : 1 - pf.damp;
+        pf.ratio = dsp::rate_ratio();
+    }
     s1[0] = s1[1] = s2[0] = s2[1] = 0;
     switch (k) {
     case PunchKind::Loop4: loop = bar / 4; break;
@@ -134,7 +142,7 @@ void Punch::process(float* l, float* r, unsigned frames) {
                 break;
             }
             case PunchKind::Upper: { // an octave up: two taps read twice as fast from a window behind, half a window
-                double window = std::min(grid, 4096.0); // apart, each faded in and out (squared sines, summing to one)
+                double window = std::min(grid, 4096.0 * per_frame.stretch); // apart, each faded in and out (squared sines, summing to one)
                 float sum_l = 0, sum_r = 0;
                 for (double offset : {0.0, window / 2}) {
                     double ph = std::fmod(since + offset, window);
@@ -171,8 +179,8 @@ void Punch::process(float* l, float* r, unsigned frames) {
             case PunchKind::Crush:
                 wet_l = std::round(dry_l * 8) / 8; wet_r = std::round(dry_r * 8) / 8;
                 break;
-            case PunchKind::Alias: // held every twelfth sample: 3.7 kHz
-                if (age % 12 == 0) { hold[0] = dry_l; hold[1] = dry_r; }
+            case PunchKind::Alias: // held every twelfth 44.1 kHz frame: 3.7 kHz
+                if (dsp::every_model_frames(age, 12, per_frame.ratio)) { hold[0] = dry_l; hold[1] = dry_r; }
                 wet_l = hold[0]; wet_r = hold[1];
                 break;
             case PunchKind::Gate: { // open for the first half of each grid step, each edge faded (the first opening is the start's)
@@ -192,14 +200,15 @@ void Punch::process(float* l, float* r, unsigned frames) {
             }
             case PunchKind::Ring: { float m = std::sin(two_pi * float(since) * 440 / dsp::sample_rate()); wet_l *= m; wet_r *= m; break; }
             case PunchKind::Flange: {
-                double back = 44 + 120 * (0.5 + 0.5 * std::sin(two_pi * since / (bar / 2)));
+                double back = (44 + 120 * (0.5 + 0.5 * std::sin(two_pi * since / (bar / 2)))) * per_frame.stretch; // 1-3.7 ms
                 wet_l = (dry_l + read(left.get(), back)) * 0.6f; wet_r = (dry_r + read(right.get(), back)) * 0.6f;
                 break;
             }
             case PunchKind::Drive: wet_l = dsp::soft_clip(dry_l * 4) * 0.5f; wet_r = dsp::soft_clip(dry_r * 4) * 0.5f; break;
             case PunchKind::Vinyl: {
                 uint32_t h = uint32_t(age) * 2654435761u;
-                float crackle = (h >> 24) % 97 == 0 ? 0.15f * ((h >> 8 & 1) ? 1 : -1) : 0;
+                // As many clicks a second, each heard as loud, at any rate.
+                float crackle = (h >> 24) % 97 == 0 && dsp::kept(seed, per_frame.keep) ? 0.15f * per_frame.click * ((h >> 8 & 1) ? 1 : -1) : 0;
                 float g = std::tan(dsp::pi * 3500 / dsp::sample_rate()) / (1 + std::tan(dsp::pi * 3500 / dsp::sample_rate()));
                 s1[0] += g * (dry_l - s1[0]); s1[1] += g * (dry_r - s1[1]);
                 wet_l = s1[0] * 0.85f + crackle; wet_r = s1[1] * 0.85f + crackle;

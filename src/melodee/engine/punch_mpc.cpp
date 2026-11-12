@@ -52,6 +52,7 @@ void Punch::begin_mpc() {
         float stretch = fs() / dsp::model_rate;
         for (unsigned n = 0; n < 4; ++n) { len[n] = unsigned(combs[n] * stretch); at[n] = 0; }
         for (unsigned n = 0; n < 2; ++n) { len[4 + n] = unsigned(passes[n] * stretch); at[4 + n] = 0; }
+        len[6] = unsigned(23 * stretch); len[7] = unsigned(17 * stretch); // the right side's combs and allpasses that much longer
         at[6] = 0; // the predelay's write position
         break;
     }
@@ -131,7 +132,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
     case K::LoFi: { // bits down to BITCRUSH, samples held DECIMATOR long
         float steps = std::exp2(float(param[0] - 1));
         unsigned every = 1 + unsigned(pct(1) * 39);
-        if (unsigned(st[0]++) % every == 0) { hold[0] = std::round(dry_l * steps) / steps; hold[1] = std::round(dry_r * steps) / steps; }
+        if (dsp::every_model_frames(unsigned(st[0]++), every, per_frame.ratio)) { hold[0] = std::round(dry_l * steps) / steps; hold[1] = std::round(dry_r * steps) / steps; } // every 44.1 kHz frames
         if (st[0] > 1e6f) st[0] = 0;
         wet_l = hold[0]; wet_r = hold[1];
         break;
@@ -140,22 +141,22 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         phase += 1.0 / fs(); phase -= std::floor(phase); // a second's clock for the wobbles
         switch (std::clamp<int>(param[0], 0, 5)) {
         case 0: { // Cassette: wow, a dull top, hiss, a little saturation
-            double back = 60 + 30 * std::sin(two_pi * 0.8 * phase);
+            double back = (60 + 30 * std::sin(two_pi * 0.8 * phase)) * per_frame.stretch;
             replay(back);
             float a = 1 - std::exp(-two_pi * 7000 / fs());
             st[0] += (wet_l - st[0]) * a; st[1] += (wet_r - st[1]) * a;
-            float hiss = noise(seed) * 0.004f;
+            float hiss = noise(seed) * per_frame.noise * 0.004f;
             wet_l = dsp::soft_clip(st[0] * 1.3f) / 1.3f + hiss; wet_r = dsp::soft_clip(st[1] * 1.3f) / 1.3f + hiss;
             break;
         }
         case 1: { // Flutter: fast and slow pitch wobble
-            replay(80 + 25 * std::sin(two_pi * 7 * phase) + 15 * std::sin(two_pi * 0.5 * phase));
+            replay((80 + 25 * std::sin(two_pi * 7 * phase) + 15 * std::sin(two_pi * 0.5 * phase)) * per_frame.stretch);
             break;
         }
         case 2: { // Tube Amp: driven, lopsided, the offset taken out
             for (unsigned side = 0; side < 2; ++side) {
                 float y = dsp::soft_clip(*io[side] * 2.5f + 0.2f) - dsp::soft_clip(0.2f);
-                st[2 + side] += (y - st[2 + side]) * 0.002f;
+                st[2 + side] += (y - st[2 + side]) * per_frame.dc;
                 *io[side] = (y - st[2 + side]) * 0.6f;
             }
             break;
@@ -163,9 +164,9 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         case 3: { // Vinyl: the record's band, crackle
             float a = 1 - std::exp(-two_pi * 4500 / fs());
             st[0] += (dry_l - st[0]) * a; st[1] += (dry_r - st[1]) * a;
-            st[4] += (st[0] - st[4]) * 0.004f; st[5] += (st[1] - st[5]) * 0.004f;
-            if ((uint32_t(noise(seed) * 1e6f + 1e6f)) % 3000 == 0) st[6] = 0.25f * noise(seed);
-            float crackle = st[6]; st[6] *= 0.9f;
+            st[4] += (st[0] - st[4]) * per_frame.rumble; st[5] += (st[1] - st[5]) * per_frame.rumble; // the rumble cut near 30 Hz
+            if ((uint32_t(noise(seed) * 1e6f + 1e6f)) % 3000 == 0 && dsp::kept(seed, per_frame.keep)) st[6] = 0.25f * noise(seed); // 15 a second
+            float crackle = st[6]; st[6] *= per_frame.crackle;
             wet_l = (st[0] - st[4]) * 0.9f + crackle; wet_r = (st[1] - st[5]) * 0.9f + crackle;
             break;
         }
@@ -236,7 +237,8 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         unsigned cycle = unsigned(after / loop);
         double in = std::fmod(after, loop);
         replay(cycle % 2 ? in + 1 : loop - in);
-        float edge = float(std::min({in, loop - in, 64.0}) / 64.0); // no click at the turns
+        const double turn = 64.0 * per_frame.stretch; // 1.5 ms
+        float edge = float(std::min({in, loop - in, turn}) / turn); // no click at the turns
         wet_l *= edge; wet_r *= edge;
         break;
     }
@@ -263,15 +265,15 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
             float x = line[(w + pre_room - pre) % pre_room] * 0.03f, out = 0;
             for (unsigned n = 0; n < 4; ++n) {
                 float* comb = line + comb_base + n * comb_room;
-                unsigned length = len[n] + side * 23, i = at[n] % length;
+                unsigned length = len[n] + side * len[6], i = at[n] % length;
                 float y = comb[i];
-                st[side * 4 + n] = y * 0.6f + st[side * 4 + n] * 0.4f; // damping
+                st[side * 4 + n] = y * per_frame.damp_in + st[side * 4 + n] * per_frame.damp; // damping
                 comb[i] = x + st[side * 4 + n] * feedback;
                 out += y;
             }
             for (unsigned n = 0; n < 2; ++n) {
                 float* pass = line + pass_base + n * pass_room;
-                unsigned length = len[4 + n] + side * 17, i = at[4 + n] % length;
+                unsigned length = len[4 + n] + side * len[7], i = at[4 + n] % length;
                 float b = pass[i], y = -out * diffuse + b;
                 pass[i] = out + b * diffuse;
                 out = y;
@@ -296,7 +298,7 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         static const uint16_t pattern = 0b1011011010110110;
         unsigned step = unsigned(std::fmod(since, bar) / (bar / 16)) % 16;
         float target = (pattern >> step) & 1 ? 1.0f : 0.0f;
-        st[0] += (target - st[0]) * 0.02f;
+        st[0] += (target - st[0]) * per_frame.gate;
         wet_l *= st[0]; wet_r *= st[0];
         break;
     }

@@ -254,6 +254,30 @@ behaviour changed.
   197 at 48, 393 at 96), an empty loop's made again when the rate changes
   while one with audio keeps its own; files saved at the loop's rate, the
   project's frame counts still 44.1 kHz frames.
+- Effects at the device's rate: every constant an effect took a 44.1 kHz
+  frame at a time (a fall, a one-pole's step, a count of frames, a chance a
+  frame, a length in frames) is made the device's where the rate is known
+  (an update, a punch's start, a block; `dsp.h` `fall_per_frame`,
+  `step_per_frame`, `every_model_frames`, `kept`, `noise_level`,
+  `click_level`, `fall_per_block`), never a frame at a time. Knob FX: Vinyl
+  (crackle chance, fall and level, hiss band and level, rumble cut), Tape
+  emulator (a new aim every 4096 44.1 kHz frames, drift, hiss), Pumper,
+  Tremolo, Gate, Transient, Tube drive's DC blocker, Crush's and Spit's
+  holds, Spit's chance and length, Spring's dispersion (its allpasses'
+  corner kept, bilinear), the reverbs' damping, Shimmer's window. Pad FX:
+  Alias, LoFi, Color (Cassette's and Flutter's wobble, hiss, Tube Amp, Vinyl),
+  Trance Gate, Reverb's damping and spread, Upper's window, Flange, Rev
+  Stepper's edges, Vinyl's clicks. Also the master's Color, a sampler
+  choke's fade and a zone's duck, the looper's play, stretch and punch
+  ramps and seam fades, and the mix, loop and DSP load meters' fall.
+  White noise is scaled by the square root of the rates' ratio and a
+  one-sample click by the ratio, so each is as loud in the audible band.
+  At 44.1 kHz each constant is itself: every Knob FX kind (three settings
+  each), every punch and the master's Color rendered bit for bit as before,
+  with and without FMA contraction (the noise scaled where it comes in, not
+  after a product). Left: control steps (filters retuned every 8 or 16
+  frames) only come more often; Prophet, CZ, SID, FM6 and the 909 leave
+  Melodee. Why: Kerem, "I don't wanna force 44.1khz for anything".
 
 ## Waiting for a hand check
 

@@ -93,6 +93,14 @@ private:
     uint64_t age = 0;    // samples since it began (Rev Stepper starts it again with each new slice)
     uint64_t begun = 0;  // samples since start(), for its fade in
     float s1[2] {}, s2[2] {}, hold[2] {};
+    // Per-frame constants written for 44.1 kHz frames, at the device's rate (start(); dsp.h; the same at 44.1 kHz).
+    struct PerFrame {
+        double stretch = 1;                    // device frames in a 44.1 kHz frame: lengths written in 44.1 kHz frames
+        float noise = 1, click = 1, keep = 1;  // white noise's level, a one-sample click's, the share of a chance kept
+        float dc = 0.002f, rumble = 0.004f, crackle = 0.9f, gate = 0.02f; // Color's Tube Amp and Vinyl, Trance Gate
+        float damp = 0.4f, damp_in = 0.6f;     // Reverb's damping
+        dsp::RateRatio ratio {};               // for counts of 44.1 kHz frames (Alias, LoFi)
+    } per_frame;
 };
 
 } // namespace melodee

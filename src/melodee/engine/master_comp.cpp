@@ -21,6 +21,7 @@ void MasterCompressor::set(const MasterComp& settings) {
     // Makeup: half of what a signal at 0 dB loses.
     makeup = std::pow(10.0f, (-threshold * (1 - 1 / ratio)) * 0.5f / 20.0f);
     boost = std::pow(10.0f, std::clamp<int>(s.boost, 0, 24) / 20.0f);
+    low_step = dsp::step_per_frame(0.0085f); stretch = dsp::device_frames();
 }
 
 float MasterCompressor::envelope(float level) {
@@ -36,15 +37,14 @@ float MasterCompressor::target(float reduce) const {
 void MasterCompressor::colour(float& l, float& r) {
     wobble += 0.6f / fs(); wobble -= std::floor(wobble);
     delay_l[at] = l; delay_r[at] = r;
-    float back = 40 + 6 * std::sin(2 * dsp::pi * wobble);
+    float back = (40 + 6 * std::sin(2 * dsp::pi * wobble)) * stretch; // 0.8-1 ms
     float pos = float(at) + line - back;
     unsigned i = unsigned(pos);
     float frac = pos - float(i);
     l = delay_l[i % line] + (delay_l[(i + 1) % line] - delay_l[i % line]) * frac;
     r = delay_r[i % line] + (delay_r[(i + 1) % line] - delay_r[i % line]) * frac;
     if (++at >= line) at = 0;
-    constexpr float k = 0.0085f; // a one-pole low pass near 60 Hz
-    low_l += (l - low_l) * k; low_r += (r - low_r) * k;
+    low_l += (l - low_l) * low_step; low_r += (r - low_r) * low_step; // a one-pole low pass near 60 Hz
     l = dsp::soft_clip((l + low_l * 0.6f) * 1.1f) / 1.1f;
     r = dsp::soft_clip((r + low_r * 0.6f) * 1.1f) / 1.1f;
 }

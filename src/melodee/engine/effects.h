@@ -85,6 +85,12 @@ private:
     unsigned delay = 0;
     std::array<Biquad, 12> eq {}; // EQ: six; Amp sim: its tone stack and cabinet, three each a side
     float svf_g = 0.5f, svf_k = 1;
+    // Per-frame constants written for 44.1 kHz frames, at the device's rate (dsp.h; the same at 44.1 kHz):
+    // falls and one-pole steps (whose, update() says), white noise's level, the share of a frame's chance
+    // kept, Shimmer's window (frames), and the rates' ratio for counts of 44.1 kHz frames (Crush, Spit, Tape).
+    std::array<float, 2> fall {1, 1}, glide {0, 0};
+    float noise_gain = 1, keep = 1, window = 2048;
+    dsp::RateRatio ratio {};
 
     // Running state.
     float lfo = 0, env = 0, env2 = 0, gain = 1, hold_l = 0, hold_r = 0, tone_l = 0, tone_r = 0;

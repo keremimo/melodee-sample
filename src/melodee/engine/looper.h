@@ -28,8 +28,10 @@ namespace melodee {
 namespace looper {
 constexpr uint32_t seconds = 64; // the longest loop, and its undo
 inline uint32_t frames_at(float rate) { return uint32_t(float(seconds) * rate + 0.5f); } // a buffer's frames at a rate
-constexpr unsigned fade = 32;          // seam and punch fades, frames
-constexpr unsigned ramp = 64;          // play, stop and level ramps, frames
+constexpr unsigned fade = 32;          // seam and punch fades, 44.1 kHz frames (0.7 ms)
+constexpr unsigned ramp = 64;          // play, stop and level ramps, 44.1 kHz frames (1.5 ms)
+// Those 44.1 kHz frames as frames at `rate`: as long at any rate, themselves at 44.1 kHz.
+inline unsigned frames_of(unsigned model_frames, float rate) { return std::max(1u, unsigned(float(model_frames) * rate / dsp::model_rate + 0.5f)); }
 constexpr unsigned peak_columns = 256; // the waveform the page draws
 constexpr unsigned swap_chunk = 8192;  // undo frames swapped a block
 constexpr unsigned block = 128;        // the engine host's block
@@ -298,6 +300,7 @@ private:
     double own_tick = 0;      // the looper's clock (the sequencer's while it runs)
     bool was_running = false, halted = true;
     float rate = dsp::model_rate;
+    unsigned ramp_frames = looper::ramp, fade_frames = looper::fade; // looper::ramp and fade at `rate`
     std::atomic<float> memory_rate {dsp::model_rate}; // the rate the service thread makes memory for (64 s of it)
     unsigned block_frames = looper::block;
     // Memory: made by the service thread, handed in (`pool`) and back (`retired`).

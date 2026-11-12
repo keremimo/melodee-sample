@@ -441,8 +441,8 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
         }
         ++v.since_hop;
         float a = v.env.next(v.shape) * v.gain * v.fade;
-        if (v.zone) { v.duck += std::clamp(v.duck_to - v.duck, -1.0f / 64, 1.0f / 64); a *= v.duck; }
-        if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; return; } }
+        if (v.zone) { v.duck += std::clamp(v.duck_to - v.duck, -edge_step, edge_step); a *= v.duck; }
+        if (v.choked) { v.fade -= edge_step; if (v.fade <= 0) { v.pad = -1; return; } }
         float sum_l = 0, sum_r = 0;
         for (unsigned t = 0; t < 2; ++t) {
             if (!v.tap_on[t]) continue;
@@ -537,9 +537,9 @@ void SamplerEngine::play_zone(Voice& v, float* to_l, float* to_r, unsigned from,
         if (round && j >= v.loop_hi) j = v.loop_at;
         else j = std::min(j, v.end - 1);
         float a = v.env.next(v.shape) * v.gain * v.fade;
-        v.duck += std::clamp(v.duck_to - v.duck, -1.0f / 64, 1.0f / 64);
+        v.duck += std::clamp(v.duck_to - v.duck, -edge_step, edge_step);
         a *= v.duck;
-        if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; return; } }
+        if (v.choked) { v.fade -= edge_step; if (v.fade <= 0) { v.pad = -1; return; } }
         voice_out(v, l[i] + (l[j] - l[i]) * frac, r[i] + (r[j] - r[i]) * frac, a, frames_left(v, v.position, v.step), to_l, to_r, f);
         v.position += v.reverse ? -v.step : v.step;
         if (!v.env.active()) { v.pad = -1; return; }
@@ -574,6 +574,7 @@ bool SamplerEngine::relieve(bool steal) {
 }
 
 void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
+    edge_step = (1.0f / 64) * dsp::model_frames();
     // Clouds: their voices only place grains; the grains play.
     for (auto& v : voices) {
         if (v.pad < 0 || !v.cloud) continue;
@@ -660,7 +661,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             unsigned j = i + 1 < v.end ? i + 1 : v.loop ? v.loop_at : v.end - 1;
             float a = v.env.next(v.shape) * v.gain * v.fade;
             if (v.edge_in || v.edge_out) a *= edge_gain(v, v.position);
-            if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
+            if (v.choked) { v.fade -= edge_step; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
             voice_out(v, l[i] + (l[j] - l[i]) * frac, r[i] + (r[j] - r[i]) * frac, a, frames_left(v, v.position, v.step), to_l, to_r, f);
             v.position += v.reverse ? -v.step : v.step;
             if (!v.env.active()) { v.pad = -1; break; }

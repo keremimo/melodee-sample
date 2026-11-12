@@ -197,6 +197,8 @@ private:
     uint32_t grain_serial = 0;
     unsigned tempo = 1200;
     uint32_t seed = 99;
+    // A choke's fade and an instrument zone's duck move this far a frame: 64 44.1 kHz frames (1.5 ms) at any rate.
+    float edge_step = 1.0f / 64;
     const Table* samples = nullptr;
     StreamPager* pager = nullptr;
     std::array<PadSound, sampler_pads> pads {}, base {}; // as they play (motion), and as the kit holds them

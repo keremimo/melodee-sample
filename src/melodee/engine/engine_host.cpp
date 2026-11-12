@@ -1894,7 +1894,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                     }
             }
         }
-        float shown = meters[t].load(std::memory_order_relaxed) * 0.97f; // a short fall
+        float shown = meters[t].load(std::memory_order_relaxed) * dsp::fall_per_block(0.97f, frames); // a short fall, as fast at any rate
         meters[t].store(std::max(level, shown), std::memory_order_relaxed);
     }
     mix_loops(frames, solo);
@@ -2022,11 +2022,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     float share = float(took * dsp::sample_rate() / std::max(frames, 1u));
     float tested = guard_test.load(std::memory_order_relaxed);
     last_share = tested >= 0 ? tested : share;
-    float shown = block_load.load(std::memory_order_relaxed) * 0.995f;
+    const float load_fall = dsp::fall_per_block(0.995f, frames); // 0.995 a 128-frame block at 44.1 kHz: as long at any rate
+    float shown = block_load.load(std::memory_order_relaxed) * load_fall;
     block_load.store(std::max(share, shown), std::memory_order_relaxed);
     for (unsigned t = 0; t < track_count; ++t) { // each track's own, the same way (roadmap P2)
         float own = float(track_ns[t] * 1e-9 * dsp::sample_rate() / std::max(frames, 1u));
-        track_loads[t].store(std::max(own, track_loads[t].load(std::memory_order_relaxed) * 0.995f), std::memory_order_relaxed);
+        track_loads[t].store(std::max(own, track_loads[t].load(std::memory_order_relaxed) * load_fall), std::memory_order_relaxed);
     }
     if (parallel) parallel_blocks.fetch_add(1, std::memory_order_relaxed);
 }
@@ -2187,7 +2188,7 @@ void EngineHost::mix_loops(unsigned frames, bool solo) {
                     bus_l[strip.bus][f] += strip.left[f] * g; bus_r[strip.bus][f] += strip.right[f] * g;
                 }
         }
-        float shown = loop_meters[n].load(std::memory_order_relaxed) * 0.97f;
+        float shown = loop_meters[n].load(std::memory_order_relaxed) * dsp::fall_per_block(0.97f, frames);
         loop_meters[n].store(std::max(level, shown), std::memory_order_relaxed);
     }
 }

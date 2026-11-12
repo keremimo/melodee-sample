@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <numeric>
 
 // Small realtime-safe DSP pieces for Melodee's engines, written for
 // sample-base: band-limited oscillators, a four-pole ladder filter, ADSR
@@ -23,6 +24,45 @@ constexpr float model_rate = 44100.0f;
 // The highest device rate: delay memory made up front is sized for it.
 constexpr float max_rate = 96000.0f;
 constexpr float pi = 3.14159265358979f;
+
+// Constants written a 44.1 kHz frame at a time (a fall, a one-pole's step, a count of frames, a chance), made the
+// device's: the same time, corner and density at any rate, and at 44.1 kHz the constant itself, bit for bit.
+// Worked out where the rate is known (an update, a note, a block), never a frame at a time.
+inline float model_frames() { return model_rate / sample_rate(); } // 44.1 kHz frames in one device frame (1 at 44.1 kHz)
+inline float device_frames() { return sample_rate() / model_rate; } // device frames in one 44.1 kHz frame
+// x *= k each 44.1 kHz frame: the k for each device frame.
+inline float fall_per_frame(float k) { const float r = model_frames(); return r == 1.0f ? k : std::pow(k, r); }
+// x += (aim - x) * k each 44.1 kHz frame: the k for each device frame.
+inline float step_per_frame(float k) { const float r = model_frames(); return r == 1.0f ? k : 1.0f - std::pow(1.0f - k, r); }
+// x *= k each 128-frame block at 44.1 kHz (a meter's fall): the k for a block of `frames` device frames.
+inline float fall_per_block(float k, unsigned frames) {
+    const float r = float(frames) / 128.0f * model_frames();
+    return r == 1.0f ? k : std::pow(k, r);
+}
+// White noise a frame at a time is spread over the whole band, so at 96 kHz less of it is heard: its level
+// for the same hiss in the audible band (the square root of the rates' ratio).
+inline float noise_level() { return std::sqrt(device_frames()); }
+// A one-sample click: its level for the same sound in the audible band.
+inline float click_level() { return device_frames(); }
+
+// The rates' ratio as whole numbers: 44.1 kHz frames to device frames, reduced (1/1, 147/160, 147/320).
+struct RateRatio { uint32_t model = 1, device = 1; };
+inline RateRatio rate_ratio() {
+    const uint32_t a = uint32_t(model_rate), b = std::max(uint32_t(sample_rate() + 0.5f), 1u), g = std::gcd(a, b);
+    return {a / g, b / g};
+}
+// Something done every `every` 44.1 kHz frames, on device frame `frame` of a count: at 44.1 kHz frame % every == 0,
+// at any rate the frames where another `every` 44.1 kHz frames have gone by.
+inline bool every_model_frames(uint64_t frame, uint32_t every, RateRatio r) {
+    return frame * r.model % (uint64_t(every) * r.device) < r.model;
+}
+// A chance taken each frame, written for 44.1 kHz frames, coming as often in time at any rate: with `keep`
+// (model_frames()) under 1, a further draw from `seed` keeps that share of what came. At 44.1 kHz, no draw.
+inline bool kept(uint32_t& seed, float keep) {
+    if (keep >= 1.0f) return true;
+    seed = seed * 1664525u + 1013904223u;
+    return float(seed >> 8) * (1.0f / 16777216.0f) < keep;
+}
 
 inline float midi_hz(float key) { return 440.0f * std::exp2((key - 69.0f) / 12.0f); }
 

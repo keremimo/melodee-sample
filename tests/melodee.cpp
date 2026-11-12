@@ -4134,6 +4134,99 @@ void projects_and_polish() {
 
 // Settings' sample rate (44.1 / 48 / 96 kHz): the engine follows the device's rate, so a project plays at the same
 // tempo and pitch at each, and what is recorded or rendered is kept at 44.1 kHz.
+// Constants written a 44.1 kHz frame at a time follow the device's rate: at 96 kHz an effect keeps its timing, its
+// corners and its density (dsp.h's fall_per_frame, step_per_frame, every_model_frames, kept), and at 44.1 kHz the
+// constants are themselves.
+void rate_constants() {
+    dsp::device_rate.store(44100.0f);
+    CHECK(dsp::fall_per_frame(0.93f) == 0.93f && dsp::step_per_frame(0.3f) == 0.3f && dsp::noise_level() == 1.0f);
+    CHECK(dsp::fall_per_block(0.97f, 128) == 0.97f && dsp::rate_ratio().model == 1 && dsp::rate_ratio().device == 1);
+    for (uint64_t k = 0; k < 5000; ++k) CHECK(dsp::every_model_frames(k, 12, dsp::rate_ratio()) == (k % 12 == 0));
+    dsp::device_rate.store(96000.0f);
+    {
+        auto ratio = dsp::rate_ratio();
+        CHECK(ratio.model == 147 && ratio.device == 320);
+        unsigned ticks = 0; // every 4096 44.1 kHz frames: 107.7 times in ten seconds, the first on frame 0
+        for (uint64_t k = 0; k < 960000; ++k) ticks += dsp::every_model_frames(k, 4096, ratio);
+        CHECK(ticks == 108);
+        const float fall = dsp::fall_per_frame(0.9999f); // a second of it falls as far as 44100 frames at 44.1 kHz
+        float x = 1;
+        for (unsigned n = 0; n < 96000; ++n) x *= fall;
+        CHECK(std::fabs(x / std::pow(0.9999f, 44100.0f) - 1) < 0.01f);
+    }
+    // Each test below runs at 44.1 and at 96 kHz and compares the two in time.
+    auto run = [](EffectKind kind, std::initializer_list<std::pair<unsigned, int>> params, float rate, float seconds, auto&& input) {
+        dsp::device_rate.store(rate);
+        DelayPool pool;
+        auto effect = std::make_unique<Effect>();
+        effect->set_kind(kind, pool);
+        for (auto [index, value] : params) effect->set_param(index, value);
+        std::vector<float> l(size_t(seconds * rate)), r;
+        for (size_t n = 0; n < l.size(); ++n) l[n] = input(float(n) / rate);
+        r = l;
+        for (size_t f = 0; f < l.size(); f += 128) effect->process(l.data() + f, r.data() + f, unsigned(std::min<size_t>(128, l.size() - f)));
+        effect->set_kind(EffectKind::None, pool);
+        return l;
+    };
+    // Tremolo's square is smoothed (0.01 a 44.1 kHz frame): its edge falls from 90 % to 10 % in the same 5 ms.
+    {
+        double edge[2] {};
+        for (unsigned k = 0; k < 2; ++k) {
+            const float rate = k ? 96000.0f : 44100.0f;
+            auto out = run(EffectKind::Tremolo, {{0, 90}, {1, 100}, {2, 1}}, rate, 0.05f, [](float) { return 0.5f; });
+            size_t high = 0, low = 0;
+            for (size_t n = 0; n < out.size() && !low; ++n) { if (!high && out[n] < 0.45f) high = n; if (high && out[n] < 0.05f) low = n; }
+            edge[k] = double(low - high) / rate;
+        }
+        if (!(edge[0] > 0.004 && std::fabs(edge[1] / edge[0] - 1) < 0.03)) std::fprintf(stderr, "tremolo edge %g s / %g s\n", edge[0], edge[1]);
+        CHECK(edge[0] > 0.004 && std::fabs(edge[1] / edge[0] - 1) < 0.03);
+    }
+    // Crush at RATE 100 holds each value 32 44.1 kHz frames: 1378 new values a second at either rate.
+    // Pad FX Alias holds every twelfth 44.1 kHz frame: 3675 a second.
+    {
+        auto steps = [](const std::vector<float>& out, size_t from) {
+            unsigned n = 0;
+            for (size_t i = from + 1; i < out.size(); ++i) n += std::fabs(out[i] - out[i - 1]) > 1e-5f;
+            return n;
+        };
+        auto ramp = [](float t) { return -0.9f + 0.9f * t; }; // never still: every hold is a new value
+        unsigned crush[2], alias[2];
+        for (unsigned k = 0; k < 2; ++k) {
+            const float rate = k ? 96000.0f : 44100.0f;
+            crush[k] = steps(run(EffectKind::Crush, {{0, 16}, {1, 100}, {2, 100}}, rate, 1.0f, ramp), 0);
+            dsp::device_rate.store(rate);
+            Punch punch;
+            std::vector<float> l(static_cast<size_t>(rate)), r;
+            for (size_t n = 0; n < l.size(); ++n) l[n] = ramp(float(n) / rate);
+            r = l;
+            punch.start(PunchKind::Alias, 1, 2 * rate, 2 * rate / 16, 1);
+            for (size_t f = 0; f < l.size(); f += 128) punch.process(l.data() + f, r.data() + f, unsigned(std::min<size_t>(128, l.size() - f)));
+            alias[k] = steps(l, size_t(0.01f * rate)); // after its 2 ms fade in
+        }
+        if (crush[0] < 1376 || crush[0] > 1380 || std::abs(int(crush[1]) - int(crush[0])) > 2 || std::abs(int(alias[1]) - int(alias[0])) > 2)
+            std::fprintf(stderr, "crush %u / %u, alias %u / %u\n", crush[0], crush[1], alias[0], alias[1]);
+        CHECK(crush[0] >= 1376 && crush[0] <= 1380 && std::abs(int(crush[1]) - int(crush[0])) <= 2);
+        CHECK(alias[0] > 3600 && std::abs(int(alias[1]) - int(alias[0])) <= 2);
+    }
+    // Vinyl at CRACKLE 100: about 40 crackles a second at either rate (a chance taken each frame, kept to its share).
+    {
+        unsigned crackles[2];
+        for (unsigned k = 0; k < 2; ++k) {
+            const float rate = k ? 96000.0f : 44100.0f;
+            auto out = run(EffectKind::Vinyl, {{0, 50}, {1, 100}, {2, 10}}, rate, 30.0f, [](float) { return 0.0f; });
+            unsigned count = 0;
+            size_t last = 0;
+            for (size_t n = 0; n < out.size(); ++n)
+                if (std::fabs(out[n]) > 0.02f) { if (!count || n - last > size_t(0.002f * rate)) ++count; last = n; }
+            crackles[k] = count;
+        }
+        if (!(crackles[0] > 30 * 30 && crackles[0] < 45 * 30 && std::fabs(float(crackles[1]) / float(crackles[0]) - 1) < 0.15f))
+            std::fprintf(stderr, "crackles %u / %u in 30 s\n", crackles[0], crackles[1]);
+        CHECK(crackles[0] > 30 * 30 && crackles[0] < 45 * 30 && std::fabs(float(crackles[1]) / float(crackles[0]) - 1) < 0.15f);
+    }
+    dsp::device_rate.store(44100.0f);
+}
+
 void device_rates() {
     // The sequencer: a new rate waits, silent, for the project again; then at 48 kHz step 5 at 120 BPM starts 0.5 s in.
     {
@@ -8952,6 +9045,7 @@ int main() {
     stage();
     midi_tracks();
     device_rates();
+    rate_constants();
     card_access();
     projects_and_polish();
     midi_and_sync();
