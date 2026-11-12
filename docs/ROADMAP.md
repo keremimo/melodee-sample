@@ -418,6 +418,63 @@ behaviour changed.
   out 7 loads in 16): the rest is the Reload clearing ten Punches' lines,
   which that session fixes in punch.*.
 
+- P5: a scene is a column, pattern n of every track, as melodee-ios's
+  Stage scenes are, with a name and a tempo of its own (SCNE); SCENES is
+  Patterns' Push (Push had no job there), and Seq held + Shift + pad,
+  which launched the column, now launches its scene. A track with nothing
+  in the column plays on (the column launch's way) rather than stopping
+  (iOS's). Why: Melodee's grammar had it, and a follow action's Stop
+  silences a track when wanted. A scene's tempo becomes the project's on
+  the bar its patterns launch (stopped, at once); BPM per pattern, when
+  on, still leads. Scene names and tempos are not undo steps, as the tempo
+  is not; names come from the Name sheet with the markers' ready names.
+- P5: a follow action belongs to a pattern (FOLW), as on iOS. The audio
+  thread plans it as its pattern starts (the dice roll then: which action,
+  after how many stretches) and brings it on its tick, to the frame, not
+  on a bar line, so a pattern of 1.5 bars followed after a play changes
+  there; a launch waiting for its bar comes first; none come in the song.
+  Next and Previous go round the track's patterns with notes, Any is
+  another of them at random, Again is the same from its top, Stop leaves
+  the track silent until a launch or Play. K3 CHANCE is the first
+  action's odds, Shift + K1 OR the second's (the rest); with no second, a
+  roll that misses plays the pattern on another stretch (iOS's rule).
+- P5, a chain meeting a follow action: a chained track (round 2's
+  seq-sheet2 B) plays its chain, and its patterns' follow actions wait
+  while it is chained; launching by hand (a scene too) ends the chain as
+  before, and from there they come. The shell tells the audio thread
+  which tracks are chained (Command Chained, from follow_tick); the
+  chain's code is untouched. Why: a chain is an order asked for in the
+  hold; a follow action breaking into it would make it unpredictable.
+- P5: capture's ring is the MIDI thread's (shell/capture_ring.h, 8192
+  notes, made with Context), so the audio thread has nothing new to do or
+  allocate. A note played while the transport runs keeps the tick it was
+  heard on (P0's heard place), one played stopped its time. Recall (Shift
+  + Seq Record) lays every track that played in the phrase, each into its
+  next empty pattern, over the same bars so they line up, one undo for
+  all (Edit::patterns_before / after); ff6d82a's selected-track Recall is
+  the one-track case. Settings' Capture bars gained Auto (the phrase: back
+  to where no track played for two bars, up to 64; the new default), 16
+  and 32; older settings files keep their number. With Note Repeat on the
+  presses are kept, not the repeats (those reach the shell only under Seq
+  Record; keeping them always would take a second queue from the audio
+  thread). Played stopped, the bars asked count back from where the last
+  note ended, as the transport's count back from the bar after it (the
+  MPC showed counting back from the press lost a phrase played a few
+  seconds before it; fixed in 2bc7756).
+- P5: the tempo lane is the song's (Song::tempo, TMPL): points on bars, 64
+  at most, each a Step on its bar or a Ramp into it from the point before
+  (the first from bar 1 at the project's tempo), at a tenth of a BPM. The
+  audio thread works it out each tick while the song plays (follow_lane),
+  before that tick's length is counted, so the tempo, the effects' clock,
+  the arps' and MIDI clock's follow without a command; MIDI clock in still
+  leads, BPM per pattern waits while a song with a lane plays, MTC in
+  places the song through it. It is set on Song's Shift + K1 / K2 (that
+  Shift row was empty): BAR TEMPO at the cursor's bar, Off below 30 BPM
+  takes the point away, SHAPE Step or Ramp; with points it is a strip over
+  the tracks (one track lane fewer). A MIDI file carries it as tempo
+  changes every sixteenth a ramp moves. The tempo the screens show (and
+  `melodee_tempo`) is the lane's while the song plays.
+
 ## Waiting for a hand check
 
 - P0: with Rec Quantize off, record pads against the metronome: notes sit
@@ -500,6 +557,24 @@ behaviour changed.
 - P4: STEMS of a song (the folder, each file lining up with Mix.wav in a
   DAW), a 16-bit mixdown (no audible noise floor change), a MIDI file
   exported and opened in a DAW, and a `.mid` laid on a kit and a synth.
+
+- P5: scenes by hand: SCENES (Push on Patterns) while playing, a scene
+  launched waits for its bar (blinking) and its tempo takes over there;
+  Erase + pad, naming on Push, the wheel's tempo; say whether a track
+  with nothing in the column should stop (iOS) rather than play on.
+- P5: follow actions by ear: Next after 2 bars round three patterns, Any
+  at 50 % against Again, a 1.5-bar pattern followed after a play (it
+  changes off the bar line), Stop; a chained track ignoring them; B3 ALL
+  on a column.
+- P5: capture by hand: jam on two tracks with Seq Record off (pads and a
+  MIDI keyboard on another track's channel), Shift + Seq Record: both
+  land in their next empty patterns over the same bars; once stopped with
+  no click (the first note as the downbeat); Auto against 4 bars; say if
+  a two-bar gap ends a phrase too soon or too late.
+- P5: the tempo lane by ear: a step and a ramp under a SYNC delay, an LFO
+  on the clock, the arp and the click; a mixdown and stems across a ramp;
+  the MIDI file's tempo map in a DAW; MIDI clock out to outside gear
+  following the ramp.
 
 ## P0: timing
 
@@ -612,11 +687,11 @@ behaviour, write the code fresh for this app.
 
 ## P5: performance and arrange
 
-- [ ] Scenes (a column of patterns with a name and tempo) and clip follow
+- [x] Scenes (a column of patterns with a name and tempo) and clip follow
   actions (next, previous, any, again, stop; after bars or plays; chances).
-- [ ] Always-on capture: the last minutes of every track's played notes,
+- [x] Always-on capture: the last minutes of every track's played notes,
   kept to a pattern after the fact.
-- [ ] Tempo changes over the song (a tempo lane on Song).
+- [x] Tempo changes over the song (a tempo lane on Song).
 
 ## Log
 
@@ -740,3 +815,36 @@ behaviour, write the code fresh for this app.
   project there was not saved. The VST-migration session's 7A loads on that
   binary still dropped out 7 in 16 (Punch::clear's memset on Reload, theirs
   to fix). No base changes; no pushes owed.
+
+- 2026-11-12, P5 performance and arrange: scenes, a column's name and
+  tempo launched together on the next bar, on SCENES behind Patterns'
+  Push, and follow actions brought by the audio thread on their tick
+  (3e868ef); always-on capture, every track's notes in a ring made once,
+  laid by Shift + Seq Record into each track's next empty pattern over the
+  same bars (c4d1bf0); the tempo lane on Song, stepped or ramped, followed
+  a tick at a time while the song plays (ff5a206); Recall's bars counted
+  back from the last note when stopped, and the lane's tempo shown
+  (2bc7756). Host tests `scenes_p5`, `capture_p5`, `tempo_lane_p5`.
+  ./build.sh passed on the shared tree before each commit (make, the 8
+  unit tests, self-test, monkey 12 x 3000, up to 265 previews with no text
+  issues); 2bc7756's exact tree passed the host tests in a snapshot, where
+  its binary was built (the shared tree held a peer's sampler work). On
+  the MPC (48 kHz, three periods; HEAD 2bc7756 deployed, sha256
+  5aaa3e24…; the first checks on ec2e0a78, HEAD 2a1b81b): SCENES opened
+  from Patterns' Push (`melodee_page=51`); track 1's P8 set to Next after
+  1 bar came round to P5 after its bar (`melodee_follows=1`, the track's
+  pattern followed it, S5 lit whole); S6 given 122 BPM with the wheel and
+  launched mid-bar queued its pattern for the bar line; Recall, stopped,
+  of four pad hits (16 Levels) landed in the next empty pattern, two bars,
+  at ticks 0, 144, 288, 432 (on ec2e0a78 it had counted two bars back from
+  the press and lost the hits played before the remote calls' pause:
+  fixed in 2bc7756); on Song, Shift + K1 put a 140 BPM point on bar 1 and
+  playing the song read `melodee_tempo=1400`, 1200 once it ended; 0 xruns,
+  0 dropped throughout. Every edit undone (undo stack empty), the project
+  not saved, Melodee left running. The VST-migration session measured 12
+  loads (P7 and 7A) at 0 xruns on ec2e0a78 meanwhile. No base changes; no
+  pushes owed.
+- 2026-11-12: the roadmap is complete: P0 timing, P1 drums and sequencer,
+  P2 CPU scheduling, P3 sampler, P4 mix, effects and MIDI, and P5
+  performance and arrange are built, committed and checked on the MPC;
+  what needs ears and hands waits under "Waiting for a hand check" above.
