@@ -61,6 +61,7 @@
 #include "melodee/shell/name_suggest.h"
 #include "melodee/model/sound_file.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/key_pick.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/project_kits.h"
@@ -3947,6 +3948,15 @@ void mtc_in() {
 // Parity phase 10b: SD card access. While the card is away (or its page is open) only B1, the question's B3,
 // Play and Stop answer; B1 takes the card back, or asks first while the computer holds it; the shell follows the
 // service thread's view: the card leaving opens the page, coming back leaves it.
+// The wheel's pick on screens that offer B1-B3 as choices (shell/key_pick.h): a detent a key, held at the ends,
+// stepping over keys with nothing.
+void key_pick() {
+    CHECK(key_pick_turn(0, 1) == 1 && key_pick_turn(1, 1) == 2 && key_pick_turn(2, 1) == 2);
+    CHECK(key_pick_turn(2, -1) == 1 && key_pick_turn(0, -1) == 0 && key_pick_turn(0, 5) == 2 && key_pick_turn(2, -9) == 0);
+    CHECK(key_pick_turn(0, 1, 0b101) == 2 && key_pick_turn(2, -1, 0b101) == 0 && key_pick_turn(2, 1, 0b101) == 2);
+    CHECK(key_pick_turn(1, 0) == 1);
+}
+
 void card_access() {
     using B = SurfaceButton;
     UiState ui;
@@ -3970,6 +3980,12 @@ void card_access() {
     CHECK(card_press(ui, B::TopLeft).request == CardRequest::None && ui.ask == UiState::Ask::None); // Cancel: stays lent
     card_press(ui, B::TopLeft);
     CHECK(card_press(ui, B::TopRight).request == CardRequest::Force && ui.ask == UiState::Ask::None); // B3: take it anyway
+    card_press(ui, B::TopLeft);                                        // asked again: the wheel starts on CANCEL
+    CHECK(ui.ask == UiState::Ask::TakeCardBack && ui.ask_pick == 0);
+    CHECK(card_press(ui, B::WheelPush).request == CardRequest::None && ui.ask == UiState::Ask::None); // Push: CANCEL
+    card_press(ui, B::TopLeft);
+    ui.ask_pick = key_pick_turn(ui.ask_pick, 1, 0b101);                // a detent right: TAKE
+    CHECK(ui.ask_pick == 2 && card_press(ui, B::WheelPush).request == CardRequest::Force);
     lent.ejected = true; card_follow(ui, lent);                        // ejected on the computer: B1 simply returns it
     CHECK(card_press(ui, B::TopLeft).request == CardRequest::Return);
     CHECK(std::string(card_title(ui.card)) == "Ejected");
@@ -11447,6 +11463,7 @@ int main() {
     midi_tracks();
     device_rates();
     rate_constants();
+    key_pick();
     card_access();
     projects_and_polish();
     midi_and_sync();

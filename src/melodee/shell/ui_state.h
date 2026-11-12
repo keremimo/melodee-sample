@@ -81,6 +81,9 @@ struct UiState {
     uint16_t loading_total = 0, loading_left = 0; // the project's sample slots in use, and those not in yet
     bool exit_off = false;         // the Exit sheet's POWER OFF chosen: saving, then the MPC turns off
     bool exit_saved = false;       // and the project is on the card: the sheet says so for a second first
+    // The wheel's highlight on screens that offer their keys as choices (shell/key_pick.h): the power sheet's
+    // key (B1 STAY when it opens), a question's (B1 CANCEL when asked), Project's tiles (B1 SAVE).
+    uint8_t exit_pick = 0, ask_pick = 0, project_pick = 0;
     bool rec_armed = false;        // Seq Record pressed while stopped: Play starts the take (its light flashes)
     uint8_t lead_pattern = 0;      // the pattern launched last: whose tempo plays with BPM per pattern on
     uint32_t locate = 0;           // Patterns: where Shift + Play carries on from, ticks (the wheel moves it)

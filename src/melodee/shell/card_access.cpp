@@ -13,6 +13,7 @@ CardPress card_press(UiState& ui, SurfaceButton button) {
     CardPress press;
     if (button == B::Play || button == B::Stop) { press.taken = false; return press; } // the transport still answers
     if (ui.ask == UiState::Ask::TakeCardBack) {
+        if (button == B::WheelPush) button = ui.ask_pick == 2 ? B::TopRight : B::TopLeft; // the key the wheel highlights
         if (button == B::TopLeft) ui.ask = UiState::Ask::None;                          // Cancel: it stays lent
         else if (button == B::TopRight) { ui.ask = UiState::Ask::None; press.request = CardRequest::Force; }
         return press;
@@ -22,7 +23,7 @@ CardPress card_press(UiState& ui, SurfaceButton button) {
     case home: press.leave = true; break;   // nothing lent (no card, or it would not go): back to Project
     case lent:
         // The computer has not let go: B1 again asks whether to take it anyway.
-        if (ui.card.locked && !ui.card.ejected) ui.ask = UiState::Ask::TakeCardBack;
+        if (ui.card.locked && !ui.card.ejected) { ui.ask = UiState::Ask::TakeCardBack; ui.ask_pick = 0; }
         else press.request = CardRequest::Return;
         break;
     default: break;                          // lending or returning: wait

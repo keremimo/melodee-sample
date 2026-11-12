@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/shell/key_pick.h"
 #include "melodee/shell/p4_status.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/looper_jobs.h"
@@ -270,7 +271,8 @@ void Shell::press(Button b, bool pressed) {
 
     if (ui.exit_open) {
         // Only the soft keys answer: B1 stays (even while a save to leave after is on its way), B2 turns
-        // the MPC off, B3 leaves for the stock app.
+        // the MPC off, B3 leaves for the stock app. Push presses the key the wheel highlights.
+        if (b == Button::WheelPush && !ui.exit_off) b = ui.exit_pick == 2 ? Button::TopRight : ui.exit_pick == 1 ? Button::TopMiddle : Button::TopLeft;
         if (b == Button::TopLeft) { ui.exit_open = ui.exit_off = ui.exit_saved = false; leave_after_save = -1; off_after_save = false; }
         if ((b == Button::TopMiddle || b == Button::TopRight) && leave_after_save < 0) {
             off_after_save = ui.exit_off = b == Button::TopMiddle;
@@ -433,7 +435,8 @@ void Shell::pot(unsigned n, int position, bool syncing) {
 }
 
 void Shell::wheel(int delta) {
-    if (ui_.exit_open || ui_.ask != UiState::Ask::None) return;
+    if (ui_.exit_open) { if (!ui_.exit_off) ui_.exit_pick = key_pick_turn(ui_.exit_pick, delta); return; } // STAY, POWER OFF, MPC APP
+    if (ui_.ask != UiState::Ask::None) { ui_.ask_pick = key_pick_turn(ui_.ask_pick, delta, 0b101); return; } // CANCEL or the verb
     if (ui_.name.open()) { // Shift: the character under the cursor; else the cursor
         if (ui_.shift) { ui_.shift_used = true; ui_.name.step_char(delta); } else ui_.name.move(delta);
         return;

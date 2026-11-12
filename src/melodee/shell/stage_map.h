@@ -50,7 +50,7 @@ inline void stage_go(UiState& ui, unsigned group, unsigned sub) {
 }
 
 // The card the wheel fine-edits on Stage, and Push moves on (the MPC's encoder press): the pot touched last.
-// On an empty track it is also the door Push makes (K1 a synth, K2 a kit, K3 a MIDI track).
+// On an empty track it is also the door Push makes (K1 a synth, K2 a kit, K3 a MIDI track); there the wheel moves it.
 inline int stage_focus(const UiState& ui, const Track&) { return ui.last_pot >= 0 ? ui.last_pot % 3 : 0; }
 
 // The sampler page a kit's Stage page edits the same values as (their bindings and undo scope are shared).

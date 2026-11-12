@@ -171,7 +171,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.now = now;
     looper_tick(context_, now); // Loop held, a clear pad held, refusals, the metronome (shell/looper_jobs.cpp)
     unsigned presses = power.load(std::memory_order_relaxed);
-    if (presses != power_seen) { power_seen = presses; ui_.exit_open = true; } // a second press while it is open does nothing more
+    if (presses != power_seen) { // a second press while it is open does nothing more
+        power_seen = presses;
+        if (!ui_.exit_open) ui_.exit_pick = 0; // the wheel starts on STAY
+        ui_.exit_open = true;
+    }
 
     const auto& ui = ui_;
     {

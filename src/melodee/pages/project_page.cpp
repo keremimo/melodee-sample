@@ -3,7 +3,8 @@
 // PROJECT (Shift + Pad 16): the open project's three jobs as tiles under
 // the keys: B1 SAVE (to its file in one press; with no file yet the Name
 // sheet first), B2 OPEN (the list), B3 NEW (asks first, as the MPC does).
-// Push saves too. Settings and About are Shift + Pad 8's.
+// The wheel moves the highlight across the three, Push presses it (SAVE
+// first). Settings and About are Shift + Pad 8's.
 // The list behind OPEN: projects are files on the SD card, as many as it
 // holds, in folders; SD card access at the top lends the card to a computer
 // (pages/card_access_page.cpp). Each row a glyph first and its facts last.
@@ -18,6 +19,7 @@
 // Push or B3 moves, B1 backs out). K1 jumps, K2 sorts.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/key_pick.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/ui/widgets.h"
 #include <cstdio>
@@ -90,15 +92,16 @@ void draw_tiles(Paint& p, const Snapshot& s, const ProjectStore::View& v) {
     if (v.root.empty()) h.left.push_back(pill(Icon::Card, "NO CARD", amber));
     else if (s.dirty) h.left.push_back(pill(Icon::Rec, "UNSAVED", amber));
     h.right.push_back(label(s.project.name));
-    SoftKeys keys {{"SAVE", "OPEN", "NEW"}, 0, colour::text};
+    unsigned pick = s.ui.project_pick % 3; // the wheel's tile, raised; Push presses its key
+    SoftKeys keys {{"SAVE", "OPEN", "NEW"}, int(pick), colour::text};
     keys.glyphs = {Icon::Save, Icon::Folder, Icon::Plus};
     frame(p, s, keys, h);
     unsigned projects = 0;
     for (const auto& e : v.entries) projects += e.kind == ProjectEntry::Kind::Project;
     juce::String fresh = !s.dirty ? juce::String() : s.project_path.empty() ? juce::String("CHANGES LOST") : juce::String("SAVES FIRST");
-    key_tiles(p, {word_sub_tile(Icon::Save, "SAVE", juce::String(s.project.name), true),
-                  word_sub_tile(Icon::Folder, "OPEN", v.root.empty() ? juce::String("NO CARD") : count_text(projects, "PROJECT", "PROJECTS")),
-                  word_sub_tile(Icon::Plus, "NEW", fresh)});
+    key_tiles(p, {word_sub_tile(Icon::Save, "SAVE", juce::String(s.project.name), pick == 0),
+                  word_sub_tile(Icon::Folder, "OPEN", v.root.empty() ? juce::String("NO CARD") : count_text(projects, "PROJECT", "PROJECTS"), pick == 1),
+                  word_sub_tile(Icon::Plus, "NEW", fresh, pick == 2)});
 }
 
 // One row of the list: a glyph, the name, its facts at the right edge.
@@ -304,7 +307,7 @@ void open_list(Context& c) {
 }
 
 void wheel(Context& c, int delta) {
-    if (!c.ui.project_list) { open_list(c); return; } // turning on the tiles: the list
+    if (!c.ui.project_list) { c.ui.project_pick = key_pick_turn(c.ui.project_pick, delta); return; } // the tiles: SAVE, OPEN, NEW
     if (c.ui.move_open) {
         auto v = view_of(c);
         const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
@@ -340,8 +343,10 @@ void open_row(Context& c) {
     c.ui.sheet_open = true; c.ui.sheet_more = false; c.ui.sheet_row = 0; c.ui.delete_armed = false;
 }
 
+void soft(Context& c, int key);
+
 void push(Context& c) {
-    if (!c.ui.project_list) { c.save_project(); return; } // the tiles: Push is SAVE, the likely one
+    if (!c.ui.project_list) { soft(c, c.ui.project_pick % 3); return; } // the tiles: Push presses the one the wheel lit
     if (c.ui.move_open) { move_here(c); return; }
     if (c.ui.sheet_open) { act(c); return; }
     open_row(c);

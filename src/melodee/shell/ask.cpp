@@ -30,6 +30,7 @@ void begin_update(Context& c) {
 void ask(Context& c, UiState::Ask kind, int target) {
     c.ui.ask = kind;
     c.ui.ask_target = target;
+    c.ui.ask_pick = 0; // the wheel starts on CANCEL
 }
 
 bool ask_button(Context& c, SurfaceButton button) {
@@ -37,6 +38,7 @@ bool ask_button(Context& c, SurfaceButton button) {
     auto& ui = c.ui;
     if (ui.ask == UiState::Ask::None) return false;
     if (button == B::Play || button == B::Stop) return false; // the transport still answers
+    if (button == B::WheelPush) button = ui.ask_pick == 2 ? B::TopRight : B::TopLeft; // the key the wheel highlights
     if (button == B::TopLeft) { // Cancel (LATER on the update question: asked again when the card is returned)
         if (ui.ask == UiState::Ask::InstallUpdate && c.updates) c.updates->decline();
         ui.ask = UiState::Ask::None;

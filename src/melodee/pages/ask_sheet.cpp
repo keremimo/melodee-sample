@@ -140,7 +140,12 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
     }
 
     p.fill(0, zone::soft_y, zone::width, zone::soft_h, colour::bg);
-    SoftKeys keys {{cancel, "", verb}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    { // the key the wheel is on, on a raised chip (Push presses it)
+        float column = zone::width / 3.0f, x = (s.ui.ask_pick == 2 ? 2 : 0) * column;
+        p.fill(x + 8, zone::soft_y + 2, column - 16, zone::soft_h - 4, colour::raised, 4);
+    }
+    bool on_verb = s.ui.ask_pick == 2; // the wheel's key, barred; Push presses it
+    SoftKeys keys {{cancel, "", verb}, on_verb ? 2 : 0, on_verb ? colour::rec : colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     keys.glyphs[2] = verb_glyph;
     keys.tints[2] = colour::rec;
     soft_keys(p, keys);

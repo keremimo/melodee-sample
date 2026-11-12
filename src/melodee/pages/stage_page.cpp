@@ -20,6 +20,7 @@
 #include "melodee/model/chords.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/sampler_common.h"
+#include "melodee/shell/key_pick.h"
 #include "melodee/shell/meter_lights.h"
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
@@ -776,7 +777,8 @@ void cc_picture(Paint& p, const Snapshot& s) {
 }
 
 // An empty track's three doors, a tile under each key showing what it would make, the pot under it choosing:
-// K1 the engine, K2 the source of a kit's first sound, K3 the MIDI port. The door of the pot touched last is lit.
+// K1 the engine, K2 the source of a kit's first sound, K3 the MIDI port. The door lit is the one the wheel moved
+// to, or the pot touched last; Push makes it.
 void doors_picture(Paint& p, const Snapshot& s) {
     std::array<EngineKind, size_t(EngineKind::Count)> engines {};
     unsigned count = new_engines(engines);
@@ -788,7 +790,10 @@ void doors_picture(Paint& p, const Snapshot& s) {
     static const Icon source_icons[] {Icon::Folder, Icon::Mic};
     static const char* ports[] {"Out jack", "USB-C", "All USB"};
     unsigned source = s.ui.new_source % new_sources, port = s.ui.new_port % 3;
-    auto synth = value_tile(engine_icon(engine), engine_word(engine), juce::String(info.sound_count) + (info.sound_count == 1 ? " SOUND" : " SOUNDS"), focus == 0);
+    // A plug-in's sounds are its own, picked from the card once the track is made: the formats it hosts instead.
+    juce::String synth_sub = engine == EngineKind::Plugin ? juce::String("VST3 / VST2")
+                           : juce::String(info.sound_count) + (info.sound_count == 1 ? " SOUND" : " SOUNDS");
+    auto synth = value_tile(engine_icon(engine), engine_word(engine), synth_sub, focus == 0);
     auto kit = value_tile(source_icons[source], sources[source], source_subs[source], focus == 1);
     auto midi = value_tile(Icon::Din, ports[port], "CHANNEL " + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16)), focus == 2);
     for (auto* t : {&synth, &kit, &midi}) if (t->primary) t->colour = colour_of(s);
@@ -907,6 +912,11 @@ void wheel(Context& c, int delta) {
         return;
     }
     int n = stage_focus(c.ui, c.track());
+    if (!c.track().used()) { // the doors: the wheel walks SYNTH, KIT, MIDI and Push makes the one lit (K1-K3 set each)
+        c.ui.last_pot = int8_t(key_pick_turn(unsigned(n), delta));
+        c.ui.last_pot_shift = false;
+        return;
+    }
     const auto& b = cards[size_t(n)];
     if (!b.bound()) return;
     c.apply(b, b.value + delta);

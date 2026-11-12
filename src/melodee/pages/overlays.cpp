@@ -192,8 +192,9 @@ void draw_loading_sheet(Paint& p, const Snapshot& s) {
 void draw_exit_sheet(Paint& p, const Snapshot& s) {
     p.fill(0, 0, zone::width, zone::knobs_y, colour::bg);
     p.dim_zone(zone::knobs_y, zone::knobs_h);
-    // Soft keys: STAY under B1, POWER OFF under B2, the MPC app under B3 (Push never quits); a tile under each says it again.
-    SoftKeys keys {{"STAY", "POWER OFF", "MPC APP"}, s.ui.exit_off ? 1 : -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    // Soft keys: STAY under B1, POWER OFF under B2, the MPC app under B3; a tile under each says it again. The wheel
+    // moves the highlight from tile to tile (STAY first), Push presses that key.
+    SoftKeys keys {{"STAY", "POWER OFF", "MPC APP"}, s.ui.exit_off ? 1 : int(s.ui.exit_pick % 3), colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     keys.glyphs = {Icon::None, Icon::Power, Icon::Mpc};
     soft_keys(p, keys);
 
@@ -211,7 +212,8 @@ void draw_exit_sheet(Paint& p, const Snapshot& s) {
         key_tiles(p, {KeyTile {}, word_tile(Icon::Power, s.ui.exit_saved || !card ? "TURNING OFF" : "SAVING", true), KeyTile {}});
         return;
     }
-    key_tiles(p, {word_tile(Icon::Back, "STAY", false, colour::sec), word_tile(Icon::Power, "POWER OFF"), word_tile(Icon::Mpc, "MPC APP", true)});
+    unsigned pick = s.ui.exit_pick % 3; // the wheel's tile, raised; Push presses its key
+    key_tiles(p, {word_tile(Icon::Back, "STAY", pick == 0), word_tile(Icon::Power, "POWER OFF", pick == 1), word_tile(Icon::Mpc, "MPC APP", pick == 2)});
 }
 
 } // namespace melodee

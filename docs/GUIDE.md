@@ -183,7 +183,8 @@ creating a project clears the undo history.
   **SEQ** held it copies patterns. With **PAD BANK** held it copies tracks.
 
 When an action deletes something, Melodee asks first. The question says
-what is lost and whether undo brings it back.
+what is lost and whether undo brings it back. **B1** cancels, **B3** does
+it. Or turn the encoder to pick one and push it.
 
 ![A question before a loss](images/screens/seqclear.png)
 
@@ -269,6 +270,9 @@ one above each soft key. The knob under each tile changes what it makes.
 - **B2** (**KIT**): a kit. **K2** sets where its first sound comes from:
   samples on the card, or a recording from the input.
 - **B3** (**MIDI**): a MIDI track. **K3** sets the MIDI port.
+
+Or turn the encoder to move between the three and push it to make the one
+lit.
 
 ## Kits and sampling
 
@@ -1176,6 +1180,8 @@ Press **SHIFT** + **Pad 16**.
 - **B2** (**OPEN**): the list of projects on the card.
 - **B3** (**NEW**): start a new project (asks first).
 
+Or turn the encoder to pick one and push it.
+
 The header shows **UNSAVED** in amber while the project has changes.
 
 ![The project list](images/screens/projectlist.png)
@@ -1313,6 +1319,9 @@ Press **POWER** briefly. The Exit screen opens.
 - **B2** (**POWER OFF**): save the project and switch the MPC off.
 - **B3** (**MPC APP**): save the project and run the stock app until the
   next time the MPC is switched on.
+
+Or turn the encoder to pick one and push it. **STAY** is picked when the
+screen opens.
 
 The next time Melodee starts, it opens the project set to open at start,
 or else the last project you opened or saved.
