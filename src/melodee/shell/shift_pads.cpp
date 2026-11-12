@@ -69,7 +69,7 @@ void shift_pad(Context& c, unsigned pad) {
         c.open(PageId::Song);
         return;
     case 15: // Project: SAVE, OPEN and NEW, the projects on the card behind OPEN
-        c.ui.project_list = false; c.ui.sheet_open = false; c.ui.sheet_more = false; c.ui.move_open = false; c.ui.project_pick = 0;
+        c.ui.project_list = false; c.ui.sheet_open = false; c.ui.move_open = false; c.ui.project_pick = 0;
         c.open(PageId::Project);
         if (c.store) c.store->list(c.project_folder);
         c.ui.project_rows = 64; // until the list arrives

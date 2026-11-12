@@ -7,8 +7,9 @@
 // and name, and under it the one in hand drawn as what it does to sound.
 // B1 and B3 name the chains before and after. The wheel picks a device,
 // the three pots hold three of its parameters and Minus / Plus the other row
-// (two dots by its name). Push on a device opens its sheet on BYPASS (B3),
-// B2 MORE for change, presets, move, remove. Push on the plus opens the
+// (two dots by its name). Push on a device opens its sheet: change, presets,
+// bypass, move, remove as cards, Bypass lit; the wheel moves, Push does it,
+// B1 back. Push on the plus opens the
 // picker: 41 effects in six families, each with its glyph; Push enters a
 // family, B3 adds, B1 backs out. A bus or the master has no track, so it is
 // drawn in neutral.
@@ -124,11 +125,8 @@ void draw(Paint& p, const Snapshot& s) {
         ends(bus_name(bus), "MASTER", "");
         h.right.push_back(label("MASTER", colour::mid));
     }
-    if (s.ui.sheet_open && cursor < count) { // the device's sheet: BACK, MORE, BYPASS; on the list BACK, -, DO IT
-        keys = s.ui.sheet_more ? SoftKeys {{"BACK", "", "DO IT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}
-                               : SoftKeys {{"BACK", "MORE", "BYPASS"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
-        if (!s.ui.sheet_more) keys.glyphs = {Icon::None, Icon::Layers, Icon::Power};
-    }
+    if (s.ui.sheet_open && cursor < count) // the device's cards: B1 BACK, the wheel and Push the rest
+        keys = SoftKeys {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     if (s.ui.picker_open) {
         keys = SoftKeys {{"BACK", "", s.ui.picker_replaces ? "CHANGE" : "ADD"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
         h.left.clear();
@@ -150,26 +148,21 @@ void draw(Paint& p, const Snapshot& s) {
         const auto& slot = chain.slots[cursor];
         Actions actions {};
         unsigned rows = device_actions(s.ui, slot, actions);
-        if (!s.ui.sheet_more) { // the likely job, Bypass, under B3; it stays to hear the difference
-            auto tile = word_sub_tile(Icon::Power, "BYPASS", slot.bypass ? "ON" : "OFF");
-            tile.colour = c;
-            likely_sheet(p, tile, rows - 1);
-            return;
-        }
-        MenuSheet m;
-        m.title = effect_info(EffectKind(slot.kind)).name; m.detail = "SLOT " + juce::String(cursor + 1); m.accent = c;
+        CardSheet m;
+        m.chip = "SLOT " + juce::String(cursor + 1); m.chip_colour = c; m.accent = c;
+        m.title = effect_info(EffectKind(slot.kind)).name;
+        if (plugin_slot(slot)) m.title = plugin_name(s, unsigned(slot.params[0])); // its own name, as the strip says it
         for (unsigned r = 0; r < rows; ++r)
             switch (actions[r]) {
-            case Action::Change: m.rows[r] = {"Change", "", false, false, false}; break;
-            case Action::Presets: m.rows[r] = {"Presets", juce::String(int(s.ui.plugin_panel.programs)), false, false, false}; break;
-            case Action::Bypass: m.rows[r] = {"Bypass", slot.bypass ? "On" : "Off", slot.bypass, false, false}; break;
-            case Action::Left: m.rows[r] = {"Move left", "", false, false, cursor == 0}; break;
-            case Action::Right: m.rows[r] = {"Move right", "", false, false, cursor + 1 >= count}; break;
-            case Action::Remove: m.rows[r] = {"Remove", "", false, true, false}; break;
+            case Action::Change: m.items[r] = card_item(Icon::Swap, "CHANGE", ""); break;
+            case Action::Presets: m.items[r] = card_item(Icon::Star, "PRESETS", juce::String(int(s.ui.plugin_panel.programs))); break;
+            case Action::Bypass: m.items[r] = card_item(Icon::Power, "BYPASS", slot.bypass ? "ON" : "OFF", bool(slot.bypass)); break;
+            case Action::Left: m.items[r] = card_item(Icon::ArrowLeft, "MOVE LEFT", "", false, false, cursor == 0); break;
+            case Action::Right: m.items[r] = card_item(Icon::ArrowRight, "MOVE RIGHT", "", false, false, cursor + 1 >= count); break;
+            case Action::Remove: m.items[r] = card_item(Icon::Trash, "REMOVE", "", false, true); break;
             }
         m.count = rows; m.current = s.ui.sheet_row % rows;
-        p.dim_zone(zone::picture_y, zone::picture_h, 0.6f);
-        menu_sheet(p, m);
+        card_sheet(p, m);
     }
 }
 
@@ -205,7 +198,6 @@ void wheel(Context& c, int delta) {
     }
     unsigned n = chain_here(c), at = UiState::cursor_of(n);
     if (ui.sheet_open) {
-        if (!ui.sheet_more) return; // the likely tile: a turn opens nothing (B2 MORE lists the rest)
         const auto& chain = c.project.chain(n);
         unsigned k = std::min<unsigned>(ui.fx_cursor[at], chain.size - 1);
         Actions actions {};
@@ -231,7 +223,6 @@ void push(Context& c) {
         return;
     }
     if (ui.sheet_open && cursor < chain.count()) {
-        if (!ui.sheet_more) { c.toggle_bypass(n, cursor); return; } // the likely job: Bypass, and it stays open to hear it
         Actions actions {};
         unsigned rows = device_actions(ui, chain.slots[cursor], actions);
         switch (actions[ui.sheet_row % rows]) {
@@ -245,7 +236,13 @@ void push(Context& c) {
         ui.sheet_open = false;
         return;
     }
-    if (cursor < chain.count()) { ui.sheet_open = true; ui.sheet_more = false; ui.sheet_row = 0; return; }
+    if (cursor < chain.count()) { // the cards, Bypass lit (the likely job)
+        Actions actions {};
+        unsigned rows = device_actions(ui, chain.slots[cursor], actions);
+        ui.sheet_open = true; ui.sheet_row = 0;
+        for (unsigned r = 0; r < rows; ++r) if (actions[r] == Action::Bypass) ui.sheet_row = uint8_t(r);
+        return;
+    }
     if (cursor < chain.size) { ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = false; }
 }
 
@@ -256,10 +253,8 @@ void soft(Context& c, int key) {
         if (key == 2) { if (ui.picker_items) add_from_picker(c); else { ui.picker_items = true; ui.picker_item = 0; } }
         return;
     }
-    if (ui.sheet_open) { // BACK, MORE, BYPASS; on the list BACK, -, DO IT
-        if (key == 0) { if (ui.sheet_more) ui.sheet_more = false; else ui.sheet_open = false; }
-        if (key == 1 && !ui.sheet_more) { ui.sheet_more = true; ui.sheet_row = 0; }
-        if (key == 2) push(c);
+    if (ui.sheet_open) { // the cards: B1 BACK; the wheel and Push do the rest
+        if (key == 0) ui.sheet_open = false;
         return;
     }
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) { if (key == 0) c.open(PageId::Looper); return; } // a loop track's chain

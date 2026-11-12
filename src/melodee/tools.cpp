@@ -1304,18 +1304,18 @@ const Preview previews[] {
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3;
          preview_projects(s);
      }},
-    {"filesheet", [](Shell&, Snapshot& s) { // Push on the open project: SAVE, and MORE for the rest
+    {"filesheet", [](Shell&, Snapshot& s) { // Push on the open project: its jobs as cards, SAVE lit
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
          preview_projects(s);
      }},
-    {"filesheetmore", [](Shell&, Snapshot& s) { // MORE: all of them
+    {"filesheetscroll", [](Shell&, Snapshot& s) { // turned to the last card: the rows scrolled, DELETE asking again
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_list = true; s.ui.project_cursor = 3; s.ui.sheet_open = true;
-         s.ui.sheet_more = true; s.ui.sheet_row = 0;
+         s.ui.sheet_row = 7; s.ui.delete_armed = true;
          preview_projects(s);
      }},
     // Parity phase 10: another project's sheet with Load kit, New project asking first.
     {"loadkit", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Project; s.ui.project_list = true; s.ui.project_cursor = 4; s.ui.sheet_open = true; s.ui.sheet_more = true; s.ui.sheet_row = 1;
+         s.ui.page = PageId::Project; s.ui.project_list = true; s.ui.project_cursor = 4; s.ui.sheet_open = true; s.ui.sheet_row = 1;
          preview_projects(s);
      }},
     // Parity phase 10b: SD card access, its row on Project, then the card on a computer, ejected, held, and none to lend.
@@ -1868,13 +1868,9 @@ const Preview previews[] {
          roll_bass(shell, s, 22, 60);
          s.playing = true; s.position = 26 * sixteenth_ticks; s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"notesheet", [](Shell& shell, Snapshot& s) { // Push on the note in focus: ACCENT, MORE for the rest
+    {"notesheet", [](Shell& shell, Snapshot& s) { // Push on the note in focus: Accent, Slide, Tie, Delete as cards
          roll_bass(shell, s, 24, 57);
          s.ui.sheet_open = true;
-     }},
-    {"notesheetmore", [](Shell& shell, Snapshot& s) { // MORE: Accent, Slide, Tie, Delete
-         roll_bass(shell, s, 24, 57);
-         s.ui.sheet_open = true; s.ui.sheet_more = true; s.ui.sheet_row = 1;
      }},
     {"rolledges", [](Shell& shell, Snapshot& s) { // the rows lower: notes above and below are dots on the edges
          roll_bass(shell, s, 30, 55);

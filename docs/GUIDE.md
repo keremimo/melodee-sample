@@ -809,8 +809,8 @@ Roll is a piano roll. On a kit, each row is a pad.
 - **K1** length, **K2** velocity, **K3** chance of the note under the cursor.
   **SHIFT** + **K1**: nudge the note early or late.
 - **ERASE** pressed alone deletes the note under the cursor.
-- Push the encoder for the note sheet: **B3** toggles **ACCENT**. **B2**
-  (**MORE**) lists accent, slide, tie and delete.
+- Push the encoder for the note sheet: accent, slide, tie and delete as
+  cards. Turn the encoder to pick one and push it. **B1** closes it.
 - Press **ROLL** again for the note's ratchet.
 
 **Step Edit**
@@ -1029,8 +1029,9 @@ move between **TRACK**, **SENDS**, **BUS** and **MASTER**. On a kit,
 - Turn the encoder to select a slot.
 - Push the encoder on the **+** to open the effect picker. Choose a family,
   then an effect.
-- Push the encoder on an effect to open its sheet. **B3** (**BYPASS**)
-  turns it off and on. **B2** (**MORE**) changes, moves or removes it.
+- Push the encoder on an effect to open its sheet: change, presets, bypass,
+  move and remove as cards, with bypass picked. Turn the encoder to pick one
+  and push it. **B1** closes it.
 - **K1**–**K3** set the effect's values. **−** / **+** show its second row.
 
 ![The effect picker](images/screens/fxpick.png)
@@ -1190,13 +1191,14 @@ In the list:
 
 - Turn the encoder to move. **K1** jumps, **K2** sorts.
 - Push the encoder or press **B3** to open a folder. **B1** goes back.
-- Push the encoder on a project to open its sheet: **SAVE** for the open
-  project, **LOAD** for another one. **B2** (**MORE**) lists Save as new,
-  Rename, Duplicate, Move to folder, New folder here, Open at start and
-  Delete. For another project it also lists **Load kit (no patterns)**,
-  which loads its first kit onto the selected track.
+- Push the encoder on a project to open its sheet. Its jobs are cards:
+  Save, Save as new, Rename, Duplicate, Move to folder, New folder here,
+  Open at start and Delete. Another project has Load and **Load kit**
+  (no patterns) first, which loads its first kit onto the selected track.
+- Save (or Load) is picked when the sheet opens. Turn the encoder to pick
+  another card and push it. **B1** closes the sheet. Delete asks again.
 
-![A project's sheet](images/screens/filesheetmore.png)
+![A project's sheet](images/screens/filesheetscroll.png)
 
 While a project loads, a Loading sheet shows its progress. The audio fades
 out and back in.

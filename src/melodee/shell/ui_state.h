@@ -159,7 +159,6 @@ struct UiState {
     uint32_t held_since = 0;                  // when the held step's pad went down, ms
     bool held_created = false, held_edited = false;
     bool sheet_open = false;  // a sheet behind Push: Roll's note, a chain's device, a project's file
-    bool sheet_more = false;  // and past its likely action (B3) to all of them as a list (B2 MORE)
     uint8_t sheet_row = 0;
     // Roll (shell/roll.h): the cursor is step_cursor (a step of Q) and roll_key (a pitch), and the note
     // starting there on that key is in focus. roll_view: the first step in view; roll_top: the top row's key;

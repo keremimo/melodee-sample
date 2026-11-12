@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/ui/glyphs.h"
+#include "melodee/ui/card_rows.h"
 #include "melodee/ui/paint.h"
 #include <array>
 #include <utility>
@@ -47,9 +48,7 @@ struct Sheet {
 };
 void sheet(Paint& p, const Sheet& s);
 
-// A menu sheet: a card of actions over the dimmed picture, each row a name
-// and its value; the current row is raised with an accent bar (the note,
-// clip and file sheets).
+// Menu rows: a name and its value (the Vary sheet's).
 struct MenuRow {
     juce::String name, value;
     bool on = false, danger = false;
@@ -62,11 +61,31 @@ struct MenuSheet {
     juce::Colour accent = colour::text;
     juce::Colour detail_colour = colour::mid;
 };
-void menu_sheet(Paint& p, const MenuSheet& sheet);
 
-// The same rows as a wide card over the whole picture, two columns of up to
-// four, with a chip and a title (the clip sheet).
+// Menu rows as a wide card over the whole picture, two columns of up to
+// four, with a chip and a title (Steps' Vary sheet).
 void wide_sheet(Paint& p, const MenuSheet& sheet, const juce::String& chip_text, juce::Colour chip_colour);
+
+// A card sheet (Roll's note, an effect's slot, a project on the card): its jobs as cards two to a row over the
+// page, three rows in view. The wheel moves the highlight from card to card, the rows scrolling once it passes the
+// third; Push does the card lit; B1 is BACK and B2 / B3 do nothing. A chip, a title and a detail sit in the header.
+struct CardItem {
+    Icon icon = Icon::None;
+    juce::String word, sub; // the job, and a line under it (its state, what it acts on)
+    bool on = false;        // a state that is on: the line under in the accent
+    bool danger = false;    // a loss: glyph and words in REC
+    bool off = false;       // not possible here: drawn dim
+};
+inline CardItem card_item(Icon i, juce::String word, juce::String sub = {}, bool on = false, bool danger = false, bool off = false) {
+    CardItem c; c.icon = i; c.word = std::move(word); c.sub = std::move(sub); c.on = on; c.danger = danger; c.off = off; return c;
+}
+struct CardSheet {
+    juce::String chip, title, detail;
+    juce::Colour chip_colour = colour::text, accent = colour::text, detail_colour = colour::mid;
+    std::array<CardItem, 8> items {};
+    unsigned count = 0, current = 0;
+};
+void card_sheet(Paint& p, const CardSheet& sheet);
 
 // Choices as tiles straight under the soft keys that pick them, each with a
 // caret up to its key: a glyph, then a word (or a big value with a small word
@@ -91,11 +110,6 @@ inline KeyTile value_tile(Icon i, juce::String big, juce::String sub, bool prima
 inline KeyTile word_sub_tile(Icon i, juce::String word, juce::String sub, bool primary = false) {
     KeyTile t; t.icon = i; t.word = std::move(word); t.sub = std::move(sub); t.primary = primary; return t;
 }
-// A sheet behind Push as it opens: the one action most likely wanted as the
-// tile under B3, B2 MORE (how many others) for the rest as a list, over a
-// dimmed page; the keys say BACK, MORE and the verb.
-void likely_sheet(Paint& p, const KeyTile& likely, unsigned others);
-
 // The question before an erase or a loss, asked in words as a person would:
 // a glyph and the question ("Clear pattern 2?"), one or two short plain lines
 // saying what goes and whether undo brings it back, and at the foot what it

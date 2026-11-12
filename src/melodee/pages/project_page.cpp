@@ -10,8 +10,8 @@
 // (pages/card_access_page.cpp). Each row a glyph first and its facts last.
 // The wheel moves; Push or B3 opens: a folder goes in (B1 or Shift + Push
 // comes back out, B1 at the top back to the tiles), a project's sheet opens
-// on its likely job as a tile (Save on the open one, Load on another), B2
-// MORE lists them all: on the open one Save, Save as new, Rename, Duplicate,
+// its jobs as cards, the likely one first and lit (Save on the open one, Load
+// on another; the wheel moves, Push does it, B1 back): on the open one Save, Save as new, Rename, Duplicate,
 // Move to folder, New folder here, Open at start, Delete; on another Load,
 // Load kit (its pads and samples onto the selected track, no patterns) and
 // the same. Delete asks once more. Save as new and Rename open the Name
@@ -41,11 +41,6 @@ unsigned actions(bool open, std::array<Action, 8>& out, bool mpc = false) {
     out = {Load, LoadKit, Duplicate, Rename, MoveTo, NewFolder, OpenAtStart, Delete};
     return 8;
 }
-const char* action_name(Action a) {
-    static const char* names[] {"Load", "Save", "Save as new", "Rename", "Duplicate", "Move to folder", "New folder here", "Open at start", "Delete",
-                                "Load kit (no patterns)"};
-    return names[a];
-}
 
 // The list's rows: SD card access (at the top folder), then the folder's entries.
 bool has_card_row(const std::string& folder) { return folder.empty(); }
@@ -56,8 +51,6 @@ const ProjectEntry* entry_at(const ProjectStore::View& v, unsigned row, const st
 }
 // SD card access (parity phase 10b), at the top, as the MPC's Project menu ends with it.
 bool on_card(unsigned row, const std::string& folder) { return has_card_row(folder) && row == 0; }
-// The sheet's likely job: Save on the open project, Load on any other.
-Action likely_of(bool open) { return open ? Save : Load; }
 
 // Move to folder: where a project can go (the top, then every folder by
 // name), all but the folder it is in.
@@ -164,12 +157,8 @@ void draw(Paint& p, const Snapshot& s) {
     const auto* in_hand = entry_at(v, cursor, s.project_folder);
     bool open_one = in_hand && in_hand->path == s.project_path, mpc = in_hand && in_hand->mpc();
     if (s.ui.move_open) frame(p, s, {{"BACK", "", "MOVE"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
-    else if (sheet && s.ui.sheet_more) frame(p, s, {{"BACK", "", "DO IT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
-    else if (sheet) {
-        SoftKeys keys {{"BACK", "MORE", open_one ? "SAVE" : "LOAD"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
-        keys.glyphs = {Icon::None, Icon::Layers, open_one ? Icon::Save : Icon::Folder};
-        frame(p, s, keys, h);
-    } else frame(p, s, {{"BACK", "", "OPEN"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    else if (sheet) frame(p, s, {{"BACK", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h); // the cards
+    else frame(p, s, {{"BACK", "", "OPEN"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
 
     unsigned first = cursor < 3 ? 0 : std::min(cursor - 3, count > visible ? count - visible : 0);
     for (unsigned row = 0; row < visible && first + row < count; ++row)
@@ -214,25 +203,27 @@ void draw(Paint& p, const Snapshot& s) {
         if (!e || e->kind != ProjectEntry::Kind::Project) return;
         std::array<Action, 8> list {};
         unsigned n = actions(open_one, list, mpc);
-        if (!s.ui.sheet_more) {
-            auto likely = likely_of(open_one);
-            likely_sheet(p, word_sub_tile(likely == Save ? Icon::Save : Icon::Folder, likely == Save ? "SAVE" : "LOAD", juce::String(e->name)), n - 1);
-            return;
-        }
-        MenuSheet m;
-        m.title = e->name; m.accent = colour::text;
+        CardSheet m;
+        m.chip = open_one ? "OPEN" : "PROJECT"; m.title = e->name;
         if (open_one && s.dirty) { m.detail = "UNSAVED"; m.detail_colour = amber; }
         else if (mpc) { m.detail = "OPENS AS A COPY"; m.detail_colour = colour::mid; }
         for (unsigned k = 0; k < n; ++k) {
-            juce::String name = action_name(list[k]);
-            if (list[k] == Delete && s.ui.delete_armed && k == s.ui.sheet_row) name = "Delete: press again";
-            if (list[k] == OpenAtStart && v.start == e->path) name = "Opens at start";
-            m.rows[k] = {name, "", false, list[k] == Delete, false};
+            bool start = v.start == e->path;
+            switch (list[k]) {
+            case Load: m.items[k] = card_item(Icon::Folder, "LOAD"); break;
+            case LoadKit: m.items[k] = card_item(Icon::Pads, "LOAD KIT", "NO PATTERNS"); break;
+            case Save: m.items[k] = card_item(Icon::Save, "SAVE"); break;
+            case SaveAsNew: m.items[k] = card_item(Icon::File, "SAVE AS NEW"); break;
+            case Rename: m.items[k] = card_item(Icon::Keyboard, "RENAME"); break;
+            case Duplicate: m.items[k] = card_item(Icon::Copy, "DUPLICATE"); break;
+            case MoveTo: m.items[k] = card_item(Icon::ArrowRight, "MOVE TO FOLDER"); break;
+            case NewFolder: m.items[k] = card_item(Icon::Plus, "NEW FOLDER HERE"); break;
+            case OpenAtStart: m.items[k] = card_item(Icon::Flag, "OPEN AT START", start ? "ON" : "OFF", start); break;
+            case Delete: m.items[k] = card_item(Icon::Trash, "DELETE", s.ui.delete_armed && k == s.ui.sheet_row ? "PRESS AGAIN" : "", false, true); break;
+            }
         }
         m.count = n; m.current = s.ui.sheet_row % n;
-        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
-        p.dim_zone(zone::knobs_y, zone::knobs_h);
-        wide_sheet(p, m, open_one ? "OPEN" : "PROJECT", colour::text);
+        card_sheet(p, m);
     }
 }
 
@@ -244,7 +235,7 @@ ProjectStore::View view_of(Context& c) {
     return v;
 }
 
-void close_sheet(Context& c) { c.ui.sheet_open = false; c.ui.sheet_more = false; c.ui.delete_armed = false; }
+void close_sheet(Context& c) { c.ui.sheet_open = false; c.ui.delete_armed = false; }
 
 void act(Context& c, Action action) {
     auto v = view_of(c);
@@ -276,13 +267,12 @@ void act(Context& c, Action action) {
     c.store->list(c.project_folder);
 }
 
-// The sheet's job: the likely one as it opens, else the row under the cursor of all of them.
+// The sheet's job: the card lit (the likely one, first, as it opens).
 void act(Context& c) {
     auto v = view_of(c);
     const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
     if (!e) return;
     bool open = e->path == c.project_path;
-    if (!c.ui.sheet_more) { act(c, likely_of(open)); return; }
     std::array<Action, 8> list {};
     unsigned n = actions(open, list, e->mpc());
     act(c, list[c.ui.sheet_row % n]);
@@ -320,7 +310,6 @@ void wheel(Context& c, int delta) {
         const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
         std::array<Action, 8> list {};
         unsigned n = actions(e && e->path == c.project_path, list, e && e->mpc());
-        if (!c.ui.sheet_more) return; // the likely tile: a turn opens nothing (B2 MORE lists the rest)
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(n) - 1));
         c.ui.delete_armed = false;
         return;
@@ -340,7 +329,7 @@ void open_row(Context& c) {
         if (c.store) c.store->list(c.project_folder);
         return;
     }
-    c.ui.sheet_open = true; c.ui.sheet_more = false; c.ui.sheet_row = 0; c.ui.delete_armed = false;
+    c.ui.sheet_open = true; c.ui.sheet_row = 0; c.ui.delete_armed = false; // the likely job (Save or Load) is the first card
 }
 
 void soft(Context& c, int key);
@@ -364,10 +353,8 @@ void soft(Context& c, int key) {
         if (key == 2) move_here(c);
         return;
     }
-    if (c.ui.sheet_open) { // BACK, MORE, the likely job; on the list BACK, -, DO IT
-        if (key == 0) { if (c.ui.sheet_more) { c.ui.sheet_more = false; c.ui.delete_armed = false; } else close_sheet(c); }
-        if (key == 1 && !c.ui.sheet_more) { c.ui.sheet_more = true; c.ui.sheet_row = 0; }
-        if (key == 2) act(c);
+    if (c.ui.sheet_open) { // the cards: B1 BACK; the wheel and Push do the rest
+        if (key == 0) close_sheet(c);
         return;
     }
     if (key == 2) { open_row(c); return; }

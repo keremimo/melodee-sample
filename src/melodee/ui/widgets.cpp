@@ -120,44 +120,6 @@ void sheet(Paint& p, const Sheet& s) {
     wrapped.draw(p.g, juce::AffineTransform::translation(x + pad, at));
 }
 
-void menu_sheet(Paint& p, const MenuSheet& m) {
-    // A card 240 wide over the picture, rows of 23 with 1 between; tall
-    // menus rise into the header so every row shows.
-    // Rows shrink (to 22) before the card would reach the soft keys, which stay readable over it.
-    constexpr float w = 240, x = (zone::width - w) / 2;
-    float row_h = std::min(23.0f, std::floor((zone::height - 4 - zone::header_y - 29) / float(std::max(1u, m.count))) - 1);
-    float h = 6 + 18 + m.count * (row_h + 1) + 5;
-    float y = std::max(float(zone::header_y), std::min(float(zone::picture_y + 4), zone::height - 4 - h));
-    // The page behind sinks across the whole width, and where the card covers the header it goes: nothing beside
-    // the card reads as cut text.
-    if (y < zone::picture_y) p.fill(0, zone::header_y, zone::width, zone::height - zone::header_y, colour::bg); // a tall menu: nothing behind
-    else p.dim_zone(int(y) - 2, zone::height - int(y) + 2, 0.92f);
-    for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
-    p.fill(x, y, w, h, colour::surf, 6);
-    p.ring(x, y, w, h, colour::line, 6);
-    auto title = caps_text(m.accent), detail = caps_text(colour::mid);
-    float dw = m.detail.isEmpty() ? 0 : p.width(m.detail, detail);
-    p.text(m.title, x + 13, y + 6, w - 26 - (dw > 0 ? dw + 8 : 0), 14, title);
-    if (dw > 0) p.text(m.detail, x + w - 13 - dw, y + 6, dw + 1, 14, detail);
-    for (unsigned n = 0; n < m.count; ++n) {
-        const auto& r = m.rows[n];
-        float ry = y + 24 + n * (row_h + 1), rx = x + 6, rw = w - 12;
-        if (n == m.current) {
-            p.fill(rx, ry, rw, row_h, colour::raised, 4);
-            p.g.saveState();
-            p.g.reduceClipRegion(juce::Rectangle<int>(int(rx), int(ry), 3, int(row_h)));
-            p.fill(rx, ry, 8, row_h, m.accent, 4);
-            p.g.restoreState();
-        }
-        auto value = plain(r.on ? m.accent : colour::mid, type::body, Weight::Medium);
-        float vw = r.value.isEmpty() ? 0 : p.width(r.value, value);
-        if (vw > 0) p.text(r.value, rx + rw - 7 - vw, ry, vw + 1, row_h, value);
-        float nw = rw - 14 - (vw > 0 ? vw + 8 : 0);
-        auto name = plain(r.off ? colour::dim : r.danger ? colour::rec : colour::text, type::list, Weight::Medium);
-        p.text(r.name, rx + 7, ry, nw, row_h, p.fit(r.name, name, nw, type::floor));
-    }
-}
-
 void wide_sheet(Paint& p, const MenuSheet& m, const juce::String& chip_text, juce::Colour chip_colour) {
     constexpr float x = zone::pad, y = zone::header_y + 2, w = zone::width - 2 * zone::pad, h = zone::knobs_y - 2 - y;
     for (int n = 1; n <= 4; ++n) p.fill(x - n, y + n * 2, w + 2 * n, h, juce::Colours::black.withAlpha(0.06f), 6 + n);
@@ -222,12 +184,50 @@ void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y, float h) 
     }
 }
 
-void likely_sheet(Paint& p, const KeyTile& likely, unsigned others) {
-    p.dim_zone(zone::picture_y, zone::picture_h, 0.78f);
-    p.dim_zone(zone::knobs_y, zone::knobs_h);
-    auto more = word_sub_tile(Icon::Layers, "MORE", juce::String(others) + (others == 1 ? " ACTION" : " ACTIONS"));
-    auto primary = likely; primary.primary = true;
-    key_tiles(p, {KeyTile {}, others ? more : KeyTile {}, primary});
+void card_sheet(Paint& p, const CardSheet& m) {
+    // The page behind goes: the header becomes the sheet's, the picture and knob zones its cards.
+    p.fill(0, zone::header_y, zone::width, zone::height - zone::header_y, colour::bg);
+    float x = zone::pad, mid_y = zone::header_y + zone::header_h / 2.0f;
+    if (m.chip.isNotEmpty()) {
+        auto chip = caps_text(colour::bg);
+        float cw = p.width(m.chip, chip) + 10;
+        p.fill(x, mid_y - 7.5f, cw, 15, m.chip_colour, 3);
+        p.text(m.chip, x, mid_y - 7.5f, cw, 15, chip, juce::Justification::centred);
+        x += cw + 6;
+    }
+    auto detail = caps_text(m.detail_colour);
+    float dw = m.detail.isEmpty() ? 0 : p.width(m.detail, detail);
+    float room = zone::width - zone::pad - x - (dw > 0 ? dw + 6 : 0);
+    float tw = p.text(m.title, x, zone::header_y, room, zone::header_h, p.fit(m.title, plain(colour::text, type::body, Weight::SemiBold), room, type::floor));
+    if (dw > 0) p.text(m.detail, x + tw + 6, zone::header_y, dw + 1, zone::header_h, detail);
+
+    constexpr float gap = 6, top_y = zone::picture_y + 4, card_h = 58, card_w = (zone::width - 2 * zone::pad - gap) / 2;
+    unsigned rows = (m.count + 1) / 2, first = card_sheet_top(m.current, m.count);
+    for (unsigned r = 0; r < card_sheet_rows && first + r < rows; ++r)
+        for (unsigned c = 0; c < 2; ++c) {
+            unsigned n = (first + r) * 2 + c;
+            if (n >= m.count) break;
+            const auto& it = m.items[n];
+            bool lit = n == m.current;
+            float cx = zone::pad + c * (card_w + gap), cy = top_y + r * (card_h + gap);
+            p.fill(cx, cy, card_w, card_h, lit ? colour::raised : colour::panel, 6);
+            if (lit) p.ring(cx, cy, card_w, card_h, it.danger ? colour::rec : m.accent, 6, 1.2f);
+            auto ink = it.off ? colour::dim : it.danger ? colour::rec : lit ? colour::text : colour::mid;
+            icon(p, it.icon, cx + 10, cy + card_h / 2 - 10, 20, ink, 1.4f);
+            float tx = cx + 38, tw2 = card_w - 38 - 8;
+            auto word = caps_text(ink, type::body);
+            auto lines = p.wrap(it.word, word, tw2, 2);
+            auto sub = caps_text(it.off ? colour::dim : it.danger && lit ? colour::rec : it.on ? m.accent : lit ? colour::sec : colour::mid);
+            float line_h = word.size + 3, block = lines.size() * line_h + (it.sub.isNotEmpty() ? 2 + 13 : 0);
+            float ty = cy + (card_h - block) / 2;
+            for (const auto& line : lines) { p.text(line, tx, ty, tw2, line_h, word); ty += line_h; }
+            if (it.sub.isNotEmpty()) p.text(it.sub, tx, ty + 2, tw2, 13, p.fit(it.sub, sub, tw2, type::floor));
+        }
+    if (rows > card_sheet_rows) { // where the rows in view sit among all of them
+        float bar_y = top_y, bar_h = card_sheet_rows * (card_h + gap) - gap;
+        p.fill(zone::width - 3, bar_y, 2, bar_h, colour::line, 1);
+        p.fill(zone::width - 3, bar_y + bar_h * first / rows, 2, bar_h * card_sheet_rows / rows, colour::mid, 1);
+    }
 }
 
 void confirm_sheet(Paint& p, const ConfirmSheet& s) {

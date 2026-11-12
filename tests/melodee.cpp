@@ -64,6 +64,7 @@
 #include "melodee/model/sound_file.h"
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/key_pick.h"
+#include "melodee/ui/card_rows.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/project_kits.h"
@@ -3957,6 +3958,13 @@ void key_pick() {
     CHECK(key_pick_turn(2, -1) == 1 && key_pick_turn(0, -1) == 0 && key_pick_turn(0, 5) == 2 && key_pick_turn(2, -9) == 0);
     CHECK(key_pick_turn(0, 1, 0b101) == 2 && key_pick_turn(2, -1, 0b101) == 0 && key_pick_turn(2, 1, 0b101) == 2);
     CHECK(key_pick_turn(1, 0) == 1);
+    // The card sheets: three rows of two in view; the rows scroll once the highlight passes the third.
+    using ui::card_sheet_top;
+    CHECK(card_sheet_top(0, 4) == 0 && card_sheet_top(3, 4) == 0);          // Roll's four: never scrolls
+    CHECK(card_sheet_top(5, 6) == 0);                                         // an effect's six: never scrolls
+    CHECK(card_sheet_top(0, 8) == 0 && card_sheet_top(5, 8) == 0);          // a project's eight: rows 1-3 ...
+    CHECK(card_sheet_top(6, 8) == 1 && card_sheet_top(7, 8) == 1);          // ... then 2-4 for the last two
+    CHECK(card_sheet_top(2, 8) == 0);                                         // back up: the top again
 }
 
 void card_access() {

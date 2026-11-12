@@ -617,9 +617,9 @@ hold to steer, Shift + Seq to zoom in**.
   at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
   is the pads' octave (Shift: down). Erase tapped alone deletes the note in
   focus; Erase + pad asks, then erases that key's notes. Push opens its
-  sheet on ACCENT, the likely job, as a tile under B3 (B3 or Push toggles
-  it and closes); B2 MORE lists accent, slide, tie, delete (B3 DO IT or
-  Push, B1 back); a pad or a pot closes it too. Accent plays the note about 4 dB louder (and 24
+  sheet: accent, slide, tie, delete as cards (`ui::card_sheet`), accent
+  lit; the wheel moves, Push does the card (the switches stay open to see
+  them change), B1 back; a pad or a pot closes it too. Accent plays the note about 4 dB louder (and 24
   velocity harder); Tie holds it until the next note, which goes on from it
   without a new attack (the same key: one long note); Slide does the same
   and glides the pitch there in about 60 ms (the GLIDE knob's rate when it
@@ -1129,8 +1129,9 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   from its own values (a tail for space, taps for time, a wave for motion,
   the curve that bends it for dirt, the response for tone, the gain curve
   for dynamics; two dots by it while it has a second row on −/+). The wheel
-  picks, Push on an effect opens its sheet on BYPASS (B3; it stays to hear
-  the difference), B2 MORE for change, presets, move, remove; Push on the
+  picks, Push on an effect opens its sheet: change, presets, bypass, move
+  left / right, remove as cards, bypass lit (it stays open to hear the
+  difference); the wheel moves, Push does it, B1 back; Push on the
   plus opens the picker, its families each with the strip's glyph. Sends
   (also B3 on Tracks): one bus at a time, every track's send into it as a
   strip; K1 the selected track's send into it, K2 which bus (the one Bus
@@ -1316,9 +1317,9 @@ while following.
   many they hold (Push or B3 in, B1 or Shift + Push out, B1 at the top back
   to the tiles) and projects with their tracks and tempo, the open one
   OPEN (after an amber dot while unsaved). K1 jumps, K2 sorts. Push or B3 on
-  a project opens its sheet on its likely job as a tile under B3: SAVE on
-  the open one, LOAD on another; **B2 MORE** lists them all: on the open one
-  Save, Save as new, Rename, Duplicate, Move to folder, New folder here,
+  a project opens its sheet: its jobs as cards, the likely one first and
+  lit (SAVE on the open one, LOAD on another), the wheel moving, Push doing
+  it, B1 back: on the open one Save, Save as new, Rename, Duplicate, Move to folder, New folder here,
   Open at start, Delete (asks again); on another Load and **Load kit (no
   patterns)** (its first kit onto the selected track, one undo) first.
   Settings and About are Shift + Pad 8's.
@@ -1429,10 +1430,12 @@ while following.
   words: the question ("Clear pattern 2?"), one or two short lines saying
   what goes and whether undo brings it back, what it is about as a chip,
   and the undo keys. Choices under the keys are plain tiles without
-  outlines, the likely one a shade lighter. A sheet behind Push (a
-  project's, a note's, an effect's, a loop's) opens on the action most
-  likely wanted as the tile under B3, B2 MORE listing the rest (a turn of
-  the wheel there opens nothing). Lists show
+  outlines, the likely one a shade lighter; the wheel moves the highlight
+  across them and Push presses its key (`shell/key_pick.h`). A sheet behind
+  Push (a project's, a note's, an effect's) shows its jobs as cards two to
+  a row, three rows in view, the likely one lit; the wheel moves (the rows
+  scroll past the third), Push does it, B1 is BACK and B2 / B3 do nothing
+  (`ui::card_sheet`). Lists show
   what a row is as a glyph before its name and its facts at the right
   edge; K1 jumps through every list, the other pots draw nothing. Words: labels, keys and chips
   in capitals; names of sounds, pads, effects and projects in Title Case

@@ -13,9 +13,9 @@
 // dots on the top and bottom edges mark notes above and below it. Pads write
 // their note at the cursor, NEW NOTE long, or focus it; Pad Bank moves their
 // octave (Shift: down). Erase tapped alone deletes the note in focus. Push
-// opens its sheet on the likely job, ACCENT (B3 or Push toggles it and
-// closes), B2 MORE lists Accent, Slide, Tie and Delete (B3 or Push do the
-// row, B1 back); a pad or a pot closes it. With Seq Record on while
+// opens its sheet: Accent, Slide, Tie and Delete as cards, Accent lit. The
+// wheel moves, Push does the card (the three switches stay open to see them
+// change), B1 back; a pad or a pot closes it. With Seq Record on while
 // playing, pads play in live.
 #include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
@@ -64,11 +64,7 @@ void draw(Paint& p, const Snapshot& s) {
     bool sheet = ui.sheet_open && focused;
     SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 1, c};
     keys.dots[1] = 2; keys.dot_at[1] = ui.trig_cards ? 1 : 0; // ROLL again: the TRIG row of cards
-    if (sheet && ui.sheet_more) keys = SoftKeys {{"BACK", "", "DO IT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
-    else if (sheet) { // the likely job, Accent, under B3; MORE the rest
-        keys = SoftKeys {{"BACK", "MORE", "ACCENT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
-        keys.glyphs = {Icon::None, Icon::Layers, Icon::Accent};
-    }
+    if (sheet) keys = SoftKeys {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}; // the cards: wheel and Push
     frame(p, s, keys, h);
 
     float top = zone::picture_y + ruler, height = rows * row_h, right = gutter + columns * column;
@@ -174,22 +170,18 @@ void draw(Paint& p, const Snapshot& s) {
     p.fill(zone::width - 3, top, 2, height, colour::line, 1);
     p.fill(zone::width - 3, top + height * (1 - place) * 0.74f, 2, height * 0.26f, colour::mid, 1);
 
-    if (sheet && !ui.sheet_more) {
-        bool accent = focused->flags & step_accent;
-        auto tile = word_sub_tile(Icon::Accent, "ACCENT", accent ? "ON" : "OFF");
-        tile.colour = c;
-        likely_sheet(p, tile, sheet_rows - 1);
-    } else if (sheet) {
-        p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
-        MenuSheet m;
-        m.title = "NOTE"; m.detail = where(s, focused->tick) + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(note_name(focused->key)); m.accent = c;
+    if (sheet) { // the note's jobs as cards: the wheel moves, Push does it (Accent first)
+        CardSheet m;
+        m.chip = "NOTE"; m.chip_colour = c; m.accent = c;
+        m.title = juce::String(key_label(track, focused->key)) + juce::String::fromUTF8(" \xc2\xb7 ") + where(s, focused->tick);
         auto flag = [&](uint8_t f) { return bool(focused->flags & f); };
-        m.rows[RowAccent] = {"Accent", flag(step_accent) ? "On" : "Off", flag(step_accent), false, false};
-        m.rows[RowSlide] = {"Slide", flag(step_slide) ? "On" : "Off", flag(step_slide), false, false};
-        m.rows[RowTie] = {"Tie to next", flag(step_tie) ? "On" : "Off", flag(step_tie), false, false};
-        m.rows[RowDelete] = {"Delete note", "", false, true, false};
+        auto state = [&](uint8_t f) { return juce::String(flag(f) ? "ON" : "OFF"); };
+        m.items[RowAccent] = card_item(Icon::Accent, "ACCENT", state(step_accent), flag(step_accent));
+        m.items[RowSlide] = card_item(Icon::Slide, "SLIDE", state(step_slide), flag(step_slide));
+        m.items[RowTie] = card_item(Icon::Tie, "TIE TO NEXT", state(step_tie), flag(step_tie));
+        m.items[RowDelete] = card_item(Icon::Trash, "DELETE NOTE", "", false, true);
         m.count = sheet_rows; m.current = ui.sheet_row % sheet_rows;
-        menu_sheet(p, m);
+        card_sheet(p, m);
     }
 }
 
@@ -212,7 +204,6 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
 
 void wheel(Context& c, int delta) {
     if (c.ui.sheet_open) {
-        if (!c.ui.sheet_more) return; // the likely tile: a turn opens nothing (B2 MORE lists the rest)
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(sheet_rows) - 1));
         return;
     }
@@ -225,7 +216,6 @@ void wheel(Context& c, int delta) {
 }
 
 void do_row(Context& c) {
-    if (!c.ui.sheet_more) { roll_flag(c, step_accent); c.ui.sheet_open = false; return; } // the likely job: Accent, and done
     switch (c.ui.sheet_row % sheet_rows) {
     case RowAccent: roll_flag(c, step_accent); break;
     case RowSlide: roll_flag(c, step_slide); break;
@@ -238,15 +228,13 @@ void do_row(Context& c) {
 void push(Context& c) {
     if (c.ui.sheet_open) { do_row(c); return; }
     if (roll_focus(c.pattern(), c.ui) < 0) { c.notice("No note here"); return; }
-    c.ui.sheet_open = true; c.ui.sheet_more = false;
-    c.ui.sheet_row = 0;
+    c.ui.sheet_open = true;
+    c.ui.sheet_row = RowAccent; // the likely job lit
 }
 
 void soft(Context& c, int key) {
-    if (c.ui.sheet_open) { // BACK, MORE, ACCENT; on the list BACK, -, DO IT
-        if (key == 0) { if (c.ui.sheet_more) c.ui.sheet_more = false; else c.ui.sheet_open = false; }
-        if (key == 1 && !c.ui.sheet_more) { c.ui.sheet_more = true; c.ui.sheet_row = 0; }
-        if (key == 2) do_row(c);
+    if (c.ui.sheet_open) { // the cards: B1 BACK; the wheel and Push do the rest
+        if (key == 0) c.ui.sheet_open = false;
         return;
     }
     if (key == 1) { c.ui.trig_cards = !c.ui.trig_cards; return; } // ROLL again: the note's TRIG cards, or back
