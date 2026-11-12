@@ -58,6 +58,10 @@ juce::String name_case(const juce::String& name);
 // A name in capitals ("BEAT REPEAT") for a narrow cell: as it is when it
 // fits `w` in `style`, else in title case ("Beat Repeat"), which is narrower.
 juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::Paint::Text& style, float w);
+// A grid of such cells shares one case: capitals when every name fits `w` in `style`, else Title Case for all of
+// them, so one grid never mixes "SHUFFLE" with "Pitch Down". Then cell_name(..., capitals) for each cell.
+bool cells_in_capitals(const ui::Paint& p, const juce::StringArray& names, const ui::Paint::Text& style, float w);
+juce::String cell_name(const juce::String& name, bool capitals);
 
 // Effects (pages/fx_drawing.cpp): a family as its glyph; the six-slot strip of a chain (each slot its family's
 // glyph and name, the one in hand lit, empty ones dots and the next a plus), Stage's FX and FX Select's alike;

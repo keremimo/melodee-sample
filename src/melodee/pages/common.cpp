@@ -638,11 +638,20 @@ juce::String name_case(const juce::String& name) {
 }
 
 juce::String cell_name(const ui::Paint& p, const juce::String& name, const ui::Paint::Text& style, float w) {
-    if (p.width(name, style) <= w) return name;
+    return cell_name(name, p.width(name, style) <= w);
+}
+
+juce::String cell_name(const juce::String& name, bool capitals) {
+    if (capitals) return name;
     juce::StringArray words;
     words.addTokens(name.toLowerCase(), " ", "");
     for (auto& word : words) word = word.substring(0, 1).toUpperCase() + word.substring(1);
     return words.joinIntoString(" ");
+}
+
+bool cells_in_capitals(const ui::Paint& p, const juce::StringArray& names, const ui::Paint::Text& style, float w) {
+    for (const auto& name : names) if (p.width(name, style) > w) return false;
+    return true;
 }
 
 } // namespace melodee

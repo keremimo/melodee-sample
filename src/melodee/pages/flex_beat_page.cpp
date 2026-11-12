@@ -31,6 +31,9 @@ void draw(Paint& p, const Snapshot& s) {
     constexpr float gap = 3, top = zone::picture_y + 1.5f;
     constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (zone::picture_h - 1.5f - 3 * gap) / 4;
     unsigned playing = s.flex_playing;
+    juce::StringArray names; // one case for all sixteen
+    for (unsigned n = 0; n < flex_pads; ++n) names.add(juce::String(flex_beat(n).name).toUpperCase());
+    bool capitals = cells_in_capitals(p, names, plain(c, type::small, Weight::SemiBold), w - 8);
     for (unsigned n = 0; n < flex_pads; ++n) {
         unsigned row = 3 - n / 4, column = n % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
@@ -40,7 +43,7 @@ void draw(Paint& p, const Snapshot& s) {
         float nw = p.text(juce::String(n + 1), x + 5, y + 2, 20, 14, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold));
         if (on && n) p.text(f.mode ? "LOOP" : "ON", x + 5 + nw + 4, y + 2, w - 14 - nw, 14, caps_text(colour::bg), juce::Justification::right);
         auto style = plain(on ? colour::bg : n ? c : colour::mid, type::small, Weight::SemiBold);
-        juce::String name = cell_name(p, juce::String(flex_beat(n).name).toUpperCase(), style, w - 8);
+        juce::String name = cell_name(names[int(n)], capitals);
         p.text(name, x + 4, y + ch - 17, w - 8, 14, style);
     }
 }

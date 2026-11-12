@@ -121,9 +121,12 @@ void punch_draw(Paint& p, const Snapshot& s) {
     for (unsigned k = 1; k < beats; ++k) p.fill(bx + bw * k / beats - 0.75f, sy, 1.5f, sh, colour::bg);
     if (b0 + bar > length) { float end = bx + bw * float(length - b0) / bar; p.fill(end, sy, bx + bw - end, sh, colour::bg.withAlpha(0.5f), 3); } // past the end
     float rh = sh / float(std::max<size_t>(3, rows.size())), span_h = std::max(6.0f, rh - 7);
+    juce::StringArray row_names; // one case for the rows
+    for (size_t r = 0; r < rows.size(); ++r) row_names.add(punch_title(PunchKind(rows[r] % punch_count)));
+    bool row_capitals = cells_in_capitals(p, row_names, plain(colour::text, type::small, Weight::SemiBold), lw - 6);
     for (size_t r = 0; r < rows.size(); ++r) {
         auto style = plain(knob_shade(s.ui.track, unsigned(r)), type::small, Weight::SemiBold);
-        juce::String name = cell_name(p, punch_title(PunchKind(rows[r] % punch_count)), style, lw - 6);
+        juce::String name = cell_name(row_names[int(r)], row_capitals);
         p.text(name, sx, sy + r * rh, lw - 6, rh, p.fit(name, style, lw - 6, type::floor));
     }
     for (const auto& piece : pieces) {
@@ -140,6 +143,9 @@ void punch_draw(Paint& p, const Snapshot& s) {
     // ones the pattern keeps red (Erase + pad takes them out), the rest dim.
     constexpr float gap = 3, gy = sy + sh + 5, gh = zone::knobs_y - 2 - gy;
     constexpr float cw = (sw - 3 * gap) / 4, ch = (gh - 3 * gap) / 4;
+    juce::StringArray pad_names; // one case for the sixteen
+    for (unsigned n = 0; n < 16; ++n) if (punch_on_pad(bank, n) >= 0) pad_names.add(punch_title(PunchKind(punch_on_pad(bank, n))));
+    bool pad_capitals = cells_in_capitals(p, pad_names, plain(colour::text, type::small, Weight::SemiBold), cw - 8);
     for (unsigned n = 0; n < 16; ++n) {
         int kind = punch_on_pad(bank, n);
         float x = sx + (n % 4) * (cw + gap), y = gy + (3 - n / 4) * (ch + gap);
@@ -152,7 +158,7 @@ void punch_draw(Paint& p, const Snapshot& s) {
         bool kept = std::any_of(pattern.punches.begin(), pattern.punches.end(), [&](const PatternPunch& k) { return k.kind == uint8_t(kind); });
         auto ink = s.ui.erase ? (kept ? colour::rec : colour::dim) : on ? colour::bg : row >= 0 ? knob_shade(s.ui.track, unsigned(row)) : colour::text;
         auto style = plain(ink, type::small, Weight::SemiBold);
-        juce::String name = cell_name(p, punch_title(PunchKind(kind)), style, cw - 8);
+        juce::String name = cell_name(punch_title(PunchKind(kind)), pad_capitals);
         p.text(name, x + 5, y - 0.5f, cw - 8, ch, p.fit(name, style, cw - 8, type::floor));
     }
 }
@@ -192,6 +198,12 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 204;
     constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 1.5f - 3 * gap) / 4;
+    juce::StringArray punch_names; // the bank's punches share one case
+    for (unsigned n = 0; n < 16; ++n) {
+        const auto& pad = track.pads[bank * 16 + n];
+        if (pad.used() && pad.punch) punch_names.add(punch_name(PunchKind(pad.punch - 1)));
+    }
+    bool punch_capitals = cells_in_capitals(p, punch_names, plain(c, type::small, Weight::Medium), w - 6);
     for (unsigned n = 0; n < 16; ++n) {
         unsigned k = bank * 16 + n, row = 3 - n / 4, column = n % 4;
         const auto& pad = track.pads[k];
@@ -216,7 +228,7 @@ void pad_punch_draw(Paint& p, const Snapshot& s) {
         if (name.isNotEmpty()) two_tone(name, x + 4, y + 2, w - 8, p.fit(name, plain(colour::mid, type::small, Weight::SemiBold), w - 8, type::floor));
         if (pad.used() && pad.punch) {
             auto style = plain(c, type::small, Weight::Medium);
-            juce::String fx = cell_name(p, punch_name(PunchKind(pad.punch - 1)), style, w - 6);
+            juce::String fx = cell_name(punch_name(PunchKind(pad.punch - 1)), punch_capitals);
             two_tone(fx, x + 3, y + ch - 16, w - 6, style);
         }
     }

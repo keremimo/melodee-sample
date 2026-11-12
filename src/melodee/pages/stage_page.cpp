@@ -774,6 +774,9 @@ void levels_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     const auto& t = s.track();
     const auto& info = engine_info(t.engine);
     float cw = pw / 6;
+    juce::StringArray labels; // the six share one case: KICK .. CYMBALS, or Kick .. Cymbals when one does not fit
+    for (unsigned n = 0; n < 6; ++n) { int id = n < 3 ? page.params[n] : page.shift[n - 3]; if (id >= 0) labels.add(info.params[id].label); }
+    bool capitals = cells_in_capitals(p, labels, caps_text(colour::text), cw);
     for (unsigned n = 0; n < 6; ++n) {
         int id = n < 3 ? page.params[n] : page.shift[n - 3];
         if (id < 0) continue;
@@ -782,9 +785,8 @@ void levels_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         float bh = zone::picture_h - 46, by = top + 24; // d909 A: the bars alone, the cards say the values
         p.fill(cx - 3.5f, by, 7, bh, colour::line, 3.5f);
         p.fill(cx - 3.5f, by + bh * (1 - value), 7, bh * value, n < 3 ? shade : knob_shade(s.ui.track, n - 3).withAlpha(0.55f), 3.5f);
-        auto style = caps_text(shade);
-        juce::String label = cell_name(p, info.params[id].label, style, cw); // "Cymbals" where the capitals do not fit
-        if (label != juce::String(info.params[id].label)) style = plain(shade, type::small, Weight::SemiBold);
+        auto style = capitals ? caps_text(shade) : plain(shade, type::small, Weight::SemiBold);
+        juce::String label = cell_name(info.params[id].label, capitals);
         p.text(label, cx - cw / 2, bottom - 18, cw, 14, style, juce::Justification::centred);
     }
 }
