@@ -1111,9 +1111,10 @@ Press **SHIFT** + **Pad 9** to open the **Fader** page.
 
 - **B2** (**PIN**) keeps the fader on its current target.
 - **B3** turns the fader on or off.
-- Turn the encoder to choose one of the MPC's fader targets: Pad Volume,
-  Pad Pan, Pad Tune, Pad Attack, Pad Decay, Pad Cutoff, Kit Volume, Mod
-  Wheel.
+- Turn the encoder to choose a fader target. On a kit track: Pad Volume,
+  Pad Pan, Pad Tune, Pad Attack, Pad Decay, Pad Cutoff, Kit Volume. On
+  every track: Mod Wheel, Track Level, Track Pan, Send A, Send B, Send C,
+  Send D.
 
 The fader light shows the value. With **SEQ RECORD** on, the fader records
 Motion.

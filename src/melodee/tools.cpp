@@ -1536,6 +1536,11 @@ const Preview previews[] {
          t.fader_learned = {FaderLearn::Lane, uint16_t(motion_fx_param(0, 2)), uint8_t(t.engine), 2};
          t.fader_pin = true;
      }},
+    {"fadersend", [](Shell&, Snapshot& s) { // the wheel walked a synth's own mix to Send B: its seven dots
+         s.ui.page = PageId::FaderPage; s.ui.track = 2;
+         auto& t = s.project.tracks[2];
+         t.fader_target = uint8_t(FaderTarget::SendB); t.mix.sends[1] = 35;
+     }},
     {"fadersynth", [](Shell&, Snapshot& s) { // a synth track with its fader off
          s.ui.page = PageId::FaderPage; s.ui.track = 2;
          auto& t = s.project.tracks[2];

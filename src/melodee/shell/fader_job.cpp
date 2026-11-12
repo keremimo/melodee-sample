@@ -15,7 +15,16 @@ using Kind = Binding::Kind;
 } // namespace
 
 Binding fader_target_binding(const Track& track, FaderTarget target) {
-    if (target == FaderTarget::ModWheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
+    switch (target) { // the mod wheel and the track's mix, on every track
+    case FaderTarget::ModWheel: return {Kind::ModWheel, 0, 0, 127, track.wheel};
+    case FaderTarget::TrackLevel: return {Kind::Level, 0, 0, 127, track.mix.level};
+    case FaderTarget::TrackPan: return {Kind::Pan, 0, -50, 50, track.mix.pan};
+    case FaderTarget::SendA: case FaderTarget::SendB: case FaderTarget::SendC: case FaderTarget::SendD: {
+        unsigned bus = unsigned(target) - unsigned(FaderTarget::SendA);
+        return {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]};
+    }
+    default: break;
+    }
     if (track.engine != EngineKind::Sampler) return {};
     if (target == FaderTarget::KitVolume) {
         const auto& p = engine_info(track.engine).params[sampler::Level];
@@ -104,7 +113,7 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
     if (!job.learned) {
         auto target = fader_target(track);
         job.binding = fader_target_binding(track, target);
-        job.pad = target != FaderTarget::KitVolume && target != FaderTarget::ModWheel;
+        job.pad = fader_pad_target(target);
     }
     job.centred = job.binding.bound() && job.binding.min < 0 && job.binding.max > 0; // pan, tune: either side of a middle
     return job;

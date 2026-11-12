@@ -4,9 +4,10 @@
 // fader moves on the selected track. No list: turn any pot (here the
 // track's favourites, or on any page) and the fader takes that value, any
 // of the track's, not just eight; without PIN it follows the pot turned
-// last. The wheel (or Minus / Plus) walks the MPC's eight targets instead
-// (Pad Volume, Pan, Tune, Attack, Decay / Release, Cutoff, Kit Volume, Mod
-// Wheel; a synth has the mod wheel alone), and a pot turned after takes over
+// last. The wheel (or Minus / Plus) walks the stock targets instead: the
+// MPC's eight (Pad Volume, Pan, Tune, Attack, Decay / Release, Cutoff, Kit
+// Volume, Mod Wheel; a synth has the mod wheel alone), then the track's
+// Level, Pan and Sends A-D on every track, and a pot turned after takes over
 // again. B1 back, B2 PIN, B3 the fader off and on for the track (pages with
 // a job of their own keep it). The pads play, so a hit picks the pad.
 // Picture: the pot it follows in that pot's shade (a stock target: its
@@ -23,8 +24,10 @@ namespace melodee {
 namespace {
 using namespace ui;
 
-Icon target_icon(FaderTarget t) { // the eight stock targets' glyphs
-    static const Icon icons[] {Icon::Speaker, Icon::Swap, Icon::Note, Icon::Dynamics, Icon::Dirt, Icon::Tone, Icon::Pads, Icon::Wheel};
+Icon target_icon(FaderTarget t) { // the stock targets' glyphs
+    static const Icon icons[] {Icon::Speaker, Icon::Swap, Icon::Note, Icon::Dynamics, Icon::Dirt, Icon::Tone, Icon::Pads, Icon::Wheel,
+                               Icon::Sliders, Icon::Swap, Icon::Route, Icon::Route, Icon::Route, Icon::Route};
+    static_assert(sizeof(icons) / sizeof(icons[0]) == fader_targets, "a glyph for each target");
     return unsigned(t) < fader_targets ? icons[unsigned(t)] : Icon::Fader;
 }
 
@@ -56,11 +59,13 @@ void draw(Paint& p, const Snapshot& s) {
         juce::String value = shown.card.value + (shown.card.unit.isNotEmpty() ? " " + shown.card.unit : juce::String());
         p.text(value, cx - 70, gy + gs + 24, 140, 15, plain(shown.waiting ? colour::mid : colour::sec, type::body), juce::Justification::centred);
     }
-    if (!learned && t.engine == EngineKind::Sampler && on) { // the eight the wheel walks, the one it has lit
+    if (!learned && on) { // the targets the wheel walks on this track, the one it has lit
+        bool kit = t.engine == EngineKind::Sampler;
+        unsigned first = kit ? 0 : unsigned(FaderTarget::ModWheel), count = fader_targets - first;
         constexpr float dot = 4, gap = 5;
-        float x0 = cx - (fader_targets * dot + (fader_targets - 1) * gap) / 2;
-        for (unsigned n = 0; n < fader_targets; ++n)
-            p.fill(x0 + n * (dot + gap), gy + gs + 45, dot, dot, n == unsigned(fader_target(t)) ? colour::text : colour::line, 2);
+        float x0 = cx - (count * dot + (count - 1) * gap) / 2;
+        for (unsigned n = 0; n < count; ++n)
+            p.fill(x0 + n * (dot + gap), gy + gs + 45, dot, dot, first + n == unsigned(fader_target(t)) ? colour::text : colour::line, 2);
     }
 
     // The dashed arrow to the fader; PIN sits on it while it holds.

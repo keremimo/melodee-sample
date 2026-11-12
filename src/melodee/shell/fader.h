@@ -25,7 +25,7 @@ void set_fader_target(Context& c, unsigned target);
 void toggle_fader(Context& c);
 // Fader C (round 2): a pot turned on the selected track (`pot` 0..2) with
 // card `b`: unless PIN holds what it has, the fader follows it where it is
-// one of the track's values. The wheel on the Fader page walks the eight
+// one of the track's values. The wheel on the Fader page walks the stock
 // targets the track can take instead (the learned pot gives way); B2 PIN.
 void learn_fader(Context& c, const Binding& b, unsigned pot);
 void step_fader_target(Context& c, int delta);

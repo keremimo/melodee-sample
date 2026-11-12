@@ -1218,10 +1218,11 @@ follows: that pot's knob in its shade, its name and value, a dashed arrow
 to the fader (the pin on it while PIN holds), and while the fader waits to
 pick a value up, where the hand has it and the way to move. K1–K3 there are
 the track's favourites, the one it follows ringed; B1 back, B2 PIN, B3 off /
-on with its LED. The wheel or −/+ walks the MPC's eight targets instead (a
-dot each on a kit): Pad Volume, Pad Pan, Pad Tune, Pad Attack, Pad Decay /
-Release, Pad Cutoff (the last pad's), Kit Volume, Mod Wheel; a synth has
-the mod wheel alone. Until a pot or the wheel picks, a kit takes Pad Volume
+on with its LED. The wheel or −/+ walks the stock targets instead (a dot
+each): the MPC's Pad Volume, Pad Pan, Pad Tune, Pad Attack, Pad Decay /
+Release, Pad Cutoff (the last pad's) and Kit Volume on a kit, then on every
+track Mod Wheel, Track Level, Track Pan and Send A–D (the track's own mix,
+as Tracks and Sends show it). Until a pot or the wheel picks, a kit takes Pad Volume
 and a synth the mod wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
 send, Knob FX from A to B, Compressor its amount,
 Flex Beat its mix. The fader takes a value over by Fader takeover (Pickup

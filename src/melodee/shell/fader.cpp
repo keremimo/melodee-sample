@@ -39,10 +39,21 @@ void check_takeover(Context& c, const FaderJob& job, int before) {
     }
 }
 
+// The Motion lane the fader's value lands in: binding_lane()'s, or the track's mix lanes (its level, pan, sends),
+// which Context::apply records too.
+int fader_lane(const Track& track, const Binding& b) {
+    switch (b.kind) {
+    case Binding::Kind::Level: return motion_lane(motion_level);
+    case Binding::Kind::Pan: return motion_lane(motion_pan);
+    case Binding::Kind::Send: return motion_lane(motion_send(unsigned(b.id) % bus_count));
+    default: return binding_lane(track, b);
+    }
+}
+
 // Erase + fader (as on the MPC): the lane of what it drives, once B3 says so.
 void erase_lane(Context& c, const FaderJob& job) {
     const auto& track = c.track();
-    int lane = binding_lane(track, job.binding);
+    int lane = fader_lane(track, job.binding);
     if (lane < 0) { c.notice("No motion lane for the fader here"); return; }
     if (c.pattern().has_lane(lane_param(lane), lane_pad(lane) % sampler_pads))
         ask(c, UiState::Ask::EraseLane, lane);

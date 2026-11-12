@@ -3190,6 +3190,25 @@ void fader_and_takeover() {
     CHECK(fader_target(kit) == FaderTarget::PadVolume && fader_target(synth) == FaderTarget::ModWheel);
     synth.fader_target = uint8_t(FaderTarget::PadPan);
     CHECK(fader_target(synth) == FaderTarget::ModWheel);
+    // The track's mix goes on every track: a synth walks its mod wheel, level, pan and a send into each bus.
+    CHECK(!fader_needs_kit(FaderTarget::TrackLevel) && !fader_needs_kit(FaderTarget::SendD) && fader_needs_kit(FaderTarget::KitVolume));
+    synth.mix.level = 80; synth.mix.pan = -12; synth.mix.sends[1] = 35;
+    synth.fader_target = uint8_t(FaderTarget::TrackLevel);
+    CHECK(fader_target(synth) == FaderTarget::TrackLevel);
+    CHECK(fader_target_binding(synth, FaderTarget::TrackLevel).kind == Kind::Level && fader_target_binding(synth, FaderTarget::TrackLevel).value == 80);
+    CHECK(fader_target_binding(synth, FaderTarget::TrackPan).kind == Kind::Pan && fader_target_binding(synth, FaderTarget::TrackPan).value == -12);
+    auto send = fader_target_binding(synth, FaderTarget::SendB);
+    CHECK(send.kind == Kind::Send && send.id == 1 && send.value == 35 && send.max == 100);
+    {
+        UiState at; at.track = 2; at.page = PageId::Stage; // the selected track's own mix, never a pad's value
+        synth.fader_target = uint8_t(FaderTarget::TrackPan);
+        auto mix = fader_job(*project, at);
+        CHECK(mix.source == FaderJob::Source::Target && !mix.pad && mix.binding.kind == Kind::Pan && mix.centred);
+        kit.fader_target = uint8_t(FaderTarget::SendD); at.track = 3;
+        mix = fader_job(*project, at);
+        CHECK(!mix.pad && mix.binding.kind == Kind::Send && mix.binding.id == 3);
+        kit.fader_target = fader_by_engine;
+    }
     synth.fader_target = fader_by_engine;
 
     // What it drives: the track's target, or the page's own job.
