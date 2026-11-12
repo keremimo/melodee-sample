@@ -23,7 +23,10 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(f.mode ? "LOOP" : "ONE SHOT", colour::mid));
     if (!s.playing) h.left.push_back(pill("PRESS PLAY", colour::mid));
     h.right.push_back(label("MASTER", colour::mid));
-    frame(p, s, {{"", "", "QUANTIZE"}, f.quantize ? 2 : -1, c}, h);
+    SoftKeys keys {{"", "", "QUANTIZE"}, -1, c};
+    keys.toggles = 4; // on or off: its LED
+    keys.lit = f.quantize ? 4 : 0;
+    frame(p, s, keys, h);
 
     constexpr float gap = 3, top = zone::picture_y + 1.5f;
     constexpr float w = (zone::width - 2 * zone::pad - 3 * gap) / 4, ch = (zone::picture_h - 1.5f - 3 * gap) / 4;
@@ -45,8 +48,7 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t, bool down) { if (down) c.flex_pad(pad); }
 void soft(Context& c, int key) {
     if (key != 2) return;
-    c.set_flex(3, !c.project.flex.quantize);
-    c.notice(c.project.flex.quantize ? "Quantize on" : "Quantize off");
+    c.set_flex(3, !c.project.flex.quantize); // its LED says which
 }
 } // namespace
 

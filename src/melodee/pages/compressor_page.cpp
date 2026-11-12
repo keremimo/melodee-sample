@@ -54,6 +54,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (c.sidechain && c.on) { h.right.push_back(sign(Glyph::Duck, track_colour(key))); h.right.push_back(key_tag(s)); }
     else if (!c.sidechain) h.right.push_back(label("MASTER", colour::mid));
     SoftKeys keys {{"SIDECHAIN", "COLOR", "BYPASS"}, -1, accent}; // three toggles, each lit while it is on
+    keys.toggles = 7; // each names a thing on or off: an LED, as every toggle has (not the page key's bar)
     keys.lit = uint8_t(c.sidechain | c.color << 1 | !c.on << 2);
     frame(p, s, keys, h);
 

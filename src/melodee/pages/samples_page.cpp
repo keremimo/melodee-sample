@@ -44,8 +44,10 @@ void draw(Paint& p, const Snapshot& s) {
     juce::String other = drive == Drive::Card ? "INTERNAL" : "CARD";
     // The file under the cursor as it previews (mock 7): its row fills as it plays; B3 lit while there is sound.
     PreviewPlace heard = s.ui.preview ? preview_place(s.heads, int(sampler_pads), uint16_t(preview_slot), dsp::model_rate) : PreviewPlace {};
-    frame(p, s, {{s.files_top ? "" : "BACK", other, s.ui.preview ? "PREVIEW ON" : "PREVIEW"}, heard.sounding ? 2 : -1, c,
-                 {s.files_top ? KeyIcon::None : KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
+    SoftKeys keys {{s.files_top ? "" : "BACK", other, "PREVIEW"}, -1, c, {s.files_top ? KeyIcon::None : KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    keys.toggles = 4; // PREVIEW names a thing that is on or off: its LED, never ON / OFF (the row fills while it sounds)
+    keys.lit = s.ui.preview ? 4 : 0;
+    frame(p, s, keys, h);
     if (s.files.empty()) { // a glyph and two words: no card, or nothing here
         bool no_card = drive == Drive::Card && s.sample_root.empty();
         icon(p, no_card ? Icon::Card : Icon::Folder, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
@@ -109,7 +111,7 @@ void soft(Context& c, int key) {
     auto& ui = c.ui;
     if (key == 0) c.library->browse_up();
     if (key == 1) { ui.files_drive = uint8_t((ui.files_drive + 1) % unsigned(Drive::Count)); c.library->browse(Drive(ui.files_drive), ""); }
-    if (key == 2) { ui.preview = !ui.preview; c.preview_cursor(); c.notice(ui.preview ? "Preview on" : "Preview off"); }
+    if (key == 2) { ui.preview = !ui.preview; c.preview_cursor(); } // its LED says which
 }
 } // namespace
 
