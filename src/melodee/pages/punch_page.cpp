@@ -8,7 +8,8 @@
 //   the punch pressed last at its depth (B1 again on it lets go; Push does the
 //   same). B2 aims them at the master or the selected track. Shift + B3
 //   QUANTIZE (on at first): while playing, a punch starts on its snap grid's
-//   next line; off, at once (letting go is at once either way). An MPC punch in
+//   next line; off, at once (letting go is at once either way), the header's
+//   magnet saying OFF. An MPC punch in
 //   hand: K1-K3 its own (Shift: depth, snap, tail); Melodee's: K1 depth, K2
 //   snap grid, K3 tail. Round 2, pad-fx C "punches you can keep": over the
 //   named pads, the bar the selected track's pattern is in, a row per punch
@@ -59,6 +60,8 @@ void punch_draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill("PAD FX"));
     h.left.push_back(pill(bank_name(bank), bank == 2 ? c : colour::mid));
+    // Shift + B3 quantize off: the magnet says OFF (as Patterns' Rec Quantize), on the right (two chips at most on the left).
+    if (!s.project.punch_quantize) h.right.push_back(pill(Icon::Magnet, "OFF", colour::dim));
     if (master) h.right.push_back(pill("MASTER", colour::text));
     else h.right.push_back(tag_of(s, s.ui.track));
     // The pattern the selected track plays, where it is, and the take waiting for KEEP (pad-fx C): its punches as the

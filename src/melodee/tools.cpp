@@ -1501,6 +1501,10 @@ const Preview previews[] {
          s.ui.page = PageId::Punch; s.ui.track = 0; s.playing = true; s.project.punch_bank = 2; s.ui.shift = true;
          s.project.punch_quantize = false;
      }},
+    {"punchfree", [](Shell&, Snapshot& s) { // quantize off on a track: the header's magnet says OFF beside its tag
+         s.ui.page = PageId::Punch; s.ui.track = 2; s.playing = true; s.project.punch_target = 1; s.project.punch_bank = 0;
+         s.project.punch_quantize = false;
+     }},
     {"puncherase", [](Shell& shell, Snapshot& s) { // Erase held: the kept punches red, as Erase + pad takes them out
          s.ui.page = PageId::Punch; s.ui.track = 2; s.project.punch_target = 1; s.project.punch_bank = 0; s.ui.erase = true;
          auto& pattern = shell.patterns().at[2][s.project.tracks[2].pattern];
