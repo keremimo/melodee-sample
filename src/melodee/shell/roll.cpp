@@ -3,6 +3,7 @@
 // Roll's cursor and view (shell/roll.h): pure, on the pattern and the UI state.
 #include "melodee/shell/roll.h"
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 
 namespace melodee {
@@ -58,6 +59,21 @@ void roll_select(const Pattern& pattern, UiState& ui) {
     int at = roll_focus(pattern, ui);
     auto in = step_events(pattern, roll_cursor(pattern, ui));
     ui.step_event = at >= 0 ? uint8_t(std::min<size_t>(size_t(at) - in.first, 255)) : 0;
+}
+
+void roll_open(const Pattern& pattern, UiState& ui) {
+    int top = ui.roll_top, low = top - int(roll_rows) + 1, best = -1;
+    int64_t at = int64_t(roll_cursor(pattern, ui)) * pattern.q(), distance = INT64_MAX;
+    for (const auto& e : pattern.events) {
+        if (e.tick >= pattern.length) break;
+        if (int(e.key) >= low && int(e.key) <= top) return; // a note in view: the view stays as it was left
+        int64_t d = std::llabs(int64_t(e.tick) - at);
+        if (d < distance) { distance = d; best = e.key; }
+    }
+    if (best < 0) return;
+    ui.roll_key = uint8_t(best);
+    roll_follow(pattern, ui);
+    roll_select(pattern, ui);
 }
 
 void roll_step(const Pattern& pattern, UiState& ui, int way) {

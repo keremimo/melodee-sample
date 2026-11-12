@@ -29,6 +29,10 @@ int roll_focus(const Pattern& pattern, const UiState& ui);
 void roll_follow(const Pattern& pattern, UiState& ui);
 // Step Edit's selection (step_event) onto the note in focus, so its card, fader and erase functions act on it.
 void roll_select(const Pattern& pattern, UiState& ui);
+// Roll opening on a pattern whose notes all lie outside the rows in view (a bass line in octave 2 under a cursor left
+// on C4): the cursor's pitch goes to the note nearest its step in time, so the page opens on the notes. Left as it
+// was when one is in view, or the pattern is empty.
+void roll_open(const Pattern& pattern, UiState& ui);
 // The wheel: the cursor a step of Q on; where notes start, the pitch goes to the nearest of them.
 void roll_step(const Pattern& pattern, UiState& ui, int way);
 // Shift + wheel: to the next (or previous) note, by step and then pitch, so a chord's notes come one by one; false when none.

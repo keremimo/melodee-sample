@@ -16,6 +16,7 @@
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/shell/record_place.h"
+#include "melodee/shell/roll.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
@@ -143,6 +144,8 @@ void Context::open(PageId page) {
             if (ui.roll_key < low || ui.roll_key >= low + 16) ui.roll_key = uint8_t(sampler_first_note + t.last_pad % sampler_pads);
         } else if (t.engine == EngineKind::Kit909 && (ui.roll_key < 36 || ui.roll_key > 47)) {
             ui.roll_key = uint8_t(t.last_note >= 36 && t.last_note <= 47 ? t.last_note : 36);
+        } else if (t.engine != EngineKind::Kit909) {
+            roll_open(pattern(), ui); // a line whose notes lie outside the rows in view: the view onto them
         }
     }
     if (page == PageId::Sounds) {

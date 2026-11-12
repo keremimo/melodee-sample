@@ -5011,6 +5011,24 @@ void stage() {
 }
 
 // Roll R1 (shell/roll.h): the cursor, the note in focus and the view, on the pattern's events.
+// Roll opening on a line whose notes all lie outside the rows in view (a bass in octave 2 under a cursor on C4):
+// the cursor's pitch goes to the note nearest its step, so the notes are in view; a note in view leaves it.
+void roll_opens_on_notes() {
+    Pattern p;
+    p.length = 16 * sixteenth_ticks;
+    auto add = [&](unsigned step, uint8_t key) { Event e; e.tick = step * sixteenth_ticks; e.key = key; CHECK(p.add(e)); };
+    add(0, 38); add(4, 41); add(9, 45);
+    UiState ui;
+    ui.step_cursor = 8; ui.roll_key = 62; ui.roll_top = 65; // F4 down to A#3 in view: none of the notes
+    roll_open(p, ui);
+    CHECK(ui.roll_key == 45 && ui.roll_top >= 46 && ui.roll_top - int(roll_rows) + 1 <= 45); // step 9's A2, the nearest
+    CHECK(roll_focus(p, ui) < 0);                                                              // the step stays: no focus forced
+    unsigned top = ui.roll_top; ui.roll_key = 44;
+    roll_open(p, ui); CHECK(ui.roll_key == 44 && ui.roll_top == top);                         // notes in view: as left
+    Pattern empty; ui.roll_key = 80; ui.roll_top = 85;
+    roll_open(empty, ui); CHECK(ui.roll_key == 80 && ui.roll_top == 85);                      // nothing to find
+}
+
 void roll() {
     Pattern p;
     p.length = 4 * 4 * ticks_per_quarter; // four bars of 4/4 at 1/16: 64 steps
@@ -9042,6 +9060,7 @@ int main() {
     looper_engine();
     looper_rates();
     roll();
+    roll_opens_on_notes();
     stage();
     midi_tracks();
     device_rates();

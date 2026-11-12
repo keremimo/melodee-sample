@@ -575,7 +575,8 @@ hold to steer, Shift + Seq to zoom in**.
   wheel every note in turn (a step's notes low to high, then the next
   step's), −/+ walk the chord in the step and then a semitone;
   the view scrolls a step at a time, and dots on its edges mark notes above
-  and below. The note at the cursor is in focus, drawn white and named in
+  and below. It opens on the pattern's notes: when none lies in the rows it
+  would show, the cursor's pitch goes to the note nearest its step. The note at the cursor is in focus, drawn white and named in
   the header; K1 its length, K2 velocity, K3 chance, Shift + K1 NUDGE (how
   many ticks it sits early or late of its nearest grid line; the cursor
   follows it) (ROLL again: its ratchet, drawn as its hits along the note). A pad held on the note in
