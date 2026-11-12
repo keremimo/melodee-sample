@@ -6662,6 +6662,19 @@ void instrument_zones_r3() {
         CHECK(c.type == Command::Type::ZoneTrim && c.track == 2 && c.index == 9 && c.position == 300 && c.micros == 12);
         CHECK(int(c.pattern) - 128 == -37 && c.value == -105);
     }
+    { // a pot turns a card across 0 back to 0, however wide its range, and never goes back on itself
+        for (auto range : {std::pair<int, int> {-zone_trim_cents, zone_trim_cents}, {zone_trim_low, zone_trim_high}, {-480, 120},
+                           {-24, 24}, {-50, 50}, {-1, 1}, {-9600, 6000}}) {
+            Binding b {Binding::Kind::ZoneTune, 0, range.first, range.second, 0};
+            bool zero = false;
+            for (int p = 0; p <= 127; ++p) {
+                zero |= b.at(p) == 0;
+                if (p) CHECK(b.at(p) >= b.at(p - 1));
+            }
+            CHECK(zero && b.at(0) == range.first && b.at(127) == range.second);
+            CHECK(takeover_meets(int(b.fraction() * 127 + 0.5f), b)); // where 0 sits is where the pot meets it
+        }
+    }
     { // ZTRM: a track's trims kept; one made on a sample the pad no longer holds is not
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();

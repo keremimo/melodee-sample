@@ -112,8 +112,13 @@ struct Binding {
     }
     bool bound() const { return kind != Kind::None && max > min; }
     float fraction() const { return max > min ? float(value - min) / float(max - min) : 0; }
-    // The value a pot at `position` (0..127) asks for.
-    int at(int position) const { return min + (position * (max - min) + 63) / 127; }
+    // The value a pot at `position` (0..127) asks for. A range across 0 gives 0 to the position nearest it: a
+    // range wider than the pot's 128 places would otherwise step over it (ZONES' TUNE went -1, +1), and a card
+    // whose middle is "none" (a trim, a tune, a pan) must turn back to it by hand.
+    int at(int position) const {
+        if (min < 0 && max > 0 && position == (-min * 127 + (max - min) / 2) / (max - min)) return 0;
+        return min + (position * (max - min) + 63) / 127;
+    }
 };
 
 // The cards for a page; `pattern` is the selected track's playing pattern.
