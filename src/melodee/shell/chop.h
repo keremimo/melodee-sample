@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/engine/onsets.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/model/chop_slices.h"
 #include <algorithm>
@@ -11,7 +12,9 @@
 // Chop: where the slices of a pad's region start and end, as the MPC's Chop
 // Mode cuts it (parity phase 5). THRESHOLD keeps the hits at least as strong
 // as the threshold asks; REGIONS cuts it into equal parts; BEATS puts a
-// slice on every beat at the project's tempo (Melodee's); MANUAL is what the
+// slice on every beat (or every 2 ... 8) from the region's start at the
+// sample's own tempo, each cut on its tracked beat or a hit near it, or at the
+// project's tempo where the sample has none (Melodee's); MANUAL is what the
 // pads tapped while it played, or what was edited by hand. Slices touch: one
 // ends where the next starts, the last at `last`. The result lands on pads as
 // regions of the same file, or one slice as a file of its own (Extract).
@@ -84,11 +87,31 @@ inline uint32_t zero_crossing_toward(const SampleData& sample, uint32_t frame, i
                                 way);
 }
 
+// The cut for a beat expected at `want`, a `step` after the cut before (`beat` frames a beat): the sample's tracked
+// beat within an eighth of a beat of it and within 6% of the step (so the slices follow a take that drifts, yet a
+// tracker that found the off-beats, a 16th or more away, or squeezed its last beats to reach a hit, never pulls
+// them off the region's own beat), else the hit within 30 ms, else `want` itself. `tracked`: it was a beat.
+inline uint32_t beat_cut(double want, double step, double beat, const BeatGrid& grid, const std::array<Hit, max_hits>& hits,
+                         unsigned hit_count, bool& tracked) {
+    auto gap = [&](uint32_t frame) { return std::fabs(double(frame) - want); };
+    tracked = false;
+    auto b = std::lower_bound(grid.at.begin(), grid.at.end(), uint32_t(want));
+    uint32_t best = uint32_t(want);
+    double nearest = std::min(beat / 8, step * 0.06);
+    for (auto it : {b, b == grid.at.begin() ? b : b - 1})
+        if (it != grid.at.end() && gap(*it) <= nearest) { nearest = gap(*it); best = *it; tracked = true; }
+    if (tracked) return best;
+    nearest = 1323; // 30 ms
+    for (unsigned n = 0; n < hit_count; ++n)
+        if (hits[n].frame && gap(hits[n].frame) <= nearest) { nearest = gap(hits[n].frame); best = hits[n].frame; }
+    return best;
+}
+
 // The slices of [from, to) of a sample of `frames`. `amount`: THRESHOLD
 // 0..100 (as on the MPC, the higher, the fewer slices: 0 keeps every hit), REGIONS the number of slices 2..64, BEATS
-// beats a slice 1..8. MANUAL starts as one slice, the whole region.
+// beats a slice 1..8 (`grid`: the sample's own, else `tempo_tenths`, the project's). MANUAL starts as one slice, the whole region.
 inline Slices chop(ChopMode mode, int amount, uint32_t from, uint32_t to, uint32_t frames, const std::array<Hit, max_hits>& hits,
-                   unsigned hit_count, unsigned tempo_tenths) {
+                   unsigned hit_count, unsigned tempo_tenths, const BeatGrid* grid = nullptr) {
     Slices s;
     if (!frames) return s;
     to = to && to <= frames ? to : frames;
@@ -108,6 +131,18 @@ inline Slices chop(ChopMode mode, int amount, uint32_t from, uint32_t to, uint32
         break;
     }
     case ChopMode::Beats: {
+        if (grid && grid->found()) { // a slice every `amount` of the sample's beats, from where the region starts
+            const double beat = 44100.0 * 600 / grid->tempo, step = beat * std::clamp(amount, 1, 8);
+            const double reach = std::min(beat / 8, step * 0.06); // a beat this near the end is the end
+            for (double at = from + step; at + reach < to;) {
+                bool tracked = false;
+                uint32_t cut = beat_cut(at, step, beat, *grid, hits, hit_count, tracked);
+                if (cut >= to) break;
+                s.add(cut, frames);
+                at = (tracked ? cut : at) + step; // the next from a tracked beat; from the grid past a hit
+            }
+            break;
+        }
         double beat = 44100.0 * 60.0 / (std::max(tempo_tenths, 10u) / 10.0) * std::clamp(amount, 1, 8);
         for (double at = from + beat; at < to; at += beat) s.add(uint32_t(at), frames);
         break;
@@ -117,8 +152,9 @@ inline Slices chop(ChopMode mode, int amount, uint32_t from, uint32_t to, uint32
     return s;
 }
 // The whole sample, as before parity phase 5.
-inline Slices chop(ChopMode mode, int amount, uint32_t frames, const std::array<Hit, max_hits>& hits, unsigned hit_count, unsigned tempo_tenths) {
-    return chop(mode, amount, 0, frames, frames, hits, hit_count, tempo_tenths);
+inline Slices chop(ChopMode mode, int amount, uint32_t frames, const std::array<Hit, max_hits>& hits, unsigned hit_count, unsigned tempo_tenths,
+                   const BeatGrid* grid = nullptr) {
+    return chop(mode, amount, 0, frames, frames, hits, hit_count, tempo_tenths, grid);
 }
 
 } // namespace melodee

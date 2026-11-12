@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-#include "melodee/engine/sample_data.h"
+#include "melodee/engine/onsets.h"
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -66,12 +66,11 @@ float band_sum(const std::vector<float>& magnitude, const Band& b) {
     return sum;
 }
 
-} // namespace
-
-unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out) {
+// The hits in time order, every one found (the first frame 0), and the flux they were found in.
+void analyse(const SampleData& s, std::vector<Hit>& found, std::vector<float>& flux) {
     const uint32_t frames = std::min<uint32_t>(s.frames, uint32_t(std::min(s.left.size(), s.right.size())));
-    std::vector<Hit> found;
-    found.push_back({0, 255});
+    found.assign(1, Hit {0, 255});
+    flux.clear();
     if (frames > fine * 4) {
         std::vector<float> mono(frames); // the two sides summed
         for (uint32_t n = 0; n < frames; ++n) mono[n] = s.left[n] + s.right[n];
@@ -86,7 +85,8 @@ unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out) {
         for (unsigned n = 0; n < fft_size; ++n) window[n] = float(0.5 - 0.5 * std::cos(2 * M_PI * n / fft_size));
         const auto bands = make_bands();
         const size_t width = bands.size();
-        std::vector<float> magnitude[2], sums(size_t(count) * width), flux(count, 0.0f);
+        std::vector<float> magnitude[2], sums(size_t(count) * width);
+        flux.assign(count, 0.0f);
         magnitude[0].resize(fft_size / 2 + 1);
         magnitude[1].resize(fft_size / 2 + 1);
         auto sample = [&](unsigned frame, unsigned n) {
@@ -184,6 +184,155 @@ unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out) {
             found.push_back({cut, uint8_t(std::max(1L, std::lround(255 * height[p] / loudest)))});
         }
     }
+}
+
+// The beats (Ellis, "Beat tracking by dynamic programming", 2007, laid out as librosa does it, held tighter to
+// the tempo: loops keep time). The tempo: the flux's autocorrelation from 40 to 240 BPM with its multiples',
+// weighted toward 120 BPM (an octave away counts 0.6 as much) and toward a tempo the sample is 2, 4 ... 256
+// beats long at (a loop cut to its bars, 1.3 times). The beats: for each frame the best chain of beats ending
+// on it, each about a period after the one before (the further off, the more it costs) and on strong flux; the
+// chain from the last strong frame back, without weak beats at its ends. Each beat then moves onto the hit nearest it within 30 ms (the hits sit where the attacks
+// start; a frame peaks about 10 ms before); one with no hit there goes between the nearest beats that have one.
+// The tempo shown is the beats' average spacing, or exact where the sample is 2, 4, 8, 16, 32 or 64 such beats
+// long within 4% (a loop cut to its bars). None for under a second, under four hits or no steady pulse.
+BeatGrid track_beats(const std::vector<float>& flux, const std::vector<Hit>& hits, uint32_t frames) {
+    BeatGrid grid;
+    constexpr double fps = 44100.0 / hop;
+    const size_t n = flux.size();
+    if (n < size_t(fps) || hits.size() < 4) return grid;
+    double mean = 0, spread = 0;
+    for (float v : flux) mean += v;
+    mean /= double(n);
+    for (float v : flux) spread += (v - mean) * (v - mean);
+    spread = std::sqrt(spread / double(n));
+    if (spread <= 0) return grid;
+
+    // The tempo: the lag (frames a beat) whose autocorrelation, with its multiples' (a beat's pulse comes back a
+    // beat, two, three and four later; a lag of three quarters of a beat, which swung or triplet hats bring, does
+    // not every time), weighted, is highest; refined between frames.
+    const size_t shortest = size_t(fps * 60 / 240), longest = std::min(size_t(fps * 60 / 40), n * 2 / 3);
+    if (longest < shortest + 2) return grid;
+    std::vector<double> ac(std::min(n * 2 / 3, 4 * longest) + 2, 0.0);
+    for (size_t lag = 0; lag < ac.size() && lag < n; ++lag) {
+        double sum = 0;
+        for (size_t t = 0; t + lag < n; ++t) sum += (flux[t] - mean) * (flux[t + lag] - mean);
+        ac[lag] = sum / double(n - lag) / (spread * spread);
+    }
+    size_t lag = 0;
+    double best = 0;
+    for (size_t l = shortest; l <= longest; ++l) {
+        if (ac[l] <= 0 || ac[l] < ac[l - 1] || ac[l] < ac[l + 1]) continue;
+        double sum = 0, weight = 0;
+        for (size_t k = 1; k <= 4 && k * l + k < ac.size(); ++k) {
+            double most = ac[k * l];
+            for (size_t m = k * l - (k - 1); m <= k * l + (k - 1); ++m) most = std::max(most, ac[m]);
+            sum += most / double(k);
+            weight += 1.0 / double(k);
+        }
+        double bpm_l = 60 * fps / double(l), octaves = std::log2(bpm_l / 120), prior = std::exp(-0.5 * octaves * octaves);
+        for (unsigned k = 2; k <= 256; k *= 2)
+            if (std::fabs(k * 60.0 * 44100 / frames / bpm_l - 1) < 0.02) { prior *= 1.3; break; }
+        double weighted = sum / weight * prior;
+        if (weighted > best) { best = weighted; lag = l; }
+    }
+    if (!lag || ac[lag] < 0.1) return grid;
+    double period = double(lag), bend = ac[lag - 1] - 2 * ac[lag] + ac[lag + 1];
+    if (bend < 0) period += 0.5 * (ac[lag - 1] - ac[lag + 1]) / bend;
+
+    // The flux (over its spread) smoothed over a 32nd of a beat, and the best chain ending on each frame.
+    const int64_t reach = int64_t(std::ceil(period / 8));
+    std::vector<double> local(n, 0.0), chain(n, 0.0);
+    std::vector<int64_t> back(n, -1);
+    for (size_t i = 0; i < n; ++i)
+        for (int64_t k = -reach; k <= reach; ++k)
+            if (int64_t(i) + k >= 0 && int64_t(i) + k < int64_t(n)) {
+                double x = double(k) * 32 / period;
+                local[i] += flux[size_t(int64_t(i) + k)] / spread * std::exp(-0.5 * x * x);
+            }
+    const double top = *std::max_element(local.begin(), local.end());
+    const int64_t nearest = std::llround(period / 2), furthest = std::llround(2 * period);
+    bool first = true;
+    for (size_t i = 0; i < n; ++i) {
+        double most = -1e300;
+        int64_t from = -1;
+        for (int64_t d = furthest; d >= nearest; --d) {
+            double off = std::log(double(d) / period), score = -400 * off * off;
+            int64_t at = int64_t(i) - d;
+            if (at >= 0) score += chain[size_t(at)];
+            if (score > most) { most = score; from = at; }
+        }
+        chain[i] = local[i] + most;
+        if (first && local[i] < 0.01 * top) continue;
+        back[i] = from;
+        first = false;
+    }
+    std::vector<double> peaks;
+    for (size_t i = 1; i + 1 < n; ++i)
+        if (chain[i] > chain[i - 1] && chain[i] >= chain[i + 1]) peaks.push_back(chain[i]);
+    if (peaks.empty()) return grid;
+    std::nth_element(peaks.begin(), peaks.begin() + peaks.size() / 2, peaks.end());
+    const double enough = 0.5 * peaks[peaks.size() / 2];
+    int64_t last = -1;
+    for (size_t i = 1; i + 1 < n; ++i)
+        if (chain[i] > chain[i - 1] && chain[i] >= chain[i + 1] && chain[i] >= enough) last = int64_t(i);
+    std::vector<size_t> beats;
+    for (int64_t i = last; i >= 0; i = back[size_t(i)]) beats.insert(beats.begin(), size_t(i));
+    double power = 0;
+    for (size_t b : beats) power += local[b] * local[b];
+    const double weak = beats.empty() ? 0 : 0.5 * std::sqrt(power / double(beats.size()));
+    while (!beats.empty() && local[beats.front()] < weak) beats.erase(beats.begin());
+    while (!beats.empty() && local[beats.back()] < weak) beats.pop_back();
+    if (beats.size() < 2) return grid;
+
+    // Onto the hits; the rest between their neighbours that moved.
+    constexpr uint32_t near = 1323; // 30 ms
+    std::vector<uint32_t> at(beats.size());
+    std::vector<bool> on(beats.size(), false);
+    for (size_t b = 0; b < beats.size(); ++b) {
+        uint32_t frame = uint32_t(beats[b]) * hop, best_gap = near + 1;
+        at[b] = frame;
+        auto it = std::lower_bound(hits.begin(), hits.end(), frame, [](const Hit& h, uint32_t f) { return h.frame < f; });
+        for (auto h : {it, it == hits.begin() ? it : it - 1})
+            if (h != hits.end()) {
+                uint32_t gap = h->frame > frame ? h->frame - frame : frame - h->frame;
+                if (gap < best_gap && (!b || h->frame > at[b - 1])) { best_gap = gap; at[b] = h->frame; on[b] = true; }
+            }
+    }
+    for (size_t b = 0; b < beats.size(); ++b) {
+        if (on[b]) continue;
+        size_t before = b, after = b;
+        while (before > 0 && !on[before]) --before;
+        while (after + 1 < beats.size() && !on[after]) ++after;
+        if (on[before] && on[after] && before < b && after > b)
+            at[b] = at[before] + uint32_t(uint64_t(at[after] - at[before]) * (b - before) / (after - before));
+    }
+
+    // The tempo: the least-squares spacing of the beats, or the loop's own.
+    double count = double(at.size()), mid = (count - 1) / 2, sum_at = 0, slope = 0, norm = 0;
+    for (uint32_t f : at) sum_at += f;
+    for (size_t b = 0; b < at.size(); ++b) {
+        slope += (double(b) - mid) * (double(at[b]) - sum_at / count);
+        norm += (double(b) - mid) * (double(b) - mid);
+    }
+    if (slope <= 0) return grid;
+    double bpm = 60.0 * 44100 / (slope / norm);
+    for (unsigned k : {2u, 4u, 8u, 16u, 32u, 64u}) {
+        double loop = k * 60.0 * 44100 / frames;
+        if (std::fabs(loop / bpm - 1) < 0.04) bpm = loop;
+    }
+    if (bpm < 30 || bpm > 300) return grid;
+    grid.tempo = uint16_t(std::lround(bpm * 10));
+    grid.at = std::move(at);
+    return grid;
+}
+
+} // namespace
+
+unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out, BeatGrid& beats) {
+    std::vector<Hit> found;
+    std::vector<float> flux;
+    analyse(s, found, flux);
+    beats = track_beats(flux, found, s.frames);
     if (found.size() > out.size()) { // keep the strongest, then put them back in time order
         std::sort(found.begin() + 1, found.end(), [](const Hit& a, const Hit& b) { return a.strength > b.strength; });
         found.resize(out.size());
@@ -191,6 +340,11 @@ unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out) {
     }
     std::copy(found.begin(), found.end(), out.begin());
     return unsigned(found.size());
+}
+
+unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out) {
+    BeatGrid beats;
+    return find_hits(s, out, beats);
 }
 
 } // namespace melodee

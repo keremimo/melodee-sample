@@ -13,6 +13,7 @@
 #include <thread>
 #include <unistd.h>
 #include "melodee/engine/sample_data.h"
+#include "melodee/engine/onsets.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/sfz.h"
 #include "melodee/engine/keygroup.h"
@@ -2596,6 +2597,86 @@ void onset_hits() {
     auto quiet = hits_of(make(1.2, [](double t) { return t >= 0.7 ? 0.008 * std::sin(2 * M_PI * 200 * t) * std::exp(-(t - 0.7) / 0.1) : 0; }));
     CHECK(quiet.size() == 2 && near(quiet[1], 0.7, 2));
     CHECK(hits_of(SampleData {}).size() == 1);
+}
+
+// A sample's own beats (engine/onsets.cpp) and Chop's Beats on them (shell/chop.h): a loop's tempo exact from its
+// length, slices from the region's start, cuts that follow a performance that speeds up; none for a one shot.
+void beat_grid() {
+    struct Made { SampleData sample; std::array<Hit, max_hits> hits {}; unsigned count = 0; BeatGrid grid; };
+    auto analysed = [](std::vector<float> wave) {
+        Made m;
+        m.sample.frames = uint32_t(wave.size());
+        m.sample.left = wave;
+        m.sample.right = std::move(wave);
+        m.count = find_hits(m.sample, m.hits, m.grid);
+        return m;
+    };
+    uint32_t noise = 7;
+    auto add_kick = [](std::vector<float>& w, double at) {
+        for (uint32_t n = uint32_t(at * 44100), end = std::min<uint32_t>(uint32_t(w.size()), n + 13230); n < end; ++n) {
+            double u = (n - at * 44100) / 44100;
+            w[n] += float(0.8 * std::sin(2 * M_PI * (55 + 150 * std::exp(-u / 0.015)) * u) * std::exp(-u / 0.12));
+        }
+    };
+    auto add_noise = [&](std::vector<float>& w, double at, double level, double decay) {
+        for (uint32_t n = uint32_t(at * 44100), end = std::min<uint32_t>(uint32_t(w.size()), n + uint32_t(decay * 6 * 44100)); n < end; ++n) {
+            noise = noise * 1664525u + 1013904223u;
+            w[n] += float(level * ((noise >> 8) / 8388608.0 - 1) * std::exp(-(n - at * 44100) / 44100 / decay));
+        }
+    };
+    // 8 beats at 93 BPM: kicks on 1 and 3, a snare on 2 and 4, hats on every 8th.
+    const double beat = 60 / 93.0;
+    std::vector<float> wave(size_t(std::lround(8 * beat * 44100)), 0.0f);
+    for (unsigned b = 0; b < 8; ++b) {
+        if (b % 2 == 0) add_kick(wave, b * beat);
+        else add_noise(wave, b * beat, 0.5, 0.05);
+        add_noise(wave, b * beat, 0.12, 0.01);
+        add_noise(wave, (b + 0.5) * beat, 0.12, 0.01);
+    }
+    auto loop = analysed(wave);
+    CHECK(loop.grid.found() && loop.grid.tempo == 930);
+    // A slice a beat from the start: on the beats, at most 3 ms early.
+    auto on_beat = [](uint32_t cut, double seconds) { return cut <= seconds * 44100 + 44 && cut + 133 >= seconds * 44100; };
+    auto ones = chop(ChopMode::Beats, 1, loop.sample.frames, loop.hits, loop.count, 1200, &loop.grid);
+    CHECK(ones.count == 8);
+    for (unsigned n = 1; n < ones.count; ++n) CHECK(on_beat(ones.start[n], n * beat));
+    auto bars = chop(ChopMode::Beats, 4, loop.sample.frames, loop.hits, loop.count, 1200, &loop.grid);
+    CHECK(bars.count == 2 && on_beat(bars.start[1], 4 * beat));
+    // From a region that starts on beat 2: a slice every two beats from there.
+    auto twos = chop(ChopMode::Beats, 2, uint32_t(beat * 44100), 0, loop.sample.frames, loop.hits, loop.count, 1200, &loop.grid);
+    CHECK(twos.count == 4 && on_beat(twos.start[1], 3 * beat) && on_beat(twos.start[2], 5 * beat) && on_beat(twos.start[3], 7 * beat));
+    // Without the sample's beats, the project's tempo as before: 120 BPM, a slice every 22050 frames.
+    CHECK(chop(ChopMode::Beats, 1, loop.sample.frames, loop.hits, loop.count, 1200).start[1] == 22050);
+
+    // The same tempo with the kick on 1, the and of 2 and 4's second 16th (3 + 3 + 2) and swung hats: still 93 BPM
+    // (or 186), not the 124 its dotted spacing suggests.
+    std::fill(wave.begin(), wave.end(), 0.0f);
+    for (unsigned bar = 0; bar < 2; ++bar) {
+        double at = bar * 4 * beat;
+        for (double k : {0.0, 0.75, 1.5}) add_kick(wave, at + k * beat);
+        for (double k : {2.0, 3.25}) add_kick(wave, at + k * beat);
+        for (unsigned b = 1; b < 4; b += 2) add_noise(wave, at + b * beat, 0.5, 0.05);
+        for (unsigned e = 0; e < 8; ++e) add_noise(wave, at + (e / 2 + (e % 2 ? 0.62 : 0.0)) * beat, 0.1, 0.01);
+    }
+    auto swung = analysed(wave);
+    CHECK(swung.grid.tempo == 930 || swung.grid.tempo == 1860);
+
+    // A take that speeds up from 100 to 106 BPM over 12 beats, not cut to bars: the slices follow its kicks.
+    wave.assign(size_t(7.4 * 44100), 0.0f);
+    std::vector<double> kicks;
+    for (double at = 0.2, bpm = 100; at < 7.2; at += 60 / bpm, bpm += 0.5) kicks.push_back(at);
+    for (double at : kicks) { add_kick(wave, at); add_noise(wave, at, 0.1, 0.01); }
+    auto take = analysed(wave);
+    CHECK(take.grid.found() && take.grid.tempo > 1000 && take.grid.tempo < 1065);
+    auto followed = chop(ChopMode::Beats, 1, uint32_t(kicks[0] * 44100), 0, take.sample.frames, take.hits, take.count, 1200, &take.grid);
+    CHECK(followed.count >= kicks.size() - 1);
+    for (unsigned n = 1; n < followed.count && n < kicks.size(); ++n) CHECK(on_beat(followed.start[n], kicks[n]));
+
+    // One kick: no beats, so Beats keeps the project's tempo.
+    wave.assign(44100 * 2, 0.0f);
+    add_kick(wave, 0.1);
+    auto one = analysed(wave);
+    CHECK(!one.grid.found() && one.grid.at.empty());
 }
 
 void chop_and_browser() {
@@ -12477,6 +12558,7 @@ int main() {
     audio_input_and_rendering();
     meter_lights();
     onset_hits();
+    beat_grid();
     chop_and_browser();
     zoom_and_fine_edit();
     sample_mode();

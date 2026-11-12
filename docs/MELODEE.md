@@ -1145,7 +1145,13 @@ the file holds, to the bit.
   hits at least that strong: a hit is a change in the spectrum (a drum, a hat
   over a held pad, a chord change at the same loudness), cut at the quiet
   point just before its attack, its strength against the sample's strongest
-  hit (`engine/onsets.cpp`). Manual (K3 or Push):
+  hit (`engine/onsets.cpp`). Beats cuts every 1-8 of the sample's own beats
+  from the region's start: its tempo and beats are found when it loads (the
+  flux's autocorrelation and a beat tracker, a loop's tempo exact from its
+  length), shown at the picture's top right; each cut takes the tracked beat
+  within an eighth of a beat (so a take that drifts is followed), else the hit
+  within 30 ms. A sample with no steady pulse cuts at the project's tempo.
+  Manual (K3 or Push):
   pad 1 plays the region and pads tapped meanwhile cut it, each pulled onto
   the strongest hit. Shift + B1 Extract (`Samples/Edits/<NAME>-Slice n.wav`
   onto the next empty pad), Shift + B2 Split, Shift + B3 Merge; Erase + pad

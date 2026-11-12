@@ -1501,7 +1501,7 @@ void Context::rechop() {
     if (!library || ui.chop_sample >= sample_slots) { ui.slices = {}; return; }
     auto loaded = library->slot(ui.chop_sample);
     ui.slices = chop(ui.chop_mode, ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()], ui.chop_from, ui.chop_to, loaded.frames,
-                     loaded.hits, loaded.hit_count, project.tempo);
+                     loaded.hits, loaded.hit_count, project.tempo, &loaded.beats);
     snap_slices();
     ui.chop_slice = uint8_t(std::min<unsigned>(ui.chop_slice, ui.slices.count ? ui.slices.count - 1 : 0));
     ui.chop_armed = ui.chop_mode == ChopMode::Manual;

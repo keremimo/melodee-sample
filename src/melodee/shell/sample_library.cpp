@@ -501,7 +501,7 @@ void SampleLibrary::make(const SampleJob& job) {
     loaded.path = path;
     loaded.frames = data->frames;
     make_overview(*data, loaded.overview);
-    loaded.hit_count = find_hits(*data, loaded.hits);
+    loaded.hit_count = find_hits(*data, loaded.hits, loaded.beats);
     if (!offer(job.target % sample_slots, data.get())) { fail("busy, try again"); return; }
     const SampleData* held = data.get();
     owned.push_back(std::move(data));
@@ -609,7 +609,7 @@ void SampleLibrary::land(unsigned slot, std::unique_ptr<SampleData> data, unsign
     if (!path.empty()) { if (failed.empty()) loaded.path = path; else loaded.error = "not saved: " + failed; }
     loaded.frames = data->frames;
     make_overview(*data, loaded.overview);
-    loaded.hit_count = find_hits(*data, loaded.hits);
+    loaded.hit_count = find_hits(*data, loaded.hits, loaded.beats);
     const SampleData* held = nullptr;
     if (offer(slot, data.get())) { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
     else { finish(std::string(what) + ": busy, try again", int(slot)); return; }
@@ -644,7 +644,7 @@ void SampleLibrary::read(const Request& request) {
     } else {
         loaded.frames = data->frames;
         make_overview(*data, loaded.overview);
-        loaded.hit_count = find_hits(*data, loaded.hits);
+        loaded.hit_count = find_hits(*data, loaded.hits, loaded.beats);
         if (!offer(request.slot, data.get())) { loaded.error = "busy, try again"; }
         else { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
     }

@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/bounce.h"
 #include "melodee/shell/expansion_install.h"
+#include "melodee/engine/onsets.h"
 #include "melodee/engine/recall_ring.h"
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sfz.h"
@@ -56,6 +57,7 @@ struct LoadedSample {
     Overview overview {};
     std::array<Hit, max_hits> hits {};
     unsigned hit_count = 0;
+    BeatGrid beats;          // its own tempo and beats, for Chop's Beats type
     bool ready = false;
     // A multisampled instrument: no frames of its own, so nothing to trim or chop.
     bool instrument = false;

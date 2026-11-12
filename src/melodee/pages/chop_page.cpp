@@ -19,7 +19,8 @@
 // (every cut onto a zero crossing, shell/chop.h; on by default, kept with
 // the settings). The picture: the slices as bands, the one in hand lit with
 // the pad it lands on as a chip above it, their numbers under them; the
-// file's length at the top right, the slice's at the bottom right.
+// file's length at the top right (on Beats with the sample's own tempo before
+// it, where it has one), the slice's at the bottom right.
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -53,7 +54,12 @@ void draw(Paint& p, const Snapshot& s) {
         frame(p, s, keys, h);
     }
     float x = zone::pad, w = zone::width - 2 * zone::pad;
-    if (frames) p.text(seconds(frames), x, zone::picture_y + 2, w, 14, plain(colour::dim, type::small, Weight::SemiBold), juce::Justification::centredRight);
+    if (frames) {
+        juce::String length = seconds(frames);
+        if (s.ui.chop_mode == ChopMode::Beats && s.sample.beats.found())
+            length = juce::String(s.sample.beats.tempo / 10.0, 1) + " BPM  " + length; // the tempo Beats cuts at, the sample's own
+        p.text(length, x, zone::picture_y + 2, w, 14, plain(colour::dim, type::small, Weight::SemiBold), juce::Justification::centredRight);
+    }
     if (!frames || !slices.count) {
         icon(p, s.sample.error.empty() ? Icon::Clock : Icon::Warn, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::dim, 1.4f);
         if (!s.sample.error.empty())

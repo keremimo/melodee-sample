@@ -1306,6 +1306,14 @@ const Preview previews[] {
          s.ui.chop_mode = ChopMode::Regions; s.ui.chop_slice = 4;
          chop_voice(s, s.ui.slices.start[4], s.ui.slices.end(4, s.sample.frames), 0.4f, 1.0f);
      }},
+    {"chopbeats", [](Shell&, Snapshot& s) { // Beats on the break's own tempo (two bars at 92 BPM): its tempo by the file's length
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.sample.beats.tempo = 920;
+         for (unsigned n = 0; n < 8; ++n) s.sample.beats.at.push_back(230087u * n / 8);
+         s.ui.chop_mode = ChopMode::Beats;
+         s.ui.slices = chop(ChopMode::Beats, 1, 0, 0, s.sample.frames, s.sample.hits, s.sample.hit_count, 1240, &s.sample.beats);
+         s.ui.chop_slice = 2; s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
     {"chopshift", [](Shell&, Snapshot& s) { // Shift: Extract / Split / Merge, zoomed in at the slice's end
          s.ui.page = PageId::Chop; s.ui.track = 3; s.sample = break_sample(); s.ui.chop_sample = 4;
          s.ui.slices = chop(ChopMode::Threshold, 40, 20000, 200000, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
