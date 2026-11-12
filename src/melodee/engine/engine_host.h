@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/arp.h"
 #include "melodee/engine/command.h"
+#include "melodee/engine/compensation.h"
 #include "melodee/engine/looper.h"
 #include "melodee/engine/master_comp.h"
 #include "melodee/engine/midi_engine.h"
@@ -250,6 +251,14 @@ public:
     bool take_arp_written(ArpWritten& note) { return arp_written.pop(note); }
     // MIDI thread: a pattern copy the audio thread played until a newer one came (PatternData), to free.
     bool take_retired_pattern(Pattern*& pattern) { return retired_patterns.pop(pattern); }
+    // Any thread (roadmap P4, plug-in delay compensation): device frames everything heard is held back by, so the
+    // latest path (a plug-in's latency, its rate converter's, a Limiter's LOOKAHEAD) meets the rest: the tracks' and
+    // loops' latest, the buses' and Knob FX's latest after them, and the master's chain. MIDI out, the metronome and
+    // Seq Record's placing follow it. track_latency(): a track's own path (its plug-in and chain).
+    unsigned compensation() const { return pdc_total.load(std::memory_order_relaxed); }
+    unsigned track_latency(unsigned t) const { return pdc_tracks[t % track_count].load(std::memory_order_relaxed); }
+    unsigned bus_latency(unsigned b) const { return pdc_buses[b % bus_count].load(std::memory_order_relaxed); }
+    unsigned master_latency() const { return pdc_master.load(std::memory_order_relaxed); }
 
     static constexpr unsigned block = 128;
 
@@ -372,7 +381,12 @@ private:
     double tick_length() const { return dsp::sample_rate() * 60.0 / (tempo / 10.0) / ticks_per_quarter; } // device frames a clock tick
     double arp_tick_length() const { return tick_length() * (ticks_per_quarter / arp_ticks_per_quarter); }
     // MIDI out and sync (parity phase 9).
-    void emit(const MidiOutEvent& e) { if (!midi_events.push(e)) midi_lost.fetch_add(1, std::memory_order_relaxed); }
+    // Roadmap P4: out as late as everything heard is held back (compensation()), so outside gear lines up with it.
+    void emit(const MidiOutEvent& e) {
+        MidiOutEvent late = e;
+        late.frame += pdc.total;
+        if (!midi_events.push(late)) midi_lost.fetch_add(1, std::memory_order_relaxed);
+    }
     bool out_wanted(unsigned t, int key) const;                              // this note of this track goes out
     bool heard(unsigned t) const;                                            // not muted, nor silenced by another's solo
     bool is_midi(unsigned t) const { return slots[t % track_count].kind == EngineKind::Midi; }
@@ -568,6 +582,24 @@ private:
     bool snap_mix = true;         // the next block's eases start at their targets (a project just loaded)
     float bus_l[bus_count][block] {}, bus_r[bus_count][block] {}, master_l[block] {}, master_r[block] {};
     void run_chain(unsigned chain, float* left, float* right, unsigned frames);
+    // Roadmap P4, delay compensation: each block's plan (plan_compensation(), at its start) of how late each line
+    // plays, from the latencies along each chain (chain_latency()); `on` while any line delays or eases.
+    unsigned chain_latency(unsigned chain) const;
+    void plan_compensation();
+    void compensate(unsigned line, float* left, float* right, unsigned frames) { lines.run(line, left, right, frames, pdc.delay[line], block_count); }
+    struct Compensation {
+        std::array<unsigned, CompensationLines::count> delay {};
+        unsigned tracks = 0, returns = 0, master = 0, total = 0; // the latest track or loop, bus or Knob FX after it, master
+        bool on = false;
+    };
+    Compensation pdc;
+    CompensationLines lines;
+    uint64_t block_count = 0; // blocks rendered (a line skipped for a block starts again from silence)
+    std::atomic<unsigned> pdc_total {0}, pdc_master {0};
+    std::array<std::atomic<unsigned>, track_count> pdc_tracks {};
+    std::array<std::atomic<unsigned>, bus_count> pdc_buses {};
+    unsigned click_wait = 0; // frames the metronome's blip waits, as late as what it counts
+    float knob_pad_sum_l[block] {}, knob_pad_sum_r[block] {}; // compensating: kits' pads into Knob FX, held back apart
     // Knob FX (parity phase 7): one effect the chosen tracks and kit pads go
     // through on their way to the master (`knob_in`, its twin, on the input
     // during a take with Rec Input FX); after its targets let go it rings on

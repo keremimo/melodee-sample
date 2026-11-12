@@ -54,6 +54,7 @@ void Effect::set_kind(EffectKind kind, DelayPool& pool) {
     if (!memory && needs_memory(kind)) memory = pool.take(); // clearing a block takes a moment, once per change
     else if (memory) std::fill(memory, memory + DelayPool::block_floats, 0.0f);
     current = kind;
+    home = &pool;
     const auto& info = effect_info(kind);
     for (unsigned n = 0; n < effect_params; ++n) p[n] = info.params[n].label ? info.params[n].initial : 0;
     on = bypass ? 0.0f : 1.0f; resting = false; // a new kind starts where Bypass is, not fading
@@ -80,6 +81,11 @@ void Effect::set_param(unsigned index, int value) {
     const auto& info = effect_info(current).params[index];
     if (!info.label) return;
     p[index] = std::clamp<int>(value, info.min, info.max);
+    if (current == K::Limiter && index == 2 && home) { // LOOKAHEAD: its line from the pool while it looks ahead
+        if (p[2] > 0 && !memory) memory = home->take();
+        else if (p[2] == 0 && memory) { home->give(memory); memory = nullptr; }
+        write = 0;
+    }
     update();
 }
 
@@ -188,7 +194,10 @@ void Effect::update() {
         a = p[0] / 100.0f; b = p[1] / 100.0f; mix = pct(2);
         fall = {dsp::fall_per_frame(0.98f), dsp::fall_per_frame(0.9995f)};
         break;
-    case K::Limiter: a = db(float(p[0])); e = follow(time_seconds(p[1]) * 0.5f); break;
+    case K::Limiter: // LOOKAHEAD: frames the sound waits while the gain comes down to meet it
+        a = db(float(p[0])); e = follow(time_seconds(p[1]) * 0.5f);
+        delay = std::min(DelayPool::half - 1, unsigned(std::lround(p[2] * fs() / 1000)));
+        break;
     default: update_extra(); break;
     }
 }
@@ -463,6 +472,25 @@ void Effect::process(float* left, float* right, unsigned frames) {
         }
         case K::Limiter: {
             float level = std::max(std::fabs(l), std::fabs(r));
+            if (delay && memory) { // looking ahead (roadmap P4): the sound `delay` frames late, the gain ready for it
+                line_l[write] = l; line_r[write] = r;
+                unsigned back = (write + DelayPool::half - delay) % DelayPool::half;
+                float late_l = line_l[back], late_r = line_r[back];
+                if (++write >= DelayPool::half) write = 0;
+                // The loudest of the last `delay` frames, held that long, then let go at the release's pace.
+                if (level >= env) { env = level; hold_count = delay; }
+                else if (hold_count) --hold_count;
+                else env = level + (env - level) * e;
+                float target = env > a ? a / env : 1.0f;
+                float& left_frames = state[0]; // the way down in hand: frames of it left, and its step a frame
+                float& step = state[1];
+                if (target < gain - step * left_frames) { step = (gain - target) / float(delay); left_frames = float(delay); } // lands as the peak comes out
+                if (left_frames > 0) { gain -= step; left_frames -= 1; }
+                else if (target > gain) gain = target + (gain - target) * e;
+                wet_l = std::clamp(late_l * gain, -a, a); wet_r = std::clamp(late_r * gain, -a, a);
+                l = late_l; r = late_r; // the dry side waits as long (MIX is always all wet; Bypass fades to it)
+                break;
+            }
             float target = level > a ? a / level : 1.0f;
             gain = target < gain ? target : target + (gain - target) * e;
             wet_l = l * gain; wet_r = r * gain;

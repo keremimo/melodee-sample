@@ -71,7 +71,7 @@ const EffectInfo effects[] {
      {90, 70, 50, 0, 0, 0, 90, 70, 50, 0, 0}},
     {K::Transient, "Transient", F::Dynamics, true, {P("ATTACK", -100, 100, 40, Format::Number), P("SUSTAIN", -100, 100, 0, Format::Number), mix(100), none, none, none},
      {96, 40, 26, 20, 16, 14, 12, 10, 10, 8, 8}},
-    {K::Limiter, "Limiter", F::Dynamics, true, {P("CEILING", -24, 0, -1, Format::Number), P("RELEASE", 0, 100, 30, Format::Time), none, none, none, none},
+    {K::Limiter, "Limiter", F::Dynamics, true, {P("CEILING", -24, 0, -1, Format::Number), P("RELEASE", 0, 100, 30, Format::Time), P("LOOKAHEAD", 0, 10, 0, Format::Ms), none, none, none},
      {70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70}},
     // Parity phase 7: the rest of the MPC's Knob FX list. Row 1 is K1-K3 as on the MPC, row 2 its Shift + K1-K3.
     {K::DiffDelay, "Diff delay", F::Time, true, {P("TIME", 30, 75, 58, Format::Time), P("FEEDBACK", 0, 95, 45), mix(30), P("DIFFUSION", 0, 100, 70), P("HIGH DAMP", 0, 100, 40), none},

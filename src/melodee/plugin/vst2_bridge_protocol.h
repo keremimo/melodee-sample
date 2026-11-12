@@ -53,6 +53,7 @@ struct Event
 struct Info
 {
     int32_t numInputs, numOutputs, numParams, numPrograms, flags, uniqueId, version;
+    int32_t initialDelay; // roadmap P4: the latency it reports, frames at its rate (kept when it is switched on)
 };
 
 struct Shared

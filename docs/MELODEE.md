@@ -1386,6 +1386,24 @@ of the card (beside `Samples/`), in any folders under it.
   (`plugin/rate_bridge.h`): an instrument's output converted up, under a
   millisecond late; an effect's input down and its output up, about 3 ms
   late. So it plays in tune at any rate.
+- **Delay compensation (roadmap P4).** A plug-in that reports a latency
+  (VST3's, a VST2's `initialDelay`), the 44.1 kHz converter in front of an
+  Open MPC plug-in at 48 or 96 kHz (measured once as it opens: an
+  effect's about 3 ms, an instrument's none) and a Limiter's LOOKAHEAD
+  (0-10 ms, its third card) make their path late. Every block the engine
+  host sums each chain's latencies (bypassed slots left out) and holds the
+  earlier paths back in lines made at start (`engine/compensation.h`,
+  16384 frames each; nothing allocates when a latency changes, a moved
+  line eases across one block): each track and loop track meets the
+  latest of them (a PLUGIN track's instrument counts), the direct mix
+  waits for the latest bus or Knob FX return, each of those for the
+  latest, and kits' pads into Knob FX and the Sidechain's key pad wait as
+  long as the latest track. The master's chain delays everything alike.
+  MIDI out (notes, clock, MTC), the metronome and Seq Record's placing
+  of a hit move by the whole amount, so outside gear and played takes
+  line up with what is heard. Settings' AUDIO shows it (PDC, in ms) while
+  it holds anything back; `status` has `melodee_pdc` and each track's,
+  bus's and the master's own.
 - **Notes.** Notes, the wheel (CC 1), bend and each note's pressure (poly
   aftertouch) go to a PLUGIN track's plug-in as MIDI; the sequencer's accent
   as a harder velocity, a Slide or Tie as CC 84 with the key it goes on

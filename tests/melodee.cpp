@@ -9573,7 +9573,159 @@ void levels_cutoff_kept() {
     CHECK(load_project(file, *back, *back_bank).empty() && back_bank->at[4][2].events[0].cutoff == 0);
 }
 
+// Roadmap P4, plug-in delay compensation. A plug-in that is late by its latency: an instrument sounds a note that many
+// frames after it came; an effect gives back what it was given that many frames later.
+struct LatePlugin final : PluginRunner {
+    bool instrument = true;
+    unsigned late = 0;
+    int countdown = -1;
+    std::array<float, 8192> line_l {}, line_r {};
+    unsigned at = 0;
+    void midi(uint8_t status, uint8_t, uint8_t data2) override { if ((status & 0xf0) == 0x90 && data2) countdown = int(late); }
+    void silence() override {}
+    void render(float* left, float* right, unsigned frames) override {
+        for (unsigned f = 0; f < frames; ++f) {
+            if (instrument) {
+                if (countdown == 0) { left[f] += 0.5f; right[f] += 0.5f; }
+                if (countdown >= 0) --countdown;
+            } else {
+                line_l[at & 8191] = left[f]; line_r[at & 8191] = right[f];
+                left[f] = line_l[(at - late) & 8191]; right[f] = line_r[(at - late) & 8191];
+                ++at;
+            }
+        }
+    }
+    unsigned latency() const override { return late; }
+};
+
+void delay_compensation_p4() {
+    // The rate bridge's own lag, measured once: an Open MPC plug-in at 44.1 kHz heard at 48 kHz. An instrument is
+    // run ahead for what is asked, so it is not late; an effect is late by the margin its output starts with.
+    {
+        unsigned instrument = PluginRateBridge::measure(44100, 48000, true), effect = PluginRateBridge::measure(44100, 48000, false);
+        CHECK(instrument <= 2 && effect >= 100 && effect < 260);
+        CHECK(PluginRateBridge::measure(48000, 48000, true) == 0);
+        // And what it says is where an impulse comes out.
+        auto bridge = std::make_unique<PluginRateBridge>();
+        bridge->reset(44100, 48000, false);
+        CHECK(bridge->latency() == effect);
+        float most = 0; unsigned where = 0, frame = 0;
+        for (unsigned b = 0; b < 12; ++b) {
+            std::array<float, 128> l {}, r {};
+            if (b == 4) l[0] = r[0] = 1; // at frame 512
+            bridge->render(l.data(), r.data(), 128, [](float*, float*, unsigned) {});
+            for (unsigned f = 0; f < 128; ++f, ++frame) if (std::fabs(l[f]) > most) { most = std::fabs(l[f]); where = frame; }
+        }
+        CHECK(where == 512 + effect && most > 0.8f);
+    }
+    // A Limiter looking ahead: LOOKAHEAD ms late, never over its ceiling, and reports it.
+    {
+        DelayPool pool;
+        Effect limiter;
+        limiter.set_kind(EffectKind::Limiter, pool);
+        CHECK(limiter.latency() == 0);
+        limiter.set_param(0, -6);
+        limiter.set_param(2, 5);
+        unsigned late = unsigned(std::lround(5 * dsp::sample_rate() / 1000));
+        CHECK(limiter.latency() == late);
+        std::vector<float> l(4096, 0.0f), r(4096, 0.0f);
+        for (unsigned f = 1000; f < 4096; ++f) l[f] = r[f] = 0.9f * float(std::sin(f * 0.05));
+        unsigned first = 0;
+        float most = 0;
+        for (unsigned at = 0; at < 4096; at += 128) {
+            limiter.process(l.data() + at, r.data() + at, 128);
+            for (unsigned f = at; f < at + 128; ++f) { if (!first && std::fabs(l[f]) > 1e-6f) first = f; most = std::max(most, std::fabs(l[f])); }
+        }
+        CHECK(first >= 1000 + late && first <= 1000 + late + 2);
+        CHECK(most <= std::pow(10.0f, -6 / 20.0f) + 1e-4f && most > 0.4f);
+        limiter.set_param(2, 0); // back to none: no delay, its line given back
+        CHECK(limiter.latency() == 0);
+        limiter.set_bypass(true);
+    }
+    // Two PLUGIN tracks, one 300 frames late: both heard together, 300 frames on; a stem a track shows it.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (unsigned t = 0; t < 2; ++t) { project->tracks[t].engine = EngineKind::Plugin; project->tracks[t].plugin = uint8_t(t); }
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    LatePlugin on_time, slow;
+    slow.late = 300;
+    CHECK(host->offer_plugin(0, &on_time) && host->offer_plugin(1, &slow));
+    std::vector<int32_t> out(256);
+    std::vector<float> stems(size_t(track_count) * EngineHost::block);
+    uint64_t rendered = 0; // frames
+    auto play = [&](unsigned blocks, std::vector<float>* mix, std::array<std::vector<float>, 2>* stem) {
+        for (unsigned n = 0; n < blocks; ++n) {
+            host->render(out.data(), 128, 1, nullptr, stems.data());
+            rendered += 128;
+            for (unsigned f = 0; f < 128; ++f) {
+                if (mix) mix->push_back(out[2 * f] / 2147483648.0f);
+                if (stem) for (unsigned t = 0; t < 2; ++t) (*stem)[t].push_back(stems[t * EngineHost::block + f]);
+            }
+        }
+    };
+    auto peak_at = [](const std::vector<float>& x) {
+        unsigned best = 0; float most = 0;
+        for (unsigned f = 0; f < x.size(); ++f) if (std::fabs(x[f]) > most) { most = std::fabs(x[f]); best = f; }
+        return std::make_pair(best, most);
+    };
+    play(2, nullptr, nullptr);
+    CHECK(host->compensation() == 300 && host->track_latency(1) == 300 && host->track_latency(0) == 0);
+    play(4, nullptr, nullptr); // the lines settled
+    host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+    host->send({Command::Type::NoteOn, 1, 0, 60, 100});
+    std::array<std::vector<float>, 2> heard;
+    play(6, nullptr, &heard);
+    auto a = peak_at(heard[0]), b = peak_at(heard[1]);
+    CHECK(a.second > 0.1f && b.second > 0.1f && a.first == 300 && b.first == 300);
+    // A bus 200 frames late: the direct mix waits for it, so a track sent to both is heard once, not twice.
+    host->send({Command::Type::NoteOff, 0, 0, 60, 0});
+    host->send({Command::Type::TrackPlugin, 1, 0, 0, 255}); // the slow track lets go of its plug-in
+    LatePlugin bus_late;
+    bus_late.instrument = false; bus_late.late = 200;
+    host->send({Command::Type::FxKind, uint8_t(bus_chain(0)), 0, 0, int16_t(EffectKind::Plugin)});
+    host->send({Command::Type::FxParam, uint8_t(bus_chain(0)), 0, 0, 5});
+    CHECK(host->offer_plugin(5, &bus_late));
+    host->send({Command::Type::Send, 0, 0, 0, 100});
+    host->send({Command::Type::Return, 0, 0, 0, 100});
+    play(8, nullptr, nullptr);
+    CHECK(host->compensation() == 200 && host->bus_latency(0) == 200);
+    host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+    std::vector<float> mix;
+    play(6, &mix, nullptr);
+    auto m = peak_at(mix);
+    unsigned loud = 0;
+    for (float x : mix) loud += std::fabs(x) > m.second * 0.3f;
+    CHECK(m.first == 200 && loud == 1);
+    // The master's chain late by 50 more: MIDI out (a MIDI track's notes) goes out as late as what is heard.
+    LatePlugin master_late;
+    master_late.instrument = false; master_late.late = 50;
+    host->send({Command::Type::FxKind, uint8_t(master_chain), 0, 0, int16_t(EffectKind::Plugin)});
+    host->send({Command::Type::FxParam, uint8_t(master_chain), 0, 0, 6});
+    CHECK(host->offer_plugin(6, &master_late));
+    host->send({Command::Type::Engine, 2, 0, uint16_t(EngineKind::Midi)});
+    host->send({Command::Type::Param, 2, 0, uint16_t(midi_track::Channel), 1});
+    play(2, nullptr, nullptr);
+    CHECK(host->compensation() == 250 && host->master_latency() == 50);
+    MidiOutEvent e;
+    while (host->take_midi(e)) {}
+    host->send({Command::Type::NoteOn, 2, 0, 64, 100});
+    uint64_t before = rendered; // the note plays at the next block's first frame
+    play(1, nullptr, nullptr);
+    bool found = false;
+    while (host->take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn && e.a == 64) { found = true; CHECK(e.frame == before + 250); }
+    CHECK(found);
+    // Taken away, every line comes back to none.
+    host->send({Command::Type::FxKind, uint8_t(master_chain), 0, 0, 0});
+    host->send({Command::Type::FxKind, uint8_t(bus_chain(0)), 0, 0, 0});
+    play(3, nullptr, nullptr);
+    CHECK(host->compensation() == 0);
+    CHECK(host->offer_plugin(0, nullptr) && host->offer_plugin(5, nullptr) && host->offer_plugin(6, nullptr) && host->offer_plugin(1, nullptr));
+    play(1, nullptr, nullptr);
+}
+
 int main() {
+    delay_compensation_p4();
     chop_kept();
     samples_used();
     levels_cutoff_kept();

@@ -210,7 +210,8 @@ bool EngineHost::place_at(unsigned track, uint64_t frame, int& position, uint32_
 
 bool EngineHost::heard_place(unsigned track, uint64_t ns, int& position, uint32_t& ticks) const {
     if (!ns || !clock.known()) return false;
-    return place_at(track, clock.heard_frame(int64_t(ns)), position, ticks);
+    uint64_t heard = clock.heard_frame(int64_t(ns)), late = compensation(); // roadmap P4: heard that much after it rendered
+    return place_at(track, heard > late ? heard - late : 0, position, ticks);
 }
 
 // A note Seq Record wrote just ahead of the playhead was heard as it was played: once, not twice.
@@ -912,6 +913,63 @@ void EngineHost::run_chain(unsigned chain, float* left, float* right, unsigned f
     }
 }
 
+// Roadmap P4: the frames chain `chain` holds its sound back: each plug-in's latency (its rate converter's in it) and
+// each effect's (a Limiter looking ahead), bypassed ones left out (they pass the sound straight through).
+unsigned EngineHost::chain_latency(unsigned chain) const {
+    unsigned sum = 0;
+    for (const auto& effect : fx[chain % chain_count]) {
+        if (effect.kind() == EffectKind::None) break;
+        if (effect.kind() == EffectKind::Plugin) {
+            const auto* runner = runner_of(unsigned(effect.param(0)));
+            if (runner && !effect.bypassed()) sum += runner->latency();
+        } else {
+            sum += effect.latency();
+        }
+    }
+    return sum;
+}
+
+// Roadmap P4, plug-in delay compensation, at each block's start: every track and loop track meets the latest of them
+// as it leaves its chain (a PLUGIN track's instrument and its chain); the direct mix waits for the latest bus or Knob
+// FX, and each of those for the latest; the master's chain delays everything alike. Kits' pads into Knob FX and the
+// Sidechain's key pad leave their track before its chain, so they wait as long as the latest track. Nothing
+// allocates: the lines were made at start and only change where they read.
+void EngineHost::plan_compensation() {
+    Compensation plan;
+    std::array<unsigned, track_count> own {};
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& slot = slots[t];
+        if (!slot.engine) continue;
+        own[t] = chain_latency(t) + (slot.engine == &slot.plugin && slot.plugin.attached() ? slot.plugin.attached()->latency() : 0);
+        plan.tracks = std::max(plan.tracks, own[t]);
+    }
+    std::array<unsigned, loop_tracks> loop_own {};
+    if (loops.on())
+        for (unsigned n = 0; n < loop_tracks; ++n) { loop_own[n] = chain_latency(loop_chain(n)); plan.tracks = std::max(plan.tracks, loop_own[n]); }
+    std::array<unsigned, bus_count> bus_own {};
+    for (unsigned b = 0; b < bus_count; ++b) { bus_own[b] = chain_latency(bus_chain(b)); plan.returns = std::max(plan.returns, bus_own[b]); }
+    unsigned knob_own = knob.kind() != EffectKind::None ? knob.latency() : 0;
+    plan.returns = std::max(plan.returns, knob_own);
+    plan.master = chain_latency(master_chain);
+    constexpr unsigned reach = CompensationLines::most - block;
+    plan.tracks = std::min(plan.tracks, reach); plan.returns = std::min(plan.returns, reach);
+    plan.total = plan.tracks + plan.returns + plan.master;
+    for (unsigned t = 0; t < track_count; ++t) plan.delay[CompensationLines::track0 + t] = plan.tracks - std::min(own[t], plan.tracks);
+    for (unsigned n = 0; n < loop_tracks; ++n) plan.delay[CompensationLines::loop0 + n] = plan.tracks - std::min(loop_own[n], plan.tracks);
+    for (unsigned b = 0; b < bus_count; ++b) plan.delay[CompensationLines::bus0 + b] = plan.returns - std::min(bus_own[b], plan.returns);
+    plan.delay[CompensationLines::knob] = plan.returns - knob_own;
+    plan.delay[CompensationLines::direct] = plan.delay[CompensationLines::aside] = plan.delay[CompensationLines::key] = plan.returns;
+    plan.delay[CompensationLines::knob_pads] = plan.delay[CompensationLines::key_pad] = plan.tracks;
+    // On while anything is late, and for one block after it all came back to none (the lines ease back).
+    bool late = plan.tracks || plan.returns;
+    plan.on = late || (pdc.on && (pdc.tracks || pdc.returns));
+    pdc = plan;
+    pdc_total.store(plan.total, std::memory_order_relaxed);
+    pdc_master.store(plan.master, std::memory_order_relaxed);
+    for (unsigned t = 0; t < track_count; ++t) pdc_tracks[t].store(own[t], std::memory_order_relaxed);
+    for (unsigned b = 0; b < bus_count; ++b) pdc_buses[b].store(bus_own[b], std::memory_order_relaxed);
+}
+
 // The rack's plug-ins, each into its entry; the one it replaces goes back to be freed (held in limbo while the queue
 // is full; with limbo full too the offer waits in its queue for the next block).
 void EngineHost::take_plugins() {
@@ -1487,7 +1545,7 @@ void EngineHost::tick() {
     if (count_left) {
         unsigned done = bar - count_left;
         if (done % beat == 0) {
-            click_env = 1; click_phase = 0;
+            click_env = 1; click_phase = 0; click_wait = pdc.total; // as late as what it counts (roadmap P4)
             click_step = (done == 0 ? 1568.0f : 1046.0f) / dsp::sample_rate();
             click_fall = std::pow(0.9985f, dsp::model_rate / dsp::sample_rate());
             count_beat.store(done / beat + 1, std::memory_order_relaxed);
@@ -1512,7 +1570,7 @@ void EngineHost::tick() {
     if (flex_waiting && tick_now % sixteenth_ticks == 0) start_flex();
     // The metronome: every beat while playing, higher on the bar.
     if (click && tick_now % beat == 0) {
-        click_env = 1; click_phase = 0;
+        click_env = 1; click_phase = 0; click_wait = pdc.total; // as late as what it counts (roadmap P4)
         click_step = (tick_now % bar == 0 ? 1568.0f : 1046.0f) / dsp::sample_rate();
         click_fall = std::pow(0.9985f, dsp::model_rate / dsp::sample_rate());
     }
@@ -1639,6 +1697,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     frames = std::min(frames, block);
     // The commands due at the block's start; a timed note later in it splits the block at its frame, below.
     unsigned next_command = take_commands(0, frames);
+    plan_compensation(); // roadmap P4: how late each path plays this block
+    ++block_count;
     auto block_start = std::chrono::steady_clock::now();
     // The tracks' own work goes to the render workers too once it is worth waking them for, and never while one
     // plug-in plays in two places (it would be asked for two blocks at once).
@@ -1756,6 +1816,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     for (unsigned b = 0; b < bus_count; ++b) { std::fill(bus_l[b], bus_l[b] + frames, 0.0f); std::fill(bus_r[b], bus_r[b] + frames, 0.0f); }
     std::fill(master_l, master_l + frames, 0.0f); std::fill(master_r, master_r + frames, 0.0f);
     std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f);
+    if (pdc.on) { std::fill(knob_pad_sum_l, knob_pad_sum_l + frames, 0.0f); std::fill(knob_pad_sum_r, knob_pad_sum_r + frames, 0.0f); }
     bool knob_fed = false;
     // Sidechain: the key track keys the compressor and stays aside while the rest ducks under it.
     bool keyed = comp.keyed();
@@ -1801,11 +1862,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         run_chain(t, slot.left, slot.right, frames);
         if (punch_target == t) punch.process(slot.left, slot.right, frames);
         run_live(uint8_t(t), slot.left, slot.right, frames);
+        if (pdc.on) compensate(CompensationLines::track0 + t, slot.left, slot.right, frames); // meets the latest track (roadmap P4)
         if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
         bool keying = keyed && t == key && pad_keyed < 0; // the whole track keys
         if (keying) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
-        if (pad_keyed == int(t)) // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
+        if (pad_keyed == int(t)) { // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
             for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * slot.mix_l.at(f); key_r[f] = key_pad_r[f] * slot.mix_r.at(f); }
+            if (pdc.on) compensate(CompensationLines::key_pad, key_l, key_r, frames); // it left before the chain (roadmap P4)
+        }
         track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
     };
     // One dispatch a block: each track's engine over the whole block, its calls at their frames, then its chain.
@@ -1855,9 +1919,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             if (!slot.audible.silent()) {
                 // Knob FX: a kit's pads switched on come out apart, after their own chain (not the track's), at the track's level and pan.
                 if (slot.engine == &slot.sampler && slot.knob_pad_fed) {
+                    float* to_l = pdc.on ? knob_pad_sum_l : knob_l; // compensating: held back apart, below (roadmap P4)
+                    float* to_r = pdc.on ? knob_pad_sum_r : knob_r;
                     for (unsigned f = 0; f < frames; ++f) {
                         float a = slot.audible.at(f);
-                        knob_l[f] += slot.knob_pad_l[f] * slot.mix_l.at(f) * a; knob_r[f] += slot.knob_pad_r[f] * slot.mix_r.at(f) * a;
+                        to_l[f] += slot.knob_pad_l[f] * slot.mix_l.at(f) * a; to_r[f] += slot.knob_pad_r[f] * slot.mix_r.at(f) * a;
                     }
                     knob_fed = true;
                 }
@@ -1895,6 +1961,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         meters[t].store(std::max(level, shown), std::memory_order_relaxed);
     }
     mix_loops(frames, solo);
+    if (pdc.on) { // roadmap P4: kits' pads into Knob FX as late as the latest track; the direct mix as late as the latest return
+        compensate(CompensationLines::knob_pads, knob_pad_sum_l, knob_pad_sum_r, frames);
+        for (unsigned f = 0; f < frames; ++f) { knob_l[f] += knob_pad_sum_l[f]; knob_r[f] += knob_pad_sum_r[f]; }
+        compensate(CompensationLines::direct, master_l, master_r, frames);
+        if (keyed) { compensate(CompensationLines::aside, aside_l, aside_r, frames); compensate(CompensationLines::key, key_l, key_r, frames); }
+    }
     // The second run: each bus through its chain, and Knob FX while it is fed or rings, apart; then the returns into
     // the master in the buses' order, and Knob FX's after them, here.
     if (knob_fed) { knob_ringing = true; knob_quiet = knob_rung = 0; }
@@ -1904,9 +1976,16 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         unsigned b = seconds[i];
         if (b == bus_count) knob.process(knob_l, knob_r, frames);
         else run_chain(bus_chain(b), bus_l[b], bus_r[b], frames);
+        if (pdc.on) compensate(b == bus_count ? unsigned(CompensationLines::knob) : CompensationLines::bus0 + b, // as late as the latest return
+                               b == bus_count ? knob_l : bus_l[b], b == bus_count ? knob_r : bus_r[b], frames);
     };
     if (parallel && !plugin_on_two_buses()) workers.run(second_jobs, second_job);
     else for (unsigned i = 0; i < second_jobs; ++i) second_job(i);
+    if (pdc.on) { // roadmap P4: a bus with no chain, and Knob FX not running, wait as long as the direct mix
+        for (unsigned b = 0; b < bus_count; ++b)
+            if (fx[bus_chain(b)][0].kind() == EffectKind::None) compensate(CompensationLines::bus0 + b, bus_l[b], bus_r[b], frames);
+        if (!knob_runs && knob_fed) compensate(CompensationLines::knob, knob_l, knob_r, frames);
+    }
     for (unsigned b = 0; b < bus_count; ++b) {
         auto& back = returns_now[b];
         back.aim(returns[b], frames, snap_mix);
@@ -1989,7 +2068,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     volume_now.aim(volume, frames, snap_mix); // main volume eased too: the knob's steps are up to dB apart
     float peak = 0, out_l = 0, out_r = 0;
     for (unsigned f = 0; f < frames; ++f) {
-        if (click_env > 0.0005f) { // a short blip on top of the mix
+        if (click_wait) --click_wait;
+        else if (click_env > 0.0005f) { // a short blip on top of the mix
             float blip = std::sin(2 * dsp::pi * click_phase) * click_env * click_level * 0.5f;
             click_phase += click_step; click_phase -= std::floor(click_phase);
             click_env *= click_fall;
@@ -2137,7 +2217,7 @@ void EngineHost::play_loops(unsigned frames) {
     time.tick = loop_tick;
     time.restart = loop_restart && loop_running && !loop_counting;
     if (time.restart) loop_restart = false;
-    time.input_lag = unsigned(clock.latency_frames());
+    time.input_lag = unsigned(clock.latency_frames()) + pdc.total; // what is played along to is heard that much later (roadmap P4)
     Looper::Sources sources;
     sources.frames = source_frames;
     for (unsigned s = 0; s < looper::source_count; ++s) sources.at[s] = {source_l[s], source_r[s]};
@@ -2160,6 +2240,7 @@ void EngineHost::play_loops(unsigned frames) {
         strip.mix_r.aim(strip.gain * strip.pan_right * 1.4142f, frames, snap_mix);
         for (unsigned f = 0; f < frames; ++f) { strip.left[f] = out_l[n][f] * strip.mix_l.at(f); strip.right[f] = out_r[n][f] * strip.mix_r.at(f); }
         run_chain(loop_chain(n), strip.left, strip.right, frames);
+        if (pdc.on) compensate(CompensationLines::loop0 + n, strip.left, strip.right, frames); // meets the latest track (roadmap P4)
     }
 }
 

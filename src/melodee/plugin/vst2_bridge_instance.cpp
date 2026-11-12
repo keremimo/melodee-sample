@@ -283,6 +283,7 @@ void Vst2BridgeInstance::prepareToPlay (double newRate, int newBlock)
     shared->i0 = 1;
     call (bridge::Command::mains);
     active = true;
+    setLatencySamples (std::max (0, (int) shared->info.initialDelay)); // roadmap P4: delay compensation
 }
 
 void Vst2BridgeInstance::releaseResources()

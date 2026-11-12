@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/shell/p4_status.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/looper_chord.h"
@@ -677,7 +678,7 @@ std::string Shell::summary() const {
            " melodee_card=" + std::to_string(card_link.state.load()) + " melodee_card_note=" + std::to_string(card_link.note.load()) +
            " melodee_card_ejected=" + std::to_string(int(card_link.ejected.load())) + " melodee_card_locked=" + std::to_string(int(card_link.locked.load())) +
            " " + looper_status(host.looper()) +
-           " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none"));
+           " melodee_plugins=" + (context_.plugins ? context_.plugins->summary() : std::string("none")) + p4_summary(host);
 }
 
 // Phase 10: undo (depth, redo waiting, the last step's name), Seq held, the sampler map, a pot gesture open.

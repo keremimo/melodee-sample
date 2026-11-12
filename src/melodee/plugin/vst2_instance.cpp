@@ -258,6 +258,7 @@ void Vst2Instance::prepareToPlay (double newRate, int newBlock)
     dispatch (vst2::op::mainsChanged, 0, 1);
     dispatch (vst2::op::startProcess);
     active = true;
+    setLatencySamples (std::max (0, (int) effect->initialDelay)); // roadmap P4: delay compensation
 }
 
 void Vst2Instance::releaseResources()

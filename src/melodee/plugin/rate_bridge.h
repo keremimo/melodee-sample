@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
 
 // A plug-in that runs at a rate of its own, heard at the device's. Open MPC
 // plug-ins (open-mpc.github.io) are written to MPC OS's contract, 44.1 kHz
@@ -21,8 +22,10 @@ public:
     static constexpr unsigned most = 128; // frames of either rate in one call
 
     // `plugin_rate`: what the plug-in runs at; `device_rate`: what render() is asked for. Equal: nothing converts.
-    void reset(unsigned plugin_rate, unsigned device_rate, bool instrument) {
+    // `measured`: its latency() found too (not on the audio thread).
+    void reset(unsigned plugin_rate, unsigned device_rate, bool instrument, bool measured = true) {
         on = plugin_rate && device_rate && plugin_rate != device_rate;
+        lag = measured ? measure(plugin_rate, device_rate, instrument) : 0;
         is_instrument = instrument;
         ratio = on ? double(plugin_rate) / device_rate : 1.0;
         up.reset(plugin_rate, device_rate);
@@ -31,11 +34,38 @@ public:
         // An effect starts with what its two conversions hold back, as silence, so its output never runs short
         // while the input comes in at the other rate.
         if (on && !instrument) {
-            unsigned lag = unsigned(std::ceil(::SincResampler<2>::max_half / ratio)) + 8;
-            for (unsigned n = 0; n < lag; ++n) push_out(0, 0);
+            unsigned held = unsigned(std::ceil(::SincResampler<2>::max_half / ratio)) + 8;
+            for (unsigned n = 0; n < held; ++n) push_out(0, 0);
         }
     }
     bool converting() const { return on; }
+    // Roadmap P4: device frames the conversion holds back (0 when it does not convert), measured once at reset():
+    // an impulse through a bridge like this one with a plug-in that passes it through, where its peak comes out.
+    unsigned latency() const { return lag; }
+    // Not on the audio thread: the measuring makes a bridge of its own.
+    static unsigned measure(unsigned plugin_rate, unsigned device_rate, bool instrument) {
+        if (!plugin_rate || !device_rate || plugin_rate == device_rate) return 0;
+        auto probe = std::make_unique<PluginRateBridge>();
+        probe->reset(plugin_rate, device_rate, instrument, false);
+        // The impulse well after the start (a converter takes its first frame to have been there always): an
+        // instrument's at its own frame `start`, an effect's at the device's.
+        constexpr unsigned start = 512;
+        unsigned made = 0, at = 0, best = 0;
+        float peak = 0;
+        std::array<float, most> l {}, r {};
+        for (unsigned block = 0; block < 64; ++block) {
+            l.fill(0); r.fill(0);
+            if (!instrument && at <= start && start < at + most) l[start - at] = r[start - at] = 1;
+            probe->render(l.data(), r.data(), most, [&](float* pl, float* pr, unsigned n) {
+                if (instrument && made <= start && start < made + n) { pl[start - made] += 1; pr[start - made] += 1; }
+                made += n;
+            });
+            for (unsigned f = 0; f < most; ++f, ++at)
+                if (std::fabs(l[f]) > peak) { peak = std::fabs(l[f]); best = at; }
+        }
+        double sent = instrument ? start * double(device_rate) / plugin_rate : start;
+        return unsigned(std::max(0.0, std::round(best - sent)));
+    }
 
     // `frames` device frames into left/right: an instrument adds into them, an effect replaces them with what it
     // made of them. `process(left, right, n)` runs the plug-in for n frames of its own, in place (an effect's input
@@ -92,6 +122,7 @@ private:
     std::array<float, 2 * in_ring> in {};
     unsigned out_read = 0, out_write = 0, in_read = 0, in_write = 0;
     double ratio = 1; // plug-in frames per device frame
+    unsigned lag = 0; // latency()
     bool on = false, is_instrument = true;
 };
 

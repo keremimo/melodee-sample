@@ -19,6 +19,10 @@ public:
     // An instrument adds its output into left/right; an effect works on them
     // in place. `frames` is at most the engine host's block.
     virtual void render(float* left, float* right, unsigned frames) = 0;
+    // Roadmap P4, plug-in delay compensation: how many device frames its output lags what goes in (an effect) or
+    // the notes it is sent (an instrument): the latency the plug-in reports, at the device's rate, and its rate
+    // converter's. The engine host delays the other paths to match.
+    virtual unsigned latency() const { return 0; }
 };
 
 } // namespace melodee

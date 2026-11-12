@@ -1312,6 +1312,7 @@ const Preview previews[] {
         s.ui.settings.audio_rate = 48000; s.ui.settings.audio_periods = 4;
         s.audio_rate = 48000; s.audio_periods = 4; s.audio_xruns = 1;
         s.machine.render_load = 0.47f; // the blocks' share of their time, beside the dropout (roadmap P2)
+        s.machine.pdc_frames = 152;    // a 44.1 kHz plug-in effect's converter held back (roadmap P4)
     }},
     {"settingssampling", [](Shell&, Snapshot& s) { // the sampling rows: how Audio Recall cuts, when a take ends on its own
         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 4; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;

@@ -147,7 +147,7 @@ fs::path plugin_home(const std::string& card_top) {
 class PluginHandle final : public PluginRunner {
 public:
     PluginHandle(std::unique_ptr<juce::AudioPluginInstance> plugin, bool is_instrument, double rate, double plugin_rate)
-        : instance(std::move(plugin)), instrument(is_instrument), sample_rate(rate) {
+        : instance(std::move(plugin)), instrument(is_instrument), sample_rate(rate), plugin_rate(plugin_rate > 0 ? plugin_rate : rate) {
         channels = std::max({2, instance->getTotalNumInputChannels(), instance->getTotalNumOutputChannels()});
         memory.assign(size_t(channels) * EngineHost::block, 0.0f);
         bridge.reset(unsigned(std::lround(plugin_rate)), unsigned(std::lround(rate)), is_instrument);
@@ -165,6 +165,11 @@ public:
             midi(uint8_t(0xb0 | ch), 120, 0); // all sound off
             midi(uint8_t(0xb0 | ch), 123, 0); // all notes off
         }
+    }
+    // Roadmap P4: what the plug-in reports (at its own rate, so scaled to the device's) and the rate bridge's.
+    unsigned latency() const override {
+        int own = std::max(instance->getLatencySamples(), 0);
+        return unsigned(std::lround(own * (sample_rate / plugin_rate))) + bridge.latency();
     }
     void render(float* left, float* right, unsigned frames) override {
         frames = std::min(frames, EngineHost::block);
@@ -210,6 +215,7 @@ public:
     std::unique_ptr<juce::AudioPluginInstance> instance;
     const bool instrument;
     const double sample_rate;
+    const double plugin_rate;            // what the plug-in itself runs at (an Open MPC one: 44.1 kHz)
     std::vector<int> shown;              // parameter indices the pages show, in order
     bool qlinks = false;
     std::atomic<float> load {0};         // share of a block's time

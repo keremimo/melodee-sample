@@ -317,6 +317,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
         for (unsigned c = 0; c < m.core_load.size(); ++c) m.core_load[c] = machine.core_load[c].load(std::memory_order_relaxed);
         m.render_load = host.render_load();
         for (unsigned t = 0; t < melodee::track_count; ++t) m.track_load[t] = host.track_load(t);
+        m.pdc_frames = host.compensation();
         m.card = machine.card.load(std::memory_order_relaxed);
         m.card_free = machine.card_free.load(std::memory_order_relaxed);
         m.card_total = machine.card_total.load(std::memory_order_relaxed);

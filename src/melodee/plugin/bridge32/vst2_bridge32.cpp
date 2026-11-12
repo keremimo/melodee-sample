@@ -113,7 +113,7 @@ bool open (const char* path)
     }
     dispatch (vst2::op::open);
     shared->info = { effect->numInputs, effect->numOutputs, effect->numParams, effect->numPrograms,
-                     effect->flags, effect->uniqueId, effect->version };
+                     effect->flags, effect->uniqueId, effect->version, effect->initialDelay };
     dispatchText (vst2::op::getEffectName, 0, shared->text, bridge::maxText);
     if (shared->text[0] == 0)
         dispatchText (vst2::op::getProductString, 0, shared->text, bridge::maxText);
@@ -201,6 +201,7 @@ bool run (bridge::Command command)
                 timeInfo.samplePos = timeInfo.ppqPos = 0.0;
                 dispatch (vst2::op::mainsChanged, 0, 1);
                 dispatch (vst2::op::startProcess);
+                shared->info.initialDelay = effect->initialDelay; // a plug-in may set it as it is switched on
             }
             else
             {

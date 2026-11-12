@@ -52,6 +52,9 @@ public:
     void process(float* left, float* right, unsigned frames);
     // Forget everything it holds (delay lines, filters, envelopes), keeping its kind and parameters.
     void clear();
+    // Roadmap P4, delay compensation: frames its output lags its input (a Limiter's LOOKAHEAD; 0 for the rest, and
+    // bypassed or out of memory).
+    unsigned latency() const { return current == EffectKind::Limiter && memory && !bypass ? delay : 0; }
 
 private:
     struct Biquad {
@@ -78,6 +81,7 @@ private:
     bool resting = false;         // bypassed and faded out: not run, and cleared before it runs again
     std::array<int, effect_params> p {};
     float* memory = nullptr;
+    DelayPool* home = nullptr; // the pool set_kind() took from: a Limiter takes a block only once it looks ahead
     unsigned write = 0;
 
     // Derived values (update()).

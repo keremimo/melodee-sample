@@ -108,6 +108,7 @@ struct Snapshot {
         uint8_t plugins = 0;                 // plug-ins loaded
         float plugins_load = 0;              // their share of the audio time
         std::array<float, track_count> track_load {}; // each track's share of a block (roadmap P2), as render_load
+        unsigned pdc_frames = 0;             // roadmap P4: what plug-in delay compensation holds everything back by
     } machine;
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };

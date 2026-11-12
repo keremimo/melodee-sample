@@ -117,6 +117,13 @@ void rows_draw(Paint& p, const Snapshot& s) {
     p.text(juce::String(int(std::lround(load * 100))) + " %", x + 196, y, 44, list_row_h, plain(load_colour(load), type::body, Weight::SemiBold));
     if (s.audio_xruns) trouble(p, right, cy, s.audio_xruns);
     else icon(p, Icon::Check, right - 14, cy - 7, 14, colour::play, 1.8f);
+    // Roadmap P4: what plug-in delay compensation holds everything back by, while it holds anything.
+    if (!s.machine.pdc_frames) return;
+    float py = y + list_row_h, pcy = py + list_row_h / 2;
+    float ms = float(s.machine.pdc_frames) * 1000.0f / float(std::max(s.audio_rate, 1u));
+    icon(p, Icon::Clock, x + 10, pcy - 7, 14, colour::sec, 1.4f);
+    p.text("PDC", x + 30, py, 40, list_row_h, caps_text(colour::mid));
+    p.text(juce::String(ms, 1) + " ms", x + 70, py, 80, list_row_h, plain(colour::text, type::body, Weight::SemiBold));
 }
 
 void settings_draw(Paint& p, const Snapshot& s) {
