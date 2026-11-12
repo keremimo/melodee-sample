@@ -9,17 +9,18 @@
 // a knob's, so the shell moves it through the same Context::apply (and Motion
 // records it in the same lanes) and the screen and the fader light read it.
 // Pages with an obvious job take it over (Kerem, open question 2): Mix the
-// selected track's level, Sends its send, Step Edit nudges the event, Knob FX
-// slides from its setting A to B (round 2), the Compressor its amount, Flex
-// Beat its mix. Everywhere else the track's own target (the Fader page,
-// Shift + Pad 9), unless it is off.
+// selected track's level, Sends its send, Knob FX slides from its setting
+// A to B (round 2), the Compressor its amount, Flex Beat its mix (Step Edit,
+// step entry since round 2, has none: Roll's Shift + K1 nudges a note).
+// Everywhere else the track's own target (the Fader page, Shift + Pad 9),
+// unless it is off.
 // Plain functions of the project and the interface, for the test.
 namespace melodee {
 
 struct FaderJob {
-    enum class Source : uint8_t { None, Target, Page, Nudge };
+    enum class Source : uint8_t { None, Target, Page };
     Source source = Source::None; // None: the track's target is off (or it has no track)
-    Binding binding;              // the value; unbound for a nudge, or a pad target with no sample on the last pad
+    Binding binding;              // the value; unbound for a pad target with no sample on the last pad
     bool centred = false;         // a value either side of a middle (pan, tune): the light is brightest there
     bool learned = false;         // Target: the pot it learned (fader C), not one of the eight
     bool pad = false;             // Target: the last pad hit's own value (its name carries the pad)

@@ -507,13 +507,20 @@ hold to steer, Shift + Seq to zoom in**.
   Melodee's settings; B1 back, the pads play. Patterns' header names it
   (REC Q 1/32T, REC Q OFF). Overdub. A take is one undo.
   While the song plays, a pattern launched is written as a clip.
-- **Step Edit** (Shift + Seq, under the editor; from Roll on the note in
-  focus): the events starting in one step of Q, listed. Wheel a step, −/+
-  through its events, a pad picks its event; K1 pattern length, K2 Q, K3
-  velocity, Shift + K1 the event's length, Shift + K2 time signature; the
-  fader nudges the event a tick a step; B3 erases the event, Erase + pad
-  asks, then erases that pad's events. B1 CLOSE, Push, Seq or Shift + Seq
-  go back to the editor.
+- **Step Edit** (Shift + Seq, under the editor): step entry, a pattern
+  typed in with the transport stopped. A caret stands on a step of Q
+  (shared with Steps and Roll); play a pad or a chord and it is written
+  there, heard as it goes in, and when the pads let go the caret moves on;
+  B2 REST moves it on without writing, B3 ERASE steps back and takes that
+  step out, the wheel moves it without writing (all round the pattern).
+  K1–K3 are what a pad writes: its length in steps, velocity (Played: as
+  hit) and chance; Shift + K1 the pattern's length, Shift + K2 Q, Shift + K3
+  the time signature; −/+ the octave (a kit's bank). Sixteen steps round
+  the caret show each step's notes as bars (lower keys lower, taller for
+  harder), and a panel the pads held (else what the step holds) and the
+  step the caret goes to. A chord on a step is one undo. Erase + pad asks,
+  then erases that pad's events. B1 BACK, Push, Seq or Shift + Seq go back
+  to the editor.
 - **Roll** (B2): the pattern's notes, each at its own tick for its own length, over bar
   lines, any number to a step. The cursor is a step of Q and a pitch: the
   wheel moves it a step (onto the nearest note starting there), Shift +
@@ -521,8 +528,9 @@ hold to steer, Shift + Seq to zoom in**.
   step's), −/+ walk the chord in the step and then a semitone;
   the view scrolls a step at a time, and dots on its edges mark notes above
   and below. The note at the cursor is in focus, drawn white and named in
-  the header; K1 its length, K2 velocity, K3 chance (ROLL again: its
-  ratchet, drawn as its hits along the note). A pad held on the note in
+  the header; K1 its length, K2 velocity, K3 chance, Shift + K1 NUDGE (how
+  many ticks it sits early or late of its nearest grid line; the cursor
+  follows it) (ROLL again: its ratchet, drawn as its hits along the note). A pad held on the note in
   focus turns the cards to locks on it, as a step held on Steps (header
   LOCK; a locked note has a square at its start). A pad writes its note
   at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
@@ -884,7 +892,7 @@ dot each on a kit): Pad Volume, Pad Pan, Pad Tune, Pad Attack, Pad Decay /
 Release, Pad Cutoff (the last pad's), Kit Volume, Mod Wheel; a synth has
 the mod wheel alone. Until a pot or the wheel picks, a kit takes Pad Volume
 and a synth the mod wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
-send, Step Edit nudges, Knob FX from A to B, Compressor its amount,
+send, Knob FX from A to B, Compressor its amount,
 Flex Beat its mix. The fader takes a value over by Fader takeover (Pickup
 by default); Seq Record writes the lane of what it moves; Erase + fader
 asks to erase that lane. A card at the picture's bottom right says what it
@@ -1068,8 +1076,8 @@ while following.
   On Roll, Steps and Step Edit a pad is one step of the pattern from press
   to release: the note it writes, toggles or picks and whatever the wheel,
   the pots or the fader do to it while it is held (undo while holding takes
-  that step back). The note cards and Step Edit's fader nudge are steps
-  like any pot. Mute, solo, mode buttons and the transport are not steps.
+  that step back). The note cards and Roll's NUDGE are steps like any
+  pot; on Step Edit each step typed in is one. Mute, solo, mode buttons and the transport are not steps.
   A load or a new project forgets them.
 - **Takeover**: a pot drives its value once it meets it (Pickup), moves it
   part of the way (Scaled) or at once (Instant); the card shows the value

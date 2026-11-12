@@ -4,8 +4,8 @@
 #include <cstdint>
 
 // The fader (0..127), parity phase 8. What it drives is shell/fader_job.h:
-// the page's own job where it has one (Mix level, Sends send, Step Edit
-// nudge, Knob FX A to B, Compressor amount, Flex Beat mix), else the track's
+// the page's own job where it has one (Mix level, Sends send, Knob FX A to
+// B, Compressor amount, Flex Beat mix), else the track's
 // target from the Fader page (Shift + Pad 9). It takes over a value by the
 // fader's takeover mode (Settings; Pickup by default, as on the MPC), goes
 // through Context::apply so Seq Record writes its Motion lane (a pad's own

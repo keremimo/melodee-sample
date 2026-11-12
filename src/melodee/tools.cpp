@@ -307,10 +307,10 @@ void preview_projects(Snapshot& s) {
     s.ui.project_rows = uint16_t(project_rows(v.entries.size(), s.project_folder)); // as the shell copies it in
 }
 
-// Step Edit on the kit (track 4): step 5 of pattern 1 holds a kick, a hat and
-// a snare played a little late; the hat is chosen.
+// Step Edit on the kit (track 4), step entry: the caret on step 5 of pattern 1, which holds a kick, a hat and
+// a snare played a little late; the steps before it typed in, the transport stopped.
 void step_edit_kit(Shell& shell, Snapshot& s) {
-    s.ui.page = PageId::StepEdit; s.ui.track = 3; s.playing = true; s.position = 4 * sixteenth_ticks + 9;
+    s.ui.page = PageId::StepEdit; s.ui.track = 3; s.playing = false;
     auto& pattern = shell.patterns().at[3][0];
     pattern = Pattern {};
     pattern.length = 2 * 4 * ticks_per_quarter;
@@ -1507,9 +1507,19 @@ const Preview previews[] {
          step_edit_kit(shell, s);
          s.ui.page = PageId::Roll; s.ui.roll_key = uint8_t(sampler_first_note + 2); s.ui.roll_top = uint8_t(sampler_first_note + 11);
      }},
-    {"stepedit", [](Shell& shell, Snapshot& s) { // Shift + Seq: the kit's step 5, three events, the second chosen
+    {"stepedit", [](Shell& shell, Snapshot& s) { // Shift + Seq (step entry): the caret on the kit's step 5, what it holds
          step_edit_kit(shell, s);
-         s.ui.turning = 2; s.ui.turned_at = s.now;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"stepentrychord", [](Shell& shell, Snapshot& s) { // a chord going in at the caret: A01 and A03 held, a fixed velocity
+         step_edit_kit(shell, s);
+         s.ui.step_cursor = 6; s.ui.entry_velocity = 100; s.ui.entry_length = 2;
+         s.ui.entry_held = 0b101; s.held_keys[0] = int16_t(sampler_first_note); s.held_keys[2] = int16_t(sampler_first_note + 2);
+     }},
+    {"rollnudge", [](Shell& shell, Snapshot& s) { // Roll, Shift held: NUDGE on K1, the note in focus a little late
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Roll; s.ui.step_cursor = 4; s.ui.roll_key = uint8_t(sampler_first_note + 1);
+         s.ui.roll_top = uint8_t(sampler_first_note + 11); s.ui.shift = true;
      }},
     {"erasepad", [](Shell& shell, Snapshot& s) { // Erase + pad 1 on Step Edit: B1 Cancel, B3 Do it
          step_edit_kit(shell, s);

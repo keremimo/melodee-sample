@@ -4,14 +4,12 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/fader_job.h"
-#include "melodee/shell/step_edit.h"
 #include "melodee/shell/takeover.h"
 #include <algorithm>
 #include <cstdlib>
 
 namespace melodee {
 namespace {
-constexpr uint32_t nudge_gesture_key = 0xFADE0000u; // no card's key: the fader's nudge is its own control
 
 // Which value the fader drives, for takeover: the card, and for a pad's
 // own value which pad (the last hit), so another pad is picked up afresh.
@@ -62,12 +60,6 @@ void fader_move(Context& c, int value, bool syncing) {
     ui.fader_moved_at = c.now;
     if (ui.erase) ui.erase_used = true; // Erase + fader: its release deletes nothing
     if (ui.ask != UiState::Ask::None) return; // a question open: the fader waits, as the pots do
-    if (job.source == FaderJob::Source::Nudge) { // Step Edit: by how far it went (its place means nothing here)
-        if (before < 0) return;
-        c.touch_scope(pattern_scope(c.project, ui), nudge_gesture_key); // a run of nudges is one undo step
-        nudge_event(c, value - before);
-        return;
-    }
     if (!job.binding.bound()) return;
     if (ui.erase) { erase_lane(c, job); return; }
     int to = 0;

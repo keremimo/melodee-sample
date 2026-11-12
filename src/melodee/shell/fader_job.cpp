@@ -85,7 +85,6 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
     FaderJob job;
     auto page = [&](Binding b) { job.source = FaderJob::Source::Page; job.binding = b; };
     switch (ui.page) {
-    case PageId::StepEdit: job.source = FaderJob::Source::Nudge; return job;
     case PageId::Tracks: page({Kind::Level, 0, 0, 127, track.mix.level}); return job;
     case PageId::Sends: page({Kind::Send, int(ui.sends_bus % bus_count), 0, 100, track.mix.sends[ui.sends_bus % bus_count]}); return job;
     case PageId::Compressor: page({Kind::CompAmount, 0, 0, 100, project.compressor.amount}); return job;
@@ -113,7 +112,7 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
 
 float fader_light_level(const FaderJob& job) {
     if (job.source == FaderJob::Source::None) return 0;
-    if (job.source == FaderJob::Source::Nudge || !job.binding.bound()) return 0.35f; // a job with no value to show
+    if (!job.binding.bound()) return 0.35f; // a job with no value to show
     float f = std::clamp(job.binding.fraction(), 0.0f, 1.0f);
     if (job.centred) f = 1 - std::fabs(f - 0.5f) * 2;
     return 0.06f + 0.94f * f; // never quite dark while the fader has a job

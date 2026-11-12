@@ -56,6 +56,17 @@ void set_event_pitch_ramp(Context& c, int semitones);
 void set_event_condition(Context& c, int condition); // a trig condition (model/trig.h)
 // B3: the selected event goes (one undo, or part of a take).
 void erase_event(Context& c);
+// Step entry (round 2, step-edit2 C; pages/step_edit_page.cpp). A pad down writes its key at the caret
+// (UiState::step_cursor) with the entry's length, velocity and chance, heard as it goes in (a chord: each pad held,
+// one undo for the step); when the last pad held lets go the caret moves on a step of Q. REST moves it on without
+// writing; ERASE steps back and takes that step out; the wheel moves it. All wrap round the pattern.
+void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down);
+void entry_rest(Context& c);
+void entry_back(Context& c);
+void entry_move(Context& c, int way);
+// Roll's Shift + K1 NUDGE: the note in focus `offset` ticks off its nearest grid line of Q (bindings.h nudge_card()),
+// the cursor following it so it stays in focus.
+void set_event_nudge(Context& c, int offset);
 // Erase + pad, once B3 says so: every event of `key` in the pattern (one undo, or part of a take).
 void erase_key_events(Context& c, int key);
 

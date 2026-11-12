@@ -695,7 +695,7 @@ std::string Shell::fx_summary() const {
          + " melodee_comp_reduction=" + text + padfx_summary() + fader_summary();
 }
 
-// Phase 8: the fader. melodee_fader_job: 0 off, 1 the track's target, 2 the page's own job, 3 Step Edit's nudge;
+// Phase 8: the fader. melodee_fader_job: 0 off, 1 the track's target, 2 the page's own job;
 // melodee_fader_kind: the card it drives (Binding::Kind), melodee_fader_value its value; takeovers 0 Pickup, 1 Scaled, 2 Instant.
 std::string Shell::fader_summary() const {
     uint32_t f = fader_bits.load(std::memory_order_relaxed), v = fader_value.load(std::memory_order_relaxed);

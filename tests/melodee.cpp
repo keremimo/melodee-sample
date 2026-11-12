@@ -3119,7 +3119,7 @@ void fader_and_takeover() {
     job = fader_job(*project, ui);
     CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::Level);
     ui.page = PageId::Sends; CHECK(fader_job(*project, ui).binding.kind == Kind::Send);
-    ui.page = PageId::StepEdit; CHECK(fader_job(*project, ui).source == FaderJob::Source::Nudge);
+    ui.page = PageId::StepEdit; CHECK(fader_job(*project, ui).source == FaderJob::Source::Target); // step entry: no nudge (round 2)
     ui.page = PageId::Compressor; CHECK(fader_job(*project, ui).binding.kind == Kind::CompAmount);
     ui.page = PageId::FlexBeat; CHECK(fader_job(*project, ui).binding.kind == Kind::FlexMix);
     ui.page = PageId::KnobFx; // no effect loaded: the track's target
@@ -4661,6 +4661,29 @@ void roll() {
     roll_step(p, ui, 1); CHECK(ui.step_cursor == 9 && ui.roll_key == 57 && roll_focus(p, ui) < 0); // an empty step keeps the pitch
     CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 40 && ui.roll_key == 69);  // Shift + wheel: note to note over empty bars
     CHECK(!roll_jump(p, ui, 1) && ui.step_cursor == 40);
+    { // Round 2: NUDGE on Shift + K1, the note in focus off its nearest grid line (1/16: -12 .. 11 ticks).
+        Pattern n;
+        n.length = p.length;
+        Event late; late.tick = 20 * sixteenth_ticks + 5; late.key = 50; CHECK(n.add(late));
+        Event early; early.tick = 30 * sixteenth_ticks - 4; early.key = 51; CHECK(n.add(early));
+        CHECK(nudge_base(n, late) == 20 * sixteenth_ticks && nudge_base(n, early) == 30 * sixteenth_ticks);
+        auto card = nudge_card(n, late);
+        CHECK(card.kind == Binding::Kind::EventNudge && card.value == 5 && card.min == -12 && card.max == 11);
+        CHECK(nudge_card(n, early).value == -4);
+        Project project;
+        UiState at; at.page = PageId::Roll; at.step_cursor = 20; at.roll_key = 50;
+        auto shift = shift_bindings(project, at, n);
+        CHECK(shift[0].kind == Binding::Kind::EventNudge && shift[0].value == 5 && !shift[1].bound());
+        at.trig_cards = true; // the TRIG row keeps Shift + K1 free
+        CHECK(!shift_bindings(project, at, n)[0].bound());
+        // Step Edit as step entry: K1-K3 what a pad writes; Shift + K1-K3 the pattern's length, Q, the signature.
+        UiState entry; entry.page = PageId::StepEdit; entry.entry_length = 2; entry.entry_velocity = 0; entry.entry_chance = 80;
+        auto cards = base_bindings(project, entry, n);
+        CHECK(cards[0].kind == Binding::Kind::EntryLength && cards[0].value == 2 && cards[1].kind == Binding::Kind::EntryVelocity
+              && cards[1].value == 0 && cards[1].min == 0 && cards[2].kind == Binding::Kind::EntryChance && cards[2].value == 80);
+        auto second = shift_bindings(project, entry, n);
+        CHECK(second[0].kind == Binding::Kind::PatternLength && second[1].kind == Binding::Kind::Division && second[2].kind == Binding::Kind::TimeSignature);
+    }
     CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 8 && ui.roll_key == 57);
     // and through a chord one note at a time, low to high, both ways.
     ui.step_cursor = 6; ui.roll_key = 60;
@@ -7262,7 +7285,8 @@ void ratchets() {
         ui.page = PageId::Roll; ui.step_cursor = 1; ui.roll_key = 60;
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::EventRatchet);
         ui.trig_cards = false;
-        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::EventLength && !shift_bindings(*project, ui, q)[0].bound());
+        CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::EventLength
+              && shift_bindings(*project, ui, q)[0].kind == Binding::Kind::EventNudge); // Shift + K1 off the TRIG row: NUDGE (round 2)
         ui.track = 3; ui.page = PageId::Steps; ui.trig_cards = true;
         Pattern kit;
         Event hit;

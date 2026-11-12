@@ -4,6 +4,9 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/bindings.h"
+#include "melodee/shell/undo_scope.h"
+#include <string>
 #include <algorithm>
 
 namespace melodee {
@@ -140,6 +143,81 @@ void erase_event(Context& c) {
     });
     event_move(c, 0); // the selection stays inside the step
     c.notice(what);
+}
+
+namespace {
+unsigned caret_of(const Pattern& p, const UiState& ui) { return unsigned(std::max<int>(ui.step_cursor, 0)) % p.steps(); }
+// The caret onto `step`, round the pattern either way.
+void caret_to(Context& c, int step) {
+    int steps = int(c.pattern().steps());
+    step = ((step % steps) + steps) % steps;
+    c.ui.step_cursor = int16_t(std::min(step, 0x7fff));
+    c.ui.steps_bar = uint8_t(std::min(step / int(bar_steps), 255));
+    c.ui.step_event = 0;
+}
+constexpr uint32_t entry_gesture = 0xE7700000u; // a step's entry, one undo however many pads it writes (| the step)
+} // namespace
+
+void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
+    auto& ui = c.ui;
+    uint16_t bit = uint16_t(1u << (pad % 16));
+    c.play_pad(pad, velocity, down); // heard as it goes in
+    if (!down) {
+        ui.entry_held = uint16_t(ui.entry_held & ~bit);
+        if (!ui.entry_held && ui.entry_wrote) { // the last pad of the step let go: on to the next
+            ui.entry_wrote = false;
+            caret_to(c, int(caret_of(c.pattern(), ui)) + 1);
+        }
+        return;
+    }
+    int key = pad_key(c.project, c.track(), pad);
+    if (key < 0 || !c.track().used()) return;
+    ui.entry_held = uint16_t(ui.entry_held | bit);
+    auto& p = c.pattern();
+    unsigned q = p.q(), caret = caret_of(p, ui);
+    c.touch_scope(pattern_scope(c.project, ui), entry_gesture | caret);
+    Event e;
+    e.tick = caret * q;
+    e.key = uint8_t(key);
+    e.velocity = ui.entry_velocity ? ui.entry_velocity : std::max<uint8_t>(velocity, 1);
+    e.length = uint16_t(std::min<uint32_t>({uint32_t(ui.entry_length) * q, p.length, 65535u}));
+    e.chance = ui.entry_chance;
+    p.add(e); // a note of the same key already there is replaced
+    c.sync_pattern(ui.track, c.track().pattern);
+    ui.entry_wrote = true;
+}
+
+void entry_rest(Context& c) { caret_to(c, int(caret_of(c.pattern(), c.ui)) + 1); }
+
+void entry_back(Context& c) {
+    auto& p = c.pattern();
+    int step = int(caret_of(p, c.ui)) - 1;
+    caret_to(c, step);
+    unsigned at = caret_of(p, c.ui), q = p.q();
+    auto in = step_events(p, at);
+    if (!in.count) return;
+    std::string what = "Erase step " + std::to_string(at + 1);
+    c.edit_pattern(c.ui.track, c.track().pattern, what.c_str(), [&] {
+        auto& pattern = c.pattern();
+        pattern.events.erase(std::remove_if(pattern.events.begin(), pattern.events.end(),
+                                            [&](const Event& e) { return e.tick >= at * q && e.tick < (at + 1) * q; }),
+                             pattern.events.end());
+        c.sync_pattern(c.ui.track, c.track().pattern);
+    });
+    c.notice(what);
+}
+
+void entry_move(Context& c, int way) { caret_to(c, int(caret_of(c.pattern(), c.ui)) + way); }
+
+void set_event_nudge(Context& c, int offset) {
+    auto& pattern = c.pattern();
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui); // the note in focus
+    int at = selected_event(pattern, c.ui);
+    if (at < 0) return;
+    const auto& e = pattern.events[size_t(at)];
+    int64_t to = int64_t(nudge_base(pattern, e)) + offset;
+    nudge_event(c, int(std::clamp<int64_t>(to, 0, int64_t(pattern.length) - 1) - int64_t(e.tick)));
+    if (c.ui.page == PageId::Roll) roll_follow(c.pattern(), c.ui); // the view onto it, so it stays in focus
 }
 
 void erase_key_events(Context& c, int key) {

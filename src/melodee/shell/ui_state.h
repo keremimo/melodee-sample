@@ -102,10 +102,15 @@ struct UiState {
     uint8_t steps_bar = 0;
     int16_t step_cursor = 0, held_step = -1;
     uint8_t step_event = 0;                   // Step Edit: which of the cursor step's events (shell/step_edit.h)
+    // Step Edit (round 2, step-edit2 C, step entry): what a pad writes at the caret (step_cursor): its length in
+    // steps of Q, its velocity (0: as played) and chance; the pads held for this step, and whether they wrote.
+    uint8_t entry_length = 1, entry_velocity = 0, entry_chance = 100;
+    uint16_t entry_held = 0;
+    bool entry_wrote = false;
     bool trig_cards = false;                  // Steps and Roll: their lit key again turns the cards to the note's TRIG row (roadmap P1)
     bool fill = false;                        // Play held while playing: Fill (FILL trig conditions play)
     int8_t held_note = -1;                    // Roll: the pad held on the note in focus (its cards lock it, roadmap P1)
-    // The fader (shell/fader.cpp): where it sits (-1 until it moves; Step Edit nudges by how far it went)
+    // The fader (shell/fader.cpp): where it sits (-1 until it moves)
     // and whether it has met the value it drives (takeover), when it last moved (its card shows a moment).
     Pot fader;
     uint32_t fader_moved_at = 0;

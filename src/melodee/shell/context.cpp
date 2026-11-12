@@ -607,6 +607,10 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EventRamp: set_event_ramp(*this, value); break;
     case Kind::EventPitchRamp: set_event_pitch_ramp(*this, value); break;
     case Kind::EventCondition: set_event_condition(*this, value); break;
+    case Kind::EntryLength: ui.entry_length = uint8_t(std::clamp(value, 1, 16)); break;     // step entry: what a pad writes
+    case Kind::EntryVelocity: ui.entry_velocity = uint8_t(std::clamp(value, 0, 127)); break;
+    case Kind::EntryChance: ui.entry_chance = uint8_t(std::clamp(value, 0, 100)); break;
+    case Kind::EventNudge: set_event_nudge(*this, value); break;                             // Roll's Shift + K1
     case Kind::LaneLength: { // Steps on a kit: the last pad's lane loops over so many steps of Q (all of them: with the pattern)
         auto& p = pattern();
         uint32_t ticks = uint32_t(std::clamp(value, 1, int(p.steps()))) * p.q();

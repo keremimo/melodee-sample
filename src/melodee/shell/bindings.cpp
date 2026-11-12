@@ -186,6 +186,11 @@ bool lock_place(const Project& project, const UiState& ui, const Pattern& patter
     return false;
 }
 
+Binding nudge_card(const Pattern& pattern, const Event& e) {
+    int q = int(pattern.q());
+    return {Kind::EventNudge, 0, -(q / 2), (q + 1) / 2 - 1, int(e.tick) - int(nudge_base(pattern, e))};
+}
+
 int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::Param) return motion_lane(unsigned(b.id));
     if (b.kind == Kind::ModWheel) return motion_lane(motion_wheel);
@@ -466,14 +471,12 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {tap, Binding {}, Binding {Kind::RecGain, 0, -12, 24, in.gain}};
     }
     case PageId::Patterns: return pattern_shift_cards(project, ui, pattern);
-    case PageId::StepEdit: { // Shift + K1 the selected event's length (in steps of Q), Shift + K2 the time signature (as on the MPC)
-        int at = selected_event(pattern, ui);
-        Binding length {};
-        if (at >= 0) {
-            unsigned q = pattern.q(), steps = std::max(1u, (pattern.events[size_t(at)].length + q / 2) / q);
-            length = {Kind::EventLength, 0, 1, 64, int(std::min(steps, 64u))};
-        }
-        return {length, Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature}, Binding {}};
+    case PageId::StepEdit: { // step entry: Shift + K1 the pattern's length, Shift + K2 Q (the caret's step), Shift + K3 the time signature
+        unsigned bars = pattern_bars(project, pattern), index = 0;
+        while (index + 1 < pattern_length_count && pattern_lengths[index + 1] <= bars) ++index;
+        return {Binding {Kind::PatternLength, 0, 0, int(pattern_length_count) - 1, int(index)},
+                Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
+                Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature}};
     }
     case PageId::Steps: { // a kit: Shift + K1 the lane's own length; on the TRIG row Shift + K2 its note's pitch ramp
         int lane = steps_lane(track);
@@ -485,11 +488,13 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         if (!ui.trig_cards || n < 0) return {length, Binding {}, Binding {}};
         return {length, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
     }
-    case PageId::Roll: { // the TRIG row: Shift + K2 a kit pad's pitch ramp (the note in focus)
-        if (!ui.trig_cards || track.engine != EngineKind::Sampler) return {};
+    case PageId::Roll: { // Shift + K1 NUDGE (round 2): the note in focus off its grid line; the TRIG row: Shift + K2 a kit pad's pitch ramp
         int at = roll_focus(pattern, ui);
         if (at < 0) return {};
-        return {Binding {}, Binding {Kind::EventPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(at)].pitch_ramp}, Binding {}};
+        const auto& e = pattern.events[size_t(at)];
+        if (!ui.trig_cards) return {nudge_card(pattern, e), Binding {}, Binding {}};
+        if (track.engine != EngineKind::Sampler) return {};
+        return {Binding {}, Binding {Kind::EventPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, e.pitch_ramp}, Binding {}};
     }
     case PageId::Trim: case PageId::PadMix: case PageId::EnvelopePage: case PageId::FilterEnvPage: case PageId::PadPage: case PageId::PlayPage:
         return pad_page_shift(track, ui, ui.page);
@@ -601,15 +606,9 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::Patterns: return pattern_cards(project, pattern);
     case PageId::RecQuantize: // K1 the grid: the pattern's Q, or 1/4 .. 1/64 of its own
         return {Binding {Kind::RecGrid, 0, 0, int(Division::Count), ui.settings.rec_grid}, Binding {}, Binding {}};
-    case PageId::StepEdit: { // as on the MPC: K1 the pattern's length (as on Patterns), K2 Q, K3 the selected event's velocity
-        unsigned bars = pattern_bars(project, pattern), index = 0;
-        while (index + 1 < pattern_length_count && pattern_lengths[index + 1] <= bars) ++index;
-        int at = selected_event(pattern, ui);
-        Binding velocity {};
-        if (at >= 0) velocity = {Kind::EventVelocity, 0, 1, 127, pattern.events[size_t(at)].velocity};
-        return {Binding {Kind::PatternLength, 0, 0, int(pattern_length_count) - 1, int(index)},
-                Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)}, velocity};
-    }
+    case PageId::StepEdit: // step entry (round 2, step-edit2 C): what a pad writes, its length in steps of Q, velocity (0 as played), chance
+        return {Binding {Kind::EntryLength, 0, 1, 16, ui.entry_length}, Binding {Kind::EntryVelocity, 0, 0, 127, ui.entry_velocity},
+                Binding {Kind::EntryChance, 0, 0, 100, ui.entry_chance}};
     case PageId::TimeCorrect: // Q (the pattern's, as on Patterns), shift and swing for the notes moved
         return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
                 Binding {Kind::TcShift, 0, -int(ticks_per_quarter / 2), int(ticks_per_quarter / 2), ui.tc_shift},

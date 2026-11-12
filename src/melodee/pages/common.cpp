@@ -151,6 +151,14 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
     case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
     case Kind::StepChance: case Kind::EventChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::EntryLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
+    case Kind::EntryVelocity: c.label = "VELOCITY"; c.value = b.value ? juce::String(b.value) : juce::String("Played"); break;
+    case Kind::EntryChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::EventNudge: // Roll's Shift + K1: early or late of its grid line, in ticks
+        c.label = "NUDGE"; c.bipolar = true;
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        c.unit = std::abs(b.value) == 1 ? "tick" : "ticks";
+        break;
     case Kind::LaneLength: // a kit lane's own length (roadmap P1); as long as the pattern: none of its own
         c.label = "LANE"; c.value = b.value >= int(s.pattern.steps()) ? juce::String("All") : juce::String(b.value); c.unit = b.value >= int(s.pattern.steps()) ? "" : "steps";
         break;

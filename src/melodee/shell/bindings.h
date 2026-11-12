@@ -66,7 +66,10 @@ struct Binding {
         StepRatchet, StepRamp, StepPitchRamp, EventRatchet, EventRamp, EventPitchRamp,
         StepCondition, EventCondition, // the TRIG row's K3: a trig condition (model/trig.h), 0..trig_count - 1
         Lock, // a step held on Steps or a pad held on Roll's note in focus: a Motion lane (id) locked there (roadmap P1)
-        LaneLength // Steps on a kit, Shift + K1: the last pad's lane's own length in steps of Q (the pattern's: none)
+        LaneLength, // Steps on a kit, Shift + K1: the last pad's lane's own length in steps of Q (the pattern's: none)
+        // Step Edit as step entry (round 2, step-edit2 C): what a pad writes at the caret, length in steps of Q,
+        // velocity (0: as played), chance; Roll's Shift + K1 NUDGE: the note in focus off its grid line, in ticks.
+        EntryLength, EntryVelocity, EntryChance, EventNudge
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -137,5 +140,9 @@ std::array<Binding, 3> favourite_bindings(const Track& track);
 // (an engine parameter, a kit pad's own value on the last pad, the mod
 // wheel), -1 where it lands in none.
 int binding_lane(const Track& track, const Binding& b);
+// Roll's Shift + K1 NUDGE (round 2): how far `e` sits off its nearest grid line of Q, in ticks (-q/2 .. q/2 - 1);
+// turning it moves the note to that line plus the offset.
+Binding nudge_card(const Pattern& pattern, const Event& e);
+inline uint32_t nudge_base(const Pattern& pattern, const Event& e) { unsigned q = pattern.q(); return (e.tick + q / 2) / q * q; }
 
 } // namespace melodee

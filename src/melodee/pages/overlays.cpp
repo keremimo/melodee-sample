@@ -63,7 +63,7 @@ void draw_shift_layer(Paint& p, const Snapshot& s) {
 // NUDGE) say it on the page.
 void draw_fader_card(Paint& p, const Snapshot& s) {
     if (!s.ui.fader_moved_at || s.now - s.ui.fader_moved_at > 1500) return;
-    if (s.ui.page == PageId::FaderPage || s.ui.page == PageId::StepEdit) return;
+    if (s.ui.page == PageId::FaderPage) return;
     auto shown = fader_shown(s);
     constexpr float w = 176, h = 50;
     float x = zone::width - zone::pad - w, y = zone::knobs_y - h - 3;
