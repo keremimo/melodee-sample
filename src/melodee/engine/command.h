@@ -101,7 +101,9 @@ struct Command {
         // Plug-ins (docs/MELODEE.md): track, value = the entry of Project::plugins a PLUGIN track plays (255 none).
         TrackPlugin,
         // Roadmap P1: value 1 while Fill is held (Play held while playing): FILL conditions play, NOT FILL ones not.
-        Fill
+        Fill,
+        // Roadmap P1: track, value = its speed (model/pattern.h speeds); its patterns come scaled as PatternData.
+        TrackSpeed
 
     };
     Command() = default;

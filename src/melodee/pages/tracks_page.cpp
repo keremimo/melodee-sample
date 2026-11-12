@@ -16,6 +16,8 @@ using namespace ui;
 void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill(juce::String(s.project.used_tracks()) + " USED"));
+    if (s.track().speed != speed_normal) // the strip in hand plays its patterns at a speed (Shift + K1, roadmap P1)
+        h.left.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), colour_of(s)));
     h.right.push_back(label(s.project.name));
     frame(p, s, {{"TRACKS", "LOOPER", "SENDS"}, 0, colour_of(s)}, h);
     track_grid(p, s);

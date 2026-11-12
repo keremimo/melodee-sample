@@ -142,6 +142,21 @@ behaviour changed.
   model, file (FEEL), cards (`feel_cards`) and their kinds; round 2 lays
   them out on Time Correct's page. Why: one timing path for both, and
   turning an amount back takes it back.
+- P1: Euclid lives on Steps' card cycle (STEPS again: TRIG, again on a kit:
+  EUCLID), laid as notes at once on each turn, the lane's own length set
+  to its steps so E(5,12) loops as 12 against the pattern (polymeter, as
+  item 4 made possible), its notes editable after. Variations are Steps'
+  Push sheet (Push was free there), each into the next empty pattern which
+  then plays, as round 2's Capture C does, the original kept. Why: keys
+  act and knobs set; a variation is a new take to compare, not an edit.
+- P1: a track's speed is Tracks' Shift + K1 (the strip in hand; K1 picks
+  the track), applied like the feel to the copy the audio thread plays
+  (`played_pattern`: ticks times den / num, to the nearest tick, so ×3/2
+  and ×3/4 round triplets and odd ticks by half a tick at most), its
+  positions published back in written ticks for the pages and Seq Record
+  (`place_at`, the arp's notes, Rec Quantize's skips scaled). Speed is not
+  part of undo, as the tempo is not. Why: one place for "how it plays";
+  the pattern and its file keep what was written.
 
 ## Waiting for a hand check
 
@@ -227,7 +242,7 @@ behaviour, write the code fresh for this app.
   groove taken from one pattern and laid on another.
 - [x] Generators: Euclid on a kit lane (hits, steps, rotate); a pattern's
   variations (thinner, busier, humanised, reversed, an octave up / down).
-- [ ] A track's playback speed (×½, ×¾, ×1, ×3/2, ×2) without rewriting
+- [x] A track's playback speed (×½, ×¾, ×1, ×3/2, ×2) without rewriting
   its notes.
 
 ## P2: CPU scheduling

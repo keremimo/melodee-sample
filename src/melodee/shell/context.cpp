@@ -612,6 +612,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EntryChance: ui.entry_chance = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::EventNudge: set_event_nudge(*this, value); break;                             // Roll's Shift + K1
     case Kind::EuclidHits: case Kind::EuclidSteps: case Kind::EuclidRotate: set_euclid(b.kind, value); break;
+    case Kind::TrackSpeed: set_speed(unsigned(b.id), value); break;
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FeelStrength: case Kind::FeelSwing: case Kind::FeelHumanize: case Kind::FeelVelocity: case Kind::GrooveFrom:
     case Kind::GrooveAmount:
@@ -871,7 +872,7 @@ void Context::free_retired() {
 void Context::sync_pattern(unsigned t, unsigned p) {
     free_retired();
     Command c {Type::PatternData, uint8_t(t % track_count), uint8_t(p % pattern_count)};
-    c.data = new Pattern(feel_pattern(patterns.at[t % track_count][p % pattern_count])); // as it plays: its feel laid on (roadmap P1)
+    c.data = new Pattern(played_pattern(patterns.at[t % track_count][p % pattern_count], project.tracks[t % track_count].speed)); // as it plays: its feel, its track's speed (roadmap P1)
     if (!host.send(c)) delete c.data;
     dirty = true;
 }

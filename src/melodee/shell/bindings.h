@@ -76,7 +76,8 @@ struct Binding {
         FeelStrength, FeelSwing, FeelHumanize, FeelVelocity, GrooveFrom, GrooveAmount,
         // Generators (roadmap P1): Steps' EUCLID row on a kit (the last pad's lane: hits, steps, rotation) and the VARY
         // sheet's amount (percent).
-        EuclidHits, EuclidSteps, EuclidRotate, VaryAmount
+        EuclidHits, EuclidSteps, EuclidRotate, VaryAmount,
+        TrackSpeed // Tracks, Shift + K1: the strip in hand's playback speed (roadmap P1), id the track, an index of speeds
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

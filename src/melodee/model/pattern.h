@@ -214,6 +214,20 @@ struct Pattern {
     void fit_lanes(); // after the pattern's length changed: lanes as long as it, or longer, go
 };
 
+// A track's playback speed (roadmap P1): its patterns play at num / den of the tempo, the notes as written. The
+// audio thread plays them scaled (speed_pattern: ticks times den / num); the pages and the file keep them as written.
+struct Speed { uint8_t num, den; };
+constexpr unsigned speed_count = 5, speed_normal = 2;
+constexpr Speed speeds[speed_count] {{1, 2}, {3, 4}, {1, 1}, {3, 2}, {2, 1}};
+inline Speed speed_of(unsigned speed) { return speeds[speed < speed_count ? speed : speed_normal]; }
+inline const char* speed_name(unsigned speed) {
+    static const char* names[] {"\xc3\x97\xc2\xbd", "\xc3\x97\xc2\xbe", "\xc3\x97" "1", "\xc3\x97" "1\xc2\xbd", "\xc3\x97" "2"}; // x1/2 .. x2
+    return names[speed < speed_count ? speed : speed_normal];
+}
+Pattern speed_pattern(const Pattern& p, unsigned speed);
+// What the audio thread plays of a pattern on a track at `speed`: its feel laid on, then its speed.
+Pattern played_pattern(const Pattern& p, unsigned speed);
+
 // Roadmap P1, the feel: the pattern as the audio thread plays it (its notes moved and their velocities scaled as its
 // Feel says; the same pattern when plain), and a groove taken from a pattern's notes (none when it has none).
 Pattern feel_pattern(const Pattern& p);

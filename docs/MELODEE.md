@@ -317,6 +317,10 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   glyph and its level up the right edge (muted: a crossed speaker); the
   track in hand as a strip on the right with its name, fader, meter, pan
   and its four sends as bars (A–D, top to bottom). A pad picks its track; K1 the track, K2 its level, K3 its pan;
+  Shift + K1 its playback **speed** (×½, ×¾, ×1, ×1½, ×2: its patterns
+  play that much faster or slower against the tempo, their notes and
+  motion as written, ×1½ turning sixteenths into sixteenth triplets; the
+  header names it, Patterns too; kept in TSPD);
   the wheel or −/+ the track, Push its Stage; the fader is its level. **B2
   LOOPER**, **B3 SENDS**. Pad Bank held + pad still picks a track from any
   page, the same picture over it.

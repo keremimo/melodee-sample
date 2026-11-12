@@ -1620,6 +1620,10 @@ const Preview previews[] {
          step_edit_kit(shell, s);
          s.ui.page = PageId::Steps; s.ui.sheet_open = true; s.ui.sheet_row = 1;
      }},
+    {"tracksspeed", [](Shell&, Snapshot& s) { // Shift on Tracks: track 3 plays its patterns at x1 1/2
+         s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; s.project.tracks[2].speed = 3;
+         s.ui.shift = true;
+     }},
     {"repeatrates", [](Shell&, Snapshot& s) { // Note Repeat on the kit's Pads at 1/64: B3 pressed again (dots under B1 and B3)
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true;
          s.project.tracks[3].arp = true; s.project.tracks[3].arp_rate = 8;

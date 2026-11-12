@@ -7784,7 +7784,74 @@ void generators() {
     }
 }
 
+// A track's playback speed (roadmap P1): x1/2 .. x2, its notes as written.
+void track_speed() {
+    Pattern p;
+    put(p, 0, 60, 100); put(p, 4, 62, 100, 2);
+    p.write_motion(point(8, prophet::Cutoff, 20, 0, 24));
+    p.set_lane_length(64, 6 * sixteenth_ticks);
+    auto fast = speed_pattern(p, 4); // x2: every tick half as far
+    CHECK(fast.length == 8 * sixteenth_ticks && fast.events[1].tick == 2 * sixteenth_ticks && fast.events[1].length == 2 * sixteenth_ticks / 2);
+    CHECK(fast.motion[0].tick == 4 * sixteenth_ticks && fast.motion[0].hold == 12 && fast.lane_length(64) == 3 * sixteenth_ticks);
+    auto slow = speed_pattern(p, 0); // x1/2
+    CHECK(slow.length == 32 * sixteenth_ticks && slow.events[1].tick == 8 * sixteenth_ticks);
+    auto three = speed_pattern(p, 3); // x3/2: sixteenths become sixteenth triplets
+    CHECK(three.length == 256 && three.events[1].tick == 64);
+    CHECK(speed_pattern(p, speed_normal) == p && played_pattern(p, speed_normal) == p);
+    CHECK(std::string(speed_name(4)) == "\xc3\x97" "2" && speed_of(1).num == 3 && speed_of(1).den == 4);
+    // Heard: a track at x2 plays its sixteenths as thirty-seconds; its place is still read in the pattern as written.
+    {
+        using namespace midi_track;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1; project->tracks[0].speed = 4;
+        project->tempo = 1200;
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 4, 62, 100);
+        EngineHost host;
+        host.load(*project, *bank);
+        host.set_audio_format(44100, 384);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        std::vector<MidiOutEvent> ons;
+        for (unsigned b = 0; b < 100; ++b) {
+            host.render(out.data(), 128, 1);
+            MidiOutEvent e;
+            while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn) ons.push_back(e);
+        }
+        const double tick = 44100 * 60.0 / 120 / 96;
+        CHECK(ons.size() >= 2 && ons[0].a == 60 && ons[1].a == 62 && std::llabs(int64_t(ons[1].frame - ons[0].frame) - std::llround(48 * tick)) <= 2);
+        int at = host.position_of(0); // 12800 frames: 55 ticks played, 110 of the pattern as written
+        CHECK(at >= 108 && at <= 112);
+    }
+    // The file: TSPD; without it every track at x1.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->tracks[6].speed = 1;
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back->tracks[6].speed == 1 && back->tracks[5].speed == speed_normal);
+        std::string text(data.begin(), data.end());
+        data[text.find("TSPD")] = 'X';
+        CHECK(load_project(data, *back, *back_bank).empty() && back->tracks[6].speed == speed_normal);
+    }
+    // Tracks' Shift + K1.
+    {
+        auto project = std::make_unique<Project>();
+        load_sound(project->tracks[2], EngineKind::Prophet, 1);
+        project->tracks[2].speed = 3;
+        UiState ui;
+        ui.page = PageId::Tracks; ui.track = 2;
+        Pattern none;
+        auto cards = shift_bindings(*project, ui, none);
+        CHECK(cards[0].kind == Binding::Kind::TrackSpeed && cards[0].value == 3 && cards[0].id == 2 && cards[0].max == int(speed_count) - 1);
+    }
+}
+
 int main() {
+    track_speed();
     generators();
     feel_p1();
     note_repeat_p1();

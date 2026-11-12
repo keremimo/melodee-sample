@@ -22,19 +22,19 @@ void flush_denormals() {
 float level_gain(int level) { float x = std::clamp(level, 0, 127) / 100.0f; return x * x; }
 } // namespace
 
-PlayPatterns copy_patterns(const std::array<Pattern, pattern_count>& from) {
+PlayPatterns copy_patterns(const std::array<Pattern, pattern_count>& from, unsigned speed) {
     PlayPatterns out {};
-    for (unsigned p = 0; p < pattern_count; ++p) out[p] = new Pattern(feel_pattern(from[p])); // as it plays (roadmap P1, its feel)
+    for (unsigned p = 0; p < pattern_count; ++p) out[p] = new Pattern(played_pattern(from[p], speed)); // as it plays (roadmap P1: its feel, its track's speed)
     return out;
 }
 void free_patterns(PlayPatterns& patterns) { for (auto& p : patterns) { delete p; p = nullptr; } }
 
 ProjectPack::ProjectPack(const Project& project, const PatternBank& bank) : project(project) {
-    for (unsigned t = 0; t < track_count; ++t) patterns[t] = copy_patterns(bank.at[t]);
+    for (unsigned t = 0; t < track_count; ++t) patterns[t] = copy_patterns(bank.at[t], project.tracks[t].speed);
 }
 ProjectPack::~ProjectPack() { for (auto& t : patterns) free_patterns(t); }
 TrackPack::TrackPack(unsigned track, const Track& value, const std::array<Pattern, pattern_count>& from)
-    : track(uint8_t(track)), value(value), patterns(copy_patterns(from)) {}
+    : track(uint8_t(track)), value(value), patterns(copy_patterns(from, value.speed)) {}
 TrackPack::~TrackPack() { free_patterns(patterns); }
 
 EngineHost::EngineHost() {
@@ -56,7 +56,7 @@ EngineHost::~EngineHost() {
 // Before the audio thread runs: copies into the patterns it already holds.
 void EngineHost::load(const Project& project, const PatternBank& bank) {
     for (unsigned t = 0; t < track_count; ++t)
-        for (unsigned p = 0; p < pattern_count; ++p) *patterns[t][p] = feel_pattern(bank.at[t][p]);
+        for (unsigned p = 0; p < pattern_count; ++p) *patterns[t][p] = played_pattern(bank.at[t][p], project.tracks[t].speed);
     load_state(project);
 }
 
@@ -196,7 +196,8 @@ bool EngineHost::place_at(unsigned track, uint64_t frame, int& position, uint32_
             next = float(f - uint32_t(e)) * 2 > span;
         }
         if (tick_head.load(std::memory_order_acquire) != head && attempt < 3) continue; // a tick came meanwhile
-        position = now - back + (next ? 1 : 0);
+        Speed sp = speed_of(speeds_now[track % track_count].load(std::memory_order_relaxed)); // a track at a speed: ticks as written
+        position = now - int(std::lround(double(back - (next ? 1 : 0)) * sp.num / sp.den));
         ticks = uint32_t(e >> 32) + (next ? 2 : 1); // as ticks() reads just after that tick played
         return true;
     }
@@ -224,6 +225,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
     auto& slot = slots[t % track_count];
     midi_all_off(t, frame_now); // what this track sent ends before it changes
     slot.plugin_entry = track.plugin;
+    speeds_now[t % track_count].store(uint8_t(track.speed < speed_count ? track.speed : speed_normal), std::memory_order_relaxed);
     select_engine(slot, track.engine);
     const auto& info = engine_info(track.engine);
     slot.base = track.params;
@@ -723,15 +725,18 @@ void EngineHost::apply(const Command& c) {
         for (auto& s : slots) { s.start = 0; for (auto& skip : s.skips) skip.key = -1; }
         tick_count.store(tick_now, std::memory_order_relaxed);
         break;
-    case Type::Recorded:
+    case Type::Recorded: {
+        Speed sp = speed_of(speeds_now[c.track % track_count].load(std::memory_order_relaxed)); // written ticks to played ones
         for (auto& skip : slot.skips)
             if (skip.key < 0 || tick_now > skip.until) {
-                skip = {int16_t(c.index), c.pattern, c.position, tick_now + 2 * ticks_per_quarter};
+                skip = {int16_t(c.index), c.pattern, uint32_t(uint64_t(c.position) * sp.den / sp.num), tick_now + 2 * ticks_per_quarter};
                 break;
             }
         break;
+    }
     case Type::Swing: swing = uint8_t(std::clamp<int>(c.value, 50, 75)); break;
     case Type::Fill: fill = c.value != 0; fill_now.store(fill, std::memory_order_relaxed); break;
+    case Type::TrackSpeed: speeds_now[c.track % track_count].store(uint8_t(std::clamp<int>(c.value, 0, int(speed_count) - 1)), std::memory_order_relaxed); break;
     }
 }
 
@@ -979,7 +984,8 @@ void EngineHost::arp_tick() {
             int64_t len = std::max<uint32_t>(p.length, 1), at = (int64_t(arp_origin) + arp_ticks - int64_t(slot.start)) % len;
             ArpWritten w;
             w.track = uint8_t(t); w.pattern = slot.pattern; w.key = uint16_t(key); w.velocity = uint8_t(std::clamp(velocity, 1, 127));
-            w.tick = uint32_t(at < 0 ? at + len : at); w.length = uint16_t(std::max(1u, rate * a.gate / 100));
+            Speed sp = speed_of(speeds_now[t].load(std::memory_order_relaxed)); // its pattern plays scaled: written as it reads
+            w.tick = uint32_t(uint64_t(at < 0 ? at + len : at) * sp.num / sp.den); w.length = uint16_t(std::max(1u, rate * a.gate * sp.num / sp.den / 100));
             if (!arp_written.push(w)) {}
         }
         auto length = std::max<int32_t>(64, int32_t(arp_tick_length() * rate * a.gate / 100.0));
@@ -1339,7 +1345,8 @@ void EngineHost::tick() {
         uint32_t elapsed = tick_now - slot.start;
         uint32_t at = elapsed % length;
         uint32_t pass = elapsed / length; // trig conditions count the pattern's passes from where it began
-        positions_now[t].store(int(at), std::memory_order_relaxed);
+        Speed sp = speed_of(speeds_now[t].load(std::memory_order_relaxed)); // published as written (its pattern plays scaled)
+        positions_now[t].store(int(uint64_t(at) * sp.num / sp.den), std::memory_order_relaxed);
         passes_now[t].store(pass, std::memory_order_relaxed);
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
         if (sound && (at == 0 || !pattern.motion.empty() || slot.locks_on)) play_motion(t, slot, pattern, at);

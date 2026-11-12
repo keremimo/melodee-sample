@@ -35,4 +35,16 @@ void Context::set_feel(Binding::Kind kind, int value) {
     if (f != was) sync_pattern(ui.track, track().pattern);
 }
 
+// A track's speed: its notes stay as written; the audio thread gets its sixteen patterns again, scaled.
+void Context::set_speed(unsigned t, int speed) {
+    t %= track_count;
+    auto& tr = project.tracks[t];
+    uint8_t s = uint8_t(std::clamp(speed, 0, int(speed_count) - 1));
+    if (tr.speed == s) return;
+    tr.speed = s;
+    send({Command::Type::TrackSpeed, uint8_t(t), 0, 0, int16_t(s)});
+    for (unsigned p = 0; p < pattern_count; ++p) sync_pattern(t, p);
+    notice("Track " + std::to_string(t + 1) + " " + speed_name(s));
+}
+
 } // namespace melodee

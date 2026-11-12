@@ -28,6 +28,8 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(Icon::Magnet, s.ui.settings.rec_quantize ? juce::String(division_name(grid_division(s.ui.settings.rec_grid, s.pattern.division)))
                                                                  : juce::String("OFF"),
                           s.ui.settings.rec_quantize ? colour::mid : colour::dim));
+    if (s.track().speed != speed_normal) // the track plays its patterns at a speed (Tracks, Shift + K1: roadmap P1)
+        h.right.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), colour_of(s)));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{"STEPS", "ROLL", "MOTION"}, -1, colour_of(s)}, h);
 

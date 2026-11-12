@@ -40,7 +40,7 @@ namespace melodee {
 // on the MIDI thread, swapped in by pointer and handed back to be freed
 // there, so the audio thread never allocates or frees.
 using PlayPatterns = std::array<Pattern*, pattern_count>;
-PlayPatterns copy_patterns(const std::array<Pattern, pattern_count>& patterns);
+PlayPatterns copy_patterns(const std::array<Pattern, pattern_count>& patterns, unsigned speed = speed_normal); // as they play
 void free_patterns(PlayPatterns& patterns);
 
 // A whole project for the audio thread to switch to at once (a load or a new
@@ -148,6 +148,7 @@ public:
     uint32_t ticks() const { return tick_count.load(std::memory_order_relaxed); } // clock ticks since Play, 96 a quarter
     // Where a track is in its pattern, in ticks; -1 while it plays none.
     int position_of(unsigned track) const { return positions_now[track % track_count].load(std::memory_order_relaxed); }
+    // (Roadmap P1: in its pattern's ticks as written, whatever the track's speed.)
     // And how many times its pattern has come round since it began (roadmap P1: a kit lane's place is from both).
     uint32_t pass_of(unsigned track) const { return passes_now[track % track_count].load(std::memory_order_relaxed); }
     unsigned count_in() const { return count_beat.load(std::memory_order_relaxed); } // the count-in's beat now, 1..; 0 none
@@ -515,6 +516,7 @@ private:
     std::atomic<uint32_t> tick_count {0};
     std::array<std::atomic<int>, track_count> positions_now {};
     std::array<std::atomic<uint32_t>, track_count> passes_now {};
+    std::array<std::atomic<uint8_t>, track_count> speeds_now {}; // each track's speed (roadmap P1), for place_at()
     std::atomic<unsigned> count_beat {0};
     std::atomic<unsigned> tempo_shown {1200};
     std::array<std::atomic<unsigned>, track_count> patterns_now {};

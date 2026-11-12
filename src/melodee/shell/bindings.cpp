@@ -468,6 +468,9 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     if (ui.seq_held) return pattern_shift_cards(project, ui, pattern); // Seq held: the pattern's, on any page
     if (knob_owns(project, ui)) return knob_bindings(project, true);
     switch (ui.page) {
+    case PageId::Tracks: // Shift + K1: the strip in hand's playback speed (roadmap P1)
+        if (!track.used()) return {};
+        return {Binding {Kind::TrackSpeed, int(ui.track % track_count), 0, int(speed_count) - 1, track.speed % int(speed_count)}, Binding {}, Binding {}};
     case PageId::Looper: { // Shift: feedback, Quantize, After take; on MIX Shift + K3 the bus
         unsigned l = ui.loop % loop_tracks;
         if (!project.looper.on || ui.loop_sheet) return {};

@@ -228,6 +228,14 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             }
         }
     }
+    bool sped = false; // the tracks' playback speeds (roadmap P1), when one is not x1
+    for (const auto& tr : project.tracks) sped |= tr.speed != speed_normal;
+    if (sped) {
+        at = w.begin("TSPD");
+        w.u8(track_count);
+        for (const auto& tr : project.tracks) w.u8(tr.speed);
+        w.end(at);
+    }
     at = w.begin("TIME"); // time signature, BPM per pattern
     w.u8(project.signature); w.u8(project.seq_tempo);
     for (auto v : project.pattern_tempo) w.u16(v);
@@ -565,6 +573,12 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint32_t place = r.u32();
                 unsigned condition = r.u8();
                 if (r.ok && place < pattern.events.size() && condition < trig_count) pattern.events[place].condition = uint8_t(condition);
+            }
+        } else if (name == "TSPD") { // the tracks' playback speeds (roadmap P1); without it every track at x1
+            unsigned count = r.u8();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                unsigned speed = r.u8();
+                if (k < track_count && r.ok) project->tracks[k].speed = uint8_t(speed < speed_count ? speed : speed_normal);
             }
         } else if (name == "EUCL") { // Euclidean rhythms laid on kit lanes (roadmap P1); their notes are in EVNT either way
             unsigned t = r.u8(), p = r.u8();

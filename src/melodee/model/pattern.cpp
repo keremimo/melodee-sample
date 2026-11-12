@@ -225,6 +225,32 @@ Pattern feel_pattern(const Pattern& p) {
     return out;
 }
 
+Pattern speed_pattern(const Pattern& p, unsigned speed) {
+    if (speed >= speed_count || speed == speed_normal) return p;
+    Speed s = speed_of(speed);
+    auto scale = [&](uint64_t ticks) { return (ticks * s.den + s.num / 2) / s.num; }; // to the nearest tick
+    Pattern out = p;
+    out.length = uint32_t(std::max<uint64_t>(scale(p.length), 1));
+    out.events.clear();
+    for (auto e : p.events) {
+        if (e.tick >= p.length) continue;
+        e.tick = uint32_t(std::min<uint64_t>(scale(e.tick), out.length - 1));
+        e.length = uint16_t(std::clamp<uint64_t>(scale(e.length), 1, 0xffff));
+        out.add(e);
+    }
+    out.motion.clear();
+    for (auto m : p.motion) {
+        m.tick = uint32_t(std::min<uint64_t>(scale(m.tick), out.length - 1));
+        if (m.hold) m.hold = uint16_t(std::clamp<uint64_t>(scale(m.hold), 1, 0xffff));
+        out.write_motion(m);
+    }
+    for (auto& l : out.lanes) l.length = uint32_t(std::max<uint64_t>(scale(l.length), 1));
+    out.fit_lanes();
+    return out;
+}
+
+Pattern played_pattern(const Pattern& p, unsigned speed) { return speed_pattern(feel_pattern(p), speed); }
+
 void groove_of(const Pattern& source, Feel& feel) {
     unsigned step = std::max<unsigned>(feel.groove_step, 1);
     unsigned steps = std::clamp<unsigned>((std::min<uint32_t>(source.length, 64 * step) + step / 2) / step, 1, 64);
