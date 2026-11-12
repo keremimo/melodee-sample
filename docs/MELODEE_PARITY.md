@@ -1,5 +1,11 @@
 # Melodee: MPC Sample parity plan
 
+> Since 2026-11-12 the synths are no longer Melodee's own: PROPHET, CZ and SID
+> are the Open MPC plug-ins Melodee Poly, PD and Chip (their own
+> repositories), and FM6 and the 909 kit are gone (ROADMAP.md, log). What
+> this plan says of those engines is history; MELODEE.md says what Melodee
+> does now.
+
 Melodee must do everything the stock MPC Sample does, as printed on the
 panel, on top of its own pages. This file carries the plan across sessions:
 **one phase per session**. Each session reads this file and

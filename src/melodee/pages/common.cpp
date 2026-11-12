@@ -59,11 +59,6 @@ ui::HeaderItem tag_of(const Snapshot& s, unsigned track) {
 
 ui::Icon engine_icon(EngineKind kind) {
     switch (kind) {
-    case EngineKind::Prophet: return ui::Icon::Saw;
-    case EngineKind::Fm6: return ui::Icon::Fm;
-    case EngineKind::Cz: return ui::Icon::Sine;
-    case EngineKind::Sid: return ui::Icon::Chip;
-    case EngineKind::Kit909: return ui::Icon::Drum;
     case EngineKind::Sampler: return ui::Icon::Pads;
     case EngineKind::Midi: return ui::Icon::Din;
     case EngineKind::Plugin: return ui::Icon::Plug;

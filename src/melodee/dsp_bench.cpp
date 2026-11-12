@@ -24,45 +24,33 @@
 namespace melodee {
 namespace {
 
-// Sixteen tracks of every engine: four-note chords and lines on sixteenths, drums with ratchets, kits of samples,
-// Motion on the synths, two effects on every track, sends into buses A-D (reverbs and echoes), the compressor on.
+// Sixteen kits of samples (Melodee's own engine; its synths are plug-ins since they left it): three hits a step on
+// sixteenths with ratchets, Motion on the kit's values, two effects on every track, sends into buses A-D (reverbs and
+// echoes), the compressor on.
 void busy_project(Project& p, PatternBank& b) {
-    const EngineKind kinds[track_count] {EngineKind::Prophet, EngineKind::Fm6, EngineKind::Cz, EngineKind::Sid,
-                                         EngineKind::Kit909, EngineKind::Sampler, EngineKind::Prophet, EngineKind::Fm6,
-                                         EngineKind::Sampler, EngineKind::Cz, EngineKind::Sid, EngineKind::Prophet,
-                                         EngineKind::Sampler, EngineKind::Fm6, EngineKind::Kit909, EngineKind::Sampler};
     const EffectKind chain[][2] {{EffectKind::Chorus, EffectKind::Drive}, {EffectKind::Phaser, EffectKind::Filter},
                                  {EffectKind::Crush, EffectKind::Echo}, {EffectKind::Compressor, EffectKind::Width},
                                  {EffectKind::Flanger, EffectKind::Tape}, {EffectKind::TapeEcho, EffectKind::Filter},
                                  {EffectKind::Drive, EffectKind::PingPong}, {EffectKind::Chorus, EffectKind::Compressor}};
     for (unsigned t = 0; t < track_count; ++t) {
         auto& track = p.tracks[t];
-        load_sound(track, kinds[t], kinds[t] == EngineKind::Sampler || kinds[t] == EngineKind::Kit909 ? 0 : t % 4);
+        load_sound(track, EngineKind::Sampler, 0);
         track.mix.pan = int8_t(int(t % 8) * 12 - 42);
         track.mix.sends[t % bus_count] = uint8_t(20 + t * 3);
         for (unsigned k = 0; k < 2; ++k) track.fx.slots[k] = {uint8_t(chain[t % 8][k]), false, {60, 50, 40, 50, 30, 0}};
-        if (kinds[t] == EngineKind::Sampler)
-            for (unsigned pad = 0; pad < 8; ++pad) { track.pads[pad].sample = uint16_t(pad % 4); track.pads[pad].play = PadPlay::OneShot; }
+        for (unsigned pad = 0; pad < 8; ++pad) { track.pads[pad].sample = uint16_t(pad % 4); track.pads[pad].play = PadPlay::OneShot; }
         auto& q = b.at[t][0];
-        bool drums = kinds[t] == EngineKind::Kit909 || kinds[t] == EngineKind::Sampler;
         for (unsigned s = 0; s < 16; ++s) {
             Step step;
-            if (drums) {
-                unsigned first = kinds[t] == EngineKind::Kit909 ? 36u : sampler_first_note;
-                for (unsigned n = 0; n < 3; ++n) step.notes[n] = {uint8_t(first + (s + n * 3 + t) % 8), uint8_t(70 + 3 * s)};
-            } else {
-                for (unsigned n = 0; n < notes_per_step; ++n) step.notes[n] = {uint8_t(48 + (s * 5 + t) % 12 + n * 4), uint8_t(60 + 4 * n + s)};
-                step.length = uint8_t(1 + (s + t) % 3);
-            }
+            for (unsigned n = 0; n < 3; ++n) step.notes[n] = {uint8_t(sampler_first_note + (s + n * 3 + t) % 8), uint8_t(70 + 3 * s)};
             if (s % 4 == 2) { step.ratchet = uint8_t(2 + s % 3); step.ramp = -30; }
             q.set_step(s, step);
         }
-        if (!drums)
-            for (unsigned s = 0; s < 16; s += 3) {
-                MotionPoint m;
-                m.tick = s * sixteenth_ticks; m.param = uint8_t((s / 3) % 4); m.value = int16_t(20 + s * 5);
-                q.write_motion(m);
-            }
+        for (unsigned s = 0; s < 16; s += 3) { // the kit's tune, filter, resonance and decay
+            MotionPoint m;
+            m.tick = s * sixteenth_ticks; m.param = uint8_t((s / 3) % 4); m.value = int16_t(20 + s * 5);
+            q.write_motion(m);
+        }
     }
     const EffectKind buses[bus_count] {EffectKind::Reverb, EffectKind::Plate, EffectKind::Echo, EffectKind::Shimmer};
     for (unsigned b2 = 0; b2 < bus_count; ++b2) p.buses[b2].fx.slots[0] = {uint8_t(buses[b2]), false, {70, 50, 40, 50, 0, 0}};

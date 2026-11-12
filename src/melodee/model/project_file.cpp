@@ -14,6 +14,60 @@
 namespace melodee {
 namespace {
 constexpr char magic[8] {'M', 'E', 'L', 'O', 'D', 'E', 'E', '1'};
+
+// The synths that left Melodee (model/project.h, legacy_engine): a file's track of one opens as a PLUGIN track on
+// the same voice, now an Open MPC plug-in of its own (Melodee Poly, PD and Chip), named from the card's top so the
+// rack finds it in the card's Plugins folder (plugin/plugin_rack.cpp), with the track's values and routes as the
+// plug-in's state: its `melodee=` and `melodee_mods=` lines, which take them in Melodee's order and numbering.
+struct LegacySynth {
+    uint8_t engine;
+    const char* path;               // the plug-in's folder from the card's top
+    const char* name;
+    const char* tag;                // its state's first word
+    unsigned params, before_pressure; // its values, and how many a file from before params_version 1 carries
+};
+constexpr LegacySynth legacy_synths[] {
+    {legacy_engine::prophet, "Plugins/Ellic Studio - VST - Melodee Poly", "Melodee Poly", "melodee-poly", 53, 50},
+    {legacy_engine::cz, "Plugins/Ellic Studio - VST - Melodee PD", "Melodee PD", "melodee-pd", 20, 17},
+    {legacy_engine::sid, "Plugins/Ellic Studio - VST - Melodee Chip", "Melodee Chip", "melodee-chip", 22, 18},
+};
+
+// A VST2 plug-in's state as Melodee's VST2 hosts keep it (plugin/vst2_instance.cpp, vst2_bridge_instance.cpp: "MVS2",
+// then 1 for the plug-in's own chunk), the chunk a text the plug-in reads up to its last byte.
+std::vector<uint8_t> vst2_text_state(const std::string& text) {
+    std::vector<uint8_t> out {'M', 'V', 'S', '2', 1};
+    out.insert(out.end(), text.begin(), text.end());
+    out.push_back(0);
+    return out;
+}
+
+// Track `t` was a legacy synth: a PLUGIN track on its plug-in in a free entry, its values that plug-in's state.
+// Without a free entry it opens empty.
+void open_as_plugin(Project& project, unsigned t, const LegacySynth& synth, unsigned file_version,
+                    std::array<std::vector<uint8_t>, max_plugins>& states) {
+    auto& tr = project.tracks[t];
+    unsigned entry = max_plugins;
+    for (unsigned e = 0; e < max_plugins && entry == max_plugins; ++e)
+        if (!project.plugins[e].used()) entry = e;
+    if (entry == max_plugins) { tr.engine = EngineKind::None; return; }
+    std::string text = std::string(synth.tag) + " 1\nmelodee=";
+    unsigned count = file_version >= 1 ? synth.params : synth.before_pressure;
+    for (unsigned p = 0; p < count && p < max_params; ++p) text += (p ? "," : "") + std::to_string(tr.params[p]);
+    text += "\nmelodee_mods=";
+    for (unsigned r = 0; r < mod_routes; ++r)
+        text += (r ? "," : "") + std::to_string(tr.mods[r].source) + ":" + std::to_string(tr.mods[r].destination) + ":"
+            + std::to_string(int(tr.mods[r].amount));
+    text += "\n";
+    auto& ref = project.plugins[entry];
+    ref = PluginRef {};
+    std::snprintf(ref.path, sizeof(ref.path), "%s", synth.path);
+    std::snprintf(ref.name, sizeof(ref.name), "%s", synth.name);
+    states[entry] = vst2_text_state(text);
+    tr.engine = EngineKind::Plugin;
+    tr.plugin = uint8_t(entry);
+    tr.params = {};
+    tr.mods = {};
+}
 constexpr unsigned loop_record = 15; // LOOP: bars, feedback, source, frames, ticks, tempo, layers, stopped
 
 class Writer {
@@ -492,6 +546,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
     std::array<bool, track_count> pad4 {};  // tracks whose pads had a PAD4 section
+    std::array<uint8_t, track_count> legacy {}; // tracks of a synth or kit Melodee no longer has (legacy_engine)
     // Motion before roadmap P1 (MOT2, MOTP, MOTW: the project's, on sixteenths; MOTN: steps of each pattern's division),
     // laid into the patterns at the end, once their lengths and divisions are known.
     struct LegacyMotion { uint8_t track = 0, pattern = 0, param = 0, pad = 0; uint16_t step = 0; int16_t value = 0; bool division = false; };
@@ -510,7 +565,9 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             unsigned t = r.u8();
             if (t >= track_count) continue;
             auto& tr = project->tracks[t];
-            tr.engine = EngineKind(std::min<unsigned>(r.u8(), unsigned(EngineKind::Count) - 1));
+            unsigned engine = r.u8();
+            legacy[t] = engine >= legacy_engine::prophet && engine <= legacy_engine::kit909 ? uint8_t(engine) : 0;
+            tr.engine = legacy[t] || engine >= unsigned(EngineKind::Count) ? EngineKind::None : EngineKind(engine);
             tr.preset = uint16_t(r.u16()); r.text(tr.name, sizeof(tr.name));
             unsigned params = r.u8();
             for (unsigned k = 0; k < params; ++k) { int v = r.i16(); if (k < max_params) tr.params[k] = int16_t(v); }
@@ -923,6 +980,9 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     if (!file.ok) return "damaged file";
     for (unsigned t = 0; t < track_count; ++t) // before parity phase 4 a pad's decay ran from its start
         if (!pad4[t]) for (auto& pad : project->tracks[t].pads) pad.decay_from_start = true;
+    for (unsigned t = 0; t < track_count; ++t) // PROPHET, CZ and SID as their plug-ins; FM6 and the 909 empty, patterns kept
+        for (const auto& synth : legacy_synths)
+            if (legacy[t] == synth.engine) open_as_plugin(*project, t, synth, file_version, plugin_states);
     for (const auto& e : legacy_motion) { // into its pattern, at its sixteenth (MOTN's step of Q to the nearest sixteenth)
         auto& pattern = patterns->at[e.track][e.pattern];
         uint32_t sixteenth = e.division ? (uint32_t(e.step) * pattern.q() + sixteenth_ticks / 2) / sixteenth_ticks : e.step;

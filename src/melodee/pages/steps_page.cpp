@@ -133,7 +133,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.dim_zone(zone::picture_y, zone::picture_h, 0.7f);
         MenuSheet m;
         m.title = "INTO THE NEXT EMPTY PATTERN"; m.accent = c;
-        bool kit = s.track().engine == EngineKind::Sampler || s.track().engine == EngineKind::Kit909;
+        bool kit = s.track().engine == EngineKind::Sampler;
         for (unsigned v = 0; v < unsigned(Variation::Count); ++v) {
             bool here = variation_on_kit(Variation(v)) || !kit;
             m.rows[v] = {variation_name(Variation(v)), v < 3 ? juce::String(s.ui.vary_amount) + " %" : juce::String(), false, false, !here};

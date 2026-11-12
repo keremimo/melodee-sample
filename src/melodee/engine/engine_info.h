@@ -42,7 +42,7 @@ struct ParamInfo {
 
 // What the picture on an Edit page draws.
 // Route: a MIDI track's notes leaving for its port (docs/MIDI_TRACKS.md).
-enum class Picture : uint8_t { Bars, Wave, WaveB, Mixer, Filter, Envelope, Lfo, Mod, Route };
+enum class Picture : uint8_t { Bars, Mod, Route };
 
 struct EditPage {
     const char* title; // as the page and the page map name it
@@ -65,7 +65,6 @@ enum class StageKind : uint8_t {
     Arp,        // the track's arp: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold
     Chord,      // one pad, one chord from the scale: type, voicing, inversion; Shift + K1 on or off, Shift + K3 hold
     Fx,         // a slot of the track's chain: its first row (Shift: the second); Push the next slot
-    Voice,      // the drum the last pad played: its page of `voices` (pad_voice says which)
     Trim, PadMix, AmpEnv, Tune, Play, Filter, FiltEnv, // a kit: the last pad's Sample Mode values
     Follow, Cloud, KitFilter,                          // a kit: Melodee's own kit-wide pages
     Layers,                                            // a kit: the last pad's four layers (roadmap P3)
@@ -79,7 +78,7 @@ enum class StagePicture : uint8_t {
     Envelope,  // params[0..2] attack, decay, sustain; shift[0] release
     Lfo,       // params[0] rate, params[1] shape (Triangle, Saw, Square, Random), params[2] amount
     ShiftRows, // the Shift row as rows: what Shift + K1-K3 reach
-    Mix, Sends, Arp, Chord, Fx, Wave, Voice, Levels, Route, Program, Cc, Engines, Sources, Ports,
+    Mix, Sends, Arp, Chord, Fx, Wave, Route, Program, Cc, Engines, Sources, Ports,
 };
 struct StagePage {
     const char* key; // as the soft key names it: "AMP ENV"
@@ -94,9 +93,6 @@ struct StageGroup {
 };
 struct StageGroups {
     std::array<StageGroup, 3> groups; // B1, B2, B3
-    // Voice pages (StageKind::Voice): one per voice, and which a pad (0-15) plays, -1 none.
-    const StagePage* voices = nullptr;
-    const int8_t* pad_voice = nullptr;
 };
 
 struct Sound {
@@ -133,8 +129,8 @@ struct EngineInfo {
 const EngineInfo& engine_info(EngineKind kind);
 // Stage's pages for an engine (None: the empty track's chooser).
 const StageGroups& stage_groups(EngineKind kind);
-// Stage's three synth engines' shared first and last pages: B1 SOUND
-// (PRESET, TONE, MIX, SENDS) and B3 PLAY (ARP, CHORD, the engine's own, FX).
+// Stage's shared pages: B1 SOUND (PRESET, MIX, SENDS) and B3 PLAY (ARP,
+// CHORD, FX).
 constexpr StagePage stage_preset {"PRESET", StageKind::Preset, StagePicture::Preset};
 constexpr StagePage stage_mix {"MIX", StageKind::Mix, StagePicture::Mix};
 constexpr StagePage stage_sends {"SENDS", StageKind::Sends, StagePicture::Sends};

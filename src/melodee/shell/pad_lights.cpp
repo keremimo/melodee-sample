@@ -40,9 +40,9 @@ float meter(const PadScene& s, unsigned t) {
     float m = s.host.meter(t);
     return m > 0 ? std::clamp((20 * std::log10(m) + 48) / 48, 0.0f, 1.0f) : 0;
 }
-// 16 Levels plays the pads; the 909's stay its drums on the page (Context::play_pad()).
+// 16 Levels plays the pads (Context::play_pad()).
 bool levels_on(const Track& t) {
-    return t.engine != EngineKind::Kit909 && (t.levels || (t.engine != EngineKind::Sampler && t.layout == PadLayout::Levels));
+    return t.levels || (t.engine != EngineKind::Sampler && t.layout == PadLayout::Levels);
 }
 bool any_solo(const Project& p) {
     for (const auto& t : p.tracks) if (t.used() && t.mix.solo) return true;
@@ -56,8 +56,8 @@ std::array<bool, 192> keys_in(const Pattern& p) {
 }
 
 // What sounds now, pad by pad: a voice's envelope (a kit), or the pattern at
-// the playhead (the 909, synths and MIDI tracks have no voice taps); and a
-// pad let go, fading (hand_ms).
+// the playhead (plug-in and MIDI tracks have no voice taps); and a pad let
+// go, fading (hand_ms).
 struct Heard {
     std::array<float, 16> level {};
     std::array<float, 16> hand {};
@@ -128,7 +128,7 @@ Look counting(const PadScene& s, const Look& look) {
     return level > 0.01f ? brighter(look, white(level)) : look;
 }
 
-// ---- the track's own pads: a kit, the 909, a synth or MIDI track, 16 Levels
+// ---- the track's own pads: a kit, a synth or MIDI track, 16 Levels
 Look kit_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     unsigned kit = kit_of(t, pad);
@@ -136,11 +136,6 @@ Look kit_base(const PadScene& s, unsigned pad) {
     if (used && t.pad_muted(kit)) return red(faint); // a muted pad says so on every page
     if (kit == t.last_pad) return track(selected_index(s), full); // the pad selected, empty too: what the pages edit and load into
     return used ? track(selected_index(s), dim) : Look {};
-}
-Look drum_base(const PadScene& s, unsigned pad) {
-    const auto& t = selected(s);
-    if (pad >= 11) return {};
-    return track(selected_index(s), int(pad) == int(t.last_note) - 36 ? full : dim);
 }
 // Where `key` sits in the track's key, 0 its root: the project's root moved by the track's transpose, as its Scale pads are.
 unsigned key_degree(const Project& project, const Track& t, int key) {
@@ -205,7 +200,7 @@ Look levels_look(const PadScene& s, const Heard& snd, unsigned pad) {
 Look play_look(const PadScene& s, const Heard& snd, unsigned pad) {
     const auto& t = selected(s);
     if (levels_on(t)) return counting(s, levels_look(s, snd, pad));
-    Look base = t.engine == EngineKind::Sampler ? kit_base(s, pad) : t.engine == EngineKind::Kit909 ? drum_base(s, pad) : keys_base(s, pad);
+    Look base = t.engine == EngineKind::Sampler ? kit_base(s, pad) : keys_base(s, pad);
     return counting(s, playing(s, snd, base, pad));
 }
 
@@ -442,7 +437,6 @@ Look record_keys_look(const PadScene& s, unsigned pad) {
         return track(from, t.pads[kit].used() ? dim : faint);
     }
     const auto& source = s.project.tracks[from];
-    if (source.engine == EngineKind::Kit909) return pad < 11 ? track(from, dim) : Look {};
     if (levels_on(source) || !source.used()) return track(from, dim); // its levels: the one note
     int key = pad_note(s.project, source, pad).key; // its keys, as on its own pages
     return note_look(s.project, from, key_degree(s.project, source, key));

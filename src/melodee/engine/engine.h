@@ -29,6 +29,9 @@ struct ControlStep {
     unsigned take() { unsigned s = since; since = 0; return s; } // at a step's start: the frames since the last one's
 };
 
+// A sequenced note's Accent: about 4 dB over its velocity, which may already be full.
+constexpr float accent_gain = 1.6f;
+
 class Engine {
 public:
     virtual ~Engine() = default;
@@ -41,11 +44,11 @@ public:
     virtual void set_bend(float /*-1..1*/) {}
     virtual void set_mod(unsigned /*route*/, const ModRoute&) {}
     virtual void set_pressure(int /*key*/, float /*0..1*/) {}
-    // The sequencer's accent: the notes started until the next call this much louder (1: none).
+    // The sequencer's accent: the notes started until the next call this much louder (1: none; accent_gain).
     virtual void set_accent(float /*gain*/) {}
     // A note's Slide or Tie: `from`, still held, carries on as `to` without a new attack, its pitch
-    // gliding there when `glide`; the same key just goes on. An engine that cannot (the sampler, the
-    // 909) plays `to` and releases `from`. A synth with no held `from` plays `to` as ever.
+    // gliding there when `glide`; the same key just goes on. An engine that cannot (the sampler) plays
+    // `to` and releases `from`; a PLUGIN track asks its plug-in (CC 84, engine/plugin_engine.h).
     virtual void slide(int from, int to, int velocity, bool /*glide*/) {
         if (from == to) return;
         note_on(to, velocity);

@@ -143,9 +143,7 @@ void Context::open(PageId page) {
         if (t.engine == EngineKind::Sampler) {
             unsigned low = sampler_first_note + t.bank % sampler_banks * 16;
             if (ui.roll_key < low || ui.roll_key >= low + 16) ui.roll_key = uint8_t(sampler_first_note + t.last_pad % sampler_pads);
-        } else if (t.engine == EngineKind::Kit909 && (ui.roll_key < 36 || ui.roll_key > 47)) {
-            ui.roll_key = uint8_t(t.last_note >= 36 && t.last_note <= 47 ? t.last_note : 36);
-        } else if (t.engine != EngineKind::Kit909) {
+        } else {
             roll_open(pattern(), ui); // a line whose notes lie outside the rows in view: the view onto them
         }
     }
@@ -246,13 +244,6 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         return;
     }
     if (!t.used()) return;
-    if (t.engine == EngineKind::Kit909) { // the pads are the drums
-        if (pad >= 11) { notice("909: drums on pads 1-11"); return; } // dark, and says why
-        pad_keys[pad][0] = int16_t(36 + pad);
-        t.last_note = uint8_t(36 + pad);
-        key(pad_keys[pad][0], velocity, true);
-        return;
-    }
     if (t.levels) { // 16 Levels on a synth: the last note on all sixteen, soft to loud or in pitch; Scale the key's notes
         auto level = levels_of(project, t, pad);
         ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(level.shown);

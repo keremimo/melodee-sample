@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Melodee's model and audio side on the host: pad layouts, knob bindings,
-// the PROPHET engine and the engine host's sequencer and mixer.
+// the engine host's sequencer and mixer, and synth tracks as plug-ins.
 #include "melodee/engine/effects.h"
 #include <fstream>
 #include <filesystem>
@@ -20,12 +20,8 @@
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
 #include "melodee/engine/engine_host.h"
-#include "melodee/engine/cz.h"
-#include "melodee/engine/fm6.h"
-#include "melodee/engine/kit909.h"
-#include "melodee/engine/sid.h"
-#include "melodee/engine/prophet.h"
-#include "melodee/engine/expression.h"
+#include "melodee/engine/plugin_engine.h"
+#include "melodee/plugin/rate_bridge.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/model/mod_matrix.h"
@@ -114,10 +110,87 @@ void put(Pattern& p, unsigned step, uint8_t key, uint8_t velocity, uint8_t lengt
     s.length = length; s.flags = flags;
     p.set_step(step, s);
 }
-std::vector<float> run(Engine& engine, unsigned frames) {
-    std::vector<float> out(frames, 0.0f);
-    for (unsigned done = 0; done < frames; done += 128) engine.render(out.data() + done, std::min(128u, frames - done));
-    return out;
+
+// A synth track since Melodee's synths became plug-ins of their own (Melodee Poly, PD and Chip): a PLUGIN track. In
+// the host tests a ToneRunner plays it, as the rack's plug-in would: a sine a note at its key's pitch and its
+// velocity's level, a 5 ms attack and a release of `release` seconds, keeping every MIDI message it was sent.
+struct ToneRunner final : PluginRunner {
+    struct Message { uint8_t status = 0, a = 0, b = 0; };
+    std::vector<Message> heard;
+    float release = 0.003f;
+    struct Voice { int key = -1; bool held = false; float phase = 0, level = 0, gain = 0; };
+    std::array<Voice, 16> voices {};
+    void midi(uint8_t status, uint8_t a, uint8_t b) override {
+        heard.push_back({status, a, b});
+        uint8_t kind = status & 0xf0;
+        if (kind == 0x90 && b) {
+            Voice* v = nullptr;
+            for (auto& x : voices) if (x.key == a) v = &x;
+            if (!v) for (auto& x : voices) if (x.key < 0) { v = &x; break; }
+            if (!v) v = &voices[0];
+            v->key = a; v->held = true; v->gain = b / 127.0f * 0.3f;
+        } else if (kind == 0x80 || kind == 0x90) {
+            for (auto& x : voices) if (x.key == a) x.held = false;
+        } else if (kind == 0xb0 && (a == 120 || a == 123)) {
+            for (auto& x : voices) { x.held = false; if (a == 120) x = Voice {}; }
+        }
+    }
+    void silence() override { for (auto& x : voices) x = Voice {}; }
+    void render(float* left, float* right, unsigned frames) override {
+        float fall = std::exp(-1.0f / (release * 44100.0f)), rise = 1.0f - std::exp(-1.0f / (0.005f * 44100.0f));
+        for (auto& v : voices) {
+            if (v.key < 0) continue;
+            float step = 440.0f * std::exp2((v.key - 69) / 12.0f) / 44100.0f;
+            for (unsigned f = 0; f < frames; ++f) {
+                v.level = v.held ? v.level + (v.gain - v.level) * rise : v.level * fall;
+                if (!v.held && v.level < 1e-5f) { v = Voice {}; break; } // ended on its own frame, however the blocks are cut
+                float x = std::sin(2 * 3.14159265f * v.phase) * v.level;
+                v.phase += step; v.phase -= std::floor(v.phase);
+                left[f] += x; right[f] += x;
+            }
+        }
+    }
+    unsigned count(uint8_t kind, int a = -1, int b = -1) const {
+        unsigned n = 0;
+        for (auto& m : heard) if ((m.status & 0xf0) == kind && (a < 0 || m.a == a) && (b < 0 || m.b == b)) ++n;
+        return n;
+    }
+};
+// Track `t` of a project a synth: a PLUGIN track on plug-in entry `entry`.
+void synth(Track& t, unsigned entry) {
+    load_sound(t, EngineKind::Plugin, 0);
+    t.plugin = uint8_t(entry);
+}
+// A second of a sine at `hz`, half scale, for a kit's pad to play.
+SampleData tone_sample(float hz = 220) {
+    SampleData d;
+    d.frames = 44100; d.left.resize(d.frames); d.right.resize(d.frames);
+    for (unsigned n = 0; n < d.frames; ++n) d.left[n] = d.right[n] = 0.5f * std::sin(2 * 3.14159265f * hz * float(n) / 44100.0f);
+    return d;
+}
+// Track `t` a kit whose first four pads play sample slot 0 (offer it a tone_sample()), each held as long as its note.
+void tone_kit(Project& project, unsigned t) {
+    load_sound(project.tracks[t], EngineKind::Sampler, 0);
+    std::snprintf(project.samples[0].path, sizeof(project.samples[0].path), "/media/card/Samples/Tone.wav");
+    project.samples[0].frames = 44100;
+    for (unsigned pad = 0; pad < 4; ++pad) project.tracks[t].pads[pad].sample = 0;
+}
+// The synths a host's tracks play: a ToneRunner for each PLUGIN track's entry, offered to the host (it takes them
+// at its next block). Kept as long as the host plays them.
+struct Tones {
+    std::array<ToneRunner, max_plugins> at {};
+    void offer(EngineHost& host, const Project& project) {
+        for (const auto& t : project.tracks)
+            if (t.engine == EngineKind::Plugin && t.plugin < max_plugins) CHECK(host.offer_plugin(t.plugin, &at[t.plugin]));
+    }
+};
+// A Motion lane of an engine's own value (0..max_params-1), for the tests of how Motion is kept.
+constexpr unsigned engine_lane = 16;
+// For tests that only need their synth tracks heard: tone runners for a host's PLUGIN tracks, kept to the run's end.
+void tones_for(EngineHost& host, const Project& project) {
+    static std::vector<std::unique_ptr<Tones>> kept;
+    kept.push_back(std::make_unique<Tones>());
+    kept.back()->offer(host, project);
 }
 
 void layouts() {
@@ -139,13 +212,14 @@ void layouts() {
 
 void bindings() {
     Project project;
-    load_sound(project.tracks[0], EngineKind::Prophet, 1);
+    load_sound(project.tracks[0], EngineKind::Midi, 0);
     UiState ui;
     Pattern pattern;
-    ui.stage_sub[0] = 1; // Stage's TONE: the favourites
+    ui.stage_group[0] = 1; // a MIDI track's Stage CC: its three controllers
     auto stage = page_bindings(project, ui, pattern);
-    CHECK(stage[0].kind == Binding::Kind::Param && stage[0].id == prophet::Cutoff);
-    CHECK(stage[0].at(0) == 0 && stage[0].at(127) == 100 && stage[0].at(64) == 50);
+    CHECK(stage[0].kind == Binding::Kind::Param && stage[0].id == midi_track::Cc1);
+    CHECK(stage[0].at(0) == 0 && stage[0].at(127) == 127 && stage[0].at(64) == 64);
+    ui.stage_group[0] = 0;
     ui.page = PageId::Tracks; // the strip in hand: the track, its level and pan
     auto mix = page_bindings(project, ui, pattern);
     CHECK(mix[0].kind == Binding::Kind::TrackPick && mix[1].kind == Binding::Kind::Level);
@@ -154,48 +228,30 @@ void bindings() {
     CHECK(!page_bindings(project, ui, pattern)[0].bound()); // an empty step has nothing on the cards
     put(pattern, 0, 50, 90);
     CHECK(page_bindings(project, ui, pattern)[1].value == 90);
-    ui.page = PageId::Edit; ui.edit_page[0] = 4; ui.edit_row[0] = 1;
-    CHECK(page_bindings(project, ui, pattern)[0].id == prophet::FilterRelease);
-    // Every sound sets values inside its parameters' ranges.
-    const auto& info = prophet::info();
-    for (unsigned s = 0; s < info.sound_count; ++s) {
-        std::array<int16_t, max_params> values;
-        sound_values(info, s, values);
-        for (unsigned p = 0; p < info.param_count; ++p) CHECK(values[p] >= info.params[p].min && values[p] <= info.params[p].max);
+    ui.page = PageId::Edit; ui.edit_page[0] = 1; ui.edit_row[0] = 0; // a MIDI track's PROGRAM page
+    CHECK(page_bindings(project, ui, pattern)[0].id == midi_track::BankMsb);
+    // Every engine's every sound sets values inside its parameters' ranges.
+    std::array<EngineKind, size_t(EngineKind::Count)> engines {};
+    for (unsigned k = 0, count = available_engines(engines); k < count; ++k) {
+        const auto& info = engine_info(engines[k]);
+        for (unsigned s = 0; s < info.sound_count; ++s) {
+            std::array<int16_t, max_params> values;
+            sound_values(info, s, values);
+            for (unsigned p = 0; p < info.param_count; ++p) CHECK(values[p] >= info.params[p].min && values[p] <= info.params[p].max);
+        }
     }
-}
-
-void prophet_engine() {
-    // Every sound plays a note that sounds, stays finite and ends after release.
-    for (unsigned s = 0; s < prophet::info().sound_count; ++s) {
-        auto engine = std::make_unique<ProphetEngine>();
-        std::array<int16_t, max_params> values;
-        sound_values(prophet::info(), s, values);
-        for (unsigned p = 0; p < prophet::Count; ++p) engine->set_param(int(p), values[p]);
-        engine->note_on(57, 110);
-        auto held = run(*engine, 22050);
-        CHECK(peak_of(held) > 0.01f);
-        CHECK(peak_of(held) < 1.5f);
-        engine->note_off(57);
-        run(*engine, 44100 * 12); // the longest release is 10 s
-        CHECK(!engine->sounding());
-    }
-    // Eight voices at once; a ninth steals the oldest.
-    ProphetEngine poly;
-    for (int k = 0; k < 9; ++k) poly.note_on(48 + k, 100);
-    CHECK(peak_of(run(poly, 4410)) > 0.01f);
-    poly.silence();
-    CHECK(!poly.sounding());
 }
 
 void host_sequencer() {
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    load_sound(project->tracks[0], EngineKind::Prophet, 1);
+    synth(project->tracks[0], 0);
     project->tempo = 1200;
     put(bank->at[0][0], 4, 45, 100);
     EngineHost host;
     host.load(*project, *bank);
+    Tones tones;
+    tones.offer(host, *project);
     std::vector<int32_t> out(256);
     // Stopped: silent.
     host.render(out.data(), 128, 1);
@@ -265,54 +321,65 @@ void sequenced_legato() {
         CHECK(on64.first == 1 && on67.first == 1 && off64.first == 1);
         CHECK(off64.second > on67.second);                        // the slide overlaps the next note
     }
-    {   // A mono Prophet: the slide's next note has no new attack, so it is not quieter at its start than held on.
-        auto level = [](uint8_t flags) {
+    {   // A synth (a PLUGIN track): the accent is a louder velocity; a slide names the key the next note goes on from
+        // (CC 84, portamento control) just before it, and a tie holds the legato pedal (CC 68) over that, as Melodee
+        // Poly, PD and Chip take them.
+        auto heard = [](uint8_t flags) {
             auto project = std::make_unique<Project>();
             auto bank = std::make_unique<PatternBank>();
-            load_sound(project->tracks[0], EngineKind::Prophet, 1);
+            synth(project->tracks[0], 0);
             project->tempo = 1200;
             put(bank->at[0][0], 0, 57, 80, 1, flags); put(bank->at[0][0], 1, 64, 80);
             EngineHost host;
             host.load(*project, *bank);
+            auto tones = std::make_unique<Tones>();
+            tones->offer(host, *project);
             host.send({Command::Type::Play});
             std::vector<int32_t> out(256);
-            std::vector<float> left;
-            for (unsigned n = 0; n < 80; ++n) {
-                host.render(out.data(), 128, 1);
-                for (unsigned f = 0; f < 128; ++f) left.push_back(out[2 * f] / 2147483648.0f);
-            }
-            return std::pair<float, float>{peak_of(left, 0, 5000), peak_of(left, 5050, 5500)}; // the first note; its end, before the second
+            for (unsigned n = 0; n < 80; ++n) host.render(out.data(), 128, 1);
+            return tones->at[0].heard;
         };
-        auto plain = level(0), accent = level(step_accent), slide = level(step_slide), tie = level(step_tie);
-        CHECK(accent.first > plain.first * 1.3f);  // louder, at a velocity with room left or not
-        CHECK(slide.second > plain.second * 1.5f); // held across the step's end, not released short
-        CHECK(tie.second > plain.second * 1.5f);
+        using Heard = std::vector<ToneRunner::Message>;
+        auto velocity = [](const Heard& h) { for (auto& m : h) if ((m.status & 0xf0) == 0x90 && m.b) return int(m.b); return 0; };
+        auto at = [](const Heard& h, uint8_t status, uint8_t a, int b = -1) {
+            for (size_t n = 0; n < h.size(); ++n) if (h[n].status == status && h[n].a == a && (b < 0 || h[n].b == b)) return int(n);
+            return -1;
+        };
+        auto plain = heard(0), accent = heard(step_accent), slide = heard(step_slide), tie = heard(step_tie);
+        CHECK(velocity(plain) == 80 && velocity(accent) == 127); // 80 x 1.6, as far as MIDI goes
+        CHECK(at(plain, 0xb0, 84) < 0 && at(plain, 0xb0, 68) < 0);
+        int named = at(slide, 0xb0, 84, 57), next = at(slide, 0x90, 64), off = at(slide, 0x80, 57);
+        CHECK(named >= 0 && next == named + 1 && off == next + 1 && at(slide, 0xb0, 68) < 0);
+        int down = at(tie, 0xb0, 68, 127), tied = at(tie, 0xb0, 84, 57), on = at(tie, 0x90, 64), up = at(tie, 0xb0, 68, 0);
+        CHECK(down >= 0 && tied == down + 1 && on == tied + 1 && up > on);
     }
 }
 void motion() {
     // The store (a pattern's own since roadmap P1): a second write at the same place replaces, clear drops one lane,
     // and it fills at the limit.
     Pattern m;
-    CHECK(m.write_motion(point(4, prophet::Cutoff, 10)) && m.write_motion(point(4, prophet::Cutoff, 20)) && m.motion.size() == 1);
+    constexpr unsigned a = sampler::Filter, b = sampler::Resonance; // two lanes of engine values
+    CHECK(m.write_motion(point(4, a, 10)) && m.write_motion(point(4, a, 20)) && m.motion.size() == 1);
     CHECK(m.motion[0].value == 20);
-    CHECK(m.write_motion(point(8, prophet::Resonance, 5)) && m.write_motion(point(2, prophet::Cutoff, 5)));
-    CHECK(m.motion[0].tick == 2 * sixteenth_ticks && m.motion[2].param == prophet::Resonance); // in order of ticks
-    CHECK(m.clear_lane(prophet::Cutoff, 0) && m.motion.size() == 1 && !m.has_lane(prophet::Cutoff, 0) && m.has_lane(prophet::Resonance, 0));
+    CHECK(m.write_motion(point(8, b, 5)) && m.write_motion(point(2, a, 5)));
+    CHECK(m.motion[0].tick == 2 * sixteenth_ticks && m.motion[2].param == b); // in order of ticks
+    CHECK(m.clear_lane(a, 0) && m.motion.size() == 1 && !m.has_lane(a, 0) && m.has_lane(b, 0));
     Pattern full;
     for (unsigned n = 0; n < motion_points; ++n) { MotionPoint p; p.tick = n; CHECK(full.write_motion(p)); }
     MotionPoint over; over.tick = motion_points;
     CHECK(!full.write_motion(over) && full.motion.size() == motion_points);
 
-    // Played: the cutoff closed by motion from step 0 makes a held line much quieter,
-    // and Stop gives the track its own value back.
+    // Played: the kit's volume brought down by motion from step 0 makes a line of hits much quieter.
     auto level = [](bool closed) {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 0);
-        for (unsigned s = 0; s < 16; ++s) put(bank->at[0][0], s, 57, 100);
-        if (closed) bank->at[0][0].write_motion(point(0, prophet::Cutoff, 0));
+        tone_kit(*project, 0);
+        for (unsigned s = 0; s < 16; ++s) put(bank->at[0][0], s, uint8_t(sampler_first_note), 100);
+        if (closed) bank->at[0][0].write_motion(point(0, sampler::Level, 0));
         EngineHost host;
         host.load(*project, *bank);
+        auto tone = tone_sample();
+        CHECK(host.offer_sample(0, &tone));
         host.send({Command::Type::Play});
         std::vector<int32_t> out(256);
         double energy = 0;
@@ -324,168 +391,48 @@ void motion() {
     };
     CHECK(level(true) * 20 < level(false));
 }
-void mod_matrix() {
-    // Aftertouch into the cutoff opens a closed filter while the pad is pressed.
-    auto loud = [](float pressure, int amount) {
-        ProphetEngine engine;
-        engine.set_param(prophet::Cutoff, 10);
-        engine.set_param(prophet::EnvAmount, 0);
-        engine.set_param(prophet::AtBright, 0); engine.set_param(prophet::AtVib, 0); // pressure through the route only
-        engine.set_mod(0, {uint8_t(ModSource::Aftertouch), uint8_t(ModDest::Cutoff), int8_t(amount)});
-        engine.note_on(57, 100);
-        engine.set_pressure(57, pressure);
-        auto out = run(engine, 22050);
-        double energy = 0;
-        for (auto v : out) energy += double(v) * v;
-        return energy;
-    };
-    CHECK(loud(1, 100) > 4 * loud(0, 100));
-    CHECK(std::fabs(loud(1, 0) - loud(0, 0)) < 1e-9 * (loud(0, 0) + 1)); // amount 0 does nothing
-    // The Edit pages end with the mod matrix, whose cards bind the route under the wheel.
-    const auto& info = prophet::info();
-    CHECK(edit_page_count(info) == info.page_count + 1 && is_mod_page(info, info.page_count));
-    Project project;
-    load_sound(project.tracks[0], EngineKind::Prophet, 0);
-    UiState ui;
-    ui.page = PageId::Edit; ui.edit_page[0] = uint8_t(info.page_count); ui.edit_row[0] = 2;
-    Pattern pattern;
-    CHECK(!page_bindings(project, ui, pattern)[0].bound()); // an empty route: Push starts it
-    project.tracks[0].mods[2] = {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34};
-    auto cards = page_bindings(project, ui, pattern);
-    CHECK(cards[0].kind == Binding::Kind::ModSource && cards[2].value == 34 && cards[2].id == 2 && cards[2].min == -100);
-}
-// Phase 1d: pad expression on every synth (MELODEE_PARITY.md).
-std::unique_ptr<Engine> synth(EngineKind kind, std::initializer_list<std::pair<int, int>> changes = {}) {
-    std::unique_ptr<Engine> e;
-    switch (kind) {
-    case EngineKind::Prophet: e = std::make_unique<ProphetEngine>(); break;
-    case EngineKind::Fm6: e = std::make_unique<Fm6Engine>(); break;
-    case EngineKind::Sid: e = std::make_unique<SidEngine>(); break;
-    default: e = std::make_unique<CzEngine>(); break;
-    }
-    std::array<int16_t, max_params> values {};
-    sound_values(engine_info(kind), 0, values);
-    for (unsigned n = 0; n < engine_info(kind).param_count; ++n) e->set_param(int(n), values[n]);
-    for (auto [id, value] : changes) e->set_param(id, value);
-    return e;
-}
-struct Heard { double energy = 0, bright = 0; }; // bright: the share of energy in the sample-to-sample changes
-Heard heard(const std::vector<float>& v, size_t from = 0) {
-    Heard h;
-    double diff = 0;
-    for (size_t n = std::max<size_t>(from, 1); n < v.size(); ++n) { h.energy += double(v[n]) * v[n]; diff += double(v[n] - v[n - 1]) * (v[n] - v[n - 1]); }
-    h.bright = diff / (h.energy + 1e-12);
-    return h;
-}
-// A held note, pressed from the start of `frames` at `pressure`.
-std::vector<float> held_note(Engine& e, int velocity, float pressure, unsigned frames = 22050) {
-    e.note_on(57, velocity);
-    if (pressure > 0) e.set_pressure(57, pressure);
-    return run(e, frames);
-}
+// Pad pressure (phase 1d) as Melodee keeps and sends it; what a synth does with it is the synth's own (Melodee
+// Poly, PD and Chip test theirs).
 void pad_expression() {
-    struct Synth { EngineKind kind; int at_vib, at_bright; };
-    const Synth synths[] {{EngineKind::Prophet, prophet::AtVib, prophet::AtBright}, {EngineKind::Fm6, fm6::AtVib, fm6::AtBright},
-                          {EngineKind::Sid, sid::AtVib, sid::AtBright}, {EngineKind::Cz, cz::AtVib, cz::AtBright}};
-    for (const auto& s : synths) {
-        const auto& info = engine_info(s.kind);
-        // The new parameters sit at the end of the list, so older files' values keep their places.
-        CHECK(info.legacy_params && info.legacy_params < info.param_count && s.at_vib >= int(info.legacy_params));
-        CHECK(info.params[s.at_vib].initial > 0 && info.params[s.at_bright].initial > 0);
-        // Velocity is clearly heard at the defaults: a soft hit well under a hard one (more than 6 dB).
-        auto soft = heard(held_note(*synth(s.kind), 40, 0)), hard = heard(held_note(*synth(s.kind), 127, 0));
-        CHECK(soft.energy * 4 < hard.energy);
-        // Pressure at the defaults: brighter, and the vibrato moves the pitch.
-        auto pressed = heard(held_note(*synth(s.kind), 100, 1), 4410), plain = heard(held_note(*synth(s.kind), 100, 0), 4410);
-        CHECK(pressed.bright > plain.bright * 1.15);
-        auto vib = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 100}}), 100, 1);
-        auto still = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 100}}), 100, 0);
-        double apart = 0, total = 0;
-        for (size_t n = 11025; n < vib.size(); ++n) { apart += double(vib[n] - still[n]) * (vib[n] - still[n]); total += double(still[n]) * still[n]; }
-        CHECK(apart > total * 0.1);
-        // Both at 0: pressure does nothing.
-        auto off = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}}), 100, 1);
-        auto none = held_note(*synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}}), 100, 0);
-        for (size_t n = 0; n < off.size(); ++n) CHECK(off[n] == none[n]);
-        // The mod matrix is heard: aftertouch into the engine's brightness (cutoff, modulators, DCW).
-        auto route = [&](float pressure) {
-            auto e = synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}});
-            e->set_mod(3, {uint8_t(ModSource::Aftertouch), uint8_t(ModDest::Cutoff), 100});
-            return heard(held_note(*e, 100, pressure), 4410);
-        };
-        CHECK(route(1).bright > route(0).bright * 1.15);
-        // An LFO route into pitch moves the pitch with no pressure.
-        auto lfo = synth(s.kind, {{s.at_bright, 0}, {s.at_vib, 0}});
-        lfo->set_mod(0, {uint8_t(ModSource::Lfo), uint8_t(ModDest::Pitch), 50});
-        auto wobble = held_note(*lfo, 100, 0);
-        double moved = 0;
-        for (size_t n = 11025; n < wobble.size(); ++n) moved += double(wobble[n] - none[n]) * (wobble[n] - none[n]);
-        CHECK(moved > total * 0.1);
-        // Every factory sound's velocity and pressure stay bounded.
-        for (unsigned k = 0; k < info.sound_count; ++k) {
-            auto e = synth(s.kind);
-            std::array<int16_t, max_params> values {};
-            sound_values(info, k, values);
-            for (unsigned n = 0; n < info.param_count; ++n) e->set_param(int(n), values[n]);
-            CHECK(peak_of(held_note(*e, 127, 1, 44100)) < 2.0f);
-        }
-    }
-    // Destinations an engine has none of are not offered, and the others carry its own names.
-    CHECK(!mod_dest_label(engine_info(EngineKind::Cz), ModDest::Resonance));
-    CHECK(std::string(mod_dest_label(engine_info(EngineKind::Cz), ModDest::Cutoff)) == "DCW");
-    CHECK(std::string(mod_dest_label(engine_info(EngineKind::Prophet), ModDest::Noise)) == "Noise");
-    std::array<uint8_t, size_t(ModDest::Count)> dests {};
-    CHECK(mod_dest_list(engine_info(EngineKind::Prophet), dests) == unsigned(ModDest::Count));
-    CHECK(mod_dest_list(engine_info(EngineKind::Cz), dests) == 7);
-    // Older files: the new parameters get their initial values, not the zeros the file carried.
-    std::array<int16_t, max_params> old {};
-    sound_values(engine_info(EngineKind::Sid), 0, old);
-    for (unsigned n = sid::legacy_count; n < max_params; ++n) old[n] = 0;
-    upgrade_params(EngineKind::Sid, 0, old);
-    CHECK(old[sid::Velocity] == 70 && old[sid::AtVib] == expression::default_at_vib && old[sid::LfoRate] == expression::default_vib_rate);
-    old[sid::AtVib] = 0;
-    upgrade_params(EngineKind::Sid, params_version, old); // a newer file's 0 is a 0
-    CHECK(old[sid::AtVib] == 0);
+    // 16 Levels' ends and a track's four sends go with the project (LVLE, SNDS), with the params version.
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    load_sound(project->tracks[2], EngineKind::Cz, 0);
-    project->tracks[2].params[cz::AtVib] = 0;
-    project->tracks[2].levels_ends[unsigned(LevelsKind::Tune)] = {-12, 24}; // 16 Levels' ends go with the project (LVLE)
-    project->tracks[2].mix.sends = {10, 20, 0, 30};                           // and a track's four sends (SNDS)
+    load_sound(project->tracks[2], EngineKind::Midi, 0);
+    project->tracks[2].levels_ends[unsigned(LevelsKind::Tune)] = {-12, 24};
+    project->tracks[2].mix.sends = {10, 20, 0, 30};
     auto bytes = save_project(*project, *bank);
     unsigned version = 9;
     auto back = std::make_unique<Project>();
-    CHECK(load_project(bytes, *back, *bank, &version).empty() && version == params_version && back->tracks[2].params[cz::AtVib] == 0);
+    CHECK(load_project(bytes, *back, *bank, &version).empty() && version == params_version);
     CHECK(back->tracks[2].levels_ends[unsigned(LevelsKind::Tune)][0] == -12 && back->tracks[2].levels_ends[unsigned(LevelsKind::Tune)][1] == 24);
     CHECK(back->tracks[3].levels_ends == Track {}.levels_ends);
     const std::array<uint8_t, 4> four {10, 20, 0, 30}, none {};
     CHECK(back->tracks[2].mix.sends == four && back->tracks[3].mix.sends == none);
     UserSound us;
-    us.engine = EngineKind::Cz;
+    us.engine = EngineKind::Midi;
     auto sound_bytes = save_sound(us);
     CHECK(load_sound_file(sound_bytes, us, &version) && version == params_version);
     sound_bytes.pop_back(); // as written before phase 1d
     CHECK(load_sound_file(sound_bytes, us, &version) && version == 0);
-    // The arp's notes follow the pressure of the pad holding their key, an octave up too.
-    auto arp_bright = [](int pressure) {
+    // The arp's notes take the pressure of the pad holding their key, an octave up too: a synth hears it as each
+    // note's own (poly) pressure.
+    {
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
-        load_sound(p->tracks[0], EngineKind::Prophet, 0);
-        p->tracks[0].params[prophet::AtVib] = 0;
-        p->tracks[0].params[prophet::AtBright] = 100;
-        p->tracks[0].params[prophet::Cutoff] = 30;
+        synth(p->tracks[0], 0);
         EngineHost host;
         host.load(*p, *b);
+        auto tones = std::make_unique<Tones>();
+        tones->offer(host, *p);
         host.send({Command::Type::Arp, 0, 0, 0, 1});
         host.send({Command::Type::Arp, 0, 0, 3, 2}); // two octaves: notes the pad never played
         host.send({Command::Type::ArpKey, 0, 0, 48, 100});
-        host.send({Command::Type::Pressure, 0, 0, 48, int16_t(pressure)});
+        host.send({Command::Type::Pressure, 0, 0, 48, 127});
         std::vector<int32_t> out(256);
-        std::vector<float> mono;
-        for (unsigned n = 0; n < 400; ++n) { host.render(out.data(), 128, 1); for (unsigned f = 0; f < 128; ++f) mono.push_back(out[2 * f] / 2147483648.0f); }
-        return heard(mono, 4410).bright;
-    };
-    CHECK(arp_bright(127) > arp_bright(0) * 1.15);
+        for (unsigned n = 0; n < 400; ++n) host.render(out.data(), 128, 1);
+        const auto& heard = tones->at[0];
+        CHECK(heard.count(0x90, 60) > 0 && heard.count(0xa0, 48) > 0 && heard.count(0xa0, 60) > 0);
+    }
     // Settings: Pad pressure on by default, kept in the settings file.
     Settings set;
     CHECK(set.pressure && set.value_text(Settings::PadPressure) == "On");
@@ -512,7 +459,7 @@ void arrange() {
     CHECK(song.step_marker(4) && song.marker_at(4) < 0 && song.marker_count == 1 && song.marker_at(12) >= 0);
 
     auto setup = [](Project& project, PatternBank& bank) {
-        load_sound(project.tracks[0], EngineKind::Prophet, 0);
+        synth(project.tracks[0], 0);
         project.tempo = 1200;
         put(bank.at[0][0], 0, 57, 100); // pattern 1: a note on its first step only
         put(bank.at[0][1], 0, 69, 100);
@@ -536,10 +483,10 @@ void arrange() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         setup(*project, *bank);
-        project->tracks[0].params[prophet::AmpRelease] = 0;
         project->song.place({0, 0, 1, 1, false});
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.send({Command::Type::Play, 0, 0, 0, 1});
         auto bars = sounding(host, 3);
         CHECK(!bars[0] && bars[1]);
@@ -552,6 +499,7 @@ void arrange() {
         setup(*project, *bank);
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.send({Command::Type::Play});
         std::vector<int32_t> block(256);
         for (unsigned n = 0; n < 80; ++n) host.render(block.data(), 128, 1); // 10240 samples: tick 44
@@ -636,8 +584,7 @@ void effects() {
     auto render = [](bool filter, bool echo) {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 0);
-        project->tracks[0].params[prophet::AmpRelease] = 0;
+        synth(project->tracks[0], 0);
         if (filter) { project->tracks[0].fx.slots[0].kind = uint8_t(EffectKind::Filter); project->tracks[0].fx.slots[0].params = {5, 0, 0, 0, 0, 0}; }
         if (echo) {
             project->tracks[0].mix.sends[0] = 100;
@@ -646,6 +593,7 @@ void effects() {
         }
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.send({Command::Type::NoteOn, 0, 0, 57, 110});
         std::vector<int32_t> out(256);
         double held = 0, after = 0;
@@ -914,6 +862,7 @@ void sampler_kit() {
         auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
         auto& host = *host_held;
         host.load(*back, *bank);
+        tones_for(host, *back);
         host.send({Command::Type::Play, 0, 0, 0, 1});
         std::vector<int32_t> out(256);
         // At 120 BPM a sixteenth is 5512.5 samples: the punch runs from 22050 * 4 + 4 * 5512.5 for two sixteenths.
@@ -936,6 +885,7 @@ void sampler_kit() {
         auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
         auto& host = *host_held;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.send({Command::Type::SongRecord, 0, 0, 0, 1});
         host.send({Command::Type::Play, 0, 0, 0, 1});
         std::vector<int32_t> out(256);
@@ -949,7 +899,7 @@ void sampler_kit() {
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         put(bank->at[0][0], 0, 45, 110, 16);
         auto& slot = project->tracks[0].fx.slots[0];
         slot.kind = uint8_t(EffectKind::Filter);
@@ -965,6 +915,7 @@ void sampler_kit() {
         auto host_held = std::make_unique<EngineHost>(); // on the heap: a test's frame stays under the 8 MB stack
         auto& host = *host_held;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.send({Command::Type::Play});
         std::vector<int32_t> out(256);
         auto level = [&](unsigned blocks) {
@@ -983,7 +934,7 @@ void sampler_kit() {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
         auto& t = project->tracks[1];
-        load_sound(t, EngineKind::Prophet, 0);
+        synth(t, 0);
         int before = pad_note(*project, t, 0).key;
         t.transpose = 3;
         CHECK(pad_note(*project, t, 0).key == before + 3);
@@ -1040,9 +991,10 @@ void recording() {
     // The host records the mix (resample) for a bar at 120 BPM.
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    load_sound(project->tracks[0], EngineKind::Prophet, 0);
+    synth(project->tracks[0], 0);
     EngineHost host;
     host.load(*project, *bank);
+    tones_for(host, *project);
     host.send({Command::Type::RecordArm, uint8_t(InputSource::Resample), 1, 5, -96});
     host.send({Command::Type::NoteOn, 0, 0, 57, 100});
     std::vector<int32_t> out(256);
@@ -1057,8 +1009,8 @@ void project_files() {
     auto bank = std::make_unique<PatternBank>();
     std::snprintf(project->name, sizeof(project->name), "Night drive");
     project->tempo = 1245; project->swing = 58; project->root = 2; project->scale = 2;
-    load_sound(project->tracks[0], EngineKind::Prophet, 1);
-    project->tracks[0].params[prophet::Cutoff] = 33;
+    load_sound(project->tracks[0], EngineKind::Midi, 0);
+    project->tracks[0].params[midi_track::Cc1] = 33;
     project->tracks[0].mix = {90, -20, 40, 2, true, false, {0, 0, 40, 0}};
     project->tracks[0].mods[3] = {1, 2, -45};
     project->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), true, {60, 50, 30, 70, 0, 0}};
@@ -1067,7 +1019,7 @@ void project_files() {
     std::snprintf(project->samples[2].path, sizeof(project->samples[2].path), "/media/card/Samples/Kick.wav");
     bank->at[0][3].length = 96 * 48; bank->at[0][3].division = Division::Eighth;
     bank->at[0][3].add({95 * 48 + 5, 40, 64, 77, 100, step_tie}); // five ticks late, Rec Quantize off
-    bank->at[0][3].write_motion(point(7, prophet::Resonance, 61));
+    bank->at[0][3].write_motion(point(7, midi_track::Cc2, 61));
     project->song.place({0, 3, 8, 4, true});
     project->song.step_marker(8);
     project->song.loop_start = 8; project->song.loop_end = 12;
@@ -1081,7 +1033,7 @@ void project_files() {
     auto copy_bank = std::make_unique<PatternBank>();
     CHECK(load_project(data, *copy, *copy_bank).empty());
     CHECK(std::string(copy->name) == "Night drive" && copy->tempo == 1245 && copy->swing == 58 && copy->scale == 2);
-    CHECK(copy->tracks[0].engine == EngineKind::Prophet && copy->tracks[0].params[prophet::Cutoff] == 33);
+    CHECK(copy->tracks[0].engine == EngineKind::Midi && copy->tracks[0].params[midi_track::Cc1] == 33);
     CHECK(copy->tracks[0].mix.pan == -20 && copy->tracks[0].mix.sends[2] == 40 && copy->tracks[0].mix.sends[0] == 0 && copy->tracks[0].mix.mute);
     CHECK(copy->tracks[0].mods[3].amount == -45 && copy->tracks[0].fx.slots[0].bypass && copy->tracks[0].fx.slots[0].params[3] == 70);
     CHECK(copy->tracks[4].engine == EngineKind::Sampler && copy->tracks[4].pads[9].start == 1234 && copy->tracks[4].pads[9].group == 3);
@@ -1154,117 +1106,16 @@ void helpers() {
     // The host plays the arp while the song is stopped.
     auto p = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    load_sound(p->tracks[0], EngineKind::Prophet, 0);
+    synth(p->tracks[0], 0);
     EngineHost host;
     host.load(*p, *bank);
+    tones_for(host, *p);
     host.send({Command::Type::Arp, 0, 0, 0, 1});
     host.send({Command::Type::ArpKey, 0, 0, 60, 100});
     std::vector<int32_t> out(256);
     float peak = 0;
     for (unsigned n = 0; n < 100; ++n) { host.render(out.data(), 128, 1); for (auto s : out) peak = std::max(peak, std::fabs(s / 2147483648.0f)); }
     CHECK(!host.playing() && peak > 0.005f);
-}
-void drums() {
-    // Every drum of the 909 kit sounds, stays bounded and ends.
-    for (unsigned d = 0; d < kit909::Drums; ++d) {
-        Kit909Engine kit;
-        kit.note_on(int(36 + d), 120);
-        auto out = run(kit, 44100 * 10);
-        CHECK(peak_of(out, 0, 4410) > 0.02f);
-        CHECK(peak_of(out) < 2.0f);
-        CHECK(!kit.sounding());
-    }
-    // The closed hat chokes the open one.
-    Kit909Engine kit;
-    kit.note_on(36 + kit909::OpenHat, 120);
-    kit.note_on(36 + kit909::ClosedHat, 120);
-    auto out = run(kit, 44100);
-    CHECK(peak_of(out, 22050) < 0.001f);
-}
-// Every factory sound of an engine plays a note that sounds, stays bounded and ends after release.
-template <class E> void sounds_play(const EngineInfo& info, int key) {
-    for (unsigned s = 0; s < info.sound_count; ++s) {
-        E engine;
-        std::array<int16_t, max_params> values;
-        sound_values(info, s, values);
-        for (unsigned q = 0; q < info.param_count; ++q) engine.set_param(int(q), values[q]);
-        engine.note_on(key, 110);
-        auto held = run(engine, 22050);
-        if (!(peak_of(held) > 0.005f && peak_of(held) < 2.0f)) std::fprintf(stderr, "%s: %s peak %f\n", info.name, info.sounds[s].name, peak_of(held));
-        CHECK(peak_of(held) > 0.005f && peak_of(held) < 2.0f);
-        engine.note_off(key);
-        run(engine, 44100 * 12);
-        CHECK(!engine.sounding());
-    }
-}
-void more_engines() {
-    sounds_play<Fm6Engine>(fm6::info(), 60);
-    sounds_play<SidEngine>(sid::info(), 48);
-    sounds_play<CzEngine>(cz::info(), 57);
-    // Phase distortion: with no bend every wave is the cosine itself.
-    for (unsigned w = 0; w < 5; ++w)
-        for (float ph : {0.1f, 0.3f, 0.7f}) CHECK(std::fabs(cz::shape(w, ph, 0) + std::cos(2 * 3.14159265f * ph)) < 0.05f || w == 2 || w == 3);
-    // Every algorithm is heard.
-    for (unsigned a = 0; a < fm6::algorithms; ++a) {
-        Fm6Engine e;
-        e.set_param(fm6::Algorithm, int(a));
-        e.note_on(60, 100);
-        CHECK(peak_of(run(e, 4410)) > 0.005f);
-    }
-}
-// Gain staging (engine/output_trim.h): the loudest momentary loudness of a mono engine's output (BS.1770: K-weighted,
-// 400 ms windows every 100 ms, at 44.1 kHz), which a centred track's two sides add up to again.
-double loudest_momentary(const std::vector<float>& x) {
-    struct Biquad { double b0, b1, b2, a1, a2, z1 = 0, z2 = 0;
-                    double run(double v) { double y = b0 * v + z1; z1 = b1 * v - a1 * y + z2; z2 = b2 * v - a2 * y; return y; } };
-    const double fs = 44100, pi = 3.141592653589793;
-    double A = std::pow(10, 3.999843853973347 / 40), w = 2 * pi * 1681.974450955533 / fs, c = std::cos(w);
-    double s = 2 * std::sqrt(A) * std::sin(w) / (2 * 0.7071752369554196), a0 = (A + 1) - (A - 1) * c + s;
-    Biquad shelf {A * ((A + 1) + (A - 1) * c + s) / a0, -2 * A * ((A - 1) + (A + 1) * c) / a0, A * ((A + 1) + (A - 1) * c - s) / a0,
-                  2 * ((A - 1) - (A + 1) * c) / a0, ((A + 1) - (A - 1) * c - s) / a0};
-    w = 2 * pi * 38.13547087602444 / fs; c = std::cos(w);
-    double al = std::sin(w) / (2 * 0.5003270373238773);
-    Biquad high {(1 + c) / 2 / (1 + al), -(1 + c) / (1 + al), (1 + c) / 2 / (1 + al), -2 * c / (1 + al), (1 - al) / (1 + al)};
-    std::vector<double> power(x.size());
-    for (size_t n = 0; n < x.size(); ++n) { double k = high.run(shelf.run(x[n])); power[n] = k * k; }
-    const size_t window = size_t(0.4 * fs), hop = size_t(0.1 * fs);
-    double most = 1e-20;
-    for (size_t at = 0; at + window <= power.size(); at += hop) {
-        double sum = 0;
-        for (size_t n = at; n < at + window; ++n) sum += power[n];
-        most = std::max(most, sum / double(window));
-    }
-    return -0.691 + 10 * std::log10(most);
-}
-// A sound's note held at full velocity for 1.5 s: its loudness, averaged over C3, C4 and C5.
-template <class E> double held_loudness(const EngineInfo& info, unsigned sound, std::initializer_list<std::pair<int, int>> changes = {}) {
-    double sum = 0;
-    for (int key : {48, 60, 72}) {
-        auto engine = std::make_unique<E>();
-        std::array<int16_t, max_params> values;
-        sound_values(info, sound, values);
-        for (auto [q, v] : changes) values[size_t(q)] = int16_t(v);
-        for (unsigned q = 0; q < info.param_count; ++q) engine->set_param(int(q), values[q]);
-        engine->note_on(key, 127);
-        sum += loudest_momentary(run(*engine, 66150));
-    }
-    return sum / 3;
-}
-void engine_levels() {
-    // Each synth's INIT VOICE as loud as the 909's kick (which plays as loud as the MPC's factory kits), about
-    // -15 LUFS, all within 2 dB or so.
-    Kit909Engine kit;
-    kit.note_on(36 + kit909::Kick, 127);
-    double kick = loudest_momentary(run(kit, 44100));
-    std::array<double, 5> heard {kick, held_loudness<ProphetEngine>(prophet::info(), 0), held_loudness<Fm6Engine>(fm6::info(), 0),
-                                 held_loudness<SidEngine>(sid::info(), 0), held_loudness<CzEngine>(cz::info(), 0)};
-    auto [quietest, loudest] = std::minmax_element(heard.begin(), heard.end());
-    if (*loudest - *quietest > 2.5) std::fprintf(stderr, "levels: kick %.1f PROPHET %.1f FM6 %.1f SID %.1f CZ %.1f\n", heard[0], heard[1], heard[2], heard[3], heard[4]);
-    CHECK(*loudest - *quietest < 2.5);
-    for (double l : heard) CHECK(l > -17 && l < -13);
-    // A PROPHET unison stack (every voice, detuned) as loud as one voice.
-    double one = heard[1], stack = held_loudness<ProphetEngine>(prophet::info(), 0, {{prophet::Unison, 1}, {prophet::Detune, 35}});
-    CHECK(std::fabs(stack - one) < 2);
 }
 // Round 2, pad-fx C: punches kept with a pattern. What was heard becomes the pattern's punches where they fell,
 // they go with the pattern through its speed, Double / Half Seq and Half / Double Speed, and the file keeps them
@@ -1335,12 +1186,13 @@ void kept_punches() {
       // sixteenth's end for four; both at once, each let go after its length, again on the next pass; Stop lets go.
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         project->tempo = 1200;
         bank->at[0][0].length = project->bar_ticks();
         bank->at[0][0].punches = {{0, 48, uint8_t(PunchKind::Low), 255, 100, 2, 1}, {24, 96, uint8_t(PunchKind::Stutter), 0, 100, 2, 1}};
         auto host = std::make_unique<EngineHost>();
         host->load(*project, *bank);
+        tones_for(*host, *project);
         std::vector<int32_t> out(256);
         host->send({Command::Type::Play});
         unsigned blocks = 0;
@@ -1507,15 +1359,15 @@ void settings() {
     // Favourites: starred sounds by engine, kept in the text; the Sounds page's FAVOURITES lists them.
     static_assert(Settings::engines == unsigned(EngineKind::Count), "a favourites row per engine");
     Settings f;
-    f.toggle_favourite(unsigned(EngineKind::Prophet), 3); f.toggle_favourite(unsigned(EngineKind::Prophet), 9);
-    f.toggle_favourite(unsigned(EngineKind::Cz), 2); f.toggle_favourite(unsigned(EngineKind::Cz), 2);
+    f.toggle_favourite(unsigned(EngineKind::Midi), 3); f.toggle_favourite(unsigned(EngineKind::Midi), 9);
+    f.toggle_favourite(unsigned(EngineKind::Sampler), 2); f.toggle_favourite(unsigned(EngineKind::Sampler), 2);
     Settings g;
     g.read(f.text());
-    CHECK(g.favourite(unsigned(EngineKind::Prophet), 3) && g.favourite(unsigned(EngineKind::Prophet), 9) && !g.favourite(unsigned(EngineKind::Cz), 2));
+    CHECK(g.favourite(unsigned(EngineKind::Midi), 3) && g.favourite(unsigned(EngineKind::Midi), 9) && !g.favourite(unsigned(EngineKind::Sampler), 2));
     auto track = std::make_unique<Track>();
-    load_sound(*track, EngineKind::Prophet, 0);
+    load_sound(*track, EngineKind::Midi, 0);
     UiState ui;
-    ui.settings = g; ui.sounds_filter = 1;
+    ui.settings = g; ui.sounds_filter = 1; ui.user_sound_count = 10; // sounds of one's own, 3 and 9 starred
     std::array<uint16_t, max_listed> list {};
     CHECK(sound_list(*track, ui, list) == 2 && list[0] == 3 && list[1] == 9);
 }
@@ -1559,12 +1411,12 @@ void names() {
     CHECK(count == 1 + Song::marker_name_count && std::string(names[0]) == "VERSE" && std::string(names[1]) == "INTRO");
     // A sound of one's own: its file keeps the engine, the name, the values and the routes.
     auto track = std::make_unique<Track>();
-    load_sound(*track, EngineKind::Fm6, 2);
+    load_sound(*track, EngineKind::Midi, 0);
     track->params[3] = -7; track->mods[1] = {2, 3, -40};
     auto bytes = save_sound(sound_of(*track, "BELL TREE"));
     UserSound back;
     CHECK(load_sound_file(bytes, back));
-    CHECK(back.engine == EngineKind::Fm6 && std::string(back.name) == "BELL TREE" && back.params == track->params);
+    CHECK(back.engine == EngineKind::Midi && std::string(back.name) == "BELL TREE" && back.params == track->params);
     CHECK(back.mods[1].source == 2 && back.mods[1].destination == 3 && back.mods[1].amount == -40);
     bytes[0] = 'X';
     CHECK(!load_sound_file(bytes, back));
@@ -1573,7 +1425,8 @@ void names() {
     ui.user_sound_count = 2;
     std::array<uint16_t, max_listed> list {};
     unsigned listed = sound_list(*track, ui, list);
-    CHECK(listed == fm6::info().sound_count + 2 && list[listed - 1] == fm6::info().sound_count + 1);
+    const unsigned factory = engine_info(EngineKind::Midi).sound_count;
+    CHECK(listed == factory + 2 && list[listed - 1] == factory + 1);
 }
 } // namespace
 
@@ -1617,11 +1470,11 @@ void history() {
 void parity_basics() {
     Track kit; kit.engine = EngineKind::Sampler; kit.last_pad = 21; kit.last_note = 50;
     CHECK(kit.step_note() == sampler_first_note + 21);
-    Track synth; synth.engine = EngineKind::Prophet; synth.last_note = 62;
+    Track synth; synth.engine = EngineKind::Plugin; synth.last_note = 62;
     CHECK(synth.step_note() == 62);
 
     auto project = std::make_unique<Project>();
-    project->tracks[0].engine = EngineKind::Prophet; project->tracks[0].transpose = -3;
+    project->tracks[0].engine = EngineKind::Plugin; project->tracks[0].transpose = -3;
     UiState ui; ui.page = PageId::Keys; ui.track = 0;
     Pattern pattern;
     CHECK(page_bindings(*project, ui, pattern)[0].kind == Binding::Kind::Root);
@@ -1633,8 +1486,6 @@ void parity_basics() {
     CHECK(page_bindings(*project, ui, pattern, false)[2].kind == Binding::Kind::Layout);    // Shift + wheel after a plain turn
     auto second = shift_bindings(*project, ui, pattern);
     CHECK(!second[0].bound() && !second[1].bound() && second[2].bound());
-    project->tracks[0].engine = EngineKind::Kit909; // drums have no transpose
-    CHECK(!shift_bindings(*project, ui, pattern)[2].bound());
 }
 
 // Phase 1b: Shift + Pad 1-16 as printed, their toggles and lights, and the
@@ -1688,7 +1539,7 @@ void shift_pads() {
     CHECK(kept.pad_response == 2); // back to the curve it came from
 
     auto project = std::make_unique<Project>();
-    project->tracks[0].engine = EngineKind::Prophet;
+    project->tracks[0].engine = EngineKind::Plugin;
     ui.track = 0; ui.page = PageId::Stage; ui.shift = true;
     using B = SurfaceButton;
     CHECK(button_has_shift_job(*project, ui, B::Sample, false) && button_has_shift_job(*project, ui, B::Minus, false));
@@ -1703,7 +1554,7 @@ void shift_pads() {
 // Phase 1a: Patterns' cards, Input Config, Back's stack and which buttons glow.
 void button_remap() {
     auto project = std::make_unique<Project>();
-    project->tracks[0].engine = EngineKind::Prophet;
+    project->tracks[0].engine = EngineKind::Plugin;
     project->tracks[1].engine = EngineKind::Sampler;
     Pattern pattern; pattern.length = 3 * project->bar_ticks();
     UiState ui; ui.track = 0;
@@ -1833,7 +1684,7 @@ void parity_1c() {
     CHECK(tracks_on_pads(held));
     // The pads are the tracks at once; the screen shows them a second on (a tap shows nothing).
     CHECK(!track_overlay_shown(held, 5000 + pad_bank_overlay_ms - 1) && track_overlay_shown(held, 5000 + pad_bank_overlay_ms));
-    project->tracks[1].engine = EngineKind::Prophet;
+    project->tracks[1].engine = EngineKind::Plugin;
     held.track = 1;
     CHECK(button_has_shift_job(*project, held, SurfaceButton::Erase, false));
     held.pad_bank = false; held.copying = UiState::Copying::Tracks;
@@ -1891,11 +1742,12 @@ void parity_1c() {
     auto host = std::make_unique<EngineHost>();
     auto start = std::make_unique<Project>();
     auto start_bank = std::make_unique<PatternBank>();
-    load_sound(start->tracks[0], EngineKind::Prophet, 1);
+    synth(start->tracks[0], 0);
     host->load(*start, *start_bank);
+    tones_for(*host, *start);
     std::vector<int32_t> out(256);
     Track synth;
-    load_sound(synth, EngineKind::Prophet, 1);
+    ::synth(synth, 0);
     std::array<Pattern, pattern_count> patterns {};
     put(patterns[0], 0, 48, 110);
     auto pack = std::make_unique<TrackPack>(2, synth, patterns);
@@ -1997,7 +1849,7 @@ void timing() {
         };
         // Track 1, pattern 4: 32 steps of 1/8 (old division 0), one note of two steps on step 5.
         section("PATT", {0, 3, 32, 0, 0, 1, 0, 5, 0, 1, 60, 100, 2, 100, step_accent});
-        section("MOTN", {1, 0, 0, 3, 5, 0, uint8_t(prophet::Cutoff), 20, 0});
+        section("MOTN", {1, 0, 0, 3, 5, 0, uint8_t(engine_lane), 20, 0});
         Project project; auto bank = std::make_unique<PatternBank>();
         CHECK(load_project(bytes, project, *bank).empty());
         const auto& old = bank->at[0][3];
@@ -2032,11 +1884,12 @@ void timing() {
         auto project = std::make_unique<Project>();
         if (settings) *project = *settings;
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         project->tempo = 1200;
         bank->at[0][0] = pattern;
         auto host = std::make_unique<EngineHost>();
         host->load(*project, *bank);
+        tones_for(*host, *project);
         return host;
     };
     auto render = [](EngineHost& host, unsigned blocks) {
@@ -2186,7 +2039,7 @@ void step_edit_and_pad_motion() {
 
     // Pad lanes: one lane per pad, apart from the same value on another pad and from engine lanes.
     unsigned level = motion_pad_param(PadParam::Level), tune = motion_pad_param(PadParam::Pitch);
-    CHECK(level >= motion_fx_base + track_slots * 6 && pad_param_of(level) == int(PadParam::Level) && pad_param_of(prophet::Cutoff) < 0);
+    CHECK(level >= motion_fx_base + track_slots * 6 && pad_param_of(level) == int(PadParam::Level) && pad_param_of(engine_lane) < 0);
     Pattern m;
     CHECK(m.write_motion(point(0, level, 20, 9)) && m.write_motion(point(0, level, 90, 2)) && m.write_motion(point(8, level, 64, 9)));
     CHECK(m.write_motion(point(0, level, 30, 9)) && m.motion.size() == 3 && m.motion[1].value == 30); // the same place: replaced
@@ -2217,13 +2070,13 @@ void step_edit_and_pad_motion() {
     kit.last_pad = 9;
 
     // The file: each pattern's Motion in a MOTK of its own (roadmap P1), pad lanes with their pad.
-    bank->at[0][0].write_motion(point(3, prophet::Cutoff, 77));
+    bank->at[0][0].write_motion(point(3, engine_lane, 77));
     auto data = save_project(*project, *bank);
     auto back = std::make_unique<Project>();
     auto back_bank = std::make_unique<PatternBank>();
     CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[4][0].motion.size() == 2);
     CHECK(back_bank->at[4][0].has_lane(level, 9) && back_bank->at[4][0].has_lane(motion_pad_param(PadParam::Attack), 2));
-    CHECK(back_bank->at[0][0].has_lane(prophet::Cutoff, 0) && back_bank->at[0][0] == bank->at[0][0]);
+    CHECK(back_bank->at[0][0].has_lane(engine_lane, 0) && back_bank->at[0][0] == bank->at[0][0]);
 
     // The audio side: pad 10's level held at 0 from step 4 silences its hits there, and Stop gives it back.
     SampleData data_wav;
@@ -2642,6 +2495,7 @@ void audio_input_and_rendering() {
     for (auto& t : project->tracks) t.engine = EngineKind::None;
     auto host = std::make_unique<EngineHost>();
     host->load(*project, *bank);
+    tones_for(*host, *project);
     std::vector<int32_t> input(256), out(256);
     for (unsigned f = 0; f < 128; ++f) { input[2 * f] = int32_t(0.5 * 2147483647.0); input[2 * f + 1] = int32_t(0.25 * 2147483647.0); }
     std::vector<float> usb(256);
@@ -2694,12 +2548,13 @@ void audio_input_and_rendering() {
     CHECK(host->recall().filled() == 128);
 
     // A render of the patterns: from Play, exactly the pattern's length (a bar at 120 BPM: 88200 frames), then done.
-    load_sound(project->tracks[0], EngineKind::Prophet, 0);
+    synth(project->tracks[0], 0);
     bank->at[0][0].length = project->bar_ticks();
     bank->at[0][0].add({0, 24, 57, 110, 100, 0});
     bank->at[0][0].add({192, 24, 60, 110, 100, 0});
     host = std::make_unique<EngineHost>();
     host->load(*project, *bank);
+    tones_for(*host, *project);
     Command arm {Command::Type::BounceArm, 0, 0, 0, 0};
     arm.position = project->bar_ticks();
     host->send(arm);
@@ -2735,6 +2590,7 @@ void audio_input_and_rendering() {
     project->song.loop_start = 0; project->song.loop_end = 1;
     host = std::make_unique<EngineHost>();
     host->load(*project, *bank);
+    tones_for(*host, *project);
     host->send({Command::Type::BounceArm, 0, 0, 0, 1});
     host->send({Command::Type::Play, 0, 0, 0, 1});
     bool tail = false;
@@ -2752,6 +2608,7 @@ void audio_input_and_rendering() {
     host = std::make_unique<EngineHost>();
     project->song = Song {};
     host->load(*project, *bank);
+    tones_for(*host, *project);
     host->send({Command::Type::Play, 0});
     for (unsigned n = 0; n < 100; ++n) host->render(out.data(), 128, 1, input.data()); // into the bar
     Command seq {Command::Type::RecordArm, uint8_t(InputSource::Resample), 255, 3, -96};
@@ -2859,11 +2716,11 @@ void performance_effects() {
     // Knob FX on a track: a low pass at its bottom quietens it while heard; bypassed, the track is as it was.
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    load_sound(project->tracks[0], EngineKind::Prophet, 0);
-    project->tracks[0].params[prophet::Cutoff] = 100;
+    synth(project->tracks[0], 0);
     auto energy = [&](const std::function<void(EngineHost&)>& set) {
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         set(host);
         host.send({Command::Type::NoteOn, 0, 0, 69, 110});
         std::vector<int32_t> out(256);
@@ -2897,6 +2754,7 @@ void performance_effects() {
         auto hit = [&](unsigned pad, bool knobbed) {
             EngineHost host;
             host.load(*kit, *bank);
+            tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
             knob(host, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 0);
             Command pads {Command::Type::KnobFx, 1, 0, 4}; pads.position = knobbed ? 1u : 0u; host.send(pads); // pad A01
@@ -2915,6 +2773,7 @@ void performance_effects() {
         auto take = [&](bool knobbed, bool playing) {
             EngineHost host;
             host.load(*kit, *bank);
+            tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
             knob(host, EffectKind::None, {}, true, 0);
             Command pads {Command::Type::KnobFx, 1, 0, 4}; pads.position = knobbed ? 1u : 0u; host.send(pads); // pad A01
@@ -2949,6 +2808,7 @@ void performance_effects() {
     auto take = [&](bool rec_fx) {
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         knob(host, EffectKind::Filter, {{0, 0}, {1, 0}}, true, 0);
         host.send({Command::Type::KnobFx, 0, 0, 2, int16_t(1 | (rec_fx ? 2 : 0))});
         host.send({Command::Type::RecordArm, uint8_t(InputSource::Resample), 1, 5, -96});
@@ -2966,6 +2826,7 @@ void performance_effects() {
     auto loud = [&](bool on, bool color) {
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.send({Command::Type::Compressor, 0, 0, 4, 100});
         host.send({Command::Type::Compressor, 0, 0, 1, int16_t(color)});
         host.send({Command::Type::Compressor, 0, 0, 0, int16_t(on)});
@@ -2985,12 +2846,12 @@ void performance_effects() {
     // and a muted key still ducks (a ghost key).
     {
         auto two = std::make_unique<Project>(*project);
-        load_sound(two->tracks[2], EngineKind::Prophet, 0);
-        two->tracks[2].params[prophet::Cutoff] = 100;
+        synth(two->tracks[2], 2);
         struct Heard { double energy; float reduction; };
         auto side = [&](bool on, bool key_plays, bool other_plays, bool key_muted) {
             EngineHost host;
             host.load(*two, *bank);
+            tones_for(host, *two);
             host.send({Command::Type::Compressor, 0, 0, 4, 100});
             host.send({Command::Type::Compressor, 0, 0, 7, 0});
             host.send({Command::Type::Compressor, 0, 0, 6, 1});
@@ -3026,6 +2887,7 @@ void performance_effects() {
         auto hit = [&](bool keyed, bool a01, bool a02) {
             EngineHost host;
             host.load(*kit, *bank);
+            tones_for(host, *kit);
             CHECK(host.offer_sample(0, &tone));
             host.send({Command::Type::Compressor, 0, 0, 4, 100});
             host.send({Command::Type::Compressor, 0, 0, 7, 1});
@@ -3052,6 +2914,7 @@ void performance_effects() {
     {
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.send({Command::Type::Compressor, 0, 0, 4, 100});
         host.send({Command::Type::Compressor, 0, 0, 0, 1});
         for (int note : {57, 64}) host.send({Command::Type::NoteOn, 0, 0, uint16_t(note), 127});
@@ -3266,8 +3129,8 @@ void fader_and_takeover() {
     auto& kit = project->tracks[3];
     load_sound(kit, EngineKind::Sampler, 0);
     kit.pads[8].sample = 0; kit.last_pad = 8; kit.pads[8].level = 90; kit.pads[8].pan = 0;
-    auto& synth = project->tracks[2];
-    load_sound(synth, EngineKind::Prophet, 0);
+    auto& synth = project->tracks[2]; // a track of notes: here a MIDI track, whose values are its own
+    load_sound(synth, EngineKind::Midi, 0);
     // Defaults by engine; a kit target on a synth falls back to the mod wheel.
     CHECK(fader_target(kit) == FaderTarget::PadVolume && fader_target(synth) == FaderTarget::ModWheel);
     synth.fader_target = uint8_t(FaderTarget::PadPan);
@@ -3327,8 +3190,8 @@ void fader_and_takeover() {
     {
         using L = FaderLearn;
         // What it can learn: an engine parameter, a pad's own value (whichever pad is hit last), the mix, the track's own effects.
-        CHECK(fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0}).what == L::Lane
-              && fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0}).lane == prophet::Cutoff);
+        CHECK(fader_learnable(synth, 2, Binding {Kind::Param, midi_track::Cc1, 0, 127, 0}).what == L::Lane
+              && fader_learnable(synth, 2, Binding {Kind::Param, midi_track::Cc1, 0, 127, 0}).lane == midi_track::Cc1);
         CHECK(fader_learnable(synth, 2, Binding {Kind::Tempo, 0, 300, 3000, 1200}).what == L::None);       // not the track's
         CHECK(fader_learnable(synth, 2, Binding {Kind::FxParam, 16 * 64 + 2, 0, 100, 0}).what == L::None); // its bus's effect
         CHECK(fader_learnable(synth, 2, Binding {Kind::FxParam, 3 * 64 + 2, 0, 100, 0}).what == L::None);  // another track's
@@ -3336,11 +3199,11 @@ void fader_and_takeover() {
         CHECK(fader_learnable(kit, 3, Binding {Kind::PadCutoff, 0, 0, 100, 0}).lane == motion_pad_param(PadParam::FilterCutoff));
         // The job: the learned card goes over the target, live.
         UiState at; at.page = PageId::Stage; at.track = 2;
-        synth.params[prophet::Cutoff] = 70;
-        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0});
+        synth.params[midi_track::Cc1] = 70;
+        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Param, midi_track::Cc1, 0, 127, 0});
         auto learned = fader_job(*project, at);
         CHECK(learned.source == FaderJob::Source::Target && learned.learned && !learned.pad && learned.binding.kind == Kind::Param
-              && learned.binding.id == prophet::Cutoff && learned.binding.value == 70);
+              && learned.binding.id == midi_track::Cc1 && learned.binding.value == 70);
         at.page = PageId::Tracks; CHECK(fader_job(*project, at).source == FaderJob::Source::Page); // a page's own job still wins
         at.page = PageId::Stage;
         synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Pan, 0, -50, 50, 0});
@@ -3355,10 +3218,13 @@ void fader_and_takeover() {
         learned = fader_job(*project, at);
         CHECK(!learned.learned && learned.binding.kind == Kind::ModWheel);
         // Another engine: its parameter means nothing there, so the target again.
-        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Param, prophet::Cutoff, 0, 100, 0});
-        load_sound(synth, EngineKind::Fm6, 0);
+        synth.fader_learned = fader_learnable(synth, 2, Binding {Kind::Param, midi_track::Cc1, 0, 127, 0});
+        auto learned_on = synth.fader_learned;
+        ::synth(synth, 0);
+        synth.fader_learned = learned_on;
         CHECK(!fader_job(*project, at).learned && fader_job(*project, at).binding.kind == Kind::ModWheel);
-        load_sound(synth, EngineKind::Prophet, 0);
+        load_sound(synth, EngineKind::Midi, 0);
+        synth.fader_learned = learned_on;
         CHECK(fader_job(*project, at).learned);
         synth.fader_learned = {};
         // A pad's own value follows the last pad hit; an empty one has nothing to drive, but stays learned.
@@ -3418,7 +3284,7 @@ void fader_and_takeover() {
         kit.fader_target = uint8_t(FaderTarget::PadCutoff); kit.fader_on = false;
         kit.fader_learned = {FaderLearn::Lane, uint16_t(motion_pad_param(PadParam::FilterCutoff)), uint8_t(EngineKind::Sampler), 2};
         kit.fader_pin = true;
-        synth.fader_learned = {FaderLearn::Send, 3, uint8_t(EngineKind::Prophet), 0}; // learned, on its default target: FADR all the same
+        synth.fader_learned = {FaderLearn::Send, 3, uint8_t(EngineKind::Midi), 0}; // learned, on its default target: FADR all the same
         patterns->at[2][0].write_motion(point(4, motion_wheel, 90)); patterns->at[2][0].write_motion(point(2, 3, 40));
         auto bytes = save_project(*project, *patterns);
         auto loaded = std::make_unique<Project>();
@@ -3498,10 +3364,9 @@ void midi_and_sync() {
         config.in_channel = 7;
         CHECK(note_tracks(config, own, 2, 1) == 0 && note_tracks(config, own, 2, 7) == (1u << 2));
         Track kit; kit.engine = EngineKind::Sampler;
-        Track synth; synth.engine = EngineKind::Prophet;
-        Track drums; drums.engine = EngineKind::Kit909;
+        Track synth; synth.engine = EngineKind::Plugin;
         CHECK(note_key(kit, 35) == -1 && note_key(kit, 36) == 36 && note_key(kit, 127) == 127);
-        CHECK(note_key(synth, 12) == 12 && note_key(drums, 35) == -1 && note_key(drums, 46) == 46 && note_key(drums, 47) == -1);
+        CHECK(note_key(synth, 12) == 12 && note_key(synth, 127) == 127);
         CHECK(port_is(MidiPort::External, "SerialMIDI", false) && !port_is(MidiPort::External, "SerialMIDI", true));
         CHECK(port_is(MidiPort::Usb, "MIDI Gadget", false) && port_is(MidiPort::Usb, "USB-Audio", false) && !port_is(MidiPort::Usb, "SerialMIDI", false));
         Track own_channel; own_channel.midi_channel = 9;
@@ -3597,12 +3462,13 @@ void midi_and_sync() {
         using K = MidiOutEvent::Kind;
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         project->tempo = 1200;
         put(bank->at[0][0], 4, 45, 100);
         put(bank->at[1][0], 0, 60, 90); // track 2 has no engine: a MIDI track under Empty
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         auto drain = [&] { std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
@@ -3786,11 +3652,12 @@ void mtc_in() {
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         project->tempo = 1200;
         put(bank->at[0][0], 4, 45, 100);
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         uint64_t frame = 0;
@@ -3942,7 +3809,7 @@ void projects_and_polish() {
 
     // Undo scopes: what a card or a press is part of.
     Project project;
-    load_sound(project.tracks[0], EngineKind::Prophet, 1);
+    synth(project.tracks[0], 0);
     load_sound(project.tracks[2], EngineKind::Sampler, 0);
     project.tracks[2].last_pad = 17;
     UiState ui;
@@ -4074,7 +3941,7 @@ void projects_and_polish() {
 
     // Load Kit: the first kit with a sample, onto a synth track; each file asked for once, a pad without a slot left empty.
     auto from = std::make_unique<Project>();
-    load_sound(from->tracks[1], EngineKind::Prophet, 2);
+    synth(from->tracks[1], 1);
     load_sound(from->tracks[3], EngineKind::Sampler, 0);
     load_sound(from->tracks[6], EngineKind::Sampler, 0);
     auto ref = [&](unsigned slot, const char* name) {
@@ -4237,11 +4104,12 @@ void device_rates() {
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         project->tempo = 1200;
         put(bank->at[0][0], 4, 45, 100);
         auto host = std::make_unique<EngineHost>();
         host->load(*project, *bank);
+        tones_for(*host, *project);
         host->set_audio_format(48000, 384);
         CHECK(host->format_changes() == 1 && dsp::sample_rate() == 48000.0f);
         std::vector<int32_t> out(256);
@@ -4461,9 +4329,10 @@ void track_source() {
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
     for (auto& t : project->tracks) t.engine = EngineKind::None;
-    load_sound(project->tracks[0], EngineKind::Prophet, 0);
+    synth(project->tracks[0], 0);
     auto host = std::make_unique<EngineHost>();
     host->load(*project, *bank);
+    tones_for(*host, *project);
     std::vector<int32_t> out(256);
     auto run = [&](unsigned blocks) { for (unsigned n = 0; n < blocks; ++n) host->render(out.data(), 128, 1, nullptr); };
     auto source = [&](bool post) { host->send({Command::Type::RecordSource, uint8_t(InputSource::Track), 0, 0, int16_t(post)}); };
@@ -4518,6 +4387,7 @@ void track_source() {
     bank->at[0][0].length = project->bar_ticks();
     host = std::make_unique<EngineHost>();
     host->load(*project, *bank);
+    tones_for(*host, *project);
     Command seq {Command::Type::RecordArm, uint8_t(InputSource::Track), 255, 3, -96};
     seq.position = 0;
     host->send(seq);
@@ -4585,7 +4455,7 @@ void track_source() {
     {
         Project p;
         for (auto& t : p.tracks) t.engine = EngineKind::None;
-        p.tracks[0].engine = EngineKind::Prophet; p.tracks[2].engine = EngineKind::Kit909;
+        p.tracks[0].engine = EngineKind::Plugin; p.tracks[2].engine = EngineKind::Plugin;
         p.tracks[3].engine = EngineKind::Sampler; p.tracks[4].engine = EngineKind::Midi; p.tracks[5].engine = EngineKind::Sampler;
         InputConfig in;
         auto choices = input_choices(p, 3, in);
@@ -4628,7 +4498,7 @@ void midi_tracks() {
     {
         const auto& info = engine_info(EngineKind::Midi);
         CHECK(info.available && std::string(info.name) == "MIDI" && info.param_count == midi_track::Count);
-        CHECK(edit_page_count(info) == 2 && !is_mod_page(info, 0) && !is_mod_page(info, 1) && edit_page_count(engine_info(EngineKind::Prophet)) == prophet::info().page_count + 1);
+        CHECK(edit_page_count(info) == 2 && !is_mod_page(info, 0) && !is_mod_page(info, 1));
         Track t;
         load_sound(t, EngineKind::Midi, 0);
         CHECK(t.engine == EngineKind::Midi && t.params[midi_track::Port] == midi_track::External && t.params[midi_track::Channel] == 1 &&
@@ -4679,13 +4549,14 @@ void midi_tracks() {
         auto bank = std::make_unique<PatternBank>();
         load_sound(project->tracks[0], EngineKind::Midi, 0);
         project->tracks[0].params[midi_track::Port] = midi_track::UsbC; project->tracks[0].params[midi_track::Channel] = 10;
-        load_sound(project->tracks[1], EngineKind::Prophet, 1);
+        synth(project->tracks[1], 1);
         project->tempo = 1200;
         put(bank->at[0][0], 0, 60, 100, 2);
         bank->at[0][1].length = 4 * project->bar_ticks(); // pattern 2: four bars, one long note
         put(bank->at[0][1], 0, 62, 100, 64);
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         auto drain = [&] { std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
@@ -4763,7 +4634,7 @@ void midi_tracks() {
         CHECK(stop_off);
         host.send({Command::Type::NoteOn, 0, 0, 55, 90});
         block();
-        host.send({Command::Type::Engine, 0, 0, uint16_t(EngineKind::Prophet)});
+        host.send({Command::Type::Engine, 0, 0, uint16_t(EngineKind::Plugin)});
         auto changed = block();
         CHECK(changed.size() == 1 && changed[0].kind == K::NoteOff && changed[0].a == 55);
     }
@@ -4774,6 +4645,7 @@ void midi_tracks() {
         load_sound(project->tracks[0], EngineKind::Midi, 0);
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         host.send({Command::Type::Arp, 0, 0, 0, 1});
@@ -4804,19 +4676,18 @@ void stage() {
                 CHECK(page.key && std::strlen(page.key) > 0);
                 for (unsigned c = 0; c < 3; ++c) CHECK(page.params[c] < int(info.param_count) && page.shift[c] < int(info.param_count));
                 if (page.picture == StagePicture::Envelope) CHECK(page.params[0] >= 0 && page.params[1] >= 0 && page.params[2] >= 0 && page.shift[0] >= 0);
-                if (page.kind == StageKind::Voice) CHECK(g.voices && g.pad_voice);
             }
         }
     }
-    CHECK(stage_groups(EngineKind::Prophet).groups[0].pages[0].kind == StageKind::Preset);
+    CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::Mix);
     CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 4);
     CHECK(stage_groups(EngineKind::None).groups[2].pages[0].kind == StageKind::NewMidi);
 
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    load_sound(project->tracks[0], EngineKind::Prophet, 1);
+    synth(project->tracks[0], 0);
     load_sound(project->tracks[1], EngineKind::Sampler, 0);
-    load_sound(project->tracks[2], EngineKind::Kit909, 0);
+    synth(project->tracks[2], 2);
     load_sound(project->tracks[3], EngineKind::Midi, 0);
     const Pattern& pattern = bank->at[0][0];
     UiState ui;
@@ -4824,61 +4695,37 @@ void stage() {
     auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track]).key); };
     auto cards = [&](bool shift) { return page_bindings(*project, ui, pattern, shift); };
 
-    // B1 on a synth: PRESET -> TONE -> MIX -> SENDS -> PRESET; B2 jumps to its own first page; each track keeps its own.
-    CHECK(key() == "PRESET");
-    stage_press(ui, project->tracks[0], 0); CHECK(key() == "TONE");
-    stage_press(ui, project->tracks[0], 0); CHECK(key() == "MIX");
+    // B1 on a synth (a PLUGIN track): MIX -> SENDS -> MIX; B2 jumps to its own first page; each track keeps its own.
+    CHECK(key() == "MIX");
     stage_press(ui, project->tracks[0], 0); CHECK(key() == "SENDS");
-    stage_press(ui, project->tracks[0], 0); CHECK(key() == "PRESET");
-    stage_press(ui, project->tracks[0], 1); CHECK(key() == "FILTER ENV");
-    stage_press(ui, project->tracks[0], 1); CHECK(key() == "AMP ENV");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "MIX");
+    stage_press(ui, project->tracks[0], 1); CHECK(key() == "ARP");
+    stage_press(ui, project->tracks[0], 1); CHECK(key() == "CHORD");
     ui.track = 1; CHECK(key() == "TRIM");
     stage_press(ui, project->tracks[1], 2); CHECK(key() == "FILTER");
-    ui.track = 0; CHECK(key() == "AMP ENV");
-    stage_press(ui, project->tracks[0], 0); CHECK(key() == "PRESET"); // another button: its first page
+    ui.track = 0; CHECK(key() == "CHORD");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "MIX"); // another button: its first page
 
-    // TONE: the favourites; AMP ENV: attack, decay, sustain, Shift + K1 release, Shift + K2 velocity; K3 has no Shift card.
-    stage_go(ui, 0, 1);
-    auto tone = cards(false);
-    CHECK(tone[0].kind == K::Param && tone[0].id == prophet::Cutoff && tone[2].id == prophet::EnvAmount);
-    stage_go(ui, 1, 1);
-    auto amp = cards(false), amp_shift = cards(true);
-    CHECK(amp[0].id == prophet::AmpAttack && amp[1].id == prophet::AmpDecay && amp[2].id == prophet::AmpSustain);
-    CHECK(amp_shift[0].id == prophet::AmpRelease && amp_shift[1].id == prophet::VelAmp && amp_shift[2].id == prophet::AmpSustain);
-    CHECK(shift_bindings(*project, ui, pattern)[0].bound() && !shift_bindings(*project, ui, pattern)[2].bound());
-    // PERFORM: glide, unison, detune; the Shift row vintage, bend, voices.
-    stage_go(ui, 2, 2);
-    CHECK(cards(false)[0].id == prophet::Glide && cards(true)[2].id == prophet::Voices);
     // MIX: level, pan, send; Shift + K3 the bus.
-    stage_go(ui, 0, 2);
+    stage_go(ui, 0, 0);
     CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send && cards(false)[2].id == 0);
     CHECK(!shift_bindings(*project, ui, pattern)[2].bound()); // the quick send is A's; SENDS has all four
     // SENDS (B1 again): sends A, B, C on K1-K3, D on Shift + K1.
-    stage_go(ui, 0, 3);
+    stage_go(ui, 0, 1);
     CHECK(key() == "SENDS" && cards(false)[0].kind == K::Send && cards(false)[1].id == 1 && cards(false)[2].id == 2 && cards(true)[0].id == 3);
-    stage_go(ui, 0, 2);
     // ARP: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold.
-    stage_go(ui, 2, 0);
+    stage_go(ui, 1, 0);
     CHECK(cards(false)[0].kind == K::ArpMode && cards(false)[1].kind == K::ArpRate && cards(true)[0].kind == K::ArpGate && cards(true)[2].kind == K::ArpHold);
     // CHORD: type, voicing, inversion; Shift + K1 chords on or off, Shift + K3 hold.
-    stage_go(ui, 2, 1);
+    stage_go(ui, 1, 1);
     CHECK(key() == "CHORD" && cards(false)[0].kind == K::ChordType && cards(false)[2].kind == K::ChordInvert);
     CHECK(cards(true)[0].kind == K::ChordOn && cards(true)[2].kind == K::ArpHold);
     // FX: nothing without effects; with one, its first row and (Shift) its second.
-    stage_go(ui, 2, 3);
+    stage_go(ui, 2, 0);
     CHECK(!cards(false)[0].bound());
     project->tracks[0].fx.slots[0].kind = uint8_t(EffectKind::Echo);
     CHECK(cards(false)[0].kind == K::FxParam && cards(false)[0].id == 0 * 64 + 0 * 8 + 0);
     CHECK(!cards(true)[0].bound() || cards(true)[0].id == 3);
-    // PRESET: K1 the loaded sound's place in the list, or the one turned to while it waits; K2 the list, K3 the engine.
-    stage_go(ui, 0, 0);
-    auto preset = cards(false);
-    CHECK(preset[0].kind == K::StageSound && preset[0].value == 1 && preset[0].max == int(prophet::info().sound_count) - 1);
-    CHECK(preset[1].kind == K::SoundList && preset[2].kind == K::Engine);
-    ui.preset_due = 5; ui.preset_cursor = 4;
-    CHECK(cards(false)[0].value == 4);
-    ui.preset_due = 0;
-    CHECK(stage_preset_ms == 250);
 
     // A kit: Akai's pages on the last pad hit. TRIM start, end, loop, zoom on Shift; MIX K2 the kit's volume;
     // AMP ENV Shift + K2 Decay From; TUNE Shift + K3 # Beats; PLAY Shift + K2 Pad Link.
@@ -4916,23 +4763,6 @@ void stage() {
     CHECK(!cards(false)[0].bound());
     CHECK(stage_kit_page(StageKind::AmpEnv) == PageId::EnvelopePage && stage_kit_page(StageKind::Preset) == PageId::Count);
 
-    // A 909: VOICE follows the last pad: a clap is the snare and clap page, its Shift row clap decay and rim.
-    ui.track = 2;
-    auto& drums = project->tracks[2];
-    stage_go(ui, 0, 1);
-    CHECK(key() == "KICK"); // before any pad
-    drums.last_note = 36 + kit909::Clap;
-    CHECK(key() == "SNARE" && cards(false)[2].id == kit909::SnareSnappy && cards(true)[0].id == kit909::ClapDecay);
-    drums.last_note = 36 + kit909::OpenHat;
-    CHECK(key() == "HATS");
-    drums.last_note = 36 + kit909::Ride;
-    CHECK(key() == "CYMBALS" && cards(true)[2].id == kit909::RideDecay);
-    stage_go(ui, 0, 2);
-    CHECK(key() == "LEVELS" && cards(false)[0].id == kit909::KickLevel && cards(true)[2].id == kit909::CymbalLevel);
-    stage_press(ui, drums, 1); CHECK(key() == "MIX");
-    stage_press(ui, drums, 1); CHECK(key() == "SENDS"); // B2: MIX, then its four sends
-    stage_press(ui, drums, 1); CHECK(key() == "MIX");
-
     // MIDI: DEVICE, PROGRAM (bank and program, Off at first), CC (values; their numbers on Shift).
     ui.track = 3;
     auto& midi = project->tracks[3];
@@ -4944,13 +4774,13 @@ void stage() {
     CHECK(std::string(midi_track::cc_name(74)) == "Brightness" && !midi_track::cc_name(3));
     CHECK(binding_lane(midi, cards(false)[0]) == motion_lane(midi_track::Cc1)); // a CC records as motion
 
-    // An empty track: SYNTH (engines, not a kit or MIDI), KIT (where its sample comes from), MIDI (port, channel).
+    // An empty track: SYNTH (a plug-in: Melodee's synths are plug-ins), KIT (where its sample comes from), MIDI (port,
+    // channel).
     ui.track = 9;
     CHECK(key() == "SYNTH");
     std::array<EngineKind, size_t(EngineKind::Count)> engines {};
     unsigned count = new_engines(engines);
-    CHECK(count >= 5);
-    for (unsigned n = 0; n < count; ++n) CHECK(engines[n] != EngineKind::Sampler && engines[n] != EngineKind::Midi && engines[n] != EngineKind::None);
+    CHECK(count == 1 && engines[0] == EngineKind::Plugin);
     // Three doors on one page, whichever key is lit: K1 the engine, K2 the kit's source, K3 the MIDI port.
     for (unsigned door = 0; door < 3; ++door) {
         stage_go(ui, door, 0);
@@ -4999,6 +4829,7 @@ void stage() {
         p2->tracks[0].params[midi_track::Program] = 6; p2->tracks[0].params[midi_track::BankLsb] = 2;
         EngineHost host;
         host.load(*p2, *bank);
+        tones_for(host, *p2);
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         auto block = [&] { host.render(out.data(), 128, 1); std::vector<MidiOutEvent> e; MidiOutEvent one; while (host.take_midi(one)) e.push_back(one); return e; };
@@ -5097,7 +4928,7 @@ void roll() {
     CHECK(roll_position(4 * 96 + 96 + 48, 4 * 96, 96, 24) == "2.2.3" && roll_position(0, 384, 96, 96) == "1.1");
     // Roll's cards are the note in focus; none there, no cards.
     Project project;
-    load_sound(project.tracks[0], EngineKind::Prophet, 1);
+    synth(project.tracks[0], 0);
     ui.page = PageId::Roll; ui.track = 0;
     auto cards = page_bindings(project, ui, p);
     CHECK(cards[0].kind == Binding::Kind::EventLength && cards[1].kind == Binding::Kind::EventVelocity && cards[2].kind == Binding::Kind::EventChance);
@@ -5476,13 +5307,14 @@ void looper_engine() {
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
     for (auto& t : project->tracks) t.engine = EngineKind::None;
-    load_sound(project->tracks[0], EngineKind::Prophet, 1);
+    synth(project->tracks[0], 0);
     project->looper.on = true;
     project->looper.loops[0].source = looper::source_track(0);
     project->looper.loops[0].bars = 1;
     project->tempo = 2400;
     auto host = std::make_unique<EngineHost>();
     host->load(*project, *bank);
+    tones_for(*host, *project);
     std::vector<int32_t> out(256);
     auto render = [&](unsigned blocks) { for (unsigned n = 0; n < blocks; ++n) { host->render(out.data(), 128, 1); host->looper().service(); } };
     render(20);
@@ -5903,7 +5735,7 @@ void kit_levels_octave() {
     kit.levels_kind = uint8_t(LevelsKind::Velocity);
     CHECK(levels_of(*project, kit, 0).semitones == 0);
     auto& synth = project->tracks[1];
-    synth.engine = EngineKind::Prophet;
+    synth.engine = EngineKind::Plugin;
     synth.levels_kind = uint8_t(LevelsKind::Tune);
     synth.octave = 5;
     CHECK(levels_of(*project, synth, 3).semitones == 0);
@@ -6170,14 +6002,12 @@ void parallel_render() {
     auto render = [](unsigned workers, uint64_t* helped) {
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
-        const EngineKind kinds[] {EngineKind::Prophet, EngineKind::Fm6, EngineKind::Cz, EngineKind::Sid,
-                                  EngineKind::Kit909, EngineKind::Prophet, EngineKind::Fm6, EngineKind::Cz};
         const EffectKind chains[][2] {{EffectKind::Reverb, EffectKind::Echo}, {EffectKind::Chorus, EffectKind::Drive},
                                       {EffectKind::Phaser, EffectKind::Plate}, {EffectKind::Crush, EffectKind::Filter},
                                       {EffectKind::Compressor, EffectKind::Room}, {EffectKind::TapeEcho, EffectKind::Width},
                                       {EffectKind::Flanger, EffectKind::Shimmer}, {EffectKind::Tape, EffectKind::PingPong}};
         for (unsigned t = 0; t < 8; ++t) {
-            load_sound(p->tracks[t], kinds[t], 0);
+            if (t % 2) tone_kit(*p, t); else synth(p->tracks[t], t); // synths (plug-ins) and kits in turn
             p->tracks[t].mix.pan = int8_t(int(t) * 12 - 42);
             p->tracks[t].mix.sends[t % bus_count] = uint8_t(20 + t * 5);
             p->tracks[t].mix.sends[(t + 1) % bus_count] = uint8_t(10 + t * 3); // two sends a track: two buses fed
@@ -6187,12 +6017,17 @@ void parallel_render() {
         EngineHost host;
         host.set_render_threads(workers, 0);
         host.load(*p, *b);
+        auto tones = std::make_unique<Tones>();
+        tones->offer(host, *p);
+        auto tone = tone_sample();
+        CHECK(host.offer_sample(0, &tone));
         std::vector<int32_t> block(256), all;
         for (unsigned n = 0; n < 600; ++n) {
             if (n % 50 == 0)
-                for (unsigned t = 0; t < 8; ++t) {
-                    host.send({Command::Type::NoteOff, uint8_t(t), 0, uint16_t(48 + t + (n / 50 + 1) % 2 * 7), 0});
-                    host.send({Command::Type::NoteOn, uint8_t(t), 0, uint16_t(48 + t + (n / 50) % 2 * 7), int16_t(90 + t)});
+                for (unsigned t = 0; t < 8; ++t) { // a kit's notes are its first four pads
+                    auto key = [&](unsigned at) { return uint16_t(t % 2 ? sampler_first_note + (t + at) % 4 : 48 + t + at % 2 * 7); };
+                    host.send({Command::Type::NoteOff, uint8_t(t), 0, key(n / 50 + 1), 0});
+                    host.send({Command::Type::NoteOn, uint8_t(t), 0, key(n / 50), int16_t(90 + t)});
                 }
             host.render(block.data(), 128, 1);
             all.insert(all.end(), block.begin(), block.end());
@@ -6212,37 +6047,34 @@ void parallel_render() {
     for (int again = 0; again < 2; ++again) CHECK(render(3, nullptr) == alone);
 }
 
-// Roadmap P2, one dispatch a block: a busy project (six kinds of engine and a kit of samples; ratchets with ramps,
+// Roadmap P2, one dispatch a block: a busy project (synths as plug-ins and kits of samples; ratchets with ramps,
 // slides and ties, accents, Motion and locks on engine values, kit pads, effects and the wheel; an arp swung; notes,
 // pads and values in by hand at their frames, mid-block) plays the same as the old way, where every track was cut
 // wherever any track had a tick or a note and the workers were called for each run: the same to the sample, cut
-// where the old way cut it or whole between each engine's own calls (the synths step their modulation on their own
-// count of frames, engine.h ControlStep, not from each render call's start), with the workers or without.
+// where the old way cut it or whole between each engine's own calls, with the workers or without.
 void one_dispatch() {
-    using namespace prophet;
     SampleData tone;
     tone.frames = 22050; tone.left.resize(22050); tone.right.resize(22050);
     for (unsigned n = 0; n < 22050; ++n) tone.left[n] = tone.right[n] = float(std::sin(n * 0.05) * 0.4 * std::exp(-double(n) / 6000.0));
     auto play = [&](bool whole, bool cut_as_split, unsigned workers, std::vector<float>* stems_out) {
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
-        const EngineKind kinds[] {EngineKind::Prophet, EngineKind::Fm6, EngineKind::Cz, EngineKind::Sid,
-                                  EngineKind::Kit909, EngineKind::Sampler, EngineKind::Prophet, EngineKind::Fm6};
         for (unsigned t = 0; t < 8; ++t) {
-            load_sound(p->tracks[t], kinds[t], kinds[t] == EngineKind::Sampler ? 0 : t % 3);
+            if (t == 4 || t == 5) tone_kit(*p, t); else synth(p->tracks[t], t);
             p->tracks[t].mix.pan = int8_t(int(t) * 12 - 42);
             p->tracks[t].mix.sends[t % bus_count] = uint8_t(20 + t * 5);
         }
         p->tracks[7].fx.slots[0] = {uint8_t(EffectKind::Filter), false, {60, 50, 40, 50, 30, 0}};
         p->tracks[1].fx.slots[0] = {uint8_t(EffectKind::Chorus), false, {60, 50, 40, 50, 30, 0}};
         p->buses[0].fx.slots[0] = {uint8_t(EffectKind::Reverb), false, {70, 50, 40, 50, 0, 0}};
-        for (unsigned pad = 0; pad < 4; ++pad) { p->tracks[5].pads[pad].sample = 0; p->tracks[5].pads[pad].play = PadPlay::OneShot; }
+        for (unsigned t : {4u, 5u})
+            for (unsigned pad = 0; pad < 8; ++pad) { p->tracks[t].pads[pad].sample = 0; p->tracks[t].pads[pad].play = PadPlay::OneShot; }
         p->tempo = 1370;
         p->swing = 58;
         auto& bass = b->at[0][0]; // slides, ties and an accent
         put(bass, 0, 36, 100, 2, step_slide); put(bass, 2, 43, 90, 1, step_tie); put(bass, 3, 43, 80); put(bass, 6, 39, 110, 1, step_accent);
         put(bass, 9, 41, 70, 3); put(bass, 13, 48, 100, 1, step_slide); put(bass, 14, 36, 90);
-        CHECK(bass.write_motion(point(1, Cutoff, 20)) && bass.write_motion(point(5, Cutoff, 90, 0, 6)) && bass.write_motion(point(10, Resonance, 70)));
+        CHECK(bass.write_motion(point(1, engine_lane, 20)) && bass.write_motion(point(5, engine_lane, 90, 0, 6)) && bass.write_motion(point(10, engine_lane + 1, 70)));
         CHECK(bass.write_motion(point(7, motion_wheel, 120)) && bass.write_motion(point(12, motion_wheel, 10)));
         for (unsigned t : {1u, 3u, 6u}) {
             auto& q = b->at[t][0];
@@ -6250,13 +6082,13 @@ void one_dispatch() {
             q.events[1].ratchet = 3; q.events[1].ramp = -40;
             q.events[3].ratchet = 5; q.events[3].ramp = 60;
         }
-        CHECK(b->at[6][0].write_motion(point(2, Cutoff, 10, 0, 12)) && b->at[6][0].write_motion(point(9, EnvAmount, 80)));
+        CHECK(b->at[6][0].write_motion(point(2, engine_lane, 10, 0, 12)) && b->at[6][0].write_motion(point(9, engine_lane + 2, 80)));
         CHECK(b->at[7][0].write_motion(point(4, motion_fx_base + 0, 10)) && b->at[7][0].write_motion(point(11, motion_fx_base + 1, 90, 0, 24)));
         put(b->at[7][0], 0, 60, 100, 8); put(b->at[7][0], 8, 67, 100, 8);
-        auto& drums = b->at[4][0];
+        auto& drums = b->at[4][0]; // a kit's pads 1, 3 and 7
         for (unsigned s = 0; s < 16; ++s) {
             Step st;
-            st.notes[0] = {uint8_t(s % 4 == 0 ? 36 : s % 2 ? 42 : 38), uint8_t(80 + s)};
+            st.notes[0] = {uint8_t(sampler_first_note + (s % 4 == 0 ? 0 : s % 2 ? 6 : 2)), uint8_t(80 + s)};
             drums.set_step(s, st);
         }
         drums.events[2].ratchet = 4; drums.events[2].ramp = -60;
@@ -6271,7 +6103,9 @@ void one_dispatch() {
         host.set_split_cuts(cut_as_split);
         host.load(*p, *b);
         CHECK(host.offer_sample(0, &tone));
-        host.send({Command::Type::Arp, 2, 0, 0, 1}); // the arp on the CZ, its keys held
+        auto tones = std::make_unique<Tones>();
+        tones->offer(host, *p);
+        host.send({Command::Type::Arp, 2, 0, 0, 1}); // the arp on a synth, its keys held
         host.send({Command::Type::Arp, 2, 0, 2, 3});
         for (uint16_t key : {60, 64, 67}) host.send({Command::Type::ArpKey, 2, 0, key, 100});
         host.send({Command::Type::Play});
@@ -6319,22 +6153,25 @@ void one_dispatch() {
 // not a click); between 70 and 85 % no voice is stolen but a released note's long tail ends in tens of ms; under 70 %
 // a tail rings as long as its release says.
 void overload_guard() {
-    using namespace prophet;
     auto p = std::make_unique<Project>();
     auto b = std::make_unique<PatternBank>();
-    load_sound(p->tracks[0], EngineKind::Prophet, 0);
-    p->tracks[0].params[Voices] = 8;
-    p->tracks[0].params[AmpRelease] = 90; // a long tail
+    tone_kit(*p, 0); // a kit, Melodee's own engine with voices to give
+    for (unsigned pad = 0; pad < 8; ++pad) {
+        auto& sound = p->tracks[0].pads[pad];
+        sound.sample = 0; sound.play = PadPlay::Gate; sound.release = 90; // held while held, a long tail
+    }
     EngineHost host;
     host.set_overload_guard(true);
     host.load(*p, *b);
+    auto tone = tone_sample();
+    CHECK(host.offer_sample(0, &tone));
     std::vector<int32_t> out(256);
     auto loud = [&](unsigned blocks) {
         float most = 0;
         for (unsigned n = 0; n < blocks; ++n) { host.render(out.data(), 128, 1); for (auto x : out) most = std::max(most, std::fabs(x / 2147483648.0f)); }
         return most;
     };
-    for (uint16_t key = 48; key < 56; ++key) host.send({Command::Type::NoteOn, 0, 0, key, 100});
+    for (uint16_t pad = 0; pad < 8; ++pad) host.send({Command::Type::NoteOn, 0, 0, uint16_t(sampler_first_note + pad), 100});
     CHECK(loud(20) > 0.05f);
     host.set_guard_test_share(0.9f);
     loud(4);
@@ -6343,14 +6180,14 @@ void overload_guard() {
     loud(8);
     CHECK(host.guard_steals() == 8);                              // every held voice gone, then nothing left to take
     CHECK(loud(10) < 1e-4f);                                       // faded out, quickly
-    // Tails: a released note rings on (AmpRelease 90) unless the guard is easing the blocks: over 85 % as it is let
+    // Tails: a released note rings on (its release 90) unless the guard is easing the blocks: over 85 % as it is let
     // go, then 75 % (still easing, as it came down from over 85 %), nothing held to steal.
     auto tail = [&](float first, float then) {
         host.set_guard_test_share(0.5f);
-        host.send({Command::Type::NoteOn, 0, 0, 60, 100});
+        host.send({Command::Type::NoteOn, 0, 0, uint16_t(sampler_first_note), 100});
         loud(20);
         host.set_guard_test_share(first);
-        host.send({Command::Type::NoteOff, 0, 0, 60});
+        host.send({Command::Type::NoteOff, 0, 0, uint16_t(sampler_first_note)});
         loud(1);
         host.set_guard_test_share(then);
         loud(11); // 1536 frames in all, 35 ms at 44.1 kHz
@@ -6448,7 +6285,7 @@ void loops_and_buses_parallel() {
         auto p = std::make_unique<Project>();
         auto b = std::make_unique<PatternBank>();
         for (unsigned t = 0; t < 4; ++t) {
-            load_sound(p->tracks[t], t % 2 ? EngineKind::Fm6 : EngineKind::Prophet, t);
+            synth(p->tracks[t], t);
             for (unsigned bus = 0; bus < bus_count; ++bus) p->tracks[t].mix.sends[bus] = uint8_t(10 + 10 * bus + t);
             put(b->at[t][0], t, uint8_t(50 + 3 * t), 100, 4);
         }
@@ -6459,6 +6296,8 @@ void loops_and_buses_parallel() {
         host.set_render_threads(workers, 0);
         host.set_one_dispatch(whole);
         host.load(*p, *b);
+        auto tones = std::make_unique<Tones>();
+        tones->offer(host, *p);
         std::vector<int32_t> out(256), all;
         auto render = [&](unsigned blocks) {
             for (unsigned n = 0; n < blocks; ++n) {
@@ -7551,6 +7390,117 @@ struct FakePlugin final : PluginRunner {
     }
 };
 
+// The synths that left Melodee: a project saved while PROPHET, CZ and SID were built in opens their tracks as PLUGIN
+// tracks on Melodee Poly, PD and Chip (the same voices, now Open MPC plug-ins), named from the card's top, their
+// values and routes the plug-in's state in a free entry; FM6 and 909 tracks open empty with their patterns. Open MPC
+// plug-ins run at 44.1 kHz (MPC OS's contract): at another device rate they are heard through a band-limited
+// conversion, so they play in tune, and an effect passes what it is given.
+void synths_as_plugins() {
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        for (unsigned t = 0; t < 5; ++t) load_sound(project->tracks[t], EngineKind::Midi, 0); // stand-ins, renumbered below
+        for (unsigned p = 0; p < 53; ++p) project->tracks[0].params[p] = int16_t(p % 7);
+        project->tracks[0].params[16] = 33;                                       // PROPHET's cutoff
+        project->tracks[0].mods[2] = {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), -45};
+        project->tracks[0].set_name("FUNK BASS II");
+        put(bank->at[1][0], 2, 60, 100);                                          // the FM6 track's notes
+        synth(project->tracks[6], 0);                                             // a plug-in already in entry 0
+        std::snprintf(project->plugins[0].path, plugin_path_length, "/media/card/Plugins/Other.vst3");
+        auto bytes = save_project(*project, *bank);
+        const uint8_t legacy[5] {legacy_engine::prophet, legacy_engine::fm6, legacy_engine::cz, legacy_engine::sid, legacy_engine::kit909};
+        unsigned patched = 0;
+        for (size_t at = 8; at + 10 <= bytes.size();) { // sections: a tag, a length, the contents
+            uint32_t length = uint32_t(bytes[at + 4]) | uint32_t(bytes[at + 5]) << 8 | uint32_t(bytes[at + 6]) << 16 | uint32_t(bytes[at + 7]) << 24;
+            if (!std::memcmp(&bytes[at], "TRAK", 4) && bytes[at + 8] < 5) { bytes[at + 9] = legacy[bytes[at + 8]]; ++patched; }
+            if (!std::memcmp(&bytes[at], "MIDT", 4) && bytes[at + 8] < 5) std::memcpy(&bytes[at], "XXXX", 4); // they were never MIDI
+            at += 8 + length;
+        }
+        CHECK(patched == 5);
+        auto copy = std::make_unique<Project>();
+        auto copy_bank = std::make_unique<PatternBank>();
+        std::array<std::vector<uint8_t>, max_plugins> states;
+        unsigned version = 0;
+        CHECK(load_project(bytes, *copy, *copy_bank, &version, &states).empty() && version == params_version);
+        auto text = [&](unsigned entry) { return std::string(states[entry].begin(), states[entry].end()); };
+        const auto& poly = copy->tracks[0];
+        CHECK(poly.engine == EngineKind::Plugin && poly.plugin == 1 && std::string(poly.name) == "FUNK BASS II");
+        CHECK(std::string(copy->plugins[1].path) == "Plugins/Ellic Studio - VST - Melodee Poly" && std::string(copy->plugins[1].name) == "Melodee Poly");
+        CHECK(text(1).compare(0, 5, std::string("MVS2\x01", 5)) == 0 && states[1].back() == 0);
+        CHECK(text(1).find("melodee-poly 1\nmelodee=0,1,2,3,4,5,6,0,") != std::string::npos);
+        auto values = text(1).substr(text(1).find("melodee=") + 8);
+        values = values.substr(0, values.find('\n'));
+        CHECK(std::count(values.begin(), values.end(), ',') == 52 && values.find(",33,") != std::string::npos); // 53 values
+        CHECK(text(1).find("\nmelodee_mods=0:0:0,0:0:0,1:1:-45,0:0:0,") != std::string::npos);
+        CHECK(copy->tracks[2].engine == EngineKind::Plugin && copy->tracks[2].plugin == 2
+              && std::string(copy->plugins[2].path) == "Plugins/Ellic Studio - VST - Melodee PD" && text(2).find("melodee-pd 1\n") == 5);
+        CHECK(copy->tracks[3].engine == EngineKind::Plugin && copy->tracks[3].plugin == 3 && text(3).find("melodee-chip 1\n") == 5);
+        CHECK(copy->tracks[1].engine == EngineKind::None && copy->tracks[4].engine == EngineKind::None); // FM6, the 909
+        CHECK(copy_bank->at[1][0].events.size() == 1 && copy_bank->at[1][0].events[0].key == 60);          // their notes kept
+        CHECK(std::string(copy->plugins[0].path) == "/media/card/Plugins/Other.vst3" && states[0].empty());
+        CHECK(plugin_used_by(*copy, 1) && plugin_used_by(*copy, 2) && plugin_used_by(*copy, 3));
+        // Saved again, they are plug-in tracks like any other.
+        auto again = save_project(*copy, *copy_bank, &states);
+        auto back = std::make_unique<Project>();
+        std::array<std::vector<uint8_t>, max_plugins> back_states;
+        CHECK(load_project(again, *back, *copy_bank, nullptr, &back_states).empty());
+        CHECK(back->tracks[0].engine == EngineKind::Plugin && back->tracks[0].plugin == 1 && back_states[1] == states[1]);
+    }
+    // The bridge: a plug-in at 44.1 kHz playing a 1 kHz tone, heard at 48 kHz, is a 1 kHz tone; at equal rates nothing
+    // converts.
+    {
+        PluginRateBridge same;
+        same.reset(44100, 44100, true);
+        CHECK(!same.converting());
+        PluginRateBridge bridge;
+        bridge.reset(44100, 48000, true);
+        CHECK(bridge.converting());
+        double phase = 0;
+        unsigned plugin_frames = 0;
+        auto tone = [&](float* l, float* r, unsigned n) {
+            for (unsigned f = 0; f < n; ++f) { l[f] = r[f] = float(0.5 * std::sin(phase)); phase += 2 * M_PI * 1000 / 44100; }
+            plugin_frames += n;
+        };
+        std::vector<float> heard;
+        std::array<float, 128> l {}, r {};
+        const unsigned sizes[] {128, 37, 128, 1, 90, 128};
+        for (unsigned n = 0; heard.size() < 48000; ++n) {
+            unsigned size = sizes[n % 6];
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            bridge.render(l.data(), r.data(), size, tone);
+            heard.insert(heard.end(), l.begin(), l.begin() + size);
+        }
+        unsigned crossings = 0;
+        for (size_t n = 9600; n + 1 < 48000; ++n) crossings += (heard[n] < 0) != (heard[n + 1] < 0);
+        CHECK(crossings >= 2 * 798 && crossings <= 2 * 802); // 0.8 s of 1 kHz, two crossings a cycle
+        CHECK(std::abs(int(plugin_frames) - 44100) < 200);    // as many of its frames as a second of its own
+        CHECK(peak_of(heard, 9600) > 0.45f && peak_of(heard, 9600) < 0.55f);
+    }
+    // An effect at 44.1 kHz in a 96 kHz chain: what it passes comes out as it went in, later by a constant few ms.
+    {
+        PluginRateBridge bridge;
+        bridge.reset(44100, 96000, false);
+        std::vector<float> in(96000), out;
+        for (size_t n = 0; n < in.size(); ++n) in[n] = float(0.4 * std::sin(2 * M_PI * 440 * double(n) / 96000));
+        std::array<float, 128> l {}, r {};
+        for (size_t at = 0; at < in.size(); at += 128) {
+            std::copy(in.begin() + long(at), in.begin() + long(at + 128), l.begin());
+            r = l;
+            bridge.render(l.data(), r.data(), 128, [](float*, float*, unsigned) {}); // passes it as it is
+            out.insert(out.end(), l.begin(), l.end());
+        }
+        double in_sum = 0, out_sum = 0;
+        for (size_t n = 9600; n < 96000; ++n) { in_sum += double(in[n]) * in[n]; out_sum += double(out[n]) * out[n]; }
+        CHECK(std::fabs(std::sqrt(out_sum / in_sum) - 1) < 0.01);
+        size_t lag = 0; // where the output's first rise meets the input's
+        while (lag < 1000 && std::fabs(out[lag]) < 0.01f) ++lag;
+        CHECK(lag > 50 && lag < 600);
+        double worst = 0;
+        for (size_t n = 9600; n < 90000; ++n) worst = std::max(worst, double(std::fabs(out[n] - in[n - lag + 1])));
+        CHECK(worst < 0.05);
+    }
+}
+
 void plugins() {
     // The file: PLGT makes the track a PLUGIN track (TRAK says None, as older builds should see it), PLUG keeps
     // each entry's path and state.
@@ -7580,7 +7530,7 @@ void plugins() {
         CHECK(copy->plugins[7].id == -123456789 && std::string(copy->plugins[7].name) == "Compressor x2 Stereo" && copy->plugins[5].id == 0);
         CHECK(copy->master.slots[0].kind == plugin_effect_kind && copy->master.slots[0].params[0] == 9);
         CHECK(plugin_used_by(*copy, 5) && plugin_used_by(*copy, 9) && !plugin_used_by(*copy, 4));
-        copy->tracks[2].engine = EngineKind::Prophet; // the entry stays in the table but nothing plays it
+        copy->tracks[2].engine = EngineKind::Midi; // the entry stays in the table but nothing plays it
         CHECK(!plugin_used_by(*copy, 5));
     }
     // The host: a PLUGIN track with no plug-in yet is silent; once offered, notes reach it and it is heard; a
@@ -7661,8 +7611,8 @@ void pad_lights() {
     for (unsigned n = 0; n < 12; ++n) kit.pads[n].sample = uint16_t(n);
     kit.last_pad = 1;
     kit.pad_mutes[0] |= uint64_t(1) << 8; // pad 9
-    project->tracks[0].engine = EngineKind::Prophet;
-    project->tracks[5].engine = EngineKind::Kit909;
+    project->tracks[0].engine = EngineKind::Plugin;
+    project->tracks[5].engine = EngineKind::Plugin;
     ui.track = 1; ui.page = PageId::Stage;
     std::array<Look, 16> looks;
     PadFacts plays; plays.kit_pads = true;
@@ -7686,9 +7636,6 @@ void pad_lights() {
     taps.track = 1; taps.count = 1; taps.voice[0].pad = 2; taps.voice[0].level = 0.5f; // a voice at half its envelope
     light(plays); CHECK(is(2, Hue::Track, 3));
     taps = TrackTaps {};
-    // The 909: eleven drums, the last one played Full.
-    ui.track = 5; project->tracks[5].last_note = 37; light({});
-    CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(11, Hue::None, 0));
     // A synth: the key's roots in its colour (Mid), its other notes white Dim; chromatic, notes out of the key white Faint.
     ui.track = 0; light({});
     CHECK(is(0, Hue::Track, 3) && is(1, Hue::White, 2) && is(7, Hue::Track, 3));
@@ -7723,12 +7670,10 @@ void pad_lights() {
     synth.transpose = 2; light({}); // in E: E on pad 11, D out
     CHECK(is(10, Hue::Track, 3) && is(8, Hue::White, 1));
     synth.transpose = 0; synth.last_note = 50; synth.levels = false; synth.levels_kind = uint8_t(LevelsKind::Scale);
-    ui.track = 5; project->tracks[5].levels = true; light({}); // the 909's pads stay its drums
-    CHECK(is(1, Hue::Track, 4) && is(11, Hue::None, 0));
-    project->tracks[5].levels = false; ui.track = 1;
+    ui.track = 1;
 
     // Tracks: picked Full, heard Dim, muted Faint red; a solo leaves the rest Faint.
-    ui.page = PageId::Tracks; project->tracks[3].engine = EngineKind::Fm6; project->tracks[3].mix.mute = true; light({});
+    ui.page = PageId::Tracks; project->tracks[3].engine = EngineKind::Plugin; project->tracks[3].mix.mute = true; light({});
     CHECK(is(1, Hue::Track, 4) && is(0, Hue::Track, 2) && is(3, Hue::Red, 1) && is(9, Hue::None, 0));
     project->tracks[0].mix.solo = true; light({});
     CHECK(is(0, Hue::White, 2) && is(5, Hue::Track, 1));
@@ -7947,13 +7892,13 @@ void looper_chord_and_sheet() {
     CHECK(commit_pad(kit) == 16);
     for (auto& p : kit.pads) p.sample = 1;
     CHECK(commit_pad(kit) == -1);
-    Track synth; synth.engine = EngineKind::Prophet;
+    Track synth; synth.engine = EngineKind::Plugin;
     CHECK(commit_pad(synth) == -1);
 
     // K1 SOURCE turns through what Push used to step: the input, the tracks there are, the other loops, the mix,
     // the hardware inputs that do not clash; its own source always among them.
     auto project = std::make_unique<Project>();
-    project->tracks[0].engine = EngineKind::Prophet; project->tracks[2].engine = EngineKind::Sampler;
+    project->tracks[0].engine = EngineKind::Plugin; project->tracks[2].engine = EngineKind::Sampler;
     std::array<uint8_t, looper::source_count> sources {};
     unsigned at = 99, count = loop_sources(*project, 0, sources, at);
     CHECK(count == 1 + 2 + 3 + 1 + unsigned(looper::direct_inputs.size()) && at == 0);
@@ -8019,10 +7964,11 @@ void hits_on_time() {
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         project->tempo = 1200; // 120 BPM: a tick every 229.6875 frames at 44.1 kHz
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         std::vector<int32_t> out(256);
         host.send({Command::Type::Play}); // the patterns from tick 0, its first tick on the first frame
@@ -8053,10 +7999,11 @@ void hits_on_time() {
         using K = MidiOutEvent::Kind;
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
-        load_sound(project->tracks[1], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
+        synth(project->tracks[1], 1);
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         host.send({Command::Type::MidiTrack, 0, 0, 5, 1}); // MIDI out too, to the frame
         host.send({Command::Type::MidiTrack, 1, 0, 6, 1});
@@ -8111,62 +8058,6 @@ void audio_quality() {
         for (unsigned n = 0; n < frames; ++n) s.left[n] = s.right[n] = float(level * std::sin(2 * M_PI * hz * n / 44100));
         return s;
     };
-    // FM6: a note struck again while its last one releases goes on from where it was, not from silence.
-    {
-        Fm6Engine e;
-        std::vector<float> y(128 * 82, 0.0f);
-        e.note_on(40, 100);
-        for (unsigned b = 0; b < 70; ++b) e.render(y.data() + 128 * b, 128);
-        e.note_off(40);
-        for (unsigned b = 70; b < 74; ++b) e.render(y.data() + 128 * b, 128);
-        e.note_on(40, 100);
-        for (unsigned b = 74; b < 82; ++b) e.render(y.data() + 128 * b, 128);
-        size_t at = 128 * 74;
-        CHECK(std::fabs(y[at] - y[at - 1]) < 1.5f * largest_step(y, 128 * 70, at));
-    }
-    // CZ: a new note starts where its wave crosses zero, and no wave carries an offset.
-    {
-        CzEngine e;
-        std::vector<float> y(64, 0.0f);
-        e.note_on(36, 127);
-        e.render(y.data(), 64);
-        CHECK(std::fabs(y[0]) < 0.01f); // from silence (the DCW's attack then reshapes the wave, without a step)
-        CzEngine still; // with the bend held, the wave itself rises from zero
-        still.set_param(cz::DcwAmount, 0);
-        std::fill(y.begin(), y.end(), 0.0f);
-        still.note_on(36, 127);
-        still.render(y.data(), 64);
-        float onset = 0;
-        for (unsigned k = 0; k < 8; ++k) onset = std::max(onset, std::fabs(y[k]));
-        CHECK(onset < 0.03f); // it went to -0.175 by the eighth frame: the cosine's bottom, a step the attack only rounded off
-        const unsigned cycles = unsigned(std::lround(65 * 44100.0 / dsp::midi_hz(48)));
-        for (int wave = 0; wave < 8; ++wave) {
-            CzEngine w;
-            w.set_param(cz::Wave1, wave); w.set_param(cz::DcwAmount, 0); w.set_param(cz::DcaSustain, 100);
-            std::vector<float> held(22050 + cycles, 0.0f);
-            w.note_on(48, 127);
-            for (unsigned at = 0; at < held.size(); at += 128) w.render(held.data() + at, std::min<unsigned>(128, unsigned(held.size()) - at));
-            double mean = 0, sq = 0;
-            for (size_t k = 22050; k < held.size(); ++k) { mean += held[k]; sq += double(held[k]) * held[k]; }
-            mean /= cycles;
-            CHECK(std::fabs(mean) < 0.03 * std::sqrt(sq / cycles)); // Reso 1 was 71 % of its RMS
-        }
-    }
-    // SID: SYNC changes the sound (it did nothing).
-    {
-        auto run = [](int sync) {
-            SidEngine e;
-            e.set_param(sid::Wave, 1); e.set_param(sid::Detune, 7); e.set_param(sid::Mode, 3); e.set_param(sid::Sync, sync);
-            std::vector<float> y(8192, 0.0f);
-            e.note_on(48, 100);
-            for (unsigned at = 0; at < y.size(); at += 128) e.render(y.data() + at, 128);
-            return y;
-        };
-        auto off = run(0), on = run(1);
-        float diff = 0;
-        for (size_t k = 0; k < off.size(); ++k) diff = std::max(diff, std::fabs(off[k] - on[k]));
-        CHECK(diff > 0.05f);
-    }
     auto play = [](SamplerEngine& e, std::vector<float>& l, unsigned frames) {
         l.assign(frames, 0.0f);
         std::vector<float> r(frames, 0.0f);
@@ -8455,7 +8346,7 @@ void ratchets() {
     // pad's pitch ramp. Roll's Shift row is otherwise left alone.
     {
         auto project = std::make_unique<Project>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         load_sound(project->tracks[3], EngineKind::Sampler, 0);
         UiState ui;
         Pattern q;
@@ -8569,7 +8460,7 @@ void trig_conditions() {
     // The TRIG row's K3 on Steps and Roll; a step rewritten keeps each note's condition.
     {
         auto project = std::make_unique<Project>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         UiState ui;
         Pattern q;
         put(q, 1, 60, 100);
@@ -8608,6 +8499,7 @@ void pattern_motion() {
         CHECK(p.lock_at(48, Cc1, 0) && !p.lock_at(5, Cc1, 0) && p.lane_value(60, Cc1, 0, -1) == 20 && p.lane_value(4, Cc1, 0, -1) == -1);
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         host.send({Command::Type::Play});
         std::vector<int32_t> out(256);
@@ -8633,13 +8525,13 @@ void pattern_motion() {
     {
         Pattern p;
         p.length = 16 * sixteenth_ticks;
-        p.write_motion(point(2, prophet::Cutoff, 10)); p.write_motion(point(12, prophet::Cutoff, 90, 0, 12));
+        p.write_motion(point(2, engine_lane, 10)); p.write_motion(point(12, engine_lane, 90, 0, 12));
         CHECK(double_pattern(p, 128 * 384) && p.motion.size() == 4 && p.motion[2].tick == 18 * sixteenth_ticks && p.motion[3].hold == 12);
         half_pattern(p);
         CHECK(p.motion.size() == 2);
         scale_pattern(p, true); // half speed: twice as far apart; past the end goes
         CHECK(p.motion.size() == 1 && p.motion[0].tick == 4 * sixteenth_ticks);
-        p.write_motion(point(10, prophet::Cutoff, 50, 0, 8));
+        p.write_motion(point(10, engine_lane, 50, 0, 8));
         scale_pattern(p, false);
         CHECK(p.motion.size() == 2 && p.motion[1].tick == 5 * sixteenth_ticks && p.motion[1].hold == 4);
     }
@@ -8648,7 +8540,7 @@ void pattern_motion() {
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
-        MotionPoint fine; fine.tick = 7; fine.param = prophet::Cutoff; fine.value = 66;
+        MotionPoint fine; fine.tick = 7; fine.param = engine_lane; fine.value = 66;
         bank->at[3][2].write_motion(fine); bank->at[3][2].write_motion(point(4, motion_pad_param(PadParam::Level), 30, 9, 24));
         auto data = save_project(*project, *bank);
         auto back = std::make_unique<Project>();
@@ -8660,7 +8552,7 @@ void pattern_motion() {
             for (int k = 0; k < 4; ++k) old.push_back(uint8_t(body.size() >> (8 * k)));
             old.insert(old.end(), body.begin(), body.end());
         };
-        section("MOT2", {1, 0, 2, 5, 6, 0, uint8_t(prophet::Resonance), 44, 0});       // track 3, pattern 6, sixteenth 6
+        section("MOT2", {1, 0, 2, 5, 6, 0, uint8_t(engine_lane + 1), 44, 0});       // track 3, pattern 6, sixteenth 6
         section("MOTP", {1, 0, 2, 5, 1, 0, 9, uint8_t(PadParam::Pitch), 3, 0});       // pad 10's tune on sixteenth 1
         section("MOTW", {1, 0, 2, 5, 3, 0, 100, 0});                                  // the mod wheel on sixteenth 3
         auto legacy = std::make_unique<PatternBank>();
@@ -8668,21 +8560,21 @@ void pattern_motion() {
         const auto& m = legacy->at[2][5].motion;
         CHECK(m.size() == 3 && m[0].tick == sixteenth_ticks && m[0].param == motion_pad_param(PadParam::Pitch) && m[0].pad == 9 && m[0].value == 3);
         CHECK(m[1].tick == 3 * sixteenth_ticks && m[1].param == motion_wheel && m[1].value == 100);
-        CHECK(m[2].tick == 6 * sixteenth_ticks && m[2].param == prophet::Resonance && m[2].value == 44 && !m[2].lock());
+        CHECK(m[2].tick == 6 * sixteenth_ticks && m[2].param == engine_lane + 1 && m[2].value == 44 && !m[2].lock());
     }
     // The cards while a step is held on Steps (or a note's pad on Roll): the Motion page's lanes, each its lock there
     // or the track's own value; the lock holds as long as the step's longest note on the lane, a step at least.
     {
         auto project = std::make_unique<Project>();
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        load_sound(project->tracks[0], EngineKind::Midi, 0); // a track whose values are Melodee's (a MIDI track's)
+        const auto& info = engine_info(EngineKind::Midi);
         UiState ui;
         Pattern q;
         put(q, 3, 60, 100, 2);
-        q.write_motion(point(3, prophet::Cutoff, 12, 0, 48));
+        q.write_motion(point(3, unsigned(info.favourites[0]), 1, 0, 48));
         ui.page = PageId::Steps; ui.held_step = 3; ui.step_cursor = 3;
         auto cards = page_bindings(*project, ui, q, false);
-        const auto& info = engine_info(EngineKind::Prophet);
-        CHECK(cards[0].kind == Binding::Kind::Lock && cards[0].id == motion_lane(prophet::Cutoff) && cards[0].value == 12);
+        CHECK(cards[0].kind == Binding::Kind::Lock && cards[0].id == motion_lane(unsigned(info.favourites[0])) && cards[0].value == 1);
         CHECK(cards[1].kind == Binding::Kind::Lock && cards[1].id == motion_lane(unsigned(info.favourites[1])));
         CHECK(cards[1].value == project->tracks[0].params[size_t(info.favourites[1])]);
         uint32_t tick = 0, hold = 0;
@@ -8761,7 +8653,7 @@ void kit_lanes() {
         CHECK(shifted[0].kind == Binding::Kind::LaneLength && shifted[0].id == b && shifted[0].value == 6 && shifted[0].max == 16);
         project->tracks[3].last_pad = 0;
         CHECK(shift_bindings(*project, ui, q)[0].value == 16);
-        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        synth(project->tracks[0], 0);
         ui.track = 0;
         CHECK(!shift_bindings(*project, ui, q)[0].bound()); // a synth's Steps: the whole step, no lanes
     }
@@ -8969,7 +8861,7 @@ void generators() {
 void track_speed() {
     Pattern p;
     put(p, 0, 60, 100); put(p, 4, 62, 100, 2);
-    p.write_motion(point(8, prophet::Cutoff, 20, 0, 24));
+    p.write_motion(point(8, engine_lane, 20, 0, 24));
     p.set_lane_length(64, 6 * sixteenth_ticks);
     auto fast = speed_pattern(p, 4); // x2: every tick half as far
     CHECK(fast.length == 8 * sixteenth_ticks && fast.events[1].tick == 2 * sixteenth_ticks && fast.events[1].length == 2 * sixteenth_ticks / 2);
@@ -8991,6 +8883,7 @@ void track_speed() {
         put(bank->at[0][0], 0, 60, 100); put(bank->at[0][0], 4, 62, 100);
         EngineHost host;
         host.load(*project, *bank);
+        tones_for(host, *project);
         host.set_audio_format(44100, 384);
         host.send({Command::Type::Play});
         std::vector<int32_t> out(256);
@@ -9021,7 +8914,7 @@ void track_speed() {
     // Tracks' Shift + K1.
     {
         auto project = std::make_unique<Project>();
-        load_sound(project->tracks[2], EngineKind::Prophet, 1);
+        synth(project->tracks[2], 2);
         project->tracks[2].speed = 3;
         UiState ui;
         ui.page = PageId::Tracks; ui.track = 2;
@@ -9197,6 +9090,7 @@ int main() {
     pattern_motion();
     kit_lanes();
     plugins();
+    synths_as_plugins();
     voice_taps();
     voice_heads();
     chop_heads();
@@ -9255,20 +9149,15 @@ int main() {
     settings();
     punches();
     kept_punches();
-    more_engines();
-    engine_levels();
-    drums();
     helpers();
     project_files();
     recording();
     sampler_kit();
     effects();
     arrange();
-    mod_matrix();
     motion();
     layouts();
     bindings();
-    prophet_engine();
     host_sequencer();
     sequenced_legato();
     audio_quality();

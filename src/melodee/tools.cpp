@@ -9,8 +9,6 @@
 #include "melodee/shell/seq_layer.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/effect_info.h"
-#include "melodee/engine/prophet_params.h"
-#include "melodee/engine/kit909.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/engine/take_recorder.h"
@@ -50,18 +48,46 @@ void put(Pattern& p, unsigned step, uint8_t key, uint8_t velocity, uint8_t lengt
     p.set_step(step, s);
 }
 
-// A full band for the previews and the sound check: four Prophet tracks, an
-// empty kit and a 909, a bass line in D and a beat.
+// Track `t` a PLUGIN track on Melodee's synth `synth` (0 Melodee Poly, 1 PD, 2 Chip), in plug-in entry `entry`,
+// named `name`: what a synth track is since the synths became plug-ins (they need not be on a card to be drawn).
+void synth_track(Project& project, unsigned t, unsigned synth, unsigned entry, const char* name) {
+    static const char* const folders[] {"Ellic Studio - VST - Melodee Poly", "Ellic Studio - VST - Melodee PD",
+                                        "Ellic Studio - VST - Melodee Chip"};
+    static const char* const names[] {"Melodee Poly", "Melodee PD", "Melodee Chip"};
+    load_sound(project.tracks[t], EngineKind::Plugin, 0);
+    project.tracks[t].plugin = uint8_t(entry);
+    project.tracks[t].set_name(name);
+    auto& ref = project.plugins[entry];
+    std::snprintf(ref.path, sizeof(ref.path), "Plugins/%s", folders[synth % 3]);
+    std::snprintf(ref.name, sizeof(ref.name), "%s", names[synth % 3]);
+}
+
+// The drum kit of the starter project: pads A01-A03 kick, snare and hat, in sample slots 0-2.
+constexpr const char* drum_names[] {"KICK", "SNARE", "HAT"};
+void drum_kit(Project& project, unsigned t) {
+    load_sound(project.tracks[t], EngineKind::Sampler, 0);
+    project.tracks[t].set_name("DRUMS");
+    for (unsigned n = 0; n < 3; ++n) {
+        std::snprintf(project.samples[n].path, sizeof(project.samples[n].path), "/media/card/Samples/%s.wav", drum_names[n]);
+        std::snprintf(project.samples[n].name, sizeof(project.samples[n].name), "%s", drum_names[n]);
+        project.samples[n].frames = 22050;
+        project.tracks[t].pads[n].sample = uint16_t(n);
+        project.tracks[t].pads[n].play = PadPlay::OneShot;
+    }
+}
+
+// A full band for the previews and the sound check: four synth tracks (Melodee's synths, as plug-ins), an empty
+// kit and a drum kit, a bass line in D and a beat.
 void starter_project(Project& project, PatternBank& patterns) {
     project = Project {};
     std::snprintf(project.name, sizeof(project.name), "Starter");
     project.tempo = 1200;
-    load_sound(project.tracks[0], EngineKind::Prophet, 1);  // FUNK BASS II
-    load_sound(project.tracks[1], EngineKind::Prophet, 5);  // SOFT PAD
-    load_sound(project.tracks[2], EngineKind::Prophet, 6);  // GLASS PLUCK
-    load_sound(project.tracks[3], EngineKind::Prophet, 3);  // SYNC LEAD
+    synth_track(project, 0, 0, 0, "FUNK BASS II");
+    synth_track(project, 1, 0, 1, "SOFT PAD");
+    synth_track(project, 2, 1, 2, "GLASS PAD");
+    synth_track(project, 3, 2, 3, "CHIP LEAD");
     load_sound(project.tracks[4], EngineKind::Sampler, 0); // an empty kit
-    load_sound(project.tracks[5], EngineKind::Kit909, 0);  // drums, with a beat
+    drum_kit(project, 5);                                   // drums, with a beat
     project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
     project.tracks[2].octave = 4; project.tracks[3].octave = 4;
     patterns = PatternBank {};
@@ -75,11 +101,12 @@ void starter_project(Project& project, PatternBank& patterns) {
         {11, 36, 1, 64}, {12, 38, 2, 104}, {14, 31, 2, 88},
     };
     for (auto& n : line) note(patterns.at[0][0], n.step, n.key, n.velocity, n.length);
-    // 909 keys (engine/kit909.h): 36 kick, 37 snare, 43 closed hat.
+    // The kit's pads A01-A03: kick, snare, hat.
     auto& beat = patterns.at[5][0];
-    for (unsigned st = 0; st < 16; st += 4) note(beat, st, 36, 120, 1);
-    for (unsigned st : {4u, 12u}) note(beat, st, 37, 110, 1);
-    for (unsigned st = 2; st < 16; st += 4) note(beat, st, 43, 90, 1);
+    const uint8_t kick = sampler_first_note, snare = sampler_first_note + 1, hat = sampler_first_note + 2;
+    for (unsigned st = 0; st < 16; st += 4) note(beat, st, kick, 120, 1);
+    for (unsigned st : {4u, 12u}) note(beat, st, snare, 110, 1);
+    for (unsigned st = 2; st < 16; st += 4) note(beat, st, hat, 90, 1);
 }
 
 void board_project(Shell& shell) {
@@ -88,15 +115,15 @@ void board_project(Shell& shell) {
     std::snprintf(project.name, sizeof(project.name), "Night drive");
     project.tempo = 1240;
     project.root = 2; project.scale = 2; // D Dorian
-    const unsigned sounds[] {1, 2, 6, 7, 12, 5, 3, 4, 11, 9};
-    for (unsigned t = 0; t < 10; ++t) load_sound(project.tracks[t], EngineKind::Prophet, sounds[t]);
+    const char* const sounds[] {"FUNK BASS II", "RUBBER BASS", "GLASS PLUCK", "WARM KEYS", "NOISE HAT", "SOFT PAD",
+                                "SYNC LEAD", "BRASS STAB", "UNISON LEAD", "STRING MACHINE"};
+    for (unsigned t = 0; t < 10; ++t) synth_track(project, t, t % 3, t, sounds[t]);
     const uint8_t levels[] {98, 88, 74, 56, 104, 64, 81, 51, 70, 46};
     for (unsigned t = 0; t < 10; ++t) project.tracks[t].mix.level = levels[t];
     const int8_t pans[] {0, -12, 20, 0, 0, -20, 12, 25, -6, 0};
     for (unsigned t = 0; t < 10; ++t) project.tracks[t].mix.pan = pans[t];
     project.tracks[3].mix.mute = true;
     project.tracks[0].pattern = 1;
-    project.tracks[0].set_name("FUNK BASS II");
     for (unsigned t = 1; t < 7; ++t) {
         put(shell.patterns().at[t][0], 0, 48, 100);
     }
@@ -163,23 +190,18 @@ void board_project(Shell& shell) {
         }
         kit.last_pad = 8;
     }
-    // The Mod board's six routes on track 1.
-    const ModRoute routes[] {
-        {uint8_t(ModSource::Lfo), uint8_t(ModDest::Cutoff), 34}, {uint8_t(ModSource::Velocity), uint8_t(ModDest::AmpLevel), 60},
-        {uint8_t(ModSource::Aftertouch), uint8_t(ModDest::OscBPitch), -18}, {uint8_t(ModSource::Wheel), uint8_t(ModDest::LfoRate), 45},
-        {uint8_t(ModSource::KeyTrack), uint8_t(ModDest::Cutoff), 50}, {uint8_t(ModSource::Random), uint8_t(ModDest::PulseWidth), 30},
-    };
-    for (unsigned r = 0; r < 6; ++r) project.tracks[0].mods[r] = routes[r];
-    // Motion on CUTOFF and RESO, as drawn on the Motion board.
+    // Motion on the kit's FILTER and RESO, as drawn on the Motion board (its pattern 2; a plug-in's own values
+    // take no Motion).
     const int cutoff[] {40, 44, 52, 60, 72, 80, 84, 80, 70, 62, 54, 48, 44, 50, 58, 62};
     auto point = [&](unsigned sixteenth, unsigned param, int value) {
         MotionPoint m;
         m.tick = sixteenth * sixteenth_ticks; m.param = uint8_t(param); m.value = int16_t(value);
-        shell.patterns().at[0][1].write_motion(m);
+        shell.patterns().at[3][1].write_motion(m);
     };
-    for (unsigned n = 0; n < 16; ++n) point(n * 4, prophet::Cutoff, cutoff[n]);
+    shell.patterns().at[3][1].length = 64 * sixteenth_ticks;
+    for (unsigned n = 0; n < 16; ++n) point(n * 4, sampler::Filter, cutoff[n]);
     const int reso[] {40, 52, 60, 52, 40, 35};
-    for (unsigned n = 0; n < 6; ++n) point(24 + n * 4, prophet::Resonance, reso[n]);
+    for (unsigned n = 0; n < 6; ++n) point(24 + n * 4, sampler::Resonance, reso[n]);
 }
 
 // A two-bar break for the sampler previews: twelve hits fading away, drawn as its overview.
@@ -455,13 +477,6 @@ void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
     s.ui.page = PageId::Stage; s.ui.track = uint8_t(track);
     s.ui.stage_group[track] = uint8_t(group); s.ui.stage_sub[track] = uint8_t(sub);
 }
-// Stage on track 11, a 909 (BOOM KIT), its snare and clap last hit.
-void stage_909(Snapshot& s, unsigned group, unsigned sub) {
-    auto& t = s.project.tracks[10];
-    load_sound(t, EngineKind::Kit909, 2);
-    t.last_note = 36 + kit909::Clap; t.mix.level = 96; t.mix.sends[0] = 20;
-    on_stage(s, 10, group, sub); s.playing = true;
-}
 // Stage on track 12, a MIDI track to a synth on USB-C, channel 3.
 void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
     auto& t = s.project.tracks[11];
@@ -573,12 +588,7 @@ struct Preview {
 };
 
 const Preview previews[] {
-    {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }}, // track 1: B1 PRESET
-    {"stagepresetchord", [](Shell&, Snapshot& s) { // stage-preset B: pads held, the chord they make named under the sound
-         s.ui.page = PageId::Stage; s.playing = true;
-         const int keys[] {38, 41, 45, 48}; // D2 F2 A2 C3: Dm7
-         for (unsigned n = 0; n < 4; ++n) { s.held_keys[n] = int16_t(keys[n]); s.ui.held_pads = uint16_t(s.ui.held_pads | 1u << n); }
-     }},
+    {"stage", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.playing = true; }}, // track 1, a synth plug-in: B1 MIX
     // The place bar (shell/place_bar.h) on the kit's Pads, its pattern slot 8 made 4 bars long (no other preview
     // plays it): playing, at the top; recording, at the bottom; stopped, held where Shift + Play carries on.
     {"placebar", [](Shell& shell, Snapshot& s) {
@@ -591,33 +601,16 @@ const Preview previews[] {
          place_scene(shell, s); s.ui.locate = 37 * sixteenth_ticks;
      }},
     // Stage, context aware: each track type's pages (pages/stage_page.cpp).
-    {"stagepreset", [](Shell&, Snapshot& s) { // a sound turned to, waiting to load; starred
-         on_stage(s, 0, 0, 0); s.playing = true; s.ui.preset_due = s.now + 100; s.ui.preset_cursor = 4;
-         s.ui.settings.toggle_favourite(unsigned(EngineKind::Prophet), 4); s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
-    {"stagetone", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 1); s.playing = true; s.ui.last_pot = 1; }},
-    {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 2); s.playing = true; }},
-    {"stagesends", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 3); s.playing = true; s.ui.turning = 1; s.ui.turned_at = s.now; }}, // the four sends
-    {"stagefilterenv", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 0); s.playing = true; }},
-    {"stageampenv", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.playing = true; s.ui.turning = 2; s.ui.turned_at = s.now; }},
-    {"stagelfo", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 2); s.playing = true; s.project.tracks[0].params[prophet::LfoAmount] = 40; }},
-    {"stagearp", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 0); s.playing = true; s.project.tracks[0].arp_octaves = 2; }},
+    {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 0); s.playing = true; }},
+    {"stagesends", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 1); s.playing = true; s.ui.turning = 1; s.ui.turned_at = s.now; }}, // the four sends
+    {"stagearp", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 0); s.playing = true; s.project.tracks[0].arp_octaves = 2; }},
     {"stagearpheld", [](Shell&, Snapshot& s) { // keys held: the notes it plays from them, up and down
-         on_stage(s, 0, 2, 0); s.playing = true; auto& t = s.project.tracks[0]; t.arp = true; t.arp_mode = 2;
+         on_stage(s, 0, 1, 0); s.playing = true; auto& t = s.project.tracks[0]; t.arp = true; t.arp_mode = 2;
          s.held_keys.fill(-1); s.held_keys[0] = 50; s.held_keys[4] = 53; s.held_keys[9] = 57;
      }},
-    {"stagechord", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 1); s.playing = true; auto& t = s.project.tracks[0]; t.chord = true; t.chord_type = 1; s.ui.chord_pad = 1; }},
-    {"stageperform", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 2); s.playing = true; }},
-    {"stagefx", [](Shell&, Snapshot& s) { on_stage(s, 2, 2, 3); s.playing = true; s.ui.fx_cursor[2] = 1; }},
-    {"stagefxempty", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 3); s.playing = true; }},
-    {"stageshift", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.ui.shift = true; }}, // AMP ENV's Shift row
-    {"stagefm6", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[5], EngineKind::Fm6, 1); on_stage(s, 5, 1, 0); s.playing = true; }},
-    {"stagecz", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 1, 0); s.playing = true; }},
-    {"stagefm6touch", [](Shell&, Snapshot& s) { // stage-shape B: FM6's TOUCH, its rows under the voice strip
-         load_sound(s.project.tracks[5], EngineKind::Fm6, 1); on_stage(s, 5, 1, 2); s.playing = true;
-     }},
-    {"stagesid", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[7], EngineKind::Sid, 1); on_stage(s, 7, 0, 1); s.playing = true; }},
-    {"stagecztone", [](Shell&, Snapshot& s) { load_sound(s.project.tracks[6], EngineKind::Cz, 2); on_stage(s, 6, 2, 2); s.playing = true; }},
+    {"stagechord", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.playing = true; auto& t = s.project.tracks[0]; t.chord = true; t.chord_type = 1; s.ui.chord_pad = 1; }},
+    {"stagefx", [](Shell&, Snapshot& s) { on_stage(s, 2, 2, 0); s.playing = true; s.ui.fx_cursor[2] = 1; }},
+    {"stagefxempty", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 0); s.playing = true; }},
     {"stagekitlayers", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; layered_pad(s, LayerPlay::Velocity); }},
     {"stagekitlayersshift", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); layered_pad(s, LayerPlay::Random); s.ui.shift = true; }},
     {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
@@ -654,11 +647,6 @@ const Preview previews[] {
          auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Classic; pad.filter_attack = 30; pad.filter_decay = 70; pad.filter_amount = 60;
      }},
     {"stagekitempty", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 0); s.project.tracks[3].last_pad = 20; s.playing = true; }}, // B05: no sample
-    {"stage909", [](Shell&, Snapshot& s) { stage_909(s, 0, 0); }},
-    {"stage909voice", [](Shell&, Snapshot& s) { stage_909(s, 0, 1); s.ui.turning = 0; s.ui.turned_at = s.now; }},
-    {"stage909levels", [](Shell&, Snapshot& s) { stage_909(s, 0, 2); }},
-    {"stage909mix", [](Shell&, Snapshot& s) { stage_909(s, 1, 0); }},
-    {"stage909fx", [](Shell&, Snapshot& s) { stage_909(s, 2, 0); }},
     {"stagemidi", [](Shell&, Snapshot& s) { stage_midi(s, 0, 0); s.ui.track_out_at[11] = s.now; sent_notes(s, 11); }},
     {"stagemidiprogram", [](Shell&, Snapshot& s) { stage_midi(s, 0, 1); s.ui.turning = 2; s.ui.turned_at = s.now; }},
     {"stagemidicc", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); }},
@@ -711,29 +699,14 @@ const Preview previews[] {
          s.ui.settings.toggle_favourite(engine, 1); s.ui.settings.toggle_favourite(engine, 4);
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"edit", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Edit; s.ui.edit_page[0] = 3; s.playing = true;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
-         s.ui.pots[1] = {81, false, Binding {Binding::Kind::Param, prophet::Resonance, 0, 100, 0}.key(0)};
-     }},
-    {"soundmap", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Edit; s.ui.edit_page[0] = 3; s.ui.map_open = true; s.ui.map_cursor = 3; s.playing = true;
-     }},
-    {"mod", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Edit; s.ui.edit_page[0] = uint8_t(prophet::info().page_count); s.playing = true;
-     }},
-    {"touch", [](Shell&, Snapshot& s) { // velocity and pad pressure (phase 1d)
-         s.ui.page = PageId::Edit; s.ui.edit_page[0] = uint8_t(prophet::info().page_count - 1); s.ui.edit_row[0] = 1; s.playing = true;
-         s.ui.turning = 1; s.ui.turned_at = s.now;
-         s.ui.pots[1] = {50, false, Binding {Binding::Kind::Param, prophet::AtBright, 0, 100, 0}.key(1)};
-     }},
+    {"edit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Edit; s.playing = true; }}, // a synth plug-in's own values
     {"steps", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
-    {"motion", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Motion; s.playing = true; s.position = 40 * sixteenth_ticks; s.ui.recording = true;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
+    {"motion", [](Shell&, Snapshot& s) { // the kit's FILTER and RESO over its pattern 2
+         s.ui.page = PageId::Motion; s.ui.track = 3; s.project.tracks[3].pattern = 1; s.playing = true;
+         s.position = 40 * sixteenth_ticks; s.ui.recording = true; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"patterns", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true; // the pads play track 3; B1-B3 the editors
@@ -1769,7 +1742,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage stagepreset stage909 stagemidi stageemptysynth tracks keys sounds edit soundmap mod mix steps roll notesheet motion patterns recquantize recquantizeoff seqsheet seqbpm seqclear rollkit song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
+    require(written > 0, "Unknown Melodee page; use stage stagemix stagemidi stageemptysynth tracks keys sounds edit mix steps roll notesheet motion patterns recquantize recquantizeoff seqsheet seqbpm seqclear rollkit song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
     // Text under the floor or cut by its box fails the build check.
     return text_issues ? 1 : 0;
@@ -1840,12 +1813,32 @@ void little(std::ofstream& file, uint32_t value, unsigned bytes) {
 }
 
 // Two bars of the starter project at 120 BPM (4 s), then two seconds of
-// tail: the bass line must sound, stay below full scale and end in silence.
+// tail: its beat must sound, stay below full scale and end in silence. The
+// kit plays three drums made here (its synth tracks are plug-ins, not loaded
+// in the self-test): a falling sine kick, a noise snare and a short hat.
 int sound(const std::string& path) {
     EngineHost host;
     Shell shell(host);
     starter_project(shell.project(), shell.patterns());
     host.load(shell.project(), shell.patterns());
+    std::array<SampleData, 3> drums;
+    uint32_t seed = 1;
+    auto noise = [&] { seed = seed * 1664525u + 1013904223u; return int32_t(seed) * (1.0f / 2147483648.0f); };
+    for (unsigned d = 0; d < drums.size(); ++d) {
+        auto& data = drums[d];
+        data.frames = 22050;
+        data.left.resize(data.frames); data.right.resize(data.frames);
+        double phase = 0;
+        for (unsigned n = 0; n < data.frames; ++n) {
+            double t = n / 44100.0;
+            float x = 0;
+            if (d == 0) { phase += 2 * 3.14159265358979 * (50 + 120 * std::exp(-t * 30)) / 44100.0; x = float(std::sin(phase) * std::exp(-t * 9)); }
+            else if (d == 1) x = float(noise() * 0.6 * std::exp(-t * 18) + std::sin(n * 0.04) * 0.3 * std::exp(-t * 25));
+            else x = float(noise() * 0.4 * std::exp(-t * 60));
+            data.left[n] = data.right[n] = x * 0.8f;
+        }
+        require(host.offer_sample(d, &data), "Offer the sound check's drums");
+    }
     host.send({Command::Type::Play});
     constexpr unsigned rate = 44100, frames = rate * 6, block = EngineHost::block;
     std::ofstream file(path, std::ios::binary);

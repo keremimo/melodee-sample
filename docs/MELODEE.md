@@ -1,14 +1,14 @@
 # Melodee on the MPC Sample
 
 Melodee is a groovebox app on sample-base: sixteen tracks, one per pad,
-each playing one sound engine (four synths, a 909 and a sampler), sequenced
-in patterns and a song, mixed and effected on the MPC. Every printed button
+each a kit of samples, a synth or a MIDI track, sequenced in patterns and a
+song, mixed and effected on the MPC. Its synths are plug-ins of their own
+(below, "Synths"): Melodee Poly, PD and Chip, played on PLUGIN tracks. Every printed button
 keeps its MPC meaning; Melodee's own pages sit where the MPC leaves room.
 Start it with `python3 device.py start`; `./release.sh` packages it for an SD card.
 
 Everything is written for sample-base: interface, sequencer and engines.
-Nothing from the FM-1 firmware is compiled or emulated; the engine ports in
-`mpc-sample-plugins` are a reference for what each engine does. How each
+Nothing from the FM-1 firmware is compiled or emulated. How each
 MPC job came to be built, and what is still open, is in
 [MELODEE_PARITY.md](MELODEE_PARITY.md); this file says what Melodee does
 now.
@@ -23,7 +23,7 @@ sample-base runtime in the `base/` submodule. Layering follows
 | --- | --- |
 | `melodee_app.*` | The `App`: hands each runtime hook to its owner below. Thin. |
 | `model/` | The project: tracks, patterns (event lists), song, mix, motion, kits, limits (`limits.h`). Plain data, no threads. |
-| `engine/` | Audio: DSP pieces, the six engines and MIDI's silent one, effects and punches, the Looper (`looper.*`), the engine host (16 tracks and L1–L4, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
+| `engine/` | Audio: DSP pieces, the sampler, PLUGIN tracks' engine and MIDI's silent one, effects and punches, the Looper (`looper.*`), the engine host (16 tracks and L1–L4, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
 | `plugin/` | Plug-ins (below, "Plug-ins"): the rack that loads them on its own thread, JUCE's headless VST3 host, Melodee's VST2 host and its 32-bit bridge (`bridge32/`), the GUI-library stubs and bridge runtime carried in the binary. Only `plugin_runner.h` reaches the engine host. |
 | `ui/` | The design system: tokens, the Rubik typeface, the components every page is built from. |
 | `pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
@@ -69,8 +69,7 @@ one owner per piece of state.
   loops into the buses and master in order; a second run takes each bus's
   chain and Knob FX's apart; the master's follows here. A block sounds the
   same with workers or without, and as it did when every track was cut at
-  every tick (tests check both sample for sample: the synths step their
-  modulation on their own frames, not from each render call). The workers
+  every tick (tests check both sample for sample). The workers
   are woken as a block starts, wait awake only while it is sequenced and
   between its two runs, and sleep between blocks. Below 150 µs of track
   work a block they sleep throughout, as they do while one plug-in
@@ -87,7 +86,7 @@ one owner per piece of state.
   chain, last block) gives up its oldest voice, faded in tens of ms, and
   every engine's released voices end their tails as fast (a kit's pads
   let go are choked). Until the blocks come back under 70 % the tails stay
-  short and no more voices go. The 909 and plug-ins have none to give.
+  short and no more voices go. Plug-ins have none to give.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
@@ -128,7 +127,7 @@ cards.
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
 | Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
 | 16 Levels | On release, the last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Loop |
-| Sample Select | Samples (the browser) on a kit, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. Synth or 909: Save sound. On Sounds: star |
+| Sample Select | Samples (the browser) on a kit, the plug-in picker on a PLUGIN track, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. MIDI: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
@@ -180,7 +179,7 @@ show the mix, left and right, before main volume; on Record and Input
 Config, and while a take waits or runs, the input source instead (as on
 the MPC), so Main Volume never starves them. For the mix the five LEDs
 light at −36, −27, −18, −11 and −7 dBFS, matched to Melodee's headroom (a
-synth in the greens with loud notes yellow, the 909 kit green and yellow with
+synth in the greens with loud notes yellow, a drum kit green and yellow with
 its loudest hits flashing red); for the input at −42, −30, −18, −9 and −2
 dBFS, red where the converter clips. They fall 30 dB a second; no LED is held.
 `melodee_meter_db=` in `status` gives the levels shown.
@@ -203,15 +202,14 @@ grammar (`shell/pad_light.h`):
   colours keep their hue.
 - **Motion** is timing: a blink waits for a boundary (a pattern or a track's
   next pattern for the bar), a flare is a sound fading (a kit's voices, the
-  pattern at the playhead for the 909, synths and MIDI, a pad let go), the
+  pattern at the playhead for synths and MIDI, a pad let go), the
   Count-In pulses every pad white on its beats, the bar's first brighter.
 
 | Context | The pads |
 | --- | --- |
 | A kit (play pages, the sample pages, the browser) | The selected pad Full (an empty one too), a sample Dim, empty dark, a muted pad Faint red; each flares as it sounds; held white, red while Seq Record writes it |
-| The 909 | Its eleven drums Dim, the last one played Full, flaring as they play |
 | A synth or MIDI track | The key's roots in the track's colour (Mid), its other notes white Dim, out of the key (chromatic) white Faint; a held chord's notes white Full. The key is the track's: the project's moved by its transpose. Record with a synth as the source shows its keys the same way |
-| 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Scale the key's roots in the track's colour (Mid) from pad 1, its other notes white Dim; Tune the same, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); the pad hit last white as its sound fades; the 909 keeps its drums |
+| 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Scale the key's roots in the track's colour (Mid) from pad 1, its other notes white Dim; Tune the same, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); the pad hit last white as its sound fades |
 | Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces) |
 | Mute mode | Muted Dim red, heard Mid (kit pads flaring), soloed white, silenced by a solo Faint |
 | Song | The lane picked Full, a clip under the cursor Mid, clips elsewhere Dim, not in the song Faint |
@@ -247,39 +245,26 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   button and page. The pads play the track (a kit's pad played is the pad
   edited), the **wheel** fine-edits the card touched last (ringed), **Push**
   moves to the next card, Shift + Push is Back, −/+ the octave (a kit's
-  bank). Track 1 starts as a PROPHET, track 5 an empty kit, track 6 a 909
-  with a beat.
-  - **A synth** (PROPHET, FM6, CZ, SID): B1 **PRESET → TONE → MIX → SENDS**, B2
-    **SHAPE** (its pages draw the whole voice as small live pictures across
-    the top, TONE's filter and each SHAPE page, the one in hand lit, and the
-    page's own picture below), B3 **ARP → CHORD → its own page → FX**. PRESET: the sound's
-    name at poster size with its star, over its scope (a note of it rendered
-    again whenever the sound or a knob changes); while pads are held the
-    chord they make, named (Dm7, C/E, Gsus4), and its notes under it; the
-    sounds before and after it small in the corners. K1 or the wheel walks
-    the sounds and the one turned to (amber) loads once the turning has
-    stopped 250 ms; K2 the list (all, starred, recent), K3 the engine;
-    Push opens Sounds. TONE: the engine's three favourites (PROPHET and SID
-    draw the filter). MIX: level, pan and the quick send into bus A; its
-    meter carries the five steps of the meter LEDs as a scale. SENDS: a
-    track sends into each of the four buses, A, B and C on K1–K3, D on Shift
-    + K1; the picture fans out from the track to the four buses, each line as
-    thick as its send, each bus with its first effect and a bar of what it
-    receives. SHAPE on PROPHET: FILTER ENV →
-    AMP ENV → LFO (Shift + K1 release); FM6: OP 1 ENV → OP 2 ENV → TOUCH;
-    CZ: DCW ENV → DCA ENV → TOUCH; SID: ENVELOPE → PWM → TOUCH. ARP: mode
-    (Up, Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift +
-    K1 gate, Shift + K3 hold; the header says whether it is on (Note Repeat
+  bank).
+  - **A synth** (a PLUGIN track: Melodee Poly, PD and Chip are plug-ins,
+    below, "Synths"): B1 **MIX → SENDS**, B2 **ARP → CHORD**, B3 **FX**; the
+    synth's own values are on Edit (Push on Keys), the plug-in's pages. MIX:
+    level, pan and the quick send into bus A; its meter carries the five
+    steps of the meter LEDs as a scale. SENDS: a track sends into each of the
+    four buses, A, B and C on K1–K3, D on Shift + K1; the picture fans out
+    from the track to the four buses, each line as thick as its send, each
+    bus with its first effect and a bar of what it receives. ARP: mode (Up,
+    Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift + K1
+    gate, Shift + K3 hold; the header says whether it is on (Note Repeat
     turns it on); its picture is a keyboard along the foot with the keys
-    held filled and the notes to come hanging over their keys, the next
-    one white, joined in the order they play. CHORD: one pad a chord from the scale, K1 type (Triad, Dia
-    7, Sus2, Sus4, Power, Dia 9), K2 voicing (Close, Open, Drop 2, Spread), K3
-    inversion, Shift + K1 chords on or off, Shift + K3 hold; the chord the last
-    pad played drawn with its notes on two octaves of keys. The own page (PERFORM,
-    RATIOS, LINES, OSC) draws its Shift row. FX: the slot of the track's
-    chain the cards edit (Push the next one; with none yet, Push opens the
-    effect picker; Shift + Knob FX adds effects), all six slots drawn with
-    their family glyphs.
+    held filled and the notes to come hanging over their keys, the next one
+    white, joined in the order they play. CHORD: one pad a chord from the
+    scale, K1 type (Triad, Dia 7, Sus2, Sus4, Power, Dia 9), K2 voicing
+    (Close, Open, Drop 2, Spread), K3 inversion, Shift + K1 chords on or
+    off, Shift + K3 hold; the chord the last pad played drawn with its notes
+    on two octaves of keys. FX: the slot of the track's chain the cards edit
+    (Push the next one; with none yet, Push opens the effect picker; Shift +
+    Knob FX adds effects), all six slots drawn with their family glyphs.
   - **A kit**: Akai's pages in Akai's order on the last pad hit, B1 **TRIM →
     LAYERS → MIX → AMP ENV → SENDS** (LAYERS the pad's four samples; SENDS the kit track's four), B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
     FILT ENV → KIT FILT** (Melodee's own pages join Akai's): the pad's
@@ -306,14 +291,6 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     it began to where it reads, at its window's strength, leaving a faint
     mark for 150 ms; the bars a grain covers lighten, and with Scan moving
     the cloud travels and GRAINS AROUND follows it (K1's line stays).
-  - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 **MIX → SENDS**, B3 FX. VOICE edits
-    the drum the last pad played (Snare, Clap and Rim share a page) and the
-    B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); it draws the
-    drum's own hit, rendered again whenever a knob moves: 300 ms of it as
-    bars in the track's colour, the tone under it (the snare without its
-    SNAPPY noise) as a line, beside the pads (small, the voice's lit).
-    LEVELS has the toms, hats and cymbals on Shift, its bars without the
-    numbers the cards show.
   - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 **ARP → CHORD**. DEVICE
     (and Edit's DEVICE alike): the route, alive. The track, its port (the
     MIDI Out jack, a computer over USB-C, every USB device; amber when
@@ -327,8 +304,9 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     Shift + K picks a controller's number; they go out on a turn and record
     as Motion.
   - **An empty track**: three doors on one page, a tile under each key
-    showing what it would make, the pot under it choosing: **SYNTH** (K1
-    the engine), **KIT** (K2 where its first sound comes from: samples on
+    showing what it would make, the pot under it choosing: **SYNTH** (a
+    PLUGIN track: the plug-in picker opens on the card's Plugins folder),
+    **KIT** (K2 where its first sound comes from: samples on
     the card, record the input, Audio Recall, Resample), **MIDI** (K3 the
     port). The key under a tile makes that track at once; Push makes the
     one of the pot touched last (its key lit), the wheel turns that pot's
@@ -360,16 +338,13 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   hand (filled) and the bank are named in the header; K1 pitch, K2 level, K3 pan;
   Shift + K1 and K2 the project's root and scale; Push opens the map of the
   sample pages.
-- **Sounds** (Sample Select on a synth or 909): the factory sounds and one's
+- **Sounds** (Sample Select on a MIDI track): the factory sounds and one's
   own for the engine, names in Title Case, the loaded one with a check at
-  its right edge; K1 jumps (as on every list; the engine is Stage PRESET's
-  K3), the wheel walks, Push loads; FAVOURITES lists the starred (Shift +
-  Sample Select).
-- **Edit** (Push on Keys): the engine's pages, then **Touch**
-  (velocity and pressure: AT > VIB adds vibrato, AT > BRIGHT opens the
-  sound), then the **mod matrix**: eight routes a track, source (LFO,
-  velocity, aftertouch, wheel, key track, random, filter envelope),
-  destination (each engine names its own) and amount −100..100. No title
+  its right edge; K1 jumps (as on every list), the wheel walks, Push loads;
+  FAVOURITES lists the starred (Shift + Sample Select). A synth's sounds are
+  its plug-in's own presets (PRESETS on Edit, below, "Plug-ins").
+- **Edit** (Push on Keys): the engine's pages: a MIDI track's DEVICE and
+  PROGRAM; a synth's, its plug-in's own values (below, "Plug-ins"). No title
   row: the page is the header's chip, and its curve fills the picture with
   every parameter named at the point it moves, in its knob's colour while
   on the row the pots hold, dim otherwise; the rest are listed small at the
@@ -592,9 +567,12 @@ hold to steer, Shift + Seq to zoom in**.
   velocity harder); Tie holds it until the next note, which goes on from it
   without a new attack (the same key: one long note); Slide does the same
   and glides the pitch there in about 60 ms (the GLIDE knob's rate when it
-  is up). The sampler and the 909 play the next note and release the held
-  one; MIDI out overlaps them, which a mono synth plays legato. With Seq Record on while playing, pads play in
-  live. On a kit (the sampler or the 909) the rows are its pads, a lane
+  is up). A synth (a PLUGIN track) is told: the key it goes on from as CC 84
+  (portamento control) just before the next note, a tie with the legato
+  pedal (CC 68) held over it, as Melodee Poly, PD and Chip take them; the
+  accent as a velocity 1.6 times as hard. The sampler plays the next note and
+  releases the held one; MIDI out overlaps them, which a mono synth plays legato. With Seq Record on while playing, pads play in
+  live. On a kit the rows are its pads, a lane
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
 - **Steps, Motion** (B1, B3): Steps the bar's steps
@@ -888,7 +866,7 @@ the file holds, to the bit.
   sheet, then `Samples/<name>.wav`; the pad unchanged.
 - **Input Config** (Shift + Sample; B2 on Record): K1 source (Mic, Rear,
   Rear L, Rear R, Resample, USB, USB L, USB R, then **Track n** for each
-  track with a sound of its own: a synth, the 909, another kit; not the kit
+  track with a sound of its own: a synth, another kit; not the kit
   in view, empty or MIDI tracks), K2 rec length (Free, Seq, 1–16 bars), K3
   threshold (−96..0 dB), Shift + K3 gain; with a track, Shift + K1 its tap:
   **Post FX** (after its chain, level and pan, before mute: a muted track
@@ -1233,9 +1211,10 @@ while following.
 - **Takeover**: a pot drives its value once it meets it (Pickup), moves it
   part of the way (Scaled) or at once (Instant); the card shows the value
   dim with a tick where the pot sits until then.
-- **Pad expression**: velocity is heard on every synth through one curve;
-  pad pressure adds vibrato and brightness (AT > VIB, AT > BRIGHT) and
-  reaches every note a pad started; off in Settings.
+- **Pad expression**: a pad's pressure reaches every note it started (the
+  arp's an octave up too) as that note's own pressure (poly aftertouch) on
+  a synth, as Melodee Poly, PD and Chip turn into vibrato and brightness;
+  off in Settings.
 - **Text size**: nothing on screen is drawn under 11 px (`ui::type::floor`
   in `ui/tokens.h`; labels 11, body 13, lists 15, knob values 22), so the
   320 × 240 panel reads at arm's length. Text is never cut: where a page
@@ -1245,30 +1224,37 @@ while following.
 
 ## Sound engines
 
-- **PROPHET**: two oscillators (saw, pulse, sync), noise, a four-pole
-  ladder, two ADSRs, LFO, poly mod, glide, unison, drift; eight voices,
-  thirteen sounds.
-- **FM6**: six sine operators, eight algorithms, feedback; eight voices,
-  nine sounds.
-- **SID**: a chip voice with ring and sync, pulse width LFO, crush, a
-  multimode filter (8580 or 6581); six voices, nine sounds.
-- **CZ**: phase distortion, eight waves, two lines, DCW and DCA envelopes;
-  eight voices, eight sounds.
-- **909**: kick, snare, clap, rim, three toms, closed and open hat, crash,
-  ride on pads 1–11 (12–16 dark); six Edit pages, five kits.
 - **Sampler**: the kit above.
+- **PLUGIN**: a plug-in instrument from the card (below, "Plug-ins"); a
+  synth track. Its parameters are the plug-in's own.
 - **MIDI**: no sound; an external instrument on the track's own port and
-  channel (above, "MIDI and sync"). No mod matrix.
-- **PLUGIN**: a plug-in instrument from the card (below). Its parameters
-  are the plug-in's own; no mod matrix.
+  channel (above, "MIDI and sync").
 
-Every synth has the mod matrix, Touch and an LFO. Each track has eight
-voices or the engine's own count; tracks render in one block of 128 frames.
+Tracks render in one block of 128 frames.
 
-Levels: the kits set them. The 909 and the MPC's factory samples on the
-sampler (at unity) play a beat at about -13 LUFS; each synth's held note at
-full velocity sits at about -15, a drum hit's level (`engine/output_trim.h`).
-A PROPHET unison stack is as loud as one voice.
+## Synths
+
+Melodee's synths are plug-ins of their own, Open MPC plug-ins
+(open-mpc.github.io) that also play on MPC OS devices, each in its own
+repository: **Melodee Poly** (`mpc-vst-melodee-poly`: two oscillators with
+sync, noise, a four-pole ladder, two envelopes, LFO, poly mod, glide,
+unison, drift; eight voices), **Melodee PD** (`mpc-vst-melodee-pd`: phase
+distortion, eight waves, two lines, DCW and DCA envelopes; eight voices)
+and **Melodee Chip** (`mpc-vst-melodee-chip`: a chip voice with ring and
+sync, pulse width LFO, crush, a multimode filter; six voices). Each has its
+factory sounds as presets, pad pressure and an eight-route mod matrix of
+its own. They were Melodee's built-in PROPHET, CZ and SID engines, the same
+voices to the sample; FM6 and the 909 kit are gone. Copy a synth's folder
+(`Ellic Studio - VST - Melodee Poly`, from its aarch64 release) into
+`Plugins/` on the card.
+
+A project saved while the synths were built in (0.1.0-alpha.6 and before)
+opens a PROPHET, CZ or SID track as a PLUGIN track on Melodee Poly, PD or
+Chip, named from the card's top (`Plugins/Ellic Studio - VST - …`, so it
+plays from whichever card holds it), with the track's values and routes as
+the plug-in's state: it sounds as it did. An FM6 or 909 track opens empty,
+its patterns kept (`model/project_file.cpp`, `legacy_engine` in
+`model/project.h`).
 
 ## Plug-ins
 
@@ -1316,6 +1302,16 @@ of the card (beside `Samples/`), in any folders under it.
   use `.config` there, which a Mac's Finder hides (Cmd-Shift-. shows it):
   TONE3000 reads its presets from `.config/TONE3000/Presets` when it
   opens.
+- **Open MPC's rate.** An Open MPC plug-in is written to MPC OS's contract,
+  44.1 kHz whatever the host says. Melodee opens one at 44.1 kHz and, at 48
+  or 96 kHz, hears it through the base's band-limited converter
+  (`plugin/rate_bridge.h`): an instrument's output converted up, under a
+  millisecond late; an effect's input down and its output up, about 3 ms
+  late. So it plays in tune at any rate.
+- **Notes.** Notes, the wheel (CC 1), bend and each note's pressure (poly
+  aftertouch) go to a PLUGIN track's plug-in as MIDI; the sequencer's accent
+  as a harder velocity, a Slide or Tie as CC 84 with the key it goes on
+  from (and CC 68 held over a tie), above, "Steps".
 - **Loading.** The card is mounted `noexec`, so a plug-in runs from a copy
   in `/run` (RAM), made when a project uses it and removed when nothing
   does. The picker opens each plug-in it lists once, to tag it INSTRUMENT
@@ -1337,6 +1333,8 @@ of the card (beside `Samples/`), in any folders under it.
   the page says it stopped working and picking it again reopens it.
 - **Saving.** A project names each plug-in by path (`Project::plugins`,
   32 entries) and keeps what each saves of itself (its state) in the file.
+  A path not starting at `/` is the card's (`Plugins/...` from its top): it
+  opens from whichever card is in, and tries again when a card comes.
 - **Not yet.** Plug-in parameters take no Motion and no undo; Knob FX and
   a kit pad's chain take no plug-ins; editors are never shown.
 - `tools/vst_probe/` is a command-line host on the same code, for trying a
@@ -1457,8 +1455,9 @@ percent of a block, `none` when there are none). The runtime's own
 `src/melodee/tools.cpp` (`cardrow`, `cardaccess`, `cardejected`,
 `cardlocked`, `cardnocomputer`, `cardnone`, `miditrack` and `midipanic`
 among them).
-`--melodee-sound FILE.wav` renders two bars of a starter project (synths, a
-bass line, a 909 beat) and
+`--melodee-sound FILE.wav` renders two bars of a starter project (its kit's
+beat on three drums made for the check; its synths are plug-ins, not loaded
+there) and
 checks the level. `./build.sh` runs both. The preview also checks text:
 anything asked for under 11 px, wider than its box, or a header whose two
 sides meet prints a `MELODEE_TEXT` line, and any such line fails the run.

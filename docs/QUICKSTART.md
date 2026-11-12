@@ -64,17 +64,11 @@ selected track. What you see depends on what the track is.
 A new project has one empty kit on track 1, in C Chromatic; the other tracks
 are empty until you give them an engine.
 
-**A synth: PRESET (B1).** K1 or the wheel walks the sounds; the one you
-stop on loads a moment later. K2 picks the list (all, starred, recent), K3
-the engine. Push opens the full Sounds list.
-
-![Stage PRESET on a PROPHET](images/quickstart/stagepreset.png)
-
-**A synth: AMP ENV (B2, second page).** B2 holds the shape pages: on a
-PROPHET FILTER ENV, AMP ENV, LFO. B1 is PRESET, TONE, MIX; B3 is ARP, CHORD,
-the engine's own page, FX.
-
-![Stage AMP ENV on a PROPHET](images/quickstart/stageampenv.png)
+**A synth: MIX (B1).** A synth is a plug-in on its track: Melodee's own
+are Melodee Poly, PD and Chip (copy them into `Plugins/` on the card). K1
+level, K2 pan, K3 the send into bus A; B1 goes on to SENDS, B2 is ARP and
+CHORD, B3 FX. The synth's own sounds and knobs are on Edit (Push on Keys):
+its parameters, and B2 PRESETS for its factory sounds.
 
 **A kit: TRIM (B1).** The last pad you hit: its waveform, with K1 start,
 K2 end, K3 loop point. B1 goes on to MIX and AMP ENV, B2 is TUNE and PLAY,
@@ -82,11 +76,6 @@ B3 FILTER and FILT ENV.
 
 ![Stage TRIM on a kit](images/quickstart/trim.png)
 
-**A 909: VOICE (B1, second page).** Edits the drum the last pad played;
-the B1 key reads its name (here SNARE, for the clap on pad 3). B1 also
-holds PRESET and LEVELS, B2 is MIX, B3 FX.
-
-![Stage VOICE on a 909](images/quickstart/stage909voice.png)
 
 **A MIDI track: CC (B2).** Three controllers on K1–K3, sent to the
 track's port and channel as you turn; Shift + K picks a controller's
@@ -96,9 +85,10 @@ number. B1 is DEVICE and PROGRAM, B3 ARP.
 
 An empty track offers three doors as tiles: SYNTH, KIT and MIDI, the knob
 under each choosing (K1 the engine, K2 where a kit's first sound comes from,
-K3 the MIDI port); the key under a tile makes that track. One of SYNTH's engines is **PLUGIN**: a VST3
-or VST2 instrument from a `Plugins` folder at the top of the card (Linux
-ARM builds only; the picker dims the rest and says why).
+K3 the MIDI port); the key under a tile makes that track. SYNTH makes a
+**PLUGIN** track and opens the plug-in picker: Melodee Poly, PD or Chip, or
+any VST3 or VST2 instrument in the `Plugins` folder at the top of the card
+(Linux ARM builds only; the picker dims the rest and says why).
 
 ## 4. Picking a track
 

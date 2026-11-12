@@ -378,7 +378,7 @@ int preset_position(const Track& track, const UiState& ui, unsigned& listed) {
 unsigned new_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out) {
     std::array<EngineKind, size_t(EngineKind::Count)> all {};
     unsigned count = available_engines(all), n = 0;
-    for (unsigned k = 0; k < count; ++k) // the synths and the 909: a kit and MIDI have buttons of their own
+    for (unsigned k = 0; k < count; ++k) // PLUGIN (Melodee's synths are plug-ins): a kit and MIDI have buttons of their own
         if (all[k] != EngineKind::Sampler && all[k] != EngineKind::Midi) out[n++] = all[k];
     return n;
 }
@@ -395,8 +395,7 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
     }
     unsigned t = ui.track % track_count;
     switch (page.kind) {
-    case SK::Params:
-    case SK::Voice: {
+    case SK::Params: {
         const auto& ids = shift_row ? page.shift : page.params;
         return {param(track, ids[0]), param(track, ids[1]), param(track, ids[2])};
     }
@@ -560,7 +559,6 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {feel[2], more[0], more[2]};
     }
     case PageId::Keys: // Shift + K3: the pads by semitones
-        if (track.engine == EngineKind::Kit909) return {};
         return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
     default: return {};
     }

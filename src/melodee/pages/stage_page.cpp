@@ -3,23 +3,17 @@
 // STAGE (Sample): the selected track's quick pages, as the MPC's Sample Mode.
 // B1-B3 each hold a cycle of pages (engine/engine_info.h, stage_groups()):
 // the lit one again steps to the next page, another jumps to its first; the
-// soft keys name each button's page, with a dot a page under a cycle. A synth
-// has SOUND (preset, tone, mix), SHAPE (envelopes, LFO) and PLAY (arp, chord,
-// its own, effects); a kit Akai's Trim / Mix / Amp Env, Tune / Play and Filter /
-// Filt Env on the last pad hit; a 909 its preset, the voice the last pad hit
-// and levels, mix, effects; a MIDI track device and program, CC, arp and chord; an
-// empty track what it becomes. The wheel fine-edits the card touched last
+// soft keys name each button's page, with a dot a page under a cycle. A kit
+// has Akai's Trim / Mix / Amp Env, Tune / Play and Filter / Filt Env on the
+// last pad hit; a PLUGIN track (a synth: Melodee Poly, PD and Chip are plug-ins)
+// mix and sends, arp and chord, effects; a MIDI track device and program, CC,
+// arp and chord; an empty track what it becomes. The wheel fine-edits the card touched last
 // (PRESET: walks the sounds; an empty track: walks its list), Push moves to the next card (PRESET: the Sounds
 // list; FX: the next effect, or with none yet the effect picker; an empty track: makes it), Shift + Push is Back.
 // The pads play the track; on a kit the pad played is the pad edited.
 #include "melodee/engine/arp.h"
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/effect_info.h"
-#include "melodee/engine/kit909.h"
-#include "melodee/engine/sid.h"
-#include "melodee/engine/cz.h"
-#include "melodee/engine/fm6.h"
-#include "melodee/engine/prophet.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/model/chords.h"
@@ -98,38 +92,7 @@ void axis(Paint& p, float y, const juce::String& left, const juce::String& middl
     p.text(right, px + 2 * pw / 3, y, pw / 3, 14, p.fit(right, style, pw / 3, type::floor), juce::Justification::centredRight);
 }
 
-// PRESET: the sound before, the one in hand (turned to, or loaded) with its star, the one after; where it sits.
-// stage-preset B (round 2): the sound as a scope, rendered offline whenever the sound or its knobs change (kept on
-// the screen thread): a note (C3; the 909's kick) a tenth of a second in, 1024 frames of it, scaled to its peak.
-struct SoundScope { std::array<float, 154> wave {}; uint64_t key = ~0ull; bool shown = false; };
-const SoundScope& sound_scope(const Track& t) {
-    static SoundScope cached;
-    const auto& info = engine_info(t.engine);
-    uint64_t key = uint64_t(t.engine) + 1;
-    for (unsigned id = 0; id < info.param_count; ++id) key = key * 1000003ull + uint64_t(t.params[id] + 100000);
-    if (key == cached.key) return cached;
-    cached.key = key;
-    std::unique_ptr<Engine> e;
-    switch (t.engine) {
-    case EngineKind::Prophet: e = std::make_unique<ProphetEngine>(); break;
-    case EngineKind::Fm6: e = std::make_unique<Fm6Engine>(); break;
-    case EngineKind::Cz: e = std::make_unique<CzEngine>(); break;
-    case EngineKind::Sid: e = std::make_unique<SidEngine>(); break;
-    case EngineKind::Kit909: e = std::make_unique<Kit909Engine>(); break;
-    default: cached.shown = false; return cached;
-    }
-    for (unsigned id = 0; id < info.param_count; ++id) e->set_param(int(id), t.params[id]);
-    e->note_on(t.engine == EngineKind::Kit909 ? 36 : 48, 100);
-    std::vector<float> audio(5120, 0.0f);
-    e->render(audio.data(), unsigned(audio.size()));
-    float peak = 1e-6f;
-    for (unsigned n = 4096; n < audio.size(); ++n) peak = std::max(peak, std::fabs(audio[n]));
-    for (unsigned n = 0; n < cached.wave.size(); ++n) cached.wave[n] = audio[4096 + n * 1024 / cached.wave.size()] / peak;
-    cached.shown = peak > 1e-4f;
-    return cached;
-}
-
-// PRESET (round 2, stage-preset B "sound poster"): the sound's name at poster size over its scope, a star when it is
+// PRESET (round 2, stage-preset B "sound poster"): the sound's name at poster size, a star when it is
 // starred; while pads are held the chord they make and its notes under it; the sounds before and after it, small,
 // in the corners. The wheel or K1 walks them (the one turned to loads once the turning stops).
 void preset_picture(Paint& p, const Snapshot& s) {
@@ -147,18 +110,6 @@ void preset_picture(Paint& p, const Snapshot& s) {
     if (s.ui.preset_due) at = std::min<int>(s.ui.preset_cursor, int(count) - 1);
     else for (unsigned n = 0; n < count; ++n) if (list[n] == t.preset) at = int(n);
     auto name_of = [&](unsigned sound) { return sound < info.sound_count ? name_case(info.sounds[sound].name) : "Own sound " + juce::String(sound - info.sound_count + 1); };
-    // The scope, behind.
-    const auto& scope = sound_scope(t);
-    if (scope.shown && !s.ui.preset_due) {
-        float y0 = top + 30, h = 92, cy = y0 + h / 2;
-        juce::Path wave;
-        for (unsigned n = 0; n < scope.wave.size(); ++n) {
-            float x = px + pw * float(n) / float(scope.wave.size() - 1), y = cy - scope.wave[n] * h / 2;
-            if (n) wave.lineTo(x, y); else wave.startNewSubPath(x, y);
-        }
-        p.g.setColour(c.withAlpha(0.38f));
-        p.g.strokePath(wave, juce::PathStrokeType(2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
     // The name at poster size, the star after it.
     unsigned sound = list[size_t(at)];
     bool starred = s.ui.settings.favourite(unsigned(t.engine), sound);
@@ -776,95 +727,6 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     axis(p, bottom - 16, "", middle, seconds(zoomed ? end - start : uint32_t((to - from) * frames)));
 }
 
-// d909 A (round 2, "the hit, drawn"): one drum rendered offline for 300 ms whenever the kit's knobs move (kept on
-// the screen thread): its loudness in 120 columns, and the same with the snare's noise (SNAPPY) taken out, the tone
-// under it; both scaled to the louder's peak.
-struct Hit909 { std::array<float, 120> full {}, tone {}; uint64_t key = ~0ull; };
-const Hit909& hit_909(const Track& t, unsigned drum) {
-    static Hit909 cached;
-    uint64_t key = drum + 1;
-    for (unsigned id = 0; id < kit909::Count; ++id) key = key * 1000003ull + uint64_t(t.params[id] + 1000);
-    if (key == cached.key) return cached;
-    cached.key = key;
-    auto render = [&](bool tonal, std::array<float, 120>& out) {
-        Kit909Engine e;
-        for (unsigned id = 0; id < kit909::Count; ++id) e.set_param(int(id), tonal && id == unsigned(kit909::SnareSnappy) ? 0 : t.params[id]);
-        e.note_on(36 + int(drum), 127);
-        unsigned per = std::max(1u, unsigned(dsp::sample_rate() * 0.3f) / unsigned(out.size()));
-        std::vector<float> block(per);
-        for (auto& v : out) {
-            std::fill(block.begin(), block.end(), 0.0f);
-            e.render(block.data(), per);
-            float peak = 0;
-            for (float x : block) peak = std::max(peak, std::fabs(x));
-            v = peak;
-        }
-    };
-    render(false, cached.full);
-    render(true, cached.tone);
-    float top = 1e-6f;
-    for (unsigned n = 0; n < cached.full.size(); ++n) top = std::max({top, cached.full[n], cached.tone[n]});
-    for (unsigned n = 0; n < cached.full.size(); ++n) { cached.full[n] /= top; cached.tone[n] /= top; }
-    return cached;
-}
-
-// VOICE (909): the pads as they sit (small), the voice's lit, the one hit brightest; beside them the drum's own hit
-// (d909 A): the burst as bars in the track's colour, the tone under it as a line, TUNE, TONE and SNAPPY seen as they move.
-void voice_picture(Paint& p, const Snapshot& s) {
-    const auto& t = s.track();
-    const auto& g = stage_groups(t.engine);
-    auto c = colour_of(s);
-    unsigned voice = stage_voice(t);
-    int hit = int(t.last_note) - 36;
-    constexpr float cell = 12, gap = 2;
-    float gx = px, gy = top + 8;
-    for (unsigned n = 0; n < 16; ++n) { // the pads the voice plays lit, the one hit brightest
-        unsigned row = 3 - n / 4, column = n % 4;
-        bool same = g.pad_voice[n] == int(voice), here = int(n) == hit;
-        juce::Colour fill = here ? c : same ? c.withAlpha(0.4f) : g.pad_voice[n] >= 0 ? colour::raised : colour::quiet;
-        p.fill(gx + column * (cell + gap), gy + row * (cell + gap), cell, cell, fill, 2);
-    }
-    unsigned drum = hit >= 0 && hit < int(kit909::Drums) ? unsigned(hit) : 0;
-    const auto& h = hit_909(t, drum);
-    float wx = gx + 4 * cell + 3 * gap + 10, ww = px + pw - wx, wy = top + 10, wh = zone::picture_h - 40, cy = wy + wh / 2;
-    float bw = ww / float(h.full.size());
-    for (unsigned n = 0; n < h.full.size(); ++n) {
-        float bh = std::max(1.0f, h.full[n] * wh);
-        p.fill(wx + n * bw, cy - bh / 2, std::max(1.0f, bw - 0.6f), bh, c.withAlpha(0.75f), 0.5f);
-    }
-    juce::Path tone;
-    for (unsigned n = 0; n < h.tone.size(); ++n) {
-        float tx = wx + (n + 0.5f) * bw, ty = cy - h.tone[n] * wh / 2;
-        if (n) tone.lineTo(tx, ty); else tone.startNewSubPath(tx, ty);
-    }
-    p.g.setColour(colour::text);
-    p.g.strokePath(tone, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    p.text("0", wx, bottom - 16, 30, 14, plain(colour::dim, type::small));
-    p.text("300 ms", px + pw - 60, bottom - 16, 60, 14, plain(colour::dim, type::small), juce::Justification::centredRight);
-}
-
-// LEVELS (909): six faders, the three on K1-K3 in their shades, the Shift three after them.
-void levels_picture(Paint& p, const Snapshot& s, const StagePage& page) {
-    const auto& t = s.track();
-    const auto& info = engine_info(t.engine);
-    float cw = pw / 6;
-    juce::StringArray labels; // the six share one case: KICK .. CYMBALS, or Kick .. Cymbals when one does not fit
-    for (unsigned n = 0; n < 6; ++n) { int id = n < 3 ? page.params[n] : page.shift[n - 3]; if (id >= 0) labels.add(info.params[id].label); }
-    bool capitals = cells_in_capitals(p, labels, caps_text(colour::text), cw);
-    for (unsigned n = 0; n < 6; ++n) {
-        int id = n < 3 ? page.params[n] : page.shift[n - 3];
-        if (id < 0) continue;
-        float cx = px + n * cw + cw / 2, value = gauge_of(info.params[id], t.params[size_t(id)]);
-        auto shade = n < 3 ? knob_shade(s.ui.track, n) : colour::mid;
-        float bh = zone::picture_h - 46, by = top + 24; // d909 A: the bars alone, the cards say the values
-        p.fill(cx - 3.5f, by, 7, bh, colour::line, 3.5f);
-        p.fill(cx - 3.5f, by + bh * (1 - value), 7, bh * value, n < 3 ? shade : knob_shade(s.ui.track, n - 3).withAlpha(0.55f), 3.5f);
-        auto style = capitals ? caps_text(shade) : plain(shade, type::small, Weight::SemiBold);
-        juce::String label = cell_name(info.params[id].label, capitals);
-        p.text(label, cx - cw / 2, bottom - 18, cw, 14, style, juce::Justification::centred);
-    }
-}
-
 // DEVICE (MIDI; round 2, midi-track A): the route, alive (common.cpp's midi_route(), Edit's DEVICE alike).
 void route_picture(Paint& p, const Snapshot& s) { midi_route(p, s, px, top + 4, pw, bottom - top - 8); }
 
@@ -923,69 +785,6 @@ void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift
     if (shift_row) icon(p, Icon::Shift, px, y0 + 6, 12, colour::mid, 1.4f); // the rows Shift + K1-K3 turn
 }
 
-// stage-shape B (round 2, "voice strip"): on a synth's SHAPE pages the whole voice as small live pictures across the
-// top, TONE's filter (where it has one) and each SHAPE page, the one in hand lit; the page's own picture below.
-// Returns how far down that picture starts (top when there is no strip).
-float shape_strip(Paint& p, const Snapshot& s, const StagePage& now) {
-    const auto& t = s.track();
-    if (t.engine != EngineKind::Prophet && t.engine != EngineKind::Fm6 && t.engine != EngineKind::Cz && t.engine != EngineKind::Sid) return top;
-    const auto& g = stage_groups(t.engine);
-    std::array<const StagePage*, 5> pages {};
-    unsigned n = 0;
-    bool in_shape = false;
-    for (unsigned k = 0; k < g.groups[1].count && k < 4; ++k) in_shape = in_shape || &g.groups[1].pages[k] == &now;
-    if (!in_shape) return top;
-    for (unsigned k = 0; k < g.groups[0].count; ++k)
-        if (g.groups[0].pages[k].picture == StagePicture::Filter && n < pages.size()) pages[n++] = &g.groups[0].pages[k];
-    for (unsigned k = 0; k < g.groups[1].count && n < pages.size(); ++k) pages[n++] = &g.groups[1].pages[k];
-    const auto& info = engine_info(t.engine);
-    auto c = colour_of(s);
-    constexpr float h = 30, gap = 7;
-    float w = (pw - gap * float(n - 1)) / float(n), y = top + 4;
-    auto value = [&](int id) { return id >= 0 ? gauge_of(info.params[id], t.params[size_t(id)]) : 0.0f; };
-    for (unsigned k = 0; k < n; ++k) {
-        const auto& page = *pages[k];
-        bool lit = &page == &now;
-        auto ink = lit ? c : colour::mid;
-        float x = px + k * (w + gap), ix = x + 7, iw = w - 14, iy = y + 6, ih = h - 12;
-        p.fill(x, y, w, h, lit ? c.withAlpha(0.18f) : colour::surf, 4);
-        juce::Path line;
-        switch (page.picture) {
-        case StagePicture::Envelope: { // attack, decay to sustain, a hold, release
-            float a = 0.15f + 0.85f * value(page.params[0]), d = 0.15f + 0.85f * value(page.params[1]), su = value(page.params[2]);
-            float r = 0.15f + 0.85f * value(page.shift[0]), total = a + d + 0.6f + r, sx = iw / total;
-            float x1 = ix + a * sx, x2 = x1 + d * sx, x3 = x2 + 0.6f * sx, x4 = x3 + r * sx;
-            line.startNewSubPath(ix, iy + ih); line.lineTo(x1, iy); line.lineTo(x2, iy + ih * (1 - su)); line.lineTo(x3, iy + ih * (1 - su)); line.lineTo(x4, iy + ih);
-            break;
-        }
-        case StagePicture::Filter: { // a low pass: flat, a bump at the cutoff by the resonance, then falling
-            float cut = value(page.params[0]), res = value(page.params[1]), cx = ix + iw * (0.15f + 0.7f * cut);
-            line.startNewSubPath(ix, iy + ih * 0.4f); line.lineTo(cx - iw * 0.08f, iy + ih * 0.4f);
-            line.quadraticTo(cx, iy + ih * (0.4f - 0.4f * res), cx + iw * 0.05f, iy + ih * 0.5f); line.lineTo(std::min(ix + iw, cx + iw * 0.3f), iy + ih);
-            break;
-        }
-        case StagePicture::Lfo: { // its shape, twice round
-            int shape = t.params[size_t(page.params[1])];
-            for (int m = 0; m <= 40; ++m) {
-                float ph = std::fmod(m / 20.0f, 1.0f), v = shape == 1 ? 2 * ph - 1 : shape == 2 ? (ph < 0.5f ? 1.0f : -1.0f) : 1 - 4 * std::fabs(ph - 0.5f);
-                float lx = ix + iw * m / 40.0f, ly = iy + ih / 2 - v * ih / 2;
-                if (m) line.lineTo(lx, ly); else line.startNewSubPath(lx, ly);
-            }
-            break;
-        }
-        default: // three bars, the page's K1-K3
-            for (unsigned b = 0; b < 3; ++b) {
-                float bh = std::max(2.0f, ih * value(page.params[b]));
-                p.fill(ix + iw * (0.2f + 0.25f * b), iy + ih - bh, 5, bh, ink, 1);
-            }
-            continue;
-        }
-        p.g.setColour(ink);
-        p.g.strokePath(line, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    return y + h + 6;
-}
-
 ui::SoftKeys stage_keys(const Snapshot& s) {
     const auto& t = s.track();
     const auto& g = stage_groups(t.engine);
@@ -1031,9 +830,6 @@ void draw(Paint& p, const Snapshot& s) {
         if (page.kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
         if (page.kind == StageKind::Follow) h.left.push_back(follow_pill(s));
         if (page.kind == StageKind::Layers) h.left.push_back(layers_pill(s));
-    } else if (page.picture == StagePicture::Voice) {
-        int hit = int(t.last_note) - 36;
-        if (hit >= 0 && hit < int(kit909::Drums)) h.left.push_back(pill("PAD " + juce::String(hit + 1) + dot + juce::String(kit909::drum_name(unsigned(hit))), c));
     } else if (page.kind == StageKind::Arp || page.kind == StageKind::Chord) { // on or off, as the LED on the MPC would say
         bool on = page.kind == StageKind::Arp ? t.arp : t.chord;
         h.left.push_back(pill(on ? Icon::Check : Icon::None, on ? "ON" : "OFF", on ? c : colour::mid));
@@ -1047,20 +843,16 @@ void draw(Paint& p, const Snapshot& s) {
     frame(p, s, keys, h);
     switch (page.picture) {
     case StagePicture::Preset: preset_picture(p, s); break;
-    case StagePicture::Filter: filter_picture(p, s, page, shape_strip(p, s, page)); break;
-    case StagePicture::Envelope: envelope_picture(p, s, page, shape_strip(p, s, page)); break;
-    case StagePicture::Lfo: lfo_picture(p, s, page, shape_strip(p, s, page)); break;
-    case StagePicture::ShiftRows: case StagePicture::Bars: // under the strip where there is one
-        bars_picture(p, s, page, page.picture == StagePicture::ShiftRows, shape_strip(p, s, page));
-        break;
+    case StagePicture::Filter: filter_picture(p, s, page); break;
+    case StagePicture::Envelope: envelope_picture(p, s, page); break;
+    case StagePicture::Lfo: lfo_picture(p, s, page); break;
+    case StagePicture::ShiftRows: case StagePicture::Bars: bars_picture(p, s, page, page.picture == StagePicture::ShiftRows); break;
     case StagePicture::Mix: mix_picture(p, s); break;
     case StagePicture::Sends: sends_picture(p, s); break;
     case StagePicture::Arp: arp_picture(p, s); break;
     case StagePicture::Chord: chord_picture(p, s); break;
     case StagePicture::Fx: fx_picture(p, s); break;
     case StagePicture::Wave: wave_picture(p, s, page); break;
-    case StagePicture::Voice: voice_picture(p, s); break;
-    case StagePicture::Levels: levels_picture(p, s, page); break;
     case StagePicture::Route: route_picture(p, s); break;
     case StagePicture::Program: program_picture(p, s); break;
     case StagePicture::Cc: cc_picture(p, s); break;

@@ -240,7 +240,7 @@ void open_clip(Context& c, int index, bool motion) {
     c.launch(clip.track, clip.pattern);
     c.sync_song();
     auto engine = c.track().engine;
-    c.open(motion ? PageId::Motion : engine == EngineKind::Sampler || engine == EngineKind::Kit909 ? PageId::StepEdit : PageId::Roll);
+    c.open(motion ? PageId::Motion : engine == EngineKind::Sampler ? PageId::StepEdit : PageId::Roll);
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {

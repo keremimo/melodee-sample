@@ -3,16 +3,11 @@
 #pragma once
 #include "melodee/engine/arp.h"
 #include "melodee/engine/command.h"
-#include "melodee/engine/cz.h"
-#include "melodee/engine/fm6.h"
-#include "melodee/engine/kit909.h"
 #include "melodee/engine/looper.h"
 #include "melodee/engine/master_comp.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/plugin_engine.h"
-#include "melodee/engine/sid.h"
 #include "melodee/engine/effects.h"
-#include "melodee/engine/prophet.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/render_pool.h"
@@ -278,12 +273,7 @@ private:
     static constexpr unsigned calls_a_block = 384; // a track's, more than a pattern's start (every value back) needs
     struct Slot {
         EngineKind kind = EngineKind::None;
-        ProphetEngine prophet;
         SamplerEngine sampler;
-        Kit909Engine kit;
-        Fm6Engine fm;
-        SidEngine sid;
-        CzEngine cz;
         MidiEngine midi; // silent: a MIDI track (docs/MIDI_TRACKS.md)
         PluginEngine plugin;             // a PLUGIN track: the rack's plug-in for `plugin_entry`
         uint8_t plugin_entry = no_plugin;

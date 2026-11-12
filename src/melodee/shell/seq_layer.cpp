@@ -15,7 +15,7 @@ using B = SurfaceButton;
 
 bool kit_track(Context& c) {
     auto engine = c.track().engine;
-    return engine == EngineKind::Sampler || engine == EngineKind::Kit909;
+    return engine == EngineKind::Sampler;
 }
 
 std::string name_of(unsigned pattern) { return "P" + std::to_string(pattern % pattern_count + 1); }

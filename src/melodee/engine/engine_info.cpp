@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/engine_info.h"
-#include "melodee/engine/prophet_params.h"
-#include "melodee/engine/cz.h"
-#include "melodee/engine/fm6.h"
-#include "melodee/engine/kit909.h"
 #include "melodee/engine/midi_engine.h"
-#include "melodee/engine/sid.h"
 #include "melodee/engine/sampler.h"
 #include <algorithm>
 #include <cmath>
@@ -54,7 +49,8 @@ const EngineInfo& engine_info(EngineKind kind) {
     static const EngineInfo midi {EngineKind::Midi, "MIDI", true, midi_params, midi_track::Count, midi_pages, 2,
                                   {midi_track::Port, midi_track::Channel, -1}, midi_sounds, 1, nullptr, 0, false};
     // PLUGIN (docs/MELODEE.md, Plug-ins): a plug-in instrument from the card; its parameters are its own (the
-    // rack's), so the engine states none here and its Edit page draws the plug-in's.
+    // rack's), so the engine states none here and its Edit page draws the plug-in's. Melodee's synths are plug-ins
+    // of this kind (Melodee Poly, PD and Chip, docs/MELODEE.md, Synths).
     static const Sound plugin_sounds[] {{"PLUG-IN", {{{-1, 0}}}}};
     static const StageGroups plugin_stage {{{
         {{{stage_mix, stage_sends, {}}}, 2},
@@ -66,11 +62,6 @@ const EngineInfo& engine_info(EngineKind kind) {
     switch (kind) {
     case EngineKind::Midi: return midi;
     case EngineKind::Plugin: return plugin;
-    case EngineKind::Prophet: return prophet::info();
-    case EngineKind::Fm6: return fm6::info();
-    case EngineKind::Cz: return cz::info();
-    case EngineKind::Sid: return sid::info();
-    case EngineKind::Kit909: return kit909::info();
     case EngineKind::Sampler: return sampler;
     default: return none;
     }

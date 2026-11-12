@@ -7,7 +7,6 @@
 // note, when the layout is that). K1 root, K2 scale, K3 layout; Shift + K3
 // transposes the pads by semitones. Minus / Plus the octave. Push opens
 // Edit, the engine's every page.
-#include "melodee/engine/kit909.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -20,9 +19,8 @@ using namespace ui;
 void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
     auto c = colour_of(s);
-    bool drums = track.engine == EngineKind::Kit909;
     Header h = header_of(s);
-    if (!drums) { // the key the pads play in: the root and the scale (or Chromatic, or 16 Levels' note)
+    { // the key the pads play in: the root and the scale (or Chromatic, or 16 Levels' note)
         juce::String key = track.layout == PadLayout::Levels ? juce::String(note_name(track.last_note)) + " LEVELS"
                          : juce::String(note_letter(s.project.root)) + " " + (track.layout == PadLayout::Chromatic ? juce::String("Chromatic")
                                                                                                                     : juce::String(scales()[s.project.scale % scales().size()].name));
@@ -47,12 +45,6 @@ void draw(Paint& p, const Snapshot& s) {
         unsigned row = 3 - pad / 4, column = pad % 4;
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
         bool held = s.ui.held_pads & (1u << pad);
-        if (drums) { // the pads are the drums
-            bool drum = pad < kit909::Drums;
-            p.fill(x, y, w, ch, held ? colour::text : drum ? colour::surf : colour::quiet, 3);
-            if (drum) p.text(kit909::drum_name(pad), x + 7, y, w - 14, ch, p.fit(kit909::drum_name(pad), plain(held ? colour::bg : colour::text, type::body, Weight::SemiBold), w - 14, type::floor));
-            continue;
-        }
         auto note = pad_note(s.project, track, pad);
         p.fill(x, y, w, ch, held ? colour::text : note.root ? c : colour::surf, 3);
         auto fg = held || note.root ? colour::bg : colour::text;

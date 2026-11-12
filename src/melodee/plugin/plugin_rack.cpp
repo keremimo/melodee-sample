@@ -5,6 +5,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
+#include "melodee/plugin/rate_bridge.h"
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_instance.h"
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
@@ -140,13 +141,16 @@ fs::path plugin_home(const std::string& card_top) {
 } // namespace
 
 // What the audio thread runs (PluginRunner): the plug-in, its buffers made up
-// front, and MIDI gathered between renders. Made on the rack's thread.
+// front, and MIDI gathered between renders. Made on the rack's thread. A
+// plug-in at a rate of its own (an Open MPC one at 44.1 kHz) is heard at the
+// device's through a PluginRateBridge.
 class PluginHandle final : public PluginRunner {
 public:
-    PluginHandle(std::unique_ptr<juce::AudioPluginInstance> plugin, bool is_instrument, double rate)
+    PluginHandle(std::unique_ptr<juce::AudioPluginInstance> plugin, bool is_instrument, double rate, double plugin_rate)
         : instance(std::move(plugin)), instrument(is_instrument), sample_rate(rate) {
         channels = std::max({2, instance->getTotalNumInputChannels(), instance->getTotalNumOutputChannels()});
         memory.assign(size_t(channels) * EngineHost::block, 0.0f);
+        bridge.reset(unsigned(std::lround(plugin_rate)), unsigned(std::lround(rate)), is_instrument);
         midi_in.ensureSize(8192);
         auto* bypass = instance->getBypassParameter(); // the slot's own Bypass does that job
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
@@ -165,6 +169,15 @@ public:
     void render(float* left, float* right, unsigned frames) override {
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
+        auto t0 = std::chrono::steady_clock::now();
+        if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false); });
+        else run(left, right, frames, instrument);
+        double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        float share = float(took / (frames / sample_rate));
+        load.store(load.load(std::memory_order_relaxed) * 0.95f + share * 0.05f, std::memory_order_relaxed);
+    }
+    // One processBlock of `frames`: an effect's input in left/right; the output added there (`add`) or in their place.
+    void run(float* left, float* right, unsigned frames, bool add) {
         int ins = instance->getTotalNumInputChannels(), outs = instance->getTotalNumOutputChannels();
         std::array<float*, 64> pointers {};
         for (int c = 0; c < channels && c < 64; ++c) pointers[size_t(c)] = memory.data() + size_t(c) * EngineHost::block;
@@ -182,16 +195,15 @@ public:
             midi_in.addEvent(bytes, size, 0);
         }
         pending_count = 0;
-        auto t0 = std::chrono::steady_clock::now();
         instance->processBlock(buffer, midi_in);
-        double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-        float share = float(took / (frames / sample_rate));
-        load.store(load.load(std::memory_order_relaxed) * 0.95f + share * 0.05f, std::memory_order_relaxed);
-        if (outs <= 0) return;
+        if (outs <= 0) {
+            if (!add) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
+            return;
+        }
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
         auto safe = [](float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; };
-        if (instrument) for (unsigned f = 0; f < frames; ++f) { left[f] += safe(l[f]); right[f] += safe(r[f]); }
+        if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += safe(l[f]); right[f] += safe(r[f]); }
         else for (unsigned f = 0; f < frames; ++f) { left[f] = safe(l[f]); right[f] = safe(r[f]); }
     }
 
@@ -209,6 +221,7 @@ public:
 
 private:
     struct Midi { uint8_t status = 0, data1 = 0, data2 = 0; };
+    PluginRateBridge bridge;
     std::array<Midi, 512> pending {};
     unsigned pending_count = 0;
     int channels = 2;
@@ -529,6 +542,9 @@ void PluginRack::set_card(const std::string& top) {
         if (top == card_top) return;
         card_top = top;
         root = wanted_root;
+        // Entries named from the card's top (Plugins/...) that could not open try again on this card at the next sync().
+        for (auto& entry : entries)
+            if (!entry.path.empty() && fs::path(entry.path).is_relative() && entry.status == PluginStatus::Failed) entry.reload = true;
     }
     browse("");
 }
@@ -709,7 +725,13 @@ void PluginRack::probe_listed() {
 }
 
 void PluginRack::load(const Job& job) {
-    auto file = describe_plugin(job.path);
+    std::string path = job.path;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        // A path relative to the card's top (a track Melodee's own synth was, Plugins/...): on the card in now.
+        if (fs::path(path).is_relative() && !card_top.empty()) path = (fs::path(card_top) / path).string();
+    }
+    auto file = describe_plugin(path);
     std::vector<uint8_t> state;
     {
         std::lock_guard<std::mutex> held(lock);
@@ -728,6 +750,8 @@ void PluginRack::load(const Job& job) {
         }
         changed();
     };
+    std::error_code missing;
+    if (!fs::exists(path, missing)) { fail("Not on the card"); return; }
     if (!file.loadable()) { fail(file.folder ? "Not a plug-in" : file.why); return; }
     if (!ensure_plugin_support()) { fail("Plug-in support missing"); return; }
     use_plugin_home();
@@ -738,7 +762,8 @@ void PluginRack::load(const Job& job) {
 
     std::unique_ptr<juce::AudioPluginInstance> instance;
     juce::String why;
-    double rate = job.rate > 0 ? job.rate : 44100.0;
+    double device_rate = job.rate > 0 ? job.rate : 44100.0;
+    double rate = file.fixed_rate ? double(file.fixed_rate) : device_rate; // what the plug-in itself runs at
     int block = int(EngineHost::block);
     if (file.format == PluginFormat::Vst3) {
         message_thread().start();
@@ -772,7 +797,7 @@ void PluginRack::load(const Job& job) {
     instance->fillInPluginDescription(description);
     bool is_instrument = description.isInstrument || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);
 
-    auto handle = std::make_unique<PluginHandle>(std::move(instance), is_instrument, rate);
+    auto handle = std::make_unique<PluginHandle>(std::move(instance), is_instrument, device_rate, rate);
     handle->stage = stage.string();
     handle->format = file.format;
     handle->programs = named_programs(*handle->instance);

@@ -33,7 +33,7 @@ void pad_bank_button(Context& c, bool pressed) {
     if (ui.shift) ui.shift_used = true;
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (c.track().engine == EngineKind::Sampler) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
-    if (ui.page == PageId::Roll && c.track().engine != EngineKind::Kit909) step_octave(c, ui.shift ? -1 : 1); // Roll on a synth: −/+ are its pitch
+    if (ui.page == PageId::Roll) step_octave(c, ui.shift ? -1 : 1); // Roll on a synth: −/+ are its pitch
 }
 
 bool pad_bank_move(Context& c, int way) {

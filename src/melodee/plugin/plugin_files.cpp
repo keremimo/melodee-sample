@@ -90,6 +90,7 @@ bool describe_open_mpc(PluginFile& f) {
     juce::XmlElement* plugin = xml ? (xml->hasTagName("PLUGIN") ? xml.get() : xml->getChildByName("PLUGIN")) : nullptr;
     f.name = plugin && plugin->hasAttribute("name") ? plugin->getStringAttribute("name").toStdString() : stem(folder);
     if (plugin && plugin->hasAttribute("isInstrument")) f.instrument = plugin->getIntAttribute("isInstrument") ? 1 : 0;
+    f.fixed_rate = 44100; // the Open MPC engine contract (mpc-vst-plugins, wrapper/engine.h)
     std::string so = plugin ? juce::File::createFileWithoutCheckingPath(plugin->getStringAttribute("file")).getFileName().toStdString() : "";
     if (so.empty() || !fs::exists(folder / so)) { // the first .so beside it
         so.clear();

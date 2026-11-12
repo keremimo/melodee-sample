@@ -129,7 +129,7 @@ void wheel(Context& c, int delta) { entry_move(c, delta); }
 // Back to the editor Step Edit sits under (Steps, Roll or Motion: the track's last).
 void close(Context& c) {
     auto engine = c.track().engine;
-    c.open(seq_editor_page(c.ui, engine == EngineKind::Sampler || engine == EngineKind::Kit909));
+    c.open(seq_editor_page(c.ui, engine == EngineKind::Sampler));
 }
 
 void push(Context& c) { close(c); }

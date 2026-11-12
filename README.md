@@ -1,8 +1,10 @@
 # Melodee for the MPC Sample
 
 Melodee is a sixteen-track groovebox for the **Akai MPC Sample (firmware
-1.3.0.12)**: one track per pad, four synths, a 909 kit and a sampler,
-patterns and a song, mixer and effects. It runs in place of the stock app
+1.3.0.12)**: one track per pad, kits of samples, synths and MIDI tracks,
+patterns and a song, mixer and effects. Its synths, Melodee Poly, PD and
+Chip, are plug-ins of their own (Open MPC VST2, in their own repositories):
+copy them into `Plugins/` on the card. It runs in place of the stock app
 on [sample-base](https://github.com/keremimo/sample-base), a standalone
 JUCE runtime for the MPC Sample, and returns to the stock app on exit, a
 crash or any failure. New to it? Start with the illustrated

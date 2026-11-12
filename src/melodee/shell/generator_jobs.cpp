@@ -34,7 +34,7 @@ void Context::set_euclid(Binding::Kind kind, int value) {
 void Context::vary(Variation v) {
     auto& t = track();
     if (!t.used()) return;
-    bool kit = t.engine == EngineKind::Sampler || t.engine == EngineKind::Kit909;
+    bool kit = t.engine == EngineKind::Sampler;
     if (kit && !variation_on_kit(v)) { notice(std::string(variation_name(v)) + ": not on a kit"); return; }
     if (pattern().empty()) { notice("No notes to vary"); return; }
     int into = -1; // the next empty pattern after the one playing, round to the first (as Capture)

@@ -1,6 +1,6 @@
 # Melodee: MIDI tracks (design)
 
-A track can load **MIDI** as its engine, as it loads Prophet or the Sampler.
+A track can load **MIDI** as its engine, as it loads a synth (a plug-in) or the Sampler.
 It makes no sound of its own: its pads, patterns, knobs, motion and the
 song drive an external instrument on a port and channel of its own, and it
 can take an audio input back as its sound so the instrument sits in the mix.

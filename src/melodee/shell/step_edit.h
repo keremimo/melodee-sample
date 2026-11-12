@@ -24,12 +24,11 @@ inline int selected_event(const Pattern& pattern, const UiState& ui) {
     if (!in.count) return -1;
     return int(in.first + std::min<unsigned>(ui.step_event, in.count - 1));
 }
-// The key a pad stands for on a track: a kit pad of the bank in view, a 909
-// drum, or the note a synth's pad plays; -1 for none. Inline: the pad
-// lights (shell/pad_lights.cpp) use it in the host tests too.
+// The key a pad stands for on a track: a kit pad of the bank in view, or the
+// note a synth's pad plays; -1 for none. Inline: the pad lights
+// (shell/pad_lights.cpp) use it in the host tests too.
 inline int pad_key(const Project& project, const Track& t, unsigned pad) {
     if (t.engine == EngineKind::Sampler) return int(sampler_first_note + t.bank % sampler_banks * 16 + pad % 16);
-    if (t.engine == EngineKind::Kit909) return pad < 11 ? int(36 + pad) : -1;
     return t.used() ? pad_note(project, t, pad).key : -1;
 }
 // What a key is called on a track: its kit pad (A03) or its note (D2).

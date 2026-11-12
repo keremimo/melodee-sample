@@ -505,7 +505,7 @@ PadFacts Shell::pad_facts() const {
 bool Shell::record_track_keys() const {
     if (!context_.record_keys() || ui_.settings.input.source != InputSource::Track) return false;
     auto engine = project_->tracks[ui_.settings.input.track % track_count].engine;
-    return engine != EngineKind::Sampler && engine != EngineKind::Kit909;
+    return engine != EngineKind::Sampler;
 }
 
 // Whether the pads play the selected track's kit on this page, one pad each:

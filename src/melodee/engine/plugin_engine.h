@@ -9,6 +9,10 @@
 // A PLUGIN track: the notes, wheel, bend and pressure as MIDI to the plug-in
 // instrument the rack loaded for it, its stereo output as the track's. With no
 // plug-in in place yet (still loading, or none chosen) the track is silent.
+// The sequencer's accent goes out as the notes' velocity, and a Slide or Tie
+// step as CC 84 (portamento control: the key the next note goes on from), a
+// tie with the legato pedal (CC 68) held over it, as Melodee's own synths
+// (Melodee Poly, PD and Chip) take them.
 namespace melodee {
 
 class PluginEngine final : public Engine {
@@ -22,7 +26,17 @@ public:
     PluginRunner* attached() const { return runner; }
 
     void note_on(int key, int velocity) override {
-        if (runner) runner->midi(0x90, uint8_t(std::clamp(key, 0, 127)), uint8_t(std::clamp(velocity, 1, 127)));
+        int heard = accent != 1 ? int(std::lround(float(velocity) * accent)) : velocity;
+        if (runner) runner->midi(0x90, uint8_t(std::clamp(key, 0, 127)), uint8_t(std::clamp(heard, 1, 127)));
+    }
+    void set_accent(float gain) override { accent = gain; }
+    void slide(int from, int to, int velocity, bool glide) override {
+        if (!runner || from == to) return;
+        if (!glide) runner->midi(0xb0, 68, 127); // a tie: legato, no glide
+        runner->midi(0xb0, 84, uint8_t(std::clamp(from, 0, 127)));
+        note_on(to, velocity);
+        note_off(from);
+        if (!glide) runner->midi(0xb0, 68, 0);
     }
     void note_off(int key) override {
         if (runner) runner->midi(0x80, uint8_t(std::clamp(key, 0, 127)), 0);
@@ -60,6 +74,7 @@ public:
 
 private:
     PluginRunner* runner = nullptr;
+    float accent = 1; // for the notes started next (set_accent)
 };
 
 } // namespace melodee

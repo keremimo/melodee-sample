@@ -23,20 +23,9 @@ inline StageAt stage_at(const UiState& ui, const Track& t) {
     return {group, ui.stage_sub[track] % stage_count(g, group)};
 }
 
-// A 909's voice the last pad played (pads 1-11 as kit909::Drum), the kick before any.
-inline unsigned stage_voice(const Track& t) {
-    const auto& g = stage_groups(t.engine);
-    if (!g.pad_voice) return 0;
-    int pad = int(t.last_note) - 36;
-    int voice = pad >= 0 && pad < 16 ? g.pad_voice[pad] : -1;
-    return voice < 0 ? 0 : unsigned(voice);
-}
-
 inline const StagePage& stage_page_at(const Track& t, unsigned group, unsigned sub) {
     const auto& g = stage_groups(t.engine);
-    const auto& page = g.groups[group % 3].pages[sub % stage_count(g, group)];
-    if (page.kind == StageKind::Voice && g.voices) return g.voices[stage_voice(t)];
-    return page;
+    return g.groups[group % 3].pages[sub % stage_count(g, group)];
 }
 
 inline const StagePage& stage_page_now(const UiState& ui, const Track& t) {

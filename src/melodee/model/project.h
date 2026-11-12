@@ -23,7 +23,19 @@ namespace melodee {
 // EngineInfo can be picked yet.
 // Midi plays an external instrument (docs/MIDI_TRACKS.md); files keep it in
 // MIDT, TRAK says None, so older builds load the track empty.
-enum class EngineKind : uint8_t { None, Prophet, Fm6, Cz, Sid, Kit909, Sampler, Midi, Plugin, Count };
+// The numbers are what project files keep. 1-5 were the built-in synths and
+// drum kit (PROPHET, FM6, CZ, SID, the 909), gone since the synths became
+// plug-ins of their own: a file's track of one opens as that plug-in or empty
+// (legacy_engine below, model/project_file.cpp).
+enum class EngineKind : uint8_t { None = 0, Sampler = 6, Midi = 7, Plugin = 8, Count = 9 };
+
+// What TRAK's engine number meant before the synths left Melodee. PROPHET,
+// CZ and SID tracks open as PLUGIN tracks on Melodee Poly, PD and Chip (the
+// same voices, now Open MPC plug-ins of their own), their values as the
+// plug-in's state; FM6 and 909 tracks open empty, their patterns kept.
+namespace legacy_engine {
+constexpr uint8_t prophet = 1, fm6 = 2, cz = 3, sid = 4, kit909 = 5;
+}
 
 // Every pattern of every track (their events on the heap).
 struct PatternBank {

@@ -307,12 +307,12 @@ behaviour changed.
 - P1: Fill by hand: Play held while playing for a bar, FILL steps heard and
   NOT FILL ones dropped, back on release; say if Play's hold should wait a
   moment (a tap does nothing while playing).
-- P2: the synths by ear after their own control steps: a Prophet with LFO
-  and vibrato, an FM6 and a CZ with the wheel and an LFO on pitch (their
-  modulation now steps every 128 frames from their last note, not at
-  every tick of the song): no zipper, nothing changed.
-- P2: the overload guard by ear: a project pushed past 85 % (stacked
-  unison Prophets): voices thin and tails shorten instead of crackles;
+- P2: the synths by ear after their own control steps: now the plug-ins'
+  (Melodee Poly with LFO and vibrato, Melodee PD with the wheel and an LFO
+  on pitch, each stepping its modulation from its last note): no zipper,
+  nothing changed. Their checks live with them (mpc-vst-melodee-*).
+- P2: the overload guard by ear: a project pushed past 85 % (busy kits;
+  plug-ins have no voices to give): voices thin and tails shorten instead of crackles;
   say if 85 / 70 % or the 30 ms tail suit, and whether reverb tails should
   shorten too.
 - P2: samples at 48 and 96 kHz against 44.1: a kit, a long loop and
@@ -500,3 +500,15 @@ behaviour, write the code fresh for this app.
   HEAD 187-192 %, mean 1376-1487 µs, p99 1498-1796; none over budget. A
   peer deployed the shared build over HEAD at 03:27 UTC; the MPC runs that.
   No base changes; no pushes owed.
+- 2026-11-12, the synths leave Melodee (Kerem's call): PROPHET, CZ and SID
+  became Open MPC plug-ins in their own repositories, Melodee Poly, PD and
+  Chip (mpc-vst-melodee-poly, -pd, -chip: their DSP rendered side by side
+  with Melodee's engines, identical to the bit), and FM6 and the 909 kit
+  are gone. A project from before opens those synths' tracks as PLUGIN
+  tracks on the plug-ins with their values as state (`Plugins/...` from the
+  card's top), FM6 and 909 tracks empty with their notes. PLUGIN tracks send
+  the accent as velocity and Slide / Tie as CC 84 (CC 68 over a tie); Open
+  MPC plug-ins run at 44.1 kHz and are converted to the device's rate
+  (`plugin/rate_bridge.h`). Host tests `synths_as_plugins`; the tests that
+  used PROPHET as a sound play PLUGIN tracks through a test tone runner, or
+  kits.

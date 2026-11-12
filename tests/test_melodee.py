@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Melodee's model, PROPHET engine and engine host, built for the host."""
+"""Melodee's model, engine host, sequencer and mixer, built for the host."""
 import os
 from pathlib import Path
 import subprocess
@@ -7,13 +7,10 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ["src/melodee/engine/prophet.cpp", "src/melodee/engine/prophet_info.cpp",
-           "src/melodee/engine/engine_info.cpp", "src/melodee/engine/engine_host.cpp", "src/melodee/engine/looper.cpp",
+SOURCES = ["src/melodee/engine/engine_info.cpp", "src/melodee/engine/engine_host.cpp", "src/melodee/engine/looper.cpp",
            "src/melodee/shell/bindings.cpp", "src/melodee/shell/loop_sheet.cpp", "src/melodee/engine/effects.cpp", "src/melodee/engine/effects_extra.cpp", "src/melodee/engine/master_comp.cpp", "src/melodee/engine/effect_info.cpp",
            "src/melodee/engine/sampler.cpp", "src/melodee/engine/sample_data.cpp", "src/melodee/engine/sfz.cpp", "src/melodee/engine/keygroup.cpp", "src/melodee/engine/exs.cpp", "src/melodee/engine/stream_pager.cpp", "src/melodee/engine/render_pool.cpp", "src/melodee/shell/sample_cache.cpp",
-           "src/melodee/model/project_file.cpp", "src/melodee/model/pattern.cpp", "src/melodee/model/generators.cpp", "src/melodee/engine/kit909.cpp",
-           "src/melodee/engine/fm6.cpp", "src/melodee/engine/sid.cpp",
-           "src/melodee/engine/cz.cpp", "src/melodee/engine/punch.cpp", "src/melodee/engine/punch_mpc.cpp", "src/melodee/engine/pad_fx_info.cpp", "src/melodee/model/sound_file.cpp",
+           "src/melodee/model/project_file.cpp", "src/melodee/model/pattern.cpp", "src/melodee/model/generators.cpp", "src/melodee/engine/punch.cpp", "src/melodee/engine/punch_mpc.cpp", "src/melodee/engine/pad_fx_info.cpp", "src/melodee/model/sound_file.cpp",
            "src/melodee/shell/page_stack.cpp", "src/melodee/shell/button_jobs.cpp", "src/melodee/shell/roll.cpp",
            "src/melodee/shell/shift_pad_jobs.cpp", "src/melodee/shell/fader_job.cpp", "src/melodee/shell/midi_route.cpp", "src/melodee/shell/mtc_in.cpp",
            "src/melodee/shell/undo_scope.cpp", "src/melodee/shell/project_kits.cpp", "src/melodee/shell/card_access.cpp",

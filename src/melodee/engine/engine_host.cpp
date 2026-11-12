@@ -4,7 +4,6 @@
 #include <chrono>
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_info.h"
-#include "melodee/engine/expression.h"
 #include <algorithm>
 #include <cmath>
 #if defined(__linux__)
@@ -274,12 +273,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
 void EngineHost::select_engine(Slot& slot, EngineKind kind) {
     if (slot.engine) slot.engine->silence();
     slot.kind = kind;
-    slot.engine = kind == EngineKind::Prophet ? static_cast<Engine*>(&slot.prophet)
-                : kind == EngineKind::Sampler ? static_cast<Engine*>(&slot.sampler)
-                : kind == EngineKind::Kit909 ? static_cast<Engine*>(&slot.kit)
-                : kind == EngineKind::Fm6 ? static_cast<Engine*>(&slot.fm)
-                : kind == EngineKind::Sid ? static_cast<Engine*>(&slot.sid)
-                : kind == EngineKind::Cz ? static_cast<Engine*>(&slot.cz)
+    slot.engine = kind == EngineKind::Sampler ? static_cast<Engine*>(&slot.sampler)
                 : kind == EngineKind::Midi ? static_cast<Engine*>(&slot.midi)
                 : kind == EngineKind::Plugin ? static_cast<Engine*>(&slot.plugin) : nullptr;
     slot.plugin.attach(kind == EngineKind::Plugin ? runner_of(slot.plugin_entry) : nullptr);
@@ -1173,7 +1167,7 @@ void EngineHost::run_hits(unsigned t, Slot& slot, unsigned frames) {
 
 void EngineHost::play_hit(unsigned t, Slot& slot, const PendingHit& hit, uint64_t at) {
     if (slot.engine) {
-        engine_note_on(slot, hit.key, hit.velocity, hit.accent ? expression::accent_gain : 1.0f);
+        engine_note_on(slot, hit.key, hit.velocity, hit.accent ? accent_gain : 1.0f);
         schedule_off(slot, hit.key, hit.length);
     }
     if (hit.midi >= 0) midi_note(t, hit.midi, hit.velocity, at, hit.length);
@@ -1186,12 +1180,12 @@ bool EngineHost::trig_plays(unsigned t, Slot& slot, const Event& e, uint32_t pas
     if (e.condition == trig_always) return chance;
     // PRE: the last weighed note of its lane (a kit's key; else the track's); NEI: of the lane before (a kit's key
     // below, its first the track before's; else the track before). Nothing weighed there yet: counted as played.
-    bool kit = slot.kind == EngineKind::Sampler || slot.kind == EngineKind::Kit909;
+    bool kit = slot.kind == EngineKind::Sampler;
     auto bit = [](const std::array<uint64_t, 4>& set, unsigned key) { return ((set[(key / 64) % 4] >> (key % 64)) & 1) != 0; };
     unsigned key = e.key;
     bool pre = kit ? bit(slot.keys_went, key) : slot.went;
     bool nei = true;
-    unsigned first = slot.kind == EngineKind::Kit909 ? 36u : sampler_first_note;
+    const unsigned first = sampler_first_note;
     if (kit && key > first && bit(slot.keys_weighed, key - 1)) nei = bit(slot.keys_went, key - 1);
     else if ((!kit || key <= first) && t > 0 && slots[t - 1].weighed) nei = slots[t - 1].went;
     bool go = trig_met(e.condition, pass, fill, pre, nei) && chance;
@@ -1458,7 +1452,7 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
     auto from = slot.held; // the note held into this tick takes this one, the first note on it
     slot.held = {};
     if (sound) {
-        float gain = accent ? expression::accent_gain : 1.0f;
+        float gain = accent ? accent_gain : 1.0f;
         if (from.key >= 0) {
             engine_slide(slot, from.key, played, velocity, from.glide, gain);
             if (from.key != played) cancel_off(slot, from.key);

@@ -29,6 +29,9 @@ struct PluginFile {
     std::string library;       // the shared library inside (absolute), empty when there is none for this MPC
     std::string why;           // why it cannot load here ("Windows and Mac builds only"); empty when it can
     int8_t instrument = -1;    // 1 instrument, 0 effect, -1 not known until it is opened once
+    // The rate it runs at whatever it is opened at, 0 none: an Open MPC plug-in, written to MPC OS's 44.1 kHz
+    // (plugin/rate_bridge.h converts it to the device's)
+    unsigned fixed_rate = 0;
     // A bundle holding several plug-ins (LSP's VST3) lists as one row with how many; opened, each is a row of its
     // own with its `id` (JUCE's unique id for it). 0 plugins: not known yet.
     unsigned plugins = 0;
