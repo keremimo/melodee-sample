@@ -91,6 +91,48 @@ float shape(unsigned wave, float phase, float d) {
     }
 }
 
+namespace {
+// Each wave's average over its cycle at each bend (DCW), worked out once: a voice takes it out, as the CZ's own
+// output did (AC coupled), so no offset rides the envelopes as a thump or eats the headroom.
+constexpr unsigned mean_steps = 64;
+constexpr float most_bend = 0.97f; // shape()'s own limit
+using MeanTable = std::array<std::array<float, mean_steps + 1>, 8>;
+const MeanTable& means() {
+    static const MeanTable table = [] {
+        MeanTable t {};
+        constexpr unsigned points = 1024;
+        for (unsigned w = 0; w < 8; ++w)
+            for (unsigned k = 0; k <= mean_steps; ++k) {
+                double sum = 0;
+                for (unsigned n = 0; n < points; ++n) sum += shape(w, (float(n) + 0.5f) / points, most_bend * float(k) / mean_steps);
+                t[w][k] = float(sum / points);
+            }
+        return t;
+    }();
+    return table;
+}
+float mean_of(unsigned wave, float d) {
+    float at = std::clamp(d, 0.0f, most_bend) / most_bend * mean_steps;
+    unsigned i = std::min(unsigned(at), mean_steps - 1);
+    const auto& m = means()[wave % 8];
+    return m[i] + (m[i + 1] - m[i]) * (at - float(i));
+}
+// Where the wave, its average taken out, first crosses zero: a new voice starts there, from silence, not from
+// the bottom of the cosine (a step the envelope's attack only rounds off: a click on every note).
+float zero_crossing(unsigned wave, float d) {
+    const float mean = mean_of(wave, d);
+    float last = shape(wave, 0, d) - mean;
+    if (last == 0) return 0;
+    constexpr unsigned steps = 256;
+    for (unsigned n = 1; n <= steps; ++n) {
+        float x = shape(wave, float(n) / steps, d) - mean;
+        if ((x >= 0) != (last >= 0)) return (float(n - 1) + last / (last - x)) / steps; // between the two, linearly
+        last = x;
+    }
+    return 0;
+}
+} // namespace
+
 const EngineInfo& info() {
     static const EngineInfo engine {EngineKind::Cz, "CZ", true, params, Count, pages, sizeof(pages) / sizeof(pages[0]),
                                     {Dcw, DcwAmount, Wave1}, sounds, sizeof(sounds) / sizeof(sounds[0]), mod_dests, legacy_count, true, &stage};
@@ -100,7 +142,11 @@ const EngineInfo& info() {
 
 using namespace cz;
 
-CzEngine::CzEngine() { for (unsigned n = 0; n < Count; ++n) p[n] = info().params[n].initial; update(); }
+CzEngine::CzEngine() {
+    for (unsigned n = 0; n < Count; ++n) p[n] = info().params[n].initial;
+    (void)means(); // worked out now, not on the audio thread
+    update();
+}
 void CzEngine::set_param(int id, int value) {
     if (id < 0 || id >= Count) return;
     p[size_t(id)] = std::clamp<int>(value, info().params[id].min, info().params[id].max);
@@ -121,9 +167,27 @@ void CzEngine::note_on(int key, int velocity) {
     for (auto& x : voices) if (x.key == key) { v = &x; break; }
     if (!v) for (auto& x : voices) if (x.key < 0) { v = &x; break; }
     if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
-    *v = Voice {};
+    float random = noise.next();
+    // A voice still sounding (the same key again, or the oldest taken) goes on from where it is: its envelopes
+    // attack from their level now and its lines run on, so what it played never stops dead (a click). A new one
+    // starts each line where its wave crosses zero at the bend it starts with.
+    if (v->key < 0) {
+        *v = Voice {};
+        using expression::at;
+        auto m = expression::sums(mods, {lfo_value, velocity / 127.0f, 0, wheel, (key - 60.0f) / 60.0f, random, 0});
+        float pitch = float(key) + bend * 2 + at(m, ModDest::Pitch) * 12;
+        float follow = 1 - p[KeyFollow] / 100.0f * std::clamp((pitch - 48) / 48.0f, 0.0f, 1.0f);
+        // The bend at its first frame (the DCW envelope at zero): the DCW then reshapes the wave as it attacks, but
+        // from silence, without a step.
+        float d = std::clamp((p[Dcw] / 100.0f + wheel * 0.5f + at(m, ModDest::Cutoff)) * follow, 0.0f, 1.0f);
+        for (unsigned l = 0; l < 2; ++l) {
+            unsigned wave = l == 1 && p[Line] == 3 && p[Wave2] ? unsigned(p[Wave2] - 1) : unsigned(p[Wave1]);
+            v->phase[l] = zero_crossing(wave, d);
+        }
+    }
     v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f; v->accent = accent;
-    v->random = noise.next();
+    v->slide = 0; v->pressure = v->touch = 0;
+    v->random = random;
     v->dcw.gate(true); v->dca.gate(true);
 }
 
@@ -174,7 +238,7 @@ void CzEngine::render(float* out, unsigned frames) {
                 unsigned wave = v.second[l] && p[Wave2] ? unsigned(p[Wave2] - 1) : unsigned(p[Wave1]);
                 // Line 2 (1+2') plays the second wave throughout.
                 if (l == 1 && line == 3 && p[Wave2]) wave = unsigned(p[Wave2] - 1);
-                sum += shape(wave, v.phase[l], d);
+                sum += shape(wave, v.phase[l], d) - mean_of(wave, d); // its offset taken out
                 v.phase[l] += dt;
                 if (v.phase[l] >= 1) { v.phase[l] -= 1; v.second[l] = !v.second[l]; }
             }

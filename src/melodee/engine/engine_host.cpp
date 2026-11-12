@@ -44,6 +44,7 @@ EngineHost::EngineHost() {
     for (unsigned t = 0; t < track_count; ++t) { slots[t].sampler.set_pad_effects(&(*pad_fx)[t]); slots[t].sampler.set_pager(&pager); }
     // Build every engine's static tables now, not on the audio thread.
     for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) (void)engine_info(EngineKind(k));
+    knob_in.set_bypass(true); // Rec Input FX rests until a take waits or runs (render())
 }
 
 EngineHost::~EngineHost() {
@@ -58,6 +59,7 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
     for (unsigned t = 0; t < track_count; ++t)
         for (unsigned p = 0; p < pattern_count; ++p) *patterns[t][p] = played_pattern(bank.at[t][p], project.tracks[t].speed);
     load_state(project);
+    snap_mix = true; // its levels from the first block, not eased in from the last project's
 }
 
 // Everything of a project but its patterns (Reload swaps those in by pointer).
@@ -399,6 +401,7 @@ void EngineHost::apply(const Command& c) {
             for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
             flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
             load_state(c.pack->project, c.value == 1);
+            snap_mix = true; // its levels from the first block, not eased in from the last project's
             reformatting = false;
             std::swap(patterns, c.pack->patterns); // the pack takes the old ones back to be freed
             if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
@@ -1202,8 +1205,10 @@ void EngineHost::start_live(unsigned s, const PendingPunch& p) {
     l.punch.start(p.kind, p.depth, bar_length(), bar_length() / (4u << p.snap), p.tail, params_of(p.kind));
 }
 
+// Every slot on this target runs, held or not, so its history always holds what just played: a repeat's turns
+// crossfade into what came before its slice, and the tape kinds read behind their start.
 void EngineHost::run_live(uint8_t target, float* left, float* right, unsigned frames) {
-    for (auto& l : live) if (l.target == target && l.punch.active()) l.punch.process(left, right, frames);
+    for (auto& l : live) if (l.target == target) l.punch.process(left, right, frames);
 }
 
 void EngineHost::start_flex() {
@@ -1560,6 +1565,13 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // each); on the render workers too. Then into the master, the buses and the rest, in track order, here.
     unsigned active = 0;
     for (unsigned k = 0; k < track_count; ++k) if (slots[order[k]].engine) sounding_tracks[active++] = order[k];
+    // Level and pan ease across the block (Ease), aimed here before the workers take the tracks.
+    for (unsigned i = 0; i < active; ++i) {
+        auto& slot = slots[sounding_tracks[i]];
+        float balance = slot.engine->stereo() ? 1.4142f : 1.0f; // a stereo engine's pan balances it, unity at the centre
+        slot.mix_l.aim(slot.gain * slot.pan_left * balance, frames, snap_mix);
+        slot.mix_r.aim(slot.gain * slot.pan_right * balance, frames, snap_mix);
+    }
     auto chain_job = [&](unsigned i) {
         unsigned t = sounding_tracks[i];
         auto& slot = slots[t];
@@ -1571,12 +1583,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             std::copy(l, l + frames, tap_l); std::copy(r, r + frames, tap_r);
         }
         if (slot.engine->stereo()) { // its own stereo picture; the track's pan balances it
-            float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
-            for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= l; slot.right[f] *= r; }
+            for (unsigned f = 0; f < frames; ++f) { slot.left[f] *= slot.mix_l.at(f); slot.right[f] *= slot.mix_r.at(f); }
         } else {
             for (unsigned f = 0; f < frames; ++f) {
-                float x = slot.buffer[f] * slot.gain;
-                slot.left[f] = x * slot.pan_left; slot.right[f] = x * slot.pan_right;
+                float x = slot.buffer[f];
+                slot.left[f] = x * slot.mix_l.at(f); slot.right[f] = x * slot.mix_r.at(f);
             }
         }
         run_chain(t, slot.left, slot.right, frames);
@@ -1585,10 +1596,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         if (tap && tap_post) { std::copy(slot.left, slot.left + frames, tap_l); std::copy(slot.right, slot.right + frames, tap_r); }
         bool keying = keyed && t == key && pad_keyed < 0; // the whole track keys
         if (keying) { std::copy(slot.left, slot.left + frames, key_l); std::copy(slot.right, slot.right + frames, key_r); } // muted too: a ghost key
-        if (pad_keyed == int(t)) { // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
-            float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
-            for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * l; key_r[f] = key_pad_r[f] * r; }
-        }
+        if (pad_keyed == int(t)) // one kit pad keys: at the track's level and pan, aside if heard; the rest of the kit ducks
+            for (unsigned f = 0; f < frames; ++f) { key_l[f] = key_pad_l[f] * slot.mix_l.at(f); key_r[f] = key_pad_r[f] * slot.mix_r.at(f); }
         track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
     };
     if (parallel) workers.run(active, chain_job);
@@ -1604,40 +1613,48 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             // Monitored, the tapped track is heard through the input (gain, Rec Input FX) instead: once, as it records.
             bool through_input = tap && monitor_on.load(std::memory_order_relaxed);
             bool heard = !slot.mute && !(solo && !slot.solo) && !through_input;
-            // Knob FX: a kit's pads switched on come out apart, after their own chain (not the track's), at the track's level and pan.
-            if (heard && slot.engine == &slot.sampler && slot.knob_pad_fed) {
-                const float* kl = slot.knob_pad_l;
-                const float* kr = slot.knob_pad_r;
-                float l = slot.gain * slot.pan_left * 1.4142f, r = slot.gain * slot.pan_right * 1.4142f;
-                for (unsigned f = 0; f < frames; ++f) { knob_l[f] += kl[f] * l; knob_r[f] += kr[f] * r; }
-                knob_fed = true;
-            }
             bool knobbed = knob_heard && ((knob_tracks >> t) & 1);
-            if (heard) {
-                float* to_l = knobbed ? knob_l : keying ? aside_l : master_l;
-                float* to_r = knobbed ? knob_r : keying ? aside_r : master_r;
-                knob_fed |= knobbed;
+            // Mute and solo, Knob FX's pick and the sends ease across the block too, so none of them clicks.
+            slot.audible.aim(heard ? 1.0f : 0.0f, frames, snap_mix);
+            slot.knob_share.aim(knobbed ? 1.0f : 0.0f, frames, snap_mix);
+            for (unsigned b = 0; b < bus_count; ++b) slot.sends_now[b].aim(slot.sends[b], frames, snap_mix);
+            if (!slot.audible.silent()) {
+                // Knob FX: a kit's pads switched on come out apart, after their own chain (not the track's), at the track's level and pan.
+                if (slot.engine == &slot.sampler && slot.knob_pad_fed) {
+                    for (unsigned f = 0; f < frames; ++f) {
+                        float a = slot.audible.at(f);
+                        knob_l[f] += slot.knob_pad_l[f] * slot.mix_l.at(f) * a; knob_r[f] += slot.knob_pad_r[f] * slot.mix_r.at(f) * a;
+                    }
+                    knob_fed = true;
+                }
+                // Into Knob FX as much as it is picked, the rest to the master (or aside, the Sidechain's key).
+                float* rest_l = keying ? aside_l : master_l;
+                float* rest_r = keying ? aside_r : master_r;
+                knob_fed |= !slot.knob_share.silent();
+                float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f); // a centred mono track's stem sums to itself
                 for (unsigned f = 0; f < frames; ++f) {
-                    to_l[f] += slot.left[f]; to_r[f] += slot.right[f];
-                    level = std::max(level, std::max(std::fabs(slot.left[f]), std::fabs(slot.right[f])));
+                    float a = slot.audible.at(f), k = slot.knob_share.at(f);
+                    float l = slot.left[f] * a, r = slot.right[f] * a;
+                    knob_l[f] += l * k; knob_r[f] += r * k;
+                    rest_l[f] += l - l * k; rest_r[f] += r - r * k;
+                    level = std::max(level, std::max(std::fabs(l), std::fabs(r)));
+                    if (stem) stem[f] = (l + r) * unpan;
                 }
                 for (unsigned b = 0; b < bus_count; ++b) { // into each bus as much as its send
-                    float send = slot.sends[b];
-                    if (send <= 0) continue;
-                    for (unsigned f = 0; f < frames; ++f) { bus_l[b][f] += slot.left[f] * send; bus_r[b][f] += slot.right[f] * send; }
+                    const auto& send = slot.sends_now[b];
+                    if (send.silent()) continue;
+                    for (unsigned f = 0; f < frames; ++f) {
+                        float g = slot.audible.at(f) * send.at(f);
+                        bus_l[b][f] += slot.left[f] * g; bus_r[b][f] += slot.right[f] * g;
+                    }
                 }
-                if (stem) { // a centred mono track sums to itself, as does one panned hard
-                    float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f);
-                    for (unsigned f = 0; f < frames; ++f) stem[f] = (slot.left[f] + slot.right[f]) * unpan;
-                }
-            }
-            if (heard && pad_keyed == int(t)) { // the key pad joins after the ducking, untouched (no send: it left before the chain)
-                float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f);
-                for (unsigned f = 0; f < frames; ++f) {
-                    aside_l[f] += key_l[f]; aside_r[f] += key_r[f];
-                    level = std::max(level, std::max(std::fabs(key_l[f]), std::fabs(key_r[f])));
-                    if (stem) stem[f] += (key_l[f] + key_r[f]) * unpan;
-                }
+                if (pad_keyed == int(t)) // the key pad joins after the ducking, untouched (no send: it left before the chain)
+                    for (unsigned f = 0; f < frames; ++f) {
+                        float a = slot.audible.at(f), l = key_l[f] * a, r = key_r[f] * a;
+                        aside_l[f] += l; aside_r[f] += r;
+                        level = std::max(level, std::max(std::fabs(l), std::fabs(r)));
+                        if (stem) stem[f] += (l + r) * unpan;
+                    }
             }
         }
         float shown = meters[t].load(std::memory_order_relaxed) * 0.97f; // a short fall
@@ -1646,14 +1663,27 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     run_loops(frames, solo);
     for (unsigned b = 0; b < bus_count; ++b) {
         run_chain(bus_chain(b), bus_l[b], bus_r[b], frames);
-        for (unsigned f = 0; f < frames; ++f) { master_l[f] += bus_l[b][f] * returns[b]; master_r[f] += bus_r[b][f] * returns[b]; }
+        auto& back = returns_now[b];
+        back.aim(returns[b], frames, snap_mix);
+        for (unsigned f = 0; f < frames; ++f) { float g = back.at(f); master_l[f] += bus_l[b][f] * g; master_r[f] += bus_r[b][f] * g; }
     }
-    // Knob FX into the master; after its targets let go it rings on for a few seconds (tails), then rests.
-    if (knob_fed) knob_tail = uint32_t(6 * dsp::sample_rate());
-    if (knob_tail && knob.kind() != EffectKind::None) {
+    // Knob FX into the master. After its targets let go it rings on until its tail has been quiet a while, or at
+    // most knob_ring_seconds (then cleared), and rests: nothing it held comes back when it is next fed.
+    if (knob_fed) { knob_ringing = true; knob_quiet = knob_rung = 0; }
+    if (knob_ringing && knob.kind() != EffectKind::None) {
         knob.process(knob_l, knob_r, frames);
-        for (unsigned f = 0; f < frames; ++f) { master_l[f] += knob_l[f]; master_r[f] += knob_r[f]; }
-        knob_tail = knob_tail > frames ? knob_tail - frames : 0;
+        float loudest = 0;
+        for (unsigned f = 0; f < frames; ++f) {
+            master_l[f] += knob_l[f]; master_r[f] += knob_r[f];
+            loudest = std::max(loudest, std::max(std::fabs(knob_l[f]), std::fabs(knob_r[f])));
+        }
+        if (!knob_fed) {
+            knob_rung += frames;
+            knob_quiet = loudest < knob_floor ? knob_quiet + frames : 0;
+            bool rung = knob_rung >= uint32_t(knob_ring_seconds * dsp::sample_rate());
+            if (rung) knob.clear();
+            if (rung || knob_quiet >= uint32_t(knob_quiet_seconds * dsp::sample_rate())) knob_ringing = false;
+        }
     } else if (knob_fed) {
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += knob_l[f]; master_r[f] += knob_r[f]; }
     }
@@ -1671,7 +1701,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             else { flex.stop(); flex_pad = 0; flex_now.store(0, std::memory_order_relaxed); }
         }
     }
-    if (flex.active()) flex.process(master_l, master_r, frames);
+    flex.process(master_l, master_r, frames); // held or not: its history always holds what just played (run_live())
     run_live(255, master_l, master_r, frames);
     comp.process(master_l, master_r, frames); // the master compressor (Shift + Pad 5), before main volume
     if (loops.on()) { // the mix as a loop records it (as Resample hears it)
@@ -1685,10 +1715,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // The input source (or the mix itself, before main volume): the take, the
     // Recall ring and the meter hear it; a render takes the mix.
     select_input(input, usb, frames);
-    // Rec Input FX: Knob FX on the input while a take waits or runs (so Monitor hears it too).
+    // Rec Input FX: Knob FX on the input while a take waits or runs (so Monitor hears it too). It fades in and out
+    // as Bypass does, and starts each take cleared, never with the last one's tail.
     auto taking = take.state();
-    if (knob_rec && knob_heard && (taking == TakeRecorder::State::Armed || taking == TakeRecorder::State::Recording || taking == TakeRecorder::State::Cued))
-        knob_in.process(record_l, record_r, frames);
+    knob_in.set_bypass(!(knob_rec && knob_heard && (taking == TakeRecorder::State::Armed || taking == TakeRecorder::State::Recording
+                                                    || taking == TakeRecorder::State::Cued)));
+    knob_in.process(record_l, record_r, frames);
     take.process(record_l, record_r, frames);
     // The meters' fall over this block: meter_fall_db a second at the device's rate.
     float meter_fall = std::pow(10.0f, -meter_fall_db / 20 * float(frames) / float(dsp::sample_rate()));
@@ -1703,9 +1735,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     recall_ring.write(record_l, record_r, frames);
     keep_sources(input, usb, frames);
     render_out.process(master_l, master_r, frames);
-    // Monitor: the source heard with the mix (never the mix itself, heard already).
-    if (monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample))
-        for (unsigned f = 0; f < frames; ++f) { master_l[f] += record_l[f]; master_r[f] += record_r[f]; }
+    // Monitor: the source heard with the mix (never the mix itself, heard already), eased in and out.
+    monitor_now.aim(monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample)
+                    ? 1.0f : 0.0f, frames, snap_mix);
+    if (!monitor_now.silent())
+        for (unsigned f = 0; f < frames; ++f) { float g = monitor_now.at(f); master_l[f] += record_l[f] * g; master_r[f] += record_r[f] * g; }
+    volume_now.aim(volume, frames, snap_mix); // main volume eased too: the knob's steps are up to dB apart
     float peak = 0, out_l = 0, out_r = 0;
     for (unsigned f = 0; f < frames; ++f) {
         if (click_env > 0.0005f) { // a short blip on top of the mix
@@ -1715,7 +1750,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             master_l[f] += blip; master_r[f] += blip;
         }
         out_l = std::max(out_l, std::fabs(master_l[f])); out_r = std::max(out_r, std::fabs(master_r[f])); // the mix, for the meters
-        float left = dsp::soft_clip(master_l[f] * volume), right = dsp::soft_clip(master_r[f] * volume);
+        float v = volume_now.at(f);
+        float left = dsp::soft_clip(master_l[f] * v), right = dsp::soft_clip(master_r[f] * v);
         peak = std::max(peak, std::max(std::fabs(left), std::fabs(right)));
         out[2 * f] = int32_t(std::clamp(left, -0.999f, 0.999f) * 2147483647.0f);
         out[2 * f + 1] = int32_t(std::clamp(right, -0.999f, 0.999f) * 2147483647.0f);
@@ -1723,6 +1759,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     output_peak.store(peak, std::memory_order_relaxed);
     meter(out_levels[0], out_l); meter(out_levels[1], out_r);
     if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
+    snap_mix = false;
     publish_taps(frames);
     frame_now += frames;
     // What the tracks took this block (all cores), heaviest first next time; and this block's time against its
@@ -1808,17 +1845,25 @@ void EngineHost::run_loops(unsigned frames, bool solo) {
     for (unsigned n = 0; n < loop_tracks; ++n) {
         auto& strip = loop_strips[n];
         float level = 0;
-        float l = strip.gain * strip.pan_left * 1.4142f, r = strip.gain * strip.pan_right * 1.4142f;
-        for (unsigned f = 0; f < frames; ++f) { strip.left[f] = out_l[n][f] * l; strip.right[f] = out_r[n][f] * r; }
+        // Level, pan, mute, solo and send ease across the block, as a track's do (Ease).
+        strip.mix_l.aim(strip.gain * strip.pan_left * 1.4142f, frames, snap_mix);
+        strip.mix_r.aim(strip.gain * strip.pan_right * 1.4142f, frames, snap_mix);
+        for (unsigned f = 0; f < frames; ++f) { strip.left[f] = out_l[n][f] * strip.mix_l.at(f); strip.right[f] = out_r[n][f] * strip.mix_r.at(f); }
         run_chain(loop_chain(n), strip.left, strip.right, frames);
         bool heard = loops.on() && !strip.mute && !(solo && !strip.solo);
-        if (heard) {
+        strip.audible.aim(heard ? 1.0f : 0.0f, frames, snap_mix);
+        strip.send_now.aim(strip.send, frames, snap_mix);
+        if (!strip.audible.silent()) {
             for (unsigned f = 0; f < frames; ++f) {
-                master_l[f] += strip.left[f]; master_r[f] += strip.right[f];
-                level = std::max(level, std::max(std::fabs(strip.left[f]), std::fabs(strip.right[f])));
+                float a = strip.audible.at(f), l = strip.left[f] * a, r = strip.right[f] * a;
+                master_l[f] += l; master_r[f] += r;
+                level = std::max(level, std::max(std::fabs(l), std::fabs(r)));
             }
-            if (strip.send > 0)
-                for (unsigned f = 0; f < frames; ++f) { bus_l[strip.bus][f] += strip.left[f] * strip.send; bus_r[strip.bus][f] += strip.right[f] * strip.send; }
+            if (!strip.send_now.silent())
+                for (unsigned f = 0; f < frames; ++f) {
+                    float g = strip.audible.at(f) * strip.send_now.at(f);
+                    bus_l[strip.bus][f] += strip.left[f] * g; bus_r[strip.bus][f] += strip.right[f] * g;
+                }
         }
         float shown = loop_meters[n].load(std::memory_order_relaxed) * 0.97f;
         loop_meters[n].store(std::max(level, shown), std::memory_order_relaxed);

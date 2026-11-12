@@ -36,6 +36,24 @@
 // meters) is published as atomics.
 namespace melodee {
 
+// A gain eased across each block instead of stepping at its start (a step is a click; a row of them, as a fader
+// moves, a zipper): a straight line from where the last block ended toward the target, at most a full swing
+// (0 to 1) per `seconds`. Level, pan, sends, mute and solo, the buses' returns, Monitor and main volume move so.
+struct Ease {
+    static constexpr float seconds = 0.01f;
+    float from = 0, to = 0, step = 0; // this block's ends, and its change a frame
+    // Once a block, before at(): toward `target` over `frames`; `jump`: there at once (a project just loaded).
+    void aim(float target, unsigned frames, bool jump = false) {
+        from = jump ? target : to;
+        float most = float(frames) / (seconds * dsp::sample_rate());
+        to = jump ? target : from + std::clamp(target - from, -most, most);
+        step = (to - from) / float(std::max(frames, 1u));
+    }
+    float at(unsigned f) const { return from + step * float(f + 1); } // frame f of the block
+    bool flat() const { return step == 0; }
+    bool silent() const { return from == 0 && to == 0; }
+};
+
 // One track's sixteen patterns as the audio thread plays them: copies made
 // on the MIDI thread, swapped in by pointer and handed back to be freed
 // there, so the audio thread never allocates or frees.
@@ -232,6 +250,10 @@ private:
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f;
         std::array<float, bus_count> sends {}; // into each bus A-D (round 2: four sends a track)
         bool mute = false, solo = false;
+        // As the block plays them (Ease): level and pan on each side, heard (1) or muted / soloed out (0),
+        // into Knob FX (1) or not, and each send.
+        Ease mix_l, mix_r, audible, knob_share;
+        std::array<Ease, bus_count> sends_now {};
         uint8_t pattern = 0, queued = 255; // queued: launches on the next bar
         uint32_t start = 0;                // the tick its pattern started on
         int clip = -1;                     // in the song: the clip playing
@@ -459,16 +481,24 @@ private:
     std::array<std::array<Effect, max_slots>, chain_count> fx;
     std::unique_ptr<std::array<SamplerEngine::PadEffects, track_count>> pad_fx; // each sampler pad's chain
     std::array<float, bus_count> returns {0.7f, 0.7f, 0.7f, 0.7f};
+    std::array<Ease, bus_count> returns_now {};
+    Ease volume_now, monitor_now; // main volume and Monitor as the block plays them
+    bool snap_mix = true;         // the next block's eases start at their targets (a project just loaded)
     float bus_l[bus_count][block] {}, bus_r[bus_count][block] {}, master_l[block] {}, master_r[block] {};
     void run_chain(unsigned chain, float* left, float* right, unsigned frames);
     // Knob FX (parity phase 7): one effect the chosen tracks and kit pads go
     // through on their way to the master (`knob_in`, its twin, on the input
-    // during a take with Rec Input FX); it rings on a while after it stops.
+    // during a take with Rec Input FX); after its targets let go it rings on
+    // until its tail has been quiet for knob_quiet_seconds (longer than any
+    // echo's time), or for knob_ring_seconds at most (then cleared, so none
+    // of what it held comes back when it is next fed).
+    static constexpr float knob_quiet_seconds = 1.5f, knob_ring_seconds = 30.0f, knob_floor = 1e-5f;
     Effect knob, knob_in;
     bool knob_heard = false, knob_rec = false;
     uint16_t knob_tracks = 0;
     std::array<std::array<uint64_t, 2>, track_count> knob_pads {};
-    uint32_t knob_tail = 0;
+    bool knob_ringing = false;           // fed, or its tail still playing out
+    uint32_t knob_quiet = 0, knob_rung = 0; // frames its tail has been quiet, and has rung, since it was last fed
     float knob_l[block] {}, knob_r[block] {};
     float key_l[block] {}, key_r[block] {}, aside_l[block] {}, aside_r[block] {};
     float key_pad_l[block] {}, key_pad_r[block] {}; // Sidechain on one kit pad: that pad as the sampler left it // Sidechain: the key heard by the detector, and as it joins the master
@@ -481,6 +511,7 @@ private:
         float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
         bool mute = false, solo = false;
         uint8_t bus = 0;
+        Ease mix_l, mix_r, audible, send_now; // as the block plays them (Ease)
         float left[block] {}, right[block] {};
     };
     Looper loops;

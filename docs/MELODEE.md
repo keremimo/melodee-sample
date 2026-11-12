@@ -642,7 +642,8 @@ hold to steer, Shift + Seq to zoom in**.
   is one undo. Shift + Push adds a marker
   (on a marker, names it). Play here plays the song from the cursor. **B1
   Export**: B2 audio mixdown (Name sheet; once through, tails up to 10 s,
-  `Melodee/Mixdowns/<name>.wav`, 24-bit; Stop drops it), B3 New pattern
+  `Melodee/Mixdowns/<name>.wav`, 32-bit float so a mix past full scale is
+  kept, not clipped; Stop drops it), B3 New pattern
   (the song laid end to end into the first free pattern number).
 
 ### Sampler
@@ -650,7 +651,9 @@ hold to steer, Shift + Seq to zoom in**.
 A kit has 128 pads in eight banks (A–H), each a region of one of the
 project's 64 samples. Samples are WAV (16, 24 or 32-bit PCM or float, any
 rate, up to 60 s), read on the service thread and handed whole to the audio
-thread.
+thread. Takes, Audio Recall, Resample and loops are saved 24-bit, or 32-bit
+float when they go past full scale (a resampled mix can), so a file never
+clips what played.
 
 - **Samples** (Sample Select on a kit): the browser, each row a glyph
   first (a folder with its chevron, a WAV, a kit, an instrument's keyboard,

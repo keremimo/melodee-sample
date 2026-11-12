@@ -38,9 +38,11 @@ constexpr unsigned punch_snap_count = 4;
 class Punch {
 public:
     static constexpr unsigned history = 192000; // two seconds at 96 kHz
+    // Every edge a punch makes (its start, Cut, a repeat's turn, a gate's) is faded over this long, so none clicks.
+    static constexpr double seam_seconds = 0.002;
     Punch() : left(new float[history]()), right(new float[history]()) {}
     // `bar` and `grid` in samples (the song's bar and the snap grid); depth
-    // 0..1; tail 0 cut, 1 fade (60 ms), 2 ring (a second and a half).
+    // 0..1; tail 0 cut (over seam_seconds), 1 fade (60 ms), 2 ring (a second and a half).
     void start(PunchKind kind, float depth, double bar, double grid, unsigned tail, const int16_t* params = nullptr);
     void set_params(const int16_t* values); // the MPC kinds' K1-K3 (pad_fx_info.h ranges); nullptr: their initial values
     void stop();
@@ -48,14 +50,23 @@ public:
     bool on() const { return held; }
     bool active() const { return held || fading > 0; }
     PunchKind kind_now() const { return kind; }
+    // Run while it is off too: the history then always holds what just played, for the next start.
     void process(float* l, float* r, unsigned frames);
     void clear(); // forget the history (a project switch)
+    // The frames a repeat's turn crossfades over at the device's rate now (the frames a slice is long),
+    // shorter for a short slice; for tests.
+    static double seam_frames(double slice) { return std::max(1.0, std::min(seam_seconds * dsp::sample_rate(), slice / 4)); }
 
 private:
     bool repeats() const {
         return kind <= PunchKind::Reverse || kind == PunchKind::BeatRepeat || kind == PunchKind::RevStepper || kind == PunchKind::Shuffle;
     }
     bool own_lines() const { return kind == PunchKind::Reverb; } // uses the history as its own delay lines: not written meanwhile
+    // A repeat's slice again (`since`: frames since the start): forwards, each turn's end crossfaded into what
+    // came a loop before the slice's start (the first pass's too); or backwards, each turn faded out and each
+    // but the first in (the first goes on from where the sound was).
+    void forwards(double since, float& wet_l, float& wet_r) const;
+    void backwards(double since, float& wet_l, float& wet_r) const;
     void begin_mpc();                                            // the MPC kinds' running state, at start
     void mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double since); // one sample of an MPC or Flex Beat kind
     std::array<int16_t, punch_params> param {};
@@ -72,10 +83,15 @@ private:
     std::unique_ptr<float[]> left, right;
     unsigned write = 0;
     bool held = false, frozen = false;
+    bool relive = false; // Rev Stepper: a new slice let through after its turns, faded in
     PunchKind kind = PunchKind::Loop4;
     float depth = 1, fading = 0, fade_step = 0;
     double loop = 0, grid = 0, bar = 0, lag = 0, speed = 1;
-    uint64_t age = 0; // samples since it began
+    double seam = 1, ease_in = 1; // a repeat's turn crossfade (seam_frames, room allowing) and the start's fade, frames
+    // The wet sound faded by `gain` (0..1) toward silence.
+    static void fade(float& l, float& r, double gain) { l *= float(gain); r *= float(gain); }
+    uint64_t age = 0;    // samples since it began (Rev Stepper starts it again with each new slice)
+    uint64_t begun = 0;  // samples since start(), for its fade in
     float s1[2] {}, s2[2] {}, hold[2] {};
 };
 

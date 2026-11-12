@@ -1275,7 +1275,8 @@ void punches() {
         unsigned at = 0, loop = unsigned(bar / 16);
         punch.start(PunchKind::Loop16, 1, bar, bar / 16, 0);
         for (; at < loop * 4; ++at) { l[0] = r[0] = signal(at); punch.process(l.data(), r.data(), 1); out.push_back(l[0]); }
-        for (unsigned n = 0; n < loop; ++n) {
+        const unsigned seam = unsigned(std::ceil(Punch::seam_frames(loop))); // each turn's end crossfades into its start
+        for (unsigned n = 0; n + seam < loop; ++n) {
             CHECK(out[n] == signal(n));
             CHECK(std::fabs(out[loop + n] - signal(n)) < 1e-6f && std::fabs(out[3 * loop + n] - signal(n)) < 1e-6f);
         }
@@ -2501,10 +2502,10 @@ void audio_input_and_rendering() {
     CHECK(level_of(InputSource::RearR, 6) > 0.49f && level_of(InputSource::RearR, 6) < 0.51f); // 0.25 at +6 dB
     level_of(InputSource::Rear, 0);
     host->send({Command::Type::Monitor, 0, 0, 0, 1});
-    host->render(out.data(), 128, 1, input.data());
+    for (unsigned n = 0; n < 5; ++n) host->render(out.data(), 128, 1, input.data()); // Monitor eases in and out (Ease)
     CHECK(host->monitoring() && out[0] > int32_t(0.3 * 2147483647.0)); // the line input heard (soft clipped)
     host->send({Command::Type::Monitor, 0, 0, 0, 0});
-    host->render(out.data(), 128, 1, input.data());
+    for (unsigned n = 0; n < 5; ++n) host->render(out.data(), 128, 1, input.data());
     CHECK(out[0] == 0);
     host->send({Command::Type::RecordSource, uint8_t(InputSource::Resample)});
     host->send({Command::Type::Monitor, 0, 0, 0, 1});
@@ -3044,7 +3045,8 @@ void pad_fx_and_flex() {
         std::vector<float> l(256), r(256);
         for (unsigned n = 0; n < 256; ++n) l[n] = r[n] = signal(n);
         punch.process(l.data(), r.data(), 256);
-        for (unsigned n = 0; n < 256; ++n) CHECK(l[n] == 0 || std::fabs(std::fabs(l[n]) - 0.5f) < 1e-6f || std::fabs(std::fabs(l[n]) - 1) < 1e-6f);
+        const unsigned in = unsigned(std::ceil(Punch::seam_seconds * dsp::sample_rate())); // it comes in over that first
+        for (unsigned n = in; n < 256; ++n) CHECK(l[n] == 0 || std::fabs(std::fabs(l[n]) - 0.5f) < 1e-6f || std::fabs(std::fabs(l[n]) - 1) < 1e-6f);
     }
 
     // The host: four live slots at once, each let go on its own; Flex Beat's One Shot gives way to Empty after a bar.
@@ -7160,6 +7162,251 @@ void hits_on_time() {
     }
 }
 
+// The audio audit's fixes (2026-11-12): nothing steps where the sound should run on, nothing comes back that
+// had gone, and nothing loud is clipped on its way to a file.
+void audio_quality() {
+    dsp::device_rate.store(44100.0f);
+    auto largest_step = [](const std::vector<float>& y, size_t from, size_t to) {
+        float most = 0;
+        for (size_t k = std::max<size_t>(from, 1); k < std::min(to, y.size()); ++k) most = std::max(most, std::fabs(y[k] - y[k - 1]));
+        return most;
+    };
+    auto sine = [](unsigned frames, double hz, float level) {
+        SampleData s;
+        s.frames = frames; s.left.resize(frames); s.right.resize(frames);
+        for (unsigned n = 0; n < frames; ++n) s.left[n] = s.right[n] = float(level * std::sin(2 * M_PI * hz * n / 44100));
+        return s;
+    };
+    // FM6: a note struck again while its last one releases goes on from where it was, not from silence.
+    {
+        Fm6Engine e;
+        std::vector<float> y(128 * 82, 0.0f);
+        e.note_on(40, 100);
+        for (unsigned b = 0; b < 70; ++b) e.render(y.data() + 128 * b, 128);
+        e.note_off(40);
+        for (unsigned b = 70; b < 74; ++b) e.render(y.data() + 128 * b, 128);
+        e.note_on(40, 100);
+        for (unsigned b = 74; b < 82; ++b) e.render(y.data() + 128 * b, 128);
+        size_t at = 128 * 74;
+        CHECK(std::fabs(y[at] - y[at - 1]) < 1.5f * largest_step(y, 128 * 70, at));
+    }
+    // CZ: a new note starts where its wave crosses zero, and no wave carries an offset.
+    {
+        CzEngine e;
+        std::vector<float> y(64, 0.0f);
+        e.note_on(36, 127);
+        e.render(y.data(), 64);
+        CHECK(std::fabs(y[0]) < 0.01f); // from silence (the DCW's attack then reshapes the wave, without a step)
+        CzEngine still; // with the bend held, the wave itself rises from zero
+        still.set_param(cz::DcwAmount, 0);
+        std::fill(y.begin(), y.end(), 0.0f);
+        still.note_on(36, 127);
+        still.render(y.data(), 64);
+        float onset = 0;
+        for (unsigned k = 0; k < 8; ++k) onset = std::max(onset, std::fabs(y[k]));
+        CHECK(onset < 0.03f); // it went to -0.175 by the eighth frame: the cosine's bottom, a step the attack only rounded off
+        const unsigned cycles = unsigned(std::lround(65 * 44100.0 / dsp::midi_hz(48)));
+        for (int wave = 0; wave < 8; ++wave) {
+            CzEngine w;
+            w.set_param(cz::Wave1, wave); w.set_param(cz::DcwAmount, 0); w.set_param(cz::DcaSustain, 100);
+            std::vector<float> held(22050 + cycles, 0.0f);
+            w.note_on(48, 127);
+            for (unsigned at = 0; at < held.size(); at += 128) w.render(held.data() + at, std::min<unsigned>(128, unsigned(held.size()) - at));
+            double mean = 0, sq = 0;
+            for (size_t k = 22050; k < held.size(); ++k) { mean += held[k]; sq += double(held[k]) * held[k]; }
+            mean /= cycles;
+            CHECK(std::fabs(mean) < 0.03 * std::sqrt(sq / cycles)); // Reso 1 was 71 % of its RMS
+        }
+    }
+    // SID: SYNC changes the sound (it did nothing).
+    {
+        auto run = [](int sync) {
+            SidEngine e;
+            e.set_param(sid::Wave, 1); e.set_param(sid::Detune, 7); e.set_param(sid::Mode, 3); e.set_param(sid::Sync, sync);
+            std::vector<float> y(8192, 0.0f);
+            e.note_on(48, 100);
+            for (unsigned at = 0; at < y.size(); at += 128) e.render(y.data() + at, 128);
+            return y;
+        };
+        auto off = run(0), on = run(1);
+        float diff = 0;
+        for (size_t k = 0; k < off.size(); ++k) diff = std::max(diff, std::fabs(off[k] - on[k]));
+        CHECK(diff > 0.05f);
+    }
+    auto play = [](SamplerEngine& e, std::vector<float>& l, unsigned frames) {
+        l.assign(frames, 0.0f);
+        std::vector<float> r(frames, 0.0f);
+        for (unsigned at = 0; at < frames; at += 128) e.render_stereo(l.data() + at, r.data() + at, std::min(128u, frames - at));
+    };
+    // A kit pad's seamless one-cycle loop plays in tune: 100 frames a turn, not 99.
+    {
+        SampleData cycle = sine(100, 441, 1);
+        SamplerEngine::Table table {};
+        table[0] = &cycle;
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound pad; pad.sample = 0; pad.loop = true;
+        e.set_pad(0, pad);
+        e.note_on(int(sampler_first_note), 127);
+        std::vector<float> l;
+        play(e, l, 44100);
+        unsigned rises = 0;
+        double first = -1, last = 0;
+        for (size_t k = 22051; k < l.size(); ++k)
+            if (l[k - 1] < 0 && l[k] >= 0) { double t = double(k - 1) + l[k - 1] / (l[k - 1] - l[k]); if (first < 0) first = t; last = t; ++rises; }
+        CHECK(rises > 1 && std::fabs((rises - 1) / ((last - first) / 44100) - 441) < 0.5); // it played 445.45 Hz
+    }
+    // A full kit: the 33rd voice fades the oldest out (a choke's fade), never cuts it dead.
+    {
+        SampleData tone = sine(88200, 200, 0.5f), quiet = sine(88200, 200, 0);
+        SamplerEngine::Table table {};
+        table[0] = &tone; table[1] = &quiet;
+        SamplerEngine e;
+        e.set_samples(&table);
+        PadSound a; a.sample = 0;
+        e.set_pad(0, a);
+        PadSound b; b.sample = 1;
+        for (unsigned p = 1; p < 40; ++p) e.set_pad(p, b);
+        std::vector<float> l(128 * 40, 0.0f), r(128 * 40, 0.0f);
+        unsigned at = 0;
+        auto run = [&](unsigned blocks) { for (unsigned k = 0; k < blocks; ++k, at += 128) e.render_stereo(l.data() + at, r.data() + at, 128); };
+        e.note_on(int(sampler_first_note), 127);
+        run(4);
+        for (unsigned p = 1; p < 32; ++p) { e.note_on(int(sampler_first_note + p), 127); run(1); }
+        float natural = largest_step(l, 1, at);
+        unsigned steal = at;
+        e.note_on(int(sampler_first_note + 32), 127);
+        run(4);
+        CHECK(largest_step(l, steal - 1, at) < 2 * natural); // it jumped 25 times the sine's own step
+    }
+    // Cloud grains read between frames, and never off their region's end (round to the file's start, as they did).
+    {
+        SampleData high = sine(44100, 5000, 0.5f);
+        SamplerEngine::Table table {};
+        table[0] = &high;
+        SamplerEngine e;
+        e.set_samples(&table);
+        e.set_param(sampler::Cloud, 1); e.set_param(sampler::Spread, 0); e.set_param(sampler::Size, 60); e.set_param(sampler::Density, 20);
+        PadSound pad; pad.sample = 0; pad.pitch = 1; // a semitone up: every grain reads between frames
+        e.set_pad(0, pad);
+        e.note_on(int(sampler_first_note), 127);
+        std::vector<float> l;
+        play(e, l, 44100);
+        double hz = 5000 * std::pow(2.0, 1 / 12.0), tone = 0, worst = -300;
+        auto level = [&](double f) {
+            double re = 0, im = 0, sum = 0;
+            for (size_t k = 0; k < 16384; ++k) {
+                double w = 0.5 - 0.5 * std::cos(2 * M_PI * k / 16383), ph = 2 * M_PI * f * k / 44100;
+                re += l[8192 + k] * w * std::cos(ph); im -= l[8192 + k] * w * std::sin(ph); sum += w;
+            }
+            return 20 * std::log10(std::max(2 * std::sqrt(re * re + im * im) / sum, 1e-12));
+        };
+        tone = level(hz);
+        for (double f = 300; f < 20000; f += 25) if (std::fabs(f - hz) > 150) worst = std::max(worst, level(f));
+        CHECK(tone - worst > 30); // nearest-frame reads left a spur 20 dB under it
+        SampleData edged = sine(44100, 200, 0);
+        for (unsigned n = 0; n < 44100; ++n) if (n < 10000 || n >= 30000) edged.left[n] = edged.right[n] = (n % 7 < 3 ? 0.9f : -0.9f);
+        table[0] = &edged;
+        SamplerEngine cut;
+        cut.set_samples(&table);
+        cut.set_param(sampler::Cloud, 1); cut.set_param(sampler::Spread, 0); cut.set_param(sampler::Size, 80); cut.set_param(sampler::Density, 50);
+        cut.set_param(sampler::Position, 98);
+        PadSound region; region.sample = 0; region.start = 10000; region.end = 30000; // silent inside, loud outside
+        cut.set_pad(0, region);
+        cut.note_on(int(sampler_first_note), 127);
+        play(cut, l, 88200);
+        CHECK(peak_of(l) == 0);
+    }
+    // An echo bypassed and back: what it held when it was bypassed never plays again.
+    {
+        DelayPool pool;
+        Effect echo;
+        echo.set_kind(EffectKind::Echo, pool);
+        std::vector<float> l(128), r(128);
+        float after = 0;
+        for (unsigned block = 0; block < 400; ++block) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            if (block == 0) l[0] = r[0] = 1.0f;
+            if (block == 20) echo.set_bypass(true);  // before its first echo
+            if (block == 200) echo.set_bypass(false);
+            echo.process(l.data(), r.data(), 128);
+            if (block >= 200) for (float x : l) after = std::max(after, std::fabs(x));
+        }
+        CHECK(after < 1e-6f); // it played the old impulse at 0.3
+    }
+    // Punch over a running sound: a repeat's turns, Stutter's edges and Upper's windows never step.
+    for (PunchKind kind : {PunchKind::Loop32, PunchKind::Stutter, PunchKind::Upper, PunchKind::RevStepper}) {
+        Punch punch;
+        std::vector<float> l(128), r(128);
+        unsigned n = 0;
+        float worst = 0, before = 0;
+        for (unsigned block = 0; block < 1000; ++block) {
+            for (unsigned f = 0; f < 128; ++f, ++n) l[f] = r[f] = float(0.5 * std::sin(2 * M_PI * 220.0 * n / 44100));
+            if (block == 100) punch.start(kind, 1.0f, 88200, 88200 / 16, 0);
+            punch.process(l.data(), r.data(), 128);
+            for (unsigned f = 0; f < 128; ++f) { if (block >= 100) worst = std::max(worst, std::fabs(l[f] - before)); before = l[f]; }
+        }
+        float own = float(0.5 * 2 * M_PI * 220 / 44100) * (kind == PunchKind::Upper ? 2 : 1); // Upper plays it an octave up
+        if (worst > 2 * own) std::fprintf(stderr, "%s step %f\n", punch_name(kind), worst);
+        CHECK(worst < 2 * own); // Loop 32 stepped 0.085, Stutter 0.39, Rev Stepper 0.41, Upper 0.97
+    }
+    // A track's level and mute, and main volume, ease: no step bigger than the sound's own.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Sampler, 0);
+        project->tracks[0].pads[0].sample = 0; project->tracks[0].pads[0].loop = true;
+        SampleData tone = sine(44100, 200, 0.5f); // 200 whole cycles: a seamless loop
+        EngineHost host;
+        host.load(*project, *bank);
+        CHECK(host.offer_sample(0, &tone));
+        std::vector<int32_t> out(256);
+        std::vector<float> heard;
+        float volume = 1;
+        auto run = [&](unsigned blocks) {
+            for (unsigned b = 0; b < blocks; ++b) {
+                host.render(out.data(), 128, volume);
+                for (unsigned f = 0; f < 128; ++f) heard.push_back(out[2 * f] / 2147483648.0f);
+            }
+        };
+        host.send({Command::Type::NoteOn, 0, 0, uint16_t(sampler_first_note), 127});
+        run(20);
+        float natural = largest_step(heard, heard.size() - 128 * 10, heard.size());
+        CHECK(natural > 0.005f);
+        auto eased = [&](const Command& c, float to_volume) {
+            size_t from = heard.size();
+            host.send(c);
+            volume = to_volume;
+            run(8);
+            return largest_step(heard, from - 1, heard.size()) < 1.5f * natural;
+        };
+        CHECK(eased({Command::Type::Level, 0, 0, 0, 50}, 1));   // 0 dB to -12 dB
+        CHECK(eased({Command::Type::Level, 0, 0, 0, 100}, 1));
+        CHECK(eased({Command::Type::Mute, 0, 0, 0, 1}, 1));     // a mute cut it in one sample
+        CHECK(peak_of(heard, heard.size() - 128) == 0);           // and it is silent once eased out
+        CHECK(eased({Command::Type::Mute, 0, 0, 0, 0}, 1));
+        CHECK(eased({Command::Type::Pan, 0, 0, 0, -50}, 1));
+        CHECK(eased({Command::Type::Pan, 0, 0, 0, 0}, 0.25f)); // main volume a quarter at once
+    }
+    // A mixdown past full scale reads back whole (32-bit float), not clipped at 0 dBFS; a hot sample saved too.
+    {
+        std::string path = "/tmp/melodee-loud-test.wav";
+        WavStream wav;
+        CHECK(wav.open(path));
+        std::vector<float> loud(2 * 100);
+        for (unsigned f = 0; f < 100; ++f) { loud[2 * f] = 1.5f * std::sin(f * 0.1f); loud[2 * f + 1] = -loud[2 * f]; }
+        CHECK(wav.add(loud.data(), 100) && wav.close());
+        SampleData read;
+        CHECK(read_wav(path, read).empty() && read.frames == 100 && std::fabs(read.left[15] - loud[30]) < 1e-6f);
+        SampleData hot;
+        hot.frames = 3; hot.left.resize(3); hot.right.resize(3);
+        hot.left[0] = 1.25f; hot.left[1] = -0.5f; hot.right[0] = -1.75f; hot.right[1] = 0.25f;
+        CHECK(write_wav(path, hot).empty() && read_wav(path, read).empty() && std::fabs(read.left[0] - 1.25f) < 1e-6f
+              && std::fabs(read.right[0] + 1.75f) < 1e-6f);
+        std::remove(path.c_str());
+    }
+}
+
 // Roadmap P1: what a pattern's notes play, beyond once on their tick. The note-on frames and velocities a track sends
 // out over MIDI while its pattern `p` plays for `blocks` blocks, at 120 BPM and 44.1 kHz.
 std::vector<MidiOutEvent> played_notes(const Pattern& p, unsigned blocks, EngineKind engine = EngineKind::Midi,
@@ -7925,5 +8172,6 @@ int main() {
     prophet_engine();
     host_sequencer();
     sequenced_legato();
+    audio_quality();
     std::puts("melodee ok");
 }

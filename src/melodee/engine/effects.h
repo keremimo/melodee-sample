@@ -39,13 +39,19 @@ bool effect_needs_memory(EffectKind kind); // delay memory from the pool
 
 class Effect {
 public:
+    // How long Bypass takes to fade the effect out or in again (a cut between wet and dry clicks).
+    static constexpr float bypass_seconds = 0.01f;
     void set_kind(EffectKind kind, DelayPool& pool); // sets the kind's initial parameters too
     void set_param(unsigned index, int value);
+    // Bypassed, the effect fades out over bypass_seconds, then rests; when it comes back it starts from
+    // silence (clear()), never from the echoes and tails it held when it stopped.
     void set_bypass(bool on) { bypass = on; }
     EffectKind kind() const { return current; }
     bool bypassed() const { return bypass; }
     int param(unsigned index) const { return index < effect_params ? p[index] : 0; }
     void process(float* left, float* right, unsigned frames);
+    // Forget everything it holds (delay lines, filters, envelopes), keeping its kind and parameters.
+    void clear();
 
 private:
     struct Biquad {
@@ -54,6 +60,13 @@ private:
     };
     struct Svf { float s1 = 0, s2 = 0; };
     void update();
+    void reset_state(); // the running state back to silence (not the delay memory)
+    // This frame's share of the wet sound: the kind's mix, times Bypass's fade as it moves a frame on.
+    float blend() {
+        float aim = bypass ? 0.0f : 1.0f;
+        if (on != aim) on = aim > on ? std::min(aim, on + fade_step) : std::max(aim, on - fade_step);
+        return mix * on;
+    }
     void update_extra();                                    // the parity phase 7 effects (effects_extra.cpp)
     void process_extra(float* left, float* right, unsigned frames);
     void reverb(float& l, float& r);
@@ -61,6 +74,8 @@ private:
 
     EffectKind current = EffectKind::None;
     bool bypass = false;
+    float on = 1, fade_step = 1;  // Bypass's fade: 1 heard, 0 bypassed; and how far it moves a frame
+    bool resting = false;         // bypassed and faded out: not run, and cleared before it runs again
     std::array<int, effect_params> p {};
     float* memory = nullptr;
     unsigned write = 0;

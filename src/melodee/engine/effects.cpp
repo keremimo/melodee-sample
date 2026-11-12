@@ -56,12 +56,23 @@ void Effect::set_kind(EffectKind kind, DelayPool& pool) {
     current = kind;
     const auto& info = effect_info(kind);
     for (unsigned n = 0; n < effect_params; ++n) p[n] = info.params[n].label ? info.params[n].initial : 0;
+    on = bypass ? 0.0f : 1.0f; resting = false; // a new kind starts where Bypass is, not fading
+    reset_state();
+    update();
+}
+
+void Effect::reset_state() {
     write = 0; lfo = 0; env = env2 = 0; gain = 1; hold_l = hold_r = tone_l = tone_r = 0; hold_count = 0;
     svf = {}; allpass = {}; phaser_l = phaser_r = 0; comb_filter = {}; comb_at = {}; pass_at = {};
     shift_at = spit_left = 0; shift_phase = shimmer_l = shimmer_r = 0; spit_gain = 1; formant = {};
     chirp = {}; voice_phase = {}; state = {};
     for (auto& q : eq) q.z1 = q.z2 = 0;
-    update();
+}
+
+void Effect::clear() {
+    if (memory) std::fill(memory, memory + DelayPool::block_floats, 0.0f);
+    reset_state();
+    update(); // Multi-chorus spreads its voices round the turn again
 }
 
 void Effect::set_param(unsigned index, int value) {
@@ -210,8 +221,13 @@ void Effect::reverb(float& l, float& r) {
 }
 
 void Effect::process(float* left, float* right, unsigned frames) {
-    if (bypass || current == K::None || current == K::Plugin || !effect_info(current).built) return; // a plug-in: the host runs it
+    if (current == K::None || current == K::Plugin || !effect_info(current).built) return; // a plug-in: the host runs it
     if (needs_memory(current) && !memory) return; // the pool ran out: sound passes through
+    // Bypass fades the effect out (blend()), then it rests; back again, it starts from silence, so no echo or
+    // tail it held when it stopped comes back long after.
+    fade_step = 1.0f / std::max(bypass_seconds * fs(), 1.0f);
+    if (bypass && on <= 0) { resting = true; return; }
+    if (resting) { clear(); resting = false; }
     if (current >= K::DiffDelay) { process_extra(left, right, frames); return; }
     float* line_l = memory;
     float* line_r = memory ? memory + DelayPool::half : nullptr;
@@ -447,8 +463,9 @@ void Effect::process(float* left, float* right, unsigned frames) {
         }
         default: break;
         }
-        left[f] = l + (wet_l - l) * mix;
-        right[f] = r + (wet_r - r) * mix;
+        float m = blend();
+        left[f] = l + (wet_l - l) * m;
+        right[f] = r + (wet_r - r) * m;
     }
 }
 

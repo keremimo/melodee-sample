@@ -34,7 +34,7 @@ void Punch::clear() {
 void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples, unsigned tail_mode, const int16_t* values) {
     kind = k; depth = d; bar = std::max(256.0, bar_samples); grid = std::clamp(grid_samples, 64.0, bar);
     set_params(values);
-    held = true; fading = 0; age = 0; lag = 0; speed = 1;
+    held = true; fading = 0; age = begun = 0; lag = 0; speed = 1;
     s1[0] = s1[1] = s2[0] = s2[1] = 0;
     switch (k) {
     case PunchKind::Loop4: loop = bar / 4; break;
@@ -46,15 +46,34 @@ void Punch::start(PunchKind k, float d, double bar_samples, double grid_samples,
     }
     if (punch_is_mpc(k) || k >= PunchKind::Backspin) begin_mpc(); // may set its own loop
     loop = std::clamp(loop, 64.0, double(history - 2));
+    // A repeat's turn crossfades into what came a loop before the slice's start: the history must still hold it.
+    seam = std::min(seam_frames(loop), double(history - 2) - loop);
+    ease_in = std::max(1.0, seam_seconds * dsp::sample_rate());
     frozen = false; // a repeat first lets one slice through, then freezes the history on it
+    relive = false;
     fade_step = tail_mode == 2 ? 1.0f / (1.5f * dsp::sample_rate()) : 1.0f / (0.06f * dsp::sample_rate());
-    if (tail_mode == 0) fade_step = 1; // cut: gone at the next sample
+    if (tail_mode == 0) fade_step = float(1.0 / ease_in); // cut: gone within seam_seconds, not at the next sample (a click)
 }
 
 void Punch::stop() {
     if (!held) return;
     held = false;
     fading = 1;
+}
+
+void Punch::forwards(double since, float& wet_l, float& wet_r) const {
+    double in = frozen ? std::fmod(since - loop, loop) : since, back = frozen ? loop - in : 0;
+    if (frozen) { wet_l = read(left.get(), back); wet_r = read(right.get(), back); }
+    if (seam < 1 || in < loop - seam) return;
+    float g = float(std::min(1.0, (in - (loop - seam) + 1) / seam)); // all the way by the turn's last frame
+    float pre_l = read(left.get(), back + loop), pre_r = read(right.get(), back + loop);
+    wet_l += (pre_l - wet_l) * g; wet_r += (pre_r - wet_r) * g;
+}
+
+void Punch::backwards(double since, float& wet_l, float& wet_r) const {
+    double after = since - loop, in = std::fmod(after, loop);
+    wet_l = read(left.get(), in + 1); wet_r = read(right.get(), in + 1);
+    if (seam >= 1) fade(wet_l, wet_r, std::min(1.0, std::min(after >= loop ? in + 1 : loop, loop - in) / seam));
 }
 
 float Punch::read(const float* line, double back) const {
@@ -69,7 +88,8 @@ void Punch::process(float* l, float* r, unsigned frames) {
     constexpr float two_pi = 2 * dsp::pi;
     for (unsigned f = 0; f < frames; ++f) {
         float dry_l = l[f], dry_r = r[f];
-        float amount = held ? depth : fading * depth;
+        // Held, it comes in over seam_seconds (a filter or a crusher switched in at once would step); let go, it fades.
+        float amount = held ? depth * float(std::min(1.0, double(begun + 1) / ease_in)) : fading * depth;
         if (amount <= 0 && frozen) frozen = false; // the release is over: the history runs again
         if (amount > 0 && repeats() && !frozen && double(age) >= loop) frozen = true; // the slice is in
         bool lines = own_lines() && amount > 0; // Reverb: the history is its lines meanwhile
@@ -80,17 +100,23 @@ void Punch::process(float* l, float* r, unsigned frames) {
             auto replay = [&](double back) { wet_l = read(left.get(), back); wet_r = read(right.get(), back); };
             switch (kind) {
             // Repeats: the first slice plays as it comes; then the history is
-            // frozen with `write` just past it, and the slice plays again.
+            // frozen with `write` just past it, and the slice plays again. Each
+            // time round, the slice's last `seam` frames crossfade into what
+            // played a loop earlier, just before the slice began, so the jump back
+            // to its start continues the sound instead of clicking.
             case PunchKind::Loop4: case PunchKind::Loop8: case PunchKind::Loop16: case PunchKind::Loop32:
-                if (frozen) replay(loop - std::fmod(after, loop));
+                forwards(since, wet_l, wet_r);
                 break;
-            case PunchKind::Stutter: { // the slice, a gap as long, the slice again
-                if (!frozen) break;
+            case PunchKind::Stutter: { // the slice, a gap as long, the slice again: each edge faded
+                if (!frozen) { if (seam >= 1 && since > loop - seam) fade(wet_l, wet_r, (loop - since) / seam); break; }
                 double in = std::fmod(after, loop * 2);
-                if (in < loop) wet_l = wet_r = 0; else replay(loop - (in - loop));
+                if (in < loop) { wet_l = wet_r = 0; break; }
+                double k = in - loop;
+                replay(loop - k);
+                if (seam >= 1) fade(wet_l, wet_r, std::min(1.0, std::min(k + 1, loop - k) / seam));
                 break;
             }
-            case PunchKind::Reverse: if (frozen) replay(std::fmod(after, loop) + 1); break; // the half bar, then backwards through it
+            case PunchKind::Reverse: if (frozen) backwards(since, wet_l, wet_r); break; // the half bar, then backwards through it
             // Tape: the history runs, the read falls behind it by `lag`.
             case PunchKind::Stop: { // slows to a stop over four grid steps, then silence
                 speed = std::max(0.0, 1 - since / (grid * 4));
@@ -107,9 +133,16 @@ void Punch::process(float* l, float* r, unsigned frames) {
                 replay(lag + 1);
                 break;
             }
-            case PunchKind::Upper: { // an octave up: windows read twice as fast, from a window behind
-                double window = std::min(grid, 4096.0);
-                replay(window - std::fmod(since, window) + 1);
+            case PunchKind::Upper: { // an octave up: two taps read twice as fast from a window behind, half a window
+                double window = std::min(grid, 4096.0); // apart, each faded in and out (squared sines, summing to one)
+                float sum_l = 0, sum_r = 0;
+                for (double offset : {0.0, window / 2}) {
+                    double ph = std::fmod(since + offset, window);
+                    float w = float(std::sin(dsp::pi * ph / window));
+                    w *= w;
+                    sum_l += read(left.get(), window - ph + 1) * w; sum_r += read(right.get(), window - ph + 1) * w;
+                }
+                wet_l = sum_l; wet_r = sum_r;
                 break;
             }
             case PunchKind::Scratch: { // back and forth over the last grid step
@@ -142,7 +175,13 @@ void Punch::process(float* l, float* r, unsigned frames) {
                 if (age % 12 == 0) { hold[0] = dry_l; hold[1] = dry_r; }
                 wet_l = hold[0]; wet_r = hold[1];
                 break;
-            case PunchKind::Gate: if (std::fmod(since, grid) > grid / 2) wet_l = wet_r = 0; break;
+            case PunchKind::Gate: { // open for the first half of each grid step, each edge faded (the first opening is the start's)
+                double pos = std::fmod(since, grid), open = grid / 2, edge = std::max(1.0, std::min(ease_in, open / 4));
+                double g = pos < open ? std::min(1.0, (open - pos) / edge) : 0.0;
+                if (pos < open && since >= grid) g = std::min(g, (pos + 1) / edge);
+                fade(wet_l, wet_r, g);
+                break;
+            }
             case PunchKind::Tremolo: { float a = 0.5f + 0.5f * std::cos(two_pi * float(since / grid)); wet_l *= a; wet_r *= a; break; }
             case PunchKind::Pan: { float a = std::sin(two_pi * float(since / (grid * 2))); wet_l *= 1 - std::max(0.0f, a); wet_r *= 1 + std::min(0.0f, a); break; }
             case PunchKind::Echo: { // two grid steps, fed back through the history
@@ -170,7 +209,7 @@ void Punch::process(float* l, float* r, unsigned frames) {
             }
             l[f] = dry_l + (wet_l - dry_l) * amount;
             r[f] = dry_r + (wet_r - dry_r) * amount;
-            ++age;
+            ++age; ++begun;
             if (!held) fading = std::max(0.0f, fading - fade_step);
         }
         if (!frozen && !lines && ++write >= history) write = 0;

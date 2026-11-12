@@ -103,57 +103,79 @@ bool read_flac_loop(const std::string& path, WavInfo& info) {
     return false;
 }
 
+namespace {
+// A WAV header for `frames` stereo frames at 44.1 kHz into `h` (room for 58 bytes): 24-bit PCM, 44 bytes; or 32-bit
+// float, 58 (its fmt chunk carries the extension's size and a fact chunk follows, as formats other than PCM take).
+// Returns its length.
+unsigned wav_header(unsigned char* h, uint32_t frames, bool floating) {
+    auto put = [&](unsigned at, uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) h[at + n] = uint8_t(v >> (8 * n)); };
+    const unsigned width = floating ? 4 : 3, align = 2 * width;
+    const uint32_t data = frames * align;
+    std::memcpy(h, "RIFF", 4); std::memcpy(h + 8, "WAVEfmt ", 8);
+    put(16, floating ? 18 : 16, 4); put(20, floating ? 3 : 1, 2); put(22, 2, 2); put(24, 44100, 4); put(28, 44100 * align, 4);
+    put(32, align, 2); put(34, 8 * width, 2);
+    unsigned at = 36;
+    if (floating) { put(36, 0, 2); std::memcpy(h + 38, "fact", 4); put(42, 4, 4); put(46, frames, 4); at = 50; }
+    std::memcpy(h + at, "data", 4); put(at + 4, data, 4);
+    at += 8;
+    put(4, at - 8 + data, 4);
+    return at;
+}
+// A float sample's four bytes, little-endian; what is not a number is written as silence.
+void float_bytes(float v, unsigned char* out) {
+    if (!std::isfinite(v)) v = 0;
+    uint32_t bits;
+    std::memcpy(&bits, &v, 4);
+    for (unsigned k = 0; k < 4; ++k) out[k] = uint8_t(bits >> (8 * k));
+}
+} // namespace
+
 std::string write_wav(const std::string& path, const SampleData& s) {
     std::ofstream file(path, std::ios::binary);
     if (!file) return "cannot write";
+    // 24-bit, unless the sound goes past full scale (a resampled mix, a loop's layers can): then 32-bit float, so
+    // the file holds what plays instead of clipping it.
+    bool floating = false;
+    for (uint32_t n = 0; n < s.frames && !floating; ++n) floating = std::fabs(s.left[n]) > 1.0f || std::fabs(s.right[n]) > 1.0f;
+    unsigned char h[58];
+    file.write(reinterpret_cast<const char*>(h), wav_header(h, s.frames, floating));
     auto put = [&](uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) file.put(char(v >> (8 * n))); };
-    uint32_t data = s.frames * 6;
-    file.write("RIFF", 4); put(36 + data, 4); file.write("WAVEfmt ", 8);
-    put(16, 4); put(1, 2); put(2, 2); put(44100, 4); put(44100 * 6, 4); put(6, 2); put(24, 2);
-    file.write("data", 4); put(data, 4);
     for (uint32_t n = 0; n < s.frames; ++n)
-        for (float v : {s.left[n], s.right[n]}) put(uint32_t(int32_t(std::lround(std::clamp(v, -1.0f, 1.0f) * 8388607.0f))), 3);
+        for (float v : {s.left[n], s.right[n]}) {
+            if (!floating) { put(uint32_t(int32_t(std::lround(std::clamp(v, -1.0f, 1.0f) * 8388607.0f))), 3); continue; }
+            unsigned char bytes[4];
+            float_bytes(v, bytes);
+            file.write(reinterpret_cast<const char*>(bytes), 4);
+        }
     return file.good() ? std::string() : std::string("write failed");
 }
-
-namespace {
-void wav_header(unsigned char* h, uint32_t frames) {
-    auto put = [&](unsigned at, uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) h[at + n] = uint8_t(v >> (8 * n)); };
-    uint32_t data = frames * 6;
-    std::memcpy(h, "RIFF", 4); put(4, 36 + data, 4); std::memcpy(h + 8, "WAVEfmt ", 8);
-    put(16, 16, 4); put(20, 1, 2); put(22, 2, 2); put(24, 44100, 4); put(28, 44100 * 6, 4); put(32, 6, 2); put(34, 24, 2);
-    std::memcpy(h + 36, "data", 4); put(40, data, 4);
-}
-} // namespace
 
 bool WavStream::open(const std::string& path) {
     close();
     file = std::fopen(path.c_str(), "wb");
     written = 0; failed = !file;
-    unsigned char h[44];
-    wav_header(h, 0);
-    if (file && std::fwrite(h, 1, sizeof(h), file) != sizeof(h)) failed = true;
+    unsigned char h[58];
+    unsigned size = wav_header(h, 0, true);
+    if (file && std::fwrite(h, 1, size, file) != size) failed = true;
     return !failed;
 }
 bool WavStream::add(const float* interleaved, unsigned frames) {
     if (!file || failed) return false;
-    unsigned char bytes[6 * 256];
+    // 32-bit float as it comes: a mix past full scale is kept whole, not clipped.
+    unsigned char bytes[8 * 256];
     for (unsigned at = 0; at < frames; at += 256) {
         unsigned n = std::min(256u, frames - at);
-        for (unsigned f = 0; f < 2 * n; ++f) {
-            auto v = uint32_t(int32_t(std::lround(std::clamp(interleaved[2 * at + f], -1.0f, 1.0f) * 8388607.0f)));
-            bytes[3 * f] = uint8_t(v); bytes[3 * f + 1] = uint8_t(v >> 8); bytes[3 * f + 2] = uint8_t(v >> 16);
-        }
-        if (std::fwrite(bytes, 1, 6 * n, file) != 6 * n) { failed = true; return false; }
+        for (unsigned f = 0; f < 2 * n; ++f) float_bytes(interleaved[2 * at + f], bytes + 4 * f);
+        if (std::fwrite(bytes, 1, 8 * n, file) != 8 * n) { failed = true; return false; }
     }
     written += frames;
     return true;
 }
 bool WavStream::close() {
     if (!file) return !failed;
-    unsigned char h[44];
-    wav_header(h, written);
-    if (std::fseek(file, 0, SEEK_SET) != 0 || std::fwrite(h, 1, sizeof(h), file) != sizeof(h)) failed = true;
+    unsigned char h[58];
+    unsigned size = wav_header(h, written, true);
+    if (std::fseek(file, 0, SEEK_SET) != 0 || std::fwrite(h, 1, size, file) != size) failed = true;
     if (std::fclose(file) != 0) failed = true;
     file = nullptr;
     return !failed;

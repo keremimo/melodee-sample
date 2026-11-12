@@ -159,8 +159,11 @@ void Fm6Engine::note_on(int key, int velocity) {
     for (auto& x : voices) if (x.key == key) { v = &x; break; }
     if (!v) for (auto& x : voices) if (x.key < 0) { v = &x; break; }
     if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
-    *v = Voice {};
+    // A voice still sounding (the same key again, or the oldest taken) goes on from where it is: its operators
+    // keep turning and each envelope attacks from its level now, so what it played never stops dead (a click).
+    if (v->key < 0) *v = Voice {};
     v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f; v->accent = accent;
+    v->slide = 0; v->pressure = v->touch = 0;
     v->random = noise.next();
     for (auto& e : v->env) e.gate(true);
 }

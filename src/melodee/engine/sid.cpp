@@ -87,10 +87,11 @@ void SidEngine::note_on(int key, int velocity) {
     for (auto& x : voices) if (x.key == key) { v = &x; break; }
     if (!v) for (auto& x : voices) if (x.key < 0) { v = &x; break; }
     if (!v) { v = &voices[0]; for (auto& x : voices) if (x.age < v->age) v = &x; }
-    float s1 = v->s1, s2 = v->s2;
-    *v = Voice {};
-    v->s1 = s1 * 0.5f; v->s2 = s2 * 0.5f;
+    // A voice still sounding (the same key again, or the oldest taken) goes on from where it is: its oscillators
+    // and filter run on and the envelope attacks from its level now, so what it played never stops dead (a click).
+    if (v->key < 0) *v = Voice {};
     v->key = key; v->held = true; v->age = ++clock; v->velocity = velocity / 127.0f; v->accent = accent;
+    v->slide = 0; v->pressure = v->touch = 0;
     v->random = noise.next();
     v->env.gate(true);
 }
@@ -143,10 +144,14 @@ void SidEngine::render(float* out, unsigned frames) {
                 v.phase2 += dt2;
                 bool wrap2 = v.phase2 >= 1;
                 if (wrap2) v.phase2 -= 1;
+                const float before = v.phase;
                 v.phase += dt;
-                if (v.phase >= 1 || (p[Sync] && wrap2)) v.phase -= std::floor(v.phase);
+                // Sync: each time the second oscillator comes round the first starts its cycle again, as far into
+                // it as the time since the second's turn (phase2 / dt2 frames) has taken it.
+                if (p[Sync] && wrap2) v.phase = std::min(v.phase2 / std::max(dt2, 1e-6f) * dt, 0.999f);
+                else if (v.phase >= 1) v.phase -= std::floor(v.phase);
                 // Noise steps sixteen times a cycle, so higher notes hiss brighter.
-                if (p[Wave] == 3 && unsigned(v.phase * 16) != unsigned((v.phase - dt) * 16)) v.noise = noise.next();
+                if (p[Wave] == 3 && unsigned(v.phase * 16) != unsigned(before * 16)) v.noise = noise.next();
                 float x = 0;
                 switch (p[Wave]) {
                 case 0: x = 1 - 4 * std::fabs(v.phase - 0.5f); if (p[Ring] && v.phase2 >= 0.5f) x = -x; break; // ring: the second's sign flips it

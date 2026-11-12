@@ -24,11 +24,24 @@ void SamplerEngine::set_param(int id, int value) {
     k = 2 - 1.9f * p[Resonance] / 100.0f;
 }
 
+// A free voice. With max_voices sounding already, the oldest is choked (it fades out over a few milliseconds, as a
+// mute group's cut does) and the new one plays in a spare voice meanwhile, so a full kit never cuts a voice dead.
+// Only with every spare still fading does the one nearest silence give way.
 SamplerEngine::Voice& SamplerEngine::free_voice() {
-    for (auto& v : voices) if (v.pad < 0) return v;
-    Voice* oldest = &voices[0];
-    for (auto& v : voices) if (v.age < oldest->age) oldest = &v;
-    return *oldest;
+    Voice* free = nullptr;
+    Voice* oldest = nullptr;
+    Voice* fading = nullptr; // the choked voice furthest faded
+    unsigned live = 0;
+    for (auto& v : voices) {
+        if (v.pad < 0) { if (!free) free = &v; continue; }
+        if (v.choked) { if (!fading || v.fade < fading->fade) fading = &v; continue; }
+        ++live;
+        if (!oldest || v.age < oldest->age) oldest = &v;
+    }
+    if (live >= max_voices && oldest) oldest->choked = true;
+    if (free) return *free;
+    if (fading) return *fading;
+    return oldest ? *oldest : voices[0];
 }
 
 void SamplerEngine::end_stream(Voice& v) {
@@ -308,10 +321,15 @@ void SamplerEngine::spawn(Voice& v) {
     at = std::fmod(std::fmod(at - v.start, span) + span, span) + v.start;
     seed = seed * 1664525u + 1013904223u;
     float detune = int32_t(seed) / 2147483648.0f * p[Spread] / 100.0f; // up to a semitone either way per 100 cents
-    *g = Grain {v.sample, at, v.step * std::exp2(detune / 12.0), 0,
-                uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate()), v.gain * v.env.level, v.left, v.right,
-                v.l, v.r, v.end, v.zone ? v.start : 0, v.zone ? v.start + uint32_t(span) : 0,
-                ++grain_serial, at, int16_t(v.pad), uint16_t(v.slot)};
+    double step = v.step * std::exp2(detune / 12.0);
+    uint32_t length = uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate());
+    // A grain never runs off its region's end (and round to its start: a jump in the sound). Near the end it is
+    // cut short, its window with it; with hardly any room left it starts early enough to fit.
+    const double top = v.start + span, fit = (top - 1 - at) / step;
+    if (fit < std::min(double(length), 64.0)) at = std::max(double(v.start), top - 1 - double(length) * step);
+    else length = uint32_t(std::min(double(length), fit));
+    *g = Grain {v.sample, at, step, 0, std::max(length, 1u), v.gain * v.env.level, v.left, v.right,
+                v.l, v.r, v.start, uint32_t(top), ++grain_serial, at, int16_t(v.pad), uint16_t(v.slot)};
 }
 
 // Output frames left before the region's end (reversed: its start), for
@@ -385,15 +403,30 @@ void SamplerEngine::voice_out(Voice& v, float l, float r, float a, float left_fr
 void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames) {
     const double way = v.reverse ? -1.0 : 1.0;
     constexpr uint32_t edge = 88;
+    // A kit pad's loop goes round from its loop point to its end with the fraction kept, its taps too, so it
+    // neither drifts out of tune nor cuts a tap off at the turn.
+    const bool pad_loop = !v.zone && v.loop;
+    const double span = double(v.end - v.loop_at);
     for (unsigned f = from; f < frames; ++f) {
         const bool round = v.zone && v.loop && (!v.loop_held || v.held);
-        bool past = v.reverse ? v.place < (v.loop ? v.loop_at : v.start) : v.place >= (round ? v.loop_hi : v.end - 1);
-        if (past) {
-            if (v.zone ? !round : !v.loop) { v.pad = -1; return; }
-            v.place = v.reverse ? v.end - 1 : v.loop_at;
+        if (pad_loop) {
+            bool turned = false;
+            if (v.reverse) while (v.place < v.loop_at) { v.place += span; turned = true; }
+            else while (v.place >= v.end) { v.place -= span; turned = true; }
+            if (turned) {
+                v.wrapped = true;
+                if (v.beats) { // a fresh segment from the loop point; the one playing fades out over its edge meanwhile
+                    unsigned playing = v.next_tap ^ 1;
+                    if (v.tap_on[playing] && v.window > edge) v.tap_age[playing] = std::max(v.tap_age[playing], v.window - edge);
+                    v.since_hop = v.hop;
+                }
+            }
+        } else if (v.reverse ? v.place < v.start : v.place >= (round ? v.loop_hi : v.end - 1)) {
+            if (!round) { v.pad = -1; return; }
+            v.place = v.loop_at;
             v.wrapped = true;
             v.since_hop = v.hop; // a fresh tap from the loop point
-            if (v.zone) came_round(v);
+            came_round(v);
         }
         if (v.since_hop >= v.hop) { // a new tap from here
             v.since_hop = 0;
@@ -408,7 +441,12 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
         for (unsigned t = 0; t < 2; ++t) {
             if (!v.tap_on[t]) continue;
             double at = v.tap[t];
-            if (at < v.start || at >= v.end - 1 || v.tap_age[t] >= v.window) { v.tap_on[t] = false; continue; }
+            if (pad_loop) { // round the loop, as the place goes
+                if (v.reverse) while (at < v.loop_at) at += span;
+                else while (at >= v.end) at -= span;
+                v.tap[t] = at;
+            }
+            if (at < v.start || (!pad_loop && at >= v.end - 1) || v.tap_age[t] >= v.window) { v.tap_on[t] = false; continue; }
             float w;
             if (v.beats) {
                 uint32_t age = v.tap_age[t], left = v.window - age;
@@ -420,7 +458,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             if (v.edge_in || v.edge_out) w *= edge_gain(v, at); // a tap reaching the region's edge fades too
             unsigned i = unsigned(at);
             float frac = float(at - i);
-            unsigned j = std::min(i + 1, v.end - 1);
+            unsigned j = i + 1 < v.end ? i + 1 : pad_loop ? v.loop_at : v.end - 1; // a loop's seam read across
             sum_l += (l[i] + (l[j] - l[i]) * frac) * w;
             sum_r += (r[i] + (r[j] - r[i]) * frac) * w;
             v.tap[t] += way * v.step;
@@ -508,7 +546,10 @@ SamplerEngine::Lane* SamplerEngine::lane_for(int pad) {
         if (l.pad == pad) return &l;
         if (l.pad < 0 && !free) free = &l;
     }
-    if (free) { free->pad = pad; free->fed = false; free->tail = 0; std::fill(std::begin(free->l), std::end(free->l), 0.0f); std::fill(std::begin(free->r), std::end(free->r), 0.0f); }
+    if (free) {
+        free->pad = pad; free->fed = false; free->quiet = free->ringing = 0;
+        std::fill(std::begin(free->l), std::end(free->l), 0.0f); std::fill(std::begin(free->r), std::end(free->r), 0.0f);
+    }
     return free;
 }
 
@@ -529,11 +570,15 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         if (!g.sample) continue;
         const float* l = g.l;
         const float* r = g.r;
+        const double span = double(g.top - g.low);
         for (unsigned f = 0; f < frames && g.age < g.length; ++f, ++g.age) {
-            if (g.top && g.position >= g.top) g.position -= double(g.top - g.low);
-            unsigned i = unsigned(g.position) % g.frames;
+            // Only a region shorter than the grain gets this far: round inside it.
+            if (g.position >= g.top) g.position -= span * std::floor((g.position - g.low) / span);
+            unsigned i = unsigned(g.position);
+            float frac = float(g.position - i);
+            unsigned j = i + 1 < g.top ? i + 1 : g.low;
             float w = std::sin(dsp::pi * float(g.age) / float(g.length)) * g.gain * 0.5f; // a smooth window
-            left[f] += l[i] * w * g.left; right[f] += r[i] * w * g.right;
+            left[f] += (l[i] + (l[j] - l[i]) * frac) * w * g.left; right[f] += (r[i] + (r[j] - r[i]) * frac) * w * g.right;
             g.position += g.step;
         }
         if (g.age >= g.length) g.sample = nullptr;
@@ -560,7 +605,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         float* to_r = punching && v.pad == aside_pad ? aside_r : out_r(v.pad);
         if (chains && v.pad < int(sampler_pads) && (*pad_effects)[size_t(v.pad)][0].kind() != EffectKind::None)
             if (Lane* l = lane_for(v.pad)) {
-                if (!l->fed) { l->fed = true; l->tail = uint32_t(3 * dsp::sample_rate()); }
+                l->fed = true;
                 to_l = l->l; to_r = l->r;
             }
         const float* l = v.l;
@@ -581,17 +626,18 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             continue;
         }
         if (v.stretch) { stretch(v, l, r, to_l, to_r, from, frames); continue; }
-        const uint32_t low = v.reverse && v.loop ? v.loop_at : v.start;
+        // A loop runs from its loop point to the region's end and round again (backwards: from the end down to the
+        // loop point), keeping the fraction and reading across the seam, so a seamless loop stays seamless and in
+        // tune at any pitch or device rate.
+        const double span = double(v.end - v.loop_at);
         for (unsigned f = from; f < frames; ++f) {
-            bool past = v.reverse ? v.position < low : v.position >= v.end - 1;
-            if (past) {
-                if (!v.loop) { v.pad = -1; break; }
-                v.position = v.reverse ? v.end - 1 : v.loop_at; // round again
-                v.wrapped = true;
-            }
+            if (v.loop) {
+                if (v.reverse) while (v.position < v.loop_at) { v.position += span; v.wrapped = true; }
+                else while (v.position >= v.end) { v.position -= span; v.wrapped = true; }
+            } else if (v.reverse ? v.position < v.start : v.position >= v.end - 1) { v.pad = -1; break; }
             unsigned i = unsigned(v.position);
             float frac = float(v.position - i);
-            unsigned j = std::min(i + 1, v.end - 1);
+            unsigned j = i + 1 < v.end ? i + 1 : v.loop ? v.loop_at : v.end - 1;
             float a = v.env.next(v.shape) * v.gain * v.fade;
             if (v.edge_in || v.edge_out) a *= edge_gain(v, v.position);
             if (v.choked) { v.fade -= 1.0f / 64; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
@@ -603,12 +649,22 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     if (chains)
         for (auto& l : lane) {
             if (l.pad < 0) continue;
-            for (auto& effect : (*pad_effects)[size_t(l.pad)]) effect.process(l.l, l.r, frames);
+            auto& chain = (*pad_effects)[size_t(l.pad)];
+            for (auto& effect : chain) effect.process(l.l, l.r, frames);
             float* into_l = punching && l.pad == aside_pad ? aside_l : out_l(l.pad); // a punched pad: its chain, then the punch
             float* into_r = punching && l.pad == aside_pad ? aside_r : out_r(l.pad);
-            for (unsigned f = 0; f < frames; ++f) { into_l[f] += l.l[f]; into_r[f] += l.r[f]; }
-            if (!l.fed) l.tail = l.tail > frames ? l.tail - frames : 0;
-            if (!l.tail || (*pad_effects)[size_t(l.pad)][0].kind() == EffectKind::None) l.pad = -1;
+            float loudest = 0;
+            for (unsigned f = 0; f < frames; ++f) {
+                into_l[f] += l.l[f]; into_r[f] += l.r[f];
+                loudest = std::max(loudest, std::max(std::fabs(l.l[f]), std::fabs(l.r[f])));
+            }
+            // Its tail plays out: the lane goes once the chain has been quiet a while (it holds nothing to come back
+            // then), or after lane_ring_seconds of ringing (a loop or a long feedback), cleared so none of it returns.
+            if (l.fed) { l.quiet = l.ringing = 0; }
+            else { l.ringing += frames; l.quiet = loudest < lane_floor ? l.quiet + frames : 0; }
+            bool rung = l.ringing >= uint32_t(lane_ring_seconds * dsp::sample_rate());
+            if (rung) for (auto& effect : chain) effect.clear();
+            if (rung || l.quiet >= uint32_t(lane_quiet_seconds * dsp::sample_rate()) || chain[0].kind() == EffectKind::None) l.pad = -1;
         }
     if (punching) {
         aside->process(aside_l, aside_r, frames);
@@ -632,7 +688,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
 // The newest voices first (a partial sort of pointers, on the stack), each
 // where it stands now; then where the cloud's grains read.
 void SamplerEngine::taps(TrackTaps& out) const {
-    std::array<const Voice*, max_voices> live {};
+    std::array<const Voice*, std::tuple_size_v<decltype(voices)>> live {};
     unsigned n = 0;
     for (const auto& v : voices) if (v.pad >= 0) live[n++] = &v;
     unsigned shown = std::min<unsigned>(n, TrackTaps::voices);

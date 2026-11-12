@@ -210,9 +210,10 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         break;
     }
     case K::BeatRepeat: { // the slice of DIVISION again and again, backwards with REVERSE, a resonant filter closing as it goes
+        if (!param[1]) forwards(since, wet_l, wet_r); // its turns crossfaded, as Loop's
+        else if (frozen) backwards(since, wet_l, wet_r);
         if (!frozen) break;
-        double after = since - loop, in = std::fmod(after, loop);
-        replay(param[1] ? in + 1 : loop - in);
+        double after = since - loop;
         if (param[2] > 0) {
             float closing = float(std::min(1.0, after / bar)); // over a bar
             float g = std::tan(dsp::pi * std::clamp(14000 * std::exp2(-closing * 5), 60.0f, 16000.0f) / fs()), k = 2 - 1.9f * pct(2);
@@ -221,10 +222,18 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         break;
     }
     case K::RevStepper: { // the slice of DELAY TIME played forwards, backwards, ... REPEATS times, then a new slice
-        if (!frozen) break;
         double after = since - loop;
+        if (frozen && unsigned(after / loop) >= unsigned(std::max<int>(param[1], 2))) { // let a new slice through
+            frozen = false; age = 0; relive = true; since = 0;
+            left[write] = dry_l; right[write] = dry_r; // its first frame: the history ran frozen when this one came in
+        }
+        if (!frozen) { // a slice as it comes: faded out into its first turn, and in after the last turn (no step either way)
+            double g = seam >= 1 && since > loop - seam ? (loop - since) / seam : 1.0;
+            if (relive) g = std::min(g, (since + 1) / std::max(seam, 1.0));
+            fade(wet_l, wet_r, std::min(g, 1.0));
+            break;
+        }
         unsigned cycle = unsigned(after / loop);
-        if (cycle >= unsigned(std::max<int>(param[1], 2))) { frozen = false; age = 0; break; } // let a new slice through
         double in = std::fmod(after, loop);
         replay(cycle % 2 ? in + 1 : loop - in);
         float edge = float(std::min({in, loop - in, 64.0}) / 64.0); // no click at the turns
@@ -291,13 +300,15 @@ void Punch::mpc(float dry_l, float dry_r, float& wet_l, float& wet_r, double sin
         wet_l *= st[0]; wet_r *= st[0];
         break;
     }
-    case K::Shuffle: { // half a bar let through, then its eight sixteenths in another order
-        if (!frozen) break;
+    case K::Shuffle: { // half a bar let through, then its eight sixteenths in another order, each faded at its edges
+        double piece = loop / 8, edge = std::max(1.0, std::min(seam, piece / 4));
+        if (!frozen) { if (since > loop - edge) fade(wet_l, wet_r, (loop - since) / edge); break; }
         static const unsigned order[8] {0, 2, 1, 3, 6, 4, 7, 5};
-        double after = since - loop, in = std::fmod(after, loop), piece = loop / 8;
+        double after = since - loop, in = std::fmod(after, loop);
         unsigned n = unsigned(in / piece) % 8;
-        double from = order[n] * piece + std::fmod(in, piece);
+        double within = std::fmod(in, piece), from = order[n] * piece + within;
         replay(loop - from);
+        fade(wet_l, wet_r, std::min(1.0, std::min(within + 1, piece - within) / edge));
         break;
     }
     case K::Pump: { // ducked on every beat, back up over it

@@ -37,6 +37,9 @@ enum Param : int8_t {
 class SamplerEngine final : public Engine {
 public:
     static constexpr unsigned max_voices = 32;
+    // Past max_voices a new voice takes the oldest's place, which fades out (a choke's quick fade) in one of
+    // these spare voices instead of stopping dead (a click).
+    static constexpr unsigned spare_voices = 8;
     using Table = std::array<const SampleData*, sample_slots + 1>; // the last: preview_slot
 
     SamplerEngine();
@@ -180,8 +183,7 @@ private:
         float gain = 0, left = 0.7071f, right = 0.7071f;
         const float* l = nullptr;
         const float* r = nullptr;
-        uint32_t frames = 1;
-        uint32_t low = 0, top = 0;      // an instrument's: stays inside what is held (top 0: anywhere)
+        uint32_t low = 0, top = 1;      // the frames it may read, [low, top): its pad's region, or what an instrument holds
         uint32_t serial = 0;            // for the screen (taps): which grain, where it began, whose
         double from = 0;
         int16_t pad = -1;
@@ -197,7 +199,7 @@ private:
     std::array<PadSound, sampler_pads> pads {}, base {}; // as they play (motion), and as the kit holds them
     bool moved = false;
     std::array<uint64_t, (sampler_pads + 63) / 64> muted {};
-    std::array<Voice, max_voices> voices {};
+    std::array<Voice, max_voices + spare_voices> voices {};
     std::array<int, sampler::Count> p {};
     uint32_t clock = 0;
     float accent = 1; // the sequencer's, for the voices started next (set_accent)
@@ -206,7 +208,10 @@ private:
     int aside_pad = -1;
     Punch* aside = nullptr;
     float aside_l[128] {}, aside_r[128] {};
-    struct Lane { int pad = -1; uint32_t tail = 0; bool fed = false; float l[128] {}, r[128] {}; };
+    // A pad's chain plays on in its lane after the pad falls silent, until its own tail has been quiet for
+    // lane_quiet_seconds (longer than any echo's time, so a late repeat is not lost) or lane_ring_seconds have gone.
+    static constexpr float lane_quiet_seconds = 1.5f, lane_ring_seconds = 30.0f, lane_floor = 1e-5f;
+    struct Lane { int pad = -1; uint32_t quiet = 0, ringing = 0; bool fed = false; float l[128] {}, r[128] {}; };
     PadEffects* pad_effects = nullptr;
     uint64_t knob_mask[2] {};
     bool knob_used = false;

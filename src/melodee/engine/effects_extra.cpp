@@ -383,8 +383,9 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
         }
         default: break;
         }
-        left[f] = l + (wet_l - l) * mix;
-        right[f] = r + (wet_r - r) * mix;
+        float m = blend(); // the mix, under Bypass's fade
+        left[f] = l + (wet_l - l) * m;
+        right[f] = r + (wet_r - r) * m;
     }
 }
 
