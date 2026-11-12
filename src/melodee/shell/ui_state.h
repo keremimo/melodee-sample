@@ -103,6 +103,7 @@ struct UiState {
     int16_t step_cursor = 0, held_step = -1;
     uint8_t step_event = 0;                   // Step Edit: which of the cursor step's events (shell/step_edit.h)
     bool trig_cards = false;                  // Steps and Roll: their lit key again turns the cards to the note's TRIG row (roadmap P1)
+    bool fill = false;                        // Play held while playing: Fill (FILL trig conditions play)
     // The fader (shell/fader.cpp): where it sits (-1 until it moves; Step Edit nudges by how far it went)
     // and whether it has met the value it drives (takeover), when it last moved (its card shows a moment).
     Pot fader;

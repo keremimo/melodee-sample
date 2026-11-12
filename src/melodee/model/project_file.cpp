@@ -189,6 +189,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                 }
                 w.end(at);
             }
+            uint32_t conditions = 0;
+            for (const auto& e : pattern.events) conditions += e.condition != trig_always;
+            if (conditions) { // trig conditions (roadmap P1, model/trig.h), by their place in EVNT
+                at = w.begin("COND");
+                w.u8(t); w.u8(p); w.u32(conditions);
+                for (uint32_t n = 0; n < pattern.events.size(); ++n)
+                    if (pattern.events[n].condition != trig_always) { w.u32(n); w.u8(pattern.events[n].condition); }
+                w.end(at);
+            }
         }
     }
     at = w.begin("TIME"); // time signature, BPM per pattern
@@ -554,6 +563,16 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 e.ratchet = uint8_t(std::clamp<unsigned>(hits, 1, max_ratchet));
                 e.ramp = int8_t(std::clamp<int>(ramp, -100, 100));
                 e.pitch_ramp = int8_t(std::clamp<int>(pitch_ramp, -max_pitch_ramp, max_pitch_ramp));
+            }
+        } else if (name == "COND") { // trig conditions (roadmap P1); without it every note plays on every pass
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            uint32_t count = std::min<uint32_t>(r.u32(), max_pattern_events);
+            for (uint32_t k = 0; k < count && r.ok; ++k) {
+                uint32_t place = r.u32();
+                unsigned condition = r.u8();
+                if (r.ok && place < pattern.events.size() && condition < trig_count) pattern.events[place].condition = uint8_t(condition);
             }
         } else if (name == "MOTN" || name == "MOT2") {
             bool legacy = name == "MOTN";

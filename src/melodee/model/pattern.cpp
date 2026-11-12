@@ -30,7 +30,7 @@ Step Pattern::step(unsigned s) const {
         out.notes[count++] = {e.key, e.velocity, uint8_t(e.tick - start)};
         if (count == 1) {
             out.length = uint8_t(std::clamp<unsigned>((e.length + q() / 2) / q(), 1, 255));
-            out.chance = e.chance; out.flags = e.flags; out.ratchet = uint8_t(e.hits()); out.ramp = e.ramp;
+            out.chance = e.chance; out.flags = e.flags; out.ratchet = uint8_t(e.hits()); out.ramp = e.ramp; out.condition = e.condition;
         }
     }
     return out;
@@ -57,11 +57,13 @@ void Pattern::set_step(unsigned s, const Step& value) {
             for (unsigned k = 0; k < count; ++k) if (was[k].key == n.key) e.length = was[k].length;
         e.key = n.key; e.velocity = n.velocity; e.chance = value.chance; e.flags = value.flags;
         e.ratchet = uint8_t(std::clamp<unsigned>(value.ratchet, 1, max_ratchet)); e.ramp = value.ramp;
-        bool same_ratchet = value.ratchet == old.ratchet && value.ramp == old.ramp;
+        e.condition = uint8_t(value.condition < trig_count ? value.condition : 0);
+        bool same_ratchet = value.ratchet == old.ratchet && value.ramp == old.ramp, same_condition = value.condition == old.condition;
         for (unsigned k = 0; k < count; ++k) // the note it was keeps its pitch, and its ratchet while the step's is unchanged
             if (was[k].key == n.key && was[k].velocity) {
                 e.pitch = was[k].pitch; e.pitch_ramp = was[k].pitch_ramp;
                 if (same_ratchet) { e.ratchet = was[k].ratchet; e.ramp = was[k].ramp; }
+                if (same_condition) e.condition = was[k].condition;
                 was[k].velocity = 0;
                 break;
             }

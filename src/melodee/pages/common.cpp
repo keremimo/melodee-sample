@@ -151,6 +151,9 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::EventVelocity: c.label = "VELOCITY"; c.value = juce::String(b.value); break;
     case Kind::EventLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
     case Kind::StepChance: case Kind::EventChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::StepCondition: case Kind::EventCondition: // trig conditions (roadmap P1)
+        c.label = "COND"; c.value = trig_name(unsigned(b.value));
+        break;
     case Kind::StepRatchet: case Kind::EventRatchet: // ratchets (roadmap P1)
         c.label = "RATCHET"; c.value = b.value <= 1 ? juce::String("Off") : juce::String::fromUTF8("\xc3\x97") + juce::String(b.value);
         break;

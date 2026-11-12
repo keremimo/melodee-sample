@@ -125,6 +125,10 @@ void set_event_pitch_ramp(Context& c, int semitones) {
     edit_selected(c, [&](Event& e) { e.pitch_ramp = int8_t(std::clamp(semitones, -max_pitch_ramp, max_pitch_ramp)); });
 }
 
+void set_event_condition(Context& c, int condition) {
+    edit_selected(c, [&](Event& e) { e.condition = uint8_t(std::clamp(condition, 0, int(trig_count) - 1)); });
+}
+
 void erase_event(Context& c) {
     auto& pattern = c.pattern();
     int at = selected_event(pattern, c.ui);

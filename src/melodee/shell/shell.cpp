@@ -157,6 +157,7 @@ void Shell::button(Button b, bool pressed) {
 void Shell::press(Button b, bool pressed) {
     auto& ui = ui_;
     if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
+    if (b == Button::Play && !pressed && ui.fill) context_.fill(false); // Fill lasts while Play is held
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
@@ -266,7 +267,11 @@ void Shell::press(Button b, bool pressed) {
         break;
     case Button::SixteenLevels: levels_button(context_); break; // the last pad (or note) on all sixteen; Shift: the type
     case Button::Chop: if (song_buttons()) song_chop(context_); else chop_button(context_); break; // Chop on the last pad's sample; Shift: Note On; on Song the clip in two
-    case Button::Play: if (ui.shift) context_.play_continue(); else context_.play(); break;
+    case Button::Play: // Shift: Continue; held while playing: Fill (roadmap P1)
+        if (ui.shift) context_.play_continue();
+        else if (context_.host.playing()) context_.fill(true);
+        else context_.play();
+        break;
     case Button::Stop:
         if (ui.page == PageId::Record) context_.send({Command::Type::RecordStop}); // the take ends; Record stays
         ui.resample_pick = false;
@@ -621,6 +626,9 @@ std::string Shell::summary() const {
            " melodee_position=" + std::to_string(host.position_of(pt >> 8)) +
            " melodee_timed=" + std::to_string(host.timed_kept()) + "/" + std::to_string(host.timed_missed()) + "/" +
            std::to_string(host.timed_worst_frames()) + // notes played by hand on their frame / after it / the latest by
+           // Roadmap P1: ratchets' hits after their first; notes trig conditions let through / held back; Fill held.
+           " melodee_hits=" + std::to_string(host.ratchet_hits()) + " melodee_trigs=" + std::to_string(host.trigs_kept()) + "/" +
+           std::to_string(host.trigs_dropped()) + " melodee_fill=" + std::to_string(int(host.filling())) +
            " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
            " melodee_q=" + std::to_string(pattern_q.load()) + " melodee_first_tick=" + std::to_string(first_tick.load()) +
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +

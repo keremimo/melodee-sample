@@ -53,6 +53,7 @@ void set_event_chance(Context& c, int chance); // Roll's K3, percent
 void set_event_ratchet(Context& c, int hits);
 void set_event_ramp(Context& c, int ramp);
 void set_event_pitch_ramp(Context& c, int semitones);
+void set_event_condition(Context& c, int condition); // a trig condition (model/trig.h)
 // B3: the selected event goes (one undo, or part of a take).
 void erase_event(Context& c);
 // Erase + pad, once B3 says so: every event of `key` in the pattern (one undo, or part of a take).

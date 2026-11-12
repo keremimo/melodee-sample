@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include "melodee/model/trig.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -54,9 +55,10 @@ struct Event {
     // hits between going evenly; on a kit pad the last hit's semitones over the first (-24..24) too.
     uint8_t ratchet = 1;
     int8_t ramp = 0, pitch_ramp = 0;
+    uint8_t condition = trig_always; // which passes it plays on, beside its chance (model/trig.h)
     bool operator==(const Event& o) const {
         return tick == o.tick && length == o.length && key == o.key && velocity == o.velocity && chance == o.chance && flags == o.flags &&
-               pitch == o.pitch && ratchet == o.ratchet && ramp == o.ramp && pitch_ramp == o.pitch_ramp;
+               pitch == o.pitch && ratchet == o.ratchet && ramp == o.ramp && pitch_ramp == o.pitch_ramp && condition == o.condition;
     }
     bool operator!=(const Event& o) const { return !(*this == o); }
     unsigned hits() const { return std::clamp<unsigned>(ratchet, 1, max_ratchet); }
@@ -73,8 +75,10 @@ struct Event {
         double at = pitch_ramp * double(std::min(n, last)) / double(last);
         return int(at < 0 ? at - 0.5 : at + 0.5);
     }
-    // Copies what plays it besides where and which (chance, flags, the ratchet), for a note rewritten in place.
-    void take_play(const Event& o) { chance = o.chance; flags = o.flags; ratchet = o.ratchet; ramp = o.ramp; pitch_ramp = o.pitch_ramp; }
+    // Copies what plays it besides where and which (chance, flags, the ratchet, the condition), for a note rewritten in place.
+    void take_play(const Event& o) {
+        chance = o.chance; flags = o.flags; ratchet = o.ratchet; ramp = o.ramp; pitch_ramp = o.pitch_ramp; condition = o.condition;
+    }
 };
 
 // The pages' view of one step: up to four notes starting in it.
@@ -89,6 +93,7 @@ struct Step {
     uint8_t flags = 0;
     uint8_t ratchet = 1;   // the first note's (Event::ratchet); set_step keeps each note's own
     int8_t ramp = 0;
+    uint8_t condition = 0; // the first note's (Event::condition), kept the same way
     bool empty() const { for (auto n : notes) if (n.velocity) return false; return true; }
     const Note* first() const { for (auto& n : notes) if (n.velocity) return &n; return nullptr; }
 };

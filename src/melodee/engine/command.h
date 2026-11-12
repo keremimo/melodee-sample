@@ -101,7 +101,9 @@ struct Command {
         // chains are loop_chain(0..3) for FxKind, FxParam and FxBypass.
         Looper,
         // Plug-ins (docs/MELODEE.md): track, value = the entry of Project::plugins a PLUGIN track plays (255 none).
-        TrackPlugin
+        TrackPlugin,
+        // Roadmap P1: value 1 while Fill is held (Play held while playing): FILL conditions play, NOT FILL ones not.
+        Fill
 
     };
     Command() = default;

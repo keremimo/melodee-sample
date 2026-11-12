@@ -143,6 +143,8 @@ void draw(Paint& p, const Snapshot& s) {
             }
         }
         if (on) p.ring(x - 1, y - 1, w + 2, hgt + 2, c, 3, 1.2f);
+        if (e.condition != trig_always && w > 8) // a trig condition: a ring at its end
+            p.ring(x + w - 6, y + hgt / 2 - 2.5f, 5, 5, on ? c : colour::bg, 2.5f, 1.2f);
         if ((e.flags & step_accent) && w > 6) p.fill(x + 1.5f, y + 1.5f, 2, hgt - 3, on ? c : colour::bg, 1);
     }
     for (unsigned k = 0; k < columns; ++k) {

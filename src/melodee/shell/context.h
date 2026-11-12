@@ -370,6 +370,7 @@ public:
     // Transport
     void play(bool external = false);          // external: MIDI clock in's Start (no count-in; the clock leads)
     void play_continue(bool external = false); // Shift + Play: on from where it stopped; external: MIDI Continue, from Song Position
+    void fill(bool on);                        // Play held while playing (roadmap P1): FILL trig conditions play while it is down
     void stop();
     void tap_tempo();
     void set_tempo(int tenths);

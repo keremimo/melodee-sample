@@ -99,6 +99,11 @@ public:
     bool place_at(unsigned track, uint64_t frame, int& position, uint32_t& ticks) const;
     // Any thread: timed notes played on their frame, those that came after it (played at once), and the latest by.
     uint32_t timed_kept() const { return timed_on_time.load(std::memory_order_relaxed); }
+    // Any thread (roadmap P1): ratchets' hits played after their first; notes a trig condition let through and held back.
+    uint32_t ratchet_hits() const { return hits_played.load(std::memory_order_relaxed); }
+    uint32_t trigs_kept() const { return trig_kept.load(std::memory_order_relaxed); }
+    uint32_t trigs_dropped() const { return trig_dropped.load(std::memory_order_relaxed); }
+    bool filling() const { return fill_now.load(std::memory_order_relaxed); }
     uint32_t timed_missed() const { return timed_late.load(std::memory_order_relaxed); }
     uint32_t timed_worst_frames() const { return timed_worst.load(std::memory_order_relaxed); }
 
@@ -244,6 +249,10 @@ private:
         PendingOn arp_late;
         std::array<PendingHit, 32> hits {}; // ratchets' hits to come, each on its frame
         unsigned hits_waiting = 0;
+        // Trig conditions (model/trig.h): how the last weighed note went, on the track and on each key (a kit's
+        // lanes), and whether one has been weighed since Play (none yet: counted as played, for NEI).
+        bool weighed = false, went = false;
+        std::array<uint64_t, 4> keys_weighed {}, keys_went {};
         int arp_played = -1, arp_from = -1; // the arp's last note and the held key it came from
         // Notes Seq Record just wrote ahead of the playhead (Rec Quantize), already heard live: skipped once.
         struct Skip { int32_t key = -1; uint8_t pattern = 0; uint32_t tick = 0, until = 0; };
@@ -258,6 +267,9 @@ private:
     unsigned next_hit() const;
     void drop_hits();
     void play_hit(unsigned t, Slot& slot, const PendingHit& hit, uint64_t at);
+    // Trig conditions: whether `e` plays on pass `pass` of track `t` (its chance too), and how it went kept for PRE and NEI.
+    bool trig_plays(unsigned t, Slot& slot, const Event& e, uint32_t pass);
+    bool fill = false; // Fill held (Command::Fill)
     void arp_note(Slot& slot, int key, int velocity, int from, int32_t length); // with its pad's pressure
     void apply(const Command& command);
     void select_engine(Slot& slot, EngineKind kind);
@@ -345,6 +357,8 @@ private:
     std::atomic<uint32_t> tick_head {0};  // ticks written
     std::atomic<float> tick_frames {0};   // frames the newest tick lasts (swing and MTC's pace in)
     std::atomic<uint32_t> timed_on_time {0}, timed_late {0}, timed_worst {0};
+    std::atomic<uint32_t> hits_played {0}, trig_kept {0}, trig_dropped {0};
+    std::atomic<bool> fill_now {false};
     // Plug-ins: each entry's as the rack offered it; the ones replaced wait in the queue to be freed.
     struct PluginOffer { uint8_t entry = 0; PluginRunner* runner = nullptr; };
     MidiQueue<64, PluginOffer> plugin_offers;

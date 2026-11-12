@@ -89,6 +89,17 @@ behaviour changed.
 - P1: on a kit, Steps' cards (length, velocity, chance and the TRIG row) are
   the last pad's note in the step, not the step's first note. Why: Steps on
   a kit shows and toggles that pad's lane, so its cards follow it.
+- P1: Fill is Play held while playing (Play there did nothing), for as long
+  as it is down. Why: a held control on a printed key that had no job
+  while playing; Seq held and Shift already carry layers.
+- P1: PRE follows the last weighed note of its lane (a kit's pad, else the
+  track); NEI the lane before (a kit's pad below, the first pad the track
+  before; a synth the track before); a lane with nothing weighed since Play
+  counts as played (iOS's rule). A note is weighed with a condition of its
+  own or a chance below 100; the condition goes first, then the chance.
+  Why: a kit's pads are its voices, as Elektron's tracks are.
+- P1: trig conditions sit on the TRIG row's K3, beside the main row's K3
+  chance.
 
 ## Waiting for a hand check
 
@@ -101,6 +112,9 @@ behaviour changed.
 - P1: ratchets by ear: a hat at 2-8 hits with a ramp down and up, a kit
   pad's pitch ramp (a tom rising), a synth note ratcheted; say if the
   hits' gate (a tenth short, as a note's) wants to be shorter on synths.
+- P1: Fill by hand: Play held while playing for a bar, FILL steps heard and
+  NOT FILL ones dropped, back on release; say if Play's hold should wait a
+  moment (a tap does nothing while playing).
 
 ## P0: timing
 
@@ -140,7 +154,7 @@ behaviour, write the code fresh for this app.
   note's); on a kit also a pitch ramp if it fits. The repeats play through
   the late-note path the arp uses (`run_late`). File section, Steps / Step
   Edit / Roll editing, drawn on Steps and Roll, previews, tests.
-- [ ] Trig conditions: always, n:m (2..8), FILL / NOT FILL, FIRST / NOT
+- [x] Trig conditions: always, n:m (2..8), FILL / NOT FILL, FIRST / NOT
   FIRST, PRE / NOT PRE, NEI / NOT NEI, beside chance; a pass counter a
   track (a kit lane of its own length counts its own); a held control for
   Fill.

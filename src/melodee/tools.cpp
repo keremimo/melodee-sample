@@ -1478,6 +1478,15 @@ const Preview previews[] {
          for (auto& e : shell.patterns().at[3][0].events) if (e.tick == 144) { e.ratchet = 2; }
          s.ui.trig_cards = true; s.ui.shift = true;
      }},
+    {"stepstrig", [](Shell& shell, Snapshot& s) { // Steps' TRIG row: K3 turning a trig condition, the hat at step 5 on 3:4, step 3 FILL
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         for (auto& e : shell.patterns().at[3][0].events) {
+             if (e.tick == 96 && e.key == sampler_first_note + 2) { e.ratchet = 3; e.ramp = 40; e.condition = uint8_t(trig_of(3, 4)); }
+             if (e.tick == 48) e.condition = uint8_t(trig_fill);
+         }
+         s.ui.trig_cards = true; s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
 };
 
 void draw(juce::Graphics& g, const Snapshot& s) {

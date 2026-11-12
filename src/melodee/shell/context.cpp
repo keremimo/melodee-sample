@@ -414,7 +414,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::StepChance:
     case Kind::StepRatchet:
     case Kind::StepRamp:
-    case Kind::StepPitchRamp: { // the step in hand's notes, on a kit its lane's (the last pad's)
+    case Kind::StepPitchRamp:
+    case Kind::StepCondition: { // the step in hand's notes, on a kit its lane's (the last pad's)
         auto& p = pattern();
         unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % p.steps();
         uint32_t q = p.q();
@@ -425,6 +426,7 @@ void Context::apply(const Binding& b, int value) {
             case Kind::StepChance: e.chance = uint8_t(std::clamp(value, 0, 100)); break;
             case Kind::StepRatchet: e.ratchet = uint8_t(std::clamp<int>(value, 1, int(max_ratchet))); break;
             case Kind::StepPitchRamp: e.pitch_ramp = int8_t(std::clamp(value, -max_pitch_ramp, max_pitch_ramp)); break;
+            case Kind::StepCondition: e.condition = uint8_t(std::clamp(value, 0, int(trig_count) - 1)); break;
             default: e.ramp = int8_t(std::clamp(value, -100, 100)); break;
             }
         });
@@ -607,6 +609,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EventRatchet: set_event_ratchet(*this, value); break;
     case Kind::EventRamp: set_event_ramp(*this, value); break;
     case Kind::EventPitchRamp: set_event_pitch_ramp(*this, value); break;
+    case Kind::EventCondition: set_event_condition(*this, value); break;
     case Kind::StageSound: preset_turn(value); break;
     case Kind::SoundList: ui.sounds_filter = uint8_t(value); ui.preset_due = 0; break;
     case Kind::ArpGate: t.arp_gate = uint8_t(value); send({Type::Arp, ui.track, 0, 4, int16_t(value)}); break;
@@ -1444,6 +1447,14 @@ void Context::play(bool external) {
     if (played_song) send({Type::Play, uint8_t(count), 0, ui.song_cursor, 1});
     else send({Type::Play, uint8_t(count)});
     if (external) send({Type::ExtSync, 0, 0, 3}); // the ticks wait for the clock's pulses
+}
+
+// Play held while playing: Fill, until it is let go (trig conditions FILL and NOT FILL, model/trig.h).
+void Context::fill(bool on) {
+    if (on == ui.fill) return;
+    ui.fill = on;
+    send({Type::Fill, 0, 0, 0, int16_t(on)});
+    if (on) notice("Fill");
 }
 
 // Shift + Play: on from where it stopped (or where the wheel moved it on Patterns).

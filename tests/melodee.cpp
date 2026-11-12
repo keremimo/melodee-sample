@@ -7266,8 +7266,103 @@ void ratchets() {
     }
 }
 
+// Trig conditions (roadmap P1): which passes a note plays on, beside its chance.
+void trig_conditions() {
+    // The byte: always, 1:2 .. 8:8, then the rest, named as the cards show them.
+    unsigned n = 0, m = 0, count = 0;
+    for (unsigned every = 2; every <= 8; ++every)
+        for (unsigned which = 1; which <= every; ++which) {
+            unsigned c = trig_of(which, every);
+            CHECK(c >= 1 && c <= trig_passes && trig_pass(c, n, m) && n == which && m == every);
+            ++count;
+        }
+    CHECK(count == trig_passes && trig_of(1, 2) == 1 && trig_of(8, 8) == trig_passes && trig_of(3, 2) == trig_always);
+    CHECK(std::string(trig_name(trig_of(3, 4))) == "3:4" && std::string(trig_name(trig_not_nei)) == "NOT NEI" && std::string(trig_name(0)) == "ALWAYS");
+    CHECK(trig_met(trig_of(1, 2), 0, false, false, false) && !trig_met(trig_of(1, 2), 1, false, false, false) && trig_met(trig_of(1, 2), 4, false, false, false));
+    CHECK(trig_met(trig_of(2, 3), 1, false, false, false) && trig_met(trig_of(2, 3), 4, false, false, false) && !trig_met(trig_of(2, 3), 2, false, false, false));
+    CHECK(trig_met(trig_first, 0, false, false, false) && !trig_met(trig_first, 1, false, false, false) && trig_met(trig_not_first, 3, false, false, false));
+    CHECK(trig_met(trig_fill, 2, true, false, false) && !trig_met(trig_fill, 2, false, false, false) && trig_met(trig_not_fill, 2, false, false, false));
+    CHECK(trig_met(trig_pre, 0, false, true, false) && trig_met(trig_not_nei, 0, false, true, false) && !trig_met(trig_nei, 0, false, true, false));
+    CHECK(trig_weighed(trig_first, 100) && !trig_weighed(trig_pre, 100) && !trig_weighed(trig_always, 100) && trig_weighed(trig_always, 50));
+
+    // Played over four passes of a beat-long pattern (172 blocks a pass), Fill held from the fourth.
+    {
+        Pattern p;
+        p.length = ticks_per_quarter;
+        auto note = [&](uint32_t tick, uint8_t key, unsigned condition) {
+            Event e;
+            e.tick = tick; e.length = 6; e.key = key; e.condition = uint8_t(condition);
+            p.add(e);
+        };
+        note(0, 60, trig_of(1, 2)); note(12, 61, trig_pre); note(24, 62, trig_first); note(48, 64, trig_not_first);
+        note(72, 65, trig_fill); note(84, 66, trig_not_pre);
+        const double pass_frames = 44100 * 0.5;
+        auto notes = played_notes(p, 680, EngineKind::Midi, [&](EngineHost& host, unsigned b) {
+            if (b == unsigned(3 * pass_frames / 128) - 2) host.send({Command::Type::Fill, 0, 0, 0, 1});
+        });
+        std::map<int, std::vector<int>> passes;
+        for (const auto& e : notes) passes[e.a].push_back(int((e.frame - notes[0].frame + 64) / pass_frames));
+        CHECK((passes[60] == std::vector<int> {0, 2}) && (passes[61] == std::vector<int> {0, 2})); // 1:2, and PRE after it
+        CHECK((passes[62] == std::vector<int> {0}) && (passes[64] == std::vector<int> {1, 2, 3}));  // FIRST, NOT FIRST
+        CHECK((passes[65] == std::vector<int> {3}) && (passes[66] == std::vector<int> {0, 1, 2}));  // FILL, NOT PRE after it
+    }
+    // NEI: a kit pad's lane follows the pad below's; that pad's first lane, the track before (none: as if played).
+    {
+        Pattern p;
+        p.length = ticks_per_quarter;
+        Event a;
+        a.key = uint8_t(sampler_first_note + 4); a.length = 6; a.condition = uint8_t(trig_of(2, 2));
+        p.add(a);
+        Event b = a;
+        b.key = uint8_t(sampler_first_note + 5); b.condition = uint8_t(trig_nei);
+        p.add(b);
+        Event c = a;
+        c.key = uint8_t(sampler_first_note + 7); c.condition = uint8_t(trig_nei); // pad 7's below (6) has none: as played
+        p.add(c);
+        auto notes = played_notes(p, 360, EngineKind::Sampler);
+        std::map<int, int> heard;
+        for (const auto& e : notes) ++heard[e.a];
+        CHECK(heard[sampler_first_note + 4] == 1 && heard[sampler_first_note + 5] == 1 && heard[sampler_first_note + 7] == 3);
+    }
+
+    // The file: conditions in COND by their place in EVNT; a file without it plays every note on every pass.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        auto& q = bank->at[1][2];
+        put(q, 0, 40, 100); put(q, 4, 42, 100);
+        q.events[1].condition = uint8_t(trig_not_fill);
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[1][2] == q && back_bank->at[1][2].events[1].condition == trig_not_fill);
+        std::string text(data.begin(), data.end());
+        data[text.find("COND")] = 'X';
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[1][2].events[1].condition == trig_always);
+    }
+    // The TRIG row's K3 on Steps and Roll; a step rewritten keeps each note's condition.
+    {
+        auto project = std::make_unique<Project>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        UiState ui;
+        Pattern q;
+        put(q, 1, 60, 100);
+        q.events[0].condition = uint8_t(trig_of(3, 4));
+        ui.page = PageId::Steps; ui.step_cursor = 1; ui.trig_cards = true;
+        auto cards = page_bindings(*project, ui, q, false);
+        CHECK(cards[2].kind == Binding::Kind::StepCondition && cards[2].value == int(trig_of(3, 4)) && cards[2].max == int(trig_count) - 1);
+        ui.page = PageId::Roll; ui.roll_key = 60;
+        CHECK(page_bindings(*project, ui, q, false)[2].kind == Binding::Kind::EventCondition);
+        Step s = q.step(1);
+        s.notes[0].key = 61;
+        q.set_step(1, s);
+        CHECK(q.events[0].key == 61 && q.events[0].condition == trig_of(3, 4));
+    }
+}
+
 int main() {
     ratchets();
+    trig_conditions();
     plugins();
     voice_taps();
     voice_heads();

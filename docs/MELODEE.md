@@ -116,7 +116,7 @@ cards.
 | Sample Record | Record (kit tracks); on Record it ends the take and opens Stage's TRIM on the pad | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into a pattern |
 | Stop | Stop (on Record, ends the take) | All notes off |
-| Play | Play from the start (on Song from the cursor) | Continue from where it stopped or the wheel put it |
+| Play | Play from the start (on Song from the cursor); held while playing, Fill (FILL trig conditions play) | Continue from where it stopped or the wheel put it |
 | B1–B3 | The page's soft keys, named above them; with Note Repeat on, its rate (on Stage only while Note Repeat is held) | Page jobs (Stage's TRIM on a kit, Chop) |
 | K1–K3 | The cards above them; Knob FX mode takes them for its effect | The card's second parameter (cards with the Shift icon) |
 | Pads | The page's job (most pages play the selected track) | The jobs printed under the pads |
@@ -421,6 +421,20 @@ does the same to its tune. Slide and Tie wait for a note of one hit. The
 editors' TRIG row holds them: the lit key again (STEPS on Steps, ROLL on
 Roll) turns the cards to K1 the hits, K2 the ramp, Shift + K2 the pitch
 ramp (a kit); again, back. Files keep them in RTCH.
+
+A **trig condition** (the TRIG row's K3, beside the chance on K3 of the
+main row) picks the passes a note plays on: ALWAYS, n:m (the n-th of every
+m passes, 1:2 .. 8:8), FILL / NOT FILL (Play held while playing is Fill),
+FIRST / NOT FIRST (the first pass since the pattern began: launched, Play,
+or its clip), PRE / NOT PRE (the last note weighed before it on its lane
+played, or not: a kit's pad, else the track), NEI / NOT NEI (the same of
+the lane before: a kit's pad below, else the track before; nothing weighed
+there yet counts as played). A note is weighed when it has a condition of
+its own (not PRE or NEI) or a chance; the chance is rolled after the
+condition. Steps rings a step's foot and Roll a note's end when it has
+one; files keep them in COND. `status`: `melodee_trigs` (let through /
+held back), `melodee_fill`, `melodee_hits` (ratchets' hits after their
+first).
 
 Seq has three levels and a layer (`shell/seq_layer.h`): **tap to look,
 hold to steer, Shift + Seq to zoom in**.

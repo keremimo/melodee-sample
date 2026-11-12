@@ -38,6 +38,8 @@ void draw(Paint& p, const Snapshot& s) {
     int in_hand = lane_event(pattern, unsigned(std::max(highlight, 0)) % pattern.steps(), steps_lane(s.track()));
     if (in_hand >= 0 && pattern.events[size_t(in_hand)].hits() > 1) // a ratchet: its hits
         step += juce::String::fromUTF8(" \xc2\xb7 \xc3\x97") + juce::String(pattern.events[size_t(in_hand)].hits());
+    if (in_hand >= 0 && pattern.events[size_t(in_hand)].condition != trig_always) // its trig condition
+        step += juce::String::fromUTF8(" \xc2\xb7 ") + trig_name(pattern.events[size_t(in_hand)].condition);
     h.left.push_back(pill(step, c));
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 0, c};
@@ -95,6 +97,9 @@ void draw(Paint& p, const Snapshot& s) {
             }
         }
         if (step.empty()) continue;
+        int lane_note = lane_event(pattern, st, steps_lane(s.track()));
+        if (lane_note >= 0 && pattern.events[size_t(lane_note)].condition != trig_always) // a trig condition: a ring at its foot
+            p.ring(x + colw / 2 - 3, top + ch - 9, 6, 6, here ? colour::text : colour::sec, 3, 1.2f);
         if (step.flags & step_accent) p.circle(x + colw / 2, top - 6.5f, 2, c);      // an accent: a dot over it
         if (step.flags & step_tie && k + 1 < bar_steps) {                            // a tie: an arc under it to the next
             juce::Path arc;

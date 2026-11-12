@@ -658,6 +658,7 @@ void EngineHost::apply(const Command& c) {
         mtc_off(); // MTC in places it right after (MtcIn locate)
         running = true; until_tick = 0;
         drop_hits();
+        for (auto& s : slots) { s.weighed = s.went = false; s.keys_weighed = {}; s.keys_went = {}; } // PRE and NEI start afresh
         tick_now = c.value == 1 ? 0 : c.position;
         arp_ticks = 0; until_arp = 0; // the repeats line up with the bar, so their swing falls with the sequencer's
         song_mode = c.value == 1; song_bar_now = c.index;
@@ -731,6 +732,7 @@ void EngineHost::apply(const Command& c) {
             }
         break;
     case Type::Swing: swing = uint8_t(std::clamp<int>(c.value, 50, 75)); break;
+    case Type::Fill: fill = c.value != 0; fill_now.store(fill, std::memory_order_relaxed); break;
     }
 }
 
@@ -967,6 +969,26 @@ void EngineHost::play_hit(unsigned t, Slot& slot, const PendingHit& hit, uint64_
         schedule_off(slot, hit.key, hit.length);
     }
     if (hit.midi >= 0) midi_note(t, hit.midi, hit.velocity, at, hit.length);
+    hits_played.fetch_add(1, std::memory_order_relaxed);
+}
+
+bool EngineHost::trig_plays(unsigned t, Slot& slot, const Event& e, uint32_t pass) {
+    random = random * 1664525u + 1013904223u;
+    bool chance = e.chance >= 100 || (random >> 8) % 100 < e.chance;
+    if (e.condition == trig_always) return chance;
+    // PRE: the last weighed note of its lane (a kit's key; else the track's); NEI: of the lane before (a kit's key
+    // below, its first the track before's; else the track before). Nothing weighed there yet: counted as played.
+    bool kit = slot.kind == EngineKind::Sampler || slot.kind == EngineKind::Kit909;
+    auto bit = [](const std::array<uint64_t, 4>& set, unsigned key) { return ((set[(key / 64) % 4] >> (key % 64)) & 1) != 0; };
+    unsigned key = e.key;
+    bool pre = kit ? bit(slot.keys_went, key) : slot.went;
+    bool nei = true;
+    unsigned first = slot.kind == EngineKind::Kit909 ? 36u : sampler_first_note;
+    if (kit && key > first && bit(slot.keys_weighed, key - 1)) nei = bit(slot.keys_went, key - 1);
+    else if ((!kit || key <= first) && t > 0 && slots[t - 1].weighed) nei = slots[t - 1].went;
+    bool go = trig_met(e.condition, pass, fill, pre, nei) && chance;
+    (go ? trig_kept : trig_dropped).fetch_add(1, std::memory_order_relaxed);
+    return go;
 }
 
 unsigned EngineHost::next_hit() const {
@@ -1198,6 +1220,7 @@ void EngineHost::tick() {
         const auto& pattern = *patterns[t][slot.pattern];
         uint32_t length = std::max<uint32_t>(pattern.length, 1);
         uint32_t at = (tick_now - slot.start) % length;
+        uint32_t pass = (tick_now - slot.start) / length; // trig conditions count the pattern's passes from where it began
         positions_now[t].store(int(at), std::memory_order_relaxed);
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
         if (sound && motion.count && at % sixteenth_ticks == 0) play_motion(t, slot, at / sixteenth_ticks);
@@ -1208,8 +1231,15 @@ void EngineHost::tick() {
             if (e.key > 127 && slot.kind != EngineKind::Sampler) continue; // past 127: kit pads only
             const int played = pad_note(e.key, e.pitch); // the key, and over it what a kit pad plays at
             if (skipped(slot, unsigned(played), at)) continue;
-            random = random * 1664525u + 1013904223u;
-            if (e.chance < 100 && (random >> 8) % 100 >= e.chance) continue;
+            bool go = trig_plays(t, slot, e, pass);
+            if (trig_weighed(e.condition, e.chance)) { // how it went, for PRE and NEI after it
+                slot.weighed = true; slot.went = go;
+                uint64_t bit = uint64_t(1) << (e.key % 64);
+                auto& word = slot.keys_went[e.key / 64 % 4];
+                slot.keys_weighed[e.key / 64 % 4] |= bit;
+                word = go ? word | bit : word & ~bit;
+            }
+            if (!go) continue;
             // Held for its length, a touch short; with Slide or Tie, until the next note starts (and past
             // it, so that note finds it held and takes it over: no new attack; a slide glides there).
             // A ratchet: its hits spread over its length, each held as long as a hit of that length would be;

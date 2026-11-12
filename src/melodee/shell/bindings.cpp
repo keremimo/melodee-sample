@@ -392,10 +392,11 @@ bool levels_in_scale(const UiState& ui, const Track& track) {
 
 namespace {
 // The TRIG row of Steps (`step`: its step in hand's notes) and Roll (the note in focus), roadmap P1: K1 the ratchet's
-// hits, K2 its velocity ramp.
+// hits, K2 its velocity ramp, K3 its trig condition (beside the chance, K3 of the main row).
 std::array<Binding, 3> trig_cards(const Event& e, bool step) {
     return {Binding {step ? Kind::StepRatchet : Kind::EventRatchet, 0, 1, int(max_ratchet), int(e.hits())},
-            Binding {step ? Kind::StepRamp : Kind::EventRamp, 0, -100, 100, e.ramp}, Binding {}};
+            Binding {step ? Kind::StepRamp : Kind::EventRamp, 0, -100, 100, e.ramp},
+            Binding {step ? Kind::StepCondition : Kind::EventCondition, 0, 0, int(trig_count) - 1, e.condition}};
 }
 // Patterns' cards, and Seq held's on any page (shell/seq_layer.h): the selected track's pattern,
 // K1 length by the bar, K2 Q, K3 swing; Shift: any bar count, the time signature, the metronome's level (as on the MPC).
