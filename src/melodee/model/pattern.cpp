@@ -77,6 +77,7 @@ void Pattern::sort() { std::stable_sort(events.begin(), events.end(), before); }
 void Pattern::cut(uint32_t tick) {
     events.erase(events.begin() + long(lower(tick)), events.end());
     motion.erase(motion.begin() + long(motion_lower(tick)), motion.end());
+    punches.erase(std::remove_if(punches.begin(), punches.end(), [tick](const PatternPunch& e) { return e.tick >= tick; }), punches.end()); // pad-fx C
 }
 
 namespace {
@@ -138,6 +139,8 @@ bool double_pattern(Pattern& p, uint32_t max_length, bool copy) {
     for (size_t n = 0; n < count && p.events.size() < max_pattern_events; ++n) { Event e = p.events[n]; e.tick += p.length; p.events.push_back(e); }
     size_t points = copy ? p.motion.size() : 0; // its motion too, as far as there is room
     for (size_t n = 0; n < points && p.motion.size() < motion_points; ++n) { MotionPoint m = p.motion[n]; m.tick += p.length; p.motion.push_back(m); }
+    size_t kept = copy ? p.punches.size() : 0; // and its kept punches (pad-fx C)
+    for (size_t n = 0; n < kept && p.punches.size() < max_pattern_punches; ++n) { PatternPunch e = p.punches[n]; e.tick += p.length; p.punches.push_back(e); }
     p.length *= 2;
     return true;
 }
@@ -169,6 +172,13 @@ void scale_pattern(Pattern& p, bool slower) {
     for (const auto& m : points) p.write_motion(m);
     for (auto& l : p.lanes) l.length = slower ? l.length * 2 : std::max<uint32_t>(l.length / 2, 1); // its lanes with it
     p.fit_lanes();
+    std::vector<PatternPunch> punches; // and its kept punches (pad-fx C)
+    for (auto e : p.punches) {
+        e.tick = slower ? e.tick * 2 : e.tick / 2;
+        e.length = slower ? e.length * 2 : std::max<uint32_t>(e.length / 2, 1);
+        if (e.tick < p.length) punches.push_back(e);
+    }
+    p.punches = std::move(punches);
 }
 
 uint32_t quantise_tick(const Pattern& p, uint32_t tick) { return quantise_tick(p, tick, p.q()); }
@@ -246,6 +256,10 @@ Pattern speed_pattern(const Pattern& p, unsigned speed) {
     }
     for (auto& l : out.lanes) l.length = uint32_t(std::max<uint64_t>(scale(l.length), 1));
     out.fit_lanes();
+    for (auto& e : out.punches) { // pad-fx C: kept punches where they fall at this speed
+        e.tick = uint32_t(std::min<uint64_t>(scale(e.tick), out.length - 1));
+        e.length = uint32_t(std::max<uint64_t>(scale(e.length), 1));
+    }
     return out;
 }
 

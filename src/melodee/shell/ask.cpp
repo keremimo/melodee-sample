@@ -32,7 +32,7 @@ bool ask_button(Context& c, SurfaceButton button) {
         unsigned n = unsigned(ui.ask_target) % pattern_count;
         c.edit_pattern(ui.track, n, "Clear pattern", [&] { c.clear_pattern(ui.track, n); });
         c.notice("P" + std::to_string(n + 1) + " cleared");
-    }
+    } else if (kind == UiState::Ask::ErasePunches) c.erase_punches(); // Erase + KEEP on Pad FX (pad-fx C)
     return true;
 }
 
@@ -47,6 +47,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::ClearLoop: return "Clear L" + std::to_string(ui.ask_target + 1) + "?";
     case UiState::Ask::LooperOff: return "Turn the Looper off?";
     case UiState::Ask::ClearPattern: return "Clear P" + std::to_string(ui.ask_target % pattern_count + 1) + " of track " + std::to_string(ui.track % track_count + 1) + "?";
+    case UiState::Ask::ErasePunches: return "Erase kept punches?";
     default: return {};
     }
 }
@@ -62,6 +63,10 @@ std::string ask_detail(const Project& project, const UiState& ui, const Pattern&
     if (ui.ask == UiState::Ask::EraseLane) {
         count = pattern.lane_points(lane_param(int(ui.ask_target)), lane_pad(int(ui.ask_target)));
         return std::to_string(count) + (count == 1 ? " move" : " moves") + where + " go.";
+    }
+    if (ui.ask == UiState::Ask::ErasePunches) {
+        count = unsigned(pattern.punches.size());
+        return std::to_string(count) + (count == 1 ? " punch" : " punches") + where + " go.";
     }
     if (ui.ask == UiState::Ask::ResetSettings) return "Every setting as Melodee comes; projects stay.";
     if (ui.ask == UiState::Ask::TakeCardBack) return "What the computer was writing may be lost.";

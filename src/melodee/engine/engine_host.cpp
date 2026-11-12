@@ -413,6 +413,7 @@ void EngineHost::apply(const Command& c) {
             for (auto& s : slots) if (s.engine) s.engine->silence();
             pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
             for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
+            for (auto& k : kept) { k.punch.clear(); k.target = 255; } // pad-fx C
             flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
             load_state(c.pack->project, c.value == 1);
             snap_mix = true; // its levels from the first block, not eased in from the last project's
@@ -711,6 +712,7 @@ void EngineHost::apply(const Command& c) {
         cue_track = -1;
         count_left = 0; count_beat.store(0, std::memory_order_relaxed);
         if (punch_from_song) { punch.stop(); punch_from_song = false; }
+        for (auto& k : kept) if (k.on) { k.punch.stop(); k.on = false; } // pad-fx C
         song_mode = false;
         in_song.store(false, std::memory_order_relaxed);
         for (unsigned t = 0; t < track_count; ++t) {
@@ -1353,6 +1355,7 @@ void EngineHost::start_live(unsigned s, const PendingPunch& p) {
 // Every slot on this target runs, held or not, so its history always holds what just played: a repeat's turns
 // crossfade into what came before its slice, and the tape kinds read behind their start.
 void EngineHost::run_live(uint8_t target, float* left, float* right, unsigned frames) {
+    for (auto& k : kept) if (k.target == target) k.punch.process(left, right, frames); // pad-fx C: the pattern's, first
     for (auto& l : live) if (l.target == target) l.punch.process(left, right, frames);
 }
 
@@ -1379,6 +1382,22 @@ void EngineHost::play_song_punches() {
         start_punch({false, e.target, PunchKind(e.kind % punch_count), e.depth / 100.0f, 2, 1});
         punch_from_song = true;
         song_punch_until = tick_now + std::max<uint32_t>(1, e.length) * sixteenth_ticks;
+    }
+}
+
+// pad-fx C (round 2): punches kept with a track's pattern, each started on its tick as the pattern plays, in a kept
+// slot of its own (a free one, else the one ending soonest), and let go after its length.
+void EngineHost::play_pattern_punches(const Pattern& pattern, uint32_t at) {
+    for (const auto& e : pattern.punches) {
+        if (e.tick != at) continue;
+        Kept* slot = nullptr;
+        for (auto& k : kept) if (!k.on) { slot = &k; break; }
+        if (!slot) { slot = &kept[0]; for (auto& k : kept) if (k.until < slot->until) slot = &k; }
+        if (e.target != slot->target) { slot->punch.clear(); slot->target = e.target; } // a new signal: the old history is not its own
+        auto kind = PunchKind(e.kind % punch_count);
+        slot->punch.start(kind, e.depth / 100.0f, bar_length(), bar_length() / (4u << (e.snap & 3)), e.tail % 3, params_of(kind));
+        slot->on = true;
+        slot->until = tick_now + std::max<uint32_t>(1, e.length);
     }
 }
 
@@ -1485,6 +1504,7 @@ void EngineHost::tick() {
     if (tick_now % bar == 0) bar_start();
     if (!running) return;
     if (song_mode && tick_now % sixteenth_ticks == 0) play_song_punches();
+    for (auto& k : kept) if (k.on && tick_now >= k.until) { k.punch.stop(); k.on = false; } // pad-fx C: a kept punch's length
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         bool sound = slot.engine != nullptr, midi = out_channel[t] && out_mode[t]; // an empty track may still play MIDI out
@@ -1496,6 +1516,7 @@ void EngineHost::tick() {
         uint32_t pass = elapsed / length; // trig conditions count the pattern's passes from where it began
         Speed sp = speed_of(speeds_now[t].load(std::memory_order_relaxed)); // published as written (its pattern plays scaled)
         positions_now[t].store(int(uint64_t(at) * sp.num / sp.den), std::memory_order_relaxed);
+        if (!pattern.punches.empty()) play_pattern_punches(pattern, at); // pad-fx C: punches kept with it
         passes_now[t].store(pass, std::memory_order_relaxed);
         if (at == 0 && int(t) == cue_track) { take.go(block_at); cue_track = -1; } // Rec length Seq: the take starts with the pattern
         if (sound && (at == 0 || !pattern.motion.empty() || slot.locks_on)) play_motion(t, slot, pattern, at);
@@ -1908,6 +1929,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     unsigned sounding = 0;
     for (unsigned s = 0; s < live_slots; ++s) sounding |= unsigned(live[s].punch.on() || live[s].pending.waiting) << s;
     live_on.store(sounding, std::memory_order_relaxed);
+    unsigned kept_sounding = 0; // pad-fx C
+    for (unsigned s = 0; s < live_slots; ++s) kept_sounding |= unsigned(kept[s].on) << s;
+    kept_on.store(kept_sounding, std::memory_order_relaxed);
     punch_on.store(punch.on() || pad_punch.on() || sounding, std::memory_order_relaxed);
     // The input source (or the mix itself, before main volume): the take, the
     // Recall ring and the meter hear it; a render takes the mix.

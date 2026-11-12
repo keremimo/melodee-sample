@@ -1314,12 +1314,27 @@ const Preview previews[] {
          m.card = true; m.card_total = 31'900'000'000ull; m.card_free = 640'000'000ull; m.stream_late = 2;
      }},
     {"aboutcredits", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.ui.about_view = 1; }},
-    {"punch", [](Shell&, Snapshot& s) {
+    // Round 2, pad-fx C: Low latched from the bar's start and Stutter held from its third beat, heard; an Echo kept
+    // with the pattern on the fourth (quieter); the playhead between.
+    {"punch", [](Shell& shell, Snapshot& s) {
          s.ui.page = PageId::Punch; s.ui.track = 2; s.playing = true; s.project.punch_target = 1;
-         s.project.punch_bank = 0; // Melodee's first bank: Loop 1/4 latched, Low held
+         s.project.punch_bank = 0; // Melodee's first bank: Low latched, Stutter held
          s.ui.engaged[0] = {8, -1, true, 100}; s.ui.engaged[1] = {4, 4, false, 100}; s.ui.engaged_count = 2;
          s.ui.punch_slot = {{8, 4, -1, -1}}; s.ui.punch_selected = 4;
          s.ui.turning = 1; s.ui.turned_at = s.now;
+         auto& pattern = shell.patterns().at[2][s.project.tracks[2].pattern];
+         uint32_t bar = s.project.bar_ticks(), pass = std::max<uint32_t>(pattern.length, bar);
+         pattern.punches = {{bar * 13 / 16, bar / 8, 14, 2, 100, 2, 1}};
+         s.positions[2] = int(bar * 11 / 16); s.ticks = 4 * pass + uint32_t(s.positions[2]);
+         s.ui.spans[0] = {4ull * pass, 0, 8, 2, 100, 2, 1, false};
+         s.ui.spans[1] = {4ull * pass + bar * 10 / 16, 0, 4, 2, 100, 2, 1, false};
+         s.ui.span_count = 2;
+     }},
+    {"punchkept", [](Shell& shell, Snapshot& s) { // stopped: what the pattern keeps, no playhead
+         s.ui.page = PageId::Punch; s.ui.track = 2; s.project.punch_target = 1; s.project.punch_bank = 0;
+         auto& pattern = shell.patterns().at[2][s.project.tracks[2].pattern];
+         uint32_t bar = s.project.bar_ticks();
+         pattern.punches = {{0, bar / 4, 1, 2, 100, 2, 1}, {bar / 2, bar / 8, 5, 2, 100, 2, 1}, {bar * 13 / 16, bar / 8, 14, 2, 100, 2, 1}};
      }},
     // Parity phase 7b: the MPC's Pad FX, five engaged (the first bypassed), and Flex Beat.
     {"padfxmpc", [](Shell&, Snapshot& s) {

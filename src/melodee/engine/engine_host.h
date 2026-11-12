@@ -198,6 +198,7 @@ public:
     void compressor_activity(float& level_db, float& reduce_db) { comp.take_activity(level_db, reduce_db); } // the page's picture
     unsigned flex_playing() const { return flex_now.load(std::memory_order_relaxed); } // Flex Beat's pad playing, 0 Empty
     unsigned live_punches() const { return live_on.load(std::memory_order_relaxed); }  // Pad FX: a bit a live slot sounding
+    unsigned kept_punches() const { return kept_on.load(std::memory_order_relaxed); }  // pad-fx C: a bit a kept slot sounding
     bool song_playing() const { return in_song.load(std::memory_order_relaxed); }
     unsigned song_bar() const { return bar_now.load(std::memory_order_relaxed); }
     float meter(unsigned track) const { return meters[track % track_count].load(std::memory_order_relaxed); }
@@ -515,6 +516,11 @@ private:
     bool song_recording = false, punch_from_song = false, live_punch = false;
     uint32_t song_punch_until = 0; // the tick a song punch lets go
     void play_song_punches();      // on each sixteenth of the song: punches written there
+    // pad-fx C (round 2): punches kept with patterns, four at once, each in series on its target before the live
+    // ones (a punch by hand plays over them) and let go after its length.
+    struct Kept { Punch punch; uint8_t target = 255; uint32_t until = 0; bool on = false; };
+    std::array<Kept, live_slots> kept;
+    void play_pattern_punches(const Pattern& pattern, uint32_t at); // a track's pattern at `at`: punches kept there
     void start_punch(const PendingPunch& p);
     double bar_length() const { return tick_length() * bar; }
     std::array<Slot, track_count> slots;
@@ -622,6 +628,7 @@ private:
     std::atomic<unsigned> lost {0};
     std::atomic<bool> punch_on {false};
     std::atomic<unsigned> live_on {0};
+    std::atomic<unsigned> kept_on {0}; // pad-fx C
 };
 
 } // namespace melodee

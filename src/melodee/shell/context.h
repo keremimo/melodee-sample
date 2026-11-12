@@ -105,6 +105,13 @@ public:
     void step_punch_bank(int way);                          // Melodee 1, Melodee 2, MPC
     void set_pad_fx_param(unsigned mpc, unsigned param, int value); // an MPC Pad FX's K1-K3
     void sync_live();                                       // the newest four engaged punches into the live slots
+    // pad-fx C (round 2): the punches heard as spans (ui.spans), each from the grid line it starts on to where it
+    // let go, its depth the deepest its pad's pressure gave; B3 KEEP lays the last pass's into the selected
+    // track's pattern, where they fell (one undo), and Erase + KEEP, once B3 says so, takes the kept ones out.
+    void open_span(int kind, uint8_t depth);
+    void close_span(int kind);
+    void keep_punches();
+    void erase_punches();
     uint8_t punch_target_now() const;
     void flex_pad(unsigned pad);                            // Flex Beat: pad 1 Empty, 2-16 its effects
     void set_flex(unsigned what, int value);                // as Command::FlexBeat's index: 1 mode, 2 mix, 3 quantize

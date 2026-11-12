@@ -9,6 +9,7 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/shell/context.h"
+#include <algorithm>
 
 namespace melodee {
 using Type = Command::Type;
@@ -24,6 +25,7 @@ void Context::sync_live() {
             Command off {Type::PunchOff, punch_target_now()};
             off.position = s + 1;
             send(off);
+            close_span(ui.punch_slot[s]);
             ui.punch_slot[s] = -1;
         }
     for (unsigned n = first; n < ui.engaged_count; ++n) {
@@ -35,6 +37,7 @@ void Context::sync_live() {
             on.position = s + 1;
             send(on);
             ui.punch_slot[s] = e.kind;
+            open_span(e.kind, e.depth);
             break;
         }
     }
@@ -110,6 +113,13 @@ bool Context::punch_pressure(unsigned pad, uint8_t value) {
         auto& e = ui.engaged[n];
         if (e.pad != int(pad)) continue;
         e.depth = uint8_t(value * project.punch_depth / 127); // pressure up to K1's depth; latched, it keeps the last
+        for (unsigned n = ui.span_count; n-- > 0;) { // the span heard keeps the deepest (pad-fx C)
+            auto& span = ui.spans[n];
+            if (span.kind != uint8_t(e.kind) || span.until) continue;
+            span.depth = span.felt ? std::max(span.depth, e.depth) : e.depth;
+            span.felt = true;
+            break;
+        }
         for (unsigned s = 0; s < 4; ++s)
             if (ui.punch_slot[s] == e.kind) {
                 Command depth {Type::PunchDepth, punch_target_now(), 0, 0, int16_t(e.depth)};
@@ -128,6 +138,88 @@ void Context::set_pad_fx_param(unsigned mpc, unsigned n, int value) {
     project.pad_fx_params[mpc][n] = int16_t(std::clamp<int>(value, pi.min, pi.max));
     send({Type::PunchParam, 0, uint8_t(n), uint16_t(mpc), project.pad_fx_params[mpc][n]});
     dirty = true;
+}
+
+// pad-fx C (round 2): a punch heard from the next line of its snap grid (where the engine starts it), while playing.
+// The first in a later pass of the selected track's pattern begins a new take: the last one's punches go, and one
+// still sounding carries on into it from the loop's start.
+void Context::open_span(int kind, uint8_t depth) {
+    if (!host.playing() || kind < 0) return;
+    unsigned snap = project.punch_snap & 3;
+    uint32_t grid = 16 * sixteenth_ticks / (4u << snap), now = host.ticks();
+    uint64_t from = uint64_t((now + grid - 1) / grid) * grid;
+    int position = host.position_of(ui.track % track_count);
+    if (position >= 0) {
+        Speed sp = speed_of(track().speed);
+        uint64_t loop = std::max<uint64_t>(uint64_t(pattern().length) * sp.den / sp.num, 1), at = uint64_t(position) * sp.den / sp.num;
+        uint64_t pass = now >= at ? now - at : 0; // where this pass began, in the sequencer's ticks
+        while (from >= pass + loop) pass += loop;  // the grid line may fall in the next
+        if (!ui.span_count || from >= ui.take_until) {
+            unsigned left = 0;
+            for (unsigned n = 0; n < ui.span_count; ++n)
+                if (!ui.spans[n].until) { auto span = ui.spans[n]; span.from = std::max(span.from, pass); ui.spans[left++] = span; }
+            ui.span_count = uint8_t(left);
+            ui.take_until = pass + loop;
+        }
+    }
+    if (ui.span_count == UiState::span_capacity) { // full: the oldest goes
+        std::move(ui.spans.begin() + 1, ui.spans.end(), ui.spans.begin());
+        --ui.span_count;
+    }
+    ui.spans[ui.span_count++] = {from, 0, uint8_t(kind), punch_target_now(), depth, uint8_t(snap), uint8_t(project.punch_tail % 3), false};
+}
+
+void Context::close_span(int kind) {
+    for (unsigned n = ui.span_count; n-- > 0;) {
+        auto& span = ui.spans[n];
+        if (span.kind != uint8_t(kind) || span.until) continue;
+        span.until = std::max<uint64_t>(host.ticks(), span.from); // let go before its grid line: nothing heard
+        return;
+    }
+}
+
+// B3 KEEP: the take (the last punches heard, up to a pass of the selected track's pattern) kept in that pattern
+// where it fell (as its speed plays it), beside what it kept before; the spans kept go, one still sounding carries
+// on from now.
+void Context::keep_punches() {
+    unsigned t = ui.track % track_count, n = track().pattern % pattern_count;
+    int position = host.position_of(t);
+    if (!host.playing()) { notice("Play, punch, then Keep"); return; }
+    if (position < 0) { notice("Track not playing"); return; } // an empty track, or no clip of it in the song
+    auto& pattern = patterns.at[t][n];
+    Speed sp = speed_of(track().speed);
+    auto written = [&](uint64_t ticks) { return ticks * sp.num / sp.den; }; // the sequencer's ticks as the pattern's
+    std::array<PunchSpan, UiState::span_capacity> spans;
+    for (unsigned k = 0; k < ui.span_count; ++k) {
+        spans[k] = ui.spans[k];
+        spans[k].from = written(spans[k].from);
+        if (spans[k].until) spans[k].until = written(spans[k].until);
+    }
+    auto heard = heard_punches(spans.data(), ui.span_count, written(host.ticks()), uint32_t(position), pattern.length);
+    unsigned added = 0;
+    for (const auto& k : heard) added += std::find(pattern.punches.begin(), pattern.punches.end(), k) == pattern.punches.end();
+    if (!added) { notice(heard.empty() ? "Punch, then Keep" : "Kept already"); return; }
+    if (pattern.punches.size() >= max_pattern_punches) { notice(std::to_string(max_pattern_punches) + " punches at most"); return; }
+    edit_pattern(t, n, "Keep punches", [&] {
+        for (const auto& k : heard)
+            if (pattern.punches.size() < max_pattern_punches && std::find(pattern.punches.begin(), pattern.punches.end(), k) == pattern.punches.end())
+                pattern.punches.push_back(k);
+        std::stable_sort(pattern.punches.begin(), pattern.punches.end(), [](const PatternPunch& a, const PatternPunch& b) { return a.tick < b.tick; });
+        sync_pattern(t, n);
+    });
+    unsigned left = 0;
+    uint64_t now = host.ticks();
+    for (unsigned k = 0; k < ui.span_count; ++k)
+        if (!ui.spans[k].until) { auto span = ui.spans[k]; span.from = std::max(span.from, now); ui.spans[left++] = span; }
+    ui.span_count = uint8_t(left);
+    notice(added == 1 ? std::string("Punch kept") : std::to_string(added) + " punches kept");
+}
+
+void Context::erase_punches() {
+    unsigned t = ui.track % track_count, n = track().pattern % pattern_count;
+    if (patterns.at[t][n].punches.empty()) return;
+    edit_pattern(t, n, "Erase punches", [&] { patterns.at[t][n].punches.clear(); sync_pattern(t, n); });
+    notice("Punches erased");
 }
 
 // Flex Beat.

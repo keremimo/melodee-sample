@@ -1522,6 +1522,7 @@ void Context::capture_notes(unsigned into) {
 void Context::play(bool external) {
     if (host.playing()) return;
     played_song = ui.page == PageId::Song;
+    ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     // A loop armed while stopped counts in as a recording does (docs/LOOPER.md).
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
@@ -1541,6 +1542,7 @@ void Context::fill(bool on) {
 // Shift + Play: on from where it stopped (or where the wheel moved it on Patterns).
 void Context::play_continue(bool external) {
     if (host.playing()) return;
+    ui.span_count = 0; // the punches heard (pad-fx C) counted from this Play
     if (ui.rec_armed) { ui.rec_armed = false; set_recording(true); }
     bool count = (ui.recording || host.looper().armed()) && ui.settings.count_in && !external;
     if (played_song) send({Type::Play, uint8_t(count), 0, uint16_t(host.song_bar()), 1}); // from the bar it stopped in

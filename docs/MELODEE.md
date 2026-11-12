@@ -910,10 +910,16 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   all, B3 bypass. Undo takes back A, B and the fader's place with the
   values.
 - **Pad FX** (Pad FX): 47 punches in three banks (Pad Bank or −/+): the
-  MPC's sixteen in its order, then Melodee 1 and 2. Hold pads to punch, up
-  to four at once (a fifth bypasses the oldest); pressure is depth. B1 LATCH
-  keeps the last one on, B2 master or track, B3 Pad Punch on a kit. An MPC
-  punch's K1–K3 are its own, Shift + K1–K3 depth, snap, tail.
+  MPC's sixteen in its order, then Melodee 1 and 2, named on the pads as
+  they sit (sounding lit, latched underlined). Hold pads to punch, up to
+  four at once (a fifth bypasses the oldest); pressure is depth. B1 LATCH
+  (its LED) keeps the last one on, B2 master or track. Over the pads, the
+  bar the selected track's pattern is in: a row per punch, drawn where it
+  sounds as you play. **B3 KEEP** keeps the last pass's punches in that
+  pattern, each where it fell (one undo), and they loop with it like
+  Motion, drawn quieter, four at once, on the grid and tail they were
+  played with (kept in `KEPT`); Erase + KEEP takes them out, asked first.
+  An MPC punch's K1–K3 are its own, Shift + K1–K3 depth, snap, tail.
 - **Flex Beat** (Shift + Pad FX): a time effect over the master for a bar;
   pad 1 Empty, 2–16 fifteen effects; K1 One Shot / Loop, K3 mix, B3
   quantize.
@@ -1267,7 +1273,7 @@ of the card (beside `Samples/`), in any folders under it.
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
   `MOTK` each pattern's motion (older files' `MOT2` / `MOTP` / `MOTW` land in their patterns), `TIME`, `PAD4` / `KITX` / `PMUT` kits,
-  `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
+  `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `KEPT` (punches kept with a pattern), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
   four sends; TRAK keeps the largest for older builds), `LVLE` (16 Levels' ends) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in
   `TRAK` and itself in `PLGT`, so older builds load them empty; `PLUG` holds

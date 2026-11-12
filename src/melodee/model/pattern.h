@@ -150,6 +150,43 @@ struct Feel {
     bool operator!=(const Feel& o) const { return !(*this == o); }
 };
 
+// pad-fx C (round 2): a punch kept in a pattern, looping with it like Motion: from `tick` (of the pattern) for
+// `length` ticks, punch `kind` (engine/punch.h) on `target` (255 the master, else a track) at `depth` percent, on the
+// grid it was played with (`snap`, engine/punch.h punch_snaps) and letting go as it did (`tail`, punch_tails).
+struct PatternPunch {
+    uint32_t tick = 0, length = sixteenth_ticks;
+    uint8_t kind = 0, target = 255, depth = 100, snap = 2, tail = 1;
+    bool operator==(const PatternPunch& o) const {
+        return tick == o.tick && length == o.length && kind == o.kind && target == o.target && depth == o.depth && snap == o.snap && tail == o.tail;
+    }
+};
+constexpr unsigned max_pattern_punches = 32;
+// A punch as it was heard, in the sequencer's ticks since Play (`until` 0: still sounding); `felt`: its pad's
+// pressure has set its depth (the deepest is kept).
+struct PunchSpan { uint64_t from = 0, until = 0; uint8_t kind = 0, target = 255, depth = 100, snap = 2, tail = 1; bool felt = false; };
+// The take (what B3 KEEP keeps, and the page draws): the spans heard up to one pass (`length` ticks) back from where
+// the latest let go (now, while one still sounds), however long ago, as punches of the pattern playing `position`
+// ticks into its loop at `now`, so they fall where they were heard; at most max_pattern_punches, oldest first.
+inline std::vector<PatternPunch> heard_punches(const PunchSpan* spans, unsigned count, uint64_t now, uint32_t position, uint32_t length) {
+    std::vector<PatternPunch> out;
+    if (!length || !count) return out;
+    uint64_t last = 0;
+    for (unsigned n = 0; n < count; ++n) last = std::max(last, spans[n].until ? spans[n].until : now);
+    uint64_t window = last >= length ? last - length : 0, start = now >= position ? now - position : 0; // where this pass began
+    for (unsigned n = 0; n < count && out.size() < max_pattern_punches; ++n) {
+        uint64_t from = std::max(spans[n].from, window), until = spans[n].until ? spans[n].until : now;
+        if (until <= from || until <= window) continue;
+        int64_t at = (int64_t(from) - int64_t(start)) % int64_t(length);
+        if (at < 0) at += int64_t(length);
+        PatternPunch p;
+        p.tick = uint32_t(at);
+        p.length = uint32_t(std::clamp<uint64_t>(until - from, 1, length));
+        p.kind = spans[n].kind; p.target = spans[n].target; p.depth = spans[n].depth; p.snap = spans[n].snap; p.tail = spans[n].tail;
+        out.push_back(p);
+    }
+    return out;
+}
+
 struct Pattern {
     uint32_t length = 16 * sixteenth_ticks; // ticks
     Division division = Division::Sixteenth; // Q
@@ -158,6 +195,7 @@ struct Pattern {
     std::vector<LaneLength> lanes;           // keys looping on their own, by key
     Feel feel;                               // how its notes play (roadmap P1)
     std::vector<EuclidLane> euclids;         // the rhythms laid on its kit lanes, by key (roadmap P1)
+    std::vector<PatternPunch> punches;       // punches kept with it (pad-fx C), by tick
 
     unsigned q() const { return division_ticks(division); }
     // Steps of Q the pattern holds (a last part step counts).
@@ -165,7 +203,7 @@ struct Pattern {
     bool empty() const { return events.empty() || events.front().tick >= length; }
     bool operator==(const Pattern& o) const {
         return length == o.length && division == o.division && events == o.events && motion == o.motion && lanes == o.lanes &&
-               feel == o.feel && euclids == o.euclids;
+               feel == o.feel && euclids == o.euclids && punches == o.punches;
     }
     bool operator!=(const Pattern& o) const { return !(*this == o); }
     // The first event at or after `tick`.

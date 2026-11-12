@@ -163,7 +163,8 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned p = 0; p < pattern_count; ++p) { // each pattern's notes, on the 96-a-quarter clock
             const auto& pattern = patterns.at[t][p];
             bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty() &&
-                         pattern.motion.empty() && pattern.lanes.empty() && pattern.feel == Feel {} && pattern.euclids.empty();
+                         pattern.motion.empty() && pattern.lanes.empty() && pattern.feel == Feel {} && pattern.euclids.empty() &&
+                         pattern.punches.empty();
             if (plain) continue;
             at = w.begin("EVNT");
             w.u8(t); w.u8(p); w.u32(pattern.length); w.u8(unsigned(pattern.division));
@@ -212,6 +213,14 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                 at = w.begin("EUCL");
                 w.u8(t); w.u8(p); w.u8(unsigned(pattern.euclids.size()));
                 for (const auto& e : pattern.euclids) { w.u8(e.key); w.u8(e.hits); w.u8(e.steps); w.u8(e.rotate); }
+                w.end(at);
+            }
+            if (!pattern.punches.empty()) { // punches kept with it (pad-fx C): tick, length, kind, target, depth, snap | tail << 4
+                at = w.begin("KEPT");
+                w.u8(t); w.u8(p); w.u8(unsigned(pattern.punches.size()));
+                for (const auto& k : pattern.punches) {
+                    w.u32(k.tick); w.u32(k.length); w.u8(k.kind); w.u8(k.target); w.u8(k.depth); w.u8(unsigned(k.snap & 3) | unsigned(k.tail & 3) << 4);
+                }
                 w.end(at);
             }
             if (!pattern.lanes.empty()) { // kit lanes of their own length (roadmap P1): key, ticks
@@ -587,6 +596,20 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             for (unsigned k = 0; k < count && r.ok; ++k) {
                 unsigned speed = r.u8();
                 if (k < track_count && r.ok) project->tracks[k].speed = uint8_t(speed < speed_count ? speed : speed_normal);
+            }
+        } else if (name == "KEPT") { // punches kept with a pattern (pad-fx C); without it a pattern keeps none
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            unsigned count = r.u8();
+            pattern.punches.clear();
+            for (unsigned k = 0; k < count && r.ok; ++k) {
+                PatternPunch punch;
+                punch.tick = r.u32(); punch.length = r.u32();
+                punch.kind = uint8_t(r.u8()); punch.target = uint8_t(r.u8()); punch.depth = uint8_t(std::min(100u, r.u8()));
+                unsigned grid = r.u8();
+                punch.snap = uint8_t(grid & 3); punch.tail = uint8_t(std::min(2u, (grid >> 4) & 3));
+                if (r.ok && pattern.punches.size() < max_pattern_punches) pattern.punches.push_back(punch);
             }
         } else if (name == "EUCL") { // Euclidean rhythms laid on kit lanes (roadmap P1); their notes are in EVNT either way
             unsigned t = r.u8(), p = r.u8();

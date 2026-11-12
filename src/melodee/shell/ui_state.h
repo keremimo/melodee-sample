@@ -238,6 +238,13 @@ struct UiState {
     uint8_t engaged_count = 0;
     std::array<int8_t, 4> punch_slot {{-1, -1, -1, -1}};
     int8_t punch_selected = -1;
+    // pad-fx C (round 2): the take, the punches heard in one pass of the selected track's pattern, oldest first, for
+    // the bar Pad FX draws and its B3 KEEP; a punch in a later pass begins a new take (the sequencer's tick where
+    // this one's pass ends).
+    static constexpr unsigned span_capacity = 24;
+    std::array<PunchSpan, span_capacity> spans {};
+    uint8_t span_count = 0;
+    uint64_t take_until = 0;
     uint8_t flex_chosen = 0; // Flex Beat: the pad chosen last (0 Empty)
     int engaged_at(int kind) const { for (unsigned n = 0; n < engaged_count; ++n) if (engaged[n].kind == kind) return int(n); return -1; }
     bool punch_sounding(int kind) const { for (auto k : punch_slot) if (k == kind && kind >= 0) return true; return false; }
@@ -270,7 +277,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern }; // ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches }; // ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),

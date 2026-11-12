@@ -1255,6 +1255,101 @@ void engine_levels() {
     double one = heard[1], stack = held_loudness<ProphetEngine>(prophet::info(), 0, {{prophet::Unison, 1}, {prophet::Detune, 35}});
     CHECK(std::fabs(stack - one) < 2);
 }
+// Round 2, pad-fx C: punches kept with a pattern. What was heard becomes the pattern's punches where they fell,
+// they go with the pattern through its speed, Double / Half Seq and Half / Double Speed, and the file keeps them
+// (a pattern holding nothing else too); the host plays them on their ticks, several at once, each let go after its
+// length.
+void kept_punches() {
+    { // heard_punches: now 900, 132 ticks into the pass (begun at 768); the last pass is 516 .. 900.
+        const PunchSpan spans[] {
+            {100, 150, 4, 255, 90, 2, 1, false}, // before the last pass: gone
+            {500, 600, 8, 2, 100, 1, 0, false},  // from before it: from where it begins
+            {700, 0, 14, 255, 70, 3, 2, true},   // still sounding: until now
+            {800, 800, 5, 255, 100, 2, 1, false}, // let go before its grid line: nothing heard
+        };
+        auto heard = heard_punches(spans, 4, 900, 132, 384);
+        CHECK(heard.size() == 2);
+        CHECK(heard[0] == PatternPunch({132, 84, 8, 2, 100, 1, 0}));
+        CHECK(heard[1] == PatternPunch({316, 200, 14, 255, 70, 3, 2}));
+        CHECK(heard_punches(spans, 4, 900, 132, 0).empty());
+        auto later = heard_punches(spans + 1, 1, 5000, 0, 384); // Keep long after: the take is still the last one heard
+        CHECK(later.size() == 1 && later[0].tick == 108 && later[0].length == 100);
+        const PunchSpan two_takes[] {{100, 200, 4, 255, 100, 2, 1, false}, {1000, 1100, 8, 255, 100, 2, 1, false}};
+        auto take = heard_punches(two_takes, 2, 2000, 0, 384); // a pass and more apart: the newer alone
+        CHECK(take.size() == 1 && take[0].kind == 8);
+        const PunchSpan long_one[] {{0, 0, 9, 255, 100, 2, 1, false}}; // held over two passes: one pass long
+        auto whole = heard_punches(long_one, 1, 1000, 232, 384);
+        CHECK(whole.size() == 1 && whole[0].tick == 232 && whole[0].length == 384);
+        std::vector<PunchSpan> many;
+        for (unsigned n = 0; n < 40; ++n) many.push_back({uint64_t(n * 8), uint64_t(n * 8 + 4), uint8_t(n % 16), 255, 100, 2, 1, false});
+        CHECK(heard_punches(many.data(), 40, 384, 0, 384).size() == max_pattern_punches);
+    }
+    { // With the pattern: its speed, Double and Half Seq, Half and Double Speed.
+        Pattern p;
+        p.length = 384;
+        p.punches = {{96, 48, 4, 255, 100, 2, 1}, {300, 24, 8, 255, 100, 2, 1}};
+        auto fast = speed_pattern(p, 4); // x2: half the ticks
+        CHECK(fast.length == 192 && fast.punches[0].tick == 48 && fast.punches[0].length == 24 && fast.punches[1].tick == 150 && fast.punches[1].length == 12);
+        auto slow = speed_pattern(p, 0); // x1/2: twice
+        CHECK(slow.punches[1].tick == 600 && slow.punches[1].length == 48);
+        Pattern twice = p;
+        CHECK(double_pattern(twice, 4 * 384) && twice.punches.size() == 4 && twice.punches[2].tick == 96 + 384 && twice.punches[3].tick == 300 + 384);
+        Pattern bare = p;
+        CHECK(double_pattern(bare, 4 * 384, false) && bare.punches.size() == 2);
+        Pattern half = p;
+        half_pattern(half);
+        CHECK(half.length == 192 && half.punches.size() == 1 && half.punches[0].tick == 96);
+        Pattern slower = p;
+        scale_pattern(slower, true);
+        CHECK(slower.punches.size() == 1 && slower.punches[0].tick == 192 && slower.punches[0].length == 96); // 600 falls past the end
+        Pattern faster = p;
+        scale_pattern(faster, false);
+        CHECK(faster.punches.size() == 2 && faster.punches[1].tick == 150 && faster.punches[1].length == 12);
+    }
+    { // The file (KEPT): kept as they were, a pattern holding only punches too, beside the song's (PNCH); none
+      // where there were none.
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->song.add_punch({2, 4, 8, 3, 255, 90});
+        bank->at[3][5].punches = {{0, 96, 8, 255, 100, 2, 1}, {288, 48, 14, 3, 70, 3, 2}};
+        auto data = save_project(*project, *bank);
+        auto copy = std::make_unique<Project>();
+        auto copy_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *copy, *copy_bank).empty());
+        CHECK(copy_bank->at[3][5] == bank->at[3][5] && copy_bank->at[3][5].punches.size() == 2);
+        CHECK(copy->song.punch_count == 1 && copy->song.punches[0].bar == 2 && copy->song.punches[0].kind == 3);
+        CHECK(copy_bank->at[0][0].punches.empty() && copy_bank->at[3][4].punches.empty());
+    }
+    { // The host: Low on the master from the bar's start for a sixteenth's two, Stutter on track 1 from the first
+      // sixteenth's end for four; both at once, each let go after its length, again on the next pass; Stop lets go.
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Prophet, 1);
+        project->tempo = 1200;
+        bank->at[0][0].length = project->bar_ticks();
+        bank->at[0][0].punches = {{0, 48, uint8_t(PunchKind::Low), 255, 100, 2, 1}, {24, 96, uint8_t(PunchKind::Stutter), 0, 100, 2, 1}};
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        std::vector<int32_t> out(256);
+        host->send({Command::Type::Play});
+        unsigned blocks = 0;
+        auto run_to = [&](unsigned n) { for (; blocks < n; ++blocks) host->render(out.data(), 128, 1); }; // a tick is 229.7 samples
+        run_to(1);
+        CHECK(host->kept_punches() == 1);
+        run_to(50); // tick 27
+        CHECK(host->kept_punches() == 3);
+        run_to(100); // tick 55: Low let go
+        CHECK(host->kept_punches() == 2);
+        run_to(230); // tick 128: Stutter let go
+        CHECK(host->kept_punches() == 0);
+        run_to(700); // the next pass
+        CHECK(host->kept_punches() == 1);
+        host->send({Command::Type::Stop});
+        run_to(701);
+        CHECK(host->kept_punches() == 0);
+    }
+}
+
 void punches() {
     // A test signal with no repeats in it: noise.
     auto signal = [](unsigned n) { uint32_t h = n * 2654435761u; return (int32_t(h) >> 8) / 8388608.0f * 0.5f; };
@@ -8350,6 +8445,7 @@ int main() {
     names();
     settings();
     punches();
+    kept_punches();
     more_engines();
     engine_levels();
     drums();
