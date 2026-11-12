@@ -318,6 +318,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
         m.render_load = host.render_load();
         for (unsigned t = 0; t < melodee::track_count; ++t) m.track_load[t] = host.track_load(t);
         m.pdc_frames = host.compensation();
+        for (unsigned n = 0; n < melodee::modulator_count; ++n) frame->mod_values[n] = host.modulator_value(n); // roadmap P4
         m.card = machine.card.load(std::memory_order_relaxed);
         m.card_free = machine.card_free.load(std::memory_order_relaxed);
         m.card_total = machine.card_total.load(std::memory_order_relaxed);

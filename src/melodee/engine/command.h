@@ -105,7 +105,10 @@ struct Command {
         // Roadmap P1: track, value = its speed (model/pattern.h speeds); its patterns come scaled as PatternData.
         TrackSpeed,
         // Roadmap P4: track = chain, index = slot, value = what keys its Compressor or Gate (model/project.h fx_key_*; 0 itself).
-        FxKey
+        FxKey,
+        // Roadmap P4, a modulator (model/modulators.h): track = which; pattern 255 its settings, packed by
+        // pack_modulator(), else target `pattern` packed by pack_mod_target() (value: where its lane stands as set).
+        Modulator
 
     };
     Command() = default;
@@ -130,5 +133,34 @@ struct Command {
     bool timed = false;
     uint32_t at = 0;
 };
+
+// Roadmap P4: a modulator to the audio thread as small commands (a Command stays small: thousands wait in a queue).
+inline Command pack_modulator(unsigned n, const Modulator& m) {
+    Command c {Command::Type::Modulator, uint8_t(n), 255};
+    c.position = uint32_t(m.kind) | uint32_t(m.shape) << 8 | uint32_t(m.sync) << 16 | uint32_t(m.rate) << 24;
+    c.micros = uint32_t(m.division) | uint32_t(m.source) << 8 | uint32_t(m.attack) << 16 | uint32_t(m.release) << 24;
+    return c;
+}
+inline Command pack_mod_target(unsigned n, unsigned i, const ModTarget& t) {
+    Command c {Command::Type::Modulator, uint8_t(n), uint8_t(i)};
+    c.position = uint32_t(t.track) | uint32_t(t.param) << 8 | uint32_t(t.pad) << 16 | uint32_t(uint8_t(t.depth)) << 24;
+    c.micros = uint32_t(uint16_t(t.low)) | uint32_t(uint16_t(t.high)) << 16;
+    c.value = t.own;
+    return c;
+}
+// And back, onto what the audio thread holds.
+inline void unpack_modulator(const Command& c, Modulator& m) {
+    if (c.pattern == 255) {
+        m.kind = ModKind(std::min<unsigned>(c.position & 0xff, unsigned(ModKind::Count) - 1));
+        m.shape = LfoShape(std::min<unsigned>((c.position >> 8) & 0xff, unsigned(LfoShape::Count) - 1));
+        m.sync = (c.position >> 16) & 1; m.rate = uint8_t(c.position >> 24);
+        m.division = uint8_t(c.micros & 0xff); m.source = uint8_t(c.micros >> 8); m.attack = uint8_t(c.micros >> 16); m.release = uint8_t(c.micros >> 24);
+        return;
+    }
+    if (c.pattern >= modulator_targets) return;
+    auto& t = m.targets[c.pattern];
+    t.track = uint8_t(c.position); t.param = uint8_t(c.position >> 8); t.pad = uint8_t(c.position >> 16); t.depth = int8_t(uint8_t(c.position >> 24));
+    t.low = int16_t(uint16_t(c.micros)); t.high = int16_t(uint16_t(c.micros >> 16)); t.own = c.value;
+}
 
 } // namespace melodee

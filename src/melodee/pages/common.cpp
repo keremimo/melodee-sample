@@ -236,6 +236,40 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
+    // Roadmap P4, the MOD page.
+    case Kind::ModPick: c.label = "MOD"; c.value = juce::String(b.value + 1); break;
+    case Kind::ModKind: c.label = "KIND"; c.value = mod_kind_name(ModKind(b.value)); break;
+    case Kind::ModShape: c.label = "SHAPE"; c.value = lfo_shape_name(LfoShape(b.value)); break;
+    case Kind::ModSync: c.label = "CLOCK"; c.value = b.value ? "Sync" : "Free"; break;
+    case Kind::ModRate: {
+        const auto& m = s.project.modulators[s.ui.mod_index % modulator_count];
+        c.label = "RATE";
+        if (m.sync) c.value = lfo_division_name(unsigned(b.value));
+        else { double hz = lfo_hertz(unsigned(b.value)); c.value = juce::String(hz, hz < 1 ? 2 : 1); c.unit = "Hz"; }
+        c.fill = float(b.value - b.min) / float(std::max(b.max - b.min, 1));
+        break;
+    }
+    case Kind::ModInput:
+        c.label = "SOURCE";
+        if (b.value < int(track_count)) { c.value = juce::String(b.value + 1); c.unit = "track"; }
+        else { c.value = juce::String::charToString(juce::juce_wchar('A' + b.value - int(track_count))); c.unit = "bus"; }
+        break;
+    case Kind::ModAttack: c.label = "RISE"; c.value = juce::String(int(std::lround(follower_attack_ms(unsigned(b.value))))); c.unit = "ms"; c.fill = b.value / 100.0f; break;
+    case Kind::ModRelease: c.label = "FALL"; c.value = juce::String(int(std::lround(follower_release_ms(unsigned(b.value))))); c.unit = "ms"; c.fill = b.value / 100.0f; break;
+    case Kind::ModDepth:
+        c.label = "DEPTH"; c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        c.unit = "%"; c.bipolar = true; c.fill = (b.value + 100) / 200.0f;
+        break;
+    case Kind::MacroPick: c.label = "MACRO"; c.value = juce::String(b.value + 1); break;
+    case Kind::MacroValue: c.label = "VALUE"; c.value = juce::String(b.value); c.fill = b.value / 127.0f; break;
+    case Kind::MacroLow: case Kind::MacroHigh: {
+        c.label = b.kind == Kind::MacroLow ? "LOW" : "HIGH";
+        const auto& g = s.project.macros[s.ui.macro_index % macro_count].targets[s.ui.macro_target % macro_targets];
+        auto m = motion_param(s.project.tracks[g.track % track_count], motion_lane(g.param, g.pad), &s.project);
+        if (m.info) { auto shown = show(*m.info, b.value); c.value = shown.value; c.unit = shown.unit; c.fill = gauge_of(*m.info, b.value); }
+        else c.value = juce::String(b.value);
+        break;
+    }
     case Kind::FxKey: // roadmap P4: what keys a Compressor or Gate
         c.label = "KEY";
         if (fx_key_is_track(unsigned(b.value))) { c.value = juce::String(b.value); c.unit = "track"; }

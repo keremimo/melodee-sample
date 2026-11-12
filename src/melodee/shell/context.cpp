@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/shell/mod_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/model/pad_params.h"
 #include "melodee/shell/input_choices.h"
@@ -395,6 +396,8 @@ void Context::apply(const Binding& b, int value) {
     using Kind = Binding::Kind;
     value = std::clamp(value, b.min, b.max);
     touch_gesture(b); // one undo step per control's turns (shell/undo_scope.cpp)
+    learn_lane(*this, b); // roadmap P4: what ADD on the MOD page takes
+    if (mod_binding(*this, b, value)) return;
     auto& t = track();
     switch (b.kind) {
     case Kind::Param:
@@ -500,6 +503,9 @@ void Context::apply(const Binding& b, int value) {
         break;
     }
     case Kind::FxKey: set_effect_key(unsigned(b.id) / 64, (unsigned(b.id) / 8) % 8, unsigned(value)); break; // roadmap P4
+    case Kind::ModPick: case Kind::ModKind: case Kind::ModShape: case Kind::ModSync: case Kind::ModRate: case Kind::ModInput:
+    case Kind::ModAttack: case Kind::ModRelease: case Kind::ModDepth: case Kind::MacroPick: case Kind::MacroValue: case Kind::MacroLow:
+    case Kind::MacroHigh: break; // roadmap P4: mod_binding() took them, above
     case Kind::PluginParam: set_plugin_param(b.id, value); break;
     case Kind::SendBus: ui.sends_bus = uint8_t(unsigned(value) % bus_count); break; // the bus in view on Sends
     case Kind::BusReturn: set_return(unsigned(b.id), value); record_motion(int(motion_return(unsigned(b.id))), value); break; // roadmap P4

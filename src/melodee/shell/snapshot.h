@@ -110,6 +110,7 @@ struct Snapshot {
         std::array<float, track_count> track_load {}; // each track's share of a block (roadmap P2), as render_load
         unsigned pdc_frames = 0;             // roadmap P4: what plug-in delay compensation holds everything back by
     } machine;
+    std::array<float, modulator_count> mod_values {}; // roadmap P4: each modulator's value now (EngineHost::modulator_value)
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };
 

@@ -89,6 +89,7 @@ void draw(Paint& p, const Snapshot& s) {
 
 void soft(Context& c, int key) {
     static const PageId pages[] {PageId::Steps, PageId::Roll, PageId::Motion};
+    if (key == 2) { c.open(PageId::ModPage); return; } // MOTION again, lit: the modulators and macros (roadmap P4)
     c.open(pages[key % 3]);
 }
 } // namespace

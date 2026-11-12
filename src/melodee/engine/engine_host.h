@@ -261,6 +261,8 @@ public:
     unsigned master_latency() const { return pdc_master.load(std::memory_order_relaxed); }
     // Any thread: delay blocks free in the effects' pool (a delay, reverb or chorus with none passes its sound through).
     unsigned delay_blocks_free() const { return pool.free_blocks(); }
+    // Any thread (roadmap P4): modulator `n`'s value now (an LFO's -1..1, a follower's 0..1), for its page.
+    float modulator_value(unsigned n) const { return mod_now[n % modulator_count].load(std::memory_order_relaxed); }
 
     static constexpr unsigned block = 128;
 
@@ -386,6 +388,27 @@ private:
     // back to the track's own (the master's as set).
     void move_mix(unsigned t, Slot& slot, unsigned param, int value);
     void restore_mix(Slot& slot, unsigned param);
+    // Roadmap P4, modulators (model/modulators.h): each as the shell last sent it, where its cycle is, its random
+    // values, a follower's level, and each target's lane: where it stands (`center`: as set, or where Motion has it),
+    // as set (`own`), and what was last written there. A lane set from elsewhere tells them (mod_note); the
+    // modulators write center + their swing each block (mod_write, which tells none of them).
+    struct ModRun {
+        Modulator m;
+        double phase = 0;
+        float last = 0, next = 0, value = 0, env = 0;
+        std::array<int, modulator_targets> center {}, own {}, written {};
+        std::array<bool, modulator_targets> fresh {};
+    };
+    std::array<ModRun, modulator_count> mod_runs {};
+    std::array<std::atomic<float>, modulator_count> mod_now {};
+    uint32_t mod_seed = 0x9e3779b9u;
+    bool mods_on = false; // any modulator with a target
+    void set_modulator(unsigned n, const Modulator& m, bool keep_centers);
+    void run_modulators(unsigned frames);
+    void mod_note(unsigned t, unsigned param, unsigned pad, int value, bool own); // a lane set: where it stands (and as set)
+    void mod_note_any(unsigned param, int value, bool own);                      // a master lane, on whichever track holds it
+    void mod_back(unsigned t, int param = -1, unsigned pad = 0);                   // Motion let go of track t (one lane): as set
+    void mod_write(unsigned t, unsigned param, unsigned pad, int value);
     void set_level(Slot& slot, int level);
     void set_pan(Slot& slot, int pan);
     std::array<std::array<int16_t, effect_params>, max_slots> master_base {}; // the master chain's values as set

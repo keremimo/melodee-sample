@@ -453,6 +453,40 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad4(w, n, tr.pads[n]);
         w.end(at);
     }
+    { // Modulators (roadmap P4): those in use, each with its targets
+        unsigned used = 0;
+        for (const auto& m : project.modulators) used += m.kind != ModKind::Off || m.target_count();
+        if (used) {
+            at = w.begin("MODS");
+            w.u8(used);
+            for (unsigned n = 0; n < modulator_count; ++n) {
+                const auto& m = project.modulators[n];
+                if (m.kind == ModKind::Off && !m.target_count()) continue;
+                w.u8(n); w.u8(unsigned(m.kind)); w.u8(unsigned(m.shape)); w.u8(m.sync); w.u8(m.rate); w.u8(m.division);
+                w.u8(m.source); w.u8(m.attack); w.u8(m.release);
+                w.u8(m.target_count());
+                for (unsigned i = 0; i < modulator_targets; ++i)
+                    if (const auto& t = m.targets[i]; t.used()) { w.u8(i); w.u8(t.track); w.u8(t.param); w.u8(t.pad); w.u8(uint8_t(t.depth)); w.i16(t.low); w.i16(t.high); }
+            }
+            w.end(at);
+        }
+    }
+    { // Macros (roadmap P4): those with targets, each with its value
+        unsigned used = 0;
+        for (const auto& m : project.macros) used += m.target_count() > 0;
+        if (used) {
+            at = w.begin("MACR");
+            w.u8(used);
+            for (unsigned n = 0; n < macro_count; ++n) {
+                const auto& m = project.macros[n];
+                if (!m.target_count()) continue;
+                w.u8(n); w.u8(m.value); w.u8(m.target_count());
+                for (unsigned i = 0; i < macro_targets; ++i)
+                    if (const auto& t = m.targets[i]; t.used()) { w.u8(i); w.u8(t.track); w.u8(t.param); w.u8(t.pad); w.i16(t.low); w.i16(t.high); }
+            }
+            w.end(at);
+        }
+    }
     { // Compressors and Gates keyed by another track or bus (roadmap P4): chain, slot, key
         unsigned keyed = 0;
         for (unsigned n = 0; n < chain_count; ++n) for (const auto& s : project.chain(n).slots) keyed += s.used() && s.key;
@@ -654,6 +688,40 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 sorted = sorted && (!k || c.slices.start[k] > c.slices.start[k - 1]);
             }
             if (r.ok && sorted && n < sample_slots) project->chops[n] = c; // a damaged one is cut afresh
+        } else if (name == "MODS") { // modulators (roadmap P4); without it none
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) {
+                unsigned n = r.u8();
+                Modulator m;
+                m.kind = ModKind(std::min<unsigned>(r.u8(), unsigned(ModKind::Count) - 1));
+                m.shape = LfoShape(std::min<unsigned>(r.u8(), unsigned(LfoShape::Count) - 1));
+                m.sync = r.u8() != 0; m.rate = uint8_t(std::min<unsigned>(r.u8(), 100)); m.division = uint8_t(std::min<unsigned>(r.u8(), lfo_divisions - 1));
+                m.source = uint8_t(r.u8() % (track_count + bus_count)); m.attack = uint8_t(std::min<unsigned>(r.u8(), 100)); m.release = uint8_t(std::min<unsigned>(r.u8(), 100));
+                unsigned targets = r.u8();
+                for (unsigned k2 = 0; k2 < targets && r.ok; ++k2) {
+                    unsigned i = r.u8();
+                    ModTarget t;
+                    t.track = uint8_t(r.u8()); t.param = uint8_t(r.u8()); t.pad = uint8_t(r.u8() % sampler_pads); t.depth = int8_t(std::clamp<int>(int8_t(r.u8()), -100, 100));
+                    t.low = int16_t(r.i16()); t.high = int16_t(r.i16());
+                    if (i < modulator_targets && t.track < track_count) m.targets[i] = t;
+                }
+                if (r.ok && n < modulator_count) project->modulators[n] = m;
+            }
+        } else if (name == "MACR") { // macros (roadmap P4); without it none
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) {
+                unsigned n = r.u8();
+                Macro m;
+                m.value = uint8_t(std::min<unsigned>(r.u8(), 127));
+                unsigned targets = r.u8();
+                for (unsigned k2 = 0; k2 < targets && r.ok; ++k2) {
+                    unsigned i = r.u8();
+                    MacroTarget t;
+                    t.track = uint8_t(r.u8()); t.param = uint8_t(r.u8()); t.pad = uint8_t(r.u8() % sampler_pads); t.low = int16_t(r.i16()); t.high = int16_t(r.i16());
+                    if (i < macro_targets && t.track < track_count) m.targets[i] = t;
+                }
+                if (r.ok && n < macro_count) project->macros[n] = m;
+            }
         } else if (name == "FXKY") { // keyed Compressors and Gates (roadmap P4); without it each hears itself
             unsigned keyed = r.u16();
             for (unsigned k = 0; k < keyed && r.ok; ++k) {

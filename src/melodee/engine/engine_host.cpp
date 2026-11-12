@@ -4,6 +4,7 @@
 #include <chrono>
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/model/lane_value.h"
 #include <algorithm>
 #include <cmath>
 #if defined(__linux__)
@@ -107,6 +108,11 @@ void EngineHost::load_state(const Project& project, bool keep_loops) {
         }
     }
     loops.configure(project.looper, keep_loops);
+    for (unsigned n = 0; n < modulator_count; ++n) { // roadmap P4: each lane where the project has it
+        Modulator m = project.modulators[n];
+        for (auto& g : m.targets) if (g.used()) g.own = int16_t(lane_own(project, g.track, g.param, g.pad));
+        set_modulator(n, m, false);
+    }
     knob_targets();
     lead = project.tracks[0].pattern;
     tempo = 0;
@@ -350,6 +356,7 @@ void EngineHost::apply(const Command& c) {
         if (slot.kind == EngineKind::Midi && c.index < midi_track::routing_params && slot.base[c.index] != c.value) midi_all_off(c.track, frame_now);
         if (c.index < max_params) slot.base[c.index] = c.value;
         engine_param(slot, c.index, c.value);
+        if (mods_on) mod_note(c.track % track_count, c.index, 0, c.value, true); // roadmap P4
         if (slot.kind == EngineKind::Midi) midi_param(c.track % track_count, c.index, c.value, frame_now);
         break;
     case Type::Mod:
@@ -358,6 +365,9 @@ void EngineHost::apply(const Command& c) {
             call.op = EngineCall::Op::Mod; call.a = c.index; call.b = c.route.source; call.c = c.route.destination; call.d = c.route.amount;
             if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
         }
+        break;
+    case Type::Modulator: // roadmap P4
+        if (c.track < modulator_count) { Modulator m = mod_runs[c.track].m; unpack_modulator(c, m); set_modulator(c.track, m, true); }
         break;
     case Type::FxKey: // roadmap P4
         if (c.track < chain_count && c.index < max_slots) fx_key[c.track][c.index] = uint8_t(c.value >= 0 && c.value < int(fx_keys) ? c.value : 0);
@@ -377,6 +387,8 @@ void EngineHost::apply(const Command& c) {
             fx[c.track][c.index].set_param(c.pattern, c.value);
             if (c.track < track_count && c.pattern < effect_params) slots[c.track].fx_base[c.index][c.pattern] = c.value;
             if (c.track == master_chain && c.pattern < effect_params) master_base[c.index][c.pattern] = c.value; // roadmap P4
+            if (mods_on && c.track < track_count) mod_note(c.track, motion_fx_param(c.index, c.pattern), 0, c.value, true);
+            if (mods_on && c.track == master_chain) mod_note_any(motion_master_fx(c.index, c.pattern), c.value, true);
         }
         break;
     case Type::FxBypass: if (c.track < chain_count && c.index < max_slots) fx[c.track][c.index].set_bypass(c.value != 0); break;
@@ -396,8 +408,12 @@ void EngineHost::apply(const Command& c) {
     case Type::SendBus: break; // a track sends into every bus (Send's index), so none is picked
     case Type::Return:
         if (c.index < bus_count) { returns_base[c.index] = int16_t(std::clamp<int>(c.value, 0, 100)); returns[c.index] = returns_base[c.index] / 100.0f; }
+        if (mods_on && c.index < bus_count) mod_note_any(motion_return(c.index), returns_base[c.index], true);
         break;
-    case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;
+    case Type::Pad:
+        slot.sampler.set_pad(c.index, c.pad);
+        if (mods_on) for (unsigned p = 0; p < pad_param_count; ++p) mod_note(c.track % track_count, motion_pad_param(PadParam(p)), c.index, pad_param_value(c.pad, PadParam(p)), true);
+        break;
     case Type::PadMute:
         if (c.index == 0xffff) for (unsigned pad = 0; pad < sampler_pads; ++pad) slot.sampler.set_pad_mute(pad, c.value != 0);
         else slot.sampler.set_pad_mute(c.index, c.value != 0);
@@ -660,11 +676,12 @@ void EngineHost::apply(const Command& c) {
         slot.wheel = std::clamp(c.value / 1000.0f, 0.0f, 1.0f);
         engine_wheel(slot, slot.wheel);
         break;
-    case Type::Level: slot.mix_level = c.value; set_level(slot, c.value); break; // roadmap P4: kept, Motion borrows it
-    case Type::Pan: slot.mix_pan = c.value; set_pan(slot, c.value); break;
+    case Type::Level: slot.mix_level = c.value; set_level(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_level, 0, c.value, true); break; // roadmap P4: kept, Motion borrows it
+    case Type::Pan: slot.mix_pan = c.value; set_pan(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_pan, 0, c.value, true); break;
     case Type::Send: // index: the bus
         slot.mix_sends[c.index % bus_count] = int16_t(std::clamp<int>(c.value, 0, 100));
         slot.sends[c.index % bus_count] = std::clamp<int>(c.value, 0, 100) / 100.0f;
+        if (mods_on) mod_note(c.track % track_count, motion_send(c.index), 0, slot.mix_sends[c.index % bus_count], true);
         break;
     case Type::Mute: slot.mute = c.value != 0; midi_silenced(); break;
     case Type::Solo: slot.solo = c.value != 0; midi_silenced(); break;
@@ -940,6 +957,126 @@ unsigned EngineHost::chain_latency(unsigned chain) const {
     return sum;
 }
 
+// Roadmap P4, modulators. A new one (or one changed) keeps where its lanes stand when they are the same lanes
+// (`keep_centers`: Motion may have them elsewhere); a lane it no longer moves goes back to where it stands.
+void EngineHost::set_modulator(unsigned n, const Modulator& m, bool keep_centers) {
+    auto& r = mod_runs[n % modulator_count];
+    for (unsigned i = 0; i < modulator_targets; ++i) {
+        const auto& was = r.m.targets[i];
+        const auto& now = m.targets[i];
+        bool same = was.used() && now.used() && was.track == now.track && was.param == now.param && was.pad == now.pad;
+        if (was.used() && (!same || m.kind == ModKind::Off)) mod_write(was.track, was.param, was.pad, r.center[i]); // let go
+        if (now.used()) {
+            if (!same || !keep_centers) r.center[i] = now.own;
+            r.own[i] = now.own;
+            r.fresh[i] = true;
+        }
+    }
+    if (r.m.kind != m.kind || r.m.shape != m.shape) { r.last = 0; r.next = 0; }
+    r.m = m;
+    mods_on = false;
+    for (const auto& run : mod_runs) mods_on |= run.m.kind != ModKind::Off && run.m.target_count();
+}
+
+void EngineHost::mod_note(unsigned t, unsigned param, unsigned pad, int value, bool own) {
+    bool pad_lane = pad_param_of(param) >= 0;
+    for (auto& r : mod_runs)
+        for (unsigned i = 0; i < modulator_targets; ++i) {
+            const auto& g = r.m.targets[i];
+            if (!g.used() || g.track != t || g.param != param || (pad_lane && g.pad != pad)) continue;
+            r.center[i] = value;
+            if (own) r.own[i] = value;
+            r.fresh[i] = true;
+        }
+}
+
+void EngineHost::mod_note_any(unsigned param, int value, bool own) {
+    for (auto& r : mod_runs)
+        for (unsigned i = 0; i < modulator_targets; ++i) {
+            const auto& g = r.m.targets[i];
+            if (!g.used() || g.param != param) continue;
+            r.center[i] = value;
+            if (own) r.own[i] = value;
+            r.fresh[i] = true;
+        }
+}
+
+void EngineHost::mod_back(unsigned t, int param, unsigned pad) {
+    for (auto& r : mod_runs)
+        for (unsigned i = 0; i < modulator_targets; ++i) {
+            const auto& g = r.m.targets[i];
+            if (!g.used() || (g.track != t && !is_master_lane(g.param))) continue;
+            if (param >= 0 && (g.param != unsigned(param) || (pad_param_of(g.param) >= 0 && g.pad != pad))) continue;
+            r.center[i] = r.own[i];
+            r.fresh[i] = true;
+        }
+}
+
+// A modulated value to its lane, as Motion would write it, telling no modulator (at a block's start: straight in).
+void EngineHost::mod_write(unsigned t, unsigned param, unsigned pad, int value) {
+    auto& slot = slots[t % track_count];
+    if (is_mix_lane(param)) {
+        bool mix = slot.mix_moved, master = slot.master_moved; // a modulator's swing is not Motion's: Stop leaves it be
+        move_mix(t, slot, param, value);
+        slot.mix_moved = mix; slot.master_moved = master;
+        return;
+    }
+    if (param == motion_wheel) { if (slot.engine) engine_wheel(slot, std::clamp(value / 127.0f, 0.0f, 1.0f)); return; }
+    if (int which = pad_param_of(param); which >= 0) {
+        if (slot.kind == EngineKind::Sampler) slot.sampler.move_pad(pad % sampler_pads, PadParam(which), value);
+        return;
+    }
+    if (param >= motion_fx_base) {
+        unsigned k = (param - motion_fx_base) / effect_params, q = (param - motion_fx_base) % effect_params;
+        if (k < max_slots) fx[t % track_count][k].set_param(q, value);
+        return;
+    }
+    if (slot.engine && param < max_params) engine_param(slot, int(param), value);
+}
+
+// Each block's start: every modulator a step on (an LFO's cycle, free or on the song's clock; a follower's level of
+// what its source played the block before), and its lanes written where they stand plus its swing, when that moved.
+void EngineHost::run_modulators(unsigned frames) {
+    for (unsigned n = 0; n < modulator_count; ++n) {
+        auto& r = mod_runs[n];
+        const auto& m = r.m;
+        if (m.kind == ModKind::Off || !m.target_count()) { mod_now[n].store(0, std::memory_order_relaxed); continue; }
+        bool follower = m.kind == ModKind::Follower;
+        if (follower) {
+            unsigned s = m.source % (track_count + bus_count);
+            const float* l = s < track_count ? slots[s].left : bus_l[s - track_count];
+            const float* rr = s < track_count ? slots[s].right : bus_r[s - track_count];
+            float peak = 0;
+            if (s >= track_count || slots[s].engine)
+                for (unsigned f = 0; f < frames; ++f) peak = std::max(peak, std::max(std::fabs(l[f]), std::fabs(rr[f])));
+            double ms = peak > r.env ? follower_attack_ms(m.attack) : follower_release_ms(m.release);
+            float k = float(1 - std::exp(-double(frames) / std::max(1.0, ms * 0.001 * dsp::sample_rate())));
+            r.env += (peak - r.env) * k;
+            r.value = std::min(1.0f, r.env * 2);
+        } else {
+            double before = r.phase;
+            if (m.sync) r.phase = effect_clock.beats / lfo_division_quarters(m.division);
+            else r.phase += lfo_hertz(m.rate) * frames / dsp::sample_rate();
+            if (std::floor(r.phase) != std::floor(before)) { // a new cycle: a new random value for S&H and Drift
+                mod_seed ^= mod_seed << 13; mod_seed ^= mod_seed >> 17; mod_seed ^= mod_seed << 5;
+                r.last = r.next;
+                r.next = float(mod_seed % 20001) / 10000.0f - 1.0f;
+            }
+            if (!m.sync && r.phase >= 1) r.phase -= std::floor(r.phase);
+            r.value = lfo_value(m.shape, r.phase, r.last, r.next);
+        }
+        mod_now[n].store(r.value, std::memory_order_relaxed);
+        for (unsigned i = 0; i < modulator_targets; ++i) {
+            const auto& g = m.targets[i];
+            if (!g.used()) continue;
+            int v = modulated(g, r.center[i], r.value, follower);
+            if (v == r.written[i] && !r.fresh[i]) continue;
+            mod_write(g.track, g.param, g.pad, v);
+            r.written[i] = v; r.fresh[i] = false;
+        }
+    }
+}
+
 // Roadmap P4, keyed Compressors and Gates, at each block's start: which tracks wait for the tracks keying them, and
 // which sources' outputs are kept for the next block. A track keyed by a track that itself waits hears it a block late.
 void EngineHost::plan_keys() {
@@ -1061,6 +1198,7 @@ void EngineHost::restore(Slot& slot) {
     }
     for (auto& l : slot.locks) l.param = -1; // locks end with everything they moved
     slot.locks_on = 0;
+    if (mods_on) mod_back(unsigned(&slot - slots.data())); // roadmap P4: modulators swing around the values as set again
     if (slot.mix_moved) { // roadmap P4: the strip back where it was set
         set_level(slot, slot.mix_level); set_pan(slot, slot.mix_pan);
         for (unsigned b = 0; b < bus_count; ++b) slot.sends[b] = slot.mix_sends[b] / 100.0f;
@@ -1142,6 +1280,7 @@ void EngineHost::restore_mix(Slot& slot, unsigned param) {
 }
 
 void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad, int value) {
+    if (mods_on) { if (is_master_lane(param)) mod_note_any(param, value, false); else mod_note(t, param, pad, value, false); } // roadmap P4: modulated around it
     if (is_mix_lane(param)) { move_mix(t, slot, param, value); return; } // roadmap P4
     if (param == motion_wheel) { // the mod wheel's lane (parity phase 8)
         if (slot.engine) { engine_wheel(slot, std::clamp(value / 127.0f, 0.0f, 1.0f)); slot.wheel_moved = true; }
@@ -1167,6 +1306,7 @@ void EngineHost::move_lane(unsigned t, Slot& slot, unsigned param, unsigned pad,
 }
 
 void EngineHost::restore_lane(unsigned t, Slot& slot, unsigned param, unsigned pad) {
+    if (mods_on) mod_back(t, int(param), pad); // roadmap P4: modulated around its own again
     if (is_mix_lane(param)) { restore_mix(slot, param); return; } // roadmap P4
     if (param == motion_wheel) { engine_wheel(slot, slot.wheel); return; }
     if (param >= motion_pad_base) {
@@ -1823,6 +1963,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // The clock tempo-synced effects follow: quarters since Play (on from where it was while stopped).
     effect_clock.quarter = tick_length() * ticks_per_quarter;
     if (running) effect_clock.beats = (double(tick_now) - std::max(until_tick, 0.0) / tick_length()) / ticks_per_quarter;
+    if (mods_on) run_modulators(frames); // roadmap P4: before the tracks' buffers are cleared (a follower hears the last block)
     // The arps' clock, at the block's start (within 3 ms of the beat).
     until_arp -= frames;
     while (until_arp <= 0) { arp_tick(); until_arp += arp_tick_length(); }

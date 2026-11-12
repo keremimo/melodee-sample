@@ -31,6 +31,7 @@
 #include "melodee/model/chords.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
+#include "melodee/model/lane_value.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
@@ -10048,7 +10049,99 @@ void delay_pool_clears() {
     CHECK(last.clearing() && pool->free_blocks() == 0);
 }
 
+// Roadmap P4: modulators (an LFO, free or on the clock, an envelope follower) on any lane, and macros.
+void modulators_p4() {
+    // Shapes and the swing around a lane.
+    CHECK(std::fabs(lfo_value(LfoShape::Sine, 0.25) - 1) < 1e-5f && std::fabs(lfo_value(LfoShape::Triangle, 0.75) + 1) < 1e-5f);
+    CHECK(lfo_value(LfoShape::Square, 0.2) == 1 && lfo_value(LfoShape::SawUp, 0) == -1 && lfo_value(LfoShape::Hold, 0.3, 0.1f, -0.4f) == -0.4f);
+    ModTarget g; g.track = 0; g.param = uint8_t(motion_level); g.low = 0; g.high = 127; g.depth = 50;
+    CHECK(modulated(g, 100, 1, false) == 127 && modulated(g, 64, -1, false) == 32 && modulated(g, 64, 1, true) == 127);
+    CHECK(Macro::at(MacroTarget {0, 0, 0, 20, 100}, 127) == 100 && Macro::at(MacroTarget {0, 0, 0, 100, 20}, 0) == 100);
+    // The file: MODS and MACR.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        auto& m = project->modulators[2];
+        m.kind = ModKind::Lfo; m.shape = LfoShape::Drift; m.sync = true; m.division = 6; m.rate = 33;
+        m.targets[1] = ModTarget {4, uint8_t(motion_send(2)), 0, -40, 0, 100, 0};
+        auto& f = project->modulators[5];
+        f.kind = ModKind::Follower; f.source = 18; f.attack = 5; f.release = 70;
+        f.targets[0] = ModTarget {1, uint8_t(motion_pad_param(PadParam::Pitch)), 9, 30, -48, 48, 0};
+        auto& macro = project->macros[3];
+        macro.value = 99;
+        macro.targets[0] = MacroTarget {2, uint8_t(motion_level), 0, 40, 120};
+        macro.targets[5] = MacroTarget {7, uint8_t(motion_master_fx(1, 2)), 0, 100, 0};
+        auto data = save_project(*project, *bank);
+        auto copy = std::make_unique<Project>();
+        auto copy_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *copy, *copy_bank).empty());
+        CHECK(copy->modulators[2] == m && copy->modulators[5] == f && copy->modulators[0].kind == ModKind::Off);
+        CHECK(copy->macros[3].value == 99 && copy->macros[3].targets[0] == macro.targets[0] && copy->macros[3].target_count() == 2);
+        CHECK(lane_own(*project, 4, motion_send(2), 0) == 0 && lane_own(*project, 2, motion_level, 0) == 100);
+    }
+    // The host: a held tone, its level swung by an LFO, then ducked by a follower of another track.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (unsigned t = 0; t < 2; ++t) { project->tracks[t].engine = EngineKind::Plugin; project->tracks[t].plugin = uint8_t(t); }
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    FakePlugin tone, key;
+    CHECK(host->offer_plugin(0, &tone) && host->offer_plugin(1, &key));
+    std::vector<int32_t> out(256);
+    std::vector<float> stems(size_t(track_count) * EngineHost::block);
+    auto levels = [&](unsigned blocks, float& low, float& high) {
+        low = 1e9f; high = 0;
+        for (unsigned n = 0; n < blocks; ++n) {
+            host->render(out.data(), 128, 1, nullptr, stems.data());
+            float most = 0;
+            for (unsigned f = 0; f < 128; ++f) most = std::max(most, std::fabs(stems[f]));
+            low = std::min(low, most); high = std::max(high, most);
+        }
+    };
+    host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+    float low = 0, high = 0;
+    levels(20, low, high);
+    float steady = high;
+    CHECK(steady > 0.1f && low > steady * 0.95f);
+    Modulator lfo;
+    lfo.kind = ModKind::Lfo; lfo.shape = LfoShape::Sine; lfo.rate = 70; // about 2.5 Hz
+    lfo.targets[0] = ModTarget {0, uint8_t(motion_level), 0, 100, 0, 127, 100};
+    host->send(pack_mod_target(0, 0, lfo.targets[0]));
+    host->send(pack_modulator(0, lfo));
+    levels(400, low, high); // over a second: the level swings
+    CHECK(low < steady * 0.3f && high > steady * 0.9f && std::fabs(host->modulator_value(0)) <= 1);
+    // Its lane's own value moves while it swings: the swing follows it.
+    host->send({Command::Type::Level, 0, 0, 0, 60}); // around 60 now: up to 123 (half the range each way)
+    levels(400, low, high);
+    CHECK(high > steady * 1.3f && low < steady * 0.05f);
+    // Off: the lane where it was set (60).
+    lfo.kind = ModKind::Off;
+    host->send(pack_modulator(0, lfo));
+    levels(20, low, high); // eased there
+    levels(10, low, high);
+    CHECK(std::fabs(high - low) < 1e-3f && high < steady * 0.6f && high > steady * 0.2f);
+    // A follower of track 2 pulls track 1's level down while it plays.
+    host->send({Command::Type::Level, 0, 0, 0, 100});
+    Modulator follower;
+    follower.kind = ModKind::Follower; follower.source = 1; follower.attack = 0; follower.release = 20;
+    follower.targets[0] = ModTarget {0, uint8_t(motion_level), 0, -100, 0, 127, 100};
+    host->send(pack_modulator(1, follower));
+    host->send(pack_mod_target(1, 0, follower.targets[0]));
+    levels(20, low, high);
+    CHECK(high > steady * 0.9f);
+    host->send({Command::Type::NoteOn, 1, 0, 60, 100});
+    levels(10, low, high); // the follower rises, the level eases down
+    levels(20, low, high);
+    CHECK(high < steady * 0.2f && host->modulator_value(1) > 0.4f);
+    host->send({Command::Type::NoteOff, 1, 0, 60, 0});
+    levels(200, low, high);
+    CHECK(high > steady * 0.9f);
+    CHECK(host->offer_plugin(0, nullptr) && host->offer_plugin(1, nullptr));
+    host->render(out.data(), 128, 1);
+}
+
 int main() {
+    modulators_p4();
     delay_pool_clears();
     mix_motion_p4();
     delay_sync_p4();

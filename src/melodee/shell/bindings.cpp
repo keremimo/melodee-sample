@@ -574,6 +574,21 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     case PageId::Trim: case PageId::PadMix: case PageId::EnvelopePage: case PageId::FilterEnvPage: case PageId::PadPage: case PageId::PlayPage:
     case PageId::LayersPage:
         return pad_page_shift(track, ui, ui.page);
+    case PageId::ModPage: { // roadmap P4: a modulator's kind, then an LFO's shape and clock or a follower's source and fall; a macro target's low
+        if (ui.mod_view == 1) {
+            const auto& g = project.macros[ui.macro_index % macro_count].targets[ui.macro_target % macro_targets];
+            if (!g.used()) return {};
+            auto m = motion_param(project.tracks[g.track % track_count], motion_lane(g.param, g.pad), &project);
+            if (!m.info) return {};
+            return {Binding {}, Binding {}, Binding {Kind::MacroLow, 0, m.info->min, m.info->max, g.low}};
+        }
+        const auto& m = project.modulators[ui.mod_index % modulator_count];
+        Binding kind {Kind::ModKind, 0, 0, int(ModKind::Count) - 1, int(m.kind)};
+        if (m.kind == ModKind::Follower)
+            return {kind, Binding {Kind::ModInput, 0, 0, int(track_count + bus_count) - 1, m.source}, Binding {Kind::ModRelease, 0, 0, 100, m.release}};
+        if (m.kind == ModKind::Off) return {kind, Binding {}, Binding {}};
+        return {kind, Binding {Kind::ModShape, 0, 0, int(LfoShape::Count) - 1, int(m.shape)}, Binding {Kind::ModSync, 0, 0, 1, int(m.sync)}};
+    }
     case PageId::Chop: { // Shift + K1 / K2 zoom at the slice's start or end; Shift + K3 the type's amount (Threshold as on the MPC)
         static const int lows[] {0, 2, 1}, highs[] {100, int(max_slices), 8};
         unsigned mode = unsigned(ui.chop_mode);
@@ -686,6 +701,25 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
     case PageId::Patterns: return pattern_cards(project, pattern);
+    case PageId::ModPage: { // roadmap P4: the modulator in hand, its rate (or a follower's rise), the target in hand's depth; a macro, its value, a target's high
+        if (ui.mod_view == 1) {
+            const auto& macro = project.macros[ui.macro_index % macro_count];
+            const auto& g = macro.targets[ui.macro_target % macro_targets];
+            Binding high {};
+            if (g.used())
+                if (auto m = motion_param(project.tracks[g.track % track_count], motion_lane(g.param, g.pad), &project); m.info)
+                    high = {Kind::MacroHigh, 0, m.info->min, m.info->max, g.high};
+            return {Binding {Kind::MacroPick, 0, 0, int(macro_count) - 1, ui.macro_index % int(macro_count)}, Binding {Kind::MacroValue, 0, 0, 127, macro.value}, high};
+        }
+        const auto& m = project.modulators[ui.mod_index % modulator_count];
+        Binding pick {Kind::ModPick, 0, 0, int(modulator_count) - 1, ui.mod_index % int(modulator_count)};
+        Binding rate {};
+        if (m.kind == ModKind::Follower) rate = {Kind::ModAttack, 0, 0, 100, m.attack};
+        else if (m.kind == ModKind::Lfo) rate = m.sync ? Binding {Kind::ModRate, 0, 0, int(lfo_divisions) - 1, m.division} : Binding {Kind::ModRate, 0, 0, 100, m.rate};
+        const auto& g = m.targets[ui.mod_target % modulator_targets];
+        Binding depth = g.used() ? Binding {Kind::ModDepth, 0, -100, 100, g.depth} : Binding {};
+        return {pick, rate, depth};
+    }
     case PageId::RecQuantize: // K1 the grid: the pattern's Q, or 1/4 .. 1/64 of its own
         return {Binding {Kind::RecGrid, 0, 0, int(Division::Count), ui.settings.rec_grid}, Binding {}, Binding {}};
     case PageId::StepEdit: // step entry (round 2, step-edit2 C): what a pad writes, its length in steps of Q, velocity (0 as played), chance

@@ -6,6 +6,7 @@
 #include "melodee/model/knob_fx.h"
 #include "melodee/model/limits.h"
 #include "melodee/model/looper.h"
+#include "melodee/model/modulators.h"
 #include "melodee/model/pad_fx.h"
 #include "melodee/model/pattern.h"
 #include "melodee/model/sampler.h"
@@ -355,6 +356,9 @@ struct Project {
     LooperSettings looper;
     std::array<Mix, loop_tracks> loop_mix {};
     std::array<Chain, loop_tracks> loop_fx = [] { std::array<Chain, loop_tracks> c {}; for (auto& x : c) x.size = track_slots; return c; }();
+    // Roadmap P4: LFOs and followers on any lane (MODS), and macros turning several at once (MACR); model/modulators.h.
+    std::array<Modulator, modulator_count> modulators {};
+    std::array<Macro, macro_count> macros {};
     Chain& chain(unsigned n) {
         if (n >= pad_chain_base) { n -= pad_chain_base; return tracks[(n / sampler_pads) % track_count].pad_fx.at[n % sampler_pads]; }
         if (is_loop_chain(n)) return loop_fx[n - loop_chain(0)];

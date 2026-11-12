@@ -3,6 +3,7 @@
 // The Context side of undo for pots and page presses (parity phase 10,
 // shell/undo_scope.h): taking a scope's state, keeping what changed, and
 // restoring it with the commands the audio thread needs.
+#include "melodee/shell/mod_jobs.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/context.h"
 #include <cstring>
@@ -133,6 +134,9 @@ void Context::restore_sound(unsigned t, const SoundState& s) {
 }
 
 void Context::restore_master(const MasterState& m) {
+    for (unsigned n = 0; n < modulator_count; ++n) // roadmap P4
+        if (project.modulators[n] != m.modulators[n]) { project.modulators[n] = m.modulators[n]; send_modulator(*this, n); }
+    project.macros = m.macros;
     auto& k = project.knob_fx;
     if (k.kind != m.knob_kind) { k.kind = m.knob_kind; send({Type::KnobFx, 0, 0, 0, int16_t(k.kind)}); }
     k.choice = m.knob_choice;

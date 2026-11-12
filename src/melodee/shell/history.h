@@ -73,6 +73,8 @@ struct MasterState {
     PadFxParams pad_fx {};
     FlexSettings flex {};
     uint8_t punch_depth = 0, punch_snap = 0, punch_tail = 0;
+    std::array<Modulator, modulator_count> modulators {}; // roadmap P4: the MOD page's
+    std::array<Macro, macro_count> macros {};
     bool operator==(const MasterState& o) const { // field by field: padding is never compared
         const auto& c = compressor; const auto& d = o.compressor;
         return knob_choice == o.knob_choice && knob_kind == o.knob_kind && knob_bypass == o.knob_bypass && knob_params == o.knob_params
@@ -80,7 +82,8 @@ struct MasterState {
             && c.on == d.on && c.color == d.color && c.attack == d.attack && c.release == d.release && c.amount == d.amount && c.boost == d.boost
             && c.sidechain == d.sidechain && c.key == d.key && c.key_pad == d.key_pad
             && pad_fx == o.pad_fx && flex.mode == o.flex.mode && flex.mix == o.flex.mix && flex.quantize == o.flex.quantize
-            && punch_depth == o.punch_depth && punch_snap == o.punch_snap && punch_tail == o.punch_tail;
+            && punch_depth == o.punch_depth && punch_snap == o.punch_snap && punch_tail == o.punch_tail
+            && modulators == o.modulators && macros == o.macros;
     }
 };
 // Chop's slices of the region in hand (UI state, not saved).

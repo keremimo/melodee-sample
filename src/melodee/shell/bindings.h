@@ -83,7 +83,12 @@ struct Binding {
         // pad's (hundredths of a dB in steps of a tenth), and how a hit picks its layers (model/sampler.h LayerPlay).
         LayerPick, LayerLow, LayerHigh, LayerPitch, LayerGain, LayerPlayMode,
         PadLoopXfade, // roadmap P3, PLAY's Shift + K3: the last pad's loop seam crossfade, ms (0 none)
-        FxKey         // roadmap P4, a Compressor's or Gate's third row: what keys it (model/project.h fx_key_*), id as FxParam's
+        FxKey,        // roadmap P4, a Compressor's or Gate's third row: what keys it (model/project.h fx_key_*), id as FxParam's
+        // Roadmap P4, the MOD page (model/modulators.h): the modulator in hand, its kind, an LFO's shape, clock and rate
+        // (free: 0..100; on the clock: a division), a follower's source (tracks, buses) and rise and fall, the target in
+        // hand's depth; a macro, its value (every target with it), the target in hand's low and high.
+        ModPick, ModKind, ModShape, ModSync, ModRate, ModInput, ModAttack, ModRelease, ModDepth,
+        MacroPick, MacroValue, MacroLow, MacroHigh
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

@@ -37,6 +37,7 @@ MasterState master_of(const Project& p) {
     m.knob_a = p.knob_fx.a; m.knob_b = p.knob_fx.b; m.knob_morph = p.knob_fx.morph;
     m.compressor = p.compressor; m.pad_fx = p.pad_fx_params; m.flex = p.flex;
     m.punch_depth = p.punch_depth; m.punch_snap = p.punch_snap; m.punch_tail = p.punch_tail;
+    m.modulators = p.modulators; m.macros = p.macros; // roadmap P4
     return m;
 }
 ChopState chop_of(const UiState& ui) {
@@ -51,6 +52,9 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::Param: case Kind::ModSource: case Kind::ModDest: case Kind::ModAmount: return of(S::Sound, ui);
     case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: return of(S::Mix, ui);
     case Kind::FxParam: case Kind::FxKey: return of(S::Chain, ui, unsigned(b.id) / 64);
+    // Roadmap P4: a modulator's settings and a macro's targets, with the master's; a macro's turn and the picks are not kept.
+    case Kind::ModKind: case Kind::ModShape: case Kind::ModSync: case Kind::ModRate: case Kind::ModInput: case Kind::ModAttack:
+    case Kind::ModRelease: case Kind::ModDepth: case Kind::MacroLow: case Kind::MacroHigh: return of(S::Master, ui);
     case Kind::PadPitch: case Kind::PadLevel: case Kind::PadPan: case Kind::PadStart: case Kind::PadEnd: case Kind::PadFine:
     case Kind::PadPlayMode: case Kind::PadGroup: case Kind::PadReverse: case Kind::PadAttack: case Kind::PadDecay: case Kind::PadRelease:
     case Kind::PadSustain: case Kind::PadPunchKind: case Kind::PadPunchRate: case Kind::PadPunchDepth: case Kind::PadLoopPoint:

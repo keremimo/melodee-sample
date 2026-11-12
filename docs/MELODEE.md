@@ -633,6 +633,29 @@ hold to steer, Shift + Seq to zoom in**.
   (up to 8192 points, at tick resolution): it goes with the pattern when it
   is copied, doubled, halved or sped up, and a lock's lane goes back to what
   it holds as recorded (else the track's value) when the lock ends.
+- **MOD: modulators and macros** (roadmap P4): MOTION again on Motion
+  (lit) opens MOD. B1 MOD: eight modulators, each an LFO (Sine, Tri, Saw,
+  Ramp, Square, S&H, Drift; free from 0.02 to 20 Hz, or on the song's
+  clock from 1/16 to 8 bars, its cycle locked to the bars) or a follower
+  of how loud a track or bus is after its chain (rise 1–200 ms, fall
+  10 ms–2 s), each moving up to four lanes of any track: an engine
+  parameter, an effect of its chain, a kit pad's own value, its level,
+  pan or sends, the master's chain or a return. K1 which, K2 rate (a
+  follower's rise), K3 the target in hand's depth (±100 % of the lane's
+  range: an LFO swings half each way, a follower pushes it one way);
+  Shift + K1 Off / LFO / Follow, Shift + K2 the shape or the source,
+  Shift + K3 Free / Sync or the fall. B3 ADD puts the lane a pot turned
+  last (anywhere) on it; the wheel picks the target in hand, Push takes it
+  off. A modulator swings a lane around where it stands, as set or where
+  Motion has it, every block; Off, the lane goes back there. B2 MACRO:
+  eight macros, each one knob (K2) turning up to eight lanes, each from
+  its low (Shift + K3) to its high (K3); ADD takes the lane learned last
+  from where it stands to the far end of its range. A macro's turn sets
+  each lane as its own pot would (Motion records the track in hand's).
+  The picture: the wave with where it is now (a follower's level) and the
+  targets as rows (track chip, lane, depth); a macro's value as an arc
+  and its targets four at a time. Settings are part of undo with the
+  master's; files keep them in MODS and MACR.
 - **The mix in Motion** (roadmap P4): with Seq Record on, a track's LEVEL,
   PAN and SEND A–D turned on Stage, Tracks or Sends write lanes of the
   selected track's pattern, and so do the master chain's parameters (FX

@@ -871,6 +871,32 @@ const Preview previews[] {
          s.ui.page = PageId::Bus; s.ui.track = 2; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    // Roadmap P4, MOD (MOTION again on Motion): an LFO on two lanes, a follower ducking a track, a macro on three.
+    {"modlfo", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::ModPage; s.ui.track = 2; s.playing = true; s.ui.mod_index = 0; s.ui.mod_target = 1;
+         auto& m = s.project.modulators[0];
+         m.kind = ModKind::Lfo; m.shape = LfoShape::Triangle; m.sync = true; m.division = 2;
+         m.targets[0] = ModTarget {2, uint8_t(motion_fx_param(0, 0)), 0, 40, 0, 100, 0};
+         m.targets[1] = ModTarget {4, uint8_t(motion_pan), 0, -70, -50, 50, 0};
+         s.mod_values[0] = 0.4f; s.ui.turning = 2; s.ui.turned_at = s.now;
+     }},
+    {"modfollow", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::ModPage; s.ui.track = 1; s.playing = true; s.ui.mod_index = 3; s.ui.shift = true;
+         auto& m = s.project.modulators[3];
+         m.kind = ModKind::Follower; m.source = 0; m.attack = 10; m.release = 45;
+         m.targets[0] = ModTarget {1, uint8_t(motion_level), 0, -80, 0, 127, 0};
+         m.targets[1] = ModTarget {5, uint8_t(motion_send(1)), 0, 50, 0, 100, 0};
+         s.mod_values[3] = 0.7f;
+     }},
+    {"macro", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::ModPage; s.ui.mod_view = 1; s.ui.track = 2; s.playing = true; s.ui.macro_index = 1; s.ui.macro_target = 0;
+         auto& m = s.project.macros[1];
+         m.value = 88;
+         m.targets[0] = MacroTarget {2, uint8_t(motion_fx_param(0, 2)), 0, 10, 90};
+         m.targets[1] = MacroTarget {3, uint8_t(motion_level), 0, 100, 40};
+         m.targets[2] = MacroTarget {0, uint8_t(motion_return(0)), 0, 20, 80};
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
     {"rackkey", [](Shell&, Snapshot& s) { // roadmap P4: a Compressor on track 3's chain keyed by track 1 (the kick), its KEY row
          s.ui.page = PageId::Rack; s.ui.track = 2; s.playing = true;
          auto& slot = s.project.tracks[2].fx.slots[0];
