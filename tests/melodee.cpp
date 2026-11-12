@@ -2721,7 +2721,7 @@ void audio_input_and_rendering() {
     }
     uint32_t song_frames = host->bounce().frames();
     CHECK(tail && host->bounce().state() == Bounce::State::Done && !host->playing());
-    CHECK(song_frames >= 2 * 88200 && song_frames <= 2 * 88200 + Bounce::tail_limit + 128);
+    CHECK(song_frames >= 2 * 88200 && song_frames <= 2 * 88200 + Bounce::tail_seconds * 44100 + 128);
     host->bounce().release();
 
     // Rec length Seq while playing: the take waits for the pattern to come round, then runs its length.
@@ -4175,36 +4175,137 @@ void device_rates() {
             CHECK(std::fabs(float(all.size()) - rate) < 600 && std::fabs(hz - 441) < 5);
         }
     }
-    // A take at 96 kHz: a second of 1 kHz is kept as 44100 frames of 1 kHz; 30 kHz (above what 44.1 kHz holds) is filtered out, not folded down.
+    // A take at 96 kHz is kept as it came, never converted on its way in: a second is 96000 frames of its own, 44100
+    // as the project counts them. As a sample its 44.1 kHz frames are converted once, band-limited: 1 kHz stays
+    // 1 kHz, 30 kHz (above what 44.1 kHz holds) is filtered out, not folded down; its own frames are what plays.
     {
         dsp::device_rate.store(96000.0f);
         for (float hz : {1000.0f, 30000.0f}) {
             auto take = std::make_unique<TakeRecorder>();
-            take->set_rate(96000);
+            CHECK(take->take_rate() == 96000); // made at the device's rate
             take->arm(-100, 0, 0);
-            std::vector<float> l(128), r(128);
+            std::vector<float> l(128), r(128), heard;
             for (unsigned b = 0; b < 750; ++b) {
                 for (unsigned f = 0; f < 128; ++f) l[f] = r[f] = 0.5f * std::sin(2 * 3.14159265f * hz * float(b * 128 + f) / 96000.0f);
+                heard.insert(heard.end(), l.begin(), l.end());
                 take->process(l.data(), r.data(), 128);
             }
             take->stop();
-            CHECK(take->state() == TakeRecorder::State::Done && std::abs(int(take->frames()) - 44100) <= 2);
-            std::vector<float> kept(take->left(), take->left() + take->frames());
+            CHECK(take->state() == TakeRecorder::State::Done && take->taken() == 96000 && take->take_rate() == 96000 && take->frames() == 44100);
+            CHECK(std::equal(heard.begin(), heard.end(), take->left()));
+            SampleData kept;
+            kept.left.assign(take->left(), take->left() + take->taken());
+            kept.right.assign(take->right(), take->right() + take->taken());
+            CHECK(keep_capture(kept, take->take_rate(), "", 96000).empty());
+            CHECK(kept.frames == 44100 && kept.plays_at(96000) && kept.plays_own() && kept.play_frames == 96000);
             if (hz < 2000) {
                 unsigned crossings = 0;
-                for (unsigned n = 1001; n < 41000; ++n) crossings += (kept[n - 1] < 0) != (kept[n] < 0);
+                for (unsigned n = 1001; n < 41000; ++n) crossings += (kept.left[n - 1] < 0) != (kept.left[n] < 0);
                 CHECK(std::fabs(crossings / 2.0f / (40000 / 44100.0f) - 1000) < 5);
-                CHECK(peak_of(kept, 1000) > 0.45f);
-            } else CHECK(peak_of(kept, 1000) < 0.03f);
+                CHECK(peak_of(kept.left, 1000) > 0.45f);
+            } else CHECK(peak_of(kept.left, 1000) < 0.03f);
         }
-        // Resample at 96 kHz: a second rendered is 44100 frames kept.
+        // Resample at 96 kHz: a second rendered is 96000 frames of its own, 44100 as the project counts them.
         auto bounce = std::make_unique<Bounce>();
-        bounce->set_rate(96000);
         bounce->cue(); bounce->begin(0);
+        CHECK(bounce->rate() == 96000);
         std::vector<float> l(128, 0.25f), r(128, 0.25f), drained(4096 * 2);
         unsigned popped = 0;
         for (unsigned b = 0; b < 750; ++b) { bounce->process(l.data(), r.data(), 128); popped += bounce->pop(drained.data(), 4096); }
-        CHECK(std::abs(int(bounce->frames()) - 44100) <= 2 && popped == bounce->frames());
+        CHECK(bounce->taken() == 96000 && bounce->frames() == 44100 && popped == bounce->taken() && drained[0] == 0.25f);
+        // The device's rate changes meanwhile: the render is dropped, never kept with its rate changing partway.
+        bounce->cue(); bounce->begin(0);
+        bounce->process(l.data(), r.data(), 128);
+        bounce->set_rate(48000);
+        CHECK(bounce->state() == Bounce::State::Cancelled);
+        // Audio Recall at 48 kHz: the ring keeps the source's own frames, 25 s of them; a new rate starts it again.
+        dsp::device_rate.store(48000.0f);
+        auto ring = std::make_unique<RecallRing>();
+        CHECK(ring->rate() == 48000);
+        std::vector<float> ramp_l(128), ramp_r(128);
+        for (uint32_t block = 0; block < 27 * 48000 / 128; ++block) {
+            for (unsigned f = 0; f < 128; ++f) { ramp_l[f] = float(block * 128 + f); ramp_r[f] = -ramp_l[f]; }
+            ring->write(ramp_l.data(), ramp_r.data(), 128);
+        }
+        uint32_t written = 27 * 48000 / 128 * 128;
+        CHECK(ring->filled() == 25 * 48000);
+        std::vector<float> rl(25 * 48000), rr(25 * 48000);
+        CHECK(ring->copy_last(25 * 48000, rl.data(), rr.data()));
+        CHECK(rl.back() == float(written - 1) && rl.front() == float(written - 25 * 48000) && rr.back() == -rl.back());
+        ring->set_rate(96000);
+        CHECK(ring->filled() == 0 && ring->rate() == 96000);
+    }
+    // A take at 48 kHz (Settings' rate), round trip: saved as a 48 kHz file whose frames are what was heard (to the
+    // 24-bit step), read back with its own frames playing, and its region and a cut made while it ran line up with
+    // the sound, counted in the project's 44.1 kHz frames.
+    {
+        dsp::device_rate.store(48000.0f);
+        auto take = std::make_unique<TakeRecorder>();
+        take->arm(-100, 0, 3);
+        const uint32_t hit = 48000, own = 1125 * 128; // a hit a second in, after a quiet hum; 1.5 s in all
+        std::vector<float> l(128), r(128), heard_l, heard_r;
+        uint32_t cut = 0;
+        for (unsigned b = 0; b < 1125; ++b) {
+            for (unsigned f = 0; f < 128; ++f) {
+                uint32_t n = b * 128 + f;
+                float hum = 0.01f * std::sin(2 * 3.14159265f * 220 * float(n) / 48000.0f);
+                l[f] = hum + (n >= hit && n < hit + 4800 ? 0.8f * std::sin(2 * 3.14159265f * 1000 * float(n - hit) / 48000.0f) : 0.0f);
+                r[f] = -0.5f * l[f];
+            }
+            if (b * 128 == hit) cut = take->frames(); // a pad tapped as the hit comes: the cut (Context::record_pad)
+            heard_l.insert(heard_l.end(), l.begin(), l.end()); heard_r.insert(heard_r.end(), r.begin(), r.end());
+            take->process(l.data(), r.data(), 128);
+        }
+        take->stop();
+        CHECK(take->taken() == own && take->take_rate() == 48000 && take->frames() == 132300 && cut == 44100);
+        std::string path = "/tmp/melodee-take48-test.wav";
+        SampleData kept; // as SampleLibrary::land keeps it
+        kept.left.assign(take->left(), take->left() + take->taken());
+        kept.right.assign(take->right(), take->right() + take->taken());
+        CHECK(keep_capture(kept, take->take_rate(), path, 48000).empty());
+        CHECK(kept.frames == take->frames() && kept.plays_at(48000) && kept.plays_own() && kept.play_frames == own);
+        SampleData read;
+        WavInfo info;
+        CHECK(read_wav(path, read, 60, &info, 48000).empty() && info.rate == 48000 && info.channels == 2);
+        CHECK(read.plays_at(48000) && read.plays_own() && read.play_frames == own && read.play_left == kept.play_left
+              && read.play_right == kept.play_right);
+        float worst = 0;
+        for (uint32_t n = 0; n < own; ++n)
+            worst = std::max({worst, std::fabs(read.play_left[n] - heard_l[n]), std::fabs(read.play_right[n] - heard_r[n])});
+        CHECK(worst <= 2.0f / 8388607);
+        // Its 44.1 kHz frames read back the same (a new rate reads it again from the file), the hit where the cut was.
+        CHECK(read.frames == kept.frames && read.left == kept.left && read.right == kept.right);
+        std::array<Hit, max_hits> hits {};
+        unsigned count = find_hits(read, hits);
+        bool found = false;
+        for (unsigned h = 1; h < count; ++h) found |= hits[h].frame + 220 >= cut && hits[h].frame <= cut + 220;
+        CHECK(found);
+        // A pad plays its own frames, a frame for each: the hit a second in, the whole region 1.5 s.
+        SamplerEngine::Table table {};
+        table[0] = &read;
+        SamplerEngine engine;
+        engine.set_samples(&table);
+        engine.set_tempo(1200);
+        PadSound sound; sound.sample = 0; sound.decay = 100;
+        engine.set_pad(0, sound);
+        engine.note_on(int(sampler_first_note), 120);
+        std::vector<float> pl(128), pr(128), played;
+        for (unsigned b = 0; b < 3000 && engine.sounding(); ++b) {
+            std::fill(pl.begin(), pl.end(), 0.0f); std::fill(pr.begin(), pr.end(), 0.0f);
+            engine.render_stereo(pl.data(), pr.data(), 128);
+            played.insert(played.end(), pl.begin(), pl.end());
+        }
+        size_t first_loud = 0;
+        while (first_loud < played.size() && std::fabs(played[first_loud]) < 0.2f) ++first_loud;
+        if (!(std::fabs(float(played.size()) - float(own)) < 600 && first_loud + 64 >= hit && first_loud <= hit + 64))
+            std::fprintf(stderr, "take48: %zu frames played, loud from %zu\n", played.size(), first_loud);
+        CHECK(std::fabs(float(played.size()) - float(own)) < 600 && first_loud + 64 >= hit && first_loud <= hit + 64);
+        // The mixdown's file says its rate too.
+        WavStream wav;
+        CHECK(wav.open(path, 48000) && wav.add(std::vector<float>(256, 0.1f).data(), 128) && wav.close());
+        SampleData mix;
+        CHECK(read_wav(path, mix, 60, &info, 48000).empty() && info.rate == 48000 && mix.play_frames == 128 && mix.plays_own());
+        std::remove(path.c_str());
     }
     dsp::device_rate.store(44100.0f);
     // Settings: kept and read back; a rate the device has no row for is left out, a buffer between rows goes up to one.
@@ -4326,7 +4427,7 @@ void track_source() {
 
     // Audio Recall: burst A, 2 s quiet, burst B, 0.5 s quiet.
     {
-        const uint32_t rate = RecallRing::rate, pad = rate / 100;
+        const uint32_t rate = 44100, pad = rate / 100;
         uint32_t a0 = rate / 2, a1 = a0 + rate / 2, b0 = a1 + 2 * rate, b1 = b0 + rate / 2, total = b1 + rate / 2;
         std::vector<float> l(total, 0.0f), r(total, 0.0f);
         for (uint32_t f = a0; f < a1; ++f) l[f] = 0.4f;
@@ -4334,9 +4435,9 @@ void track_source() {
         RecallOptions o;
         uint32_t first = 0, end = 0;
         CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == b0 - pad && end == b1 + pad);
-        o.gap = 4 * rate;
+        o.gap = 4;
         CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == a0 - pad && end == b1 + pad);
-        o.grab = 1; o.gap = rate;
+        o.grab = 1; o.gap = 1;
         CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == a0 - pad && end == b1 + pad);
         o.trim_end = false;
         CHECK(recall_bounds(l.data(), r.data(), total, rate, o, first, end) && first == a0 - pad && end == total);

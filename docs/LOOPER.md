@@ -85,7 +85,7 @@ Each loop is in one state: **Empty**, **Armed** (waits for its boundary),
   committed; one longer than a sample may be (60 s) is refused.
 
 Memory: each loop holds 64 s of stereo audio and as much again for the undo,
-at 44.1 kHz whatever the device runs at (`engine/model_rate.h`): 45 MB a
+at 44.1 kHz whatever the device runs at (`engine/looper.cpp`): 45 MB a
 loop, 180 MB in all, made by the service thread when the Looper is turned
 on and freed when it is turned off (the MPC has 2 GB).
 

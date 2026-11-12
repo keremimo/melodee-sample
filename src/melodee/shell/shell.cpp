@@ -536,7 +536,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         out.take.left = r.level_left(); out.take.right = r.level_right();
         for (unsigned c = 0; c < out.take.peaks.size(); ++c) out.take.peaks[c] = r.peak(c);
         out.render_state = uint8_t(host.bounce().state()); out.render_frames = host.bounce().frames();
-        out.recall_frames = host.recall().filled();
+        out.recall_frames = uint32_t(uint64_t(host.recall().filled()) * 44100 / std::max(1u, host.recall().rate())); // 44.1 kHz frames
         out.monitoring = host.monitoring();
         out.speaker_quieted = input_ && input_->speaker_quieted();
         out.usb_state = input_ ? uint8_t(input_->usb_state()) : 0;
@@ -730,7 +730,7 @@ std::string Shell::input_summary() const {
          + " melodee_input=" + std::to_string(r & 0xf) + " melodee_input_engine=" + std::to_string(host.record_source())
          + " melodee_monitor=" + std::to_string((r >> 4) & 3) + " melodee_monitoring=" + std::to_string(int(host.monitoring()))
          + " melodee_threshold=" + std::to_string(int8_t(r >> 24)) + " melodee_speaker=" + std::to_string(input_ ? int(input_->speaker_on()) : -1)
-         + " melodee_recall_frames=" + std::to_string(host.recall().filled())
+         + " melodee_recall_frames=" + std::to_string(uint64_t(host.recall().filled()) * 44100 / std::max(1u, host.recall().rate()))
          + " melodee_render=" + renders[unsigned(host.bounce().state()) % 7] + " melodee_render_frames=" + std::to_string(host.bounce().frames())
          + " melodee_rendering=" + std::to_string((r >> 21) & 3) + " melodee_resample_pick=" + std::to_string((r >> 23) & 1);
 }

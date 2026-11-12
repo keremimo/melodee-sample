@@ -674,8 +674,8 @@ hold to steer, Shift + Seq to zoom in**.
   is one undo. Shift + Push adds a marker
   (on a marker, names it). Play here plays the song from the cursor. **B1
   Export**: B2 audio mixdown (Name sheet; once through, tails up to 10 s,
-  `Melodee/Mixdowns/<name>.wav`, 32-bit float so a mix past full scale is
-  kept, not clipped; Stop drops it), B3 New pattern
+  `Melodee/Mixdowns/<name>.wav`, 32-bit float at the device's rate so a mix
+  past full scale is kept, not clipped; Stop drops it), B3 New pattern
   (the song laid end to end into the first free pattern number).
 
 ### Sampler
@@ -691,9 +691,15 @@ frame each frame, only its pitch moving the read; nothing converts per
 voice. The copies share a 256 MB budget; past it, and for instruments
 streamed from the card, a voice reads the 44.1 kHz frames that much
 further each frame, as before. A rate change makes each copy again from
-its file, a sample at a time. Takes, Audio Recall, Resample and loops are saved 24-bit, or 32-bit
-float when they go past full scale (a resampled mix can), so a file never
-clips what played.
+its file, a sample at a time. Takes, Audio Recall and Resample are kept as
+they came, at the device's rate, never converted on their way in: saved at
+it, their own frames are what the pad plays, and their 44.1 kHz frames,
+made once, are what the project counts (a region, a cut). Save Sample,
+Trim and Extract cut a sample's own frames when those are what plays, so a
+48 kHz take trimmed stays 48 kHz. Loops stay at 44.1 kHz (LOOPER.md).
+These are saved 24-bit, or 32-bit float when they go past full scale (a
+resampled mix can), so a file never clips what played; what plays is what
+the file holds, to the bit.
 
 - **Samples** (Sample Select on a kit): the browser, each row a glyph
   first (a folder with its chevron, a WAV, a kit, an instrument's keyboard,
@@ -1093,10 +1099,11 @@ while following.
   DSP: what the audio blocks take of their time (their recent peak),
   beside the dropouts (a check while there are none). The computer sees the MPC's USB-C audio at the new rate too (the
   gadget reconnects: USB audio, MIDI and the network drop for a second; not
-  while the card is lent). Every frame count in a project, and takes, renders
-  and their files, stay at 44.1 kHz whatever the rate (`engine/model_rate.h`),
-  so projects open the same at any rate; samples play from a copy at the
-  device's rate (Sampler). Kept in `Melodee/settings` with the project to open at
+  while the card is lent). Every frame count in a project stays in 44.1 kHz
+  frames whatever the rate, so projects open the same at any rate; samples
+  play from a copy at the device's rate, and takes, Audio Recall, Resample
+  and mixdowns are recorded and saved at it (Sampler). Plug-ins are loaded
+  again at the new rate, and Monitor hears the source at it. Kept in `Melodee/settings` with the project to open at
   start. **MIDI**: MIDI Config's page. **ABOUT**: how the machine is
   doing, the page to open when something crackles: RENDER (each core's load
   as a meter, the audio blocks' share of their time), AUDIO (rate and

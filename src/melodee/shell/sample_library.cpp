@@ -367,11 +367,14 @@ void SampleLibrary::bank_files() {
 // Save Sample, Trim Sample, Extract: a slot's region as a WAV file on the
 // card. Derive also puts the new file in a slot of its own (in memory when
 // there is no card), as a load would.
+// The region is cut from the source's own frames when those are what plays (a
+// take, a 48 kHz file at 48 kHz) and written at their rate, so nothing is
+// converted; else from its 44.1 kHz frames, written at 44.1 kHz.
 // Extract's slice: 2 ms fades at the ends that were cut inside the source,
 // as the sampler plays a region's (engine/sampler.cpp), so the file does not
 // click where the slice was cut mid-wave.
-static void fade_edges(SampleData& data, bool in, bool out) {
-    uint32_t edge = std::min<uint32_t>(88, data.frames / 2);
+static void fade_edges(SampleData& data, unsigned rate, bool in, bool out) {
+    uint32_t edge = std::min<uint32_t>(rate / 500, data.frames / 2);
     for (uint32_t k = 0; k < edge; ++k) {
         float g = float(k) / float(edge);
         if (in) { data.left[k] *= g; data.right[k] *= g; }
@@ -389,10 +392,20 @@ void SampleLibrary::make(const SampleJob& job) {
     uint32_t to = job.to && job.to <= source->frames ? job.to : source->frames, from = std::min(job.from, to);
     if (to - from < 2) { fail("too short"); return; }
     auto data = std::make_unique<SampleData>();
-    data->frames = to - from;
-    data->left.assign(source->left.begin() + from, source->left.begin() + to);
-    data->right.assign(source->right.begin() + from, source->right.begin() + to);
-    if (job.edges) fade_edges(*data, from > 0, to < source->frames);
+    unsigned rate = unsigned(dsp::model_rate);
+    const float *l = source->left.data(), *r = source->right.data();
+    uint32_t first = from, end = to, all = source->frames;
+    if (source->plays_own()) { // the region's 44.1 kHz frames as the source's own
+        rate = source->source_rate; all = source->play_frames;
+        auto own = [&](uint32_t f) { return uint32_t(std::min<uint64_t>(all, (uint64_t(f) * rate + 22050) / 44100)); };
+        first = own(from); end = to == source->frames ? all : own(to);
+        l = source->play_left.data(); r = source->play_right.data();
+    }
+    data->frames = end - first;
+    data->left.assign(l + first, l + end);
+    data->right.assign(r + first, r + end);
+    if (job.edges) fade_edges(*data, rate, first > 0, end < all);
+    as_written(*data); // what plays is what the file holds
     std::string root;
     { std::lock_guard<std::mutex> guard(lock); root = known.root; }
     std::string name(job.name), path, error;
@@ -401,7 +414,7 @@ void SampleLibrary::make(const SampleJob& job) {
         std::error_code made;
         fs::create_directories(folder, made);
         path = free_name(folder, name);
-        error = path.empty() ? std::string("no free name") : write_wav(path, *data);
+        error = path.empty() ? std::string("no free name") : write_wav(path, *data, rate);
         if (!error.empty()) path.clear();
         else name = fs::path(path).stem().string();
     } else error = "no card";
@@ -411,6 +424,7 @@ void SampleLibrary::make(const SampleJob& job) {
         scan_wanted.store(true); // it shows in the browser
         return;
     }
+    adopt(*data, std::move(data->left), std::move(data->right), rate, dsp::sample_rate()); // its 44.1 kHz frames, its own playing
     LoadedSample loaded;
     loaded.name = upper(name).substr(0, 27);
     loaded.path = path;
@@ -450,12 +464,12 @@ void SampleLibrary::hear(const std::string& path) {
 void SampleLibrary::save_take() {
     auto& recorder = host.recorder();
     auto data = std::make_unique<SampleData>();
-    data->frames = recorder.frames();
+    data->frames = recorder.taken(); // its own frames, at the rate it was taken at
     data->left.assign(recorder.left(), recorder.left() + data->frames);
     data->right.assign(recorder.right(), recorder.right() + data->frames);
-    unsigned slot = recorder.slot() % sample_slots;
+    unsigned slot = recorder.slot() % sample_slots, rate = recorder.take_rate();
     recorder.release();
-    land(slot, std::move(data), "Recorded", "TAKE", "Take");
+    land(slot, std::move(data), rate, "Recorded", "TAKE", "Take");
 }
 
 bool SampleLibrary::offer(unsigned slot, SampleData* data) {
@@ -482,11 +496,16 @@ void SampleLibrary::refresh_playback() {
         bool stale = now->play_frames > 0; // made at another rate: none at 44.1 kHz, a new one elsewhere
         bool fits = rate != dsp::model_rate && held + size_t(double(now->frames) * rate / dsp::model_rate) * 2 * sizeof(float) <= playback_budget;
         if (!stale && !fits) continue;
-        // From its file again when it still reads the same (one conversion at most), else from its 44.1 kHz frames.
+        // From its file again when it still reads the same (one conversion at most), else from its own frames when
+        // those played (a take with no card), else from its 44.1 kHz frames.
         auto again = std::make_unique<SampleData>();
         bool read = !path.empty() && !is_instrument(path) && read_audio(path, *again, 60, nullptr, rate).empty() && again->frames == now->frames
                  && again->left == now->left;
-        if (!read) { again = std::make_unique<SampleData>(); again->left = now->left; again->right = now->right; again->frames = now->frames; }
+        if (!read) {
+            again = std::make_unique<SampleData>();
+            if (now->plays_own()) adopt(*again, now->play_left, now->play_right, now->source_rate, rate);
+            else { again->left = now->left; again->right = now->right; again->frames = now->frames; }
+        }
         if (!offer(s, again.get())) return; // the queue is full: next pass
         { std::lock_guard<std::mutex> guard(lock); data_of[s] = again.get(); }
         owned.push_back(std::move(again));
@@ -494,27 +513,29 @@ void SampleLibrary::refresh_playback() {
     }
 }
 
-void SampleLibrary::land(unsigned slot, std::unique_ptr<SampleData> data, const char* folder, const char* stem, const char* what) {
+void SampleLibrary::land(unsigned slot, std::unique_ptr<SampleData> data, unsigned rate, const char* folder, const char* stem,
+                         const char* what) {
     slot %= sample_slots;
     unsigned number = take_count.fetch_add(1) + 1;
     LoadedSample loaded;
     loaded.name = std::string(stem) + " " + std::to_string(number);
-    std::string root;
+    std::string root, path;
     { std::lock_guard<std::mutex> guard(lock); root = known.root; }
     if (!root.empty()) {
         std::error_code error;
         std::string dir = root + "/" + folder;
         fs::create_directories(dir, error);
         // The first free number, so the ones from earlier sessions stay.
-        for (unsigned n = 1; n < 10000; ++n) {
-            auto path = dir + "/" + stem + " " + std::to_string(n) + ".wav";
-            if (fs::exists(path, error)) continue;
+        for (unsigned n = 1; n < 10000 && path.empty(); ++n) {
+            auto name = dir + "/" + stem + " " + std::to_string(n) + ".wav";
+            if (fs::exists(name, error)) continue;
             loaded.name = std::string(stem) + " " + std::to_string(n);
-            auto failed = write_wav(path, *data);
-            if (failed.empty()) loaded.path = path; else loaded.error = "not saved: " + failed;
-            break;
+            path = name;
         }
     }
+    // Written at its own rate; its own frames play, its 44.1 kHz frames are what the project counts.
+    auto failed = keep_capture(*data, rate, path, dsp::sample_rate());
+    if (!path.empty()) { if (failed.empty()) loaded.path = path; else loaded.error = "not saved: " + failed; }
     loaded.frames = data->frames;
     make_overview(*data, loaded.overview);
     loaded.hit_count = find_hits(*data, loaded.hits);

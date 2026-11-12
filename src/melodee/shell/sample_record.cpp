@@ -198,7 +198,7 @@ void Context::audio_recall() {
     auto& t = track();
     if (t.engine != EngineKind::Sampler) { notice("Audio Recall: kit tracks"); return; }
     if (!library) return;
-    if (host.recall().filled() < RecallRing::rate / 100) { notice("Audio Recall: nothing yet"); return; }
+    if (host.recall().filled() < host.recall().rate() / 100) { notice("Audio Recall: nothing yet"); return; }
     int kit = next_empty_pad(t.last_pad);
     if (kit < 0) { notice("No empty pad"); return; }
     int slot = hold_file("RECALL", ui.track, kit, 1);
@@ -206,7 +206,7 @@ void Context::audio_recall() {
     const auto& sp = ui.settings.sampling;
     RecallOptions options;
     options.grab = uint8_t(sp.grab);
-    options.gap = uint32_t(SamplingPrefs::gap_seconds[sp.gap % SamplingPrefs::gap_count] * float(RecallRing::rate));
+    options.gap = SamplingPrefs::gap_seconds[sp.gap % SamplingPrefs::gap_count];
     options.trim_end = sp.trim_end;
     options.silence = sp.silence_level();
     if (!library->recall(unsigned(slot), options)) { drop_file(slot); notice("Audio Recall: busy"); return; }

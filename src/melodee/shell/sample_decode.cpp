@@ -49,10 +49,7 @@ std::string read_audio(const std::string& path, SampleData& out, unsigned max_se
     const float* l = audio.getReadPointer(0);
     const float* r = audio.getReadPointer(int(channels - 1));
     const auto rate = unsigned(std::lround(reader->sampleRate));
-    playback_from(out, l, r, uint32_t(frames), rate, play_at);
-    if (rate == unsigned(dsp::model_rate)) { out.left.assign(l, l + frames); out.right.assign(r, r + frames); }
-    else resample(l, r, uint32_t(frames), rate, unsigned(dsp::model_rate), out.left, out.right);
-    out.frames = uint32_t(out.left.size());
+    adopt(out, std::vector<float>(l, l + frames), std::vector<float>(r, r + frames), rate, play_at);
     return {};
 }
 

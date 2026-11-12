@@ -114,7 +114,7 @@ void SampleLibrary::loop_service() {
             looper.release(loop);
             committing.on = false;
             std::string stem = "L" + std::to_string(loop + 1) + " Loop";
-            if (frames) land(committing.job.slot, std::move(data), "Looper", stem.c_str(), "Commit");
+            if (frames) land(committing.job.slot, std::move(data), unsigned(dsp::model_rate), "Looper", stem.c_str(), "Commit");
             else finish("Commit: nothing there", int(committing.job.slot));
         } else if (++committing.passes > hold_passes) {
             looper.release(loop);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
-#include "melodee/engine/model_rate.h"
+#include "melodee/engine/dsp.h"
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -14,24 +14,25 @@
 // (before main volume) to process(), which copies the frames inside those
 // bounds into a ring. The service thread drains the ring as it fills, into
 // a sample or straight into a WAV file, so a render may run for as long as
-// the song does while the ring stays small (12 s, 4 MB, made at start).
+// the song does while the ring stays small (11 s at 96 kHz, 8 MB, made at start).
 //
 // States: Idle -> Cued (armed, waiting for Play) -> Running -> (Tail: the
 // song ended, on until the mix falls silent) -> Done. Stop meanwhile is
 // Cancelled; a ring the service thread could not keep up with is Failed.
 // The audio thread moves it on, the service thread puts it back to Idle
-// once it has taken everything (release()). The render is kept at 44.1 kHz
-// (ToModelRate), so frames() and what pop() gives count those.
+// once it has taken everything (release()). The render is kept as it plays,
+// at the device's rate (never converted): what pop() gives is at rate(), and
+// frames() counts it in 44.1 kHz frames, as the pages count everything.
 namespace melodee {
 
 class Bounce {
 public:
     enum class State : uint8_t { Idle, Cued, Running, Tail, Done, Cancelled, Failed };
-    static constexpr uint32_t ring_frames = 1u << 19;        // 11.9 s
-    static constexpr uint32_t silence_frames = 8820;         // a tail ends after 200 ms below -70 dB (44.1 kHz frames)
-    static constexpr uint32_t tail_limit = 10 * 44100;       // or after 10 s
+    static constexpr uint32_t ring_frames = 1u << 20;        // 10.9 s at 96 kHz
+    static constexpr float silence_seconds = 0.2f;           // a tail ends after 200 ms below -70 dB
+    static constexpr uint32_t tail_seconds = 10;             // or after 10 s
 
-    Bounce() : ring_(new float[size_t(ring_frames) * 2]()) {}
+    Bounce() : ring_(new float[size_t(ring_frames) * 2]()) { set_rate(dsp::sample_rate()); }
 
     // Audio thread (the engine host).
     void cue() {
@@ -39,11 +40,16 @@ public:
         if (s != State::Idle) return;
         read_.store(0); write_.store(0); frames_.store(0);
         start_at = -1; stop_at = -1; tail_frames = 0; quiet = 0;
-        convert.reset();
+        render_rate_.store(device_rate, std::memory_order_relaxed);
         state_.store(State::Cued);
     }
-    // Audio thread: the device's rate (EngineHost::set_audio_format).
-    void set_rate(float device) { convert.set_rate(device); }
+    // Audio thread: the device's rate (EngineHost::set_audio_format). A render meanwhile is cancelled: its
+    // frames would change rate partway.
+    void set_rate(float device) {
+        device_rate = std::max(8000u, unsigned(std::lround(device)));
+        cancel();
+        if (state_.load() == State::Idle) render_rate_.store(device_rate, std::memory_order_relaxed);
+    }
     bool cued() const { return state_.load(std::memory_order_relaxed) == State::Cued; }
     bool running() const { return state_.load(std::memory_order_relaxed) == State::Running; }
     void begin(unsigned offset) { if (cued()) { start_at = int(offset); state_.store(State::Running); } }
@@ -65,12 +71,10 @@ public:
         if (to > from && w + (to - from) - rd > ring_frames) { state_.store(State::Failed); return; }
         float loudest = 0;
         uint32_t kept = 0;
-        for (unsigned f = from; f < to; ++f) {
+        for (unsigned f = from; f < to; ++f, ++kept) {
             loudest = std::max({loudest, std::fabs(l[f]), std::fabs(r[f])});
-            convert.feed(l[f], r[f], [&](float cl, float cr) {
-                size_t i = size_t((w + kept) % ring_frames) * 2;
-                ring_[i] = cl; ring_[i + 1] = cr; ++kept;
-            });
+            size_t i = size_t((w + kept) % ring_frames) * 2;
+            ring_[i] = l[f]; ring_[i + 1] = r[f];
         }
         if (kept) {
             write_.store(w + kept, std::memory_order_release);
@@ -80,13 +84,17 @@ public:
         if (s == State::Tail) {
             tail_frames += kept;
             quiet = loudest < 0.0003f ? quiet + kept : 0;
-            if (quiet >= silence_frames || tail_frames >= tail_limit) state_.store(State::Done);
+            if (quiet >= uint32_t(silence_seconds * float(device_rate)) || tail_frames >= tail_seconds * device_rate) state_.store(State::Done);
         }
     }
 
     // Any thread.
     State state() const { return state_.load(std::memory_order_acquire); }
-    uint32_t frames() const { return frames_.load(std::memory_order_relaxed); } // rendered so far
+    unsigned rate() const { return render_rate_.load(std::memory_order_relaxed); } // the frames' rate (the device's at cue())
+    uint32_t taken() const { return frames_.load(std::memory_order_relaxed); }    // rendered so far, at rate()
+    uint32_t frames() const {                                                      // the same in 44.1 kHz frames
+        return uint32_t((uint64_t(taken()) * uint32_t(dsp::model_rate) + rate() / 2) / std::max(1u, rate()));
+    }
 
     // Service thread: up to `max` frames, interleaved, as they come; the count.
     unsigned pop(float* interleaved, unsigned max) {
@@ -108,7 +116,8 @@ public:
 
 private:
     std::unique_ptr<float[]> ring_;
-    ToModelRate convert;
+    unsigned device_rate = unsigned(dsp::model_rate); // audio thread: the device's
+    std::atomic<unsigned> render_rate_ {unsigned(dsp::model_rate)};
     std::atomic<State> state_ {State::Idle};
     std::atomic<uint64_t> read_ {0}, write_ {0};
     std::atomic<uint32_t> frames_ {0};

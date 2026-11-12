@@ -66,11 +66,26 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
     // To 44.1 kHz, band-limited (roadmap P2; it was linear): straight through when it is at that rate already.
     std::vector<float> l(frames), r(frames);
     for (unsigned n = 0; n < frames; ++n) { l[n] = sample(n, 0); r[n] = sample(n, std::min(1u, channels - 1)); }
-    playback_from(out, l.data(), r.data(), frames, rate, play_at);
-    if (rate == unsigned(dsp::model_rate)) { out.left = std::move(l); out.right = std::move(r); }
-    else resample(l.data(), r.data(), frames, rate, unsigned(dsp::model_rate), out.left, out.right);
-    out.frames = uint32_t(out.left.size());
+    adopt(out, std::move(l), std::move(r), rate, play_at);
     return {};
+}
+
+void adopt(SampleData& out, std::vector<float> left, std::vector<float> right, unsigned rate, float play_at) {
+    const auto frames = uint32_t(std::min(left.size(), right.size()));
+    const auto model = unsigned(dsp::model_rate), to = unsigned(std::lround(play_at));
+    out.source_rate = rate;
+    if (rate == model) {
+        playback_from(out, left.data(), right.data(), frames, rate, play_at);
+        out.left = std::move(left); out.right = std::move(right);
+    } else {
+        resample(left.data(), right.data(), frames, rate, model, out.left, out.right);
+        if (to == rate) { // the frames themselves play: moved, not copied
+            left.resize(frames); right.resize(frames);
+            out.play_left = std::move(left); out.play_right = std::move(right);
+            out.play_frames = frames; out.play_rate = play_at;
+        } else playback_from(out, left.data(), right.data(), frames, rate, play_at);
+    }
+    out.frames = uint32_t(out.left.size());
 }
 
 void resample(const float* left, const float* right, uint32_t frames, unsigned from, unsigned to,
@@ -136,15 +151,15 @@ bool read_flac_loop(const std::string& path, WavInfo& info) {
 }
 
 namespace {
-// A WAV header for `frames` stereo frames at 44.1 kHz into `h` (room for 58 bytes): 24-bit PCM, 44 bytes; or 32-bit
+// A WAV header for `frames` stereo frames at `rate` Hz into `h` (room for 58 bytes): 24-bit PCM, 44 bytes; or 32-bit
 // float, 58 (its fmt chunk carries the extension's size and a fact chunk follows, as formats other than PCM take).
 // Returns its length.
-unsigned wav_header(unsigned char* h, uint32_t frames, bool floating) {
+unsigned wav_header(unsigned char* h, uint32_t frames, bool floating, unsigned rate) {
     auto put = [&](unsigned at, uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) h[at + n] = uint8_t(v >> (8 * n)); };
     const unsigned width = floating ? 4 : 3, align = 2 * width;
     const uint32_t data = frames * align;
     std::memcpy(h, "RIFF", 4); std::memcpy(h + 8, "WAVEfmt ", 8);
-    put(16, floating ? 18 : 16, 4); put(20, floating ? 3 : 1, 2); put(22, 2, 2); put(24, 44100, 4); put(28, 44100 * align, 4);
+    put(16, floating ? 18 : 16, 4); put(20, floating ? 3 : 1, 2); put(22, 2, 2); put(24, rate, 4); put(28, rate * align, 4);
     put(32, align, 2); put(34, 8 * width, 2);
     unsigned at = 36;
     if (floating) { put(36, 0, 2); std::memcpy(h + 38, "fact", 4); put(42, 4, 4); put(46, frames, 4); at = 50; }
@@ -153,6 +168,16 @@ unsigned wav_header(unsigned char* h, uint32_t frames, bool floating) {
     put(4, at - 8 + data, 4);
     return at;
 }
+// 24-bit, unless the sound goes past full scale (a resampled mix, a loop's layers can): then 32-bit float, so the
+// file holds what plays instead of clipping it.
+bool needs_float(const SampleData& s) {
+    for (uint32_t n = 0; n < s.frames; ++n) if (std::fabs(s.left[n]) > 1.0f || std::fabs(s.right[n]) > 1.0f) return true;
+    return false;
+}
+// A sample's 24-bit step as written, and the float read_wav makes of it again: the same scale (2^23) both ways, so a
+// step written and read back is written as the same step again.
+int32_t pcm24(float v) { return std::min<int32_t>(8388607, int32_t(std::lround(std::clamp(v, -1.0f, 1.0f) * 8388608.0f))); }
+float from_pcm24(int32_t v) { return float(int32_t(uint32_t(v) << 8)) / 2147483648.0f; }
 // A float sample's four bytes, little-endian; what is not a number is written as silence.
 void float_bytes(float v, unsigned char* out) {
     if (!std::isfinite(v)) v = 0;
@@ -162,19 +187,16 @@ void float_bytes(float v, unsigned char* out) {
 }
 } // namespace
 
-std::string write_wav(const std::string& path, const SampleData& s) {
+std::string write_wav(const std::string& path, const SampleData& s, unsigned rate) {
     std::ofstream file(path, std::ios::binary);
     if (!file) return "cannot write";
-    // 24-bit, unless the sound goes past full scale (a resampled mix, a loop's layers can): then 32-bit float, so
-    // the file holds what plays instead of clipping it.
-    bool floating = false;
-    for (uint32_t n = 0; n < s.frames && !floating; ++n) floating = std::fabs(s.left[n]) > 1.0f || std::fabs(s.right[n]) > 1.0f;
+    const bool floating = needs_float(s);
     unsigned char h[58];
-    file.write(reinterpret_cast<const char*>(h), wav_header(h, s.frames, floating));
+    file.write(reinterpret_cast<const char*>(h), wav_header(h, s.frames, floating, rate));
     auto put = [&](uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) file.put(char(v >> (8 * n))); };
     for (uint32_t n = 0; n < s.frames; ++n)
         for (float v : {s.left[n], s.right[n]}) {
-            if (!floating) { put(uint32_t(int32_t(std::lround(std::clamp(v, -1.0f, 1.0f) * 8388607.0f))), 3); continue; }
+            if (!floating) { put(uint32_t(pcm24(v)), 3); continue; }
             unsigned char bytes[4];
             float_bytes(v, bytes);
             file.write(reinterpret_cast<const char*>(bytes), 4);
@@ -182,12 +204,25 @@ std::string write_wav(const std::string& path, const SampleData& s) {
     return file.good() ? std::string() : std::string("write failed");
 }
 
-bool WavStream::open(const std::string& path) {
+void as_written(SampleData& s) {
+    if (needs_float(s)) return;
+    for (uint32_t n = 0; n < s.frames; ++n) { s.left[n] = from_pcm24(pcm24(s.left[n])); s.right[n] = from_pcm24(pcm24(s.right[n])); }
+}
+
+std::string keep_capture(SampleData& s, unsigned rate, const std::string& path, float play_at) {
+    s.frames = uint32_t(std::min(s.left.size(), s.right.size()));
+    as_written(s); // what plays is what the file holds: it reads back the same (SampleLibrary::refresh_playback)
+    std::string failed = path.empty() ? std::string() : write_wav(path, s, rate);
+    adopt(s, std::move(s.left), std::move(s.right), rate, play_at);
+    return failed;
+}
+
+bool WavStream::open(const std::string& path, unsigned at_rate) {
     close();
     file = std::fopen(path.c_str(), "wb");
-    written = 0; failed = !file;
+    written = 0; failed = !file; rate = at_rate;
     unsigned char h[58];
-    unsigned size = wav_header(h, 0, true);
+    unsigned size = wav_header(h, 0, true, rate);
     if (file && std::fwrite(h, 1, size, file) != size) failed = true;
     return !failed;
 }
@@ -206,7 +241,7 @@ bool WavStream::add(const float* interleaved, unsigned frames) {
 bool WavStream::close() {
     if (!file) return !failed;
     unsigned char h[58];
-    unsigned size = wav_header(h, written, true);
+    unsigned size = wav_header(h, written, true, rate);
     if (std::fseek(file, 0, SEEK_SET) != 0 || std::fwrite(h, 1, size, file) != size) failed = true;
     if (std::fclose(file) != 0) failed = true;
     file = nullptr;

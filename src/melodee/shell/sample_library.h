@@ -227,11 +227,13 @@ private:
     MidiQueue<4, Render> renders;
     void save_recall(const RecallJob& job);
     void drain_render();
-    // A sample made here: written as Samples/<folder>/<stem> n.wav when there is a
-    // card, offered to `slot` and listed; `what` names it in a failure.
-    void land(unsigned slot, std::unique_ptr<SampleData> data, const char* folder, const char* stem, const char* what);
+    // A sample made here, `data`'s left and right at `rate` Hz (a take, a recall or a render at the device's): written
+    // so, as Samples/<folder>/<stem> n.wav when there is a card, kept as written (adopt(): its own frames play, its
+    // 44.1 kHz frames are what the project counts), offered to `slot` and listed; `what` names it in a failure.
+    void land(unsigned slot, std::unique_ptr<SampleData> data, unsigned rate, const char* folder, const char* stem, const char* what);
     bool rendering = false;
     Render render_job;
+    unsigned render_rate = 44100; // the render's frames, the device's rate when it began
     // The Looper's files: a commit waiting for its loop, file jobs in turn (shell/looper_files.cpp).
     MidiQueue<4, LoopCommit> commits;
     struct Waiting { bool on = false; LoopCommit job; unsigned passes = 0; };

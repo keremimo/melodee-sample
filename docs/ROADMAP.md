@@ -225,6 +225,26 @@ behaviour changed.
   the way (2026-11-12): nothing may force 44.1 kHz on what plays; it
   doesn't, playback follows Settings' rate; takes and renders are still
   saved at 44.1 kHz (follow-up below).
+- P2 follow-up (2026-11-12): nothing Melodee records is converted to
+  44.1 kHz any more. Takes, Audio Recall, Resample and the song's mixdown
+  are captured at the device's rate (`TakeRecorder`, `RecallRing`,
+  `Bounce`; `engine/model_rate.h` is gone), written at it (`write_wav`,
+  `WavStream` take a rate) and kept as read_wav keeps a file
+  (`keep_capture`: its own frames play, its 44.1 kHz frames made once with
+  the sinc). Positions, not audio, are converted: a take's `frames()` and
+  `length()`, a render's `frames()`, Recall's status and every region and
+  cut stay in 44.1 kHz frames. Save Sample, Trim and Extract cut a
+  sample's own frames when they are what plays (`plays_own`), so a 48 kHz
+  take trimmed stays 48 kHz; else 44.1 kHz as before. Captures are
+  quantised to the 24-bit step they are written at (`as_written`; write
+  and read now both scale by 2^23), so a rate change reads the same frames
+  back from the file. Buffers are sized for 96 kHz (take 46 MB, Recall
+  20 MB, render ring 8 MB: 40 MB more than before) rather than remade on
+  the audio thread at a rate change; a take or render running when the
+  rate changes ends there. Plug-ins (reloaded at the new rate) and Monitor
+  (the source straight into the mix) already ran at the device's rate.
+  Loops are not part of this: the Looper keeps 44.1 kHz (its memory,
+  180 MB, would grow to 393 MB at 96 kHz); Kerem to choose.
 
 ## Waiting for a hand check
 
@@ -348,7 +368,8 @@ behaviour, write the code fresh for this app.
 - [x] Overload guard: as block time nears its budget, steal the oldest
   voices and shorten tails before a dropout.
 - [x] Samples resampled once at load to the device rate (projects keep
-  44.1 kHz frame counts, `engine/model_rate.h`), not per voice.
+  44.1 kHz frame counts), not per voice; takes, Recall, Resample and
+  mixdowns recorded and saved at the device rate too (decisions).
 
 ## P3: sampler
 

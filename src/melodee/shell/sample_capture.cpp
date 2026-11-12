@@ -19,16 +19,18 @@ std::string SampleLibrary::card() const { std::lock_guard<std::mutex> guard(lock
 // Shift + Sample Record: the last 25 s of the source, cut as the Settings
 // page's Recall rows say (recall_bounds: the last phrase, from the first
 // sound, or all of it; the quiet after the last sound left out or kept).
+// Kept at the ring's rate, the device's.
 void SampleLibrary::save_recall(const RecallJob& job) {
     int slot = int(job.slot);
     const auto& ring = host.recall();
+    const unsigned rate = ring.rate();
     uint32_t frames = ring.filled();
-    if (frames < RecallRing::rate / 100) { finish("Audio Recall: nothing yet", slot); return; }
+    if (frames < rate / 100) { finish("Audio Recall: nothing yet", slot); return; }
     auto data = std::make_unique<SampleData>();
     data->left.resize(frames); data->right.resize(frames);
     if (!ring.copy_last(frames, data->left.data(), data->right.data())) { finish("Audio Recall: try again", slot); return; }
     uint32_t first = 0, end = frames;
-    if (!recall_bounds(data->left.data(), data->right.data(), frames, RecallRing::rate, job.options, first, end)) {
+    if (!recall_bounds(data->left.data(), data->right.data(), frames, rate, job.options, first, end)) {
         finish("Audio Recall: only silence", slot);
         return;
     }
@@ -37,7 +39,7 @@ void SampleLibrary::save_recall(const RecallJob& job) {
     data->left.erase(data->left.begin(), data->left.begin() + first);
     data->right.erase(data->right.begin(), data->right.begin() + first);
     data->frames = end - first;
-    land(unsigned(slot), std::move(data), "Recorded", "RECALL", "Audio Recall");
+    land(unsigned(slot), std::move(data), rate, "Recorded", "RECALL", "Audio Recall");
 }
 
 // A render: its job first (the MIDI thread queues it before it presses
@@ -49,6 +51,7 @@ void SampleLibrary::drain_render() {
         auto state = bounce.state();
         if (renders.pop(render_job)) {
             rendering = true;
+            render_rate = bounce.rate();
             render_data.reset();
             render_path.clear();
             if (render_job.to_file) {
@@ -57,13 +60,14 @@ void SampleLibrary::drain_render() {
                 std::string folder = top + "/Melodee/Mixdowns";
                 if (!top.empty()) fs::create_directories(folder, error);
                 render_path = top.empty() ? std::string() : free_name(folder, render_job.name);
-                if (render_path.empty() || !render_file.open(render_path)) {
+                if (render_path.empty() || !render_file.open(render_path, render_rate)) { // at the device's rate
                     render_path.clear();
                     finish(top.empty() ? "Mixdown: no card" : "Mixdown: cannot write");
                 }
             } else {
                 render_data = std::make_unique<SampleData>();
                 uint32_t room = std::min<uint32_t>(render_job.frames + 64, TakeRecorder::max_frames);
+                room = uint32_t(uint64_t(room) * render_rate / uint32_t(dsp::model_rate)) + 64; // its frames are the device's
                 render_data->left.reserve(room); render_data->right.reserve(room);
             }
         } else if (state == Bounce::State::Done || state == Bounce::State::Cancelled || state == Bounce::State::Failed) {
@@ -74,10 +78,11 @@ void SampleLibrary::drain_render() {
         } else return;
     }
     render_chunk.resize(2 * 16384);
-    // Everything there is now, a chunk at a time.
+    // Everything there is now, a chunk at a time; into a slot, as long as a pad's sample may be (60 s).
+    const uint32_t most = uint32_t(uint64_t(TakeRecorder::max_frames) * render_rate / uint32_t(dsp::model_rate));
     for (unsigned n; (n = bounce.pop(render_chunk.data(), 16384)) > 0;) {
         if (render_job.to_file) { if (!render_path.empty()) render_file.add(render_chunk.data(), n); }
-        else if (render_data && render_data->left.size() + n <= TakeRecorder::max_frames) // as long as a pad's sample may be
+        else if (render_data && render_data->left.size() + n <= most)
             for (unsigned f = 0; f < n; ++f) { render_data->left.push_back(render_chunk[2 * f]); render_data->right.push_back(render_chunk[2 * f + 1]); }
     }
     auto state = bounce.state();
@@ -103,7 +108,7 @@ void SampleLibrary::drain_render() {
         return;
     }
     render_data->frames = uint32_t(render_data->left.size());
-    land(render_job.slot, std::move(render_data), "Recorded", "RESAMPLE", "Resample");
+    land(render_job.slot, std::move(render_data), render_rate, "Recorded", "RESAMPLE", "Resample");
 }
 
 bool SampleLibrary::busy() const {

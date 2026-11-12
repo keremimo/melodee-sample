@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
-#include "melodee/engine/model_rate.h"
+#include "melodee/engine/dsp.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -18,18 +18,21 @@
 // applies the gain before it. State moves Idle -> Armed or Cued ->
 // Recording -> Done (audio thread) and Done -> Idle (service thread,
 // release()), so the two never write the buffer at once. The take is kept
-// at 44.1 kHz (ToModelRate), so frames(), length() and peak() count those.
+// as it came, at the device's rate (44.1, 48 or 96 kHz; never converted), and
+// taken() and take_rate() say so; frames() and length() count it in 44.1 kHz
+// frames (dsp::model_rate), as the project and the pages count everything.
 namespace melodee {
 
 class TakeRecorder {
 public:
     enum class State : uint8_t { Idle, Armed, Recording, Done, Cued };
-    static constexpr uint32_t max_frames = 60 * uint32_t(dsp::model_rate);
+    static constexpr uint32_t max_frames = 60 * uint32_t(dsp::model_rate);  // the longest take, 44.1 kHz frames
+    static constexpr uint32_t capacity = 60 * uint32_t(dsp::max_rate);      // its buffer: 60 s at the highest rate
     static constexpr unsigned columns = 128;
 
-    TakeRecorder() : left_(new float[max_frames]()), right_(new float[max_frames]()) {}
+    TakeRecorder() : left_(new float[capacity]()), right_(new float[capacity]()) { set_rate(dsp::sample_rate()); take_rate_.store(rate); }
 
-    // Audio thread (through the engine host's commands).
+    // Audio thread (through the engine host's commands). Lengths are device frames.
     // threshold_db -96 or below: at once. cued: wait for go() instead of the level.
     // quiet_end (frames kept, 0 never): the take ends on its own once it has been
     // below silence_db that long after a sound, cut 10 ms after the last one.
@@ -39,17 +42,24 @@ public:
         quiet = quiet_end;
         silence = std::pow(10.0f, silence_db / 20.0f);
         last_loud = 0; heard = false;
-        limit = std::min(length ? length : max_frames, max_frames);
+        const uint32_t most = std::min(capacity, uint32_t(60 * uint64_t(rate)));
+        limit = std::min(length ? length : most, most);
+        tail_frames = rate / 100;
+        take_rate_.store(rate);
         slot_.store(slot);
         frames_.store(0);
         start_at = 0;
         for (auto& c : peaks) c.store(0, std::memory_order_relaxed);
         limit_.store(limit);
-        convert.reset();
         state_.store(cued ? State::Cued : threshold <= 0 ? State::Recording : State::Armed);
     }
-    // Audio thread: the device's rate (EngineHost::set_audio_format).
-    void set_rate(float device) { convert.set_rate(device); }
+    // Audio thread: the device's rate (EngineHost::set_audio_format), for the takes armed from now on. One
+    // recording meanwhile ends there, its frames at the rate it was taken at.
+    void set_rate(float device) {
+        rate = std::max(8000u, unsigned(std::lround(device)));
+        auto s = state_.load();
+        if (s == State::Armed || s == State::Cued || s == State::Recording) stop();
+    }
     void start_now() { auto s = state_.load(); if (s == State::Armed || s == State::Cued) state_.store(State::Recording); }
     // The pattern came round `offset` frames into this block: a cued take starts there.
     void go(unsigned offset) { if (state_.load() == State::Cued) { start_at = offset; state_.store(State::Recording); } }
@@ -73,15 +83,13 @@ public:
         start_at = 0;
         l += skip; r += skip; n -= skip;
         uint32_t kept = at;
-        for (unsigned f = 0; f < n && kept < limit; ++f) convert.feed(l[f], r[f], [&](float cl, float cr) {
-            if (kept >= limit) return;
-            left_[kept] = cl; right_[kept] = cr;
-            if (std::fabs(cl) >= silence || std::fabs(cr) >= silence) { last_loud = kept; heard = true; }
+        for (unsigned f = 0; f < n && kept < limit; ++f, ++kept) {
+            left_[kept] = l[f]; right_[kept] = r[f];
+            if (std::fabs(l[f]) >= silence || std::fabs(r[f]) >= silence) { last_loud = kept; heard = true; }
             unsigned c = unsigned(uint64_t(kept) * columns / limit);
-            uint8_t v = uint8_t(std::min(1.0f, std::max(std::fabs(cl), std::fabs(cr))) * 255);
+            uint8_t v = uint8_t(std::min(1.0f, std::max(std::fabs(l[f]), std::fabs(r[f]))) * 255);
             if (v > peaks[c].load(std::memory_order_relaxed)) peaks[c].store(v, std::memory_order_relaxed);
-            ++kept;
-        });
+        }
         if (quiet && heard && kept - last_loud >= quiet) { // quiet long enough: done, ending where the sound did
             kept = std::min(kept, last_loud + 1 + tail_frames);
             frames_.store(kept, std::memory_order_release);
@@ -92,26 +100,31 @@ public:
         if (kept >= limit) state_.store(State::Done);
     }
 
-    // Any thread.
+    // Any thread. frames() and length() in 44.1 kHz frames; taken() the take's own (device) frames, at take_rate().
     State state() const { return state_.load(); }
-    uint32_t frames() const { return frames_.load(std::memory_order_acquire); }
-    uint32_t length() const { return limit_.load(); }
+    uint32_t taken() const { return frames_.load(std::memory_order_acquire); }
+    unsigned take_rate() const { return take_rate_.load(std::memory_order_relaxed); }
+    uint32_t frames() const { return to_model(taken()); }
+    uint32_t length() const { return to_model(limit_.load()); }
     float level() const { return level_.load(std::memory_order_relaxed); }
     float level_left() const { return level_l_.load(std::memory_order_relaxed); }   // each side, for the stereo meter
     float level_right() const { return level_r_.load(std::memory_order_relaxed); }
     uint8_t peak(unsigned column) const { return peaks[column % columns].load(std::memory_order_relaxed); }
     unsigned slot() const { return slot_.load(); }
 
-    // Service thread, while Done.
+    // Service thread, while Done: taken() frames at take_rate().
     const float* left() const { return left_.get(); }
     const float* right() const { return right_.get(); }
     void release() { if (state_.load() == State::Done) state_.store(State::Idle); }
 
 private:
+    uint32_t to_model(uint32_t device) const {
+        return uint32_t((uint64_t(device) * uint32_t(dsp::model_rate) + take_rate() / 2) / std::max(1u, take_rate()));
+    }
     std::unique_ptr<float[]> left_, right_;
-    ToModelRate convert;
     float threshold = 0.03f;
-    static constexpr uint32_t tail_frames = uint32_t(dsp::model_rate) / 100; // 10 ms kept after the last sound
+    unsigned rate = unsigned(dsp::model_rate);
+    uint32_t tail_frames = unsigned(dsp::model_rate) / 100; // 10 ms kept after the last sound
     uint32_t quiet = 0, last_loud = 0;
     float silence = 0.001f;
     bool heard = false;
@@ -119,7 +132,7 @@ private:
     uint32_t limit = max_frames;
     std::atomic<State> state_ {State::Idle};
     std::atomic<uint32_t> frames_ {0}, limit_ {max_frames};
-    std::atomic<unsigned> slot_ {0};
+    std::atomic<unsigned> slot_ {0}, take_rate_ {unsigned(dsp::model_rate)};
     std::atomic<float> level_ {0}, level_l_ {0}, level_r_ {0};
     std::array<std::atomic<uint8_t>, columns> peaks {};
 };

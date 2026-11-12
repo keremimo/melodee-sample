@@ -524,7 +524,9 @@ void EngineHost::apply(const Command& c) {
         } else if (c.pattern) {
             length = uint32_t(double(c.pattern) * bar * tick_length() + 0.5);
         }
-        take.arm(float(c.value), length, c.index, cue_track >= 0, length ? 0 : auto_quiet, auto_silence_db);
+        // The take counts its own (device) frames: the auto end's quiet, kept at the model rate, scaled to them.
+        auto quiet = uint32_t(double(auto_quiet) * dsp::sample_rate() / dsp::model_rate + 0.5);
+        take.arm(float(c.value), length, c.index, cue_track >= 0, length ? 0 : quiet, auto_silence_db);
         break;
     }
     case Type::RecordSource: {
