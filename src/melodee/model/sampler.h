@@ -153,20 +153,31 @@ struct SampleRef {
     uint32_t frames = 0; // at 44.1 kHz, once loaded
     bool used() const { return path[0] != 0; }
     // A multisampled instrument, by what it is called: an .sfz, an MPC keygroup
-    // program (.xpm, the MPC 3's .xty), a Logic EXS24 instrument (.exs), or one
-    // pad of an MPC drum program or project, "<file>#<pad>".
+    // program (.xpm, the MPC 3's .xty), a Logic EXS24 instrument (.exs), one
+    // pad of an MPC drum program or project, "<file>#<pad>", an .sf2's preset
+    // "<file>.sf2#<preset>" or a DecentSampler preset (.dspreset; roadmap P3).
     bool instrument() const {
         const char* end = path + std::strlen(path);
         const char* mark = std::strrchr(path, '#');
         const bool pad = mark && mark + 1 < end;
         if (pad) end = mark;
+        if (!pad && dspreset()) return true;
         if (end - path < 4 || end[-4] != '.') return false;
         const char kind[3] = {char(end[-3] | 32), char(end[-2] | 32), char(end[-1] | 32)};
         const bool xpm = kind[0] == 'x' && kind[1] == 'p' && kind[2] == 'm';
         const bool xty = kind[0] == 'x' && kind[1] == 't' && kind[2] == 'y';
-        if (pad) return xpm || xty || (kind[0] == 'x' && kind[1] == 'p' && kind[2] == 'j');
+        const bool sf2 = kind[0] == 's' && kind[1] == 'f' && kind[2] == '2';
+        if (pad) return xpm || xty || sf2 || (kind[0] == 'x' && kind[1] == 'p' && kind[2] == 'j'); // sf2: "<file>.sf2#<preset>"
         const bool exs = kind[0] == 'e' && kind[1] == 'x' && kind[2] == 's';
         return (kind[0] == 's' && kind[1] == 'f' && kind[2] == 'z') || xpm || xty || exs;
+    }
+    // A DecentSampler preset (roadmap P3).
+    bool dspreset() const {
+        const size_t n = std::strlen(path);
+        static const char tail[] = ".dspreset";
+        if (n < sizeof(tail) - 1) return false;
+        for (size_t k = 0; k < sizeof(tail) - 1; ++k) if (char(path[n - (sizeof(tail) - 1) + k] | 32) != tail[k]) return false;
+        return true;
     }
 };
 

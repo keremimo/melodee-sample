@@ -64,7 +64,8 @@ void draw(Paint& p, const Snapshot& s) {
         r.name = name_case(juce::String(file.name)); r.accent = c; r.current = first + row == cursor;
         const juce::String path(file.path);
         juce::String format = path.endsWithIgnoreCase(".xpm") ? "XPM" : path.endsWithIgnoreCase(".xty") ? "XTY" : path.endsWithIgnoreCase(".exs") ? "EXS"
-                            : path.endsWithIgnoreCase(".xpn") ? "XPN" : "SFZ";
+                            : path.endsWithIgnoreCase(".xpn") ? "XPN" : path.endsWithIgnoreCase(".sf2") || path.contains(".sf2#") || path.contains(".SF2#") ? "SF2"
+                            : path.endsWithIgnoreCase(".dspreset") ? "DS" : "SFZ";
         if (file.folder) { r.icon = Icon::Folder; r.chevron = true; }
         else if (file.bank) r.icon = Icon::Layers;
         else if (file.kit) { r.icon = Icon::Pads; r.fact = format; }

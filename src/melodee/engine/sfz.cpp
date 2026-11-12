@@ -174,6 +174,8 @@ bool known(const std::string& name, const Opcodes& o) {
         "ampeg_attack", "ampeg_hold", "ampeg_decay", "ampeg_sustain", "ampeg_release", "amp_veltrack", "cutoff", "resonance",
         "fil_type", "filtype", "fil_veltrack", "fil_keytrack", "fil_keycenter", "global_volume", "master_volume", "group_volume", "trigger",
         "region_label", "group_label", "master_label", "global_label", // only for reading
+        "rt_decay", "xfin_lokey", "xfin_hikey", "xfout_lokey", "xfout_hikey", "xfin_lovel", "xfin_hivel", "xfout_lovel", "xfout_hivel",
+        "xf_keycurve", "xf_velcurve", "sw_lokey", "sw_hikey", "sw_last", "sw_default", // roadmap P3
     };
     return names.count(name) || starts_with(name, "label_cc") || starts_with(name, "set_cc") || starts_with(name, "set_hdcc")
         || gate_of(name) || moved_of(name, o);
@@ -189,14 +191,10 @@ std::optional<std::string> kept_from(const Opcodes& o) {
         double start = starts(found->controller, o), asked = found->unit ? *limit : *limit / 127;
         if (found->low ? start < asked : start > asked) return name;
     }
-    // what plays on a release, or only on a legato, played on every press would double it
+    // what plays only on a legato, played on every press would double it (a release plays on the key let go: roadmap P3)
     if (auto trigger = at(o, "trigger")) {
         auto kind = lowered(*trigger);
-        if (kind == "release" || kind == "release_key" || kind == "legato") return std::string("trigger");
-    }
-    if (auto last = note_at(o, "sw_last")) {
-        auto first = o.count("sw_default") ? note_at(o, "sw_default") : note_at(o, "sw_lokey");
-        if (first && *last != *first) return std::string("sw_last");
+        if (kind == "legato") return std::string("trigger");
     }
     return std::nullopt;
 }
@@ -284,6 +282,21 @@ std::optional<SfzRegion> region_of(const Opcodes& o) {
     auto off_by = int_at(o, "off_by");
     if (!off_by) off_by = int_at(o, "offby");
     z.off_by = uint32_t(std::max(off_by.value_or(0), 0));
+    // Roadmap P3: a release sample, crossfades over keys and velocities, a keyswitch.
+    if (auto trigger = at(o, "trigger")) {
+        auto kind = lowered(*trigger);
+        z.on_release = kind == "release" || kind == "release_key";
+    }
+    z.rt_decay = float(std::clamp(double_at(o, "rt_decay").value_or(0), 0.0, 200.0));
+    auto key_at = [&](const char* name, int plain) { return clamped<uint8_t>(note_at(o, name).value_or(plain), 0, 127); };
+    auto vel_at = [&](const char* name, int plain) { return clamped<uint8_t>(int_at(o, name).value_or(plain), 0, 127); };
+    z.xfin_lokey = key_at("xfin_lokey", 0); z.xfin_hikey = key_at("xfin_hikey", 0);
+    z.xfout_lokey = key_at("xfout_lokey", 127); z.xfout_hikey = key_at("xfout_hikey", 127);
+    z.xfin_lovel = vel_at("xfin_lovel", 0); z.xfin_hivel = vel_at("xfin_hivel", 0);
+    z.xfout_lovel = vel_at("xfout_lovel", 127); z.xfout_hivel = vel_at("xfout_hivel", 127);
+    z.key_power = lowered(at(o, "xf_keycurve").value_or("power")) != "gain";
+    z.vel_power = lowered(at(o, "xf_velcurve").value_or("power")) != "gain";
+    if (auto last = note_at(o, "sw_last"); last && *last >= 0 && *last <= 127) z.switch_key = int16_t(*last);
     if (auto offset = int_at(o, "offset")) made.offset = *offset;
     if (auto end = int_at(o, "end")) {
         if (*end < 0) return std::nullopt; // end=-1: never plays
@@ -453,6 +466,10 @@ SfzRead read_sfz(const std::string& source, const SfzInclude& include) {
         if (kind && !filter_of(*kind)) read.ignored.insert("fil_type");
         auto made = region_of(merged);
         if (!made) { ++read.left; return; }
+        auto note_or = [&](const char* name) { auto v = note_at(merged, name); return int16_t(v && *v >= 0 && *v <= 127 ? *v : -1); };
+        if (read.switch_low < 0) read.switch_low = note_or("sw_lokey");
+        if (read.switch_high < 0) read.switch_high = note_or("sw_hikey");
+        if (read.switch_default < 0) read.switch_default = note_or("sw_default");
         if (read.regions.empty()) read.velocity = double_at(merged, "amp_veltrack").value_or(100);
         read.regions.push_back(std::move(*made));
         envelopes.push_back(envelope_of(merged));

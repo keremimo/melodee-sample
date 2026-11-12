@@ -177,6 +177,7 @@ private:
     void play(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
     void zones_on(Multisample& multi, const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
     void layers_on(const PadSound& sound, int pad, int velocity, int semitones, int cutoff, int trigger);
+    void release_zones(int pad, int semitones); // roadmap P3: an instrument's release samples for the key let go
     Multisample* multi_of(const PadSound& sound) const;
     void end_stream(Voice& v);
     void came_round(Voice& v);          // a zone's loop went back to its start
@@ -213,6 +214,10 @@ private:
     StreamPager* pager = nullptr;
     std::array<PadSound, sampler_pads> pads {}, base {}; // as they play (motion), and as the kit holds them
     std::array<uint8_t, sampler_pads> layer_turn {};    // Cycle: the layer each pad plays next
+    // Roadmap P3, an instrument's release samples: each key's last press, how hard and when (frames played).
+    std::array<uint8_t, 128> key_velocity {};
+    std::array<uint64_t, 128> key_since {};
+    uint64_t played_frames = 0;
     bool moved = false;
     std::array<uint64_t, (sampler_pads + 63) / 64> muted {};
     std::array<Voice, max_voices + spare_voices> voices {};

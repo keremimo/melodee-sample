@@ -12,6 +12,8 @@
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/sample_decode.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/sf2_file.h"
+#include "melodee/shell/dspreset_file.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -169,6 +171,22 @@ private:
     std::map<std::string, fs::path> by_name;
 };
 
+// Roadmap P3: its keyswitches (a range not named is the keys its zones switch on) and whether any zone plays on a
+// release. The default is sw_default, else the range's lowest, as the format has it.
+void instrument_switches(const SfzRead& read, Multisample& multi) {
+    int low = read.switch_low, high = read.switch_high;
+    for (const auto& z : multi.zones) {
+        multi.has_release = multi.has_release || z.on_release;
+        if (z.switch_key < 0 || read.switch_low >= 0) continue;
+        low = low < 0 ? z.switch_key : std::min<int>(low, z.switch_key);
+        high = std::max<int>(high, z.switch_key);
+    }
+    if (low < 0) return;
+    if (high < low) high = low;
+    multi.switch_low = int16_t(low); multi.switch_high = int16_t(high);
+    multi.switch_default = read.switch_default >= 0 ? read.switch_default : int16_t(low);
+}
+
 bool is_exs(const std::string& path) { return lowered(fs::path(path).extension().string()) == ".exs"; }
 
 SfzRead read_exs_file(const std::string& path, const std::string& bytes, std::string* error) {
@@ -181,8 +199,41 @@ SfzRead read_exs_file(const std::string& path, const std::string& bytes, std::st
 }
 } // namespace
 
+// Roadmap P3: an .sf2 preset's zones, read from the mapped file.
+SfzRead read_sf2_preset(const std::string& file, unsigned index, std::string* error) {
+    auto mapped = open_sf2(file);
+    if (!mapped->error.empty()) { if (error) *error = mapped->error; return {}; }
+    const Sf2Preset* preset = mapped->preset(index);
+    if (!preset) { if (error) *error = "Preset not found"; return {}; }
+    return mapped->sf2.read(*preset);
+}
+
+// A sound of an .sf2 as the cache lays out a file: at the project's rate, its loop at its own.
+bool sf2_sound(const std::string& file, const std::string& name, SampleData& out, WavInfo& info) {
+    auto mapped = open_sf2(file);
+    if (!mapped->error.empty()) return false;
+    std::vector<float> left, right;
+    unsigned rate = 0;
+    if (!mapped->sf2.sound(name, left, right, rate, info.loop_start, info.loop_end) || left.empty()) return false;
+    info.channels = right.empty() ? 1 : 2;
+    info.rate = rate;
+    if (right.empty()) right = left;
+    adopt(out, std::move(left), std::move(right), rate, 0);
+    return out.frames > 0;
+}
+
 SfzRead read_instrument(const std::string& path, std::string* error) {
     std::string file, which;
+    unsigned preset = 0;
+    if (split_sf2_preset(path, file, preset)) return read_sf2_preset(file, preset, error);
+    if (is_dspreset(path)) { // roadmap P3: a DecentSampler preset, its samples beside it
+        auto text = read_text(path);
+        if (!text) { if (error) *error = "cannot read it"; return {}; }
+        std::string why;
+        auto read = read_dspreset_text(*text, &why);
+        if (!why.empty()) { if (error) *error = why; return {}; }
+        return found_only(std::move(read), path, error);
+    }
     if (split_program_pad(path, file, which)) { // one pad of a drum program or an MPC Sample project, its layers as zones
         std::string why;
         auto pads = program_pads(file, why);
@@ -221,6 +272,11 @@ void SampleLibrary::begin_instrument(const Request& request) {
     Landing l;
     l.slot = request.slot;
     l.folder = fs::path(request.path).parent_path().string();
+    {
+        std::string file;
+        unsigned preset = 0;
+        if (split_sf2_preset(request.path, file, preset)) l.sf2 = file; // its sounds come out of the .sf2
+    }
     l.read = read_instrument(request.path, &error);
     if (!error.empty()) { finish_with(error); return; }
     if (l.read.regions.empty()) { finish_with("No sounds"); return; }
@@ -253,6 +309,7 @@ void SampleLibrary::begin_instrument(const Request& request) {
     multi->parts = std::make_unique<ZonePart[]>(l.names.size());
     multi->part_count = unsigned(l.names.size());
     multi->turns.assign(multi->zones.size(), 0);
+    instrument_switches(l.read, *multi);
     l.multi = multi;
     loaded.zones = unsigned(multi->zones.size());
     loaded.parts = multi->part_count;
@@ -288,15 +345,16 @@ void SampleLibrary::land_next() {
     bool landed = false;
     std::string why;
     do {
-        const fs::path source = find_beside(l.folder, l.names[index]);
+        const fs::path source = l.sf2.empty() ? find_beside(l.folder, l.names[index]) : fs::path(l.sf2);
         if (source.empty()) { why = "Files missing"; break; }
-        const std::string file = cache.file_of(source.string());
+        const std::string file = l.sf2.empty() ? cache.file_of(source.string()) : cache.file_of(l.sf2, l.names[index]);
         LaidOut info;
         if (file.empty()) { why = "Files missing"; break; }
         if (!cache.ready(file, info)) {
             SampleData decoded;
             WavInfo wav;
-            auto error = read_audio(source.string(), decoded, part_seconds, &wav);
+            auto error = l.sf2.empty() ? read_audio(source.string(), decoded, part_seconds, &wav)
+                       : sf2_sound(l.sf2, l.names[index], decoded, wav) ? std::string() : std::string("unreadable");
             if (!error.empty()) { why = "Files unreadable"; break; }
             info.frames = decoded.frames; info.channels = wav.channels; info.source_rate = wav.rate;
             info.loop_start = wav.loop_start; info.loop_end = wav.loop_end;
@@ -359,10 +417,17 @@ void SampleLibrary::hear_instrument(const std::string& path) {
         if (away_by < distance) { distance = away_by; best = &r; }
     }
     if (!best) return;
-    const fs::path source = find_beside(fs::path(path).parent_path(), best->sample);
-    if (source.empty()) return;
     auto data = std::make_unique<SampleData>();
-    if (!read_audio(source.string(), *data, 30, nullptr).empty() || !data->frames) return;
+    std::string file;
+    unsigned preset = 0;
+    if (split_sf2_preset(path, file, preset)) { // roadmap P3: the sound out of the .sf2
+        WavInfo info;
+        if (!sf2_sound(file, best->sample, *data, info)) return;
+    } else {
+        const fs::path source = find_beside(fs::path(path).parent_path(), best->sample);
+        if (source.empty()) return;
+        if (!read_audio(source.string(), *data, 30, nullptr).empty() || !data->frames) return;
+    }
     if (!host.offer_sample(preview_slot, data.get())) return;
     owned.push_back(std::move(data));
     { std::lock_guard<std::mutex> guard(lock); preview_heard = path; }
@@ -406,6 +471,7 @@ bool SampleLibrary::release_instruments() {
         changes.fetch_add(1, std::memory_order_release);
     }
     away.insert(away.end(), putting.begin(), putting.end());
+    forget_sf2_files(); // roadmap P3: no .sf2 kept mapped while the card is lent
     // The audio thread lets them go on its next block; the mappings must be gone before the card is unmounted.
     for (unsigned n = 0; n < 500; ++n) {
         reap();

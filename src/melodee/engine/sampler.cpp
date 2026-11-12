@@ -142,6 +142,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.since_hop = v.hop; // a tap at once
     }
     v.held = true; v.gate = sound.play == PadPlay::Gate && !(zone && zone->one_shot); v.group = sound.group;
+    if (zone && zone->on_release) { v.held = v.gate = v.loop = false; v.stretch = false; } // a release sample plays out once
     // A cloud never reads to its region's end, so a one shot's cloud lasts as
     // long as the pad would play, then lets go; a gate ends on release, a loop when hit again.
     if (v.cloud && !v.gate && !v.loop) v.life = std::max(1.0, frames / std::max(advance, 1e-6));
@@ -152,7 +153,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     float sense = sound.velocity_sense / 100.0f, curve = 0.25f + 0.75f * std::clamp(velocity, 0, 127) / 127.0f;
     float velocity_gain = 1.0f - sense * (1.0f - curve);
     v.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f) * accent;
-    if (zone) v.gain *= std::pow(10.0f, zone->gain / 20.0f);
+    if (zone) v.gain *= std::pow(10.0f, zone->gain / 20.0f) * zone_crossfade(*zone, key, std::clamp(velocity, 1, 127)); // its xfin / xfout
     float angle = (std::clamp<float>(float(sound.pan) + (zone ? zone->pan * 50.0f : 0.0f), -50.0f, 50.0f) + 50) / 100.0f * dsp::pi / 2;
     v.left = std::cos(angle); v.right = std::sin(angle); // constant power: centre is -3 dB a side, as the stock MPC plays it
     // The pad's envelope; the kit's DECAY scales every pad's decay. A one shot
@@ -217,9 +218,13 @@ void SamplerEngine::zones_on(Multisample& multi, const PadSound& sound, int pad,
     const int key = std::clamp(60 + int(sound.pitch) + semitones, 0, 127);
     const int vel = std::clamp(velocity, 1, 127);
     const int owner = trigger >= 0 ? trigger : pad;
+    // Roadmap P3: a keyswitch picks the zones that play from now on and sounds nothing of itself (nor cuts what sounds).
+    if (multi.switch_low >= 0 && key >= multi.switch_low && key <= multi.switch_high) { multi.switched = int16_t(key); return; }
     for (auto& v : voices)
         if (v.zone && v.pad == pad && v.trigger == owner && v.key == key && v.held) { v.held = false; if (v.gate) { v.env.gate(false); v.filter_env.gate(false); } }
     if (sound.mono) for (auto& v : voices) if (v.pad == pad) v.choked = true;
+    const int articulation = multi.switched >= 0 ? multi.switched : multi.switch_default;
+    key_velocity[size_t(key)] = uint8_t(vel); key_since[size_t(key)] = played_frames; // for its release samples
     seed = seed * 1664525u + 1013904223u;
     const float dice = 0.5f * (int32_t(seed) / 2147483648.0f + 1.0f); // one roll for a press
     std::array<uint16_t, max_voices> reached;
@@ -227,6 +232,7 @@ void SamplerEngine::zones_on(Multisample& multi, const PadSound& sound, int pad,
     for (size_t n = 0; n < multi.zones.size(); ++n) {
         const auto& z = multi.zones[n];
         if (key < z.low_key || key > z.high_key || vel < z.low_velocity || vel > z.high_velocity) continue;
+        if (z.on_release || (z.switch_key >= 0 && z.switch_key != articulation) || zone_crossfade(z, key, vel) <= 0) continue;
         uint32_t turn = multi.turns[n]++;
         if (z.sequence_length > 1 && turn % z.sequence_length != z.sequence - 1) continue;
         if (dice < z.low_random || (dice >= z.high_random && z.high_random < 1.0f)) continue;
@@ -336,6 +342,36 @@ void SamplerEngine::note_off(int key) {
             v.held = false;
             if (v.gate) { v.env.gate(false); v.filter_env.gate(false); }
         }
+    release_zones(pad, semis);
+}
+
+// Roadmap P3 (SFZ trigger=release): the key of an instrument let go plays the zones that sound on a release, at its
+// press's velocity, rt_decay dB quieter for each second it was held. Not for a key never pressed, nor a muted pad.
+void SamplerEngine::release_zones(int pad, int semitones) {
+    if (pad < 0 || pad >= int(sampler_pads) || pad_muted(unsigned(pad))) return;
+    const auto& sound = pads[size_t(pad)];
+    Multisample* multi = multi_of(sound);
+    if (!multi || !multi->has_release) return;
+    const int key = std::clamp(60 + int(sound.pitch) + semitones, 0, 127);
+    const int vel = key_velocity[size_t(key)];
+    if (!vel) return;
+    key_velocity[size_t(key)] = 0;
+    const float held = float(double(played_frames - key_since[size_t(key)]) / dsp::sample_rate());
+    const int articulation = multi->switched >= 0 ? multi->switched : multi->switch_default;
+    seed = seed * 1664525u + 1013904223u;
+    const float dice = 0.5f * (int32_t(seed) / 2147483648.0f + 1.0f);
+    for (size_t n = 0; n < multi->zones.size(); ++n) {
+        const auto& z = multi->zones[n];
+        if (!z.on_release || key < z.low_key || key > z.high_key || vel < z.low_velocity || vel > z.high_velocity) continue;
+        if ((z.switch_key >= 0 && z.switch_key != articulation) || zone_crossfade(z, key, vel) <= 0) continue;
+        uint32_t turn = multi->turns[n]++;
+        if (z.sequence_length > 1 && turn % z.sequence_length != z.sequence - 1) continue;
+        if (dice < z.low_random || (dice >= z.high_random && z.high_random < 1.0f)) continue;
+        if (!multi->parts[z.part].frames.load(std::memory_order_acquire)) continue;
+        Voice& v = free_voice();
+        start(v, sound, pad, vel, semitones, -1, pad, &z, multi, key);
+        if (v.pad >= 0 && z.rt_decay > 0) v.gain *= std::pow(10.0f, -z.rt_decay * held / 20.0f);
+    }
 }
 
 void SamplerEngine::audition(uint16_t sample, uint32_t from, uint32_t to, int velocity) {
@@ -685,6 +721,7 @@ bool SamplerEngine::relieve(bool steal) {
 
 void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     edge_step = (1.0f / 64) * dsp::model_frames();
+    played_frames += frames;
     // Clouds: their voices only place grains; the grains play.
     for (auto& v : voices) {
         if (v.pad < 0 || !v.cloud) continue;

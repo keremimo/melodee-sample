@@ -14,6 +14,8 @@
 #include "melodee/engine/sfz.h"
 #include "melodee/engine/keygroup.h"
 #include "melodee/engine/exs.h"
+#include "melodee/engine/sf2.h"
+#include "melodee/engine/dspreset.h"
 #include "melodee/shell/expansion_install.h"
 #include "melodee/engine/stream_pager.h"
 #include "melodee/shell/sample_cache.h"
@@ -76,6 +78,7 @@
 #include "melodee/shell/looper_chord.h"
 #include "melodee/shell/loop_sheet.h"
 #include <algorithm>
+#include <tuple>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -5577,8 +5580,9 @@ void sfz_reader() {
         auto read = read_sfz("<global> sw_lokey=24 sw_hikey=25 sw_default=24\n<region> sample=note.wav key=60 sw_last=24\n<region> sample=other.wav key=60 sw_last=25\n"
                              "<region> sample=tail.wav key=60 trigger=release sw_last=24\n<region> sample=first.wav key=61 trigger=first sw_last=24\n"
                              "<region> sample=slur.wav key=61 trigger=legato sw_last=24\n");
-        CHECK(samples(read) == S({"note.wav", "first.wav"}));
-        CHECK(read.left == 3 && read.left_by == std::set<std::string>({"trigger", "sw_last"}));
+        // roadmap P3: every articulation is a keyswitch's zone and a release sample plays on the key let go; a legato's is left out
+        CHECK(samples(read) == S({"note.wav", "other.wav", "tail.wav", "first.wav"}));
+        CHECK(read.left == 1 && read.left_by == std::set<std::string>({"trigger"}) && read.regions[2].zone.on_release);
     }
     {
         auto read = read_sfz("<region> sample=a.wav cutoff=800 resonance=9 fil_type=hpf_2p fil_veltrack=1200 fil_keytrack=50 fil_keycenter=c5\n"
@@ -5670,7 +5674,7 @@ void keygroup_reader() {
     CHECK(a.zone.one_shot && b.zone.one_shot && b.zone.loop == ZoneLoop::Off);
     CHECK(a.zone.keytrack == 0 && b.zone.keytrack == 100 && a.zone.root == 72);
     CHECK(a.zone.release == sfz_release_step(keygroup_seconds(0.63)) - sfz_release_step(keygroup_seconds(0.2)));
-    {   // a pick at random splits the dice; a release trigger is left out and named
+    {   // a pick at random splits the dice; a release trigger's layers play on the key let go (roadmap P3)
         KeygroupProgram picked;
         picked.type = "Keygroup";
         KeygroupInstrument one;
@@ -5680,7 +5684,7 @@ void keygroup_reader() {
         off.tags = {{"TriggerMode", "1"}};
         picked.instruments = {one, off};
         auto r = read_keygroup(picked);
-        CHECK(r.regions.size() == 2 && r.left == 2 && r.left_by.count("TriggerMode"));
+        CHECK(r.regions.size() == 4 && r.left == 0 && !r.regions[1].zone.on_release && r.regions[2].zone.on_release && r.regions[3].zone.one_shot);
         CHECK(r.regions[0].zone.high_random == 0.5f && r.regions[1].zone.low_random == 0.5f);
         // Loop with no points: the file's own loop, if it has one
         CHECK(r.regions[1].zone.loop == ZoneLoop::On && r.regions[1].zone.loop_end == 0 && r.regions[1].loop_asked);
@@ -9192,9 +9196,197 @@ void loop_seams() {
 }
 
 
+// Roadmap P3, instruments: release samples, crossfades over velocity, keyswitches.
+void instrument_p3() {
+    { // xfin / xfout: a straight gain across the range, the power curve its root
+        SampleZone z;
+        z.xfin_lovel = 0; z.xfin_hivel = 64; z.xfout_lovel = 64; z.xfout_hivel = 127; z.vel_power = false;
+        CHECK(zone_crossfade(z, 60, 0) == 0.0f && std::fabs(zone_crossfade(z, 60, 32) - 0.5f) < 0.01f && zone_crossfade(z, 60, 64) == 1.0f);
+        CHECK(std::fabs(zone_crossfade(z, 60, 127)) < 1e-6f);
+        z.vel_power = true;
+        CHECK(std::fabs(zone_crossfade(z, 60, 32) - std::sqrt(0.5f)) < 0.01f);
+        SampleZone keys;
+        keys.xfin_lokey = 48; keys.xfin_hikey = 60;
+        CHECK(zone_crossfade(keys, 40, 100) == 0.0f && zone_crossfade(keys, 70, 100) == 1.0f);
+    }
+    { // a zone faded out at this velocity does not sound at all
+        ZoneRig r;
+        r.part(zone_tone(440, 0.5f, 44100));
+        auto& z = r.zone(0); z.xfin_lovel = 50; z.xfin_hivel = 100;
+        r.pad.velocity_sense = 0;
+        r.build();
+        r.key(0, 40);
+        CHECK(zone_rms(r.run(4000), 500, 4000) < 1e-6);
+        r.key(0, 110);
+        CHECK(zone_rms(r.run(4000), 500, 4000) > 0.1);
+    }
+    { // a release sample plays when the key is let go, quieter the longer it was held
+        auto played = [](unsigned held_blocks) {
+            ZoneRig r;
+            r.part(zone_tone(440, 0.5f, 44100)); r.part(zone_tone(880, 0.5f, 44100));
+            r.zone(0);
+            auto& tail = r.zone(1); tail.on_release = true; tail.rt_decay = 6;
+            r.multi->has_release = true;
+            r.pad.velocity_sense = 0; r.pad.release = 0;
+            r.build(PadPlay::Gate);
+            r.key(0, 100);
+            auto pressed = r.run(4000);
+            if (held_blocks) r.run(held_blocks * 128);
+            r.off(0);
+            auto after = r.run(8000);
+            return std::make_tuple(zone_hz(pressed, 500, 4000), zone_hz(after, 3000, 8000), zone_rms(after, 3000, 8000));
+        };
+        auto [first, second, loud] = played(0);
+        CHECK(std::fabs(first - 440) < 10 && std::fabs(second - 880) < 15); // the press plays its zone alone; the release the other
+        auto [a, b, quiet] = played(345); // about a second more held: 6 dB down
+        (void)a; (void)b;
+        CHECK(quiet < loud * 0.62 && quiet > loud * 0.38);
+    }
+    { // keyswitches: the last one pressed picks the zones; it sounds nothing itself
+        ZoneRig r;
+        r.part(zone_tone(440, 0.5f, 44100)); r.part(zone_tone(880, 0.5f, 44100));
+        auto& legato = r.zone(0); legato.switch_key = 24; legato.root = 60;
+        auto& staccato = r.zone(1); staccato.switch_key = 25; staccato.root = 60; staccato.keytrack = 100;
+        r.multi->switch_low = 24; r.multi->switch_high = 25; r.multi->switch_default = 24;
+        r.build();
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 440) < 8);
+        r.engine->silence();
+        r.key(25 - 60);
+        CHECK(zone_rms(r.run(2000), 200, 2000) < 1e-6); // the switch itself: silent
+        r.key(0);
+        CHECK(std::fabs(zone_hz(r.run(8000), 800, 8000) - 880) < 12);
+    }
+    { // SFZ: what the reader takes of them
+        auto read = read_sfz("<global> sw_lokey=24 sw_hikey=25 sw_default=24\n<region> sample=note.wav key=60 sw_last=24\n<region> sample=other.wav key=60 sw_last=25\n"
+                             "<region> sample=tail.wav key=60 trigger=release rt_decay=3 sw_last=24\n<region> sample=soft.wav key=61 xfin_lovel=0 xfin_hivel=40 xf_velcurve=gain\n"
+                             "<region> sample=slur.wav key=61 trigger=legato\n");
+        CHECK(read.regions.size() == 4 && read.left == 1 && read.left_by == std::set<std::string>({"trigger"}));
+        CHECK(read.switch_low == 24 && read.switch_high == 25 && read.switch_default == 24);
+        CHECK(read.regions[0].zone.switch_key == 24 && read.regions[1].zone.switch_key == 25 && !read.regions[0].zone.on_release);
+        CHECK(read.regions[2].zone.on_release && read.regions[2].zone.rt_decay == 3.0f);
+        CHECK(read.regions[3].zone.xfin_hivel == 40 && !read.regions[3].zone.vel_power && read.regions[3].zone.switch_key == -1);
+        CHECK(read.ignored.empty());
+    }
+}
+
+// A SoundFont made here: one preset, its instrument two sounds panned apart (a stereo pair), looped.
+std::vector<uint8_t> tiny_sf2() {
+    std::vector<uint8_t> out;
+    auto u8 = [](std::vector<uint8_t>& v, unsigned x) { v.push_back(uint8_t(x)); };
+    auto u16 = [&](std::vector<uint8_t>& v, unsigned x) { u8(v, x & 0xff); u8(v, (x >> 8) & 0xff); };
+    auto u32 = [&](std::vector<uint8_t>& v, uint32_t x) { u16(v, x & 0xffff); u16(v, x >> 16); };
+    auto name = [&](std::vector<uint8_t>& v, const char* text, size_t size) { for (size_t n = 0; n < size; ++n) u8(v, n < std::strlen(text) ? uint8_t(text[n]) : 0); };
+    auto chunk = [&](const char* id, const std::vector<uint8_t>& body) {
+        std::vector<uint8_t> c(id, id + 4);
+        u32(c, uint32_t(body.size()));
+        c.insert(c.end(), body.begin(), body.end());
+        if (body.size() % 2) c.push_back(0);
+        return c;
+    };
+    auto list = [&](const char* kind, std::vector<std::vector<uint8_t>> parts) {
+        std::vector<uint8_t> body(kind, kind + 4);
+        for (auto& p : parts) body.insert(body.end(), p.begin(), p.end());
+        return chunk("LIST", body);
+    };
+    std::vector<uint8_t> ifil; u16(ifil, 2); u16(ifil, 1);
+    std::vector<uint8_t> smpl;
+    for (unsigned n = 0; n < 2000; ++n) u16(smpl, uint16_t(int16_t(n < 1000 ? 8000 : -8000)));
+    std::vector<uint8_t> phdr, pbag, pmod(10, 0), pgen, inst, ibag, imod(10, 0), igen, shdr;
+    name(phdr, "Tiny", 20); u16(phdr, 5); u16(phdr, 0); u16(phdr, 0); u32(phdr, 0); u32(phdr, 0); u32(phdr, 0);
+    name(phdr, "EOP", 20); u16(phdr, 0); u16(phdr, 0); u16(phdr, 1); u32(phdr, 0); u32(phdr, 0); u32(phdr, 0);
+    u16(pbag, 0); u16(pbag, 0); u16(pbag, 1); u16(pbag, 0);
+    u16(pgen, 41); u16(pgen, 0); u16(pgen, 0); u16(pgen, 0);
+    name(inst, "Pair", 20); u16(inst, 0);
+    name(inst, "EOI", 20); u16(inst, 2);
+    u16(ibag, 0); u16(ibag, 0); u16(ibag, 4); u16(ibag, 0); u16(ibag, 8); u16(ibag, 0);
+    for (int side = 0; side < 2; ++side) {
+        u16(igen, 43); u16(igen, 60 | 72 << 8);
+        u16(igen, 17); u16(igen, uint16_t(int16_t(side ? 500 : -500)));
+        u16(igen, 54); u16(igen, 1);
+        u16(igen, 53); u16(igen, unsigned(side));
+    }
+    u16(igen, 0); u16(igen, 0);
+    for (int side = 0; side < 2; ++side) {
+        name(shdr, side ? "Tone R" : "Tone L", 20);
+        u32(shdr, side * 1000); u32(shdr, side * 1000 + 1000); u32(shdr, side * 1000 + 100); u32(shdr, side * 1000 + 900); u32(shdr, 22050);
+        u8(shdr, 64); u8(shdr, 0); u16(shdr, unsigned(1 - side)); u16(shdr, side ? 2 : 4);
+    }
+    name(shdr, "EOS", 20); for (int n = 0; n < 26; ++n) u8(shdr, 0);
+    auto info = list("INFO", {chunk("ifil", ifil)});
+    auto sdta = list("sdta", {chunk("smpl", smpl)});
+    auto pdta = list("pdta", {chunk("phdr", phdr), chunk("pbag", pbag), chunk("pmod", pmod), chunk("pgen", pgen), chunk("inst", inst),
+                              chunk("ibag", ibag), chunk("imod", imod), chunk("igen", igen), chunk("shdr", shdr)});
+    std::vector<uint8_t> body {'s', 'f', 'b', 'k'};
+    for (auto* part : {&info, &sdta, &pdta}) body.insert(body.end(), part->begin(), part->end());
+    out = chunk("RIFF", body);
+    return out;
+}
+
+// Roadmap P3: SF2 and DecentSampler instruments read as zones.
+void instrument_formats_p3() {
+    {
+        auto bytes = tiny_sf2();
+        Sf2 file;
+        CHECK(file.open(bytes.data(), bytes.size()).empty());
+        CHECK(file.presets().size() == 1 && file.presets()[0].program == 5 && file.presets()[0].name == "Tiny" && file.plays(file.presets()[0]));
+        auto read = file.read(file.presets()[0]);
+        CHECK(read.regions.size() == 1 && read.left == 0); // two sides, one stereo sound
+        const auto& r = read.regions[0];
+        CHECK(r.sample == "0+1" && r.zone.low_key == 60 && r.zone.high_key == 72 && r.zone.root == 64 && r.zone.pan == 0);
+        CHECK(r.zone.loop == ZoneLoop::On && r.zone.loop_start == 100 && r.zone.loop_end == 900);
+        std::vector<float> left, right;
+        unsigned rate = 0;
+        int64_t from = 0, to = 0;
+        CHECK(file.sound(r.sample, left, right, rate, from, to));
+        CHECK(left.size() == 1000 && right.size() == 1000 && rate == 22050 && from == 100 && to == 900);
+        CHECK(left[10] > 0.2f && right[10] < -0.2f);
+        CHECK(!file.sound("7", left, right, rate, from, to));
+        std::string named;
+        unsigned preset = 0;
+        CHECK(split_sf2_preset("/media/card/Samples/Piano.SF2#12", named, preset) && named == "/media/card/Samples/Piano.SF2" && preset == 12);
+        CHECK(!split_sf2_preset("/media/card/Samples/Kit.xpm#2", named, preset));
+        SampleRef ref;
+        std::snprintf(ref.path, sizeof(ref.path), "/media/card/Piano.sf2#3");
+        CHECK(ref.instrument());
+        std::snprintf(ref.path, sizeof(ref.path), "/media/card/Strings.dspreset");
+        CHECK(ref.instrument());
+        std::vector<uint8_t> broken(bytes.begin(), bytes.begin() + 40);
+        Sf2 bad;
+        CHECK(!bad.open(broken.data(), broken.size()).empty());
+    }
+    {
+        DsElement root {"DecentSampler", {}, {}};
+        DsElement groups {"groups", {{"attack", "0.01"}, {"release", "0.5"}}, {}};
+        DsElement group {"group", {{"volume", "-6dB"}, {"seqMode", "round_robin"}}, {}};
+        group.children.push_back({"sample", {{"path", "Samples/C3 a.wav"}, {"rootNote", "48"}, {"loNote", "46"}, {"hiNote", "50"}, {"seqPosition", "1"}}, {}});
+        group.children.push_back({"sample", {{"path", "Samples/C3 b.wav"}, {"rootNote", "48"}, {"loNote", "46"}, {"hiNote", "50"}, {"seqPosition", "2"}}, {}});
+        DsElement release_group {"group", {{"trigger", "release"}}, {}};
+        release_group.children.push_back({"sample", {{"path", "Samples/C3 rel.wav"}, {"rootNote", "48"}, {"loopEnabled", "true"}, {"loopStart", "10"}, {"loopEnd", "99"}}, {}});
+        DsElement off_group {"group", {{"enabled", "false"}}, {}};
+        off_group.children.push_back({"sample", {{"path", "Samples/off.wav"}}, {}});
+        groups.children = {group, release_group, off_group};
+        root.children.push_back(groups);
+        root.children.push_back({"effects", {}, {{"effect", {{"type", "reverb"}}, {}}}});
+        auto read = read_dspreset(root);
+        CHECK(read.regions.size() == 3 && read.left == 1 && read.left_by.count("enabled"));
+        CHECK(read.regions[0].sample == "Samples/C3 a.wav" && read.regions[0].zone.root == 48 && read.regions[0].zone.low_key == 46);
+        CHECK(read.regions[0].zone.sequence == 1 && read.regions[1].zone.sequence == 2 && read.regions[1].zone.sequence_length == 2);
+        CHECK(std::fabs(read.regions[0].zone.gain + 6) < 0.01f && read.ignored.count("effects"));
+        CHECK(read.regions[2].zone.on_release && read.regions[2].zone.loop == ZoneLoop::On && read.regions[2].zone.loop_end == 100);
+        CHECK(read.envelope.release && std::fabs(*read.envelope.release - 0.5) < 1e-9);
+        std::string why;
+        read_dspreset(DsElement {"NotAPreset", {}, {}}, &why);
+        CHECK(!why.empty());
+        CHECK(dspreset_decibels("0.5") && std::fabs(*dspreset_decibels("0.5") + 6.02) < 0.01);
+    }
+}
+
 int main() {
     pad_link_chains();
     loop_seams();
+    instrument_p3();
+    instrument_formats_p3();
     pad_layers_p3();
     track_speed();
     generators();

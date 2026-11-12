@@ -28,6 +28,8 @@ public:
     const std::string& folder() const { return folder_; }
     // Where a source's frames go; empty when it cannot be read or there is no folder.
     std::string file_of(const std::string& source) const;
+    // One sound inside a file holding many (an .sf2's, roadmap P3): named after the file and `part`.
+    std::string file_of(const std::string& source, const std::string& part) const;
     // True when `file` is whole and says what it holds. Marks it played.
     bool ready(const std::string& file, LaidOut& out) const;
     // Written to a .part, then renamed. Empty on success.

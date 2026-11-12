@@ -45,6 +45,7 @@ struct SampleFile {
     bool instrument = false; // a multisampled instrument (".sfz", ".xpm", ".exs"), loaded onto a pad as a WAV file is
     bool kit = false;        // an MPC drum program (".xpm", ".xty"): Push loads it onto the track as Load Kit does
     bool expansion = false;  // an MPC expansion (".xpn"): Push installs it onto the card
+    bool presets = false;    // a SoundFont (".sf2", roadmap P3): listed as a folder, its presets inside it
 };
 struct LoadedSample {
     std::string name, path, error;
@@ -201,6 +202,7 @@ private:
     struct Landing {
         uint8_t slot = 0;
         std::string folder;
+        std::string sf2;                        // roadmap P3: an .sf2's preset, its sounds taken from this file
         SfzRead read;
         std::shared_ptr<Multisample> multi;
         std::vector<std::string> names;         // each part's file, as its regions name it

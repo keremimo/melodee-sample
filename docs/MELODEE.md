@@ -707,7 +707,14 @@ the file holds, to the bit.
 - **SFZ instruments** (`.sfz` in the browser, tagged SFZ): load onto a pad as
   a WAV does; the pad keeps all its controls and its note and velocity pick
   zones (up to 512; round robin, layers, `group` / `off_by`, each zone's own
-  filter and envelope as offsets from the pad's). A hit plays key 60 plus the
+  filter and envelope as offsets from the pad's). Roadmap P3: release samples
+  (`trigger=release` or `release_key`) play when the key is let go, at its
+  press's velocity, `rt_decay` dB quieter a second it was held; crossfades
+  (`xfin_lokey` / `hikey`, `xfout_lokey` / `hikey`, the same over velocity,
+  `xf_keycurve` / `xf_velcurve` power or gain) set each zone's level where
+  ranges overlap; keyswitches (`sw_lokey` / `sw_hikey`, `sw_last`,
+  `sw_default`): a key in the switch range sounds nothing and picks the zones
+  that play from then on (the default first). A hit plays key 60 plus the
   pad's Semi. **16 Levels** on the pad plays it: Tune or Scale for notes,
   Velocity through its layers; while 16 Levels is on it, a MIDI keyboard plays
   it at real pitch. Stage's TRIM shows its keys and velocities, how far it has
@@ -727,8 +734,9 @@ the file holds, to the bit.
   pan, the keygroup's volume and tune, start, end and forward loop, one shot,
   keytrack off, Cycle (a layer a press) and Random, and the amp envelope.
   The program's own volume and tune go over every keygroup, and its Velocity
-  Sense of 0 (an organ's) plays every press full. Named, not played: filters,
-  reversed loops, note-off keygroups. A layer naming a sample the folder does
+  Sense of 0 (an organ's) plays every press full. A note-off keygroup
+  (TriggerMode 1) plays its layers as release samples, on the key let go
+  (roadmap P3). Named, not played: filters, reversed loops. A layer naming a sample the folder does
   not hold (expansions keep some from their full version) is left out and
   counted on TRIM, not called an error; a program with none found is.
 - **MPC 3 programs** (`.xty`, an MPC 3 track, tagged XTY; and an `.xpm`
@@ -746,9 +754,36 @@ the file holds, to the bit.
   chains, the instrument's volume, transpose and tune, ENV1 as the amp
   envelope and Level via Vel as velocity. Groups picked by something held (a
   keyswitch, a controller, a channel, an articulation, a tempo) keep those at
-  rest, the lowest of each kind. Left out and counted on TRIM: muted and
-  release-trigger groups, missing samples. Named, not played: the filter,
-  reverse, backwards loops, loop crossfades, random sample select.
+  rest, the lowest of each kind. A release-trigger group plays on the key
+  let go (roadmap P3). Left out and counted on TRIM: muted groups, missing
+  samples. Named, not played: the filter, reverse, backwards loops, loop
+  crossfades, random sample select.
+- **SoundFonts** (`.sf2`, tagged SF2; roadmap P3): listed as a folder; Push
+  opens it, its presets inside it by bank and program (those with nothing to
+  play left out), and Push on one loads it onto a pad as an SFZ does,
+  `<file>.sf2#<preset>`. The file is mapped, never read whole: only the
+  chosen preset's sounds are taken out, one a pass, into `Melodee/Cache`,
+  then streamed as an SFZ's are. Carried over: key and velocity ranges (the
+  preset's over its instrument's), root (overriding or the sound's own),
+  coarse and fine tune with the sound's correction, scale tuning, attenuation
+  (at the 0.4 the hardware took), pan, start, end and loop offsets, loop
+  modes (on, and until released), exclusive class as a choke, the volume
+  envelope (hold into decay, sustain in dB) and the filter's cutoff and
+  resonance; two sounds panned hard apart, alike in all else, play as one
+  stereo sound. 24-bit sounds (`sm24`) keep their low byte. Named, not
+  played: modulators, the LFOs, the modulation envelope, envelope delay. A
+  packed file (`.sf3`) is refused. JUCE and inMusic's open-source packages
+  have no SoundFont reader, so Melodee reads the format itself.
+- **DecentSampler presets** (`.dspreset`, tagged DS; roadmap P3): load and
+  stream as an SFZ does, its XML read with JUCE's XmlDocument: each
+  `<sample>` under its `<group>` under `<groups>`, each level's attributes
+  over the one above; root, note and velocity ranges, tuning (and the
+  group's and global's), pitch keytrack, volume and pan (linear or dB, the
+  three levels and tags added), start, end and loop, round robin and random
+  sequences, the amp envelope, tags as chokes (`silencedByTags`), and
+  `trigger=release` samples on the key let go. Left out and counted: groups
+  or samples disabled, a tag turned off, a legato trigger, a controller
+  where it does not start. Named, not played: effects, modulators.
 - **MPC drum programs** (`.xpm` or `.xty` of type Drum, tagged KIT): Push loads the
   program as the selected kit track's kit, as Load Kit does (one undo), each
   instrument onto its pad (1 is A01, 17 is B01). A pad of one layer plays its

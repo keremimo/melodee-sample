@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/sf2_file.h"
 #include "melodee/shell/chop.h"
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/sample_decode.h"
@@ -145,8 +146,26 @@ bool is_bank(const fs::path& path) { return upper(path.extension().string()) == 
 bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm, .xty), an EXS24 instrument, or a pad of an MPC program or project
     std::string file, which;
     if (split_program_pad(path.string(), file, which)) return true;
+    unsigned preset = 0;
+    if (split_sf2_preset(path.string(), file, preset)) return true; // roadmap P3: a preset of an .sf2
     const auto kind = upper(path.extension().string());
-    return kind == ".SFZ" || kind == ".XPM" || kind == ".XTY" || kind == ".EXS";
+    return kind == ".SFZ" || kind == ".XPM" || kind == ".XTY" || kind == ".EXS" || kind == ".DSPRESET";
+}
+// Roadmap P3: an .sf2's presets as the browser lists a folder's files, each an instrument "<file>#<its place>",
+// by bank and program, those with nothing to play left out.
+void list_presets(const std::string& file, std::vector<SampleFile>& out) {
+    auto mapped = open_sf2(file);
+    if (!mapped->error.empty()) return;
+    for (const auto& p : mapped->sf2.presets()) {
+        if (!mapped->sf2.plays(p) || out.size() >= 4000) continue;
+        SampleFile f;
+        f.path = file + "#" + std::to_string(p.index);
+        char number[16];
+        std::snprintf(number, sizeof(number), p.bank ? "%d:%03d " : "%03d ", p.bank ? p.bank : p.program, p.program);
+        f.name = upper(p.bank ? number + p.name : std::string(number, 4) + p.name).substr(0, 26);
+        f.instrument = true;
+        out.push_back(std::move(f));
+    }
 }
 // "<name>_[TrackData]" beside <name>.xty (and an .xpj's, an .xpm's data folder beside its file).
 bool owned_data(const fs::path& dir) {
@@ -177,9 +196,11 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out, bool car
         bool bank = !folder_here && is_bank(it->path());
         bool instrument = !folder_here && is_instrument(it->path());
         bool expansion = !folder_here && is_expansion(it->path());
-        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument || expansion))) continue;
+        bool presets = !folder_here && is_sf2(it->path().string()); // roadmap P3: an .sf2 opens as a folder of its presets
+        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument || expansion || presets))) continue;
         SampleFile f;
-        f.path = it->path().string(); f.folder = folder_here; f.bank = bank; f.instrument = instrument; f.expansion = expansion;
+        f.path = it->path().string(); f.folder = folder_here || presets; f.bank = bank; f.instrument = instrument; f.expansion = expansion;
+        f.presets = presets;
         if (instrument && is_drum_program(f.path)) { f.kit = true; f.instrument = false; }
         f.name = upper(folder_here ? name : it->path().stem().string()).substr(0, 26);
         if (!folder_here) f.bytes = it->file_size(error);
@@ -261,9 +282,10 @@ void SampleLibrary::scan() {
     }
     // A card taken out, or a folder gone: back to the drive's start.
     if (drive == Drive::Card && (card_top.empty() || folder.rfind(card_top, 0) != 0)) folder = start_of(drive);
-    if (!folder.empty() && !fs::is_directory(folder, error)) folder = start_of(drive);
+    if (!folder.empty() && !fs::is_directory(folder, error) && !(is_sf2(folder) && fs::is_regular_file(folder, error))) folder = start_of(drive);
     std::vector<SampleFile> files;
     if (drive == Drive::Internal && folder.empty()) for (const auto& t : tops) list_into(t, files);
+    else if (is_sf2(folder)) list_presets(folder, files); // inside an .sf2: its presets
     else list_into(folder, files, drive == Drive::Card && folder == card_top);
     // MPC drum programs (kits) first, then instruments (keygroup programs, SFZ), as an expansion's folder holds
     // them among its samples; then folders, then files.

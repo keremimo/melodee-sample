@@ -119,10 +119,10 @@ void add_layers(const KeygroupInstrument& instrument, int low, int high, bool dr
     const auto layers = keygroup_layers(instrument);
     if (layers.empty()) return;
     if (low > high) { read.left += unsigned(layers.size()); return; }
-    // TriggerMode: 0 one shot, 1 on the key's release, 2 (and older files' absence) on the press.
+    // TriggerMode: 0 one shot, 1 on the key's release (roadmap P3: a release sample), 2 (and older files' absence) on the press.
     const int trigger = int_at(t, "TriggerMode").value_or(-1);
-    if (trigger == 1) { read.left += unsigned(layers.size()); read.left_by.insert("TriggerMode"); return; }
-    const bool one_shot = trigger == 0 || (trigger < 0 && flag_at(t, "OneShot").value_or(false));
+    const bool on_release = trigger == 1;
+    const bool one_shot = trigger == 0 || on_release || (trigger < 0 && flag_at(t, "OneShot").value_or(false));
     // ZonePlay: 0 cycles the layers a press at a time, 1 plays those its velocity reaches, 2 picks one at random.
     int play = int_at(t, "ZonePlay").value_or(1);
     if (play < 0 || play > 2) { read.ignored.insert("ZonePlay"); play = 1; }
@@ -176,6 +176,7 @@ void add_layers(const KeygroupInstrument& instrument, int low, int high, bool dr
         if (start && *start > 0) made.offset = *start;
         if (end && *end > 0) made.end = *end;
         z.one_shot = one_shot;
+        z.on_release = on_release;
         made.loop_named = one_shot;
         if (!one_shot) {
             if (auto slice_loop = int_at(l, "SliceLoop")) {

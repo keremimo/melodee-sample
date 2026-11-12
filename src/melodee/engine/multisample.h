@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/sampler.h"
 #include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -45,7 +46,33 @@ struct SampleZone {
     uint8_t cutoff_center = 60;
     // Its own envelope: each stage off the pad's, in the pad's 0..100 steps.
     int16_t attack = 0, decay = 0, sustain = 0, release = 0;
+    // Roadmap P3. A release sample (SFZ trigger=release): it plays when its key is let go, at the press's
+    // velocity, `rt_decay` dB quieter a second the key was held, and is not played by the press itself.
+    bool on_release = false;
+    float rt_decay = 0;
+    // Crossfades (xfin_* / xfout_*): over these keys and velocities it fades in, then out; a pair equal:
+    // none. `power`: equal power (the format's default), else straight gain.
+    uint8_t xfin_lokey = 0, xfin_hikey = 0, xfout_lokey = 127, xfout_hikey = 127;
+    uint8_t xfin_lovel = 0, xfin_hivel = 0, xfout_lovel = 127, xfout_hivel = 127;
+    bool key_power = true, vel_power = true;
+    // A keyswitch's (sw_last): it plays while that key was the last of the instrument's keyswitches pressed; -1 always.
+    int16_t switch_key = -1;
 };
+
+// How loud a zone's crossfades leave it at `key` and `velocity`, 0..1.
+inline float zone_crossfade(const SampleZone& z, int key, int velocity) {
+    auto ramp = [](int at, int lo, int hi, bool rising) { // 0..1 across lo..hi; outside it what lies beyond
+        if (hi <= lo) return 1.0f;
+        if (at <= lo) return rising ? 0.0f : 1.0f;
+        if (at >= hi) return rising ? 1.0f : 0.0f;
+        float x = float(at - lo) / float(hi - lo);
+        return rising ? x : 1.0f - x;
+    };
+    auto curve = [](float x, bool power) { return power ? std::sqrt(x) : x; };
+    float k = ramp(key, z.xfin_lokey, z.xfin_hikey, true) * ramp(key, z.xfout_lokey, z.xfout_hikey, false);
+    float v = ramp(velocity, z.xfin_lovel, z.xfin_hivel, true) * ramp(velocity, z.xfout_lovel, z.xfout_hivel, false);
+    return curve(k, z.key_power) * curve(v, z.vel_power);
+}
 
 // One audio file of an instrument: its frames, mapped from the card's cache
 // (or, in tests, held). `frames` stays 0 until it has landed, its zones' start,
@@ -69,6 +96,10 @@ struct Multisample {
     std::unique_ptr<ZonePart[]> parts;
     unsigned part_count = 0;
     std::vector<uint32_t> turns;      // the presses each zone has been reached by; audio thread only
+    // Keyswitches (roadmap P3, SFZ sw_lokey / sw_hikey / sw_default): a press in low..high picks the zones
+    // whose switch_key it is and sounds nothing of itself; -1 none. `switched`: the last pressed, audio thread only.
+    int16_t switch_low = -1, switch_high = -1, switch_default = -1, switched = -1;
+    bool has_release = false;         // a zone plays on a key let go
 };
 
 } // namespace melodee

@@ -275,7 +275,6 @@ SfzRead read_exs(const std::string& bytes, const ExsFind& find, std::string* err
         if (z.sample < 0 || size_t(z.sample) >= samples.size()) { leave(nullptr); continue; }
         const ExsGroup* g = z.group >= 0 && size_t(z.group) < groups.size() ? &groups[size_t(z.group)] : nullptr;
         if (g && g->muted()) { leave("muted group"); continue; }
-        if (g && g->release_trigger) { leave("release trigger"); continue; }
         if (g && g->select != always && g->select != round_robin && select_value(*g) != at_rest[g->select]) { leave(select_name(g->select)); continue; }
         if (read.regions.size() >= max_zones) { leave(nullptr); continue; }
         int low_key = z.low_key, high_key = z.high_key;
@@ -323,6 +322,7 @@ SfzRead read_exs(const std::string& bytes, const ExsFind& find, std::string* err
             if (z.crossfade) read.ignored.insert("loop crossfade");
         }
         made.loop_asked = zone.loop != ZoneLoop::Off;
+        zone.on_release = g && g->release_trigger; // roadmap P3: played when its key is let go
         if (g) {
             if (g->exclusive) zone.group = zone.off_by = uint32_t(g->exclusive); // a choke: the group cuts its own
             if (g->random) read.ignored.insert("random sample select");

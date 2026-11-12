@@ -40,13 +40,15 @@ uint64_t SampleCache::bytes_of(uint32_t frames, uint32_t channels) {
     return header_bytes + (channels > 1 ? padded(frames) : 0) + uint64_t(frames) * sizeof(float);
 }
 
-std::string SampleCache::file_of(const std::string& source) const {
+std::string SampleCache::file_of(const std::string& source) const { return file_of(source, {}); }
+
+std::string SampleCache::file_of(const std::string& source, const std::string& part) const {
     if (folder_.empty()) return {};
     struct stat st {};
     if (stat(source.c_str(), &st)) return {};
     char name[32];
     std::snprintf(name, sizeof(name), "%016llx.f32", (unsigned long long)fnv(fs::path(source).filename().string() + "|" + std::to_string(st.st_size) + "|"
-                  + std::to_string(st.st_mtime) + "|" + std::to_string(unsigned(dsp::model_rate))));
+                  + std::to_string(st.st_mtime) + "|" + std::to_string(unsigned(dsp::model_rate)) + (part.empty() ? "" : "|" + part)));
     return folder_ + "/" + name;
 }
 

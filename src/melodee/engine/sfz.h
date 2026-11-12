@@ -31,6 +31,7 @@ struct SfzEnvelope {
 
 struct SfzRead {
     std::vector<SfzRegion> regions;
+    int16_t switch_low = -1, switch_high = -1, switch_default = -1; // keyswitches (sw_lokey, sw_hikey, sw_default)
     std::set<std::string> ignored; // opcodes asked for and not played
     unsigned left = 0;             // regions left out
     std::set<std::string> left_by; // the opcodes that kept them from a press

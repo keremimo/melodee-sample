@@ -414,7 +414,7 @@ behaviour, write the code fresh for this app.
 - [ ] Seq Record keeps a 16 Levels pad's cutoff.
 - [x] A short crossfade at a loop's seam.
 - [x] Resample of the song onto a pad.
-- [ ] SFZ: release samples (`trigger=release`), crossfades (`xfin_*` /
+- [x] SFZ: release samples (`trigger=release`), crossfades (`xfin_*` /
   `xfout_*`), keyswitches; SF2 and `.dspreset` instruments.
 
 ## P4: mix, effects, MIDI
