@@ -439,12 +439,15 @@ void pad_expression() {
     load_sound(project->tracks[2], EngineKind::Cz, 0);
     project->tracks[2].params[cz::AtVib] = 0;
     project->tracks[2].levels_ends[unsigned(LevelsKind::Tune)] = {-12, 24}; // 16 Levels' ends go with the project (LVLE)
+    project->tracks[2].mix.sends = {10, 20, 0, 30};                           // and a track's four sends (SNDS)
     auto bytes = save_project(*project, *bank);
     unsigned version = 9;
     auto back = std::make_unique<Project>();
     CHECK(load_project(bytes, *back, *bank, &version).empty() && version == params_version && back->tracks[2].params[cz::AtVib] == 0);
     CHECK(back->tracks[2].levels_ends[unsigned(LevelsKind::Tune)][0] == -12 && back->tracks[2].levels_ends[unsigned(LevelsKind::Tune)][1] == 24);
     CHECK(back->tracks[3].levels_ends == Track {}.levels_ends);
+    const std::array<uint8_t, 4> four {10, 20, 0, 30}, none {};
+    CHECK(back->tracks[2].mix.sends == four && back->tracks[3].mix.sends == none);
     UserSound us;
     us.engine = EngineKind::Cz;
     auto sound_bytes = save_sound(us);
@@ -625,7 +628,7 @@ void effects() {
         project->tracks[0].params[prophet::AmpRelease] = 0;
         if (filter) { project->tracks[0].fx.slots[0].kind = uint8_t(EffectKind::Filter); project->tracks[0].fx.slots[0].params = {5, 0, 0, 0, 0, 0}; }
         if (echo) {
-            project->tracks[0].mix.send = 100;
+            project->tracks[0].mix.sends[0] = 100;
             project->buses[0].fx.slots[0].kind = uint8_t(EffectKind::Echo);
             project->buses[0].fx.slots[0].params = {60, 50, 100, 80, 0, 0};
         }
@@ -1040,7 +1043,7 @@ void project_files() {
     project->tempo = 1245; project->swing = 58; project->root = 2; project->scale = 2;
     load_sound(project->tracks[0], EngineKind::Prophet, 1);
     project->tracks[0].params[prophet::Cutoff] = 33;
-    project->tracks[0].mix = {90, -20, 40, 2, true, false};
+    project->tracks[0].mix = {90, -20, 40, 2, true, false, {0, 0, 40, 0}};
     project->tracks[0].mods[3] = {1, 2, -45};
     project->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), true, {60, 50, 30, 70, 0, 0}};
     load_sound(project->tracks[4], EngineKind::Sampler, 0);
@@ -1061,7 +1064,7 @@ void project_files() {
     CHECK(load_project(data, *copy, *copy_bank).empty());
     CHECK(std::string(copy->name) == "Night drive" && copy->tempo == 1245 && copy->swing == 58 && copy->scale == 2);
     CHECK(copy->tracks[0].engine == EngineKind::Prophet && copy->tracks[0].params[prophet::Cutoff] == 33);
-    CHECK(copy->tracks[0].mix.pan == -20 && copy->tracks[0].mix.bus == 2 && copy->tracks[0].mix.mute);
+    CHECK(copy->tracks[0].mix.pan == -20 && copy->tracks[0].mix.sends[2] == 40 && copy->tracks[0].mix.sends[0] == 0 && copy->tracks[0].mix.mute);
     CHECK(copy->tracks[0].mods[3].amount == -45 && copy->tracks[0].fx.slots[0].bypass && copy->tracks[0].fx.slots[0].params[3] == 70);
     CHECK(copy->tracks[4].engine == EngineKind::Sampler && copy->tracks[4].pads[9].start == 1234 && copy->tracks[4].pads[9].group == 3);
     CHECK(!copy->tracks[4].pads[8].used());
@@ -4329,10 +4332,11 @@ void stage() {
     auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track]).key); };
     auto cards = [&](bool shift) { return page_bindings(*project, ui, pattern, shift); };
 
-    // B1 on a synth: PRESET -> TONE -> MIX -> PRESET; B2 jumps to its own first page; each track keeps its own.
+    // B1 on a synth: PRESET -> TONE -> MIX -> SENDS -> PRESET; B2 jumps to its own first page; each track keeps its own.
     CHECK(key() == "PRESET");
     stage_press(ui, project->tracks[0], 0); CHECK(key() == "TONE");
     stage_press(ui, project->tracks[0], 0); CHECK(key() == "MIX");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "SENDS");
     stage_press(ui, project->tracks[0], 0); CHECK(key() == "PRESET");
     stage_press(ui, project->tracks[0], 1); CHECK(key() == "FILTER ENV");
     stage_press(ui, project->tracks[0], 1); CHECK(key() == "AMP ENV");
@@ -4355,7 +4359,12 @@ void stage() {
     CHECK(cards(false)[0].id == prophet::Glide && cards(true)[2].id == prophet::Voices);
     // MIX: level, pan, send; Shift + K3 the bus.
     stage_go(ui, 0, 2);
-    CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send && cards(true)[2].kind == K::SendBus);
+    CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send && cards(false)[2].id == 0);
+    CHECK(!shift_bindings(*project, ui, pattern)[2].bound()); // the quick send is A's; SENDS has all four
+    // SENDS (B1 again): sends A, B, C on K1-K3, D on Shift + K1.
+    stage_go(ui, 0, 3);
+    CHECK(key() == "SENDS" && cards(false)[0].kind == K::Send && cards(false)[1].id == 1 && cards(false)[2].id == 2 && cards(true)[0].id == 3);
+    stage_go(ui, 0, 2);
     // ARP: mode, rate, octaves; Shift + K1 gate, Shift + K3 hold.
     stage_go(ui, 2, 0);
     CHECK(cards(false)[0].kind == K::ArpMode && cards(false)[1].kind == K::ArpRate && cards(true)[0].kind == K::ArpGate && cards(true)[2].kind == K::ArpHold);
@@ -4427,7 +4436,8 @@ void stage() {
     stage_go(ui, 0, 2);
     CHECK(key() == "LEVELS" && cards(false)[0].id == kit909::KickLevel && cards(true)[2].id == kit909::CymbalLevel);
     stage_press(ui, drums, 1); CHECK(key() == "MIX");
-    stage_press(ui, drums, 1); CHECK(key() == "MIX"); // one page: it stays
+    stage_press(ui, drums, 1); CHECK(key() == "SENDS"); // B2: MIX, then its four sends
+    stage_press(ui, drums, 1); CHECK(key() == "MIX");
 
     // MIDI: DEVICE, PROGRAM (bank and program, Off at first), CC (values; their numbers on Shift).
     ui.track = 3;
@@ -5541,8 +5551,8 @@ void parallel_render() {
         for (unsigned t = 0; t < 8; ++t) {
             load_sound(p->tracks[t], kinds[t], 0);
             p->tracks[t].mix.pan = int8_t(int(t) * 12 - 42);
-            p->tracks[t].mix.send = uint8_t(20 + t * 5);
-            p->tracks[t].mix.bus = uint8_t(t % bus_count);
+            p->tracks[t].mix.sends[t % bus_count] = uint8_t(20 + t * 5);
+            p->tracks[t].mix.sends[(t + 1) % bus_count] = uint8_t(10 + t * 3); // two sends a track: two buses fed
             for (unsigned k = 0; k < 2; ++k) p->tracks[t].fx.slots[k] = {uint8_t(chains[t][k]), false, {60, 50, 40, 50, 30, 0}};
         }
         p->buses[1].fx.slots[0] = {uint8_t(EffectKind::Reverb), false, {70, 50, 40, 50, 0, 0}};

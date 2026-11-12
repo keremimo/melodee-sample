@@ -38,7 +38,7 @@ std::array<Binding, 3> favourite_bindings(const Track& track) {
 
 unsigned page_chain(const Project& project, const UiState& ui) {
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) return loop_chain(unsigned(ui.fx_loop) % loop_tracks); // the Looper's track
-    if (ui.page == PageId::Bus) return bus_chain(project.tracks[ui.track % track_count].mix.bus % bus_count);
+    if (ui.page == PageId::Bus) return bus_chain(ui.sends_bus % bus_count); // the bus in view (Sends' K2)
     if (ui.page == PageId::Master) return master_chain;
     if (ui.page == PageId::PadFx) { const auto& t = project.tracks[ui.track % track_count]; return pad_chain(ui.track % track_count, t.last_pad % sampler_pads); }
     return ui.track % track_count;
@@ -345,10 +345,14 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         return {Binding {Kind::StageSound, 0, 0, int(std::max(listed, 2u)) - 1, at}, Binding {Kind::SoundList, 0, 0, 2, ui.sounds_filter},
                 Binding {Kind::Engine, 0, 0, int(std::max(count, 2u)) - 1, int(here)}};
     }
-    case SK::Mix:
-        if (shift_row) return {Binding {}, Binding {}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(track.mix.bus % bus_count)}};
+    case SK::Mix: // level, pan and the quick send, into bus A (SENDS has all four)
+        if (shift_row) return {};
         return {Binding {Kind::Level, 0, 0, 127, track.mix.level}, Binding {Kind::Pan, 0, -50, 50, track.mix.pan},
-                Binding {Kind::Send, 0, 0, 100, track.mix.send}};
+                Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}};
+    case SK::Sends: // sends A, B and C on K1-K3, D on Shift + K1
+        if (shift_row) return {Binding {Kind::Send, 3, 0, 100, track.mix.sends[3]}, Binding {}, Binding {}};
+        return {Binding {Kind::Send, 0, 0, 100, track.mix.sends[0]}, Binding {Kind::Send, 1, 0, 100, track.mix.sends[1]},
+                Binding {Kind::Send, 2, 0, 100, track.mix.sends[2]}};
     case SK::Arp:
         if (shift_row) return {Binding {Kind::ArpGate, 0, 5, 100, track.arp_gate}, Binding {}, Binding {Kind::ArpHold, 0, 0, 1, track.arp_latch}};
         return {Binding {Kind::ArpMode, 0, 0, 4, track.arp_mode}, Binding {Kind::ArpRate, 0, 0, int(arp_rates) - 1, track.arp_rate},
@@ -572,9 +576,9 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         if (c.slots[slot].kind == plugin_effect_kind) return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
         return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)] % 2);
     }
-    case PageId::Sends: {
-        unsigned bus = track.mix.bus % bus_count;
-        return {Binding {Kind::Send, 0, 0, 100, track.mix.send}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
+    case PageId::Sends: { // one bus at a time: K1 the track's send into it, K2 which bus, K3 its return
+        unsigned bus = ui.sends_bus % bus_count;
+        return {Binding {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
     case PageId::Levels: { // K1 the type, K2 and K3 the two ends: pad 1's and pad 16's

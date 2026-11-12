@@ -97,7 +97,7 @@ const Sound sounds[] {
 using K = StageKind;
 using S = StagePicture;
 const StageGroups stage {{{
-    {{{stage_preset, {"TONE", K::Params, S::Filter, {{Cutoff, Resonance, EnvAmount}}}, stage_mix}}, 3},
+    {{{stage_preset, {"TONE", K::Params, S::Filter, {{Cutoff, Resonance, EnvAmount}}}, stage_mix, stage_sends}}, 4},
     {{{{"FILTER ENV", K::Params, S::Envelope, {{FilterAttack, FilterDecay, FilterSustain}}, {{FilterRelease, _, _}}},
        {"AMP ENV", K::Params, S::Envelope, {{AmpAttack, AmpDecay, AmpSustain}}, {{AmpRelease, VelAmp, _}}},
        {"LFO", K::Params, S::Lfo, {{LfoRate, LfoShape, LfoAmount}}, {{LfoFreq, LfoPw, LfoFilter}}}}}, 3},

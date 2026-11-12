@@ -141,7 +141,8 @@ void board_project(Shell& shell) {
     put(project.master, 0, EffectKind::Compressor); put(project.master, 1, EffectKind::Limiter);
     project.buses[0].level = 70; project.buses[1].level = 55; project.buses[2].level = 40;
     const uint8_t sends[] {8, 0, 42, 60, 4, 72, 55, 30, 24, 80};
-    for (unsigned t = 0; t < 10; ++t) project.tracks[t].mix.send = sends[t];
+    for (unsigned t = 0; t < 10; ++t) project.tracks[t].mix.sends[0] = sends[t];
+    project.tracks[0].mix.sends[1] = 20; // the first track feeds a second bus too (Stage SENDS)
     // The sampler boards: track 4 is a kit, its first pads one-shots, then a break chopped in twelve.
     {
         auto& kit = project.tracks[3];
@@ -370,7 +371,7 @@ void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
 void stage_909(Snapshot& s, unsigned group, unsigned sub) {
     auto& t = s.project.tracks[10];
     load_sound(t, EngineKind::Kit909, 2);
-    t.last_note = 36 + kit909::Clap; t.mix.level = 96; t.mix.send = 20;
+    t.last_note = 36 + kit909::Clap; t.mix.level = 96; t.mix.sends[0] = 20;
     on_stage(s, 10, group, sub); s.playing = true;
 }
 // Stage on track 12, a MIDI track to a synth on USB-C, channel 3.
@@ -495,6 +496,7 @@ const Preview previews[] {
      }},
     {"stagetone", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 1); s.playing = true; s.ui.last_pot = 1; }},
     {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 2); s.playing = true; }},
+    {"stagesends", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 3); s.playing = true; s.ui.turning = 1; s.ui.turned_at = s.now; }}, // the four sends
     {"stagefilterenv", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 0); s.playing = true; }},
     {"stageampenv", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.playing = true; s.ui.turning = 2; s.ui.turned_at = s.now; }},
     {"stagelfo", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 2); s.playing = true; s.project.tracks[0].params[prophet::LfoAmount] = 40; }},

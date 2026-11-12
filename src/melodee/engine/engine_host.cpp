@@ -234,8 +234,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
     if (slot.engine) for (unsigned p = 0; p < info.param_count; ++p) slot.engine->set_param(int(p), track.params[p]);
     apply({Command::Type::Level, uint8_t(t), 0, 0, track.mix.level});
     apply({Command::Type::Pan, uint8_t(t), 0, 0, track.mix.pan});
-    slot.send = track.mix.send / 100.0f;
-    slot.bus = track.mix.bus;
+    for (unsigned b = 0; b < bus_count; ++b) slot.sends[b] = track.mix.sends[b] / 100.0f;
     slot.mute = track.mix.mute; slot.solo = track.mix.solo;
     slot.pattern = track.pattern;
     patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
@@ -375,7 +374,7 @@ void EngineHost::apply(const Command& c) {
         else effect.set_bypass(c.value != 0);
         break;
     }
-    case Type::SendBus: slot.bus = uint8_t(c.value % bus_count); break;
+    case Type::SendBus: break; // a track sends into every bus (Send's index), so none is picked
     case Type::Return: if (c.index < bus_count) returns[c.index] = std::clamp<int>(c.value, 0, 100) / 100.0f; break;
     case Type::Pad: slot.sampler.set_pad(c.index, c.pad); break;
     case Type::PadMute:
@@ -635,7 +634,7 @@ void EngineHost::apply(const Command& c) {
         slot.pan_left = std::cos(angle); slot.pan_right = std::sin(angle);
         break;
     }
-    case Type::Send: slot.send = c.value / 100.0f; break;
+    case Type::Send: slot.sends[c.index % bus_count] = std::clamp<int>(c.value, 0, 100) / 100.0f; break; // index: the bus
     case Type::Mute: slot.mute = c.value != 0; midi_silenced(); break;
     case Type::Solo: slot.solo = c.value != 0; midi_silenced(); break;
     case Type::PatternData:
@@ -1458,8 +1457,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                     to_l[f] += slot.left[f]; to_r[f] += slot.right[f];
                     level = std::max(level, std::max(std::fabs(slot.left[f]), std::fabs(slot.right[f])));
                 }
-                if (slot.send > 0)
-                    for (unsigned f = 0; f < frames; ++f) { bus_l[slot.bus][f] += slot.left[f] * slot.send; bus_r[slot.bus][f] += slot.right[f] * slot.send; }
+                for (unsigned b = 0; b < bus_count; ++b) { // into each bus as much as its send
+                    float send = slot.sends[b];
+                    if (send <= 0) continue;
+                    for (unsigned f = 0; f < frames; ++f) { bus_l[b][f] += slot.left[f] * send; bus_r[b][f] += slot.right[f] * send; }
+                }
                 if (stem) { // a centred mono track sums to itself, as does one panned hard
                     float unpan = 1.0f / std::max(slot.pan_left + slot.pan_right, 1.0f);
                     for (unsigned f = 0; f < frames; ++f) stem[f] = (slot.left[f] + slot.right[f]) * unpan;

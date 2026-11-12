@@ -70,9 +70,10 @@ struct PadChains {
 struct Mix {
     uint8_t level = 100; // 0..127, 100 is unity
     int8_t pan = 0;      // -50 (left) .. 50 (right)
-    uint8_t send = 0;    // 0..100, into `bus`
+    uint8_t send = 0;    // a loop track's one send, 0..100, into `bus` (a track has one into each bus: `sends`)
     uint8_t bus = 0;     // 0..3: A-D
     bool mute = false, solo = false;
+    std::array<uint8_t, 4> sends {}; // a track's send into each bus A-D, 0..100 (round 2: four sends a track)
 };
 
 // A pot move recorded over a pattern: from `step` on (a sixteenth of the

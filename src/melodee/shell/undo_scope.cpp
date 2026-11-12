@@ -20,7 +20,7 @@ MixState mix_of(const Project& p) {
     MixState m {};
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& x = p.tracks[t].mix;
-        m.level[t] = x.level; m.pan[t] = x.pan; m.send[t] = x.send; m.bus[t] = x.bus;
+        m.level[t] = x.level; m.pan[t] = x.pan; m.sends[t] = x.sends;
     }
     for (unsigned b = 0; b < bus_count; ++b) m.returns[b] = p.buses[b].level;
     return m;

@@ -216,7 +216,8 @@ private:
         PluginEngine plugin;             // a PLUGIN track: the rack's plug-in for `plugin_entry`
         uint8_t plugin_entry = no_plugin;
         Engine* engine = nullptr;
-        float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f, send = 0;
+        float gain = 1, pan_left = 0.7071f, pan_right = 0.7071f;
+        std::array<float, bus_count> sends {}; // into each bus A-D (round 2: four sends a track)
         bool mute = false, solo = false;
         uint8_t pattern = 0, queued = 255; // queued: launches on the next bar
         uint32_t start = 0;                // the tick its pattern started on
@@ -236,7 +237,6 @@ private:
         float left[block] {}, right[block] {};
         float knob_pad_l[block] {}, knob_pad_r[block] {}; // a kit's pads under Knob FX, as the sampler left them
         bool knob_pad_fed = false;                         // and some sub-block of this block put something there
-        uint8_t bus = 0;
         Arp arp;
         PendingOn arp_late;
         int arp_played = -1, arp_from = -1; // the arp's last note and the held key it came from

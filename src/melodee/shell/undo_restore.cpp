@@ -113,8 +113,8 @@ void Context::restore_mix(const MixState& m) {
         auto& x = project.tracks[t].mix;
         if (x.level != m.level[t]) { x.level = m.level[t]; send({Type::Level, uint8_t(t), 0, 0, int16_t(x.level)}); }
         if (x.pan != m.pan[t]) { x.pan = m.pan[t]; send({Type::Pan, uint8_t(t), 0, 0, int16_t(x.pan)}); }
-        if (x.send != m.send[t]) { x.send = m.send[t]; send({Type::Send, uint8_t(t), 0, 0, int16_t(x.send)}); }
-        if (x.bus != m.bus[t]) set_send_bus(t, m.bus[t]);
+        for (unsigned b = 0; b < bus_count; ++b)
+            if (x.sends[b] != m.sends[t][b]) { x.sends[b] = m.sends[t][b]; send({Type::Send, uint8_t(t), 0, uint16_t(b), int16_t(x.sends[b])}); }
     }
     for (unsigned b = 0; b < bus_count; ++b) if (project.buses[b].level != m.returns[b]) set_return(b, m.returns[b]);
 }

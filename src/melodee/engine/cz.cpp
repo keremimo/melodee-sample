@@ -50,7 +50,7 @@ const Sound sounds[] {
 using K = StageKind;
 using S = StagePicture;
 const StageGroups stage {{{
-    {{{stage_preset, {"TONE", K::Params, S::Bars, {{Dcw, DcwAmount, Wave1}}}, stage_mix}}, 3},
+    {{{stage_preset, {"TONE", K::Params, S::Bars, {{Dcw, DcwAmount, Wave1}}}, stage_mix, stage_sends}}, 4},
     {{{{"DCW ENV", K::Params, S::Envelope, {{DcwAttack, DcwDecay, DcwSustain}}, {{DcwRelease, DcwAmount, KeyFollow}}},
        {"DCA ENV", K::Params, S::Envelope, {{DcaAttack, DcaDecay, DcaSustain}}, {{DcaRelease, Velocity, _}}},
        {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},

@@ -50,7 +50,7 @@ const int8_t pad_voice[16] {0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, -1, -1, -1, -1, -1}
 const StageGroups stage {{{
     {{{stage_preset, {"VOICE", K::Voice, S::Voice},
        {"LEVELS", K::Params, S::Levels, {{KickLevel, SnareLevel, ClapLevel}}, {{TomLevel, HatLevel, CymbalLevel}}}}}, 3},
-    {{{stage_mix, {}, {}}}, 1},
+    {{{stage_mix, stage_sends, {}}}, 2},
     {{{stage_fx, {}, {}}}, 1},
 }}, voices, pad_voice};
 } // namespace

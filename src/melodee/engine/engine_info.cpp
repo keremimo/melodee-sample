@@ -57,7 +57,7 @@ const EngineInfo& engine_info(EngineKind kind) {
     // rack's), so the engine states none here and its Edit page draws the plug-in's.
     static const Sound plugin_sounds[] {{"PLUG-IN", {{{-1, 0}}}}};
     static const StageGroups plugin_stage {{{
-        {{{stage_mix, {}, {}}}, 1},
+        {{{stage_mix, stage_sends, {}}}, 2},
         {{{stage_arp, stage_chord, {}}}, 2},
         {{{stage_fx, {}, {}}}, 1},
     }}};
@@ -83,7 +83,7 @@ const StageGroups& stage_groups(EngineKind kind) {
     // A kit: the MPC's Sample Mode pages in Akai's order, on the last pad hit; Melodee's own join
     // the group they belong with, as on the sampler pages: Follow and Cloud B2's, Kit filter B3's.
     static const StageGroups kit {{{
-        {{{{"TRIM", K::Trim, P::Wave}, {"MIX", K::PadMix, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}}}, 3},
+        {{{{"TRIM", K::Trim, P::Wave}, {"MIX", K::PadMix, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}, stage_sends}}, 4},
         {{{{"TUNE", K::Tune, P::Wave}, {"PLAY", K::Play, P::Wave}, {"FOLLOW", K::Follow, P::Wave}, {"CLOUD", K::Cloud, P::Wave}}}, 4},
         {{{{"FILTER", K::Filter, P::Wave}, {"FILT ENV", K::FiltEnv, P::Wave}, {"KIT FILT", K::KitFilter, P::Wave}}}, 3},
     }}};
@@ -103,7 +103,7 @@ const StageGroups& stage_groups(EngineKind kind) {
     }}};
     // An engine that states none: its sounds and mix, the arp, its effects.
     static const StageGroups plain {{{
-        {{{stage_preset, stage_mix, {}}}, 2},
+        {{{stage_preset, stage_mix, stage_sends}}, 3},
         {{{stage_arp, stage_chord, {}}}, 2},
         {{{stage_fx, {}, {}}}, 1},
     }}};

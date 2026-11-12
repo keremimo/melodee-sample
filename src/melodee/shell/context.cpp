@@ -372,7 +372,12 @@ void Context::apply(const Binding& b, int value) {
         break;
     case Kind::Level: t.mix.level = uint8_t(value); send({Type::Level, ui.track, 0, 0, int16_t(value)}); break;
     case Kind::Pan: t.mix.pan = int8_t(value); send({Type::Pan, ui.track, 0, 0, int16_t(value)}); break;
-    case Kind::Send: t.mix.send = uint8_t(value); send({Type::Send, ui.track, 0, 0, int16_t(value)}); break;
+    case Kind::Send: { // a track's send into bus b.id (round 2: one into each bus)
+        unsigned bus = unsigned(b.id) % bus_count;
+        t.mix.sends[bus] = uint8_t(std::clamp(value, 0, 100));
+        send({Type::Send, ui.track, 0, uint16_t(bus), int16_t(t.mix.sends[bus])});
+        break;
+    }
     case Kind::Root: project.root = uint8_t(value); break;
     case Kind::Scale: project.scale = uint8_t(value); break;
     case Kind::Layout: t.layout = PadLayout(value); break;
@@ -445,7 +450,7 @@ void Context::apply(const Binding& b, int value) {
         break;
     }
     case Kind::PluginParam: set_plugin_param(b.id, value); break;
-    case Kind::SendBus: set_send_bus(ui.track, unsigned(value)); break;
+    case Kind::SendBus: ui.sends_bus = uint8_t(unsigned(value) % bus_count); break; // the bus in view on Sends
     case Kind::BusReturn: set_return(unsigned(b.id), value); break;
     case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pitch, value); break;
     case Kind::PadLevel: pad().level = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Level, value); break;
@@ -1320,11 +1325,6 @@ void Context::send_fx(Command::Type type, unsigned n, unsigned slot, unsigned pa
     n -= pad_chain_base;
     Type pad = type == Type::FxKind ? Type::PadFxKind : type == Type::FxParam ? Type::PadFxParam : Type::PadFxBypass;
     send({pad, uint8_t(n / sampler_pads), uint8_t(n % sampler_pads), uint16_t(slot | param << 8), value});
-}
-
-void Context::set_send_bus(unsigned t, unsigned bus) {
-    project.tracks[t % track_count].mix.bus = uint8_t(bus % bus_count);
-    send({Type::SendBus, uint8_t(t), 0, 0, int16_t(bus % bus_count)});
 }
 
 void Context::set_return(unsigned bus, int level) {

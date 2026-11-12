@@ -198,6 +198,7 @@ struct UiState {
     bool render_resume = false;          // Resample stopped what was playing: Play it again afterwards
     bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
     bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
+    uint8_t sends_bus = 0;        // the bus in view on Sends and Bus (round 2: a track sends into all four; K2 on Sends picks)
     uint16_t project_cursor = 0;  // Project: row under the cursor (0 is SD card access at the top)
     bool delete_armed = false;    // the file sheet's Delete asks once more
     uint8_t project_sort = 0;     // 0 newest first, 1 by name

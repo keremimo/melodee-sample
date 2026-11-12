@@ -36,10 +36,11 @@ struct TrackState {
 // Every track's mix strip (level, pan, send and its bus; mute and solo are
 // performance, left out) and the buses' returns.
 struct MixState {
-    std::array<uint8_t, track_count> level {}, send {}, bus {};
+    std::array<uint8_t, track_count> level {};
+    std::array<std::array<uint8_t, bus_count>, track_count> sends {}; // each track's send into each bus
     std::array<int8_t, track_count> pan {};
     std::array<uint8_t, bus_count> returns {};
-    bool operator==(const MixState& o) const { return level == o.level && send == o.send && bus == o.bus && pan == o.pan && returns == o.returns; }
+    bool operator==(const MixState& o) const { return level == o.level && sends == o.sends && pan == o.pan && returns == o.returns; }
 };
 // A track's sound: its engine's values and its mod routes.
 struct SoundState {

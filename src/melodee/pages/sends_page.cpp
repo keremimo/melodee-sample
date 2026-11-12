@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // SENDS (B3 on Tracks): four buses, A-D, each with its own chain and
-// return. One send per track into the bus it picks, drawn as strips, eight
-// at a time (the half with the selected track).
-// K1 the selected track's send, K2 which bus, K3 that bus's return. The
-// wheel (or Pad Bank + pad) picks the track.
+// return. Every track sends into each of the four (Stage's SENDS sets one
+// track's four); here one bus at a time, its sends drawn as strips, eight
+// tracks at a time (the half with the selected track). K1 the selected
+// track's send into the bus in view, K2 which bus, K3 that bus's return.
+// The wheel (or Pad Bank + pad) picks the track.
 #include "melodee/engine/effect_info.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
-#include "melodee/pages/signal_flow.h"
 
 namespace melodee {
 namespace {
@@ -16,17 +16,17 @@ using namespace ui;
 
 void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
-    unsigned bus = s.track().mix.bus % bus_count;
+    unsigned bus = s.ui.sends_bus % bus_count;
     Header h = header_of(s);
     unsigned half = (s.ui.track % track_count) / 8;
     h.left.push_back(pill(half ? "TRACKS 9-16" : "TRACKS 1-8"));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{juce::String::fromUTF8("\xe2\x80\xb9 TRACK"), "SENDS",
-                  juce::String("BUS ") + char('A' + bus) + juce::String::fromUTF8(" \xe2\x80\xba")}, 1, c}, h);
-    signal_flow(p, Stop::Sends, c, s.track().engine == EngineKind::Sampler);
+    SoftKeys keys {{"TRACK", "SENDS", juce::String("BUS ") + char('A' + bus)}, 1, c};
+    keys.glyphs[0] = Icon::ChevronLeft; keys.after[2] = Icon::ChevronRight; // the chains before and after
+    frame(p, s, keys, h);
 
     // The four buses: letter, first effect, return.
-    float y = zone::picture_y + 20, gap = 4, bw = (zone::width - 2 * zone::pad - 3 * gap) / 4, bh = 22;
+    float y = zone::picture_y + 4, gap = 4, bw = (zone::width - 2 * zone::pad - 3 * gap) / 4, bh = 22;
     for (unsigned b = 0; b < bus_count; ++b) {
         float x = zone::pad + b * (bw + gap);
         const auto& chain = s.project.buses[b].fx;
@@ -43,7 +43,7 @@ void draw(Paint& p, const Snapshot& s) {
         float nw = bw - 21 - 2 - lw;
         p.text(name, x + 21, y, nw, bh, p.fit(name, plain(empty ? colour::dim : colour::text, type::small, Weight::Medium), nw, type::floor));
     }
-    // Eight strips: each track's send, dim when it feeds another bus.
+    // Eight strips: each track's send into the bus in view.
     float top = y + bh + 4, sh = zone::picture_y + zone::picture_h - 2 - top, sg = 4, sw = (zone::width - 2 * zone::pad - 7 * sg) / 8;
     unsigned first = half * 8;
     for (unsigned n = 0; n < 8; ++n) {
@@ -58,8 +58,8 @@ void draw(Paint& p, const Snapshot& s) {
                juce::Justification::centred);
         float fy = top + 26, fh = sh - 32;
         p.fill(cx - 3, fy, 6, fh, colour::line, 3);
-        float send = used ? track.mix.send / 100.0f : 0;
-        if (send > 0) p.fill(cx - 3, fy + fh * (1 - send), 6, fh * send, track.mix.bus % bus_count == bus ? tc : tc.withAlpha(0.35f), 3);
+        float send = used ? track.mix.sends[bus] / 100.0f : 0;
+        if (send > 0) p.fill(cx - 3, fy + fh * (1 - send), 6, fh * send, tc, 3);
     }
 }
 

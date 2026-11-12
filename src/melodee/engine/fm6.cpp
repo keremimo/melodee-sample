@@ -94,7 +94,7 @@ using K = StageKind;
 using S = StagePicture;
 constexpr int8_t op(unsigned n, OpParam k) { return int8_t(op_param(n, k)); }
 const StageGroups stage {{{
-    {{{stage_preset, {"TONE", K::Params, S::Bars, {{Algorithm, Feedback, op(1, Level)}}}, stage_mix}}, 3},
+    {{{stage_preset, {"TONE", K::Params, S::Bars, {{Algorithm, Feedback, op(1, Level)}}}, stage_mix, stage_sends}}, 4},
     {{{{"OP 1 ENV", K::Params, S::Envelope, {{op(0, Attack), op(0, Decay), op(0, Sustain)}}, {{op(0, Release), op(0, Velocity), op(0, Level)}}},
        {"OP 2 ENV", K::Params, S::Envelope, {{op(1, Attack), op(1, Decay), op(1, Sustain)}}, {{op(1, Release), op(1, Velocity), op(1, Level)}}},
        {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},

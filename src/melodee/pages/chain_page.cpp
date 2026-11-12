@@ -37,7 +37,7 @@ juce::String bus_name(unsigned bus) { return juce::String("BUS ") + char('A' + b
 // The picker's families: every one, but a sampler pad's own chain takes no plug-ins.
 unsigned families(PageId page) { return unsigned(Family::Count) - (page == PageId::PadFx ? 1 : 0); }
 bool plugin_slot(const EffectSlot& slot) { return slot.kind == plugin_effect_kind; }
-unsigned bus_of(const Project& project, unsigned track) { return project.tracks[track % track_count].mix.bus % bus_count; }
+unsigned bus_of(const UiState& ui) { return ui.sends_bus % bus_count; } // the bus in view (Sends' K2)
 
 // The picker: the families down the left, each with the glyph the strip uses for it and how many it holds; the
 // family in hand's effects in two columns on the right, names in Title Case; Plug-ins the card's folder.
@@ -81,7 +81,7 @@ void picker(Paint& p, const Snapshot& s, juce::Colour c) {
 }
 
 void draw(Paint& p, const Snapshot& s) {
-    unsigned n = page_chain(s.project, s.ui), bus = bus_of(s.project, s.ui.track);
+    unsigned n = page_chain(s.project, s.ui), bus = bus_of(s.ui);
     const auto& chain = s.project.chain(n);
     bool pad = s.ui.page == PageId::PadFx, track = s.ui.page == PageId::Rack || pad, kit = s.track().engine == EngineKind::Sampler;
     auto c = track ? colour_of(s) : colour::text;

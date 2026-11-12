@@ -17,7 +17,7 @@ struct Command {
         Sound,       // track, index = sound: sets every parameter from the engine's factory sound
         Param,       // track, index = parameter, value
         Wheel,       // track, value 0..1000
-        Level, Pan, Send, Mute, Solo, // track, value
+        Level, Pan, Send, Mute, Solo, // track, value; Send's index: the bus 0-3 a track's send goes into
         PatternData, // track, pattern, data: the pattern's new copy (the one it replaces goes back to be freed)
         Pattern,     // track, value = pattern to play (on the next bar while playing patterns)
         Play,        // value 1: the song from bar `index`; 0: the patterns from tick `position`. track 1: a bar's count-in first

@@ -148,7 +148,9 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         bool own_section = tr.engine == EngineKind::Midi || tr.engine == EngineKind::Plugin;
         w.u8(t); w.u8(own_section ? 0u : unsigned(tr.engine)); w.u16(tr.preset); w.text(tr.name);
         w.u8(max_params); for (auto v : tr.params) w.i16(v);
-        w.u8(tr.mix.level); w.i16(tr.mix.pan); w.u8(tr.mix.send); w.u8(tr.mix.bus); w.u8(tr.mix.mute); w.u8(tr.mix.solo);
+        // Older builds know one send: the largest of the four, into its bus (SNDS, later, has all four).
+        unsigned loudest = unsigned(std::max_element(tr.mix.sends.begin(), tr.mix.sends.end()) - tr.mix.sends.begin());
+        w.u8(tr.mix.level); w.i16(tr.mix.pan); w.u8(tr.mix.sends[loudest]); w.u8(loudest); w.u8(tr.mix.mute); w.u8(tr.mix.solo);
         w.u8(tr.pattern); w.u8(unsigned(tr.layout)); w.i16(tr.octave); w.u8(tr.last_note);
         w.u8(mod_routes); for (auto m : tr.mods) { w.u8(m.source); w.u8(m.destination); w.i16(m.amount); }
         write_chain(w, tr.fx);
@@ -332,6 +334,14 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad4(w, n, tr.pads[n]);
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // the four sends of a track that sends to more than one bus (round 2)
+        const auto& sends = project.tracks[t].mix.sends;
+        if (std::count_if(sends.begin(), sends.end(), [](uint8_t v) { return v > 0; }) < 2) continue; // TRAK says it already
+        at = w.begin("SNDS");
+        w.u8(t); w.u8(bus_count);
+        for (auto v : sends) w.u8(v);
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // 16 Levels' ends where they are not as they come (round 2)
         const auto& tr = project.tracks[t];
         if (tr.levels_ends == Track {}.levels_ends) continue;
@@ -427,6 +437,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             for (unsigned k = 0; k < params; ++k) { int v = r.i16(); if (k < max_params) tr.params[k] = int16_t(v); }
             tr.mix.level = uint8_t(std::min(127u, r.u8())); tr.mix.pan = int8_t(std::clamp(r.i16(), -50, 50));
             tr.mix.send = uint8_t(std::min(100u, r.u8())); tr.mix.bus = uint8_t(r.u8() % bus_count);
+            tr.mix.sends = {}; tr.mix.sends[tr.mix.bus] = tr.mix.send; // one send, as older files keep it; SNDS has all four
             tr.mix.mute = r.u8() != 0; tr.mix.solo = r.u8() != 0;
             tr.pattern = uint8_t(r.u8() % pattern_count); tr.layout = PadLayout(std::min<unsigned>(r.u8(), unsigned(PadLayout::Count) - 1));
             tr.octave = int8_t(std::clamp(r.i16(), -1, 7)); tr.last_note = uint8_t(r.u8() & 127); // octave: a kit's 16 Levels goes to -1 (model/scales.h)
@@ -541,6 +552,11 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 e.param = uint8_t(motion_wheel); e.value = int16_t(std::clamp<int>(r.i16(), 0, 127));
                 if (r.ok) project->motion.write(e);
             }
+        } else if (name == "SNDS") { // a track's four sends (round 2); without it the one TRAK holds
+            unsigned t = r.u8(), buses = r.u8();
+            std::array<uint8_t, bus_count> sends {};
+            for (unsigned b = 0; b < buses && r.ok; ++b) { unsigned v = r.u8(); if (b < bus_count) sends[b] = uint8_t(std::min(100u, v)); }
+            if (r.ok && t < track_count) project->tracks[t].mix.sends = sends;
         } else if (name == "LVLE") { // 16 Levels' two ends a type (round 2); without it each type's own
             unsigned t = r.u8(), kinds = r.u8();
             for (unsigned k = 0; k < kinds && r.ok; ++k) {

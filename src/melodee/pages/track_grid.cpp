@@ -77,13 +77,13 @@ void strip(Paint& p, const Snapshot& s) {
     p.g.setColour(pan_c);
     p.g.strokePath(needle, juce::PathStrokeType(2, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     p.circle(cx, cy, 2.6f, pan_c);
-    // The send: the bus's letter, the amount as a bar.
-    auto send_c = track.mix.send > 0 ? knob_shade(t, 2) : colour::dim;
-    juce::String bus = juce::String::charToString(juce::juce_wchar('A' + track.mix.bus % bus_count));
-    icon(p, Icon::Space, cx - 11, fy + 44, 11, send_c, 1.5f);
-    p.text(bus, cx + 2, fy + 42, 12, 14, plain(send_c, type::small, Weight::Bold));
-    p.fill(cx - 14, fy + 62, 28, 3, colour::line, 1.5f);
-    if (track.mix.send > 0) p.fill(cx - 14, fy + 62, 28 * track.mix.send / 100.0f, 3, send_c, 1.5f);
+    // The four sends, A-D top to bottom, as short bars: how much goes into each bus (Stage's SENDS names them).
+    for (unsigned b = 0; b < bus_count; ++b) {
+        float sy = fy + 44 + b * 8, amount = track.mix.sends[b] / 100.0f;
+        auto sc = b < 3 ? knob_shade(t, b) : colour::mid;
+        p.fill(cx - 14, sy, 28, 3, colour::line, 1.5f);
+        if (amount > 0) p.fill(cx - 14, sy, 28 * amount, 3, sc, 1.5f);
+    }
 }
 } // namespace
 

@@ -228,15 +228,18 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   moves to the next card, Shift + Push is Back, −/+ the octave (a kit's
   bank). Track 1 starts as a PROPHET, track 5 an empty kit, track 6 a 909
   with a beat.
-  - **A synth** (PROPHET, FM6, CZ, SID): B1 **PRESET → TONE → MIX**, B2
+  - **A synth** (PROPHET, FM6, CZ, SID): B1 **PRESET → TONE → MIX → SENDS**, B2
     **SHAPE**, B3 **ARP → CHORD → its own page → FX**. PRESET: the sound before,
     the one in hand with its star, the one after, where it sits; K1 or the
     wheel walks the sounds and the one turned to loads once the turning
     has stopped 250 ms; K2 the list (all, starred, recent), K3 the engine;
     Push opens Sounds. TONE: the engine's three favourites (PROPHET and SID
-    draw the filter). MIX: level, pan, send; Shift + K3 the bus the send
-    goes to (Melodee has one send a track); its meter carries the five steps
-    of the meter LEDs as a scale. SHAPE on PROPHET: FILTER ENV →
+    draw the filter). MIX: level, pan and the quick send into bus A; its
+    meter carries the five steps of the meter LEDs as a scale. SENDS: a
+    track sends into each of the four buses, A, B and C on K1–K3, D on Shift
+    + K1; the picture fans out from the track to the four buses, each line as
+    thick as its send, each bus with its first effect and a bar of what it
+    receives. SHAPE on PROPHET: FILTER ENV →
     AMP ENV → LFO (Shift + K1 release); FM6: OP 1 ENV → OP 2 ENV → TOUCH;
     CZ: DCW ENV → DCA ENV → TOUCH; SID: ENVELOPE → PWM → TOUCH. ARP: mode
     (Up, Down, Up-down, Random, Order), rate 1/4 .. 1/32T, octaves, Shift +
@@ -252,7 +255,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     effect picker; Shift + Knob FX adds effects), all six slots drawn with
     their family glyphs.
   - **A kit**: Akai's pages in Akai's order on the last pad hit, B1 **TRIM →
-    MIX → AMP ENV**, B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
+    MIX → AMP ENV → SENDS** (SENDS the kit track's four), B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
     FILT ENV → KIT FILT** (Melodee's own pages join Akai's): the pad's
     waveform with its volume on the left and pan on the right, chips for
     how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
@@ -273,7 +276,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     it began to where it reads, at its window's strength, leaving a faint
     mark for 150 ms; the bars a grain covers lighten, and with Scan moving
     the cloud travels and GRAINS AROUND follows it (K1's line stays).
-  - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 MIX, B3 FX. VOICE edits
+  - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 **MIX → SENDS**, B3 FX. VOICE edits
     the drum the last pad played (Snare, Clap and Rim share a page) and the
     B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the
     toms, hats and cymbals on Shift.
@@ -294,7 +297,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   pads sit, each cell its number, the pattern it plays, its engine as a
   glyph and its level up the right edge (muted: a crossed speaker); the
   track in hand as a strip on the right with its name, fader, meter, pan
-  and send. A pad picks its track; K1 the track, K2 its level, K3 its pan;
+  and its four sends as bars (A–D, top to bottom). A pad picks its track; K1 the track, K2 its level, K3 its pan;
   the wheel or −/+ the track, Push its Stage; the fader is its level. **B2
   LOOPER**, **B3 SENDS**. Pad Bank held + pad still picks a track from any
   page, the same picture over it.
@@ -742,8 +745,10 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   for dynamics; two dots by it while it has a second row on −/+). The wheel
   picks, Push on an effect opens its sheet on BYPASS (B3; it stays to hear
   the difference), B2 MORE for change, presets, move, remove; Push on the
-  plus opens the picker, its families each with the strip's glyph. Sends:
-  K1 send, K2 bus, K3 the bus's return. B1 from Track on a kit: the last
+  plus opens the picker, its families each with the strip's glyph. Sends
+  (also B3 on Tracks): one bus at a time, every track's send into it as a
+  strip; K1 the selected track's send into it, K2 which bus (the one Bus
+  then shows), K3 the bus's return. B1 from Track on a kit: the last
   pad's chain.
 - **Knob FX** (Knob FX): the mode on or off. While on, K1–K3 (and Shift +
   K1–K3) are its effect's on every page. The page lists the MPC's 28 then
@@ -1092,7 +1097,8 @@ of the card (beside `Samples/`), in any folders under it.
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
   `MOT2` / `MOTP` / `MOTW` motion, `TIME`, `PAD4` / `KITX` / `PMUT` kits,
-  `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad) and the rest; a
+  `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
+  four sends; TRAK keeps the largest for older builds), `LVLE` (16 Levels' ends) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in
   `TRAK` and itself in `PLGT`, so older builds load them empty; `PLUG` holds
   each plug-in's path and state). Saved beside

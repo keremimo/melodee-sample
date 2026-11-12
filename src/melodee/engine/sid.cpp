@@ -51,7 +51,7 @@ const Sound sounds[] {
 using K = StageKind;
 using S = StagePicture;
 const StageGroups stage {{{
-    {{{stage_preset, {"TONE", K::Params, S::Filter, {{Cutoff, Resonance, PulseWidth}}}, stage_mix}}, 3},
+    {{{stage_preset, {"TONE", K::Params, S::Filter, {{Cutoff, Resonance, PulseWidth}}}, stage_mix, stage_sends}}, 4},
     {{{{"ENVELOPE", K::Params, S::Envelope, {{Attack, Decay, Sustain}}, {{Release, Velocity, _}}},
        {"PWM", K::Params, S::Bars, {{PwmDepth, PwmRate, Crush}}},
        {"TOUCH", K::Params, S::Bars, {{AtVib, AtBright, LfoRate}}}}}, 3},

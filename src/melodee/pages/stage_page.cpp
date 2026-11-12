@@ -238,16 +238,62 @@ void mix_picture(Paint& p, const Snapshot& s) {
     p.g.setColour(c);
     p.g.strokePath(to_master, juce::PathStrokeType(3, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     box(top + 12, Icon::Speaker, colour::text, "MASTER", {});
-    const auto& bus = s.project.buses[m.bus % bus_count];
+    // The quick send (K3) into bus A, as thick as it is; the other three are SENDS' (B1 again).
+    const auto& bus = s.project.buses[0];
     const auto& first = effect_info(EffectKind(bus.fx.slots[0].kind));
-    float by = top + 100, send = m.send / 100.0f;
-    if (m.send > 0) {
+    float by = top + 100, send = m.sends[0] / 100.0f;
+    if (m.sends[0] > 0) {
         to_bus.startNewSubPath(from, cy + 4); to_bus.cubicTo(from + 30, cy + 4, bx - 30, by + 18, bx, by + 18);
         p.g.setColour(knob_shade(s.ui.track, 2));
-        p.g.strokePath(to_bus, juce::PathStrokeType(1 + 3 * send, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        p.g.strokePath(to_bus, juce::PathStrokeType(1 + 4 * send, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
-    box(by, bus.fx.slots[0].used() ? family_icon(first.family) : Icon::Ring, m.send > 0 ? knob_shade(s.ui.track, 2) : colour::dim,
-        "BUS " + juce::String::charToString(juce::juce_wchar('A' + m.bus % bus_count)), bus.fx.slots[0].used() ? juce::String(first.name) : juce::String());
+    box(by, bus.fx.slots[0].used() ? family_icon(first.family) : Icon::Ring, m.sends[0] > 0 ? knob_shade(s.ui.track, 2) : colour::dim,
+        "BUS A", bus.fx.slots[0].used() ? juce::String(first.name) : juce::String());
+}
+
+// SENDS: the track's level on the left, a line from it to each of the four buses as thick as its send, each bus
+// with its first effect's glyph and name and a bar of what it receives; A, B, C in K1-K3's shades, D (Shift + K1) grey.
+void sends_picture(Paint& p, const Snapshot& s) {
+    const auto& t = s.track();
+    const auto& m = t.mix;
+    auto c = colour_of(s);
+    p.text(name_case(juce::String(t.name)), px, top + 4, 140, 20, p.fit(name_case(juce::String(t.name)), plain(colour::text, type::list, Weight::SemiBold), 140, type::floor));
+    float mx = px + 4, my = top + 36, mh = zone::picture_h - 44;
+    p.fill(mx, my, 6, mh, colour::line, 3);
+    float meter = s.meters[s.ui.track % track_count];
+    float heard = meter > 0 && !m.mute ? std::clamp((20 * std::log10(meter) + 48) / 48, 0.0f, 1.0f) : 0;
+    if (heard > 0) p.fill(mx, my + mh * (1 - heard), 6, mh * heard, c, 3);
+    float ox = mx + 14, oy = my + mh / 2;
+    p.fill(mx + 8, oy - 1, ox - mx - 8, 2.5f, c, 1);
+    constexpr float bx = zone::pad + 144, bw = zone::width - zone::pad - bx, bh = 30, gap = 4.5f;
+    for (unsigned b = 0; b < bus_count; ++b) {
+        float by = top + 4 + b * (bh + gap), mid = by + bh / 2, amount = m.sends[b] / 100.0f;
+        auto shade = b < 3 ? knob_shade(s.ui.track, b) : colour::mid;
+        const auto& bus = s.project.buses[b];
+        bool has_fx = bus.fx.slots[0].used();
+        juce::Path line;
+        line.startNewSubPath(ox, oy); line.cubicTo(ox + 40, oy, bx - 44, mid, bx - 2, mid);
+        if (amount > 0) {
+            p.g.setColour(shade);
+            p.g.strokePath(line, juce::PathStrokeType(0.8f + 5 * amount, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        } else {
+            juce::Path dashed;
+            const float dash[] {2, 3};
+            juce::PathStrokeType(1).createDashedStroke(dashed, line, dash, 2);
+            p.g.setColour(colour::dim); p.g.fillPath(dashed);
+        }
+        p.fill(bx, by, bw, bh, colour::surf, 4);
+        if (has_fx) icon(p, family_icon(effect_info(EffectKind(bus.fx.slots[0].kind)).family), bx + 8, by + 7, 16, amount > 0 ? shade : colour::mid, 1.5f);
+        else p.circle(bx + 16, mid, 2, colour::dim);
+        p.text(juce::String::charToString(juce::juce_wchar('A' + b)), bx + 31, by, 14, bh, plain(has_fx ? colour::text : colour::dim, type::body, Weight::Bold));
+        if (has_fx) {
+            juce::String fx(effect_info(EffectKind(bus.fx.slots[0].kind)).name);
+            p.text(fx, bx + 46, by, bw - 66, bh, p.fit(fx, plain(colour::mid, type::body), bw - 66, type::floor));
+        }
+        float bar = (bh - 8) * amount; // what it receives
+        p.fill(bx + bw - 10, by + 4, 4, bh - 8, colour::line, 2);
+        if (bar > 0) p.fill(bx + bw - 10, by + 4 + (bh - 8) - bar, 4, bar, shade, 2);
+    }
 }
 
 // ARP: a keyboard along the foot, the keys held filled (none held: an example chord, faint); the notes to come
@@ -779,6 +825,7 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Lfo: lfo_picture(p, s, page); break;
     case StagePicture::ShiftRows: bars_picture(p, s, page, true); break;
     case StagePicture::Mix: mix_picture(p, s); break;
+    case StagePicture::Sends: sends_picture(p, s); break;
     case StagePicture::Arp: arp_picture(p, s); break;
     case StagePicture::Chord: chord_picture(p, s); break;
     case StagePicture::Fx: fx_picture(p, s); break;
