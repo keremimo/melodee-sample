@@ -406,8 +406,8 @@ Press **SAMPLE SELECT** on a kit to open the sample browser.
 | **SHIFT** + pad | Load the file onto the next empty pad. |
 
 Put your samples in a folder named `Samples` at the top level of the card.
-Melodee reads WAV files: 16, 24 or 32-bit, any sample rate, up to 60
-seconds. It writes recordings and edits into `Samples` too.
+Melodee reads WAV (16, 24 or 32-bit), MP3 and FLAC files, any sample
+rate, up to 60 seconds. MP3 and FLAC rows show their format at the right. It writes recordings and edits into `Samples` too.
 
 ### Sampled instruments
 

@@ -150,6 +150,33 @@ bool read_flac_loop(const std::string& path, WavInfo& info) {
     return false;
 }
 
+bool read_mp3_head(const std::string& path, Mp3Head& head) {
+    std::ifstream file(path, std::ios::binary);
+    uint8_t d[512];
+    if (!file.read(reinterpret_cast<char*>(d), 10)) return false;
+    std::streamoff first = 0;
+    if (!std::memcmp(d, "ID3", 3)) // an ID3v2 tag first: its size in 4 x 7 bits, a footer 10 more
+        first = 10 + (std::streamoff(d[6] & 0x7f) << 21 | std::streamoff(d[7] & 0x7f) << 14 | std::streamoff(d[8] & 0x7f) << 7 | (d[9] & 0x7f))
+              + (d[5] & 0x10 ? 10 : 0);
+    file.seekg(first);
+    if (!file.read(reinterpret_cast<char*>(d), sizeof(d))) return false;
+    // The first frame's header: Layer III; MPEG 1 (11), 2 (10) or 2.5 (00); a CRC after it when bit 0 is clear.
+    if (d[0] != 0xff || (d[1] & 0xe0) != 0xe0 || ((d[1] >> 1) & 3) != 1 || ((d[1] >> 3) & 3) == 1) return false;
+    const bool mpeg1 = ((d[1] >> 3) & 3) == 3, mono = (d[3] >> 6) == 3;
+    head = Mp3Head {};
+    head.frame_samples = mpeg1 ? 1152 : 576;
+    const unsigned side = mpeg1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
+    const uint8_t* x = d + 4 + (d[1] & 1 ? 0 : 2) + side; // the Xing or Info tag, in place of the frame's audio
+    if (std::memcmp(x, "Xing", 4) && std::memcmp(x, "Info", 4)) return true;
+    const unsigned flags = unsigned(x[4]) << 24 | unsigned(x[5]) << 16 | unsigned(x[6]) << 8 | x[7];
+    const uint8_t* lame = x + 8 + (flags & 1 ? 4 : 0) + (flags & 2 ? 4 : 0) + (flags & 4 ? 100 : 0) + (flags & 8 ? 4 : 0);
+    if (std::memcmp(lame, "LAME", 4) && std::memcmp(lame, "Lavc", 4) && std::memcmp(lame, "Lavf", 4)) return true;
+    head.delay = unsigned(lame[21]) << 4 | lame[22] >> 4; // 12 bits each
+    head.padding = unsigned(lame[22] & 15) << 8 | lame[23];
+    head.gapless = true;
+    return true;
+}
+
 namespace {
 // A WAV header for `frames` stereo frames at `rate` Hz into `h` (room for 58 bytes): 24-bit PCM, 44 bytes; or 32-bit
 // float, 58 (its fmt chunk carries the extension's size and a fact chunk follows, as formats other than PCM take).

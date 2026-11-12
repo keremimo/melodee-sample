@@ -7411,6 +7411,38 @@ void note_pitches() {
         CHECK(!read_flac_loop(path, none));
         fs::remove(path);
     }
+    { // an MP3's encoder delay and padding, from the LAME tag in its first frame (headers as lame and ffmpeg write them)
+        namespace fs = std::filesystem;
+        auto path = (fs::temp_directory_path() / ("melodee-gapless-" + std::to_string(getpid()) + ".mp3")).string();
+        auto write = [&](const std::string& id3, std::string header, unsigned side, const char* tag, const char* encoder) {
+            std::string b = id3 + header + std::string(side, '\0') + tag + std::string {0, 0, 0, 0x0f} + std::string(112, '\0');
+            std::string version(encoder); version.resize(9, ' '); // its 9-byte version, then 12 bytes before the delay
+            b += version + std::string(12, '\0') + std::string {char(576 >> 4), char((576 & 15) << 4 | 1170 >> 8), char(1170 & 255)};
+            b += std::string(400, '\0');
+            std::ofstream(path, std::ios::binary) << b;
+        };
+        auto reads = [&](unsigned frame_samples, bool gapless) {
+            Mp3Head h;
+            return read_mp3_head(path, h) && h.frame_samples == frame_samples && h.gapless == gapless
+                && (!gapless || (h.delay == 576 && h.padding == 1170));
+        };
+        write("", "\xff\xfb\x90\xc4", 17, "Info", "LAME4.0 ");                  // MPEG 1, mono
+        CHECK(reads(1152, true));
+        write("", "\xff\xfb\x94\x64", 32, "Xing", "LAME3.100");                 // MPEG 1, stereo
+        CHECK(reads(1152, true));
+        write("", "\xff\xf3\x80\x64", 17, "Info", "LAME4.0 ");                  // MPEG 2, stereo
+        CHECK(reads(576, true));
+        write("ID3\x04" + std::string(5, '\0') + "\x22" + std::string(34, ' '), "\xff\xfb\x90\xc0", 17, "Info", "Lavc63.1."); // ffmpeg's ID3 first
+        CHECK(reads(1152, true));
+        write("", "\xff\xfb\x90\xc4", 17, "Info", "Other!!! ");                 // no LAME tag: nothing to trim
+        CHECK(reads(1152, false));
+        write("", "\xff\xfb\x90\xc4", 32, "Info", "LAME4.0 ");                  // the tag not where a mono frame keeps it
+        CHECK(reads(1152, false));
+        { std::ofstream(path, std::ios::binary) << "RIFF" << std::string(600, '\0'); }
+        Mp3Head none;
+        CHECK(!read_mp3_head(path, none));
+        fs::remove(path);
+    }
     CHECK(pad_note(40, 0) == 40 && (pad_note(40, 5) & 0xff) == 40 && int8_t(pad_note(40, -7) >> 8) == -7);
     Pattern p;
     Event a; a.tick = 0; a.key = 40; a.pitch = 4;

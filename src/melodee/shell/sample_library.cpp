@@ -179,7 +179,10 @@ std::string upper(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return char(std::toupper(c)); });
     return text;
 }
-bool is_wav(const fs::path& path) { return upper(path.extension().string()) == ".WAV"; }
+bool is_sample_file(const fs::path& path) { // what a pad plays: WAV, MP3 or FLAC (shell/sample_decode.cpp)
+    const auto kind = upper(path.extension().string());
+    return kind == ".WAV" || kind == ".MP3" || kind == ".FLAC";
+}
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
 bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm, .xty), an EXS24 instrument, or a pad of an MPC program or project
     std::string file, which;
@@ -220,7 +223,7 @@ bool owned_data(const fs::path& dir) {
 }
 bool is_expansion(const fs::path& path) { return upper(path.extension().string()) == ".XPN"; } // an MPC expansion: a zip to install
 bool is_midi_file(const fs::path& path) { auto e = upper(path.extension().string()); return e == ".MID" || e == ".MIDI" || e == ".SMF"; } // roadmap P4
-// A folder's folders, WAV files and bank files, appended; hidden ones and lost+found left out.
+// A folder's folders, sample files and bank files, appended; hidden ones and lost+found left out.
 // card_top: the card's own top folder, where its boot folder (autorun, what starts the app) is no sample's.
 void list_into(const std::string& folder, std::vector<SampleFile>& out, bool card_top = false) {
     std::error_code error;
@@ -237,7 +240,7 @@ void list_into(const std::string& folder, std::vector<SampleFile>& out, bool car
         bool expansion = !folder_here && is_expansion(it->path());
         bool presets = !folder_here && is_sf2(it->path().string()); // roadmap P3: an .sf2 opens as a folder of its presets
         bool midi = !folder_here && is_midi_file(it->path());
-        if (!folder_here && !(it->is_regular_file(error) && (is_wav(it->path()) || bank || instrument || expansion || presets || midi))) continue;
+        if (!folder_here && !(it->is_regular_file(error) && (is_sample_file(it->path()) || bank || instrument || expansion || presets || midi))) continue;
         SampleFile f;
         f.path = it->path().string(); f.folder = folder_here || presets; f.bank = bank; f.instrument = instrument; f.expansion = expansion;
         f.midi = midi;
@@ -519,7 +522,7 @@ void SampleLibrary::hear(const std::string& path) {
     if (preview.empty() && is_drum_program(path)) return; // a kit with no preview: nothing to hear
     if (preview.empty() && is_instrument(path)) { hear_instrument(path); return; }
     auto data = std::make_unique<SampleData>();
-    if (!(preview.empty() ? read_wav(path, *data, 30, nullptr, dsp::sample_rate()) : read_audio(preview, *data, 30, nullptr, dsp::sample_rate())).empty()
+    if (!read_audio(preview.empty() ? path : preview, *data, 30, nullptr, dsp::sample_rate()).empty()
         || !data->frames) return;
     if (!offer(preview_slot, data.get())) return;
     owned.push_back(std::move(data));
@@ -630,7 +633,7 @@ void SampleLibrary::read(const Request& request) {
     cancel_landing(request.slot);
     if (is_instrument(request.path)) { begin_instrument(request); return; }
     auto data = std::make_unique<SampleData>();
-    auto error = read_wav(request.path, *data, 60, nullptr, dsp::sample_rate()); // the copy the device plays, from the file
+    auto error = read_audio(request.path, *data, 60, nullptr, dsp::sample_rate()); // the copy the device plays, from the file
     const SampleData* held = nullptr;
     LoadedSample loaded;
     loaded.path = request.path;

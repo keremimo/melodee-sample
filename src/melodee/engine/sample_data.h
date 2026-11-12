@@ -73,6 +73,11 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
 // The loop a FLAC file keeps from the WAV it was made of (flac --keep-foreign-metadata: an
 // APPLICATION block "riff" holding the smpl chunk), into `info`; false when it has none.
 bool read_flac_loop(const std::string& path, WavInfo& info);
+// An MP3's first frame: the frames each of its frames holds (1152 for MPEG 1, 576 for MPEG 2 and 2.5) and, when it
+// carries a LAME tag (LAME, and FFmpeg's "Lavc"/"Lavf", in the Xing or Info frame), the encoder delay and padding
+// it records. False when the file does not start with a Layer III frame.
+struct Mp3Head { unsigned frame_samples = 0, delay = 0, padding = 0; bool gapless = false; };
+bool read_mp3_head(const std::string& path, Mp3Head& head);
 // Writes the sample's `left` and `right` as stereo at `rate` Hz (what they are at: 44.1 kHz for a sample's own
 // frames, the device's for a capture before adopt()): 24-bit PCM, or 32-bit float when the sound goes past full
 // scale (so the file never clips what plays); empty on success.

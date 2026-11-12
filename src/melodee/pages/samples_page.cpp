@@ -75,6 +75,8 @@ void draw(Paint& p, const Snapshot& s) {
         else if (file.midi) { r.icon = Icon::Note; r.fact = "MIDI"; } // roadmap P4: Push lays it on the pattern
         else {
             r.icon = Icon::Wav;
+            if (path.endsWithIgnoreCase(".mp3")) r.fact = "MP3";
+            else if (path.endsWithIgnoreCase(".flac")) r.fact = "FLAC";
             for (unsigned n = 0; n < sample_slots && r.pad.isEmpty(); ++n) // which pad of this kit plays it
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)
