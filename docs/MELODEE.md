@@ -282,8 +282,12 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     the cloud travels and GRAINS AROUND follows it (K1's line stays).
   - **A 909**: B1 **PRESET → VOICE → LEVELS**, B2 **MIX → SENDS**, B3 FX. VOICE edits
     the drum the last pad played (Snare, Clap and Rim share a page) and the
-    B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); LEVELS has the
-    toms, hats and cymbals on Shift.
+    B1 key reads its name (KICK, SNARE, TOMS, HATS, CYMBALS); it draws the
+    drum's own hit, rendered again whenever a knob moves: 300 ms of it as
+    bars in the track's colour, the tone under it (the snare without its
+    SNAPPY noise) as a line, beside the pads (small, the voice's lit).
+    LEVELS has the toms, hats and cymbals on Shift, its bars without the
+    numbers the cards show.
   - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 **ARP → CHORD**. DEVICE
     (and Edit's DEVICE alike): the route, alive. The track, its port (the
     MIDI Out jack, a computer over USB-C, every USB device; amber when

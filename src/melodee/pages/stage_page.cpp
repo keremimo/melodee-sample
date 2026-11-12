@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <vector>
 
 namespace melodee {
 namespace {
@@ -647,30 +648,71 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     axis(p, bottom - 16, "", middle, seconds(zoomed ? end - start : uint32_t((to - from) * frames)));
 }
 
-// VOICE (909): the pads as they sit, the voice's lit, the one hit brightest; the voice and its pads.
+// d909 A (round 2, "the hit, drawn"): one drum rendered offline for 300 ms whenever the kit's knobs move (kept on
+// the screen thread): its loudness in 120 columns, and the same with the snare's noise (SNAPPY) taken out, the tone
+// under it; both scaled to the louder's peak.
+struct Hit909 { std::array<float, 120> full {}, tone {}; uint64_t key = ~0ull; };
+const Hit909& hit_909(const Track& t, unsigned drum) {
+    static Hit909 cached;
+    uint64_t key = drum + 1;
+    for (unsigned id = 0; id < kit909::Count; ++id) key = key * 1000003ull + uint64_t(t.params[id] + 1000);
+    if (key == cached.key) return cached;
+    cached.key = key;
+    auto render = [&](bool tonal, std::array<float, 120>& out) {
+        Kit909Engine e;
+        for (unsigned id = 0; id < kit909::Count; ++id) e.set_param(int(id), tonal && id == unsigned(kit909::SnareSnappy) ? 0 : t.params[id]);
+        e.note_on(36 + int(drum), 127);
+        unsigned per = std::max(1u, unsigned(dsp::sample_rate() * 0.3f) / unsigned(out.size()));
+        std::vector<float> block(per);
+        for (auto& v : out) {
+            std::fill(block.begin(), block.end(), 0.0f);
+            e.render(block.data(), per);
+            float peak = 0;
+            for (float x : block) peak = std::max(peak, std::fabs(x));
+            v = peak;
+        }
+    };
+    render(false, cached.full);
+    render(true, cached.tone);
+    float top = 1e-6f;
+    for (unsigned n = 0; n < cached.full.size(); ++n) top = std::max({top, cached.full[n], cached.tone[n]});
+    for (unsigned n = 0; n < cached.full.size(); ++n) { cached.full[n] /= top; cached.tone[n] /= top; }
+    return cached;
+}
+
+// VOICE (909): the pads as they sit (small), the voice's lit, the one hit brightest; beside them the drum's own hit
+// (d909 A): the burst as bars in the track's colour, the tone under it as a line, TUNE, TONE and SNAPPY seen as they move.
 void voice_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     const auto& g = stage_groups(t.engine);
     auto c = colour_of(s);
     unsigned voice = stage_voice(t);
     int hit = int(t.last_note) - 36;
-    float cell = 24, gap = 4, gx = px, gy = top + (zone::picture_h - (4 * cell + 3 * gap)) / 2;
-    for (unsigned n = 0; n < 16; ++n) { // the pads the voice plays lit, the one hit brightest, each with its number
+    constexpr float cell = 12, gap = 2;
+    float gx = px, gy = top + 8;
+    for (unsigned n = 0; n < 16; ++n) { // the pads the voice plays lit, the one hit brightest
         unsigned row = 3 - n / 4, column = n % 4;
         bool same = g.pad_voice[n] == int(voice), here = int(n) == hit;
         juce::Colour fill = here ? c : same ? c.withAlpha(0.4f) : g.pad_voice[n] >= 0 ? colour::raised : colour::quiet;
-        float x = gx + column * (cell + gap), y = gy + row * (cell + gap);
-        p.fill(x, y, cell, cell, fill, 3);
-        if (same) p.text(juce::String(n + 1), x, y, cell, cell, plain(here ? colour::bg : colour::text, type::small, Weight::SemiBold), juce::Justification::centred);
+        p.fill(gx + column * (cell + gap), gy + row * (cell + gap), cell, cell, fill, 2);
     }
-    // The voice's name, and the drum the last pad played when the voice has more than one.
-    float x = gx + 4 * cell + 3 * gap + 16, w = px + pw - x;
-    juce::String name = engine_info(t.engine).pages[voice].title;
-    p.text(name, x, top + 44, w, 30, p.fit(name, plain(colour::text, 24, Weight::SemiBold), w, type::floor));
-    if (hit >= 0 && hit < int(kit909::Drums)) {
-        juce::String drum = juce::String(kit909::drum_name(unsigned(hit))).toUpperCase();
-        if (drum != name.toUpperCase()) p.text(drum, x, top + 78, w, 14, p.fit(drum, caps_text(c), w, type::floor));
+    unsigned drum = hit >= 0 && hit < int(kit909::Drums) ? unsigned(hit) : 0;
+    const auto& h = hit_909(t, drum);
+    float wx = gx + 4 * cell + 3 * gap + 10, ww = px + pw - wx, wy = top + 10, wh = zone::picture_h - 40, cy = wy + wh / 2;
+    float bw = ww / float(h.full.size());
+    for (unsigned n = 0; n < h.full.size(); ++n) {
+        float bh = std::max(1.0f, h.full[n] * wh);
+        p.fill(wx + n * bw, cy - bh / 2, std::max(1.0f, bw - 0.6f), bh, c.withAlpha(0.75f), 0.5f);
     }
+    juce::Path tone;
+    for (unsigned n = 0; n < h.tone.size(); ++n) {
+        float tx = wx + (n + 0.5f) * bw, ty = cy - h.tone[n] * wh / 2;
+        if (n) tone.lineTo(tx, ty); else tone.startNewSubPath(tx, ty);
+    }
+    p.g.setColour(colour::text);
+    p.g.strokePath(tone, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    p.text("0", wx, bottom - 16, 30, 14, plain(colour::dim, type::small));
+    p.text("300 ms", px + pw - 60, bottom - 16, 60, 14, plain(colour::dim, type::small), juce::Justification::centredRight);
 }
 
 // LEVELS (909): six faders, the three on K1-K3 in their shades, the Shift three after them.
@@ -683,8 +725,7 @@ void levels_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         if (id < 0) continue;
         float cx = px + n * cw + cw / 2, value = gauge_of(info.params[id], t.params[size_t(id)]);
         auto shade = n < 3 ? knob_shade(s.ui.track, n) : colour::mid;
-        p.text(shown_value(t, id), cx - cw / 2, top + 2, cw, 18, plain(colour::text, type::body, Weight::SemiBold), juce::Justification::centred);
-        float bh = zone::picture_h - 46, by = top + 24;
+        float bh = zone::picture_h - 46, by = top + 24; // d909 A: the bars alone, the cards say the values
         p.fill(cx - 3.5f, by, 7, bh, colour::line, 3.5f);
         p.fill(cx - 3.5f, by + bh * (1 - value), 7, bh * value, n < 3 ? shade : knob_shade(s.ui.track, n - 3).withAlpha(0.55f), 3.5f);
         auto style = caps_text(shade);
