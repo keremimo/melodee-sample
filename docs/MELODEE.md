@@ -520,7 +520,8 @@ hold to steer, Shift + Seq to zoom in**.
     again, a song for one track without Song (kept in the project, CHAN). A
     single tap, or a pattern launched any other way, ends it. Shift + pad
     launches that column on every track holding notes there (and on the
-    selected one). Hold a pad and tap another to copy. Erase + pad asks,
+    selected one): its **scene**, with the scene's tempo. Hold a pad
+    and tap another to copy. Erase + pad asks,
     then clears that pattern (one undo). Shift + Erase starts a pattern
     copy: the pattern, then where (on this or another track; the pads stay
     patterns until it ends).
@@ -538,7 +539,36 @@ hold to steer, Shift + Seq to zoom in**.
   by a beat (Shift: by Q); stopped, that is where Shift + Play continues.
   The header shows the position, time signature and Rec Quantize. BPM per
   pattern (each pattern number its own tempo, the one launched last
-  leading) or one for the project: Push on the Tempo page.
+  leading) or one for the project: Push on the Tempo page. Push opens
+  Scenes. A pattern with a follow action carries a dot in its corner.
+- **Scenes** (Push on Patterns; roadmap P5): a scene is a column, pattern
+  n of every track, with a name and a tempo of its own. The sixteen sit as
+  the pads do: a pad launches its scene, pattern n on every track holding
+  notes there (and on the selected track) at the next bar (stopped, at
+  once), tracks with nothing there playing on; its tempo takes over on that
+  bar (with BPM per pattern on, a pattern's own still leads). Lit bright
+  while the scene plays whole, blinking while it waits for its bar. Push
+  names the scene in hand (the ready names are the markers'), the wheel
+  sets its tempo (below 30 BPM: none), Erase + pad clears both. Beside the
+  grid: the scene in hand, its tempo, the follow action and a dot a track
+  (in the scene, playing another pattern, or stopped: a ring). Files keep
+  scenes in SCNE. Minus / Plus move the track.
+- **Follow actions** (Scenes' cards): what the selected track's pattern
+  does once it has played a while, as melodee-ios's clips. K1 FOLLOW Next,
+  Previous (round the track's patterns with notes), Any (another at
+  random), Again (from its top), Stop (the track silent until a launch or
+  Play); K2 AFTER 1-64 bars or 1-64 plays of itself (at its track's
+  speed); K3 CHANCE, the first action's odds; Shift + K1 OR, the second,
+  on the odds the first leaves (with none, the pattern plays on another
+  stretch and the dice roll again). The audio thread brings it on the tick
+  it is due, so a pattern of 1.5 bars followed after a play changes there,
+  not on a bar line. A launch waiting for its bar comes first; in the song
+  none come. A track playing a **pattern chain** plays the chain: its
+  patterns' follow actions wait while it is chained (the chain is the
+  order asked for). B3 ALL puts the follow action on every track's
+  pattern with notes in its column (one undo); each turn is one undo of
+  the pattern. Files keep them in FOLW. `status`: `melodee_follows`,
+  `melodee_stopped`.
 - **Seq Record**: arm and Play, or record at once; again stops recording.
   **Count-In** plays a bar of clicks first. Notes keep the tick and length
   they were heard at (the pad's stamp less the output latency, to the

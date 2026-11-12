@@ -664,6 +664,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EuclidHits: case Kind::EuclidSteps: case Kind::EuclidRotate: set_euclid(b.kind, value); break;
     case Kind::TrackSpeed: set_speed(unsigned(b.id), value); break;
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
+    case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
     case Kind::FeelStrength: case Kind::FeelSwing: case Kind::FeelHumanize: case Kind::FeelVelocity: case Kind::GrooveFrom:
     case Kind::GrooveAmount:
         set_feel(b.kind, value);
@@ -872,6 +873,7 @@ void Context::finish_name() {
         break;
     }
     case NameTarget::Mixdown: mixdown(text); break;
+    case NameTarget::Scene: project.scenes[name_scene_at % pattern_count].set_name(text.c_str()); dirty = true; break; // roadmap P5
     case NameTarget::None: break;
     }
 }

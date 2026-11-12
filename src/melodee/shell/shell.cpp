@@ -587,6 +587,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             sketch.notes = !pattern.empty();
             sketch.count = uint16_t(std::min<size_t>(pattern.events.size(), 0xffff));
             sketch.moves = uint16_t(std::min<size_t>(pattern.motion.size(), 0xffff));
+            sketch.follows = pattern.follow.on(); // roadmap P5
             for (const auto& e : pattern.events) { // the first note of each of the first 64 sixteenths
                 unsigned k = e.tick / sixteenth_ticks;
                 if (k >= sketch.keys.size() || e.tick >= pattern.length) break;
@@ -665,6 +666,7 @@ std::string Shell::summary() const {
            // Roadmap P1: ratchets' hits after their first; notes trig conditions let through / held back; Fill held.
            " melodee_hits=" + std::to_string(host.ratchet_hits()) + " melodee_trigs=" + std::to_string(host.trigs_kept()) + "/" +
            std::to_string(host.trigs_dropped()) + " melodee_fill=" + std::to_string(int(host.filling())) +
+           " melodee_follows=" + std::to_string(follows_total()) + " melodee_stopped=" + std::to_string(host.stopped_tracks()) + // roadmap P5
            " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
            " melodee_q=" + std::to_string(pattern_q.load()) + " melodee_first_tick=" + std::to_string(first_tick.load()) +
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +
@@ -779,6 +781,12 @@ std::string Shell::pad_summary() const {
 }
 
 // Roadmap P3: the last pad's layers and loop crossfade, the voices heard and their sample slots.
+unsigned Shell::follows_total() const {
+    unsigned n = 0;
+    for (unsigned t = 0; t < track_count; ++t) n += host.follows_of(t);
+    return n;
+}
+
 std::string Shell::p3_summary() const {
     uint32_t p = p3_bits.load(std::memory_order_relaxed);
     static const char* const plays[] {"velocity", "cycle", "random"};

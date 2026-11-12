@@ -29,6 +29,7 @@ enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Pa
                             PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
                             LayersPage,                        // roadmap P3: a kit pad's four layers
                             ModPage,                           // roadmap P4: modulators and macros (MOTION again on Motion)
+                            Scenes,                            // roadmap P5: scenes and follow actions (Push on Patterns)
                             Count };
 
 // Takeover (shell/takeover.h): a pot or the fader drives its value once it has
@@ -242,6 +243,7 @@ struct UiState {
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).
     uint8_t mod_view = 0, mod_index = 0, mod_target = 0, macro_index = 0, macro_target = 0;
+    uint8_t scene = 0; // roadmap P5: the scene in hand (SCENES; the one launched last)
     int16_t learn_lane = -1;
     uint8_t learn_track = 0;
     uint16_t project_cursor = 0;  // Project: row under the cursor (0 is SD card access at the top)

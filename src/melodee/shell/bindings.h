@@ -91,7 +91,10 @@ struct Binding {
         MacroPick, MacroValue, MacroLow, MacroHigh,
         MidiDrumNote, // roadmap P4 (M3), a MIDI track's Drum pads: the note pad `id` (16 bank + pad) plays, Edit's PADS K2
         MidiPort,     // roadmap P4 (M4), DEVICE's K1: External, USB-C, each USB device by name, All USB (shell/midi_track_jobs.h)
-        MidiSysexFile // roadmap P4 (M4), SYSEX's K1: a .syx of the card's SysEx folder (0 none)
+        MidiSysexFile, // roadmap P4 (M4), SYSEX's K1: a .syx of the card's SysEx folder (0 none)
+        // Roadmap P5, SCENES (Push on Patterns): the selected track's pattern's follow action (model/follow.h): the first
+        // and (Shift + K1) the second action, after so many (0..63: 1..64 bars, 64..127: 1..64 plays), the first's odds.
+        FollowAction, FollowOther, FollowAfter, FollowChance
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -174,5 +177,8 @@ int binding_lane(const Track& track, const Binding& b);
 // turning it moves the note to that line plus the offset.
 Binding nudge_card(const Pattern& pattern, const Event& e);
 inline uint32_t nudge_base(const Pattern& pattern, const Event& e) { unsigned q = pattern.q(); return (e.tick + q / 2) / q * q; }
+// Roadmap P5: a follow action's AFTER on its card (0..63 bars, 64..127 plays) and back.
+inline int follow_after_card(const PatternFollow& f) { return (f.plays ? 64 : 0) + std::clamp<int>(f.count, 1, 64) - 1; }
+inline void follow_after_of_card(PatternFollow& f, int value) { f.plays = value >= 64; f.count = uint8_t(value % 64 + 1); }
 
 } // namespace melodee

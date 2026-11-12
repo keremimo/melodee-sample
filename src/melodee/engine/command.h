@@ -30,6 +30,8 @@ struct Command {
         SongClip,    // index, clip
         SongCount,   // value = clips in use
         SongLoop,    // index = first bar, value = bar after the last (equal: no loop)
+        Chained,     // roadmap P5: track, value = it plays a pattern chain (its patterns' follow actions wait)
+        SceneTempo,  // roadmap P5: value = a scene's tempo (tenths of a BPM), taking over on the bar its patterns launch
         Tempo,       // value = tenths of a BPM
         Swing,       // value = percent
         Mod,         // track, index = route, route

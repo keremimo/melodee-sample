@@ -214,6 +214,19 @@ struct Song {
     }
 };
 
+// Roadmap P5: a scene is a column of patterns across the tracks (pattern n of each), launched together on the next bar,
+// with a name and a tempo of its own (0: none; tenths of a BPM) taking over on that bar.
+struct Scene {
+    char name[12] {};
+    uint16_t tempo = 0;
+    bool plain() const { return !name[0] && !tempo; }
+    void set_name(const char* text) {
+        unsigned n = 0;
+        for (; n + 1 < sizeof(name) && text[n]; ++n) name[n] = text[n];
+        std::fill(name + n, name + sizeof(name), '\0');
+    }
+};
+
 // Drums: a drum plug-in's or drum machine's pads, as a kit's (model/scales.h pad_note()). Files keep the number:
 // new layouts go on the end.
 enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Drums, Count };
@@ -361,6 +374,7 @@ struct Project {
     // Roadmap P4: LFOs and followers on any lane (MODS), and macros turning several at once (MACR); model/modulators.h.
     std::array<Modulator, modulator_count> modulators {};
     std::array<Macro, macro_count> macros {};
+    std::array<Scene, pattern_count> scenes {}; // roadmap P5: each column's name and tempo (SCNE)
     Chain& chain(unsigned n) {
         if (n >= pad_chain_base) { n -= pad_chain_base; return tracks[(n / sampler_pads) % track_count].pad_fx.at[n % sampler_pads]; }
         if (is_loop_chain(n)) return loop_fx[n - loop_chain(0)];

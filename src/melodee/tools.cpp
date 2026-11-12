@@ -1800,6 +1800,22 @@ const Preview previews[] {
          s.position = 9 * sixteenth_ticks; s.pass = 0; // the hat's lane at its step 4 while the pattern is at 10
          s.ui.shift = true; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    // Roadmap P5: SCENES (Push on Patterns), the columns as scenes and the selected track's pattern's follow action.
+    {"scenes", [](Shell& shell, Snapshot& s) {
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[1].tempo = 1240;
+         s.project.scenes[2].set_name("DROP"); s.project.scenes[2].tempo = 1280; s.project.scenes[5].set_name("BREAKDOWN");
+         s.project.tracks[2].pattern = 1;
+         for (unsigned t = 0; t < track_count; ++t) { s.playing_patterns[t] = t == 2 ? 1 : 0; s.positions[t] = t == 5 ? -1 : int(t * sixteenth_ticks); }
+         auto& f = shell.patterns().at[2][1].follow;
+         f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"scenesshift", [](Shell& shell, Snapshot& s) { // Shift + K1: the second action
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.ui.shift = true; s.project.tracks[2].pattern = 1;
+         auto& f = shell.patterns().at[2][1].follow;
+         f.action = uint8_t(FollowAction::Again); f.other = uint8_t(FollowAction::Stop); f.chance = 50; f.count = 2; f.plays = true;
+     }},
 };
 
 void draw(juce::Graphics& g, const Snapshot& s) {

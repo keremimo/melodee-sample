@@ -718,7 +718,11 @@ void EngineHost::apply(const Command& c) {
             auto& at = patterns[c.track % track_count][c.pattern % pattern_count];
             Pattern* old = at;
             at = c.data;
+            // Roadmap P5: the pattern playing changed its follow action or length: what follows is planned again.
+            bool replan = running && !song_mode && slot.pattern == c.pattern % pattern_count && !slot.silent && old &&
+                          (old->follow != c.data->follow || old->length != c.data->length);
             retire(old);
+            if (replan) plan_follow(c.track % track_count);
         }
         break;
     case Type::Pattern:
@@ -730,6 +734,15 @@ void EngineHost::apply(const Command& c) {
     case Type::SongClip: if (c.index < song_clips) song.clips[c.index] = c.clip; break;
     case Type::SongCount: song.count = uint16_t(std::clamp<int>(c.value, 0, song_clips)); break;
     case Type::SongLoop: song.loop_start = c.index; song.loop_end = uint16_t(c.value); break;
+    case Type::Chained: // roadmap P5: a chain is its track's order, its patterns' follow actions wait
+        slot.chained = c.value != 0;
+        if (slot.chained) slot.follow_do = 0;
+        else if (running && !song_mode && !slot.silent) plan_follow(c.track % track_count);
+        break;
+    case Type::SceneTempo: // roadmap P5: on the bar the scene's patterns launch on; stopped, at once
+        if (running && !song_mode) scene_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
+        else { global_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000)); scene_tempo = 0; follow_tempo(); }
+        break;
     case Type::Play:
         if (running) break;
         mtc_off(); // MTC in places it right after (MtcIn locate)
@@ -748,6 +761,8 @@ void EngineHost::apply(const Command& c) {
             if (s.queued != 255) { s.pattern = s.queued; s.queued = 255; }
         }
         in_song.store(song_mode, std::memory_order_relaxed);
+        stopped_now.store(0, std::memory_order_relaxed);
+        for (unsigned t = 0; t < track_count; ++t) plan_follow(t); // roadmap P5: from each pattern's top (not in the song)
         if (render_out.cued()) { // a render starts with the first frame played
             if (bounce_song != song_mode || count_left) render_out.cancel();
             else render_out.begin(0);
@@ -772,6 +787,7 @@ void EngineHost::apply(const Command& c) {
             for (auto& skip : slots[t].skips) skip.key = -1;
             if (slots[t].queued != 255) { slots[t].pattern = slots[t].queued; slots[t].queued = 255; }
             slots[t].silent = false; slots[t].clip = -1;
+            slots[t].follow_do = 0; // roadmap P5
             patterns_now[t].store(slots[t].pattern, std::memory_order_relaxed);
         }
         for (auto& s : slots) restore(s);
@@ -782,6 +798,7 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Tempo:
         global_tempo = uint16_t(std::clamp<int>(c.value, 300, 3000));
+        scene_tempo = 0; // set by hand after a scene's: the hand's
         follow_tempo();
         break;
     case Type::PatternTempo:
@@ -802,6 +819,7 @@ void EngineHost::apply(const Command& c) {
         arp_ticks = 0; until_arp = 0; arp_origin = tick_now; // the repeats from it
         loop_restart = true;
         for (auto& s : slots) { s.start = 0; for (auto& skip : s.skips) skip.key = -1; }
+        for (unsigned t = 0; t < track_count; ++t) plan_follow(t); // roadmap P5: counted from the patterns' top again
         tick_count.store(tick_now, std::memory_order_relaxed);
         break;
     case Type::Recorded: {
@@ -1372,7 +1390,10 @@ void EngineHost::bar_start() {
             if (slot.kind == EngineKind::Midi) midi_program(t, frame_now + block_at, false); // roadmap P4: a pattern's own program, ahead of its notes
             patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
             lead = slot.pattern;
+            if (slot.silent) { slot.silent = false; stopped_now.fetch_and(~(1u << t), std::memory_order_relaxed); } // after a STOP (roadmap P5)
+            plan_follow(t);
         }
+        if (scene_tempo) { global_tempo = scene_tempo; scene_tempo = 0; } // roadmap P5: a scene's, with its patterns
         follow_tempo(); // BPM per pattern: the one launched last leads
         return;
     }
@@ -1386,6 +1407,51 @@ void EngineHost::bar_start() {
         return;
     }
     clips_at_bar(false);
+}
+
+// Roadmap P5: what follows the pattern track t plays, from where it started (patterns, not the song; not a chained
+// or stopped track): the dice say which action and after how many stretches (model/follow.h). A plan already passed
+// (Play from a place, Locate) comes at the next stretch from here.
+void EngineHost::plan_follow(unsigned t) {
+    auto& slot = slots[t % track_count];
+    slot.follow_do = 0;
+    if (song_mode || slot.chained || slot.silent) return;
+    const Pattern& pattern = *patterns[t % track_count][slot.pattern % pattern_count];
+    unsigned action = 0, stretches = 0;
+    if (!follow_plan(pattern.follow, dice, action, stretches)) return;
+    uint64_t after = follow_after(pattern.follow, std::max<uint32_t>(pattern.length, 1), bar);
+    uint64_t at = uint64_t(slot.start) + stretches * after;
+    if (at <= tick_now) at += ((tick_now - at) / after + 1) * after;
+    slot.follow_at = uint32_t(std::min<uint64_t>(at, UINT32_MAX));
+    slot.follow_do = uint8_t(action);
+}
+
+// Its follow action comes, on this tick: another of the track's patterns with notes from its top, the same again, or
+// the track stops (silent until a launch or Play). The shell follows by follows_of().
+void EngineHost::follow(unsigned t) {
+    auto& slot = slots[t % track_count];
+    unsigned action = slot.follow_do;
+    slot.follow_do = 0;
+    uint32_t filled = 0;
+    for (unsigned p = 0; p < pattern_count; ++p) if (!patterns[t][p]->empty()) filled |= 1u << p;
+    int to = follow_target(action, slot.pattern, filled, dice);
+    follows_now[t].store(follows_now[t].load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+    if (to < 0) { // STOP: what it holds lets go
+        for (auto& off : slot.offs) if (off.key >= 0) { engine_note_off(slot, off.key); off.key = -1; }
+        slot.held = {};
+        if (slot.kind == EngineKind::Midi) midi_all_off(t, frame_now + block_at);
+        slot.silent = true;
+        positions_now[t].store(-1, std::memory_order_relaxed);
+        stopped_now.fetch_or(1u << t, std::memory_order_relaxed);
+        return;
+    }
+    if (slot.kind == EngineKind::Midi && unsigned(to) != slot.pattern) midi_all_off(t, frame_now + block_at); // as a launch
+    slot.pattern = uint8_t(to); slot.start = tick_now;
+    if (slot.kind == EngineKind::Midi) midi_program(t, frame_now + block_at, false);
+    patterns_now[t].store(slot.pattern, std::memory_order_relaxed);
+    lead = slot.pattern;
+    follow_tempo();
+    plan_follow(t);
 }
 
 void EngineHost::clips_at_bar(bool force) {
@@ -1960,6 +2026,11 @@ void EngineHost::tick() {
     if (!bounce_song && render_out.running() && tick_now >= bounce_ticks) render_out.finish(block_at);
     if (tick_now % bar == 0) bar_start();
     if (!running) return;
+    if (!song_mode) // roadmap P5: follow actions due on this tick, before the tick's notes (a launch waiting for its bar first)
+        for (unsigned t = 0; t < track_count; ++t) {
+            auto& slot = slots[t];
+            if (slot.follow_do && slot.queued == 255 && !slot.chained && !slot.silent && tick_now >= slot.follow_at) follow(t);
+        }
     if (song_mode && tick_now % sixteenth_ticks == 0) play_song_punches();
     { // pad-fx C: a kept punch's length; a live punch wins while it sounds, the kept ones back for the rest of theirs after
         bool hand = hand_punch();

@@ -176,6 +176,14 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::EuclidRotate: c.label = "ROTATE"; c.value = juce::String(b.value); break;
     case Kind::VaryAmount: c.label = "AMOUNT"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::TrackSpeed: c.label = "SPEED"; c.value = juce::String::fromUTF8(speed_name(unsigned(b.value))); break; // roadmap P1
+    case Kind::FollowAction: case Kind::FollowOther: { // roadmap P5: a follow action, the first or the second
+        static const char* const names[] {"Off", "Next", "Previous", "Any", "Again", "Stop"};
+        c.label = b.kind == Kind::FollowAction ? "FOLLOW" : "OR";
+        c.value = names[unsigned(b.value) % unsigned(FollowAction::Count)];
+        break;
+    }
+    case Kind::FollowAfter: c.label = "AFTER"; c.value = juce::String(b.value % 64 + 1); c.unit = b.value >= 64 ? (b.value == 64 ? "play" : "plays") : (b.value == 0 ? "bar" : "bars"); break;
+    case Kind::FollowChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::LaneLength: // a kit lane's own length (roadmap P1); as long as the pattern: none of its own
         c.label = "LANE"; c.value = b.value >= int(s.pattern.steps()) ? juce::String("All") : juce::String(b.value); c.unit = b.value >= int(s.pattern.steps()) ? "" : "steps";
         break;

@@ -10413,7 +10413,152 @@ void exports_p4() {
     }
 }
 
+// Roadmap P5: scenes (a column's name and tempo) and follow actions (next, previous, any, again, stop; after bars or
+// plays; two actions on odds), brought by the audio thread on their tick; a chained track's wait.
+void scenes_p5() {
+    using FA = FollowAction;
+    FollowDice dice;
+    uint32_t filled = 0b1011; // patterns 1, 2 and 4
+    CHECK(follow_target(unsigned(FA::Next), 1, filled, dice) == 3 && follow_target(unsigned(FA::Next), 3, filled, dice) == 0);
+    CHECK(follow_target(unsigned(FA::Previous), 0, filled, dice) == 3 && follow_target(unsigned(FA::Previous), 3, filled, dice) == 1);
+    CHECK(follow_target(unsigned(FA::Again), 1, filled, dice) == 1 && follow_target(unsigned(FA::Stop), 1, filled, dice) == -1);
+    CHECK(follow_target(unsigned(FA::Next), 1, 0, dice) == -1 && follow_target(unsigned(FA::Any), 2, 0b100, dice) == 2);
+    unsigned seen[16] {};
+    for (unsigned n = 0; n < 300; ++n) ++seen[follow_target(unsigned(FA::Any), 1, filled, dice)];
+    CHECK(!seen[1] && seen[0] > 60 && seen[3] > 60 && seen[0] + seen[3] == 300);
+    PatternFollow f;
+    unsigned action = 0, stretches = 0;
+    CHECK(!f.on() && !follow_plan(f, dice, action, stretches));
+    f.action = uint8_t(FA::Next);
+    CHECK(follow_plan(f, dice, action, stretches) && action == unsigned(FA::Next) && stretches == 1);
+    f.chance = 0; CHECK(!follow_plan(f, dice, action, stretches)); // no odds, no second: never
+    f.chance = 25; // the first on a quarter of rolls, else the pattern plays on another stretch
+    unsigned later = 0;
+    for (unsigned n = 0; n < 400; ++n) { CHECK(follow_plan(f, dice, action, stretches) && action == unsigned(FA::Next)); later += stretches > 1; }
+    CHECK(later > 220 && later < 380);
+    f.other = uint8_t(FA::Previous); f.chance = 75; // two actions on their odds
+    unsigned firsts = 0;
+    for (unsigned n = 0; n < 1000; ++n) { follow_plan(f, dice, action, stretches); CHECK(stretches == 1); firsts += action == unsigned(FA::Next); }
+    CHECK(firsts > 680 && firsts < 820);
+    f.count = 4; CHECK(follow_after(f, 200, 384) == 4 * 384);
+    f.plays = true; f.count = 3; CHECK(follow_after(f, 200, 384) == 600);
+    CHECK(follow_after_card(f) == 64 + 2);
+    PatternFollow g; follow_after_of_card(g, 5); CHECK(!g.plays && g.count == 6);
+    follow_after_of_card(g, 127); CHECK(g.plays && g.count == 64);
+    CHECK(std::string(follow_name(unsigned(FA::Any))) == "ANY");
+    // The file: FOLW a pattern, SCNE a scene; without them none.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        put(bank->at[3][5], 0, 60, 100);
+        bank->at[3][5].follow = f;
+        project->scenes[2].set_name("CHORUS"); project->scenes[2].tempo = 1285; project->scenes[9].tempo = 900;
+        auto data = save_project(*project, *bank);
+        auto back = std::make_unique<Project>();
+        auto back_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *back, *back_bank).empty() && back_bank->at[3][5].follow == f && !back_bank->at[3][4].follow.on());
+        CHECK(std::string(back->scenes[2].name) == "CHORUS" && back->scenes[2].tempo == 1285 && back->scenes[9].tempo == 900 && back->scenes[0].plain());
+        std::string text(data.begin(), data.end());
+        data[text.find("FOLW")] = 'X'; data[text.find("SCNE")] = 'X';
+        CHECK(load_project(data, *back, *back_bank).empty() && !back_bank->at[3][5].follow.on() && back->scenes[2].plain());
+    }
+    // SCENES' cards: the selected track's pattern's follow action; Shift + K1 the second.
+    {
+        auto project = std::make_unique<Project>();
+        synth(project->tracks[1], 2);
+        UiState ui;
+        ui.page = PageId::Scenes; ui.track = 1;
+        Pattern p;
+        p.follow = f;
+        auto cards = base_bindings(*project, ui, p);
+        CHECK(cards[0].kind == Binding::Kind::FollowAction && cards[0].value == int(FA::Next) && cards[1].kind == Binding::Kind::FollowAfter &&
+              cards[1].value == 66 && cards[2].kind == Binding::Kind::FollowChance && cards[2].value == 75);
+        auto shifted = shift_bindings(*project, ui, p);
+        CHECK(shifted[0].kind == Binding::Kind::FollowOther && shifted[0].value == int(FA::Previous) && !shifted[1].bound());
+    }
+    // Heard: a MIDI track's patterns 1-3 (one note each), P1 Next after a bar, P2 (half a bar) Next after two plays,
+    // P3 Stop after a bar: 60, 62 62, 64, then nothing, the track stopped; three follow actions came.
+    auto run = [](bool chained, std::vector<std::pair<int, uint64_t>>& ons, EngineHost*& out_host) {
+        using namespace midi_track;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        project->tracks[0].params[Port] = UsbC; project->tracks[0].params[Channel] = 1;
+        project->tempo = 1200;
+        put(bank->at[0][0], 0, 60, 100); put(bank->at[0][1], 0, 62, 100); put(bank->at[0][2], 0, 64, 100);
+        bank->at[0][1].length = 8 * sixteenth_ticks;
+        bank->at[0][0].follow.action = uint8_t(FollowAction::Next);
+        bank->at[0][1].follow.action = uint8_t(FollowAction::Next); bank->at[0][1].follow.count = 2; bank->at[0][1].follow.plays = true;
+        bank->at[0][2].follow.action = uint8_t(FollowAction::Stop);
+        auto* host = new EngineHost;
+        host->load(*project, *bank);
+        tones_for(*host, *project);
+        host->set_audio_format(44100, 384);
+        if (chained) host->send({Command::Type::Chained, 0, 0, 0, 1});
+        host->send({Command::Type::Play});
+        std::vector<int32_t> buffer(256);
+        for (unsigned b = 0; b < 2900; ++b) { // five bars at 120 BPM
+            host->render(buffer.data(), 128, 1);
+            MidiOutEvent e;
+            while (host->take_midi(e)) if (e.kind == MidiOutEvent::Kind::NoteOn) ons.push_back({e.a, e.frame});
+        }
+        out_host = host;
+    };
+    {
+        std::vector<std::pair<int, uint64_t>> ons;
+        EngineHost* host = nullptr;
+        run(false, ons, host);
+        const double bar = 44100 * 2.0;
+        CHECK(ons.size() == 4 && ons[0].first == 60 && ons[1].first == 62 && ons[2].first == 62 && ons[3].first == 64);
+        if (ons.size() == 4) {
+            CHECK(std::llabs(int64_t(ons[1].second - ons[0].second) - std::llround(bar)) <= 2);
+            CHECK(std::llabs(int64_t(ons[2].second - ons[1].second) - std::llround(bar / 2)) <= 2);
+            CHECK(std::llabs(int64_t(ons[3].second - ons[1].second) - std::llround(bar)) <= 2);
+        }
+        CHECK(host->follows_of(0) == 3 && (host->stopped_tracks() & 1) && host->position_of(0) < 0);
+        host->send({Command::Type::Pattern, 0, 0, 0, 0}); // a launch brings it back on the next bar
+        std::vector<int32_t> buffer(256);
+        bool back = false;
+        for (unsigned b = 0; b < 800 && !back; ++b) {
+            host->render(buffer.data(), 128, 1);
+            MidiOutEvent e;
+            while (host->take_midi(e)) back |= e.kind == MidiOutEvent::Kind::NoteOn && e.a == 60;
+        }
+        CHECK(back && !(host->stopped_tracks() & 1));
+        delete host;
+    }
+    {
+        std::vector<std::pair<int, uint64_t>> ons;
+        EngineHost* host = nullptr;
+        run(true, ons, host); // a chain is the track's order: its follow actions wait
+        CHECK(ons.size() == 5 && host->follows_of(0) == 0);
+        for (auto& on : ons) CHECK(on.first == 60);
+        delete host;
+    }
+    // A scene's tempo takes over on the next bar while playing (at once while stopped).
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->tempo = 1200;
+        auto host = std::make_unique<EngineHost>();
+        host->load(*project, *bank);
+        host->set_audio_format(44100, 384);
+        host->send({Command::Type::SceneTempo, 0, 0, 0, 1000});
+        std::vector<int32_t> buffer(256);
+        host->render(buffer.data(), 128, 1);
+        CHECK(host->tempo_now() == 1000);
+        host->send({Command::Type::Play});
+        for (unsigned b = 0; b < 100; ++b) host->render(buffer.data(), 128, 1);
+        host->send({Command::Type::SceneTempo, 0, 0, 0, 1500});
+        for (unsigned b = 0; b < 100; ++b) host->render(buffer.data(), 128, 1);
+        CHECK(host->tempo_now() == 1000);
+        for (unsigned b = 0; b < 900; ++b) host->render(buffer.data(), 128, 1); // past the bar line
+        CHECK(host->tempo_now() == 1500);
+    }
+}
+
 int main() {
+    scenes_p5();
     exports_p4();
     midi_tracks_p4();
     modulators_p4();

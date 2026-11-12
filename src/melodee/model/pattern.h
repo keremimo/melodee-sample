@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
+#include "melodee/model/follow.h"
 #include "melodee/model/limits.h"
 #include "melodee/model/trig.h"
 #include <algorithm>
@@ -198,6 +199,7 @@ struct Pattern {
     Feel feel;                               // how its notes play (roadmap P1)
     std::vector<EuclidLane> euclids;         // the rhythms laid on its kit lanes, by key (roadmap P1)
     std::vector<PatternPunch> punches;       // punches kept with it (pad-fx C), by tick
+    PatternFollow follow;                    // what comes after it by itself (roadmap P5, model/follow.h)
 
     unsigned q() const { return division_ticks(division); }
     // Steps of Q the pattern holds (a last part step counts).
@@ -205,7 +207,7 @@ struct Pattern {
     bool empty() const { return events.empty() || events.front().tick >= length; }
     bool operator==(const Pattern& o) const {
         return length == o.length && division == o.division && events == o.events && motion == o.motion && lanes == o.lanes &&
-               feel == o.feel && euclids == o.euclids && punches == o.punches;
+               feel == o.feel && euclids == o.euclids && punches == o.punches && follow == o.follow;
     }
     bool operator!=(const Pattern& o) const { return !(*this == o); }
     // The first event at or after `tick`.

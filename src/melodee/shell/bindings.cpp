@@ -547,6 +547,9 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {tap, Binding {}, Binding {Kind::RecGain, 0, -12, 24, in.gain}};
     }
     case PageId::Patterns: return pattern_shift_cards(project, ui, pattern);
+    case PageId::Scenes: // roadmap P5: Shift + K1 the follow action's second, on the odds the first leaves
+        if (!track.used()) return {};
+        return {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}};
     case PageId::StepEdit: { // step entry: Shift + K1 the pattern's length, Shift + K2 Q (the caret's step), Shift + K3 the time signature
         unsigned bars = pattern_bars(project, pattern), index = 0;
         while (index + 1 < pattern_length_count && pattern_lengths[index + 1] <= bars) ++index;
@@ -749,6 +752,12 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::TimeCorrect: { // time-correct C: Q (the pattern's), and the strength and swing heard live (its feel)
         auto feel = feel_cards(pattern, 0);
         return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)}, feel[0], feel[1]};
+    }
+    case PageId::Scenes: { // roadmap P5: the selected track's pattern's follow action, after how long, on what odds
+        if (!project.tracks[ui.track % track_count].used()) return {};
+        const auto& f = pattern.follow;
+        return {Binding {Kind::FollowAction, 0, 0, int(FollowAction::Count) - 1, f.action}, Binding {Kind::FollowAfter, 0, 0, 127, follow_after_card(f)},
+                Binding {Kind::FollowChance, 0, 0, 100, f.chance}};
     }
     case PageId::Song: {
         int clip = project.song.clip_at(ui.track, ui.song_cursor);

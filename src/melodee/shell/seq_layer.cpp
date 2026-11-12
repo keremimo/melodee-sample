@@ -42,17 +42,9 @@ void launch_one(Context& c, unsigned pattern) {
     c.notice(name_of(pattern) + (target.empty() ? " new" : "") + (waits ? ", next bar" : ""));
 }
 
-// Shift + pad: that column on every track holding notes there, and on the selected one.
-void launch_column(Context& c, unsigned pattern) {
-    unsigned count = 0;
-    for (unsigned t = 0; t < track_count; ++t) {
-        if (!c.project.tracks[t].used()) continue;
-        if (t != c.ui.track % track_count && c.patterns.at[t][pattern % pattern_count].empty()) continue;
-        c.launch(t, pattern);
-        ++count;
-    }
-    c.notice("Column " + std::to_string(pattern % pattern_count + 1) + ": " + std::to_string(count) + (count == 1 ? " track" : " tracks"));
-}
+// Shift + pad: that column on every track holding notes there, and on the selected one: the scene (roadmap P5), its
+// tempo with it.
+void launch_column(Context& c, unsigned pattern) { c.launch_scene(pattern); }
 
 // Seq Record held with Seq: the next empty pattern, armed (recording at once while playing).
 void new_take(Context& c) {

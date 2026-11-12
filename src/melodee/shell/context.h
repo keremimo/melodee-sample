@@ -249,6 +249,18 @@ public:
     void chain_tick();
     std::array<bool, track_count> chain_queued {}; // the next of the chain is queued for the bar line
     bool chaining = false;                         // chain_tick() launching: the chain stays
+    // Roadmap P5 (shell/scene_jobs.cpp): scenes, a column of patterns with a name and tempo of its own (Seq held +
+    // Shift + pad, or a pad on SCENES), and patterns' follow actions (model/follow.h; the audio thread brings them).
+    void launch_scene(unsigned scene);                // pattern `scene` on every track with notes there and the selected one
+    void set_scene_tempo(unsigned scene, int tenths); // below 30 BPM: none of its own
+    void name_scene(unsigned scene);                  // the Name sheet
+    void clear_scene(unsigned scene);
+    void set_follow(Binding::Kind kind, int value);   // the selected track's pattern's
+    void follow_to_column();                          // and onto every track's pattern in its column, one undo
+    void follow_tick();                               // MIDI thread, often: chains told, what came followed
+    std::array<uint32_t, track_count> follows_seen {};
+    std::array<bool, track_count> chained_sent {};
+    uint8_t name_scene_at = 0;
     void clear_pattern(unsigned track, unsigned pattern);
     // A pattern onto another of `track`; from_track, when given, is where it comes from.
     void copy_pattern(unsigned track, unsigned from, unsigned to, int from_track = -1);

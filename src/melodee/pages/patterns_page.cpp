@@ -12,7 +12,7 @@
 // where Shift + Play carries on from (the place bar shows it). The header
 // shows Rec Quantize (Shift + Pad 10) and the track. Minus / Plus
 // move the track. Tempo: Seq held + wheel; per pattern or global on the
-// Tempo page (Push).
+// Tempo page (Push). Push opens SCENES (roadmap P5); a pattern with a follow action carries an arrow.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/ui/widgets.h"
@@ -77,12 +77,17 @@ void draw(Paint& p, const Snapshot& s) {
             } else {
                 p.fill(x, y, cw, rh, colour::quiet, 3);
             }
+            if (notes && pattern.follows) // roadmap P5: it follows on by itself
+                p.fill(x + cw - 4, y + 2, 2.5f, 2.5f, playing ? colour::bg : colour::text, 1.25f);
             // BPM per pattern: a pattern with a tempo of its own carries a dot.
             if (s.project.seq_tempo && s.project.pattern_tempo[n] && row == 0)
                 p.fill(x + cw / 2 - 1, top + head_h - 1.5f, 2, 2, colour::text, 1);
         }
     }
 }
+
+// Push: SCENES, the columns as scenes and the patterns' follow actions (roadmap P5).
+void push(Context& c) { c.open(PageId::Scenes); }
 
 // The wheel: the playhead (Seq held turns the tempo instead: shell/seq_layer.cpp).
 void wheel(Context& c, int delta) { c.locate(delta); }
@@ -95,6 +100,6 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec patterns_page {draw, play_pad, wheel, no_push, soft, nudge};
+const PageSpec patterns_page {draw, play_pad, wheel, push, soft, nudge};
 
 } // namespace melodee

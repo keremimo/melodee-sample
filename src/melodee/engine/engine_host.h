@@ -198,6 +198,9 @@ public:
     unsigned count_in() const { return count_beat.load(std::memory_order_relaxed); } // the count-in's beat now, 1..; 0 none
     unsigned tempo_now() const { return tempo_shown.load(std::memory_order_relaxed); } // tenths of a BPM, as it plays
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
+    // Roadmap P5: how many follow actions have come on a track, and the tracks a STOP left silent (a bit each).
+    uint32_t follows_of(unsigned track) const { return follows_now[track % track_count].load(std::memory_order_relaxed); }
+    uint32_t stopped_tracks() const { return stopped_now.load(std::memory_order_relaxed); }
     bool punching() const { return punch_on.load(std::memory_order_relaxed); }
     float compression() const { return comp.reduction_db(); } // dB the master compressor takes off now
     void compressor_activity(float& level_db, float& reduce_db) { comp.take_activity(level_db, reduce_db); } // the page's picture
@@ -349,6 +352,11 @@ private:
         struct Thin { uint64_t last = 0; int pending = -1; };
         std::array<Thin, 24> thin {};
         int program_sent = -1;
+        // Roadmap P5: a follow action (model/follow.h) due on tick `follow_at` (follow_do: the action, 0 none), planned
+        // as its pattern starts; it waits while a launch is queued, and a chained track's never come.
+        bool chained = false;
+        uint8_t follow_do = 0;
+        uint32_t follow_at = 0;
     };
     // The sequencing pass's calls to a track's engine: straight in at the block's first frame (nothing of it rendered
     // yet) or the old way (every track rendered up to each tick), else kept for its job, at block_at (roadmap P2).
@@ -389,6 +397,11 @@ private:
                     Slot::Held& holding); // one note of the pattern on this tick (roadmap P1: a kit lane's loop its own)
     void arp_tick();   // the arps' own clock, running whether the song plays or not
     void bar_start();  // launches queued patterns, or follows the song
+    // Roadmap P5: track t's follow action planned from where its pattern started (dice rolled now), and brought.
+    void plan_follow(unsigned t);
+    void follow(unsigned t);
+    FollowDice dice;
+    uint16_t scene_tempo = 0; // a scene's tempo waiting for the bar its patterns launch on (0 none)
     double tick_samples(uint32_t at) const;
     void play_motion(unsigned track, Slot& slot, const Pattern& pattern, uint32_t at);
     void move_lane(unsigned track, Slot& slot, unsigned param, unsigned pad, int value); // a Motion lane to `value`
@@ -748,6 +761,8 @@ private:
     std::atomic<bool> punch_on {false};
     std::atomic<unsigned> live_on {0};
     std::atomic<unsigned> kept_on {0}; // pad-fx C
+    std::array<std::atomic<uint32_t>, track_count> follows_now {}; // roadmap P5
+    std::atomic<uint32_t> stopped_now {0};
 };
 
 } // namespace melodee

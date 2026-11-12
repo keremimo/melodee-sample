@@ -298,6 +298,12 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                 for (size_t n = 0; n < f.groove_offsets.size(); ++n) { w.u8(uint8_t(f.groove_offsets[n])); w.u8(n < f.groove_levels.size() ? f.groove_levels[n] : 100); }
                 w.end(at);
             }
+            if (pattern.follow.on()) { // its follow action (roadmap P5, model/follow.h): first, second, odds, after, bars or plays
+                const auto& f = pattern.follow;
+                at = w.begin("FOLW");
+                w.u8(t); w.u8(p); w.u8(f.action); w.u8(f.other); w.u8(f.chance); w.u8(f.count); w.u8(f.plays);
+                w.end(at);
+            }
             if (!pattern.euclids.empty()) { // the Euclidean rhythms laid on its kit lanes (roadmap P1): key, hits, steps, rotation
                 at = w.begin("EUCL");
                 w.u8(t); w.u8(p); w.u8(unsigned(pattern.euclids.size()));
@@ -550,6 +556,13 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         at = w.begin("CHAN");
         w.u8(t); w.u8(tr.chain_count);
         for (unsigned n = 0; n < tr.chain_count; ++n) w.u8(tr.chain[n]);
+        w.end(at);
+    }
+    for (unsigned n = 0; n < pattern_count; ++n) { // scenes (roadmap P5): a column's name and tempo, where it has either
+        const auto& scene = project.scenes[n];
+        if (scene.plain()) continue;
+        at = w.begin("SCNE");
+        w.u8(n); w.text(scene.name); w.u16(scene.tempo);
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // a MIDI track (docs/MIDI_TRACKS.md): its port and channel are in TRAK's params
@@ -872,6 +885,13 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 e.steps = uint8_t(steps); e.hits = uint8_t(std::min(hits, steps)); e.rotate = uint8_t(rotate % steps);
                 if (r.ok) pattern.euclids.push_back(e);
             }
+        } else if (name == "FOLW") { // a pattern's follow action (roadmap P5); without it the pattern plays on
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            PatternFollow f;
+            f.action = uint8_t(r.u8() % unsigned(FollowAction::Count)); f.other = uint8_t(r.u8() % unsigned(FollowAction::Count));
+            f.chance = uint8_t(std::min(r.u8(), 100u)); f.count = uint8_t(std::clamp(r.u8(), 1u, follow_most)); f.plays = r.u8() != 0;
+            if (r.ok) patterns->at[t][p].follow = f;
         } else if (name == "FEEL") { // a pattern's feel (roadmap P1); without it its notes play as written
             unsigned t = r.u8(), p = r.u8();
             if (t >= track_count || p >= pattern_count) continue;
@@ -963,6 +983,13 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 project->tracks[t].fader_learned = {FaderLearn(what), uint16_t(lane), uint8_t(engine), uint8_t(pot % 3)};
                 project->tracks[t].fader_pin = pin != 0;
             }
+        } else if (name == "SCNE") { // a scene's name and tempo (roadmap P5); without it the column alone
+            unsigned n = r.u8();
+            Scene scene;
+            r.text(scene.name, sizeof(scene.name));
+            unsigned tempo = r.u16();
+            scene.tempo = uint16_t(tempo ? std::clamp(tempo, 300u, 3000u) : 0);
+            if (r.ok && n < pattern_count) project->scenes[n] = scene;
         } else if (name == "CHAN") { // a pattern chain (seq-sheet2 B); without it a track plays the one pattern
             unsigned t = r.u8(), count = r.u8();
             if (!r.ok || t >= track_count) continue;
