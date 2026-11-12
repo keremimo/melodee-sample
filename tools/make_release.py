@@ -10,16 +10,25 @@ scripts (base/install/sd-boot.sh, sd-worker.sh): they check the stock
 firmware and the files, copy Melodee into RAM, run its self-test and start
 it in place of the stock app, which comes back on exit or any failure.
 
+The zip is also an update file (base/docs/APPS.md, "Updates from the
+card"): autorun/melodee/RELEASE.sha256 lists the SHA-256 of every other
+file, and RELEASE.sha256.sig is its Ed25519 signature, made with the key at
+$MELODEE_SIGNING_KEY (default ~/.config/melodee/release-signing.pem). The
+signature is checked against the public key in src/melodee/shell/update.h,
+which Melodee uses to verify updates.
+
 Run ./release.sh VERSION, which builds, strips and then calls this.
 """
 import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 from time import gmtime
 import zipfile
 
@@ -28,6 +37,8 @@ BASE = ROOT / "base"
 PACKAGE = "autorun/melodee"
 SETUP_LOG = "/run/melodee-sd.log"
 SOURCE_URL = "https://github.com/keremimo/melodee-sample"
+SIGNING_KEY = Path(os.environ.get("MELODEE_SIGNING_KEY", Path.home() / ".config/melodee/release-signing.pem"))
+LIST = f"{PACKAGE}/RELEASE.sha256"
 VERSION = re.compile(r"v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?")
 # Nothing personal or private may ship: home or temp paths, keys, tokens.
 FORBIDDEN = (re.compile(rb"/Use" rb"rs/|/ho" rb"me/[a-z]|/private/tmp/|/var/folders/"),
@@ -75,7 +86,7 @@ def collect(binary, version, commit):
     if not binary.is_file():
         raise RuntimeError(f"Missing {binary}; run ./release.sh")
     files = {f"{PACKAGE}/sample-base": binary.read_bytes()}
-    for name in ("restore-stock.sh", "sd-boot.sh", "sd-worker.sh"):
+    for name in ("restore-stock.sh", "sd-boot.sh", "sd-worker.sh", "sd-update.sh"):
         files[f"{PACKAGE}/{name}"] = (BASE / "install" / name).read_bytes()
     files[f"{PACKAGE}/SHA256SUMS"] = sums(files, PACKAGE + "/").encode()
     files[f"{PACKAGE}/app"] = b"melodee\n"
@@ -96,6 +107,61 @@ def collect(binary, version, commit):
     for path in sorted((ROOT / "build/plugin-support/licenses").glob("*")):
         files[f"{licenses}/armhf-runtime/{path.name}"] = path.read_bytes()
     assert all(name.startswith("autorun/") for name in files), "the zip is the autorun folder alone"
+    return files
+
+
+def release_list(files):
+    """RELEASE.sha256: the SHA-256 of every file in the zip except the list
+    and its signature, sorted by path."""
+    return "".join(hashlib.sha256(files[name]).hexdigest() + "  " + name + "\n"
+                   for name in sorted(files) if name not in (LIST, LIST + ".sig")).encode()
+
+
+def public_key():
+    """The public key from src/melodee/shell/update.h, as PEM text."""
+    text = (ROOT / "src/melodee/shell/update.h").read_text()
+    lines = re.findall(r'^\s*"([^"\n]*)\\n"', text, re.MULTILINE)
+    begin, end = lines.index("-----BEGIN PUBLIC KEY-----"), lines.index("-----END PUBLIC KEY-----")
+    return "\n".join(lines[begin:end + 1]) + "\n"
+
+
+def openssl():
+    """Path of an OpenSSL 3 binary (needed for Ed25519 with -rawin; macOS LibreSSL lacks it)."""
+    for tool in (os.environ.get("OPENSSL"), "/opt/homebrew/opt/openssl@3/bin/openssl", "/usr/local/opt/openssl@3/bin/openssl", "openssl"):
+        if not tool:
+            continue
+        try:
+            version = subprocess.run([tool, "version"], capture_output=True, text=True).stdout
+        except OSError:
+            continue
+        if version.startswith("OpenSSL 3"):
+            return tool
+    raise RuntimeError("Signing needs OpenSSL 3 (brew install openssl@3, or set OPENSSL)")
+
+
+def sign(files, key=SIGNING_KEY):
+    """Adds RELEASE.sha256 and its signature to `files`. Fails if the
+    signature does not verify with the public key in update.h, because
+    Melodee would reject that release as an update."""
+    if not Path(key).is_file():
+        raise RuntimeError(f"No signing key at {key}. Create one with\n"
+                           f"  openssl genpkey -algorithm ed25519 -out {key}\n"
+                           "and put its public key (openssl pkey -in KEY -pubout) in src/melodee/shell/update.h.\n"
+                           "Back up the key: installed versions of Melodee only accept updates signed with it.")
+    tool = openssl()
+    listing = release_list(files)
+    with tempfile.TemporaryDirectory() as temp:
+        temp = Path(temp)
+        (temp / "list").write_bytes(listing)
+        (temp / "public.pem").write_text(public_key())
+        subprocess.run([tool, "pkeyutl", "-sign", "-inkey", str(key), "-rawin",
+                        "-in", str(temp / "list"), "-out", str(temp / "list.sig")], check=True)
+        checked = subprocess.run([tool, "pkeyutl", "-verify", "-pubin", "-inkey", str(temp / "public.pem"), "-rawin",
+                                  "-in", str(temp / "list"), "-sigfile", str(temp / "list.sig")], capture_output=True)
+        if checked.returncode:
+            raise RuntimeError(f"{key} does not match the public key in src/melodee/shell/update.h")
+        files[LIST] = listing
+        files[LIST + ".sig"] = (temp / "list.sig").read_bytes()
     return files
 
 
@@ -137,6 +203,7 @@ def main():
     files = collect(Path(arguments.binary), arguments.version, commit)
     for name, data in files.items():
         scan(name, data)
+    sign(files)
     output = ROOT / "dist" / f"Melodee-MPC-Sample-{arguments.version}.zip"
     write_zip(files, output, int(git("log", "-1", "--format=%ct")))
     digest = hashlib.sha256(output.read_bytes()).hexdigest()

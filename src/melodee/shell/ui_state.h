@@ -317,7 +317,7 @@ struct UiState {
     // A question over the page that B1 (Cancel) or B3 (Do it) answers, as the
     // MPC asks before erasing: Erase + pad on Step Edit (`ask_target` the
     // key), Erase + pot on Motion (the lane, bindings.h). shell/ask.cpp.
-    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack }; // ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
+    enum class Ask : uint8_t { None, EraseKeyEvents, EraseLane, ResetSettings, NewProject, TakeCardBack, ClearLoop, LooperOff, ClearPattern, ErasePunches, ClearTrack, InstallUpdate }; // InstallUpdate: newer release on the card (shell/update.h); ClearLoop: target the loop; ClearPattern (Seq held + Erase + pad): target the pattern; ClearTrack (Pad Bank held + Erase + pad): target the track // NewProject (phase 10): target 0 nothing unsaved, 1 saved first, 2 lost; TakeCardBack (10b): the computer still holds the card
     Ask ask = Ask::None;
     int32_t ask_target = 0;
     // The Looper (docs/LOOPER.md, shell/looper_jobs.cpp): the loop selected, the page's view (0 LOOPS, 1 MIX),
@@ -339,6 +339,10 @@ struct UiState {
     // SD card access (shell/card_access.h): the card as the service thread
     // last saw it, copied in on the MIDI thread.
     CardView card;
+    // Update from the card (shell/update.h): offered or installing version, UpdatePhase, UpdateError, and the
+    // project store's save count to wait for after INSTALL.
+    struct UpdateView { uint8_t phase = 0, error = 0; char version[32] {}; int32_t after_save = -1; };
+    UpdateView update;
     // A word over the header for a moment: what an undo, redo, delete or copy did.
     char notice[32] {};
     uint32_t notice_at = 0;   // ms

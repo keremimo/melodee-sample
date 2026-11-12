@@ -26,13 +26,10 @@
 #include "melodee/engine/punch.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/update.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 #include <cmath>
-// Set by the Makefile: ./release.sh's VERSION or build.sh's git describe.
-#ifndef MELODEE_VERSION
-#define MELODEE_VERSION "dev"
-#endif
 
 namespace melodee {
 namespace {
@@ -238,7 +235,7 @@ void machine_draw(Paint& p, const Snapshot& s) {
 void credits_draw(Paint& p) {
     float x = zone::pad + 6, w = zone::width - 2 * zone::pad - 12, y = zone::picture_y + 4;
     p.text("Melodee", x, y, w, 30, plain(colour::text, 26, Weight::SemiBold));
-    juce::String version = juce::String("Version ") + MELODEE_VERSION;
+    juce::String version = juce::String("Version ") + melodee_version();
     p.text(version, x, y + 30, w, 14, p.fit(version, plain(colour::sec, type::small), w, type::floor));
     unsigned effects = effect_count(); // as the effect picker counts them: not None, not the plug-in slot
     juce::String juce_version = juce::String(JUCE_MAJOR_VERSION) + "." + juce::String(JUCE_MINOR_VERSION) + "." + juce::String(JUCE_BUILDNUMBER);

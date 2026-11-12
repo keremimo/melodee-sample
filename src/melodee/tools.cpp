@@ -1793,6 +1793,20 @@ const Preview previews[] {
          s.project.root = 2; s.project.scale = 2; s.ui.levels_hit = 9;
      }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
+    // Updates from the card (shell/update.h): question, install in progress, failed install.
+    {"updateask", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; s.ui.project_cursor = 0; preview_projects(s);
+         s.ui.ask = UiState::Ask::InstallUpdate; std::snprintf(s.ui.update.version, sizeof s.ui.update.version, "v0.2.0");
+     }},
+    {"updating", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; preview_projects(s);
+         s.ui.update.phase = uint8_t(UpdatePhase::Writing); std::snprintf(s.ui.update.version, sizeof s.ui.update.version, "v0.2.0");
+     }},
+    {"updatefailed", [](Shell&, Snapshot& s) {
+         s.ui.page = PageId::Project; preview_projects(s);
+         s.ui.update.phase = uint8_t(UpdatePhase::Failed); s.ui.update.error = uint8_t(UpdateError::CardFull);
+         std::snprintf(s.ui.update.version, sizeof s.ui.update.version, "v0.2.0");
+     }},
     {"loading", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = s.ui.loading_left = 40; std::strncpy(s.project.name, "PROJECT 1", sizeof s.project.name - 1); }},
     {"loadingsamples", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = 40; s.ui.loading_left = 12; std::strncpy(s.project.name, "PROJECT 1", sizeof s.project.name - 1); }},
     {"exitcard", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; s.projects.root = "/media/card/Melodee/Projects"; s.project_path = "/media/card/Melodee/Projects/Song.mldp"; }},

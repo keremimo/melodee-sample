@@ -8,6 +8,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/model/scales.h"
+#include "melodee/shell/ask.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/fader_job.h"
@@ -30,6 +31,34 @@
 
 namespace melodee {
 
+// Updates from the card (shell/update.h). Opens the update question when the service thread found a newer
+// release, playback is stopped and no other sheet is open. After INSTALL (shell/ask.cpp), waits for the project
+// save, then asks the service thread to start the install, and copies its progress to the sheet. Also shows
+// notices from the service thread ("Updated to v0.2.0").
+void Shell::update_tick() {
+    std::string text;
+    if (update_link.take_note(text)) context_.notice(text);
+    if (update_link.take_offer(text)) update_offer = text;
+    if (!update_offer.empty() && !update_link.offering()) update_offer.clear(); // zip no longer on the card
+    auto& u = ui_.update;
+    if (!update_offer.empty() && !u.phase && ui_.ask == UiState::Ask::None && !ui_.exit_open && !ui_.name.open()
+        && !ui_.loading && !card_owns_controls(ui_) && !host.playing() && !ui_.recording) {
+        std::snprintf(u.version, sizeof u.version, "%s", update_offer.c_str());
+        update_offer.clear();
+        ui_.shift = false;
+        ask(context_, UiState::Ask::InstallUpdate, 0);
+    }
+    if (u.phase == uint8_t(UpdatePhase::Saving) && (!store_ || int(store_->saves()) >= u.after_save)
+        && !(library_ && library_->loops_busy())) {
+        u.phase = uint8_t(UpdatePhase::Checking);
+        update_link.install();
+    }
+    if (u.phase >= uint8_t(UpdatePhase::Checking) && update_link.phase() != UpdatePhase::None) {
+        u.phase = uint8_t(update_link.phase());
+        u.error = uint8_t(update_link.error());
+    }
+}
+
 void Shell::lights(SurfaceLights& lights, uint32_t now) {
     std::lock_guard<std::mutex> guard(lock); // the screen thread may be copying the state
     { // SD card access: the service thread's view of the card. Lent from anywhere (the remote too): the page
@@ -41,6 +70,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         if (change.left && ui_.page != PageId::CardAccess) { ui_.shift = false; ui_.ask = UiState::Ask::None; context_.open(PageId::CardAccess); }
         if (change.back && ui_.page == PageId::CardAccess) { context_.open(PageId::Project); context_.notice("Card back"); }
     }
+    update_tick();
     // Power was pressed: the Exit sheet opens (the service thread only counts presses).
     // The library found files or finished a sample: the lengths go into the project.
     if (library_ && library_->generation() != library_seen) {

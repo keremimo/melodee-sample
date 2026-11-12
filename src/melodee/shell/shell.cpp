@@ -59,6 +59,7 @@ Shell::Shell(EngineHost& host)
       context_(*project_, *patterns_, ui_, host) {
     starting_project(*project_, *patterns_);
     context_.card = &card_link;
+    context_.updates = &update_link;
 }
 
 void Shell::start_settings(const std::string& text) {
@@ -115,15 +116,17 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     context_.now = now;
     HitStamp stamp(context_, event.timestamp_ns);
     const auto& input = event.input;
-    // A project loading (the Loading sheet): presses wait it out, and so do their releases; a pad or key held from
-    // before lets go as ever. K1-K3 and the fader only keep where they stand; the main volume still turns.
+    // While a project loads (Loading sheet) or an update runs (shell/update.h), presses and their releases are
+    // ignored; pads and keys held from before still release. K1-K3 and the fader keep their positions; the main
+    // volume still works. After a failed update, B1 closes the update sheet.
+    const bool held_off = ui_.loading || ui_.update.phase != 0;
     if (event.pad >= 0) {
         unsigned kind = event.midi.status & 0xf0;
         bool& eaten = eaten_pads[unsigned(event.pad) % eaten_pads.size()];
         bool down = kind == 0x90 && event.midi.value, up = kind == 0x80 || (kind == 0x90 && !event.midi.value);
-        if (ui_.loading && down) { eaten = true; return; }
+        if (held_off && down) { eaten = true; return; }
         if (eaten) { if (up) eaten = false; return; }
-        if (ui_.loading && !up) return;
+        if (held_off && !up) return;
         if (down) pad(unsigned(event.pad), event.midi.value, true);
         else if (up) pad(unsigned(event.pad), 0, false);
         else if (kind == 0xa0) context_.pressure(unsigned(event.pad), event.midi.value); // to the mod matrix
@@ -131,13 +134,20 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     }
     if (input.kind == SurfaceInput::Kind::Button) {
         bool& eaten = eaten_buttons[input.index];
-        if (ui_.loading && input.pressed) { eaten = true; return; }
+        if (held_off && input.pressed) {
+            if (ui_.update.phase == uint8_t(UpdatePhase::Failed) && Button(input.index) == Button::TopLeft) {
+                ui_.update = {};
+                update_link.progress(UpdatePhase::None, UpdateError::None);
+            }
+            eaten = true;
+            return;
+        }
         if (eaten && !input.pressed) { eaten = false; return; }
         button(Button(input.index), input.pressed);
         return;
     }
     if (input.kind != SurfaceInput::Kind::Control) return;
-    if (ui_.loading) {
+    if (held_off) {
         switch (SurfaceControl(input.index)) {
         case SurfaceControl::MainVolume: break;
         case SurfaceControl::K1: pot(0, input.value, true); return;
@@ -613,6 +623,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             sketch.count = uint16_t(std::min<size_t>(pattern.events.size(), 0xffff));
             sketch.moves = uint16_t(std::min<size_t>(pattern.motion.size(), 0xffff));
             sketch.follows = pattern.follow.on(); // roadmap P5
+            sketch.program = pattern.program;
             for (const auto& e : pattern.events) { // the first note of each of the first 64 sixteenths
                 unsigned k = e.tick / sixteenth_ticks;
                 if (k >= sketch.keys.size() || e.tick >= pattern.length) break;
@@ -623,7 +634,6 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.song_bar = host.song_bar();
     {
         const auto& lp = host.looper();
-            sketch.program = pattern.program;
         out.looper_on = lp.enabled_now();
         out.loop_tick = lp.beat_tick();
         for (unsigned n = 0; n < loop_tracks; ++n) {

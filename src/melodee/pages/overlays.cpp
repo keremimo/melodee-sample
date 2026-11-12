@@ -10,13 +10,52 @@
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/seq_layer.h"
+#include "melodee/shell/update.h"
 #include "melodee/ui/widgets.h"
+#include <algorithm>
 #include <cstring>
 
 namespace melodee {
 using namespace ui;
 
+namespace {
+// Update sheet (shell/update.h): the new version, a progress bar with four steps, the current step and, on its
+// own line, the installed version. On failure: the reason, the installed version and B1 CLOSE.
+void draw_update_sheet(Paint& p, const Snapshot& s) {
+    const auto phase = UpdatePhase(s.ui.update.phase);
+    const bool failed = phase == UpdatePhase::Failed;
+    p.fill(0, 0, zone::width, zone::height, colour::bg);
+    Header h = header_of(s);
+    h.playing = false; h.recording = false;
+    h.left.push_back(failed ? pill(Icon::Warn, "UPDATE FAILED", colour::rec) : pill(Icon::Card, "UPDATING", colour::amber));
+    header(p, h);
+    const float x = 24, w = zone::width - 2 * x;
+    const juce::String to(s.ui.update.version);
+    juce::String title = failed ? juce::String(update_error_text(UpdateError(s.ui.update.error))) : "Melodee " + to;
+    p.text(title, x, zone::picture_y + 28, w, 28, p.fit(title, plain(colour::text, type::title, Weight::SemiBold), w, type::body),
+           juce::Justification::centred);
+    if (failed) {
+        juce::String line = juce::String("Melodee ") + melodee_version() + " is still installed.";
+        p.text(line, x, zone::picture_y + 64, w, 18, p.fit(line, plain(colour::sec, type::body), w, type::floor),
+               juce::Justification::centred);
+        SoftKeys keys {{"CLOSE", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+        p.fill(0, zone::soft_y, zone::width, zone::soft_h, colour::bg);
+        soft_keys(p, keys);
+        return;
+    }
+    static const char* const steps[] = {"SAVING PROJECT", "CHECKING FILE", "COPYING TO CARD", "RESTARTING"};
+    unsigned step = unsigned(std::clamp(int(phase) - int(UpdatePhase::Saving), 0, 3));
+    gauge(p, x, zone::picture_y + 78, w, float(step + 1) / 4.0f, colour::amber, 4);
+    icon(p, Icon::Card, x, zone::picture_y + 92, 14, colour::mid);
+    p.text(steps[step], x + 20, zone::picture_y + 92, w - 20, 14, caps_text(colour::sec), juce::Justification::centredLeft);
+    juce::String installed = juce::String("INSTALLED ") + melodee_version();
+    p.text(installed, x, zone::picture_y + 116, w, 14, p.fit(installed, caps_text(colour::mid), w, type::floor),
+           juce::Justification::centredLeft);
+}
+} // namespace
+
 void draw_overlays(Paint& p, const Snapshot& s) {
+    if (s.ui.update.phase) { draw_update_sheet(p, s); return; } // full screen until the app restarts or B1 closes it
     if (s.ui.loading) { draw_loading_sheet(p, s); return; } // it owns the screen and the controls until it is in
     bool tracks = track_overlay_shown(s.ui, s.now); // Pad Bank held a second, or a track copy
     bool sheet = s.ui.name.open() || s.ui.exit_open;

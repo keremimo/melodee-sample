@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/model/project.h"
 #include "melodee/shell/card_access.h"
+#include "melodee/shell/update.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/project_kits.h"
 #include "melodee/shell/looper_jobs.h"
@@ -77,6 +78,8 @@ public:
     void set_plugins(PluginRack* plugins) { context_.plugins = plugins; } // the app's plug-in rack (plugin/plugin_rack.h)
     // SD card access (parity phase 10b): the MIDI thread asks, the service thread lends.
     CardLink& card() { return card_link; }
+    // Updates from the card (shell/update.h): written by the service thread, read by the MIDI thread.
+    UpdateLink& updates() { return update_link; }
 
 private:
     void button(SurfaceButton button, bool pressed);
@@ -135,6 +138,9 @@ private:
     ProjectStore* store_ = nullptr;
     InputRoute* input_ = nullptr;
     CardLink card_link;
+    UpdateLink update_link;
+    std::string update_offer; // MIDI thread: offered version, waiting until playback stops
+    void update_tick();       // MIDI thread, from lights(): update question, install start, progress
     MidiIo midi_io;
     unsigned store_seen = ~0u, settings_seen = ~0u, sounds_seen = ~0u;
     bool settings_loaded = false;

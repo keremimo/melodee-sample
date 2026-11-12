@@ -6,6 +6,8 @@
 #include "drivers/platform.h"
 #include "surface/pads.h"
 #include "drivers/power_button.h"
+#include "drivers/sd_update.h"
+#include "melodee/shell/update.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/paint.h"
 #include <spawn.h>
@@ -15,7 +17,9 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <sched.h>
 #include <string>
 #include <thread>
@@ -214,6 +218,12 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         else if (!argument.empty()) return "ERR melodee-render serial|parallel";
         return std::string("OK melodee-render ") + (host.render_parallel() ? "parallel" : "serial");
     }
+    if (action == "melodee-update") { // melodee-update [DIR|card]: check for an update now, in DIR instead of the card
+        update_override = argument == "card" ? std::string() : argument;
+        update_rescan = true;
+        update_skip.clear();
+        return "OK melodee-update " + (update_override.empty() ? std::string("card") : update_override);
+    }
     if (action == "melodee-midi" && argument == "panic") { // MIDI Config's MIDI Panic (docs/MIDI_TRACKS.md)
         panic_asked.store(true);
         return "OK melodee-midi panic";
@@ -377,6 +387,7 @@ void MelodeeApp::service(Hardware& hardware) {
     input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
     host.looper().service(); // the Looper's memory in and out, its fits (docs/LOOPER.md)
     card_access(hardware);
+    card_update(hardware);
     // The card is Melodee's only while the base has it home: nothing reads or writes it meanwhile.
     if (hardware.card.status().state == CardShareState::Home) {
         library.service(hardware);
@@ -449,5 +460,110 @@ std::string MelodeeApp::status() const {
          + " melodee_dropout_track=" + std::to_string(dropout_track.load(std::memory_order_relaxed)) // the busiest at the last dropout
          + " melodee_dropout_load=" + std::to_string(dropout_load.load(std::memory_order_relaxed))   // its share then, tenths of a percent
          + " melodee_guard=" + std::to_string(host.guard_steals()) + "/" + std::to_string(host.guard_blocks()) // voices stolen / blocks eased
+         + " melodee_update=" + std::to_string(int(const_cast<melodee::Shell&>(shell).updates().phase())) // UpdatePhase
+         + " melodee_update_offer=" + std::to_string(int(update_offered.load()))
          + " " + shell.summary();
+}
+
+// Updates from the card (shell/update.h), using the base's drivers/sd_update.h and install/sd-update.sh.
+// Checks the card's top folder for a newer release when the card is mounted or returned, handles LATER and
+// INSTALL from the shell, and reads the install's status file until the install stops this app or fails. At
+// start, reads the status of an earlier install and shows "Updated to <version>" if it installed this one.
+void MelodeeApp::card_update(Hardware& hardware) {
+    using melodee::UpdateError;
+    using melodee::UpdatePhase;
+    auto& link = shell.updates();
+    const uint32_t now = now_ms();
+    // Show the notice after the boot animation (ui/boot.h), with a second for the first frame to appear.
+    constexpr uint32_t boot_ms = melodee::ui::BootAnimation::out_at + melodee::ui::BootAnimation::out_ms + 1000;
+    if (!update_note.empty() && now >= boot_ms) {
+        link.note(update_note);
+        update_note.clear();
+    }
+    std::string zip;
+    switch (link.take_request(zip)) {
+    case 1: // LATER
+        if (!zip.empty()) update_skip.push_back(zip);
+        break;
+    case 2: { // INSTALL, after the project was saved
+        std::string error = "the offer went away";
+        std::remove(sd_update::status_path); // remove an earlier install's status
+        sd_update::Offer offer {zip, update_version, 0};
+        if (!zip.empty() && zip == update_zip && update_ready() && sd_update::start(update_setup, offer, update_card, error)) {
+            update_installing = true;
+            update_started = now ? now : 1;
+            update_polled = 0;
+            link.progress(UpdatePhase::Checking, UpdateError::None);
+        } else {
+            std::fprintf(stderr, "melodee: update not started: %s\n", error.c_str());
+            link.progress(UpdatePhase::Failed, UpdateError::Busy);
+        }
+        break;
+    }
+    default: break;
+    }
+    if ((update_installing || !update_settled) && now - update_polled >= 250) {
+        update_polled = now;
+        auto status = sd_update::read_status();
+        if (update_installing) {
+            if (status.state == "checking") link.progress(UpdatePhase::Checking, UpdateError::None);
+            else if (status.state == "writing") link.progress(UpdatePhase::Writing, UpdateError::None);
+            else if (status.state == "starting") link.progress(UpdatePhase::Starting, UpdateError::None);
+            else if (status.state == "failed" || (status.state.empty() && now - update_started > 15000)) {
+                link.progress(UpdatePhase::Failed, status.state.empty() ? UpdateError::Other : melodee::update_error(status.error));
+                update_installing = false;
+                update_skip.push_back(update_zip); // do not offer it again until the card is returned
+                update_zip.clear();
+                update_version.clear();
+                update_offered.store(false);
+                link.offer({}, {});
+                std::remove(sd_update::status_path);
+            }
+        } else if (!status.running()) { // no status, done or failed; if still running, it is starting this app
+            update_settled = true;
+            if (status.state == "done" && sd_update::compare_versions(status.version, melodee::melodee_version()) == 0)
+                update_note = "Updated to " + status.version;
+            else if (status.state == "failed" && !status.version.empty())
+                update_note = "Update to " + status.version + " failed";
+            if (!status.state.empty()) std::remove(sd_update::status_path);
+        }
+    }
+    // Every 2 seconds, while the card is mounted here: check again if the card changed or was returned.
+    if (update_installing || !update_settled || hardware.card.status().state != CardShareState::Home) return;
+    if (update_looked_at && now - update_looked_at < 2000 && !update_rescan) return;
+    update_looked_at = now ? now : 1;
+    std::string card = update_override;
+    if (card.empty())
+        for (const auto& space : hardware.platform.storage())
+            if (space.path.rfind("/media/", 0) == 0) { card = space.path; break; }
+    const uint64_t returns = hardware.card.status().returns;
+    if (card == update_card && returns == update_returns && !update_rescan) return;
+    if (returns != update_returns) update_skip.clear(); // card returned from a computer: offer skipped zips again
+    update_card = card;
+    update_returns = returns;
+    update_rescan = false;
+    sd_update::Offer offer;
+    if (!card.empty() && update_ready()) offer = sd_update::find(update_setup, card, melodee::melodee_version(), update_skip);
+    update_zip = offer.zip;
+    update_version = offer.version;
+    update_offered.store(!offer.empty());
+    link.offer(offer.zip, offer.version);
+}
+
+bool MelodeeApp::update_ready() {
+    if (!update_setup_tried) {
+        update_setup_tried = true;
+        std::error_code error;
+        auto exe = std::filesystem::read_symlink("/proc/self/exe", error);
+        if (!error) update_setup.script = (exe.parent_path() / "sd-update.sh").string();
+        update_setup.package = "melodee";
+        update_setup.app = "melodee";
+        update_setup.key = "/run/melodee-release-key.pem";
+        std::ofstream out(update_setup.key, std::ios::trunc);
+        out << melodee::release_key_pem;
+        out.close();
+        if (!out) update_setup.key.clear();
+    }
+    std::error_code error;
+    return !update_setup.key.empty() && std::filesystem::is_regular_file(update_setup.script, error);
 }

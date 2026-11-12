@@ -5,16 +5,17 @@ TARGET := build/melodee
 APP_SOURCES := $(wildcard src/*.cpp src/*/*.cpp src/*/*/*.cpp)
 include base/base.mk
 
-# The version the Credits page shows: ./release.sh passes its VERSION, build.sh
-# git describe, a plain make "dev". The stamp changes only with the version, so
-# only then is the page compiled again.
+# The version shown on the Credits page and used to compare updates
+# (shell/update.cpp): ./release.sh passes its VERSION, build.sh passes git
+# describe, plain make uses "dev". The stamp file changes only when the
+# version changes, so update.cpp is recompiled only then.
 MELODEE_VERSION ?= dev
 build/gen/melodee_version: FORCE
 	@mkdir -p build/gen
 	@printf '%s\n' '$(MELODEE_VERSION)' > $@.new
 	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
-build/obj/melodee/pages/settings_page.o: build/gen/melodee_version
-build/obj/melodee/pages/settings_page.o: CPPFLAGS += -DMELODEE_VERSION='"$(MELODEE_VERSION)"'
+build/obj/melodee/shell/update.o: build/gen/melodee_version
+build/obj/melodee/shell/update.o: CPPFLAGS += -DMELODEE_VERSION='"$(MELODEE_VERSION)"'
 .PHONY: FORCE
 FORCE:
 

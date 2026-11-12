@@ -11,6 +11,7 @@
 #include "melodee/shell/snapshot.h"
 #include "melodee/ui/boot.h"
 #include "drivers/platform.h"
+#include "drivers/sd_update.h"
 #include "drivers/usb_audio.h"
 #include "runtime/app.h"
 #include <array>
@@ -38,7 +39,7 @@ public:
     void service(Hardware& hardware) override;                          // service thread
     void jack(const JackEvent& event, Hardware& hardware) override;     // service thread
     std::string command(const std::string& action, const std::string& argument, Hardware&) override;
-    std::string command_names() const override { return "melodee-press, melodee-midi"; }
+    std::string command_names() const override { return "melodee-press, melodee-midi, melodee-update"; }
     std::string status() const override;
     bool claims_wheel_push() const override { return true; }
     bool finished() const override { return shell.leaving() || power_off_failed.load(); }
@@ -93,5 +94,20 @@ private:
     std::atomic<bool> power_off_failed {false}; // it could not be asked (or this is not the MPC): leave for the stock app
     melodee::CardNote card_note = melodee::CardNote::None; // service thread: why the last lend did not start
     uint64_t card_returns = 0;
+    // Updates from the card (shell/update.h, base drivers/sd_update.h): service thread only.
+    void card_update(Hardware& hardware);
+    bool update_ready();                       // sd-update.sh is next to the binary and the key file is written
+    sd_update::Setup update_setup;
+    bool update_setup_tried = false;
+    bool update_installing = false;            // an install started by this app is running
+    bool update_settled = false;               // the status of an earlier install has been read
+    bool update_rescan = false;                // `melodee-update`: check again now
+    std::string update_card, update_zip, update_version; // folder checked, zip offered, its version
+    std::string update_override;               // `melodee-update DIR`: folder to check instead of the card
+    uint64_t update_returns = ~0ull;           // CardShareStatus::returns at the last check
+    std::vector<std::string> update_skip;      // zips skipped (LATER or failed) until the card is returned
+    uint32_t update_looked_at = 0, update_polled = 0, update_started = 0; // ms
+    std::atomic<bool> update_offered {false};  // for status
+    std::string update_note;                   // notice held until the boot animation has ended
     unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)
 };

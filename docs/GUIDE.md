@@ -1257,6 +1257,28 @@ the drive, Melodee asks whether to take the card back anyway.
 | `Plugins/` | VST3 and VST2 plug-ins |
 | `SysEx/` | `.syx` files for MIDI tracks |
 
+### Update Melodee
+
+1. Download the new release zip (`Melodee-MPC-Sample-<version>.zip`).
+   Do not unzip it.
+2. Copy the zip to the top level of the card, with **SD card access** or
+   a card reader.
+3. When playback is stopped, Melodee asks **Update to <version>?**. Press
+   **B3** (**INSTALL**). To keep this version for now, press **B1**
+   (**LATER**). Melodee asks again after SD card access or the next time
+   it starts.
+4. Melodee saves the project, checks the zip, writes it to the card and
+   restarts. The header then shows **Updated to <version>**. Melodee
+   deletes the zip from the card.
+
+![Update question](images/screens/updateask.png)
+
+Melodee only offers official releases. A zip that was changed, or that
+did not come from Melodee's releases page, is ignored. If the update fails
+(for example, the card is full), the screen shows the reason and nothing is
+changed. Press **B1** to close it. The previous version stays on the card
+in `autorun/melodee.prev`.
+
 ## Settings
 
 Press **SHIFT** + **Pad 8**. Turn the encoder to a page and push to open

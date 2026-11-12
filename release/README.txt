@@ -46,6 +46,19 @@ The user guide, with every page and control:
 https://github.com/keremimo/melodee-sample/blob/main/docs/GUIDE.md
 
 
+Update
+------
+1. Download the new release zip. Do not unzip it.
+2. Copy the zip to the top level of the card (Project > SD card access,
+   or a card reader).
+3. When Melodee asks "Update to <version>?", press B3 (INSTALL). Melodee
+   saves the project, installs the new version on the card and restarts.
+Only official, signed releases are offered. If the update fails, the card
+is not changed. The previous version stays in autorun/melodee.prev.
+Version v0.1.0 and earlier cannot update this way: install the next
+version by hand, as described under Install.
+
+
 Back to the stock app
 ---------------------
 - Press Power briefly. On the Exit screen, press B3 (MPC APP): Melodee

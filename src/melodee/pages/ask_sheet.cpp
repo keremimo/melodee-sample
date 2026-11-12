@@ -10,6 +10,7 @@
 #include "melodee/shell/ask.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/step_edit.h"
+#include "melodee/shell/update.h"
 #include "melodee/ui/widgets.h"
 
 namespace melodee {
@@ -29,7 +30,7 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     unsigned track = s.ui.track % track_count, playing = t.pattern % pattern_count;
     ConfirmSheet sheet;
-    juce::String verb = "ERASE";
+    juce::String verb = "ERASE", cancel = "CANCEL";
     Icon verb_glyph = Icon::Trash;
     const juce::String undo_line = "Undo brings them back.";
     switch (s.ui.ask) {
@@ -127,11 +128,19 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         sheet.lines = {"Its four loops are cleared.", "Undo can't bring them back."};
         verb = "TURN OFF"; verb_glyph = Icon::Power;
         break;
+    case Ask::InstallUpdate: // newer release on the card (shell/update.h)
+        sheet.icon = Icon::Card;
+        sheet.title = "Update to " + juce::String(s.ui.update.version) + "?";
+        sheet.lines = {"The project is saved first,", "then Melodee restarts."};
+        sheet.chip = juce::String("INSTALLED ") + melodee_version();
+        sheet.chip_colour = colour::sec;
+        verb = "INSTALL"; verb_glyph = Icon::Check; cancel = "LATER";
+        break;
     default: return;
     }
 
     p.fill(0, zone::soft_y, zone::width, zone::soft_h, colour::bg);
-    SoftKeys keys {{"CANCEL", "", verb}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{cancel, "", verb}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     keys.glyphs[2] = verb_glyph;
     keys.tints[2] = colour::rec;
     soft_keys(p, keys);

@@ -1783,41 +1783,47 @@ the card at every boot; leaving it returns to stock until the next boot.
 
 ### Updates from the card
 
-A newer release zip, as downloaded, at the top of the card is offered and
-installed by Melodee itself (`shell/update.*`; the base's
-`install/sd-update.sh` and `drivers/sd_update.*` do the work, base
-docs/APPS.md "Updates from the card"). The service thread runs the
-script's `check` on the card's `*.zip` files when the card arrives or
-comes back, and offers the newest one whose `RELEASE.sha256` is signed
-with the key in `shell/update.h` (`release_key_pem`) and whose VERSION is
-newer than `melodee_version()` (pre-releases before their release, git
-describe builds after it). Once the music has stopped and no sheet is
-open, **Update to v0.2.0?** asks: B1 LATER (asked again once the card
-comes back from a computer, or at the next start), B3 INSTALL. INSTALL
-stops the transport, saves the project if it has changes and starts the
-install; its sheet then owns the screen and the controls (SAVING,
-CHECKING, WRITING CARD, RESTARTING) until the new Melodee takes over,
-whose header says **Updated to v0.2.0**. Stopped short, the sheet says why
-(NOT UPDATED: card full, not a signed release, card starts another app,
-...), the card is as it was, and B1 closes it. A build that does not
-start within 30 seconds is taken off the card and this one starts again,
-saying **v0.2.0 not installed**. The version before stays on the card as
-`autorun/melodee.prev`. Only a card set up by Melodee's release zip (or
-with no autorun) is updated; a card whose autorun starts something else
-(`device.py install-sd`, MPC Sample Plugins, a boot menu) is left alone.
+Melodee installs a newer release zip from the top folder of the card
+(`shell/update.*`). The base's `install/sd-update.sh` and
+`drivers/sd_update.*` do the install (base docs/APPS.md, "Updates from the
+card"). When the card is mounted or returned from a computer, the service
+thread runs the script's `check` on each `*.zip` in the card's top folder.
+It offers the newest zip whose `RELEASE.sha256` is signed with the key in
+`shell/update.h` (`release_key_pem`) and whose VERSION is newer than
+`melodee_version()`. A pre-release is older than its release; a git
+describe version is newer than its tag.
 
-Releases: `tools/make_release.py` adds `RELEASE.sha256` (every other file
-of the zip by SHA-256) and its Ed25519 signature `RELEASE.sha256.sig`,
-made with `~/.config/melodee/release-signing.pem` (or
-`$MELODEE_SIGNING_KEY`) and OpenSSL 3, and refuses a key whose public half
-is not the one in `shell/update.h`. Keep a copy of that key somewhere
-safe: without it, no installed Melodee takes a newer release from the
-card, and a new key means installing by hand once.
+When playback is stopped and no other sheet is open, Melodee shows
+**Update to v0.2.0?** B1 (LATER) closes it; Melodee asks again when the
+card is returned from a computer or at the next start. B3 (INSTALL) stops
+playback, saves the project if it has unsaved changes, and starts the
+install. The update sheet then fills the screen and ignores the controls.
+It shows the steps SAVING PROJECT, CHECKING FILE, COPYING TO CARD and
+RESTARTING. When the new version has started, its header shows **Updated
+to v0.2.0**. If the install fails, the sheet shows UPDATE FAILED and the
+reason (for example SD card is full, Invalid update file, Autorun folder is
+not Melodee's), the card is not changed, and B1 closes the sheet. If the
+new version does not start within 30 seconds, the script restores the
+card and restarts the current version, which shows **Update to v0.2.0
+failed**. The previous version stays on the card in `autorun/melodee.prev`.
+The update only replaces an autorun set up by Melodee's release zip, or
+installs one on a card without an autorun. It does not change a card whose
+`autorun.sh` starts something else (`device.py install-sd`, MPC Sample
+Plugins, a boot menu).
 
-Remote: `melodee-update [DIR|card]` looks for a newer release now, in DIR
-in place of the card (device checks); `status` adds `melodee_update`
+Releases: `tools/make_release.py` adds `RELEASE.sha256` (the SHA-256 of
+every other file in the zip) and `RELEASE.sha256.sig` (its Ed25519
+signature). It signs with `~/.config/melodee/release-signing.pem` (or
+`$MELODEE_SIGNING_KEY`) using OpenSSL 3, and fails if the key does not
+match the public key in `shell/update.h`. Back up the signing key:
+installed versions of Melodee only accept updates signed with it, and a
+new key means installing the next version by hand.
+
+Remote: `melodee-update [DIR|card]` checks for an update now, in DIR
+instead of the card (for device tests). `status` adds `melodee_update`
 (UpdatePhase: 0 none, 1 saving, 2 checking, 3 writing, 4 starting,
-5 failed) and `melodee_update_offer`. Previews `updateask`, `updating`,
+5 failed) and `melodee_update_offer`. Previews: `updateask`, `updating`,
 `updatefailed`.
+
 Limits that are single constants (`model/limits.h`): 16 tracks, 16
 patterns a track, 8 mod routes, 8192 motion points a pattern, 64 samples.
