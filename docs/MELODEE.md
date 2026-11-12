@@ -696,7 +696,8 @@ they came, at the device's rate, never converted on their way in: saved at
 it, their own frames are what the pad plays, and their 44.1 kHz frames,
 made once, are what the project counts (a region, a cut). Save Sample,
 Trim and Extract cut a sample's own frames when those are what plays, so a
-48 kHz take trimmed stays 48 kHz. Loops stay at 44.1 kHz (LOOPER.md).
+48 kHz take trimmed stays 48 kHz. Loops are taken and saved at the
+device's rate too (LOOPER.md).
 These are saved 24-bit, or 32-bit float when they go past full scale (a
 resampled mix can), so a file never clips what played; what plays is what
 the file holds, to the bit.
@@ -1101,8 +1102,8 @@ while following.
   gadget reconnects: USB audio, MIDI and the network drop for a second; not
   while the card is lent). Every frame count in a project stays in 44.1 kHz
   frames whatever the rate, so projects open the same at any rate; samples
-  play from a copy at the device's rate, and takes, Audio Recall, Resample
-  and mixdowns are recorded and saved at it (Sampler). Plug-ins are loaded
+  play from a copy at the device's rate, and takes, Audio Recall, Resample,
+  mixdowns and loops are recorded and saved at it (Sampler, Looper). Plug-ins are loaded
   again at the new rate, and Monitor hears the source at it. Kept in `Melodee/settings` with the project to open at
   start. **MIDI**: MIDI Config's page. **ABOUT**: how the machine is
   doing, the page to open when something crackles: RENDER (each core's load

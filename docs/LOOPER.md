@@ -19,7 +19,7 @@ Status: Kerem's answers of 2026-11-10. **Built** (L1–L5), checked on the MPC o
 | --- | --- |
 | Where a loop's audio goes | Four tracks of their own, **L1–L4**, there while the Looper is on: each a mix strip (level, pan, mute, solo, send and bus) and an effect chain of six, beside the sixteen tracks. The sixteen tracks keep every pad. |
 | How it opens | **Loop double-tapped** (within 450 ms) or **held** half a second opens the Looper page; a single tap keeps the MPC's job (the last pad's loop), and the first tap's toggle is taken back. **16 Levels** of type **Loop** (Shift + 16 Levels) opens it too, as in the plugin. |
-| Saved | With the project: each loop's audio as `Melodee/Projects/<project> Loops/Loop N.wav` (24-bit stereo, 44.1 kHz), its values in the project file (`LOOP`: settings and a self-sized record a loop; `LPMX`: L1–L4's strips and chains). The folder is not listed on Project and goes with its project (rename, move, duplicate, delete). A loop saved stopped comes back stopped. |
+| Saved | With the project: each loop's audio as `Melodee/Projects/<project> Loops/Loop N.wav` (24-bit stereo, at the loop's own rate: the device's when it was taken), its values in the project file (frame counts in 44.1 kHz frames) (`LOOP`: settings and a self-sized record a loop; `LPMX`: L1–L4's strips and chains). The folder is not listed on Project and goes with its project (rename, move, duplicate, delete). A loop saved stopped comes back stopped. |
 
 ## What it does
 
@@ -85,9 +85,11 @@ Each loop is in one state: **Empty**, **Armed** (waits for its boundary),
   committed; one longer than a sample may be (60 s) is refused.
 
 Memory: each loop holds 64 s of stereo audio and as much again for the undo,
-at 44.1 kHz whatever the device runs at (`engine/looper.cpp`): 45 MB a
-loop, 180 MB in all, made by the service thread when the Looper is turned
-on and freed when it is turned off (the MPC has 2 GB).
+at the device's rate (`looper::frames_at`): 45 MB a loop at 44.1 kHz,
+49 MB at 48 kHz, 98 MB at 96 kHz (180, 197 and 393 MB in all), made by the
+service thread when the Looper is turned on and freed when it is turned off
+(the MPC has 2 GB). When the rate changes, an empty loop's memory is made
+again at the new rate; a loop with audio keeps its own.
 
 ## The page
 
@@ -141,10 +143,13 @@ Musical time: the block's first tick (a double: `tick_now` less what is left
 of the tick) and ticks a frame; bar and beat in ticks. A loop's place is
 `(tick - start) mod ticks`, so it stays on the beat through tempo changes;
 the source index is that fraction of its frames. At the tempo it was
-recorded at it reads its frames (linear interpolation from 44.1 kHz to the
-device), otherwise it stretches. Writes go to 44.1 kHz frames through a
-19 kHz low pass at 96 kHz and linear interpolation at every whole frame the
-clock passes.
+recorded at it reads its frames, otherwise it stretches. A loop keeps its
+frames at their own rate: a take's are the device's, written as they come
+and read a frame a frame (nothing converted); a saved loop's are its
+file's (44.1 kHz from projects before, read at 44100 / rate a frame by
+linear interpolation). Writes into a loop at another rate go through
+linear interpolation at every whole frame the clock passes, behind a
+19 kHz low pass when 96 kHz goes into a slower loop.
 
 Overdub: a frame's old layers are copied to the undo buffer the first time a
 pass writes it (the pass's region grows from where it punched in), then

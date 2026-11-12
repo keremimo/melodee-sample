@@ -247,8 +247,13 @@ behaviour changed.
   block (twice as fast at 96 kHz) and now take the same time at any rate,
   unchanged at 44.1 kHz. Effects with such steps (Knob FX Vinyl and Tape,
   Pad FX Vinyl) are proposed as a session of their own.
-  Loops are not part of this: the Looper keeps 44.1 kHz (its memory,
-  180 MB, would grow to 393 MB at 96 kHz); Kerem to choose.
+  Loops followed, Kerem's choice ("size by rate"): each loop keeps its
+  frames at their own rate (a take's the device's, written and read a
+  frame a frame; an older project's 44.1 kHz file read at 44100 / rate),
+  its memory made 64 s at the device's rate (180 MB in all at 44.1 kHz,
+  197 at 48, 393 at 96), an empty loop's made again when the rate changes
+  while one with audio keeps its own; files saved at the loop's rate, the
+  project's frame counts still 44.1 kHz frames.
 
 ## Waiting for a hand check
 

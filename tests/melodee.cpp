@@ -4987,6 +4987,99 @@ void roll() {
 
 // The Looper (docs/LOOPER.md): takes, quantize, overdub, feedback, undo, the transport, sources, the stretch,
 // fitting, holding for a save, and its four tracks in the engine host's mix.
+// The Looper at the device's rate: a take at 48 kHz keeps the frames as they came (no conversion), its memory
+// made 64 s at that rate; at 96 kHz the loop plays on the beat from its own frames, an empty loop's memory is made
+// again at 96 kHz and a take there is at 96 kHz; a 44.1 kHz loop (an older project's file) plays in time at 96 kHz.
+void looper_rates() {
+    auto lp = std::make_unique<Looper>();
+    Looper& looper = *lp;
+    float out_l[loop_tracks][looper::block], out_r[loop_tracks][looper::block];
+    float src_l[looper::block] {}, src_r[looper::block] {};
+    auto signal = [](uint64_t f) { return float(0.3 * std::sin(double(f) * 0.0137) + 0.1 * std::sin(double(f) * 0.29)); };
+    double tick = 0;
+    uint64_t frame = 0;
+    bool restart = true;
+    std::vector<float> heard;
+    auto block = [&](float rate) {
+        const double per = 96.0 * 240 / 60.0 / rate; // 240 BPM: a bar of 4/4 is a second
+        Looper::Clock c;
+        c.tick = tick; c.per_frame = per; c.bar = 384; c.beat = 96; c.running = true; c.restart = restart; c.rate = rate;
+        restart = false;
+        Looper::Sources s;
+        s.frames = frame ? looper::block : 0;
+        s.at[looper::source_input] = {src_l, src_r};
+        looper.run(c, s, looper::block, out_l, out_r);
+        for (unsigned f = 0; f < looper::block; ++f) {
+            heard.push_back(out_l[0][f]);
+            src_l[f] = signal(frame + f); src_r[f] = -src_l[f];
+        }
+        frame += looper::block;
+        tick += looper::block * per;
+        looper.service();
+    };
+    dsp::device_rate.store(48000.0f);
+    looper.ask(looper::Do::Enable, 0, 1);
+    for (unsigned n = 0; n < 20; ++n) block(48000);
+    CHECK(looper.buffers_out() == 2 * loop_tracks);
+    // A bar at 48 kHz: 48000 frames of its own, the tempo right, and played back frame for frame a bar later.
+    looper.ask(looper::Do::Length, 0, 1);
+    while (tick < 384 - 2 * looper::block * 96.0 * 4 / 48000) block(48000);
+    looper.ask(looper::Do::Primary, 0, 0);
+    while (tick < 768 + 4 * looper::block * 96.0 * 4 / 48000) block(48000);
+    auto v = looper.view(0);
+    CHECK(v.state == Looper::State::Playing && v.length == 48000 && v.rate == 48000 && v.tempo == 2400 && !v.stretched);
+    const uint64_t take_start = 48000; // bar 2's frame
+    while (tick < 1152 - 4 * looper::block * 96.0 * 4 / 48000) block(48000);
+    float worst = 0;
+    for (uint64_t f = take_start + 48000 + 2000; f < take_start + 96000 - 2000; ++f)
+        worst = std::max(worst, std::fabs(heard[f] - signal(f - 48000)));
+    if (worst > 1e-6f) std::fprintf(stderr, "looper 48k: worst %g\n", double(worst));
+    CHECK(worst <= 1e-6f); // the frames themselves: nothing converted on the way in or out
+    // The device goes to 96 kHz (the same project kept): the 48 kHz loop plays on the beat, a bar a second, not
+    // stretched; empty loops' memory is made again at 96 kHz and the loop's own stays.
+    dsp::device_rate.store(96000.0f);
+    size_t from = heard.size();
+    for (unsigned n = 0; n < 750; ++n) block(96000); // a second
+    v = looper.view(0);
+    CHECK(v.length == 48000 && v.rate == 48000 && !v.stretched && looper.buffers_out() == 2 * loop_tracks);
+    // What it plays at 96 kHz is its 48 kHz frames read half a frame a frame: frame g is the take's g / 2.
+    double phase = 0; // the loop's place at the first frame heard here, in its frames
+    {
+        double t0 = tick - 750.0 * looper::block * 96.0 * 4 / 96000; // the tick at `from`
+        phase = std::fmod(t0, 384.0) / 384.0 * 48000;
+    }
+    worst = 0;
+    for (size_t g = 4000; g < 90000; g += 7) {
+        double at = std::fmod(phase + g * 0.5, 48000.0);
+        if (at < 200 || at > 47800) continue; // clear of the seam's fade
+        // the take's frame `at` is the source's frame take_start + at (as looper_engine finds it a bar on)
+        double x = at;
+        float a = signal(uint64_t(std::floor(x)) + take_start), b = signal(uint64_t(std::floor(x)) + 1 + take_start);
+        float want = a + (b - a) * float(x - std::floor(x));
+        worst = std::max(worst, std::fabs(heard[from + g] - want));
+    }
+    if (worst > 0.02f) std::fprintf(stderr, "looper 48k at 96k: worst %g\n", double(worst));
+    CHECK(worst <= 0.02f);
+    // A take on loop 2 now is at 96 kHz: a bar is 96000 frames.
+    looper.ask(looper::Do::Length, 1, 1);
+    looper.ask(looper::Do::Primary, 1, 0);
+    for (unsigned n = 0; n < 4 * 750; ++n) block(96000);
+    v = looper.view(1);
+    CHECK(v.state == Looper::State::Playing && v.length == 96000 && v.rate == 96000 && v.tempo == 2400 && !v.stretched);
+    // A loop saved at 44.1 kHz (a project from before) comes back and plays a bar a second at 96 kHz.
+    auto* buffer = new LoopBuffer(looper::frames_at(96000));
+    for (unsigned f = 0; f < 44100; ++f) buffer->left[f] = buffer->right[f] = 0.25f;
+    LoopLoad item; item.buffer = buffer; item.loop = 2; item.frames = 44100; item.rate = 44100; item.ticks = 384; item.tempo = 2400;
+    CHECK(looper.give_load(item));
+    for (unsigned n = 0; n < 8; ++n) block(96000);
+    v = looper.view(2);
+    CHECK(v.state == Looper::State::Playing && v.length == 44100 && v.rate == 44100 && !v.stretched);
+    looper.ask(looper::Do::Enable, 0, 0);
+    for (unsigned n = 0; n < 8; ++n) block(96000);
+    CHECK(looper.buffers_out() == 0);
+    dsp::device_rate.store(44100.0f);
+}
+
 void looper_engine() {
     constexpr double bpm = 240, per = 96.0 * bpm / 60.0 / 44100.0; // ticks a frame; a bar of 4/4 is one second
     constexpr unsigned bar_frames = 44100;
@@ -5239,14 +5332,14 @@ void looper_engine() {
     CHECK(looper.view(1).state == Looper::State::Empty && !looper.view(1).held);
 
     // A saved loop comes back through the service thread, playing.
-    auto* buffer = new LoopBuffer;
+    auto* buffer = new LoopBuffer(looper::frames_at(44100));
     for (unsigned f = 0; f < 1000; ++f) buffer->left[f] = buffer->right[f] = 0.5f;
     LoopLoad item; item.buffer = buffer; item.loop = 3; item.frames = 1000; item.ticks = 96; item.tempo = 2400;
     CHECK(looper.give_load(item));
     for (unsigned n = 0; n < 4; ++n) block_at(per);
     v = looper.view(3);
     CHECK(v.state == Looper::State::Playing && v.length == 1000 && v.tempo == 2400 && looper.buffers_out() == 2 * loop_tracks);
-    item.buffer = new LoopBuffer; item.stopped = true; // saved stopped: back stopped
+    item.buffer = new LoopBuffer(looper::frames_at(44100)); item.stopped = true; // saved stopped: back stopped
     CHECK(looper.give_load(item));
     for (unsigned n = 0; n < 4; ++n) block_at(per);
     CHECK(looper.view(3).state == Looper::State::Stopped && looper.buffers_out() == 2 * loop_tracks);
@@ -6255,7 +6348,7 @@ void loops_and_buses_parallel() {
         render(8); // the Looper's memory
         const EffectKind chains[] {EffectKind::Drive, EffectKind::Phaser, EffectKind::Echo, EffectKind::Flanger};
         for (unsigned n = 0; n < loop_tracks; ++n) {
-            auto* buffer = new LoopBuffer;
+            auto* buffer = new LoopBuffer(looper::frames_at(44100));
             for (unsigned f = 0; f < 4000; ++f) buffer->left[f] = buffer->right[f] = float(std::sin(f * (0.01 + 0.007 * n)) * 0.3);
             LoopLoad item; item.buffer = buffer; item.loop = uint8_t(n); item.frames = 4000; item.ticks = 96; item.tempo = 1200;
             CHECK(host.looper().give_load(item));
@@ -8712,6 +8805,7 @@ int main() {
     track_source();
     zero_snap();
     looper_engine();
+    looper_rates();
     roll();
     stage();
     midi_tracks();

@@ -33,7 +33,8 @@ inline void read(const float* l, const float* r, uint32_t length, double at, flo
     out_r = r[i] + (r[j] - r[i]) * frac;
 }
 
-constexpr float tenths_of(double ticks_per_model_frame) { return float(ticks_per_model_frame * dsp::model_rate * 60.0 / ticks_per_quarter * 10.0); }
+// The tempo, in tenths of a BPM, of `ticks_per_frame` for frames at `rate`.
+constexpr float tenths_of(double ticks_per_frame, double rate) { return float(ticks_per_frame * rate * 60.0 / ticks_per_quarter * 10.0); }
 } // namespace
 
 // ---- LoopStretch ------------------------------------------------------------
@@ -96,6 +97,7 @@ void LoopStretch::frame(const float* l, const float* r, uint32_t length, double 
 Looper::Looper() {
     (void)window_table();
     for (auto& b : held_buffer) b.store(nullptr);
+    memory_rate.store(dsp::sample_rate());
 }
 
 Looper::~Looper() {
@@ -242,8 +244,8 @@ void Looper::primary(Loop& l, unsigned n, double now) {
         if (!l.audio || !l.undo) { refuse(l, looper::Error::NoMemory); return; }
         if (l.waiting_load) { refuse(l, looper::Error::Busy); return; }
         if (l.bars && last_per_frame > 0) {
-            double frames = l.bars * last_bar / last_per_frame * (dsp::model_rate / rate);
-            if (frames > looper::capacity) { refuse(l, looper::Error::TooLong); return; }
+            double frames = l.bars * last_bar / last_per_frame; // a take's frames are the device's
+            if (frames > room(l)) { refuse(l, looper::Error::TooLong); return; }
         }
         l.state = State::Armed;
         queue(l, Pending::Start, now);
@@ -288,7 +290,7 @@ void Looper::halt(Loop& l, double now) {
 bool Looper::stretched(const Loop& l) const {
     if (!l.length || l.ticks <= 0 || last_per_frame <= 0) return false;
     double speed = double(l.length) / l.ticks * last_per_frame; // source frames a device frame, to stay on the beat
-    double r = speed / (dsp::model_rate / rate);
+    double r = speed / ratio(l);
     return std::fabs(r - 1) > 2e-4;
 }
 
@@ -299,7 +301,7 @@ void Looper::set_write(Loop& l, Write mode) {
         l.dub = 0;
         ++l.layers;
     }
-    if (mode == Write::Take) { l.wx = -double(dsp::model_rate / rate); l.wx_known = true; }
+    if (mode == Write::Take) { l.wx = -ratio(l); l.wx_known = true; }
     else if (mode != Write::Off && (l.write == Write::Off || l.write == Write::Take)) l.wx_known = false;
     if (mode == Write::Off && (l.write == Write::Dub || l.write == Write::DubIn || l.write == Write::DubOut)) end_pass(l);
     l.write = mode;
@@ -340,8 +342,9 @@ void Looper::begin_take(Loop& l, double at, unsigned lag) {
     l.state = State::Recording;
     l.start = at; l.ticks = 0; l.length = 0; l.take_at = 0; l.tempo = 0; l.layers = 1;
     l.undo_state = looper::Undo::None; l.dub_count = 0;
-    l.span = l.bars ? uint32_t(std::min<double>(looper::capacity, l.bars * last_bar / last_per_frame * (dsp::model_rate / rate)))
-                    : uint32_t(std::min<double>(looper::capacity, 4 * last_bar / std::max(last_per_frame, 1e-9) * (dsp::model_rate / rate)));
+    l.rate = unsigned(std::lround(rate)); // its frames as they come, at the device's rate
+    l.span = l.bars ? uint32_t(std::min<double>(room(l), l.bars * last_bar / last_per_frame))
+                    : uint32_t(std::min<double>(room(l), 4 * last_bar / std::max(last_per_frame, 1e-9)));
     l.span = std::max<uint32_t>(l.span, looper::peak_columns);
     l.peaks.fill(0);
     l.peaks_next = looper::peak_columns;
@@ -359,21 +362,21 @@ void Looper::begin_take(Loop& l, double at, unsigned lag) {
 void Looper::close_on_bar(Loop& l, double now, bool nearest) {
     if (l.state != State::Recording) return;
     if (nearest && l.bars) return; // its Close waits on its last bar already
-    double bar = std::max(last_bar, 1.0), per = std::max(last_per_frame, 1e-9), ratio = dsp::model_rate / rate;
-    double ran = l.take_at / ratio * per; // the ticks the take has run, at this pace
+    double bar = std::max(last_bar, 1.0), per = std::max(last_per_frame, 1e-9), step = ratio(l);
+    double ran = l.take_at / step * per; // the ticks the take has run, at this pace
     double whole = nearest ? std::max(1.0, std::round(ran / bar)) : std::floor(ran / bar + 1e-6);
     if (whole < 1) { close_take(l, now); return; }
-    double past = l.take_at - whole * bar / per * ratio; // frames the take ran past that bar
+    double past = l.take_at - whole * bar / per * step; // frames the take ran past that bar
     if (past < 0 && nearest) { l.pending = Pending::Close; l.target = l.start + whole * bar; return; }
     close_take(l, l.start + whole * bar, std::max(past, 0.0));
 }
 
 void Looper::close_take(Loop& l, double at, double past) {
     if (l.state != State::Recording) return;
-    l.length = uint32_t(std::clamp<double>(std::round(l.take_at - past), 1, looper::capacity));
+    l.length = uint32_t(std::clamp<double>(std::round(l.take_at - past), 1, std::max<uint32_t>(room(l), 1)));
     l.ticks = at - l.start;
-    if (l.ticks <= 1e-6) l.ticks = l.length / (dsp::model_rate / rate) * std::max(last_per_frame, 1e-9);
-    l.tempo = uint16_t(std::clamp<float>(std::round(tenths_of(l.ticks / l.length)), 1, 65535));
+    if (l.ticks <= 1e-6) l.ticks = l.length / ratio(l) * std::max(last_per_frame, 1e-9);
+    l.tempo = uint16_t(std::clamp<float>(std::round(tenths_of(l.ticks / l.length, l.rate)), 1, 65535));
     l.pending = Pending::None;
     auto then = looper::Then(then_mode);
     l.state = then == looper::Then::Overdub ? State::Overdub : then == looper::Then::Stop ? State::Stopped : State::Playing;
@@ -447,21 +450,21 @@ void Looper::write_at(Loop& l, unsigned n, uint32_t k, float in_l, float in_r) {
 }
 
 void Looper::write_frame(Loop& l, unsigned n, double x, float in_l, float in_r) {
-    double ratio = dsp::model_rate / rate;
+    const double step = ratio(l); // 1 for a take: its frames are the device's, written as they come
     if (l.write == Write::Take) {
         double prev = l.wx;
-        x = prev + ratio;
+        x = prev + step;
         auto first = int64_t(std::floor(prev)) + 1, last = int64_t(std::floor(x));
-        double limit = l.length ? l.length : looper::capacity;
+        double limit = l.length ? l.length : room(l);
         for (int64_t k = std::max<int64_t>(first, 0); k <= last && k < int64_t(limit); ++k) {
-            float t = float((double(k) - prev) / ratio);
+            float t = float((double(k) - prev) / step);
             write_at(l, n, uint32_t(k), l.in_l + (in_l - l.in_l) * t, l.in_r + (in_r - l.in_r) * t);
         }
         // A free take grows past its span: the waveform halves into the first half.
-        if (!l.bars && !l.length && x >= l.span && l.span < looper::capacity) {
+        if (!l.bars && !l.length && x >= l.span && l.span < room(l)) {
             for (unsigned c = 0; c < looper::peak_columns / 2; ++c) l.peaks[c] = std::max(l.peaks[2 * c], l.peaks[2 * c + 1]);
             std::fill(l.peaks.begin() + looper::peak_columns / 2, l.peaks.end(), 0);
-            l.span = std::min<uint32_t>(looper::capacity, l.span * 2);
+            l.span = std::min<uint32_t>(room(l), l.span * 2);
         }
         l.wx = x;
         l.in_l = in_l; l.in_r = in_r;
@@ -501,13 +504,13 @@ void Looper::play_frame(Loop& l, double tick, float& out_l, float& out_r) {
     float a = 0, b = 0;
     if (stretch) {
         if (!l.was_stretched) l.stretch.reset();
-        l.stretch.frame(al, ar, l.length, at, dsp::model_rate / rate, a, b);
+        l.stretch.frame(al, ar, l.length, at, ratio(l), a, b);
     } else {
         if (l.was_stretched) l.xfade = looper::ramp;
         read(al, ar, l.length, at, a, b);
         if (l.xfade) { // from the stretch back to plain reading
             float c, d;
-            l.stretch.frame(al, ar, l.length, at, dsp::model_rate / rate, c, d);
+            l.stretch.frame(al, ar, l.length, at, ratio(l), c, d);
             float g = float(l.xfade) / looper::ramp;
             a = a * (1 - g) + c * g; b = b * (1 - g) + d * g;
             --l.xfade;
@@ -546,10 +549,10 @@ void Looper::swap_step(Loop& l) {
 }
 
 void Looper::fit_start(Loop& l, bool then_dub) {
-    double frames = l.ticks / last_per_frame * (dsp::model_rate / rate);
-    if (frames > looper::capacity || frames < 64) { refuse(l, looper::Error::Tempo); return; }
+    double frames = l.ticks / last_per_frame * ratio(l); // at its own rate still
+    if (frames > room(l) || frames < 64) { refuse(l, looper::Error::Tempo); return; }
     l.fit_length = uint32_t(std::round(frames));
-    l.fit_tempo = uint16_t(std::clamp<float>(std::round(tenths_of(l.ticks / frames)), 1, 65535));
+    l.fit_tempo = uint16_t(std::clamp<float>(std::round(tenths_of(l.ticks / frames, l.rate)), 1, 65535));
     l.fit_then_dub = then_dub;
     l.undo_state = looper::Undo::None; // the undo buffer becomes the fitted loop
     l.fit_cancel.store(false);
@@ -581,6 +584,7 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
     for (unsigned n = 0; n < loop_tracks; ++n) { std::fill(out_l[n], out_l[n] + frames, 0.0f); std::fill(out_r[n], out_r[n] + frames, 0.0f); }
     if (clock.rate != rate) {
         rate = clock.rate;
+        memory_rate.store(rate, std::memory_order_release); // memory made from now on: 64 s at this rate
         const float q[2] {0.5412f, 1.3066f};
         float w = 2 * dsp::pi * 19000.0f / rate, cw = std::cos(w);
         for (unsigned s = 0; s < 2; ++s) {
@@ -593,13 +597,20 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
     block_frames = sources.frames ? sources.frames : frames;
     default_lag = clock.input_lag;
 
-    // Memory handed in: into the loops that lack it, else kept spare (or back, when the Looper is off).
+    // Memory handed in: into the loops that lack it, else kept spare (or back, when the Looper is off). Memory made
+    // at another rate (the device's changed) goes back from a spare and an empty loop, for memory made at this one;
+    // a loop with audio keeps its own and reads it at its rate.
+    const uint32_t want = looper::frames_at(rate);
     LoopBuffer* b = nullptr;
     while (pool.pop(b)) {
         bool kept = false;
-        for (auto& s : spare) if (!s) { s = b; kept = true; break; }
+        for (auto& s : spare) if (!s && b->frames == want) { s = b; kept = true; break; }
         if (!kept) { LoopBuffer* x = b; retire(x); }
     }
+    for (auto& s : spare) if (s && s->frames != want) retire(s);
+    for (auto& l : loops)
+        if (l.state == State::Empty && !l.waiting_load && !l.held && l.fit.load() == FitState::None && l.write == Write::Off && l.write_in < 0)
+            for (LoopBuffer** slot : {&l.audio, &l.undo}) if (*slot && (*slot)->frames != want) retire(*slot);
     if (enabled && !disable_wanted)
         for (auto& l : loops)
             for (LoopBuffer** slot : {&l.audio, &l.undo})
@@ -620,7 +631,8 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
         reset(l, true);
         if (l.audio) { LoopBuffer* x = l.audio; if (!retire(x)) continue; }
         l.audio = w.buffer; w.buffer = nullptr;
-        l.length = std::min(w.frames, looper::capacity);
+        l.rate = w.rate;
+        l.length = std::min(w.frames, l.audio->frames);
         l.ticks = w.ticks; l.tempo = w.tempo; l.layers = w.layers;
         l.state = !(l.length && l.ticks > 0) ? State::Empty : w.stopped ? State::Stopped : State::Playing;
         l.start = 0;
@@ -700,7 +712,6 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
     }
 
     // Each loop through the block: its pending action on its frame, the writer `lag` behind, the play side.
-    double ratio = dsp::model_rate / rate;
     for (unsigned n = 0; n < loop_tracks && enabled; ++n) {
         auto& l = loops[n];
         unsigned lag = lag_of(l, block_frames);
@@ -716,7 +727,7 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
                 end = std::min<unsigned>(end, f + unsigned(std::ceil(d - 1e-9)));
             }
             if (l.state == State::Recording && !halted) {
-                double left = (double(looper::capacity) - l.take_at) / ratio;
+                double left = (double(room(l)) - l.take_at) / ratio(l);
                 if (left <= 0) { close_take(l, tick_f); continue; }
                 end = std::min<unsigned>(end, f + unsigned(std::ceil(left)));
             }
@@ -729,7 +740,7 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
                 if (l.write != Write::Off) {
                     float in_l = 0, in_r = 0;
                     if (src[0] && k < sources.frames) { in_l = src[0][k]; in_r = src[1] ? src[1][k] : in_l; }
-                    if (rate > 50000.0f) {
+                    if (rate > 50000.0f && l.rate < 50000) { // 96 kHz written into a slower loop: nothing above it folds down
                         for (unsigned s = 0; s < 2; ++s) {
                             in_l = biquad(lp_coef[s], l.lp[s * 2], in_l);
                             in_r = biquad(lp_coef[s], l.lp[s * 2 + 1], in_r);
@@ -743,7 +754,7 @@ void Looper::run(const Clock& clock, const Sources& sources, unsigned frames, fl
             }
             unsigned done = end - f;
             if (l.write_in > 0) l.write_in = std::max(0, l.write_in - int(done));
-            if (l.state == State::Recording && !halted) l.take_at += done * ratio;
+            if (l.state == State::Recording && !halted) l.take_at += done * ratio(l);
             f = end;
         }
         // The waveform worked out again a few columns a block after a take, undo, fit or load.
@@ -766,6 +777,7 @@ void Looper::publish(unsigned n) {
     v.error.store(uint8_t(l.error), std::memory_order_relaxed);
     v.errors.store(l.errors, std::memory_order_relaxed);
     v.length.store(l.length, std::memory_order_relaxed);
+    v.rate.store(l.rate, std::memory_order_relaxed);
     uint32_t place = l.state == State::Recording ? uint32_t(l.take_at) : uint32_t(index_at(l, halted ? l.halt_tick : own_tick));
     v.position.store(place, std::memory_order_relaxed);
     v.span.store(l.span, std::memory_order_relaxed);
@@ -807,6 +819,7 @@ Looper::View Looper::view(unsigned n) const {
     out.error = looper::Error(v.error.load(std::memory_order_relaxed));
     out.errors = v.errors.load(std::memory_order_relaxed);
     out.length = v.length.load(std::memory_order_relaxed);
+    out.rate = v.rate.load(std::memory_order_relaxed);
     out.position = v.position.load(std::memory_order_relaxed);
     out.span = v.span.load(std::memory_order_relaxed);
     out.ticks = v.ticks.load(std::memory_order_relaxed);
@@ -826,7 +839,7 @@ void Looper::service() {
     while (retired.pop(b)) { delete b; owned.fetch_sub(1, std::memory_order_acq_rel); }
     // Two buffers a loop while the Looper is on (a load brings its own and hands one back).
     if (want_memory.load(std::memory_order_acquire) && owned.load() < 2 * loop_tracks) {
-        auto* made = new LoopBuffer;
+        auto* made = new LoopBuffer(looper::frames_at(memory_rate.load(std::memory_order_acquire)));
         if (pool.push(made)) owned.fetch_add(1, std::memory_order_acq_rel);
         else delete made;
     }

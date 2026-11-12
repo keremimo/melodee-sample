@@ -13,8 +13,11 @@
 // into its own track (L1-L4). The audio thread owns every loop; the shell
 // asks through Command::Looper, the service thread hands memory in and takes
 // it back through queues and fits loops to a tempo, the screen reads the
-// published views. Audio is kept at 44.1 kHz (dsp::model_rate) whatever the
-// device runs, so a loop sounds and saves the same at any rate.
+// published views. A loop keeps its frames at the rate they came at: the
+// device's for a take (44.1, 48 or 96 kHz, never converted), a file's own for
+// a saved loop; at another device rate it reads them that much further a
+// frame, as at another tempo. Its memory is made 64 s long at the device's
+// rate (looper::frames_at), and made again for an empty loop when that changes.
 //
 // Time is the sequencer's: ticks (96 a quarter) from bar 1, as a double. A
 // loop's place is (tick - start) mod its ticks, so it stays on the beat
@@ -23,7 +26,8 @@
 namespace melodee {
 
 namespace looper {
-constexpr uint32_t capacity = 64 * uint32_t(dsp::model_rate); // frames of a loop, and of its undo
+constexpr uint32_t seconds = 64; // the longest loop, and its undo
+inline uint32_t frames_at(float rate) { return uint32_t(float(seconds) * rate + 0.5f); } // a buffer's frames at a rate
 constexpr unsigned fade = 32;          // seam and punch fades, frames
 constexpr unsigned ramp = 64;          // play, stop and level ramps, frames
 constexpr unsigned peak_columns = 256; // the waveform the page draws
@@ -56,11 +60,13 @@ inline const char* state_word(State s) {
 }
 } // namespace looper
 
-// Loop memory: one stereo buffer of looper::capacity frames. The service
-// thread makes it (zeroed, so its pages are there before the audio thread
-// writes) and frees it; the audio thread holds two a loop, audio and undo.
+// Loop memory: one stereo buffer of `frames` (64 s at the device's rate when
+// made). The service thread makes it (zeroed, so its pages are there before
+// the audio thread writes) and frees it; the audio thread holds two a loop,
+// audio and undo.
 struct LoopBuffer {
-    LoopBuffer() : left(new float[looper::capacity]()), right(new float[looper::capacity]()) {}
+    explicit LoopBuffer(uint32_t length) : frames(length), left(new float[length]()), right(new float[length]()) {}
+    uint32_t frames;
     std::unique_ptr<float[]> left, right;
 };
 
@@ -70,6 +76,7 @@ struct LoopLoad {
     LoopBuffer* buffer = nullptr;
     uint8_t loop = 0, layers = 1;
     uint32_t frames = 0;
+    unsigned rate = 44100; // the frames' rate (the file's own)
     double ticks = 0;
     uint16_t tempo = 0; // tenths of a BPM it was recorded at
     bool stopped = false;
@@ -148,6 +155,7 @@ public:
     void release(unsigned loop);
     const float* held_left(unsigned loop) const { return held_buffer[loop % loop_tracks].load(std::memory_order_acquire) ? held_buffer[loop % loop_tracks].load()->left.get() : nullptr; }
     const float* held_right(unsigned loop) const { return held_buffer[loop % loop_tracks].load(std::memory_order_acquire) ? held_buffer[loop % loop_tracks].load()->right.get() : nullptr; }
+    uint32_t held_frames(unsigned loop) const { auto* b = held_buffer[loop % loop_tracks].load(std::memory_order_acquire); return b ? b->frames : 0; }
     unsigned buffers_out() const { return owned.load(std::memory_order_acquire); } // made and not freed yet
 
     // Any thread: what each loop is doing, for the page, the lights and the remote.
@@ -157,7 +165,8 @@ public:
         uint8_t bars = 0, layers = 0, source = 0, feedback = 100;
         looper::Undo undo = looper::Undo::None;
         looper::Error error = looper::Error::None;
-        uint32_t length = 0, position = 0, span = 0; // frames: the loop, where it plays, what the waveform spans
+        uint32_t length = 0, position = 0, span = 0; // frames (at `rate`): the loop, where it plays, what the waveform spans
+        unsigned rate = 44100;                       // the loop's frames a second (the device's when it was taken)
         double ticks = 0;                            // the ticks it spans; 0 while its first take runs
         uint16_t tempo = 0;                          // tenths of a BPM it was recorded at (0: none)
         bool stretched = false, fitting = false, sounding = false, held = false, ready = false;
@@ -182,7 +191,8 @@ private:
         Pending pending = Pending::None;
         double target = -1;          // the tick its pending action falls on; < 0: when the transport starts
         double start = 0, ticks = 0; // where it began (ticks), how many it spans (0 during the first take)
-        uint32_t length = 0;         // frames
+        uint32_t length = 0;         // frames, at `rate`
+        unsigned rate = 44100;       // its frames' rate: the device's when taken, a file's own when loaded
         double take_at = 0;          // the first take: frames from its start the play side has reached
         uint16_t tempo = 0;          // tenths, recorded at
         uint8_t bars = 0, layers = 0, source = 0;
@@ -206,7 +216,7 @@ private:
         bool was_stretched = false;
         unsigned xfade = 0;          // frames of a crossfade from the stretch back to plain reading
         LoopStretch stretch;
-        float lp[4][2] {};           // the 96 kHz low pass's state: [stage * 2 + side][z1, z2]
+        float lp[4][2] {};           // the low pass's state, 96 kHz into a slower loop: [stage * 2 + side][z1, z2]
         uint32_t span = 0;           // frames the waveform spans: the loop, the set take or the free take so far
         unsigned peaks_next = looper::peak_columns; // the next column worked out again from the audio
         std::array<uint8_t, looper::peak_columns> peaks {};
@@ -228,6 +238,7 @@ private:
     struct Published {
         std::atomic<uint8_t> state {0}, pending {0}, bars {0}, layers {0}, source {0}, feedback {100}, undo {0}, error {0};
         std::atomic<uint32_t> length {0}, position {0}, span {0};
+        std::atomic<unsigned> rate {44100};
         std::atomic<double> ticks {0};
         std::atomic<uint16_t> tempo {0};
         std::atomic<bool> stretched {false}, fitting {false}, sounding {false}, held {false}, ready {false};
@@ -243,6 +254,9 @@ private:
         return y;
     }
     void refuse(Loop& l, looper::Error e) { l.error = e; ++l.errors; }
+    // The loop's frames a device frame at its own tempo (1 for a take at this rate), and the frames it can hold.
+    double ratio(const Loop& l) const { return double(l.rate) / rate; }
+    static uint32_t room(const Loop& l) { return l.audio && l.undo ? std::min(l.audio->frames, l.undo->frames) : l.audio ? l.audio->frames : 0; }
     void reset(Loop& l, bool keep_memory);
     double boundary(double tick) const;                 // the first quantize boundary at or after `tick`
     void queue(Loop& l, Pending p, double now);         // a pending action for the next boundary (or the transport's start)
@@ -284,6 +298,7 @@ private:
     double own_tick = 0;      // the looper's clock (the sequencer's while it runs)
     bool was_running = false, halted = true;
     float rate = dsp::model_rate;
+    std::atomic<float> memory_rate {dsp::model_rate}; // the rate the service thread makes memory for (64 s of it)
     unsigned block_frames = looper::block;
     // Memory: made by the service thread, handed in (`pool`) and back (`retired`).
     MidiQueue<16, LoopBuffer*> pool, retired;
