@@ -10608,6 +10608,19 @@ void modulators_p4() {
 // Roadmap P4, MIDI tracks M2-M5 (docs/MIDI_TRACKS.md): slots of every kind with CC thinning, bend, pressure, the mod
 // wheel, each pattern's own program at its launch, the track's delay, Drum pads' map, USB devices by name, an input
 // as the track's sound, and MIDT's version 3.
+// A project file with some sections taken out (a file as an older build wrote it): magic, then tag, length, body.
+std::vector<uint8_t> without_sections(const std::vector<uint8_t>& file, std::initializer_list<const char*> tags) {
+    std::vector<uint8_t> out(file.begin(), file.begin() + 8);
+    for (size_t at = 8; at + 8 <= file.size();) {
+        uint32_t n = uint32_t(file[at + 4]) | uint32_t(file[at + 5]) << 8 | uint32_t(file[at + 6]) << 16 | uint32_t(file[at + 7]) << 24;
+        bool drop = false;
+        for (auto* t : tags) drop |= std::memcmp(&file[at], t, 4) == 0;
+        if (!drop) out.insert(out.end(), file.begin() + long(at), file.begin() + long(at + 8 + n));
+        at += 8 + n;
+    }
+    return out;
+}
+
 void midi_tracks_p4() {
     using namespace midi_track;
     using E = MidiOutEvent::Kind;
@@ -10625,7 +10638,8 @@ void midi_tracks_p4() {
     tr.params[slot_address(3)] = int16_t(address_cc14 + 2);
     tr.params[slot_address(4)] = int16_t(address_nrpn + 300);
     tr.params[slot_address(5)] = int16_t(address_pressure);
-    tr.params[PatternProgram0 + 1] = 21; // pattern 2's own program
+    bank->at[0][1].program = 21; // pattern 2's own program (Pattern::program)
+    bank->at[0][70].program = 33; // and one in bank E
     tr.params[Program] = 5;
     // The file: MIDT 3 keeps the device's name, the drum map and the SysEx file.
     std::snprintf(tr.midi.device, sizeof(tr.midi.device), "%s", "Minilogue XD");
@@ -10638,7 +10652,14 @@ void midi_tracks_p4() {
         CHECK(load_project(bytes, *back, *back_bank).empty());
         const auto& b = back->tracks[0];
         CHECK(b.engine == EngineKind::Midi && std::string(b.midi.device) == "Minilogue XD" && b.midi.drum_note[17] == 42 && b.midi.drum_note[0] == 36 &&
-              std::string(b.midi.sysex) == "bank-a.syx" && b.params[slot_address(4)] == address_nrpn + 300 && b.params[PatternProgram0 + 1] == 21);
+              std::string(b.midi.sysex) == "bank-a.syx" && b.params[slot_address(4)] == address_nrpn + 300 && b.params[PatternProgram0 + 1] == 0 &&
+              back_bank->at[0][1].program == 21 && back_bank->at[0][70].program == 33 && back_bank->at[0][2].program == 0);
+        // A file from before the banks: P1-P16's programs in TRAK's values and no PPRG; they move into the patterns.
+        auto old = without_sections(bytes, {"PPRG"});
+        auto back2 = std::make_unique<Project>();
+        auto back2_bank = std::make_unique<PatternBank>();
+        CHECK(old.size() < bytes.size() && load_project(old, *back2, *back2_bank).empty());
+        CHECK(back2_bank->at[0][1].program == 21 && back2_bank->at[0][70].program == 0 && back2->tracks[0].params[PatternProgram0 + 1] == 0);
     }
     // Drum pads play the map; a USB device by name, offline when it is gone.
     {
@@ -10839,6 +10860,49 @@ void exports_p4() {
 
 // Roadmap P5: scenes (a column's name and tempo) and follow actions (next, previous, any, again, stop; after bars or
 // plays; two actions on odds), brought by the audio thread on their tick; a chained track's wait.
+// Banks of patterns (freeze plan F1): 128 a track, A-H of sixteen, a file older builds still read.
+void banks_f1() {
+    CHECK(pattern_count == 128 && pattern_pads == 16 && pattern_banks == 8);
+    UiState ui;
+    ui.pattern_bank = 2;
+    CHECK(ui.pad_pattern(5) == 37 && ui.pad_pattern(21) == 37);
+    // A groove's source: as before the banks where that reaches it, GRVB where it does not.
+    CHECK(groove_track(groove_source(2, 7)) == 2 && groove_pattern(groove_source(2, 7)) == 7);
+    CHECK(legacy_groove(groove_source(2, 7)) == 1 + 2 * 16 + 7 && groove_of_legacy(1 + 2 * 16 + 7) == groove_source(2, 7));
+    CHECK(legacy_groove(groove_source(2, 20)) == 0 && legacy_groove(0) == 0 && groove_of_legacy(0) == 0);
+    // Follow actions go round across the banks.
+    FollowDice dice;
+    PatternSet filled;
+    filled.set(3); filled.set(100);
+    CHECK(follow_target(unsigned(FollowAction::Next), 3, filled, dice) == 100 && follow_target(unsigned(FollowAction::Next), 100, filled, dice) == 3);
+    CHECK(follow_target(unsigned(FollowAction::Previous), 3, filled, dice) == 100 && follow_target(unsigned(FollowAction::Any), 3, filled, dice) == 100);
+    // The file: patterns past P16, their tempos, a groove from one; TIME still holds sixteen tempos.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    project->tracks[3].engine = EngineKind::Sampler;
+    project->seq_tempo = true; project->pattern_tempo[2] = 905; project->pattern_tempo[90] = 1305;
+    project->tracks[3].pattern = 100;
+    Event e; e.tick = 48; e.key = 40;
+    bank->at[3][100].add(e);
+    bank->at[3][100].length = 64 * sixteenth_ticks;
+    bank->at[3][5].feel.groove_from = groove_source(1, 3); bank->at[3][5].feel.groove_offsets = {2}; bank->at[3][5].feel.groove_levels = {110};
+    bank->at[3][6].feel.groove_from = groove_source(3, 100); bank->at[3][6].feel.groove_offsets = {1}; bank->at[3][6].feel.groove_levels = {90};
+    project->scenes[77].tempo = 1400;
+    auto bytes = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(bytes, *back, *back_bank).empty());
+    CHECK(back->tracks[3].pattern == 100 && back_bank->at[3][100].events.size() == 1 && back_bank->at[3][100].length == 64 * sixteenth_ticks);
+    CHECK(back->pattern_tempo[2] == 905 && back->pattern_tempo[90] == 1305 && back->scenes[77].tempo == 1400);
+    CHECK(back_bank->at[3][5].feel.groove_from == groove_source(1, 3) && back_bank->at[3][6].feel.groove_from == groove_source(3, 100));
+    CHECK(back->tempo_of(90) == 1305 && back->tempo_of(91) == back->tempo);
+    // As an older build saved it (no TIM2, no GRVB): P1-P16's tempos from TIME, a groove from past P16 gone.
+    auto older = without_sections(bytes, {"TIM2", "GRVB"});
+    CHECK(load_project(older, *back, *back_bank).empty());
+    CHECK(back->pattern_tempo[2] == 905 && back->pattern_tempo[90] == 0 && back_bank->at[3][5].feel.groove_from == groove_source(1, 3) &&
+          back_bank->at[3][6].feel.groove_from == 0);
+}
+
 void scenes_p5() {
     using FA = FollowAction;
     FollowDice dice;
@@ -11320,6 +11384,7 @@ int main() {
     tempo_lane_p5();
     capture_p5();
     scenes_p5();
+    banks_f1();
     exports_p4();
     midi_tracks_p4();
     modulators_p4();

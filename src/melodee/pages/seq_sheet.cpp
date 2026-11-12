@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The Sequence sheet (Seq held a moment, shell/seq_layer.h): over any page,
-// the selected track's sixteen patterns laid out as the pads are (pad 1
-// bottom left), the one playing filled, the one waiting for the bar
+// the selected track's patterns of the bank in view (Pad Bank steps it, the
+// header names it) laid out as the pads are (pad 1 bottom left), the one playing filled, the one waiting for the bar
 // blinking, those with notes tinted; beside them the chain (round 2,
 // seq-sheet2 B): what plays now, over what comes next, over what follows
 // (a chain of more than three shows its first three and a count; each
@@ -43,14 +43,15 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
     soft_keys(p, {{"STEPS", "ROLL", "MOTION"}, -1, c});
     Header h = header_of(s);
     h.left.push_back(chip("SEQUENCE", c));
+    h.left.push_back(bank_pill(s));
     h.right.push_back(tag_of(s, t));
     header(p, h);
 
     // The patterns as the pads sit: pads 13-16 along the top, 1-4 along the bottom.
     constexpr float cell = 31, gap = 3, grid = 4 * cell + 3 * gap;
     float gx = zone::pad, gy = zone::picture_y + (zone::picture_h - grid) / 2;
-    for (unsigned n = 0; n < pattern_count; ++n) {
-        unsigned row = 3 - n / 4, column = n % 4;
+    for (unsigned k = 0; k < pattern_pads; ++k) {
+        unsigned n = s.ui.pad_pattern(k), row = 3 - k / 4, column = k % 4;
         float x = gx + column * (cell + gap), y = gy + row * (cell + gap);
         bool notes = s.sketches[t][n].notes, playing = n == live, waiting = int(n) == queued;
         bool copying = s.ui.copying == UiState::Copying::Patterns && s.ui.copy_track == t && s.ui.copy_from == int(n);

@@ -51,20 +51,19 @@ void bars_picture(Paint& p, const Snapshot& s, const EditPage& page) {
             if (id < 0) continue;
             const auto& param = info.params[id];
             float x = px + n * (cw + 8), y = py + r * row_h;
-            auto shown = show(param, v[size_t(id)]);
+            int value = v[size_t(id)];
+            if (s.track().engine == EngineKind::Midi && id == midi_track::PatternProgram0) // the pattern in hand's own (Pattern::program)
+                value = s.sketches[s.ui.track % track_count][s.track().pattern % pattern_count].program;
+            auto shown = show(param, value);
             juce::String label = param.label;
             if (s.track().engine == EngineKind::Midi) { // a slot by what it sends; this pattern's program (roadmap P4)
                 if (midi_track::is_cc(id)) label = midi_track::slot_label(v[size_t(midi_track::slot_address(id - midi_track::Cc1))]);
                 else if (midi_track::slot_of_address(id) >= 0) label = "SLOT " + juce::String(midi_track::slot_of_address(id) + 1);
-                else if (id == midi_track::PatternProgram0) {
-                    int own = midi_track::PatternProgram0 + int(s.track().pattern % pattern_count);
-                    label = "P" + juce::String(s.track().pattern % pattern_count + 1) + " PROG";
-                    shown = show(param, v[size_t(own)]);
-                }
+                else if (id == midi_track::PatternProgram0) label = "P" + juce::String(s.track().pattern % pattern_count + 1) + " PROG";
             }
             p.text(label, x, y, cw, 10, caps_text(shade_of(s, page, id)));
             p.text(shown.value + (shown.unit.empty() ? "" : " " + shown.unit), x, y + 10, cw, 13, plain(colour::sec, type::small, Weight::Medium));
-            gauge(p, x, y + 25, cw, gauge_of(param, v[size_t(id)]), shade_of(s, page, id));
+            gauge(p, x, y + 25, cw, gauge_of(param, value), shade_of(s, page, id));
         }
 }
 

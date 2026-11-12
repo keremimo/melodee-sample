@@ -244,7 +244,7 @@ Look song_look(const PadScene& s, unsigned pad) {
 // there playing it) bright, one waiting for its bar blinking, the rest as many tracks as hold notes there; Erase held:
 // the scenes with a name or tempo to clear.
 Look scenes_look(const PadScene& s, unsigned pad) {
-    unsigned n = pad % pattern_count, with = 0, on = 0, waiting = 0;
+    unsigned n = s.ui.pad_pattern(pad), with = 0, on = 0, waiting = 0; // the bank in view's
     bool rolling = s.host.playing();
     for (unsigned t = 0; t < track_count; ++t) {
         const auto& tr = s.project.tracks[t];
@@ -302,26 +302,26 @@ Look loop_look(const PadScene& s, unsigned pad, bool muting) {
 // ---- steps, notes and patterns
 Look seq_look(const PadScene& s, unsigned pad) {
     const auto& ui = s.ui;
-    unsigned at = selected_index(s);
+    unsigned at = selected_index(s), n = ui.pad_pattern(pad); // the pattern under the pad, in the bank in view
     const auto& t = s.project.tracks[at];
-    bool notes = !s.patterns.at[at][pad % pattern_count].empty();
-    bool rolling = s.host.playing(), live = s.host.pattern_of(at) == pad;
-    bool on = rolling ? live : t.pattern == pad;
+    bool notes = !s.patterns.at[at][n].empty();
+    bool rolling = s.host.playing(), live = s.host.pattern_of(at) == n;
+    bool on = rolling ? live : t.pattern == n;
     if (ui.copying == UiState::Copying::Patterns) {
         if (ui.copy_from < 0) return notes ? track(at, dim) : Look {}; // the pattern to copy
-        if (ui.copy_track == at && ui.copy_from == int(pad)) return white(full);
+        if (ui.copy_track == at && ui.copy_from == int(n)) return white(full);
         return notes ? red(faint) : track(at, faint);                // where: replaced, or landing clean
     }
     if (ui.erase) return !notes ? Look {} : on ? red(mid) : red(dim);   // clears, asked first
     if (ui.shift) {                                                     // a column: the tracks holding notes there
         if (on) return white(full);
         unsigned with = 0;
-        for (unsigned n = 0; n < track_count; ++n) with += s.project.tracks[n].used() && !s.patterns.at[n][pad % pattern_count].empty();
+        for (unsigned k = 0; k < track_count; ++k) with += s.project.tracks[k].used() && !s.patterns.at[k][n].empty();
         return with == 0 ? Look {} : with == 1 ? white(faint) : with < 4 ? white(dim) : white(mid);
     }
-    if (ui.pattern_held == int(pad)) return white(full); // tap another to copy it there
+    if (ui.pattern_held == int(n)) return white(full); // tap another to copy it there
     if (on) return track(at, full);
-    if (rolling && t.pattern == pad) return blink(s.now, blink_ms) ? track(at, full) : track(at, faint); // waits for the bar
+    if (rolling && t.pattern == n) return blink(s.now, blink_ms) ? track(at, full) : track(at, faint); // waits for the bar
     return notes ? track(at, dim) : Look {};
 }
 Look velocity_look(unsigned t, unsigned velocity) {

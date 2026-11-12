@@ -506,9 +506,11 @@ hold to steer, Shift + Seq to zoom in**.
   a kit and Roll on a synth or MIDI track. On an editor it goes back to
   Patterns; on Step Edit back to its editor. B1–B3 on Patterns and on every
   editor are STEPS, ROLL, MOTION.
-- **Seq held**, on any page, is the Sequence layer. The pads light at once
-  as the track's patterns (playing bright, queued blinking, with notes
-  faint, empty dark); after 0.3 s the **Sequence sheet** shows them as the
+- **Seq held**, on any page, is the Sequence layer. A track has 128
+  patterns, eight banks of sixteen (A–H, as the MPC's 128 sequences). The
+  pads light at once as the track's patterns in the bank in view (playing
+  bright, queued blinking, with notes faint, empty dark) and the bank
+  lights show that bank; after 0.3 s the **Sequence sheet** shows them as the
   pads sit and beside them the chain: what plays now, over what comes next,
   over what follows (a chain of more than three adds a count; each chained
   pad carries its place), the tempo under them. Let go within 0.3 s with
@@ -525,13 +527,18 @@ hold to steer, Shift + Seq to zoom in**.
     then clears that pattern (one undo). Shift + Erase starts a pattern
     copy: the pattern, then where (on this or another track; the pads stay
     patterns until it ends).
-  - −/+ the previous / next pattern; the wheel the tempo (Push: whole BPM
+  - Pad Bank the next bank of patterns (Shift: the previous); the pads,
+    the sheet, Patterns, Scenes and Time Correct's groove row show it. It
+    follows the selected track's pattern again whenever that changes. Hold
+    a pad, step the bank, tap a pad: a copy across banks.
+  - −/+ the previous / next pattern, across the banks; the wheel the tempo (Push: whole BPM
     or tenths); K1–K3 the pattern's length, Q and swing (Shift: any bar
     count, time signature, metronome level), over Knob FX's.
   - B1–B3 open Steps, Roll and Motion (the sheet stays away until Seq is
     let go); Seq Record starts a new take in the next empty pattern, armed
     (playing: recording at once). Other buttons keep their jobs.
-- **Patterns** (Seq): tracks down, sixteen patterns across. The pads play
+- **Patterns** (Seq): tracks down, the bank in view's sixteen patterns
+  across (the header names the bank). The pads play
   the selected track, so it is played and recorded with its patterns in
   view (Erase + pad and mute mode as on any play page). K1 length (1, 2, 4
   .. 128 bars; Shift: any count), K2 Q (Shift: time signature, 1/4 ..
@@ -1459,7 +1466,7 @@ while following.
   the lane). + fader asks to clear its lane.
 - **Copy** (Shift + Erase): the first pad is the source, the next the
   target; kit pads, patterns with Seq held, whole tracks with Pad Bank held
-  (sound, kit, sixteen patterns and their motion; the target keeps its mix
+  (sound, kit, its 128 patterns and their motion; the target keeps its mix
   strip). Again, or Erase, leaves.
 - **Move** (B2 with Pad Bank held, or Shift + B2 on Tracks; B3 there is
   Copy): the track, then where it goes. It moves whole, mix strip too; a
@@ -1773,5 +1780,44 @@ sides meet prints a `MELODEE_TEXT` line, and any such line fails the run.
 
 `python3 device.py install-sd --app melodee` (see README) starts it from
 the card at every boot; leaving it returns to stock until the next boot.
+
+### Updates from the card
+
+A newer release zip, as downloaded, at the top of the card is offered and
+installed by Melodee itself (`shell/update.*`; the base's
+`install/sd-update.sh` and `drivers/sd_update.*` do the work, base
+docs/APPS.md "Updates from the card"). The service thread runs the
+script's `check` on the card's `*.zip` files when the card arrives or
+comes back, and offers the newest one whose `RELEASE.sha256` is signed
+with the key in `shell/update.h` (`release_key_pem`) and whose VERSION is
+newer than `melodee_version()` (pre-releases before their release, git
+describe builds after it). Once the music has stopped and no sheet is
+open, **Update to v0.2.0?** asks: B1 LATER (asked again once the card
+comes back from a computer, or at the next start), B3 INSTALL. INSTALL
+stops the transport, saves the project if it has changes and starts the
+install; its sheet then owns the screen and the controls (SAVING,
+CHECKING, WRITING CARD, RESTARTING) until the new Melodee takes over,
+whose header says **Updated to v0.2.0**. Stopped short, the sheet says why
+(NOT UPDATED: card full, not a signed release, card starts another app,
+...), the card is as it was, and B1 closes it. A build that does not
+start within 30 seconds is taken off the card and this one starts again,
+saying **v0.2.0 not installed**. The version before stays on the card as
+`autorun/melodee.prev`. Only a card set up by Melodee's release zip (or
+with no autorun) is updated; a card whose autorun starts something else
+(`device.py install-sd`, MPC Sample Plugins, a boot menu) is left alone.
+
+Releases: `tools/make_release.py` adds `RELEASE.sha256` (every other file
+of the zip by SHA-256) and its Ed25519 signature `RELEASE.sha256.sig`,
+made with `~/.config/melodee/release-signing.pem` (or
+`$MELODEE_SIGNING_KEY`) and OpenSSL 3, and refuses a key whose public half
+is not the one in `shell/update.h`. Keep a copy of that key somewhere
+safe: without it, no installed Melodee takes a newer release from the
+card, and a new key means installing by hand once.
+
+Remote: `melodee-update [DIR|card]` looks for a newer release now, in DIR
+in place of the card (device checks); `status` adds `melodee_update`
+(UpdatePhase: 0 none, 1 saving, 2 checking, 3 writing, 4 starting,
+5 failed) and `melodee_update_offer`. Previews `updateask`, `updating`,
+`updatefailed`.
 Limits that are single constants (`model/limits.h`): 16 tracks, 16
 patterns a track, 8 mod routes, 8192 motion points a pattern, 64 samples.

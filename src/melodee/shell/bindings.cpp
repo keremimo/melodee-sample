@@ -734,11 +734,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
             for (auto& b : out)
                 if (b.kind == Kind::Param && b.id == midi_track::Port) // the devices by name
                     b = {Kind::MidiPort, 0, 0, int(midi_port_count(ui, track)) - 1, midi_port_index(ui, track)};
-            for (auto& b : out)
-                if (b.kind == Kind::Param && b.id == midi_track::PatternProgram0) {
-                    b.id = int32_t(midi_track::PatternProgram0 + track.pattern % pattern_count);
-                    b.value = track.params[size_t(b.id)];
-                }
+            for (auto& b : out) // the pattern in hand's own program (Pattern::program)
+                if (b.kind == Kind::Param && b.id == midi_track::PatternProgram0) b = {Kind::PatternProgram, 0, 0, 128, pattern.program};
             return out;
         }
         return {param(track, row[0]), param(track, row[1]), param(track, row[2])};

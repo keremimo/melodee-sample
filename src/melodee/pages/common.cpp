@@ -51,6 +51,11 @@ ui::Header header_of(const Snapshot& s) {
     return h;
 }
 
+ui::HeaderItem bank_pill(const Snapshot& s) {
+    return ui::pill(ui::Icon::Pattern, juce::String("BANK ") + juce::String::charToString(juce::juce_wchar('A' + s.ui.pattern_bank % pattern_banks)),
+                    ui::colour::text);
+}
+
 ui::HeaderItem tag_of(const Snapshot& s, unsigned track) {
     const auto& t = s.project.tracks[track % track_count];
     const auto& info = engine_info(t.engine);
@@ -137,7 +142,6 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         if (track.engine == EngineKind::Midi && midi_track::is_cc(b.id)) // a slot by what it sends: "CC 74", "BEND" (roadmap P4)
             c.label = midi_track::slot_label(track.params[size_t(midi_track::slot_address(b.id - midi_track::Cc1))]);
         if (track.engine == EngineKind::Midi && midi_track::slot_of_address(b.id) >= 0) c.label = "SLOT " + juce::String(midi_track::slot_of_address(b.id) + 1);
-        if (track.engine == EngineKind::Midi && b.id >= midi_track::PatternProgram0) c.label = "P" + juce::String(b.id - midi_track::PatternProgram0 + 1) + " PROG";
         if (track.engine == EngineKind::Midi && b.id == midi_track::AudioIn && ((s.ui.midi_in_use >> (s.ui.track % track_count)) & 1))
             c.unit = "IN USE"; // the ADC is routed to the other input: silent until it is free (roadmap P4, M5)
         if (track.engine == EngineKind::Sampler && b.id == sampler::Level) c.label = "KIT VOLUME";
@@ -200,6 +204,13 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     }
     case Kind::FollowAfter: c.label = "AFTER"; c.value = juce::String(b.value % 64 + 1); c.unit = b.value >= 64 ? (b.value == 64 ? "play" : "plays") : (b.value == 0 ? "bar" : "bars"); break;
     case Kind::FollowChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PatternProgram: { // the pattern in hand's own program, as PROGRAM shows one
+        const auto& p = engine_info(EngineKind::Midi).params[midi_track::PatternProgram0];
+        auto shown = show(p, b.value);
+        c.label = "P" + juce::String(track.pattern % pattern_count + 1) + " PROG"; c.value = shown.value; c.unit = shown.unit;
+        c.fill = gauge_of(p, b.value);
+        break;
+    }
     case Kind::SongTempo: // roadmap P5: the tempo lane at the cursor; with no point there a turn makes one
         c.label = "BAR TEMPO"; c.value = b.value < 30 ? juce::String("Off") : juce::String(b.value); c.unit = b.value < 30 ? "" : s.project.song.tempo.at_bar(s.ui.song_cursor) >= 0 ? "BPM" : "add";
         break;

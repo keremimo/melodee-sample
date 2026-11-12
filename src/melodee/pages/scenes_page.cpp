@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// SCENES (roadmap P5; Push on Patterns): sixteen scenes laid out as the pads
-// sit (pad 1 bottom left), each a column of patterns, pattern n of every
-// track. A pad launches its scene: pattern n on each track holding notes
+// SCENES (roadmap P5; Push on Patterns): the bank's sixteen scenes laid out
+// as the pads sit (pad 1 bottom left; Seq held + Pad Bank another bank of
+// them), each a column of patterns, pattern n of every track. A pad launches its scene: pattern n on each track holding notes
 // there (and on the selected track) at the next bar, the scene's tempo with
 // it; Erase + pad clears its name and tempo. Push names the scene in hand,
 // the wheel sets its tempo (below 30 BPM: none of its own). The cards are the
@@ -49,6 +49,7 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& scene = s.project.scenes[hand];
     Header h = header_of(s);
     h.left.push_back(chip("SCENES", c));
+    h.left.push_back(bank_pill(s));
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"", "", "ALL"}, -1, c};
     frame(p, s, keys, h);
@@ -57,8 +58,8 @@ void draw(Paint& p, const Snapshot& s) {
     constexpr float cw = 41, ch = 32, gap = 3, grid_w = 4 * cw + 3 * gap, grid_h = 4 * ch + 3 * gap;
     float gx = zone::pad, gy = zone::picture_y + (zone::picture_h - grid_h) / 2;
     bool blink = (s.now / 150) % 2;
-    for (unsigned n = 0; n < pattern_count; ++n) {
-        unsigned row = 3 - n / 4, column = n % 4, with = 0, on = 0, waiting = 0;
+    for (unsigned k = 0; k < pattern_pads; ++k) {
+        unsigned n = s.ui.pad_pattern(k), row = 3 - k / 4, column = k % 4, with = 0, on = 0, waiting = 0;
         for (unsigned t = 0; t < track_count; ++t) {
             const auto& tr = s.project.tracks[t];
             if (!tr.used() || !s.sketches[t][n].notes) continue;
@@ -110,8 +111,8 @@ void draw(Paint& p, const Snapshot& s) {
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     if (!down) return;
-    if (c.ui.erase) { c.clear_scene(pad); return; } // Erase + pad: its name and tempo
-    c.launch_scene(pad);
+    if (c.ui.erase) { c.clear_scene(c.ui.pad_pattern(pad)); return; } // Erase + pad: its name and tempo
+    c.launch_scene(c.ui.pad_pattern(pad));
 }
 
 // The wheel: the scene in hand's tempo by a BPM, from the tempo now when it has none; under 30, none of its own.

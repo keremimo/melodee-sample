@@ -834,6 +834,25 @@ const Preview previews[] {
          s.project.tracks[2].pattern = 3;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; // held a moment: the sheet is up
      }},
+    {"seqbank", [](Shell&, Snapshot& s) { // Seq held + Pad Bank: bank B, track 3 plays P18, P20 waits for the bar
+         s.ui.page = PageId::Stage; s.ui.track = 2; s.playing = true; s.ui.pattern_bank = 1;
+         for (unsigned n : {16u, 17u, 19u, 22u}) { s.sketches[2][n].notes = true; s.sketches[2][n].length = 32 * sixteenth_ticks; }
+         s.playing_patterns[2] = 17; s.project.tracks[2].pattern = 19; s.positions[2] = int(9 * sixteenth_ticks);
+         s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
+     }},
+    {"patternsbank", [](Shell&, Snapshot& s) { // Patterns on bank B: P17-P32 across
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.playing = true; s.ui.pattern_bank = 1;
+         const uint8_t live[] {16, 17, 16, 0, 18, 16, 0, 0};
+         for (unsigned t = 0; t < 8; ++t) {
+             s.playing_patterns[t] = live[t]; s.project.tracks[t].pattern = live[t]; s.positions[t] = int((4 + t) * sixteenth_ticks);
+             for (unsigned n = 16; n < 16 + t % 4 + 1; ++n) s.sketches[t][n].notes = s.project.tracks[t].used();
+         }
+     }},
+    {"patternsbankh", [](Shell&, Snapshot& s) { // Patterns on bank H: three-digit columns, P113-P128
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.pattern_bank = 7;
+         s.project.tracks[0].pattern = 127;
+         for (unsigned n = 112; n < 128; n += 3) s.sketches[0][n].notes = true;
+     }},
     {"seqchain", [](Shell&, Snapshot& s) { // seq-sheet2 B: track 3 chained P1 > P4 > P2 > P5 > P3, P4 playing
          s.ui.page = PageId::Stage; s.ui.track = 2; s.playing = true;
          auto& t = s.project.tracks[2];

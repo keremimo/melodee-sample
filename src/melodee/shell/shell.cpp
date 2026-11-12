@@ -623,6 +623,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     out.song_bar = host.song_bar();
     {
         const auto& lp = host.looper();
+            sketch.program = pattern.program;
         out.looper_on = lp.enabled_now();
         out.loop_tick = lp.beat_tick();
         for (unsigned n = 0; n < loop_tracks; ++n) {

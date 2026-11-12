@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// PATTERNS (Seq, the MPC's Sequence mode): tracks down, sixteen patterns
-// across, eight tracks in view following the selected one. The pads play
+// PATTERNS (Seq, the MPC's Sequence mode): tracks down, the sixteen patterns
+// of the bank in view across (A-H, Seq held + Pad Bank; the header names it),
+// eight tracks in view following the selected one. The pads play
 // the selected track, so it can be played and recorded while its patterns
 // are in view; hold Seq for the pads to launch them (shell/seq_layer.h).
 // K1 the selected pattern's length (1, 2, 4 .. 128 bars; Shift + K1 any
@@ -30,6 +31,7 @@ void draw(Paint& p, const Snapshot& s) {
                           s.ui.settings.rec_quantize ? colour::mid : colour::dim));
     if (s.track().speed != speed_normal) // the track plays its patterns at a speed (Tracks, Shift + K1: roadmap P1)
         h.right.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), colour_of(s)));
+    h.left.push_back(bank_pill(s));
     h.right.push_back(tag_of(s, s.ui.track));
     frame(p, s, {{"STEPS", "ROLL", "MOTION"}, -1, colour_of(s)}, h);
 
@@ -37,9 +39,21 @@ void draw(Paint& p, const Snapshot& s) {
     constexpr float cw = (zone::width - 2 * zone::pad - label_w - 16 * gap) / 16;
     constexpr float rh = (zone::picture_h - 2.0f - head_h - 8 * gap) / 8;
     unsigned shown = s.playing ? s.playing_patterns[s.ui.track] : s.track().pattern;
-    for (unsigned n = 0; n < pattern_count; ++n)
-        p.text(juce::String(n + 1), zone::pad + label_w + gap + n * (cw + gap), top, cw, head_h,
-               plain(n == shown ? colour::text : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
+    // The columns' numbers; three digits (banks G-H) fit over two columns only: one a pair, the one playing if it is
+    // in that pair, centred over both.
+    bool wide = s.ui.pad_pattern(pattern_pads - 1) + 1 >= 100;
+    for (unsigned k = 0; k < pattern_pads; ++k) {
+        unsigned n = s.ui.pad_pattern(k);
+        if (!wide) {
+            p.text(juce::String(n + 1), zone::pad + label_w + gap + k * (cw + gap), top, cw, head_h,
+                   plain(n == shown ? colour::text : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
+            continue;
+        }
+        if (k % 2) continue;
+        unsigned label = n + 1 == shown ? n + 1 : n;
+        p.text(juce::String(label + 1), zone::pad + label_w + gap + k * (cw + gap), top, 2 * cw + gap, head_h,
+               plain(label == shown ? colour::text : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
+    }
     for (unsigned row = 0; row < 8; ++row) {
         unsigned t = first + row;
         const auto& track = s.project.tracks[t];
@@ -50,8 +64,9 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(juce::String(t + 1), zone::pad, y, label_w, rh, plain(selected ? colour::bg : c, type::small, Weight::Bold),
                juce::Justification::centred);
         unsigned live = s.playing ? s.playing_patterns[t] : track.pattern;
-        for (unsigned n = 0; n < pattern_count; ++n) {
-            float x = zone::pad + label_w + gap + n * (cw + gap);
+        for (unsigned k = 0; k < pattern_pads; ++k) {
+            unsigned n = s.ui.pad_pattern(k);
+            float x = zone::pad + label_w + gap + k * (cw + gap);
             const auto& pattern = s.sketches[t][n];
             bool notes = track.used() && pattern.notes;
             bool playing = track.used() && n == live && notes;

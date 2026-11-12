@@ -139,7 +139,7 @@ struct Feel {
     uint8_t humanize_velocity = 0; // 0..100: each note softer or harder, up to 20
     // A groove taken from another pattern (groove_of()): how far each of its steps falls off the grid and how hard it
     // plays against the mean, laid on these notes by the step nearest each, `groove_amount` of it.
-    uint16_t groove_from = 0;      // 0 none; else 1 + track * pattern_count + pattern, where it was taken from
+    uint16_t groove_from = 0;      // 0 none; else 1 + track * pattern_count + pattern, where it was taken from (groove_source)
     uint8_t groove_amount = 100;
     uint16_t groove_step = sixteenth_ticks;
     std::vector<int8_t> groove_offsets;  // ticks, within half a step
@@ -200,6 +200,7 @@ struct Pattern {
     std::vector<EuclidLane> euclids;         // the rhythms laid on its kit lanes, by key (roadmap P1)
     std::vector<PatternPunch> punches;       // punches kept with it (pad-fx C), by tick
     PatternFollow follow;                    // what comes after it by itself (roadmap P5, model/follow.h)
+    uint8_t program = 0;                     // a MIDI track's: the program it sends as it starts, 1..128; 0 the track's own
 
     unsigned q() const { return division_ticks(division); }
     // Steps of Q the pattern holds (a last part step counts).
@@ -207,7 +208,7 @@ struct Pattern {
     bool empty() const { return events.empty() || events.front().tick >= length; }
     bool operator==(const Pattern& o) const {
         return length == o.length && division == o.division && events == o.events && motion == o.motion && lanes == o.lanes &&
-               feel == o.feel && euclids == o.euclids && punches == o.punches && follow == o.follow;
+               feel == o.feel && euclids == o.euclids && punches == o.punches && follow == o.follow && program == o.program;
     }
     bool operator!=(const Pattern& o) const { return !(*this == o); }
     // The first event at or after `tick`.
@@ -255,6 +256,18 @@ struct Pattern {
     void set_lane_length(unsigned key, uint32_t ticks);
     void fit_lanes(); // after the pattern's length changed: lanes as long as it, or longer, go
 };
+
+// A groove's source in Feel::groove_from, and back: the track and pattern it was taken from. Files keep it as before
+// the banks (1 + track * 16 + pattern, legacy_groove) where that reaches it, in GRVB where it does not.
+constexpr uint16_t groove_source(unsigned track, unsigned pattern) { return uint16_t(1 + track * pattern_count + pattern % pattern_count); }
+constexpr unsigned groove_track(uint16_t from) { return from ? (from - 1u) / pattern_count : 0; }
+constexpr unsigned groove_pattern(uint16_t from) { return from ? (from - 1u) % pattern_count : 0; }
+constexpr uint16_t legacy_groove(uint16_t from) { // 0 when its pattern is past the sixteenth
+    return from && groove_pattern(from) < legacy_patterns ? uint16_t(1 + groove_track(from) * legacy_patterns + groove_pattern(from)) : 0;
+}
+constexpr uint16_t groove_of_legacy(uint16_t from) {
+    return from ? groove_source((from - 1u) / legacy_patterns, (from - 1u) % legacy_patterns) : 0;
+}
 
 // A track's playback speed (roadmap P1): its patterns play at num / den of the tempo, the notes as written. The
 // audio thread plays them scaled (speed_pattern: ticks times den / num); the pages and the file keep them as written.

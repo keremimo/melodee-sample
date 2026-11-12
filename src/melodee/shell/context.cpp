@@ -753,6 +753,9 @@ void Context::apply(const Binding& b, int value) {
     case Kind::TrackSpeed: set_speed(unsigned(b.id), value); break;
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
+    case Kind::PatternProgram:
+        if (pattern().program != std::clamp(value, 0, 128)) { pattern().program = uint8_t(std::clamp(value, 0, 128)); sync_pattern(ui.track, track().pattern); }
+        break;
     case Kind::SongTempo: set_song_tempo(ui.song_cursor, value < 30 ? 0 : value * 10); break; // roadmap P5: under 30 BPM, none
     case Kind::SongTempoShape: set_song_tempo_shape(ui.song_cursor, value != 0); break;
     case Kind::FeelStrength: case Kind::FeelSwing: case Kind::FeelHumanize: case Kind::FeelVelocity: case Kind::GrooveFrom:

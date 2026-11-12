@@ -54,10 +54,10 @@ def project(pads):
     output = {"name": "Out 1/2", "program": {"type": 9}}
     return {"data": {"version": 28, "masterTempoEnabled": False, "masterTempo": 128.0, "currentSequence": 1,
                      "tracks": [output, drum],
-                     # out of order, as the stock app leaves them; 16 has no pattern to go to
+                     # out of order, as the stock app leaves them; 128 has no pattern to go to (127 is the last)
                      "sequences": [{"key": 1, "value": sequence(72.5, "Drum 001", [note(960, 37, 0.5), note(0, 36), note(9999, 36), note(480, 38, muted=True)])},
                                    {"key": 0, "value": sequence(105.0, "Drum 001", [note(0, 37)])},
-                                   {"key": 16, "value": sequence(90.0, "Drum 001", [])}]}}
+                                   {"key": 128, "value": sequence(90.0, "Drum 001", [])}]}}
 
 
 def write(folder, name, document):

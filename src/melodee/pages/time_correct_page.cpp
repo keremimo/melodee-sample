@@ -62,13 +62,15 @@ void draw(Paint& p, const Snapshot& s) {
     }
     p.text("2 BEATS", x0, line_y + 26, 80, 13, caps_text(colour::mid));
 
-    // The track's patterns: a pad takes the groove from one (again: none); the groove's lit, the one in hand ringed.
+    // The track's patterns of the bank in view: a pad takes the groove from one (again: none); the groove's lit, the
+    // one in hand ringed.
     float gy = zone::knobs_y - 32, cw = (w - 15 * 3) / 16;
-    int groove = f.groove_from ? int(f.groove_from) - 1 - int(s.ui.track) * int(pattern_count) : -1;
+    int groove = f.groove_from && groove_track(f.groove_from) == s.ui.track % track_count ? int(groove_pattern(f.groove_from)) : -1;
     icon(p, Icon::Bars, x0, gy - 18, 12, colour::mid, 1.4f);
     p.text("GROOVE", x0 + 16, gy - 18, 80, 12, caps_text(colour::mid));
-    for (unsigned n = 0; n < pattern_count; ++n) {
-        float x = x0 + n * (cw + 3);
+    for (unsigned k = 0; k < pattern_pads; ++k) {
+        unsigned n = s.ui.pad_pattern(k);
+        float x = x0 + k * (cw + 3);
         bool lit = int(n) == groove, here = n == s.track().pattern, notes = s.sketches[s.ui.track][n].notes;
         p.fill(x, gy, cw, 22, lit ? c : notes ? colour::surf : colour::quiet, 3);
         if (here) p.ring(x, gy, cw, 22, colour::text.withAlpha(0.6f), 3, 1);
@@ -81,7 +83,7 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     if (!down) return;
     const auto& f = c.pattern().feel;
-    int from = 1 + int(c.ui.track % track_count) * int(pattern_count) + int(pad % pattern_count);
+    int from = groove_source(c.ui.track % track_count, c.ui.pad_pattern(pad));
     c.apply(Binding {Binding::Kind::GrooveFrom, 0, 0, int(track_count * pattern_count), f.groove_from}, f.groove_from == from ? 0 : from);
 }
 

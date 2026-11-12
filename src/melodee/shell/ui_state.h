@@ -166,7 +166,12 @@ struct UiState {
     uint16_t roll_new = 0;
     bool map_open = false;    // the page map over Edit
     uint8_t map_cursor = 0;
-    int8_t pattern_held = -1; // Patterns: a pad held, so the next one copies it
+    int8_t pattern_held = -1; // Patterns: a pattern held (its number), so the next pad copies it there
+    // The bank of patterns the pads and the grids show, A-H (Seq held + Pad Bank steps it). It follows the selected
+    // track's pattern (the one playing, else the one that will) whenever that changes: bank_seen is the last seen.
+    uint8_t pattern_bank = 0;
+    int16_t bank_seen = -1;
+    unsigned pad_pattern(unsigned pad) const { return pattern_bank % pattern_banks * pattern_pads + pad % pattern_pads; }
     bool pattern_copied = false;
     uint16_t song_cursor = 0;   // bar
     uint16_t song_view = 0;     // first bar in view

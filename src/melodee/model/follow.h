@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include <bitset>
 #include <cstdint>
 
 // Roadmap P5: what a pattern does once it has played a while (its follow action, a clip following on by itself),
@@ -60,28 +61,29 @@ inline bool follow_plan(const PatternFollow& f, FollowDice& dice, unsigned& acti
     return false;
 }
 
+// A track's patterns, a bit each (those with notes, for a follow action).
+using PatternSet = std::bitset<pattern_count>;
+
 // Where an action goes from pattern `from` among the track's patterns with notes (`filled`, a bit each): another
-// pattern, the same (Again), or -1: the track stops. Next and Previous go round; Any is one of the others at random,
-// the same when it is the only one. Nothing filled: it stops.
-inline int follow_target(unsigned action, unsigned from, uint32_t filled, FollowDice& dice) {
-    filled &= (1u << pattern_count) - 1;
-    if (!filled || action == unsigned(FollowAction::Stop)) return -1;
+// pattern, the same (Again), or -1: the track stops. Next and Previous go round, across the banks; Any is one of the
+// others at random, the same when it is the only one. Nothing filled: it stops.
+inline int follow_target(unsigned action, unsigned from, const PatternSet& filled, FollowDice& dice) {
+    if (filled.none() || action == unsigned(FollowAction::Stop)) return -1;
     from %= pattern_count;
     switch (FollowAction(action)) {
     case FollowAction::Next:
-        for (unsigned k = 1; k <= pattern_count; ++k) if (filled >> ((from + k) % pattern_count) & 1) return int((from + k) % pattern_count);
+        for (unsigned k = 1; k <= pattern_count; ++k) if (filled[(from + k) % pattern_count]) return int((from + k) % pattern_count);
         break;
     case FollowAction::Previous:
-        for (unsigned k = 1; k <= pattern_count; ++k) if (filled >> ((from + pattern_count - k) % pattern_count) & 1) return int((from + pattern_count - k) % pattern_count);
+        for (unsigned k = 1; k <= pattern_count; ++k) if (filled[(from + pattern_count - k) % pattern_count]) return int((from + pattern_count - k) % pattern_count);
         break;
     case FollowAction::Any: {
-        uint32_t others = filled & ~(1u << from);
-        if (!others) return int(from);
-        unsigned count = 0;
-        for (unsigned p = 0; p < pattern_count; ++p) count += others >> p & 1;
-        unsigned pick = dice.below(count);
+        PatternSet others = filled;
+        others.reset(from);
+        if (others.none()) return int(from);
+        unsigned pick = dice.below(unsigned(others.count()));
         for (unsigned p = 0; p < pattern_count; ++p)
-            if (others >> p & 1 && !pick--) return int(p);
+            if (others[p] && !pick--) return int(p);
         break;
     }
     default: break;

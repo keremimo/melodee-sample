@@ -227,7 +227,10 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         // after their last).
         bool own_section = tr.engine == EngineKind::Midi || tr.engine == EngineKind::Plugin;
         w.u8(t); w.u8(own_section ? 0u : unsigned(tr.engine)); w.u16(tr.preset); w.text(tr.name);
-        w.u8(max_params); for (auto v : tr.params) w.i16(v);
+        auto values = tr.params;
+        if (tr.engine == EngineKind::Midi) // P1-P16's own programs where older builds kept them (Pattern::program now)
+            for (unsigned p = 0; p < legacy_patterns; ++p) values[size_t(midi_track::PatternProgram0 + p)] = patterns.at[t][p].program;
+        w.u8(max_params); for (auto v : values) w.i16(v);
         // Older builds know one send: the largest of the four, into its bus (SNDS, later, has all four).
         unsigned loudest = unsigned(std::max_element(tr.mix.sends.begin(), tr.mix.sends.end()) - tr.mix.sends.begin());
         w.u8(tr.mix.level); w.i16(tr.mix.pan); w.u8(tr.mix.sends[loudest]); w.u8(loudest); w.u8(tr.mix.mute); w.u8(tr.mix.solo);
@@ -244,7 +247,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             const auto& pattern = patterns.at[t][p];
             bool plain = pattern.length == 16 * sixteenth_ticks && pattern.division == Division::Sixteenth && pattern.events.empty() &&
                          pattern.motion.empty() && pattern.lanes.empty() && pattern.feel == Feel {} && pattern.euclids.empty() &&
-                         pattern.punches.empty();
+                         pattern.punches.empty() && !pattern.program;
             if (plain) continue;
             at = w.begin("EVNT");
             w.u8(t); w.u8(p); w.u32(pattern.length); w.u8(unsigned(pattern.division));
@@ -293,9 +296,19 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                 const auto& f = pattern.feel;
                 at = w.begin("FEEL");
                 w.u8(t); w.u8(p); w.u8(f.strength); w.u8(f.swing); w.u8(f.humanize); w.u8(f.humanize_velocity);
-                w.u16(f.groove_from); w.u8(f.groove_amount); w.u16(f.groove_step);
+                w.u16(legacy_groove(f.groove_from)); w.u8(f.groove_amount); w.u16(f.groove_step);
                 w.u8(unsigned(f.groove_offsets.size()));
                 for (size_t n = 0; n < f.groove_offsets.size(); ++n) { w.u8(uint8_t(f.groove_offsets[n])); w.u8(n < f.groove_levels.size() ? f.groove_levels[n] : 100); }
+                w.end(at);
+                if (f.groove_from && !legacy_groove(f.groove_from)) { // a groove from a pattern past P16 (the banks): its source
+                    at = w.begin("GRVB");
+                    w.u8(t); w.u8(p); w.u16(f.groove_from);
+                    w.end(at);
+                }
+            }
+            if (pattern.program) { // a MIDI track's own program for it (P1-P16 also in TRAK's values, for older builds)
+                at = w.begin("PPRG");
+                w.u8(t); w.u8(p); w.u8(pattern.program);
                 w.end(at);
             }
             if (pattern.follow.on()) { // its follow action (roadmap P5, model/follow.h): first, second, odds, after, bars or plays
@@ -340,8 +353,12 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (const auto& tr : project.tracks) w.u8(tr.speed);
         w.end(at);
     }
-    at = w.begin("TIME"); // time signature, BPM per pattern
+    at = w.begin("TIME"); // time signature, BPM per pattern (P1-P16, as older builds read it)
     w.u8(project.signature); w.u8(project.seq_tempo);
+    for (unsigned n = 0; n < legacy_patterns; ++n) w.u16(project.pattern_tempo[n]);
+    w.end(at);
+    at = w.begin("TIM2"); // BPM per pattern, every one of the banks
+    w.u8(pattern_count);
     for (auto v : project.pattern_tempo) w.u16(v);
     w.end(at);
     at = w.begin("SONG");
@@ -655,6 +672,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     auto project = std::make_unique<Project>();
     auto patterns = std::make_unique<PatternBank>();
     std::array<bool, track_count> pad4 {};  // tracks whose pads had a PAD4 section
+    std::array<bool, track_count> programs {}; // tracks whose patterns' programs came in PPRG
     std::array<uint8_t, track_count> legacy {}; // tracks of a synth or kit Melodee no longer has (legacy_engine)
     // Motion before roadmap P1 (MOT2, MOTP, MOTW: the project's, on sixteenths; MOTN: steps of each pattern's division),
     // laid into the patterns at the end, once their lengths and divisions are known.
@@ -925,7 +943,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             Feel f;
             f.strength = uint8_t(std::min(100u, r.u8())); f.swing = uint8_t(std::clamp(r.u8(), 50u, 75u));
             f.humanize = uint8_t(std::min(100u, r.u8())); f.humanize_velocity = uint8_t(std::min(100u, r.u8()));
-            f.groove_from = uint16_t(r.u16()); f.groove_amount = uint8_t(std::min(100u, r.u8()));
+            f.groove_from = groove_of_legacy(uint16_t(r.u16())); f.groove_amount = uint8_t(std::min(100u, r.u8()));
             f.groove_step = uint16_t(std::clamp(r.u16(), 1u, 4u * ticks_per_quarter));
             unsigned steps = std::min(r.u8(), 64u);
             for (unsigned k = 0; k < steps && r.ok; ++k) {
@@ -933,6 +951,12 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 f.groove_levels.push_back(uint8_t(std::clamp(r.u8(), 25u, 175u)));
             }
             if (r.ok) patterns->at[t][p].feel = f;
+        } else if (name == "GRVB") { // a groove's source past P16 (after its FEEL)
+            unsigned t = r.u8(), p = r.u8(), from = r.u16();
+            if (r.ok && t < track_count && p < pattern_count && from <= track_count * pattern_count) patterns->at[t][p].feel.groove_from = uint16_t(from);
+        } else if (name == "PPRG") { // a MIDI track's own program for a pattern
+            unsigned t = r.u8(), p = r.u8(), program = r.u8();
+            if (r.ok && t < track_count && p < pattern_count) { patterns->at[t][p].program = uint8_t(std::min(program, 128u)); programs[t] = true; }
         } else if (name == "LANE") { // kit lanes of their own length (roadmap P1); without it every key loops with the pattern
             unsigned t = r.u8(), p = r.u8();
             if (t >= track_count || p >= pattern_count) continue;
@@ -1074,7 +1098,13 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
         } else if (name == "TIME") {
             project->signature = uint8_t(std::min<unsigned>(r.u8(), time_signature_count - 1));
             project->seq_tempo = r.u8() != 0;
-            for (auto& v : project->pattern_tempo) { unsigned bpm = r.u16(); v = uint16_t(bpm ? std::clamp<unsigned>(bpm, 300, 3000) : 0); }
+            for (unsigned n = 0; n < legacy_patterns; ++n) { unsigned bpm = r.u16(); project->pattern_tempo[n] = uint16_t(bpm ? std::clamp<unsigned>(bpm, 300, 3000) : 0); }
+        } else if (name == "TIM2") { // every pattern's (after TIME)
+            unsigned count = r.u8();
+            for (unsigned n = 0; n < count && r.ok; ++n) {
+                unsigned bpm = r.u16();
+                if (r.ok && n < pattern_count) project->pattern_tempo[n] = uint16_t(bpm ? std::clamp<unsigned>(bpm, 300, 3000) : 0);
+            }
         } else if (name == "SONG") {
             auto& song = project->song;
             unsigned count = r.u16();
@@ -1203,6 +1233,14 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     for (unsigned t = 0; t < track_count; ++t) // PROPHET, CZ and SID as their plug-ins; FM6 and the 909 empty, patterns kept
         for (const auto& synth : legacy_synths)
             if (legacy[t] == synth.engine) open_as_plugin(*project, t, synth, file_version, plugin_states);
+    for (unsigned t = 0; t < track_count; ++t) { // a MIDI track's P1-P16 programs: from TRAK's values when no PPRG came
+        auto& tr = project->tracks[t];
+        for (unsigned p = 0; p < legacy_patterns; ++p) {
+            auto& value = tr.params[size_t(midi_track::PatternProgram0 + p)];
+            if (tr.engine == EngineKind::Midi && !programs[t]) patterns->at[t][p].program = uint8_t(std::clamp<int>(value, 0, 128));
+            if (tr.engine == EngineKind::Midi) value = 0; // the pattern holds it now
+        }
+    }
     for (const auto& e : legacy_motion) { // into its pattern, at its sixteenth (MOTN's step of Q to the nearest sixteenth)
         auto& pattern = patterns->at[e.track][e.pattern];
         uint32_t sixteenth = e.division ? (uint32_t(e.step) * pattern.q() + sixteenth_ticks / 2) / sixteenth_ticks : e.step;

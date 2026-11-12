@@ -38,6 +38,7 @@ void launch_one(Context& c, unsigned pattern) {
         c.sync_pattern(t, pattern);
     }
     c.launch(t, pattern);
+    c.ui.pattern_bank = uint8_t(pattern / pattern_pads); // its bank in view (−/+ cross from one to the next)
     bool waits = c.host.playing() && pattern != now;
     c.notice(name_of(pattern) + (target.empty() ? " new" : "") + (waits ? ", next bar" : ""));
 }
@@ -89,9 +90,9 @@ void seq_press(Context& c, bool pressed) {
 
 bool seq_pad(Context& c, unsigned pad, bool down) {
     auto& ui = c.ui;
-    pad %= pattern_count;
-    if (!down) { // a pattern pad let go: a tap launches it, unless it was copied from
-        if (ui.pattern_held != int(pad)) return false;
+    if (!down) { // a pattern pad let go: a tap launches it, unless it was copied from (the bank may have moved meanwhile)
+        if (ui.pattern_held < 0 || unsigned(ui.pattern_held) % pattern_pads != pad % pattern_pads) return false;
+        pad = unsigned(ui.pattern_held);
         if (!ui.pattern_copied && ui.seq_held && ui.chain_building) c.chain_add(pad); // seq-sheet2 B: after the first, a chain
         else if (!ui.pattern_copied) {
             launch_one(c, pad);
@@ -100,6 +101,7 @@ bool seq_pad(Context& c, unsigned pad, bool down) {
         ui.pattern_held = -1;
         return true;
     }
+    pad = ui.pad_pattern(pad); // the pattern under it, in the bank in view (Seq held + Pad Bank)
     if (!ui.seq_held) return false;
     ui.seq_used = true;
     unsigned t = ui.track % track_count;
@@ -136,7 +138,7 @@ bool seq_button(Context& c, SurfaceButton button) {
         if (ui.shift) return false; // undo / redo, as printed
         int from = int(c.track().pattern % pattern_count), way = button == B::Plus ? 1 : -1;
         int to = std::clamp(from + way, 0, int(pattern_count) - 1);
-        if (to == from) { c.notice(way > 0 ? "P16 is the last" : "P1 is the first"); return true; }
+        if (to == from) { c.notice(way > 0 ? "P" + std::to_string(pattern_count) + " is the last" : "P1 is the first"); return true; }
         launch_one(c, unsigned(to));
         return true;
     }
@@ -163,7 +165,7 @@ bool seq_wheel(Context& c, int delta) {
 bool pattern_copy_pad(Context& c, unsigned pad) {
     auto& ui = c.ui;
     if (ui.copying != UiState::Copying::Patterns) return false;
-    pad %= pattern_count;
+    pad = ui.pad_pattern(pad); // in the bank in view: Seq held + Pad Bank between the two takes it to another
     if (ui.seq_held) ui.seq_used = true;
     if (ui.copy_from < 0) { // first the pattern to copy (this track), then where (this or another track)
         if (c.patterns.at[ui.track][pad].empty()) { c.notice(name_of(pad) + " is empty"); return true; }

@@ -11,6 +11,19 @@ namespace melodee {
 namespace {
 void say_bank(Context& c) { c.notice(std::string("Bank ") + char('A' + c.track().bank % sampler_banks)); }
 
+// Seq held: the bank of patterns in view, A-H round, and what it holds.
+void step_pattern_bank(Context& c, int way) {
+    auto& ui = c.ui;
+    ui.seq_used = true; // letting go of Seq then opens nothing
+    int banks = int(pattern_banks);
+    ui.pattern_bank = uint8_t((int(ui.pattern_bank % banks) + way % banks + banks) % banks);
+    unsigned t = ui.track % track_count, with = 0;
+    for (unsigned n = 0; n < pattern_pads; ++n) with += !c.patterns.at[t][ui.pad_pattern(n)].empty();
+    unsigned first = ui.pattern_bank * pattern_pads + 1;
+    c.notice(std::string("Patterns ") + char('A' + ui.pattern_bank) + ": P" + std::to_string(first) + "-" + std::to_string(first + 15) +
+             (with ? "" : ", empty"));
+}
+
 // Roll on a synth: the pads an octave up or down, and the notes they now play.
 void step_octave(Context& c, int way) {
     auto& t = c.track();
@@ -32,6 +45,7 @@ void pad_bank_button(Context& c, bool pressed) {
     ui.pad_bank = false;
     if (ui.pad_bank_used) return; // held for a pad, a jump or a copy: no step
     if (ui.shift) ui.shift_used = true;
+    if (ui.seq_held) { step_pattern_bank(c, ui.shift ? -1 : 1); return; } // the patterns' bank (Seq's layer)
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (c.track().engine == EngineKind::Sampler || drum_pads(c.track())) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
     if (ui.page == PageId::Roll) step_octave(c, ui.shift ? -1 : 1); // Roll on a synth: −/+ are its pitch
@@ -41,7 +55,8 @@ bool pad_bank_move(Context& c, int way) {
     auto& ui = c.ui;
     if (!ui.pad_bank || !way) return false;
     ui.pad_bank_used = true;
-    if (ui.page == PageId::Punch) c.step_punch_bank(way);
+    if (ui.seq_held) step_pattern_bank(c, way);
+    else if (ui.page == PageId::Punch) c.step_punch_bank(way);
     else if (c.track().engine == EngineKind::Sampler || drum_pads(c.track())) { step_bank(c, way); say_bank(c); }
     else c.notice("Banks: kit and Drums tracks");
     return true;

@@ -101,7 +101,8 @@ struct Binding {
         // Roadmap P5, Song's Shift + K1 / K2: the tempo lane's point at the cursor's bar, its tempo in whole BPM (29: none
         // there; with none, the lane's tempo there) and its shape (0 a step on its bar, 1 a ramp from the point before).
         SongTempo, SongTempoShape,
-        PitchBend // a PLUGIN track's pitch bend (the fader's Pitch Bend), -64..63 around the centre
+        PitchBend, // a PLUGIN track's pitch bend (the fader's Pitch Bend), -64..63 around the centre
+        PatternProgram // a MIDI track's PROGRAM K3: the program its pattern in hand sends as it starts (0: the track's)
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter

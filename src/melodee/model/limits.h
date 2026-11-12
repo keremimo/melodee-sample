@@ -7,7 +7,10 @@
 // decision still open in the handoff stays a one-line change.
 namespace melodee {
 constexpr unsigned track_count = 16;     // one a pad
-constexpr unsigned pattern_count = 16;   // per track
+constexpr unsigned pattern_count = 128;  // per track: eight banks of sixteen (A-H), as the MPC's 128 sequences
+constexpr unsigned pattern_pads = 16;    // one bank of them: what the pads and the grids show at a time
+constexpr unsigned pattern_banks = pattern_count / pattern_pads;
+constexpr unsigned legacy_patterns = 16; // a track's patterns before the banks: what TIME and FEEL's groove kept
 constexpr unsigned max_bars = 128;       // per pattern, as on the MPC
 constexpr unsigned bar_steps = 16;       // steps the Steps and Roll pages show at a time
 constexpr unsigned notes_per_step = 4;   // a chord on one step

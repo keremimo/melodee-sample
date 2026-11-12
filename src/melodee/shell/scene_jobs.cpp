@@ -148,6 +148,9 @@ void Context::follow_tick() {
             if (t == ui.track % track_count) ui.lead_pattern = tr.pattern;
         }
     }
+    // The bank in view follows the selected track's pattern (playing, else the one that will) when that changes.
+    unsigned shown = host.playing() ? unsigned(host.pattern_of(ui.track % track_count)) % pattern_count : track().pattern % pattern_count;
+    if (int(shown) != ui.bank_seen) { ui.bank_seen = int16_t(shown); ui.pattern_bank = uint8_t(shown / pattern_pads); }
 }
 
 } // namespace melodee

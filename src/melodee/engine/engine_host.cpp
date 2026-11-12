@@ -786,8 +786,10 @@ void EngineHost::apply(const Command& c) {
             // Roadmap P5: the pattern playing changed its follow action or length: what follows is planned again.
             bool replan = running && !song_mode && slot.pattern == c.pattern % pattern_count && !slot.silent && old &&
                           (old->follow != c.data->follow || old->length != c.data->length);
+            bool program = old && slot.kind == EngineKind::Midi && slot.pattern == c.pattern % pattern_count && old->program != c.data->program;
             retire(old);
             if (replan) plan_follow(c.track % track_count);
+            if (program) midi_program(c.track % track_count, frame_now, false); // its own program turned: sent now
         }
         break;
     case Type::Pattern:
@@ -1522,8 +1524,8 @@ void EngineHost::follow(unsigned t) {
     auto& slot = slots[t % track_count];
     unsigned action = slot.follow_do;
     slot.follow_do = 0;
-    uint32_t filled = 0;
-    for (unsigned p = 0; p < pattern_count; ++p) if (!patterns[t][p]->empty()) filled |= 1u << p;
+    PatternSet filled;
+    for (unsigned p = 0; p < pattern_count; ++p) if (!patterns[t][p]->empty()) filled.set(p);
     int to = follow_target(action, slot.pattern, filled, dice);
     follows_now[t].store(follows_now[t].load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
     if (to < 0) { // STOP: what it holds lets go
@@ -1878,7 +1880,7 @@ void EngineHost::midi_program(unsigned t, uint64_t at, bool force) {
     t %= track_count;
     auto& slot = slots[t];
     const auto& base = slot.base;
-    int own = base[size_t(PatternProgram0 + slot.pattern % pattern_count)]; // the pattern's own, else the track's
+    int own = patterns[t][slot.pattern % pattern_count]->program; // the pattern's own, else the track's
     int program = own ? own : base[Program];
     if (!program) return; // Off: the device keeps its own
     if (!force && program == slot.program_sent) return;
