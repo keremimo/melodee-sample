@@ -361,6 +361,10 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     }
     case Kind::RecTap: c.label = "TAP"; c.value = b.value ? "Post FX" : "Pre FX"; break;
     case Kind::KnobParam: {
+        if (unsigned(b.id) == knob_morph) { // the fader on Knob FX (knob fx C): the way from A to B
+            c.label = "A TO B"; c.value = juce::String(b.value * 100 / 127); c.unit = "%"; c.fill = b.value / 127.0f;
+            break;
+        }
         const auto& pi = effect_info(EffectKind(s.project.knob_fx.kind)).params[unsigned(b.id) % effect_params];
         auto shown = show(pi, b.value);
         c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);

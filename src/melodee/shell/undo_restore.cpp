@@ -135,6 +135,7 @@ void Context::restore_master(const MasterState& m) {
     auto& k = project.knob_fx;
     if (k.kind != m.knob_kind) { k.kind = m.knob_kind; send({Type::KnobFx, 0, 0, 0, int16_t(k.kind)}); }
     k.choice = m.knob_choice;
+    k.a = m.knob_a; k.b = m.knob_b; k.morph = m.knob_morph; // Knob FX C: the settings with the values heard between them
     for (unsigned q = 0; q < k.params.size(); ++q) {
         k.params[q] = m.knob_params[q];
         send({Type::KnobFx, 0, uint8_t(q), 1, k.params[q]});

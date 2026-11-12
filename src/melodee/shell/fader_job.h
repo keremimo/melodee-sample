@@ -10,8 +10,9 @@
 // records it in the same lanes) and the screen and the fader light read it.
 // Pages with an obvious job take it over (Kerem, open question 2): Mix the
 // selected track's level, Sends its send, Step Edit nudges the event, Knob FX
-// its mix, the Compressor its amount, Flex Beat its mix. Everywhere else the
-// track's own target (the Fader page, Shift + Pad 9), unless it is off.
+// slides from its setting A to B (round 2), the Compressor its amount, Flex
+// Beat its mix. Everywhere else the track's own target (the Fader page,
+// Shift + Pad 9), unless it is off.
 // Plain functions of the project and the interface, for the test.
 namespace melodee {
 

@@ -7,25 +7,11 @@
 #include "melodee/model/pad_params.h"
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 
 namespace melodee {
 namespace {
 using Kind = Binding::Kind;
 
-// Knob FX's mix: the effect's parameter named MIX; an effect without one
-// (Filter, EQ, Gate, Auto-Pan ...) its first, K1's (a filter's cutoff).
-Binding knob_fx_mix(const Project& project) {
-    const auto& k = project.knob_fx;
-    if (!k.kind) return {};
-    const auto& info = effect_info(EffectKind(k.kind));
-    int chosen = info.params[0].label ? 0 : -1;
-    for (unsigned q = 0; q < effect_params; ++q)
-        if (info.params[q].label && std::strcmp(info.params[q].label, "MIX") == 0) { chosen = int(q); break; }
-    if (chosen < 0) return {};
-    const auto& pi = info.params[size_t(chosen)];
-    return {Kind::KnobParam, chosen, pi.min, pi.max, k.params[size_t(chosen)]};
-}
 } // namespace
 
 Binding fader_target_binding(const Track& track, FaderTarget target) {
@@ -104,9 +90,9 @@ FaderJob fader_job(const Project& project, const UiState& ui) {
     case PageId::Sends: page({Kind::Send, int(ui.sends_bus % bus_count), 0, 100, track.mix.sends[ui.sends_bus % bus_count]}); return job;
     case PageId::Compressor: page({Kind::CompAmount, 0, 0, 100, project.compressor.amount}); return job;
     case PageId::FlexBeat: page({Kind::FlexMix, 0, 0, 100, project.flex.mix}); return job;
-    case PageId::KnobFx:
-        if (auto mix = knob_fx_mix(project); mix.bound()) { page(mix); return job; }
-        break; // an effect without a mix: the track's target
+    case PageId::KnobFx: // Knob FX C: A to B (no effect loaded: the track's target)
+        if (project.knob_fx.kind) { page({Kind::KnobParam, int(knob_morph), 0, 127, project.knob_fx.morph}); return job; }
+        break;
     default: break;
     }
     if (!track.used() || !track.fader_on) return job;

@@ -353,6 +353,19 @@ void load_knob(KnobFx& k, unsigned entry) {
     const auto& info = effect_info(e.kind);
     for (unsigned q = 0; q < effect_params; ++q) k.params[q] = info.params[q].label ? info.params[q].initial : 0;
     if (e.param >= 0) k.params[size_t(e.param)] = e.value;
+    k.settle();
+}
+
+// Knob FX C: A and B of K1-K3 as fractions of each one's range, the fader at `morph`, heard there.
+void knob_settings(KnobFx& k, std::array<float, 3> a, std::array<float, 3> b, uint8_t morph) {
+    const auto& info = effect_info(EffectKind(k.kind));
+    for (unsigned q = 0; q < 3; ++q) {
+        const auto& pi = info.params[q];
+        k.a[q] = int16_t(pi.min + std::lround(a[q] * (pi.max - pi.min)));
+        k.b[q] = int16_t(pi.min + std::lround(b[q] * (pi.max - pi.min)));
+    }
+    k.morph = morph;
+    for (unsigned q = 0; q < 3; ++q) k.params[q] = k.morphed(q);
 }
 
 // Stage on `track`, on button `group`'s page `sub` (shell/stage_map.h).
@@ -1094,12 +1107,21 @@ const Preview previews[] {
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     // Parity phase 7: Knob FX, the master compressor, the picker's new effects.
-    {"knobfx", [](Shell&, Snapshot& s) { // a kit: Ensemble on three pads of bank A
+    {"knobfx", [](Shell&, Snapshot& s) { // a kit: Ensemble on three pads of bank A, the fader 40 % of the way from A to B
          s.ui.page = PageId::KnobFx; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& k = s.project.knob_fx;
          load_knob(k, 19); k.on = true;
          for (unsigned pad : {0u, 1u, 4u}) k.set_pad(3, pad, true);
-         s.ui.knob_cursor = 21; s.ui.turning = 1; s.ui.turned_at = s.now;
+         knob_settings(k, {0.2f, 0.35f, 0.6f}, {0.7f, 0.9f, 0.15f}, 51);
+         s.ui.knob_cursor = 19; s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"knobfxb", [](Shell&, Snapshot& s) { // B in hand, at B; the wheel turned to another effect, Push to load it
+         s.ui.page = PageId::KnobFx; s.ui.track = 3; s.sample = break_sample();
+         auto& k = s.project.knob_fx;
+         load_knob(k, 19); k.on = true;
+         knob_settings(k, {0.2f, 0.35f, 0.6f}, {0.7f, 0.9f, 0.15f}, 127);
+         k.editing = 1;
+         s.ui.knob_cursor = 22;
      }},
     {"knobfxtracks", [](Shell&, Snapshot& s) { // a synth track: Delay on three tracks
          s.ui.page = PageId::KnobFx; s.ui.track = 2; s.playing = true;

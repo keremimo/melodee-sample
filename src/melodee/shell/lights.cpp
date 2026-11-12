@@ -194,7 +194,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         }
         { // phase 7: Knob FX (mode, bypass, entry, kind; tracks and the bank's pads on), the compressor
             const auto& k = project_->knob_fx;
-            knob_bits.store(uint32_t(k.on) | uint32_t(k.bypass) << 1 | uint32_t(ui_.settings.input.fx) << 2 | uint32_t(k.choice) << 8
+            knob_bits.store(uint32_t(k.on) | uint32_t(k.bypass) << 1 | uint32_t(ui_.settings.input.fx) << 2 | uint32_t(k.editing) << 3 | uint32_t(k.choice) << 8
                             | uint32_t(k.kind) << 16 | uint32_t(ui_.knob_cursor) << 24, std::memory_order_relaxed);
             unsigned first = t.bank % sampler_banks * 16;
             uint32_t bank_pads = 0;

@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// KNOB FX (Knob FX, parity phase 7), as on the MPC: one effect on K1-K3
-// (Shift + K1-K3 its second row), on every page while the mode is on. Here
-// the wheel or Minus / Plus walk the list (the MPC's effects first, then
-// Melodee's), Push loads the one under the cursor. The pads switch it on per
-// kit pad of the bank in view (a kit track) or per track: lit bright when
-// on. B2 ALL, B3 BYPASS. Knob FX again turns the mode off.
+// KNOB FX (Knob FX, parity phase 7; round 2, knob fx C "two settings and
+// the fader between"): one effect on K1-K3 (Shift + K1-K3 its second row),
+// on every page while the mode is on. K1-K3 keep two settings, A (B1) and
+// B (B2): the pots change the one in hand, heard at it, and the fader here
+// slides the effect from A to B, a filter opening while a delay closes in
+// one move. The wheel or Minus / Plus walk the list (the MPC's effects first,
+// then Melodee's), Push loads the one turned to (A and B both its initial
+// values). The pads switch it on per kit pad of the bank in view (a kit
+// track) or per track, their lights showing which; Shift + B2 all, B3
+// BYPASS. Knob FX again turns the mode off. Picture: the effect turned to,
+// then for each pot its A, its B, the way between them and where it is now.
 #include "melodee/engine/effect_info.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -15,67 +20,56 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr unsigned rows = 5;
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& k = s.project.knob_fx;
     bool kit = s.track().engine == EngineKind::Sampler;
-    auto c = kit ? colour_of(s) : colour::text;
     Header h = header_of(s);
-    h.left.push_back(pill("KNOB FX"));
-    h.left.push_back(pill(k.bypass ? "BYPASS" : k.on ? "ON" : "OFF", k.bypass ? colour::mid : c));
+    h.left.push_back(pill(Icon::Knob, "KNOB FX", colour::text));
+    h.left.push_back(pill(Icon::Fader, "A TO B"));
     if (kit) h.right.push_back(tag_of(s, s.ui.track));
     else h.right.push_back(label("TRACKS", colour::mid));
-    bool all = true;
-    for (unsigned n = 0; n < 16; ++n) all &= kit ? k.pad_on(s.ui.track, s.track().bank % sampler_banks * 16 + n) : k.track_on(n);
-    frame(p, s, {{"", all ? "ALL ON" : "ALL", "BYPASS"}, k.bypass ? 2 : all ? 1 : -1, c}, h);
+    SoftKeys keys {{"A", "B", "BYPASS"}, int(k.editing), colour::text};
+    keys.toggles = 4;
+    keys.lit = k.bypass ? 4 : 0;
+    frame(p, s, keys, h);
 
-    // The list: the cursor's entry in the middle where it can be, the loaded one marked.
-    float x = zone::pad, y = zone::picture_y + 3, w = 168;
+    // The effect the wheel has turned to: loaded, or amber with Push to load it; its place in the list.
     unsigned count = knob_fx_count(), cursor = std::min<unsigned>(s.ui.knob_cursor, count - 1);
-    unsigned first = cursor > rows / 2 ? std::min(cursor - rows / 2, count - rows) : 0;
-    for (unsigned n = 0; n < rows && first + n < count; ++n) {
-        // A list row (as ui::list_row draws one), its name shrunk to fit beside the tag rather than cut.
-        unsigned e = first + n;
-        bool current = e == cursor, melodee = e >= knob_fx_mpc_count();
-        float ry = y + n * (list_row_h + list_row_gap);
-        if (current) { p.fill(x, ry, w, list_row_h, colour::raised, 4); p.fill(x, ry, 3, list_row_h, c, 1); }
-        p.text(juce::String(e + 1).paddedLeft('0', 2), x + 8, ry, 18, list_row_h, plain(colour::dim, type::small, Weight::Medium));
-        juce::String tag = e == k.choice ? "LOADED" : melodee ? "MELODEE" : "";
-        auto tag_style = caps_text(e == k.choice ? c : colour::dim);
-        float tw = tag.isEmpty() ? 0 : p.width(tag, tag_style) + 6;
-        if (tw > 0) p.text(tag, x + w - 6 - tw, ry, tw, list_row_h, tag_style, juce::Justification::centredRight);
-        juce::String name = knob_fx_entry(e).name;
-        auto style = plain(current ? colour::text : melodee ? colour::dim : colour::sec, type::list, Weight::Medium);
-        float nw = w - 28 - tw - 6;
-        p.text(name, x + 28, ry, nw, list_row_h, p.fit(name, style, nw, type::floor));
-    }
-    p.text(juce::String(cursor + 1) + " / " + juce::String(count) + "  PUSH LOADS", x, y + rows * (list_row_h + list_row_gap) + 2, w, 14,
-           caps_text(colour::dim), juce::Justification::centredRight);
+    const auto& entry = knob_fx_entry(cursor);
+    bool loaded = cursor == k.choice;
+    auto ink = loaded ? colour::text : colour::amber;
+    float y = zone::picture_y + 4;
+    icon(p, family_icon(effect_info(entry.kind).family), zone::pad + 2, y + 1, 16, ink, 1.4f);
+    juce::String name = entry.name;
+    auto style = plain(ink, type::list, Weight::SemiBold);
+    float nw = std::min(p.width(name, style), 200.0f);
+    p.text(name, zone::pad + 24, y, nw, 18, p.fit(name, style, 200, type::floor));
+    if (!loaded) icon(p, Icon::Push, zone::pad + 30 + nw, y + 2, 14, colour::amber, 1.5f);
+    p.text(juce::String(cursor + 1) + " / " + juce::String(count), zone::width - zone::pad - 70, y, 70, 18, caps_text(colour::dim),
+           juce::Justification::centredRight);
 
-    // The pads as they sit (pad 1 bottom left): kit pads of the bank, or tracks.
-    float gx = x + w + 10, gw = zone::width - zone::pad - gx, gh = zone::picture_h - 8;
-    float cw = (gw - 6) / 4, ch = (gh - 6) / 4;
-    for (unsigned pad = 0; pad < 16; ++pad) {
-        unsigned row = 3 - pad / 4, column = pad % 4;
-        bool on;
-        juce::String caption;
-        juce::Colour fill = c;
-        if (kit) {
-            unsigned n = s.track().bank % sampler_banks * 16 + pad;
-            on = k.pad_on(s.ui.track, n);
-            char text[4]; pad_label(n, text);
-            caption = text;
-        } else {
-            on = k.track_on(pad);
-            caption = juce::String(pad + 1);
-            fill = track_colour(pad);
-            if (!s.project.tracks[pad].used()) fill = colour::mid;
-        }
-        if (k.bypass) fill = fill.withAlpha(0.45f);
-        float cx = gx + column * (cw + 2), cy = zone::picture_y + 2 + row * (ch + 2);
-        p.fill(cx, cy, cw, ch, on ? fill : colour::surf, 3);
-        p.text(caption, cx, cy, cw, ch, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
+    // Each pot: its A and B as marks either side of a slot, the way between them, and where the fader has it now.
+    const auto& info = effect_info(EffectKind(k.kind));
+    constexpr float top = zone::picture_y + 32, slot_h = zone::knobs_y - 10 - top;
+    float fade = k.bypass ? 0.45f : 1.0f;
+    for (unsigned q = 0; q < 3 && k.kind; ++q) {
+        const auto& pi = info.params[q];
+        if (!pi.label) continue;
+        float cx = zone::pad + 50 + q * 104;
+        auto at = [&](int v) { return top + slot_h * (1 - std::clamp(gauge_of(pi, v), 0.0f, 1.0f)); };
+        float ya = at(k.a[q]), yb = at(k.b[q]), now = at(k.params[q]);
+        p.fill(cx - 2, top, 4, slot_h, colour::line, 2);
+        p.fill(cx - 2, std::min(ya, yb), 4, std::max(1.0f, std::fabs(ya - yb)), colour::mid.withMultipliedAlpha(fade), 2);
+        auto mark = [&](float x, float my, const char* letter, bool in_hand, float tick_from, float tick_to) {
+            auto c = (in_hand ? colour::text : colour::mid).withMultipliedAlpha(fade);
+            p.circle(x, my, 8, colour::surf);
+            p.text(letter, x - 8, my - 8, 16, 16, plain(c, type::small, Weight::Bold), juce::Justification::centred);
+            p.fill(tick_from, my - 0.6f, tick_to - tick_from, 1.2f, c);
+        };
+        mark(cx - 16, ya, "A", k.editing == 0, cx - 8, cx - 2);
+        mark(cx + 16, yb, "B", k.editing == 1, cx + 2, cx + 8);
+        p.fill(cx - 9, now - 2.5f, 18, 5, colour::text.withMultipliedAlpha(fade), 2.5f);
     }
 }
 
@@ -86,8 +80,9 @@ void push(Context& c) {
     c.notice(std::string("Knob FX: ") + knob_fx_entry(c.ui.knob_cursor).name);
 }
 void soft(Context& c, int key) {
-    if (key == 1) c.knob_fx_all();
-    if (key == 2) c.knob_fx_bypass();
+    if (key == 1 && c.ui.shift) { c.ui.shift_used = true; c.knob_fx_all(); return; } // Shift + B2: every pad or track
+    if (key < 2) c.knob_fx_edit(unsigned(key));
+    else c.knob_fx_bypass();
 }
 } // namespace
 

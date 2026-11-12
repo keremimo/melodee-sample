@@ -34,6 +34,7 @@ SoundState sound_of(const Track& t) {
 MasterState master_of(const Project& p) {
     MasterState m {};
     m.knob_choice = p.knob_fx.choice; m.knob_kind = p.knob_fx.kind; m.knob_bypass = p.knob_fx.bypass; m.knob_params = p.knob_fx.params;
+    m.knob_a = p.knob_fx.a; m.knob_b = p.knob_fx.b; m.knob_morph = p.knob_fx.morph;
     m.compressor = p.compressor; m.pad_fx = p.pad_fx_params; m.flex = p.flex;
     m.punch_depth = p.punch_depth; m.punch_snap = p.punch_snap; m.punch_tail = p.punch_tail;
     return m;

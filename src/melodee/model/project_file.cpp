@@ -311,6 +311,10 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned t = 0; t < track_count; ++t)
             if (k.any_pad(t)) { w.u8(t); w.u32(uint32_t(k.pads[t][0])); w.u32(uint32_t(k.pads[t][0] >> 32)); w.u32(uint32_t(k.pads[t][1])); w.u32(uint32_t(k.pads[t][1] >> 32)); }
         w.u8(255);
+        w.u8(1); // Knob FX C, after what older builds read (version 1): A and B of K1-K3, the fader's place between them
+        for (auto v : k.a) w.i16(v);
+        for (auto v : k.b) w.i16(v);
+        w.u8(k.morph);
     }
     w.end(at);
     at = w.begin("PFXP"); // Pad FX's K1-K3 for the MPC's sixteen, Flex Beat's settings (parity phase 7b)
@@ -729,6 +733,14 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint64_t words[4];
                 for (auto& w : words) w = r.u32();
                 k.pads[t][0] = words[0] | words[1] << 32; k.pads[t][1] = words[2] | words[3] << 32;
+            }
+            k.settle(); // before Knob FX C: A and B are the values heard
+            if (r.ok && !r.done() && r.u8() >= 1) {
+                std::array<int16_t, 3> a {}, b {};
+                for (auto& v : a) v = int16_t(r.i16());
+                for (auto& v : b) v = int16_t(r.i16());
+                unsigned morph = r.u8();
+                if (r.ok) { k.a = a; k.b = b; k.morph = uint8_t(std::min(127u, morph)); }
             }
         } else if (name == "PFXP") {
             for (auto& one : project->pad_fx_params) for (auto& v : one) v = int16_t(r.i16());

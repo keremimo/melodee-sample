@@ -764,9 +764,16 @@ Pumper), Spring, Ensemble, Multi-chorus, Auto-wah, Formant, Width.
   then shows), K3 the bus's return. B1 from Track on a kit: the last
   pad's chain.
 - **Knob FX** (Knob FX): the mode on or off. While on, K1–K3 (and Shift +
-  K1–K3) are its effect's on every page. The page lists the MPC's 28 then
-  Melodee's 15 (wheel or −/+, Push loads). Pads switch it per kit pad (kit
-  tracks) or per track; B2 all, B3 bypass.
+  K1–K3) are its effect's on every page. K1–K3 keep two settings, **A**
+  (B1) and **B** (B2): the pots change the one in hand, heard at it, and
+  the fader on the page slides the effect from A to B (a filter opening
+  while a delay closes, in one move); each pot is drawn as a slot with its
+  A, its B, the way between and where the fader has it. The wheel or −/+
+  walks the MPC's 28 then Melodee's 15 (the one turned to in amber until
+  Push loads it, A and B both at its initial values). Pads switch it per
+  kit pad (kit tracks) or per track, their lights showing which; Shift + B2
+  all, B3 bypass. Undo takes back A, B and the fader's place with the
+  values.
 - **Pad FX** (Pad FX): 47 punches in three banks (Pad Bank or −/+): the
   MPC's sixteen in its order, then Melodee 1 and 2. Hold pads to punch, up
   to four at once (a fifth bypasses the oldest); pressure is depth. B1 LATCH
@@ -816,7 +823,7 @@ dot each on a kit): Pad Volume, Pad Pan, Pad Tune, Pad Attack, Pad Decay /
 Release, Pad Cutoff (the last pad's), Kit Volume, Mod Wheel; a synth has
 the mod wheel alone. Until a pot or the wheel picks, a kit takes Pad Volume
 and a synth the mod wheel. Pages with an obvious job keep it: Tracks the track's level, Sends its
-send, Step Edit nudges, Knob FX its effect's MIX, Compressor its amount,
+send, Step Edit nudges, Knob FX from A to B, Compressor its amount,
 Flex Beat its mix. The fader takes a value over by Fader takeover (Pickup
 by default); Seq Record writes the lane of what it moves; Erase + fader
 asks to erase that lane. A card at the picture's bottom right says what it

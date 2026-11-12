@@ -670,7 +670,8 @@ std::string Shell::fx_summary() const {
     char text[48];
     std::snprintf(text, sizeof(text), "%.1f", double(host.compression()));
     return " melodee_knob=" + std::to_string(k & 1) + " melodee_knob_bypass=" + std::to_string((k >> 1) & 1)
-         + " melodee_rec_fx=" + std::to_string((k >> 2) & 1) + " melodee_knob_entry=" + std::to_string((k >> 8) & 0xff)
+         + " melodee_rec_fx=" + std::to_string((k >> 2) & 1) + " melodee_knob_edit=" + std::to_string((k >> 3) & 1) // Knob FX C: 0 A, 1 B
+         + " melodee_knob_entry=" + std::to_string((k >> 8) & 0xff)
          + " melodee_knob_kind=" + std::to_string((k >> 16) & 0xff) + " melodee_knob_cursor=" + std::to_string(k >> 24)
          + " melodee_knob_tracks=" + std::to_string(targets & 0xffff) + " melodee_knob_pads=" + std::to_string(targets >> 16)
          + " melodee_comp=" + std::to_string(c & 1) + " melodee_comp_color=" + std::to_string((c >> 1) & 1)

@@ -2894,6 +2894,8 @@ void performance_effects() {
 
     // The project file: Knob FX and the compressor come back; older files (neither section) load them off.
     project->knob_fx.choice = 16; project->knob_fx.kind = uint8_t(EffectKind::AmpSim); project->knob_fx.params = {3, 70, 40, 2, -3, 5};
+    project->knob_fx.settle(); // as a load leaves it: A and B the values heard (Knob FX C)
+    project->knob_fx.b = {1, 90, 10}; project->knob_fx.morph = 100;
     project->knob_fx.on = true; project->knob_fx.bypass = true;
     project->knob_fx.set_track(4, true); project->knob_fx.set_pad(1, 70, true);
     project->compressor = {true, true, 12, 80, 66, 9, true, 5, 7};
@@ -2904,6 +2906,33 @@ void performance_effects() {
     const auto& k = back->knob_fx;
     CHECK(!k.on && k.bypass && k.choice == 16 && k.kind == uint8_t(EffectKind::AmpSim) && k.params[4] == -3 && k.track_on(4) && !k.track_on(3)
           && k.pad_on(1, 70) && !k.pad_on(1, 6));
+    CHECK(k.a[1] == 70 && k.b[1] == 90 && k.b[2] == 10 && k.morph == 100 && k.editing == 0); // Knob FX C: A, B and the fader's place
+    { // a KNFX from before Knob FX C (no A, B or morph after the pads): A and B are the values heard
+        auto before_c = data;
+        for (size_t n = 0; n + 8 <= before_c.size(); ++n) {
+            if (std::memcmp(&before_c[n], "KNFX", 4) != 0) continue;
+            uint32_t length = 0;
+            std::memcpy(&length, &before_c[n + 4], 4);
+            before_c.erase(before_c.begin() + long(n + 8 + length - 14), before_c.begin() + long(n + 8 + length));
+            length -= 14;
+            std::memcpy(&before_c[n + 4], &length, 4);
+            break;
+        }
+        auto old = std::make_unique<Project>();
+        CHECK(load_project(before_c, *old, *back_bank).empty());
+        const auto& ok = old->knob_fx;
+        CHECK(ok.kind == uint8_t(EffectKind::AmpSim) && ok.pad_on(1, 70) && ok.a[1] == 70 && ok.b[1] == 70 && ok.b[2] == 40 && ok.morph == 0);
+    }
+    { // A and B: the fader at 0 is A, at 127 B, between them in proportion
+        KnobFx kf;
+        kf.kind = uint8_t(EffectKind::Chorus); kf.params = {30, 50, 40, 0, 0, 0};
+        kf.settle();
+        CHECK(kf.a == kf.b && kf.a[2] == 40 && kf.morph == 0 && kf.editing == 0);
+        kf.b = {80, 50, 0};
+        kf.morph = 127; CHECK(kf.morphed(0) == 80 && kf.morphed(2) == 0);
+        kf.morph = 0; CHECK(kf.morphed(0) == 30 && kf.morphed(2) == 40);
+        kf.morph = 64; CHECK(kf.morphed(0) == 55 && kf.morphed(2) == 20 && kf.morphed(1) == 50);
+    }
     const auto& c = back->compressor;
     CHECK(c.on && c.color && c.attack == 12 && c.release == 80 && c.amount == 66 && c.boost == 9 && c.sidechain && c.key == 5 && c.key_pad == 7);
     auto older = data;
@@ -2920,6 +2949,9 @@ void performance_effects() {
     CHECK(cards[0].kind == Binding::Kind::KnobParam && cards[0].id == 0 && cards[1].value == 70);
     cards = page_bindings(*project, ui, pattern, true);
     CHECK(cards[0].kind == Binding::Kind::KnobParam && cards[0].id == 3 && cards[2].value == 5);
+    project->knob_fx.editing = 1; // Knob FX C: K1-K3 show the setting in hand, B here; Shift's row is the effect's own
+    CHECK(page_bindings(*project, ui, pattern, false)[1].value == 90 && page_bindings(*project, ui, pattern, true)[2].value == 5);
+    project->knob_fx.editing = 0;
     project->knob_fx.on = false;
     CHECK(page_bindings(*project, ui, pattern, false)[1].kind == Binding::Kind::Level);
     ui.page = PageId::Rack; ui.track = 2;
@@ -3074,12 +3106,12 @@ void fader_and_takeover() {
     ui.page = PageId::FlexBeat; CHECK(fader_job(*project, ui).binding.kind == Kind::FlexMix);
     ui.page = PageId::KnobFx; // no effect loaded: the track's target
     CHECK(fader_job(*project, ui).source == FaderJob::Source::Target);
-    project->knob_fx.kind = uint8_t(EffectKind::Chorus);
-    job = fader_job(*project, ui);
-    CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::KnobParam
-          && std::string(effect_info(EffectKind::Chorus).params[size_t(job.binding.id)].label) == "MIX");
-    project->knob_fx.kind = uint8_t(EffectKind::Filter); // no MIX: K1's, the cutoff
-    CHECK(fader_job(*project, ui).binding.id == 0);
+    project->knob_fx.kind = uint8_t(EffectKind::Chorus); project->knob_fx.morph = 40;
+    job = fader_job(*project, ui); // Knob FX C: from A to B, whatever the effect
+    CHECK(job.source == FaderJob::Source::Page && job.binding.kind == Kind::KnobParam && unsigned(job.binding.id) == knob_morph
+          && job.binding.value == 40 && job.binding.max == 127);
+    project->knob_fx.kind = uint8_t(EffectKind::Filter);
+    CHECK(unsigned(fader_job(*project, ui).binding.id) == knob_morph);
     // Off: only the page's own jobs remain.
     ui.page = PageId::Stage; kit.fader_on = false;
     CHECK(fader_job(*project, ui).source == FaderJob::Source::None && fader_light_level(fader_job(*project, ui)) == 0);

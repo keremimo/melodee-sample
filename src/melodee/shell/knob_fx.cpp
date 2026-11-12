@@ -2,10 +2,12 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // Knob FX (parity phase 7), as on the MPC: Knob FX turns the mode on and
 // off; while on, K1-K3 (Shift: the second row) are the effect's, on every
-// page. The Knob FX page lists the effects (wheel or Minus / Plus, Push
+// page. The Knob FX page walks the effects (wheel or Minus / Plus, Push
 // loads), its pads switch the effect on per kit pad (a kit track) or per
-// track, B2 switches it on for all, B3 bypasses. Rec Input FX puts it on the
-// input during a take.
+// track, Shift + B2 switches it on for all, B3 bypasses. Rec Input FX puts
+// it on the input during a take. Round 2 (knob fx C): K1-K3 keep two
+// settings, A (B1) and B (B2); the pots change the one in hand, and the
+// fader on the page slides the effect from A to B.
 #include "melodee/engine/effect_info.h"
 #include "melodee/shell/context.h"
 
@@ -37,18 +39,39 @@ void Context::knob_fx_load(unsigned entry) {
     const auto& info = effect_info(e.kind);
     for (unsigned q = 0; q < effect_params; ++q) k.params[q] = info.params[q].label ? info.params[q].initial : 0;
     send({Type::KnobFx, 0, 0, 0, int16_t(k.kind)});
+    k.settle();
     if (e.param >= 0 && unsigned(e.param) < effect_params) knob_fx_param(unsigned(e.param), e.value);
+    k.settle(); // the entry's own value in both A and B
     dirty = true;
 }
 
 void Context::knob_fx_param(unsigned q, int value) {
     auto& k = project.knob_fx;
+    const auto& info = effect_info(EffectKind(k.kind));
+    auto heard = [&](unsigned p) { // K1-K3's value p where the fader has it, to the engine
+        if (!info.params[p].label) return;
+        k.params[p] = k.morphed(p);
+        send({Type::KnobFx, 0, uint8_t(p), 1, k.params[p]});
+    };
+    if (q == knob_morph) { // the fader, A to B
+        k.morph = uint8_t(std::clamp(value, 0, 127));
+        for (unsigned p = 0; p < 3; ++p) heard(p);
+        dirty = true;
+        return;
+    }
     if (q >= effect_params) return;
-    const auto& pi = effect_info(EffectKind(k.kind)).params[q];
+    const auto& pi = info.params[q];
     if (!pi.label) return;
-    k.params[q] = int16_t(std::clamp<int>(value, pi.min, pi.max));
-    send({Type::KnobFx, 0, uint8_t(q), 1, k.params[q]});
+    auto v = int16_t(std::clamp<int>(value, pi.min, pi.max));
+    if (q < 3) { k.setting()[q] = v; heard(q); } // K1-K3: the setting in hand, heard where the fader has it
+    else { k.params[q] = v; send({Type::KnobFx, 0, uint8_t(q), 1, k.params[q]}); }
     dirty = true;
+}
+
+void Context::knob_fx_edit(unsigned setting) {
+    auto& k = project.knob_fx;
+    k.editing = uint8_t(setting ? 1 : 0);
+    knob_fx_param(knob_morph, k.editing ? 127 : 0); // heard at it, so the pots change what is heard
 }
 
 void Context::knob_fx_pad(unsigned pad) {

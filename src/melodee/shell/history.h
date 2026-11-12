@@ -60,6 +60,8 @@ struct MasterState {
     uint8_t knob_choice = 0, knob_kind = 0;
     bool knob_bypass = false;
     std::array<int16_t, 6> knob_params {};
+    std::array<int16_t, 3> knob_a {}, knob_b {}; // Knob FX C: its two settings and the fader's place between them
+    uint8_t knob_morph = 0;
     MasterComp compressor {};
     PadFxParams pad_fx {};
     FlexSettings flex {};
@@ -67,6 +69,7 @@ struct MasterState {
     bool operator==(const MasterState& o) const { // field by field: padding is never compared
         const auto& c = compressor; const auto& d = o.compressor;
         return knob_choice == o.knob_choice && knob_kind == o.knob_kind && knob_bypass == o.knob_bypass && knob_params == o.knob_params
+            && knob_a == o.knob_a && knob_b == o.knob_b && knob_morph == o.knob_morph
             && c.on == d.on && c.color == d.color && c.attack == d.attack && c.release == d.release && c.amount == d.amount && c.boost == d.boost
             && c.sidechain == d.sidechain && c.key == d.key && c.key_pad == d.key_pad
             && pad_fx == o.pad_fx && flex.mode == o.flex.mode && flex.mix == o.flex.mix && flex.quantize == o.flex.quantize

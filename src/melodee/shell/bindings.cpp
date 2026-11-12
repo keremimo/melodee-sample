@@ -218,7 +218,7 @@ std::array<Binding, 3> knob_bindings(const Project& project, bool shift) {
     for (unsigned n = 0; n < 3; ++n) {
         unsigned q = (shift ? 3 : 0) + n;
         const auto& pi = info.params[q];
-        if (pi.label) out[n] = {Kind::KnobParam, int32_t(q), pi.min, pi.max, k.params[q]};
+        if (pi.label) out[n] = {Kind::KnobParam, int32_t(q), pi.min, pi.max, q < 3 ? k.setting()[q] : k.params[q]}; // K1-K3: A or B in hand
     }
     return out;
 }
