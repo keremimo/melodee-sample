@@ -319,3 +319,23 @@ behaviour, write the code fresh for this app.
   Acid-303 bridge at FIFO 30 (`/proc`), a play of the project with its
   plug-ins without a dropout. Pushes owed in sample-base: 039c64e and
   7985b50 (on f8d92f0 and later 12f0679, a peer's).
+- 2026-11-12, P1 drums and sequencer: ratchets with velocity and pitch
+  ramps, each hit on its frame (46e323c); trig conditions beside chance and
+  Fill on Play held (ffb5e15); Motion kept by each pattern at tick
+  resolution, 8192 points, with locks from a held step or note (b477285);
+  kit lanes of their own length (6edb0c3, which also fixed a preview and a
+  doc line a shared staging had misplaced into 8e7e690); Note Repeat at 1/4
+  and 1/64, pressure as velocity, its repeats written by Seq Record
+  (70d4e85); a pattern's feel heard live, strength, swing, humanize and a
+  groove from another pattern (7dc0858; round 2 laid it on Time Correct C,
+  a387316); generators, Euclid on a kit lane and variations (d826576); a
+  track's playback speed (7cabb1e). Host tests for each. HEAD 7cabb1e
+  passes what build.sh runs (make, the 8 unit tests, self-test, monkey 3000
+  moves, 246 previews with no text issues). On the MPC (48 kHz, remote
+  presses, every edit undone after): ratchet hits counted
+  (`melodee_hits`), Fill 1/0 (`melodee_fill`), a 1:2 condition holding
+  notes back (`melodee_trigs`), a kit's EUCLID row laying its lane and
+  Shift + K1 shortening it, locks from a held step (Motion points 0 to 2),
+  VARY's Busier into the next empty pattern, Note Repeat at 1/64 and 16
+  repeats written under Seq Record, a track at x2 and back. Pressure by
+  hand and everything by ear wait above. No base changes; no pushes owed.
