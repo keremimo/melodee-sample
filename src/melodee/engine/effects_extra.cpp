@@ -83,6 +83,7 @@ void Effect::update_extra() {
     mix = 1;
     switch (current) {
     case K::DiffDelay: {
+        glide[1] = dsp::step_per_frame(1 - std::exp(-1.0f / (0.05f * float(dsp::model_rate)))); // SYNC's glide (roadmap P4)
         delay = std::clamp(unsigned(time_seconds(p[0]) * fs()), 2u, diff_line - 2);
         a = pct(1); mix = pct(2);
         b = pct(3) * 0.7f;                             // the diffusers' coefficient
@@ -179,8 +180,12 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
             // Each echo goes through four diffusers before it is heard and fed back, so the repeats smear like echoes in a room.
             float out[2];
             float* lines[2] {memory, memory + diff_line};
+            float back = sync_back(float(diff_line - 2)); // SYNC: a note value (roadmap P4); else TIME
+            bool on_clock = synced > 0;
             for (unsigned side = 0; side < 2; ++side) {
-                float x = tap(lines[side], diff_line, write, float(delay));
+                // On the clock the echo lands on the note: the four diffusers' own delay is taken off the line's.
+                float own = on_clock ? float(comb_length[side * 4] + comb_length[side * 4 + 1] + comb_length[side * 4 + 2] + comb_length[side * 4 + 3]) : 0.0f;
+                float x = tap(lines[side], diff_line, write, std::max(2.0f, back - own));
                 for (unsigned n = side * 4; n < side * 4 + 4; ++n) {
                     float* ap = memory + 2 * diff_line + n * diff_room;
                     float buffered = ap[comb_at[n]];

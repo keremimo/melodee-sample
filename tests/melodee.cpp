@@ -9898,7 +9898,43 @@ void keyed_dynamics_p4() {
     level(0, 1);
 }
 
+// Roadmap P4: SYNC on the delays. An echo at a note value of the song's clock, following it when the tempo changes.
+void delay_sync_p4() {
+    CHECK(delay_sync_param(EffectKind::Echo) == 4 && delay_sync_param(EffectKind::DiffDelay) == 5 && delay_sync_param(EffectKind::Reverb) < 0);
+    CHECK(delay_sync_quarters(0) == 0 && delay_sync_quarters(9) == 1 && std::string(delay_sync_name(7)) == "1/8D");
+    double quarter = effect_clock.quarter;
+    for (auto kind : {EffectKind::Echo, EffectKind::DiffDelay}) {
+        DelayPool pool;
+        Effect echo;
+        echo.set_kind(kind, pool);
+        echo.set_param(1, 0);   // no feedback: one echo
+        echo.set_param(2, 100); // all wet
+        if (kind == EffectKind::DiffDelay) echo.set_param(3, 0); // no smear: the echo where it lands
+        echo.set_param(unsigned(delay_sync_param(kind)), 9); // 1/4
+        effect_clock.quarter = 11025; // 240 BPM at 44.1 kHz frames
+        auto echo_at = [&](unsigned length) {
+            std::vector<float> l(length, 0.0f), r(length, 0.0f);
+            l[0] = r[0] = 1;
+            for (unsigned at = 0; at < length; at += 128) echo.process(l.data() + at, r.data() + at, std::min(128u, length - at));
+            unsigned best = 0; float most = 0;
+            for (unsigned f = 0; f < length; ++f) if (std::fabs(l[f]) > most) { most = std::fabs(l[f]); best = f; }
+            return best;
+        };
+        unsigned first = echo_at(16384);
+        CHECK(first >= 11024 && first <= 11026);
+        effect_clock.quarter = 5512.5; // the tempo doubled: the echo glides to an eighth of a second
+        echo_at(44100);
+        echo.clear();
+        unsigned second = echo_at(16384);
+        CHECK(second >= 5511 && second <= 5514);
+        echo.set_param(unsigned(delay_sync_param(kind)), 0); // Off: TIME again
+        CHECK(echo_at(32768) != second);
+    }
+    effect_clock.quarter = quarter;
+}
+
 int main() {
+    delay_sync_p4();
     keyed_dynamics_p4();
     delay_compensation_p4();
     chop_kept();

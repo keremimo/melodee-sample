@@ -141,6 +141,7 @@ void Effect::update() {
         break;
     }
     case K::Echo: case K::TapeEcho: case K::PingPong:
+        glide[1] = dsp::step_per_frame(1 - std::exp(-1.0f / (0.05f * float(dsp::model_rate)))); // SYNC's glide (roadmap P4)
         delay = std::min(DelayPool::half - 64, unsigned(time_seconds(p[0]) * fs()));
         a = pct(1);                                                   // feedback
         mix = pct(2);
@@ -235,6 +236,16 @@ void Effect::reverb(float& l, float& r) {
         }
     }
     l = out[0]; r = out[1];
+}
+
+float Effect::sync_back(float limit) {
+    int index = delay_sync_param(current);
+    double quarters = index >= 0 ? delay_sync_quarters(p[size_t(index)]) : 0;
+    if (quarters <= 0) { synced = 0; return float(delay); }
+    float target = std::clamp(float(quarters * effect_clock.quarter), 2.0f, limit);
+    if (synced <= 0) synced = target;
+    synced += (target - synced) * glide[1]; // about 50 ms to a new tempo
+    return synced;
 }
 
 void Effect::process(float* left, float* right, unsigned frames) {
@@ -357,7 +368,7 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::Echo: case K::TapeEcho: case K::PingPong: {
-            float back = float(delay);
+            float back = sync_back(float(DelayPool::half - 64)); // SYNC: a note value (roadmap P4); else TIME
             if (current == K::TapeEcho) { lfo += 0.6f / fs(); lfo -= std::floor(lfo); back *= 1 + c * 0.004f * std::sin(two_pi * lfo); }
             float dl = delayed(line_l, write, back), dr = delayed(line_r, write, back);
             tone_l += (dl - tone_l) * b; tone_r += (dr - tone_r) * b;

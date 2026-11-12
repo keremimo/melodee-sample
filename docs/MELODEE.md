@@ -1021,6 +1021,15 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   any key of a loop track's chain are heard a block (128 frames) late. The
   file keeps keys in FXKY; the master compressor's Sidechain (one track or
   one of its kit pads) is as it was.
+- **SYNC on the delays (roadmap P4).** Echo (Knob FX's Delay), Ping pong
+  (their K2 on the second row), Tape echo and Diff delay (K3 there) take a
+  SYNC: Off (TIME in ms, as before) or a note value, 1/32 to 1/1 with
+  triplets and dotted ones. On the clock the echo is that note at the
+  song's tempo, followed every block, so a tempo change (a pattern's own
+  BPM, MIDI clock in) moves it, gliding over about 50 ms as a tape's speed
+  would rather than clicking; TIME's card shows the note value. A Diff
+  delay on the clock takes its diffusers' own delay off its line, so its
+  echo lands on the note.
 - **Knob FX** (Knob FX): the mode on or off. While on, K1–K3 (and Shift +
   K1–K3) are its effect's on every page. K1–K3 keep two settings, **A**
   (B1) and **B** (B2): the pots change the one in hand, heard at it, and

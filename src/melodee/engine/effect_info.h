@@ -43,6 +43,11 @@ struct EffectInfo {
 };
 
 const EffectInfo& effect_info(EffectKind kind);
+// SYNC on the delays (roadmap P4): Echo (Knob FX's Delay), Tape echo, Ping pong and Diff delay take their time from the
+// song's clock while it is not Off: the note value's quarters (0 Off), the parameter holding it (-1 none), its name.
+double delay_sync_quarters(int sync);
+int delay_sync_param(EffectKind kind);
+const char* delay_sync_name(int sync);
 const char* family_name(Family family);
 // The effects of a family in picker order (two columns of six at most).
 using FamilyList = std::array<EffectKind, 12>;

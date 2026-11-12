@@ -6,6 +6,8 @@ namespace melodee {
 namespace {
 const char* const filter_types[] {"Low pass", "Band pass", "High pass"};
 const char* const tremolo_shapes[] {"Sine", "Square"};
+// SYNC on the delays (roadmap P4): Off (TIME in ms), else a note value of the song's clock (delay_sync_quarters()).
+const char* const delay_syncs[] {"Off", "1/32", "1/16T", "1/16", "1/16D", "1/8T", "1/8", "1/8D", "1/4T", "1/4", "1/4D", "1/2", "1/2D", "1/1"};
 const char* const pumper_speeds[] {"Bar", "1/2", "1/2T", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T"};
 const char* const amp_cabs[] {"D.I.", "Brit", "1x8\"", "1x12\"", "2x10\"", "2x12\"", "4x10\"", "4x12\"", "1x15\" Bass", "4x10\" Bass", "Radio"};
 const char* const clip_shapes[] {"Tanh", "Sine", "Parabolic"};
@@ -30,11 +32,11 @@ const EffectInfo effects[] {
     {K::Plate, "Plate", F::Space, true, {P("SIZE", 0, 100, 60), P("DECAY", 60, 100, 84, Format::Time), P("DAMP", 0, 100, 15), mix(30), P("PREDELAY", 0, 100, 0), P("WIDTH", 0, 100, 100)},
      {60, 72, 70, 64, 58, 52, 46, 40, 34, 28, 22}},
     {K::Shimmer, "Shimmer", F::Space, true, {P("SIZE", 0, 100, 75), P("DECAY", 60, 100, 88, Format::Time), P("DAMP", 0, 100, 30), mix(35), P("SHIMMER", 0, 100, 55), P("WIDTH", 0, 100, 100)}, {10, 20, 34, 48, 62, 76, 86, 92, 96, 98, 100}},
-    {K::Echo, "Echo", F::Time, true, {P("TIME", 30, 78, 60, Format::Time), P("FEEDBACK", 0, 95, 40), mix(30), P("TONE", 0, 100, 60), none, none},
+    {K::Echo, "Echo", F::Time, true, {P("TIME", 30, 78, 60, Format::Time), P("FEEDBACK", 0, 95, 40), mix(30), P("TONE", 0, 100, 60), P("SYNC", 0, 13, 0, Format::Choice, delay_syncs), none},
      {88, 0, 64, 0, 46, 0, 32, 0, 20, 0, 12}},
-    {K::TapeEcho, "Tape echo", F::Time, true, {P("TIME", 30, 78, 62, Format::Time), P("FEEDBACK", 0, 95, 50), mix(30), P("WOW", 0, 100, 25), P("TONE", 0, 100, 40), none},
+    {K::TapeEcho, "Tape echo", F::Time, true, {P("TIME", 30, 78, 62, Format::Time), P("FEEDBACK", 0, 95, 50), mix(30), P("WOW", 0, 100, 25), P("TONE", 0, 100, 40), P("SYNC", 0, 13, 0, Format::Choice, delay_syncs)},
      {84, 0, 66, 0, 50, 0, 38, 0, 28, 0, 20}},
-    {K::PingPong, "Ping pong", F::Time, true, {P("TIME", 30, 78, 58, Format::Time), P("FEEDBACK", 0, 95, 45), mix(30), P("TONE", 0, 100, 60), none, none},
+    {K::PingPong, "Ping pong", F::Time, true, {P("TIME", 30, 78, 58, Format::Time), P("FEEDBACK", 0, 95, 45), mix(30), P("TONE", 0, 100, 60), P("SYNC", 0, 13, 0, Format::Choice, delay_syncs), none},
      {88, 0, 0, 64, 0, 0, 46, 0, 0, 32, 0}},
     {K::Looper, "Looper", F::Time, true, {P("LENGTH", 30, 78, 70, Format::Time), P("RECORD", 0, 1, 0, Format::Switch), P("KEEP", 0, 100, 90), mix(100), none, none}, {60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60}},
     {K::Chorus, "Chorus", F::Motion, true, {P("RATE", 0, 100, 30, Format::Rate), P("DEPTH", 0, 100, 50), mix(50), none, none, none},
@@ -74,7 +76,7 @@ const EffectInfo effects[] {
     {K::Limiter, "Limiter", F::Dynamics, true, {P("CEILING", -24, 0, -1, Format::Number), P("RELEASE", 0, 100, 30, Format::Time), P("LOOKAHEAD", 0, 10, 0, Format::Ms), none, none, none},
      {70, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70}},
     // Parity phase 7: the rest of the MPC's Knob FX list. Row 1 is K1-K3 as on the MPC, row 2 its Shift + K1-K3.
-    {K::DiffDelay, "Diff delay", F::Time, true, {P("TIME", 30, 75, 58, Format::Time), P("FEEDBACK", 0, 95, 45), mix(30), P("DIFFUSION", 0, 100, 70), P("HIGH DAMP", 0, 100, 40), none},
+    {K::DiffDelay, "Diff delay", F::Time, true, {P("TIME", 30, 75, 58, Format::Time), P("FEEDBACK", 0, 95, 45), mix(30), P("DIFFUSION", 0, 100, 70), P("HIGH DAMP", 0, 100, 40), P("SYNC", 0, 13, 0, Format::Choice, delay_syncs)},
      {70, 20, 56, 30, 44, 34, 36, 30, 28, 24, 20}},
     {K::SampleDelay, "Sample delay", F::Time, true, {P("LEFT", 0, 250, 0, Format::Ms), P("RIGHT", 0, 250, 12, Format::Ms), mix(100), none, none, none},
      {90, 0, 90, 0, 0, 0, 0, 0, 0, 0, 0}},
@@ -143,5 +145,18 @@ unsigned family_effects(Family family, FamilyList& out) {
         if (effects[k].family == family) out[n++] = EffectKind(k);
     return n;
 }
+
+double delay_sync_quarters(int sync) {
+    static const double quarters[] {0, 0.125, 1.0 / 6, 0.25, 0.375, 1.0 / 3, 0.5, 0.75, 2.0 / 3, 1, 1.5, 2, 3, 4};
+    return sync > 0 && sync < int(sizeof(quarters) / sizeof(quarters[0])) ? quarters[sync] : 0;
+}
+int delay_sync_param(EffectKind kind) {
+    switch (kind) {
+    case EffectKind::Echo: case EffectKind::PingPong: return 4;
+    case EffectKind::TapeEcho: case EffectKind::DiffDelay: return 5;
+    default: return -1;
+    }
+}
+const char* delay_sync_name(int sync) { return sync > 0 && sync < 14 ? delay_syncs[sync] : "Off"; }
 
 } // namespace melodee

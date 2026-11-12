@@ -77,6 +77,10 @@ private:
     void process_extra(float* left, float* right, unsigned frames);
     void reverb(float& l, float& r);
     float delayed(const float* line, unsigned at, float back) const; // fractional read behind `at`
+    // SYNC (roadmap P4): the delay's time this frame, gliding to the note value's at the clock's tempo (a tempo change
+    // bends the echoes as a tape's speed would, never clicks); `limit` the line's reach. Off: the TIME it was given.
+    float sync_back(float limit);
+    float synced = 0; // frames, as it glides; 0 not yet set
 
     EffectKind current = EffectKind::None;
     bool bypass = false;

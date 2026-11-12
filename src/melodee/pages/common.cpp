@@ -231,6 +231,8 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         const auto& pi = effect_info(EffectKind(slot.kind)).params[unsigned(b.id) % 8];
         auto shown = show(pi, b.value);
         c.label = pi.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(pi); c.fill = gauge_of(pi, b.value);
+        int sync = delay_sync_param(EffectKind(slot.kind)); // roadmap P4: a delay on the clock shows its note value as its TIME
+        if (sync >= 0 && unsigned(b.id) % 8 == 0 && slot.params[size_t(sync)] > 0) { c.value = delay_sync_name(slot.params[size_t(sync)]); c.unit = "sync"; }
         break;
     }
     case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
