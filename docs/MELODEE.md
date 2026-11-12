@@ -1038,8 +1038,9 @@ while following.
   after (0.5, 1, 1.5, 3 s) and Silence below (−48, −60, −72 dB: what
   counts as quiet for both). A rate or
   buffer change reopens the audio device (the codec powers down and up
-  behind the board's mute, so without a click: about a second of silence in
-  the headphones and line out) and a rate change
+  behind the board's mute and with the speaker held off, so without a click:
+  about a second of silence in the headphones, line out and speaker, as at
+  every start) and a rate change
   stops playback: the engine builds every sound and effect again at the new
   rate. Melodee reads the rate and buffer from the card before the device
   first opens, so it starts at them without a reopen. The computer sees the MPC's USB-C audio at the new rate too (the
