@@ -370,6 +370,33 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
+// Erase tapped on the list (shell/erase_copy.h): the project under the cursor's sheet open on DELETE, armed; tapped
+// again, deleted (as Push on DELETE twice). False on a folder, SD card access or the MPC's own file.
+bool project_erase(Context& c) {
+    if (!c.ui.project_list || c.ui.move_open) return false;
+    auto v = view_of(c);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
+    if (!e || e->kind != ProjectEntry::Kind::Project || e->mpc()) return false;
+    std::array<Action, 8> list {};
+    unsigned n = actions(e->path == c.project_path, list, e->mpc()), row = n;
+    for (unsigned k = 0; k < n; ++k) if (list[k] == Delete) row = k;
+    if (row == n) return false;
+    if (!c.ui.sheet_open || c.ui.sheet_row != row) { c.ui.sheet_open = true; c.ui.sheet_row = uint8_t(row); c.ui.delete_armed = false; }
+    act(c, Delete);
+    return true;
+}
+
+// Shift + Erase on the list: the project under the cursor duplicated (DUPLICATE). False where there is none.
+bool project_copy(Context& c) {
+    if (!c.ui.project_list || c.ui.move_open) return false;
+    auto v = view_of(c);
+    const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
+    if (!e || e->kind != ProjectEntry::Kind::Project || e->mpc()) return false;
+    act(c, Duplicate);
+    c.notice("Duplicated " + e->name);
+    return true;
+}
+
 const PageSpec project_page {draw, play_pad, wheel, push, soft, wheel}; // Minus / Plus move the list
 
 } // namespace melodee

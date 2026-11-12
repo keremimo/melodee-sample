@@ -451,6 +451,7 @@ public:
     void set_effect_key(unsigned chain, unsigned slot, unsigned key); // roadmap P4: what keys a Compressor or Gate (fx_key_*)
     void toggle_bypass(unsigned chain, unsigned slot);
     void move_effect(unsigned chain, unsigned slot, int way);
+    void copy_effect(unsigned chain, unsigned slot); // again in the slot after it (Shift + Erase)
     void sync_chain(unsigned chain); // after moving or removing: the whole chain again
     void send_fx(Command::Type type, unsigned chain, unsigned slot, unsigned param, int16_t value);
     void clear_fx_motion(unsigned chain);

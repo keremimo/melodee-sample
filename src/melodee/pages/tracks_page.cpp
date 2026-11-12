@@ -11,6 +11,7 @@
 // and where it goes (shell/pad_bank.h, as Pad Bank held + B2 or B3 anywhere).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include "melodee/shell/erase_copy.h"
 #include "melodee/shell/pad_bank.h"
 #include <cmath>
 
@@ -36,7 +37,9 @@ void draw(Paint& p, const Snapshot& s) {
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
-    if (down) c.select_track(pad % track_count);
+    if (!down) return;
+    c.select_track(pad % track_count);
+    if (c.ui.erase) erase_tap(c); // Erase + pad: that track cleared, once B3 says so (as with Pad Bank held)
 }
 
 void wheel(Context& c, int delta) { c.select_track(unsigned(int(c.ui.track) + delta + int(track_count)) % track_count); }

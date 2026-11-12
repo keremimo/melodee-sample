@@ -1720,7 +1720,9 @@ void button_remap() {
     CHECK(button_has_job(*project, l, B::Seq, false, false));
     CHECK(!button_has_job(*project, l, B::Chop, false, false) && button_has_job(*project, l, B::Loop, false, false));
     CHECK(!button_has_job(*project, l, B::Erase, false, false) && button_has_job(*project, l, B::Erase, false, true));
-    l.page = PageId::Patterns; // the pads play here now: Erase has nothing of its own on a synth track
+    l.page = PageId::Patterns; // Erase tapped clears the pattern in hand, Shift + Erase copies patterns (shell/erase_copy.h)
+    CHECK(button_has_job(*project, l, B::Erase, false, false) && button_has_shift_job(*project, l, B::Erase, false));
+    l.page = PageId::Edit; // a synth's sound: Erase + pot only, nothing to copy
     CHECK(!button_has_job(*project, l, B::Erase, false, false) && !button_has_shift_job(*project, l, B::Erase, false));
     l.seq_held = true; // Seq held: Erase + pad clears a pattern, Shift + Erase copies one, on any page
     l.page = PageId::Stage;
@@ -8305,6 +8307,136 @@ void pad_lights() {
 // Track move (shell/track_swap.h, shell/pad_bank.h): two tracks trade places whole, and what names a track by its
 // number follows them; the same swap undoes it. B1-B3 while the pads are the tracks start, switch, step back and
 // end a move or copy; the pads light a move's targets without red (nothing is lost).
+#include "melodee/shell/erase_copy.h"
+#include "melodee/shell/note_copy.h"
+#include "melodee/shell/step_edit.h"
+
+// Erase and Copy on whatever the page holds (shell/erase_copy.h): what Shift + Erase copies on each page, where a tap
+// of Erase has a job, a key's notes and a step copied inside a pattern, and the pads and buttons lit for it.
+void erase_copy_everywhere() {
+    using namespace pad_light;
+    // A key's notes onto another key: the same times and values, the target's own notes gone first.
+    Pattern p;
+    p.length = 4 * bar_steps * sixteenth_ticks;
+    Event a; a.tick = 0; a.key = 60; a.velocity = 90; a.chance = 50;
+    Event b = a; b.tick = 4 * sixteenth_ticks; b.velocity = 70;
+    Event c = a; c.tick = 2 * sixteenth_ticks; c.key = 64;
+    CHECK(p.add(a) && p.add(b) && p.add(c));
+    CHECK(!copy_key_events(p, 62, 67) && !copy_key_events(p, 60, 60)); // nothing on 62; onto itself
+    CHECK(copy_key_events(p, 60, 64));
+    unsigned on64 = 0;
+    for (const auto& e : p.events) if (e.key == 64) { ++on64; CHECK(e.chance == 50 && (e.tick == 0 || e.tick == 4 * sixteenth_ticks)); }
+    CHECK(on64 == 2 && p.events.size() == 4); // 64's own note (tick 2) replaced
+    // A step onto another: each note as far into it; on a lane only that key's notes move and the others stay.
+    Pattern s;
+    s.length = bar_steps * sixteenth_ticks;
+    Event x; x.tick = 1 * s.q() + 10; x.key = 36; x.velocity = 100;
+    Event y = x; y.key = 38;
+    Event z; z.tick = 5 * s.q(); z.key = 36;
+    CHECK(s.add(x) && s.add(y) && s.add(z));
+    CHECK(step_has_notes(s, 1, -1) && !step_has_notes(s, 2, -1) && step_has_notes(s, 5, 36) && !step_has_notes(s, 5, 38));
+    CHECK(!copy_step_notes(s, 2, 3, -1) && !copy_step_notes(s, 1, 1, -1));
+    CHECK(copy_step_notes(s, 1, 5, 38)); // the kick on step 6 stays, the snare joins it
+    CHECK(step_has_notes(s, 5, 36) && step_has_notes(s, 5, 38) && s.events.size() == 4);
+    CHECK(copy_step_notes(s, 1, 5, -1)); // the whole step: step 6 as step 2, 10 ticks in
+    unsigned in6 = 0;
+    for (const auto& e : s.events) if (e.tick >= 5 * s.q() && e.tick < 6 * s.q()) { ++in6; CHECK(e.tick == 5 * s.q() + 10); }
+    CHECK(in6 == 2 && s.events.size() == 4);
+    CHECK(!copy_step_notes(s, 1, 99, -1)); // past the end
+
+    // What Shift + Erase copies, page by page.
+    auto project = std::make_unique<Project>();
+    auto& synth = project->tracks[0];
+    synth.engine = EngineKind::Plugin;
+    auto& kit = project->tracks[1];
+    kit.engine = EngineKind::Sampler;
+    kit.pads[0].sample = 1;
+    UiState ui;
+    using C = CopyHere;
+    ui.page = PageId::Stage; ui.track = 0;
+    CHECK(copy_here(*project, ui, false, true) == C::Keys && copy_here(*project, ui, false, false) == C::None);
+    ui.track = 1;
+    CHECK(copy_here(*project, ui, true, false) == C::Pads);
+    ui.pad_bank = true; CHECK(copy_here(*project, ui, true, false) == C::Tracks); ui.pad_bank = false;
+    ui.seq_held = true; CHECK(copy_here(*project, ui, true, false) == C::Patterns); ui.seq_held = false;
+    ui.page = PageId::Tracks; CHECK(copy_here(*project, ui, false, false) == C::Tracks);
+    ui.page = PageId::Patterns; CHECK(copy_here(*project, ui, true, false) == C::Patterns); // the page's patterns before the kit's pads
+    ui.page = PageId::Steps; CHECK(copy_here(*project, ui, false, false) == C::Steps);
+    ui.page = PageId::Roll; CHECK(copy_here(*project, ui, false, false) == C::Keys);
+    ui.page = PageId::StepEdit; CHECK(copy_here(*project, ui, false, false) == C::Keys);
+    ui.track = 5; // an empty track: no notes to copy
+    ui.page = PageId::Roll; CHECK(copy_here(*project, ui, false, false) == C::None);
+    ui.page = PageId::Steps; CHECK(copy_here(*project, ui, false, false) == C::None);
+    ui.track = 0;
+    ui.page = PageId::Song; ui.song_cursor = 0;
+    CHECK(copy_here(*project, ui, false, false) == C::None); // no clip under the cursor
+    Clip clip; clip.track = 0; clip.pattern = 0; clip.bar = 0; clip.bars = 2;
+    CHECK(project->song.place(clip));
+    CHECK(copy_here(*project, ui, false, false) == C::Clip);
+    ui.song_export = true; CHECK(copy_here(*project, ui, false, false) == C::None); ui.song_export = false;
+    ui.page = PageId::Rack; // the track's chain: an effect in focus, else nothing
+    unsigned chain = page_chain(*project, ui);
+    ui.fx_cursor[UiState::cursor_of(chain)] = 0;
+    CHECK(copy_here(*project, ui, false, false) == C::None);
+    project->chain(chain).slots[0].kind = 1;
+    CHECK(copy_here(*project, ui, false, true) == C::Effect); // the effect before the synth's keys
+    ui.picker_open = true; CHECK(copy_here(*project, ui, false, false) == C::None); ui.picker_open = false;
+    ui.page = PageId::Project; ui.project_list = false; CHECK(copy_here(*project, ui, false, false) == C::None);
+    ui.project_list = true; CHECK(copy_here(*project, ui, false, false) == C::Project);
+    ui.page = PageId::Chop; ui.track = 1; ui.slices.count = 3; CHECK(copy_here(*project, ui, true, false) == C::Slice);
+    ui.page = PageId::SettingsPage; ui.track = 0; CHECK(copy_here(*project, ui, false, false) == C::None);
+
+    // Where a tap of Erase has a job.
+    for (PageId page : {PageId::Roll, PageId::Steps, PageId::StepEdit, PageId::Patterns, PageId::Tracks, PageId::Scenes,
+                        PageId::Looper, PageId::Rack, PageId::Bus, PageId::Master, PageId::PadFx, PageId::Chop,
+                        PageId::LayersPage, PageId::ModPage}) {
+        ui.page = page; CHECK(erase_tap_page(ui));
+    }
+    ui.page = PageId::Project; ui.project_list = false; CHECK(!erase_tap_page(ui));
+    ui.project_list = true; CHECK(erase_tap_page(ui));
+    ui.page = PageId::Stage; CHECK(!erase_tap_page(ui));
+
+    // Erase lit wherever it has a job, Shift + Erase wherever Copy does.
+    using B = SurfaceButton;
+    ui.page = PageId::Stage; ui.track = 0;
+    CHECK(!button_has_job(*project, ui, B::Erase, false, false) && button_has_job(*project, ui, B::Erase, false, false, true));
+    CHECK(!button_has_shift_job(*project, ui, B::Erase, false) && button_has_shift_job(*project, ui, B::Erase, false, true));
+    ui.page = PageId::Rack; CHECK(button_has_job(*project, ui, B::Erase, false, false) && button_has_shift_job(*project, ui, B::Erase, false));
+    ui.page = PageId::Tracks; CHECK(button_has_job(*project, ui, B::Erase, false, false) && button_has_shift_job(*project, ui, B::Erase, false));
+    ui.page = PageId::Song; CHECK(button_has_shift_job(*project, ui, B::Erase, false));
+
+    // The pads: a key copy and a key erase where the pads play a synth's keys, a step copy on Steps.
+    auto bank = std::make_unique<PatternBank>();
+    EngineHost host;
+    TrackTaps taps;
+    std::array<Look, 16> looks;
+    PadFacts keys; keys.key_pads = true;
+    auto light = [&](PadFacts facts) { PadScene scene {ui, *project, *bank, host, taps, facts, 1000, nullptr, 0}; pad_looks(scene, looks); };
+    auto is = [&](unsigned pad, Hue hue, unsigned r) { return looks[pad].hue == hue && rung(looks[pad].level) == r; };
+    int k0 = pad_key(*project, synth, 0), k2 = pad_key(*project, synth, 2);
+    Event note; note.key = uint8_t(k0); bank->at[0][synth.pattern].add(note);
+    ui.page = PageId::Stage; ui.track = 0;
+    ui.erase = true;
+    CHECK(pad_context(ui, synth, keys, 0) == PadContext::KeyErase && pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page);
+    light(keys); CHECK(is(0, Hue::Red, 2) && is(2, Hue::None, 0)); // the key with notes red, the rest dark
+    ui.erase = false;
+    ui.copying = UiState::Copying::Keys;
+    CHECK(pad_context(ui, synth, keys, 0) == PadContext::KeyCopy);
+    light(keys); CHECK(is(0, Hue::Track, 2) && is(2, Hue::None, 0)); // the keys that can be copied
+    ui.copy_from = int16_t(k0);
+    light(keys); CHECK(is(0, Hue::White, 4) && is(2, Hue::Track, 1)); // the source white, where it can land Faint
+    CHECK(k2 != k0);
+    ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::KeyCopy);
+    ui.page = PageId::Steps; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page); // keys are not steps
+    ui.copying = UiState::Copying::Steps; ui.copy_from = -1; ui.steps_bar = 0;
+    CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::StepCopy);
+    light({}); CHECK(is(0, Hue::Track, 2) && is(1, Hue::None, 0)); // step 1 holds the note
+    ui.copy_from = 0;
+    light({}); CHECK(is(0, Hue::White, 4) && is(1, Hue::Track, 1));
+    ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page); // steps only on Steps
+    ui.stop_copying();
+}
+
 void track_move() {
     CHECK(swapped(3, 3, 7) == 7 && swapped(7, 3, 7) == 3 && swapped(5, 3, 7) == 5);
     auto project = std::make_unique<Project>();
@@ -11709,6 +11841,7 @@ int main() {
     shift_pads();
     pad_lights();
     track_move();
+    erase_copy_everywhere();
     drum_layout();
     button_remap();
     looper_chord_and_sheet();

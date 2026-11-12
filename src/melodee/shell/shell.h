@@ -110,6 +110,7 @@ private:
     std::atomic<uint32_t> meter_bits {0}; // their LEDs (left, right << 8) and the input shown (<< 16), for `status`
     bool record_track_keys() const; // Record: a synth track source plays the pads (Minus / Plus: its octave)
     bool kit_pads() const; // the pads play the kit here: Erase + pad deletes, Shift + Erase copies
+    bool key_pads() const; // the pads play a synth's keys here: Erase + pad erases the key's notes, Shift + Erase copies them
     bool song_buttons() const { return ui_.page == PageId::Song && !ui_.song_export && !ui_.shift; } // Chop, Erase, Note Repeat work on the clip
     void end_copy_away();  // copying stops away from the pads it copies
 

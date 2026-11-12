@@ -26,7 +26,10 @@ enum class PadContext : uint8_t {
     Shift,        // the printed Shift + pad jobs (on Samples, the next empty pad)
     ResamplePick, // Resample: the pad that gets the render
     PadCopy,      // Shift + Erase on a kit: the pad to copy, then where
+    KeyCopy,      // Shift + Erase on a synth's play page, Roll or Step Edit: the key whose notes to copy, then where
+    StepCopy,     // Shift + Erase on Steps: the step to copy, then where
     PadErase,     // Erase held on a kit: the pad, or its notes while playing
+    KeyErase,     // Erase held where the pads play a synth's keys: that key's notes, asked first
     Page,         // the page's own job (pages/page.h pad_job)
 };
 
@@ -34,6 +37,7 @@ struct PadFacts {
     bool card = false;        // SD card access holds the controls: the pads only play (Shell::pad)
     bool record_keys = false; // Context::record_keys(): a take of Melodee's own sound runs
     bool kit_pads = false;    // the page's pads play the selected kit (Shell::kit_pads)
+    bool key_pads = false;    // the page's pads play a synth's (or MIDI or plug-in track's) keys (Shell::key_pads)
 };
 
 inline PadContext pad_context(const UiState& ui, const Track& track, const PadFacts& facts, unsigned pad) {
@@ -52,7 +56,11 @@ inline PadContext pad_context(const UiState& ui, const Track& track, const PadFa
     if (ui.shift) return C::Shift;
     if (ui.resample_pick) return C::ResamplePick;
     if (facts.kit_pads && ui.copying == UiState::Copying::Pads) return C::PadCopy;
+    if (ui.copying == UiState::Copying::Keys && (facts.key_pads || ui.page == PageId::Roll || ui.page == PageId::StepEdit))
+        return C::KeyCopy;
+    if (ui.copying == UiState::Copying::Steps && ui.page == PageId::Steps) return C::StepCopy;
     if (facts.kit_pads && ui.erase) return C::PadErase;
+    if (facts.key_pads && ui.erase) return C::KeyErase;
     return C::Page;
 }
 

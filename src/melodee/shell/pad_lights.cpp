@@ -572,6 +572,32 @@ Look copy_look(const PadScene& s, unsigned pad) {
     if (ui.copy_from == int(kit)) return white(full);
     return used ? red(faint) : track(selected_index(s), faint); // where: replaced, or landing clean
 }
+// Shift + Erase on a synth's keys, Roll or Step Edit: the keys with notes in the track's colour; then the key
+// copied white, where its notes go Faint (red where they replace notes).
+Look key_copy_look(const PadScene& s, const std::array<bool, 192>& keys, unsigned pad) {
+    int key = pad_key(s.project, selected(s), pad);
+    if (key < 0) return {};
+    bool notes = keys[unsigned(key) % 192];
+    if (s.ui.copy_from < 0) return notes ? track(selected_index(s), dim) : Look {};
+    if (s.ui.copy_from == key) return white(full);
+    return notes ? red(faint) : track(selected_index(s), faint);
+}
+// Shift + Erase on Steps: the steps with notes (on a kit, the lane's); then the step copied white, where it goes Faint.
+Look step_copy_look(const PadScene& s, unsigned pad) {
+    const auto& p = shown(s);
+    unsigned step = unsigned(s.ui.steps_bar) * bar_steps + pad;
+    if (step >= p.steps()) return {};
+    bool notes = step_velocity(p, step, steps_lane(selected(s))) > 0;
+    if (s.ui.copy_from < 0) return notes ? track(selected_index(s), dim) : Look {};
+    if (s.ui.copy_from == int(step)) return white(full);
+    return notes ? red(faint) : track(selected_index(s), faint);
+}
+// Erase held where the pads play a synth's keys: the keys with notes Dim red, flaring as they play.
+Look key_erase_look(const PadScene& s, const Heard& snd, const std::array<bool, 192>& keys, unsigned pad) {
+    int key = pad_key(s.project, selected(s), pad);
+    if (key < 0 || !keys[unsigned(key) % 192]) return {};
+    return red_flare(red(dim), snd.level[pad]);
+}
 Look name_look(const PadScene& s, unsigned pad) {
     const auto& n = s.ui.name;
     Look base = pad == 15 ? red(dim) : pad == 14 && n.digits ? white(full) : white(dim); // 16 deletes; 15 the digits
@@ -636,6 +662,9 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
         case PadContext::ResamplePick: look = resample_look(s, pad); break;
         case PadContext::PadCopy: look = copy_look(s, pad); break;
         case PadContext::PadErase: look = erase_look(s, snd, keys, pad); break;
+        case PadContext::KeyCopy: look = key_copy_look(s, keys, pad); break;
+        case PadContext::StepCopy: look = step_copy_look(s, pad); break;
+        case PadContext::KeyErase: look = key_erase_look(s, snd, keys, pad); break;
         case PadContext::Page:
             switch (ui.page) {
             case PageId::Looper: look = loop_look(s, pad, false); break;

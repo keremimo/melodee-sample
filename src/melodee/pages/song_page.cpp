@@ -376,6 +376,12 @@ void song_chop(Context& c) {
     c.sync_song();
 }
 
+// Shift + Erase: the clip under the cursor again after itself, as DUPLICATE.
+void song_copy(Context& c) {
+    int index = clip_index(c);
+    if (index >= 0) duplicate(c, index);
+}
+
 void song_erase(Context& c) {
     int index = clip_index(c);
     if (index < 0) return;

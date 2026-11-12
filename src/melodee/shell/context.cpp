@@ -1586,6 +1586,17 @@ void Context::move_effect(unsigned n, unsigned slot, int way) {
     sync_chain(n);
 }
 
+// Copy (Shift + Erase on a chain page): slot `slot` again right after it, the rest one along; a full chain keeps as it is.
+void Context::copy_effect(unsigned n, unsigned slot) {
+    auto& chain = project.chain(n);
+    unsigned count = chain.count();
+    if (slot >= count || count >= chain.size) return;
+    clear_fx_motion(n);
+    for (unsigned k = count; k > slot + 1; --k) chain.slots[k] = chain.slots[k - 1];
+    chain.slots[slot + 1] = chain.slots[slot];
+    sync_chain(n);
+}
+
 void Context::sync_chain(unsigned n) {
     const auto& chain = project.chain(n);
     for (unsigned k = 0; k < chain.size; ++k) {

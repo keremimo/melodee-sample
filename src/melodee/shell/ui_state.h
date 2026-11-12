@@ -307,12 +307,14 @@ struct UiState {
     int8_t last_pot = -1;     // for Shift + wheel fine edits
     bool last_pot_shift = false; // and whether it turned its Shift card
     uint32_t held_pads = 0;
-    // Shift + Erase: copy one kit pad onto another, or (on Patterns) one
-    // pattern onto another, or (Pad Bank held) one track onto another.
-    // Armed, then the source, then the target.
-    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks };
+    // Shift + Erase: copy one kit pad onto another, one pattern onto another
+    // (Seq held, or Patterns), one track onto another (Pad Bank held, or
+    // Tracks), one key's notes onto another key (a synth's play pages, Roll,
+    // Step Edit), or one step onto another (Steps). Armed, then the source,
+    // then the target (shell/erase_copy.h).
+    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps };
     Copying copying = Copying::Off;
-    int8_t copy_from = -1;    // the kit pad, pattern or track picked first, -1 until then
+    int16_t copy_from = -1;   // the kit pad, pattern, track, key or step picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns: the track the pattern is copied from
     bool moving = false;      // Tracks: a move (B2 MOVE: the two trade places) instead of a copy (shell/track_swap.h)
     void stop_copying() { copying = Copying::Off; copy_from = -1; moving = false; }

@@ -286,6 +286,44 @@ void nudge(Context& c, int way) {
 }
 } // namespace
 
+// Erase tapped on a chain page (shell/erase_copy.h): the effect in focus out, as REMOVE. False on an empty slot or
+// with the picker open.
+bool chain_erase(Context& c) {
+    auto& ui = c.ui;
+    if (ui.picker_open) return false;
+    if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return false;
+    unsigned n = chain_here(c), at = UiState::cursor_of(n), cursor = ui.fx_cursor[at];
+    const auto& chain = c.project.chain(n);
+    if (cursor >= chain.count()) return false;
+    std::string name = effect_info(EffectKind(chain.slots[cursor].kind)).name;
+    c.set_effect(n, cursor, EffectKind::None);
+    if (cursor && cursor >= chain.count()) ui.fx_cursor[at] = uint8_t(cursor - 1); // the last one gone: onto the one before
+    ui.sheet_open = false;
+    ui.fx_row[at] = 0;
+    c.notice(name + " removed");
+    return true;
+}
+
+// Shift + Erase on a chain page: the effect in focus again in the slot after it, its values and bypass too (the
+// rest move along one); the cursor goes onto the copy. Not a plug-in, and not into a full chain.
+bool chain_copy(Context& c) {
+    auto& ui = c.ui;
+    if (ui.picker_open) return false;
+    if (ui.page == PageId::PadFx && c.track().engine != EngineKind::Sampler) return false;
+    unsigned n = chain_here(c), at = UiState::cursor_of(n), cursor = ui.fx_cursor[at];
+    const auto& chain = c.project.chain(n);
+    unsigned count = chain.count();
+    if (cursor >= count) return false;
+    if (plugin_slot(chain.slots[cursor])) { c.notice("Copy: not a plug-in"); return true; }
+    if (count >= chain.size) { c.notice("The chain is full"); return true; }
+    c.copy_effect(n, cursor);
+    ui.fx_cursor[at] = uint8_t(cursor + 1);
+    ui.fx_row[at] = 0;
+    ui.sheet_open = false;
+    c.notice(std::string(effect_info(EffectKind(chain.slots[cursor].kind)).name) + " copied");
+    return true;
+}
+
 const PageSpec rack_page {draw, play_pad, wheel, push, soft, nudge};
 const PageSpec bus_page {draw, play_pad, wheel, push, soft, nudge};
 const PageSpec master_page {draw, play_pad, wheel, push, soft, nudge};

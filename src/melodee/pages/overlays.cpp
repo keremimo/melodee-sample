@@ -6,6 +6,7 @@
 // short press of Power; and over all of them the place bar.
 #include "melodee/engine/arp.h"
 #include "melodee/pages/common.h"
+#include "melodee/shell/step_edit.h"
 #include "melodee/shell/mute_mode.h"
 #include "melodee/shell/note_repeat.h"
 #include "melodee/shell/pad_bank.h"
@@ -151,6 +152,10 @@ void draw_notice(Paint& p, const Snapshot& s) {
     } else if (s.ui.copying == UiState::Copying::Tracks) {
         juce::String verb = s.ui.moving ? "Move" : "Copy";
         text = s.ui.copy_from < 0 ? verb + ": pick a track" : verb + " track " + juce::String(s.ui.copy_from + 1) + ": pick where";
+    } else if (s.ui.copying == UiState::Copying::Keys) {
+        text = s.ui.copy_from < 0 ? juce::String("Copy: pick a key") : "Copy " + juce::String(key_label(s.track(), s.ui.copy_from)) + ": pick where";
+    } else if (s.ui.copying == UiState::Copying::Steps) {
+        text = s.ui.copy_from < 0 ? juce::String("Copy: pick a step") : "Copy step " + juce::String(s.ui.copy_from + 1) + ": pick where";
     } else if (s.ui.notice[0] && s.now - s.ui.notice_at < 1500) {
         text = juce::String::fromUTF8(s.ui.notice); // notices may hold an en dash or a middle dot
     } else if (s.ui.mute_mode() && !tracks_on_pads(s.ui)) { // mute mode: what the pads mute here

@@ -13,6 +13,13 @@ void song_marker(Context& c);
 // Chop splits the clip at the cursor, Erase deletes it, Note Repeat repeats it to the next marker.
 void song_chop(Context& c);
 void song_erase(Context& c);
+void song_copy(Context& c); // Shift + Erase: the clip after itself, as DUPLICATE
+// Erase tapped and Shift + Erase on the page in view (shell/erase_copy.h): a chain's effect in focus out, or again
+// after itself; the project under Project's cursor deleted (tapped twice) or duplicated. False with nothing there.
+bool chain_erase(Context& c);
+bool chain_copy(Context& c);
+bool project_erase(Context& c);
+bool project_copy(Context& c);
 void song_repeat(Context& c);
 // Loop: the brace on the clip's bars, or off. False when there was nothing to do.
 bool song_loop(Context& c);

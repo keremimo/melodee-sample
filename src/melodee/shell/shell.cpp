@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/shell/erase_copy.h"
 #include "melodee/shell/key_pick.h"
 #include "melodee/shell/p4_status.h"
 #include "melodee/plugin/plugin_rack.h"
@@ -188,7 +189,9 @@ void Shell::button(Button b, bool pressed) {
         if (!r.taken) press(b, pressed);
         return;
     }
-    if (!pressed || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
+    if (pressed && b != Button::Erase && b != Button::Shift && ui_.erase) ui_.erase_used = true; // Erase + a button: its release erases nothing
+    // Erase's release is a press of its own (a tap erases the thing in focus): one undo step, as any page press.
+    if ((!pressed && b != Button::Erase) || b == Button::Shift || ((b == Button::Minus || b == Button::Plus) && ui_.shift)) { press(b, pressed); return; }
     PageEdit step(context_, b, false);
     press(b, pressed);
     step.finish();
@@ -240,25 +243,24 @@ void Shell::press(Button b, bool pressed) {
         if (b == Button::Loop) { loop_press(context_, pressed); return; } // held: the loop grid (shell/looper_jobs.cpp)
     }
     if (b == Button::Erase) {
+        bool was_down = ui.erase;
         ui.erase = pressed;
-        if (!pressed) { // tapped on its own: on Roll the note in focus goes (one undo)
-            if (!ui.erase_used && ui.page == PageId::Roll && !ui.sheet_open && ui.ask == UiState::Ask::None) roll_erase(context_);
+        if (!pressed) { // tapped on its own: the thing in focus on the page goes (shell/erase_copy.h)
+            if (was_down && !ui.erase_used) erase_tap(context_);
             return;
         }
         ui.erase_used = ui.shift || ui.copying != UiState::Copying::Off; // Copy, or leaving it, is the press's job
-        if (ui.shift) { // Shift + Erase: Copy, as printed: tracks with Pad Bank held, patterns with Seq held, kit pads on a kit (again: off)
+        if (ui.shift) { // Shift + Erase: Copy, as printed, of what the page holds (shell/erase_copy.h; again: off)
             ui.shift_used = true;
             if (ui.pad_bank) ui.pad_bank_used = true;
             if (ui.seq_held) ui.seq_used = true;
-            auto kind = ui.pad_bank ? UiState::Copying::Tracks : ui.seq_held ? UiState::Copying::Patterns
-                      : kit_pads() ? UiState::Copying::Pads : UiState::Copying::Off;
             if (ui.copying != UiState::Copying::Off) { context_.notice(ui.moving ? "Move off" : "Copy off"); ui.stop_copying(); }
-            else if (kind == UiState::Copying::Off) context_.notice("Copy: hold Seq or Pad Bank");
-            else { ui.copying = kind; ui.copy_from = -1; }
+            else copy_press(context_, kit_pads(), key_pads());
         } else if (ui.copying != UiState::Copying::Off) { // Erase alone leaves copying (or a track move)
             context_.notice(ui.moving ? "Move off" : "Copy off");
             ui.stop_copying();
         } else if (song_buttons()) {
+            ui.erase_used = true; // the clip goes as Erase goes down; its release erases nothing more
             song_erase(context_); // the clip under the cursor, one undo
         }
         return;
@@ -435,6 +437,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
 }
 
 void Shell::wheel(int delta) {
+    if (ui_.erase) ui_.erase_used = true; // Erase + the wheel: its release erases nothing
     if (ui_.exit_open) { if (!ui_.exit_off) ui_.exit_pick = key_pick_turn(ui_.exit_pick, delta); return; } // STAY, POWER OFF, MPC APP
     if (ui_.ask != UiState::Ask::None) { ui_.ask_pick = key_pick_turn(ui_.ask_pick, delta, 0b101); return; } // CANCEL or the verb
     if (ui_.name.open()) { // Shift: the character under the cursor; else the cursor
@@ -512,6 +515,9 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
         if (!samples_shift_pad(context_)) shift_pad(context_, pad);
         return;
     case PadContext::ResamplePick: context_.resample_pad(kit); return; // Resample (Shift + Pad 11): this pad gets the render
+    case PadContext::KeyCopy: key_copy_pad(context_, pad); return;   // a key's notes onto another key (shell/erase_copy.h)
+    case PadContext::StepCopy: step_copy_pad(context_, pad); return; // a step onto another step
+    case PadContext::KeyErase: key_erase_pad(context_, pad); return; // that key's notes, once B3 says so
     case PadContext::PadErase: // stopped, the pad empty; playing or recording, its notes out of the pattern
         if (host.playing() || ui_.recording) context_.erase_pad_notes(kit);
         else context_.delete_pad(kit);
@@ -537,6 +543,7 @@ PadFacts Shell::pad_facts() const {
     f.card = card_owns_controls(ui_);
     f.record_keys = context_.record_keys();
     f.kit_pads = kit_pads();
+    f.key_pads = key_pads();
     return f;
 }
 
@@ -554,10 +561,22 @@ bool Shell::kit_pads() const {
     return t.engine == EngineKind::Sampler && !t.levels && pad_job(ui_) == play_pad;
 }
 
-// Copying ends once its pads are gone: pads away from a kit, patterns away from Patterns.
+// Whether the pads play the selected track's keys on this page, a synth's (or a MIDI or plug-in track's): there
+// Erase + pad erases that key's notes and Shift + Erase copies them to another key. Not on 16 Levels.
+bool Shell::key_pads() const {
+    const auto& t = project_->tracks[ui_.track % track_count];
+    return t.engine != EngineKind::Sampler && t.used() && !t.levels && t.layout != PadLayout::Levels && pad_job(ui_) == play_pad;
+}
+
+// Copying ends once its pads are gone: pads away from a kit, keys away from them, steps away from Steps.
 void Shell::end_copy_away() {
-    bool here = ui_.copying == UiState::Copying::Pads ? kit_pads()
-              : ui_.copying == UiState::Copying::Tracks || ui_.copying == UiState::Copying::Patterns; // tracks, patterns: on any page
+    bool here = true; // tracks, patterns: on any page
+    switch (ui_.copying) {
+    case UiState::Copying::Pads: here = kit_pads(); break;
+    case UiState::Copying::Keys: here = key_pads() || ui_.page == PageId::Roll || ui_.page == PageId::StepEdit; break;
+    case UiState::Copying::Steps: here = ui_.page == PageId::Steps; break;
+    default: break;
+    }
     if (ui_.copying != UiState::Copying::Off && !here) ui_.stop_copying();
 }
 

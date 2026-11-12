@@ -121,7 +121,7 @@ cards.
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
-| Erase | Held + pad, pot, step or fader: clear it (below). On Roll a tap on its own deletes the note in focus; on Song, the clip under the cursor | Copy: kit pads, patterns with Seq held, tracks with Pad Bank held. With Pad Bank held, Erase + pad clears a track |
+| Erase | Held + pad, pot, step or fader: clear it (below). A tap on its own erases the page's selection (below); on Song, the clip under the cursor | Copy of what the page holds (below). With Pad Bank held, Erase + pad clears a track |
 | Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B3). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
@@ -227,6 +227,8 @@ grammar (`shell/pad_light.h`):
 | Erase held on a kit | Stopped: the pads that would empty Faint red; playing: the pads with notes Dim red, flaring as they play |
 | Pad Bank + Erase held | The tracks Erase + pad would clear Faint red (a sound, or notes in its patterns), empty ones dark |
 | Shift + Erase on a kit | The pads that can be copied Dim; then the source white, where it lands Faint (red where it replaces) |
+| Erase held on a synth's keys | The keys with notes in the pattern Dim red, flaring as they play |
+| Key or step copy | The keys (or Steps' steps) with notes Dim; then the source white, where it lands Faint (red where it replaces) |
 | Name sheet | Keys white Dim, delete red, the key just typed bright for the retap window |
 | A question, Exit | The pad the question is about flashing red, the rest dark; Exit all dark |
 
@@ -1464,13 +1466,33 @@ while following.
   play a kit, tracks elsewhere; Shift + pad solos. Muted pads red, soloed
   white. Shift + Mute unmutes everything. Kit pad mutes are saved.
 - **Erase**: + pad on a kit, stopped, empties the pad; playing or recording,
-  erases that pad's notes (one undo). With Seq held + pad asks, then
-  clears that pattern; on Step Edit asks. + pot sets the initial value (on Motion: asks to clear
-  the lane). + fader asks to clear its lane.
-- **Copy** (Shift + Erase): the first pad is the source, the next the
-  target; kit pads, patterns with Seq held, whole tracks with Pad Bank held
-  (sound, kit, its 128 patterns and their motion; the target keeps its mix
-  strip). Again, or Erase, leaves.
+  erases that pad's notes (one undo). + pad where the pads play a synth's,
+  plug-in's or MIDI track's keys asks, then erases that key's notes. With
+  Seq held + pad asks, then clears that pattern; on Step Edit and Roll asks.
+  On Tracks + pad asks, then clears that track. + pot sets the initial
+  value (on Motion: asks to clear the lane). + fader asks to clear its lane.
+  Tapped on its own (nothing else pressed or turned while it is down) it
+  erases the page's selection (shell/erase_copy.h): Roll's note in focus,
+  Steps' step under the cursor (a kit: the lane's note), Step Edit's
+  event, Patterns' pattern in hand (asks), Tracks' track (asks), Scenes'
+  scene name and tempo, the Looper's loop (asks), a chain's effect in
+  focus, Chop's slice in hand (it joins the one before), LAYERS' layer in
+  hand, MOD's target in hand, and on Project the project under the cursor
+  (the sheet opens on DELETE, armed; a second tap deletes). Song's Erase
+  deletes the clip as it goes down. Each is one undo where its page keeps
+  undo.
+- **Copy** (Shift + Erase) copies what the page holds. Pad Bank held, or
+  Tracks: whole tracks (sound, kit, its 128 patterns and their motion; the
+  target keeps its mix strip). Seq held, or Patterns: patterns. Steps: a
+  step onto another (a kit: the lane's notes). Roll, Step Edit and a
+  synth's play pages: a key's notes onto another key in the pattern. A
+  kit's play pages: kit pads. These pick: the first pad is the source, the
+  next the target, whose own notes or sound go first (one undo). Again, or
+  Erase, leaves. Song: the clip under the cursor after itself (DUPLICATE).
+  Project: the project under the cursor (DUPLICATE). A chain: the effect
+  in focus into the slot after it, values and bypass too, the rest moving
+  along (not a plug-in, not into a full chain). Chop: the slice in hand
+  onto the next empty pad (Extract).
 - **Move** (B2 with Pad Bank held, or Shift + B2 on Tracks; B3 there is
   Copy): the track, then where it goes. It moves whole, mix strip too; a
   track already there trades places with it, so nothing is lost. The song's

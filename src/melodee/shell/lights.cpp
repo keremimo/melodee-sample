@@ -376,7 +376,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         lights.button(button, light);
         levels = (levels & ~(uint64_t(3) << (2 * unsigned(button)))) | uint64_t(light) << (2 * unsigned(button)); // the last set wins
     };
-    auto job = [&](B button) { return button_has_job(project, ui, button, kit, erase_pots); };
+    bool keys = key_pads();
+    auto job = [&](B button) { return button_has_job(project, ui, button, kit, erase_pots, keys); };
     auto on = [&](B button, bool lit) { set(button, lit && job(button) ? L::Bright : job(button) ? L::Dim : L::Off); };
     if (card_owns_controls(ui)) { // SD card access: every mode waits; only the transport answers (B1-B3 have no lights)
         for (B button : {B::Sample, B::Seq, B::PadFx, B::KnobFx, B::Shift, B::PadBank, B::Erase, B::NoteRepeat, B::Chop, B::Mute,
@@ -407,7 +408,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         for (B button : {B::Sample, B::Seq, B::PadFx, B::KnobFx, B::Shift, B::PadBank, B::Erase, B::NoteRepeat, B::Chop, B::Mute,
                          B::Loop, B::SixteenLevels, B::SampleSelect, B::TapTempo, B::Minus, B::Plus, B::SampleRecord, B::SeqRecord,
                          B::Stop, B::Play, B::WheelPush}) {
-            bool shift_job = button_has_shift_job(project, ui, button, kit);
+            bool shift_job = button_has_shift_job(project, ui, button, kit, keys);
             bool lit = button == B::Shift || (button == B::TapTempo && ui.settings.click) || (button == B::Erase && ui.copying != UiState::Copying::Off)
                     || (button == B::NoteRepeat && track.arp) || (button == B::Mute && ui.mute_mode())
                     || (track.engine == EngineKind::Sampler && button == B::Loop && track.pads[track.last_pad % sampler_pads].reverse)            // reverse on

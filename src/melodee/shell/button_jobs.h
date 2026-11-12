@@ -12,10 +12,10 @@ namespace melodee {
 
 // Whether `button` has a job on ui.page for the selected track. `kit_pads`:
 // the pads play the track's kit one pad each (Shell::kit_pads()); `bindings`
-// has an Erase + pot job (a parameter on a pot).
-bool button_has_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads, bool erase_pots);
+// has an Erase + pot job (a parameter on a pot); `key_pads`: the pads play a synth's keys (Shell::key_pads()).
+bool button_has_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads, bool erase_pots, bool key_pads = false);
 // While Shift is held (Akai's guide): a button whose Shift job is built here
 // glows faintly, and brightly while that job is on; the others go dark.
-bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads);
+bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButton button, bool kit_pads, bool key_pads = false);
 
 } // namespace melodee

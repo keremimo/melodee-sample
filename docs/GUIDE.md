@@ -176,11 +176,42 @@ creating a project clears the undo history.
 
 - **ERASE** + pad on a kit, stopped: empty the pad.
 - **ERASE** + pad on a kit, playing: erase that pad's notes from the pattern.
+- **ERASE** + pad on a synth, plug-in or MIDI track: erase that key's notes
+  (asks first).
 - **ERASE** + knob: set the value back to its default.
 - **ERASE** + fader: clear the fader's Motion lane (asks first).
-- **SHIFT** + **ERASE** starts a copy. Press the source pad, then the target
-  pad. Press **ERASE** to stop copying. On a kit page this copies pads. With
-  **SEQ** held it copies patterns. With **PAD BANK** held it copies tracks.
+- **ERASE** pressed alone erases what the page has selected:
+
+| Page | ERASE alone |
+| --- | --- |
+| Roll | The selected note |
+| Steps | The step under the cursor |
+| Step Edit | The selected event |
+| Patterns | The pattern (asks first) |
+| Tracks | The track (asks first) |
+| Scenes | The scene's name and tempo |
+| Looper | The selected loop (asks first) |
+| Effect chains | The selected effect |
+| Chop | The selected slice |
+| Layers | The selected layer |
+| Mod | The selected target |
+| Project | The selected project: press twice |
+| Song | The clip under the cursor |
+
+- **SHIFT** + **ERASE** copies. Where it picks, press the source, then the
+  target. Press **ERASE** to stop.
+
+| Where | SHIFT + ERASE |
+| --- | --- |
+| **PAD BANK** held, or Tracks | Tracks |
+| **SEQ** held, or Patterns | Patterns |
+| Steps | A step to another step |
+| Roll, Step Edit, a synth's play pages | A key's notes to another key |
+| A kit's play pages | Kit pads |
+| Song | The clip, placed after itself |
+| Project | The selected project |
+| Effect chains | The selected effect, placed after itself |
+| Chop | The selected slice, onto the next empty pad |
 
 When an action deletes something, Melodee asks first. The question says
 what is lost and whether undo brings it back. **B1** cancels, **B3** does
@@ -1364,7 +1395,7 @@ version on the **ABOUT** page.
 | **PAD FX** | Pad FX. Again on a kit: Pad Punch. | Flex Beat |
 | **KNOB FX** | Knob FX mode on or off | Effect chains |
 | **PAD BANK** | Next bank. Held + pad: select a track. | Previous bank |
-| **ERASE** | Held + pad, knob, step or fader: erase | Copy |
+| **ERASE** | Alone: erase the selection. Held + pad, knob, step or fader: erase | Copy |
 | **NOTE REPEAT** | Tap to latch, hold for momentary | |
 | **CHOP** | Chop the last pad | Note On / One Shot |
 | **MUTE** | Mute mode. Tap to latch, hold for momentary. | Unmute all |
