@@ -83,6 +83,10 @@ struct UiState {
     std::array<uint64_t, 3> tc_keys {}; // a bit a key, 0..191 (kit keys run to 163)
     bool tc_all = true;                 // B2: every note of the pattern, whatever the pads chose
     bool tc_key(unsigned key) const { return key < 192 && ((tc_keys[key / 64] >> (key % 64)) & 1); }
+    // Time Correct C (round 2): QUANTIZE off keeps the feel taken off to compare by ear (strength, humanize, its
+    // velocity, the groove's amount) and which pattern it was (track * 16 + pattern; -1 none), to put back.
+    std::array<uint8_t, 4> tc_stash {};
+    int16_t tc_stash_at = -1;
     void tc_toggle(unsigned key) { if (key < 192) tc_keys[key / 64] ^= uint64_t(1) << (key % 64); }
     std::array<uint8_t, track_count> edit_page {}, edit_row {};
     // Stage (pages/stage_page.cpp, shell/stage_map.h): each track's button (B1-B3) and the page of its cycle.

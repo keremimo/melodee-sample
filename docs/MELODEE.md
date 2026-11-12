@@ -603,8 +603,17 @@ hold to steer, Shift + Seq to zoom in**.
   thread plays the pattern with its feel laid on (`feel_pattern`); Steps,
   Roll and the file keep the notes as written. Time Correct's page holds
   the cards (`feel_cards`).
-- **Time Correct** (Shift + Pad 14): the selected pattern onto Q; pads pick
-  whose notes move, B2 all; K1 Q, K2 shift ±48 ticks, K3 swing; B3 DO IT.
+- **Time Correct** (Shift + Pad 14): heard live, no commit. The selected
+  pattern plays as close to its Q as K2 STRENGTH says, the second of each
+  pair late by K3 SWING, as they turn; turning down takes it back (the
+  notes stay as written: the pattern's feel). K1 Q; Shift + K1 HUMANIZE,
+  Shift + K2 its velocity, Shift + K3 the groove's amount; a pad takes the
+  groove from that pattern of the track (again: none). B3 QUANTIZE, lit
+  while the feel is heard, takes it off to compare by ear and puts it
+  back; B2 ALL lays this feel on the track's other patterns (each one
+  undo); B1 BACK. Two beats drawn over the grid of Q: each note where it is
+  written (a ring) and where it plays (a dot), the swung steps where they
+  land; under it the track's patterns, the groove's lit.
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):
   each one undo; the length stays for the speeds. Settings' Double Seq row
   picks what the new half holds: Copy notes (the MPC's way, motion too) or

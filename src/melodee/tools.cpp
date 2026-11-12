@@ -416,6 +416,14 @@ void kick_bar(Snapshot& s, float at, float depth) {
     s.comp_bar_at = int(at * comp_bar_columns);
 }
 
+// Time Correct C: a loose hand over the first two beats, notes off the sixteenths either way.
+void loose_hand(Pattern& p) {
+    p = Pattern {};
+    p.length = 4 * 4 * ticks_per_quarter;
+    const unsigned played[] {3, 21, 52, 70, 98, 117, 140, 165};
+    for (unsigned n = 0; n < 8; ++n) { Event e; e.tick = played[n]; e.key = uint8_t(48 + n % 3 * 4); p.add(e); }
+}
+
 // midi-track A: what a MIDI track sent over the last four seconds, a bass line and a chord, two notes on their way now.
 void sent_notes(Snapshot& s, unsigned track) {
     const struct { int ago, held; uint8_t key, velocity; } line[] {
@@ -788,10 +796,16 @@ const Preview previews[] {
     {"recarmed", [](Shell&, Snapshot& s) { // Seq Record pressed while stopped: Play starts the take
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.rec_armed = true; s.ui.locate = 5 * ticks_per_quarter + 12;
      }},
-    {"timecorrect", [](Shell&, Snapshot& s) { // Shift + Pad 14: the chosen pads' notes onto Q
-         s.ui.page = PageId::TimeCorrect; s.ui.track = 0; s.ui.tc_all = false; s.ui.tc_swing = 62; s.ui.tc_shift = -6;
-         for (unsigned pad : {0u, 2u, 4u, 7u}) s.ui.tc_toggle(unsigned(pad_note(s.project, s.track(), pad).key));
-         s.ui.turning = 2; s.ui.turned_at = s.now;
+    {"timecorrect", [](Shell& shell, Snapshot& s) { // Shift + Pad 14 (time-correct C): 70 % toward Q, swung 62 %, as it plays
+         s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
+         loose_hand(shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count]);
+         auto& feel = shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count].feel;
+         feel.strength = 70; feel.swing = 62; feel.groove_from = 1 + 2;
+         s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"timecorrectoff", [](Shell& shell, Snapshot& s) { // QUANTIZE off: the notes as written, nothing slid
+         s.ui.page = PageId::TimeCorrect; s.ui.track = 0;
+         loose_hand(shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count]);
      }},
     {"patterncopy", [](Shell&, Snapshot& s) { // Shift + Erase on Patterns, then a pattern: where does it go
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.ui.copying = UiState::Copying::Patterns; s.ui.copy_from = 0;

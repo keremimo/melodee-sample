@@ -1,80 +1,119 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// TIME CORRECT (Shift + Pad 14, as printed): the selected track's pattern
-// moved onto its Q. The pads choose whose notes move (kit pads of the bank
-// in view, the 909's drums, or the notes a synth's pads play); B2 chooses
-// them all. K1 Q (the pattern's, as on Patterns), K2 shift (ticks, 96 a
-// quarter: every chosen note moves by it, early or late), K3 swing (every
-// second step of a straight Q late by it). B3 DO IT moves them, as one undo
-// (Shift + Minus); B1 CANCEL goes back without moving anything.
-#include "melodee/model/scales.h"
+// TIME CORRECT (Shift + Pad 14, as printed; round 2, time-correct C
+// "strength, heard live"): no commit. The selected track's pattern plays as
+// close to its Q as STRENGTH says (K2), the second of each pair late by SWING
+// (K3), as they turn: the right amount is found by ear and taken back by
+// turning down (the pattern's feel, model/pattern.h: the notes stay as
+// written). K1 Q (the pattern's, as on Patterns). Shift + K1 HUMANIZE (each
+// note early or late), Shift + K2 its velocity, Shift + K3 the groove's
+// amount; a pad takes the groove from that pattern of the track (again:
+// none). B3 QUANTIZE, lit while the feel is heard, takes it off to compare by
+// ear and puts it back; B2 ALL lays this feel on the track's other patterns;
+// B1 BACK. Picture: two beats of the pattern over the grid of Q (beats
+// taller, the swung steps in a shade where they land), each note where it is
+// written (a ring) and where it plays (a dot), joined; under it the track's
+// patterns, the groove's lit.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
-#include "melodee/shell/step_edit.h" // pad_key
+#include <algorithm>
+#include <cmath>
 
 namespace melodee {
 namespace {
 using namespace ui;
 
-juce::String pad_caption(const Snapshot& s, unsigned, int key) {
-    const auto& t = s.track();
-    if (key < 0) return {};
-    if (t.engine == EngineKind::Sampler) { char label[4]; pad_label(unsigned(key) - sampler_first_note, label); return label; }
-    return note_name(key);
-}
-
 void draw(Paint& p, const Snapshot& s) {
     auto c = colour_of(s);
+    const auto& pattern = s.pattern;
+    const auto& f = pattern.feel;
+    bool heard = !f.plain();
     Header h = header_of(s);
     h.left.push_back(pill("TIME CORRECT"));
-    h.left.push_back(pill("P" + juce::String(s.track().pattern + 1)));
+    h.left.push_back(pill("P" + juce::String(s.track().pattern + 1), c));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"CANCEL", s.ui.tc_all ? "ALL ON" : "ALL", "DO IT"}, s.ui.tc_all ? 1 : -1, c,
-                 {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    SoftKeys keys {{"BACK", "ALL", "QUANTIZE"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    keys.toggles = 4;
+    keys.lit = heard ? 4 : 0;
+    frame(p, s, keys, h);
 
-    float x = zone::pad, y = zone::picture_y + 2, w = 150;
-    p.text("Notes onto Q", x, y, w, 20, plain(colour::text, type::title, Weight::SemiBold));
-    juce::String detail = s.ui.tc_all ? "Every note of the pattern." : "The notes of the pads lit.";
-    p.text(detail, x, y + 22, w + 20, 12, plain(colour::sec, type::small));
-    // What moves where: the steps of Q over one beat, the swung ones late.
-    const auto& pattern = s.pattern;
-    unsigned q = pattern.q(), beat = s.project.beat_ticks();
-    float bx = x, by = y + 46, bw = w;
-    p.fill(bx, by, bw, 18, colour::panel, 3);
-    double late = division_triplet(pattern.division) ? 0 : q * (s.ui.tc_swing - 50) / 50.0;
-    for (unsigned k = 0; k * q < 2 * beat; ++k) {
-        double at = k * double(q) + (k % 2 ? late : 0) + s.ui.tc_shift;
-        float px = bx + float(at / (2.0 * beat)) * bw;
-        if (px < bx || px > bx + bw - 2) continue;
-        p.fill(px, by + 3, 2, 12, k % 2 ? c.withAlpha(0.6f) : c, 1);
+    // Two beats: the grid of Q, the swung steps where they land, each note written (ring) and played (dot).
+    double q = pattern.q(), beat = s.project.beat_ticks(), span = 2 * beat;
+    double late = division_triplet(pattern.division) ? 0 : q * (std::clamp<int>(f.swing, 50, 75) - 50) / 50.0;
+    float x0 = zone::pad, w = zone::width - 2 * zone::pad, line_y = zone::picture_y + 46;
+    auto x_of = [&](double tick) { return x0 + float(tick / span) * w; };
+    p.fill(x0, line_y - 0.75f, w, 1.5f, colour::line);
+    unsigned per_beat = std::max(1u, unsigned(std::lround(beat / q)));
+    for (unsigned k = 0; k * q <= span + 0.5; ++k) {
+        bool on_beat = k % per_beat == 0, swung = k % 2 == 1 && f.strength > 0;
+        double at = k * q + (swung ? late : 0);
+        if (at > span) continue;
+        float gh = on_beat ? 40 : 24;
+        p.fill(x_of(at) - 0.5f, line_y - gh / 2, 1, gh, swung ? knob_shade(s.ui.track, 2) : on_beat ? colour::sec : colour::mid);
     }
-    p.text(juce::String(division_name(pattern.division)) + " GRID, 2 BEATS", bx, by + 21, bw, 10, caps_text(colour::dim));
+    for (const auto& e : pattern.events) {
+        if (e.tick >= span) break;
+        double t = e.tick, step = std::floor(t / q + 0.5), target = step * q + (std::fmod(step, 2.0) == 1.0 ? late : 0.0);
+        double played = t + (target - t) * f.strength / 100.0;
+        float a = x_of(t), b = x_of(played);
+        if (std::fabs(b - a) > 1) p.fill(std::min(a, b), line_y - 1, std::fabs(b - a), 2, c.withAlpha(0.35f), 1);
+        p.ring(a - 3, line_y - 3, 6, 6, c.withAlpha(0.6f), 3, 1.2f);
+        p.circle(b, line_y, 5, c);
+    }
+    p.text("2 BEATS", x0, line_y + 26, 80, 13, caps_text(colour::mid));
 
-    // The pads as they sit, the chosen ones lit.
-    float gx = x + w + 18, gw = zone::width - zone::pad - gx, gh = zone::picture_h - 8;
-    float cw = (gw - 6) / 4, ch = (gh - 6) / 4;
-    for (unsigned pad = 0; pad < 16; ++pad) {
-        unsigned row = 3 - pad / 4, column = pad % 4;
-        int key = pad_key(s.project, s.track(), pad);
-        bool on = key >= 0 && (s.ui.tc_all || s.ui.tc_key(unsigned(key)));
-        float cx = gx + column * (cw + 2), cy = zone::picture_y + 2 + row * (ch + 2);
-        p.fill(cx, cy, cw, ch, on ? c : key >= 0 ? colour::surf : colour::quiet, 3);
-        p.text(pad_caption(s, pad, key), cx, cy, cw, ch, plain(on ? colour::bg : colour::dim, type::small, Weight::SemiBold), juce::Justification::centred);
+    // The track's patterns: a pad takes the groove from one (again: none); the groove's lit, the one in hand ringed.
+    float gy = zone::knobs_y - 32, cw = (w - 15 * 3) / 16;
+    int groove = f.groove_from ? int(f.groove_from) - 1 - int(s.ui.track) * int(pattern_count) : -1;
+    icon(p, Icon::Bars, x0, gy - 18, 12, colour::mid, 1.4f);
+    p.text("GROOVE", x0 + 16, gy - 18, 80, 12, caps_text(colour::mid));
+    for (unsigned n = 0; n < pattern_count; ++n) {
+        float x = x0 + n * (cw + 3);
+        bool lit = int(n) == groove, here = n == s.track().pattern, notes = s.sketches[s.ui.track][n].notes;
+        p.fill(x, gy, cw, 22, lit ? c : notes ? colour::surf : colour::quiet, 3);
+        if (here) p.ring(x, gy, cw, 22, colour::text.withAlpha(0.6f), 3, 1);
+        p.text(juce::String(n + 1), x, gy, cw, 22, plain(lit ? colour::bg : notes ? colour::sec : colour::dim, type::small, Weight::SemiBold),
+               juce::Justification::centred);
     }
 }
 
+// A pad: the groove taken from that pattern of the track; the same pad again takes it away.
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
     if (!down) return;
-    int key = pad_key(c.project, c.track(), pad);
-    if (key < 0) return;
-    if (c.ui.tc_all) { c.ui.tc_all = false; c.ui.tc_keys = {}; } // from all to this one
-    c.ui.tc_toggle(unsigned(key));
+    const auto& f = c.pattern().feel;
+    int from = 1 + int(c.ui.track % track_count) * int(pattern_count) + int(pad % pattern_count);
+    c.apply(Binding {Binding::Kind::GrooveFrom, 0, 0, int(track_count * pattern_count), f.groove_from}, f.groove_from == from ? 0 : from);
 }
 
 void soft(Context& c, int key) {
+    using K = Binding::Kind;
+    auto& ui = c.ui;
     if (key == 0) { c.back(); return; }
-    if (key == 1) { c.ui.tc_all = !c.ui.tc_all; return; }
-    c.time_correct();
+    int here = int(ui.track % track_count) * int(pattern_count) + c.track().pattern;
+    if (key == 2) { // QUANTIZE: the feel off to compare by ear, and back
+        const auto& f = c.pattern().feel;
+        if (!f.plain()) {
+            ui.tc_stash = {f.strength, f.humanize, f.humanize_velocity, f.groove_amount};
+            ui.tc_stash_at = int16_t(here);
+            c.set_feel(K::FeelStrength, 0); c.set_feel(K::FeelHumanize, 0); c.set_feel(K::FeelVelocity, 0); c.set_feel(K::GrooveAmount, 0);
+            c.notice("As written");
+        } else if (ui.tc_stash_at == here) {
+            c.set_feel(K::FeelStrength, ui.tc_stash[0]); c.set_feel(K::FeelHumanize, ui.tc_stash[1]);
+            c.set_feel(K::FeelVelocity, ui.tc_stash[2]); c.set_feel(K::GrooveAmount, ui.tc_stash[3]);
+            ui.tc_stash_at = -1;
+            c.notice("Feel heard");
+        }
+        return;
+    }
+    // ALL: this feel on the track's other patterns, each its own undo.
+    Feel feel = c.pattern().feel;
+    unsigned t = ui.track % track_count, laid = 0;
+    for (unsigned n = 0; n < pattern_count; ++n) {
+        if (n == c.track().pattern || c.patterns.at[t][n].feel == feel) continue;
+        c.edit_pattern(t, n, "Feel", [&] { c.patterns.at[t][n].feel = feel; c.sync_pattern(t, n); });
+        ++laid;
+    }
+    c.notice(laid ? "Feel on all patterns" : "Every pattern has this feel");
 }
 } // namespace
 

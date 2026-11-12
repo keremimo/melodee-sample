@@ -539,6 +539,10 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level}, pan};
     }
     case PageId::Pads: case PageId::Tempo: return project_key(project); // Shift + K1 / K2: the project's key, no synth track needed
+    case PageId::TimeCorrect: { // Shift: humanize, its velocity, the groove's amount (a pad picks the groove)
+        auto feel = feel_cards(pattern, 0), more = feel_cards(pattern, 1);
+        return {feel[2], more[0], more[2]};
+    }
     case PageId::Keys: // Shift + K3: the pads by semitones
         if (track.engine == EngineKind::Kit909) return {};
         return {Binding {}, Binding {}, Binding {Kind::Transpose, 0, -12, 12, track.transpose}};
@@ -620,10 +624,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::StepEdit: // step entry (round 2, step-edit2 C): what a pad writes, its length in steps of Q, velocity (0 as played), chance
         return {Binding {Kind::EntryLength, 0, 1, 16, ui.entry_length}, Binding {Kind::EntryVelocity, 0, 0, 127, ui.entry_velocity},
                 Binding {Kind::EntryChance, 0, 0, 100, ui.entry_chance}};
-    case PageId::TimeCorrect: // Q (the pattern's, as on Patterns), shift and swing for the notes moved
-        return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
-                Binding {Kind::TcShift, 0, -int(ticks_per_quarter / 2), int(ticks_per_quarter / 2), ui.tc_shift},
-                Binding {Kind::TcSwing, 0, 50, 75, ui.tc_swing}};
+    case PageId::TimeCorrect: { // time-correct C: Q (the pattern's), and the strength and swing heard live (its feel)
+        auto feel = feel_cards(pattern, 0);
+        return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)}, feel[0], feel[1]};
+    }
     case PageId::Song: {
         int clip = project.song.clip_at(ui.track, ui.song_cursor);
         int pattern_value = clip >= 0 ? project.song.clips[size_t(clip)].pattern : ui.song_pattern;

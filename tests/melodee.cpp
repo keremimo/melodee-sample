@@ -2007,9 +2007,13 @@ void timing() {
         CHECK(shifted[0].kind == Binding::Kind::PatternBars && shifted[0].value == 5 && shifted[0].max == 128);
         CHECK(shifted[1].kind == Binding::Kind::TimeSignature && shifted[1].value == int(common_time));
         CHECK(shifted[2].kind == Binding::Kind::ClickLevel);
-        ui.page = PageId::TimeCorrect; ui.tc_swing = 60;
-        auto tc = page_bindings(project, ui, five, false);
-        CHECK(tc[0].kind == Binding::Kind::Division && tc[1].kind == Binding::Kind::TcShift && tc[2].kind == Binding::Kind::TcSwing && tc[2].value == 60);
+        ui.page = PageId::TimeCorrect; five.feel.strength = 70; five.feel.swing = 60; five.feel.humanize = 20;
+        auto tc = page_bindings(project, ui, five, false); // time-correct C: Q, then the strength and swing heard live
+        CHECK(tc[0].kind == Binding::Kind::Division && tc[1].kind == Binding::Kind::FeelStrength && tc[1].value == 70
+              && tc[2].kind == Binding::Kind::FeelSwing && tc[2].value == 60);
+        auto tc_shift = page_bindings(project, ui, five, true); // Shift: humanize, its velocity, the groove's amount
+        CHECK(tc_shift[0].kind == Binding::Kind::FeelHumanize && tc_shift[0].value == 20 && tc_shift[1].kind == Binding::Kind::FeelVelocity
+              && tc_shift[2].kind == Binding::Kind::GrooveAmount);
         CHECK(shift_pad_job(1).kind == ShiftPadJob::Kind::Action && shift_pad_job(13).kind == ShiftPadJob::Kind::Open);
     }
 }
