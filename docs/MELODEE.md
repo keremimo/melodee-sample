@@ -58,16 +58,30 @@ one owner per piece of state.
   copies arrive whole by pointer and go back to be freed elsewhere.
 - **Render workers** (`engine/render_pool.*`, three on the MPC's four
   cores, `$MELODEE_RENDER_THREADS` to choose) share the audio thread's
-  block at its real-time priority: first each track's engine, then each
-  track's level, pan and chain (where plug-in effects sit), one track a
-  job, the heaviest of the last block first. The audio thread takes jobs
-  too, then sums the tracks into the buses and master in track order, so a
-  block sounds the same with workers or without (a test checks it sample
-  for sample). Note-offs, the arp and MIDI out stay on the audio thread.
-  Below 150 µs of track work a block the workers sleep, as they do while
-  one plug-in instance plays in two places. Kit tracks reach the stream
-  pager under a short spin lock. A single plug-in still gets one core's
-  share of a block: a 16 ms block from one cannot be split.
+  block at its real-time priority. The audio thread first sequences the
+  whole block (ticks, notes by hand at their frames, ratchets, Motion):
+  what each track's engine is told past the block's first frame is kept
+  with its frame. Then one run: a job a track, its engine over the whole
+  block with those calls made at their frames, then its level, pan and
+  chain (where plug-in effects sit), the heaviest of the last block first,
+  and the Looper's four loops and their chains as one more job (they play
+  what came in the block before). The audio thread sums the tracks and
+  loops into the buses and master in order; a second run takes each bus's
+  chain and Knob FX's apart; the master's follows here. A block sounds the
+  same with workers or without, and as it did when every track was cut at
+  every tick (tests check both sample for sample: the synths step their
+  modulation on their own frames, not from each render call). The workers
+  are woken as a block starts, wait awake only while it is sequenced and
+  between its two runs, and sleep between blocks. Below 150 µs of track
+  work a block they sleep throughout, as they do while one plug-in
+  instance plays in two places at once. Kit tracks reach the stream pager
+  under a short spin lock. A single plug-in still gets one core's share of
+  a block: a 16 ms block from one cannot be split.
+  `$MELODEE_RENDER_THREADS=pinned` keeps the audio thread on core 1, two
+  workers on cores 2 and 3 and the rest of Melodee on core 0; by default
+  every thread floats over the four (measured faster on the MPC).
+  `--melodee-dsp-bench` plays a busy project as the audio thread would and
+  prints block times and CPU, for comparing on the MPC.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
@@ -316,7 +330,10 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   pads sit, each cell its number, the pattern it plays, its engine as a
   glyph and its level up the right edge (muted: a crossed speaker); the
   track in hand as a strip on the right with its name, fader, meter, pan
-  and its four sends as bars (A–D, top to bottom). A pad picks its track; K1 the track, K2 its level, K3 its pan;
+  and its four sends as bars (A–D, top to bottom). Along each cell's
+  bottom, what the track takes of a block (its engine and chain, the
+  whole width a core's whole block; green, amber from 60 %, red from
+  85 %), and the track in hand's in the header. A pad picks its track; K1 the track, K2 its level, K3 its pan;
   Shift + K1 its playback **speed** (×½, ×¾, ×1, ×1½, ×2: its patterns
   play that much faster or slower against the tempo, their notes and
   motion as written, ×1½ turning sixteenths into sixteenth triplets; the
@@ -1043,7 +1060,9 @@ while following.
   every start) and a rate change
   stops playback: the engine builds every sound and effect again at the new
   rate. Melodee reads the rate and buffer from the card before the device
-  first opens, so it starts at them without a reopen. The computer sees the MPC's USB-C audio at the new rate too (the
+  first opens, so it starts at them without a reopen. Under the rows,
+  DSP: what the audio blocks take of their time (their recent peak),
+  beside the dropouts (a check while there are none). The computer sees the MPC's USB-C audio at the new rate too (the
   gadget reconnects: USB audio, MIDI and the network drop for a second; not
   while the card is lent). Samples, takes, renders and every frame count in a project stay at
   44.1 kHz whatever the rate (`engine/model_rate.h`), so projects open the
@@ -1301,7 +1320,9 @@ and Melodee's:
 `status` adds Melodee's fields: `melodee_playing`, `melodee_dropped`,
 `melodee_render_threads`, `melodee_render_load` (the recent peak block's
 time against its budget, tenths of a percent), `melodee_render_parallel`
-(blocks the workers helped with), the
+(blocks the workers helped with), `melodee_dropout_track` and
+`melodee_dropout_load` (at the last dropout the busiest track, 1–16, 0
+none, and its share of a block in tenths of a percent), the
 page and track, the lit buttons (`melodee_buttons=seq:2,stop:1`, 1 faint,
 2 bright) and pads (`melodee_pads=2:t4`: hue and rung, Pad lights above), the meters (`melodee_meter=3,1,out`:
 left and right as masks, bit 0 the bottom LED, then `out` or `in`); the sequencer (`melodee_rec`,

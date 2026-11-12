@@ -644,7 +644,11 @@ const Preview previews[] {
     {"stageemptysynth", [](Shell&, Snapshot& s) { on_stage(s, 12, 0, 0); s.ui.new_sound = 3; }},
     {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); s.ui.last_pot = 1; s.ui.new_source = 2; }},
     {"stageemptymidi", [](Shell&, Snapshot& s) { on_stage(s, 12, 2, 0); s.ui.new_channel = 3; s.ui.last_pot = 2; s.ui.new_port = 1; }},
-    {"tracks", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; }}, // Pad Bank tapped twice
+    {"tracks", [](Shell&, Snapshot& s) { // Pad Bank tapped twice; each track's share of a block (roadmap P2), one heavy
+        s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true;
+        const float loads[] {0.04f, 0.11f, 0.07f, 0.02f, 0.66f, 0.09f, 0.03f, 0.05f};
+        for (unsigned t = 0; t < 8; ++t) s.machine.track_load[t] = loads[t];
+    }},
     // The Looper (docs/LOOPER.md): four loops in every state, the loop tracks' MIX, the loop's sheet, off, a loop's chain.
     {"looper", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.turning = 1; s.ui.turned_at = s.now; }},
     {"loopermix", [](Shell&, Snapshot& s) { looper_scene(s); s.ui.looper_view = 1; s.ui.loop = 2; }},
@@ -1289,6 +1293,7 @@ const Preview previews[] {
         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::AudioBuffer; s.ui.settings_editing = true;
         s.ui.settings.audio_rate = 48000; s.ui.settings.audio_periods = 4;
         s.audio_rate = 48000; s.audio_periods = 4; s.audio_xruns = 1;
+        s.machine.render_load = 0.47f; // the blocks' share of their time, beside the dropout (roadmap P2)
     }},
     {"settingssampling", [](Shell&, Snapshot& s) { // the sampling rows: how Audio Recall cuts, when a take ends on its own
         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 4; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;

@@ -63,6 +63,16 @@ MelodeeApp::MelodeeApp()
     host.set_render_threads(workers, 150000, pinned);
 }
 
+// A dropout (roadmap P2): the busiest track as it came, its share of a block (both held at their recent peak).
+void MelodeeApp::note_dropout() {
+    unsigned xruns = session().audio.xruns.load(std::memory_order_relaxed);
+    if (xruns == xruns_seen) return;
+    xruns_seen = xruns;
+    int t = host.busiest_track();
+    dropout_track.store(t >= 0 ? unsigned(t) + 1 : 0, std::memory_order_relaxed);
+    dropout_load.store(t >= 0 ? unsigned(std::lround(host.track_load(unsigned(t)) * 1000)) : 0, std::memory_order_relaxed);
+}
+
 // Pinned (roadmap P2): every thread of Melodee's but the audio thread and the render workers onto core 0, those
 // already running and, every two seconds, any started since (a thread starts where the one that made it was, so
 // most are born there). Service thread.
@@ -305,6 +315,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
         m.cores = machine.cores.load(std::memory_order_relaxed);
         for (unsigned c = 0; c < m.core_load.size(); ++c) m.core_load[c] = machine.core_load[c].load(std::memory_order_relaxed);
         m.render_load = host.render_load();
+        for (unsigned t = 0; t < melodee::track_count; ++t) m.track_load[t] = host.track_load(t);
         m.card = machine.card.load(std::memory_order_relaxed);
         m.card_free = machine.card_free.load(std::memory_order_relaxed);
         m.card_total = machine.card_total.load(std::memory_order_relaxed);
@@ -357,6 +368,7 @@ void MelodeeApp::read_machine(Hardware& hardware) {
 
 void MelodeeApp::service(Hardware& hardware) {
     keep_rest_off();
+    note_dropout();
     read_machine(hardware);
     input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
     host.looper().service(); // the Looper's memory in and out, its fits (docs/LOOPER.md)
@@ -429,5 +441,8 @@ std::string MelodeeApp::status() const {
          + " melodee_stream_underruns=" + std::to_string(const_cast<melodee::EngineHost&>(host).streams().underruns())
          + " melodee_render_threads=" + std::to_string(host.render_threads())
          + " melodee_render_load=" + std::to_string(int(std::lround(host.render_load() * 1000))) // tenths of a percent, the recent peak
-         + " melodee_render_parallel=" + std::to_string(host.render_parallel_blocks()) + " " + shell.summary();
+         + " melodee_render_parallel=" + std::to_string(host.render_parallel_blocks())
+         + " melodee_dropout_track=" + std::to_string(dropout_track.load(std::memory_order_relaxed)) // the busiest at the last dropout
+         + " melodee_dropout_load=" + std::to_string(dropout_load.load(std::memory_order_relaxed))   // its share then, tenths of a percent
+         + " " + shell.summary();
 }

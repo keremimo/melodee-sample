@@ -24,6 +24,7 @@
 namespace melodee {
 
 juce::Colour colour_of(const Snapshot& s) { return ui::track_colour(s.ui.track); }
+juce::Colour load_colour(float load) { return load >= 0.85f ? ui::colour::rec : load >= 0.6f ? ui::colour::amber : ui::colour::play; }
 
 ui::Header header_of(const Snapshot& s) {
     ui::Header h;

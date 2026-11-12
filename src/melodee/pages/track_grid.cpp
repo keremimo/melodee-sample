@@ -44,6 +44,9 @@ void cell(Paint& p, const Snapshot& s, unsigned t, float x, float y, int copying
     p.text("P" + juce::String(track.pattern + 1), x + 6, y + 16, 24, 14, plain(colour::dim, type::small, Weight::Medium));
     icon(p, muted ? Icon::SpeakerOff : engine_icon(track.engine), x + 26, y + 5, 12, muted ? colour::rec : c, 1.4f);
     if (!muted) column(p, x + cell_w - 6, y + 4, 3, cell_h - 8, track.mix.level / 127.0f, c);
+    // What it takes of a block (roadmap P2), along the bottom: the whole width a core's whole block, in the load's colour.
+    float load = std::clamp(s.machine.track_load[t], 0.0f, 1.0f);
+    if (load >= 0.005f) p.fill(x + 6, y + cell_h - 4, std::max(2.0f, (cell_w - 16) * load), 2, load_colour(load), 1);
     if (copying == int(t)) p.ring(x + 0.5f, y + 0.5f, cell_w - 1, cell_h - 1, colour::text, 3, 1.5f); // the track being copied
 }
 

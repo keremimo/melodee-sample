@@ -107,6 +107,7 @@ struct Snapshot {
         unsigned stream_late = 0;            // times the card could not stream a sample in time (an SFZ's)
         uint8_t plugins = 0;                 // plug-ins loaded
         float plugins_load = 0;              // their share of the audio time
+        std::array<float, track_count> track_load {}; // each track's share of a block (roadmap P2), as render_load
     } machine;
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };

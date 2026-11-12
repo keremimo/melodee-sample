@@ -162,6 +162,10 @@ public:
     // Any thread: the share of its time the latest blocks took (the peak, falling slowly), and how many blocks the
     // workers have helped with.
     float render_load() const { return block_load.load(std::memory_order_relaxed); }
+    // Any thread (roadmap P2): track `t`'s share of a block's time, its engine and chain on whichever core took them
+    // (the peak, falling slowly, as render_load()); and the busiest track now (-1: none takes any).
+    float track_load(unsigned t) const { return track_loads[t % track_count].load(std::memory_order_relaxed); }
+    int busiest_track() const;
     uint64_t render_parallel_blocks() const { return parallel_blocks.load(std::memory_order_relaxed); }
     // The Looper (docs/LOOPER.md): its loops play into the tracks L1-L4, after the sixteen.
     Looper& looper() { return loops; }
@@ -526,6 +530,7 @@ private:
     std::array<uint32_t, track_count> track_ns {};
     uint64_t track_work_ns = 0;
     std::atomic<float> block_load {0};
+    std::array<std::atomic<float>, track_count> track_loads {};
     std::atomic<bool> parallel_allowed {true};
     std::atomic<uint64_t> parallel_blocks {0};
     bool plugin_in_two_places() const;

@@ -5,9 +5,12 @@
 // and the track in hand as a strip on the right (pages/track_grid.cpp): its
 // fader, meter, pan and send. A pad picks its track; K1 the track, K2 its
 // level, K3 its pan; the wheel or Minus / Plus the track, Push its Stage.
+// Each cell's bottom edge and the header show what a track takes of a block
+// (roadmap P2), so the heavy one is found before it crackles.
 // B2 LOOPER, B3 SENDS (every track's send to one bus).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
+#include <cmath>
 
 namespace melodee {
 namespace {
@@ -18,6 +21,8 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill(juce::String(s.project.used_tracks()) + " USED"));
     if (s.track().speed != speed_normal) // the strip in hand plays its patterns at a speed (Shift + K1, roadmap P1)
         h.left.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), colour_of(s)));
+    float load = s.machine.track_load[s.ui.track % track_count]; // the track in hand's share of a block (roadmap P2)
+    if (s.track().used()) h.right.push_back(pill(Icon::Chip, juce::String(int(std::lround(load * 100))) + " %", load_colour(load)));
     h.right.push_back(label(s.project.name));
     frame(p, s, {{"TRACKS", "LOOPER", "SENDS"}, 0, colour_of(s)}, h);
     track_grid(p, s);

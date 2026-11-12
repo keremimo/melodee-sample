@@ -46,7 +46,8 @@ const std::array<Door, 7> doors {{
     {Icon::Din, "MIDI", {none, none, none, none, none, none}},  // MIDI Config's own page
     {Icon::Info, "ABOUT", {none, none, none, none, none, none}}, // the About page
 }};
-constexpr unsigned midi_door = 5, about_door = 6;
+constexpr unsigned audio_door = 3, midi_door = 5, about_door = 6;
+void trouble(Paint& p, float right, float cy, unsigned count);
 unsigned door_rows(const Door& d) { unsigned n = 0; while (n < d.rows.size() && d.rows[n] >= 0) ++n; return n; }
 const Door& door_of(const UiState& ui) { return doors[ui.settings_door % doors.size()]; }
 // Where the row in hand sits behind its door (0 when it is not one of them).
@@ -103,6 +104,17 @@ void rows_draw(Paint& p, const Snapshot& s) {
         if (row == Settings::Palette) // the palette's first track colours
             for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 8, 7, 7, track_colour(t), 2);
     }
+    if (s.ui.settings_door % doors.size() != audio_door) return;
+    // AUDIO (roadmap P2): what the blocks take of their time, beside the dropouts (a check while there are none).
+    float y = zone::picture_y + 1 + door_rows(d) * (list_row_h + list_row_gap) + 6, cy = y + list_row_h / 2, right = x + w - 9;
+    float load = s.machine.render_load;
+    icon(p, Icon::Chip, x + 10, cy - 7, 14, colour::sec, 1.4f);
+    p.text("DSP", x + 30, y, 40, list_row_h, caps_text(colour::mid));
+    p.fill(x + 70, cy - 2, 120, 4, colour::line, 2);
+    p.fill(x + 70, cy - 2, 120 * std::clamp(load, 0.0f, 1.0f), 4, load_colour(load), 2);
+    p.text(juce::String(int(std::lround(load * 100))) + " %", x + 196, y, 44, list_row_h, plain(load_colour(load), type::body, Weight::SemiBold));
+    if (s.audio_xruns) trouble(p, right, cy, s.audio_xruns);
+    else icon(p, Icon::Check, right - 14, cy - 7, 14, colour::play, 1.8f);
 }
 
 void settings_draw(Paint& p, const Snapshot& s) {
@@ -142,9 +154,6 @@ void settings_soft(Context& c, int key) {
     if (key == 0) c.back();
     if (key == 2) open_door(c);
 }
-
-// A load in the colour of how close it is to too much: green, amber from 60 %, red from 85 %.
-juce::Colour load_colour(float load) { return load >= 0.85f ? colour::rec : load >= 0.6f ? colour::amber : colour::play; }
 
 juce::String space_text(uint64_t bytes) { // 21.4 GB, 512 MB
     double gb = double(bytes) / 1e9;

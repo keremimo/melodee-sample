@@ -1970,6 +1970,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     float share = float(took * dsp::sample_rate() / std::max(frames, 1u));
     float shown = block_load.load(std::memory_order_relaxed) * 0.995f;
     block_load.store(std::max(share, shown), std::memory_order_relaxed);
+    for (unsigned t = 0; t < track_count; ++t) { // each track's own, the same way (roadmap P2)
+        float own = float(track_ns[t] * 1e-9 * dsp::sample_rate() / std::max(frames, 1u));
+        track_loads[t].store(std::max(own, track_loads[t].load(std::memory_order_relaxed) * 0.995f), std::memory_order_relaxed);
+    }
     if (parallel) parallel_blocks.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -1979,6 +1983,14 @@ void EngineHost::set_render_threads(unsigned count, uint64_t from_ns, bool pinne
     for (unsigned n = 0; n < cores.size(); ++n) cores[n] = int(2 + n);
     pin_audio = pinned ? 1 : -1;
     workers.start(count, render_priority, pinned ? cores.data() : nullptr);
+}
+
+int EngineHost::busiest_track() const {
+    int most = -1;
+    float load = 0;
+    for (unsigned t = 0; t < track_count; ++t)
+        if (float l = track_load(t); l > load) { load = l; most = int(t); }
+    return most;
 }
 
 bool EngineHost::rendering_thread(int tid) const {

@@ -71,6 +71,10 @@ private:
     static constexpr bool render_pinned_default = false;
     void keep_rest_off();
     uint32_t pinned_at = 0; // service thread: the last sweep
+    // Roadmap P2: at each dropout the busiest track then (0 none, else 1-16) and its share of a block, for status.
+    unsigned xruns_seen = 0; // service thread
+    std::atomic<unsigned> dropout_track {0}, dropout_load {0}; // tenths of a percent
+    void note_dropout();     // service thread
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     melodee::ui::BootAnimation boot;          // screen thread: the logo, then the app
     std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now

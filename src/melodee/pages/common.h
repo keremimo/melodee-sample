@@ -34,6 +34,7 @@ FaderShown fader_shown(const Snapshot& s);
 void midi_route(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
 ui::SoftKeys play_keys(const Snapshot& s, int active); // STAGE TRACKS KEYS (PADS on a kit)
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
+juce::Colour load_colour(float load);                   // a load's: green, amber from 60 %, red from 85 % (of a block, a core)
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),
 // the last word of it and which slice: "Break 5" in full, "Brk 5" on a pad.
 juce::String pad_name(const Snapshot& s, unsigned kit, bool short_form);
