@@ -1009,6 +1009,18 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   strip; K1 the selected track's send into it, K2 which bus (the one Bus
   then shows), K3 the bus's return. B1 from Track on a kit: the last
   pad's chain.
+- **Keyed Compressor and Gate (roadmap P4).** On a track, bus, master or
+  loop-track chain, a Compressor's or Gate's last row (−/+ past its
+  parameters, a dot more) is KEY on K1: Off (it hears itself), a track
+  1–16, or a bus A–D. Its detector then hears that track as it leaves its
+  chain and level (muted or not, a ghost key as the master's Sidechain),
+  or that bus after its chain, and works on what goes through it: a bass
+  ducked under the kick, a pad gated by a hat. A track keyed by a track
+  runs its chain after the others in the same block, so the key is on
+  time; a key that itself waits for one, a bus keying a track or bus, and
+  any key of a loop track's chain are heard a block (128 frames) late. The
+  file keeps keys in FXKY; the master compressor's Sidechain (one track or
+  one of its kit pads) is as it was.
 - **Knob FX** (Knob FX): the mode on or off. While on, K1–K3 (and Shift +
   K1–K3) are its effect's on every page. K1–K3 keep two settings, **A**
   (B1) and **B** (B2): the pots change the one in hand, heard at it, and

@@ -82,7 +82,8 @@ struct Binding {
         // Pad layers (roadmap P3), the last pad hit: the layer in hand 0-3, its velocities, its tune and level over the
         // pad's (hundredths of a dB in steps of a tenth), and how a hit picks its layers (model/sampler.h LayerPlay).
         LayerPick, LayerLow, LayerHigh, LayerPitch, LayerGain, LayerPlayMode,
-        PadLoopXfade // roadmap P3, PLAY's Shift + K3: the last pad's loop seam crossfade, ms (0 none)
+        PadLoopXfade, // roadmap P3, PLAY's Shift + K3: the last pad's loop seam crossfade, ms (0 none)
+        FxKey         // roadmap P4, a Compressor's or Gate's third row: what keys it (model/project.h fx_key_*), id as FxParam's
     };
     Kind kind = Kind::None;
     int32_t id = 0;      // Param: the parameter
@@ -119,6 +120,9 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const
 // What a lane is: its description and the track's own value; info is
 // nullptr when there is no such parameter (or a pad value phase 4 brings).
 struct MotionParam { const struct ParamInfo* info = nullptr; int value = 0; };
+// Roadmap P4: the rows of cards an effect in chain `chain` has (Minus / Plus step them): its parameters' one or two,
+// and a Compressor's or Gate's KEY after them (not on a kit pad's chain).
+unsigned effect_rows(const EffectSlot& s, unsigned chain);
 MotionParam motion_param(const Track& track, int lane);
 std::string lane_name(const Track& track, int lane); // "CUTOFF", "A03 LEVEL"
 // The card for a lane on the Motion page.

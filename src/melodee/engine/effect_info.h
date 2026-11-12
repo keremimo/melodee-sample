@@ -28,6 +28,8 @@ enum class EffectKind : uint8_t {
 
 static_assert(unsigned(EffectKind::Count) == effect_kinds, "model/limits.h counts the effects");
 static_assert(unsigned(EffectKind::Plugin) == plugin_effect_kind, "model/limits.h names the plug-in effect");
+static_assert(fx_keyable(uint8_t(EffectKind::Compressor)) && fx_keyable(uint8_t(EffectKind::Gate)) && !fx_keyable(uint8_t(EffectKind::Limiter)),
+              "model/project.h names the effects a key can drive");
 constexpr unsigned effect_params = 6;
 enum class Family : uint8_t { Space, Time, Motion, Dirt, Tone, Dynamics, Plugins, Count };
 

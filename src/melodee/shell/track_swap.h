@@ -22,6 +22,7 @@ struct SwapChanges {
     uint8_t loops = 0;    // a loop's source, a bit a loop
     bool knob = false;    // Knob FX's tracks or a track's pads
     bool key = false;     // the compressor's key track
+    bool fx_keys = false; // a Compressor's or Gate's key track in some chain (roadmap P4)
 };
 
 inline SwapChanges swap_tracks(Project& project, PatternBank& patterns, unsigned a, unsigned b) {
@@ -57,6 +58,12 @@ inline SwapChanges swap_tracks(Project& project, PatternBank& patterns, unsigned
     if (k.pads[a] != k.pads[b]) { std::swap(k.pads[a], k.pads[b]); out.knob = true; }
     unsigned key = swapped(project.compressor.key, a, b);
     if (key != project.compressor.key) { project.compressor.key = uint8_t(key); out.key = true; }
+    for (unsigned n = 0; n < chain_count; ++n) // roadmap P4: a keyed Compressor or Gate follows its key track, in every chain
+        for (auto& s : project.chain(n).slots)
+            if (fx_key_is_track(s.key)) {
+                unsigned t = swapped(s.key - 1u, a, b);
+                if (t != s.key - 1u) { s.key = fx_key_track(t); out.fx_keys = true; }
+            }
     return out;
 }
 

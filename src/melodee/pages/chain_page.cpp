@@ -141,8 +141,10 @@ void draw(Paint& p, const Snapshot& s) {
     fx_strip(p, chain, cursor, c, zone::picture_y + 6);
     float y = zone::picture_y + 54, bottom = zone::picture_y + zone::picture_h - 4;
     fx_in_hand(p, s, chain, cursor, c, y, bottom);
-    if (cursor < count && !plugin_slot(chain.slots[cursor]) && effect_info(EffectKind(chain.slots[cursor].kind)).params[3].label) // its two rows
-        page_dots(p, zone::width - zone::pad, y + 12, 2, int(s.ui.fx_row[UiState::cursor_of(n)] % 2), c, true);
+    if (cursor < count && !plugin_slot(chain.slots[cursor]) && effect_rows(chain.slots[cursor], n) > 1) { // its rows, a KEY last (roadmap P4)
+        unsigned rows = effect_rows(chain.slots[cursor], n);
+        page_dots(p, zone::width - zone::pad, y + 12, int(rows), int(std::min<unsigned>(s.ui.fx_row[UiState::cursor_of(n)], rows - 1)), c, true);
+    }
 
     if (s.ui.sheet_open && cursor < count) {
         const auto& slot = chain.slots[cursor];
@@ -284,7 +286,8 @@ void nudge(Context& c, int way) {
         c.plugin_panel_at = 0;
         return;
     }
-    c.ui.fx_row[at] = uint8_t(std::clamp(c.ui.fx_row[at] + way, 0, 1));
+    unsigned rows = cursor < chain.count() ? effect_rows(chain.slots[cursor], n) : 2; // a KEY row after (roadmap P4)
+    c.ui.fx_row[at] = uint8_t(std::clamp(int(std::min<unsigned>(c.ui.fx_row[at], rows - 1)) + way, 0, int(rows) - 1));
 }
 } // namespace
 

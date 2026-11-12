@@ -253,6 +253,7 @@ void fx_strip(Paint& p, const Chain& chain, unsigned cursor, juce::Colour c, flo
         icon(p, family_icon(info.family), cx - 9, y + 4, 18, ink, 1.5f);
         juce::String name = info.family == Family::Plugins ? juce::String("Plug-in") : juce::String(info.name);
         auto style = plain(slot.bypass ? colour::dim : here ? colour::text : colour::sec, type::small, Weight::Medium);
+        if (slot.kind == uint8_t(EffectKind::Compressor) && p.width(name, p.fit(name, style, w - 4, type::floor)) > w - 4) name = "Comp"; // too long for a slot
         p.text(name, x + 2, y + 24, w - 4, 14, p.fit(name, style, w - 4, type::floor), juce::Justification::centred);
         if (slot.bypass) p.fill(x + 6, y + h / 2, w - 12, 1.2f, colour::dim); // struck through
     }

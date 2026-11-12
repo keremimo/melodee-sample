@@ -50,7 +50,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     switch (b.kind) {
     case Kind::Param: case Kind::ModSource: case Kind::ModDest: case Kind::ModAmount: return of(S::Sound, ui);
     case Kind::Level: case Kind::Pan: case Kind::Send: case Kind::SendBus: case Kind::BusReturn: return of(S::Mix, ui);
-    case Kind::FxParam: return of(S::Chain, ui, unsigned(b.id) / 64);
+    case Kind::FxParam: case Kind::FxKey: return of(S::Chain, ui, unsigned(b.id) / 64);
     case Kind::PadPitch: case Kind::PadLevel: case Kind::PadPan: case Kind::PadStart: case Kind::PadEnd: case Kind::PadFine:
     case Kind::PadPlayMode: case Kind::PadGroup: case Kind::PadReverse: case Kind::PadAttack: case Kind::PadDecay: case Kind::PadRelease:
     case Kind::PadSustain: case Kind::PadPunchKind: case Kind::PadPunchRate: case Kind::PadPunchDepth: case Kind::PadLoopPoint:

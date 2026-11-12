@@ -234,6 +234,12 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         break;
     }
     case Kind::SendBus: c.label = "BUS"; c.value = juce::String::charToString(juce::juce_wchar('A' + b.value)); break;
+    case Kind::FxKey: // roadmap P4: what keys a Compressor or Gate
+        c.label = "KEY";
+        if (fx_key_is_track(unsigned(b.value))) { c.value = juce::String(b.value); c.unit = "track"; }
+        else if (fx_key_is_bus(unsigned(b.value))) { c.value = juce::String::charToString(juce::juce_wchar('A' + b.value - fx_key_bus(0))); c.unit = "bus"; }
+        else c.value = "Off";
+        break;
     // The Looper (docs/LOOPER.md).
     case Kind::LoopPick: c.label = "LOOP"; c.value = "L" + juce::String(b.value + 1); break;
     case Kind::LoopLength: { // set before a take; a loop with audio shows the bars it spans

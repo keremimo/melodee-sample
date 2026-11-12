@@ -74,6 +74,7 @@ void EngineHost::load_state(const Project& project, bool keep_loops) {
             fx[n][k].set_kind(EffectKind(s.kind), pool);
             for (unsigned q = 0; q < effect_params; ++q) fx[n][k].set_param(q, s.params[q]);
             fx[n][k].set_bypass(s.bypass);
+            fx_key[n][k] = s.key < fx_keys ? s.key : 0;
         }
     }
     for (unsigned b = 0; b < bus_count; ++b) returns[b] = project.buses[b].level / 100.0f;
@@ -250,6 +251,7 @@ void EngineHost::load_track(unsigned t, const Track& track) {
         fx[t][k].set_kind(EffectKind(s.kind), pool);
         for (unsigned q = 0; q < effect_params; ++q) fx[t][k].set_param(q, s.params[q]);
         fx[t][k].set_bypass(s.bypass);
+        fx_key[t][k] = s.key < fx_keys ? s.key : 0;
         slot.fx_base[k] = s.params;
     }
     slot.fx_moved = false;
@@ -356,8 +358,12 @@ void EngineHost::apply(const Command& c) {
             if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
         }
         break;
+    case Type::FxKey: // roadmap P4
+        if (c.track < chain_count && c.index < max_slots) fx_key[c.track][c.index] = uint8_t(c.value >= 0 && c.value < int(fx_keys) ? c.value : 0);
+        break;
     case Type::FxKind:
         if (c.track < chain_count && c.index < max_slots) {
+            fx_key[c.track][c.index] = 0; // a new kind hears itself until told otherwise
             fx[c.track][c.index].set_kind(EffectKind(c.value), pool);
             if (c.track < track_count) { // the track's own values start at the kind's initial ones
                 const auto& info = effect_info(EffectKind(c.value));
@@ -902,8 +908,10 @@ void EngineHost::run_offs(Slot& slot, unsigned frames) {
 }
 
 void EngineHost::run_chain(unsigned chain, float* left, float* right, unsigned frames) {
-    for (auto& effect : fx[chain]) {
+    for (unsigned k = 0; k < max_slots; ++k) {
+        auto& effect = fx[chain][k];
         if (effect.kind() == EffectKind::None) break; // slots are packed from the front
+        if (fx_key[chain][k]) key_effect(chain, k, effect);
         if (effect.kind() == EffectKind::Plugin) { // the rack's plug-in for the entry it names; none yet: through
             auto* runner = runner_of(unsigned(effect.param(0)));
             if (runner && !effect.bypassed()) runner->render(left, right, frames);
@@ -927,6 +935,51 @@ unsigned EngineHost::chain_latency(unsigned chain) const {
         }
     }
     return sum;
+}
+
+// Roadmap P4, keyed Compressors and Gates, at each block's start: which tracks wait for the tracks keying them, and
+// which sources' outputs are kept for the next block. A track keyed by a track that itself waits hears it a block late.
+void EngineHost::plan_keys() {
+    keyed_track.fill(false);
+    key_sources = 0;
+    for (unsigned n = 0; n < chain_count; ++n)
+        for (unsigned k = 0; k < max_slots; ++k) {
+            if (fx[n][k].kind() == EffectKind::None) break;
+            unsigned key = fx_key[n][k];
+            if (!key || !fx_keyable(uint8_t(fx[n][k].kind()))) continue;
+            key_sources |= 1u << (key - 1); // tracks 0-15, buses 16-19
+            if (n < track_count && fx_key_is_track(key) && key - 1 != n) keyed_track[n] = true;
+        }
+}
+
+// The key effect `slot` of `chain` hears now: a track this block when its chain has run (every track before a bus's or
+// the master's chain; one that does not wait before a waiting track's), else that source the block before.
+void EngineHost::key_effect(unsigned chain, unsigned slot, Effect& effect) {
+    unsigned key = fx_key[chain][slot];
+    if (!fx_keyable(uint8_t(effect.kind())) || !key || key >= fx_keys) return;
+    unsigned source = key - 1;
+    if (fx_key_is_track(key)) {
+        unsigned t = source;
+        bool now = slots[t].engine && ((chain >= track_count && chain <= master_chain) || (chain < track_count && keyed_track[chain] && !keyed_track[t] && t != chain));
+        if (now) { effect.set_key(slots[t].left, slots[t].right); return; }
+        if (!slots[t].engine) { effect.set_key(silence_block, silence_block); return; }
+    } else if (chain == master_chain) {
+        unsigned b = source - track_count;
+        effect.set_key(bus_l[b], bus_r[b]);
+        return;
+    }
+    effect.set_key(key_prev_l[source].data(), key_prev_r[source].data());
+}
+
+// What each key source played this block (a track after its chain, a bus after its chain), for keys a block late.
+void EngineHost::keep_keys(unsigned frames) {
+    for (unsigned s = 0; s < track_count + bus_count; ++s) {
+        if (!((key_sources >> s) & 1)) continue;
+        const float* l = s < track_count ? slots[s].left : bus_l[s - track_count];
+        const float* r = s < track_count ? slots[s].right : bus_r[s - track_count];
+        bool silent = s < track_count && !slots[s].engine;
+        for (unsigned f = 0; f < frames; ++f) { key_prev_l[s][f] = silent ? 0.0f : l[f]; key_prev_r[s][f] = silent ? 0.0f : r[f]; }
+    }
 }
 
 // Roadmap P4, plug-in delay compensation, at each block's start: every track and loop track meets the latest of them
@@ -1698,6 +1751,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // The commands due at the block's start; a timed note later in it splits the block at its frame, below.
     unsigned next_command = take_commands(0, frames);
     plan_compensation(); // roadmap P4: how late each path plays this block
+    plan_keys();         // and which chains wait for the tracks keying them
     ++block_count;
     auto block_start = std::chrono::steady_clock::now();
     // The tracks' own work goes to the render workers too once it is worth waking them for, and never while one
@@ -1841,8 +1895,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         slot.mix_l.aim(slot.gain * slot.pan_left * balance, frames, snap_mix);
         slot.mix_r.aim(slot.gain * slot.pan_right * balance, frames, snap_mix);
     }
-    auto chain_job = [&](unsigned i) {
-        unsigned t = sounding_tracks[i];
+    auto chain_of = [&](unsigned t) {
         auto& slot = slots[t];
         auto t0 = std::chrono::steady_clock::now();
         bool tap = tapping && t == tapped;
@@ -1872,6 +1925,8 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         }
         track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
     };
+    // Roadmap P4: a track keyed by another track runs its chain after the rest (the keyed run, below).
+    auto chain_job = [&](unsigned i) { if (!keyed_track[sounding_tracks[i]]) chain_of(sounding_tracks[i]); };
     // One dispatch a block: each track's engine over the whole block, its calls at their frames, then its chain.
     auto track_job = [&](unsigned i) {
         unsigned t = sounding_tracks[i];
@@ -1898,8 +1953,16 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         else chain_job(k);
     };
     // The workers stay awake for the second run when it has jobs to share (a Knob FX tail may join them).
-    if (parallel) workers.run(active + 1, first_job, whole ? second_jobs + (knob_ringing || knob_heard) >= 2 : true);
+    std::array<uint8_t, track_count> waiting {}; // roadmap P4: the keyed run, the tracks keyed by tracks
+    unsigned waiting_count = 0;
+    for (unsigned i = 0; i < active; ++i) if (keyed_track[sounding_tracks[i]]) waiting[waiting_count++] = sounding_tracks[i];
+    if (parallel) workers.run(active + 1, first_job, waiting_count || (whole ? second_jobs + (knob_ringing || knob_heard) >= 2 : true));
     else for (unsigned i = 0; i < active + 1; ++i) first_job(i);
+    if (waiting_count) {
+        auto keyed_job = [&](unsigned i) { chain_of(waiting[i]); };
+        if (parallel && waiting_count > 1) workers.run(waiting_count, keyed_job, whole ? second_jobs + (knob_ringing || knob_heard) >= 2 : true);
+        else for (unsigned i = 0; i < waiting_count; ++i) keyed_job(i);
+    }
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         float level = 0;
@@ -2087,6 +2150,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (!running) effect_clock.beats += frames / effect_clock.quarter; // tempo-synced effects run on while stopped
     snap_mix = false;
     publish_taps(frames);
+    if (key_sources) keep_keys(frames); // roadmap P4: keys a block late hear this one
     frame_now += frames;
     // What the tracks took this block (all cores), heaviest first next time; and this block's time against its
     // budget, the peak of the last few, for status.

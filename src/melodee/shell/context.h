@@ -390,6 +390,7 @@ public:
     // Effects: chain numbers as in model/project.h (tracks, buses, master).
     void set_effect(unsigned chain, unsigned slot, EffectKind kind); // kind None removes it
     void set_effect_param(unsigned chain, unsigned slot, unsigned param, int value);
+    void set_effect_key(unsigned chain, unsigned slot, unsigned key); // roadmap P4: what keys a Compressor or Gate (fx_key_*)
     void toggle_bypass(unsigned chain, unsigned slot);
     void move_effect(unsigned chain, unsigned slot, int way);
     void sync_chain(unsigned chain); // after moving or removing: the whole chain again

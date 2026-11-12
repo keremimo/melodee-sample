@@ -871,6 +871,18 @@ const Preview previews[] {
          s.ui.page = PageId::Bus; s.ui.track = 2; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
+    {"rackkey", [](Shell&, Snapshot& s) { // roadmap P4: a Compressor on track 3's chain keyed by track 1 (the kick), its KEY row
+         s.ui.page = PageId::Rack; s.ui.track = 2; s.playing = true;
+         auto& slot = s.project.tracks[2].fx.slots[0];
+         slot = EffectSlot {uint8_t(EffectKind::Compressor), false, {-30, 8, 4, 5, 30, 100}, fx_key_track(0)};
+         s.ui.fx_cursor[2] = 0; s.ui.fx_row[2] = 2; s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"buskey", [](Shell&, Snapshot& s) { // roadmap P4: a Gate on bus A keyed by track 2, KEY on its second row
+         s.ui.page = PageId::Bus; s.ui.track = 2; s.ui.sends_bus = 0; s.playing = true;
+         auto& chain = s.project.buses[0].fx;
+         chain.slots[1] = EffectSlot {uint8_t(EffectKind::Gate), false, {-36, 20, 0, 0, 0, 0}, fx_key_track(1)};
+         s.ui.fx_cursor[UiState::cursor_of(bus_chain(0))] = 1; s.ui.fx_row[UiState::cursor_of(bus_chain(0))] = 1;
+     }},
     {"fxpick", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 3; s.playing = true;
          s.ui.picker_open = true; s.ui.picker_items = true; s.ui.picker_family = 2; s.ui.picker_item = 2;

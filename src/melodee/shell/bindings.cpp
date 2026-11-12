@@ -235,12 +235,24 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const
     return lanes;
 }
 
+unsigned effect_rows(const EffectSlot& s, unsigned chain) {
+    const auto& info = effect_info(EffectKind(s.kind));
+    unsigned own = info.params[3].label ? 2 : 1;
+    return own + (fx_keyable(s.kind) && chain < chain_count ? 1 : 0);
+}
+
 namespace {
 // One row of an effect's parameters on K1-K3 (row 1 its first three); `id` the binding's chain and slot.
 std::array<Binding, 3> effect_row(unsigned id, const EffectSlot& s, unsigned row) {
     const auto& info = effect_info(EffectKind(s.kind));
     std::array<Binding, 3> out;
     if (s.kind == plugin_effect_kind) return out; // its entry is no card: the plug-in's own are (plugin_cards())
+    unsigned rows = effect_rows(s, id / 64);
+    row = std::min(row, rows - 1);
+    if (fx_keyable(s.kind) && id / 64 < chain_count && row == rows - 1) { // roadmap P4: KEY, a row of its own on K1
+        out[0] = {Kind::FxKey, int32_t(id), 0, int(fx_keys) - 1, s.key};
+        return out;
+    }
     for (unsigned k = 0; k < 3; ++k) {
         unsigned q = row * 3 + k;
         const auto& pi = info.params[q];
@@ -665,7 +677,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         const auto& c = project.chain(chain);
         if (slot >= c.count() || ui.picker_open) return {};
         if (c.slots[slot].kind == plugin_effect_kind) return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
-        return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)] % 2);
+        return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)]); // a keyed kind's KEY last (roadmap P4)
     }
     case PageId::Sends: { // one bus at a time: K1 the track's send into it, K2 which bus, K3 its return
         unsigned bus = ui.sends_bus % bus_count;

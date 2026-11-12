@@ -453,6 +453,18 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used()) write_pad4(w, n, tr.pads[n]);
         w.end(at);
     }
+    { // Compressors and Gates keyed by another track or bus (roadmap P4): chain, slot, key
+        unsigned keyed = 0;
+        for (unsigned n = 0; n < chain_count; ++n) for (const auto& s : project.chain(n).slots) keyed += s.used() && s.key;
+        if (keyed) {
+            at = w.begin("FXKY");
+            w.u16(keyed);
+            for (unsigned n = 0; n < chain_count; ++n)
+                for (unsigned k = 0; k < max_slots; ++k)
+                    if (const auto& s = project.chain(n).slots[k]; s.used() && s.key) { w.u8(n); w.u8(k); w.u8(s.key); }
+            w.end(at);
+        }
+    }
     for (unsigned t = 0; t < track_count; ++t) { // kit pads whose loop's seam is crossfaded (roadmap P3): pad, milliseconds
         const auto& tr = project.tracks[t];
         unsigned used = 0;
@@ -642,6 +654,12 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 sorted = sorted && (!k || c.slices.start[k] > c.slices.start[k - 1]);
             }
             if (r.ok && sorted && n < sample_slots) project->chops[n] = c; // a damaged one is cut afresh
+        } else if (name == "FXKY") { // keyed Compressors and Gates (roadmap P4); without it each hears itself
+            unsigned keyed = r.u16();
+            for (unsigned k = 0; k < keyed && r.ok; ++k) {
+                unsigned n = r.u8(), slot = r.u8(), key = r.u8();
+                if (n < chain_count && slot < max_slots && key < fx_keys) project->chain(n).slots[slot].key = uint8_t(key);
+            }
         } else if (name == "PXFD") { // loop seam crossfades (roadmap P3); without it no pad's seam is faded
             unsigned t = r.u8();
             if (t >= track_count) continue;

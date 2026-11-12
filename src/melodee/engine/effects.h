@@ -55,6 +55,9 @@ public:
     // Roadmap P4, delay compensation: frames its output lags its input (a Limiter's LOOKAHEAD; 0 for the rest, and
     // bypassed or out of memory).
     unsigned latency() const { return current == EffectKind::Limiter && memory && !bypass ? delay : 0; }
+    // Roadmap P4: what a Compressor's or Gate's detector hears for the next process() only (another track or bus,
+    // `frames` of it); nullptr: what goes through it.
+    void set_key(const float* left, const float* right) { key_l = left; key_r = right; }
 
 private:
     struct Biquad {
@@ -82,6 +85,8 @@ private:
     std::array<int, effect_params> p {};
     float* memory = nullptr;
     DelayPool* home = nullptr; // the pool set_kind() took from: a Limiter takes a block only once it looks ahead
+    const float* key_l = nullptr; // set_key(): the detector's for this process() (roadmap P4)
+    const float* key_r = nullptr;
     unsigned write = 0;
 
     // Derived values (update()).

@@ -238,6 +238,9 @@ void Effect::reverb(float& l, float& r) {
 }
 
 void Effect::process(float* left, float* right, unsigned frames) {
+    const float* keyed_l = key_l; // what set_key() gave this call (roadmap P4)
+    const float* keyed_r = key_r;
+    key_l = key_r = nullptr;
     if (current == K::None || current == K::Plugin || !effect_info(current).built) return; // a plug-in: the host runs it
     if (needs_memory(current) && !memory) return; // the pool ran out: sound passes through
     // Bypass fades the effect out (blend()), then it rests; back again, it starts from silence, so no echo or
@@ -246,6 +249,8 @@ void Effect::process(float* left, float* right, unsigned frames) {
     if (bypass && on <= 0) { resting = true; return; }
     if (resting) { clear(); resting = false; }
     if (current >= K::DiffDelay) { process_extra(left, right, frames); return; }
+    const float* heard_l = keyed_l ? keyed_l : left; // a keyed Compressor or Gate hears its key (roadmap P4)
+    const float* heard_r = keyed_r ? keyed_r : right;
     float* line_l = memory;
     float* line_r = memory ? memory + DelayPool::half : nullptr;
     for (unsigned f = 0; f < frames; ++f) {
@@ -445,7 +450,7 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::Compressor: {
-            float level = std::max(std::fabs(l), std::fabs(r));
+            float level = std::max(std::fabs(heard_l[f]), std::fabs(heard_r[f]));
             env = level > env ? level + (env - level) * d : level + (env - level) * e;
             float over = 20 * std::log10(std::max(env, 1e-6f)) - a;
             float reduce = over > 0 ? over * (1 - 1 / b) : 0;
@@ -454,7 +459,7 @@ void Effect::process(float* left, float* right, unsigned frames) {
             break;
         }
         case K::Gate: {
-            float level = std::max(std::fabs(l), std::fabs(r));
+            float level = std::max(std::fabs(heard_l[f]), std::fabs(heard_r[f]));
             env = level > env ? level : level + (env - level) * fall[0];
             float target = env > a ? 1.0f : 0.0f;
             gain = target > gain ? gain + (target - gain) * glide[0] : target + (gain - target) * e;

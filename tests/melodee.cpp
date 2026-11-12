@@ -9820,7 +9820,86 @@ void delay_compensation_p4() {
     play(1, nullptr, nullptr);
 }
 
+// Roadmap P4: a Compressor or Gate keyed by another track or bus. FakePlugin tracks: a steady tone while a note is held.
+void keyed_dynamics_p4() {
+    // The file: FXKY keeps each keyed slot's key; an older file's slots hear themselves.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        project->tracks[3].fx.slots[1] = EffectSlot {uint8_t(EffectKind::Compressor), false, {-30, 8, 4, 5, 30, 100}, fx_key_track(0)};
+        project->buses[2].fx.slots[0] = EffectSlot {uint8_t(EffectKind::Gate), false, {-36, 20, 0, 0, 0, 0}, fx_key_bus(1)};
+        auto data = save_project(*project, *bank);
+        auto copy = std::make_unique<Project>();
+        auto copy_bank = std::make_unique<PatternBank>();
+        CHECK(load_project(data, *copy, *copy_bank).empty());
+        CHECK(copy->tracks[3].fx.slots[1].key == fx_key_track(0) && copy->buses[2].fx.slots[0].key == fx_key_bus(1));
+        CHECK(copy->tracks[3].fx.slots[0].key == 0 && fx_key_is_bus(fx_key_bus(3)) && !fx_key_is_track(fx_key_bus(0)));
+        // A track move (shell/track_swap.h): keys follow their tracks, in every chain.
+        project->tracks[5].fx.slots[0] = EffectSlot {uint8_t(EffectKind::Gate), false, {-36, 20, 0, 0, 0, 0}, fx_key_track(7)};
+        project->buses[0].fx.slots[0] = EffectSlot {uint8_t(EffectKind::Compressor), false, {-30, 8, 4, 5, 30, 100}, fx_key_track(2)};
+        auto changes = swap_tracks(*project, *bank, 2, 7);
+        CHECK(changes.fx_keys && project->tracks[5].fx.slots[0].key == fx_key_track(2) && project->buses[0].fx.slots[0].key == fx_key_track(7));
+        CHECK(project->buses[2].fx.slots[0].key == fx_key_bus(1) && project->tracks[3].fx.slots[1].key == fx_key_track(0));
+    }
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    for (unsigned t = 0; t < 2; ++t) { project->tracks[t].engine = EngineKind::Plugin; project->tracks[t].plugin = uint8_t(t); }
+    auto host = std::make_unique<EngineHost>();
+    host->load(*project, *bank);
+    FakePlugin tone, key;
+    CHECK(host->offer_plugin(0, &tone) && host->offer_plugin(1, &key));
+    std::vector<int32_t> out(256);
+    std::vector<float> stems(size_t(track_count) * EngineHost::block);
+    auto level = [&](unsigned track, unsigned blocks) {
+        float most = 0;
+        for (unsigned n = 0; n < blocks; ++n) {
+            host->render(out.data(), 128, 1, nullptr, stems.data());
+            for (unsigned f = 0; f < 128; ++f) most = std::max(most, std::fabs(stems[track * EngineHost::block + f]));
+        }
+        return most;
+    };
+    // A Gate on track 1's chain keyed by track 2: closed while the key is silent, open while it plays.
+    host->send({Command::Type::FxKind, 0, 0, 0, int16_t(EffectKind::Gate)});
+    host->send({Command::Type::FxParam, 0, 0, 0, -40});
+    host->send({Command::Type::FxKey, 0, 0, 0, int16_t(fx_key_track(1))});
+    host->send({Command::Type::NoteOn, 0, 0, 60, 100});
+    level(0, 40);
+    CHECK(level(0, 4) < 0.01f);
+    host->send({Command::Type::NoteOn, 1, 0, 60, 100});
+    level(0, 20);
+    float open = level(0, 4);
+    CHECK(open > 0.1f);
+    host->send({Command::Type::NoteOff, 1, 0, 60, 0});
+    level(0, 400); // the gate's release
+    CHECK(level(0, 4) < 0.01f);
+    // Unkeyed, the same gate hears the track itself: open.
+    host->send({Command::Type::FxKey, 0, 0, 0, 0});
+    level(0, 20);
+    CHECK(level(0, 4) > open * 0.9f);
+    // A Compressor keyed by track 2: the tone ducks while the key plays, and comes back after.
+    host->send({Command::Type::FxKind, 0, 0, 0, int16_t(EffectKind::Compressor)});
+    for (auto [q, v] : {std::pair<int, int>{0, -40}, {1, 20}, {2, 0}, {3, 0}, {4, 10}}) host->send({Command::Type::FxParam, 0, uint8_t(q), 0, int16_t(v)});
+    host->send({Command::Type::FxKey, 0, 0, 0, int16_t(fx_key_track(1))});
+    level(0, 20);
+    float alone = level(0, 4);
+    host->send({Command::Type::NoteOn, 1, 0, 60, 100});
+    level(0, 40);
+    float ducked = level(0, 4);
+    CHECK(alone > 0.1f && ducked < alone * 0.3f);
+    // Keyed by bus A (the block before): track 2 sends into it.
+    host->send({Command::Type::FxKey, 0, 0, 0, int16_t(fx_key_bus(0))});
+    host->send({Command::Type::Send, 1, 0, 0, 100});
+    level(0, 40);
+    CHECK(level(0, 4) < alone * 0.3f);
+    host->send({Command::Type::Send, 1, 0, 0, 0});
+    level(0, 400);
+    CHECK(level(0, 4) > alone * 0.8f);
+    CHECK(host->offer_plugin(0, nullptr) && host->offer_plugin(1, nullptr));
+    level(0, 1);
+}
+
 int main() {
+    keyed_dynamics_p4();
     delay_compensation_p4();
     chop_kept();
     samples_used();

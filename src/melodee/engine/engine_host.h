@@ -582,6 +582,18 @@ private:
     bool snap_mix = true;         // the next block's eases start at their targets (a project just loaded)
     float bus_l[bus_count][block] {}, bus_r[bus_count][block] {}, master_l[block] {}, master_r[block] {};
     void run_chain(unsigned chain, float* left, float* right, unsigned frames);
+    // Roadmap P4, keyed Compressors and Gates: each slot's key (model/project.h fx_key_*), and this block's plan of
+    // where each key is heard: a track whose chain runs before (its output this block), else the block before (a bus
+    // keying a track, a track keyed itself keying another, a loop track's chain). A track keyed by another track runs
+    // its chain after the others (keyed_tracks). key_prev: each key source's output the block before.
+    std::array<std::array<uint8_t, max_slots>, chain_count> fx_key {};
+    std::array<bool, track_count> keyed_track {};   // this block: its chain waits for the tracks that key it
+    uint32_t key_sources = 0;                       // a bit a track (0-15) or bus (16-19) some chain is keyed by
+    std::array<std::array<float, block>, track_count + bus_count> key_prev_l {}, key_prev_r {};
+    void plan_keys();
+    void key_effect(unsigned chain, unsigned slot, Effect& effect);
+    void keep_keys(unsigned frames); // this block's key sources, for the next
+    static inline const float silence_block[block] {}; // the key of a track with nothing on it
     // Roadmap P4, delay compensation: each block's plan (plan_compensation(), at its start) of how late each line
     // plays, from the latencies along each chain (chain_latency()); `on` while any line delays or eases.
     unsigned chain_latency(unsigned chain) const;

@@ -49,13 +49,24 @@ struct ModRoute {
     bool used() const { return source && destination; }
 };
 
-// One effect in a chain: its kind (EffectKind; 0 none) and its six values.
+// One effect in a chain: its kind (EffectKind; 0 none) and its six values. Roadmap P4: a Compressor or Gate may be
+// keyed by another track or bus (`key`, fx_key_*), kept in the file's FXKY.
 struct EffectSlot {
+    constexpr EffectSlot(uint8_t kind = 0, bool bypass = false, std::array<int16_t, 6> params = {}, uint8_t key = 0)
+        : kind(kind), bypass(bypass), params(params), key(key) {}
     uint8_t kind = 0;
     bool bypass = false;
     std::array<int16_t, 6> params {};
+    uint8_t key = 0; // 0 itself; else fx_key_track(t) or fx_key_bus(b)
     bool used() const { return kind != 0; }
 };
+// What keys a Compressor or Gate (roadmap P4): itself (0), a track (1-16) or a bus (17-20).
+constexpr uint8_t fx_key_track(unsigned track) { return uint8_t(1 + track % 16); }
+constexpr uint8_t fx_key_bus(unsigned bus) { return uint8_t(17 + bus % 4); }
+constexpr unsigned fx_keys = 21;
+constexpr bool fx_key_is_track(unsigned key) { return key >= 1 && key <= 16; }
+constexpr bool fx_key_is_bus(unsigned key) { return key >= 17 && key < fx_keys; }
+constexpr bool fx_keyable(uint8_t kind) { return kind == 25 || kind == 26; } // EffectKind::Compressor, Gate (engine/effect_info.h checks)
 // A chain's slots stay packed from the front; `size` of them may be used.
 struct Chain {
     std::array<EffectSlot, max_slots> slots {};

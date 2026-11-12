@@ -497,6 +497,7 @@ void Context::apply(const Binding& b, int value) {
         if (chain == ui.track) record_motion(int(motion_fx_param(slot, q)), value); // the track's own effects land in Motion
         break;
     }
+    case Kind::FxKey: set_effect_key(unsigned(b.id) / 64, (unsigned(b.id) / 8) % 8, unsigned(value)); break; // roadmap P4
     case Kind::PluginParam: set_plugin_param(b.id, value); break;
     case Kind::SendBus: ui.sends_bus = uint8_t(unsigned(value) % bus_count); break; // the bus in view on Sends
     case Kind::BusReturn: set_return(unsigned(b.id), value); break;
@@ -1420,7 +1421,7 @@ void Context::set_effect(unsigned n, unsigned slot, EffectKind kind) {
         sync_chain(n);
         return;
     }
-    s.kind = uint8_t(kind); s.bypass = false;
+    s.kind = uint8_t(kind); s.bypass = false; s.key = 0;
     const auto& info = effect_info(kind);
     for (unsigned q = 0; q < effect_params; ++q) s.params[q] = info.params[q].label ? info.params[q].initial : 0;
     send_fx(Type::FxKind, n, slot, 0, int16_t(kind)); // the host takes the same initial values
@@ -1432,6 +1433,14 @@ void Context::set_effect_param(unsigned n, unsigned slot, unsigned param, int va
     if (slot >= chain.size || param >= effect_params) return;
     chain.slots[slot].params[param] = int16_t(value);
     send_fx(Type::FxParam, n, slot, param, int16_t(value));
+}
+
+void Context::set_effect_key(unsigned n, unsigned slot, unsigned key) {
+    auto& chain = project.chain(n);
+    if (n >= chain_count || slot >= chain.size || !fx_keyable(chain.slots[slot].kind)) return;
+    if (key >= fx_keys || (fx_key_is_track(key) && n < track_count && key - 1 == n)) key = 0; // a track keyed by itself hears itself
+    chain.slots[slot].key = uint8_t(key);
+    send({Type::FxKey, uint8_t(n), 0, uint16_t(slot), int16_t(key)});
 }
 
 void Context::toggle_bypass(unsigned n, unsigned slot) {
@@ -1457,6 +1466,7 @@ void Context::sync_chain(unsigned n) {
         send_fx(Type::FxKind, n, k, 0, int16_t(s.kind));
         for (unsigned q = 0; q < effect_params; ++q) send_fx(Type::FxParam, n, k, q, s.params[q]);
         send_fx(Type::FxBypass, n, k, 0, int16_t(s.bypass));
+        if (n < chain_count) send({Type::FxKey, uint8_t(n), 0, uint16_t(k), int16_t(s.key)}); // roadmap P4
     }
 }
 

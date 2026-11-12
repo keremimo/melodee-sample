@@ -89,6 +89,11 @@ void trade_tracks(Context& c, unsigned a, unsigned b) {
             }
     }
     if (changed.key) c.set_compressor(7, c.project.compressor.key);
+    if (changed.fx_keys) // roadmap P4: every chain's keys again (the two tracks' own came with them)
+        for (unsigned n = 0; n < chain_count; ++n)
+            for (unsigned k = 0; k < max_slots; ++k)
+                if (fx_keyable(c.project.chain(n).slots[k].kind))
+                    c.send({Command::Type::FxKey, uint8_t(n), 0, uint16_t(k), int16_t(c.project.chain(n).slots[k].key)});
     const auto& in = c.ui.settings.input; // Input Config's track follows the sound it names
     if (in.source == InputSource::Track && (in.track == a || in.track == b) && !c.host_recording())
         c.set_input_source(InputSource::Track, swapped(in.track, a, b));

@@ -103,7 +103,9 @@ struct Command {
         // Roadmap P1: value 1 while Fill is held (Play held while playing): FILL conditions play, NOT FILL ones not.
         Fill,
         // Roadmap P1: track, value = its speed (model/pattern.h speeds); its patterns come scaled as PatternData.
-        TrackSpeed
+        TrackSpeed,
+        // Roadmap P4: track = chain, index = slot, value = what keys its Compressor or Gate (model/project.h fx_key_*; 0 itself).
+        FxKey
 
     };
     Command() = default;
