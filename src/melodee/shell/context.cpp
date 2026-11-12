@@ -57,11 +57,30 @@ void Context::save_project_to(const std::string& path) {
     std::snprintf(project.name, sizeof(project.name), "%s", name.c_str());
     save_loop_files(*this, path); // the loops' lengths into the project, their audio beside it (docs/LOOPER.md)
     keep_chop();                  // Chop's slices with it (roadmap P3)
+    free_unused_samples();        // and no slot nothing uses (roadmap P3)
     PluginStates states;
     if (plugins) states = plugins->states(); // each plug-in's state as it is now, beside the project
     store->save(path, melodee::save_project(project, patterns, &states));
     project_path = path;
     dirty = false;
+}
+
+// Roadmap P3: a sample slot no pad's layer plays, no undo or redo could bring back onto one, no file being made
+// holds and Chop is not on is freed as the project is saved, its chop with it, and let go of by the library: the file
+// keeps only what plays. Nothing is deleted from the card.
+unsigned Context::free_unused_samples() {
+    auto used = samples_in_use(project, edits);
+    for (const auto& f : pending_files) if (f.slot >= 0) used[size_t(f.slot) % sample_slots] = true;
+    if (ui.chop_sample < sample_slots) used[ui.chop_sample] = true;
+    unsigned freed = 0;
+    for (unsigned n = 0; n < sample_slots; ++n) {
+        if (!project.samples[n].used() || used[n]) continue;
+        project.samples[n] = SampleRef {};
+        project.chops[n] = SampleChop {};
+        if (library) library->load(n, ""); // its audio let go (a full queue: replaced when the slot is next used)
+        ++freed;
+    }
+    return freed;
 }
 
 void Context::save_project() { save_project_to(project_path.empty() && store ? store->free_path("") : project_path); }

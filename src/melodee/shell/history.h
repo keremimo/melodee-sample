@@ -139,6 +139,8 @@ public:
     size_t size() const { return undo_.size(); }
     const Edit* last() const { return undo_.empty() ? nullptr : &undo_.back(); }
     Edit* latest() { return undo_.empty() ? nullptr : &undo_.back(); }
+    // Every edit kept, to undo and to redo (roadmap P3: which sample slots they could bring back).
+    template <typename F> void each(F&& f) const { for (const auto& e : undo_) f(e); for (const auto& e : redo_) f(e); }
     unsigned pushes = 0; // edits kept so far: a press that kept its own edit is not kept twice (shell/undo_scope.h)
 
 private:
@@ -151,6 +153,25 @@ private:
         return &to.back();
     }
 };
+
+// Roadmap P3: the sample slots in use: every kit pad's layers, and every pad an undo or redo could bring back (and
+// Chop's region one could), so a slot freed on save is never one an edit would play again.
+inline std::array<bool, sample_slots> samples_in_use(const Project& project, const History& edits) {
+    std::array<bool, sample_slots> used {};
+    auto mark = [&](const PadSound& p) {
+        if (p.used()) used[p.sample % sample_slots] = true;
+        for (const auto& l : p.layers) if (l.used()) used[l.sample % sample_slots] = true;
+    };
+    for (const auto& t : project.tracks) for (const auto& p : t.pads) mark(p);
+    edits.each([&](const Edit& e) {
+        mark(e.pad_before.sound); mark(e.pad_after.sound);
+        for (const auto& kept : e.pads_before) mark(kept.second.sound);
+        for (const auto& kept : e.pads_after) mark(kept.second.sound);
+        for (const auto* t : {e.track_before.get(), e.track_after.get()}) if (t) for (const auto& p : t->track.pads) mark(p);
+        for (const auto* c : {e.chop_before.get(), e.chop_after.get()}) if (c && c->sample < sample_slots) used[c->sample] = true;
+    });
+    return used;
+}
 
 inline std::string pad_text(const char* verb, unsigned pad) {
     char label[4]; pad_label(pad, label);

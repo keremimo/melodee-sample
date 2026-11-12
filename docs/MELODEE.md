@@ -1114,7 +1114,11 @@ while following.
 - **Project** (Shift + Pad 16): the open project's three jobs as tiles under
   the keys: **B1 SAVE** (to its file in one press, or with no file yet the
   Name sheet first; Push too), **B2 OPEN** (the list), **B3 NEW** (asks
-  first: B3 NEW, B1 CANCEL, saying whether it is saved first). The header
+  first: B3 NEW, B1 CANCEL, saying whether it is saved first). A save frees
+  the sample slots nothing uses any more (roadmap P3): a slot no pad's layer
+  plays, no undo or redo could bring back, no file being made holds and
+  Chop is not on is emptied, its chop with it, so the file keeps only what
+  plays and the 64 slots come back; nothing is deleted from the card. The header
   carries UNSAVED (amber) while there are changes. The list: files
   (`.mldp`) in `Melodee/Projects` on the card, in folders, each row a glyph
   first and its facts last: **SD card access** at the top, folders with how

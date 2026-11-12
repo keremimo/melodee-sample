@@ -9505,8 +9505,30 @@ void chop_kept() {
     CHECK(load_project(file, *back, *back_bank).empty() && !back->chops[7].used());
 }
 
+// Roadmap P3: the slots in use as a save frees the rest: pads and their layers, and whatever an undo or redo holds.
+void samples_used() {
+    auto project = std::make_unique<Project>();
+    load_sound(project->tracks[0], EngineKind::Sampler, 0);
+    project->tracks[0].pads[3].sample = 2;
+    project->tracks[0].pads[3].layers[1].sample = 5;
+    History edits;
+    Edit load;
+    load.pad_before.sound.sample = 11; // a pad loaded over: undo brings 11 back
+    load.pad_after.sound.sample = 2;
+    edits.push(std::move(load));
+    Edit chop;
+    chop.chop_before = std::make_unique<ChopState>();
+    chop.chop_before->sample = 20;
+    edits.push(std::move(chop));
+    auto used = samples_in_use(*project, edits);
+    for (unsigned n = 0; n < sample_slots; ++n) CHECK(used[n] == (n == 2 || n == 5 || n == 11 || n == 20));
+    edits.undo(); // a redo keeps them too
+    CHECK(samples_in_use(*project, edits)[20]);
+}
+
 int main() {
     chop_kept();
+    samples_used();
     pad_link_chains();
     loop_seams();
     instrument_p3();

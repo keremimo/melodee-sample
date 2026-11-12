@@ -409,7 +409,7 @@ behaviour, write the code fresh for this app.
 - [ ] Pad layers: up to four samples a pad, by velocity range, cycle or
   random (MPC programs' layers keep working as they do).
 - [x] Chop's slices kept with the project.
-- [ ] Sample slots nothing uses any more freed on save.
+- [x] Sample slots nothing uses any more freed on save.
 - [x] Pad Link through more than one pad.
 - [ ] Seq Record keeps a 16 Levels pad's cutoff.
 - [x] A short crossfade at a loop's seam.

@@ -150,6 +150,7 @@ public:
     void toggle_loop_lock();  // Shift + B1 on Trim: the loop point back on the start, or free
     void normalize();         // Shift + B2 on Trim: the region's loudest point to 0 dB, one undo
     void keep_chop();         // roadmap P3: Chop's slices into the project (its sample's), before its region changes or a save
+    unsigned free_unused_samples(); // roadmap P3, as the project is saved: slots nothing uses any more freed; how many
     bool restore_chop();      // the project's chop of the region Chop now holds, if it kept one; false: none
     void layer_load();        // Shift + B1 on Layers (roadmap P3): Samples, its Push onto the layer in hand
     void layer_clear();       // Shift + B2 on Layers: the layer in hand (2-4) taken off the pad
