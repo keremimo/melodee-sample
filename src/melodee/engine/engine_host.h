@@ -239,6 +239,22 @@ public:
     bool take_retired_plugin(PluginRunner*& runner) { return retired_plugins.pop(runner); }
     // MIDI thread: a ProjectPack the audio thread has finished with, to free.
     bool take_done_pack(const ProjectPack*& pack) { return done_packs.pop(pack); }
+    // A project load without a dropout (MIDI thread, the one that sends commands). park() sends a Park behind the
+    // commands already sent: the audio thread plays up to it, fades out over Ease::seconds, then plays silence
+    // touching nothing of its state but the clock, taking no more commands, samples or plug-ins. Once parked(serial)
+    // says so, the caller owns the host's state: reload() rebuilds the whole project there, however long it takes,
+    // and clears the delay memory left behind; resume() lets the audio thread go on, fading in from silence, with
+    // whatever was sent meanwhile. resume() before parked() (the audio thread not running) calls the park off.
+    // park() returns 0 when the queue is full. With parking off (host tests and the DSP bench drive render()
+    // themselves) a load sends a Reload instead, rebuilt on the audio thread as before.
+    void set_parking(bool on) { parking_allowed = on; }
+    bool parking() const { return parking_allowed; }
+    uint32_t park();
+    bool parked(uint32_t serial) const { return serial && parked_serial.load(std::memory_order_acquire) == serial; }
+    void reload(ProjectPack& pack, bool keep_loops); // the Reload's work: the audio thread's, or the loader's while parked
+    void resume(uint32_t serial) { resume_serial.store(serial, std::memory_order_release); }
+    unsigned parks() const { return parks_done.load(std::memory_order_relaxed); } // times the audio thread parked (status)
+    uint64_t blocks_rendered() const { return blocks_seen.load(std::memory_order_relaxed); } // render() calls, parked too
     bool take_done_track(const TrackPack*& pack) { return done_tracks.pop(pack); }
     // MIDI thread (parity phase 9): what goes out, each at its frame, and the clock that says when that frame is heard.
     bool take_midi(MidiOutEvent& event) { return midi_events.pop(event); }
@@ -479,6 +495,21 @@ private:
     void ext_release(uint64_t at);                                           // clock pulses whose frame has come
     std::atomic<unsigned> format_serial {0};
     bool reformatting = false; // audio thread: the rate changed and the Reload has not come yet
+    // Parking (park()): the MIDI thread's next serial and whether loads park at all; the audio thread's Park taken
+    // (fading out toward it; 0 none), whether it has gone silent, the frames played since (frame_now waits for the
+    // loader, then catches up), and the gain the fade takes the output through.
+    bool parking_allowed = false;
+    uint32_t park_next = 0;
+    uint32_t park_wanted = 0;
+    bool is_parked = false;
+    uint64_t parked_frames = 0;
+    Ease park_gain {1, 1, 0};
+    std::atomic<uint32_t> parked_serial {0}, resume_serial {0};
+    std::atomic<unsigned> parks_done {0};
+    std::atomic<uint64_t> blocks_seen {0};
+    bool park_over() const { return int32_t(resume_serial.load(std::memory_order_acquire) - park_wanted) >= 0; }
+    void play_parked(int32_t* out, unsigned frames, float* stems);
+    void go_parked(); // audio thread, the last thing in a block
     MidiQueue<1024, MidiOutEvent> midi_events;
     std::atomic<unsigned> midi_lost {0};
     AudioClock clock;

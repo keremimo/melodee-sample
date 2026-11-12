@@ -320,6 +320,22 @@ public:
     // The device's rate changed (Settings' SAMPLE RATE): the same project again, so the audio thread works out every
     // engine and effect anew at it. It stops playback. False when the queue was full (try again).
     bool reformat();
+    // A whole project to the audio thread (switch_to, reformat). Where the host parks (EngineHost::park), the audio
+    // thread fades out and goes still while reload_tick() builds the project here, so however big it is no block runs
+    // late; a pack still waiting for the park gives way to a newer one. Otherwise a Reload, built on the audio thread.
+    bool send_reload(ProjectPack* pack, bool keep_loops);
+    // Each pass of the MIDI thread's loop: the parked build once the audio thread is still, and the Loading sheet
+    // until the project's samples are in; then the heap the last project left is given back.
+    void reload_tick();
+    struct Reloading {
+        ProjectPack* pack = nullptr;
+        bool keep_loops = false;
+        uint32_t serial = 0, since = 0; // the park's, and when it was asked for (ms)
+        uint64_t blocks = 0;            // the audio thread's blocks then: none since means it is not running
+    };
+    Reloading reloading;
+    uint32_t load_us = 0; // the last parked build's time, for status
+    static constexpr uint32_t park_patience_ms = 3000, park_stalled_ms = 250, loading_most_ms = 20000;
     unsigned samples_to_load = sample_slots; // next sample slot to (re)load after a switch
     std::vector<uint8_t> slots_waiting;      // slots sample_slot() named while the library's queue was full: asked for again each pass
     // Roadmap P4 (docs/MIDI_TRACKS.md M4-M5): SysEx files read for MIDI tracks, waiting for MidiIo to send them; the

@@ -53,6 +53,17 @@ void DelayPool::give(float* block) {
     if (!block) return;
     used[size_t((block - memory.get()) / block_floats)] = false;
 }
+unsigned DelayPool::scrub() {
+    unsigned scrubbed = 0;
+    for (unsigned n = 0; n < blocks; ++n) {
+        if (used[n] || !dirty[n]) continue;
+        float* block = memory.get() + size_t(n) * block_floats;
+        std::fill(block, block + block_floats, 0.0f);
+        dirty[n] = false;
+        ++scrubbed;
+    }
+    return scrubbed;
+}
 
 void Effect::take_memory(DelayPool& pool) {
     bool clean = false;

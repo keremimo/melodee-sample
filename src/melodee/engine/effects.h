@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/effect_info.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -26,6 +27,9 @@ public:
     float* take(bool& clean);
     void give(float* block);
     unsigned free_blocks() const { unsigned n = 0; for (bool u : used) n += !u; return n; }
+    // Off the audio thread while it is parked (EngineHost::park, a project load): every free block written since it
+    // was last cleared is cleared now, so the next effect to take one finds it clean. Returns the blocks cleared.
+    unsigned scrub();
 private:
     std::unique_ptr<float[]> memory;
     std::array<bool, blocks> used {}, dirty {};
@@ -60,6 +64,13 @@ public:
     // cleared a slice a block from its next process(), which passes the sound through dry until it is all clear.
     void clear();
     bool clearing() const { return memory && cleared < DelayPool::block_floats; }
+    // Off the audio thread while it is parked (a project load): what is left of its delay memory cleared now, so its
+    // first process() plays it whole instead of passing the sound through dry while a slice a block is cleared.
+    void finish_clearing() {
+        if (!clearing()) return;
+        std::fill(memory + cleared, memory + DelayPool::block_floats, 0.0f);
+        cleared = DelayPool::block_floats;
+    }
     // Roadmap P4, delay compensation: frames its output lags its input (a Limiter's LOOKAHEAD; 0 for the rest, and
     // bypassed or out of memory).
     unsigned latency() const { return current == EffectKind::Limiter && memory && !bypass ? delay : 0; }

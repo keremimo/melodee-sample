@@ -28,9 +28,13 @@
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/page_stack.h"
 #include <filesystem>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 
 namespace melodee {
 using Type = Command::Type;
@@ -113,10 +117,12 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     for (auto& h : held_notes) h.key = -1;
     ui.lead_pattern = project.tracks[0].pattern; // as the audio thread starts it
     free_retired();
-    auto* pack = new ProjectPack(project, patterns);
-    Command c {Type::Reload};
-    c.pack = pack;
-    if (!host.send(c)) delete pack;
+    send_reload(new ProjectPack(project, patterns), false);
+    ui.loading = true; // the Loading sheet until it is built and its samples are in (reload_tick)
+    ui.loading_since = now;
+    ui.loading_total = 0;
+    for (const auto& ref : project.samples) ui.loading_total += ref.used() && ref.path[0] == '/';
+    ui.loading_left = ui.loading_total;
     send_click(); // the metronome is Melodee's, and no take is running now
     project_path = path;
     if (store) store->opened(path); // a file of its own: the one the next start resumes
@@ -131,13 +137,71 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
 bool Context::reformat() {
     send({Type::AllNotesOff, 255});
     free_retired();
-    auto* pack = new ProjectPack(project, patterns);
+    return send_reload(new ProjectPack(project, patterns), true); // the same project: its loops stay
+}
+
+bool Context::send_reload(ProjectPack* pack, bool keep_loops) {
+    if (reloading.pack) { // the audio thread is still on its way to park: this pack instead of the one waiting
+        delete reloading.pack;
+        reloading.pack = pack;
+        reloading.keep_loops = reloading.keep_loops && keep_loops; // a new project's loops win over keeping the last
+        return true;
+    }
+    if (host.parking())
+        if (uint32_t serial = host.park()) {
+            reloading = {pack, keep_loops, serial, now, host.blocks_rendered()};
+            return true;
+        }
     Command c {Type::Reload};
     c.pack = pack;
-    c.value = 1; // the same project: its loops stay
+    c.value = keep_loops;
     if (host.send(c)) return true;
     delete pack;
     return false;
+}
+
+void Context::reload_tick() {
+    if (reloading.pack) {
+        if (host.parked(reloading.serial)) {
+            // The audio thread is still: the project is built here, the time it takes costing no block its deadline.
+            auto t0 = std::chrono::steady_clock::now();
+            host.reload(*reloading.pack, reloading.keep_loops);
+            host.resume(reloading.serial); // and it plays on, faded in from silence
+            load_us = uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+            delete reloading.pack; // the last project's patterns go with it
+            reloading = {};
+            free_retired();
+        } else {
+            // Not parked yet. The audio thread not running (no block since the park was asked for: the device closing
+            // or reopening), or not parking in time: the park called off and a Reload sent, built where it always was.
+            uint32_t waited = now - reloading.since;
+            bool stalled = waited >= park_stalled_ms && host.blocks_rendered() == reloading.blocks;
+            if (!stalled && waited < park_patience_ms) return;
+            host.resume(reloading.serial);
+            Command c {Type::Reload};
+            c.pack = reloading.pack;
+            c.value = reloading.keep_loops;
+            if (!host.send(c)) delete reloading.pack;
+            reloading = {};
+        }
+    }
+    if (!ui.loading) return;
+    // Built: the Loading sheet stays until every sample slot has been asked for again and read (or 20 s have gone).
+    // (No library, no samples to wait for: the host tests' and the monkey's shells.)
+    unsigned waiting = library ? library->loads_waiting() : 0;
+    unsigned asked = library ? std::min<unsigned>(samples_to_load, sample_slots) : sample_slots;
+    unsigned unasked = sample_slots - asked;
+    unsigned left = 0; // of the project's samples, those not asked for yet, and as many as are still being read
+    for (unsigned n = asked; n < sample_slots; ++n) left += project.samples[n].used() && project.samples[n].path[0] == '/';
+    left += std::min<unsigned>(waiting, ui.loading_total);
+    ui.loading_left = uint16_t(std::min<unsigned>(left, ui.loading_total));
+    bool in = !reloading.pack && !unasked && slots_waiting.empty() && !waiting;
+    if (!in && now - ui.loading_since < loading_most_ms) return;
+    ui.loading = false;
+    ui.loading_left = 0;
+#if defined(__GLIBC__)
+    malloc_trim(0); // what the last project's samples and patterns held, given back to the system
+#endif
 }
 
 void Context::open(PageId page) {

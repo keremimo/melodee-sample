@@ -96,6 +96,12 @@ public:
 
     // MIDI thread: ask for `path` in project slot `slot`; ask for a fresh list.
     bool load(unsigned slot, const std::string& path);
+    // MIDI thread: slots asked for by load() not yet read and offered to the audio thread, and instruments still
+    // landing (a project's loading).
+    unsigned loads_waiting() const {
+        unsigned left = asked.load(std::memory_order_relaxed) - answered.load(std::memory_order_acquire);
+        return left + landings_open.load(std::memory_order_relaxed);
+    }
     void rescan() { scan_wanted.store(true); }
     // Service thread: a take or a render is writing to the card (SD card access waits for it).
     bool busy() const;
@@ -236,6 +242,8 @@ private:
 
     EngineHost& host;
     MidiQueue<16, Request> requests; // MIDI thread produces, service thread consumes
+    std::atomic<unsigned> asked {0}, answered {0}; // requests taken by load(), and read since (loads_waiting())
+    std::atomic<unsigned> landings_open {0};        // instruments still landing, a part a pass
     MidiQueue<8, SampleJob> jobs;    // the same
     MidiQueue<8, Done> finished;     // service thread produces, MIDI thread consumes
     std::atomic<bool> scan_wanted {true};

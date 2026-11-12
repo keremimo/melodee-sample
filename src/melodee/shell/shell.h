@@ -95,6 +95,7 @@ private:
     std::string p3_summary() const;    // roadmap P3: layers, loop crossfade, voices and their slots
     unsigned follows_total() const;    // roadmap P5: follow actions come on every track since start
     std::atomic<uint32_t> capture_kept {0}; // roadmap P5: notes the capture ring holds, for `status`
+    std::atomic<uint32_t> loading_now {0}, load_us_now {0}; // the Loading sheet (bit 0) and samples left; the last parked build
     std::atomic<uint64_t> button_levels {0};
     std::atomic<uint64_t> pad_rungs {0}, pad_hues {0}; // each pad's rung and hue (shell/pad_light.h), 4 bits a pad, for `status`
     std::array<uint32_t, 16> pad_let_go {}; // when each pad was let go, ms + 1: its flare fades from there (shell/pad_lights.h)
@@ -113,6 +114,9 @@ private:
     UiState ui_;
     Context context_;
     std::mutex lock; // MIDI thread while it changes state; screen thread while it copies
+    // Presses the Loading sheet took (ui.loading): their releases are taken too, even after it has gone.
+    std::array<bool, 256> eaten_buttons {};
+    std::array<bool, 128> eaten_pads {};
     CompTrail comp_trail; // the screen thread's, in snapshot(): the Compressor page's picture over time
     CompBar comp_bar;     // and over one bar of the song (round 2, compressor B)
     HeadTrail trail; // the screen thread's, in snapshot(): heads kept while their wakes fade

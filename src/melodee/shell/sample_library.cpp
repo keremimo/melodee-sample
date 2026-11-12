@@ -29,7 +29,9 @@ bool SampleLibrary::load(unsigned slot, const std::string& path) {
     Request r;
     r.slot = uint8_t(slot % sample_slots);
     std::strncpy(r.path, path.c_str(), sizeof(r.path) - 1);
-    return requests.push(r);
+    if (!requests.push(r)) return false;
+    asked.fetch_add(1, std::memory_order_relaxed);
+    return true;
 }
 
 void SampleLibrary::view(View& out) const { std::lock_guard<std::mutex> guard(lock); out = known; }
@@ -235,11 +237,16 @@ void SampleLibrary::service(Hardware& hardware) {
     reap(); // samples the audio thread has let go of
     refresh_playback();
     land_next();
+    landings_open.store(unsigned(landings.size()), std::memory_order_relaxed);
     Request request;
     SampleJob job;
     bank_files();
     install_service();
-    if (requests.pop(request)) read(request); // one file per pass keeps the thread answering
+    if (requests.pop(request)) { // one file per pass keeps the thread answering
+        read(request);
+        landings_open.store(unsigned(landings.size()), std::memory_order_relaxed); // an instrument begun lands from here
+        answered.fetch_add(1, std::memory_order_release);
+    }
     else if (jobs.pop(job)) make(job);
     else {
         std::string heard;

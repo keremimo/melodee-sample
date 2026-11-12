@@ -87,6 +87,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
             else if (!ui_.exit_saved) { ui_.exit_saved = true; off_saved_at = now; } // the sheet says it is saved, then off
         }
     }
+    context_.now = now;
+    context_.reload_tick(); // a project parked for: built once the audio thread is still; the Loading sheet till it is in
     if (ui_.exit_saved && now - off_saved_at >= 1000) power_off.store(true); // a second to read that it is saved
     context_.song_tick();
     context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
@@ -163,6 +165,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         pattern_ticks.store(shown.length, std::memory_order_relaxed);
         pattern_events.store(uint32_t(shown.events.size()), std::memory_order_relaxed);
         capture_kept.store(context_.capture_ring->count(), std::memory_order_relaxed); // roadmap P5
+        loading_now.store(uint32_t(ui_.loading) | uint32_t(ui_.loading_left) << 1, std::memory_order_relaxed); // parked loads
+        load_us_now.store(context_.load_us, std::memory_order_relaxed);
         pattern_q.store(shown.q(), std::memory_order_relaxed);
         first_tick.store(shown.events.empty() ? 0 : shown.events.front().tick, std::memory_order_relaxed);
         { // Step Edit: the step, the selected event and how many the step holds; the open question; motion events

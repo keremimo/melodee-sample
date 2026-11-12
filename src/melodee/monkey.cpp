@@ -100,6 +100,11 @@ private:
     }
 
     void move() {
+        if (shell->ui().loading) { // the Loading sheet takes the hands' presses: they wait for the project, as a player does
+            now += 20;
+            shell->lights(lights, now);
+            return;
+        }
         unsigned r = pick(100);
         now += 5 + pick(r < 5 ? 1500 : 250);
         if (r < 42) { // a button: down if up, up if down; the layers stay held a while

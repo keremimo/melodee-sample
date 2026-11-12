@@ -122,7 +122,10 @@ struct Command {
         // Round 3 "instrument C": track, index = kit pad, position = the zone (UINT32_MAX: every trim of the pad
         // let go), micros = its sample slot, value = level in tenths of a dB, pattern = tune in cents + 128
         // (model/sampler.h ZoneTrim, zone_trim_command())
-        ZoneTrim
+        ZoneTrim,
+        // A project load (EngineHost::park): position = the park's serial. The audio thread fades out, then plays
+        // silence touching nothing of its state, and takes no more commands, until resume() lets it go.
+        Park
 
     };
     Command() = default;

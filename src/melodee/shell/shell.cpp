@@ -114,15 +114,38 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     context_.now = now;
     HitStamp stamp(context_, event.timestamp_ns);
     const auto& input = event.input;
+    // A project loading (the Loading sheet): presses wait it out, and so do their releases; a pad or key held from
+    // before lets go as ever. K1-K3 and the fader only keep where they stand; the main volume still turns.
     if (event.pad >= 0) {
         unsigned kind = event.midi.status & 0xf0;
-        if (kind == 0x90 && event.midi.value) pad(unsigned(event.pad), event.midi.value, true);
-        else if (kind == 0x80 || kind == 0x90) pad(unsigned(event.pad), 0, false);
+        bool& eaten = eaten_pads[unsigned(event.pad) % eaten_pads.size()];
+        bool down = kind == 0x90 && event.midi.value, up = kind == 0x80 || (kind == 0x90 && !event.midi.value);
+        if (ui_.loading && down) { eaten = true; return; }
+        if (eaten) { if (up) eaten = false; return; }
+        if (ui_.loading && !up) return;
+        if (down) pad(unsigned(event.pad), event.midi.value, true);
+        else if (up) pad(unsigned(event.pad), 0, false);
         else if (kind == 0xa0) context_.pressure(unsigned(event.pad), event.midi.value); // to the mod matrix
         return;
     }
-    if (input.kind == SurfaceInput::Kind::Button) { button(Button(input.index), input.pressed); return; }
+    if (input.kind == SurfaceInput::Kind::Button) {
+        bool& eaten = eaten_buttons[input.index];
+        if (ui_.loading && input.pressed) { eaten = true; return; }
+        if (eaten && !input.pressed) { eaten = false; return; }
+        button(Button(input.index), input.pressed);
+        return;
+    }
     if (input.kind != SurfaceInput::Kind::Control) return;
+    if (ui_.loading) {
+        switch (SurfaceControl(input.index)) {
+        case SurfaceControl::MainVolume: break;
+        case SurfaceControl::K1: pot(0, input.value, true); return;
+        case SurfaceControl::K2: pot(1, input.value, true); return;
+        case SurfaceControl::K3: pot(2, input.value, true); return;
+        case SurfaceControl::Fader: fader_move(context_, input.value, true); return;
+        default: return;
+        }
+    }
     // SD card access: the card is on a computer; only the main volume still turns (as the MPC, other modes wait).
     if (card_owns_controls(ui_) && SurfaceControl(input.index) != SurfaceControl::MainVolume) return;
     switch (SurfaceControl(input.index)) {
@@ -669,6 +692,9 @@ std::string Shell::summary() const {
            std::to_string(host.trigs_dropped()) + " melodee_fill=" + std::to_string(int(host.filling())) +
            " melodee_follows=" + std::to_string(follows_total()) + " melodee_stopped=" + std::to_string(host.stopped_tracks()) + // roadmap P5
            " melodee_capture=" + std::to_string(capture_kept.load()) +
+           // A project load: the Loading sheet up (and its samples still to come), the audio thread's parks, the last build.
+           " melodee_loading=" + std::to_string(loading_now.load() & 1) + "/" + std::to_string(loading_now.load() >> 1) +
+           " melodee_parks=" + std::to_string(host.parks()) + " melodee_load_us=" + std::to_string(load_us_now.load()) +
            " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
            " melodee_q=" + std::to_string(pattern_q.load()) + " melodee_first_tick=" + std::to_string(first_tick.load()) +
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +

@@ -8,6 +8,9 @@
 #include <limits>
 #include <memory>
 #include <map>
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include <unistd.h>
 #include "melodee/engine/sample_data.h"
 #include "melodee/engine/sampler.h"
@@ -6209,6 +6212,95 @@ void one_dispatch() {
 // up its oldest voice each block (eight held notes gone in eight blocks, the oldest first, each fading in tens of ms,
 // not a click); between 70 and 85 % no voice is stolen but a released note's long tail ends in tens of ms; under 70 %
 // a tail rings as long as its release says.
+// A project load parked (EngineHost::park): the audio thread fades out, plays silence touching nothing while the
+// loader builds the next project on its own thread, then fades in on it, with what was sent meanwhile after it.
+void parked_load() {
+    { // DelayPool::scrub: a free block written since its clear is cleared, and the next take finds it clean
+        DelayPool pool;
+        bool clean = false;
+        float* a = pool.take(clean);
+        CHECK(a && clean);
+        a[5] = 1;
+        pool.give(a);
+        CHECK(pool.scrub() == 1 && pool.scrub() == 0);
+        float* b = pool.take(clean);
+        CHECK(b && clean && b[5] == 0);
+        pool.give(b);
+    }
+    auto a = std::make_unique<Project>();
+    auto ab = std::make_unique<PatternBank>();
+    synth(a->tracks[0], 0);
+    a->tempo = 1200;
+    a->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 50, 40, 50, 30, 0}};
+    auto b = std::make_unique<Project>();
+    auto bb = std::make_unique<PatternBank>();
+    synth(b->tracks[0], 0);
+    b->tempo = 900;
+    b->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Reverb), false, {70, 50, 40, 50, 0, 0}};
+    put(bb->at[0][0], 0, 60, 100, 4);
+    { // called off before the audio thread came to it: no fade, nothing waits
+        EngineHost host;
+        host.load(*a, *ab);
+        host.set_parking(true);
+        uint32_t serial = host.park();
+        CHECK(serial != 0);
+        host.resume(serial);
+        host.send({Command::Type::Tempo, 0, 0, 0, 1111});
+        std::vector<int32_t> out(256);
+        for (unsigned n = 0; n < 8; ++n) host.render(out.data(), 128, 1);
+        CHECK(host.parks() == 0 && !host.parked(serial) && host.tempo_now() == 1111);
+    }
+    EngineHost host;
+    host.load(*a, *ab);
+    tones_for(host, *a);
+    host.set_parking(true);
+    host.send({Command::Type::NoteOn, 0, 0, 60, 100}); // held: the fade is heard on it
+    std::vector<float> heard;
+    std::atomic<bool> stop {false};
+    std::thread audio([&] { // the audio thread, a block at a time
+        std::vector<int32_t> out(256);
+        while (!stop.load()) {
+            host.render(out.data(), 128, 1);
+            for (unsigned f = 0; f < 128; ++f) heard.push_back(float(out[2 * f]) / 2147483648.0f);
+            std::this_thread::sleep_for(std::chrono::microseconds(300));
+        }
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    uint32_t serial = host.park();
+    CHECK(serial != 0);
+    host.send({Command::Type::Tempo, 0, 0, 0, 1337}); // after the Park: lands on the new project, after its build
+    bool parked = false;
+    for (unsigned n = 0; n < 2000 && !(parked = host.parked(serial)); ++n) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    CHECK(parked && host.parks() == 1);
+    auto pack = std::make_unique<ProjectPack>(*b, *bb);
+    host.reload(*pack, false); // here, on the loader's thread
+    std::this_thread::sleep_for(std::chrono::milliseconds(30)); // parked a while longer: still silent
+    host.send({Command::Type::Play}); // waits behind the Park too: B plays from the first block it fades in on
+    host.resume(serial);
+    pack.reset(); // the last project's patterns freed by the loader
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    stop = true;
+    audio.join();
+    CHECK(host.tempo_now() == 1337 && host.playing());
+    // Heard: the held note, faded out over Ease::seconds into a stretch of exact silence, then the new project faded in.
+    size_t run = 0, from = 0, longest = 0, longest_from = 0;
+    for (size_t n = 0; n < heard.size(); ++n) {
+        if (heard[n] == 0) { if (!run++) from = n; if (run > longest) { longest = run; longest_from = from; } }
+        else run = 0;
+    }
+    const size_t fade = size_t(Ease::seconds * dsp::sample_rate());
+    CHECK(longest >= size_t(0.025 * dsp::sample_rate())); // at least the 30 ms the loader held it
+    size_t z = longest_from, e = longest_from + longest;
+    CHECK(z > 3 * fade && e + 4000 < heard.size());
+    float held = peak_of(heard, z - 3 * fade, z - fade);
+    CHECK(held > 0.02f);
+    CHECK(peak_of(heard, z - 32, z) < 0.25f * held);        // the fade's foot, nearly silent
+    CHECK(peak_of(heard, z - fade, z) <= held * 1.05f);      // and nothing louder on the way down
+    float after = peak_of(heard, e + 2 * fade, e + 4000);
+    CHECK(after > 0.02f);
+    CHECK(peak_of(heard, e, e + 16) < 0.25f * after);         // the new project faded in, not jumped to
+}
+
 void overload_guard() {
     auto p = std::make_unique<Project>();
     auto b = std::make_unique<PatternBank>();
@@ -11073,6 +11165,7 @@ int main() {
     one_dispatch();
     loops_and_buses_parallel();
     overload_guard();
+    parked_load();
     sample_rates_p2();
     sampler_zones();
     instrument_zones_r3();

@@ -74,6 +74,11 @@ struct UiState {
     uint8_t repeat_track = 0;    // the track it went down on
     uint32_t repeat_down = 0;
     bool exit_open = false, recording = false;
+    // A project loading (Context::send_reload): the audio thread parked while it is built, then its samples read.
+    // The Loading sheet covers the screen and owns the controls (main volume still turns) until both are done.
+    bool loading = false;
+    uint32_t loading_since = 0;                 // ms
+    uint16_t loading_total = 0, loading_left = 0; // the project's sample slots in use, and those not in yet
     bool exit_off = false;         // the Exit sheet's POWER OFF chosen: saving, then the MPC turns off
     bool exit_saved = false;       // and the project is on the card: the sheet says so for a second first
     bool rec_armed = false;        // Seq Record pressed while stopped: Play starts the take (its light flashes)

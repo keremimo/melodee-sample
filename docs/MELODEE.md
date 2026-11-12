@@ -1301,6 +1301,18 @@ while following.
   Open at start, Delete (asks again); on another Load and **Load kit (no
   patterns)** (its first kit onto the selected track, one undo) first.
   Settings and About are Shift + Pad 8's.
+- **Loading**: a project loaded, imported or new (and a change of sample
+  rate) fades the sound out over 10 ms and parks the audio thread, silent,
+  while the MIDI thread builds the whole project, so however many effects
+  and tracks it has no block runs late; the sound fades back in on the new
+  project, and the delay memory the last one left is cleared on the way.
+  The **Loading** sheet covers the screen (the project's name, a bar and
+  the samples in of those it plays) until its samples are read, 20 s at
+  most, then the heap the last project held is given back. While it shows,
+  presses wait (their releases too); a pad or key held from before lets go
+  as ever, K1-K3 and the fader only keep where they stand and the main
+  volume still turns. Status: `melodee_loading` (up / samples to come),
+  `melodee_parks`, `melodee_load_us` (the last build's time).
 - **MPC Sample projects** (`.xpj`): listed beside Melodee's, wherever they
   sit under `Melodee/Projects`; the row **MPC Sample** at the top opens the
   stock app's own `MPC-Sample/Projects`. Their sheet has Load and Load kit

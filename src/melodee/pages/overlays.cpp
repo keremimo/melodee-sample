@@ -11,11 +11,13 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/seq_layer.h"
 #include "melodee/ui/widgets.h"
+#include <cstring>
 
 namespace melodee {
 using namespace ui;
 
 void draw_overlays(Paint& p, const Snapshot& s) {
+    if (s.ui.loading) { draw_loading_sheet(p, s); return; } // it owns the screen and the controls until it is in
     bool tracks = track_overlay_shown(s.ui, s.now); // Pad Bank held a second, or a track copy
     bool sheet = s.ui.name.open() || s.ui.exit_open;
     bool seq = !tracks && seq_sheet_shown(s.ui, s.now); // Seq held a moment: the Sequence sheet
@@ -129,6 +131,27 @@ void draw_notice(Paint& p, const Snapshot& s) {
     h.left.push_back(chip(text.toUpperCase(), copying ? colour_of(s) : colour::text));
     h.right.push_back(tag_of(s, s.ui.track));
     header(p, h);
+}
+
+// A project loading (Context::send_reload): its name, and a bar of its samples as they come in.
+void draw_loading_sheet(Paint& p, const Snapshot& s) {
+    p.fill(0, 0, zone::width, zone::height, colour::bg); // the knob strip too: K1-K3 set nothing while it loads
+    Header h = header_of(s);
+    h.playing = false; h.recording = false;
+    h.left.push_back(pill(Icon::File, "LOADING", colour::amber));
+    header(p, h);
+    const float x = 24, w = zone::width - 2 * x;
+    juce::String name = juce::String::fromUTF8(s.project.name, int(strnlen(s.project.name, sizeof s.project.name)));
+    if (name.isEmpty()) name = "NEW PROJECT";
+    auto title = p.fit(name, plain(colour::text, type::title, Weight::SemiBold), w, type::body);
+    p.text(name, x, zone::picture_y + 28, w, 28, title, juce::Justification::centred);
+    unsigned total = s.ui.loading_total, in = total - std::min<unsigned>(s.ui.loading_left, total);
+    float fill = total ? float(in) / float(total) : 0.0f;
+    gauge(p, x, zone::picture_y + 78, w, fill, colour::amber, 4);
+    if (!total) return;
+    icon(p, Icon::Wav, x, zone::picture_y + 92, 14, colour::mid);
+    p.text(juce::String(in) + " / " + juce::String(total), x, zone::picture_y + 92, w, 14, caps_text(colour::sec),
+           juce::Justification::centredRight);
 }
 
 void draw_exit_sheet(Paint& p, const Snapshot& s) {

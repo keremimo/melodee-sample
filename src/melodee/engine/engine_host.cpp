@@ -66,6 +66,49 @@ void EngineHost::load(const Project& project, const PatternBank& bank) {
     snap_mix = true; // its levels from the first block, not eased in from the last project's
 }
 
+// A whole project switched to at once (a load, a new project, a new rate): the audio thread's Reload, or the
+// loader's while the audio thread is parked. The pack takes the old patterns back, to be freed with it.
+void EngineHost::reload(ProjectPack& pack, bool keep_loops) {
+    apply({Command::Type::Stop});
+    for (auto& s : slots) if (s.engine) s.engine->silence();
+    pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
+    for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
+    for (auto& k : kept) { k.punch.clear(); k.target = 255; } // pad-fx C
+    flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
+    load_state(pack.project, keep_loops);
+    snap_mix = true; // its levels from the first block, not eased in from the last project's
+    reformatting = false;
+    std::swap(patterns, pack.patterns);
+    if (!is_parked) return;
+    // Parked, there is time the audio thread never has: the delay memory the load took is cleared whole now (each
+    // effect plays wet from its first block, not dry while a slice a block is cleared), and so is every free block
+    // the last project wrote, ready for the next effect to take.
+    for (auto& chain : fx) for (auto& effect : chain) effect.finish_clearing();
+    knob.finish_clearing(); knob_in.finish_clearing();
+    if (pad_fx) for (auto& pads : *pad_fx) for (auto& pad : pads) for (auto& effect : pad) effect.finish_clearing();
+    pool.scrub();
+}
+
+uint32_t EngineHost::park() {
+    uint32_t serial = ++park_next;
+    if (!serial) serial = ++park_next; // 0 is none
+    Command c {Command::Type::Park};
+    c.position = serial;
+    return send(c) ? serial : 0;
+}
+
+// Parked: silence out, nothing of the host's state touched (the loader owns it) but the clock MIDI out and timed
+// notes are placed by, which runs on with the frames played meanwhile.
+void EngineHost::play_parked(int32_t* out, unsigned frames, float* stems) {
+    clock.stamp(int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()),
+                frame_now + parked_frames);
+    frames = std::min(frames, block);
+    std::fill(out, out + 2 * frames, 0);
+    if (stems) std::fill(stems, stems + size_t(track_count) * block, 0.0f);
+    for (auto* level : {&out_levels[0], &out_levels[1], &in_levels[0], &in_levels[1]}) level->store(0, std::memory_order_relaxed);
+    parked_frames += frames;
+}
+
 // Everything of a project but its patterns (Reload swaps those in by pointer).
 void EngineHost::load_state(const Project& project, bool keep_loops) {
     for (unsigned n = track_count; n < chain_count; ++n) { // the buses and the master; each track's in load_track()
@@ -163,6 +206,7 @@ void EngineHost::retire(Pattern* pattern) {
 // Returns the offset the next command waits for, or `frames`.
 unsigned EngineHost::take_commands(unsigned offset, unsigned frames) {
     for (unsigned n = 0; n < 4096; ++n) {
+        if (park_wanted) return frames; // a Park taken: what came after it waits for the loader's project
         if (!has_waiting && !queue.pop(waiting)) return frames;
         has_waiting = true;
         if (waiting.timed) {
@@ -466,18 +510,13 @@ void EngineHost::apply(const Command& c) {
         break;
     case Type::Reload:
         if (c.pack) {
-            apply({Type::Stop});
-            for (auto& s : slots) if (s.engine) s.engine->silence();
-            pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
-            for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
-            for (auto& k : kept) { k.punch.clear(); k.target = 255; } // pad-fx C
-            flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
-            load_state(c.pack->project, c.value == 1);
-            snap_mix = true; // its levels from the first block, not eased in from the last project's
-            reformatting = false;
-            std::swap(patterns, c.pack->patterns); // the pack takes the old ones back to be freed
-            if (!done_packs.push(c.pack)) {}         // the MIDI thread frees it; a full queue only leaks one
+            reload(*c.pack, c.value == 1);
+            if (!done_packs.push(c.pack)) {} // the MIDI thread frees it; a full queue only leaks one
         }
+        break;
+    case Type::Park: // a project load on the loader's thread: fade out, then silent and still until resume()
+        park_wanted = c.position;
+        if (park_over()) park_wanted = 0; // called off already (the loader stopped waiting)
         break;
     case Type::SongPunchSet: if (c.index < song_punches) song.punches[c.index] = c.song_punch; break;
     case Type::SongPunchCount: song.punch_count = uint16_t(std::clamp<int>(c.value, 0, song_punches)); break;
@@ -2167,6 +2206,14 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         audio_tid.store(int(syscall(SYS_gettid)), std::memory_order_release);
 #endif
     }
+    blocks_seen.fetch_add(1, std::memory_order_relaxed);
+    if (is_parked) { // a project load on the loader's thread (park()): silent and still until it lets go
+        if (!park_over()) { play_parked(out, frames, stems); return; }
+        is_parked = false; park_wanted = 0; // the loader's project plays from here, faded in from silence
+        frame_now += parked_frames; parked_frames = 0;
+    } else if (park_wanted && park_over()) {
+        park_wanted = 0; // called off while fading out: back up, and the commands behind it go on
+    }
     for (auto& q : limbo) if (q && retired_patterns.push(q)) q = nullptr; // retired copies the queue had no room for
     pager.block();
     // Samples first: a command sent after a sample was offered (the browser's
@@ -2206,6 +2253,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         if (stems) std::fill(stems, stems + size_t(track_count) * block, 0.0f);
         for (auto* level : {&out_levels[0], &out_levels[1], &in_levels[0], &in_levels[1]}) level->store(0, std::memory_order_relaxed);
         frame_now += frames;
+        if (park_wanted) { park_gain = Ease {0, 0, 0}; go_parked(); } // silent already: no fade to wait for
         return;
     }
     // The clock tempo-synced effects follow: quarters since Play (on from where it was while stopped).
@@ -2568,6 +2616,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (!monitor_now.silent())
         for (unsigned f = 0; f < frames; ++f) { float g = monitor_now.at(f); master_l[f] += record_l[f] * g; master_r[f] += record_r[f] * g; }
     volume_now.aim(volume, frames, snap_mix); // main volume eased too: the knob's steps are up to dB apart
+    park_gain.aim(park_wanted ? 0.0f : 1.0f, frames); // a Park fades out (and the next project in), never a jump
+    bool park_fading = !(park_gain.flat() && park_gain.to == 1.0f);
+    if (park_fading && stems)
+        for (unsigned t = 0; t < track_count; ++t)
+            for (unsigned f = 0; f < frames; ++f) stems[size_t(t) * block + f] *= park_gain.at(f);
     float peak = 0, out_l = 0, out_r = 0;
     for (unsigned f = 0; f < frames; ++f) {
         if (click_wait) --click_wait;
@@ -2578,7 +2631,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             master_l[f] += blip; master_r[f] += blip;
         }
         out_l = std::max(out_l, std::fabs(master_l[f])); out_r = std::max(out_r, std::fabs(master_r[f])); // the mix, for the meters
-        float v = volume_now.at(f);
+        float v = park_fading ? volume_now.at(f) * park_gain.at(f) : volume_now.at(f);
         float left = dsp::soft_clip(master_l[f] * v), right = dsp::soft_clip(master_r[f] * v);
         peak = std::max(peak, std::max(std::fabs(left), std::fabs(right)));
         out[2 * f] = int32_t(std::clamp(left, -0.999f, 0.999f) * 2147483647.0f);
@@ -2610,6 +2663,15 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         track_loads[t].store(std::max(own, track_loads[t].load(std::memory_order_relaxed) * load_fall), std::memory_order_relaxed);
     }
     if (parallel) parallel_blocks.fetch_add(1, std::memory_order_relaxed);
+    // Last of all: a Park whose fade has gone silent hands the state to the loader, nothing touched after it.
+    if (park_wanted && park_gain.silent()) go_parked();
+}
+
+void EngineHost::go_parked() {
+    is_parked = true;
+    parked_frames = 0;
+    parks_done.fetch_add(1, std::memory_order_relaxed);
+    parked_serial.store(park_wanted, std::memory_order_release); // the loader owns the state from here
 }
 
 void EngineHost::set_render_threads(unsigned count, uint64_t from_ns, bool pinned) {

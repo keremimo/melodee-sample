@@ -31,6 +31,7 @@ void draw_seq_sheet(ui::Paint& p, const Snapshot& s);     // Seq held a moment: 
 void draw_repeat_keys(ui::Paint& p, const Snapshot& s);   // Note Repeat on: its rates on B1-B3
 void draw_shift_layer(ui::Paint& p, const Snapshot& s);  // Shift held: the Shift + K cards in the knob strip
 void draw_exit_sheet(ui::Paint& p, const Snapshot& s);
+void draw_loading_sheet(ui::Paint& p, const Snapshot& s); // a project loading: built, then its samples coming in
 void draw_ask_sheet(ui::Paint& p, const Snapshot& s);  // a question before an erase (shell/ask.cpp)
 void draw_notice(ui::Paint& p, const Snapshot& s);     // copying a pad, or what an undo did
 void draw_fader_card(ui::Paint& p, const Snapshot& s); // for a moment after the fader moves: what it drives here

@@ -848,3 +848,13 @@ behaviour, write the code fresh for this app.
   P2 CPU scheduling, P3 sampler, P4 mix, effects and MIDI, and P5
   performance and arrange are built, committed and checked on the MPC;
   what needs ears and hands waits under "Waiting for a hand check" above.
+- 2026-11-12, after the roadmap (asked by Kerem): project loads park the
+  audio thread. A load, a new project or a new rate fades the output out
+  over 10 ms, then the audio thread plays silence touching nothing while
+  the MIDI thread builds the project (EngineHost::park / reload / resume),
+  clears the delay memory the load left and fades back in; the Loading
+  sheet shows until the project's samples are read, presses wait, and the
+  heap is trimmed after. Host test `parked_load` (a real second thread).
+  On the MPC (48 kHz, three periods), 12 loads of Project 7A and Project 7
+  while playing: 0 xruns, every one parked, builds of 2.9-4.0 ms each, past
+  the 2.67 ms a block has, so each had cost a dropout in the callback.

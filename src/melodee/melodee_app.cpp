@@ -62,6 +62,7 @@ MelodeeApp::MelodeeApp()
     }
     host.set_render_threads(workers, 150000, pinned);
     host.set_overload_guard(true); // near a block's time, voices go before a dropout comes (roadmap P2)
+    host.set_parking(true);        // a project load fades out and builds off the audio thread (Context::send_reload)
 }
 
 // A dropout (roadmap P2): the busiest track as it came, its share of a block (both held at their recent peak).

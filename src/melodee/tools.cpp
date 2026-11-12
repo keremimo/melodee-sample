@@ -1746,6 +1746,8 @@ const Preview previews[] {
          s.project.root = 2; s.project.scale = 2; s.ui.levels_hit = 9;
      }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
+    {"loading", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = s.ui.loading_left = 40; std::strncpy(s.project.name, "NIGHT DRIVE", sizeof s.project.name - 1); }},
+    {"loadingsamples", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = 40; s.ui.loading_left = 12; std::strncpy(s.project.name, "NIGHT DRIVE", sizeof s.project.name - 1); }},
     {"exitcard", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; s.projects.root = "/media/card/Melodee/Projects"; s.project_path = "/media/card/Melodee/Projects/Song.mldp"; }},
     {"exitoff", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = s.ui.exit_off = true; s.projects.root = "/media/card/Melodee/Projects"; }},
     {"exitsaved", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = s.ui.exit_off = s.ui.exit_saved = true; s.projects.root = "/media/card/Melodee/Projects"; }},
