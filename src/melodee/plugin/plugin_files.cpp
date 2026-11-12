@@ -172,23 +172,9 @@ std::vector<PluginFile> list_plugins(const std::string& folder) {
 }
 
 std::vector<int> qlink_order(const std::string& plugin_folder) {
-    std::vector<int> order;
     juce::File skin(juce::String((fs::path(plugin_folder) / "Plugin Skins/Q-Links.json").string()));
-    if (!skin.existsAsFile()) return order;
-    auto json = juce::JSON::parse(skin.loadFileAsString());
-    auto* map = json.getProperty("Screen Mode Q-Links", {}).getProperty("map", {}).getArray();
-    if (!map) return order;
-    for (const auto& page : *map) {
-        auto* links = page.getProperty("Q-Links", {}).getDynamicObject();
-        if (!links) continue;
-        for (int q = 1; q <= 16; ++q) {
-            auto value = links->getProperty(juce::Identifier("Q-Link " + juce::String(q)));
-            if (value.isVoid()) continue;
-            int index = int(value);
-            if (index >= 0 && std::find(order.begin(), order.end(), index) == order.end()) order.push_back(index);
-        }
-    }
-    return order;
+    if (!skin.existsAsFile()) return {};
+    return qlink_order_in(skin.loadFileAsString().toStdString());
 }
 
 } // namespace melodee

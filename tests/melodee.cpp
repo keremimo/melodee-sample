@@ -92,6 +92,7 @@
 #include "melodee/shell/looper_chord.h"
 #include "melodee/shell/loop_sheet.h"
 #include "melodee/plugin/drum_map.h"
+#include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/tone3000.h"
 #include <algorithm>
 #include <tuple>
@@ -7906,6 +7907,22 @@ void tone3000_always_lite() {
     fs::remove_all(home);
 }
 
+// An Open MPC skin's Q-Link pages (plugin/plugin_files.h): a "Column" page (every toolkit skin) is read in its
+// layout's slot order, Q-Links 13, 9, 5, 1, 14, ... 4, so each three are one K1-K3 row as the skin shows them; any
+// other direction in Q-Link number order. -1 skipped, each parameter once.
+void qlink_pages() {
+    // Page 1 like Melodee Poly's OSC page: slots 0-5 FREQ PW SAW PULSE NOISE B SAW are parameters 0-5, on Q-Links
+    // 13 9 5 1 14 10; Q-Link 6 unused (-1); 2 again on Q-Link 2; its direction after its Q-Links. Page 2 "Row":
+    // number order. Page 3 no direction: number order.
+    const char* skin = R"({"Screen Mode Q-Links": {"name": "Poly", "map": [
+        {"Tab": 1, "SubTab": 1, "Q-Links": {"Q-Link 1": 3, "Q-Link 2": 2, "Q-Link 5": 2, "Q-Link 6": -1, "Q-Link 9": 1,
+            "Q-Link 10": 5, "Q-Link 13": 0, "Q-Link 14": 4, "Q-Link 16": 6}, "Bank Direction": "Column"},
+        {"Tab": 2, "SubTab": 1, "Bank Direction": "Row", "Q-Links": {"Q-Link 1": 9, "Q-Link 2": 8, "Q-Link 13": 7}},
+        {"Tab": 3, "SubTab": 1, "Q-Links": {"Q-Link 4": 11, "Q-Link 3": 10, "Q-Link 1": 0, "Q-Link 17": 12}}]}})";
+    CHECK((qlink_order_in(skin) == std::vector<int> {0, 1, 2, 3, 4, 5, 6, 9, 8, 7, 10, 11}));
+    CHECK(qlink_order_in("{\"Screen Mode Q-Links\": {\"map\": [").empty() && qlink_order_in("").empty()); // cut short
+}
+
 void synths_as_plugins() {
     {
         auto project = std::make_unique<Project>();
@@ -12052,6 +12069,7 @@ int main() {
     kit_lanes();
     plugins();
     tone3000_always_lite();
+    qlink_pages();
     synths_as_plugins();
     voice_taps();
     voice_heads();

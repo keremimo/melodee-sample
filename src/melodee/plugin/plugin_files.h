@@ -2,8 +2,10 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/plugin/drum_map.h"
+#include <algorithm>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // What a folder of plug-ins holds, as the PLUG-INS picker lists it: folders
@@ -50,8 +52,69 @@ std::vector<PluginFile> list_plugins(const std::string& folder);
 PluginFile describe_plugin(const std::string& path);
 
 // An Open MPC plug-in's Q-Link pages: its parameter indices in the order the
-// skin puts them on Q-Links 1-16, tab by tab, each once. Empty: none given.
+// skin lays them out, tab by tab, each once. Empty: none given.
 std::vector<int> qlink_order(const std::string& plugin_folder);
+
+// The same from Plugin Skins/Q-Links.json's text. A page with "Bank Direction":
+// "Column" (every Open MPC skin, mpc-vst-plugins tools/shadow_skin.py
+// qlink_for_slot()) holds its layout's slots 0-15, left to right and row 1
+// then row 2, on Q-Links 13, 9, 5, 1, 14, 10, 6, 2, 15, 11, 7, 3, 16, 12, 8, 4:
+// read in that order, each three are one K1-K3 row as the skin shows them.
+// Any other direction: Q-Link number order. -1 (no parameter) is skipped.
+// Plain C++, no JUCE: the host tests read it too.
+inline std::vector<int> qlink_order_in(std::string_view json) {
+    static constexpr int by_slot[16] = {13, 9, 5, 1, 14, 10, 6, 2, 15, 11, 7, 3, 16, 12, 8, 4};
+    std::vector<int> order;
+    drum_map_detail::Reader r {json};
+    auto page = [&] {
+        bool column = false;
+        long links[16];
+        std::fill(links, links + 16, -1L);
+        bool ok = r.object([&](const std::string& key) {
+            if (key == "Bank Direction" && r.peek('"')) {
+                std::string direction;
+                if (!r.string(&direction)) return false;
+                column = direction == "Column";
+                return true;
+            }
+            if (key != "Q-Links" || !r.peek('{')) return r.skip();
+            return r.object([&](const std::string& name) {
+                constexpr std::string_view prefix = "Q-Link ";
+                int q = 0;
+                if (name.size() <= prefix.size() || name.size() > prefix.size() + 2 || name.compare(0, prefix.size(), prefix) != 0) return r.skip();
+                for (size_t i = prefix.size(); i < name.size(); ++i) {
+                    if (name[i] < '0' || name[i] > '9') return r.skip();
+                    q = q * 10 + (name[i] - '0');
+                }
+                long value = -1;
+                if (q < 1 || q > 16 || !r.number(&value)) return r.skip();
+                links[q - 1] = value;
+                return true;
+            });
+        });
+        for (int n = 0; ok && n < 16; ++n) {
+            long index = links[(column ? by_slot[n] : n + 1) - 1];
+            if (index >= 0 && std::find(order.begin(), order.end(), int(index)) == order.end()) order.push_back(int(index));
+        }
+        return ok;
+    };
+    auto pages = [&] {
+        if (!r.peek('[')) return r.skip();
+        if (++r.depth > 32) return false;
+        r.eat('[');
+        if (!r.eat(']')) {
+            do { if (!(r.peek('{') ? page() : r.skip())) return false; } while (r.eat(','));
+            if (!r.eat(']')) return false;
+        }
+        --r.depth;
+        return true;
+    };
+    bool ok = r.object([&](const std::string& key) {
+        if (key != "Screen Mode Q-Links" || !r.peek('{')) return r.skip();
+        return r.object([&](const std::string& field) { return field == "map" ? pages() : r.skip(); });
+    });
+    return ok ? order : std::vector<int> {};
+}
 
 // 1: a 32-bit ARM ELF, 2: a 64-bit ARM (aarch64) ELF, 0: anything else.
 int arm_elf(const std::string& path);
