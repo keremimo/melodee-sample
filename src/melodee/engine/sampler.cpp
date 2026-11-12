@@ -319,8 +319,12 @@ void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff) {
     }
 }
 
-// A note is a pad's key, and over it the semitones from the pad's root it plays at (an instrument's).
-void SamplerEngine::note_on(int key, int velocity) { hit((key & 0xff) - int(sampler_first_note), velocity, int8_t(key >> 8), -1); }
+// A note is a pad's key, and over it the semitones from the pad's root it plays at (an instrument's), and over those a
+// 16 Levels cutoff a pattern kept (roadmap P3: model/sampler.h pad_note).
+void SamplerEngine::note_on(int key, int velocity) {
+    const int cutoff = (key >> 16) & 0xff;
+    hit((key & 0xff) - int(sampler_first_note), velocity, int8_t(key >> 8), cutoff ? std::min(cutoff - 1, 100) : -1);
+}
 
 void SamplerEngine::play_pad(unsigned pad, int velocity, int semitones, int cutoff) { hit(int(pad), velocity, semitones, cutoff); }
 

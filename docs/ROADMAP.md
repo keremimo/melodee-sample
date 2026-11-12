@@ -411,7 +411,7 @@ behaviour, write the code fresh for this app.
 - [x] Chop's slices kept with the project.
 - [x] Sample slots nothing uses any more freed on save.
 - [x] Pad Link through more than one pad.
-- [ ] Seq Record keeps a 16 Levels pad's cutoff.
+- [x] Seq Record keeps a 16 Levels pad's cutoff.
 - [x] A short crossfade at a loop's seam.
 - [x] Resample of the song onto a pad.
 - [x] SFZ: release samples (`trigger=release`), crossfades (`xfin_*` /

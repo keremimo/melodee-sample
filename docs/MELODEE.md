@@ -376,6 +376,9 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   with the track (sixteen levels between 40 and 127, a filter sweep over an
   octave; at first Velocity 8–127, Tune −3 to +12 with the original on pad
   4, Filter 0–100). Shift + K1–K3 the pad's own pitch, volume and pan.
+  Seq Record keeps a Filter pad's cutoff with each note it writes (roadmap
+  P3, the file's `LVCF`), so the pattern plays that note at that cutoff
+  (the pad's filter, Classic where it has none), as it was heard.
   Shift + 16 Levels or B1–B3 pick the type too: B1 Velocity, B2 Filter
   (kits; nothing on a synth), B3 Scale and again Tune, its two dots saying
   which. The picture: Scale a step a pad at its height, the roots in the

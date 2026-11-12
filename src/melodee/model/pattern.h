@@ -56,9 +56,11 @@ struct Event {
     uint8_t ratchet = 1;
     int8_t ramp = 0, pitch_ramp = 0;
     uint8_t condition = trig_always; // which passes it plays on, beside its chance (model/trig.h)
+    uint8_t cutoff = 0; // roadmap P3, a kit pad's: 16 Levels Filter's cutoff + 1 it was played at (0: the pad's own)
     bool operator==(const Event& o) const {
         return tick == o.tick && length == o.length && key == o.key && velocity == o.velocity && chance == o.chance && flags == o.flags &&
-               pitch == o.pitch && ratchet == o.ratchet && ramp == o.ramp && pitch_ramp == o.pitch_ramp && condition == o.condition;
+               pitch == o.pitch && ratchet == o.ratchet && ramp == o.ramp && pitch_ramp == o.pitch_ramp && condition == o.condition &&
+               cutoff == o.cutoff;
     }
     bool operator!=(const Event& o) const { return !(*this == o); }
     unsigned hits() const { return std::clamp<unsigned>(ratchet, 1, max_ratchet); }

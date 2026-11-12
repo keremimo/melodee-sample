@@ -254,7 +254,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
             Command c {Type::PadNote, ui.track, uint8_t(level.semitones + 64), t.levels_pad, int16_t(v)};
             c.position = uint32_t(level.cutoff + 1);
             send(c);
-            record(pad_keys[pad][0], v);
+            record(pad_keys[pad][0], v, level.cutoff); // with its cutoff (roadmap P3)
             return;
         }
         unsigned kit = t.bank % sampler_banks * 16 + pad;
@@ -291,7 +291,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
 // (Shift + Pad 10) on the nearest step of its grid (the pattern's Q, or one of
 // its own: Settings::rec_grid). A note moved ahead of the playhead is skipped
 // once by the audio thread, as it was heard live.
-void Context::record(int key, int velocity) {
+void Context::record(int key, int velocity, int cutoff) {
     if (!ui.recording || !host.playing() || host.count_in()) return;
     auto& p = pattern();
     int position = 0;
@@ -309,6 +309,7 @@ void Context::record(int key, int velocity) {
     }
     Event e;
     e.tick = at; e.length = uint16_t(p.q()); e.key = uint8_t(key); e.pitch = int8_t(key >> 8); e.velocity = uint8_t(std::clamp(velocity, 1, 127));
+    if (cutoff >= 0 && track().engine == EngineKind::Sampler) e.cutoff = uint8_t(std::min(cutoff, 100) + 1); // roadmap P3
     if (!p.add(e)) { notice("Pattern full"); return; }
     sync_pattern(ui.track, track().pattern);
     if (ahead) { Command c {Type::Recorded, ui.track, track().pattern, uint16_t(key)}; c.position = at; send(c); }

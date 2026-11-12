@@ -1422,6 +1422,9 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
     if (e.key > 127 && slot.kind != EngineKind::Sampler) return; // past 127: kit pads only
     const int played = pad_note(e.key, e.pitch); // the key, and over it what a kit pad plays at
     if (skipped(slot, unsigned(played), at)) return;
+    // Roadmap P3: a kit pad's note kept with 16 Levels' cutoff plays at it (the sampler reads it above the semitones).
+    const int cutoff = slot.kind == EngineKind::Sampler && e.cutoff ? e.cutoff - 1 : -1;
+    const int sounded = cutoff >= 0 ? pad_note(e.key, e.pitch, cutoff) : played;
     bool go = trig_plays(t, slot, e, pass);
     if (trig_weighed(e.condition, e.chance)) { // how it went, for PRE and NEI after it
         slot.weighed = true; slot.went = go;
@@ -1457,7 +1460,7 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
             engine_slide(slot, from.key, played, velocity, from.glide, gain);
             if (from.key != played) cancel_off(slot, from.key);
         } else {
-            engine_note_on(slot, played, velocity, gain);
+            engine_note_on(slot, sounded, velocity, gain);
         }
         schedule_off(slot, played, samples);
     }
@@ -1468,7 +1471,7 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
     for (unsigned k = 1; k < hits; ++k) { // the ratchet's other hits, each on its frame (run_hits)
         if (slot.hits_waiting == slot.hits.size()) break;
         PendingHit hit;
-        hit.key = pad_note(e.key, std::clamp(e.pitch + e.hit_pitch(k), -48, 48));
+        hit.key = pad_note(e.key, std::clamp(e.pitch + e.hit_pitch(k), -48, 48), cutoff);
         hit.midi = int16_t(e.key);
         hit.velocity = uint8_t(e.hit_velocity(velocity, k));
         hit.accent = accent;

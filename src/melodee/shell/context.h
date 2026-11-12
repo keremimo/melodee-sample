@@ -461,7 +461,7 @@ private:
     unsigned held_pads() const { unsigned n = 0; for (auto& pad : pad_keys) n += pad[0] >= 0; return n; }
     std::array<uint32_t, 4> taps {};
     unsigned tap_count = 0;
-    void record(int key, int velocity);
+    void record(int key, int velocity, int cutoff = -1); // cutoff: 16 Levels Filter's, kept with the note (roadmap P3)
     void record_release(int key);
 };
 

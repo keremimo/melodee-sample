@@ -183,6 +183,9 @@ struct SampleRef {
 
 // A note of a pad, with the semitones it plays at from the pad's root over the key.
 constexpr int pad_note(int key, int semitones) { return semitones ? key | (int(uint8_t(int8_t(semitones))) << 8) : key; }
+// Roadmap P3: the same with 16 Levels' cutoff (0..100) above them, as the sampler's note_on takes it from a pattern
+// (a cutoff + 1 in bits 16-23; -1 none). Note offs need only the key and semitones.
+constexpr int pad_note(int key, int semitones, int cutoff) { return pad_note(key, semitones) | (cutoff >= 0 ? (cutoff + 1) << 16 : 0); }
 
 // The pad's label as the boards print it: A01 .. D16.
 inline void pad_label(unsigned pad, char out[4]) {

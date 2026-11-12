@@ -260,6 +260,15 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
                     if (pattern.events[n].pitch) { w.u32(n); w.u8(uint8_t(pattern.events[n].pitch)); }
                 w.end(at);
             }
+            uint32_t cut = 0;
+            for (const auto& e : pattern.events) cut += e.cutoff != 0;
+            if (cut) { // roadmap P3: kit notes kept with 16 Levels' cutoff (+ 1), by their place in EVNT
+                at = w.begin("LVCF");
+                w.u8(t); w.u8(p); w.u32(cut);
+                for (uint32_t n = 0; n < pattern.events.size(); ++n)
+                    if (pattern.events[n].cutoff) { w.u32(n); w.u8(pattern.events[n].cutoff); }
+                w.end(at);
+            }
             uint32_t ratchets = 0;
             for (const auto& e : pattern.events) ratchets += e.hits() > 1 || e.ramp || e.pitch_ramp;
             if (ratchets) { // ratchets (roadmap P1), by their place in EVNT: hits, velocity ramp, pitch ramp
@@ -704,6 +713,16 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 uint32_t place = r.u32();
                 auto pitch = int8_t(uint8_t(r.u8()));
                 if (r.ok && place < pattern.events.size()) pattern.events[place].pitch = pitch;
+            }
+        } else if (name == "LVCF") { // 16 Levels' cutoffs kept with kit notes (roadmap P3); without it each pad's own
+            unsigned t = r.u8(), p = r.u8();
+            if (t >= track_count || p >= pattern_count) continue;
+            auto& pattern = patterns->at[t][p];
+            uint32_t count = std::min<uint32_t>(r.u32(), max_pattern_events);
+            for (uint32_t k = 0; k < count && r.ok; ++k) {
+                uint32_t place = r.u32();
+                unsigned cut = r.u8();
+                if (r.ok && place < pattern.events.size()) pattern.events[place].cutoff = uint8_t(std::min(cut, 101u));
             }
         } else if (name == "RTCH") { // ratchets (roadmap P1); without it every note plays once
             unsigned t = r.u8(), p = r.u8();

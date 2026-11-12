@@ -9526,9 +9526,57 @@ void samples_used() {
     CHECK(samples_in_use(*project, edits)[20]);
 }
 
+// Roadmap P3: a 16 Levels Filter note kept by Seq Record plays at its cutoff (LVCF), the pad's own filter otherwise.
+void levels_cutoff_kept() {
+    CHECK(pad_note(40, 0, 0) == (40 | 1 << 16) && pad_note(40, -2, 50) == (40 | 0xfe << 8 | 51 << 16) && pad_note(40, 3, -1) == pad_note(40, 3));
+    SampleData data;
+    data.frames = 44100;
+    data.left.resize(data.frames);
+    uint32_t seed = 1;
+    for (auto& x : data.left) { seed = seed * 1664525u + 1013904223u; x = float(int32_t(seed)) / 2147483648.0f * 0.5f; } // noise: every band
+    data.right = data.left;
+    SamplerEngine::Table table {};
+    table[1] = &data;
+    auto heard = [&](int key) {
+        auto engine = std::make_unique<SamplerEngine>();
+        engine->set_samples(&table);
+        PadSound pad; pad.sample = 1; pad.velocity_sense = 0;
+        engine->set_pad(0, pad);
+        engine->note_on(key, 100);
+        std::vector<float> l(128), r(128);
+        double sum = 0;
+        for (unsigned b = 0; b < 60; ++b) {
+            std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+            engine->render_stereo(l.data(), r.data(), 128);
+            if (b > 10) for (float x : l) sum += double(x) * x;
+        }
+        engine->note_off(key & 0xffff); // its note off needs no cutoff
+        return std::sqrt(sum);
+    };
+    const int key = int(sampler_first_note);
+    double open = heard(key), closed = heard(pad_note(key, 0, 5)), wide = heard(pad_note(key, 0, 100));
+    CHECK(closed < open * 0.3 && wide > open * 0.6);
+    // The file: LVCF by each note's place; older files play every note at its pad's own.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& pattern = bank->at[4][2];
+    Event a; a.tick = 0; a.key = uint8_t(key); a.cutoff = 31;
+    Event b; b.tick = 96; b.key = uint8_t(key + 1);
+    pattern.add(a); pattern.add(b);
+    auto file = save_project(*project, *bank);
+    auto back = std::make_unique<Project>();
+    auto back_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(file, *back, *back_bank).empty());
+    CHECK(back_bank->at[4][2].events.size() == 2 && back_bank->at[4][2].events[0].cutoff == 31 && back_bank->at[4][2].events[1].cutoff == 0);
+    std::string text(file.begin(), file.end());
+    file[text.find("LVCF")] = 'X';
+    CHECK(load_project(file, *back, *back_bank).empty() && back_bank->at[4][2].events[0].cutoff == 0);
+}
+
 int main() {
     chop_kept();
     samples_used();
+    levels_cutoff_kept();
     pad_link_chains();
     loop_seams();
     instrument_p3();
