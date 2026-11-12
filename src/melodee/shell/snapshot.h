@@ -57,6 +57,9 @@ struct Snapshot {
     unsigned flex_playing = 0;               // Flex Beat's pad playing, 0 Empty (parity phase 7b)
     std::array<std::array<PatternSketch, pattern_count>, track_count> sketches {};
     LoadedSample sample;               // the sample in hand: the last pad's, or Chop's
+    // Pads (round 2, pads B): each pad of the bank in view drawn as its own waveform, start to end; a bit a pad that has one.
+    std::array<std::array<uint8_t, 32>, 16> pad_waves {};
+    uint16_t pad_waves_shown = 0;
     struct Take {
         uint8_t state = 0;             // TakeRecorder::State
         uint32_t frames = 0, length = 0;

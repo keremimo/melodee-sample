@@ -196,6 +196,22 @@ LoadedSample break_sample() {
     return s;
 }
 
+// Pads B: each used pad of the bank in view as a waveform of its own, a hit or a few and their decay.
+void pad_waves(Snapshot& s) {
+    const auto& t = s.project.tracks[s.ui.track % track_count];
+    s.pad_waves_shown = 0;
+    for (unsigned n = 0; n < 16; ++n) {
+        if (!t.pads[t.bank % sampler_banks * 16 + n].used()) continue;
+        unsigned hits = n < 4 ? 1 : 1 + n % 3;
+        float decay = 2.0f + float(n % 4);
+        for (unsigned k = 0; k < 32; ++k) {
+            float in = std::fmod(float(k * hits) / 32, 1.0f);
+            s.pad_waves[n][k] = uint8_t(std::clamp(std::exp(-in * decay) * (0.8f + 0.2f * std::sin(float(k) * 1.7f + float(n))), 0.04f, 1.0f) * 255);
+        }
+        s.pad_waves_shown = uint16_t(s.pad_waves_shown | 1u << n);
+    }
+}
+
 // Track 3's pad `pad` holding a Logic EXS24 instrument: 22 zones over C0..C7 at
 // every velocity, all its files read, Note On as a loaded instrument is.
 void choir_pad(Snapshot& s, unsigned pad) {
@@ -798,10 +814,12 @@ const Preview previews[] {
      }},
     {"pads", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.turning = 1; s.ui.turned_at = s.now;
+         pad_waves(s);
      }},
     {"padsplaying", [](Shell&, Snapshot& s) { // the pad in hand as it plays: a head on its small waveform
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          playing_head(s, 9000, 0.8f);
+         pad_waves(s);
      }},
     {"padslines", [](Shell&, Snapshot& s) { // a kit playing: a line along the foot of each sounding pad, the one in hand too
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
@@ -810,6 +828,7 @@ const Preview previews[] {
          pad_voice(s, 2, 2, 38, 0.85f, 0.35f); // A03 hat, fading
          pad_voice(s, 3, 5, 37, 0.18f, 0.8f);  // A06
          pad_voice(s, 4, 0, 30, 0.95f, 0.1f);  // an older kick: the newest one's line shows
+         pad_waves(s);
      }},
     {"padcopy", [](Shell&, Snapshot& s) { // Shift + Erase, then a pad: where does it go
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.copying = UiState::Copying::Pads; s.ui.copy_from = 2;
@@ -1525,6 +1544,14 @@ const Preview previews[] {
     {"stepslock", [](Shell& shell, Snapshot& s) { // step 5 held on the kit's hat lane: the cards lock the hat's level, tune and pan there
          step_edit_kit(shell, s);
          s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2; s.ui.held_step = 4;
+    {"stepslane", [](Shell& shell, Snapshot& s) { // Shift + K1 on the kit's Steps: the hat's lane loops over six steps of the bar's sixteen
+         step_edit_kit(shell, s);
+         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         auto& p = shell.patterns().at[3][0];
+         p.set_lane_length(sampler_first_note + 2, 6 * sixteenth_ticks);
+         s.position = 9 * sixteenth_ticks; s.pass = 0; // the hat's lane at its step 4 while the pattern is at 10
+         s.ui.shift = true; s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
          auto& p = shell.patterns().at[3][0];
          auto lock = [&](uint32_t tick, PadParam which, int value) {
              MotionPoint m;

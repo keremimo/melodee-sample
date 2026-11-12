@@ -307,8 +307,10 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   the header's chip, the octave beside it. K1 root, K2 scale, K3 layout;
   octave on −/+; Shift + K3 transposes the pads −12..+12 (kept with the
   track). Push opens Edit.
-- **Pads** (Sample's third stop on a kit): the bank as the pads sit, the last pad
-  with its length, play mode and waveform; K1 pitch, K2 level, K3 pan;
+- **Pads** (Sample's third stop on a kit): the bank as the pads sit, each
+  pad drawing its own waveform from start to end, so a kit is known by its
+  shapes; a pad that sounds lights and a head runs through it, the pad in
+  hand (filled) and the bank are named in the header; K1 pitch, K2 level, K3 pan;
   Shift + K1 and K2 the project's root and scale; Push opens the map of the
   ten sample pages.
 - **Sounds** (Sample Select on a synth or 909): the factory sounds and one's
@@ -526,6 +528,11 @@ hold to steer, Shift + Seq to zoom in**.
   and the pattern's bars as blocks at the foot; the step in hand is the
   header's. On a kit the pads are the last pad's lane: a tap sets or clears
   that pad's note and leaves the others' (Roll edits the whole kit), the
+  Shift + K1 there is the lane's own **length** (LANE: 1 step to the
+  pattern's, All): a shorter lane loops on its own from where the pattern
+  began, polymeter inside the kit, and counts its own passes for trig
+  conditions; Steps darkens what lies past it, its playhead goes round with
+  it and the header names it (LANE 6). Files keep lanes in LANE.diff --git a/src/melodee/engine/engine_host.h b/src/melodee/engine/engine_host.h
   cards are that pad's note in the step, and
   the wheel moves a held step's note to the next pad, the lane with it.
   **Held, a step is locked**: while a pad is down the cards are the Motion
@@ -590,8 +597,8 @@ thread.
   the track colour as it plays, with the seconds heard of its length on the
   right, and B3 lights while there is sound); Shift + pad loads onto the
   next empty pad. Melodee writes only to the card. On **Pads** every pad that
-  sounds draws a thin line along its foot, as far as its newest voice has
-  played through its region and as strong as that voice's envelope.
+  sounds lights, with a head through its waveform as far as its newest voice
+  has played through its region.
 - **SFZ instruments** (`.sfz` in the browser, tagged SFZ): load onto a pad as
   a WAV does; the pad keeps all its controls and its note and velocity pick
   zones (up to 512; round robin, layers, `group` / `off_by`, each zone's own

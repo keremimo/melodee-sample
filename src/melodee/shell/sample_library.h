@@ -155,6 +155,9 @@ public:
     };
     void view(View& out) const;
     LoadedSample slot(unsigned n) const;
+    // Pads (round 2, pads B): slot `n`'s waveform between two frames (to 0: its end) in `columns` peaks
+    // 0..255, from the overview it keeps; false when the slot holds no audio.
+    bool thumbnail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const;
     // MIDI thread: the loudest sample of slot `n` between two frames (0..1+), for
     // Normalize; -1 when it is not loaded. Reads the audio under the lock.
     float peak(unsigned n, uint32_t from, uint32_t to) const;

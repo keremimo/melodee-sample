@@ -33,6 +33,22 @@ bool SampleLibrary::load(unsigned slot, const std::string& path) {
 
 void SampleLibrary::view(View& out) const { std::lock_guard<std::mutex> guard(lock); out = known; }
 LoadedSample SampleLibrary::slot(unsigned n) const { std::lock_guard<std::mutex> guard(lock); return known.slots[n % sample_slots]; }
+bool SampleLibrary::thumbnail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const {
+    std::lock_guard<std::mutex> guard(lock);
+    const auto& s = known.slots[n % sample_slots];
+    if (!s.ready || !s.frames || !columns) return false;
+    to = std::min(to ? to : s.frames, s.frames);
+    from = std::min(from, to);
+    double width = s.overview.size();
+    double a = from * width / s.frames, b = std::max(a + 1, to * width / s.frames);
+    for (unsigned c = 0; c < columns; ++c) {
+        unsigned c0 = unsigned(a + (b - a) * c / columns), c1 = std::max(c0 + 1, unsigned(a + (b - a) * (c + 1) / columns));
+        uint8_t peak = 0;
+        for (unsigned k = c0; k < c1 && k < s.overview.size(); ++k) peak = std::max(peak, s.overview[k]);
+        out[c] = peak;
+    }
+    return true;
+}
 float SampleLibrary::peak(unsigned n, uint32_t from, uint32_t to) const {
     std::lock_guard<std::mutex> guard(lock);
     const SampleData* data = data_of[n % sample_slots];
