@@ -2475,6 +2475,16 @@ void zoom_and_fine_edit() {
     edge = zoom_view(441000, 0, 441000, 440990, 60);
     CHECK(edge.to == 441000);
     CHECK(fine_step({0, 256}) == 1 && fine_step({0, 441000}) == 430);
+    // Spun fast the wheel goes further a detent; slow, a pause or the other way, one step.
+    WheelPace pace;
+    CHECK(wheel_gain(pace, 1000, 1) == 1 && wheel_gain(pace, 1200, 1) == 1); // 5 a second
+    unsigned gain = 1;
+    for (uint32_t t = 1210; t < 1400; t += 10) gain = wheel_gain(pace, t, 1); // 100 a second
+    CHECK(gain >= 16 && gain <= wheel_most);
+    CHECK(wheel_gain(pace, 1410, -1) == 1); // the other way: from the start
+    for (uint32_t t = 1420; t < 1700; t += 4) gain = wheel_gain(pace, t, -1);
+    CHECK(gain == wheel_most);
+    CHECK(wheel_gain(pace, 2500, -1) == 1); // after a pause
     ZoomView kept;
     zoom_follow(kept, 7, {1000, 2000}, 1500, 441000, 40); // inside: the view stays
     CHECK(kept.from == 1000 && kept.to == 2000 && kept.key == 7);

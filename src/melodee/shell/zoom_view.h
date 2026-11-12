@@ -63,6 +63,26 @@ inline void zoom_follow(ZoomView& kept, uint32_t key, FrameView was, uint32_t at
 // The wheel's step on a handle: a 1024th of the view, a frame at the closest zoom.
 inline uint32_t fine_step(const FrameView& view) { return std::max<uint32_t>(1, view.width() / 1024); }
 
+// The wheel turned fast goes further a detent, as the MPC's encoder does: its pace in detents a second, eased over
+// the last few, and up to 64 steps a detent from 12 a second up; slow turns stay a step each. A pause or a turn the
+// other way starts the pace again.
+struct WheelPace {
+    uint32_t at = 0;
+    float rate = 0;
+    int way = 0;
+};
+constexpr float wheel_easy = 12;    // detents a second still a step each
+constexpr unsigned wheel_most = 64; // steps a detent, spun as fast as it goes
+inline unsigned wheel_gain(WheelPace& pace, uint32_t now, int delta) {
+    int way = delta > 0 ? 1 : -1;
+    uint32_t gap = pace.at && now >= pace.at ? now - pace.at : 1000;
+    float rate = float(delta > 0 ? delta : -delta) * 1000.0f / float(std::max<uint32_t>(gap, 4));
+    pace.rate = gap > 150 || way != pace.way ? std::min(rate, wheel_easy) : 0.6f * pace.rate + 0.4f * rate;
+    pace.at = now; pace.way = way;
+    if (pace.rate <= wheel_easy) return 1;
+    return std::min(wheel_most, unsigned(std::pow(pace.rate / wheel_easy, 1.5f)));
+}
+
 inline uint32_t view_key(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e) {
     uint32_t h = 2166136261u;
     for (uint32_t v : {a, b, c, d, e}) { h ^= v; h *= 16777619u; }
