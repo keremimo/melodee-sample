@@ -47,31 +47,58 @@ behaviour changed.
 
 ## Decisions made by sessions
 
-(none yet)
+- P0: a note played by hand or by MIDI in plays exactly one block (128
+  frames) after the frame it came in at, at that frame; commands sent
+  after it wait behind it, so nothing overtakes it. Inside a block only
+  notes and values (`EngineHost::mid_block`) are applied; anything else
+  (Play, a project, an engine, a plug-in) waits for the next block's start,
+  where it always was, so block-wide state stays whole. Why: keeps the
+  order sent and the render workers' rules, at the cost of half a block
+  more latency on average for no jitter.
+- P0: a timed note more than three blocks ahead (the audio clock off just
+  after an overrun) plays at once, as before. Why: a hit can never be
+  that far ahead; better a block late than tens of ms.
+- P0: Seq Record places an unquantised note on the tick nearest to where
+  it was heard (it took the tick the playhead had last played). Why: half
+  a tick nearer the played time.
+- P0: pad presses through `--ctl melodee-press` and `melodee-midi` notes
+  are stamped as a hand's, so the timed path can be checked remotely
+  (status `melodee_timed`).
+- P0: the VST2 bridge's lock inherits priority (rather than a lock-free
+  copy of parameter values, which would go stale when a plug-in changes
+  its own); the worker takes `SCHED_FIFO` 30 only once the plug-in is open
+  (an open at that priority could hold a core from the audio threads),
+  with `SCHED_RESET_ON_FORK` so threads the plug-in starts stay normal; a
+  state is read or written one parameter a lock, blocks passing between.
 
 ## Waiting for a hand check
 
-(none yet)
+- P0: with Rec Quantize off, record pads against the metronome: notes sit
+  where played (before, about 8 ms late at 48 kHz, three periods).
+- P0: fast rolls and flams on the pads keep their spacing (no 3 ms jitter),
+  by ear; and a MIDI keyboard's notes the same.
+- P0: an armv7 VST2 plug-in (Acid-303 in the project now on the MPC)
+  playing while its parameters are turned on its page: no dropouts.
 
 ## P0: timing
 
-- [ ] Recorded notes land where they were heard: `Context::record`
+- [x] Recorded notes land where they were heard: `Context::record`
   (`shell/context.cpp`) takes `host.position_of()`, the tick the engine is
   on when the MIDI thread sees the hit, so a take with Rec Quantize off is
   late by the output latency (about 8.7 ms at 3 × 128 frames). Place it
   from the hit's timestamp minus the output latency, as Manual chop's taps
   already are (`shell/shell.cpp`, `tap_frames`). Host test with a known
   latency.
-- [ ] Live notes at their frame: pad and MIDI-in Note On / Off (and
+- [x] Live notes at their frame: pad and MIDI-in Note On / Off (and
   `PadNote`, `ArpKey`) are applied at the start of the next block
   (`EngineHost::render`), so a hit moves by up to a block. Carry the
   rawmidi timestamp to a frame (`clock.frame_at`) and play it at a fixed
   one-block delay at that frame (split the block there, as ticks do). Host
   test: two hits a known time apart come out that far apart.
-- [ ] The MIDI thread (`Controller::run_midi` in the base) at a low
+- [x] The MIDI thread (`Controller::run_midi` in the base) at a low
   real-time priority (SCHED_FIFO below the audio thread's 30 and the
   pager's 20, e.g. 15); it sleeps in `poll`, so it cannot starve anything.
-- [ ] VST2 bridge: the `vst2_bridge32` worker that answers the audio
+- [x] VST2 bridge: the `vst2_bridge32` worker that answers the audio
   thread runs at SCHED_FIFO with the audio thread's priority (set in the
   bridge, or by the host on the child); the connection lock the audio
   thread shares with parameter reads from the MIDI thread
@@ -173,3 +200,15 @@ behaviour, write the code fresh for this app.
 
 - 2026-11-12: roadmap made from a read of the engine, the render pool, the
   base's threads and melodee-ios; nothing built yet.
+- 2026-11-12, P0 timing: a note from a pad or MIDI in carries its receive
+  stamp (base 039c64e: `SurfaceEvent::timestamp_ns`) and plays a block
+  after it, at its frame (`EngineHost::send_at`, `take_commands`); Seq
+  Record places it from that stamp less the output latency, on the nearest
+  tick (`heard_place`, a ring of each tick's frame); the MIDI thread at
+  `SCHED_FIFO` 15 (base 7985b50); the VST2 bridge at the audio priority
+  behind a priority-inheriting lock. Host tests `hits_on_time`. On the MPC
+  (48 kHz, three periods): remote pad presses and MIDI in notes all on
+  their frame (`melodee_timed=18/0/0`), the MIDI thread at FIFO 15 and the
+  Acid-303 bridge at FIFO 30 (`/proc`), a play of the project with its
+  plug-ins without a dropout. Pushes owed in sample-base: 039c64e and
+  7985b50 (on f8d92f0 and later 12f0679, a peer's).
