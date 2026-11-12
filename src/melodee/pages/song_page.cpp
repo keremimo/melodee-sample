@@ -120,7 +120,7 @@ void draw(Paint& p, const Snapshot& s) {
             if (!used) free = n;
         }
         juce::String length = juce::String(seconds / 60) + ":" + juce::String(seconds % 60).paddedLeft('0', 2);
-        key_tiles(p, {KeyTile {}, value_tile(Icon::Wav, length, juce::String::fromUTF8("WAV \xc2\xb7 24-BIT"), true),
+        key_tiles(p, {KeyTile {}, value_tile(Icon::Wav, length, "32-BIT FLOAT", true), // as WavStream writes it, kept unclipped
                       value_tile(Icon::Pattern, free < pattern_count ? "P" + juce::String(free + 1) : juce::String("FULL"),
                                  juce::String(bars) + (bars == 1 ? " BAR" : " BARS"))});
         return;
