@@ -36,6 +36,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/settings.h"
+#include "melodee/shell/capture_ring.h"
 #include "melodee/shell/place_bar.h"
 #include "melodee/shell/playheads.h"
 #include "melodee/shell/record_place.h"
@@ -1393,16 +1394,19 @@ void settings() {
     CHECK(c.double_copies && c.value_text(Settings::DoubleSeq) == "Copy notes");
     c.step(Settings::DoubleSeq, 1); CHECK(!c.double_copies && c.value_text(Settings::DoubleSeq) == "Empty");
     { Settings back; back.read(c.text()); CHECK(!back.double_copies); }
-    // Capture's rows (capture C, no page): bars 1, 2, 4, 8, and as played, 1/16 or 1/8; kept in the text.
-    CHECK(c.value_text(Settings::CaptureBars) == "2 bars" && c.value_text(Settings::CaptureQuantize) == "1/16");
-    c.step(Settings::CaptureBars, 1); CHECK(c.capture_bars == 4);
-    for (int n = 0; n < 3; ++n) c.step(Settings::CaptureBars, 1);
-    CHECK(c.capture_bars == 8);
+    // Capture's rows (capture C, no page): Auto (roadmap P5: the phrase), bars 1, 2, 4, 8, 16, 32, and as played,
+    // 1/16 or 1/8; kept in the text.
+    CHECK(c.value_text(Settings::CaptureBars) == "Auto" && c.value_text(Settings::CaptureQuantize) == "1/16");
+    c.step(Settings::CaptureBars, 1); CHECK(c.capture_bars == 1 && c.value_text(Settings::CaptureBars) == "1 bar");
+    c.step(Settings::CaptureBars, 1); CHECK(c.capture_bars == 2 && c.value_text(Settings::CaptureBars) == "2 bars");
+    for (int n = 0; n < 6; ++n) c.step(Settings::CaptureBars, 1);
+    CHECK(c.capture_bars == 32);
     for (int n = 0; n < 5; ++n) c.step(Settings::CaptureBars, -1);
-    CHECK(c.capture_bars == 1 && c.value_text(Settings::CaptureBars) == "1 bar");
+    CHECK(c.capture_bars == 1);
     c.step(Settings::CaptureQuantize, -1); CHECK(c.capture_quantise == 0 && c.value_text(Settings::CaptureQuantize) == "As played");
     { Settings back; back.read(c.text()); CHECK(back.capture_bars == 1 && back.capture_quantise == 0); }
     { Settings odd; odd.read("capture_bars=5\ncapture_quantize=9\n"); CHECK(odd.capture_bars == 4 && odd.capture_quantise == 2); }
+    { Settings none; none.read("capture_bars=0\n"); CHECK(none.capture_bars == 0); }
     CHECK(std::string(Settings::row_name(Settings::CaptureQuantize)) == "Capture quantize" && Settings::CaptureQuantize + 1 == Settings::Screen);
     // Favourites: starred sounds by engine, kept in the text; the Sounds page's FAVOURITES lists them.
     static_assert(Settings::engines == unsigned(EngineKind::Count), "a favourites row per engine");
@@ -10672,7 +10676,70 @@ void scenes_p5() {
     }
 }
 
+// Roadmap P5: always-on capture. Every track's notes kept in a ring made once, Record on or not; Shift + Seq Record lays
+// the phrase (or so many bars) into patterns after the fact, the same bars for every track, on the bar lines while the
+// transport ran, from the first note when stopped.
+void capture_p5() {
+    auto ring = std::make_unique<CaptureRing>();
+    const uint32_t bar = 4 * ticks_per_quarter;
+    // Played while the transport ran (run 3): track 2 a kick on bars 5 and 6, track 7 a bass note in bar 6; a gap of
+    // three bars before them (bar 1's note on track 2 is another phrase).
+    ring->press(2, 36, 100, 0, 3, 0 * bar + 10); ring->release(2, 36, 100, 0 * bar + 30);
+    ring->press(2, 36, 110, 0, 3, 4 * bar); ring->release(2, 36, 100, 4 * bar + 24);
+    ring->press(7, 40 | 2 << 8, 90, 0, 3, 5 * bar + 3 * sixteenth_ticks + 2); // still held
+    ring->press(2, 36, 120, 0, 3, 5 * bar + 8 * sixteenth_ticks - 3); ring->release(2, 36, 100, 5 * bar + 8 * sixteenth_ticks + 20);
+    CHECK(ring->count() == 4 && ring->played(2) == 3 && ring->played(7) == 1);
+    CaptureAsk ask;
+    ask.bar = bar; ask.grid = sixteenth_ticks; ask.ticks = 5 * bar + 12 * sixteenth_ticks;
+    auto w = capture_window(*ring, ask);
+    CHECK(w.any && w.run == 3 && w.start == 4 * bar && w.length == 2 * bar); // the phrase: bars 5 and 6
+    Pattern kick, bass;
+    CHECK(lay_capture(*ring, 2, w, ask, kick) && kick.length == 2 * bar && kick.events.size() == 2);
+    CHECK(kick.events[0].tick == 0 && kick.events[0].velocity == 110 && kick.events[0].length == sixteenth_ticks);
+    CHECK(kick.events[1].tick == bar + 8 * sixteenth_ticks && kick.events[1].velocity == 120); // onto its sixteenth
+    CHECK(lay_capture(*ring, 7, w, ask, bass) && bass.events.size() == 1 && bass.events[0].tick == bar + 3 * sixteenth_ticks &&
+          bass.events[0].key == 40 && bass.events[0].pitch == 2 && bass.events[0].length == 9 * sixteenth_ticks); // held until now
+    Pattern none;
+    CHECK(!lay_capture(*ring, 5, w, ask, none));
+    ask.grid = 1; // as played
+    CHECK(lay_capture(*ring, 2, w, ask, kick) && kick.events[1].tick == bar + 8 * sixteenth_ticks - 3 && kick.events[1].length == 23);
+    ask.bars = 4; // four bars back from the bar after the last note: bars 3-6, bar 1's note still out
+    w = capture_window(*ring, ask);
+    CHECK(w.start == 2 * bar && w.length == 4 * bar && lay_capture(*ring, 2, w, ask, kick) && kick.events.size() == 2 && kick.events[0].tick == 2 * bar);
+    ask.bars = 8; // reaching past the transport's start: from it
+    w = capture_window(*ring, ask);
+    CHECK(w.start == 0 && w.length == 8 * bar && lay_capture(*ring, 2, w, ask, kick) && kick.events.size() == 3 && kick.events[0].tick == 10);
+    ask.tracks = 1u << 2; // only track 2 looked at: its own phrase
+    ask.bars = capture_auto;
+    w = capture_window(*ring, ask);
+    CHECK(w.start == 4 * bar && w.length == 2 * bar);
+    // Played stopped (run 0), at 120 BPM: the phrase's first note is its downbeat; a gap of more than two bars ends it.
+    auto loose = std::make_unique<CaptureRing>();
+    CaptureAsk still;
+    still.bar = bar; still.grid = sixteenth_ticks; still.tick_ms = 60000.0 / 120 / ticks_per_quarter; // a bar is 2000 ms
+    loose->press(4, 60, 100, 1000, 0, 0); loose->release(4, 60, 1100, 0);       // long before: not this phrase
+    loose->press(4, 62, 100, 9000, 0, 0); loose->release(4, 62, 9240, 0);       // the downbeat
+    loose->press(4, 64, 80, 9500 + 3, 0, 0); loose->release(4, 64, 9750, 0);    // a beat later, 3 ms late
+    loose->press(4, 67, 90, 12100, 0, 0); loose->release(4, 67, 12300, 0);      // in the second bar
+    still.now = 14000;
+    auto sw = capture_window(*loose, still);
+    CHECK(sw.any && sw.run == 0 && sw.start == 9000 && sw.length == 2 * bar);
+    Pattern melody;
+    CHECK(lay_capture(*loose, 4, sw, still, melody) && melody.events.size() == 3 && melody.events[0].tick == 0 &&
+          melody.events[1].tick == ticks_per_quarter && melody.events[2].tick == bar + 9 * sixteenth_ticks); // 3100 ms in: 595 ticks, the nearest sixteenth
+    CHECK(melody.events[0].length == 2 * sixteenth_ticks && melody.events[1].length == 2 * sixteenth_ticks);
+    still.bars = 1; // a bar back from now: the second bar's note alone, its own downbeat
+    sw = capture_window(*loose, still);
+    CHECK(sw.start == 12100 && sw.length == bar && lay_capture(*loose, 4, sw, still, melody) && melody.events.size() == 1 && melody.events[0].tick == 0);
+    // The ring goes round: minutes of notes, the oldest let go, nothing made as it plays.
+    auto full = std::make_unique<CaptureRing>();
+    for (unsigned n = 0; n < capture_size + 100; ++n) full->press(n % 3, 60, 100, n, 1, n * 24);
+    CHECK(full->count() == capture_size && full->newest(0).at == capture_size + 99 && full->newest(capture_size - 1).at == 100);
+    static_assert(sizeof(CaptureRing) < 256 * 1024, "the ring stays small");
+}
+
 int main() {
+    capture_p5();
     scenes_p5();
     exports_p4();
     midi_tracks_p4();

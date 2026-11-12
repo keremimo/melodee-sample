@@ -133,7 +133,7 @@ cards.
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
 | − / + | Lists move as the wheel does; on play pages the octave (a kit's 16 Levels in Tune or Scale too; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
 | Sample Record | Record (kit tracks); on Record it ends the take and opens Stage's TRIM on the pad | Audio Recall: the last 25 s onto the next empty pad |
-| Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): the last bars played into the next empty pattern, no page |
+| Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): what every track played last into its next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
 | Play | Play from the start (on Song from the cursor); held while playing, Fill (FILL trig conditions play) | Continue from where it stopped or the wheel put it |
 | B1–B3 | The page's soft keys, named above them; with Note Repeat on, its rate (on Stage only while Note Repeat is held; not on Song or the Looper) | Page jobs (Stage's TRIM on a kit, Chop) |
@@ -722,13 +722,26 @@ hold to steer, Shift + Seq to zoom in**.
   each one undo; the length stays for the speeds. Settings' Double Seq row
   picks what the new half holds: Copy notes (the MPC's way, motion too) or
   Empty.
-- **Recall** (Shift + Seq Record): no page. The last bars the track's
-  pads played go into its next empty pattern, which then plays; one undo.
-  The page stays, and the header shows for a few seconds what landed (✓
-  P3) and the undo keys (Shift + −). How many bars (1, 2, 4, 8) and how
-  they go on the grid (as played, 1/16, 1/8) are Settings rows behind the
-  PADS door, beside Double Seq; bars follow the time signature. Nothing
-  played, or no pattern empty: a notice, and nothing changes.
+- **Recall** (Shift + Seq Record): no page. Roadmap P5, always-on
+  capture: every note played on any track (the pads, Keys, MIDI in on its
+  channel) is kept, Seq Record on or not, the last minutes of it (8192
+  notes, in a ring made at start; the audio thread never sees it). Played
+  while the transport runs a note keeps the tick it was heard on, as Seq
+  Record places it; played stopped, its time. Recall lays the last phrase
+  (back to where no track played for two bars, up to 64 bars) into
+  patterns: every track that played in it, each into its next empty
+  pattern, which then plays, the same bars for all so they line up; one
+  undo for all. Played while running, the bars are the transport's, from
+  the bar the phrase began in to the bar after its last note; played
+  stopped, its first note is the downbeat, at the tempo now. The page
+  stays, and the header shows for a few seconds what landed (✓ P3 for the
+  selected track, +2 for the others) and the undo keys (Shift + −). How
+  many bars (Auto, the phrase; or 1, 2, 4, 8, 16, 32 back from the bar
+  after the last note) and how they go on the grid (as played, 1/16, 1/8)
+  are Settings rows behind the PADS door, beside Double Seq; bars follow
+  the time signature. With Note Repeat on, the presses are kept, not the
+  repeats. Nothing played, or no pattern empty: a notice, and nothing
+  changes. `status`: `melodee_capture` (notes kept).
 - **Song** (Shift + Pad 12): a lane per track, clips of patterns, markers,
   a loop brace, the cursor. K1 zoom (4–64 bars), K2 / K3 the next clip's
   pattern and length (or the clip's under the cursor); wheel by the bar,

@@ -1321,6 +1321,10 @@ const Preview previews[] {
          s.ui.page = PageId::Steps; s.ui.track = 0; s.playing = true;
          s.ui.captured_pattern = 2; s.ui.captured_at = s.now;
      }},
+    {"capturedmany", [](Shell&, Snapshot& s) { // roadmap P5: three tracks played in the phrase, each into its next empty pattern
+         s.ui.page = PageId::Steps; s.ui.track = 0; s.playing = true;
+         s.ui.captured_pattern = 2; s.ui.captured_tracks = 3; s.ui.captured_at = s.now;
+     }},
     {"padfx", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::PadFx; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3];

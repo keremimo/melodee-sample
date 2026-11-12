@@ -212,7 +212,7 @@ void Context::follow_zone(unsigned kit, int semitones, int velocity) {
 }
 
 // One key of a pad press, to the arp when it is on, else straight to the
-// engine; every press also goes into the history Capture reads.
+// engine; every press also goes into the ring Capture reads (roadmap P5).
 void Context::key(int k, int velocity, bool down) {
     auto& t = track();
     if (t.arp) {
@@ -221,16 +221,8 @@ void Context::key(int k, int velocity, bool down) {
         note(ui.track, k, down ? velocity : 0);
     }
     if (!down) record_release(k);
-    if (down) {
-        if (!t.arp) record(k, velocity); // with the arp on the press is not heard: its notes are written as they play (take_arp_notes)
-        history[history_at % history.size()] = {ui.track, uint8_t(k), uint8_t(velocity), now, 0};
-        ++history_at;
-    } else {
-        for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()); ++n) {
-            auto& h = history[(history_at - 1 - n) % history.size()];
-            if (h.track == ui.track && h.key == uint8_t(k) && !h.length) { h.length = std::max<uint32_t>(1, now - h.at); break; }
-        }
-    }
+    if (down && !t.arp) record(k, velocity); // with the arp on the press is not heard: its notes are written as they play (take_arp_notes)
+    keep_played(ui.track, k, velocity, down); // roadmap P5: always, for Capture
 }
 
 // Let go of whatever this pad started, on the track it played (as record_key() plays its source track).
@@ -265,6 +257,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
             ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(level.shown);
             pad_keys[pad][0] = pad_note(int(sampler_first_note + t.levels_pad), level.semitones); // what it plays, so Seq Record keeps it
             int v = level.velocity ? level.velocity : velocity;
+            keep_played(ui.track, pad_keys[pad][0], v, true); // roadmap P5: Capture keeps it (its release goes through key())
             Command c {Type::PadNote, ui.track, uint8_t(level.semitones + 64), t.levels_pad, int16_t(v)};
             c.position = uint32_t(level.cutoff + 1);
             send(c);
@@ -1295,6 +1288,7 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (e.swap_a >= 0) trade_tracks(*this, unsigned(e.swap_a), unsigned(e.swap_b)); // a move: the same swap again
     if (e.column >= 0)
         for (const auto& [t, value] : after ? e.column_after : e.column_before) restore_pattern(t, unsigned(e.column), value);
+    for (const auto& p : after ? e.patterns_after : e.patterns_before) restore_pattern(p.track, p.pattern, p.value); // roadmap P5
     const auto& chain = after ? e.chain_after : e.chain_before;
     if (e.chain >= 0 && chain) restore_chain(unsigned(e.chain), *chain);
     if (const auto& m = after ? e.mix_after : e.mix_before) restore_mix(*m);
@@ -1578,53 +1572,6 @@ void Context::send_click() {
     const auto& set = ui.settings;
     bool on = set.click == 1 || (set.click == 2 && (ui.recording || loop_click)); // a loop recording counts (docs/LOOPER.md)
     send({Type::Click, 0, 0, set.click_level, int16_t(on)});
-}
-
-void Context::capture() {
-    auto& t = track();
-    if (!t.used()) return;
-    int into = -1; // the next empty pattern after the one playing, round to the first
-    for (unsigned k = 1; k <= pattern_count && into < 0; ++k)
-        if (patterns.at[ui.track][(t.pattern + k) % pattern_count].empty()) into = int((t.pattern + k) % pattern_count);
-    if (into < 0) { notice("No empty pattern to capture into"); return; }
-    double tick_ms = 60000.0 / (tempo_now() / 10.0) / (4.0 * sixteenth_ticks);
-    double start = double(now) - double(project.bar_ticks()) * ui.settings.capture_bars * tick_ms;
-    bool played = false;
-    for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()) && !played; ++n)
-        played = history[n].track == ui.track && history[n].at >= start && history[n].at <= now;
-    if (!played) { notice("Nothing played to capture"); return; }
-    edit_pattern(ui.track, unsigned(into), "Capture", [&] { capture_notes(unsigned(into)); });
-    ui.captured_pattern = uint8_t(into);
-    ui.captured_at = now ? now : 1;
-}
-
-void Context::capture_notes(unsigned into) {
-    auto& t = track();
-    const auto& set = ui.settings;
-    uint32_t span = project.bar_ticks() * set.capture_bars; // whole bars of the signature
-    double tick_ms = 60000.0 / (tempo_now() / 10.0) / (4.0 * sixteenth_ticks), start = double(now) - span * tick_ms;
-    // As played (to the tick), or onto sixteenths or eighths.
-    uint32_t grid = set.capture_quantise == 0 ? 1 : set.capture_quantise == 1 ? sixteenth_ticks : 2 * sixteenth_ticks;
-    auto& p = patterns.at[ui.track][into % pattern_count];
-    p.events.clear();
-    p.division = Division::Sixteenth;
-    p.length = span;
-    for (unsigned n = 0; n < std::min<unsigned>(history_at, history.size()); ++n) {
-        const auto& h = history[n];
-        if (h.track != ui.track || h.at < start || h.at > now) continue;
-        uint32_t at = uint32_t(std::lround((h.at - start) / tick_ms / grid)) * grid;
-        if (at >= span) at = span - grid; // a note right at the end belongs to the last place
-        double held = h.length ? h.length / tick_ms : double(sixteenth_ticks); // still held: a sixteenth
-        uint32_t length = uint32_t(std::max(1L, std::lround(held / grid))) * grid;
-        Event e;
-        e.tick = at; e.key = h.key; e.velocity = h.velocity;
-        e.length = uint16_t(std::min<uint32_t>({length, span, 65535u}));
-        p.add(e);
-    }
-    sync_pattern(ui.track, into);
-    t.pattern = uint8_t(into); // and it plays from here
-    ui.lead_pattern = t.pattern;
-    send({Type::Pattern, ui.track, 0, 0, int16_t(t.pattern)});
 }
 
 // Play: from the start (on Song, the arrangement from the cursor). Seq Record

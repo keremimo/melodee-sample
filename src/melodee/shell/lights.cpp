@@ -93,6 +93,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
     context_.chain_tick();    // pattern chains: the next queued in the last bar of the one playing (seq-sheet2 B)
     context_.follow_tick();   // roadmap P5: chains told to the audio thread, follow actions that came followed
+    context_.capture_tick();  // roadmap P5: the transport's runs, for what Capture keeps
     // Sounds of one's own, when the card's list changes.
     if (store_ && store_->generation() != sounds_seen) {
         sounds_seen = store_->generation();
@@ -161,6 +162,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         rec_state.store(ui_.recording ? 2 : ui_.rec_armed ? 1 : 0, std::memory_order_relaxed);
         pattern_ticks.store(shown.length, std::memory_order_relaxed);
         pattern_events.store(uint32_t(shown.events.size()), std::memory_order_relaxed);
+        capture_kept.store(context_.capture_ring->count(), std::memory_order_relaxed); // roadmap P5
         pattern_q.store(shown.q(), std::memory_order_relaxed);
         first_tick.store(shown.events.empty() ? 0 : shown.events.front().tick, std::memory_order_relaxed);
         { // Step Edit: the step, the selected event and how many the step holds; the open question; motion events

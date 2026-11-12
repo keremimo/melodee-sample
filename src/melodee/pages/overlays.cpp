@@ -100,6 +100,7 @@ void draw_notice(Paint& p, const Snapshot& s) {
         p.fill(0, zone::header_y, zone::width, zone::header_h, colour::bg);
         Header h = header_of(s);
         h.left.push_back(chip(Icon::Check, "P" + juce::String(s.ui.captured_pattern + 1), colour_of(s)));
+        if (s.ui.captured_tracks > 1) h.left.push_back(pill("+" + juce::String(s.ui.captured_tracks - 1), colour::text)); // roadmap P5: other tracks too
         h.left.push_back(pill(Icon::Undo, juce::String::fromUTF8("SHIFT \xe2\x88\x92")));
         h.right.push_back(tag_of(s, s.ui.track));
         header(p, h);

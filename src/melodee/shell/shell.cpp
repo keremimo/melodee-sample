@@ -668,6 +668,7 @@ std::string Shell::summary() const {
            " melodee_hits=" + std::to_string(host.ratchet_hits()) + " melodee_trigs=" + std::to_string(host.trigs_kept()) + "/" +
            std::to_string(host.trigs_dropped()) + " melodee_fill=" + std::to_string(int(host.filling())) +
            " melodee_follows=" + std::to_string(follows_total()) + " melodee_stopped=" + std::to_string(host.stopped_tracks()) + // roadmap P5
+           " melodee_capture=" + std::to_string(capture_kept.load()) +
            " melodee_pattern_ticks=" + std::to_string(pattern_ticks.load()) + " melodee_events=" + std::to_string(pattern_events.load()) +
            " melodee_q=" + std::to_string(pattern_q.load()) + " melodee_first_tick=" + std::to_string(first_tick.load()) +
            " melodee_signature=" + std::to_string(signature_now.load() / 100) + "/" + std::to_string(signature_now.load() % 100) +

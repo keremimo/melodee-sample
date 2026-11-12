@@ -41,10 +41,10 @@ struct Settings {
     uint8_t rec_grid = 0;     // and which grid: 0 the pattern's Q, else 1 + a Division, 1/4 .. 1/64 (grid_division(), model/pattern.h)
     bool zero_snap = true;    // Chop's cuts onto zero crossings (Chop's B2; shell/chop.h)
     bool double_copies = true; // Double Seq (Shift + Pad 3): the new half plays the notes again (the MPC's way), or starts empty
-    // Capture (Shift + Seq Record; round 2, capture C): how many of the last bars played it keeps, and how it puts
-    // them on the grid: 0 as played, 1 onto sixteenths, 2 onto eighths.
-    static constexpr std::array<uint8_t, 4> capture_lengths {{1, 2, 4, 8}};
-    uint8_t capture_bars = 2, capture_quantise = 1;
+    // Capture (Shift + Seq Record; round 2, capture C): how many of the last bars played it keeps (roadmap P5: 0 Auto,
+    // the phrase as long as it is), and how it puts them on the grid: 0 as played, 1 onto sixteenths, 2 onto eighths.
+    static constexpr std::array<uint8_t, 7> capture_lengths {{0, 1, 2, 4, 8, 16, 32}};
+    uint8_t capture_bars = 0, capture_quantise = 1;
     uint8_t click = 0;        // the metronome: 0 off, 1 on, 2 only while Seq Record (Shift + Tap Tempo)
     uint8_t click_level = 40;
     bool full_level() const { return pad_response == 3; }
@@ -100,7 +100,7 @@ struct Settings {
         case KnobFxTakeover: return takeover_name(knob_fx_takeover);
         case FaderTakeover: return takeover_name(fader_takeover);
         case DoubleSeq: return double_copies ? "Copy notes" : "Empty";
-        case CaptureBars: return std::to_string(capture_bars) + (capture_bars == 1 ? " bar" : " bars");
+        case CaptureBars: return !capture_bars ? std::string("Auto") : std::to_string(capture_bars) + (capture_bars == 1 ? " bar" : " bars");
         case CaptureQuantize: return capture_quantise == 0 ? "As played" : capture_quantise == 1 ? "1/16" : "1/8";
         case PlaceBarRow: return place_bottom ? "Bottom" : "Top";
         case SampleRate: return audio_rate == 44100 ? "44.1 kHz" : std::to_string(audio_rate / 1000) + " kHz";
@@ -146,7 +146,7 @@ struct Settings {
     }
     unsigned capture_index() const {
         for (unsigned n = 0; n < capture_lengths.size(); ++n) if (capture_lengths[n] == capture_bars) return n;
-        return 1;
+        return 0;
     }
     // A list's next or previous entry, stopping at its ends.
     static unsigned step_in(unsigned at, unsigned count, int way) { return unsigned(std::clamp(int(at) + (way < 0 ? -1 : 1), 0, int(count) - 1)); }
@@ -225,7 +225,7 @@ struct Settings {
             else if (key == "rec_grid") rec_grid = uint8_t(std::clamp(value, 0, 9)); // 0 Q, 1..9 a Division
             else if (key == "zero_snap") zero_snap = value != 0;
             else if (key == "double_copies") double_copies = value != 0;
-            else if (key == "capture_bars") { capture_bars = 1; for (auto n : capture_lengths) if (int(n) <= value) capture_bars = n; } // the nearest below
+            else if (key == "capture_bars") { capture_bars = 0; for (auto n : capture_lengths) if (n && int(n) <= value) capture_bars = n; } // the nearest below; 0 Auto
             else if (key == "capture_quantize") capture_quantise = uint8_t(std::clamp(value, 0, 2));
             else if (key == "click") click = uint8_t(std::clamp(value, 0, 2));
             else if (key == "click_level") click_level = uint8_t(std::clamp(value, 0, 100));

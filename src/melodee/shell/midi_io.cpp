@@ -55,8 +55,10 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
         key(played, velocity, down);
     } else if (tr.arp) {
         if (down || !tr.arp_latch) send({Type::ArpKey, uint8_t(t), 0, uint16_t(played), int16_t(down ? velocity : 0)});
+        keep_played(t, played, velocity, down); // roadmap P5: Capture keeps every track's
     } else {
         note(t, played, down ? velocity : 0);
+        keep_played(t, played, velocity, down);
     }
     from_midi = false;
 }

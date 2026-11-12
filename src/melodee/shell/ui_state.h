@@ -256,6 +256,7 @@ struct UiState {
     // for the header a few seconds.
     uint32_t captured_at = 0;
     uint8_t captured_pattern = 0;
+    uint8_t captured_tracks = 0; // roadmap P5: how many tracks it filled (the header's +n beside the selected one's)
     uint16_t project_rows = 1;    // rows on the Project page, copied in by the shell
     // Pad FX (parity phase 7b): the punches engaged, oldest first (held, or latched with B1); the newest four sound,
     // the older ones wait bypassed until those let go. Which punch each live slot plays, and the one last pressed

@@ -10,6 +10,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/capture_ring.h"
 #include "melodee/shell/history.h"
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/undo_scope.h"
@@ -418,10 +419,14 @@ public:
     void set_return(unsigned bus, int level);
     // Song: after any change to project.song, send it to the audio thread.
     void sync_song();
-    // What the pads played lately, for Capture: track, key, velocity, when and how long (ms).
-    struct Played { uint8_t track = 0, key = 0, velocity = 0; uint32_t at = 0, length = 0; };
-    std::array<Played, 512> history {};
-    unsigned history_at = 0;
+    // Roadmap P5, always-on capture (shell/capture_jobs.cpp, shell/capture_ring.h): every note played on any track
+    // (pads, keys, MIDI in), Record on or not, the last minutes of it; the transport's runs counted by capture_tick().
+    std::unique_ptr<CaptureRing> capture_ring = std::make_unique<CaptureRing>();
+    uint16_t capture_run = 0;    // the run the transport is in (0 stopped): a new one at Play, Locate, a loop's jump
+    uint32_t capture_ticks = 0;  // where it was when capture_tick() last looked
+    uint32_t capture_run_next = 0;
+    void keep_played(unsigned track, int key, int velocity, bool down);
+    void capture_tick();
     void set_arp(bool on) { set_arp(ui.track, on); }
     void set_arp(unsigned track, bool on); // that track's arp (Note Repeat let go after the track changed)
     // The Looper (shell/looper_jobs.cpp): refusals already said, and whether a loop records (the metronome's Rec).
@@ -429,9 +434,9 @@ public:
     bool loop_click = false;
     void set_click(unsigned mode); // the metronome: 0 off, 1 on, 2 only while Seq Record
     void send_click();
-    // Capture (Shift + Seq Record; round 2, capture C): the selected track's last bars, as many as Settings keeps,
-    // from the history into its next empty pattern, which then plays; one undo. Nothing played, or no pattern
-    // empty: a notice, and nothing changes.
+    // Capture (Shift + Seq Record; round 2, capture C; roadmap P5): the last bars every track played (the phrase, or as
+    // many bars as Settings keeps), each track's into its next empty pattern, which then plays; one undo. Nothing
+    // played, or no pattern empty: a notice, and nothing changes.
     void capture();
     // Transport
     void play(bool external = false);          // external: MIDI clock in's Start (no count-in; the clock leads)
@@ -481,7 +486,6 @@ public:
 private:
     void double_notes();
     void scale_notes(bool slower);
-    void capture_notes(unsigned into);
     unsigned held_pads() const { unsigned n = 0; for (auto& pad : pad_keys) n += pad[0] >= 0; return n; }
     std::array<uint32_t, 4> taps {};
     unsigned tap_count = 0;

@@ -133,6 +133,9 @@ struct Edit {
     // One pattern number across tracks (Song -> new pattern): `column`, each changed track's pattern.
     int16_t column = -1;
     std::vector<std::pair<uint8_t, Pattern>> column_before, column_after;
+    // Roadmap P5: patterns of several tracks, each its own number (Capture into each track's next empty pattern).
+    struct PatternAt { uint8_t track = 0, pattern = 0; Pattern value; };
+    std::vector<PatternAt> patterns_before, patterns_after;
     // Parity phase 10: an effect chain (`chain`, numbered as in model/project.h), the mix, a track's sound
     // (`track`), the master's effects, Chop's slices.
     int16_t chain = -1;
