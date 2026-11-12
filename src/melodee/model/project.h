@@ -190,6 +190,11 @@ struct Song {
 
 enum class PadLayout : uint8_t { Scale, Chromatic, Chords, Levels, Count };
 
+constexpr unsigned max_chain = 8; // a track's pattern chain (seq-sheet2 B), patterns in the order played
+// A chained pattern in its last bar (`position` ticks into its `length`), when the next is queued for the bar line,
+// so it starts as this one ends (a pattern of whole bars, begun on a bar).
+inline bool chain_due(int position, uint32_t length, uint32_t bar) { return position >= 0 && length && uint32_t(position) + bar >= length; }
+
 // Fader C (round 2): what the fader learned from the pot turned last on its
 // track (model/fader.h). Kept in the file (FADR) by these numbers: a Motion
 // lane (an engine parameter, an effect's on the track's chain, a kit pad's
@@ -248,6 +253,12 @@ struct Track {
     // until one is picked: the engine's default) and whether it has one at all.
     uint8_t fader_target = 255;
     bool fader_on = true;
+    // seq-sheet2 B (round 2): a pattern chain, the patterns tapped in order while Seq is held: each plays once
+    // through and the next follows at its end, round again (fewer than two: no chain). chain_at: the one playing.
+    std::array<uint8_t, max_chain> chain {};
+    uint8_t chain_count = 0, chain_at = 0;
+    bool chained() const { return chain_count >= 2; }
+    uint8_t chain_ahead(unsigned steps) const { return chain[(chain_at + steps) % std::max<unsigned>(chain_count, 1)]; } // 0: the one playing
     FaderLearned fader_learned; // fader C: the pot it follows, over the target above while there is one
     bool fader_pin = false;     // PIN: what it has stays, whatever pot turns next
     uint8_t wheel = 0;    // the mod wheel as the fader left it, 0..127 (played, not saved)

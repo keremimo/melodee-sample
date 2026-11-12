@@ -3,9 +3,12 @@
 // The Sequence sheet (Seq held a moment, shell/seq_layer.h): over any page,
 // the selected track's sixteen patterns laid out as the pads are (pad 1
 // bottom left), the one playing filled, the one waiting for the bar
-// blinking, those with notes tinted; beside them what plays, what comes
-// next and the tempo the wheel turns. B1-B3 name the editors they open, the
-// knob strip the pattern's length, Q and swing.
+// blinking, those with notes tinted; beside them the chain (round 2,
+// seq-sheet2 B): what plays now, over what comes next, over what follows
+// (a chain of more than three shows its first three and a count; each
+// chained pad carries its place), and the tempo the wheel turns under them.
+// B1-B3 name the editors they open, the knob strip the pattern's length, Q
+// and swing.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/ui/widgets.h"
@@ -58,15 +61,31 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
         else p.fill(x, y, cell, cell, colour::quiet, 5);
         if (copying) p.ring(x - 1, y - 1, cell + 2, cell + 2, colour::text, 6, 1.5f);
         p.text(juce::String(n + 1), x, y, cell, cell, plain(text, type::body, Weight::SemiBold), juce::Justification::centred);
+        if (track.chained()) // its place in the chain, small in the corner
+            for (unsigned k = 0; k < track.chain_count; ++k)
+                if (track.chain[k] == n) {
+                    p.text(juce::String(k + 1), x + 2, y + 1, 12, 12, plain(playing ? colour::bg : colour::amber, type::small, Weight::Bold));
+                    break;
+                }
     }
 
-    // Beside them: what plays, what comes next, the tempo.
+    // Beside them, the chain: what plays now, what comes next, what follows; the tempo under them.
     float x = gx + grid + 14, w = zone::width - zone::pad - x, y = gy + 2;
-    block(p, x, y, w, "PLAYING", "P" + juce::String(live + 1), bars_text(s, s.sketches[t][live].length), c);
-    if (queued >= 0) block(p, x, y + 44, w, "NEXT", "P" + juce::String(queued + 1), "next bar", c);
-    else block(p, x, y + 44, w, "NEXT", juce::String::fromUTF8("\xe2\x80\x94"), "", colour::dim);
+    block(p, x, y, w, "NOW", "P" + juce::String(live + 1), bars_text(s, s.sketches[t][live].length), c);
+    auto dash = juce::String::fromUTF8("\xe2\x80\x94");
+    int next = queued, after = -1;
+    if (track.chained()) { next = track.chain_ahead(1); after = track.chain_ahead(2); }
+    auto row = [&](float ry, const char* caps, int pattern, const juce::String& sub) {
+        p.text(caps, x, ry, 48, 18, caps_text(colour::mid));
+        auto value = pattern >= 0 ? "P" + juce::String(pattern + 1) : dash;
+        auto style = plain(pattern >= 0 ? c : colour::dim, type::list, Weight::SemiBold);
+        float vw = p.text(value, x + 48, ry, 40, 18, style);
+        if (sub.isNotEmpty() && pattern >= 0) p.text(sub, x + 52 + vw, ry + 2, w - 56 - vw, 14, p.fit(sub, plain(colour::sec, type::small), w - 56 - vw, type::floor));
+    };
+    row(y + 42, "NEXT", next, track.chained() ? juce::String("at its end") : juce::String("next bar"));
+    row(y + 64, "AFTER", after, track.chain_count > 3 ? "+" + juce::String(track.chain_count - 3) : juce::String());
     juce::String tempo = juce::String(s.tempo / 10) + "." + juce::String(s.tempo % 10);
-    block(p, x, y + 88, w, s.project.seq_tempo ? "P" + juce::String(s.ui.lead_pattern % pattern_count + 1) + " TEMPO" : juce::String("TEMPO"),
+    block(p, x, y + 90, w, s.project.seq_tempo ? "P" + juce::String(s.ui.lead_pattern % pattern_count + 1) + " TEMPO" : juce::String("TEMPO"),
           tempo, s.ui.bpm_tenths ? "BPM, by 0.1" : "BPM", colour::amber);
 
     knob_strip(p, cards_of(s)); // K1-K3: the pattern's (shell/bindings.cpp)

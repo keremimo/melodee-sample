@@ -84,6 +84,7 @@ void seq_press(Context& c, bool pressed) {
         if (ui.shift) { step_edit(c); return; }
         ui.seq_held = true; ui.seq_used = false; ui.seq_left = false;
         ui.seq_down = c.now;
+        ui.chain_building = false; // the first pad tapped in this hold starts a chain
         return;
     }
     if (!ui.seq_held) return;
@@ -99,7 +100,11 @@ bool seq_pad(Context& c, unsigned pad, bool down) {
     pad %= pattern_count;
     if (!down) { // a pattern pad let go: a tap launches it, unless it was copied from
         if (ui.pattern_held != int(pad)) return false;
-        if (!ui.pattern_copied) launch_one(c, pad);
+        if (!ui.pattern_copied && ui.seq_held && ui.chain_building) c.chain_add(pad); // seq-sheet2 B: after the first, a chain
+        else if (!ui.pattern_copied) {
+            launch_one(c, pad);
+            if (ui.seq_held) { c.chain_start(pad); ui.chain_building = true; }
+        }
         ui.pattern_held = -1;
         return true;
     }

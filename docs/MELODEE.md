@@ -481,10 +481,16 @@ hold to steer, Shift + Seq to zoom in**.
 - **Seq held**, on any page, is the Sequence layer. The pads light at once
   as the track's patterns (playing bright, queued blinking, with notes
   faint, empty dark); after 0.3 s the **Sequence sheet** shows them as the
-  pads sit, what plays, what comes next and the tempo. Let go within 0.3 s
-  with nothing touched: a tap. While held:
+  pads sit and beside them the chain: what plays now, over what comes next,
+  over what follows (a chain of more than three adds a count; each chained
+  pad carries its place), the tempo under them. Let go within 0.3 s with
+  nothing touched: a tap. While held:
   - a pad launches that pattern of the selected track (next bar; stopped,
-    at once); an empty one starts as long as the one playing. Shift + pad
+    at once); an empty one starts as long as the one playing. More pads
+    tapped in the same hold make a **pattern chain** (up to eight): each
+    pattern plays once through and the next starts at its end, round
+    again, a song for one track without Song (kept in the project, CHAN). A
+    single tap, or a pattern launched any other way, ends it. Shift + pad
     launches that column on every track holding notes there (and on the
     selected one). Hold a pad and tap another to copy. Erase + pad asks,
     then clears that pattern (one undo). Shift + Erase starts a pattern
@@ -1241,7 +1247,7 @@ of the card (beside `Samples/`), in any folders under it.
 - `Melodee/Projects/**.mldp`: tagged sections, so older files stay
   readable and only what differs from empty is written (`EVNT` events,
   `MOTK` each pattern's motion (older files' `MOT2` / `MOTP` / `MOTW` land in their patterns), `TIME`, `PAD4` / `KITX` / `PMUT` kits,
-  `KNFX`, `CMPR`, `PFXP`, `FADR`, `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
+  `KNFX`, `CMPR`, `PFXP`, `FADR`, `CHAN` (a track's pattern chain), `MIDC`, `MIDT`, `PVER`, `PTCH` (notes' pitches on a kit pad), `SNDS` (a track's
   four sends; TRAK keeps the largest for older builds), `LVLE` (16 Levels' ends) and the rest; a
   MIDI track is None in `TRAK` and MIDI in `MIDT`, a PLUGIN track None in
   `TRAK` and itself in `PLGT`, so older builds load them empty; `PLUG` holds

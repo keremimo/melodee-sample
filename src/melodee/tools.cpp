@@ -778,6 +778,15 @@ const Preview previews[] {
          s.project.tracks[2].pattern = 3;
          s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms; // held a moment: the sheet is up
      }},
+    {"seqchain", [](Shell&, Snapshot& s) { // seq-sheet2 B: track 3 chained P1 > P4 > P2 > P5 > P3, P4 playing
+         s.ui.page = PageId::Stage; s.ui.track = 2; s.playing = true;
+         auto& t = s.project.tracks[2];
+         const uint8_t chain[] {0, 3, 1, 4, 2};
+         for (unsigned n = 0; n < 5; ++n) t.chain[n] = chain[n];
+         t.chain_count = 5; t.chain_at = 1; t.pattern = 3;
+         s.playing_patterns[2] = 3; s.positions[2] = int(6 * sixteenth_ticks);
+         s.ui.seq_held = true; s.ui.seq_down = s.now - seq_sheet_ms;
+     }},
     {"seqbpm", [](Shell&, Snapshot& s) { // Seq held, the wheel by tenths, BPM per pattern: pattern 2's own tempo
          s.ui.page = PageId::Patterns; s.ui.track = 0; s.project.seq_tempo = true;
          s.project.pattern_tempo[1] = 985; s.ui.lead_pattern = 1; s.tempo = 985; s.ui.bpm_tenths = true;

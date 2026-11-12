@@ -380,6 +380,14 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.u8(uint8_t(l.what)); w.u16(l.lane); w.u8(l.engine); w.u8(l.pot); w.u8(tr.fader_pin);
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // a pattern chain (seq-sheet2 B): the patterns in the order they play
+        const auto& tr = project.tracks[t];
+        if (tr.chain_count < 2) continue;
+        at = w.begin("CHAN");
+        w.u8(t); w.u8(tr.chain_count);
+        for (unsigned n = 0; n < tr.chain_count; ++n) w.u8(tr.chain[n]);
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // a MIDI track (docs/MIDI_TRACKS.md): its port and channel are in TRAK's params
         if (project.tracks[t].engine != EngineKind::Midi) continue;
         at = w.begin("MIDT");
@@ -684,6 +692,16 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 project->tracks[t].fader_learned = {FaderLearn(what), uint16_t(lane), uint8_t(engine), uint8_t(pot % 3)};
                 project->tracks[t].fader_pin = pin != 0;
             }
+        } else if (name == "CHAN") { // a pattern chain (seq-sheet2 B); without it a track plays the one pattern
+            unsigned t = r.u8(), count = r.u8();
+            if (!r.ok || t >= track_count) continue;
+            auto& tr = project->tracks[t];
+            tr.chain_count = 0; tr.chain_at = 0;
+            for (unsigned n = 0; n < count && r.ok; ++n) {
+                unsigned p = r.u8();
+                if (r.ok && n < max_chain) tr.chain[tr.chain_count++] = uint8_t(p % pattern_count);
+            }
+            if (tr.chain_count < 2) tr.chain_count = 0;
         } else if (name == "MIDT") { // a MIDI track; TRAK, before it, said None
             unsigned t = r.u8(), version = r.u8();
             if (r.ok && t < track_count && version >= 1) {

@@ -226,7 +226,15 @@ public:
         commit_edit(std::move(edit));
     }
     // Patterns (their cards: length, Q, swing; Shift: any bars, time signature, click)
-    void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing
+    void launch(unsigned track, unsigned pattern);           // starts on the next bar while playing (a chain ends: one tapped)
+    // seq-sheet2 B (round 2, shell/chain_jobs.cpp): the pattern chain. chain_start() makes the selected track's chain
+    // that one pattern, chain_add() puts another after the last (Seq held, a pad tapped after the first); chain_tick(),
+    // each frame, queues a chained track's next pattern in the last bar of the one playing, so it begins as that ends.
+    void chain_start(unsigned pattern);
+    void chain_add(unsigned pattern);
+    void chain_tick();
+    std::array<bool, track_count> chain_queued {}; // the next of the chain is queued for the bar line
+    bool chaining = false;                         // chain_tick() launching: the chain stays
     void clear_pattern(unsigned track, unsigned pattern);
     // A pattern onto another of `track`; from_track, when given, is where it comes from.
     void copy_pattern(unsigned track, unsigned from, unsigned to, int from_track = -1);

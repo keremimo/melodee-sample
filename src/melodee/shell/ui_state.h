@@ -108,6 +108,7 @@ struct UiState {
     uint8_t step_event = 0;                   // Step Edit: which of the cursor step's events (shell/step_edit.h)
     // Step Edit (round 2, step-edit2 C, step entry): what a pad writes at the caret (step_cursor): its length in
     // steps of Q, its velocity (0: as played) and chance; the pads held for this step, and whether they wrote.
+    bool chain_building = false;              // Seq held: a pad tapped after the first adds to the chain (seq-sheet2 B)
     uint8_t entry_length = 1, entry_velocity = 0, entry_chance = 100;
     uint16_t entry_held = 0;
     bool entry_wrote = false;

@@ -1066,6 +1066,8 @@ void project_files() {
     project->song.loop_start = 8; project->song.loop_end = 12;
     project->buses[1].level = 33; project->buses[1].fx.slots[0].kind = uint8_t(EffectKind::Room);
     project->master.slots[0].kind = uint8_t(EffectKind::Limiter);
+    project->tracks[0].chain = {2, 0, 5}; project->tracks[0].chain_count = 3; project->tracks[0].chain_at = 1; // seq-sheet2 B (CHAN)
+    project->tracks[1].chain = {4}; project->tracks[1].chain_count = 1; // one pattern: no chain, nothing written
 
     auto data = save_project(*project, *bank);
     auto copy = std::make_unique<Project>();
@@ -1076,6 +1078,15 @@ void project_files() {
     CHECK(copy->tracks[0].mix.pan == -20 && copy->tracks[0].mix.sends[2] == 40 && copy->tracks[0].mix.sends[0] == 0 && copy->tracks[0].mix.mute);
     CHECK(copy->tracks[0].mods[3].amount == -45 && copy->tracks[0].fx.slots[0].bypass && copy->tracks[0].fx.slots[0].params[3] == 70);
     CHECK(copy->tracks[4].engine == EngineKind::Sampler && copy->tracks[4].pads[9].start == 1234 && copy->tracks[4].pads[9].group == 3);
+    { // The pattern chain (seq-sheet2 B): kept in order, from its first; the next queued in the last bar of the one playing.
+        const auto& ch = copy->tracks[0];
+        CHECK(ch.chained() && ch.chain_count == 3 && ch.chain[0] == 2 && ch.chain[1] == 0 && ch.chain[2] == 5 && ch.chain_at == 0);
+        CHECK(!copy->tracks[1].chained() && copy->tracks[1].chain_count == 0);
+        CHECK(ch.chain_ahead(0) == 2 && ch.chain_ahead(1) == 0 && ch.chain_ahead(3) == 2); // round again
+        constexpr uint32_t bar = 4 * ticks_per_quarter;
+        CHECK(!chain_due(0, 2 * bar, bar) && !chain_due(int(bar) - 1, 2 * bar, bar) && chain_due(int(bar), 2 * bar, bar));
+        CHECK(chain_due(0, bar, bar) && !chain_due(-1, bar, bar)); // a one-bar pattern: at once; stopped: never
+    }
     CHECK(!copy->tracks[4].pads[8].used());
     CHECK(std::string(copy->samples[2].path) == "/media/card/Samples/Kick.wav");
     CHECK(copy_bank->at[0][3].length == 96 * 48 && copy_bank->at[0][3].division == Division::Eighth);

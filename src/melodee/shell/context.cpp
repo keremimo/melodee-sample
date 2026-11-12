@@ -952,6 +952,7 @@ void Context::clear_lane(int lane) {
 
 void Context::launch(unsigned t, unsigned p) {
     auto& tr = project.tracks[t % track_count];
+    if (!chaining) { tr.chain_count = 0; chain_queued[t % track_count] = false; } // a pattern launched by hand: the chain ends
     tr.pattern = uint8_t(p % pattern_count);
     ui.lead_pattern = tr.pattern; // BPM per pattern: the one launched last leads
     send({Type::Pattern, uint8_t(t), 0, 0, int16_t(tr.pattern)});

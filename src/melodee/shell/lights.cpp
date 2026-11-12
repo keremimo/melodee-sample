@@ -87,6 +87,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     context_.song_tick();
     context_.plugins_tick(now); // the rack follows the project; the plug-in in view's cards
     context_.stage_tick(now); // Stage's PRESET: the sound turned to, once the turning stops
+    context_.chain_tick();    // pattern chains: the next queued in the last bar of the one playing (seq-sheet2 B)
     // Sounds of one's own, when the card's list changes.
     if (store_ && store_->generation() != sounds_seen) {
         sounds_seen = store_->generation();
