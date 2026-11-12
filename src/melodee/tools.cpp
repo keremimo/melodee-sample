@@ -388,6 +388,17 @@ void kick_trail(Snapshot& s) {
         s.comp_trail[n] = {beat < 6 ? -3.0f - 6.0f * float(beat) : -90.0f, beat == 0 ? 4.0f : 8.0f * std::exp(-float(beat - 1) / 3.5f)};
     }
 }
+// Compressor B: a kick on each beat of a 4/4 bar, the pump after each; this bar played up to `at` (0..1).
+void kick_bar(Snapshot& s, float at, float depth) {
+    constexpr unsigned per_beat = comp_bar_columns / 4;
+    for (unsigned n = 0; n < comp_bar_columns; ++n) {
+        unsigned in = n % per_beat;
+        float pump = in < 2 ? depth * float(in + 1) / 2 : depth * std::exp(-float(in - 2) / 9.0f);
+        s.comp_ghost[n] = {pump * 0.92f, in == 0};
+        s.comp_bar[n] = {pump, in == 0};
+    }
+    s.comp_bar_at = int(at * comp_bar_columns);
+}
 
 void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
     s.ui.page = PageId::Stage; s.ui.track = uint8_t(track);
@@ -1163,6 +1174,7 @@ const Preview previews[] {
              s.comp_trail[n] = {-14.0f + 9.0f * std::exp(-float(beat) / 3) + 1.5f * std::sin(float(n) * 0.7f),
                                 1.5f + 3.5f * std::exp(-float(beat) / 4)};
          }
+         kick_bar(s, 0.4f, 5.0f);
      }},
     {"compressorside", [](Shell&, Snapshot& s) { // Sidechain: track 4 (a kit) keys it whole, the tracks on the pads, track 1 selected
          s.ui.page = PageId::Compressor; s.playing = true; s.ui.track = 0;
@@ -1171,6 +1183,7 @@ const Preview previews[] {
          s.project.tracks[3].set_name("CLASSIC 909 KITS"); // a long name, as the device's own
          s.compression = 7.0f;
          kick_trail(s);
+         kick_bar(s, 0.62f, 9.0f);
      }},
     {"compressoroff", [](Shell&, Snapshot& s) { // bypassed: BYPASSED beside the page name, B3 lit, the curve grey
          s.ui.page = PageId::Compressor; s.playing = true;
@@ -1188,6 +1201,7 @@ const Preview previews[] {
          c.on = true; c.sidechain = true; c.key = 3; c.key_pad = 0; c.amount = 60; c.attack = 5; c.release = 70;
          s.ui.comp_pads = true; s.ui.comp_bank = 0;
          kick_trail(s);
+         kick_bar(s, 0.85f, 11.0f);
      }},
     {"pickerdirt", [](Shell&, Snapshot& s) { // the picker on Dirt: Amp sim, Tube drive, Soft clipper, Vintage, Vinyl, Tape emulator
          s.ui.page = PageId::Rack; s.ui.track = 2; s.ui.fx_cursor[2] = 2; s.playing = true;

@@ -598,6 +598,8 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         host.compressor_activity(level, reduce);
         comp_trail.update(level, reduce, now);
         out.comp_trail = comp_trail.trail();
+        comp_bar.update(level, reduce, out.ticks, project_->bar_ticks(), out.playing);
+        out.comp_bar = comp_bar.bar(); out.comp_ghost = comp_bar.ghost(); out.comp_bar_at = comp_bar.at();
     }
     out.flex_playing = host.flex_playing();
     out.now = now;

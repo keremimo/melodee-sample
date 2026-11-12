@@ -9,11 +9,12 @@
 // detector alone with Sidechain). With Sidechain the pads pick the key
 // (whichever track is selected): a track, or on a kit one of its pads (Push,
 // or the kit's pad again); the wheel or Minus / Plus step the track, or the
-// kit's bank. The picture: the key grid with Sidechain, else the curve with
-// a dot where the level sits now; beside it the last 2.6 s: what the
-// detector heard rising from the foot (the key in its track's colour), the
-// threshold dashed, and what was taken off hanging from the top, so a
-// ducking mix reads as the pump it is.
+// kit's bank; the header names the key. The picture (round 2, compressor B,
+// "one bar of pump"): one bar of the song, beats numbered under it; what was
+// taken off hangs from the top across it up to where the transport is, the
+// bar before as a dashed ghost, and the detector's hits (the key's with
+// Sidechain) marked along the foot. Release is tuned against the groove, as
+// it is heard. At the bottom right what it takes off now.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include <algorithm>
@@ -22,12 +23,10 @@
 namespace melodee {
 namespace {
 using namespace ui;
-constexpr float floor_db = 40;  // the level scales: -40 .. 0 dB
 constexpr float duck_db = 24;   // what is taken off: 0 .. 24 dB down from the top
 
 // The key's track is a kit, so a pad of it can key (and the pads can show its kit).
 bool key_is_kit(const Project& project) { return project.tracks[project.compressor.key % track_count].engine == EngineKind::Sampler; }
-bool kit_view(const Snapshot& s) { return s.ui.comp_pads && key_is_kit(s.project); }
 juce::String kit_pad_name(const Project& project, unsigned track, unsigned kit) {
     const auto& pad = project.tracks[track % track_count].pads[kit % sampler_pads];
     return pad.used() ? juce::String(project.samples[pad.sample % sample_slots].name) : juce::String("Empty");
@@ -40,45 +39,6 @@ HeaderItem key_tag(const Snapshot& s) {
     if (c.key_pad == MasterComp::whole_kit || !key_is_kit(s.project)) return tag_of(s, key);
     char text[4]; pad_label(c.key_pad, text);
     return track_tag(int(key) + 1, text, kit_pad_name(s.project, key, c.key_pad), track_colour(key));
-}
-
-// Sidechain's key on the pads as they sit (pad 1 bottom left): the tracks, the key's
-// lit; or the key kit's pads of a bank, the key pad lit. Under it what Push turns to.
-void key_grid(Paint& p, const Snapshot& s, float x, float y, float side) {
-    const auto& c = s.project.compressor;
-    unsigned key = c.key % track_count;
-    bool pads = kit_view(s);
-    unsigned bank = s.ui.comp_bank % sampler_banks;
-    float caption = 16, gh = side - caption - 4, cw = (side - 6) / 4, ch = (gh - 6) / 4;
-    for (unsigned pad = 0; pad < 16; ++pad) {
-        unsigned row = 3 - pad / 4, column = pad % 4;
-        float cx = x + column * (cw + 2), cy = y + row * (ch + 2);
-        bool lit, used;
-        juce::String text;
-        juce::Colour fill = track_colour(pads ? key : pad);
-        if (pads) {
-            unsigned kit = bank * 16 + pad;
-            lit = c.key_pad == kit;
-            used = s.project.tracks[key].pads[kit].used();
-            char label[4]; pad_label(kit, label);
-            text = label;
-        } else {
-            lit = key == pad;
-            used = s.project.tracks[pad].used();
-            text = juce::String(pad + 1);
-        }
-        if (!c.on) fill = fill.withAlpha(0.45f);
-        p.fill(cx, cy, cw, ch, lit ? fill : used ? colour::surf : colour::quiet, 3);
-        if (!lit && used) p.fill(cx, cy + ch - 3, cw, 3, fill.withAlpha(0.6f), 1); // a used one: its colour underneath
-        p.text(text, cx, cy, cw, ch, plain(lit ? colour::bg : used ? colour::sec : colour::dim, type::small, Weight::SemiBold),
-               juce::Justification::centred);
-    }
-    if (key_is_kit(s.project)) { // the cells say tracks or which bank; under them what Push turns to
-        float cy = y + side - caption / 2;
-        draw_glyph(p, Glyph::Push, x, cy, colour::mid);
-        float gw = glyph_width(Glyph::Push) + 5;
-        p.text(pads ? "TRACKS" : "KIT PADS", x + gw, y + side - caption, side - gw, caption, caps_text(colour::mid));
-    }
 }
 
 void draw(Paint& p, const Snapshot& s) {
@@ -97,82 +57,63 @@ void draw(Paint& p, const Snapshot& s) {
     keys.lit = uint8_t(c.sidechain | c.color << 1 | !c.on << 2);
     frame(p, s, keys, h);
 
-    auto mix = c.on ? accent : colour::mid;                                      // the mix and what it keeps
-    auto heard = c.sidechain ? track_colour(key) : colour::sec;                  // what the detector hears
+    auto mix = c.on ? accent : colour::mid;                     // what it takes off
+    auto heard = c.sidechain ? track_colour(key) : colour::sec; // what the detector hears
     if (!c.on) heard = colour::mid;
-    float amount = c.amount / 100.0f, threshold = -amount * 30, ratio = 1 + amount * amount * 9;
-    float makeup = -threshold * (1 - 1 / ratio) * 0.5f;
-    auto over = [&](float in_db) { // dB taken off a signal at in_db (In Boost in front)
-        float boosted = in_db + c.boost;
-        return boosted > threshold ? (boosted - threshold) * (1 - 1 / ratio) : 0.0f;
-    };
 
-    // Left: Sidechain's key on the pads (whichever track is selected), else the curve,
-    // input across, output up (-40..0 dB), with a dot where the level sits now.
-    float x = zone::pad + 4, y = zone::picture_y + 6, side = zone::picture_h - 16;
-    if (c.sidechain) {
-        key_grid(p, s, x, y, side);
-    } else {
-        p.fill(x, y, side, side, colour::panel, 4);
-        auto at = [&](float in_db) { return std::clamp(in_db + c.boost - over(in_db) + makeup, -floor_db, 0.0f); };
-        auto curve_y = [&](float in_db) { return y + side - (at(in_db) + floor_db) / floor_db * side; };
-        p.fill(x, y + side - 1, side, 1, colour::line);
-        float tx = x + (threshold - c.boost + floor_db) / floor_db * side;
-        if (tx > x && tx < x + side) p.fill(tx, y + 4, 1, side - 8, colour::line);
-        juce::Path curve; // one stroke, every 2 dB
-        for (int db = -40; db <= 0; db += 2) {
-            float px = x + (db + floor_db) / floor_db * side;
-            if (db == -40) curve.startNewSubPath(px, curve_y(float(db))); else curve.lineTo(px, curve_y(float(db)));
-        }
-        p.g.setColour(mix);
-        p.g.strokePath(curve, juce::PathStrokeType(1.5f));
-        float now_db = s.comp_trail.back().level - c.boost; // the curve's input has In Boost in front
-        if (c.on && now_db > -floor_db) {
-            float dx = x + std::min(now_db + floor_db, floor_db) / floor_db * side, dy = curve_y(std::min(now_db, 0.0f));
-            p.g.setColour(colour::panel); p.g.fillEllipse(dx - 5, dy - 5, 10, 10);
-            p.g.setColour(heard); p.g.fillEllipse(dx - 3.5f, dy - 3.5f, 7, 7);
-        }
+    // One bar: beats numbered under it, the one playing bright.
+    float x = zone::pad, y = zone::picture_y + 4, w = zone::width - 2 * zone::pad, h_ = zone::picture_h - 26;
+    p.fill(x, y, w, h_, colour::quiet, 3);
+    unsigned beats = std::max(1u, s.project.bar_ticks() / std::max(1u, s.project.beat_ticks()));
+    int at = s.comp_bar_at, beat_now = at >= 0 ? at * int(beats) / int(comp_bar_columns) : -1;
+    for (unsigned b = 0; b < beats; ++b) {
+        float bx = x + w * float(b) / float(beats);
+        if (b) p.fill(bx - 0.75f, y, 1.5f, h_, colour::bg);
+        p.text(juce::String(b + 1), bx + 3, y + h_ + 3, 24, 16, plain(int(b) == beat_now ? colour::text : colour::dim, type::small, Weight::SemiBold));
     }
-
-    // The last 2.6 s, newest on the right.
-    float gx = x + side + 12, gw = zone::width - zone::pad - gx, gh = side - 32;
-    p.fill(gx, y, gw, gh, colour::panel, 4);
-    float cw = gw / float(comp_columns);
-    auto level_y = [&](float db) { return y + gh - std::clamp((db + floor_db) / floor_db, 0.0f, 1.0f) * (gh - 2); };
-    auto duck_y = [&](float db) { return y + std::clamp(db / duck_db, 0.0f, 1.0f) * (gh - 2); };
-    juce::Path level, taken;
-    level.startNewSubPath(gx, y + gh);
-    taken.startNewSubPath(gx, y);
-    for (unsigned n = 0; n < comp_columns; ++n) {
-        const auto& col = s.comp_trail[n];
-        float cx = gx + (n + 0.5f) * cw;
-        level.lineTo(cx, level_y(col.level));
-        taken.lineTo(cx, duck_y(col.reduce));
-    }
-    level.lineTo(gx + gw, y + gh); level.closeSubPath();
+    float cw = w / float(comp_bar_columns);
+    auto duck_y = [&](float db) { return y + std::clamp(db / duck_db, 0.0f, 1.0f) * (h_ - 2); };
     p.g.saveState();
-    p.g.reduceClipRegion(juce::Rectangle<int>(int(gx), int(y), int(gw), int(gh)));
-    p.g.setColour(heard.withAlpha(c.sidechain ? 0.55f : 0.3f)); // the key stands out; the mix itself sits back
-    p.g.fillPath(level);
-    juce::Path hanging = taken;
-    hanging.lineTo(gx + gw, y); hanging.closeSubPath();
-    p.g.setColour(mix.withAlpha(0.14f));
-    p.g.fillPath(hanging);
-    p.g.setColour(mix);
-    p.g.strokePath(taken, juce::PathStrokeType(1.5f));
+    p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(y), int(w), int(h_)));
+    // The bar before, dashed, across the whole width.
+    juce::Path ghost;
+    for (unsigned n = 0; n < comp_bar_columns; ++n) {
+        float gx = x + (n + 0.5f) * cw, gy = duck_y(s.comp_ghost[n].reduce);
+        if (n) ghost.lineTo(gx, gy); else ghost.startNewSubPath(gx, gy);
+    }
+    juce::Path dashed;
+    const float dashes[] {2, 3};
+    juce::PathStrokeType(1.2f).createDashedStroke(dashed, ghost, dashes, 2);
+    p.g.setColour(colour::dim);
+    p.g.fillPath(dashed);
+    // This bar up to the transport, hanging from the top.
+    if (at >= 0) {
+        juce::Path taken;
+        taken.startNewSubPath(x, y);
+        for (int n = 0; n <= at; ++n) taken.lineTo(x + (n + 0.5f) * cw, duck_y(s.comp_bar[size_t(n)].reduce));
+        juce::Path hanging = taken;
+        hanging.lineTo(x + (at + 0.5f) * cw, y); hanging.closeSubPath();
+        p.g.setColour(mix.withAlpha(0.25f));
+        p.g.fillPath(hanging);
+        p.g.setColour(mix);
+        p.g.strokePath(taken, juce::PathStrokeType(2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        p.fill(x + (at + 0.5f) * cw - 0.5f, y, 1, h_, colour::text.withAlpha(0.7f)); // where the transport is
+    }
+    // The hits along the foot: this bar's so far, the bar before's after the transport.
+    for (unsigned n = 0; n < comp_bar_columns; ++n) {
+        bool now = int(n) <= at && s.comp_bar[n].hit, before = int(n) > at && s.comp_ghost[n].hit;
+        if (now || before) p.fill(std::clamp(x + n * cw - 1.5f, x, x + w - 5), y + h_ - 10, 5, 8, now ? heard : heard.withAlpha(0.4f), 1.5f);
+    }
     p.g.restoreState();
-    float ty = level_y(threshold);
-    for (float dx = gx + 2; dx < gx + gw - 2; dx += 6) p.fill(dx, ty, 3, 1, colour::line); // the threshold
 
     // What it takes off: the most of the last third of a second, half a dB a step.
     float most = 0;
     for (unsigned n = comp_columns - 10; n < comp_columns; ++n) most = std::max(most, s.comp_trail[n].reduce);
     most = c.on ? std::round(std::min(most, 40.0f) * 2) / 2 : 0;
-    float ry = y + gh + 6, rh = side - gh - 6;
-    auto unit_style = plain(colour::sec, type::small);
-    float uw = p.width("dB", unit_style);
-    p.text("dB", gx + gw - uw, ry + 3, uw, rh, unit_style, juce::Justification::centredRight);
-    p.text(most > 0 ? "-" + juce::String(most, 1) : "0.0", gx, ry, gw - uw - 4, rh,
+    auto unit_style = plain(colour::mid, type::body);
+    float uw = p.width("dB", unit_style), vy = y + h_ - 30;
+    p.text("dB", x + w - 8 - uw, vy + 4, uw, 24, unit_style, juce::Justification::centredRight);
+    p.text(most > 0 ? juce::String::fromUTF8("\xe2\x88\x92") + juce::String(most, 1) : juce::String("0.0"), x, vy, w - 14 - uw, 26,
            plain(c.on ? colour::text : colour::dim, type::title, Weight::SemiBold), juce::Justification::centredRight);
 }
 
