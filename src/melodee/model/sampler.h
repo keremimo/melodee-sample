@@ -147,6 +147,21 @@ inline PadSound layer_sound(const PadSound& sound, unsigned n) {
     return one;
 }
 
+// Chop's slice [start, end) of `parent`'s sample as a pad of its own: the parent pad's values (tune, Warp and the
+// tempo it was played at, mute group, play, envelope, filter, level, pan), with what belongs to the parent's region
+// alone left out (its layers, Pad Link, a loop point inside it, # Beats).
+inline PadSound slice_sound(const PadSound& parent, uint32_t start, uint32_t end) {
+    PadSound one = parent;
+    one.start = start; one.end = end;
+    one.layers = {};
+    one.low_velocity = 1; one.high_velocity = 127;
+    one.layer_play = LayerPlay::Velocity;
+    one.link = 0;
+    one.loop_lock = true; one.loop_start = 0;
+    one.beats = 0;
+    return one;
+}
+
 // Round 3 "instrument C": one zone of the instrument on a kit pad, tuned or turned up or down from its file's own
 // (Stage's ZONES, K2 and K3), so one sample out of tune or too loud is put right without touching the file. A track
 // keeps up to max_zone_trims (the file's ZTRM section); pad 0xff is a free one. `slot` is the instrument it was made

@@ -9789,6 +9789,22 @@ void pad_link_chains() {
 }
 
 
+// Chop's slices onto pads keep the chopped pad's values; what was its region's alone goes.
+void chop_slices_keep_pad() {
+    PadSound parent;
+    parent.sample = 3; parent.start = 1000; parent.end = 90000;
+    parent.pitch = -5; parent.fine = 20; parent.warp = warp_seq; parent.own_tempo = 924; parent.beats = 8;
+    parent.group = 4; parent.play = PadPlay::Gate; parent.mono = true; parent.level = 80; parent.pan = -12;
+    parent.filter = PadFilter::Lpf4; parent.cutoff = 40; parent.decay = 30;
+    parent.link = 2; parent.loop = true; parent.loop_lock = false; parent.loop_start = 5000;
+    parent.layers[0].sample = 7; parent.low_velocity = 40;
+    PadSound one = slice_sound(parent, 20000, 30000);
+    CHECK(one.sample == 3 && one.start == 20000 && one.end == 30000);
+    CHECK(one.pitch == -5 && one.fine == 20 && one.warp == warp_seq && one.own_tempo == 924 && one.group == 4);
+    CHECK(one.play == PadPlay::Gate && one.mono && one.level == 80 && one.pan == -12 && one.filter == PadFilter::Lpf4 && one.cutoff == 40 && one.decay == 30);
+    CHECK(one.loop && one.loop_point() == 20000 && one.link == 0 && one.beats == 0 && !one.layered() && one.plain_layers());
+}
+
 // Roadmap P3: a loop's seam crossfaded over a time (not a count of frames): with audio before the loop point, after
 // the end, or (neither) a dip; never the jump an unfaded seam makes.
 void loop_seams() {
@@ -11623,6 +11639,7 @@ int main() {
     levels_cutoff_kept();
     pad_link_chains();
     loop_seams();
+    chop_slices_keep_pad();
     instrument_p3();
     instrument_formats_p3();
     pad_layers_p3();

@@ -1509,13 +1509,17 @@ void Context::chop_to_pads() {
     auto& t = track();
     uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0;
     if (!frames) return;
+    // The pad chopped (the last pad, else the first holding the region): each slice takes its values.
+    auto chopped = [&](const PadSound& p) { return p.sample == ui.chop_sample && p.start == ui.chop_from && p.end == ui.chop_to; };
+    PadSound parent;
+    parent.sample = ui.chop_sample;
+    if (chopped(t.pads[t.last_pad % sampler_pads])) parent = t.pads[t.last_pad % sampler_pads];
+    else for (const auto& p : t.pads) if (chopped(p)) { parent = p; break; }
     unsigned pad = 0;
     for (unsigned n = 0; n < ui.slices.count; ++n) {
         while (pad < sampler_pads && t.pads[pad].used()) ++pad; // from the first free pad on
         if (pad >= sampler_pads) break;
-        PadSound sound;
-        sound.sample = ui.chop_sample; sound.start = ui.slices.start[n]; sound.end = ui.slices.end(n, frames);
-        t.pads[pad] = sound;
+        t.pads[pad] = slice_sound(parent, ui.slices.start[n], ui.slices.end(n, frames));
         send_pad(ui.track, pad);
     }
 }
