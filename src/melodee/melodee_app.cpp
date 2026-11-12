@@ -271,6 +271,18 @@ void MelodeeApp::draw(juce::Graphics& g) {
     frame->audio_rate = session().audio.rate.load(std::memory_order_relaxed);
     frame->audio_periods = session().audio.periods.load(std::memory_order_relaxed);
     frame->audio_xruns = session().audio.xruns.load(std::memory_order_relaxed);
+    { // About: how the machine is doing
+        auto& m = frame->machine;
+        m.cores = machine.cores.load(std::memory_order_relaxed);
+        for (unsigned c = 0; c < m.core_load.size(); ++c) m.core_load[c] = machine.core_load[c].load(std::memory_order_relaxed);
+        m.render_load = host.render_load();
+        m.card = machine.card.load(std::memory_order_relaxed);
+        m.card_free = machine.card_free.load(std::memory_order_relaxed);
+        m.card_total = machine.card_total.load(std::memory_order_relaxed);
+        m.stream_late = host.streams().underruns();
+        m.plugins = machine.plugins.load(std::memory_order_relaxed);
+        m.plugins_load = machine.plugins_load.load(std::memory_order_relaxed);
+    }
     ui::Paint p(g);
     g.fillAll(ui::colour::bg);
     page_spec(frame->ui.page).draw(p, *frame);
@@ -286,7 +298,36 @@ void MelodeeApp::jack(const JackEvent&, Hardware& hardware) {
     input_route.service(hardware, plugged);
 }
 
+// About (round 2): each core's load and the plug-ins' every half second, the card's space every five (statvfs()
+// can wait on a slow card, so not more often, and only while the card is Melodee's).
+void MelodeeApp::read_machine(Hardware& hardware) {
+    uint32_t now = now_ms();
+    if (!machine_at || now - machine_at >= 500) {
+        machine_at = now ? now : 1;
+        auto times = hardware.platform.cpu_times(); // the whole machine first, then each core
+        unsigned cores = times.size() > 1 ? unsigned(std::min<size_t>(times.size() - 1, machine.core_load.size())) : 0;
+        if (cpu_before.size() == times.size())
+            for (unsigned c = 0; c < cores; ++c)
+                machine.core_load[c].store(uint8_t(std::lround(cpu_load(cpu_before[c + 1], times[c + 1]) * 100)), std::memory_order_relaxed);
+        machine.cores.store(uint8_t(cores), std::memory_order_relaxed);
+        cpu_before = std::move(times);
+        auto use = plugins.usage();
+        machine.plugins.store(uint8_t(std::min(255u, use.loaded)), std::memory_order_relaxed);
+        machine.plugins_load.store(use.load, std::memory_order_relaxed);
+    }
+    if (hardware.card.status().state != CardShareState::Home) { machine.card.store(false, std::memory_order_relaxed); card_at = 0; return; }
+    if (card_at && now - card_at < 5000) return;
+    card_at = now ? now : 1;
+    const StorageSpace* card = nullptr; // the first card among the mounts, as ProjectStore picks it
+    auto storage = hardware.platform.storage();
+    for (const auto& space : storage) if (space.path.rfind("/media/", 0) == 0) { card = &space; break; }
+    machine.card.store(card != nullptr, std::memory_order_relaxed);
+    machine.card_free.store(card ? card->free_bytes : 0, std::memory_order_relaxed);
+    machine.card_total.store(card ? card->total_bytes : 0, std::memory_order_relaxed);
+}
+
 void MelodeeApp::service(Hardware& hardware) {
+    read_machine(hardware);
     input_route.service(hardware, session().plugged(Jack::Headphones) == 1 || session().plugged(Jack::LineOut) == 1);
     host.looper().service(); // the Looper's memory in and out, its fits (docs/LOOPER.md)
     card_access(hardware);

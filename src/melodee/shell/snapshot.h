@@ -92,6 +92,17 @@ struct Snapshot {
     double loop_tick = 0;
     // The audio device as it runs now (the app fills these from the runtime's session): Settings shows them.
     unsigned audio_rate = 44100, audio_periods = 3, audio_xruns = 0;
+    // About (round 2, about C): how the machine is doing, filled by the app (melodee_app.cpp).
+    struct Machine {
+        std::array<uint8_t, 8> core_load {}; // each core busy, percent, over the last half second
+        uint8_t cores = 0;                   // 0: not read yet
+        float render_load = 0;               // the audio blocks' share of their time (the recent peak)
+        bool card = false;                   // a card is in and Melodee's
+        uint64_t card_free = 0, card_total = 0;
+        unsigned stream_late = 0;            // times the card could not stream a sample in time (an SFZ's)
+        uint8_t plugins = 0;                 // plug-ins loaded
+        float plugins_load = 0;              // their share of the audio time
+    } machine;
     const Track& track() const { return project.tracks[ui.track % track_count]; }
 };
 

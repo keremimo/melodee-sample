@@ -10,11 +10,14 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
 #include "melodee/ui/boot.h"
+#include "drivers/platform.h"
 #include "drivers/usb_audio.h"
 #include "runtime/app.h"
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 // Melodee on sample-base (docs/MELODEE.md). This class only hands each
 // runtime hook to its owner: the engine host renders, the shell takes the
@@ -51,6 +54,18 @@ private:
     melodee::ProjectStore store;    // service thread: projects on the card
     melodee::InputRoute input_route; // service thread: Input Config's source on the hardware, USB-C in, the speaker
     melodee::PluginRack plugins;     // its own thread: the plug-ins the project uses (freed before the engine host)
+    // About (round 2): how the machine is doing, read on the service thread (each core every half second, the
+    // card every five) and copied into the snapshot by the screen thread.
+    struct MachineReadings {
+        std::array<std::atomic<uint8_t>, 8> core_load {};
+        std::atomic<uint8_t> cores {0}, plugins {0};
+        std::atomic<float> plugins_load {0};
+        std::atomic<bool> card {false};
+        std::atomic<uint64_t> card_free {0}, card_total {0};
+    } machine;
+    std::vector<CpuTimes> cpu_before; // service thread: the last reading of each core
+    uint32_t machine_at = 0, card_at = 0; // service thread: when they were read
+    void read_machine(Hardware& hardware); // service thread
     std::unique_ptr<melodee::Snapshot> frame; // screen thread
     melodee::ui::BootAnimation boot;          // screen thread: the logo, then the app
     std::atomic<bool> boot_skip {false};      // a button or pad pressed: the boot animation fades out now

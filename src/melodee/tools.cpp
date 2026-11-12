@@ -1209,7 +1209,22 @@ const Preview previews[] {
     {"settingssampling", [](Shell&, Snapshot& s) { // the sampling rows: how Audio Recall cuts, when a take ends on its own
         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 4; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;
     }},
-    {"about", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.playing = true; }},
+    {"about", [](Shell&, Snapshot& s) { // About C: how the machine is doing, all well
+         s.ui.page = PageId::About; s.playing = true;
+         s.audio_rate = 48000; s.audio_periods = 3;
+         auto& m = s.machine;
+         m.cores = 4; m.core_load = {{38, 52, 30, 44}}; m.render_load = 0.31f;
+         m.card = true; m.card_total = 31'900'000'000ull; m.card_free = 21'400'000'000ull;
+         m.plugins = 3; m.plugins_load = 0.22f;
+     }},
+    {"abouttrouble", [](Shell&, Snapshot& s) { // a core near full, a dropout, the card late twice, no plug-ins
+         s.ui.page = PageId::About; s.playing = true;
+         s.audio_rate = 44100; s.audio_periods = 2; s.audio_xruns = 1;
+         auto& m = s.machine;
+         m.cores = 4; m.core_load = {{91, 64, 20, 12}}; m.render_load = 0.88f;
+         m.card = true; m.card_total = 31'900'000'000ull; m.card_free = 640'000'000ull; m.stream_late = 2;
+     }},
+    {"aboutcredits", [](Shell&, Snapshot& s) { s.ui.page = PageId::About; s.ui.about_view = 1; }},
     {"punch", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Punch; s.ui.track = 2; s.playing = true; s.project.punch_target = 1;
          s.project.punch_bank = 0; // Melodee's first bank: Loop 1/4 latched, Low held

@@ -942,8 +942,13 @@ while following.
   while the card is lent). Samples, takes, renders and every frame count in a project stay at
   44.1 kHz whatever the rate (`engine/model_rate.h`), so projects open the
   same at any rate. Kept in `Melodee/settings` with the project to open at
-  start. **MIDI**: MIDI Config's page. **ABOUT**: engines, effects, limits,
-  versions, licence.
+  start. **MIDI**: MIDI Config's page. **ABOUT**: how the machine is
+  doing, the page to open when something crackles: RENDER (each core's load
+  as a meter, the audio blocks' share of their time), AUDIO (rate and
+  buffer; its dropouts in amber, a check while there are none), CARD (room
+  on it, and the times it could not stream a sample in time), PLUG-INS (how
+  many, what they cost); green, amber from 60 %, red from 85 %. B3 ABOUT
+  again: engines, effects, limits, versions, licence.
 - **Name sheet** (Save, Rename, markers, sounds, samples): pads type like
   phone keys, each pad showing both its letters with the one a tap gives
   now bright (pad 14 space, 15 digits and `- _ .`, 16 delete, as glyphs); a

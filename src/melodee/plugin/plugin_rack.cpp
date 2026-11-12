@@ -351,6 +351,17 @@ std::string PluginRack::summary() const {
     return out.empty() ? "none" : out;
 }
 
+PluginRack::Usage PluginRack::usage() const {
+    Usage out;
+    std::lock_guard<std::mutex> held(lock);
+    for (const auto& entry : entries) {
+        if (!entry.live || entry.status != PluginStatus::Ready) continue;
+        ++out.loaded;
+        out.load += entry.live->load.load(std::memory_order_relaxed);
+    }
+    return out;
+}
+
 void PluginRack::reload(unsigned entry) {
     if (entry >= max_plugins) return;
     std::lock_guard<std::mutex> held(lock);

@@ -13,12 +13,20 @@
 //   value and the wheel changes it, Push keeps it; Minus / Plus change the
 //   one under the cursor straight away; B1 back to the doors. The header
 //   says what the audio device runs at, and its dropouts (amber) if any.
-// ABOUT (the seventh door): what this is and what it is made of.
+// ABOUT (the seventh door; round 2, about C "how the machine is doing"): the
+//   page to open when something crackles. A row each: RENDER (each core's
+//   load as a meter, and the audio blocks' share of their time), AUDIO (the
+//   rate and the buffer, its dropouts in amber), CARD (room on it, and the
+//   times it could not stream a sample in time), PLUG-INS (how many, and
+//   what they cost). B3 again shows what this is and what it is made of.
+#include "drivers/audio.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/punch.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/ui/widgets.h"
+#include <algorithm>
+#include <cmath>
 
 namespace melodee {
 namespace {
@@ -105,7 +113,7 @@ void open_door(Context& c) {
     unsigned n = ui.settings_door % doors.size();
     ui.settings_editing = false;
     if (n == midi_door) { ui.midi_editing = false; c.open(PageId::MidiConfig); return; }
-    if (n == about_door) { c.open(PageId::About); return; }
+    if (n == about_door) { ui.about_view = 0; c.open(PageId::About); return; }
     ui.settings_in = true;
     ui.settings_cursor = uint8_t(doors[n].rows[0]);
 }
@@ -133,10 +141,77 @@ void settings_soft(Context& c, int key) {
     if (key == 2) open_door(c);
 }
 
-void about_draw(Paint& p, const Snapshot& s) {
-    Header h = header_of(s);
-    h.right.push_back(label(s.project.name));
-    frame(p, s, {{"BACK", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h);
+// A load in the colour of how close it is to too much: green, amber from 60 %, red from 85 %.
+juce::Colour load_colour(float load) { return load >= 0.85f ? colour::rec : load >= 0.6f ? colour::amber : colour::play; }
+
+juce::String space_text(uint64_t bytes) { // 21.4 GB, 512 MB
+    double gb = double(bytes) / 1e9;
+    return gb >= 1 ? juce::String(gb, 1) + " GB" : juce::String(int(std::lround(double(bytes) / 1e6))) + " MB";
+}
+
+// An amber sign of trouble with how many times: a warning glyph and the count, its right edge at `right`.
+void trouble(Paint& p, float right, float cy, unsigned count) {
+    juce::String n(count);
+    auto style = plain(colour::amber, type::body, Weight::SemiBold);
+    float w = 22 + p.width(n, style);
+    p.fill(right - w, cy - 9, w, 18, colour::raised, 9);
+    icon(p, Icon::Warn, right - w + 5, cy - 6, 12, colour::amber, 1.5f);
+    p.text(n, right - w + 19, cy - 9, w - 21, 18, style);
+}
+
+void machine_draw(Paint& p, const Snapshot& s) {
+    const auto& m = s.machine;
+    constexpr float lx = zone::pad + 6, vx = 124, right = zone::width - 12, row_h = 33;
+    auto value = [&](float y, const juce::String& text, juce::Colour c) {
+        p.text(text, right - 90, y, 90, 18, plain(c, type::body, Weight::SemiBold), juce::Justification::centredRight);
+    };
+    auto bar = [&](float x, float y, float w, float fill, juce::Colour c) {
+        p.fill(x, y, w, 4, colour::line, 2);
+        p.fill(x, y, w * std::clamp(fill, 0.0f, 1.0f), 4, c, 2);
+    };
+    const std::pair<Icon, const char*> rows[] {{Icon::Chip, "RENDER"}, {Icon::Speaker, "AUDIO"}, {Icon::Card, "CARD"}, {Icon::Plug, "PLUG-INS"}};
+    for (unsigned r = 0; r < 4; ++r) {
+        float y = zone::picture_y + 8 + r * row_h;
+        icon(p, rows[r].first, lx, y + 3, 16, colour::sec, 1.4f);
+        p.text(rows[r].second, lx + 26, y + 4, 80, 14, caps_text(colour::mid));
+    }
+    // RENDER: each core's load as a meter, and the audio blocks' share of their time.
+    float y = zone::picture_y + 8;
+    for (unsigned c = 0; c < m.cores; ++c) {
+        float load = m.core_load[c] / 100.0f, x = vx + c * 12;
+        p.fill(x, y, 8, 22, colour::line, 2);
+        p.fill(x, y + 22 * (1 - std::clamp(load, 0.0f, 1.0f)), 8, 22 * std::clamp(load, 0.0f, 1.0f), load_colour(load), 2);
+    }
+    value(y + 2, juce::String(int(std::lround(m.render_load * 100))) + " %", load_colour(m.render_load));
+    // AUDIO: the rate and the buffer; its dropouts in amber, a check while there are none.
+    y += row_h;
+    juce::String rate = juce::String(s.audio_rate / 1000.0, s.audio_rate % 1000 ? 1 : 0) + " kHz" + juce::String::fromUTF8(" \xc2\xb7 ")
+                      + juce::String(audio_frames * s.audio_periods);
+    p.text(rate, vx, y + 2, 120, 18, plain(colour::sec, type::body));
+    if (s.audio_xruns) trouble(p, right, y + 11, s.audio_xruns);
+    else icon(p, Icon::Check, right - 14, y + 4, 14, colour::play, 1.8f);
+    // CARD: room on it; the times it could not stream a sample in time, in amber.
+    y += row_h;
+    if (!m.card || !m.card_total) {
+        p.text("No card", vx, y + 2, 120, 18, plain(colour::mid, type::body));
+    } else {
+        float used = 1 - float(double(m.card_free) / double(m.card_total));
+        bar(vx, y + 9, m.stream_late ? 84 : 120, used, colour::sec);
+        if (m.stream_late) trouble(p, vx + 124, y + 11, m.stream_late);
+        value(y + 2, space_text(m.card_free), colour::text);
+    }
+    // PLUG-INS: how many, and their share of the audio time.
+    y += row_h;
+    if (!m.plugins) {
+        p.text("None", vx, y + 2, 120, 18, plain(colour::mid, type::body));
+    } else {
+        p.text(juce::String(m.plugins), vx, y + 2, 16, 18, plain(colour::sec, type::body));
+        bar(vx + 18, y + 9, 102, m.plugins_load, colour::sec);
+        value(y + 2, juce::String(int(std::lround(m.plugins_load * 100))) + " %", load_colour(m.plugins_load));
+    }
+}
+
+void credits_draw(Paint& p) {
     float x = zone::pad + 6, w = zone::width - 2 * zone::pad - 12, y = zone::picture_y + 4;
     p.text("Melodee", x, y, w, 30, plain(colour::text, 26, Weight::SemiBold));
     p.text("for the MPC Sample, written on sample-base", x, y + 30, w, 14, plain(colour::sec, type::small));
@@ -157,9 +232,22 @@ void about_draw(Paint& p, const Snapshot& s) {
         ry += 14.5f;
     }
 }
+
+void about_draw(Paint& p, const Snapshot& s) {
+    Header h = header_of(s);
+    h.right.push_back(label(s.project.name));
+    SoftKeys keys {{"BACK", "", "ABOUT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    keys.dots[2] = 2; keys.dot_at[2] = uint8_t(s.ui.about_view % 2); // B3 again: the machine, then the credits
+    frame(p, s, keys, h);
+    if (s.ui.about_view % 2) credits_draw(p);
+    else machine_draw(p, s);
+}
 } // namespace
 
 const PageSpec settings_page {settings_draw, play_pad, settings_wheel, settings_push, settings_soft, settings_nudge};
-const PageSpec about_page {about_draw, play_pad, no_wheel, no_push, [](Context& c, int key) { if (key == 0) c.back(); }, [](Context&, int) {}};
+const PageSpec about_page {about_draw, play_pad, no_wheel, no_push, [](Context& c, int key) {
+    if (key == 0) c.back();
+    else if (key == 2) c.ui.about_view = uint8_t((c.ui.about_view + 1) % 2);
+}, [](Context&, int) {}};
 
 } // namespace melodee
