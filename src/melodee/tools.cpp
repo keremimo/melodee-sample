@@ -82,10 +82,10 @@ void starter_project(Project& project, PatternBank& patterns) {
     project = Project {};
     std::snprintf(project.name, sizeof(project.name), "Starter");
     project.tempo = 1200;
-    synth_track(project, 0, 0, 0, "FUNK BASS II");
-    synth_track(project, 1, 0, 1, "SOFT PAD");
-    synth_track(project, 2, 1, 2, "GLASS PAD");
-    synth_track(project, 3, 2, 3, "CHIP LEAD");
+    synth_track(project, 0, 0, 0, "BASS");
+    synth_track(project, 1, 0, 1, "PAD");
+    synth_track(project, 2, 1, 2, "KEYS");
+    synth_track(project, 3, 2, 3, "LEAD");
     load_sound(project.tracks[4], EngineKind::Sampler, 0); // an empty kit
     drum_kit(project, 5);                                   // drums, with a beat
     project.tracks[1].mix.level = 80; project.tracks[1].octave = 3;
@@ -112,11 +112,11 @@ void starter_project(Project& project, PatternBank& patterns) {
 void board_project(Shell& shell) {
     starter_project(shell.project(), shell.patterns()); // the previews show a full project, not a new one
     auto& project = shell.project();
-    std::snprintf(project.name, sizeof(project.name), "Night drive");
+    std::snprintf(project.name, sizeof(project.name), "Project 1");
     project.tempo = 1240;
     project.root = 2; project.scale = 2; // D Dorian
-    const char* const sounds[] {"FUNK BASS II", "RUBBER BASS", "GLASS PLUCK", "WARM KEYS", "NOISE HAT", "SOFT PAD",
-                                "SYNC LEAD", "BRASS STAB", "UNISON LEAD", "STRING MACHINE"};
+    const char* const sounds[] {"BASS 1", "BASS 2", "PLUCK", "KEYS", "HAT", "PAD",
+                                "LEAD 1", "BRASS", "LEAD 2", "STRINGS"};
     for (unsigned t = 0; t < 10; ++t) synth_track(project, t, t % 3, t, sounds[t]);
     const uint8_t levels[] {98, 88, 74, 56, 104, 64, 81, 51, 70, 46};
     for (unsigned t = 0; t < 10; ++t) project.tracks[t].mix.level = levels[t];
@@ -175,8 +175,8 @@ void board_project(Shell& shell) {
     {
         auto& kit = project.tracks[3];
         load_sound(kit, EngineKind::Sampler, 0);
-        kit.set_name("DUST KIT");
-        const char* names[] {"KICK", "SNARE", "HAT", "OPEN", "DUST BREAK"};
+        kit.set_name("DRUM KIT");
+        const char* names[] {"KICK", "SNARE", "HAT", "OPEN", "BREAK"};
         const uint32_t lengths[] {22050, 26460, 8820, 30870, 230087};
         for (unsigned n = 0; n < 5; ++n) {
             std::snprintf(project.samples[n].path, sizeof(project.samples[n].path), "/media/card/Samples/%s.wav", names[n]);
@@ -207,7 +207,7 @@ void board_project(Shell& shell) {
 // A two-bar break for the sampler previews: twelve hits fading away, drawn as its overview.
 LoadedSample break_sample() {
     LoadedSample s;
-    s.name = "DUST BREAK"; s.frames = 230087; s.ready = true;
+    s.name = "BREAK"; s.frames = 230087; s.ready = true;
     for (unsigned c = 0; c < s.overview.size(); ++c) {
         float in_hit = std::fmod(c * 12.0f / s.overview.size(), 1.0f);
         float level = (c % 86 < 40 ? 0.9f : 0.6f) * std::exp(-in_hit * 4.0f) * (0.75f + 0.25f * std::sin(c * 1.3f));
@@ -239,8 +239,8 @@ void pad_waves(Snapshot& s) {
 void choir_pad(Snapshot& s, unsigned pad) {
     auto& sound = s.project.tracks[3].pads[pad % sampler_pads];
     auto& ref = s.project.samples[sound.sample % sample_slots];
-    std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Boys Choir/Boys Choir.exs");
-    std::snprintf(ref.name, sizeof(ref.name), "BOYS CHOIR");
+    std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Choir/Choir.exs");
+    std::snprintf(ref.name, sizeof(ref.name), "CHOIR");
     ref.frames = 0;
     sound.play = PadPlay::Gate; sound.start = sound.end = 0;
     LoadedSample m;
@@ -256,15 +256,15 @@ void choir_pad(Snapshot& s, unsigned pad) {
     m.part_state.assign(22, PartState::Landed);
     ref.zones = 22;
     s.sample = m;
-    s.ui.zone = 9; s.zone_file = "Boys Ah C4"; // C4's zone, A#3..C#4
+    s.ui.zone = 9; s.zone_file = "Choir C4"; // C4's zone, A#3..C#4
 }
 
 // The same pad holding a felt piano SFZ: A0..C8 in 30 key ranges, three velocity layers, two turns of round robin.
 void piano_pad(Snapshot& s, unsigned pad) {
     auto& sound = s.project.tracks[3].pads[pad % sampler_pads];
     auto& ref = s.project.samples[sound.sample % sample_slots];
-    std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Felt Piano/Felt Piano.sfz");
-    std::snprintf(ref.name, sizeof(ref.name), "FELT PIANO");
+    std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Piano/Piano.sfz");
+    std::snprintf(ref.name, sizeof(ref.name), "PIANO");
     ref.frames = 0;
     sound.play = PadPlay::Gate; sound.start = sound.end = 0;
     LoadedSample m;
@@ -285,7 +285,7 @@ void piano_pad(Snapshot& s, unsigned pad) {
     m.low_key = 21; m.high_key = 108; m.layers = 3; m.rounds = 2;
     ref.zones = uint16_t(m.shapes.size());
     s.sample = m;
-    s.ui.zone = uint16_t(zone_at(m.shapes, 60, 100)); s.zone_file = "Felt C4 mf rr1";
+    s.ui.zone = uint16_t(zone_at(m.shapes, 60, 100)); s.zone_file = "Piano C4 mf rr1";
 }
 
 // A voice of the kit's pad A09 heard `into` frames into its region, its envelope `level` (shell/playheads.h, as the
@@ -353,16 +353,16 @@ void cloud_heard(Snapshot& s, double centre) {
     }
 }
 
-// The Project board's card: two folders and four projects, Night drive open with changes.
+// The Project board's card: two folders and four projects, Project 1 open with changes.
 void preview_projects(Snapshot& s) {
     auto& v = s.projects;
     v.root = "/media/card/Melodee/Projects"; v.free_bytes = 21400000000ull;
     using K = ProjectEntry::Kind;
-    v.entries = {{K::Folder, "Live sets", v.root + "/Live sets", 0, 0, 6, 0}, {K::Folder, "Sketches", v.root + "/Sketches", 0, 0, 14, 0},
-                 {K::Project, "Night drive", v.root + "/Night drive.mldp", 10, 1240, 0, 4}, {K::Project, "Tape loops", v.root + "/Tape loops.mldp", 7, 920, 0, 3},
-                 {K::Project, "Sunday sketch", v.root + "/Sunday sketch.mldp", 3, 1100, 0, 2}, {K::Project, "Basement jam", v.root + "/Basement jam.mldp", 12, 1400, 0, 1}};
-    v.folders = {"Live sets", "Live sets/Spring tour", "Sketches", "Sketches/2026"};
-    s.project_path = v.root + "/Night drive.mldp";
+    v.entries = {{K::Folder, "Beats", v.root + "/Beats", 0, 0, 6, 0}, {K::Folder, "Songs", v.root + "/Songs", 0, 0, 14, 0},
+                 {K::Project, "Project 1", v.root + "/Project 1.mldp", 10, 1240, 0, 4}, {K::Project, "Project 2", v.root + "/Project 2.mldp", 7, 920, 0, 3},
+                 {K::Project, "Project 3", v.root + "/Project 3.mldp", 3, 1100, 0, 2}, {K::Project, "Project 4", v.root + "/Project 4.mldp", 12, 1400, 0, 1}};
+    v.folders = {"Beats", "Beats/Drafts", "Songs", "Songs/2026"};
+    s.project_path = v.root + "/Project 1.mldp";
     s.dirty = true;
     s.ui.project_rows = uint16_t(project_rows(v.entries.size(), s.project_folder)); // as the shell copies it in
 }
@@ -519,7 +519,7 @@ void on_stage(Snapshot& s, unsigned track, unsigned group, unsigned sub) {
 void stage_midi(Snapshot& s, unsigned group, unsigned sub) {
     auto& t = s.project.tracks[11];
     load_sound(t, EngineKind::Midi, 0);
-    t.set_name("JUNO-60");
+    t.set_name("SYNTH");
     t.params[midi_track::Port] = midi_track::UsbC; t.params[midi_track::Channel] = 3;
     t.params[midi_track::Program] = 12; t.params[midi_track::Cc2] = 20; t.params[midi_track::Cc3] = 0;
     s.ui.midi_outputs = 1 | 2;
@@ -570,14 +570,14 @@ void plugin_listing(Snapshot& s) {
         v.files.push_back(f);
     };
     add("Open MPC", true, PluginFormat::Vst3, -1);
-    add("Dragonfly", true, PluginFormat::Vst3, -1);
-    add("Acid-303", false, PluginFormat::Vst2Arm32, 1);
-    add("Nekobi", false, PluginFormat::Vst3, 1);
-    add("8W8", false, PluginFormat::Vst2, 1);
-    add("MVerb", false, PluginFormat::Vst3, 0);
-    add("Serum", false, PluginFormat::Vst3, -1, "Windows and Mac builds only");
-    add("Kars", false, PluginFormat::Vst3, -1);
-    add("LSP Plugins", false, PluginFormat::Vst3, 0);
+    add("Reverbs", true, PluginFormat::Vst3, -1);
+    add("Bass Synth", false, PluginFormat::Vst2Arm32, 1);
+    add("Melodee Poly", false, PluginFormat::Vst2, 1);
+    add("Drum Machine", false, PluginFormat::Vst2, 1);
+    add("Plate Reverb", false, PluginFormat::Vst3, 0);
+    add("Desktop Synth", false, PluginFormat::Vst3, -1, "Windows and Mac builds only");
+    add("Melodee PD", false, PluginFormat::Vst2, -1);
+    add("Effect Pack", false, PluginFormat::Vst3, 0);
     v.files.back().plugins = 214; // a bundle of many: a row that opens
 }
 
@@ -590,7 +590,7 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
     if (status == PluginStatus::Failed) std::snprintf(panel.error, sizeof(panel.error), "libGL.so.1: cannot open shared object file");
     if (status != PluginStatus::Ready) return;
     panel.rows = 8; panel.row = 1; panel.load = 216; panel.programs = 12;
-    const char* names[] {"Cut Off", "Test for mono compatibility", "Time fraction"};
+    const char* names[] {"Cutoff", "Filter envelope amount", "Decay time"};
     const char* texts[] {"5.0", "7.2", "3.5"};
     const int16_t values[] {500, 720, 350};
     for (unsigned k = 0; k < 3; ++k) {
@@ -599,8 +599,8 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
         std::snprintf(c.name, sizeof(c.name), "%s", names[k]);
         std::snprintf(c.text, sizeof(c.text), "%s", texts[k]);
     }
-    // The list's window: the row before (Resonance, Env mod, Decay), then the three in hand.
-    const char* before[] {"Resonance", "Env mod", "Decay"};
+    // The list's window: the row before (Waveform, Tuning, Volume), then the three in hand.
+    const char* before[] {"Waveform", "Tuning", "Volume"};
     const char* before_texts[] {"0.42", "3.1", "0.8"};
     panel.window_first = 0;
     for (unsigned k = 0; k < 6; ++k) {
@@ -615,9 +615,9 @@ void plugin_panel(Snapshot& s, unsigned entry, const char* name, const char* for
 void plugin_track(Snapshot& s, PluginStatus status) {
     s.ui.page = PageId::Edit; s.ui.track = 2;
     auto& t = s.project.tracks[2];
-    t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("ACID-303");
-    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Plugins/sd88me - VST - Acid-303");
-    plugin_panel(s, 0, "Acid-303", "ARMV7", true, status);
+    t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("BASS SYNTH");
+    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Plugins/Bass Synth");
+    plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status);
 }
 
 struct Preview {
@@ -765,12 +765,12 @@ const Preview previews[] {
          s.ui.page = PageId::Plugins; s.ui.track = 2; s.ui.plugin_target = UiState::PluginTarget::Instrument;
          plugin_listing(s); s.ui.plugins_cursor = 3;
      }},
-    {"pluginsbundle", [](Shell&, Snapshot& s) { // LSP's bundle opened for track 1's third slot: a row a plug-in
+    {"pluginsbundle", [](Shell&, Snapshot& s) { // a bundle opened for track 1's third slot: a row a plug-in
          s.ui.page = PageId::Plugins; s.ui.plugin_target = UiState::PluginTarget::Effect; s.ui.plugin_chain = 0; s.ui.plugin_slot = 2;
          auto& v = s.plugins;
-         v.root = "/media/card/Plugins"; v.folder = v.root + "/LSP/lsp-plugins.vst3"; v.top = false;
-         const char* names[] {"A/B Tester x2 Mono", "Beat Breather Stereo", "Compressor x2 Stereo", "Dynamic Processor Stereo",
-                              "Graphic Equalizer x16 Stereo", "Impulse Reverb Stereo", "Multiband Compressor x8 Stereo", "Trigger Stereo"};
+         v.root = "/media/card/Plugins"; v.folder = v.root + "/Effects/Effect Pack.vst3"; v.top = false;
+         const char* names[] {"Compressor Mono", "Compressor Stereo", "Delay Stereo", "Equalizer x16 Stereo",
+                              "Gate Stereo", "Limiter Stereo", "Reverb Stereo", "Trigger Stereo"};
          int32_t id = 1;
          for (const char* n : names) {
              PluginFile f; f.name = n; f.path = v.folder; f.format = PluginFormat::Vst3; f.instrument = 0; f.plugins = 214; f.id = id++;
@@ -791,28 +791,28 @@ const Preview previews[] {
          s.ui.page = PageId::Rack; s.ui.track = 0;
          s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
          s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
-         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/DragonflyHallReverb.vst3");
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/Plate Reverb.vst3");
          s.ui.fx_cursor[0] = 1;
-         plugin_panel(s, 4, "Dragonfly Hall Reverb", "VST3", false, PluginStatus::Ready);
+         plugin_panel(s, 4, "Plate Reverb", "VST3", false, PluginStatus::Ready);
      }},
     {"rackpluginsheet", [](Shell&, Snapshot& s) { // Push on that plug-in: its sheet, with Presets
          s.ui.page = PageId::Rack; s.ui.track = 0;
          s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
          s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
-         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/TONE3000.vst3");
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/Amp Sim.vst3");
          s.ui.fx_cursor[0] = 1;
-         plugin_panel(s, 4, "TONE3000", "VST3", false, PluginStatus::Ready);
+         plugin_panel(s, 4, "Amp Sim", "VST3", false, PluginStatus::Ready);
          s.ui.plugin_panel.programs = 8;
          s.ui.sheet_open = true; s.ui.sheet_row = 1;
      }},
-    {"pluginpresets", [](Shell&, Snapshot& s) { // PRESETS for TONE3000 on track 1's chain: the eight factory ones, one loaded
+    {"pluginpresets", [](Shell&, Snapshot& s) { // PRESETS for an amp sim on track 1's chain: the eight factory ones, one loaded
          s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Rack; s.ui.presets_entry = 4;
-         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/TONE3000.vst3");
-         plugin_panel(s, 4, "TONE3000", "VST3", false, PluginStatus::Ready);
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/Amp Sim.vst3");
+         plugin_panel(s, 4, "Amp Sim", "VST3", false, PluginStatus::Ready);
          auto& v = s.presets;
          v.entry = 4;
-         const char* names[] {"Ampeg Bass Drive", "Bogner Fullstack", "Dumble Spread", "Marshall Bluesbreaker",
-                              "Matchless Crunch", "Mesa Pitch Shift", "Stereo Crunch Verb", "Stereo Fuzz"};
+         const char* names[] {"Bass Drive", "Clean", "Clean Chorus", "Crunch",
+                              "Crunch Verb", "Fuzz", "High Gain", "Lead"};
          for (int i = 0; i < 8; ++i) v.list.push_back({i, names[i]});
          v.current = 3; s.ui.presets_cursor = 4;
      }},
@@ -1024,7 +1024,7 @@ const Preview previews[] {
          s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 3; s.sample_root = "/media/card/Samples";
          s.files_folder = s.sample_root; s.files_top = false;
          for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Samples/") + name, name, 0, true});
-         const char* files[] {"AMEN TYPE", "DUST BREAK", "FUNK LOOP 04", "RHODES STAB", "TAPE HIT", "VINYL CHORD"};
+         const char* files[] {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"};
          for (auto name : files) s.files.push_back({std::string("/media/card/Samples/") + name + ".wav", name, 0, false});
          s.files[4].path = s.project.samples[4].path;
          s.ui.files_count = uint16_t(s.files.size()); s.ui.turning = 1; s.ui.turned_at = s.now;
@@ -1033,12 +1033,12 @@ const Preview previews[] {
          s.ui.page = PageId::Samples; s.ui.track = 3; s.playing = true; s.ui.files_cursor = 0; s.sample_root = "/media/card/Samples";
          s.files_folder = s.sample_root + "/Instruments"; s.files_top = false;
          struct Row { const char* name; const char* file; bool instrument, kit, expansion; };
-         const Row rows[] {{"BOYS CHOIR AH-EH-EE-OO", "Boys Choir Ah-Eh-Ee-Oo.exs", true, false, false},
-                           {"GRAND PIANO", "Grand Piano.sfz", true, false, false},
-                           {"RHODES MK1", "Rhodes MK1.xpm", true, false, false},
-                           {"ORGAN-FARFISA", "Organ-Farfisa.xty", true, false, false},
-                           {"KIT-LOFI PATCH", "Kit-Lofi Patch.xpm", false, true, false},
-                           {"VINTAGE ORGANS", "Vintage Organs.xpn", false, false, true}};
+         const Row rows[] {{"CHOIR", "Choir.exs", true, false, false},
+                           {"PIANO", "Piano.sfz", true, false, false},
+                           {"ELECTRIC PIANO", "Electric Piano.xpm", true, false, false},
+                           {"ORGAN", "Organ.xty", true, false, false},
+                           {"DRUM KIT", "Drum Kit.xpm", false, true, false},
+                           {"EXPANSION", "Expansion.xpn", false, false, true}};
          for (const auto& r : rows) {
              SampleFile f;
              f.path = s.files_folder + "/" + r.file; f.name = r.name;
@@ -1051,7 +1051,7 @@ const Preview previews[] {
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.preview = true; s.ui.files_cursor = 5; s.sample_root = "/media/card/Samples";
          s.files_folder = s.sample_root; s.files_top = false;
          for (auto name : {"EDITS", "LOOPER", "RECORDED"}) s.files.push_back({std::string("/media/card/Samples/") + name, name, 0, true});
-         const char* files[] {"AMEN TYPE", "DUST BREAK", "FUNK LOOP 04", "RHODES STAB", "TAPE HIT", "VINYL CHORD"};
+         const char* files[] {"BASS LOOP", "BREAK", "DRUM LOOP", "KEYS", "PERC", "VOCAL"};
          for (auto name : files) s.files.push_back({std::string("/media/card/Samples/") + name + ".wav", name, 0, false});
          s.files[4].path = s.project.samples[4].path;
          s.ui.files_count = uint16_t(s.files.size());
@@ -1063,9 +1063,9 @@ const Preview previews[] {
     {"banks", [](Shell&, Snapshot& s) { // the card's Samples/Banks: bank files, Push loads one into the bank in view
          s.ui.page = PageId::Samples; s.ui.track = 3; s.ui.files_cursor = 1; s.sample_root = "/media/card/Samples";
          s.files_folder = s.sample_root + "/Banks"; s.files_top = false; s.project.tracks[3].bank = 2;
-         for (auto name : {"BREAKS C", "DUSTY KIT A", "VOX CHOPS"}) s.files.push_back({s.files_folder + "/" + name + ".mldb", name, 0, false, true});
+         for (auto name : {"BREAKS", "DRUMS A", "VOCAL CHOPS"}) s.files.push_back({s.files_folder + "/" + name + ".mldb", name, 0, false, true});
          s.ui.files_count = uint16_t(s.files.size());
-         std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Bank C: DUSTY KIT A"); s.ui.notice_at = s.now;
+         std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Bank C: DRUMS A"); s.ui.notice_at = s.now;
      }},
     {"savebank", [](Shell&, Snapshot& s) { // Shift + Sample Select on Samples: Save Bank's Name sheet
          s.ui.page = PageId::Samples; s.ui.track = 3; s.sample_root = "/media/card/Samples"; s.files_folder = s.sample_root;
@@ -1275,7 +1275,7 @@ const Preview previews[] {
      }},
     {"mixdownname", [](Shell&, Snapshot& s) { // Export, B2: the mixdown's name
          s.ui.page = PageId::Song; s.ui.track = 2;
-         s.ui.name.start(NameTarget::Mixdown, "Night drive", 31, false);
+         s.ui.name.start(NameTarget::Mixdown, "Project 1", 31, false);
      }},
     {"project", [](Shell&, Snapshot& s) { // Shift + Pad 16: SAVE, OPEN, NEW
          s.ui.page = PageId::Project; s.playing = true;
@@ -1408,7 +1408,7 @@ const Preview previews[] {
          s.ui.page = PageId::Compressor; s.playing = true; s.ui.track = 0;
          auto& c = s.project.compressor;
          c.on = true; c.color = true; c.sidechain = true; c.key = 3; c.amount = 55; c.attack = 5; c.release = 60;
-         s.project.tracks[3].set_name("CLASSIC 909 KITS"); // a long name, as the device's own
+         s.project.tracks[3].set_name("ACOUSTIC DRUM KITS"); // a long name, as the device's own
          s.compression = 7.0f;
          kick_trail(s);
          kick_bar(s, 0.62f, 9.0f);
@@ -1597,8 +1597,8 @@ const Preview previews[] {
          auto& t = s.project.tracks[4];
          load_sound(t, EngineKind::Midi, 0);
          t.params[midi_track::Port] = midi_track::UsbDevice; t.params[midi_track::Channel] = 1; t.params[midi_track::Delay] = -8;
-         std::snprintf(t.midi.device, sizeof(t.midi.device), "%s", "minilogue xd");
-         std::snprintf(s.ui.usb_devices[0].data(), 32, "%s", "TR-8S");
+         std::snprintf(t.midi.device, sizeof(t.midi.device), "%s", "USB Synth");
+         std::snprintf(s.ui.usb_devices[0].data(), 32, "%s", "USB Drums");
          s.ui.usb_device_count = 1; s.ui.midi_outputs = 1 | 2 | 1 << 8;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
@@ -1633,7 +1633,7 @@ const Preview previews[] {
          s.ui.page = PageId::Edit; s.ui.track = 4; s.playing = true;
          auto& t = s.project.tracks[4];
          load_sound(t, EngineKind::Midi, 0);
-         std::snprintf(t.midi.sysex, sizeof(t.midi.sysex), "%s", "jupiter-bank.syx");
+         std::snprintf(t.midi.sysex, sizeof(t.midi.sysex), "%s", "synth-bank.syx");
          t.params[midi_track::SysexOnLoad] = 1;
          s.ui.sysex_percent[4] = 37;
          s.ui.edit_page[4] = uint8_t(5 + midi_track::slot_pages);
@@ -1746,8 +1746,8 @@ const Preview previews[] {
          s.project.root = 2; s.project.scale = 2; s.ui.levels_hit = 9;
      }},
     {"exit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; }},
-    {"loading", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = s.ui.loading_left = 40; std::strncpy(s.project.name, "NIGHT DRIVE", sizeof s.project.name - 1); }},
-    {"loadingsamples", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = 40; s.ui.loading_left = 12; std::strncpy(s.project.name, "NIGHT DRIVE", sizeof s.project.name - 1); }},
+    {"loading", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = s.ui.loading_left = 40; std::strncpy(s.project.name, "PROJECT 1", sizeof s.project.name - 1); }},
+    {"loadingsamples", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.loading = true; s.ui.loading_total = 40; s.ui.loading_left = 12; std::strncpy(s.project.name, "PROJECT 1", sizeof s.project.name - 1); }},
     {"exitcard", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = true; s.projects.root = "/media/card/Melodee/Projects"; s.project_path = "/media/card/Melodee/Projects/Song.mldp"; }},
     {"exitoff", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = s.ui.exit_off = true; s.projects.root = "/media/card/Melodee/Projects"; }},
     {"exitsaved", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.exit_open = s.ui.exit_off = s.ui.exit_saved = true; s.projects.root = "/media/card/Melodee/Projects"; }},
@@ -1759,12 +1759,12 @@ const Preview previews[] {
      }},
     {"namesound", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Sounds; s.ui.track = 2; s.playing = true;
-         s.ui.name.start(NameTarget::Sound, "GLASS PLUCK", name_length - 1, true);
+         s.ui.name.start(NameTarget::Sound, "PLUCK", name_length - 1, true);
          s.ui.name.digits = true; s.ui.name.insert(' '); s.ui.name.pad(1, s.now - 2000);
      }},
     {"savesample", [](Shell&, Snapshot& s) { // Shift + Sample Select on a kit: Save Sample's Name sheet
          on_stage(s, 3, 0, 0); s.sample = break_sample();
-         s.ui.name.start(NameTarget::Sample, "DUST BREAK", name_length - 1, false);
+         s.ui.name.start(NameTarget::Sample, "BREAK", name_length - 1, false);
      }},
     {"nameproject", [](Shell&, Snapshot& s) { // Save on a project with no file yet: a name first (QUICKSTART.md)
          s.ui.page = PageId::Project; s.playing = true; s.ui.project_cursor = 4;

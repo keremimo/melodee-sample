@@ -1037,7 +1037,7 @@ void recording() {
 void project_files() {
     auto project = std::make_unique<Project>();
     auto bank = std::make_unique<PatternBank>();
-    std::snprintf(project->name, sizeof(project->name), "Night drive");
+    std::snprintf(project->name, sizeof(project->name), "Project 1");
     project->tempo = 1245; project->swing = 58; project->root = 2; project->scale = 2;
     load_sound(project->tracks[0], EngineKind::Midi, 0);
     project->tracks[0].params[midi_track::Cc1] = 33;
@@ -1062,7 +1062,7 @@ void project_files() {
     auto copy = std::make_unique<Project>();
     auto copy_bank = std::make_unique<PatternBank>();
     CHECK(load_project(data, *copy, *copy_bank).empty());
-    CHECK(std::string(copy->name) == "Night drive" && copy->tempo == 1245 && copy->swing == 58 && copy->scale == 2);
+    CHECK(std::string(copy->name) == "Project 1" && copy->tempo == 1245 && copy->swing == 58 && copy->scale == 2);
     CHECK(copy->tracks[0].engine == EngineKind::Midi && copy->tracks[0].params[midi_track::Cc1] == 33);
     CHECK(copy->tracks[0].mix.pan == -20 && copy->tracks[0].mix.sends[2] == 40 && copy->tracks[0].mix.sends[0] == 0 && copy->tracks[0].mix.mute);
     CHECK(copy->tracks[0].mods[3].amount == -45 && copy->tracks[0].fx.slots[0].bypass && copy->tracks[0].fx.slots[0].params[3] == 70);

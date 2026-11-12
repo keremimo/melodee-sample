@@ -22,6 +22,9 @@ here too.
 Run `./build.sh` (build, tests, self-test, previews). `python3 device.py
 start` runs Melodee on the MPC; `./release.sh VERSION` makes the SD card zip.
 Docs: [docs/MELODEE.md](docs/MELODEE.md) (what Melodee does),
+[docs/GUIDE.md](docs/GUIDE.md) and [docs/QUICKSTART.md](docs/QUICKSTART.md)
+(user docs; screenshots in `docs/images/screens/` are `@2x` page previews,
+plain demo names only),
 [docs/MELODEE_PARITY.md](docs/MELODEE_PARITY.md) (the MPC job plan),
 [docs/MIDI_TRACKS.md](docs/MIDI_TRACKS.md), and the base's
 [APPS.md](base/docs/APPS.md) and [HARDWARE.md](base/docs/HARDWARE.md).

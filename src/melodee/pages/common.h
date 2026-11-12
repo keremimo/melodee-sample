@@ -57,7 +57,7 @@ void track_grid(ui::Paint& p, const Snapshot& s);
 ui::Icon engine_icon(EngineKind kind);
 
 // A sound, pad or track name as names are shown (words: capitals for labels, Title Case for names): a name stored
-// in capitals ("FUNK BASS II") in Title Case ("Funk Bass II"), roman numerals and acronyms as written.
+// in capitals ("BASS II") in Title Case ("Bass II"), roman numerals and acronyms as written.
 juce::String name_case(const juce::String& name);
 // A name in capitals ("BEAT REPEAT") for a narrow cell: as it is when it
 // fits `w` in `style`, else in title case ("Beat Repeat"), which is narrower.

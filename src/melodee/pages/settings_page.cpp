@@ -238,7 +238,7 @@ void credits_draw(Paint& p) {
     unsigned effects = effect_count(); // as the effect picker counts them: not None, not the plug-in slot
     juce::String juce_version = juce::String(JUCE_MAJOR_VERSION) + "." + juce::String(JUCE_MINOR_VERSION) + "." + juce::String(JUCE_BUILDNUMBER);
     const std::pair<const char*, juce::String> rows[] {
-        {"ENGINES", "Prophet, FM6, CZ, SID, 909, Sampler"},
+        {"ENGINES", "Sampler, plug-ins, MIDI"},
         {"EFFECTS", juce::String(effects) + " effects, " + juce::String(punch_count) + " punches"},
         {"TRACKS", juce::String(track_count) + " tracks, " + juce::String(pattern_count) + " patterns each"},
         {"BUILT ON", "sample-base, JUCE " + juce_version},

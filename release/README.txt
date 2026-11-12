@@ -1,9 +1,10 @@
 Melodee {version} for the Akai MPC Sample
 ==========================================
 
-Melodee is a sixteen-track groovebox that runs on the MPC Sample in place of
-the stock app: one track per pad, four synths, a 909 kit and a sampler,
-patterns and a song, mixer and effects.
+Melodee is a 16-track groovebox that runs on the MPC Sample in place of the
+stock app: one track per pad, each a kit of samples, a VST3 or VST2
+instrument, or a MIDI track. Patterns, scenes and a song, a looper, a mixer
+and effect chains that take VST effects.
 
 THIS IS AN ALPHA. Expect rough edges and the odd crash. A crash, or any
 failure to start, puts the stock MPC app back; nothing on the MPC itself is
@@ -32,14 +33,21 @@ Install
 
 Projects are saved on the card in Melodee/Projects.
 
+Plug-ins: put VST3 and VST2 plug-ins built for 64-bit or 32-bit ARM Linux,
+and Open MPC plug-ins, in a folder named "Plugins" at the top level of the
+card. The Melodee Poly, PD and Chip synths are separate downloads.
+
 New to Melodee? The quickstart, with pictures of each screen:
 https://github.com/keremimo/melodee-sample/blob/main/docs/QUICKSTART.md
+The user guide, with every page and control:
+https://github.com/keremimo/melodee-sample/blob/main/docs/GUIDE.md
 
 
 Back to the stock app
 ---------------------
-- Press Power briefly and choose Exit: Melodee saves and the stock app
-  comes back until the next time the MPC is switched on.
+- Press Power briefly. On the Exit screen, press B3 (MPC APP): Melodee
+  saves the project and the stock app runs until the next time the MPC is
+  switched on.
 - To stop Melodee starting at all, delete the "autorun" folder from the
   card (and put back any autorun folder you moved away).
 
