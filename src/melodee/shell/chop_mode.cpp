@@ -42,6 +42,7 @@ void Context::chop_tap(unsigned pad, uint8_t velocity) {
         return;
     }
     if (pad >= sl.count) return;
+    if (pad != ui.chop_slice) ui.chop_fine = false; // another slice: the wheel picks slices again until K1 / K2
     ui.chop_slice = uint8_t(pad);
     audition(sl.start[pad], sl.end(pad, frames));
 }

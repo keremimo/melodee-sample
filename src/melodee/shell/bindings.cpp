@@ -16,6 +16,7 @@
 #include "melodee/engine/midi_engine.h"
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
+#include "melodee/shell/zoom_view.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include "melodee/model/generators.h"
@@ -81,16 +82,13 @@ Binding::Kind pad_kind(PadParam p) {
     }
 }
 // The Sample Mode cards of the last pad hit (parity phase 4).
-int ms(uint32_t frames) { return int(uint64_t(frames) * 1000 / 44100); }
-Binding trim_zoom(const UiState& ui, int handle) { return {Kind::TrimZoom, handle, 0, 4, ui.trim_zoom}; }
-// A handle's card in milliseconds between lo and hi: closer in (zoom), the pot
-// turns across a window of the sample that stays put while the handle is inside it.
-Binding handle_card(Kind kind, int id, int value, int lo, int hi, int length, unsigned zoom) {
-    int window = std::max(4, length >> zoom);
-    int from = std::min(value / window * window, std::max(0, length - window));
-    lo = std::max(lo, from); hi = std::min(hi, from + window);
+Binding trim_zoom(const UiState& ui, int handle) { return {Kind::TrimZoom, handle, 0, zoom_top, ui.trim_zoom}; }
+// A handle's card in frames between lo and hi: zoomed in, the pot turns across the view on screen
+// (shell/zoom_view.h), which stays put while the handle is inside it.
+Binding handle_card(Kind kind, int id, uint32_t value, uint32_t lo, uint32_t hi, FrameView view) {
+    if (view.width() && value >= view.from && value <= view.to) { lo = std::max(lo, view.from); hi = std::min(hi, view.to); } // another handle's view: all of it
     if (hi <= lo) { lo = std::min(lo, value); hi = std::max(hi, value + 1); }
-    return {kind, id, lo, hi, std::clamp(value, lo, hi)};
+    return {kind, id, int(lo), int(hi), int(std::clamp(value, lo, hi))};
 }
 // Decay on One shot, Release on Note On (Gate), as the MPC swaps them; the other on row 2.
 Binding amp_second(const PadSound& pad, bool other) {
@@ -338,18 +336,12 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
                     Binding {Kind::ZoneTune, int32_t(zone), -zone_trim_cents, zone_trim_cents, trim ? trim->tune : 0},
                     Binding {Kind::ZoneLevel, int32_t(zone), zone_trim_low, zone_trim_high, trim ? trim->level : 0}};
         }
-        uint32_t frames = pad.used() ? ref.frames : 0;
-        if (!frames) return {};
-        int length = ms(frames), window = std::max(4, length >> ui.trim_zoom);
-        int start = ms(pad.start), end = pad.end ? ms(pad.end) : length;
-        // Closer in, each pot turns across a window of the sample that stays put while the handle is inside it.
-        auto range = [&](int value) { int lo = std::min(value / window * window, std::max(0, length - window)); return std::pair<int, int>(lo, std::min(length, lo + window)); };
-        auto [s0, s1] = range(start);
-        auto [e0, e1] = range(end);
-        int loop = std::clamp(ms(pad.loop_point()), start, std::max(start, end - 1));
-        auto [l0, l1] = range(loop);
-        return {Binding {Kind::PadStart, 0, s0, std::min(s1, end - 1), start}, Binding {Kind::PadEnd, 0, std::max(e0, start + 1), e1, end},
-                Binding {Kind::PadLoopPoint, 0, std::max(l0, start), std::min(l1, std::max(start + 1, end - 1)), loop}};
+        auto h = trim_handles(project, ui); // in frames; zoomed in, each pot turns across the view on screen
+        if (!h.frames) return {};
+        FrameView view = ui.trim_zoom ? trim_view(project, ui) : FrameView {};
+        uint32_t last = h.end > h.start ? h.end - 1 : h.start;
+        return {handle_card(Kind::PadStart, 0, h.start, 0, last, view), handle_card(Kind::PadEnd, 0, h.end, h.start + 1, h.frames, view),
+                handle_card(Kind::PadLoopPoint, 0, std::min(h.loop, last), h.start, std::max(h.start + 1, last), view)};
     }
     if (track.engine != EngineKind::Sampler) return {};
     switch (page) { // Melodee's kit-wide pages, with or without a pad
@@ -622,7 +614,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         unsigned mode = unsigned(ui.chop_mode);
         Binding amount {};
         if (mode < 3) amount = {Kind::ChopAmount, int32_t(mode), lows[mode], highs[mode], ui.chop_amount[mode]};
-        return {Binding {Kind::ChopZoom, 0, 0, 4, ui.chop_zoom}, Binding {Kind::ChopZoom, 1, 0, 4, ui.chop_zoom}, amount};
+        return {Binding {Kind::ChopZoom, 0, 0, zoom_top, ui.chop_zoom}, Binding {Kind::ChopZoom, 1, 0, zoom_top, ui.chop_zoom}, amount};
     }
     case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx: { // Shift + K: the device's other row (as Knob FX's Shift + K on the MPC)
         unsigned chain = page_chain(project, ui), slot = ui.fx_cursor[UiState::cursor_of(chain)];
@@ -832,13 +824,13 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         Binding type {Kind::ChopMode, 0, 0, int(ChopMode::Count) - 1, int(ui.chop_mode)};
         unsigned n = ui.chop_slice;
         if (!frames || n >= ui.slices.count) return {Binding {}, Binding {}, type};
-        const auto& sl = ui.slices;
-        int length = ms(frames), gap = ms(min_slice);
-        int start = ms(sl.start[n]), end = ms(sl.end(n, frames));
-        int start_lo = n ? ms(sl.start[n - 1]) + gap : 0;
-        int end_hi = n + 1 < sl.count ? ms(sl.end(n + 1, frames)) - gap : length;
-        return {handle_card(Kind::ChopStart, int(n), start, start_lo, end - gap, length, ui.chop_zoom),
-                handle_card(Kind::ChopEnd, int(n), end, start + gap, end_hi, length, ui.chop_zoom), type};
+        const auto& sl = ui.slices; // in frames; zoomed in, each pot turns across the view on screen
+        uint32_t start = sl.start[n], end = sl.end(n, frames);
+        uint32_t start_lo = n ? sl.start[n - 1] + min_slice : 0, start_hi = end > min_slice ? end - min_slice : 0;
+        uint32_t end_hi = n + 1 < sl.count ? sl.end(n + 1, frames) - min_slice : frames;
+        FrameView view = ui.chop_zoom ? chop_view(project, ui) : FrameView {};
+        return {handle_card(Kind::ChopStart, int(n), start, start_lo, start_hi, view),
+                handle_card(Kind::ChopEnd, int(n), end, start + min_slice, end_hi, view), type};
     }
     case PageId::Record: case PageId::InputConfig: { // as on the MPC's Sample Record: K1 source, K2 rec length, K3 threshold
         const auto& in = ui.settings.input;

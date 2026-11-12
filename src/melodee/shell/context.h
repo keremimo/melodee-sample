@@ -33,6 +33,7 @@ class PluginRack;
 class PrintEngine;
 struct PluginFile;
 class SampleLibrary;
+struct FrameView;
 class ProjectStore;
 class InputRoute;
 struct CardLink;
@@ -384,6 +385,12 @@ public:
     uint32_t zero_cut(uint32_t frame) const;                           // Chop: a cut on a zero crossing, with Zero Snap on
     void snap_slices();                                                // Chop: every cut of the slices onto one
     void toggle_zero_snap();                                           // Chop, B2: Zero Snap on / off (a setting)
+    // The wheel on a card (shell/fine_edit.cpp): a handle of Trim or Chop by a 1024th of the view on screen, a frame
+    // zoomed all the way in, onto the next zero crossing that way with Zero Snap on; any other card a step.
+    void fine_edit(const Binding& binding, int delta);
+    void trim_moved(const FrameView& was); // a Trim or Chop handle moved: the view zoomed in keeps it in sight
+    void chop_moved(const FrameView& was);
+    bool exact_cut = false;                // the wheel's cut is where it goes (not pulled back by zero_cut)
     void chop_to_pads();                                               // the slices onto pads, from the first free one
     void follow_tempos(); // Follow on: each pad's own tempo, from its length as whole bars
     bool host_recording() const;                                       // a take is armed, cued or running

@@ -52,6 +52,11 @@ struct CardView {
     uint64_t returns = 0;
 };
 
+// Trim's and Chop's view zoomed in, kept while its handle moves inside it (shell/zoom_view.h); key 0: none kept.
+struct ZoomView {
+    uint32_t from = 0, to = 0, key = 0;
+};
+
 struct UiState {
     PageId page = PageId::Stage;
     // Back (Shift + Push): the pages opened before this one, oldest first.
@@ -207,7 +212,8 @@ struct UiState {
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)
     bool preview = false;       // B3: each file plays as the cursor lands on it
-    uint8_t trim_zoom = 0;      // Trim: 0 whole sample .. 4 sixteen times closer
+    uint8_t trim_zoom = 0;      // Trim: 0 the whole sample .. 100 a few hundred frames (shell/zoom_view.h)
+    ZoomView trim_view;         // and the view it keeps
     uint8_t pad_layer = 0;      // Layers (roadmap P3): the layer in hand, 0-3
     uint16_t zone = 0;          // Stage's ZONES (round 3 "instrument C"): the instrument's zone in hand; the key played picks it
     int8_t layer_load = -1;     // Samples opened by Layers' LOAD: the layer Push loads onto (1-3); -1 the pad
@@ -228,8 +234,10 @@ struct UiState {
     uint16_t chop_sample = no_sample;
     uint32_t chop_from = 0, chop_to = 0; // the pad's region it chops (to 0: the end)
     uint8_t chop_slice = 0;
-    uint8_t chop_zoom = 0;      // Shift + K1 / K2: 0 the whole region .. 4 sixteen times closer
+    uint8_t chop_zoom = 0;      // Shift + K1 / K2: 0 the whole region .. 100 a few hundred frames (shell/zoom_view.h)
     uint8_t chop_focus = 0;     // and where: 0 the slice's start, 1 its end
+    bool chop_fine = false;     // K1 / K2 touched: the wheel fine-edits the handle in focus until a pad picks another slice
+    ZoomView chop_view;         // the view zoomed in, kept
     bool chop_armed = false;    // Manual: pad 1 plays the region and the pads tapped meanwhile cut it
     uint32_t chop_take_at = 0;  // ms when pad 1 started that take, 0 none
     int8_t levels_hit = -1;     // Levels: the pad played last, 0..15

@@ -4,8 +4,11 @@
 // Chop Mode on the last pad's region. Pads play their slice and pick it; the
 // wheel picks one too. K1 the slice's start, K2 its end (a neighbour's end
 // or start moves with it), K3 the chop type: Threshold, Regions, Beats
-// (Melodee's) or Manual; Shift + K1 / K2 zoom at the slice's start or end,
-// Shift + K3 the type's amount (threshold, slices, beats a slice). Editing
+// (Melodee's) or Manual; Shift + K1 / K2 zoom at the slice's start or end
+// (0-100%, smoothly, shell/zoom_view.h), Shift + K3 the type's amount
+// (threshold, slices, beats a slice). Once K1 or K2 (or their zoom) was
+// touched the wheel fine-edits that handle, as the MPC's encoder does, its
+// line drawn wider, until a pad or Minus / Plus picks another slice. Editing
 // a slice makes the chop Manual. Manual armed (K3 onto it, or Push): pad 1
 // plays the region and the pads tapped meanwhile cut it, up to 16 slices.
 // Shift + B1 Extract (the slice as a file, onto the next empty pad), Shift +
@@ -21,6 +24,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/pages/sampler_common.h"
+#include "melodee/shell/zoom_view.h"
 #include "melodee/ui/waveform.h"
 #include <cstdio>
 
@@ -59,14 +63,15 @@ void draw(Paint& p, const Snapshot& s) {
     }
     unsigned selected = std::min<unsigned>(s.ui.chop_slice, slices.count - 1);
     uint32_t region_from = slices.start[0], region_to = slices.end(slices.count - 1, frames);
-    // In view: the region (and a little round it), or closer in at the slice's start or end (Shift + K1 / K2).
+    // In view: the region, or closer in at the slice's start or end (Shift + K1 / K2), its own peaks that close.
     float a = float(slices.start[selected]) / frames, b = float(slices.end(selected, frames)) / frames;
     float from = float(region_from) / frames, to = float(region_to) / frames;
     if (s.ui.chop_zoom) {
-        float window = std::max(1.0f / float(1 << s.ui.chop_zoom), 0.002f);
-        float centre = s.ui.chop_focus ? b : a;
-        from = std::clamp(centre - window / 2, 0.0f, 1.0f - window); to = from + window;
+        FrameView view = chop_view(s.project, s.ui);
+        if (view.width()) { from = float(view.from) / frames; to = float(view.to) / frames; }
     }
+    WaveDetail detail;
+    if (s.detail_to > s.detail_from) detail = {&s.detail, float(s.detail_from) / frames, float(s.detail_to) / frames};
     float y = zone::picture_y + 22, wh = 92;
     auto x_of = [&](float at) { return x + (at - from) / (to - from) * w; };
     // What the audition voice plays now (mock 5): the slice a pad started, with its head and wake, or Manual's take.
@@ -85,14 +90,14 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(l, y, r - l, wh, colour::quiet);
     }
     p.fill(x_of(a), y, x_of(b) - x_of(a), wh, c.withAlpha(0.22f)); // the one in hand, lit
-    waveform(p, x, y, w, wh, s.sample.overview, from, to, a, b, c);
+    waveform(p, x, y, w, wh, s.sample.overview, from, to, a, b, c, nullptr, 0, detail);
     if (sounding >= 0) { // its bars again, in full colour (dim ones too, while it plays), the head and its wake over them
         p.g.saveState();
         float l = std::floor(x_of(sa)), r = std::ceil(x_of(sb));
         p.g.reduceClipRegion(juce::Rectangle<int>(int(l), int(y), int(std::max(0.0f, r - l)), int(wh)));
         p.fill(l, y, r - l, wh, sounding == int(selected) ? colour::raised : colour::bg);
         p.fill(l, y, r - l, wh, c.withAlpha(0.17f * head.wake));
-        waveform(p, x, y, w, wh, s.sample.overview, from, to, sa, sb, c, &head, 1);
+        waveform(p, x, y, w, wh, s.sample.overview, from, to, sa, sb, c, &head, 1, detail);
         p.g.restoreState();
     }
     // The numbers under the slices: where they would run into each other, some step aside; the slice in hand and
@@ -126,8 +131,9 @@ void draw(Paint& p, const Snapshot& s) {
         p.text(juce::String(n + 1), sx + 1, y + wh + 2, 16, 9, number_style(n));
         drawn_to = std::max(drawn_to, r);
     }
-    p.fill(x_of(a), y, 1, wh, knob_shade(s.ui.track, 0));            // K1's handle
-    p.fill(x_of(b) - 1, y, 1, wh, knob_shade(s.ui.track, 1));        // K2's
+    float wide_start = s.ui.chop_fine && !s.ui.chop_focus ? 2 : 1, wide_end = s.ui.chop_fine && s.ui.chop_focus ? 2 : 1; // the wheel's
+    p.fill(x_of(a), y, wide_start, wh, knob_shade(s.ui.track, 0));            // K1's handle
+    p.fill(x_of(b) - wide_end, y, wide_end, wh, knob_shade(s.ui.track, 1));   // K2's
     // Manual's take: where the audition voice is heard in the region now (its region's start until it is heard).
     bool starting = s.ui.chop_take_at && !sound.take && s.now >= s.ui.chop_take_at && s.now - s.ui.chop_take_at < 250;
     bool taking = sound.take || starting;
@@ -168,9 +174,21 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     c.chop_tap(pad, velocity);
 }
 
-void wheel(Context& c, int delta) {
+// Minus / Plus, and the wheel before K1 or K2 was touched: the slice before or after.
+void pick(Context& c, int delta) {
     if (!c.ui.slices.count) return;
     c.ui.chop_slice = uint8_t(std::clamp<int>(c.ui.chop_slice + delta, 0, int(c.ui.slices.count) - 1));
+    c.ui.chop_fine = false;
+}
+
+void wheel(Context& c, int delta) {
+    auto& ui = c.ui;
+    if (!ui.chop_fine || !ui.slices.count) { pick(c, delta); return; }
+    unsigned n = std::min<unsigned>(ui.chop_slice, ui.slices.count - 1), k = ui.chop_focus % 2;
+    c.fine_edit(Binding {k ? Binding::Kind::ChopEnd : Binding::Kind::ChopStart, int32_t(n), 0, 1, 0}, delta);
+    auto& pot = ui.pots[k];
+    pot.engaged = false; pot.bound = 0; // the value left the pot: it picks it up again
+    ui.turning = int8_t(k); ui.turned_at = c.now;
 }
 
 void push(Context& c) { // Manual, armed: pad 1 plays the region again and the taps cut it afresh
@@ -205,6 +223,6 @@ void soft(Context& c, int key) {
 }
 } // namespace
 
-const PageSpec chop_page {draw, pad, wheel, push, soft, wheel}; // Minus / Plus pick slices as the wheel
+const PageSpec chop_page {draw, pad, wheel, push, soft, pick}; // Minus / Plus pick slices
 
 } // namespace melodee

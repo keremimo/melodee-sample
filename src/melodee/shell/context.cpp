@@ -24,6 +24,7 @@
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
+#include "melodee/shell/zoom_view.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/page_stack.h"
@@ -590,19 +591,29 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pitch, value); break;
     case Kind::PadLevel: pad().level = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Level, value); break;
     case Kind::PadPan: pad().pan = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pan, value); break;
-    case Kind::PadStart: pad().start = uint32_t(uint64_t(value) * 44100 / 1000); send_pad(ui.track, t.last_pad); break;
-    case Kind::PadEnd: {
-        uint32_t frames = project.samples[pad().sample % sample_slots].frames, at = uint32_t(uint64_t(value) * 44100 / 1000);
-        pad().end = at >= frames ? 0 : at; // the sample's end is kept as 0, so it follows a longer reload
-        send_pad(ui.track, t.last_pad);
+    case Kind::PadStart: { // Trim's handles, in frames
+        auto was = trim_view(project, ui);
+        pad().start = uint32_t(value); send_pad(ui.track, t.last_pad);
+        trim_moved(was);
         break;
     }
-    case Kind::TrimZoom: ui.trim_zoom = uint8_t(value); ui.trim_focus = uint8_t(b.id % 3); break;
-    case Kind::PadLoopPoint: // turning it lets go of Loop Lock, as the point moves off the start
-        pad().loop_start = uint32_t(uint64_t(value) * 44100 / 1000);
+    case Kind::PadEnd: {
+        auto was = trim_view(project, ui);
+        uint32_t frames = project.samples[pad().sample % sample_slots].frames, at = uint32_t(value);
+        pad().end = at >= frames ? 0 : at; // the sample's end is kept as 0, so it follows a longer reload
+        send_pad(ui.track, t.last_pad);
+        trim_moved(was);
+        break;
+    }
+    case Kind::TrimZoom: ui.trim_zoom = uint8_t(value); ui.trim_focus = uint8_t(b.id % 3); ui.trim_view = {}; break;
+    case Kind::PadLoopPoint: { // turning it lets go of Loop Lock, as the point moves off the start
+        auto was = trim_view(project, ui);
+        pad().loop_start = uint32_t(value);
         if (pad().loop_lock) { pad().loop_lock = false; notice("Loop Lock off"); }
         send_pad(ui.track, t.last_pad);
+        trim_moved(was);
         break;
+    }
     case Kind::PadLoop: pad().loop = value != 0; send_pad(ui.track, t.last_pad); break;
     case Kind::PadMono: pad().mono = value != 0; send_pad(ui.track, t.last_pad); break;
     case Kind::PadLink: pad().link = uint8_t(value); send_pad(ui.track, t.last_pad); break;
@@ -660,15 +671,17 @@ void Context::apply(const Binding& b, int value) {
     }
     case Kind::ChopMode: ui.chop_mode = ChopMode(value); rechop(); break;
     case Kind::ChopAmount: ui.chop_amount[size_t(ui.chop_mode) % ui.chop_amount.size()] = value; rechop(); break;
-    case Kind::ChopStart: case Kind::ChopEnd: { // editing a slice makes the chop Manual, as on the MPC
-        uint32_t frames = ui.chop_sample < sample_slots ? project.samples[ui.chop_sample].frames : 0, at = uint32_t(uint64_t(value) * 44100 / 1000);
-        at = zero_cut(std::min(at, frames)); // onto a zero crossing near the knob's millisecond
+    case Kind::ChopStart: case Kind::ChopEnd: { // editing a slice makes the chop Manual, as on the MPC (in frames)
+        auto was = chop_view(project, ui);
+        uint32_t frames = chop_frames(project, ui), at = std::min(uint32_t(value), frames);
+        if (!exact_cut) at = zero_cut(at); // onto a zero crossing near where the pot is
         if (b.kind == Kind::ChopStart) ui.slices.move_start(unsigned(b.id), at, frames);
         else ui.slices.move_end(unsigned(b.id), at, frames);
         ui.chop_mode = ChopMode::Manual; ui.chop_armed = false;
+        chop_moved(was);
         break;
     }
-    case Kind::ChopZoom: ui.chop_zoom = uint8_t(value); ui.chop_focus = uint8_t(b.id % 2); break;
+    case Kind::ChopZoom: ui.chop_zoom = uint8_t(value); ui.chop_focus = uint8_t(b.id % 2); ui.chop_view = {}; break;
     case Kind::FileJump: ui.files_cursor = uint16_t(value); break;
     case Kind::PluginJump: ui.plugins_cursor = uint16_t(value); break;
     case Kind::ProjectJump: ui.project_cursor = uint16_t(value); break;

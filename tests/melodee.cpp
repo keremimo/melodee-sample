@@ -41,6 +41,7 @@
 #include "melodee/model/lane_value.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/zoom_view.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/capture_ring.h"
 #include "melodee/shell/place_bar.h"
@@ -2457,6 +2458,69 @@ void sample_mode() {
     CHECK(back->tracks[4].pads[2].decay_from_start && !back->tracks[4].pads[2].loop && back->tracks[4].pads[2].used());
 }
 
+// Trim and Chop zoomed in (shell/zoom_view.h): the zoom 0-100% smooth from all of the span down to
+// zoom_closest frames; the view kept while its handle moves inside it and carried along past its edges;
+// the wheel's step a 1024th of the view; Zero Snap's wheel cut onto the next crossing the way it turns;
+// Trim's cards in frames across the view on screen.
+void zoom_and_fine_edit() {
+    CHECK(zoom_width(441000, 0) == 441000 && zoom_width(441000, zoom_top) == zoom_closest && zoom_width(200, 80) == 200);
+    uint32_t last = 441000;
+    for (int z = 1; z <= zoom_top; ++z) { // every step closer, never a jump bigger than the step before it by much
+        uint32_t w = zoom_width(441000, z);
+        CHECK(w < last && double(last) / w < 1.1);
+        last = w;
+    }
+    FrameView edge = zoom_view(441000, 0, 441000, 100, 60); // round a handle near the start: kept inside the file
+    CHECK(edge.from == 0 && edge.width() == zoom_width(441000, 60));
+    edge = zoom_view(441000, 0, 441000, 440990, 60);
+    CHECK(edge.to == 441000);
+    CHECK(fine_step({0, 256}) == 1 && fine_step({0, 441000}) == 430);
+    ZoomView kept;
+    zoom_follow(kept, 7, {1000, 2000}, 1500, 441000, 40); // inside: the view stays
+    CHECK(kept.from == 1000 && kept.to == 2000 && kept.key == 7);
+    CHECK(zoom_now(kept, 7, 441000, 0, 441000, 1999, 40).from == 1000); // the same handle and zoom: kept
+    CHECK(zoom_now(kept, 9, 441000, 0, 441000, 1999, 40).from != 1000); // another: round the handle again
+    zoom_follow(kept, 7, {1000, 2000}, 2300, 441000, 40); // past the edge: carried along
+    CHECK(kept.to == 2300 && kept.from == 1300);
+
+    // Zero Snap's wheel: the next crossing the way it turns, never back past where it starts.
+    std::vector<float> l(1000), r(1000, 0.0f);
+    for (unsigned i = 0; i < l.size(); ++i) l[i] = std::sin(float(i) * 2 * 3.14159265f / 100.0f) + 0.01f; // crossings near 50, 100, 150..
+    uint32_t up = zero_crossing_toward(l.data(), r.data(), 1000, 120, 1), down = zero_crossing_toward(l.data(), r.data(), 1000, 120, -1);
+    CHECK(up >= 120 && up <= 152 && down <= 120 && down >= 98);
+    uint32_t next = zero_crossing_toward(l.data(), r.data(), 1000, up + 3, 1); // a few frames on: the crossing after (near 200)
+    CHECK(next >= 196 && next <= 204);
+    std::vector<float> flat(1000, 0.5f);
+    CHECK(zero_crossing_toward(flat.data(), flat.data(), 1000, 300, 1) == 300); // none: where it was
+
+    // A handle's pot puts it in focus; its zoom too; Chop's wheel then edits it.
+    UiState ui;
+    CHECK(focus_handle(ui, Binding {Binding::Kind::PadEnd, 0, 0, 1, 0}) && ui.trim_focus == 1);
+    CHECK(!focus_handle(ui, Binding {Binding::Kind::PadEnd, 0, 0, 1, 0}));
+    CHECK(focus_handle(ui, Binding {Binding::Kind::TrimZoom, 2, 0, zoom_top, 0}) && ui.trim_focus == 2);
+    CHECK(focus_handle(ui, Binding {Binding::Kind::ChopZoom, 1, 0, zoom_top, 0}) && ui.chop_focus == 1 && ui.chop_fine);
+    CHECK(!focus_handle(ui, Binding {Binding::Kind::PadLevel, 0, 0, 127, 0}));
+
+    // Trim's cards in frames: unzoomed the whole file, zoomed the view on screen round the handle in focus.
+    Project project;
+    auto& kit = project.tracks[0];
+    load_sound(kit, EngineKind::Sampler, 0);
+    project.samples[0].frames = 441000; std::snprintf(project.samples[0].path, sizeof(project.samples[0].path), "/x.wav");
+    kit.last_pad = 0; kit.pads[0].sample = 0; kit.pads[0].start = 44100; kit.pads[0].end = 0;
+    UiState trim;
+    trim.track = 0; trim.page = PageId::Trim;
+    Pattern none;
+    auto cards = page_bindings(project, trim, none, false);
+    CHECK(cards[0].kind == Binding::Kind::PadStart && cards[0].value == 44100 && cards[0].min == 0 && cards[0].max == 440999);
+    CHECK(cards[1].kind == Binding::Kind::PadEnd && cards[1].value == 441000 && cards[1].min == 44101 && cards[1].max == 441000);
+    trim.trim_zoom = zoom_top;
+    FrameView view = trim_view(project, trim);
+    cards = page_bindings(project, trim, none, false);
+    CHECK(view.width() == zoom_closest && view.from <= 44100 && view.to >= 44100);
+    CHECK(cards[0].min == int(view.from) && cards[0].max == int(view.to));
+    CHECK(page_bindings(project, trim, none, true)[0].max == zoom_top);
+}
+
 // Parity phase 5: Chop on a region (types, slice start / end, Split, Merge,
 // Manual's limit and its taps pulled onto hits), the cards and their zoom,
 // the preview slot in the engine, Trim Sample as a Shift + pad action.
@@ -2516,12 +2580,20 @@ void chop_and_browser() {
     ui.slices = chop(ChopMode::Regions, 4, 0, 0, 441000, hits, 0, 1200);
     ui.chop_mode = ChopMode::Regions; ui.chop_slice = 1;
     auto cards = page_bindings(project, ui, pattern);
-    CHECK(cards[0].kind == Binding::Kind::ChopStart && cards[0].value == 2500 && cards[0].min == 20 && cards[0].max == 4980);
-    CHECK(cards[1].kind == Binding::Kind::ChopEnd && cards[1].value == 5000 && cards[1].max == 7480);
+    // In frames, a slice no shorter than min_slice.
+    CHECK(cards[0].kind == Binding::Kind::ChopStart && cards[0].value == 110250 && cards[0].min == 882 && cards[0].max == 220500 - 882);
+    CHECK(cards[1].kind == Binding::Kind::ChopEnd && cards[1].value == 220500 && cards[1].min == 110250 + 882 && cards[1].max == 330750 - 882);
     CHECK(cards[2].kind == Binding::Kind::ChopMode && cards[2].max == 3);
-    ui.chop_zoom = 3; // an eighth of the sample (1250 ms) round each handle
+    ui.chop_zoom = 50; // half way: sqrt(441000 * 256) frames round the slice's start; the pot turns across exactly that
+    FrameView view = chop_view(project, ui);
+    CHECK(view.width() == 10625 && view.from == 110250 - 5312);
     cards = page_bindings(project, ui, pattern);
-    CHECK(cards[0].min == 2500 && cards[0].max == 3750 && cards[1].min == 5000 && cards[1].max == 6250);
+    CHECK(cards[0].min == int(view.from) && cards[0].max == int(view.to) && cards[0].value == 110250);
+    CHECK(cards[1].value == 220500 && cards[1].min == 110250 + 882); // the end, outside the view: all of its range
+    ui.chop_focus = 1; // K2 touched: the view round the end
+    view = chop_view(project, ui);
+    CHECK(view.from <= 220500 && view.to >= 220500 && page_bindings(project, ui, pattern)[1].max == int(view.to));
+    ui.chop_focus = 0;
     auto shifted = page_bindings(project, ui, pattern, true);
     CHECK(shifted[0].kind == Binding::Kind::ChopZoom && shifted[0].id == 0 && shifted[1].id == 1);
     CHECK(shifted[2].kind == Binding::Kind::ChopAmount && shifted[2].max == int(max_slices));
@@ -12117,6 +12189,7 @@ int main() {
     audio_input_and_rendering();
     meter_lights();
     chop_and_browser();
+    zoom_and_fine_edit();
     sample_mode();
     step_edit_and_pad_motion();
     timing();

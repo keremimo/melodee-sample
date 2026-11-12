@@ -14,6 +14,13 @@ void waveform(Paint& p, float x, float y, float w, float h, const std::array<uin
 void waveform(Paint& p, float x, float y, float w, float h, const std::array<uint8_t, 512>& overview,
               float from, float to, float keep_from, float keep_to, juce::Colour colour,
               const WaveHead* heads, unsigned count, float bar) {
+    waveform(p, x, y, w, h, overview, from, to, keep_from, keep_to, colour, heads, count, WaveDetail {}, bar);
+}
+
+void waveform(Paint& p, float x, float y, float w, float h, const std::array<uint8_t, 512>& overview,
+              float from, float to, float keep_from, float keep_to, juce::Colour colour,
+              const WaveHead* heads, unsigned count, const WaveDetail& detail, float bar) {
+    const bool fine = detail.peaks && detail.to > detail.from;
     float mid = y + h / 2, step = bar * 2;
     unsigned columns = unsigned(w / step);
     auto x_of = [&](float at) { return x + (at - from) / std::max(1e-6f, to - from) * w; };
@@ -28,10 +35,14 @@ void waveform(Paint& p, float x, float y, float w, float h, const std::array<uin
     const juce::Colour lit = colour.interpolatedWith(colour::text, 0.45f);
     for (unsigned c = 0; c < columns; ++c) {
         float at = from + (to - from) * (c + 0.5f) / columns; // where in the sample, 0..1
-        unsigned a = unsigned(std::clamp(from + (to - from) * c / columns, 0.0f, 1.0f) * 511);
-        unsigned b = unsigned(std::clamp(from + (to - from) * (c + 1) / columns, 0.0f, 1.0f) * 511);
+        float c0 = from + (to - from) * c / columns, c1 = from + (to - from) * (c + 1) / columns;
+        float slack = (detail.to - detail.from) * 0.002f; // the same edges, worked out in floats twice
+        const auto& peaks = fine && c0 >= detail.from - slack && c1 <= detail.to + slack ? *detail.peaks : overview;
+        float p0 = &peaks == &overview ? 0.0f : detail.from, p1 = &peaks == &overview ? 1.0f : detail.to;
+        unsigned a = unsigned(std::clamp((c0 - p0) / (p1 - p0), 0.0f, 1.0f) * 511);
+        unsigned b = unsigned(std::clamp((c1 - p0) / (p1 - p0), 0.0f, 1.0f) * 511);
         uint8_t peak = 0;
-        for (unsigned k = a; k <= std::max(a, b); ++k) peak = std::max(peak, overview[k]);
+        for (unsigned k = a; k <= std::max(a, b); ++k) peak = std::max(peak, peaks[k]);
         float half = std::max(0.5f, peak / 255.0f * h / 2);
         bool kept = at >= keep_from && at <= keep_to;
         juce::Colour shade = kept ? colour : colour.withAlpha(0.3f);

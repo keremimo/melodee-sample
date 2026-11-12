@@ -80,6 +80,30 @@ uint32_t SampleLibrary::zero_crossing(unsigned n, uint32_t frame) const {
     return data && data->frames ? melodee::zero_crossing(*data, frame) : frame;
 }
 
+uint32_t SampleLibrary::zero_crossing_toward(unsigned n, uint32_t frame, int way) const {
+    std::lock_guard<std::mutex> guard(lock);
+    const SampleData* data = data_of[n % sample_slots];
+    return data && data->frames ? melodee::zero_crossing_toward(*data, frame, way) : frame;
+}
+
+bool SampleLibrary::detail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const {
+    std::lock_guard<std::mutex> guard(lock);
+    const SampleData* data = data_of[n % sample_slots];
+    if (!data || !data->frames || !columns) return false;
+    uint32_t frames = std::min<uint32_t>(data->frames, uint32_t(data->left.size()));
+    to = std::min(to, frames);
+    from = std::min(from, to);
+    if (to <= from) return false;
+    for (unsigned c = 0; c < columns; ++c) {
+        uint32_t a = from + uint32_t(uint64_t(to - from) * c / columns), b = from + uint32_t(uint64_t(to - from) * (c + 1) / columns);
+        float peak = 0; // at most 128 frames a column looked at, so a wide view stays cheap
+        uint32_t stride = std::max<uint32_t>(1, (b - a) / 128);
+        for (uint32_t f = a; f < std::max(b, a + 1) && f < to; f += stride) peak = std::max({peak, std::fabs(data->left[f]), std::fabs(data->right[f])});
+        out[c] = uint8_t(std::lround(std::min(1.0f, peak) * 255));
+    }
+    return true;
+}
+
 std::string SampleLibrary::root() const { std::lock_guard<std::mutex> guard(lock); return known.root; }
 std::string SampleLibrary::folder() const { std::lock_guard<std::mutex> guard(lock); return known.folder; }
 Drive SampleLibrary::drive() const { std::lock_guard<std::mutex> guard(lock); return known.drive; }

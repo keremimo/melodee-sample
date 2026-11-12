@@ -29,6 +29,15 @@ struct WaveHead {
 void waveform(Paint& p, float x, float y, float w, float h, const std::array<uint8_t, 512>& overview,
               float from, float to, float keep_from, float keep_to, juce::Colour colour,
               const WaveHead* heads, unsigned count, float bar = 1.5f);
+// Zoomed in (Trim, Chop): finer peaks of part of the sample, `from`..`to` of it (0..1), read from the audio; the
+// columns inside it take theirs from these instead of the overview.
+struct WaveDetail {
+    const std::array<uint8_t, 512>* peaks = nullptr;
+    float from = 0, to = 0;
+};
+void waveform(Paint& p, float x, float y, float w, float h, const std::array<uint8_t, 512>& overview,
+              float from, float to, float keep_from, float keep_to, juce::Colour colour,
+              const WaveHead* heads, unsigned count, const WaveDetail& detail, float bar = 1.5f);
 // Each head a 1.5 px line in the text colour down the waveform's height at
 // its envelope's strength; with `cap`, a small triangle sits on it above `y`
 // (4 px). Heads outside `from`..`to` are not drawn.

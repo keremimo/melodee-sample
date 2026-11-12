@@ -1207,8 +1207,15 @@ const Preview previews[] {
     {"chopshift", [](Shell&, Snapshot& s) { // Shift: Extract / Split / Merge, zoomed in at the slice's end
          s.ui.page = PageId::Chop; s.ui.track = 3; s.sample = break_sample(); s.ui.chop_sample = 4;
          s.ui.slices = chop(ChopMode::Threshold, 40, 20000, 200000, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
-         s.ui.chop_slice = 2; s.ui.chop_zoom = 2; s.ui.chop_focus = 1;
+         s.ui.chop_slice = 2; s.ui.chop_zoom = 45; s.ui.chop_focus = 1; s.ui.chop_fine = true;
+         s.project.samples[4].frames = s.sample.frames;
          s.ui.shift = true; s.ui.shift_used = true;
+     }},
+    {"chopfine", [](Shell&, Snapshot& s) { // K1 touched, zoomed in at the slice's start: the wheel's handle drawn wider
+         s.ui.page = PageId::Chop; s.ui.track = 3; s.sample = break_sample(); s.ui.chop_sample = 4;
+         s.project.samples[4].frames = s.sample.frames;
+         s.ui.slices = chop(ChopMode::Threshold, 40, 20000, 200000, s.sample.frames, s.sample.hits, s.sample.hit_count, 920);
+         s.ui.chop_slice = 2; s.ui.chop_zoom = 30; s.ui.chop_focus = 0; s.ui.chop_fine = true; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"levels", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
@@ -1750,6 +1757,12 @@ const Preview previews[] {
          on_stage(s, 3, 0, 0); s.playing = true; s.sample = break_sample(); s.ui.shift = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000; pad.loop = true;
      }},
+    {"trimzoom", [](Shell&, Snapshot& s) { // Shift + K1 turned: closer in round the start, smoothly (0-100%)
+         on_stage(s, 3, 0, 0); s.sample = break_sample(); s.ui.shift = true;
+         auto& pad = s.project.tracks[3].pads[8]; pad.start = 18000; pad.end = 150000;
+         s.project.samples[pad.sample % sample_slots].frames = s.sample.frames;
+         s.ui.trim_zoom = 35; s.ui.trim_focus = 0; s.ui.last_pot = 0; s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
     {"ampenv", [](Shell&, Snapshot& s) { s.ui.page = PageId::EnvelopePage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.attack = 20; pad.decay = 70; pad.velocity_sense = 60; s.ui.turning = 1; s.ui.turned_at = s.now; }},
     {"tune", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
@@ -2017,7 +2030,7 @@ int preview(const std::string& folder, const std::vector<std::string>& names) {
         }
         ++written;
     }
-    require(written > 0, "Unknown Melodee page; use stage stagemix stagemidi stageemptysynth tracks keys sounds edit mix steps roll notesheet motion patterns recquantize recquantizeoff seqsheet seqbpm seqclear rollkit song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
+    require(written > 0, "Unknown Melodee page; use stage stagemix stagemidi stageemptysynth tracks keys sounds edit mix steps roll notesheet motion patterns recquantize recquantizeoff seqsheet seqbpm seqclear rollkit song songzoom songclip songshift length rack sends bus fxpick pads samples trim chop chopfine levels record project filesheet tempo arp chord capture pad play envelope filter follow cloud padmix padfilter filterenv trimloop trimshift trimzoom ampenv tune levelsfilter levelssynth shift exit exitcard exitoff exitsaved");
     std::cout << "MELODEE_PREVIEW pages=" << written << " text_issues=" << text_issues << '\n';
     // Text under the floor or cut by its box fails the build check.
     return text_issues ? 1 : 0;

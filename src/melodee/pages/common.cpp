@@ -374,12 +374,14 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = "PAN"; c.bipolar = true;
         c.value = b.value == 0 ? juce::String("C") : (b.value < 0 ? "L" : "R") + juce::String(std::abs(b.value));
         break;
-    case Kind::PadStart: case Kind::PadEnd: case Kind::ChopStart: case Kind::ChopEnd:
-        c.label = b.kind == Kind::PadEnd || b.kind == Kind::ChopEnd ? "END" : "START"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s";
+    case Kind::PadStart: case Kind::PadEnd: case Kind::ChopStart: case Kind::ChopEnd: case Kind::PadLoopPoint: // frames, as seconds
+        c.label = b.kind == Kind::PadLoopPoint ? "LOOP" : b.kind == Kind::PadEnd || b.kind == Kind::ChopEnd ? "END" : "START";
+        c.value = juce::String(b.value / 44100.0, b.max - b.min < 4410 ? 4 : 3); c.unit = "s"; // zoomed under 0.1 s: a tenth of a ms
         break;
-    case Kind::TrimZoom: case Kind::ChopZoom:
-        c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : b.id == 0 ? "ZOOM START" : b.id == 1 ? "ZOOM END" : "ZOOM LOOP"; c.value = juce::String::fromUTF8("\xc3\x97") + juce::String(1 << b.value); break;
-    case Kind::PadLoopPoint: c.label = "LOOP"; c.value = juce::String(b.value / 1000.0, 3); c.unit = "s"; break;
+    case Kind::TrimZoom: case Kind::ChopZoom: // 0-100%, as the MPC's
+        c.label = b.kind == Kind::ChopZoom ? (b.id ? "ZOOM END" : "ZOOM START") : b.id == 0 ? "ZOOM START" : b.id == 1 ? "ZOOM END" : "ZOOM LOOP";
+        c.value = juce::String(b.value); c.unit = "%";
+        break;
     case Kind::PadLoop: c.label = "LOOP"; c.value = b.value ? "On" : "Off"; break;
     case Kind::PadMono: c.label = "VOICES"; c.value = b.value ? "Mono" : "Poly"; break;
     case Kind::PadLink: {

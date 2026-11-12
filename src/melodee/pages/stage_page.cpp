@@ -24,6 +24,7 @@
 #include "melodee/shell/meter_lights.h"
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
+#include "melodee/shell/zoom_view.h"
 #include "melodee/ui/waveform.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
@@ -534,8 +535,10 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         glyph(Icon::Loop, pad.loop);
         if (pad.loop && pad.loop_lock) glyph(Icon::Lock, true);
         glyph(Icon::Reverse, pad.reverse);
-        if (page.kind == StageKind::Trim && s.ui.trim_zoom)
-            p.text(juce::String::fromUTF8("\xc3\x97") + juce::String(1 << s.ui.trim_zoom), gx, gy - 1, 30, 14, caps_text(c));
+        if (page.kind == StageKind::Trim && s.ui.trim_zoom) {
+            double times = zoom_factor(s.sample.frames, s.ui.trim_zoom);
+            p.text(juce::String::fromUTF8("\xc3\x97") + (times < 10 ? juce::String(times, 1) : juce::String(int(std::lround(times)))), gx, gy - 1, 44, 14, caps_text(c));
+        }
     };
     // Volume and pan, as two thin meters at the sides.
     p.fill(px, wy, 5, wh, colour::line, 2.5f);
@@ -569,10 +572,11 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         p.g.setColour(c.withAlpha(0.45f));
         p.g.strokePath(rays, juce::PathStrokeType(0.8f));
     }
-    if (page.kind == StageKind::Trim && s.ui.trim_zoom) { // a window round the handle Shift + K zoomed at
-        float loop_at = float(std::clamp(pad.loop_point(), start, end)) / frames, window = 1.0f / float(1 << s.ui.trim_zoom);
-        float centre = s.ui.trim_focus == 1 ? region_to : s.ui.trim_focus == 2 ? loop_at : region_from;
-        from = std::clamp(centre - window / 2, 0.0f, 1.0f - window); to = from + window;
+    WaveDetail detail;
+    if (page.kind == StageKind::Trim && s.ui.trim_zoom) { // the view round the handle in focus (shell/zoom_view.h), its own peaks that close
+        FrameView view = trim_view(s.project, s.ui);
+        if (view.width()) { from = float(view.from) / frames; to = float(view.to) / frames; }
+        if (s.detail_to > s.detail_from) detail = {&s.detail, float(s.detail_from) / frames, float(s.detail_to) / frames};
     }
     auto x_of = [&](float at) { return wx + (at - from) / (to - from) * ww; };
     p.g.saveState();
@@ -586,7 +590,7 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     CloudGrains cloud = page.kind == StageKind::Cloud ? cloud_grains(s, t.last_pad % sampler_pads, pad, frames, from, to, ww) : CloudGrains {};
     if (page.kind == StageKind::Cloud)
         waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, cloud.wakes.data(), cloud.wake_count);
-    else waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, heads.wave.data(), heads.count);
+    else waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, heads.wave.data(), heads.count, detail);
     // A loop going round: for a moment a ghost stays at the place the head left (drawn last), so the jump reads as one.
     const float wrap = heard && (heard->flags & tap::Loop) ? heard->wrap : 0.0f;
     float loop_x = -1;
@@ -919,7 +923,7 @@ void wheel(Context& c, int delta) {
     }
     const auto& b = cards[size_t(n)];
     if (!b.bound()) return;
-    c.apply(b, b.value + delta);
+    c.fine_edit(b, delta); // Trim's handles by the view on screen, a frame zoomed all the way in
     auto& pot = c.ui.pots[size_t(n)];
     pot.engaged = false; pot.bound = 0; // the value left the pot: it picks it up again
     c.ui.turning = int8_t(n); c.ui.turned_at = c.now;
@@ -947,7 +951,11 @@ void push(Context& c) {
     int from = stage_focus(c.ui, t);
     for (int k = 1; k <= 3; ++k) { // the next card that holds something
         int n = (from + k) % 3;
-        if (cards[size_t(n)].bound()) { c.ui.last_pot = int8_t(n); c.ui.last_pot_shift = false; c.ui.turning = int8_t(n); c.ui.turned_at = c.now; return; }
+        if (cards[size_t(n)].bound()) {
+            c.ui.last_pot = int8_t(n); c.ui.last_pot_shift = false; c.ui.turning = int8_t(n); c.ui.turned_at = c.now;
+            focus_handle(c.ui, cards[size_t(n)]); // Trim: the view zoomed in goes to that handle
+            return;
+        }
     }
 }
 

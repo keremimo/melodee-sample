@@ -24,6 +24,7 @@
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/stage_map.h"
+#include "melodee/shell/zoom_view.h"
 #include "melodee/shell/sample_mode.h"
 #include "melodee/shell/seq_layer.h"
 #include "melodee/shell/shift_pads.h"
@@ -402,6 +403,8 @@ void Shell::check_pickup(unsigned n, const Binding& binding) {
 
 void Shell::pot(unsigned n, int position, bool syncing) {
     auto bindings = page_bindings(*project_, ui_, context_.pattern());
+    // A Trim or Chop handle's pot: that handle in focus, the view zoomed in round it (shell/zoom_view.h).
+    if (!syncing && focus_handle(ui_, bindings[n])) bindings = page_bindings(*project_, ui_, context_.pattern());
     const auto& b = bindings[n];
     auto& pot = ui_.pots[n];
     int before = pot.position;
@@ -452,7 +455,7 @@ void Shell::wheel(int delta) {
         auto bindings = page_bindings(*project_, ui_, context_.pattern(), ui_.last_pot_shift);
         const auto& b = bindings[size_t(ui_.last_pot)];
         if (!b.bound()) return;
-        context_.apply(b, b.value + delta);
+        context_.fine_edit(b, delta); // a Trim or Chop handle by the view on screen
         auto& pot = ui_.pots[size_t(ui_.last_pot)];
         pot.engaged = false; pot.bound = 0; // the value left the pot: pick it up again
         ui_.turning = ui_.last_pot; ui_.turned_at = context_.now;
@@ -625,6 +628,14 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;
         out.sample = slot < sample_slots ? library_->slot(slot) : LoadedSample {};
         out.zone_file = out.sample.instrument && ui_.page != PageId::Chop ? library_->zone_file(slot, ui_.zone) : std::string();
+        // Trim and Chop zoomed in: the view's own peaks, from the audio (the overview's 512 are too few that close).
+        FrameView view;
+        if (ui_.page == PageId::Chop && ui_.chop_zoom) view = chop_view(*project_, ui_);
+        if (ui_.page == PageId::Stage && ui_.trim_zoom && stage_page_now(ui_, t).kind == StageKind::Trim) view = trim_view(*project_, ui_);
+        out.detail_from = out.detail_to = 0;
+        if (view.width() && slot < sample_slots && library_->detail(slot, view.from, view.to, out.detail.data(), unsigned(out.detail.size()))) {
+            out.detail_from = view.from; out.detail_to = view.to;
+        }
         out.pad_waves_shown = 0;
         if (ui_.page == PageId::Pads && t.engine == EngineKind::Sampler) // pads B: the bank's sixteen waveforms
             for (unsigned n = 0; n < 16; ++n) {

@@ -60,6 +60,30 @@ inline uint32_t zero_crossing(const SampleData& sample, uint32_t frame) {
     return zero_crossing(sample.left.data(), sample.right.data(), std::min<uint32_t>(sample.frames, uint32_t(sample.left.size())), frame);
 }
 
+// The wheel's Zero Snap: the first crossing at or past `frame` going `way` (+1 later, -1 earlier), within 50 ms;
+// `frame` itself where none is. The frame of the pair nearer zero, as above, but never back past `frame`.
+constexpr uint32_t zero_reach = 2205;
+inline uint32_t zero_crossing_toward(const float* left, const float* right, uint32_t frames, uint32_t frame, int way) {
+    if (!frames || frame >= frames) return frame;
+    auto sum = [&](uint32_t i) { return left[i] + right[i]; };
+    for (uint32_t d = 0; d <= zero_reach; ++d) {
+        int64_t i = way < 0 ? int64_t(frame) - d : int64_t(frame) + d;
+        if (i < 1 || i >= int64_t(frames)) break;
+        float m = sum(uint32_t(i)), before = sum(uint32_t(i - 1));
+        if (!(m == 0 || (before < 0) != (m < 0))) continue;
+        // The crossing lies between i - 1 and i: the side nearer zero, unless that steps back past `frame`.
+        uint32_t at = m == 0 || std::fabs(m) <= std::fabs(before) ? uint32_t(i) : uint32_t(i - 1);
+        if (way > 0 && at < frame) at = uint32_t(i);
+        if (way < 0 && at > frame) at = uint32_t(i - 1);
+        return at;
+    }
+    return frame;
+}
+inline uint32_t zero_crossing_toward(const SampleData& sample, uint32_t frame, int way) {
+    return zero_crossing_toward(sample.left.data(), sample.right.data(), std::min<uint32_t>(sample.frames, uint32_t(sample.left.size())), frame,
+                                way);
+}
+
 // The slices of [from, to) of a sample of `frames`. `amount`: THRESHOLD
 // 0..100 (as on the MPC, the higher, the fewer slices: 0 keeps every hit), REGIONS the number of slices 2..64, BEATS
 // beats a slice 1..8. MANUAL starts as one slice, the whole region.

@@ -195,6 +195,11 @@ public:
     // MIDI thread: `frame` of slot `n` pulled onto the nearest zero crossing (shell/chop.h's
     // Zero Snap); the frame itself when the slot is not loaded. Reads the audio under the lock.
     uint32_t zero_crossing(unsigned n, uint32_t frame) const;
+    // The same going one way (the wheel's fine edit, shell/fine_edit.cpp): the first crossing at or past `frame`.
+    uint32_t zero_crossing_toward(unsigned n, uint32_t frame, int way) const;
+    // Trim and Chop zoomed in (shell/zoom_view.h): slot `n`'s peaks between two frames in `columns` columns
+    // 0..255, read from its audio (the overview is too coarse that close); false when it holds no audio.
+    bool detail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const;
     std::vector<SampleFile> files() const;
     std::string root() const;
     std::string folder() const;
