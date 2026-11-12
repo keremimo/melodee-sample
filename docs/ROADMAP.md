@@ -414,7 +414,9 @@ behaviour changed.
   first and an effect clears a written one 16384 floats a block (its wet
   silent meanwhile), and each effect's six values are set and worked out
   once (73472a5, 8cb3399). That session measured P7 / P8 loads at 0
-  dropouts in 6 after the first.
+  dropouts in 6 after the first; the second saved little (7A still dropped
+  out 7 loads in 16): the rest is the Reload clearing ten Punches' lines,
+  which that session fixes in punch.*.
 
 ## Waiting for a hand check
 
@@ -735,5 +737,6 @@ behaviour, write the code fresh for this app.
   pool 45/48, played 6 s with 0 xruns, undone back to 0 and 46/48; MOD drawn
   as in the previews, ADD put an LFO on A01 PAN learned from Stage's MIX
   (0.63 Hz), played with 0 xruns, then taken off. Every edit undone; the
-  project there was not saved. The VST-migration session verifies 7A loads
-  on that binary. No base changes; no pushes owed.
+  project there was not saved. The VST-migration session's 7A loads on that
+  binary still dropped out 7 in 16 (Punch::clear's memset on Reload, theirs
+  to fix). No base changes; no pushes owed.
