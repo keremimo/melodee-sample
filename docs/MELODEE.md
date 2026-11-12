@@ -307,11 +307,10 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     showing what it would make, the pot under it choosing: **SYNTH** (a
     PLUGIN track: the plug-in picker opens on the card's Plugins folder),
     **KIT** (K2 where its first sound comes from: samples on
-    the card or record the input; Audio Recall and Resample stay on their
-    keys and need a kit track), **MIDI** (K3 the port). The key under a
-    tile makes that track at once; Push makes the one of the pot touched
-    last (its key lit), the wheel turns that pot's list. Sound and channel
-    are picked after, on Stage.
+    the card, record the input, Audio Recall, Resample), **MIDI** (K3 the
+    port). The key under a tile makes that track at once; Push makes the
+    one of the pot touched last (its key lit), the wheel turns that pot's
+    list. Sound and channel are picked after, on Stage.
 - **Tracks** (Sample's second stop, the mixer): the sixteen tracks as the
   pads sit, each cell its number, the pattern it plays, its engine as a
   glyph and its level up the right edge (muted: a crossed speaker); the
@@ -1493,7 +1492,9 @@ none, 1 erase a pad's events, 2 erase a lane, 3 reset settings, 4 new
 project, 5 take the card back); `melodee_motion` (the pattern's points); the last pad
 (`melodee_last_pad`, `melodee_pad_loop` .. `melodee_pad_gain`,
 `melodee_pad_slots`, `melodee_pad_start`, `melodee_pad_end`,
-`melodee_pad_name`), 16 Levels (`melodee_levels`, `melodee_levels_kind`);
+`melodee_pad_name`; roadmap P3's `melodee_pad_layers`, `melodee_layer_play`,
+`melodee_pad_xfade`, and the selected track's voices heard
+`melodee_voices` with the sample slots they play `melodee_voice_slots`), 16 Levels (`melodee_levels`, `melodee_levels_kind`);
 Chop (`melodee_chop_*`); the browser (`melodee_files`,
 `melodee_file_cursor`, `melodee_drive`, `melodee_preview`,
 `melodee_folder`); input and renders (`melodee_take`,

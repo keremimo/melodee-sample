@@ -764,9 +764,9 @@ void doors_picture(Paint& p, const Snapshot& s) {
     EngineKind engine = count ? engines[s.ui.new_engine % count] : EngineKind::None;
     const auto& info = engine_info(engine);
     int focus = stage_focus(s.ui, s.track());
-    static const char* sources[] {"Card", "Input"};
-    static const char* source_subs[] {"SAMPLES", "RECORD"};
-    static const Icon source_icons[] {Icon::Folder, Icon::Mic};
+    static const char* sources[] {"Card", "Input", "Recall", "Resample"};
+    static const char* source_subs[] {"SAMPLES", "RECORD", "LAST 25 S", "THEN A PAD"};
+    static const Icon source_icons[] {Icon::Folder, Icon::Mic, Icon::Clock, Icon::Loop};
     static const char* ports[] {"Out jack", "USB-C", "All USB"};
     unsigned source = s.ui.new_source % new_sources, port = s.ui.new_port % 3;
     auto synth = value_tile(engine_icon(engine), engine_word(engine), juce::String(info.sound_count) + (info.sound_count == 1 ? " SOUND" : " SOUNDS"), focus == 0);

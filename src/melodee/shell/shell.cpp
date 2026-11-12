@@ -615,6 +615,18 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         out.tap_frames = double(clock.frame_at(int64_t(ns))) - double(clock.latency_frames()) - double(out.taps.stamp);
     }
     trail.update(out.taps, out.tap_frames, now);
+    { // roadmap P3, for remote checks: the voices heard now and their slots
+        uint64_t slots = 0;
+        unsigned heard = 0;
+        for (unsigned n = 0; n < out.taps.count; ++n) {
+            const auto& v = out.taps.voice[n];
+            if (v.flags & (tap::Choked | tap::Waiting)) continue;
+            ++heard;
+            if (v.slot < 64) slots |= uint64_t(1) << v.slot;
+        }
+        voices_now.store(heard, std::memory_order_relaxed);
+        voice_slots.store(slots, std::memory_order_relaxed);
+    }
     out.heads = trail.heads();
     out.grains = trail.grains();
     out.compression = host.compression();
@@ -761,7 +773,19 @@ std::string Shell::pad_summary() const {
            " melodee_pad_filter=" + pad_filter_name(PadFilter((b >> 16) & 0xf)) + " melodee_pad_link=" + std::to_string((b >> 20) & 0x1f) +
            " melodee_pad_decay_from=" + ((b >> 25) & 1 ? "start" : "end") +
            " melodee_pad_gain=" + std::to_string(pad_gain.load(std::memory_order_relaxed)) +
-           " melodee_levels=" + std::to_string((b >> 5) & 1) + " melodee_levels_kind=" + kinds[(b >> 6) & 3];
+           " melodee_levels=" + std::to_string((b >> 5) & 1) + " melodee_levels_kind=" + kinds[(b >> 6) & 3] + p3_summary();
+}
+
+// Roadmap P3: the last pad's layers and loop crossfade, the voices heard and their sample slots.
+std::string Shell::p3_summary() const {
+    uint32_t p = p3_bits.load(std::memory_order_relaxed);
+    static const char* const plays[] {"velocity", "cycle", "random"};
+    std::string slots;
+    uint64_t mask = voice_slots.load(std::memory_order_relaxed);
+    for (unsigned n = 0; n < 64; ++n) if ((mask >> n) & 1) slots += (slots.empty() ? "" : ",") + std::to_string(n);
+    return " melodee_pad_layers=" + std::to_string(p & 15) + " melodee_layer_play=" + plays[((p >> 4) & 15) % 3] +
+           " melodee_pad_xfade=" + std::to_string((p >> 8) & 0xff) + " melodee_voices=" + std::to_string(voices_now.load(std::memory_order_relaxed)) +
+           " melodee_voice_slots=" + (slots.empty() ? "-" : slots);
 }
 
 // Phase 5: Chop, the last pad's region and file, the browser.

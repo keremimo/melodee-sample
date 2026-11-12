@@ -92,6 +92,7 @@ private:
     std::string meter_text() const;    // and the meters beside the screen
     std::string meter_db_text() const; // and the levels they show
     std::string pad_summary() const;   // the last pad's Sample Mode values (phase 4)
+    std::string p3_summary() const;    // roadmap P3: layers, loop crossfade, voices and their slots
     std::atomic<uint64_t> button_levels {0};
     std::atomic<uint64_t> pad_rungs {0}, pad_hues {0}; // each pad's rung and hue (shell/pad_light.h), 4 bits a pad, for `status`
     std::array<uint32_t, 16> pad_let_go {}; // when each pad was let go, ms + 1: its flare fades from there (shell/pad_lights.h)
@@ -145,6 +146,10 @@ private:
     std::atomic<uint32_t> roll_key_now {0}, roll_focus_now {0}, roll_view_now {0}, roll_top_now {0}, sheet_now {0};
     std::atomic<uint32_t> pad_bits {0}; // phase 4: the last pad's loop, lock, Note On, reverse, mono, filter, link; 16 Levels (summary())
     std::atomic<int32_t> pad_gain {0};
+    // Roadmap P3, for remote checks: the last pad's layers (count, how a hit picks) and loop crossfade; the selected
+    // track's voices heard now and the sample slots they play (a bit a slot).
+    std::atomic<uint32_t> p3_bits {0}, voices_now {0};
+    std::atomic<uint64_t> voice_slots {0};
     // Phase 5: Chop (type, slices, the slice in hand, armed), the last pad's region and file, slots
     // used, the browser (rows, cursor, drive, preview) and its folder.
     std::atomic<uint32_t> record_bits {0}; // phase 6: source, monitor, the take's pad + 1, cuts, rendering, pick, threshold

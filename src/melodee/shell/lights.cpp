@@ -185,6 +185,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                            | uint32_t(pad.mono) << 4 | uint32_t(t.levels) << 5 | uint32_t(t.levels_kind % 4) << 6 | uint32_t(t.last_pad) << 8
                            | uint32_t(pad.filter) << 16 | uint32_t(pad.link) << 20 | uint32_t(pad.decay_from_start) << 25, std::memory_order_relaxed);
             pad_gain.store(pad.gain, std::memory_order_relaxed);
+            unsigned layers = 0;
+            for (unsigned n = 0; n < pad_layers; ++n) layers += pad.layer(n).used();
+            p3_bits.store(layers | uint32_t(pad.layer_play) << 4 | uint32_t(pad.loop_xfade) << 8, std::memory_order_relaxed); // roadmap P3
         }
         pad_frames.store(pad.used() ? project_->samples[pad.sample % sample_slots].frames : 0, std::memory_order_relaxed);
         { // phase 6: Input Config, the take, renders
