@@ -1759,10 +1759,26 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
         chain_job(i);
     };
-    if (whole && parallel) workers.run(active, track_job);
-    else if (whole) for (unsigned i = 0; i < active; ++i) track_job(i);
-    else if (parallel) workers.run(active, chain_job, true);
-    else for (unsigned i = 0; i < active; ++i) chain_job(i);
+    // The Looper beside them, one more job of the same run (roadmap P2): first when it took longer than the tracks'
+    // mean last block, else last. Then the buses' chains and Knob FX's, each a job of a second run.
+    std::array<uint8_t, bus_count + 1> seconds {};
+    unsigned second_jobs = 0;
+    for (unsigned b = 0; b < bus_count; ++b) if (fx[bus_chain(b)][0].kind() != EffectKind::None) seconds[second_jobs++] = uint8_t(b);
+    unsigned looper_at = loop_ns > track_work_ns / std::max(active, 1u) ? 0 : active;
+    auto first_job = [&](unsigned i) {
+        if (i == looper_at) {
+            auto t0 = std::chrono::steady_clock::now();
+            play_loops(frames);
+            loop_ns = uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+            return;
+        }
+        unsigned k = i > looper_at ? i - 1 : i;
+        if (whole) track_job(k);
+        else chain_job(k);
+    };
+    // The workers stay awake for the second run when it has jobs to share (a Knob FX tail may join them).
+    if (parallel) workers.run(active + 1, first_job, whole ? second_jobs + (knob_ringing || knob_heard) >= 2 : true);
+    else for (unsigned i = 0; i < active + 1; ++i) first_job(i);
     for (unsigned t = 0; t < track_count; ++t) {
         auto& slot = slots[t];
         float level = 0;
@@ -1821,18 +1837,27 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         float shown = meters[t].load(std::memory_order_relaxed) * 0.97f; // a short fall
         meters[t].store(std::max(level, shown), std::memory_order_relaxed);
     }
-    run_loops(frames, solo);
+    mix_loops(frames, solo);
+    // The second run: each bus through its chain, and Knob FX while it is fed or rings, apart; then the returns into
+    // the master in the buses' order, and Knob FX's after them, here.
+    if (knob_fed) { knob_ringing = true; knob_quiet = knob_rung = 0; }
+    bool knob_runs = knob_ringing && knob.kind() != EffectKind::None;
+    if (knob_runs) seconds[second_jobs++] = uint8_t(bus_count);
+    auto second_job = [&](unsigned i) {
+        unsigned b = seconds[i];
+        if (b == bus_count) knob.process(knob_l, knob_r, frames);
+        else run_chain(bus_chain(b), bus_l[b], bus_r[b], frames);
+    };
+    if (parallel && !plugin_on_two_buses()) workers.run(second_jobs, second_job);
+    else for (unsigned i = 0; i < second_jobs; ++i) second_job(i);
     for (unsigned b = 0; b < bus_count; ++b) {
-        run_chain(bus_chain(b), bus_l[b], bus_r[b], frames);
         auto& back = returns_now[b];
         back.aim(returns[b], frames, snap_mix);
         for (unsigned f = 0; f < frames; ++f) { float g = back.at(f); master_l[f] += bus_l[b][f] * g; master_r[f] += bus_r[b][f] * g; }
     }
     // Knob FX into the master. After its targets let go it rings on until its tail has been quiet a while, or at
     // most knob_ring_seconds (then cleared), and rests: nothing it held comes back when it is next fed.
-    if (knob_fed) { knob_ringing = true; knob_quiet = knob_rung = 0; }
-    if (knob_ringing && knob.kind() != EffectKind::None) {
-        knob.process(knob_l, knob_r, frames);
+    if (knob_runs) {
         float loudest = 0;
         for (unsigned f = 0; f < frames; ++f) {
             master_l[f] += knob_l[f]; master_r[f] += knob_r[f];
@@ -1943,9 +1968,10 @@ void EngineHost::set_render_threads(unsigned count, uint64_t from_ns) {
 }
 
 // One plug-in instance named by two of the places that run apart: two PLUGIN tracks, or a track's chain and
-// another's (split_shared_plugins() parts them unless every entry is taken).
+// another's (split_shared_plugins() parts them unless every entry is taken), or a loop's chain (the Looper's job runs
+// beside the tracks); plugin_on_two_buses(): two buses' chains (they run apart after the tracks).
 bool EngineHost::plugin_in_two_places() const {
-    std::array<const PluginRunner*, track_count * (max_slots + 1)> seen {};
+    std::array<const PluginRunner*, track_count * (max_slots + 1) + loop_tracks * max_slots> seen {};
     unsigned count = 0;
     auto check = [&](const PluginRunner* r) {
         if (!r) return false;
@@ -1953,14 +1979,34 @@ bool EngineHost::plugin_in_two_places() const {
         seen[count++] = r;
         return false;
     };
-    for (unsigned t = 0; t < track_count; ++t) {
-        const auto& slot = slots[t];
-        if (slot.engine == &slot.plugin && check(slot.plugin.attached())) return true;
-        for (const auto& effect : fx[t]) {
+    auto chain = [&](unsigned c) {
+        for (const auto& effect : fx[c]) {
             if (effect.kind() == EffectKind::None) break;
             if (effect.kind() == EffectKind::Plugin && check(runner_of(unsigned(effect.param(0))))) return true;
         }
+        return false;
+    };
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& slot = slots[t];
+        if (slot.engine == &slot.plugin && check(slot.plugin.attached())) return true;
+        if (chain(t)) return true;
     }
+    for (unsigned n = 0; n < loop_tracks; ++n) if (chain(loop_chain(n))) return true;
+    return false;
+}
+
+bool EngineHost::plugin_on_two_buses() const {
+    std::array<const PluginRunner*, bus_count * max_slots> seen {};
+    unsigned count = 0;
+    for (unsigned b = 0; b < bus_count; ++b)
+        for (const auto& effect : fx[bus_chain(b)]) {
+            if (effect.kind() == EffectKind::None) break;
+            if (effect.kind() != EffectKind::Plugin) continue;
+            const PluginRunner* r = runner_of(unsigned(effect.param(0)));
+            if (!r) continue;
+            for (unsigned i = 0; i < count; ++i) if (seen[i] == r) return true;
+            seen[count++] = r;
+        }
     return false;
 }
 
@@ -1977,8 +2023,9 @@ void EngineHost::publish_taps(unsigned frames) {
 }
 
 // The Looper's block: its clock from the sequencer's, its loops into L1-L4, each through its strip (a stereo
-// picture its pan balances), its chain, mute and solo, into the master and its send's bus.
-void EngineHost::run_loops(unsigned frames, bool solo) {
+// picture its pan balances) and its chain. A job of the tracks' run (roadmap P2): the loops play what came in the
+// block before, never this block's tracks, so they run beside them; mix_loops() sums them in after.
+void EngineHost::play_loops(unsigned frames) {
     Looper::Clock time;
     time.rate = dsp::sample_rate();
     time.bar = bar; time.beat = beat;
@@ -1994,7 +2041,8 @@ void EngineHost::run_loops(unsigned frames, bool solo) {
     for (unsigned s = 0; s < looper::source_count; ++s) sources.at[s] = {source_l[s], source_r[s]};
     float out_l[loop_tracks][looper::block], out_r[loop_tracks][looper::block];
     loops.run(time, sources, frames, out_l, out_r);
-    if (!loops.on()) { for (auto& m : loop_meters) m.store(0, std::memory_order_relaxed); return; }
+    loops_heard = loops.on();
+    if (!loops_heard) return;
     // A loop on a hardware input of its own hears it through its track, as Input Config's Monitor says (Auto: while
     // it waits for or records a take, or overdubs). What came in the block before: one block later than Monitor.
     auto monitor = Monitor(loop_monitor.load(std::memory_order_relaxed));
@@ -2005,13 +2053,22 @@ void EngineHost::run_loops(unsigned frames, bool solo) {
     }
     for (unsigned n = 0; n < loop_tracks; ++n) {
         auto& strip = loop_strips[n];
-        float level = 0;
-        // Level, pan, mute, solo and send ease across the block, as a track's do (Ease).
+        // Level and pan ease across the block, as a track's do (Ease).
         strip.mix_l.aim(strip.gain * strip.pan_left * 1.4142f, frames, snap_mix);
         strip.mix_r.aim(strip.gain * strip.pan_right * 1.4142f, frames, snap_mix);
         for (unsigned f = 0; f < frames; ++f) { strip.left[f] = out_l[n][f] * strip.mix_l.at(f); strip.right[f] = out_r[n][f] * strip.mix_r.at(f); }
         run_chain(loop_chain(n), strip.left, strip.right, frames);
-        bool heard = loops.on() && !strip.mute && !(solo && !strip.solo);
+    }
+}
+
+// L1-L4 after the tracks, in order: mute and solo, into the master and their send's bus.
+void EngineHost::mix_loops(unsigned frames, bool solo) {
+    if (!loops_heard) { for (auto& m : loop_meters) m.store(0, std::memory_order_relaxed); return; }
+    for (unsigned n = 0; n < loop_tracks; ++n) {
+        auto& strip = loop_strips[n];
+        float level = 0;
+        // Mute, solo and send ease across the block too (Ease).
+        bool heard = !strip.mute && !(solo && !strip.solo);
         strip.audible.aim(heard ? 1.0f : 0.0f, frames, snap_mix);
         strip.send_now.aim(strip.send, frames, snap_mix);
         if (!strip.audible.silent()) {

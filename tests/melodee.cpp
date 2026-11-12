@@ -5848,6 +5848,59 @@ void one_dispatch() {
     CHECK(new_stems == old_stems);                             // and every track's stem the same, to the sample
 }
 
+// Roadmap P2: the Looper's four loops and their chains beside the tracks, then the buses' chains and Knob FX each a
+// job of a second run: the same, to the sample, with the workers as without, and as the old way.
+void loops_and_buses_parallel() {
+    auto play = [](unsigned workers, bool whole) {
+        auto p = std::make_unique<Project>();
+        auto b = std::make_unique<PatternBank>();
+        for (unsigned t = 0; t < 4; ++t) {
+            load_sound(p->tracks[t], t % 2 ? EngineKind::Fm6 : EngineKind::Prophet, t);
+            for (unsigned bus = 0; bus < bus_count; ++bus) p->tracks[t].mix.sends[bus] = uint8_t(10 + 10 * bus + t);
+            put(b->at[t][0], t, uint8_t(50 + 3 * t), 100, 4);
+        }
+        const EffectKind buses[] {EffectKind::Reverb, EffectKind::Echo, EffectKind::Plate, EffectKind::Chorus};
+        for (unsigned bus = 0; bus < bus_count; ++bus) p->buses[bus].fx.slots[0] = {uint8_t(buses[bus]), false, {70, 50, 40, 50, 0, 0}};
+        p->looper.on = true;
+        EngineHost host;
+        host.set_render_threads(workers, 0);
+        host.set_one_dispatch(whole);
+        host.load(*p, *b);
+        std::vector<int32_t> out(256), all;
+        auto render = [&](unsigned blocks) {
+            for (unsigned n = 0; n < blocks; ++n) {
+                host.render(out.data(), 128, 1);
+                host.looper().service();
+                all.insert(all.end(), out.begin(), out.end());
+            }
+        };
+        render(8); // the Looper's memory
+        const EffectKind chains[] {EffectKind::Drive, EffectKind::Phaser, EffectKind::Echo, EffectKind::Flanger};
+        for (unsigned n = 0; n < loop_tracks; ++n) {
+            auto* buffer = new LoopBuffer;
+            for (unsigned f = 0; f < 4000; ++f) buffer->left[f] = buffer->right[f] = float(std::sin(f * (0.01 + 0.007 * n)) * 0.3);
+            LoopLoad item; item.buffer = buffer; item.loop = uint8_t(n); item.frames = 4000; item.ticks = 96; item.tempo = 1200;
+            CHECK(host.looper().give_load(item));
+            host.send({Command::Type::FxKind, uint8_t(loop_chain(n)), 0, 0, int16_t(chains[n])});
+            host.send({Command::Type::Send, uint8_t(track_count + n), 0, 0, 40}); // L1-L4 into a bus too
+        }
+        host.send({Command::Type::KnobFx, 0, 0, 0, int16_t(EffectKind::Filter)}); // Knob FX on track 2, heard
+        Command knob {Command::Type::KnobFx, 0, 0, 3}; knob.position = 2; host.send(knob);
+        host.send({Command::Type::KnobFx, 0, 0, 2, 1});
+        host.send({Command::Type::Play});
+        render(400);
+        for (unsigned n = 0; n < loop_tracks; ++n) CHECK(host.looper().view(n).state == Looper::State::Playing && host.loop_meter(n) > 0.01f);
+        return all;
+    };
+    auto alone = play(0, true);
+    int64_t loudest = 0;
+    for (int32_t v : alone) loudest = std::max<int64_t>(loudest, std::llabs(int64_t(v)));
+    CHECK(loudest > 200000000); // it plays
+    CHECK(play(3, true) == alone);
+    CHECK(play(3, false) == alone);
+    CHECK(play(0, false) == alone);
+}
+
 void stream_pager() {
     std::vector<std::pair<uintptr_t, bool>> log;
     pin_log = &log; pin_fails = false;
@@ -8251,6 +8304,7 @@ int main() {
     stream_pager();
     parallel_render();
     one_dispatch();
+    loops_and_buses_parallel();
     sampler_zones();
     note_pitches();
     track_source();

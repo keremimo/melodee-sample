@@ -522,6 +522,7 @@ private:
     std::atomic<bool> parallel_allowed {true};
     std::atomic<uint64_t> parallel_blocks {0};
     bool plugin_in_two_places() const;
+    bool plugin_on_two_buses() const;
     DelayPool pool;
     std::array<std::array<Effect, max_slots>, chain_count> fx;
     std::unique_ptr<std::array<SamplerEngine::PadEffects, track_count>> pad_fx; // each sampler pad's chain
@@ -568,7 +569,10 @@ private:
     bool loop_running = false, loop_counting = false;
     double loop_tick = 0;      // the sequencer's place at this block's first frame (the tick it plays next, less what is left)
     bool loop_strip_command(const Command& c); // Level, Pan, Send, Mute, Solo, SendBus for L1-L4 (track 16-19)
-    void run_loops(unsigned frames, bool solo); // the loops into their tracks, and those into the master and buses
+    void play_loops(unsigned frames);           // the loops into their tracks and through their chains (a job)
+    void mix_loops(unsigned frames, bool solo); // and those into the master and buses, after the tracks
+    bool loops_heard = false;                   // this block's: the Looper was on after its run
+    uint32_t loop_ns = 0;                       // what the Looper's job took last block (roadmap P2)
     void keep_sources(const int32_t* input, const float* usb, unsigned frames); // this block's sources for the loops' next one
     void publish_taps(unsigned frames);         // the watched track's voices, for the screen
     std::array<PlayPatterns, track_count> patterns {};
