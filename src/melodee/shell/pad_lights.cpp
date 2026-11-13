@@ -203,11 +203,50 @@ float levels_voice(const PadScene& s) {
         if (s.taps.voice[n].pad == int(t.levels_pad) && !(s.taps.voice[n].flags & tap::Choked)) level = std::max(level, s.taps.voice[n].level);
     return level;
 }
+// 16 Levels while the track plays: the pattern's notes at the playhead on the pad that plays each, as it was written
+// (its pitch, cutoff or velocity). Every level sounds the one kit pad's voice, so the voice cannot say which.
+float levels_pattern(const PadScene& s, unsigned pad) {
+    const auto& t = selected(s);
+    unsigned at = selected_index(s);
+    if (!s.host.playing() || s.host.position_of(at) < 0) return 0;
+    const auto& p = s.patterns.at[at][s.host.pattern_of(at) % pattern_count];
+    if (!p.length) return 0;
+    const bool kit = t.engine == EngineKind::Sampler;
+    auto kind = LevelsKind(t.levels_kind % unsigned(LevelsKind::Count));
+    if (!t.levels || kind == LevelsKind::Loop || drum_pads(t) || (kind == LevelsKind::Filter && !kit)) kind = LevelsKind::Velocity;
+    if (kind == LevelsKind::Zones && !levels_instrument(s.project, t)) kind = LevelsKind::Scale;
+    auto lv = levels_of(s.project, t, pad);
+    if (lv.none) return 0;
+    int key, pitch = -128, velocity = -1, cutoff = -1; // what an event written from this pad holds (-128, -1: any)
+    if (kit) {
+        key = int(sampler_first_note + t.levels_pad % sampler_pads);
+        if (kind == LevelsKind::Velocity) velocity = lv.velocity;
+        else if (kind == LevelsKind::Filter) cutoff = lv.cutoff + 1;
+        else pitch = lv.semitones;
+    } else if (!t.levels) { // a synth's Levels layout: its last note, the pad's velocity
+        key = t.last_note; velocity = level_velocity(pad);
+    } else {
+        key = lv.key >= 0 ? lv.key : std::clamp(int(t.last_note) + lv.semitones, 0, 127);
+        if (lv.velocity) velocity = lv.velocity;
+    }
+    uint32_t pos = uint32_t(s.host.position_of(at)) % p.length;
+    float level = 0;
+    for (const auto& e : p.events) {
+        if (e.tick >= p.length) break;
+        if (int(e.key) != key || (pitch > -128 && e.pitch != pitch)) continue;
+        if (velocity >= 0 && e.velocity != velocity) continue;
+        if (cutoff >= 0 && e.cutoff != cutoff) continue;
+        level = std::max(level, note_now(e, pos, p.length));
+    }
+    return level;
+}
 Look levels_look(const PadScene& s, const Heard& snd, unsigned pad) {
     Look base = levels_base(s, pad);
     if (held(s, pad)) return writing(s) ? red(full) : white(full);
-    if (int(pad) != s.ui.levels_hit) return base;
-    float sound = std::max(levels_voice(s), snd.hand[pad]); // the pad hit last, white as its sound fades
+    float sound = snd.hand[pad];
+    if (s.host.playing()) sound = std::max(sound, levels_pattern(s, pad)); // the sequence: each note on its own pad
+    else if (int(pad) == s.ui.levels_hit) sound = std::max(sound, levels_voice(s)); // the pad hit last, white as its sound fades
+    if (sound <= 0) return base;
     return writing(s) ? red_flare(base, sound) : blend(base, white(full), sound);
 }
 Look play_look(const PadScene& s, const Heard& snd, unsigned pad) {

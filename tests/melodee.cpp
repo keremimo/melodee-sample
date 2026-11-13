@@ -9101,6 +9101,26 @@ void pad_lights() {
     CHECK(is(0, Hue::Track, 1) && is(15, Hue::Track, 4) && looks[7].level < looks[8].level);
     kit.levels_kind = uint8_t(LevelsKind::Tune); light({}); // -3..12: the sample as recorded (pad 4) the root
     CHECK(is(3, Hue::Track, 3) && is(15, Hue::Track, 3) && is(0, Hue::White, 2) && is(1, Hue::White, 1));
+    { // the sequence plays: its note lights the pad written at its pitch, not the pad hit last, though the voice is that pad's
+        auto& p = bank->at[1][0];
+        p.length = 16 * sixteenth_ticks;
+        Event e; e.tick = 0; e.length = uint16_t(p.length); e.key = uint8_t(sampler_first_note + kit.levels_pad);
+        e.pitch = int8_t(levels_of(*project, kit, 6).semitones);
+        p.events.push_back(e);
+        ui.levels_hit = 0; light({});
+        auto stopped = looks;
+        EngineHost playing;
+        playing.load(*project, *bank);
+        playing.send({Command::Type::Play});
+        std::vector<int32_t> block(256);
+        playing.render(block.data(), 128, 1);
+        taps.track = 1; taps.count = 1; taps.voice[0].pad = int16_t(kit.levels_pad); taps.voice[0].level = 1;
+        PadScene scene {ui, *project, *bank, playing, taps, {}, 1000, nullptr, 0};
+        pad_looks(scene, looks);
+        CHECK(playing.playing() && looks[6].hue == Hue::White && rung(looks[6].level) == 4);
+        CHECK(looks[0].hue == stopped[0].hue && looks[0].level == stopped[0].level);
+        taps = TrackTaps {}; p = Pattern {};
+    }
     kit.levels = false;
     auto& synth = project->tracks[0]; // Scale: up the key from its root on pad 1, whatever the last note
     ui.track = 0; synth.levels = true; synth.levels_kind = uint8_t(LevelsKind::Scale); light({});
