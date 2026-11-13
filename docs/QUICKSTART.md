@@ -79,7 +79,7 @@ tracks.
 A new project has an empty kit on track 1. The other tracks are empty until
 you choose what they are (see [step 7](#7-add-a-plug-in-instrument)).
 
-To see all tracks as a mixer, press **SAMPLE** twice to open **Tracks**.
+To see all tracks as a mixer, hold **PAD BANK** and press **B1** (**TRACKS**).
 Each cell shows a track's number, its pattern, its type and its level. Use
 **K2** to set the selected track's level and **K3** to set its pan.
 
@@ -187,15 +187,15 @@ Melodee synths are free downloads; see [Plug-ins](GUIDE.md#plug-ins).
 
    ![The plug-in picker](images/screens/plugins.png)
 
-5. Play the pads. To play the pads as a keyboard in a key and scale, press
-   **SAMPLE** twice more to open **Keys**. Use **K1** to set the root, **K2**
-   the scale and **K3** the pad layout. Press **−** / **+** to change the
+5. Play the pads. To set the key and scale the pads play in, hold
+   **SAMPLE** to see **Keys** and turn **K1** for the root, **K2** for the
+   scale and **K3** for the pad layout. Press **−** / **+** to change the
    octave.
 
    ![Keys](images/screens/keys.png)
 
-6. To edit the plug-in's parameters, push the encoder on **Keys** or on
-   Stage. **Edit** opens with the plug-in's parameters on **K1**–**K3**.
+6. To edit the plug-in's parameters, press **B1** twice on Stage
+   (**EDIT**). The plug-in's parameters come on **K1**–**K3**.
    Press **B2** (**PRESETS**) to load one of its presets.
 
    ![Edit: a plug-in's parameters](images/screens/pluginedit.png)

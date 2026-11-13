@@ -40,7 +40,7 @@ void draw(Paint& p, const Snapshot& s) {
         h.left.push_back(pill(octave));
     }
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, play_keys(s, 2), h);
+    frame(p, s, sound_keys(s), h);
 
     std::array<uint8_t, 12> degrees {};
     unsigned in_scale = scale_degrees(s.project.scale, degrees);

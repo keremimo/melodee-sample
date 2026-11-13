@@ -221,6 +221,8 @@ void Shell::press(Button b, bool pressed) {
     }
     if (b == Button::Seq && (!ui.exit_open || !pressed)) { seq_press(context_, pressed); return; } // tap, hold or Shift (shell/seq_layer.cpp)
     if (pressed && !ui.exit_open && seq_button(context_, b)) return; // Seq held: B1-B3, Minus / Plus, Seq Record, Push
+    if (pressed && !ui.exit_open && (b == Button::TopLeft || b == Button::TopMiddle || b == Button::TopRight) &&
+        sample_key(context_, b == Button::TopLeft ? 0 : b == Button::TopMiddle ? 1 : 2)) return; // Sample held: Stage's sections
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp
     if (b == Button::Mute) { mute_button(context_, pressed); return; }         // shell/mute_mode.cpp
     if (b == Button::NoteRepeat && (!ui.exit_open || !pressed)) { // shell/note_repeat.cpp; on Song the pads play nothing: it repeats the clip
@@ -646,7 +648,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
             out.detail_from = view.from; out.detail_to = view.to;
         }
         out.pad_waves_shown = 0;
-        if (ui_.page == PageId::Pads && t.engine == EngineKind::Sampler) // pads B: the bank's sixteen waveforms
+        if ((ui_.page == PageId::Pads || ui_.sample_held) && t.engine == EngineKind::Sampler) // pads B (and Sample held's): the bank's sixteen waveforms
             for (unsigned n = 0; n < 16; ++n) {
                 const auto& pad = t.pads[t.bank % sampler_banks * 16 + n];
                 if (pad.used() && library_->thumbnail(pad.sample, pad.start, pad.end, out.pad_waves[n].data(), 32))

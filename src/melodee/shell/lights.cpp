@@ -8,6 +8,7 @@
 #include "melodee/model/project_file.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/model/scales.h"
+#include "melodee/shell/sampler_map.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/bindings.h"
 #include "melodee/shell/button_jobs.h"
@@ -424,8 +425,8 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         button_levels.store(levels, std::memory_order_relaxed);
         return;
     }
-    bool play_group = ui.page == PageId::Stage || ui.page == PageId::Tracks || ui.page == PageId::Keys || ui.page == PageId::Pads;
-    on(B::Sample, play_group || ui.page == PageId::InputConfig);
+    bool sound_hub = ui.page == PageId::Stage || is_sampler_page(ui.page) || ui.sample_held; // Sample's hub (docs/HUBS_PLAN.md)
+    on(B::Sample, sound_hub || ui.page == PageId::InputConfig);
     on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::StepEdit || ui.page == PageId::Steps
                    || ui.page == PageId::Roll || ui.page == PageId::Motion);
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);

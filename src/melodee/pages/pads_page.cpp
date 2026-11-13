@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// PADS (B2 on a sampler track; round 2, pads B "wave pads"): one sound a
+// PADS (Sample held on a kit, docs/HUBS_PLAN.md H-b; round 2, pads B "wave pads"): one sound a
 // pad, drawn as the pads sit, each pad its own waveform from start to end,
 // so a kit is known by its shapes; a pad that sounds lights and a head runs
 // through it. The grid takes the whole picture; the pad in hand and the bank
@@ -31,7 +31,7 @@ void draw(Paint& p, const Snapshot& s) {
     bank_pill.spare = true; // a long sample name keeps its room: the bank lights say the bank too
     h.left.push_back(bank_pill);
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, play_keys(s, 2), h);
+    frame(p, s, sound_keys(s), h);
 
     constexpr float gap = 4, top = zone::picture_y + 4, grid_w = zone::width - 2 * zone::pad;
     constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 8 - 3 * gap) / 4;

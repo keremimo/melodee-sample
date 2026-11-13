@@ -20,6 +20,7 @@
 #include "melodee/shell/name_suggest.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/shell/stage_map.h"
+#include "melodee/shell/sample_mode.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -49,6 +50,20 @@ ui::Header header_of(const Snapshot& s) {
         std::snprintf(clock, sizeof(clock), "%s %u:%02u", s.ui.rendering == 2 ? "MIXDOWN" : "RESAMPLE", seconds / 60, seconds % 60);
         h.left.push_back(ui::chip(clock, ui::colour::rec));
     } else if (s.ui.resample_pick) h.left.push_back(ui::chip(s.ui.resample_song ? "SONG: TAP A PAD" : "RESAMPLE: TAP A PAD", ui::colour::rec));
+    if (sample_held_named(s.ui, s.now)) { // Sample held on Steps or Roll: the sound the pads give, the editor in view
+        const auto& t = s.track();
+        juce::String what;
+        if (t.engine == EngineKind::Sampler) {
+            char label[4];
+            pad_label(t.last_pad, label);
+            auto name = pad_name(s, t.last_pad % sampler_pads, true);
+            what = juce::String(label) + (name.isNotEmpty() ? juce::String::fromUTF8(" \xc2\xb7 ") + name : juce::String());
+        } else {
+            for (unsigned n = 0; n < 16; ++n)
+                if (s.held_keys[n] >= 0 && (s.ui.held_pads & (1u << n))) what += (what.isEmpty() ? "" : " ") + juce::String(note_name(s.held_keys[n]));
+        }
+        h.left.insert(h.left.begin(), ui::chip(what.isEmpty() ? juce::String("HELD") : "HELD " + what, colour_of(s)));
+    }
     return h;
 }
 
@@ -73,9 +88,6 @@ ui::Icon engine_icon(EngineKind kind) {
     }
 }
 
-ui::SoftKeys play_keys(const Snapshot& s, int active) {
-    return {{"STAGE", "TRACKS", s.track().engine == EngineKind::Sampler ? "PADS" : "KEYS"}, active, colour_of(s)};
-}
 
 std::array<ui::KnobCard, 3> cards_of(const Snapshot& s) {
     auto bindings = page_bindings(s.project, s.ui, s.pattern);
@@ -711,10 +723,11 @@ void octave(Context& c, int way) {
 void no_wheel(Context&, int) {}
 void no_push(Context&) {}
 void play_soft(Context& c, int key) {
-    // Sample's three stops in its order; on a sampler track B3 is PADS.
-    PageId keys = c.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
-    const PageId pages[] {PageId::Stage, PageId::Tracks, keys};
-    c.open(pages[key % 3]);
+    // Stage on that section: its first page, or its own kept when it was the one open (as Sample held's keys).
+    const auto& t = c.track();
+    c.open(PageId::Stage);
+    if (t.used() && stage_has(stage_groups(t.engine), unsigned(key) % 3) && stage_at(c.ui, t).group != unsigned(key) % 3)
+        stage_go(c.ui, unsigned(key) % 3, 0);
 }
 
 // A pad's name: its sample's, or for pads sharing one sample (a chop), the

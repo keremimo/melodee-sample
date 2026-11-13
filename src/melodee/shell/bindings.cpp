@@ -15,6 +15,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/shell/sound_list.h"
+#include "melodee/shell/sample_mode.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/step_edit.h"
@@ -532,6 +533,10 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     const auto& track = project.tracks[ui.track % track_count];
     if (ui.name.open()) return {};
     if (ui.seq_held) return pattern_shift_cards(project, ui, pattern); // Seq held: the pattern's, on any page
+    if (auto pads = sample_held_page(project, ui); pads != PageId::Count) { // Sample held: its pads' (Pads, Keys)
+        UiState on = ui; on.page = pads; on.sample_held = false;
+        return shift_bindings(project, on, pattern);
+    }
     if (knob_owns(project, ui)) return knob_bindings(project, true);
     switch (ui.page) {
     case PageId::Tracks: // Shift + K1: the strip in hand's playback speed (roadmap P1)
@@ -669,6 +674,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::NameChar, 0, 0, int(NameEntry::charset_size()) - 1, int(ui.name.char_at())}, Binding {}};
     }
     if (ui.seq_held) return pattern_cards(project, pattern); // Seq held: the pattern's, on any page
+    if (auto pads = sample_held_page(project, ui); pads != PageId::Count) { // Sample held: its pads' (Pads, Keys)
+        UiState on = ui; on.page = pads; on.sample_held = false;
+        return base_bindings(project, on, pattern);
+    }
     if (ui.page == PageId::Looper) { // the Looper (docs/LOOPER.md): LOOPS, the loop tracks' MIX, or the loop's sheet
         unsigned l = ui.loop % loop_tracks;
         const auto& m = project.loop_mix[l];

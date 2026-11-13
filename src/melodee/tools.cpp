@@ -700,6 +700,20 @@ const Preview previews[] {
          place_scene(shell, s); s.ui.locate = 37 * sixteenth_ticks;
      }},
     // Stage, context aware: each track type's pages (pages/stage_page.cpp).
+    // Sample held a moment (the SOUND hub, docs/HUBS_PLAN.md H-b): the track's pads over the page; on Steps the editor stays.
+    {"sampleheldkit", [](Shell&, Snapshot& s) { // over the kit's Stage TRIM, A09 the pad in hand
+         on_stage(s, 3, StageKind::Trim); s.sample = break_sample(); s.playing = true; pad_waves(s);
+         s.ui.sample_held = true; s.ui.sample_down = s.now - 400;
+     }},
+    {"sampleheldkeys", [](Shell&, Snapshot& s) { // over a plug-in's MIX: its Keys
+         on_stage(s, 0, StageKind::Mix); s.playing = true;
+         s.ui.sample_held = true; s.ui.sample_down = s.now - 400;
+     }},
+    {"sampleheldsteps", [](Shell&, Snapshot& s) { // on Steps: the steps stay, the header names the held notes
+         s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
+         s.ui.sample_held = true; s.ui.sample_down = s.now - 400;
+         s.held_keys.fill(-1); s.held_keys[0] = 48; s.held_keys[2] = 52; s.held_keys[4] = 55; s.ui.held_pads = 1u | 4u | 16u;
+     }},
     {"stagepluginpresets", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, true); }}, // B1: Melodee Poly's presets
     {"stagepluginface", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, false); }}, // B1, a plug-in with none
     {"stagepluginedit", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginEdit, true); }},   // B1 again: its parameters

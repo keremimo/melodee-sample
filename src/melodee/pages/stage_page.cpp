@@ -1129,6 +1129,14 @@ void kit_page(Paint& p, const Snapshot& s, StageKind kind, int row) {
     if (row >= 0) page_dots(p, zone::width - zone::pad - 64, bottom - 9, 2, row, colour_of(s), true); // beside the length
 }
 
+// Stage's B1-B3 for the selected track, as Sample held's pads (Pads, Keys) name them: where each opens Stage.
+ui::SoftKeys sound_keys(const Snapshot& s) {
+    auto keys = stage_keys(s);
+    if (s.ui.page != PageId::Stage) keys.active = -1; // not on Stage: none lit
+    if (!s.track().used()) keys = ui::SoftKeys {{"", "", ""}, -1, colour_of(s)};
+    return keys;
+}
+
 const PageSpec stage_page {draw, play_pad, wheel, push, soft, nudge};
 
 } // namespace melodee

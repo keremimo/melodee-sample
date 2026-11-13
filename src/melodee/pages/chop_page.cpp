@@ -225,7 +225,7 @@ void soft(Context& c, int key) {
     }
     if (key == 0) c.back();
     if (key == 1) c.toggle_zero_snap();
-    if (key == 2) { c.chop_to_pads(); c.open(PageId::Pads); }
+    if (key == 2) { c.chop_to_pads(); c.open(PageId::Stage); } // the slices' sound (Sample held shows their pads)
 }
 } // namespace
 

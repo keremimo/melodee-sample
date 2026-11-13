@@ -4,6 +4,8 @@
 // sheet while Seq is held (after a moment), Note Repeat's
 // rates, the Shift + K cards while Shift is held, and the Exit sheet after a
 // short press of Power; and over all of them the place bar.
+#include "melodee/pages/pages.h"
+#include "melodee/shell/sample_mode.h"
 #include "melodee/engine/arp.h"
 #include "melodee/pages/common.h"
 #include "melodee/shell/step_edit.h"
@@ -61,16 +63,21 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     bool tracks = track_overlay_shown(s.ui, s.now); // Pad Bank held a second, or a track copy
     bool sheet = s.ui.name.open() || s.ui.exit_open;
     bool seq = !tracks && seq_sheet_shown(s.ui, s.now); // Seq held a moment: the Sequence sheet
-    if (!sheet && !tracks && !seq) draw_sampler_map(p, s); // under the notice and the cards
+    bool sound = !tracks && !seq && sample_sheet_shown(s.ui, s.now); // Sample held a moment: the track's pads
+    if (!sheet && !tracks && !seq && !sound) draw_sampler_map(p, s); // under the notice and the cards
     if (tracks && !sheet) draw_track_overlay(p, s);
     if (seq && !sheet) draw_seq_sheet(p, s);
+    if (sound && !sheet) { // Pads, or Keys, over a cleared screen; the cards stay what K1-K3 turn on the page beneath
+        p.fill(0, 0, zone::width, zone::height, colour::bg);
+        (s.track().engine == EngineKind::Sampler ? pads_page : keys_page).draw(p, s);
+    }
     if (!sheet && s.ui.ask != UiState::Ask::None) draw_ask_sheet(p, s); // B1 Cancel / B3 Do it before an erase
-    if (!sheet && s.ui.ask == UiState::Ask::None && !tracks && !seq) draw_fader_header(p, s);
+    if (!sheet && s.ui.ask == UiState::Ask::None && !tracks && !seq && !sound) draw_fader_header(p, s);
     draw_notice(p, s); // over the fader's line: a copy in hand or what an undo did comes first
     if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);
     else if (s.ui.shift && !s.ui.shift_used && !s.ui.name.open()) draw_shift_layer(p, s);
-    if (!sheet && !tracks && !seq && repeat_keys(s.project, s.ui)) draw_repeat_keys(p, s);
+    if (!sheet && !tracks && !seq && !sound && repeat_keys(s.project, s.ui)) draw_repeat_keys(p, s);
     draw_place_bar(p, s); // over everything: where the music is stays in view
 }
 

@@ -47,7 +47,7 @@ void Context::load_kit(const Project& from, const std::string& name) {
     edit.track_after = std::move(next);
     edits.push(std::move(edit));
     notice(result.missing ? what + ": " + std::to_string(result.missing) + " pads without a slot" : what);
-    if (ui.page == PageId::Project) open(PageId::Pads);
+    if (ui.page == PageId::Project) open(PageId::Stage); // the kit's sound (Sample held shows its pads)
 }
 
 // A kit bank file (Push on one in the Samples browser): read on the service

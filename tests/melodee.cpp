@@ -72,6 +72,7 @@
 #include "melodee/shell/button_jobs.h"
 #include "melodee/shell/page_stack.h"
 #include "melodee/shell/project_kits.h"
+#include "melodee/shell/sample_mode.h"
 #include "melodee/shell/sampler_map.h"
 #include "melodee/shell/zone_shapes.h"
 #include "melodee/shell/stage_map.h"
@@ -5409,6 +5410,28 @@ void stage() {
     CHECK(sampler_next(PageId::Trim, 1) == PageId::PlayPage && sampler_next(PageId::CloudPage, 1) == PageId::PlayPage);
     CHECK(sampler_next(PageId::Trim, 2) == PageId::PadMix && sampler_next(PageId::FilterPage, 2) == PageId::PadMix);
     CHECK(stage_kit_page(StageKind::AmpEnv) == PageId::EnvelopePage && stage_kit_page(StageKind::Preset) == PageId::Count);
+    {   // Sample held (the SOUND hub, docs/HUBS_PLAN.md H-b): its pads after sample_sheet_ms, but on Steps and Roll the
+        // editor stays and the header names the held sound.
+        UiState held;
+        held.page = PageId::Stage; held.sample_held = true; held.sample_down = 1000;
+        CHECK(!sample_sheet_shown(held, 1000 + sample_sheet_ms - 1) && sample_sheet_shown(held, 1000 + sample_sheet_ms));
+        held.page = PageId::Steps;
+        CHECK(!sample_sheet_shown(held, 5000) && sample_held_named(held, 5000));
+        held.page = PageId::Roll;
+        CHECK(!sample_sheet_shown(held, 5000) && sample_held_named(held, 5000));
+        held.page = PageId::Patterns;
+        CHECK(sample_sheet_shown(held, 5000) && !sample_held_named(held, 5000));
+        held.sample_held = false;
+        CHECK(!sample_sheet_shown(held, 5000) && !sample_held_named(held, 5000));
+        // K1-K3 are the pads' while it is held: Keys' root, scale and layout on a synth; on Steps the step's stay.
+        UiState u; u.page = PageId::Stage; u.track = 0; u.sample_held = true;
+        auto keys = page_bindings(*project, u, pattern, false);
+        CHECK(keys[0].kind == K::Root && keys[1].kind == K::Scale && keys[2].kind == K::Layout);
+        CHECK(sample_held_page(*project, u) == PageId::Keys);
+        u.track = 1; CHECK(sample_held_page(*project, u) == PageId::Pads);
+        u.page = PageId::Steps; CHECK(sample_held_page(*project, u) == PageId::Count);
+        u.page = PageId::Stage; u.track = 9; CHECK(sample_held_page(*project, u) == PageId::Count); // empty: nothing
+    }
 
     // MIDI: B1 DEVICE, PROGRAM (bank and program, Off at first), CC (values; their numbers on Shift); B2 ARP, CHORD;
     // B3 has no pages: it does nothing.

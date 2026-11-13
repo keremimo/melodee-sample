@@ -93,6 +93,7 @@ bool track_pad(Context& c, unsigned pad) {
 bool track_soft(Context& c, int key) {
     bool moving = c.ui.moving;
     auto did = track_key(c.ui, key);
+    if (did == TrackKey::Nothing && key == 0 && c.ui.pad_bank) { c.open(PageId::Tracks); return true; } // B1 TRACKS (the MIX hub)
     if (did == TrackKey::Ended) c.notice(moving ? "Move off" : "Copy off");
     return did != TrackKey::Ignored;
 }

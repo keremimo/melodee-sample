@@ -87,7 +87,7 @@ is different, and how to change your habits.
 | --- | --- |
 | A project is one kit. | A project has 16 tracks. Track 1 starts as a kit. The other tracks can be kits, plug-in instruments or MIDI tracks. |
 | **PAD BANK** held + Pads 1–8 jumps to bank A–H. | **PAD BANK** held + pad selects track 1–16. To jump banks, hold **PAD BANK** and turn the encoder or press **−** / **+**. |
-| **SAMPLE** opens Sample mode. | **SAMPLE** opens **Stage**, the selected track's quick pages. On a kit, Stage has the Sample mode pages. Press **SAMPLE** again for **Tracks** (the mixer), and again for **Pads** (kit) or **Keys** (instrument). |
+| **SAMPLE** opens Sample mode. | **SAMPLE** opens **Stage**, the selected track's sound pages, from any page. On a kit, Stage has the Sample mode pages. On Stage, **SAMPLE** goes back to **B1**'s first page. Hold **SAMPLE** to see the track's pads: **Pads** on a kit, **Keys** on an instrument. |
 | In Sequence mode the pads select sequences. | **SEQ** opens **Patterns**, and the pads play the selected track. To select a pattern, hold **SEQ** and press a pad. |
 | A sequence plays every pad of the kit. | Each track has its own 16 patterns. To change every track at once, launch a **scene**: hold **SEQ** + **SHIFT** and press a pad. |
 | Song mode is a list of sequences. | **Song** is a timeline with a lane per track. You place pattern clips on it, add markers and tempo changes. |
@@ -256,6 +256,7 @@ While **PAD BANK** is held for a second, the screen shows all 16 tracks.
 
 While **PAD BANK** is held:
 
+- Press **B1** (**TRACKS**) to open the Tracks page.
 - Press **B2** (**MOVE**), then a track, then a pad to move the track there.
   A track already there swaps places with it.
 - Press **B3** (**COPY**), then a track, then a pad to copy the track there.
@@ -266,7 +267,7 @@ While **PAD BANK** is held:
 
 ### The Tracks page
 
-Press **SAMPLE** twice (**SAMPLE** from Stage) to open **Tracks**: all 16
+Hold **PAD BANK** and press **B1** (**TRACKS**) to open **Tracks**: all 16
 tracks as the pads are laid out, with the selected track as a mixer strip on
 the right.
 
@@ -386,9 +387,11 @@ type.
 
 ### The Pads page
 
-Press **SAMPLE** three times to open **Pads**: the bank in view, each pad
-with its own waveform. **K1** pitch, **K2** level, **K3** pan of the last
-pad. Push the encoder to open a map of all the sample pages.
+Hold **SAMPLE** on a kit to see **Pads**: the bank in view, each pad with
+its own waveform. While you hold it, press a pad to select it without
+playing it, and turn **K1** pitch, **K2** level, **K3** pan of the last pad.
+**B1**–**B3** open Stage's pages. On **Steps** and **Roll** the editor stays
+in view and the header names the held pad.
 
 ![Pads](images/screens/pads.png)
 
@@ -733,9 +736,10 @@ encoder for the next slot. With no effects, push opens the effect picker.
 
 ### Keys
 
-Press **SAMPLE** twice from Stage to open **Keys**. The 16 pads fill the
+Hold **SAMPLE** on an instrument track to see **Keys**. The 16 pads fill the
 screen. Each pad shows its note and its degree in the scale. Root notes are
-in the track's colour.
+in the track's colour. While you hold **SAMPLE**, **K1** sets the root, **K2**
+the scale and **K3** the pad layout.
 
 ![Keys](images/screens/keys.png)
 
@@ -1442,7 +1446,7 @@ version on the **ABOUT** page.
 
 | Button | Press | With **SHIFT** |
 | --- | --- | --- |
-| **SAMPLE** | Stage, then Tracks, then Keys or Pads. Held + pad: select a kit pad without playing it. | Input Config |
+| **SAMPLE** | Stage, the track's sound pages; on Stage, its first page. Held: Pads or Keys; + pad: select a kit pad without playing it. | Input Config |
 | **SEQ** | Patterns, then the track's editor. Held: launch patterns. | Step Edit |
 | **PAD FX** | Pad FX. Again on a kit: Pad Punch. | Flex Beat |
 | **KNOB FX** | Knob FX mode on or off | Effect chains |

@@ -118,12 +118,12 @@ cards.
 | Control | Press | With Shift |
 | --- | --- | --- |
 | Main volume | Master level, at once | |
-| Sample | Stage → Tracks → Keys (Pads on a kit), round; from any other page Stage. Held + pad: that kit pad becomes the last pad, unheard | Input Config |
+| Sample | The SOUND hub (docs/HUBS_PLAN.md): Stage from any page; on Stage, B1's first page; it opens no other page. Held: after 0.3 s the track's pads (Pads on a kit, Keys otherwise) over the page, K1-K3 theirs, B1-B3 Stage's sections; on Steps and Roll the editor stays and the header names the held sound. Held + pad: that kit pad becomes the last pad, unheard. A hold released after 0.3 s with nothing used opens nothing | Input Config |
 | Seq | Tap: Patterns; on Patterns the track's editor (Steps, Roll or Motion, the last open); on an editor or Step Edit back a level. Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, under the editor; again back to it |
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
+| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 TRACKS opens the Tracks page (while picking: B1 steps back); Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). A tap on its own erases the page's selection (below); on Song, the clip under the cursor | Copy of what the page holds (below). With Pad Bank held, Erase + pad clears a track |
 | Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B2). On Song, repeats the clip to the next marker | |
@@ -331,7 +331,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     tile makes that track at once; Push makes the one of the pot touched
     last (its key lit), the wheel turns that pot's list. Sound and channel
     are picked after, on Stage.
-- **Tracks** (Sample's second stop, the mixer): the sixteen tracks as the
+- **Tracks** (Pad Bank held + B1 TRACKS, the mixer): the sixteen tracks as the
   pads sit, each cell its number, the pattern it plays, its engine as a
   glyph and its level up the right edge (muted: a crossed speaker); the
   track in hand as a strip on the right with its name, fader, meter, pan
@@ -346,7 +346,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   the wheel or −/+ the track, Push its Stage; the fader is its level. **B2
   LOOPER**, **B3 SENDS**; with Shift, **MOVE** and **COPY** (below). Pad Bank
   held + pad still picks a track from any page, the same picture over it.
-- **Keys** (Sample's third stop on a synth): the sixteen pads fill the
+- **Keys** (Sample held on a synth): the sixteen pads fill the
   picture, each its note large and its degree in the scale small, the roots
   filled in the track's colour, the pad played white; the key and scale are
   the header's chip, the octave beside it. K1 root, K2 scale, K3 layout;
@@ -364,7 +364,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   last); Roll draws pad lanes; chords play the pad's note alone; 16 Levels
   is Velocity alone (another pitch would be another drum); the variations
   that move octaves are left out, as on a kit.
-- **Pads** (Sample's third stop on a kit): the bank as the pads sit, each
+- **Pads** (Sample held on a kit): the bank as the pads sit, each
   pad drawing its own waveform from start to end, so a kit is known by its
   shapes; a pad that sounds lights and a head runs through it, the pad in
   hand (filled) and the bank are named in the header; K1 pitch, K2 level, K3 pan;

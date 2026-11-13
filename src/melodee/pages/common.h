@@ -38,7 +38,7 @@ int fader_card(const Snapshot& s);
 // instrument as glyphs on one line, notes travelling along it as they go out, the instrument's name, and the last
 // notes sent as a roll underneath (four seconds, newest on the right). Port and channel are the cards'.
 void midi_route(ui::Paint& p, const Snapshot& s, float x, float y, float w, float h);
-ui::SoftKeys play_keys(const Snapshot& s, int active); // STAGE TRACKS KEYS (PADS on a kit)
+ui::SoftKeys sound_keys(const Snapshot& s); // Stage's B1-B3 for the track (pages/stage_page.cpp): Pads and Keys, Sample held
 juce::Colour colour_of(const Snapshot& s);              // the selected track's colour
 juce::Colour load_colour(float load);                   // a load's: green, amber from 60 %, red from 85 % (of a block, a core)
 // A kit pad's name: its sample's, or for pads sharing one sample (a chop),
@@ -95,6 +95,6 @@ void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down);
 void octave(Context& c, int way);
 void no_wheel(Context&, int);
 void no_push(Context&);
-void play_soft(Context& c, int key); // B1-B3 open Stage, Tracks, Keys (Pads)
+void play_soft(Context& c, int key); // B1-B3 open Stage on that section (Pads, Keys)
 
 } // namespace melodee

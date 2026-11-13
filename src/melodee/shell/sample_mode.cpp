@@ -4,12 +4,12 @@
 #include "melodee/engine/sampler.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/stage_map.h"
 #include <cmath>
 #include <cstdio>
 
 namespace melodee {
 namespace {
-bool play_group(PageId page) { return page == PageId::Stage || page == PageId::Tracks || page == PageId::Keys || page == PageId::Pads; }
 
 // The last pad, when the track is a kit and the pad holds a sample; else says why.
 PadSound* kit_pad(Context& c, const char* job) {
@@ -17,13 +17,11 @@ PadSound* kit_pad(Context& c, const char* job) {
     return &c.pad();
 }
 
-// Sample alone, where you go to look: Stage, then Tracks, then the pads (Keys, or Pads on a kit), round;
-// from any other page Stage.
+// Sample alone: Stage, the selected track's sound, from any page; on Stage, home (B1's first page; hubs plan R-a).
 void open_sample_page(Context& c) {
     auto& ui = c.ui;
-    PageId keys = c.track().engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
-    if (!play_group(ui.page)) c.open(PageId::Stage);
-    else c.open(ui.page == PageId::Stage ? PageId::Tracks : ui.page == PageId::Tracks ? keys : PageId::Stage);
+    if (ui.page == PageId::Stage) { if (c.track().used()) stage_go(ui, 0, 0); return; }
+    c.open(PageId::Stage);
 }
 } // namespace
 
@@ -31,11 +29,28 @@ void sample_button(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (pressed) {
         if (ui.shift) { ui.shift_used = true; ui.sample_held = false; c.open(PageId::InputConfig); return; } // as printed
-        ui.sample_held = true; ui.sample_used = false;
+        ui.sample_held = true; ui.sample_used = false; ui.sample_down = c.now;
         return;
     }
-    if (ui.sample_held && !ui.sample_used) open_sample_page(c);
+    // A tap opens; a hold that showed its sheet and did nothing is only a look.
+    if (ui.sample_held && !ui.sample_used && c.now - ui.sample_down < sample_sheet_ms) open_sample_page(c);
     ui.sample_held = false;
+}
+
+bool sample_key(Context& c, unsigned key) {
+    auto& ui = c.ui;
+    if (!ui.sample_held || ui.shift) return false;
+    ui.sample_used = true; // its release opens nothing more
+    const auto& t = c.track();
+    if (!t.used()) { c.open(PageId::Stage); return true; } // an empty track: what it becomes
+    if (!stage_has(stage_groups(t.engine), key)) return true;
+    if (ui.page != PageId::Stage) {
+        c.open(PageId::Stage);
+        if (stage_at(ui, t).group != key % 3) stage_go(ui, key % 3, 0); // the section's first page; its own, kept, when it was the one open
+        return true;
+    }
+    stage_press(ui, t, key);
+    return true;
 }
 
 bool sample_pad(Context& c, unsigned pad) {
@@ -97,7 +112,7 @@ void levels_button(Context& c) {
         c.notice(std::string("16 Levels: ") + levels_kind_name(LevelsKind(t.levels_kind)));
         return;
     }
-    if (ui.page == PageId::Levels) { t.levels = false; c.open(kit ? PageId::Pads : PageId::Keys); return; }
+    if (ui.page == PageId::Levels) { t.levels = false; c.open(PageId::Stage); return; } // back to the SOUND hub
     // A kit: its last pad on all sixteen; a synth: its last note.
     if (!kit && t.levels_kind == unsigned(LevelsKind::Filter)) t.levels_kind = uint8_t(LevelsKind::Velocity);
     if (drum_pads(t)) t.levels_kind = uint8_t(LevelsKind::Velocity); // Loop went to the Looper above

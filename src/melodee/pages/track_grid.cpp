@@ -115,19 +115,13 @@ void draw_track_overlay(Paint& p, const Snapshot& s) {
     bool kit = t.engine == EngineKind::Sampler;
     if (kit) h.left.push_back(pill(juce::String("BANK ") + char('A' + t.bank % sampler_banks)));
     header(p, h); // the selected track is the lit cell: no tag
-    // B2 MOVE, B3 COPY (shell/pad_bank.h); while one picks its tracks it is lit and B1 steps back. Held alone, B1's
-    // place shows what Minus / Plus do on a kit, in glyphs.
+    // B1 TRACKS opens the Tracks page, B2 MOVE, B3 COPY (shell/pad_bank.h); while one picks its tracks it is lit and
+    // B1 steps back. Minus / Plus still jump the kit's bank (the BANK pill says which).
     bool picking = s.ui.copying == UiState::Copying::Tracks;
-    SoftKeys keys {{picking ? "BACK" : "", "MOVE", "COPY"}, picking ? (s.ui.moving ? 1 : 2) : -1, colour_of(s),
+    SoftKeys keys {{picking ? "BACK" : "TRACKS", "MOVE", "COPY"}, picking ? (s.ui.moving ? 1 : 2) : -1, colour_of(s),
                    {picking ? KeyIcon::Back : KeyIcon::None, KeyIcon::None, KeyIcon::None}};
     keys.glyphs[1] = Icon::Swap; keys.glyphs[2] = Icon::Copy;
     soft_keys(p, keys);
-    if (kit && !picking) {
-        float mid = zone::soft_y + zone::soft_h / 2.0f;
-        icon(p, Icon::Minus, zone::pad + 4, mid - 5, 10, colour::mid, 1.6f);
-        icon(p, Icon::Plus, zone::pad + 16, mid - 5, 10, colour::mid, 1.6f);
-        p.text("BANK", zone::pad + 30, zone::soft_y, 60, zone::soft_h, caps_text(colour::mid));
-    }
     track_grid(p, s);
 }
 
