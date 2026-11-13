@@ -38,6 +38,15 @@ inline double arp_swing_ticks(unsigned rate, unsigned step, unsigned swing) {
     return arp_rate_ticks(rate) * (double(swing) - 50) / 50;
 }
 
+// A key as the arp holds it: a note, or a kit pad's key with its semitones over it (bits 8-15) and a 16 Levels
+// cutoff over those (bits 16+, model/sampler.h pad_note). A release or pressure names the key without the cutoff.
+inline int arp_named(int key) { return key & 0xffff; }
+// Lowest first: by the key and the semitones over it.
+inline bool arp_lower(int a, int b) {
+    int pa = (a & 0xff) + int8_t(uint8_t(a >> 8)), pb = (b & 0xff) + int8_t(uint8_t(b >> 8));
+    return pa != pb ? pa < pb : a < b;
+}
+
 struct Arp {
     bool on = false;
     ArpMode mode = ArpMode::Up;
@@ -59,23 +68,23 @@ struct Arp {
     }
 
     void press(int key, int vel) {
-        for (unsigned n = 0; n < count; ++n) if (order[n] == key) return;
+        for (unsigned n = 0; n < count; ++n) if (arp_named(order[n]) == arp_named(key)) return;
         if (count == held.size()) return;
         order[count] = key; velocity[count] = vel; pressure[count] = 0; held[count] = key; ++count;
-        std::sort(held.begin(), held.begin() + count);
+        std::sort(held.begin(), held.begin() + count, arp_lower);
     }
     void release(int key) {
         unsigned w = 0;
         for (unsigned n = 0; n < count; ++n)
-            if (order[n] != key) { order[w] = order[n]; velocity[w] = velocity[n]; pressure[w] = pressure[n]; ++w; }
+            if (arp_named(order[n]) != arp_named(key)) { order[w] = order[n]; velocity[w] = velocity[n]; pressure[w] = pressure[n]; ++w; }
         count = w;
         for (unsigned n = 0; n < count; ++n) held[n] = order[n];
-        std::sort(held.begin(), held.begin() + count);
+        std::sort(held.begin(), held.begin() + count, arp_lower);
     }
     void clear() { count = 0; position = 0; from = -1; }
     // Pressure follows the pad that holds a key: the arp's notes from it hear it.
-    void press_harder(int key, float value) { for (unsigned n = 0; n < count; ++n) if (order[n] == key) pressure[n] = value; }
-    float pressure_of(int key) const { for (unsigned n = 0; n < count; ++n) if (order[n] == key) return pressure[n]; return 0; }
+    void press_harder(int key, float value) { for (unsigned n = 0; n < count; ++n) if (arp_named(order[n]) == arp_named(key)) pressure[n] = value; }
+    float pressure_of(int key) const { for (unsigned n = 0; n < count; ++n) if (arp_named(order[n]) == arp_named(key)) return pressure[n]; return 0; }
     // The next key to play, or -1 with nothing held.
     int next(int& vel) {
         if (!count) return -1;
@@ -89,10 +98,9 @@ struct Arp {
         ++position;
         unsigned note = at % count, octave = at / count;
         from = mode == ArpMode::Order ? order[note] : held[note];
-        int key = from + 12 * int(octave);
         vel = velocity[0];
         for (unsigned n = 0; n < count; ++n) if (order[n] == from) vel = velocity[n];
-        return std::min(key, top);
+        return std::min((from & 0xff) + 12 * int(octave), top) | (from & ~0xff); // the octaves on the key, its semitones and cutoff kept
     }
 };
 

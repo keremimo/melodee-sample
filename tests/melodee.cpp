@@ -1889,6 +1889,16 @@ void parity_1c() {
     arp.press(150, 90);
     int velocity = 0;
     CHECK(arp.next(velocity) == 150 && velocity == 90); // a kit pad in bank H repeats as itself
+    { // 16 Levels: a pad's key with its semitones and Filter cutoff repeats as it is; its release names it without the cutoff
+        Arp levels; levels.top = int(sampler_last_key);
+        int up = pad_note(40, 5, 30), down = pad_note(40, -3), v = 0;
+        levels.press(up, 100); levels.press(down, 80);
+        CHECK(levels.next(v) == down && v == 80 && levels.next(v) == up && v == 100); // lowest pitch first
+        levels.release(pad_note(40, 5));
+        CHECK(levels.count == 1 && levels.next(v) == down);
+        levels.octaves = 2; levels.position = 1;
+        CHECK(levels.next(v) == pad_note(52, -3)); // the octave on the key, its semitones kept
+    }
 
     // Mute mode: kit pads where the pads play the kit (Stage too), tracks on Tracks.
     ui.page = PageId::Pads;

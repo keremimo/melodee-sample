@@ -293,7 +293,7 @@ public:
     int mtc_trim_ppm() const { return mtc_ppm.load(std::memory_order_relaxed); }
     unsigned mtc_places() const { return mtc_placed.load(std::memory_order_relaxed); } // locates done (Start, jumps, catch-ups)
     // MIDI thread (roadmap P1): a note the arp (Note Repeat) played while Seq Record was on, for the pattern it fell in.
-    struct ArpWritten { uint8_t track = 0, pattern = 0; uint16_t key = 0; uint8_t velocity = 0; uint32_t tick = 0; uint16_t length = 0; };
+    struct ArpWritten { uint8_t track = 0, pattern = 0; uint16_t key = 0; uint8_t velocity = 0, cutoff = 0; uint32_t tick = 0; uint16_t length = 0; };
     bool take_arp_written(ArpWritten& note) { return arp_written.pop(note); }
     // MIDI thread: a pattern copy the audio thread played until a newer one came (PatternData), to free.
     bool take_retired_pattern(Pattern*& pattern) { return retired_patterns.pop(pattern); }
@@ -336,7 +336,7 @@ private:
     EffectClock own_clock;                // a print host's
     EffectClock* fx_clock = &effect_clock; // the clock its effects hear: the live one, or own_clock
     struct PendingOff { int32_t key = -1; int32_t samples = 0; }; // a pad's key, with an instrument's semitones over it
-    struct PendingOn { int16_t key = -1, velocity = 0, from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
+    struct PendingOn { int32_t key = -1; int16_t velocity = 0; int32_t from = -1; int32_t samples = 0, length = 0; }; // an arp note swung late
     // A ratchet's hit still to come (roadmap P1): `samples` frames on it plays `key` (as the engine plays it; a kit
     // pad's semitones over it) and `midi` out, for `length` frames.
     struct PendingHit { int32_t key = -1; int16_t midi = -1; uint8_t velocity = 0; bool accent = false, sound = true; int32_t samples = 0, length = 0; };

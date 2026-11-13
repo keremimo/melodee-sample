@@ -651,7 +651,7 @@ void EngineHost::apply(const Command& c) {
     case Type::ArpKey:
         if (c.value && slot.freeze && slot.freeze->deep) break; // freeze plan F2d
         if (c.value && slot.freeze) wake(slot);
-        if (c.value) slot.arp.press(c.index, c.value); else slot.arp.release(c.index);
+        if (c.value) slot.arp.press(int(c.index) | int(c.position & 0xff) << 16, c.value); else slot.arp.release(c.index); // position: a 16 Levels cutoff + 1
         if (!slot.arp.count) slot.arp.position = 0;
         break;
     case Type::RecordArm: {
@@ -802,7 +802,7 @@ void EngineHost::apply(const Command& c) {
         // The arp's notes follow the pressure of the key they came from, while it is held.
         if (slot.arp.on) {
             slot.arp.press_harder(c.index, value);
-            if (slot.arp_from == int(c.index) && slot.arp_played >= 0 && slot.arp_played != int(c.index))
+            if (slot.arp_from >= 0 && arp_named(slot.arp_from) == int(c.index) && slot.arp_played >= 0 && slot.arp_played != int(c.index))
                 engine_pressure(slot, slot.arp_played, value);
         }
         break;
@@ -1754,14 +1754,14 @@ void EngineHost::arp_tick() {
             const auto& p = *patterns[t][slot.pattern];
             int64_t len = std::max<uint32_t>(p.length, 1), at = (int64_t(arp_origin) + arp_ticks - int64_t(slot.start)) % len;
             ArpWritten w;
-            w.track = uint8_t(t); w.pattern = slot.pattern; w.key = uint16_t(key); w.velocity = uint8_t(std::clamp(velocity, 1, 127));
+            w.track = uint8_t(t); w.pattern = slot.pattern; w.key = uint16_t(key); w.cutoff = uint8_t(key >> 16); w.velocity = uint8_t(std::clamp(velocity, 1, 127));
             Speed sp = speed_of(speeds_now[t].load(std::memory_order_relaxed)); // its pattern plays scaled: written as it reads
             w.tick = uint32_t(uint64_t(at < 0 ? at + len : at) * sp.num / sp.den); w.length = uint16_t(std::max(1u, rate * a.gate * sp.num / sp.den / 100));
             if (!arp_written.push(w)) {}
         }
         auto length = std::max<int32_t>(64, int32_t(arp_tick_length() * rate * a.gate / 100.0));
         double late = arp_swing_ticks(a.rate, (arp_ticks % (4 * arp_ticks_per_quarter)) / rate, swing); // every second straight note, as the project swings
-        if (late > 0) { slot.arp_late = {int16_t(key), int16_t(velocity), int16_t(a.from), int32_t(arp_tick_length() * late), length}; continue; }
+        if (late > 0) { slot.arp_late = {key, int16_t(velocity), a.from, int32_t(arp_tick_length() * late), length}; continue; }
         arp_note(slot, key, velocity, a.from, length);
     }
     ++arp_ticks;
@@ -1838,7 +1838,7 @@ void EngineHost::arp_note(Slot& slot, int key, int velocity, int from, int32_t l
     if (pressure > 0) engine_pressure(slot, key, pressure);
     slot.arp_played = key; slot.arp_from = from;
     schedule_off(slot, key, length);
-    midi_note(unsigned(&slot - slots.data()), key, velocity, frame_now, length);
+    midi_note(unsigned(&slot - slots.data()), key & 0xff, velocity, frame_now, length); // a kit pad's note, its semitones off
 }
 
 // --- MIDI out and sync (parity phase 9) ---

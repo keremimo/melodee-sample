@@ -288,10 +288,12 @@ void Context::follow_zone(unsigned kit, int semitones, int velocity) {
 
 // One key of a pad press, to the arp when it is on, else straight to the
 // engine; every press also goes into the ring Capture reads (roadmap P5).
-void Context::key(int k, int velocity, bool down) {
+void Context::key(int k, int velocity, bool down, int cutoff) {
     auto& t = track();
     if (t.arp) {
-        if (down || !t.arp_latch) send({Type::ArpKey, ui.track, 0, uint16_t(k), int16_t(down ? velocity : 0)});
+        Command c {Type::ArpKey, ui.track, 0, uint16_t(k), int16_t(down ? velocity : 0)};
+        c.position = uint32_t(cutoff + 1); // a 16 Levels Filter pad's cutoff, kept on its repeats
+        if (down || !t.arp_latch) send(c);
     } else {
         note(ui.track, k, down ? velocity : 0);
     }
@@ -333,6 +335,11 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
             if (level.none) return; // Zones: a pad past the instrument's last key
             pad_keys[pad][0] = pad_note(int(sampler_first_note + t.levels_pad), level.semitones); // what it plays, so Seq Record keeps it
             int v = level.velocity ? level.velocity : velocity;
+            if (t.arp) { // Note Repeat: the level repeats, its release lets go of it (a Note On pad too)
+                key(pad_keys[pad][0], v, true, level.cutoff);
+                follow_zone(t.levels_pad, level.semitones, v);
+                return;
+            }
             keep_played(ui.track, pad_keys[pad][0], v, true); // roadmap P5: Capture keeps it (its release goes through key())
             Command c {Type::PadNote, ui.track, uint8_t(level.semitones + 64), t.levels_pad, int16_t(v)};
             c.position = uint32_t(level.cutoff + 1);
@@ -1101,6 +1108,7 @@ void Context::take_arp_notes() {
         Event e;
         e.tick = w.tick % std::max<uint32_t>(p.length, 1); e.length = std::max<uint16_t>(w.length, 1);
         e.key = uint8_t(w.key & 0xff); e.pitch = int8_t(w.key >> 8); e.velocity = uint8_t(std::clamp<int>(w.velocity, 1, 127));
+        e.cutoff = w.cutoff; // a 16 Levels Filter repeat's cutoff + 1 (roadmap P3)
         if (!p.add(e)) { notice("Pattern full"); continue; }
         int which = int(w.track % track_count) << 8 | int(w.pattern % pattern_count);
         if (synced >= 0 && synced != which) sync_pattern(unsigned(synced) >> 8, unsigned(synced) & 0xff);

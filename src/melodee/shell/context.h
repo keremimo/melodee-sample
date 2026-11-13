@@ -565,7 +565,7 @@ public:
         return keys;
     }();
     std::array<uint8_t, 16> pad_track {};
-    void key(int key, int velocity, bool down);
+    void key(int key, int velocity, bool down, int cutoff = -1); // cutoff: a 16 Levels Filter pad's, to the arp
     // Ends whatever `pad` still sounds, on the track it played. Every pad release comes here, whichever
     // page or layer took it (the shell), so a page change while a pad is down never leaves a note on.
     void release_pad(unsigned pad);
