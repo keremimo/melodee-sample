@@ -1,7 +1,7 @@
 # Hubs: plan
 
 Status: all picks made 2026-11-13 (S-B, P-a, M-b, R-a, T-a, PL-a, H-b).
-Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row) built 679355b; its opener became PAD FX + KNOB FX. Step 4 (SEQ opens the editor, home Steps; ARRANGE row on Patterns and Scenes, Song keeps its own keys as a tool, Shift + Pad 12 opens the last ARRANGE page, home Patterns; Scenes ALL on Shift + B3) built. Steps 5–6 open.
+Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row) built 679355b; its opener became PAD FX + KNOB FX. Step 4 (SEQ opens the editor, home Steps; ARRANGE row on Patterns and Scenes, Song keeps its own keys as a tool, Shift + Pad 12 opens the last ARRANGE page, home Patterns; Scenes ALL on Shift + B3) built. Step 5 (Fader, Rec Quantize, Time Correct, Input Config, Step Edit lose B1 BACK; Shift + Pad 4/8/9/10/14/16 and Shift + Sample close their page again; Settings and About keep B1 BACK for their sections) built. Step 6 open.
 Nothing built. Mockups: https://claude.ai/artifact/KysLcHsF6LN7pnAVFtS6ut
 
 ## Problem

@@ -16,6 +16,8 @@ void toggled(Context& c, const char* name, bool on) {
 void shift_pad(Context& c, unsigned pad) {
     auto& settings = c.ui.settings;
     const auto& job = shift_pad_job(pad);
+    // A tool's opener again closes it, back where it was opened (docs/HUBS_PLAN.md T-a).
+    auto open_tool = [&](PageId page) { if (c.ui.page == page) c.back(); else c.open(page); };
     switch (pad % 16) {
     case 0: // Full Level: every hit at 127, or back to the pad response it came from
         settings.toggle_full_level();
@@ -40,14 +42,14 @@ void shift_pad(Context& c, unsigned pad) {
         if (c.track().engine == EngineKind::Sampler) c.open(PageId::Trim);
         return;
     case 13: // Time Correct: the chosen pads' notes onto Q
-        c.open(PageId::TimeCorrect);
+        open_tool(PageId::TimeCorrect);
         return;
     case 3: // Count-In: a bar of the metronome before Play starts a take
         settings.count_in = !settings.count_in;
         toggled(c, job.name, settings.count_in);
         return;
     case 9: // Rec Quantize: its page, on or off (B3) and the grid recorded notes land on (the pattern's Q or its own)
-        c.open(PageId::RecQuantize);
+        open_tool(PageId::RecQuantize);
         return;
     case 14: // Warp: Time stretch or Pitch for the kit (its Follow how)
         c.toggle_warp_mode();
@@ -56,20 +58,22 @@ void shift_pad(Context& c, unsigned pad) {
         c.resample();
         return;
     case 4: // Compressor: the master's (parity phase 7)
-        c.open(PageId::Compressor);
+        open_tool(PageId::Compressor);
         break;
     case 7: // Settings, as doors (MIDI Config one of them; Kerem's choice over the printed MIDI Config)
+        if (c.ui.page == PageId::SettingsPage || c.ui.page == PageId::MidiConfig || c.ui.page == PageId::About) { c.back(); return; }
         c.ui.midi_editing = false; c.ui.settings_editing = false; c.ui.settings_in = false;
         c.open(PageId::SettingsPage);
         return;
     case 8: // Fader: what the selected track's fader follows, PIN, on / off (parity phase 8; round 2 fader C)
-        c.open(PageId::FaderPage);
+        open_tool(PageId::FaderPage);
         return;
     case 11: // Song: the ARRANGE hub (docs/HUBS_PLAN.md), on the page open last; inside it home, Patterns
         if (c.ui.page == PageId::Patterns || c.ui.page == PageId::Scenes || c.ui.page == PageId::Song) c.open(PageId::Patterns);
         else c.open(c.ui.arrange_page);
         return;
     case 15: // Project: SAVE, OPEN and NEW, the projects on the card behind OPEN
+        if (c.ui.page == PageId::Project) { c.back(); return; }
         c.ui.project_list = false; c.ui.sheet_open = false; c.ui.move_open = false; c.ui.project_pick = 0;
         c.open(PageId::Project);
         if (c.store) c.store->list(c.project_folder);

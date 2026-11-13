@@ -28,7 +28,11 @@ void open_sample_page(Context& c) {
 void sample_button(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (pressed) {
-        if (ui.shift) { ui.shift_used = true; ui.sample_held = false; c.open(PageId::InputConfig); return; } // as printed
+        if (ui.shift) { // as printed; again closes it (T-a)
+            ui.shift_used = true; ui.sample_held = false;
+            if (ui.page == PageId::InputConfig) c.back(); else c.open(PageId::InputConfig);
+            return;
+        }
         ui.sample_held = true; ui.sample_used = false; ui.sample_down = c.now;
         return;
     }

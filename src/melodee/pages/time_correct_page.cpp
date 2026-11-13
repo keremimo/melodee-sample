@@ -32,7 +32,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill("TIME CORRECT"));
     h.left.push_back(pill("P" + juce::String(s.track().pattern + 1), c));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"BACK", "ALL", "QUANTIZE"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{"", "ALL", "QUANTIZE"}, -1, c}; // Shift + Pad 14 again closes (T-a)
     keys.toggles = 4;
     keys.lit = heard ? 4 : 0;
     frame(p, s, keys, h);
@@ -90,7 +90,7 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
 void soft(Context& c, int key) {
     using K = Binding::Kind;
     auto& ui = c.ui;
-    if (key == 0) { c.back(); return; }
+    if (key == 0) return;
     int here = int(ui.track % track_count) * int(pattern_count) + c.track().pattern;
     if (key == 2) { // QUANTIZE: the feel off to compare by ear, and back
         const auto& f = c.pattern().feel;

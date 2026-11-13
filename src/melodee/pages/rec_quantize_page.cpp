@@ -25,7 +25,7 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill("REC QUANTIZE"));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"BACK", "", "REC Q"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{"", "", "REC Q"}, -1, c}; // Shift + Pad 10 again closes (T-a)
     keys.toggles = 4;
     keys.lit = on ? 4 : 0;
     frame(p, s, keys, h);
@@ -79,7 +79,6 @@ void move(Context& c, int delta) {
 }
 
 void soft(Context& c, int key) {
-    if (key == 0) { c.back(); return; }
     if (key != 2) return;
     auto& settings = c.ui.settings;
     settings.rec_quantize = !settings.rec_quantize; // B3's LED says it

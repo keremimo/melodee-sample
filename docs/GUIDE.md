@@ -156,6 +156,7 @@ the right edge. **K1** jumps through any list.
 | Encoder (turn) | Move through a list, or fine-tune the outlined card. |
 | Encoder (push) | Open the item under the cursor, or move to the next card. |
 | **SHIFT** + encoder push | Go back one page. |
+| The button that opened a page | On Fader, Rec Quantize, Time Correct, Compressor, Settings, Project, Input Config and Step Edit, press it again to close the page. |
 | **−** / **+** | Change the octave on play pages, the bank on kit pages, or move through a list. |
 | **SHIFT** + **−** / **+** | Undo / redo. |
 

@@ -47,7 +47,7 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(chip("STEP " + juce::String(caret + 1), colour::amber));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"BACK", "REST", "ERASE"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{"", "REST", "ERASE"}, -1, c}; // Shift + Seq (or Seq, or Push) closes (T-a)
     keys.glyphs = {Icon::None, Icon::ArrowRight, Icon::Trash};
     keys.tints[2] = colour::rec;
     frame(p, s, keys, h);
@@ -135,9 +135,8 @@ void close(Context& c) {
 void push(Context& c) { close(c); }
 
 void soft(Context& c, int key) {
-    if (key == 0) close(c);
-    else if (key == 1) entry_rest(c);
-    else entry_back(c);
+    if (key == 1) entry_rest(c);
+    else if (key == 2) entry_back(c);
 }
 
 // Minus / Plus: the octave the pads play (a kit's bank).

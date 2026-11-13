@@ -622,7 +622,7 @@ hold to steer, Shift + Seq to zoom in**.
   the caret show each step's notes as bars (lower keys lower, taller for
   harder), and a panel the pads held (else what the step holds) and the
   step the caret goes to. A chord on a step is one undo. Erase + pad asks,
-  then erases that pad's events. B1 BACK, Push, Seq or Shift + Seq go back
+  then erases that pad's events. Push, Seq or Shift + Seq go back
   to the editor.
 - **Roll** (B2): the pattern's notes, each at its own tick for its own length, over bar
   lines, any number to a step. The cursor is a step of Q and a pitch: the
@@ -745,7 +745,7 @@ hold to steer, Shift + Seq to zoom in**.
   groove from that pattern of the track (again: none). B3 QUANTIZE, lit
   while the feel is heard, takes it off to compare by ear and puts it
   back; B2 ALL lays this feel on the track's other patterns (each one
-  undo); B1 BACK. Two beats drawn over the grid of Q: each note where it is
+  undo); Shift + Pad 14 again closes it. Two beats drawn over the grid of Q: each note where it is
   written (a ring) and where it plays (a dot), the swung steps where they
   land; under it the track's patterns, the groove's lit.
 - **Half Seq, Double Seq, Half / Double Speed** (Shift + Pad 2, 3, 6, 7):

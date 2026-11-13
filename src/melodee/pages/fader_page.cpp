@@ -39,7 +39,7 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill(Icon::Fader, "FADER"));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"BACK", "PIN", "FADER"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{"", "PIN", "FADER"}, -1, c}; // B1 nothing: Shift + Pad 9 again closes (docs/HUBS_PLAN.md T-a)
     keys.toggles = 2 | 4;
     keys.lit = uint8_t((t.fader_pin ? 2 : 0) | (on ? 4 : 0));
     frame(p, s, keys, h);
@@ -114,9 +114,8 @@ void draw(Paint& p, const Snapshot& s) {
 
 void step(Context& c, int delta) { step_fader_target(c, delta); }
 void soft(Context& c, int key) {
-    if (key == 0) c.back();
-    else if (key == 1) toggle_fader_pin(c);
-    else toggle_fader(c);
+    if (key == 1) toggle_fader_pin(c);
+    else if (key == 2) toggle_fader(c);
 }
 } // namespace
 

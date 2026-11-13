@@ -42,7 +42,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(pill("INPUT"));
     if (s.speaker_quieted) h.left.push_back(pill(Icon::SpeakerOff, "SPEAKER", colour::amber));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"BACK", "MONITOR", "INPUT FX"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{"", "MONITOR", "INPUT FX"}, -1, c}; // Shift + Sample again closes (T-a)
     keys.toggles = 2 | 4;
     keys.lit = uint8_t((in.monitor != Monitor::Off ? 2 : 0) | (in.fx ? 4 : 0));
     keys.leds[1] = in.monitor == Monitor::Auto ? colour::amber : colour::play;
@@ -82,7 +82,6 @@ void draw(Paint& p, const Snapshot& s) {
 }
 
 void soft(Context& c, int key) {
-    if (key == 0) c.back();
     if (key == 1) c.cycle_monitor();
     if (key == 2) c.toggle_rec_fx();
 }
