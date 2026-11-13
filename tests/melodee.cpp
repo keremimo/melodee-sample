@@ -7365,7 +7365,7 @@ void overload_guard() {
         for (unsigned n = 0; n < blocks; ++n) { host.render(out.data(), 128, 1); for (auto x : out) most = std::max(most, std::fabs(x / 2147483648.0f)); }
         return most;
     };
-    for (uint16_t pad = 0; pad < 8; ++pad) host.send({Command::Type::NoteOn, 0, 0, uint16_t(sampler_first_note + pad), 100});
+    for (uint16_t pad = 0; pad < 8; ++pad) host.send({Command::Type::NoteOn, 0, 0, uint16_t(sampler_first_note + pad), 25});
     CHECK(loud(20) > 0.05f);
     host.set_guard_test_share(0.9f);
     loud(4);
