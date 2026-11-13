@@ -191,9 +191,9 @@ std::string upper(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return char(std::toupper(c)); });
     return text;
 }
-bool is_sample_file(const fs::path& path) { // what a pad plays: WAV, MP3 or FLAC (shell/sample_decode.cpp)
+bool is_sample_file(const fs::path& path) { // what a pad plays: WAV, MP3, FLAC, Ogg or AIFF (shell/sample_decode.cpp)
     const auto kind = upper(path.extension().string());
-    return kind == ".WAV" || kind == ".MP3" || kind == ".FLAC";
+    return kind == ".WAV" || kind == ".MP3" || kind == ".FLAC" || kind == ".OGG" || kind == ".OGA" || kind == ".AIF" || kind == ".AIFF";
 }
 bool is_bank(const fs::path& path) { return upper(path.extension().string()) == ".MLDB"; }
 bool is_instrument(const fs::path& path) { // an .sfz, an MPC keygroup program (.xpm, .xty), an EXS24 instrument, or a pad of an MPC program or project

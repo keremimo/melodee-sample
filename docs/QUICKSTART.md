@@ -86,7 +86,7 @@ Each cell shows a track's number, its pattern, its type and its level. Use
 
 ## 4. Load samples into a kit
 
-Melodee reads WAV (16, 24 or 32-bit), MP3 and FLAC files (any sample rate,
+Melodee reads WAV (16, 24 or 32-bit), MP3, FLAC, Ogg Vorbis and AIFF files (any sample rate,
 up to 60 seconds) from a folder named `Samples` at the top level of the card. It can
 also read the MPC's internal factory samples.
 

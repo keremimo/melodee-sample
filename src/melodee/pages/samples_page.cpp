@@ -78,6 +78,8 @@ void draw(Paint& p, const Snapshot& s) {
             r.icon = Icon::Wav;
             if (path.endsWithIgnoreCase(".mp3")) r.fact = "MP3";
             else if (path.endsWithIgnoreCase(".flac")) r.fact = "FLAC";
+            else if (path.endsWithIgnoreCase(".ogg") || path.endsWithIgnoreCase(".oga")) r.fact = "OGG";
+            else if (path.endsWithIgnoreCase(".aif") || path.endsWithIgnoreCase(".aiff")) r.fact = "AIFF";
             for (unsigned n = 0; n < sample_slots && r.pad.isEmpty(); ++n) // which pad of this kit plays it
                 if (file.path == s.project.samples[n].path)
                     for (unsigned k = 0; k < sampler_pads; ++k)

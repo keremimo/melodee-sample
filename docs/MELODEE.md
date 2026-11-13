@@ -1021,8 +1021,8 @@ first).
 ### Sampler
 
 A kit has 128 pads in eight banks (A–H), each a region of one of the
-project's 64 samples. Samples are WAV (16, 24 or 32-bit PCM or float), MP3
-or FLAC (any rate, up to 60 s; an MP3's encoder delay and padding, from its
+project's 64 samples. Samples are WAV (16, 24 or 32-bit PCM or float), MP3,
+FLAC, Ogg Vorbis or AIFF (any rate, up to 60 s; an MP3's encoder delay and padding, from its
 LAME tag, trimmed), read on the service thread and handed whole to the audio
 thread. Each is kept at 44.1 kHz (the unit a project counts frames in) and,
 at 48 or 96 kHz, also as a copy at the device's rate made once as it is
@@ -1046,7 +1046,7 @@ the file holds, to the bit.
 - **Samples** (Sample Select on a kit): the browser, each row a glyph
   first (a folder with its chevron, a sample file, a kit, an instrument's keyboard,
   a bank, an expansion's arrow) and its facts last (the format, the pad a
-  sample is on as a chip; MP3 or FLAC on a sample); K1 jumps. MPC drum programs
+  sample is on as a chip; MP3, FLAC, OGG or AIFF on a sample); K1 jumps. MPC drum programs
   (KIT) first, then instruments (XPM, XTY, SFZ), then folders, then files;
   an expansion's `[Previews]` and a program's own `_[TrackData]` are not
   listed; wheel and −/+ move, Push opens a folder or loads onto the last pad
