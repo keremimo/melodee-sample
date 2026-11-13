@@ -25,10 +25,24 @@ std::string stem(const fs::path& path) { return path.stem().string(); }
 
 bool is_zip(const std::string& name) { return ends_with(name, ".zip"); }
 
+// unzip_plugins(): the hidden folder a zip is unzipped into, and the room kept free on the card beyond its size.
+const std::string unzip_prefix = ".unzipping-";
+constexpr uintmax_t unzip_margin = 4u << 20;
+
 // What a Mac adds to a zip: the __MACOSX folder and ._ resource forks.
 bool mac_extra(const juce::String& entry) {
     return entry.startsWith("__MACOSX/") || entry.fromLastOccurrenceOf("/", false, false).startsWith("._")
         || entry.endsWith(".DS_Store");
+}
+
+// What a zip's entries take unzipped (Mac extras left out); -1 when it will not open.
+int64_t zip_size(const std::string& path) {
+    juce::ZipFile zip {juce::File {juce::String {path}}};
+    if (zip.getNumEntries() <= 0) return -1;
+    int64_t total = 0;
+    for (int n = 0; n < zip.getNumEntries(); ++n)
+        if (!mac_extra(zip.getEntry(n)->filename)) total += std::max<int64_t>(zip.getEntry(n)->uncompressedSize, 0);
+    return total;
 }
 
 // Contents/<build> folders of a VST3 bundle, as names a person knows.
@@ -174,7 +188,10 @@ std::vector<PluginFile> list_plugins(const std::string& folder) {
             zip.path = entry.path().string();
             zip.name = entry.path().stem().string();
             zip.format = PluginFormat::Vst2;
-            zip.why = "Won't unzip";
+            auto needed = zip_size(zip.path);
+            std::error_code room_error;
+            auto room = fs::space(folder, room_error).available;
+            zip.why = needed >= 0 && !room_error && uintmax_t(needed) + unzip_margin > room ? "Card full" : "Won't unzip";
             out.push_back(zip);
             continue;
         }
@@ -193,17 +210,23 @@ void unzip_plugins(const std::string& folder) {
     std::vector<fs::path> zips;
     for (const auto& entry : fs::directory_iterator(folder, error)) {
         auto name = entry.path().filename().string();
+        if (name.rfind(unzip_prefix, 0) == 0) { fs::remove_all(entry.path(), error); continue; } // left by a stop mid-way
         if (!name.empty() && name[0] != '.' && is_zip(name) && !entry.is_directory(error)) zips.push_back(entry.path());
     }
     for (const auto& path : zips) {
+        // Room for all of it first (and a margin), so a full card is not left with half a plug-in.
+        auto needed = zip_size(path.string());
+        if (needed < 0 || uintmax_t(needed) + unzip_margin > fs::space(folder, error).available || error) continue;
         juce::File file(juce::String(path.string()));
-        bool done = false;
+        // Into a hidden folder beside it, moved into place only once every entry is out.
+        fs::path temp = fs::path(folder) / (unzip_prefix + path.stem().string());
+        fs::remove_all(temp, error);
+        bool done = false, shared = true;
         {
             juce::ZipFile zip(file);
             int count = zip.getNumEntries();
             // One top folder for every entry (a release's plug-in folder): unzipped here; else into a folder of its own.
             juce::String top;
-            bool shared = true;
             for (int n = 0; n < count && shared; ++n) {
                 auto name = zip.getEntry(n)->filename;
                 if (mac_extra(name)) continue;
@@ -211,13 +234,25 @@ void unzip_plugins(const std::string& folder) {
                 if (!name.containsChar('/') || (top.isNotEmpty() && first != top)) shared = false;
                 top = first;
             }
-            auto target = shared ? file.getParentDirectory() : file.getParentDirectory().getChildFile(file.getFileNameWithoutExtension());
+            juce::File target(juce::String((shared ? temp : temp / path.stem()).string()));
             done = count > 0;
             for (int n = 0; n < count && done; ++n) {
                 if (mac_extra(zip.getEntry(n)->filename)) continue;
                 done = zip.uncompressEntry(n, target, juce::ZipFile::OverwriteFiles::yes, juce::ZipFile::FollowSymlinks::no).wasOk();
             }
         }
+        // Each folder out of it takes the place of one of the same name (an older copy of that plug-in).
+        std::vector<fs::path> out;
+        if (done)
+            for (const auto& item : fs::directory_iterator(temp, error))
+                if (item.path().filename().string().rfind("._", 0) != 0) out.push_back(item.path()); // a Mac's FAT sidecars go with their files
+        for (const auto& item : out) {
+            fs::path to = fs::path(folder) / item.filename();
+            fs::remove_all(to, error);
+            fs::rename(item, to, error);
+            if (error) { done = false; break; }
+        }
+        fs::remove_all(temp, error);
         if (done) fs::remove(path, error);
     }
 }
