@@ -417,6 +417,7 @@ private:
         // Roadmap P5: a follow action (model/follow.h) due on tick `follow_at` (follow_do: the action, 0 none), planned
         // as its pattern starts; it waits while a launch is queued, and a chained track's never come.
         bool chained = false;
+        uint32_t loop_from = 0, loop_ticks = 0; // an editor's loop (Command::EditLoop): only these ticks play
         uint8_t follow_do = 0;
         uint32_t follow_at = 0;
         // Freeze plan F2b: the track's prints (none: it plays live), and ones unfrozen whose voices still fade; the

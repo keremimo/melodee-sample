@@ -24,6 +24,7 @@
 #include "melodee/shell/pad_light.h"
 #include <cstdio>
 #include "melodee/shell/pad_bank.h"
+#include "melodee/shell/note_jobs.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/mix_hub.h"
 #include "melodee/shell/stage_map.h"
@@ -255,6 +256,7 @@ void Shell::press(Button b, bool pressed) {
         return;
     }
     if (b == Button::NoteRepeat && (!ui.exit_open || !pressed)) { // shell/note_repeat.cpp; on Song the pads play nothing: it repeats the clip
+        if (pressed && ui.shift && note_arp(context_)) return;   // the note editors: Shift, the arp written as notes
         if (pressed && roll_selection_repeat(context_)) return; // Roll's marked notes: their ratchet
         if (pressed && song_buttons()) song_repeat(context_);
         else repeat_button(context_, pressed);
@@ -380,7 +382,10 @@ void Shell::press(Button b, bool pressed) {
         if (ui.page != PageId::Record) context_.open(PageId::Record);
         else context_.record_button();
         break;
-    case Button::Chop: if (song_buttons()) song_chop(context_); else chop_button(context_); break; // Chop on the last pad's sample; Shift: Note On; on Song the clip in two
+    case Button::Chop: // Chop on the last pad's sample; Shift: Note On; on Song the clip in two; on the note editors split (Shift: legato)
+        if (song_buttons()) song_chop(context_);
+        else if (!(ui.shift ? note_legato(context_) : note_chop(context_))) chop_button(context_);
+        break;
     case Button::Play: // Shift: Continue; held while playing: Fill (roadmap P1)
         if (ui.shift) context_.play_continue();
         else if (context_.host.playing()) context_.fill(true);
@@ -638,6 +643,7 @@ void Shell::end_copy_away() {
     case UiState::Copying::Pads: here = kit_pads(); break;
     case UiState::Copying::Keys: here = key_pads() || ui_.page == PageId::Roll || ui_.page == PageId::StepEdit; break;
     case UiState::Copying::Steps: here = ui_.page == PageId::Steps; break;
+    case UiState::Copying::Notes: here = ui_.page == PageId::Roll; break;
     default: break;
     }
     if (ui_.copying != UiState::Copying::Off && !here) ui_.stop_copying();
@@ -648,6 +654,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     auto bindings = page_bindings(*project_, ui_, context_.pattern());
     for (unsigned n = 0; n < 3; ++n) if (bindings[n].bound()) check_pickup(n, bindings[n]);
     fader_check(context_);
+    edit_loop_check(context_); // an editor's loop ends with the editor (shell/note_jobs.h)
     out.ui = ui_;
     out.project = *project_;
     out.pattern = context_.pattern();

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/shell/note_jobs.h"
 #include "melodee/shell/mod_jobs.h"
 #include "melodee/shell/midi_track_jobs.h"
 #include "melodee/shell/context.h"
@@ -783,7 +784,8 @@ void Context::apply(const Binding& b, int value) {
     case Kind::EntryLength: ui.entry_length = uint8_t(std::clamp(value, 1, 16)); break;     // step entry: what a pad writes
     case Kind::EntryVelocity: ui.entry_velocity = uint8_t(std::clamp(value, 0, 127)); break;
     case Kind::EntryChance: ui.entry_chance = uint8_t(std::clamp(value, 0, 100)); break;
-    case Kind::EventNudge: set_event_nudge(*this, value); break;                             // Roll's Shift + K1
+    case Kind::EventNudge: set_event_nudge(*this, value); break;
+    case Kind::MarksRamp: roll_marks_ramp(*this, value); break;                               // Roll's Shift + K2, marked notes                             // Roll's Shift + K1
     case Kind::EuclidHits: case Kind::EuclidSteps: case Kind::EuclidRotate: set_euclid(b.kind, value); break;
     case Kind::TrackSpeed: set_speed(unsigned(b.id), value); break;
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;

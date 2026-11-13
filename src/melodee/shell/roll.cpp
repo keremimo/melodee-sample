@@ -112,30 +112,17 @@ void roll_pitch(const Pattern& pattern, UiState& ui, int way, int lane) {
 namespace {
 bool same(const Event& e, const UiState::RollMark& m) { return e.tick == m.tick && e.key == m.key && e.pitch == m.pitch; }
 UiState::RollMark mark_of(const Event& e) { return {e.tick, e.key, e.pitch}; }
-// The marks onto the events as they are now (after a move, in their new place).
-void remark(UiState& ui, const std::vector<Event>& events) {
-    ui.roll_marked = uint8_t(std::min<size_t>(events.size(), UiState::roll_marks_max));
-    for (unsigned n = 0; n < ui.roll_marked; ++n) ui.roll_marks[n] = mark_of(events[n]);
-}
-// The marked events taken out of the pattern, in order; the rest stay.
-std::vector<Event> take_marked(Pattern& pattern, const UiState& ui) {
-    std::vector<Event> out;
-    auto at = roll_marked_events(pattern, ui);
-    for (auto n = at.rbegin(); n != at.rend(); ++n) {
-        out.insert(out.begin(), pattern.events[*n]);
-        pattern.events.erase(pattern.events.begin() + long(*n));
-    }
-    return out;
-}
+std::vector<Event> take_marked(Pattern& pattern, const UiState& ui) { return roll_take_marked(pattern, ui); }
+void remark(UiState& ui, const std::vector<Event>& events) { roll_remark(ui, events); }
 bool taken(const Pattern& pattern, const Event& e) { // a note of the pattern on that tick, key and pitch
     for (size_t n = pattern.lower(e.tick); n < pattern.events.size() && pattern.events[n].tick == e.tick; ++n)
         if (pattern.events[n].key == e.key && pattern.events[n].pitch == e.pitch) return true;
     return false;
 }
-// `moved` put back `way` on (shift), hopping a further one at a time past notes in the way; `fits` says where a note
-// may go. Put back where they were when they would leave the pattern.
-template <class Shift, class Fits> bool put_back(Pattern& pattern, std::vector<Event>& moved, int way, Shift&& shift, Fits&& fits) {
-    for (int by = way;; by += way > 0 ? 1 : -1) {
+// `moved` put back `way` on (shift), hopping a further `hop` at a time past notes in the way; `fits` says where a
+// note may go. Put back where they were when they would leave the pattern.
+template <class Shift, class Fits> bool put_back(Pattern& pattern, std::vector<Event>& moved, int way, Shift&& shift, Fits&& fits, int hop = 1) {
+    for (int by = way;; by += way > 0 ? hop : -hop) {
         bool out = false, blocked = false;
         for (const auto& e : moved) {
             Event to = e;
@@ -149,6 +136,21 @@ template <class Shift, class Fits> bool put_back(Pattern& pattern, std::vector<E
     }
 }
 } // namespace
+
+std::vector<Event> roll_take_marked(Pattern& pattern, const UiState& ui) {
+    std::vector<Event> out;
+    auto at = roll_marked_events(pattern, ui);
+    for (auto n = at.rbegin(); n != at.rend(); ++n) {
+        out.insert(out.begin(), pattern.events[*n]);
+        pattern.events.erase(pattern.events.begin() + long(*n));
+    }
+    return out;
+}
+
+void roll_remark(UiState& ui, const std::vector<Event>& events) {
+    ui.roll_marked = uint8_t(std::min<size_t>(events.size(), UiState::roll_marks_max));
+    for (unsigned n = 0; n < ui.roll_marked; ++n) ui.roll_marks[n] = mark_of(events[n]);
+}
 
 bool roll_is_marked(const Pattern& pattern, const UiState& ui, size_t n) {
     if (n >= pattern.events.size()) return false;
@@ -199,7 +201,7 @@ bool roll_marks_move(Pattern& pattern, UiState& ui, int way) {
     return true;
 }
 
-bool roll_marks_pitch(Pattern& pattern, UiState& ui, int way, int lane, int max_key) {
+bool roll_marks_pitch(Pattern& pattern, UiState& ui, int way, int lane, int max_key, int hop) {
     if (!way) return false;
     auto moved = take_marked(pattern, ui);
     if (moved.empty()) return false;
@@ -218,7 +220,7 @@ bool roll_marks_pitch(Pattern& pattern, UiState& ui, int way, int lane, int max_
                              rows = by;
                              return true;
                          },
-                         [&](const Event& e) { return roll_row(e, lane) >= 0; });
+                         [&](const Event& e) { return roll_row(e, lane) >= 0; }, std::max(hop, 1));
     if (!done) return false;
     remark(ui, moved);
     ui.roll_key = uint8_t(std::clamp(int(ui.roll_key) + rows, 0, 255));

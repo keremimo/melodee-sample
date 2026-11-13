@@ -653,8 +653,21 @@ hold to steer, Shift + Seq to zoom in**.
   in the way), Shift + wheel moves them a row, Erase deletes them, Mute
   mutes them (drawn hollow; kept but not played or exported; Mute again
   plays them), Note Repeat steps their ratchet 2, 3, 4, 6, 8, off, and
-  K1-K3 set length, velocity and chance on all of them. A Shift tap clears
-  the marks;
+  K1-K3 set length, velocity and chance on all of them, Shift + K2 their
+  velocity ramp (VEL RAMP, the last note this far off the first), Erase +
+  wheel pulls them a quarter of the way to the grid each detent, − / + move
+  them an octave, and Shift + Erase copies them (header COPY: Push pastes
+  them at the cursor, the copies marked; Erase leaves). A Shift tap clears
+  the marks. On Roll, Steps and Step Edit the printed buttons act on the
+  marked notes, else the note in hand: Chop splits each note at the grid
+  line nearest its middle, Shift + Chop holds each note until the next
+  starts (legato; on a kit, until that pad's next hit), Shift + Loop reverses
+  them (with none marked, the notes in view), Shift + Note Repeat writes the
+  track's arp (Stage's ARP mode, rate, octaves and gate) over each chord as
+  notes (with none marked, the chord in the cursor's step; keys only), and a
+  Loop tap plays only the bars in view (the marked notes' bars) over and
+  over, Loop lit and header LOOP, until Loop again or the editor, track or
+  pattern changes;
   the view scrolls a step at a time, and dots on its edges mark notes above
   and below. It opens on the pattern's notes: when none lies in the rows it
   would show, the cursor's pitch goes to the note nearest its step. The note at the cursor is in focus, drawn white and named in

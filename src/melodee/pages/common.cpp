@@ -192,6 +192,11 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::EntryLength: c.label = "LENGTH"; c.value = juce::String(b.value); c.unit = b.value == 1 ? "step" : "steps"; break;
     case Kind::EntryVelocity: c.label = "VELOCITY"; c.value = b.value ? juce::String(b.value) : juce::String("Played"); break;
     case Kind::EntryChance: c.label = "CHANCE"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::MarksRamp: // Roll's Shift + K2: the marked notes' velocity, the last this far off the first
+        c.label = "VEL RAMP"; c.bipolar = true;
+        c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));
+        c.unit = "%";
+        break;
     case Kind::EventNudge: // Roll's Shift + K1: early or late of its grid line, in ticks
         c.label = "NUDGE"; c.bipolar = true;
         c.value = (b.value > 0 ? "+" : b.value < 0 ? juce::String::fromUTF8("\xe2\x88\x92") : juce::String()) + juce::String(std::abs(b.value));

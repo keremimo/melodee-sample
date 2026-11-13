@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/model/note_edits.h"
 #include "melodee/shell/midi_ports.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/loop_sheet.h"
@@ -612,9 +613,15 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     }
     case PageId::Roll: { // Shift + K1 NUDGE (round 2): the note in focus off its grid line; the TRIG row: Shift + K2 a kit pad's pitch ramp
         int at = roll_focus(pattern, ui, roll_lane(track));
-        if (at < 0) return {};
+        Binding ramp; // marked notes: Shift + K2 their velocity ramp
+        if (!ui.trig_cards && roll_selected(ui, track.pattern)) {
+            std::vector<Event> notes;
+            for (auto n : roll_marked_events(pattern, ui)) notes.push_back(pattern.events[n]);
+            if (notes.size() >= 2) ramp = Binding {Kind::MarksRamp, 0, -100, 100, ramp_of(notes)};
+        }
+        if (at < 0) return {Binding {}, ramp, Binding {}};
         const auto& e = pattern.events[size_t(at)];
-        if (!ui.trig_cards) return {nudge_card(pattern, e), Binding {}, Binding {}};
+        if (!ui.trig_cards) return {nudge_card(pattern, e), ramp, Binding {}};
         if (track.engine != EngineKind::Sampler) return {};
         return {Binding {}, Binding {Kind::EventPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, e.pitch_ramp}, Binding {}};
     }

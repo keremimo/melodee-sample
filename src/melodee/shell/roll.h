@@ -71,7 +71,10 @@ void roll_mark_walk(const Pattern& pattern, UiState& ui, int way, unsigned patte
 bool roll_marks_move(Pattern& pattern, UiState& ui, int way);
 // The marked notes `way` rows up (down), hopping over notes in their way; false when one would leave the rows
 // (0..max_key, or with a lane -48..48 semitones). The cursor's pitch goes with them.
-bool roll_marks_pitch(Pattern& pattern, UiState& ui, int way, int lane, int max_key);
+bool roll_marks_pitch(Pattern& pattern, UiState& ui, int way, int lane, int max_key, int hop = 1); // hop 12: by octaves
+// The marked notes out of the pattern, in order; and the marks onto a list of notes (their new place).
+std::vector<Event> roll_take_marked(Pattern& pattern, const UiState& ui);
+void roll_remark(UiState& ui, const std::vector<Event>& events);
 // The marked notes out of the pattern; how many went. The marks are cleared.
 unsigned roll_marks_erase(Pattern& pattern, UiState& ui);
 // Mute on the marked notes: all muted when any played, else all played again; true when they are muted now.

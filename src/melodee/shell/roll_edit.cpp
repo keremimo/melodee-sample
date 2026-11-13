@@ -4,6 +4,7 @@
 // release (Context::open_hold); erasing keeps its own (Step Edit's
 // erase_event); the sheet's flags are a press on the page (PageEdit).
 #include "melodee/shell/roll.h"
+#include "melodee/shell/note_jobs.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/undo_scope.h"
@@ -72,6 +73,7 @@ bool selected(Context& c) { return c.ui.page == PageId::Roll && roll_selected(c.
 bool roll_selection_wheel(Context& c, int way) {
     auto& ui = c.ui;
     const int lane = roll_lane(c.track());
+    if (selected(c) && ui.erase) return roll_marks_quantize(c, way); // Erase + wheel: toward the grid
     if (selected(c)) {
         if (ui.shift) ui.shift_used = true;
         c.touch_scope(pattern_scope(c.project, ui), marks_gesture | (ui.shift ? 1u : 0u));

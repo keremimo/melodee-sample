@@ -450,8 +450,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
     on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
+    const bool editor = ui.page == PageId::Roll || ui.page == PageId::Steps || ui.page == PageId::StepEdit;
     on(B::Loop, ui.page == PageId::Looper || ui.loop_held || (ui.page == PageId::Song ? project.song.looping()
-                    : track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the song's brace on Song, else the last pad loops; the Looper
+                    : editor ? ui.edit_loop
+                    : track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the song's brace on Song, the editor's loop, else the last pad loops; the Looper
     // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
     on(B::SixteenLevels, track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));
     on(B::Play, playing);

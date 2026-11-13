@@ -36,6 +36,7 @@
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/engine/arp.h"
+#include "melodee/model/note_edits.h"
 #include "melodee/model/chords.h"
 #include "melodee/model/project_file.h"
 #include "melodee/model/generators.h"
@@ -5695,6 +5696,70 @@ void roll_marks() {
     // Erase: the marked go, the rest stay, the marks cleared.
     CHECK(roll_marks_erase(p, ui) == 3 && p.events.size() == 2 && !ui.roll_marked);
     CHECK(p.events[0].key == 62 && p.events[1].key == 64 && p.events[1].tick == 10 * s);
+}
+
+// The note editors' printed buttons (model/note_edits.h): split, legato, reverse, quantize, ramp, arp to notes.
+void note_edits() {
+    const uint32_t s = sixteenth_ticks;
+    auto note = [&](uint32_t step, uint8_t key, uint32_t steps, uint8_t velocity = 100) {
+        Event e; e.tick = step * s; e.key = key; e.length = uint16_t(steps * s); e.velocity = velocity; return e;
+    };
+    { // Chop: a 4-step note 2 + 2, again 1 + 1 each; a 1-step note stays.
+        std::vector<Event> n {note(0, 60, 4), note(8, 62, 1), note(12, 64, 3)};
+        CHECK(split_events(n, s) == 2 && n.size() == 5);
+        CHECK(n[0].tick == 0 && n[0].length == 2 * s && n[1].tick == 2 * s && n[1].length == 2 * s);
+        CHECK(n[2].length == s);                                       // too short to split
+        CHECK(n[3].tick == 12 * s && n[3].length == 2 * s && n[4].tick == 14 * s && n[4].length == s); // 3 steps: 2 + 1
+        CHECK(split_events(n, s) == 3);
+    }
+    { // Legato: each to the next start; a kit by key.
+        Pattern rest; rest.length = 16 * s;
+        CHECK(rest.add(note(10, 70, 1)));
+        std::vector<Event> n {note(0, 60, 1), note(4, 62, 1)};
+        legato_events(n, rest, false);
+        CHECK(n[0].length == 4 * s && n[1].length == 6 * s);
+        std::vector<Event> k {note(0, 36, 1), note(4, 37, 1)};
+        legato_events(k, rest, true);
+        CHECK(k[0].length == 16 * s && k[1].length == 12 * s);          // no later hit of their own pad: the end
+    }
+    { // Reverse over the span they cover.
+        std::vector<Event> n {note(0, 60, 1), note(2, 62, 2)};
+        reverse_events(n);
+        CHECK(n[0].tick == 3 * s && n[1].tick == 0);
+    }
+    { // Quantize: a quarter of the way each pass, at least a tick, onto the line.
+        std::vector<Event> n {note(0, 60, 1)};
+        n[0].tick = 4 * s + 8;
+        quantize_events(n, s, 16 * s, 25); CHECK(n[0].tick == 4 * s + 6);
+        for (int k = 0; k < 10; ++k) quantize_events(n, s, 16 * s, 25);
+        CHECK(n[0].tick == 4 * s);
+    }
+    { // Velocity ramp, and read back.
+        std::vector<Event> n {note(0, 60, 1, 100), note(1, 60, 1, 100), note(2, 60, 1, 100)};
+        ramp_events(n, -50);
+        CHECK(n[0].velocity == 100 && n[1].velocity == 75 && n[2].velocity == 50 && ramp_of(n) == -50);
+    }
+    { // Arp to notes: a C major chord a bar of 1/16 notes, up; two octaves; a 16 Levels lane by pitch.
+        std::vector<Event> chord {note(0, 60, 4), note(0, 64, 4), note(0, 67, 4)};
+        auto up = arp_events(chord, unsigned(ArpMode::Up), arp_default_rate, 1, 50, 16 * s, -1, 127);
+        CHECK(up.size() == 4 && up[0].key == 60 && up[1].key == 64 && up[2].key == 67 && up[3].key == 60);
+        CHECK(up[1].tick == s && up[0].length == s / 2);
+        auto two = arp_events(chord, unsigned(ArpMode::Up), arp_default_rate, 2, 100, 16 * s, -1, 127);
+        CHECK(two.size() == 4 && two[3].key == 72);
+        std::vector<Event> pad {chord[0], chord[0]};
+        pad[0].key = 40; pad[0].pitch = 0; pad[1].key = 40; pad[1].pitch = 7;
+        auto lane = arp_events(pad, unsigned(ArpMode::Down), arp_default_rate, 1, 50, 16 * s, 40, 127);
+        CHECK(lane.size() == 4 && lane[0].key == 40 && lane[0].pitch == 7 && lane[1].pitch == 0);
+        CHECK(arp_events(chord, 0, arp_default_rate, 1, 50, 2 * s, -1, 127).size() == 2); // cut at the pattern's end
+    }
+    { // take and put: out in order, back in place.
+        Pattern p; p.length = 16 * s;
+        CHECK(p.add(note(0, 60, 1)) && p.add(note(4, 62, 1)) && p.add(note(8, 64, 1)));
+        auto out = take_events(p, {2, 0});
+        CHECK(out.size() == 2 && out[0].key == 60 && out[1].key == 64 && p.events.size() == 1);
+        put_events(p, out);
+        CHECK(p.events.size() == 3 && p.events[2].key == 64);
+    }
 }
 
 // Roll on a kit with 16 Levels on: a row for each pitch of the levels pad (60 + its semitones, as Seq Record keeps
@@ -13073,6 +13138,7 @@ int main() {
     looper_rates();
     roll();
     roll_marks();
+    note_edits();
     roll_opens_on_notes();
     roll_levels();
     stage();

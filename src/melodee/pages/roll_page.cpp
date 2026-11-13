@@ -27,6 +27,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
+#include "melodee/shell/note_jobs.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
@@ -72,6 +73,8 @@ void draw(Paint& p, const Snapshot& s) {
         unsigned n = unsigned(roll_marked_events(pattern, ui).size());
         if (n) h.left.push_back(ui.roll_marking ? pill(juce::String(n) + " SEL") : pill(juce::String(n) + " SEL", c));
     }
+    if (ui.edit_loop && ui.edit_loop_track == ui.track) h.left.push_back(pill("LOOP", c)); // Loop: the bars in view play over and over
+    if (ui.copying == UiState::Copying::Notes) h.left.push_back(pill("COPY", c));          // Push pastes the marked notes
     h.right.push_back(tag_of(s, ui.track));
     bool sheet = ui.sheet_open && focused;
     SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 1, c};
@@ -250,6 +253,7 @@ void do_row(Context& c) {
 
 void push(Context& c) {
     if (c.ui.sheet_open) { do_row(c); return; }
+    if (roll_paste(c)) return; // Shift + Erase copied the marked notes: here they go
     if (roll_focus(c.pattern(), c.ui, roll_lane(c.track())) < 0) { c.notice("No note here"); return; }
     c.ui.sheet_open = true;
     c.ui.sheet_row = RowAccent; // the likely job lit
@@ -267,6 +271,7 @@ void soft(Context& c, int key) {
 
 void pitch(Context& c, int way) {
     if (c.ui.sheet_open) { wheel(c, way); return; }
+    if (roll_marks_octave(c, way)) return; // the marked notes an octave
     roll_pitch(c.pattern(), c.ui, way, roll_lane(c.track()));
 }
 } // namespace

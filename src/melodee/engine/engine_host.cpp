@@ -853,6 +853,10 @@ void EngineHost::apply(const Command& c) {
     case Type::SongClip: if (c.index < song_clips) song.clips[c.index] = c.clip; break;
     case Type::SongCount: song.count = uint16_t(std::clamp<int>(c.value, 0, song_clips)); break;
     case Type::SongLoop: song.loop_start = c.index; song.loop_end = uint16_t(c.value); break;
+    case Type::EditLoop:
+        slot.loop_from = c.position;
+        slot.loop_ticks = uint32_t(c.index) | uint32_t(uint16_t(c.value)) << 16;
+        break;
     case Type::Chained: // roadmap P5: a chain is its track's order, its patterns' follow actions wait
         slot.chained = c.value != 0;
         if (slot.chained) slot.follow_do = 0;
@@ -2281,6 +2285,10 @@ void EngineHost::tick() {
         uint32_t elapsed = tick_now - slot.start;
         uint32_t at = elapsed % length;
         uint32_t pass = elapsed / length; // trig conditions count the pattern's passes from where it began
+        if (slot.loop_ticks && slot.loop_from < length) { // an editor's loop: its bars over and over
+            uint32_t span = std::min(slot.loop_ticks, length - slot.loop_from);
+            at = slot.loop_from + elapsed % span; pass = elapsed / span;
+        }
         Speed sp = speed_of(speeds_now[t].load(std::memory_order_relaxed)); // published as written (its pattern plays scaled)
         positions_now[t].store(int(uint64_t(at) * sp.num / sp.den), std::memory_order_relaxed);
         if (!pattern.punches.empty()) play_pattern_punches(pattern, at); // pad-fx C: punches kept with it

@@ -94,6 +94,12 @@ bool erase_tap(Context& c) {
 void copy_press(Context& c, bool kit_pads, bool key_pads) {
     auto& ui = c.ui;
     auto arm = [&](UiState::Copying kind) { ui.stop_copying(); ui.copying = kind; ui.copy_from = -1; };
+    if (ui.page == PageId::Roll && roll_selected(ui, c.track().pattern)) { // Roll's marked notes: Push pastes them at the cursor
+        arm(UiState::Copying::Notes);
+        ui.sheet_open = false;
+        c.notice("Copy: Push pastes at the cursor");
+        return;
+    }
     switch (copy_here(c.project, ui, kit_pads, key_pads)) {
     case CopyHere::Tracks: start_track_pick(ui, false); return;
     case CopyHere::Patterns: arm(UiState::Copying::Patterns); return;

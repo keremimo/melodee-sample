@@ -191,6 +191,11 @@ struct UiState {
     uint8_t roll_marked = 0, roll_mark_track = 0;
     uint16_t roll_mark_pattern = 0;
     bool roll_marking = false;
+    // Loop tapped on Roll, Steps or Step Edit (shell/note_jobs.h): the track's pattern plays only these ticks while
+    // the editor stays open on it.
+    bool edit_loop = false;
+    uint8_t edit_loop_track = 0, edit_loop_pattern = 0;
+    uint32_t edit_loop_from = 0, edit_loop_ticks = 0;
     bool map_open = false;    // the page map over Edit
     uint8_t map_cursor = 0;
     int8_t pattern_held = -1; // Patterns: a pattern held (its number), so the next pad copies it there
@@ -346,7 +351,7 @@ struct UiState {
     // Tracks), one key's notes onto another key (a synth's play pages, Roll,
     // Step Edit), or one step onto another (Steps). Armed, then the source,
     // then the target (shell/erase_copy.h).
-    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps };
+    enum class Copying : uint8_t { Off, Pads, Patterns, Tracks, Keys, Steps, Notes }; // Notes: Roll's marked notes, Push pastes
     Copying copying = Copying::Off;
     int16_t copy_from = -1;   // the kit pad, pattern, track, key or step picked first, -1 until then
     uint8_t copy_track = 0;   // Patterns: the track the pattern is copied from
