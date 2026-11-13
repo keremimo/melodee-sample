@@ -66,7 +66,7 @@ void step_edit(Context& c) {
     auto& ui = c.ui;
     ui.shift_used = true;
     if (ui.page == PageId::StepEdit) { c.open(seq_editor_page(ui, kit_track(c))); return; }
-    if (ui.page == PageId::Roll) roll_select(c.pattern(), ui); // the note in focus is the event chosen
+    if (ui.page == PageId::Roll) roll_select(c.pattern(), ui, roll_lane(c.track())); // the note in focus is the event chosen
     c.open(PageId::StepEdit);
 }
 } // namespace

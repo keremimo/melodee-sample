@@ -239,11 +239,11 @@ void Context::open(PageId page) {
     remember_editor(ui, page); // Seq on Patterns comes back to it (shell/page_stack.h)
     if (page == PageId::Roll) { // a kit's Roll opens on its pads' rows: the bank in view, the last pad's row
         const auto& t = track();
-        if (t.engine == EngineKind::Sampler) {
+        if (t.engine == EngineKind::Sampler && !t.levels) {
             unsigned low = sampler_first_note + t.bank % sampler_banks * 16;
             if (ui.roll_key < low || ui.roll_key >= low + 16) ui.roll_key = uint8_t(sampler_first_note + t.last_pad % sampler_pads);
         } else {
-            roll_open(pattern(), ui); // a line whose notes lie outside the rows in view: the view onto them
+            roll_open(pattern(), ui, roll_lane(t)); // a line whose notes lie outside the rows in view (16 Levels: its pitches): the view onto them
         }
     }
     if (page == PageId::Sounds) {

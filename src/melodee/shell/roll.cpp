@@ -13,12 +13,13 @@ void put_cursor(UiState& ui, unsigned step) {
     ui.steps_bar = uint8_t(std::min<unsigned>(step / bar_steps, 255));
 }
 
-// The key of the note starting in `step` nearest to `key`; `key` when none starts there.
-int nearest_key(const Pattern& pattern, unsigned step, int key) {
+// The row of the note starting in `step` nearest to `key`; `key` when none starts there.
+int nearest_key(const Pattern& pattern, unsigned step, int key, int lane) {
     auto in = step_events(pattern, step);
     int best = key, distance = 1 << 20;
     for (unsigned n = 0; n < in.count; ++n) {
-        int k = pattern.events[in.first + n].key, d = std::abs(k - key);
+        int k = roll_row(pattern.events[in.first + n], lane), d = std::abs(k - key);
+        if (k < 0) continue;
         if (d == 0) return key;
         if (d < distance) { distance = d; best = k; }
     }
@@ -35,10 +36,10 @@ unsigned roll_first(const Pattern& pattern, const UiState& ui) {
     return std::min<unsigned>(unsigned(std::max<int>(ui.roll_view, 0)), last);
 }
 
-int roll_focus(const Pattern& pattern, const UiState& ui) {
+int roll_focus(const Pattern& pattern, const UiState& ui, int lane) {
     auto in = step_events(pattern, roll_cursor(pattern, ui));
     for (unsigned n = 0; n < in.count; ++n)
-        if (pattern.events[in.first + n].key == ui.roll_key) return int(in.first + n);
+        if (roll_row(pattern.events[in.first + n], lane) == int(ui.roll_key)) return int(in.first + n);
     return -1;
 }
 
@@ -55,43 +56,47 @@ void roll_follow(const Pattern& pattern, UiState& ui) {
     ui.roll_top = uint8_t(std::clamp(top, rows - 1, std::max(127, key + 1))); // a kit's keys run past 127
 }
 
-void roll_select(const Pattern& pattern, UiState& ui) {
-    int at = roll_focus(pattern, ui);
+void roll_select(const Pattern& pattern, UiState& ui, int lane) {
+    int at = roll_focus(pattern, ui, lane);
     auto in = step_events(pattern, roll_cursor(pattern, ui));
     ui.step_event = at >= 0 ? uint8_t(std::min<size_t>(size_t(at) - in.first, 255)) : 0;
 }
 
-void roll_open(const Pattern& pattern, UiState& ui) {
+void roll_open(const Pattern& pattern, UiState& ui, int lane) {
     int top = ui.roll_top, low = top - int(roll_rows) + 1, best = -1;
     int64_t at = int64_t(roll_cursor(pattern, ui)) * pattern.q(), distance = INT64_MAX;
     for (const auto& e : pattern.events) {
         if (e.tick >= pattern.length) break;
-        if (int(e.key) >= low && int(e.key) <= top) return; // a note in view: the view stays as it was left
+        int row = roll_row(e, lane);
+        if (row < 0) continue;
+        if (row >= low && row <= top) return; // a note in view: the view stays as it was left
         int64_t d = std::llabs(int64_t(e.tick) - at);
-        if (d < distance) { distance = d; best = e.key; }
+        if (d < distance) { distance = d; best = row; }
     }
     if (best < 0) return;
     ui.roll_key = uint8_t(best);
     roll_follow(pattern, ui);
-    roll_select(pattern, ui);
+    roll_select(pattern, ui, lane);
 }
 
-void roll_step(const Pattern& pattern, UiState& ui, int way) {
+void roll_step(const Pattern& pattern, UiState& ui, int way, int lane) {
     int step = std::clamp<int>(int(roll_cursor(pattern, ui)) + way, 0, int(pattern.steps()) - 1);
     put_cursor(ui, unsigned(step));
-    ui.roll_key = uint8_t(nearest_key(pattern, unsigned(step), ui.roll_key));
+    ui.roll_key = uint8_t(nearest_key(pattern, unsigned(step), ui.roll_key, lane));
     roll_follow(pattern, ui);
-    roll_select(pattern, ui);
+    roll_select(pattern, ui, lane);
 }
 
-bool roll_jump(const Pattern& pattern, UiState& ui, int way) {
+bool roll_jump(const Pattern& pattern, UiState& ui, int way, int lane) {
     // Every note in turn, by step and then pitch: a chord's notes up one by one, then on to the next step's.
     unsigned q = pattern.q();
     auto place = [&](unsigned step, int key) { return int64_t(step) * 256 + key; };
     int64_t here = place(roll_cursor(pattern, ui), ui.roll_key), to = -1;
     for (const auto& e : pattern.events) {
         if (e.tick >= pattern.length) break;
-        int64_t at = place(e.tick / q, e.key);
+        int row = roll_row(e, lane);
+        if (row < 0) continue;
+        int64_t at = place(e.tick / q, row);
         if (way > 0 && at > here && (to < 0 || at < to)) to = at;
         if (way < 0 && at < here && (to < 0 || at > to)) to = at;
     }
@@ -99,21 +104,22 @@ bool roll_jump(const Pattern& pattern, UiState& ui, int way) {
     put_cursor(ui, unsigned(to / 256));
     ui.roll_key = uint8_t(to % 256);
     roll_follow(pattern, ui);
-    roll_select(pattern, ui);
+    roll_select(pattern, ui, lane);
     return true;
 }
 
-void roll_pitch(const Pattern& pattern, UiState& ui, int way) {
+void roll_pitch(const Pattern& pattern, UiState& ui, int way, int lane) {
     auto in = step_events(pattern, roll_cursor(pattern, ui));
     int key = ui.roll_key, next = -1;
     for (unsigned n = 0; n < in.count; ++n) { // the chord first
-        int k = pattern.events[in.first + n].key;
+        int k = roll_row(pattern.events[in.first + n], lane);
+        if (k < 0) continue;
         if (way > 0 && k > key && (next < 0 || k < next)) next = k;
         if (way < 0 && k < key && (next < 0 || k > next)) next = k;
     }
     ui.roll_key = uint8_t(next >= 0 ? next : std::clamp(key + (way > 0 ? 1 : -1), 0, 127));
     roll_follow(pattern, ui);
-    roll_select(pattern, ui);
+    roll_select(pattern, ui, lane);
 }
 
 std::string roll_position(uint32_t tick, unsigned bar_ticks, unsigned beat_ticks, unsigned q) {

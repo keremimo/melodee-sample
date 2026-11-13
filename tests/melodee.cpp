@@ -5629,6 +5629,50 @@ void roll() {
     CHECK(binding_scope(project, ui, chance).kind == UndoScope::Kind::Pattern);
 }
 
+// Roll on a kit with 16 Levels on: a row for each pitch of the levels pad (60 + its semitones, as Seq Record keeps
+// them), that pad's notes only; the cursor, focus, chord, jumps, opening and the cards go by those rows.
+void roll_levels() {
+    auto project = std::make_unique<Project>();
+    auto& kit = project->tracks[0];
+    load_sound(kit, EngineKind::Sampler, 0);
+    CHECK(roll_lane(kit) == -1);                                  // a kit's roll: a row a pad
+    kit.levels = true; kit.levels_pad = 2;
+    const int lane = roll_lane(kit);
+    CHECK(lane == int(sampler_first_note) + 2);
+    Pattern p;
+    p.length = 16 * sixteenth_ticks;
+    auto add = [&](unsigned step, uint8_t key, int8_t pitch) { Event e; e.tick = step * sixteenth_ticks; e.key = key; e.pitch = pitch; CHECK(p.add(e)); };
+    add(0, uint8_t(lane), 0); add(0, uint8_t(lane), 4); add(0, uint8_t(lane), 7); // a chord: one pad, three pitches, all kept
+    add(0, uint8_t(sampler_first_note), 0);                                    // pad 1's note: not on this roll
+    add(4, uint8_t(lane), 2); add(9, uint8_t(lane), -5);
+    CHECK(p.events.size() == 6);
+    CHECK(roll_row(p.events[1], lane) == 60 && roll_row(p.events[0], lane) == -1 && roll_row(p.events[0], -1) == int(sampler_first_note));
+    UiState ui;
+    ui.step_cursor = 0; ui.roll_key = 64;
+    int at = roll_focus(p, ui, lane);
+    CHECK(at >= 0 && p.events[size_t(at)].key == lane && p.events[size_t(at)].pitch == 4);
+    CHECK(roll_focus(p, ui) < 0);                                 // read as pad rows, nothing sits on 64
+    ui.roll_key = int(sampler_first_note); CHECK(roll_focus(p, ui, lane) < 0); // pad 1's note is no row here
+    ui.roll_key = 60;
+    roll_pitch(p, ui, 1, lane); CHECK(ui.roll_key == 64);         // the chord up
+    roll_pitch(p, ui, 1, lane); CHECK(ui.roll_key == 67);
+    roll_pitch(p, ui, 1, lane); CHECK(ui.roll_key == 68 && roll_focus(p, ui, lane) < 0); // then a semitone
+    roll_step(p, ui, 4, lane); CHECK(ui.step_cursor == 4 && ui.roll_key == 62); // onto step 4's D4
+    CHECK(roll_jump(p, ui, 1, lane) && ui.step_cursor == 9 && ui.roll_key == 55);
+    CHECK(!roll_jump(p, ui, 1, lane));
+    CHECK(roll_jump(p, ui, -1, lane) && ui.step_cursor == 4 && ui.roll_key == 62);
+    CHECK(roll_jump(p, ui, -1, lane) && ui.step_cursor == 0 && ui.roll_key == 67);
+    roll_select(p, ui, lane);
+    CHECK(selected_event(p, ui) == roll_focus(p, ui, lane));      // Step Edit's selection: the note in focus
+    UiState far; far.step_cursor = 9; far.roll_key = 100; far.roll_top = 110;
+    roll_open(p, far, lane); CHECK(far.roll_key == 55);           // opening on the pitches, not on pad 1's key
+    // Roll's cards follow the row in focus.
+    ui.page = PageId::Roll; ui.track = 0; ui.step_cursor = 0; ui.roll_key = 64;
+    auto cards = page_bindings(*project, ui, p);
+    CHECK(cards[0].kind == Binding::Kind::EventLength && cards[1].kind == Binding::Kind::EventVelocity);
+    ui.roll_key = 65; CHECK(!page_bindings(*project, ui, p)[0].bound());
+}
+
 // The Looper (docs/LOOPER.md): takes, quantize, overdub, feedback, undo, the transport, sources, the stretch,
 // fitting, holding for a save, and its four tracks in the engine host's mix.
 // The Looper at the device's rate: a take at 48 kHz keeps the frames as they came (no conversion), its memory
@@ -12882,6 +12926,7 @@ int main() {
     looper_rates();
     roll();
     roll_opens_on_notes();
+    roll_levels();
     stage();
     midi_tracks();
     device_rates();

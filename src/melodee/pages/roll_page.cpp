@@ -49,15 +49,17 @@ void draw(Paint& p, const Snapshot& s) {
     unsigned q = pattern.q(), cursor = roll_cursor(pattern, ui), first = roll_first(pattern, ui);
     unsigned bar = s.project.bar_ticks(), beat = s.project.beat_ticks();
     uint32_t from = first * q, to = (first + columns) * q;
-    int focus = roll_focus(pattern, ui), top_key = ui.roll_top;
+    const auto& track = s.track();
+    const int lane = roll_lane(track); // 16 Levels on a kit: a row a pitch of its pad, as a synth's
+    int focus = roll_focus(pattern, ui, lane), top_key = ui.roll_top;
     const Event* focused = focus >= 0 ? &pattern.events[size_t(focus)] : nullptr;
 
-    const auto& track = s.track();
-    bool kit = track.engine == EngineKind::Sampler || drum_pads(track); // lanes of pads, not keys (Drums pads too: 36 is A01)
+    bool kit = lane < 0 && (track.engine == EngineKind::Sampler || drum_pads(track)); // lanes of pads, not keys (Drums pads too: 36 is A01)
     Header h = header_of(s);
     if (!ui.recording) {
         if (focused && ui.held_note >= 0) h.left.push_back(pill("LOCK", c)); // its pad held: the pots lock it (roadmap P1)
-        if (focused) h.left.push_back(chip(Icon::Note, juce::String(key_label(track, focused->key)), c)); // where it sits: the place bar's
+        if (focused) // where it sits: the place bar's
+            h.left.push_back(chip(Icon::Note, juce::String(lane >= 0 ? note_name(roll_row(*focused, lane)) : key_label(track, focused->key)), c));
         else h.left.push_back(pill("BAR " + juce::String(cursor * q / bar + 1) + " / " + juce::String((pattern.length + bar - 1) / bar)));
     }
     h.right.push_back(tag_of(s, ui.track));
@@ -119,7 +121,9 @@ void draw(Paint& p, const Snapshot& s) {
         if (e.tick >= pattern.length) break;
         uint32_t end = std::min<uint32_t>(e.tick + e.length, pattern.length);
         if (end <= from || e.tick >= to) continue;
-        int r = top_key - int(e.key);
+        int row = roll_row(e, lane);
+        if (row < 0) continue; // another pad's, under 16 Levels
+        int r = top_key - row;
         if (r < 0 || r >= int(rows)) {
             if (e.tick >= from) (r < 0 ? above : below)[(e.tick - from) / q] = 1;
             continue;
@@ -162,6 +166,7 @@ void draw(Paint& p, const Snapshot& s) {
     p.fill(gutter, by, tw, 2, colour::line, 1);
     for (const auto& e : pattern.events) {
         if (e.tick >= pattern.length) break;
+        if (roll_row(e, lane) < 0) continue;
         p.fill(gutter + tw * float(e.tick) / float(pattern.length), by, 1, 2, colour::dim);
     }
     float steps = float(pattern.steps());
@@ -173,7 +178,8 @@ void draw(Paint& p, const Snapshot& s) {
     if (sheet) { // the note's jobs as cards: the wheel moves, Push does it (Accent first)
         CardSheet m;
         m.chip = "NOTE"; m.chip_colour = c; m.accent = c;
-        m.title = juce::String(key_label(track, focused->key)) + juce::String::fromUTF8(" \xc2\xb7 ") + where(s, focused->tick);
+        m.title = juce::String(lane >= 0 ? note_name(roll_row(*focused, lane)) : key_label(track, focused->key)) + juce::String::fromUTF8(" \xc2\xb7 ") +
+                  where(s, focused->tick);
         auto flag = [&](uint8_t f) { return bool(focused->flags & f); };
         auto state = [&](uint8_t f) { return juce::String(flag(f) ? "ON" : "OFF"); };
         m.items[RowAccent] = card_item(Icon::Accent, "ACCENT", state(step_accent), flag(step_accent));
@@ -197,9 +203,16 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     if (!down || !c.track().used()) return;
     if (c.ui.sheet_open) c.ui.sheet_open = false; // a pad leaves the sheet and writes as ever
     if (c.ui.recording && c.host.playing()) return; // played in live by Seq Record
-    int v = c.track().layout == PadLayout::Levels ? level_velocity(pad) : velocity;
-    roll_write(c, pad_key(c.project, c.track(), pad), uint8_t(v));
-    if (roll_focus(c.pattern(), c.ui) >= 0) c.ui.held_note = int8_t(pad); // held on its note: the pots lock it (roadmap P1)
+    const auto& t = c.track();
+    const int lane = roll_lane(t);
+    if (lane >= 0) { // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
+        auto level = levels_of(c.project, t, pad);
+        roll_write(c, lane, uint8_t(level.velocity ? level.velocity : velocity), level.semitones, level.cutoff);
+    } else {
+        int v = t.layout == PadLayout::Levels ? level_velocity(pad) : velocity;
+        roll_write(c, pad_key(c.project, t, pad), uint8_t(v));
+    }
+    if (roll_focus(c.pattern(), c.ui, lane) >= 0) c.ui.held_note = int8_t(pad); // held on its note: the pots lock it (roadmap P1)
 }
 
 void wheel(Context& c, int delta) {
@@ -209,10 +222,10 @@ void wheel(Context& c, int delta) {
     }
     if (c.ui.shift) { // note to note, over empty bars
         c.ui.shift_used = true;
-        if (!roll_jump(c.pattern(), c.ui, delta)) c.notice(delta > 0 ? "No later note" : "No earlier note");
+        if (!roll_jump(c.pattern(), c.ui, delta, roll_lane(c.track()))) c.notice(delta > 0 ? "No later note" : "No earlier note");
         return;
     }
-    roll_step(c.pattern(), c.ui, delta);
+    roll_step(c.pattern(), c.ui, delta, roll_lane(c.track()));
 }
 
 void do_row(Context& c) {
@@ -227,7 +240,7 @@ void do_row(Context& c) {
 
 void push(Context& c) {
     if (c.ui.sheet_open) { do_row(c); return; }
-    if (roll_focus(c.pattern(), c.ui) < 0) { c.notice("No note here"); return; }
+    if (roll_focus(c.pattern(), c.ui, roll_lane(c.track())) < 0) { c.notice("No note here"); return; }
     c.ui.sheet_open = true;
     c.ui.sheet_row = RowAccent; // the likely job lit
 }
@@ -244,7 +257,7 @@ void soft(Context& c, int key) {
 
 void pitch(Context& c, int way) {
     if (c.ui.sheet_open) { wheel(c, way); return; }
-    roll_pitch(c.pattern(), c.ui, way);
+    roll_pitch(c.pattern(), c.ui, way, roll_lane(c.track()));
 }
 } // namespace
 

@@ -220,7 +220,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 UiState roll = ui_;
                 roll_follow(shown, roll);
                 roll_key_now.store(roll.roll_key, std::memory_order_relaxed);
-                roll_focus_now.store(roll_focus(shown, roll) >= 0 ? 1 : 0, std::memory_order_relaxed);
+                roll_focus_now.store(roll_focus(shown, roll, roll_lane(context_.track())) >= 0 ? 1 : 0, std::memory_order_relaxed);
                 roll_view_now.store(roll_first(shown, roll), std::memory_order_relaxed);
                 roll_top_now.store(roll.roll_top, std::memory_order_relaxed);
             }

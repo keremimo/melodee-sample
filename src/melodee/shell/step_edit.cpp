@@ -84,7 +84,7 @@ void nudge_event(Context& c, int ticks) {
 
 void set_event_velocity(Context& c, int velocity) {
     auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui); // Roll's cards: the note in focus
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track())); // Roll's cards: the note in focus
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     pattern.events[size_t(at)].velocity = uint8_t(std::clamp(velocity, 1, 127));
@@ -93,7 +93,7 @@ void set_event_velocity(Context& c, int velocity) {
 
 void set_event_length(Context& c, int steps) {
     auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui);
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track()));
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     pattern.events[size_t(at)].length = uint16_t(std::clamp<int64_t>(int64_t(std::max(steps, 1)) * pattern.q(), 1, 0xffff));
@@ -102,7 +102,7 @@ void set_event_length(Context& c, int steps) {
 
 void set_event_chance(Context& c, int chance) {
     auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui);
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track()));
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     pattern.events[size_t(at)].chance = uint8_t(std::clamp(chance, 0, 100));
@@ -113,7 +113,7 @@ namespace {
 // The selected event (on Roll the note in focus) through `edit`, and the pattern to the audio thread.
 template <class Edit> void edit_selected(Context& c, Edit&& edit) {
     auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui);
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track()));
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     edit(pattern.events[size_t(at)]);
@@ -175,8 +175,11 @@ void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
         }
         return;
     }
-    int key = pad_key(c.project, c.track(), pad);
-    if (key < 0 || !c.track().used()) return;
+    const auto& t = c.track();
+    int key = pad_key(c.project, t, pad);
+    if (key < 0 || !t.used()) return;
+    Level level; // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
+    if (t.engine == EngineKind::Sampler && t.levels) { level = levels_of(c.project, t, pad); key = int(sampler_first_note + t.levels_pad % sampler_pads); }
     ui.entry_held = uint16_t(ui.entry_held | bit);
     auto& p = c.pattern();
     unsigned q = p.q(), caret = caret_of(p, ui);
@@ -184,7 +187,9 @@ void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     Event e;
     e.tick = caret * q;
     e.key = uint8_t(key);
-    e.velocity = ui.entry_velocity ? ui.entry_velocity : std::max<uint8_t>(velocity, 1);
+    e.pitch = int8_t(std::clamp(level.semitones, -48, 48));
+    if (level.cutoff >= 0) e.cutoff = uint8_t(std::min(level.cutoff, 100) + 1);
+    e.velocity = ui.entry_velocity ? ui.entry_velocity : level.velocity ? uint8_t(level.velocity) : std::max<uint8_t>(velocity, 1);
     e.length = uint16_t(std::min<uint32_t>({uint32_t(ui.entry_length) * q, p.length, 65535u}));
     e.chance = ui.entry_chance;
     p.add(e); // a note of the same key already there is replaced
@@ -216,7 +221,7 @@ void entry_move(Context& c, int way) { caret_to(c, int(caret_of(c.pattern(), c.u
 
 void set_event_nudge(Context& c, int offset) {
     auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui); // the note in focus
+    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track())); // the note in focus
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     const auto& e = pattern.events[size_t(at)];

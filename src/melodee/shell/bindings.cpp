@@ -228,7 +228,7 @@ bool lock_place(const Project& project, const UiState& ui, const Pattern& patter
         return true;
     }
     if (ui.page == PageId::Roll && ui.held_note >= 0) { // the note in focus, as long as it is
-        int at = roll_focus(pattern, ui);
+        int at = roll_focus(pattern, ui, roll_lane(track));
         if (at < 0) return false;
         tick = pattern.events[size_t(at)].tick; hold = std::max<uint32_t>(pattern.events[size_t(at)].length, 1);
         return true;
@@ -591,7 +591,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         return {length, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
     }
     case PageId::Roll: { // Shift + K1 NUDGE (round 2): the note in focus off its grid line; the TRIG row: Shift + K2 a kit pad's pitch ramp
-        int at = roll_focus(pattern, ui);
+        int at = roll_focus(pattern, ui, roll_lane(track));
         if (at < 0) return {};
         const auto& e = pattern.events[size_t(at)];
         if (!ui.trig_cards) return {nudge_card(pattern, e), Binding {}, Binding {}};
@@ -904,7 +904,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::Plugins:
         return {Binding {Kind::PluginJump, 0, 0, std::max(int(ui.plugins_count) - 1, 1), ui.plugins_cursor}, Binding {}, Binding {}};
     case PageId::Roll: { // the note in focus: K1 its length in steps of Q, K2 velocity, K3 chance; none, no cards
-        int at = roll_focus(pattern, ui);
+        int at = roll_focus(pattern, ui, roll_lane(track));
         if (at < 0) return {};
         const auto& e = pattern.events[size_t(at)];
         if (ui.held_note >= 0) return lock_cards(project, ui, pattern, e.tick); // its pad held: locks there (roadmap P1)

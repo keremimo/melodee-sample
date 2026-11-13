@@ -373,27 +373,35 @@ Look step_edit_look(const PadScene& s, unsigned pad) {
     bool empty = t.engine == EngineKind::Sampler && !t.pads[unsigned(key - int(sampler_first_note)) % sampler_pads].used();
     return empty ? Look {} : track(selected_index(s), faint);
 }
-// Roll: the key in focus, and the keys of the cursor's step, as the page draws them.
+// Roll: the row in focus, the rows of the cursor's step and, under 16 Levels on a kit, every row the pattern uses
+// (its rows are the levels pad's pitches: shell/roll.h roll_lane()), as the page draws them.
 struct RollAt {
-    int focus = -1;
-    std::array<bool, 192> here {};
+    int focus = -1, lane = -1;
+    std::array<bool, 192> here {}, used {};
 };
 RollAt roll_at(const PadScene& s) {
     const auto& p = shown(s);
     RollAt out;
-    int focus = roll_focus(p, s.ui);
-    if (focus >= 0) out.focus = p.events[size_t(focus)].key;
+    out.lane = roll_lane(selected(s));
+    int focus = roll_focus(p, s.ui, out.lane);
+    if (focus >= 0) out.focus = roll_row(p.events[size_t(focus)], out.lane);
     unsigned step = roll_cursor(p, s.ui);
     uint32_t start = step * p.q(), end = std::min<uint32_t>(start + p.q(), p.length);
-    for (size_t n = p.lower(start); n < p.events.size() && p.events[n].tick < end; ++n) if (p.events[n].key < 192) out.here[p.events[n].key] = true;
+    for (size_t n = 0; n < p.events.size() && p.events[n].tick < p.length; ++n) {
+        int row = roll_row(p.events[n], out.lane);
+        if (row < 0 || row >= 192) continue;
+        out.used[size_t(row)] = true;
+        if (p.events[n].tick >= start && p.events[n].tick < end) out.here[size_t(row)] = true;
+    }
     return out;
 }
 Look roll_look(const PadScene& s, const Heard& snd, const RollAt& at, const std::array<bool, 192>& keys, unsigned pad) {
     const auto& t = selected(s);
-    int key = pad_key(s.project, t, pad);
+    int key = at.lane >= 0 ? std::clamp(60 + levels_of(s.project, t, pad).semitones, 0, 127) : pad_key(s.project, t, pad); // the pad's row
     if (key < 0 || !t.used()) return {};
     if (key == at.focus) return white(full);
-    Look base = track(selected_index(s), at.here[unsigned(key) % 192] ? full : keys[unsigned(key) % 192] ? dim : faint);
+    const auto& rows = at.lane >= 0 ? at.used : keys;
+    Look base = track(selected_index(s), at.here[unsigned(key) % 192] ? full : rows[unsigned(key) % 192] ? dim : faint);
     return playing(s, snd, base, pad);
 }
 Look time_correct_look(const PadScene& s, const std::array<bool, 192>& keys, unsigned pad) {
