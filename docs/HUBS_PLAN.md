@@ -1,6 +1,7 @@
 # Hubs: plan
 
 Status: all picks made 2026-11-13 (S-B, P-a, M-b, R-a, T-a, PL-a, H-b).
+Step 1 (Stage tables, plug-in B1) built 1c25308; steps 2–6 open.
 Nothing built. Mockups: https://claude.ai/artifact/KysLcHsF6LN7pnAVFtS6ut
 
 ## Problem
