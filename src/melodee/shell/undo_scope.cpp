@@ -62,6 +62,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::PadFilterType: case Kind::PadCutoff: case Kind::PadResonance: case Kind::PadFAttack: case Kind::PadFDecay:
     case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: case Kind::PadWarp: case Kind::PadBeats:
     case Kind::LayerLow: case Kind::LayerHigh: case Kind::LayerPitch: case Kind::LayerGain: case Kind::LayerPlayMode: case Kind::PadLoopXfade:
+    case Kind::PadColour:
     case Kind::ZoneTune: case Kind::ZoneLevel: // round 3 "instrument C": the pad's state holds its trims
         return pad_scope(ui, project);
     case Kind::ChopMode: case Kind::ChopAmount: case Kind::ChopStart: case Kind::ChopEnd: return of(S::Chop, ui);
@@ -98,6 +99,7 @@ bool print_covers(const std::array<TrackFreeze, track_count>& freeze, const Undo
 
 UndoScope freeze_scope(const Project& project, const UiState& ui, const Binding& b) {
     switch (b.kind) {
+    case Kind::PadColour: return {}; // a pad's colour is not heard: no print holds it
     case Kind::PatternBars: case Kind::PatternLength: case Kind::Division: case Kind::Swing: case Kind::TcShift: case Kind::TcSwing:
         return pattern_scope(project, ui);
     case Kind::TrackSpeed: case Kind::StageSound: case Kind::PluginParam: case Kind::ArpMode: case Kind::ArpRate: case Kind::ArpOctaves:

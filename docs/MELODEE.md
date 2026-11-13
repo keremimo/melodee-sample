@@ -198,7 +198,8 @@ without a light. `shell/pad_lights.cpp` has a function a context, in one
 grammar (`shell/pad_light.h`):
 
 - **Colour** says whose pad it is: the track's colour (a loop's on the
-  Looper), white for the panel's own jobs and the pad in your hand, red for
+  Looper; a kit pad's own colour where it has one, Stage's COLOUR or its MPC
+  kit's), white for the panel's own jobs and the pad in your hand, red for
   a loss or a recording (muted, about to be erased, the take).
 - **Brightness** has five rungs: Off, Faint 0.25, Dim 0.4, Mid 0.65 and
   Full. The LEDs square a level before the 0–127 drive, so below about 0.2
@@ -285,7 +286,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     (Push the next one; with none yet, Push opens the effect picker; Shift +
     Knob FX adds effects), all six slots drawn with their family glyphs.
   - **A kit**: Akai's pages on the last pad hit, B1 **TRIM →
-    LAYERS → TUNE → AMP ENV** (LAYERS the pad's four samples), B2 **PLAY → FOLLOW → CLOUD**, B3 **MIX → SENDS → FILTER →
+    LAYERS → TUNE → AMP ENV** (LAYERS the pad's four samples), B2 **PLAY → COLOUR → FOLLOW → CLOUD**, B3 **MIX → SENDS → FILTER →
     FILT ENV → KIT FILT** (SENDS the kit track's four; the sampler pages keep the same groups, without SENDS): the pad's
     waveform with its volume on the left and pan on the right, chips for
     how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
@@ -296,7 +297,12 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     project's beats drawn over the pad's region in amber (the bar's first
     brighter), as many as # Beats says or its length at the tempo, and the
     sample's own hits as dots above, each joined to the beat it is moved
-    onto; Follow on or off is an LED in the header. CLOUD
+    onto; Follow on or off is an LED in the header. COLOUR: the bank's pads as
+    they sit, each filled with the colour it lights in, the last pad ringed; K1 and the wheel walk that pad's colour
+    (`PadSound::colour`, `shell/pad_colour.h`): Track (0, the track's), the sixteen track colours by name, then Kit, the
+    pad's own when it is none of those (an MPC kit's), until another is picked. The header pill and the Pads page draw
+    each pad in its colour too. A colour is one undo step on the pad and is not heard, so a frozen track keeps its
+    print. CLOUD
     (the whole kit's pads as grain clouds): K1 position, K2 grain size, K3
     density, Shift + K1 scan, Shift + K2 spread, Shift + K3 Cloud on or off,
     the place and grains drawn on the wave. KIT FILT: cutoff, resonance,
@@ -1072,7 +1078,11 @@ the file holds, to the bit.
   from the card as an SFZ is, as before. MPC projects (`.xpj`) alike. Carried over: the pad's volume, pan, tune, play type (One
   Shot, Note On), mono, mute group, envelope, velocity, filter (a one-pole as
   the two-pole kind) and filter envelope; each layer's tune, volume, pan,
-  region and loop. Shift + pad on it says Push loads a kit.
+  region and loop; the pads' colours (the program's ProgramPads: each pad's
+  RGB, or the one Universal colour on every pad; pads that follow the track's
+  colour keep Melodee's), raised to full brightness so the rungs still read
+  (`mpc_pad_colours()`, `PadSound::colour`, saved in PCOL, a bank's BCOL).
+  Shift + pad on it says Push loads a kit.
 - **MPC expansions** (`.xpn`, tagged INSTALL): Push installs one onto the card,
   a file a pass, into `Samples/Expansions/<its title>` (from its
   `Expansion.xml`), then opens that folder; a file already there at its size

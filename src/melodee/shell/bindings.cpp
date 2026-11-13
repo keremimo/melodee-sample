@@ -4,6 +4,7 @@
 #include "melodee/shell/midi_ports.h"
 #include "melodee/shell/input_choices.h"
 #include "melodee/shell/loop_sheet.h"
+#include "melodee/shell/pad_colour.h"
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/pad_fx_info.h"
@@ -451,6 +452,11 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         return cards;
     }
     unsigned t = ui.track % track_count;
+    if (page.kind == SK::Colour) { // K1 (and the wheel) the last pad's colour; Shift nothing
+        const auto& pad = track.pads[track.last_pad % sampler_pads];
+        if (shift_row || track.engine != EngineKind::Sampler || !pad.used()) return {};
+        return {Binding {Kind::PadColour, 0, colour_track, colour_last(pad.colour), colour_choice(pad.colour)}, Binding {}, Binding {}};
+    }
     switch (page.kind) {
     case SK::Params: {
         const auto& ids = shift_row ? page.shift : page.params;

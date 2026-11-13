@@ -28,6 +28,7 @@
 #include "melodee/shell/name_suggest.h"
 #include "melodee/shell/looper_jobs.h"
 #include "melodee/shell/page_stack.h"
+#include "melodee/shell/pad_colour.h"
 #include <filesystem>
 #include <chrono>
 #include <cstdio>
@@ -634,6 +635,7 @@ void Context::apply(const Binding& b, int value) {
         break;
     case Kind::PadBeats: pad().beats = uint8_t(value); send_pad(ui.track, t.last_pad); break;
     case Kind::PadLoopXfade: pad().loop_xfade = uint8_t(std::clamp(value, 0, int(max_loop_xfade))); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadColour: pad().colour = colour_at(value, pad().colour); break; // lights and screens only: the engine plays on
     case Kind::LayerPick: ui.pad_layer = uint8_t(unsigned(value) % pad_layers); break;
     case Kind::ZonePick: ui.zone = uint16_t(std::max(value, 0)); break;
     case Kind::ZoneTune: case Kind::ZoneLevel: { // round 3 "instrument C": the zone in hand's trim on the last pad

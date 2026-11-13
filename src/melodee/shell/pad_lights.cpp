@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // The pads' lights, a function a context (shell/pad_lights.h). Each says what
 // a press does there, in the grammar of shell/pad_light.h: the track's colour
-// for its own pads, white for the panel's jobs and the one in your hand, red
+// for its own pads (a kit pad's own colour when it has one), white for the panel's jobs and the one in your hand, red
 // for a loss or a recording; Faint, Dim, Mid and Full for how much; a blink
 // for a wait, a flare for a sound, a pulse for the count.
 #include "melodee/shell/pad_lights.h"
@@ -129,13 +129,18 @@ Look counting(const PadScene& s, const Look& look) {
 }
 
 // ---- the track's own pads: a kit, a synth or MIDI track, 16 Levels
+// Kit pad `kit` in its own colour (Stage's COLOUR, an MPC kit's), else the track's; Hue::Track either way.
+Look kit_hue(const PadScene& s, unsigned kit, float level) {
+    uint32_t own = selected(s).pads[kit % sampler_pads].colour;
+    return own ? of(own, Hue::Track, level) : track(selected_index(s), level);
+}
 Look kit_base(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     unsigned kit = kit_of(t, pad);
     bool used = t.pads[kit].used();
     if (used && t.pad_muted(kit)) return red(faint); // a muted pad says so on every page
-    if (kit == t.last_pad) return track(selected_index(s), full); // the pad selected, empty too: what the pages edit and load into
-    return used ? track(selected_index(s), dim) : Look {};
+    if (kit == t.last_pad) return kit_hue(s, kit, full); // the pad selected, empty too: what the pages edit and load into
+    return used ? kit_hue(s, kit, dim) : Look {};
 }
 // Where `key` sits in the track's key, 0 its root: the project's root moved by the track's transpose, as its Scale pads are.
 unsigned key_degree(const Project& project, const Track& t, int key) {
@@ -411,7 +416,7 @@ Look motion_look(const PadScene& s, const Heard& snd, const std::array<bool, 192
     if (t.engine != EngineKind::Sampler || levels_on(t)) return play_look(s, snd, pad);
     unsigned kit = kit_of(t, pad);
     Look base = kit_base(s, pad);
-    if (base.hue == Hue::Track && kit != t.last_pad && moving[kit % 192]) base = track(selected_index(s), mid);
+    if (base.hue == Hue::Track && kit != t.last_pad && moving[kit % 192]) base = kit_hue(s, kit, mid);
     return counting(s, playing(s, snd, base, pad));
 }
 
@@ -456,12 +461,12 @@ Look record_look(const PadScene& s, unsigned pad) {
     for (unsigned n = 0; n < ui.rec_chops && here; ++n)
         if (ui.rec_chop_pad[n] == kit) return white(mid); // cut: takes the next part
     if (here && state == S::Recording) return white(faint); // tap to cut here
-    return track(selected_index(s), t.pads[kit].used() ? dim : faint);
+    return t.pads[kit].used() ? kit_hue(s, kit, dim) : track(selected_index(s), faint);
 }
 Look resample_look(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     if (t.engine != EngineKind::Sampler) return {};
-    if (t.pads[kit_of(t, pad)].used()) return track(selected_index(s), dim);
+    if (t.pads[kit_of(t, pad)].used()) return kit_hue(s, kit_of(t, pad), dim);
     float pulse = 0.5f + 0.5f * std::sin(float(s.now % 1000) / 1000.0f * 6.2831853f); // empty: pick one
     return track(selected_index(s), between(faint, dim, pulse));
 }
@@ -534,7 +539,7 @@ Look pad_punch_look(const PadScene& s, const Heard& snd, unsigned pad) {
     unsigned kit = kit_of(t, pad);
     const auto& sound = t.pads[kit];
     if (!sound.used()) return {};
-    return track(selected_index(s), s.ui.pad_punch_held == int(kit) ? full : sound.punch ? mid : faint);
+    return kit_hue(s, kit, s.ui.pad_punch_held == int(kit) ? full : sound.punch ? mid : faint);
 }
 
 // ---- held buttons and open sheets
@@ -584,7 +589,7 @@ Look copy_look(const PadScene& s, unsigned pad) {
     const auto& t = selected(s);
     unsigned kit = kit_of(t, pad);
     bool used = t.pads[kit].used();
-    if (ui.copy_from < 0) return used ? track(selected_index(s), dim) : Look {}; // the pad to copy
+    if (ui.copy_from < 0) return used ? kit_hue(s, kit, dim) : Look {}; // the pad to copy
     if (ui.copy_from == int(kit)) return white(full);
     return used ? red(faint) : track(selected_index(s), faint); // where: replaced, or landing clean
 }
@@ -664,7 +669,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             if (mute_on_kit(ui, s.facts.kit_pads)) {
                 unsigned kit = kit_of(t, pad);
                 if (!t.pads[kit].used()) break;
-                look = t.pad_muted(kit) ? red(dim) : flare(pad_soloed(t, kit) ? white(mid) : track(selected_index(s), mid), snd.level[pad]);
+                look = t.pad_muted(kit) ? red(dim) : flare(pad_soloed(t, kit) ? white(mid) : kit_hue(s, kit, mid), snd.level[pad]);
                 break;
             }
             if (const auto& tr = s.project.tracks[pad]; tr.used()) {

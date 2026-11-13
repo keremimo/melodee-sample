@@ -109,6 +109,9 @@ struct PadSound {
     LayerPlay layer_play = LayerPlay::Velocity;
     // Roadmap P3: a loop's seam crossfaded over this many milliseconds (0 none), the same time at any rate (PXFD).
     uint8_t loop_xfade = 0;
+    // The colour the pad lights and is drawn in, 0xRRGGBB; 0: the track's. Stage's COLOUR sets it, an MPC kit brings
+    // its own (shell/mpc_project.h mpc_pad_colours()); kept in PCOL.
+    uint32_t colour = 0;
     uint32_t loop_point() const { return loop_lock ? start : loop_start; }
     bool used() const { return sample != no_sample; }
     bool warped() const { return warp == warp_seq || warp >= warp_min; }
@@ -145,6 +148,16 @@ inline PadSound layer_sound(const PadSound& sound, unsigned n) {
     one.loop_lock = true; // a layer loops from its own start
     one.layers = {};
     return one;
+}
+
+// A colour (0xRRGGBB) raised to full brightness, its hue and saturation kept; 0 stays 0. A dark kit colour
+// (an MPC's 7F0000) still lights: how bright a pad is says how much it matters (shell/pad_light.h).
+constexpr uint32_t full_colour(uint32_t rgb) {
+    const uint32_t r = (rgb >> 16) & 255, g = (rgb >> 8) & 255, b = rgb & 255;
+    const uint32_t most = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    if (!most) return 0;
+    auto up = [most](uint32_t c) { return (c * 255 + most / 2) / most; };
+    return up(r) << 16 | up(g) << 8 | up(b);
 }
 
 // Chop's slice [start, end) of `parent`'s sample as a pad of its own: the parent pad's values (tune, Warp and the

@@ -43,6 +43,7 @@
 #include "melodee/model/lane_value.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/pad_colour.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/settings.h"
 #include "melodee/shell/capture_ring.h"
@@ -5321,7 +5322,7 @@ void stage() {
     }
     CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::PluginSound);
     CHECK(stage_groups(EngineKind::Plugin).groups[2].pages[0].kind == StageKind::Mix && stage_groups(EngineKind::Sampler).groups[2].pages[0].kind == StageKind::PadMix);
-    CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 3);
+    CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 4);
     CHECK(stage_groups(EngineKind::None).groups[2].pages[0].kind == StageKind::NewMidi);
 
     auto project = std::make_unique<Project>();
@@ -5408,8 +5409,9 @@ void stage() {
     CHECK(key() == "FILTER" && cards(false)[2].kind == K::PadFilterType);
     stage_go(ui, 2, 3);
     CHECK(key() == "FILT ENV" && cards(false)[2].kind == K::PadFAmount);
-    // B2 PLAY -> FOLLOW -> CLOUD -> PLAY; B3 ends on KIT FILT.
+    // B2 PLAY -> COLOUR -> FOLLOW -> CLOUD -> PLAY; B3 ends on KIT FILT.
     stage_go(ui, 1, 0);
+    stage_press(ui, kit, 1); CHECK(key() == "COLOUR" && cards(false)[0].kind == K::PadColour && !cards(false)[1].bound() && cards(true)[0].kind == K::PadColour);
     stage_press(ui, kit, 1); CHECK(key() == "FOLLOW" && cards(false)[0].id == sampler::Follow && cards(false)[1].id == sampler::FollowHow);
     stage_press(ui, kit, 1); CHECK(key() == "CLOUD" && cards(false)[0].id == sampler::Position && cards(false)[2].id == sampler::Density);
     CHECK(cards(true)[0].id == sampler::Scan && cards(true)[2].id == sampler::Cloud);
@@ -12741,7 +12743,76 @@ void deep_freeze_f2d() {
     std::puts("deep freeze ok");
 }
 
+// Kit pads' own colours: an MPC kit brings them, Stage's COLOUR (B2 after PLAY) picks them from the track
+// colours, PCOL and BCOL keep them, and the pads light in them.
+void pad_colours() {
+    using K = Binding::Kind;
+    // A dark MPC colour at full brightness, its hue kept; none stays none.
+    CHECK(full_colour(0x7F0000) == 0xFF0000 && full_colour(0x50007F) == 0xA100FF && full_colour(0x0000FF) == 0x0000FF && full_colour(0) == 0);
+    // COLOUR's list: the track's, the sixteen, then the pad's own when it is none of them.
+    CHECK(colour_choice(0) == colour_track && colour_choice(ui::track_shades[2][0]) == 3 && colour_choice(0x123456) == colour_own);
+    CHECK(colour_last(0) == colour_own - 1 && colour_last(ui::track_shades[15][0]) == colour_own - 1 && colour_last(0x123456) == colour_own);
+    CHECK(colour_at(colour_track, 0x123456) == 0 && colour_at(3, 0) == ui::track_shades[2][0] && colour_at(colour_own, 0x123456) == 0x123456);
+    CHECK(std::string(ui::track_colour_names[2]) == "Teal");
+
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& kit = project->tracks[1];
+    kit.engine = EngineKind::Sampler;
+    std::snprintf(project->samples[0].path, sizeof(project->samples[0].path), "Samples/Kick.wav");
+    project->samples[0].frames = 44100;
+    kit.pads[5].sample = 0; kit.pads[7].sample = 0;
+    kit.last_pad = 5;
+    UiState ui;
+    ui.track = 1; ui.page = PageId::Stage;
+    Pattern none;
+    stage_go(ui, EngineKind::Sampler, StageKind::Colour);
+    CHECK(ui.stage_group[1] == 1 && ui.stage_sub[1] == 1); // B2, after PLAY
+    auto cards = page_bindings(*project, ui, none, false);
+    CHECK(cards[0].kind == K::PadColour && cards[0].value == colour_track && cards[0].min == colour_track && cards[0].max == colour_own - 1);
+    CHECK(!cards[1].bound() && !cards[2].bound() && !shift_bindings(*project, ui, none)[0].bound());
+    kit.pads[5].colour = 0x123456; // an MPC kit's: the list reaches it at its end
+    cards = page_bindings(*project, ui, none, false);
+    CHECK(cards[0].value == colour_own && cards[0].max == colour_own);
+    kit.pads[5].colour = ui::track_shades[4][0];
+    CHECK(page_bindings(*project, ui, none, false)[0].value == 5);
+    kit.last_pad = 6; // an empty pad: nothing to colour
+    CHECK(!page_bindings(*project, ui, none, false)[0].bound());
+    kit.last_pad = 5;
+
+    // The pads light in their own colours; one without stays in the track's.
+    kit.pads[5].colour = 0xFF0000; kit.pads[7].colour = ui::track_shades[4][0];
+    EngineHost host;
+    TrackTaps taps;
+    PadFacts plays; plays.kit_pads = true;
+    std::array<pad_light::Look, 16> looks;
+    pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
+    CHECK(looks[5].colour == 0xFF0000 && looks[5].hue == pad_light::Hue::Track && pad_light::rung(looks[5].level) == 4);
+    CHECK(looks[7].colour == ui::track_shades[4][0] && pad_light::rung(looks[7].level) == 2);
+    kit.pads[7].colour = 0;
+    pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
+    CHECK(looks[7].colour == ui::track_shades[1][0]);
+
+    // PCOL keeps them; an empty pad's is not kept; a build without PCOL leaves the track's.
+    kit.pads[7].colour = ui::track_shades[4][0]; kit.pads[9].colour = 0x00FF00;
+    auto file = save_project(*project, *bank);
+    auto loaded = std::make_unique<Project>();
+    auto loaded_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(file, *loaded, *loaded_bank).empty());
+    CHECK(loaded->tracks[1].pads[5].colour == 0xFF0000 && loaded->tracks[1].pads[7].colour == ui::track_shades[4][0] && loaded->tracks[1].pads[9].colour == 0);
+    std::string text(file.begin(), file.end());
+    file[text.find("PCOL")] = 'X';
+    CHECK(load_project(file, *loaded, *loaded_bank).empty() && loaded->tracks[1].pads[5].colour == 0);
+    // A bank file keeps them in BCOL, and they come back with it.
+    BankFile saved = bank_of(*project, 1, 0, "Colours"), back;
+    CHECK(load_bank(save_bank(saved), back) && back.pads[5].colour == 0xFF0000 && back.pads[7].colour == ui::track_shades[4][0]);
+    Track into;
+    import_bank(back, 2, into, [](const SampleRef&) { return 0; });
+    CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
+}
+
 int main() {
+    pad_colours();
     tempo_lane_p5();
     capture_p5();
     scenes_p5();

@@ -107,10 +107,10 @@ const StageGroups& stage_groups(EngineKind kind) {
     using P = StagePicture;
     constexpr int8_t _ = -1;
     // A kit, on the last pad hit: B1 the sample (trim, layers, tune, its envelope), B2 how it plays (as
-    // the sampler pages, shell/sampler_map.h), B3 where it goes (mix, sends) and its filters.
+    // the sampler pages, shell/sampler_map.h) and the pad's colour, B3 where it goes (mix, sends) and its filters.
     static const StageGroups kit {{{
         {{{{"TRIM", K::Trim, P::Wave}, {"LAYERS", K::Layers, P::Wave}, {"TUNE", K::Tune, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}}}, 4},
-        {{{{"PLAY", K::Play, P::Wave}, {"FOLLOW", K::Follow, P::Wave}, {"CLOUD", K::Cloud, P::Wave}}}, 3},
+        {{{{"PLAY", K::Play, P::Wave}, {"COLOUR", K::Colour, P::Colours}, {"FOLLOW", K::Follow, P::Wave}, {"CLOUD", K::Cloud, P::Wave}}}, 4},
         {{{{"MIX", K::PadMix, P::Wave}, stage_sends, {"FILTER", K::Filter, P::Wave}, {"FILT ENV", K::FiltEnv, P::Wave}, {"KIT FILT", K::KitFilter, P::Wave}}}, 5},
     }}};
     // MIDI: B1 where the notes go, bank and program, three controllers; B2 the arp and chord; B3 nothing (no audio).

@@ -5,8 +5,8 @@
 // the lit one again steps to the next page, another jumps to its first; the
 // soft keys name each button's page, with a dot a page under a cycle. Every
 // track gives the buttons the same jobs: B1 the source, B2 how it plays, B3
-// where it goes. A kit: B1 Trim / Layers / Tune / Amp Env, B2 Play / Follow /
-// Cloud, B3 Mix / Sends / Filter / Filt Env / Kit filter, on the last pad hit;
+// where it goes. A kit: B1 Trim / Layers / Tune / Amp Env, B2 Play / Colour /
+// Follow / Cloud, B3 Mix / Sends / Filter / Filt Env / Kit filter, on the last pad hit;
 // a PLUGIN track (a synth: Melodee Poly, PD and Chip are plug-ins): B1 its
 // presets (or its face when it has none) and its parameters, B2 arp and chord,
 // B3 mix, sends, effects; a MIDI track: B1 device, program, CC, B2 arp and
@@ -809,12 +809,33 @@ void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift
     if (shift_row) icon(p, Icon::Shift, px, y0 + 6, 12, colour::mid, 1.4f); // the rows Shift + K1-K3 turn
 }
 
+// COLOUR (a kit): the bank as its pads sit, each filled with the colour it lights in, the last pad ringed. K1 and the
+// wheel colour the last pad; a hit picks another, Minus / Plus another bank.
+void colours_picture(Paint& p, const Snapshot& s) {
+    const auto& t = s.track();
+    const unsigned bank = t.bank % sampler_banks;
+    constexpr float gap = 4, y0 = top + 4, w = (pw - 3 * gap) / 4, h = (bottom - top - 8 - 3 * gap) / 4;
+    for (unsigned n = 0; n < 16; ++n) {
+        const unsigned kit = bank * 16 + n, row = 3 - n / 4, column = n % 4;
+        const float x = px + column * (w + gap), y = y0 + row * (h + gap);
+        const bool used = t.pads[kit].used();
+        const auto fill = used ? pad_colour(s, kit) : colour::surf;
+        p.fill(x, y, w, h, fill, 3);
+        if (kit == t.last_pad) p.ring(x - 2, y - 2, w + 4, h + 4, colour::text, 5, 2);
+        char label[4]; pad_label(kit, label);
+        auto name = used ? pad_name(s, kit, true) : juce::String(label);
+        auto style = plain(used ? ink_on(fill) : colour::dim, type::small, Weight::SemiBold);
+        p.text(name, x + 5, y + h - 15, w - 10, 13, p.fit(name, style, w - 10, type::floor));
+    }
+}
+
 // Freeze plan F2c: Stage of a frozen track (its sound pages; MIX and SENDS stay live): the print of the pattern
 // playing, bar by bar with the playhead, over FREEZE and PADS PLAY LIVE and what the print holds. A deep freeze
 // (F2d): DEEP FREEZE and PADS OFF, or THAWING while its plug-ins load again.
 bool frozen_view(const Snapshot& s, const StagePage& page) {
     const auto& f = s.freeze[s.ui.track % track_count];
-    return f.frozen() && s.track().used() && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends;
+    return f.frozen() && s.track().used() && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends
+        && page.picture != StagePicture::Colours; // a pad's colour is not in the print
 }
 
 void frozen_picture(Paint& p, const Snapshot& s) {
@@ -954,7 +975,7 @@ HeaderItem kit_pill(const Snapshot& s) {
     char label[4];
     pad_label(t.last_pad, label);
     auto name = pad_name(s, t.last_pad % sampler_pads, false);
-    return pill(juce::String(label) + (name.isNotEmpty() ? dot + name_case(name) : dot + "EMPTY"), colour_of(s));
+    return pill(juce::String(label) + (name.isNotEmpty() ? dot + name_case(name) : dot + "EMPTY"), pad_colour(s, t.last_pad));
 }
 
 void draw(Paint& p, const Snapshot& s) {
@@ -962,7 +983,7 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& page = stage_page_now(s.ui, t);
     auto c = colour_of(s);
     Header h = header_of(s);
-    if (stage_kit_page(page.kind) != PageId::Count) {
+    if (stage_kit_page(page.kind) != PageId::Count || page.kind == StageKind::Colour) {
         h.left.push_back(kit_pill(s));
         if (page.kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
         if (page.kind == StageKind::Follow) h.left.push_back(follow_pill(s));
@@ -1021,12 +1042,14 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::PluginSound: plugin_sound_picture(p, s); break;
     case StagePicture::PluginEdit: draw_plugin_view(p, s, t.plugin, top); break;
     case StagePicture::Engines: case StagePicture::Sources: case StagePicture::Ports: break; // new_track_picture
+    case StagePicture::Colours: colours_picture(p, s); break;
     }
 }
 
 void soft(Context& c, int key) {
     const auto& page = stage_page_now(c.ui, c.track());
-    if (c.ui.shift && c.frozen(c.ui.track) && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends) {
+    if (c.ui.shift && c.frozen(c.ui.track) && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends
+        && page.picture != StagePicture::Colours) {
         if (key == 2) c.deep_freeze(c.ui.track); // freeze plan F2d
         return;
     }

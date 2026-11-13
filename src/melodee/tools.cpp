@@ -21,6 +21,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/ui/boot.h"
+#include "melodee/ui/shades.h"
 #include "drivers/usb_audio.h"
 #include "runtime/screen.h"
 #include "runtime/util.h"
@@ -661,6 +662,14 @@ void plugin_track(Snapshot& s, PluginStatus status) {
 
 // The same by the kind of page, wherever the track's Stage keeps it (shell/stage_map.h); a PLUGIN track's plug-in
 // open, as the MPC has it on every Stage page (B1 then says PRESETS).
+// Track 4's kit in colours, as an MPC kit brings them (kick red, snare blue, hats green) and Stage's COLOUR picks them
+// (breaks 1-4 Violet, A09 in hand Teal); breaks 6-12 stay in the track's colour.
+void coloured_kit(Snapshot& s) {
+    auto& pads = s.project.tracks[3].pads;
+    pads[0].colour = full_colour(0x7F0000); pads[1].colour = 0x0000FF; pads[2].colour = pads[3].colour = 0x00FF00;
+    for (unsigned n = 4; n < 8; ++n) pads[n].colour = ui::track_shades[7][0];
+    pads[8].colour = ui::track_shades[2][0];
+}
 void on_stage(Snapshot& s, unsigned track, StageKind kind) {
     const auto& t = s.project.tracks[track];
     auto f = stage_find(t.engine, kind);
@@ -764,6 +773,7 @@ const Preview previews[] {
      }},
     {"stagekittune", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Tune); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pitch = -2; }},
     {"stagekitplay", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Play); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].group = 2; }},
+    {"stagekitcolour", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Colour); s.sample = break_sample(); s.playing = true; coloured_kit(s); }},
     {"stagekitfollow", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Follow); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Follow] = 1; }},
     {"stagekitcloud", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Cloud] = 1; }},
     {"stagekitcloudoff", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true; }},
@@ -1167,6 +1177,11 @@ const Preview previews[] {
      }},
     {"pads", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample(); s.ui.turning = 1; s.ui.turned_at = s.now;
+         pad_waves(s);
+     }},
+    {"padscolour", [](Shell&, Snapshot& s) { // a kit in colours of its own (Stage's COLOUR, an MPC kit's)
+         s.ui.page = PageId::Pads; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         coloured_kit(s);
          pad_waves(s);
      }},
     {"padsplaying", [](Shell&, Snapshot& s) { // the pad in hand as it plays: a head on its small waveform
@@ -2412,8 +2427,8 @@ static int mpc_import(const char* path) {
             if (!pad.used()) continue;
             char label[4];
             pad_label(n, label);
-            std::printf("pad %s file=%s start=%u end=%u level=%u pan=%d pitch=%d play=%d mono=%d group=%u filter=%s cutoff=%u warp=%u attack=%u decay=%u loop=%d\n", label, project->samples[pad.sample].name,
-                        pad.start, pad.end, pad.level, pad.pan, pad.pitch, int(pad.play), pad.mono, pad.group, pad_filter_name(pad.filter), pad.cutoff, pad.warp, pad.attack, pad.decay, pad.loop);
+            std::printf("pad %s file=%s start=%u end=%u level=%u pan=%d pitch=%d play=%d mono=%d group=%u filter=%s cutoff=%u warp=%u attack=%u decay=%u loop=%d colour=%06x\n", label, project->samples[pad.sample].name,
+                        pad.start, pad.end, pad.level, pad.pan, pad.pitch, int(pad.play), pad.mono, pad.group, pad_filter_name(pad.filter), pad.cutoff, pad.warp, pad.attack, pad.decay, pad.loop, unsigned(pad.colour));
             const auto& ref = project->samples[pad.sample];
             std::string file, which;
             if (ref.instrument() && split_program_pad(ref.path, file, which)) { // its layers, as the sample library will read them

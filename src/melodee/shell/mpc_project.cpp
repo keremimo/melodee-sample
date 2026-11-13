@@ -122,6 +122,24 @@ private:
 
 const juce::var nothing; // what the lookups below hand back when there is no such thing
 
+// A program's ProgramPads (mpc_pad_colours()): a flag or a pad is {"value0": ...}, as the MPC writes them.
+std::array<uint32_t, 128> pad_colours_of(const juce::var& pads) {
+    std::array<uint32_t, 128> out {};
+    if (!pads.isObject()) return out;
+    auto colour = [](const juce::var& v) { return full_colour(uint32_t(juce::int64(v)) & 0xFFFFFF); };
+    if (flag(pads["PadsFollowTrackColour"], "value0")) return out; // the track's: Melodee's own
+    if (flag(pads["Universal"], "value0")) {
+        if (!pads["universalPad"].isVoid()) out.fill(colour(pads["universalPad"]));
+        return out;
+    }
+    const auto& each = pads["pads"];
+    for (unsigned n = 0; n < out.size(); ++n) {
+        const auto& v = each[juce::Identifier("value" + juce::String(n))];
+        if (!v.isVoid()) out[n] = colour(v);
+    }
+    return out;
+}
+
 const juce::var& sounding_layer(const juce::var& instrument) {
     const auto* layers = instrument["layersv"].getArray();
     if (layers)
@@ -306,6 +324,14 @@ unsigned read_notes(const juce::var& clip, const std::array<int, 128>& pad_of_no
 
 bool is_mpc_project(const std::string& path) { return fs::path(path).extension() == ".xpj"; }
 
+std::array<uint32_t, 128> mpc_pad_colours(const std::string& json) {
+    auto root = juce::JSON::parse(juce::String::fromUTF8(json.data(), int(json.size())));
+    if (auto* object = root.getDynamicObject()) // an .xpm's: the pads inside {"ProgramPads-v2.10": {...}}
+        for (const auto& property : object->getProperties())
+            if (property.name.toString().startsWith("ProgramPads")) return pad_colours_of(property.value);
+    return pad_colours_of(root);
+}
+
 unsigned mpc_wav_rate(const std::string& path) { return wav_rate(path); }
 
 std::map<std::string, KeygroupInstrument> mpc_project_pads(const std::vector<uint8_t>& file, const std::string& path) {
@@ -344,6 +370,8 @@ std::string read_mpc_json_program(const std::vector<uint8_t>& file, const std::s
     out.tags["ProgramName"] = program["name"].toString().toStdString();
     out.tags["Volume"] = std::to_string(number(program["mixable"], "volume", 0.7079));
     out.tags["Pan"] = std::to_string(number(program["mixable"], "pan", 0.5));
+    if (program["programPads"].isObject()) // its pad colours, as an .xpm keeps them (mpc_pad_colours())
+        out.tags["ProgramPads"] = juce::JSON::toString(program["programPads"], true).toStdString();
     if (program["keygroup"].isObject()) {
         out.tags["KeygroupNumKeygroups"] = std::to_string(integer(program["keygroup"], "numKeygroups", 128));
         out.tags["KeygroupTranspose"] = std::to_string(integer(program["keygroup"], "transpose"));
@@ -398,6 +426,7 @@ std::string import_mpc_project(const std::vector<uint8_t>& file, const std::stri
         track.mix.pan = pan_of(number(mix, "pan", 0.5));
         track.mix.mute = flag(mix, "mute") || flag(source, "mute");
         track.mix.solo = flag(mix, "solo");
+        const auto colours = pad_colours_of(program["programPads"]);
 
         for (int n = 0; n < std::min(instruments->size(), mpc_pads); ++n) {
             const auto& instrument = instruments->getReference(n);
@@ -411,6 +440,7 @@ std::string import_mpc_project(const std::vector<uint8_t>& file, const std::stri
             if (slot < 0) { ++report.over_limit; continue; }
             report.missing += missing;
             read_pad(instrument, layer, unsigned(slot), layered ? 1.0 : samples.to_model(unsigned(slot)), track.pads[size_t(n)], layered);
+            track.pads[size_t(n)].colour = colours[size_t(n)];
             ++report.pads;
         }
 

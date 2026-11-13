@@ -3,6 +3,7 @@
 #pragma once
 #include "melodee/engine/keygroup.h"
 #include "melodee/model/project.h"
+#include <array>
 #include <map>
 #include <cstdint>
 #include <string>
@@ -35,5 +36,11 @@ std::string read_mpc_json_program(const std::vector<uint8_t>& file, const std::s
 
 // The sample rate of a WAV file; 0 when it cannot tell.
 unsigned mpc_wav_rate(const std::string& path);
+
+// An MPC program's pad colours, pad 1 first, as 0xRRGGBB at full brightness (model/sampler.h full_colour()); 0 where
+// a pad follows its track. `json` is its ProgramPads: an .xpm keeps it as text in <ProgramPads-v2.10>, an .xty or an
+// .xpj as the program's "programPads". One colour for every pad (Universal) gives every pad that colour; pads that
+// follow the track's colour (PadsFollowTrackColour) give 0, Melodee's track colour.
+std::array<uint32_t, 128> mpc_pad_colours(const std::string& json);
 
 } // namespace melodee

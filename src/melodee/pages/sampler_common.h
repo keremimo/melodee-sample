@@ -22,6 +22,8 @@ void sampler_wheel(Context& c, int delta);      // a page without rows: only the
 void sampler_top(ui::Paint& p, const Snapshot& s, const juce::String& pill_text, bool rows);
 juce::String sampler_pad_pill(const Snapshot& s);          // "PAD A01 · KICK"
 const PadSound& sampler_pad(const Snapshot& s);             // the last pad hit
+juce::Colour pad_colour(const Snapshot& s, unsigned kit);   // kit pad `kit`'s own colour (Stage's COLOUR, an MPC kit's), else the track's
+juce::Colour ink_on(juce::Colour fill);                     // type on a pad's colour: dark on a light one, light on a dark one
 void sampler_pills(ui::Paint& p, float y, std::initializer_list<juce::String> texts, juce::Colour first);
 // Note On (a note), Loop (a loop) and reverse (an arrow) from `x` on; returns where they end.
 float pad_icons(ui::Paint& p, float x, float y, const PadSound& pad, juce::Colour colour);

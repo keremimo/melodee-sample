@@ -534,6 +534,16 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used() && tr.pads[n].loop_xfade) { w.u8(n); w.u8(tr.pads[n].loop_xfade); }
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // kit pads in a colour of their own (Stage's COLOUR, an MPC kit's): pad, 0xRRGGBB
+        const auto& tr = project.tracks[t];
+        unsigned used = 0;
+        for (const auto& pad : tr.pads) used += pad.used() && pad.colour;
+        if (!used) continue;
+        at = w.begin("PCOL");
+        w.u8(t); w.u8(used);
+        for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used() && tr.pads[n].colour) { w.u8(n); w.u32(tr.pads[n].colour); }
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // kit pads with layers, or layer values of their own (roadmap P3)
         const auto& tr = project.tracks[t];
         unsigned used = 0;
@@ -810,6 +820,15 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             for (unsigned k = 0; k < used && r.ok; ++k) {
                 unsigned n = r.u8(), ms = r.u8();
                 project->tracks[t].pads[n % sampler_pads].loop_xfade = uint8_t(std::min(ms, max_loop_xfade));
+            }
+        } else if (name == "PCOL") { // kit pads' own colours; without it every pad lights in its track's
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) {
+                unsigned n = r.u8();
+                uint32_t colour = r.u32() & 0xFFFFFF;
+                if (r.ok) project->tracks[t].pads[n % sampler_pads].colour = colour;
             }
         } else if (name == "LAYR") { // pad layers (roadmap P3); without it every pad plays its one sample
             unsigned t = r.u8();
@@ -1353,6 +1372,14 @@ std::vector<uint8_t> save_bank(const BankFile& bank) {
         for (unsigned k = 0; k < bank_pads; ++k) if (bank.pads[k].used() && bank.pads[k].loop_xfade) { w.u8(k); w.u8(bank.pads[k].loop_xfade); }
         w.end(at);
     }
+    unsigned coloured = 0; // the pads' own colours, as PCOL: pad, 0xRRGGBB
+    for (const auto& pad : bank.pads) coloured += pad.used() && pad.colour;
+    if (coloured) {
+        at = w.begin("BCOL");
+        w.u8(coloured);
+        for (unsigned k = 0; k < bank_pads; ++k) if (bank.pads[k].used() && bank.pads[k].colour) { w.u8(k); w.u32(bank.pads[k].colour); }
+        w.end(at);
+    }
     if (layered) {
         at = w.begin("BLYR");
         w.u8(layered);
@@ -1399,6 +1426,13 @@ bool load_bank(const std::vector<uint8_t>& data, BankFile& out) {
         } else if (name == "BXFD") {
             unsigned faded = r.u8();
             for (unsigned k = 0; k < faded && r.ok; ++k) { unsigned n = r.u8(), ms = r.u8(); bank.pads[n % bank_pads].loop_xfade = uint8_t(std::min(ms, max_loop_xfade)); }
+        } else if (name == "BCOL") {
+            unsigned coloured = r.u8();
+            for (unsigned k = 0; k < coloured && r.ok; ++k) {
+                unsigned n = r.u8();
+                uint32_t colour = r.u32() & 0xFFFFFF;
+                if (r.ok) bank.pads[n % bank_pads].colour = colour;
+            }
         } else if (name == "BLYR") {
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_layers(r, bank.pads.data(), bank_pads, unsigned(bank.samples.size()));

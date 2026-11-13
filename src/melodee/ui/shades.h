@@ -20,6 +20,10 @@ constexpr std::array<std::array<uint32_t, 3>, 16> track_shades {{
     {0x6F8CFF, 0x6FCFFF, 0x956FFF}, {0xFF9A3C, 0xFF3F3C, 0xFFF53C}, {0xF06FD8, 0xCC6FF0, 0xF06F9C},
     {0xB8C2D6, 0xB8D0D6, 0xBCB8D6},
 }};
+// The sixteen by name, as Stage's COLOUR offers them to a kit pad (shell/pad_colour.h).
+constexpr std::array<const char*, 16> track_colour_names {
+    "Coral", "Amber", "Teal", "Lavender", "Sky", "Pink", "Lime", "Violet", "Cyan", "Yellow", "Rose", "Green", "Blue", "Orange", "Magenta", "Grey",
+};
 // The Looper's tracks L1-L4 (docs/LOOPER.md): colours of their own, apart from the sixteen, shaded the same way.
 constexpr std::array<std::array<uint32_t, 3>, 4> loop_shades {{
     {0x6FD3FF, 0x6FA6FF, 0x6FFFE5}, {0xFFA36F, 0xFF7A6F, 0xFFD06F}, {0xC09CFF, 0x9C9EFF, 0xE69CFF}, {0x7DEBA6, 0x7DEBD9, 0xA4EB7D},

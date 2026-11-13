@@ -78,6 +78,13 @@ void draw_sampler_map(Paint& p, const Snapshot& s) {
 
 const PadSound& sampler_pad(const Snapshot& s) { return s.track().pads[s.track().last_pad % sampler_pads]; }
 
+juce::Colour pad_colour(const Snapshot& s, unsigned kit) {
+    uint32_t own = s.track().pads[kit % sampler_pads].colour;
+    return own ? juce::Colour(0xFF000000u | own) : colour_of(s);
+}
+
+juce::Colour ink_on(juce::Colour fill) { return fill.getPerceivedBrightness() > 0.55f ? ui::colour::bg : ui::colour::text; }
+
 juce::String sampler_pad_pill(const Snapshot& s) {
     const auto& t = s.track();
     char label[4]; pad_label(t.last_pad, label);

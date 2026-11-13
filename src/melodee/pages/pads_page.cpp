@@ -21,12 +21,11 @@ using namespace ui;
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& track = s.track();
-    auto c = colour_of(s);
     unsigned bank = track.bank % sampler_banks;
     Header h = header_of(s);
     char hand[4]; pad_label(track.last_pad, hand);
     auto hand_name = track.pads[track.last_pad % sampler_pads].used() ? pad_name(s, track.last_pad % sampler_pads, true) : juce::String("Empty");
-    h.left.push_back(chip(juce::String(hand) + " " + hand_name, c));
+    h.left.push_back(chip(juce::String(hand) + " " + hand_name, pad_colour(s, track.last_pad)));
     auto bank_pill = pill(juce::String("BANK ") + char('A' + bank));
     bank_pill.spare = true; // a long sample name keeps its room: the bank lights say the bank too
     h.left.push_back(bank_pill);
@@ -41,25 +40,26 @@ void draw(Paint& p, const Snapshot& s) {
         float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
         bool last = kit == track.last_pad, held = s.ui.held_pads & (1u << n);
         bool sounding = lines[n].strength > 0 && lines[n].through > 0;
-        p.fill(x, y, w, ch, last ? c : colour::surf, 3);
-        if (!last && (held || sounding)) p.fill(x, y, w, ch, c.withAlpha(0.25f), 3); // it sounds: lit
+        const auto pc = pad_colour(s, kit); // its own colour (Stage's COLOUR, an MPC kit's), else the track's
+        p.fill(x, y, w, ch, last ? pc : colour::surf, 3);
+        if (!last && (held || sounding)) p.fill(x, y, w, ch, pc.withAlpha(0.25f), 3); // it sounds: lit
         // Its waveform, start to end, bars from the middle.
         float wx = x + 5, wy = y + 4, ww = w - 10, wh = ch - 19;
         if (s.pad_waves_shown & (1u << n)) {
             const auto& wave = s.pad_waves[n];
             float bw = ww / float(wave.size());
-            auto ink = last ? colour::bg.withAlpha(0.9f) : c.withAlpha(0.75f);
+            auto ink = last ? ink_on(pc).withAlpha(0.9f) : pc.withAlpha(0.75f);
             for (unsigned k = 0; k < wave.size(); ++k) {
                 float bh = std::max(1.0f, wave[k] / 255.0f * wh);
                 p.fill(wx + k * bw, wy + (wh - bh) / 2, std::max(1.0f, bw - 0.6f), bh, ink, 0.5f);
             }
-            if (sounding) p.fill(wx + ww * std::clamp(lines[n].through, 0.0f, 1.0f), wy - 1, 1.5f, wh + 2, last ? colour::bg : colour::text); // the head
+            if (sounding) p.fill(wx + ww * std::clamp(lines[n].through, 0.0f, 1.0f), wy - 1, 1.5f, wh + 2, last ? ink_on(pc) : colour::text); // the head
         }
         // Its name (a chop's slice) or label; muted, MUTE.
         char label[4]; pad_label(kit, label);
         bool muted = track.pad_muted(kit) && track.pads[kit].used();
         auto name = muted ? juce::String("MUTE") : track.pads[kit].used() ? pad_name(s, kit, true) : juce::String(label);
-        auto style = plain(last ? colour::bg : track.pads[kit].used() ? colour::text : colour::dim, type::small, Weight::SemiBold);
+        auto style = plain(last ? ink_on(pc) : track.pads[kit].used() ? colour::text : colour::dim, type::small, Weight::SemiBold);
         p.text(name, x + 5, y + ch - 15, w - 10, 13, p.fit(name, style, w - 10, type::floor));
         if (muted) p.fill(x, y, w, ch, colour::bg.withAlpha(0.45f), 3);
     }

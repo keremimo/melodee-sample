@@ -70,6 +70,7 @@ enum class StageKind : uint8_t {
     Trim, PadMix, AmpEnv, Tune, Play, Filter, FiltEnv, // a kit: the last pad's Sample Mode values
     Follow, Cloud, KitFilter,                          // a kit: Melodee's own kit-wide pages
     Layers,                                            // a kit: the last pad's four layers (roadmap P3)
+    Colour,                                            // a kit: the last pad's colour (shell/pad_colour.h)
     PluginSound,       // a PLUGIN track's first page: its presets (K1-K3 its first row), or its face when it has none
     PluginEdit,        // a PLUGIN track's own parameters, three a row; the wheel moves the rows
     NewSynth, NewKit, NewMidi,                         // an empty track: what it becomes (Push)
@@ -84,6 +85,7 @@ enum class StagePicture : uint8_t {
     ShiftRows, // the Shift row as rows: what Shift + K1-K3 reach
     Mix, Sends, Arp, Chord, Fx, Wave, Route, Program, Cc, Engines, Sources, Ports,
     PluginSound, PluginEdit,
+    Colours,   // a kit's bank as its pads sit, each in its colour, the last pad outlined
 };
 struct StagePage {
     const char* key = ""; // as the soft key names it: "AMP ENV"

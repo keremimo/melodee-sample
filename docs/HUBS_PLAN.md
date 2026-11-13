@@ -41,7 +41,7 @@ SOUND hub, option B (picked):
 
 | Track | B1 | B2 | B3 |
 | --- | --- | --- | --- |
-| Kit | TRIM, LAYERS, TUNE, AMP ENV | PLAY, FOLLOW, CLOUD | MIX, SENDS, FILTER, FILT ENV, KIT FILT |
+| Kit | TRIM, LAYERS, TUNE, AMP ENV | PLAY, COLOUR, FOLLOW, CLOUD | MIX, SENDS, FILTER, FILT ENV, KIT FILT |
 | Plug-in | PRESETS (if it has any) or its face, then EDIT | ARP, CHORD | MIX, SENDS, FX |
 | MIDI | DEVICE, PROGRAM, CC | ARP, CHORD | — |
 

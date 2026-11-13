@@ -237,7 +237,8 @@ Muted pads light red. Soloed pads light white.
 
 The pads show what a press does on the page:
 
-- A track's colour: the track's notes or pads.
+- A track's colour: the track's notes or pads. A kit pad with a colour of
+  its own lights in that colour (see **COLOUR**).
 - White: the selected pad, or a panel job (for example while **SHIFT** is
   held).
 - Red: muted, about to be erased, or recording.
@@ -325,7 +326,7 @@ select it without playing it.
 | Key | Pages |
 | --- | --- |
 | **B1** | **TRIM**, **LAYERS**, **TUNE**, **AMP ENV** |
-| **B2** | **PLAY**, **FOLLOW**, **CLOUD** |
+| **B2** | **PLAY**, **COLOUR**, **FOLLOW**, **CLOUD** |
 | **B3** | **MIX**, **SENDS**, **FILTER**, **FILT ENV**, **KIT FILT** |
 
 Every track uses the keys the same way: **B1** for the sound's source, **B2**
@@ -370,6 +371,14 @@ the number of beats in the sample.
 **SHIFT** + **K2**: Pad Link. **SHIFT** + **K3**: loop crossfade. New pads
 are Mono: a new hit stops the pad's last one at the same pitch, so 16 Levels
 chords still sound. A loaded instrument is Poly.
+
+**COLOUR**: the bank's pads, each in its colour; the last pad you hit has
+a ring. **K1** or the encoder changes that pad's colour: **Track** (the
+track's colour), one of 16 colours, or **Kit** (the colour the pad came with
+from an MPC kit). Hit another pad to colour it. The pads light in their
+colours on every kit page.
+
+![COLOUR](images/screens/stagekitcolour.png)
 
 **FOLLOW**: the kit follows the project tempo. **K1** on or off, **K2** the
 mode (Beats, Tones or Tape), **K3** how pitch follows.
@@ -428,7 +437,7 @@ with its type.
 | --- | --- |
 | SFZ | `.sfz` |
 | MPC keygroup program | `.xpm`, or `.xty` from MPC 3 |
-| MPC drum program | `.xpm` or `.xty`, tagged **KIT**: loads as the whole kit |
+| MPC drum program | `.xpm` or `.xty`, tagged **KIT**: loads as the whole kit, with its pad colours |
 | MPC expansion | `.xpn`, tagged **INSTALL**: installs into `Samples/Expansions` |
 | Logic EXS24 / Sampler | `.exs`, with its samples in the same folder |
 | SoundFont | `.sf2`: opens as a folder of presets |
