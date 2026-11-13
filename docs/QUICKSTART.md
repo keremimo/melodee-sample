@@ -168,7 +168,7 @@ you hit.
 
 ## 7. Add a plug-in instrument
 
-Melodee loads VST3 and VST2 instruments built for the MPC's ARM processor,
+Melodee loads VST3, CLAP and VST2 instruments built for the MPC's ARM processor,
 including the Melodee Poly, Melodee PD and Melodee Chip synths. Put them in
 the `Plugins` folder on the card first (see [step 1](#1-install)). The
 Melodee synths are free downloads; see [Plug-ins](GUIDE.md#plug-ins).

@@ -787,7 +787,7 @@ void new_track_picture(Paint& p, const Snapshot& s) {
     p.fill(0, zone::picture_y, zone::width, zone::height - zone::picture_y, colour::bg); // the knob strip too: no pots here
     juce::String channel = juce::String::fromUTF8("MIDI \xc2\xb7 CH ") + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16));
     std::vector<CarouselCard> cards(new_choice_count);
-    cards[size_t(NewChoice::Plugin)] = {Icon::Plug, "SYNTH", "Plugin", "VST3 / VST2"};
+    cards[size_t(NewChoice::Plugin)] = {Icon::Plug, "SYNTH", "Plugin", "VST / CLAP"};
     cards[size_t(NewChoice::Kit)] = {Icon::Pads, "KIT", "Empty", "NO SAMPLES"};
     cards[size_t(NewChoice::Samples)] = {Icon::Folder, "KIT", "Card", "SAMPLES"};
     cards[size_t(NewChoice::Record)] = {Icon::Mic, "KIT", "Input", "RECORD"};

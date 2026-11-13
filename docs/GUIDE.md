@@ -1113,7 +1113,7 @@ Melodee has 41 effects in six families:
 | Tone | EQ, Filter, Formant, Width, Auto-wah |
 | Dynamics | Compressor, Gate, Transient, Limiter, Pumper |
 
-The seventh family, **Plug-ins**, loads a VST effect.
+The seventh family, **Plug-ins**, loads a plug-in effect (VST3, CLAP or VST2).
 
 - **Sidechain**: the last row of a Compressor or Gate has **KEY**. Set it to
   a track or bus, and that sound controls the effect. For example, duck a

@@ -6,9 +6,9 @@
 
 Melodee is a 16-track groovebox for the **Akai MPC Sample**. It runs on the
 MPC in place of the stock app, started from the microSD card. Each pad is a
-track: a drum kit or sampled instrument, a VST instrument, or a MIDI track
+track: a drum kit or sampled instrument, a plug-in instrument, or a MIDI track
 for external gear. Tracks play patterns, patterns make scenes and a song,
-and every track has a mixer strip and an effect chain that takes VST
+and every track has a mixer strip and an effect chain that takes plug-in
 effects.
 
 Melodee does not change anything on the MPC itself. It runs from files on
