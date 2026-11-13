@@ -12,6 +12,8 @@
 // need its audio back in real time: not yet. Shift + B3 DEEP FREEZE (freeze
 // plan F2d): every pattern with notes at Post FX, then the track's plug-ins
 // and its chain's are let go; its pads play nothing until it is unfrozen.
+// On a frozen track Shift + B1 UNFREEZE plays it live again (a deep freeze
+// thaws), as does B3 with no pattern lit (it reads UNFREEZE then).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include <cmath>
@@ -49,6 +51,7 @@ void draw(Paint& p, const Snapshot& s) {
     const auto c = track_colour(t);
     const bool midi = track.engine == EngineKind::Midi, printing = sheet.printing;
     const bool deep = s.freeze[t].state == FreezeState::Deep; // freeze plan F2d
+    const bool frozen = s.freeze[t].frozen();
     const auto& job = s.print;
     const bool ours = job.busy && job.track == t && job.freeze; // the print engine works on this sheet's track
     // Freeze plan F2d: with Shift held (DEEP FREEZE on B3) every pattern with notes is lit, as a deep freeze takes them all.
@@ -67,8 +70,9 @@ void draw(Paint& p, const Snapshot& s) {
     if (!printing) {
         keys.glyphs[2] = Icon::Snow;
         keys.tints[2] = midi || !picked ? colour::dim : colour::ice;
-        if (s.ui.shift) { // freeze plan F2d: the whole track, its plug-ins let go after
-            keys.labels = {"", "", "DEEP FREEZE"};
+        if (frozen && !picked) { keys.labels[2] = "UNFREEZE"; keys.glyphs[2] = Icon::None; keys.tints[2] = colour::text; } // nothing lit: live again
+        if (s.ui.shift) { // freeze plan F2d: the whole track, its plug-ins let go after; B1 live again
+            keys.labels = {frozen ? "UNFREEZE" : "", "", "DEEP FREEZE"};
             keys.icons = {};
             keys.glyphs[2] = Icon::DeepSnow;
             keys.tints[2] = midi || !notes || deep ? colour::dim : colour::ice;
@@ -134,7 +138,6 @@ void draw(Paint& p, const Snapshot& s) {
             double mb = bytes / (1024.0 * 1024.0);
             block(p, x, y + 44, w, "CARD", mb >= 10 ? juce::String(int(std::lround(mb))) : juce::String(mb, 1), "MB", colour::text);
             float load = s.machine.track_load[t];
-            bool frozen = s.freeze[t].frozen();
             float saved = frozen ? (s.live_load[t] > 0 ? std::max(0.0f, s.live_load[t] - load) : -1) : load;
             block(p, x, y + 88, w, "CPU", saved < 0 ? juce::String::fromUTF8("\xe2\x80\x94")
                                                     : juce::String::fromUTF8("\xe2\x88\x92") + juce::String(int(std::lround(saved * 100))),
@@ -147,7 +150,11 @@ void draw(Paint& p, const Snapshot& s) {
 void pad(Context& c, unsigned pad, uint8_t, bool down) { if (down) c.print_sheet_pad(pad); }
 
 void soft(Context& c, int key) {
-    if (c.ui.shift) { if (key == 2) c.print_sheet_go(true); return; } // freeze plan F2d: DEEP FREEZE
+    if (c.ui.shift) { // freeze plan F2d: DEEP FREEZE; B1 UNFREEZE
+        if (key == 0) c.print_sheet_unfreeze();
+        if (key == 2) c.print_sheet_go(true);
+        return;
+    }
     if (key == 0) c.print_sheet_cancel();
     if (key == 1) c.print_sheet_all();
     if (key == 2) c.print_sheet_go();

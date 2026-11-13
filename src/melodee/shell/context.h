@@ -349,6 +349,7 @@ public:
     void print_sheet_go(bool deep_freeze = false); // freeze plan F2d: Shift + B3 DEEP FREEZE
     void deep_freeze(unsigned track);              // Shift + B3 on a frozen track's Stage
     void print_sheet_cancel();
+    void print_sheet_unfreeze(); // Shift + B1 UNFREEZE, or B3 with no pattern lit on a frozen track
     // Seq held + Sample Record: while Seq stays down each pattern pad freezes or thaws its pattern; on its release the
     // track is frozen as they stand (prints made first), or unfrozen when none is left.
     void seq_print_start();
