@@ -33,6 +33,11 @@ void follow(Context& c, uint32_t tick, int key) {
 }
 } // namespace
 
+bool key_is_pad(const Track& t, int key) {
+    if (t.engine == EngineKind::Sampler) return key >= int(sampler_first_note) && key <= int(sampler_last_key);
+    return drum_pads(t) && drum_pad_of(key) >= 0;
+}
+
 std::string key_label(const Track& t, int key) {
     if (t.engine == EngineKind::Sampler && key >= int(sampler_first_note) && key <= int(sampler_last_key)) {
         char label[4];
@@ -301,7 +306,8 @@ void erase_key_events(Context& c, int key) {
         found = true;
     });
     c.ui.step_event = 0;
-    c.notice(found ? what : "No events on " + name);
+    if (key_is_pad(c.track(), key)) c.notice(found ? "Cleared all events from Pad " + name : std::string("No events in this pad")); // the stock MPC's words
+    else c.notice(found ? what : "No events on " + name);
 }
 
 } // namespace melodee

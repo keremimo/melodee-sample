@@ -77,6 +77,9 @@ void copy_press(Context& c, bool kit_pads, bool key_pads);
 void key_copy_pad(Context& c, unsigned pad);
 // A pad on Steps while a step copy waits (Copying::Steps): the step to copy, then where.
 void step_copy_pad(Context& c, unsigned pad);
+// Erase + Seq Record on a kit: every note of the selected pad (the 16 Levels pad under 16 Levels, else the last
+// pad) out of the pattern, once B3 says so. False when there is none to erase.
+bool erase_selected_pad(Context& c);
 // Erase + pad where the pads play a synth's keys: that key's notes, once B3 says so.
 void key_erase_pad(Context& c, unsigned pad);
 

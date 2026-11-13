@@ -165,6 +165,16 @@ void step_copy_pad(Context& c, unsigned pad) {
     ui.stop_copying();
 }
 
+bool erase_selected_pad(Context& c) {
+    const auto& t = c.track();
+    if (t.engine != EngineKind::Sampler || !t.used()) { c.notice("Select a kit pad"); return false; }
+    unsigned kit = (t.levels ? t.levels_pad : t.last_pad) % sampler_pads;
+    int key = int(sampler_first_note + kit);
+    if (!key_has_events(c.pattern(), key)) { c.notice("No events in this pad"); return false; }
+    ask(c, UiState::Ask::EraseKeyEvents, key);
+    return true;
+}
+
 void key_erase_pad(Context& c, unsigned pad) {
     const auto& t = c.track();
     int key = pad_key(c.project, t, pad);

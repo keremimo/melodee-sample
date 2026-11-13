@@ -39,9 +39,14 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
         unsigned count = 0;
         for (const auto& e : s.pattern.events) count += e.key == s.ui.ask_target;
         juce::String pad(key_label(t, int(s.ui.ask_target)));
-        sheet.title = "Erase " + pad + " here?";
-        sheet.lines = {(count == 1 ? juce::String("Its note") : "Its " + count_of(count, "note", "notes")) + " in this pattern go" + (count == 1 ? "es." : "."),
-                       count == 1 ? juce::String("Undo brings it back.") : undo_line};
+        if (key_is_pad(t, int(s.ui.ask_target))) { // a kit pad: the stock MPC's words
+            sheet.title = "Erase Events";
+            sheet.lines = {"Erase all events for Pad " + pad + "?", count_of(count, "note", "notes") + ". " + (count == 1 ? "Undo brings it back." : undo_line)};
+        } else {
+            sheet.title = "Erase " + pad + " here?";
+            sheet.lines = {(count == 1 ? juce::String("Its note") : "Its " + count_of(count, "note", "notes")) + " in this pattern go" + (count == 1 ? "es." : "."),
+                           count == 1 ? juce::String("Undo brings it back.") : undo_line};
+        }
         sheet.chip = "P" + juce::String(playing + 1);
         sheet.chip_colour = colour_of(s);
         sheet.name = "TRACK " + juce::String(track + 1);

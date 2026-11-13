@@ -33,6 +33,8 @@ inline int pad_key(const Project& project, const Track& t, unsigned pad) {
 }
 // What a key is called on a track: its kit pad (A03) or its note (D2).
 std::string key_label(const Track& track, int key);
+// Whether `key` is a pad's (a kit's, or a Drums plug-in's): its label is the pad's, A01 .. D16.
+bool key_is_pad(const Track& track, int key);
 // The event of `key` in the step under the cursor becomes the selection; false when there is none.
 bool select_key(Context& c, int key);
 

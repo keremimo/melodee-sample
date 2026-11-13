@@ -53,6 +53,9 @@ creating a project clears the undo history.
 - **ERASE** + pad on a kit, playing: erase that pad's notes from the pattern.
 - **ERASE** + pad on a synth, plug-in or MIDI track: erase that key's notes
   (asks first).
+- **ERASE** + **SEQ RECORD** on a kit: erase all notes of the selected pad
+  from the pattern (asks first). With 16 Levels on, this is the 16 Levels
+  pad, so every level goes.
 - **ERASE** + knob: set the value back to its default.
 - **ERASE** + fader: clear the fader's Motion lane (asks first).
 - **ERASE** pressed alone erases what the page has selected:

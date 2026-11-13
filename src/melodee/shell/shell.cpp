@@ -398,6 +398,7 @@ void Shell::press(Button b, bool pressed) {
         else context_.stop();
         break;
     case Button::SeqRecord:
+        if (ui.erase) { ui.erase_used = true; erase_selected_pad(context_); break; } // the selected pad's notes, asked first
         if (ui.shift) { context_.capture(); break; } // Recall: the last bars played, into the next empty pattern (Capture)
         context_.seq_record(); // arm, record now, or stop recording; a take is undone like any edit (Shift + Minus)
         break;
