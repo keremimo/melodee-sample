@@ -268,12 +268,18 @@ void mix_picture(Paint& p, const Snapshot& s) {
 
 // SENDS: the track's level on the left, a line from it to each of the four buses as thick as its send, each bus
 // with its first effect's glyph and name and a bar of what it receives. The bus in view (K1) wears its letter on a
-// chip in K1's shade, its line and bar in K2's (the send); the other three grey.
+// chip in K1's shade, its line and bar in K2's (the send); the other three grey. On a kit the last pad's own sends,
+// under its name; Shift held, the whole kit's (KIT SEND) under the track's.
 void sends_picture(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
     const auto& m = t.mix;
     auto c = colour_of(s);
-    p.text(name_case(juce::String(t.name)), px, top + 4, 140, 20, p.fit(name_case(juce::String(t.name)), plain(colour::text, type::list, Weight::SemiBold), 140, type::floor));
+    const bool pad_view = t.engine == EngineKind::Sampler && !s.ui.shift;
+    const auto& pad = t.pads[t.last_pad % sampler_pads];
+    auto send_of = [&](unsigned b) { return pad_view ? (pad.used() ? pad.sends[b] : 0) : m.sends[b]; };
+    juce::String title = pad_view ? pad_name(s, t.last_pad % sampler_pads, false) : name_case(juce::String(t.name));
+    if (pad_view && title.isEmpty()) { char label[4]; pad_label(t.last_pad % sampler_pads, label); title = label; } // an empty pad: its place
+    p.text(title, px, top + 4, 140, 20, p.fit(title, plain(colour::text, type::list, Weight::SemiBold), 140, type::floor));
     float mx = px + 4, my = top + 36, mh = zone::picture_h - 44;
     p.fill(mx, my, 6, mh, colour::line, 3);
     float meter = s.meters[s.ui.track % track_count];
@@ -286,7 +292,7 @@ void sends_picture(Paint& p, const Snapshot& s) {
     for (unsigned n = 0; n < bus_count; ++n) {
         unsigned b = n == bus_count - 1 ? in_view : n < in_view ? n : n + 1; // the bus in view last, its line on top
         bool picked = b == in_view;
-        float by = top + 4 + b * (bh + gap), mid = by + bh / 2, amount = m.sends[b] / 100.0f;
+        float by = top + 4 + b * (bh + gap), mid = by + bh / 2, amount = send_of(b) / 100.0f;
         auto shade = picked ? knob_shade(s.ui.track, 1) : colour::mid;
         const auto& bus = s.project.buses[b];
         bool has_fx = bus.fx.slots[0].used();
@@ -985,7 +991,8 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& page = stage_page_now(s.ui, t);
     auto c = colour_of(s);
     Header h = header_of(s);
-    if (stage_kit_page(page.kind) != PageId::Count || page.kind == StageKind::Colour) {
+    bool kit_sends = page.kind == StageKind::Sends && t.engine == EngineKind::Sampler; // the last pad's own sends
+    if (stage_kit_page(page.kind) != PageId::Count || page.kind == StageKind::Colour || kit_sends) {
         h.left.push_back(kit_pill(s));
         if (page.kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
         if (page.kind == StageKind::Follow) h.left.push_back(follow_pill(s));

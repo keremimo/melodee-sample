@@ -17,6 +17,7 @@
 #include "melodee/shell/roll.h"
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/shift_pad_jobs.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include <algorithm>
@@ -212,6 +213,23 @@ Look play_look(const PadScene& s, const Heard& snd, unsigned pad) {
     const auto& t = selected(s);
     if (levels_on(t)) return counting(s, levels_look(s, snd, pad));
     Look base = t.engine == EngineKind::Sampler ? kit_base(s, pad) : keys_base(s, pad);
+    return counting(s, playing(s, snd, base, pad));
+}
+
+// Stage's SENDS on a kit: each pad as bright as its own send into the bus in view, a dry pad dark, the last pad hit
+// white (the one K2 sets); held and hit pads flare as on any page.
+bool sends_lit(const PadScene& s) {
+    const auto& t = selected(s);
+    return s.ui.page == PageId::Stage && t.engine == EngineKind::Sampler && !levels_on(t) && stage_page_now(s.ui, t).kind == StageKind::Sends;
+}
+Look sends_look(const PadScene& s, const Heard& snd, unsigned pad) {
+    const auto& t = selected(s);
+    unsigned kit = kit_of(t, pad), bus = s.ui.sends_bus % bus_count;
+    const auto& p = t.pads[kit];
+    Look base;
+    if (p.used() && t.pad_muted(kit)) base = red(faint);
+    else if (kit == t.last_pad) base = white(full);
+    else if (p.used() && p.sends[bus]) base = kit_hue(s, kit, between(faint, full, p.sends[bus] / 100.0f));
     return counting(s, playing(s, snd, base, pad));
 }
 
@@ -709,7 +727,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::FlexBeat: look = flex_look(s, pad); break;
             default: // the track's own pads (freeze plan F2d: dark on a deep-frozen track, they play nothing)
                 if (s.freeze && (*s.freeze)[selected_index(s) % track_count].state == FreezeState::Deep) break;
-                look = play_look(s, snd, pad);
+                look = sends_lit(s) ? sends_look(s, snd, pad) : play_look(s, snd, pad);
                 break;
             }
             break;

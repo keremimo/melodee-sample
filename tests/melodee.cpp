@@ -13159,6 +13159,61 @@ void pad_colours() {
     CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
 }
 
+// Pad sends, phase 2: Stage's SENDS on a kit is the last pad's (K2), Shift + K2 the whole kit's; an empty pad has no K2;
+// a synth keeps its track's; undo keeps the pad; the pads light by their send into the bus in view.
+void pad_sends_stage() {
+    using K = Binding::Kind;
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& kit = project->tracks[1];
+    kit.engine = EngineKind::Sampler;
+    std::snprintf(project->samples[0].path, sizeof(project->samples[0].path), "Samples/Snare.wav");
+    project->samples[0].frames = 44100;
+    for (unsigned n : {0u, 1u, 2u}) kit.pads[n].sample = 0;
+    kit.pads[1].sends = {30, 0, 0, 0}; kit.pads[2].sends = {15, 40, 0, 0}; kit.mix.sends = {20, 0, 0, 0};
+    kit.last_pad = 1;
+    UiState ui;
+    ui.track = 1; ui.page = PageId::Stage;
+    Pattern none;
+    CHECK(stage_go(ui, EngineKind::Sampler, StageKind::Sends));
+    auto cards = page_bindings(*project, ui, none, false);
+    CHECK(cards[0].kind == K::SendBus && cards[1].kind == K::PadSend && cards[1].id == 0 && cards[1].value == 30 && cards[2].kind == K::BusReturn);
+    auto shift = shift_bindings(*project, ui, none);
+    CHECK(!shift[0].bound() && shift[1].kind == K::Send && shift[1].value == 20 && !shift[2].bound());
+    ui.sends_bus = 1;
+    CHECK(page_bindings(*project, ui, none, false)[1].value == 0 && page_bindings(*project, ui, none, false)[1].id == 1);
+    kit.last_pad = 2;
+    CHECK(page_bindings(*project, ui, none, false)[1].value == 40);
+    CHECK(binding_scope(*project, ui, page_bindings(*project, ui, none, false)[1]).kind == UndoScope::Kind::Pad);
+    kit.last_pad = 5; // empty: nothing to send
+    cards = page_bindings(*project, ui, none, false);
+    CHECK(cards[0].bound() && !cards[1].bound() && cards[2].bound());
+    // A synth's SENDS: the track's, no Shift row.
+    auto& synth = project->tracks[0];
+    load_sound(synth, EngineKind::Plugin, 0);
+    synth.mix.sends = {0, 55, 0, 0};
+    UiState su;
+    su.track = 0; su.page = PageId::Stage; su.sends_bus = 1;
+    CHECK(stage_go(su, EngineKind::Plugin, StageKind::Sends));
+    CHECK(page_bindings(*project, su, none, false)[1].kind == K::Send && page_bindings(*project, su, none, false)[1].value == 55);
+    CHECK(!shift_bindings(*project, su, none)[1].bound());
+
+    // Pad lights on bus A: Snare (30) brighter than Hat (15), Kick (dry) dark, the last pad white.
+    kit.last_pad = 0; ui.sends_bus = 0;
+    EngineHost host;
+    TrackTaps taps;
+    PadFacts plays; plays.kit_pads = true;
+    std::array<pad_light::Look, 16> looks;
+    pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
+    CHECK(looks[0].hue == pad_light::Hue::White && looks[1].level > looks[2].level && looks[2].lit() && !looks[3].lit());
+    kit.last_pad = 1;
+    pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
+    CHECK(!looks[0].lit()); // Kick, dry and not selected
+    ui.sends_bus = 1; // bus B: only Hat sends there
+    pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
+    CHECK(looks[2].lit() && looks[2].hue == pad_light::Hue::Track);
+}
+
 // Pad sends: each kit pad into buses A-D at its own send, after its own chain, eased; none from a pad at 0. In the
 // host they follow the kit's level and mute, and PSND / BSND keep them.
 void pad_sends() {
@@ -13312,6 +13367,7 @@ void plugin_macros() {
 
 int main() {
     pad_sends();
+    pad_sends_stage();
     plugin_macros();
     pad_colours();
     tempo_lane_p5();

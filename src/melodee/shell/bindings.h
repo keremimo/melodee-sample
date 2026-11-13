@@ -103,6 +103,7 @@ struct Binding {
         PitchBend, // a PLUGIN track's pitch bend (the fader's Pitch Bend), -64..63 around the centre
         PatternProgram, // a MIDI track's PROGRAM K3: the program its pattern in hand sends as it starts (0: the track's)
         PrintTapPick, PrintTailPick, // freeze plan F2c, the PRINT sheet: K1 where prints are taken (PrintTap), K2 how they end (PrintTail)
+        PadSend,  // Stage's SENDS on a kit, K2: the last pad's own send into bus id (PadSound::sends)
         PadColour // Stage's COLOUR on a kit, K1: the last pad's colour, a place on shell/pad_colour.h's list
     };
     Kind kind = Kind::None;

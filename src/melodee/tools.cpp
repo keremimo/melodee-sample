@@ -771,6 +771,15 @@ const Preview previews[] {
     {"stagekitlayers", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; layered_pad(s, LayerPlay::Velocity); }},
     {"stagekitlayersshift", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); layered_pad(s, LayerPlay::Random); s.ui.shift = true; }},
     {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::PadMix); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
+    {"stagekitsends", [](Shell&, Snapshot& s) { // a kit's SENDS: the last pad's own, 30 % into bus A
+         on_stage(s, 3, StageKind::Sends); s.sample = break_sample(); s.playing = true;
+         s.project.tracks[3].pads[8].sends = {30, 0, 10, 0}; s.ui.turning = 1; s.ui.turned_at = s.now;
+     }},
+    {"stagekitsendsdry", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Sends); s.sample = break_sample(); s.playing = true; }}, // a dry pad
+    {"stagekitsendsshift", [](Shell&, Snapshot& s) { // Shift held: the whole kit's (KIT SEND)
+         on_stage(s, 3, StageKind::Sends); s.sample = break_sample(); s.playing = true;
+         s.project.tracks[3].pads[8].sends = {30, 0, 0, 0}; s.project.tracks[3].mix.sends = {20, 0, 0, 0}; s.ui.shift = true;
+     }},
     {"stagekitampenv", [](Shell&, Snapshot& s) {
          on_stage(s, 3, StageKind::AmpEnv); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.attack = 20; pad.decay = 70; pad.velocity_sense = 60;
