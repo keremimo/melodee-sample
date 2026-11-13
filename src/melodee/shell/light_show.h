@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
-#include "demos/light_show/light_show.h"
 #include "surface/led_colours.h"
 #include "surface/leds.h"
 #include <array>
@@ -24,6 +23,23 @@
 // meters show the mix. Pure but for its rings and the mix's history: the
 // light pass (shell/lights.cpp) and the tests drive it with times in ms.
 namespace melodee {
+
+// Every light the show sets. Pads use printed numbering: index 0 is pad 1, bottom left.
+struct LightFrame {
+    std::array<Rgb, surface_pad_lights> pads {};
+    Rgb fader {};
+    std::array<bool, surface_bank_lights> banks {};
+    std::array<ButtonLight, size_t(SurfaceButton::Count)> buttons {}; // Off where a button has no light
+};
+
+// Buttons with a light, in panel order: the left side top to bottom, then the right.
+constexpr std::array<SurfaceButton, 17> panel_lit_buttons {{
+    SurfaceButton::Sample, SurfaceButton::Seq, SurfaceButton::PadFx, SurfaceButton::KnobFx, SurfaceButton::PadBank,
+    SurfaceButton::Erase, SurfaceButton::NoteRepeat,
+    SurfaceButton::Chop, SurfaceButton::Mute, SurfaceButton::Loop, SurfaceButton::SixteenLevels,
+    SurfaceButton::SampleSelect, SurfaceButton::TapTempo, SurfaceButton::SampleRecord, SurfaceButton::SeqRecord,
+    SurfaceButton::Stop, SurfaceButton::Play,
+}};
 
 enum class ShowStyle : uint8_t { Pulse, Sweep, Chase, Ripple, Levels, Count };
 constexpr const char* show_style_names[] {"Pulse", "Sweep", "Chase", "Ripple", "Levels"};
@@ -358,6 +374,13 @@ private:
     float loudest_db_ = -40, quietest_db_ = -60;
     bool ranged_ = false; // a sound heard since start()
 };
+
+inline void show_light_frame(SurfaceLights& lights, const LightFrame& frame) {
+    for (unsigned pad = 0; pad < surface_pad_lights; ++pad) lights.pad(pad, frame.pads[pad]);
+    lights.fader(frame.fader);
+    for (unsigned bank = 0; bank < surface_bank_lights; ++bank) lights.bank(bank, frame.banks[bank]);
+    for (auto button : panel_lit_buttons) lights.button(button, frame.buttons[size_t(button)]);
+}
 
 // Sends a show frame (SurfaceLights sends only what changed).
 inline void show_frame(SurfaceLights& lights, const ShowFrame& frame) {
