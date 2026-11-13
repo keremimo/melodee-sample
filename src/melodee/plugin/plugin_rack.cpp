@@ -3,6 +3,7 @@
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
 #include "melodee/plugin/rate_bridge.h"
@@ -123,6 +124,9 @@ std::string staged_library(const PluginFile& file, const fs::path& to) {
     return (to / from.filename() / fs::relative(file.library, from, e)).string();
 }
 std::string staged_path(const PluginFile& file, const fs::path& to) { return (to / fs::path(file.path).filename()).string(); }
+
+// A VST3 bundle or a CLAP library: listed by its file's name until it is opened, then by its plug-ins' own names.
+bool named_inside(PluginFormat format) { return format == PluginFormat::Vst3 || format == PluginFormat::Clap; }
 
 bool hidden(const juce::AudioProcessorParameter& p) {
     auto name = p.getName(64);
@@ -651,6 +655,7 @@ void PluginRack::run() {
             if (jobs.empty()) {
                 held.unlock();
                 free_retired();
+                idle_plugins();
                 continue;
             }
             job = std::move(jobs.front());
@@ -755,13 +760,17 @@ PluginRack::Known PluginRack::probe(const PluginFile& file) {
             message_thread().run([&] { format.findAllTypesForFile(types, juce::String(staged_path(file, stage))); });
             for (auto* t : types) found.classes.push_back({t->uniqueId, t->name.toStdString(), int8_t(t->isInstrument ? 1 : 0)});
             if (!types.isEmpty()) { d = *types[0]; described = true; }
+        } else if (file.format == PluginFormat::Clap) {
+            auto list = ClapInstance::list(juce::File(library), why);
+            for (const auto& c : list) found.classes.push_back({clap_id_hash(c.id), c.name, int8_t(c.instrument ? 1 : 0)});
+            if (!list.empty()) { d.name = list[0].name; d.isInstrument = list[0].instrument; described = true; }
         } else if (file.format == PluginFormat::Vst2) {
             if (auto p = Vst2Instance::load(juce::File(library), 44100, 128, why)) { p->fillInPluginDescription(d); described = true; }
         } else if (auto p = Vst2BridgeInstance::load(juce::File(library), juce::File(plugin_support_folder() + "/bridge32"), 44100, 128, why)) {
             p->fillInPluginDescription(d);
             described = true;
         }
-        if (described) { kind = d.isInstrument ? 1 : 0; if (file.format == PluginFormat::Vst3) found.name = d.name.toStdString(); }
+        if (described) { kind = d.isInstrument ? 1 : 0; if (named_inside(file.format)) found.name = d.name.toStdString(); }
     }
     std::error_code e;
     fs::remove_all(stage, e);
@@ -779,8 +788,8 @@ void PluginRack::probe_listed() {
             std::lock_guard<std::mutex> held(lock);
             if (stopping || !jobs.empty()) return;
             auto it = std::find_if(shown.files.begin(), shown.files.end(), [&](const PluginFile& f) {
-                // A VST3 bundle is opened once even when its moduleinfo says what it is: it may hold several.
-                if (!f.loadable() || f.id != 0 || (f.instrument >= 0 && f.format != PluginFormat::Vst3)) return false;
+                // A VST3 bundle or a CLAP is opened once even when its kind is known: it may hold several.
+                if (!f.loadable() || f.id != 0 || (f.instrument >= 0 && !named_inside(f.format))) return false;
                 return std::none_of(known.begin(), known.end(), [&](const Known& k) { return k.path == f.path; });
             });
             if (it == shown.files.end()) return;
@@ -861,6 +870,8 @@ void PluginRack::load(const Job& job) {
             if (nam) nam_folders(home); // before it lists them
             instance = format.createInstanceFromDescription(*chosen, rate, block, why);
         }
+    } else if (file.format == PluginFormat::Clap) {
+        instance = ClapInstance::load(juce::File(library), job.id, rate, block, why);
     } else if (file.format == PluginFormat::Vst2) {
         instance = Vst2Instance::load(juce::File(library), rate, block, why);
     } else {
@@ -891,7 +902,7 @@ void PluginRack::load(const Job& job) {
     handle->stage = stage.string();
     handle->format = file.format;
     handle->programs = named_programs(*handle->instance);
-    if (file.format != PluginFormat::Vst3) { // an Open MPC skin's Q-Link pages first, then the rest
+    if (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) { // an Open MPC skin's Q-Link pages first, then the rest
         auto order = qlink_order(file.path);
         if (!order.empty()) {
             std::vector<int> ordered;
@@ -923,7 +934,7 @@ void PluginRack::load(const Job& job) {
             entry.live = raw;
             entry.status = PluginStatus::Ready;
             entry.file.instrument = is_instrument ? 1 : 0;
-            if (description.name.isNotEmpty() && file.format == PluginFormat::Vst3) entry.file.name = description.name.toStdString();
+            if (description.name.isNotEmpty() && named_inside(file.format)) entry.file.name = description.name.toStdString();
         }
     }
     if (stale) { destroy(handle.release()); return; }
@@ -1017,6 +1028,19 @@ void PluginRack::destroy(PluginHandle* handle) {
     std::error_code e;
     if (!stage.empty()) fs::remove_all(stage, e);
     give_back_memory();
+}
+
+// What CLAP plug-ins asked of their main thread (plugin/clap_instance.h), done on this one. Handles are freed only on
+// this thread, so they outlive the calls.
+void PluginRack::idle_plugins() {
+    std::vector<ClapInstance*> clap;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        for (const auto& h : handles)
+            if (h->format == PluginFormat::Clap)
+                if (auto* c = dynamic_cast<ClapInstance*>(h->instance.get())) clap.push_back(c);
+    }
+    for (auto* c : clap) c->idle();
 }
 
 // Freeze plan F2d: what a plug-in freed goes back to the system (glibc keeps freed heap for the process otherwise,

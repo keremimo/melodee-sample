@@ -43,6 +43,9 @@ own code, under the same licence; the MP3 patents ran out in 2017.
 - The VST3 SDK, Steinberg Media Technologies GmbH, MIT licence, as bundled
   in JUCE (`juce_audio_processors_headless/format_types/VST3_SDK`); release
   zips include its `LICENSE.txt`.
+- The CLAP headers, free-audio/clap 1.2.9, Alexandre Bique and the CLAP
+  contributors, MIT licence (`build/deps/clap`, fetched by
+  `src/melodee/dependencies.py`); release zips include its `LICENSE`.
 - VST2: `src/melodee/plugin/vst2_abi.h` is Melodee's own description of the
   VST 2.4 binary interface, written from its public layout. No Steinberg
   VST2 SDK file is used.

@@ -117,6 +117,20 @@ void describe_library(PluginFile& f, const std::string& library) {
     }
 }
 
+// A CLAP: one shared library on Linux. A Mac's Name.clap is a bundle folder.
+void describe_clap(PluginFile& f) {
+    fs::path path(f.path);
+    f.format = PluginFormat::Clap;
+    f.name = stem(path);
+    std::error_code error;
+    if (fs::is_directory(path, error)) { f.why = "Mac build only"; return; }
+    switch (arm_elf(f.path)) {
+    case 2: f.library = f.path; break;
+    case 1: f.why = "32-bit ARM CLAP"; break;
+    default: f.why = "Not an ARM build"; break;
+    }
+}
+
 // An Open MPC folder: plugin-meta.xml's <PLUGIN name=... file=".../x.so" isInstrument="1"/>.
 bool describe_open_mpc(PluginFile& f) {
     fs::path folder(f.path);
@@ -146,6 +160,7 @@ const char* format_tag(PluginFormat format) {
     case PluginFormat::Vst3: return "VST3";
     case PluginFormat::Vst2: return "VST2";
     case PluginFormat::Vst2Arm32: return "ARMV7";
+    case PluginFormat::Clap: return "CLAP";
     }
     return "";
 }
@@ -167,9 +182,11 @@ PluginFile describe_plugin(const std::string& path) {
     std::error_code error;
     if (fs::is_directory(path, error)) {
         if (ends_with(path, ".vst3")) describe_vst3(f);
+        else if (ends_with(path, ".clap")) describe_clap(f);
         else if (!describe_open_mpc(f)) { f.folder = true; f.name = fs::path(path).filename().string(); }
         return f;
     }
+    if (ends_with(path, ".clap")) { describe_clap(f); return f; }
     f.name = stem(path);
     describe_library(f, path);
     read_drums(f, path);
@@ -195,7 +212,7 @@ std::vector<PluginFile> list_plugins(const std::string& folder) {
             out.push_back(zip);
             continue;
         }
-        if (!dir && !ends_with(name, ".so")) continue;
+        if (!dir && !ends_with(name, ".so") && !ends_with(name, ".clap")) continue;
         out.push_back(describe_plugin(entry.path().string()));
     }
     std::sort(out.begin(), out.end(), [](const PluginFile& a, const PluginFile& b) {

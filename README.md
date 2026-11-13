@@ -24,9 +24,9 @@ page and control, read the [user guide](docs/GUIDE.md).
 
 - **16 tracks**, one per pad. Hold **PAD BANK** and press a pad to select a
   track from any page.
-- **VST3 and VST2 plug-in host**: load instruments and effects from the
-  card. Use a VST instrument as a track's sound, and VST effects on track,
-  bus, master and loop chains. Melodee runs 64-bit ARM Linux builds, Open
+- **VST3, CLAP and VST2 plug-in host**: load instruments and effects from
+  the card. Use a plug-in instrument as a track's sound, and plug-in effects
+  on track, bus, master and loop chains. Melodee runs 64-bit ARM Linux builds, Open
   MPC plug-ins, and 32-bit ARM plug-ins through a bridge. It loads each
   plug-in's presets, keeps its state in the project, plays drum machine
   plug-ins on pads, and compensates for plug-in latency.
@@ -79,6 +79,7 @@ Put plug-ins in a folder named `Plugins` at the top level of the card, in
 any subfolders. Melodee loads:
 
 - VST3 bundles with a `Contents/aarch64-linux/` build
+- CLAP plug-ins (`.clap` files) built for 64-bit ARM Linux (aarch64)
 - [Open MPC](https://open-mpc.github.io) plug-in folders
 - VST2 `.so` files built for 64-bit ARM (aarch64) or 32-bit ARM (armv7)
 

@@ -9,23 +9,24 @@
 #include <vector>
 
 // What a folder of plug-ins holds, as the PLUG-INS picker lists it: folders
-// first, then the plug-ins in it, each by name. Three kinds are plug-ins:
+// first, then the plug-ins in it, each by name. Four kinds are plug-ins:
 //
 // - a VST3 bundle (Name.vst3/, its library in Contents/aarch64-linux);
+// - a CLAP library (Name.clap, a shared library on Linux);
 // - an Open MPC plug-in folder (open-mpc.github.io: plugin-meta.xml beside a
 //   VST2 .so, its Q-Link pages in Plugin Skins/Q-Links.json);
 // - a VST2 library (.so) on its own.
 //
-// Only builds for this MPC can load: aarch64 Linux, or 32-bit ARM (armv7)
-// through the bridge (plugin/vst2_bridge_instance.h). Others are listed with
-// the reason, so a Windows or Mac download says why it does nothing.
+// Only builds for this MPC can load: aarch64 Linux, or a 32-bit ARM (armv7)
+// VST2 through the bridge (plugin/vst2_bridge_instance.h). Others are listed
+// with the reason, so a Windows or Mac download says why it does nothing.
 namespace melodee {
 
-enum class PluginFormat : uint8_t { Vst3, Vst2, Vst2Arm32 };
-const char* format_tag(PluginFormat format); // "VST3", "VST2", "ARMV7"
+enum class PluginFormat : uint8_t { Vst3, Vst2, Vst2Arm32, Clap };
+const char* format_tag(PluginFormat format); // "VST3", "VST2", "ARMV7", "CLAP"
 
 struct PluginFile {
-    std::string path;          // the bundle, the Open MPC folder or the .so
+    std::string path;          // the bundle, the Open MPC folder, the .clap or the .so
     std::string name;          // as listed: the plug-in's own name, else the file's
     bool folder = false;       // a plain folder to open
     PluginFormat format = PluginFormat::Vst3;
@@ -35,8 +36,9 @@ struct PluginFile {
     // The rate it runs at whatever it is opened at, 0 none: an Open MPC plug-in, written to MPC OS's 44.1 kHz
     // (plugin/rate_bridge.h converts it to the device's)
     unsigned fixed_rate = 0;
-    // A bundle holding several plug-ins (LSP's VST3) lists as one row with how many; opened, each is a row of its
-    // own with its `id` (JUCE's unique id for it). 0 plugins: not known yet.
+    // A bundle holding several plug-ins (LSP's VST3, a CLAP collection) lists as one row with how many; opened, each
+    // is a row of its own with its `id` (JUCE's unique id for a VST3, clap_id_hash() of a CLAP's id). 0 plugins: not
+    // known yet.
     unsigned plugins = 0;
     int32_t id = 0;
     // A drum machine's voices (plugin/drum_map.h), read from its library; empty for any other plug-in. A PLUGIN track
@@ -124,5 +126,12 @@ inline std::vector<int> qlink_order_in(std::string_view json) {
 
 // 1: a 32-bit ARM ELF, 2: a 64-bit ARM (aarch64) ELF, 0: anything else.
 int arm_elf(const std::string& path);
+
+// A CLAP plug-in's id ("com.example.synth") as a project keeps it: FNV-1a, never 0 (0 is "the first in the file").
+inline int32_t clap_id_hash(std::string_view id) {
+    uint32_t h = 2166136261u;
+    for (unsigned char c : id) { h ^= c; h *= 16777619u; }
+    return h == 0 ? 1 : int32_t(h);
+}
 
 } // namespace melodee

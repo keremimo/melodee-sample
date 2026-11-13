@@ -35,11 +35,12 @@ build/obj/juce_audio_formats_%.o: $(FORMATS)/juce_audio_formats_%.c
 build/obj/melodee/shell/sample_decode.o: CPPFLAGS += $(FORMAT_FLAGS)
 
 # Plug-ins (docs/MELODEE.md, Plug-ins): JUCE's headless plug-in hosting with
-# VST3 (VST2 and the armv7 bridge are Melodee's own, src/melodee/plugin/), and
+# VST3 (VST2, CLAP and the armv7 bridge are Melodee's own, src/melodee/plugin/;
+# CLAP's headers from build/deps/clap, src/melodee/dependencies.py), and
 # the support pack (GUI stubs, the bridge and its armhf runtime) linked into
 # the binary. The pack needs Melodee's build image (tools/plugin_support/Dockerfile).
 HOSTING := $(JUCE)/juce_audio_processors_headless
-CPPFLAGS += -DJUCE_PLUGINHOST_VST3=1 -I$(HOSTING)/format_types/VST3_SDK
+CPPFLAGS += -DJUCE_PLUGINHOST_VST3=1 -I$(HOSTING)/format_types/VST3_SDK -Ibuild/deps/clap/include
 PLUGIN_OBJECTS := build/obj/juce_audio_processors_headless.o build/obj/plugin_support_pack.o
 OBJECTS += $(PLUGIN_OBJECTS)
 $(TARGET): $(PLUGIN_OBJECTS)

@@ -15,9 +15,9 @@
 #include <thread>
 #include <vector>
 
-// Melodee's plug-ins (docs/MELODEE.md, Plug-ins): VST3 bundles, VST2 libraries
-// and Open MPC plug-ins from the card's Plugins folder, as PLUGIN tracks and as
-// effects in the track, bus and master chains.
+// Melodee's plug-ins (docs/MELODEE.md, Plug-ins): VST3 bundles, CLAP and VST2
+// libraries and Open MPC plug-ins from the card's Plugins folder, as PLUGIN
+// tracks and as effects in the track, bus and master chains.
 //
 // The rack follows the project. sync() compares Project::plugins and what uses
 // each entry with what is loaded; its own thread then copies a plug-in into
@@ -25,9 +25,10 @@
 // to the engine host, which plays it from its next block. A plug-in nothing
 // uses any more is let go the same way, and freed here once the audio thread
 // hands it back. VST3 plug-ins are made on a JUCE message thread of the
-// rack's; 32-bit ARM ones run in a bridge process; the no-op GUI libraries
-// some link (libGL, libX11...) and the bridge's runtime come out of the
-// binary into /run the first time a plug-in loads. Plug-ins keep their presets
+// rack's; CLAP ones on the rack's own thread (plugin/clap_instance.h);
+// 32-bit ARM ones run in a bridge process; the no-op GUI libraries some link
+// (libGL, libX11...) and the bridge's runtime come out of the binary into
+// /run the first time a plug-in loads. Plug-ins keep their presets
 // and settings under $HOME, which is read only on the MPC: before one opens,
 // $HOME points at Melodee/Plugin Data on the card.
 namespace melodee {
@@ -129,6 +130,7 @@ private:
     void list(const std::string& folder, int came_from);
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet
     void free_retired();                            // plug-ins the audio thread has handed back
+    void idle_plugins();                            // CLAP plug-ins' main-thread requests
     void destroy(PluginHandle* handle);
     bool offer(unsigned entry, PluginHandle* handle);
     void push(Job job);

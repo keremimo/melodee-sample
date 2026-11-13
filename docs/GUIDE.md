@@ -33,7 +33,7 @@ A Melodee **project** has:
 - **16 tracks**, one for each pad. A track is one of these types:
   - **Kit** (SAMPLER): 128 pads in 8 banks (A–H), each pad playing a sample
     or a sampled instrument.
-  - **Plug-in** (PLUGIN): a VST3 or VST2 instrument from the card.
+  - **Plug-in** (PLUGIN): a VST3, CLAP or VST2 instrument from the card.
   - **MIDI**: notes, CCs and program changes sent to an external instrument.
 - **16 patterns per track**. A pattern holds notes and knob movements
   (Motion), up to 128 bars long. Each track plays one pattern at a time and
@@ -561,7 +561,7 @@ These act on the last pad from any page:
 
 ## Plug-ins
 
-Melodee hosts VST3 and VST2 plug-ins, instruments and effects.
+Melodee hosts VST3, CLAP and VST2 plug-ins, instruments and effects.
 
 ### What runs
 
@@ -569,6 +569,7 @@ Put plug-ins in a folder named `Plugins` at the top level of the card, in
 any subfolders. Melodee loads plug-ins built for the MPC's ARM processor:
 
 - VST3 bundles with a `Contents/aarch64-linux/` build.
+- CLAP plug-ins (`.clap` files) built for 64-bit ARM Linux (aarch64).
 - [Open MPC](https://open-mpc.github.io) plug-in folders (a VST2 `.so`
   with a `plugin-meta.xml`).
 - VST2 `.so` files for 64-bit ARM (aarch64), or 32-bit ARM (armv7). 32-bit
@@ -602,7 +603,7 @@ unzipped stays, dimmed, with **Won't unzip**.
 
 ![The plug-in picker](images/screens/plugins.png)
 
-The picker tags each plug-in with its format (VST3, VST2, ARMV7) and shows
+The picker tags each plug-in with its format (VST3, CLAP, VST2, ARMV7) and shows
 a keyboard for instruments or sliders for effects. A bundle with many
 plug-ins shows as one row with a count; push to open it.
 
@@ -620,6 +621,7 @@ To change a track's plug-in, press **SAMPLE SELECT** on the track.
 
 **Presets**: turn the encoder to a preset and push to load it. The page
 stays open, so you can play each preset in turn. **B1** goes back.
+CLAP plug-ins list no presets here.
 
 ![Plug-in presets](images/screens/pluginpresets.png)
 
@@ -1326,7 +1328,7 @@ the drive, Melodee asks whether to take the card back anyway.
 | `Melodee/Plugin Data/` | Plug-in settings and presets |
 | `Melodee/settings` | Melodee's settings |
 | `Samples/` | Your samples. Melodee writes `Recorded/`, `Edits/`, `Banks/`, `Looper/` and `Expansions/` here. |
-| `Plugins/` | VST3 and VST2 plug-ins |
+| `Plugins/` | VST3, CLAP and VST2 plug-ins |
 | `SysEx/` | `.syx` files for MIDI tracks |
 
 ### Update Melodee
