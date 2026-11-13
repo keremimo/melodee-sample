@@ -18,7 +18,7 @@ std::vector<size_t> nam_page_order(const std::vector<std::string>& names) {
         for (size_t i = 0; i < names.size(); ++i)
             if (!taken[i] && names[i] == name) { out.push_back(i); taken[i] = true; break; }
     for (size_t i = 0; i < names.size(); ++i)
-        if (!taken[i] && names[i] != nam_slim_name()) out.push_back(i);
+        if (!taken[i]) out.push_back(i);
     return out;
 }
 

@@ -8741,14 +8741,14 @@ void tone3000_always_lite() {
 }
 
 // Neural Amp Modeler (plugin/nam.h): its page Model, Cab and Output first, the tone stack next, the rest in its own
-// order and Slim (held at lite) left out; long names shorter on the cards; its two folders made under the home.
+// order, Slim among them; long names shorter on the cards; its two folders made under the home.
 void nam_page() {
     namespace fs = std::filesystem;
     const std::vector<std::string> names {"Input", "Threshold", "Bass", "Middle", "Treble", "Output", "NoiseGateActive",
                                           "ToneStack", "IRToggle", "CalibrateInput", "InputCalibrationLevel", "OutputMode",
                                           "Slim", "Model", "Cab"};
-    CHECK((nam_page_order(names) == std::vector<size_t> {13, 14, 5, 2, 3, 4, 0, 1, 6, 7, 8, 11, 9, 10}));
-    CHECK((nam_page_order({"Slim", "Drive", "Model"}) == std::vector<size_t> {2, 1})); // a parameter it does not know: after
+    CHECK((nam_page_order(names) == std::vector<size_t> {13, 14, 5, 2, 3, 4, 0, 1, 6, 7, 8, 11, 9, 10, 12}));
+    CHECK((nam_page_order({"Slim", "Drive", "Model"}) == std::vector<size_t> {2, 0, 1})); // parameters it does not know: after, in its order
     CHECK(nam_page_order({}).empty());
     CHECK(nam_card_name("NoiseGateActive") == "Gate" && nam_card_name("InputCalibrationLevel") == "Cal level");
     CHECK(nam_card_name("Model") == "Model" && is_nam("NeuralAmpModeler") && !is_nam("TONE3000"));

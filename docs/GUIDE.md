@@ -685,9 +685,11 @@ loop chains take plug-ins.
 
 To open a plug-in effect's presets, push the encoder on its slot.
 
-### Amp sim: Neural Amp Modeler
+### Neural Amp Modeler
 
-Neural Amp Modeler plays amp and pedal captures (`.nam` files) with a cab
+Melodee's own amp sim is the **Amp sim** effect in the Dirt family. For amp
+and pedal captures, the Neural Amp Modeler plug-in can be added on its own.
+It plays amp and pedal captures (`.nam` files) with a cab
 IR. Its MPC Sample build comes as `NeuralAmpModeler-<version>-mpc-sample.zip`:
 unzip it into `Plugins`. Put the files it plays in
 `Melodee/Plugin Data/Neural Amp Modeler`:
@@ -700,9 +702,9 @@ later show the next time it opens.
 
 Load it as a plug-in effect on a track chain. Its first row is **Model**,
 **Cab** and **Output**; turn **K1** or **K2** to pick a file. The second row
-is **Bass**, **Middle** and **Treble**. Captures always play at their lite
-size, which the MPC runs in about a sixth of a block. A cab IR longer than
-8192 samples is cut there.
+is **Bass**, **Middle** and **Treble**. **Slim** sets the size an A2 capture
+plays at: 0 (lite) runs in about a sixth of a block on the MPC, full costs
+about four times that. A cab IR longer than 8192 samples is cut there.
 
 ### Plugin Data
 

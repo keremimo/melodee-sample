@@ -914,7 +914,7 @@ void PluginRack::load(const Job& job) {
     double rate = file.fixed_rate ? double(file.fixed_rate) : device_rate; // what the plug-in itself runs at
     int block = int(EngineHost::block);
     bool tone3000 = false; // its NAM blocks always lite (plugin/tone3000.h)
-    bool nam = false;      // Neural Amp Modeler: Slim held at lite, its folders made (plugin/nam.h)
+    bool nam = false;      // Neural Amp Modeler: its folders made, its page ordered (plugin/nam.h)
     if (juce_hosted(file.format)) {
         juce::OwnedArray<juce::PluginDescription> types;
         auto host = juce_types(file.format, staged_path(file, stage), types);
@@ -955,9 +955,6 @@ void PluginRack::load(const Job& job) {
         if (tone3000) tone3000_lite_state(state); // a project saved before, or with a full block
         instance->setStateInformation(state.data(), int(state.size()));
     }
-    if (nam) // a capture at lite whatever the state said; the plug-in takes it in warm_up(), before the audio thread
-        for (auto* p : instance->getParameters())
-            if (p->getName(64) == nam_slim_name() && p->getValue() != 0.0f) p->setValue(0.0f);
     juce::PluginDescription description;
     instance->fillInPluginDescription(description);
     bool is_instrument = described_instrument(description) || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);

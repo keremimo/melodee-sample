@@ -7,21 +7,17 @@
 #include <vector>
 
 // Neural Amp Modeler (docs/MELODEE.md, Plug-ins: Neural Amp Modeler), the
-// official plug-in built for the MPC without its editor. Its Model and Cab
-// parameters pick files from two folders under its home; Slim is the size an
-// A2 capture plays at, 0 the smallest (lite). Full costs about four times lite
-// on the MPC, so Melodee keeps Slim at 0 and off the page, as it keeps
-// TONE3000's blocks lite (plugin/tone3000.h).
+// official plug-in built for the MPC without its editor, an optional plug-in
+// beside Melodee's own Amp sim effect. Its Model and Cab parameters pick files
+// from two folders under its home. Its parameters are left as the user sets
+// them, Slim (an A2 capture's size) too; Melodee only orders its page.
 namespace melodee {
 
 inline bool is_nam(const std::string& name) { return name == "NeuralAmpModeler"; }
 
-// The parameter Melodee holds at 0.
-inline const char* nam_slim_name() { return "Slim"; }
-
 // The page's order for its parameters, given their names as the plug-in lists
 // them: positions in `names`. Model, Cab and Output first, the tone stack
-// next, the rest after in the plug-in's order; Slim left out.
+// next, the rest after in the plug-in's order.
 std::vector<size_t> nam_page_order(const std::vector<std::string>& names);
 
 // A shorter name for a card, where the plug-in's own is long
