@@ -24,7 +24,7 @@ sample-base runtime in the `base/` submodule. Layering follows
 | `melodee_app.*` | The `App`: hands each runtime hook to its owner below. Thin. |
 | `model/` | The project: tracks, patterns (event lists), song, mix, motion, kits, limits (`limits.h`). Plain data, no threads. |
 | `engine/` | Audio: DSP pieces, the sampler, PLUGIN tracks' engine and MIDI's silent one, effects and punches, the Looper (`looper.*`), the engine host (16 tracks and L1–L4, mixer, sequencer clock, MIDI out timing) and the command queue that feeds it. |
-| `plugin/` | Plug-ins (below, "Plug-ins"): the rack that loads them on its own thread, JUCE's headless VST3 host, Melodee's own CLAP host (`clap_instance.*`) and VST2 host with its 32-bit bridge (`bridge32/`), the GUI-library stubs and bridge runtime carried in the binary. Only `plugin_runner.h` reaches the engine host. |
+| `plugin/` | Plug-ins (below, "Plug-ins"): the rack that loads them on its own thread, JUCE's headless VST3 and LV2 hosts, Melodee's own CLAP host (`clap_instance.*`) and VST2 host with its 32-bit bridge (`bridge32/`), the GUI-library stubs and bridge runtime carried in the binary. Only `plugin_runner.h` reaches the engine host. |
 | `ui/` | The design system: tokens, the Rubik typeface, the components every page is built from. |
 | `pages/` | One file per page: what it draws from a snapshot and what its pads, pots, wheel and soft keys do. |
 | `shell/` | The control grammar and everything around the pages: printed buttons and their Shift jobs, Shift + pad (`shift_pad_jobs`), Pad Bank, mute mode, Note Repeat, the Seq layer (`seq_layer`), undo, the fader, takeover, lights, MIDI in and out, the card (`project_store`, `sample_library`, `card_access`), audio input and renders, and the snapshot handed to the screen. |
@@ -92,7 +92,8 @@ one owner per piece of state.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
   copies one into RAM, opens it, and offers it to the audio thread by
   pointer, as samples go; the one it replaces comes back to be freed there.
-  VST3 plug-ins are made on a JUCE message thread of the rack's own.
+  VST3 plug-ins are made on a JUCE message thread of the rack's own, and
+  LV2 plug-ins too.
   CLAP plug-ins take every main-thread call (open, state, parameter
   text) from the rack's threads, one at a time, and their audio calls
   from whichever thread runs their block (`plugin/clap_instance.h`).
@@ -1687,11 +1688,12 @@ its patterns kept (`model/project_file.cpp`, `legacy_engine` in
 
 ## Plug-ins
 
-VST3, CLAP and VST2 plug-ins, instruments and effects, from `Plugins/` at the top
+VST3, LV2, CLAP and VST2 plug-ins, instruments and effects, from `Plugins/` at the top
 of the card (beside `Samples/`), in any folders under it.
 
 - **What loads.** Builds for this MPC only: a `.vst3` bundle with
-  `Contents/aarch64-linux/`, a `.clap` library (aarch64), an
+  `Contents/aarch64-linux/`, an `.lv2` bundle, a `.clap` library (both
+  aarch64), an
   [Open MPC](https://open-mpc.github.io) plug-in folder (its
   `plugin-meta.xml` beside a VST2 `.so`), or a VST2 `.so` on its own;
   aarch64, or 32-bit ARM (armv7) through the bridge. The
@@ -1733,6 +1735,13 @@ of the card (beside `Samples/`), in any folders under it.
   the plug-in's own state. Its latency counts for delay compensation. CLAP
   has no program list (its presets are files found by preset discovery,
   not read yet), so PRESETS lists none. No editor windows, as for VST3.
+- **LV2.** JUCE's own LV2 host (lilv, bundled in JUCE), with a lilv world
+  for each plug-in opened, made on the message thread. A bundle's presets
+  (`pset:Preset`) are its programs, so PRESETS lists them. JUCE cannot
+  tell an LV2 instrument by its class, so one with audio out and no audio
+  in counts as an instrument (a bundle of one also when its `.ttl` says
+  `lv2:InstrumentPlugin`). The GUI library beside it (`_ui.so`) is never
+  loaded.
 - **An effect.** The effect picker's last family, Plug-ins, opens the same
   folder for the slot; on the chain pages K1–K3 hold its parameters and
   Minus / Plus its rows. Track, bus, master and loop-track chains take
@@ -1779,7 +1788,7 @@ of the card (beside `Samples/`), in any folders under it.
   millisecond late; an effect's input down and its output up, about 3 ms
   late. So it plays in tune at any rate.
 - **Delay compensation (roadmap P4).** A plug-in that reports a latency
-  (VST3's, a VST2's `initialDelay`, a CLAP's latency), the 44.1 kHz converter in front of an
+  (VST3's, a VST2's `initialDelay`, a CLAP's latency, an LV2's latency port), the 44.1 kHz converter in front of an
   Open MPC plug-in at 48 or 96 kHz (measured once as it opens: an
   effect's about 3 ms, an instrument's none) and a Limiter's LOOKAHEAD
   (0-10 ms, its third card) make their path late. Every block the engine

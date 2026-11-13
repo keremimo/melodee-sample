@@ -1,0 +1,13 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix pset: <http://lv2plug.in/ns/ext/presets#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<urn:melodee:test:tone#quiet>
+    a pset:Preset ;
+    rdfs:label "Quiet" ;
+    lv2:port [ lv2:symbol "level" ; pset:value 0.25 ] .
+
+<urn:melodee:test:tone#loud>
+    a pset:Preset ;
+    rdfs:label "Loud" ;
+    lv2:port [ lv2:symbol "level" ; pset:value 1.0 ] .

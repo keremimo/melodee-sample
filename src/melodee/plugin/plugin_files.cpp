@@ -117,6 +117,34 @@ void describe_library(PluginFile& f, const std::string& library) {
     }
 }
 
+// An LV2 bundle: manifest.ttl and its .ttl files beside the plug-in's library, and often a GUI library (Name_ui.so)
+// that is never loaded here. Its kind is in its .ttl files (lv2:InstrumentPlugin); JUCE's LV2 host opens it.
+void describe_lv2(PluginFile& f) {
+    fs::path bundle(f.path);
+    f.format = PluginFormat::Lv2;
+    f.name = stem(bundle);
+    std::error_code error;
+    bool arm32 = false, any = false;
+    for (const auto& entry : fs::directory_iterator(bundle, error)) {
+        auto name = entry.path().filename().string();
+        if (ends_with(name, ".ttl")) {
+            juce::File ttl(juce::String(entry.path().string()));
+            if (f.instrument < 1 && ttl.getSize() < (4 << 20) && ttl.loadFileAsString().contains("InstrumentPlugin")) f.instrument = 1;
+            continue;
+        }
+        if (!ends_with(name, ".so")) continue;
+        any = true;
+        bool ui = ends_with(name, "_ui.so");
+        switch (arm_elf(entry.path().string())) {
+        case 2: if (f.library.empty() || !ui) f.library = entry.path().string(); break;
+        case 1: arm32 = true; break;
+        default: break;
+        }
+    }
+    if (!fs::exists(bundle / "manifest.ttl", error)) f.why = "No manifest.ttl";
+    else if (f.library.empty()) f.why = !any ? "No library in the bundle" : arm32 ? "32-bit ARM LV2" : "Not an ARM build";
+}
+
 // A CLAP: one shared library on Linux. A Mac's Name.clap is a bundle folder.
 void describe_clap(PluginFile& f) {
     fs::path path(f.path);
@@ -161,6 +189,7 @@ const char* format_tag(PluginFormat format) {
     case PluginFormat::Vst2: return "VST2";
     case PluginFormat::Vst2Arm32: return "ARMV7";
     case PluginFormat::Clap: return "CLAP";
+    case PluginFormat::Lv2: return "LV2";
     }
     return "";
 }
@@ -183,6 +212,7 @@ PluginFile describe_plugin(const std::string& path) {
     if (fs::is_directory(path, error)) {
         if (ends_with(path, ".vst3")) describe_vst3(f);
         else if (ends_with(path, ".clap")) describe_clap(f);
+        else if (ends_with(path, ".lv2")) describe_lv2(f);
         else if (!describe_open_mpc(f)) { f.folder = true; f.name = fs::path(path).filename().string(); }
         return f;
     }

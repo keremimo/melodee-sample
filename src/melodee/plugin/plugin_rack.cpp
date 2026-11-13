@@ -125,8 +125,41 @@ std::string staged_library(const PluginFile& file, const fs::path& to) {
 }
 std::string staged_path(const PluginFile& file, const fs::path& to) { return (to / fs::path(file.path).filename()).string(); }
 
-// A VST3 bundle or a CLAP library: listed by its file's name until it is opened, then by its plug-ins' own names.
-bool named_inside(PluginFormat format) { return format == PluginFormat::Vst3 || format == PluginFormat::Clap; }
+// A VST3 or LV2 bundle or a CLAP library: listed by its file's name until it is opened, then by its plug-ins' own
+// names.
+bool named_inside(PluginFormat format) {
+    return format == PluginFormat::Vst3 || format == PluginFormat::Lv2 || format == PluginFormat::Clap;
+}
+
+// The formats JUCE hosts: made, scanned and freed on its message thread.
+bool juce_hosted(PluginFormat format) { return format == PluginFormat::Vst3 || format == PluginFormat::Lv2; }
+// A host for one of them. An LV2 one is a lilv world of its own (the plug-ins it opens keep it), so two copies of the
+// same bundle staged for two entries never meet in one world.
+std::unique_ptr<juce::AudioPluginFormat> juce_format(PluginFormat format) {
+    if (format == PluginFormat::Lv2) return std::make_unique<juce::LV2PluginFormatHeadless>();
+    return std::make_unique<juce::VST3PluginFormatHeadless>();
+}
+// Whether a JUCE-described plug-in is an instrument. JUCE's LV2 host asks for lv2:GeneratorPlugin up the plug-in's
+// class tree, which it cannot walk without lv2core's own description (every LV2 comes back as an effect, of category
+// "Plugin"), so for LV2 one with audio out and no audio in counts as an instrument.
+bool described_instrument(const juce::PluginDescription& d) {
+    if (d.isInstrument) return true;
+    return d.pluginFormatName == "LV2" && d.numInputChannels == 0 && d.numOutputChannels > 0;
+}
+
+// The plug-ins a staged bundle holds, by a host made for it on the message thread. An LV2 one makes its plug-ins
+// only from the world that read their bundle, so the same host makes the one picked (then is freed there too).
+std::unique_ptr<juce::AudioPluginFormat> juce_types(PluginFormat format, const std::string& path,
+                                                   juce::OwnedArray<juce::PluginDescription>& types) {
+    std::unique_ptr<juce::AudioPluginFormat> host;
+    message_thread().start();
+    message_thread().run([&] {
+        host = juce_format(format);
+        host->findAllTypesForFile(types, juce::String(path));
+    });
+    return host;
+}
+void free_juce_host(std::unique_ptr<juce::AudioPluginFormat>& host) { message_thread().run([&] { host.reset(); }); }
 
 bool hidden(const juce::AudioProcessorParameter& p) {
     auto name = p.getName(64);
@@ -304,8 +337,7 @@ PluginRack::~PluginRack() {
     }
     for (auto& h : all) {
         std::string stage = h->stage;
-        bool vst3 = h->format == PluginFormat::Vst3;
-        if (vst3) message_thread().run([&] { h.reset(); });
+        if (juce_hosted(h->format)) message_thread().run([&] { h.reset(); });
         else h.reset();
         std::error_code e;
         if (!stage.empty()) fs::remove_all(stage, e);
@@ -753,12 +785,13 @@ PluginRack::Known PluginRack::probe(const PluginFile& file) {
         juce::String why;
         juce::PluginDescription d;
         bool described = false;
-        if (file.format == PluginFormat::Vst3) {
-            message_thread().start();
-            juce::VST3PluginFormatHeadless format;
+        if (juce_hosted(file.format)) {
             juce::OwnedArray<juce::PluginDescription> types;
-            message_thread().run([&] { format.findAllTypesForFile(types, juce::String(staged_path(file, stage))); });
-            for (auto* t : types) found.classes.push_back({t->uniqueId, t->name.toStdString(), int8_t(t->isInstrument ? 1 : 0)});
+            auto host = juce_types(file.format, staged_path(file, stage), types);
+            free_juce_host(host);
+            for (auto* t : types) found.classes.push_back({t->uniqueId, t->name.toStdString(), int8_t(described_instrument(*t) ? 1 : 0)});
+            // An LV2 bundle of one whose .ttl says lv2:InstrumentPlugin (plugin_files.cpp): an instrument whatever its ports.
+            if (file.format == PluginFormat::Lv2 && file.instrument == 1 && types.size() == 1) { types[0]->isInstrument = true; found.classes[0].instrument = 1; }
             if (!types.isEmpty()) { d = *types[0]; described = true; }
         } else if (file.format == PluginFormat::Clap) {
             auto list = ClapInstance::list(juce::File(library), why);
@@ -770,7 +803,7 @@ PluginRack::Known PluginRack::probe(const PluginFile& file) {
             p->fillInPluginDescription(d);
             described = true;
         }
-        if (described) { kind = d.isInstrument ? 1 : 0; if (named_inside(file.format)) found.name = d.name.toStdString(); }
+        if (described) { kind = described_instrument(d) ? 1 : 0; if (named_inside(file.format)) found.name = d.name.toStdString(); }
     }
     std::error_code e;
     fs::remove_all(stage, e);
@@ -852,11 +885,9 @@ void PluginRack::load(const Job& job) {
     int block = int(EngineHost::block);
     bool tone3000 = false; // its NAM blocks always lite (plugin/tone3000.h)
     bool nam = false;      // Neural Amp Modeler: Slim held at lite, its folders made (plugin/nam.h)
-    if (file.format == PluginFormat::Vst3) {
-        message_thread().start();
-        juce::VST3PluginFormatHeadless format;
+    if (juce_hosted(file.format)) {
         juce::OwnedArray<juce::PluginDescription> types;
-        message_thread().run([&] { format.findAllTypesForFile(types, juce::String(staged_path(file, stage))); });
+        auto host = juce_types(file.format, staged_path(file, stage), types);
         const juce::PluginDescription* chosen = types.isEmpty() ? nullptr : types[0];
         if (job.id != 0) { // one of a bundle's several, by its id
             chosen = nullptr;
@@ -868,8 +899,11 @@ void PluginRack::load(const Job& job) {
             if (tone3000) tone3000_lite_presets(home); // before it lists them
             nam = is_nam(chosen->name.toStdString());
             if (nam) nam_folders(home); // before it lists them
-            instance = format.createInstanceFromDescription(*chosen, rate, block, why);
+            auto make = [&] { instance = host->createInstanceFromDescription(*chosen, rate, block, why); };
+            if (file.format == PluginFormat::Lv2) message_thread().run(make); // where its lilv world was made
+            else make();
         }
+        free_juce_host(host);
     } else if (file.format == PluginFormat::Clap) {
         instance = ClapInstance::load(juce::File(library), job.id, rate, block, why);
     } else if (file.format == PluginFormat::Vst2) {
@@ -896,7 +930,7 @@ void PluginRack::load(const Job& job) {
             if (p->getName(64) == nam_slim_name() && p->getValue() != 0.0f) p->setValue(0.0f);
     juce::PluginDescription description;
     instance->fillInPluginDescription(description);
-    bool is_instrument = description.isInstrument || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);
+    bool is_instrument = described_instrument(description) || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);
 
     auto handle = std::make_unique<PluginHandle>(std::move(instance), is_instrument, device_rate, rate);
     handle->stage = stage.string();
@@ -1023,7 +1057,7 @@ void PluginRack::destroy(PluginHandle* handle) {
         else owned.reset(handle); // never made it into the list (a stale load)
     }
     std::string stage = owned->stage;
-    if (owned->format == PluginFormat::Vst3) message_thread().run([&] { owned.reset(); });
+    if (juce_hosted(owned->format)) message_thread().run([&] { owned.reset(); });
     else owned.reset();
     std::error_code e;
     if (!stage.empty()) fs::remove_all(stage, e);

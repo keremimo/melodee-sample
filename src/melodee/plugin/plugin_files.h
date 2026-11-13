@@ -9,9 +9,10 @@
 #include <vector>
 
 // What a folder of plug-ins holds, as the PLUG-INS picker lists it: folders
-// first, then the plug-ins in it, each by name. Four kinds are plug-ins:
+// first, then the plug-ins in it, each by name. Five kinds are plug-ins:
 //
 // - a VST3 bundle (Name.vst3/, its library in Contents/aarch64-linux);
+// - an LV2 bundle (Name.lv2/, its manifest.ttl beside its library);
 // - a CLAP library (Name.clap, a shared library on Linux);
 // - an Open MPC plug-in folder (open-mpc.github.io: plugin-meta.xml beside a
 //   VST2 .so, its Q-Link pages in Plugin Skins/Q-Links.json);
@@ -22,8 +23,8 @@
 // with the reason, so a Windows or Mac download says why it does nothing.
 namespace melodee {
 
-enum class PluginFormat : uint8_t { Vst3, Vst2, Vst2Arm32, Clap };
-const char* format_tag(PluginFormat format); // "VST3", "VST2", "ARMV7", "CLAP"
+enum class PluginFormat : uint8_t { Vst3, Vst2, Vst2Arm32, Clap, Lv2 };
+const char* format_tag(PluginFormat format); // "VST3", "VST2", "ARMV7", "CLAP", "LV2"
 
 struct PluginFile {
     std::string path;          // the bundle, the Open MPC folder, the .clap or the .so
@@ -36,9 +37,9 @@ struct PluginFile {
     // The rate it runs at whatever it is opened at, 0 none: an Open MPC plug-in, written to MPC OS's 44.1 kHz
     // (plugin/rate_bridge.h converts it to the device's)
     unsigned fixed_rate = 0;
-    // A bundle holding several plug-ins (LSP's VST3, a CLAP collection) lists as one row with how many; opened, each
-    // is a row of its own with its `id` (JUCE's unique id for a VST3, clap_id_hash() of a CLAP's id). 0 plugins: not
-    // known yet.
+    // A bundle holding several plug-ins (LSP's VST3 or LV2, a CLAP collection) lists as one row with how many;
+    // opened, each is a row of its own with its `id` (JUCE's unique id for a VST3 or LV2, clap_id_hash() of a CLAP's
+    // id). 0 plugins: not known yet.
     unsigned plugins = 0;
     int32_t id = 0;
     // A drum machine's voices (plugin/drum_map.h), read from its library; empty for any other plug-in. A PLUGIN track

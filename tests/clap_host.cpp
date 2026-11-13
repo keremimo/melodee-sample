@@ -3,7 +3,7 @@
 // Melodee's CLAP host (plugin/clap_instance.h) against tests/clap_fixture.cpp:
 // listing a library, notes as CLAP notes and CCs as MIDI, parameters both ways,
 // state, latency, the main-thread callback, and every call on the right thread.
-// Built and run by tests/test_clap.py on aarch64 Linux, with Melodee's objects.
+// Built and run by tests/test_plugin_hosts.py on aarch64 Linux, with Melodee's objects.
 #include "melodee/plugin/clap_instance.h"
 #include "melodee/plugin/plugin_files.h"
 

@@ -35,18 +35,22 @@ build/obj/juce_audio_formats_%.o: $(FORMATS)/juce_audio_formats_%.c
 build/obj/melodee/shell/sample_decode.o: CPPFLAGS += $(FORMAT_FLAGS)
 
 # Plug-ins (docs/MELODEE.md, Plug-ins): JUCE's headless plug-in hosting with
-# VST3 (VST2, CLAP and the armv7 bridge are Melodee's own, src/melodee/plugin/;
-# CLAP's headers from build/deps/clap, src/melodee/dependencies.py), and
+# VST3 and LV2 (lilv and its libraries, bundled in JUCE; VST2, CLAP and the
+# armv7 bridge are Melodee's own, src/melodee/plugin/; CLAP's headers from
+# build/deps/clap, src/melodee/dependencies.py), and
 # the support pack (GUI stubs, the bridge and its armhf runtime) linked into
 # the binary. The pack needs Melodee's build image (tools/plugin_support/Dockerfile).
 HOSTING := $(JUCE)/juce_audio_processors_headless
-CPPFLAGS += -DJUCE_PLUGINHOST_VST3=1 -I$(HOSTING)/format_types/VST3_SDK -Ibuild/deps/clap/include
-PLUGIN_OBJECTS := build/obj/juce_audio_processors_headless.o build/obj/plugin_support_pack.o
+CPPFLAGS += -DJUCE_PLUGINHOST_VST3=1 -DJUCE_PLUGINHOST_LV2=1 -I$(HOSTING)/format_types/VST3_SDK -Ibuild/deps/clap/include
+LV2_SDK := $(HOSTING)/format_types/LV2_SDK
+LV2_INCLUDES := $(addprefix -I$(LV2_SDK),/ /lv2 /serd /sord /sord/src /sratom /lilv /lilv/src)
+PLUGIN_OBJECTS := build/obj/juce_audio_processors_headless.o build/obj/juce_audio_processors_headless_lv2_libs.o build/obj/plugin_support_pack.o
 OBJECTS += $(PLUGIN_OBJECTS)
 $(TARGET): $(PLUGIN_OBJECTS)
-build/obj/juce_audio_processors_headless.o: $(HOSTING)/juce_audio_processors_headless.cpp
+# Makefile too: a hosting flag changed here builds them again.
+build/obj/juce_audio_processors_headless.o build/obj/juce_audio_processors_headless_lv2_libs.o: build/obj/%.o: $(HOSTING)/%.cpp Makefile
 	@mkdir -p build/obj
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -w -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(LV2_INCLUDES) $(CXXFLAGS) -w -c $< -o $@
 build/plugin-support.pack: tools/plugin_support/build.py tools/plugin_support/make_stubs.py tools/plugin_support/Dockerfile \
         src/melodee/plugin/bridge32/vst2_bridge32.cpp src/melodee/plugin/vst2_abi.h src/melodee/plugin/vst2_bridge_protocol.h
 	python3 tools/plugin_support/build.py build/plugin-support $@

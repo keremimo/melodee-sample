@@ -102,9 +102,12 @@ def collect(binary, version, commit):
     files[f"{licenses}/THIRD_PARTY.md"] = (ROOT / "THIRD_PARTY.md").read_bytes()
     files[f"{licenses}/Rubik-OFL.txt"] = (ROOT / "build/deps/rubik/OFL.txt").read_bytes()
     files[f"{licenses}/JUCE-LICENSE.md"] = (ROOT / "build/deps/JUCE/LICENSE.md").read_bytes()
-    # Plug-ins (docs/MELODEE.md): the VST3 SDK inside JUCE, the CLAP headers, and the armhf runtime inside the binary's support pack.
+    # Plug-ins (docs/MELODEE.md): the VST3 SDK and LV2 libraries inside JUCE, the CLAP headers, and the armhf runtime inside the binary's support pack.
     files[f"{licenses}/VST3-SDK-LICENSE.txt"] = (ROOT / "build/deps/JUCE/modules/juce_audio_processors_headless/format_types/VST3_SDK/LICENSE.txt").read_bytes()
     files[f"{licenses}/CLAP-LICENSE.txt"] = (ROOT / "build/deps/clap/LICENSE").read_bytes()
+    lv2_sdk = ROOT / "build/deps/JUCE/modules/juce_audio_processors_headless/format_types/LV2_SDK"
+    for lib in ("lilv", "lv2", "serd", "sord", "sratom"):
+        files[f"{licenses}/LV2-{lib}-COPYING.txt"] = (lv2_sdk / lib / "COPYING").read_bytes()
     for path in sorted((ROOT / "build/plugin-support/licenses").glob("*")):
         files[f"{licenses}/armhf-runtime/{path.name}"] = path.read_bytes()
     assert all(name.startswith("autorun/") for name in files), "the zip is the autorun folder alone"
