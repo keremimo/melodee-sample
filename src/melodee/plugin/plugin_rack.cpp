@@ -8,7 +8,6 @@
 #include "melodee/plugin/plugin_support.h"
 #include "melodee/plugin/rate_bridge.h"
 #include "melodee/plugin/nam.h"
-#include "melodee/plugin/tone3000.h"
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_instance.h"
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
@@ -211,26 +210,6 @@ fs::path plugin_home(const std::string& card_top) {
     return fs::path(card_top) / "Melodee" / "Plugin Data";
 }
 
-// A TONE3000 state as JUCE's VST3 host keeps it (VST3PluginState: the plug-in's
-// component and controller states in Base64), every NAM block lite
-// (plugin/tone3000.h).
-void tone3000_lite_state(std::vector<uint8_t>& state) {
-    auto xml = juce::AudioProcessor::getXmlFromBinary(state.data(), int(state.size()));
-    if (!xml) return;
-    bool changed = false;
-    for (auto* part : xml->getChildIterator()) {
-        juce::MemoryBlock data;
-        if (!data.fromBase64Encoding(part->getAllSubText())) continue;
-        if (!tone3000_lite(static_cast<uint8_t*>(data.getData()), data.getSize())) continue;
-        part->deleteAllTextElements();
-        part->addTextElement(data.toBase64Encoding());
-        changed = true;
-    }
-    if (!changed) return;
-    juce::MemoryBlock out;
-    juce::AudioProcessor::copyXmlToBinary(*xml, out);
-    state.assign(static_cast<const uint8_t*>(out.getData()), static_cast<const uint8_t*>(out.getData()) + out.getSize());
-}
 } // namespace
 
 // What the audio thread runs (PluginRunner): the plug-in, its buffers made up
@@ -639,8 +618,6 @@ void PluginRack::switch_program(unsigned entry, uint32_t generation, int program
         instance = e.live->instance.get(); // freed only on this thread, so it outlives the switch
     }
     if (program >= 0 && program < instance->getNumPrograms()) {
-        // TONE3000 reads the preset's file now: one copied over it since it opened is made lite too.
-        if (is_tone3000(instance->getName().toStdString())) tone3000_lite_presets(use_plugin_home());
         if (instance->getCurrentProgram() == program && instance->getNumPrograms() > 1 && !dynamic_cast<ClapInstance*>(instance)) {
             instance->setCurrentProgram(program == 0 ? 1 : 0);
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
@@ -913,7 +890,6 @@ void PluginRack::load(const Job& job) {
     double device_rate = job.rate > 0 ? job.rate : 44100.0;
     double rate = file.fixed_rate ? double(file.fixed_rate) : device_rate; // what the plug-in itself runs at
     int block = int(EngineHost::block);
-    bool tone3000 = false; // its NAM blocks always lite (plugin/tone3000.h)
     bool nam = false;      // Neural Amp Modeler: its folders made, its page ordered (plugin/nam.h)
     if (juce_hosted(file.format)) {
         juce::OwnedArray<juce::PluginDescription> types;
@@ -925,8 +901,6 @@ void PluginRack::load(const Job& job) {
         }
         if (!chosen) why = types.isEmpty() ? "No plug-in in the bundle" : "No longer in its bundle";
         else {
-            tone3000 = is_tone3000(chosen->name.toStdString());
-            if (tone3000) tone3000_lite_presets(home); // before it lists them
             nam = is_nam(chosen->name.toStdString());
             if (nam) nam_folders(home); // before it lists them
             auto make = [&] { instance = host->createInstanceFromDescription(*chosen, rate, block, why); };
@@ -951,10 +925,7 @@ void PluginRack::load(const Job& job) {
         for (int b = 1; b < instance->getBusCount(input); ++b) instance->getBus(input, b)->enable(false);
     instance->setNonRealtime(false);
     instance->prepareToPlay(rate, block);
-    if (!state.empty()) {
-        if (tone3000) tone3000_lite_state(state); // a project saved before, or with a full block
-        instance->setStateInformation(state.data(), int(state.size()));
-    }
+    if (!state.empty()) instance->setStateInformation(state.data(), int(state.size()));
     juce::PluginDescription description;
     instance->fillInPluginDescription(description);
     bool is_instrument = described_instrument(description) || (instance->getTotalNumInputChannels() == 0 && instance->getTotalNumOutputChannels() > 0);

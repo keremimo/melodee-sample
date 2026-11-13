@@ -250,5 +250,5 @@ same presets with every `slimSize` set to 0, 48 kHz, 128 frames, 8 s:
 TONE3000's multi-core setting (`multiCore` in `preferences.settings`, on by
 default in the release build) changes none of these by much: off, Matchless
 lite is 19.7% and Stereo Fuzz lite 51.5%. The Bluesbreaker's 20 to 28 ms
-blocks stay with lite: they are its 1.78 s stereo IR. Melodee makes every
-block lite (`src/melodee/plugin/tone3000.h`).
+blocks stay with lite: they are its 1.78 s stereo IR. Melodee leaves each
+block's size as the preset has it.
