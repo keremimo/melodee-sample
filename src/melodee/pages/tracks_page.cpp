@@ -12,6 +12,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/erase_copy.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/shell/pad_bank.h"
 #include <cmath>
 
@@ -49,10 +50,14 @@ void pad(Context& c, unsigned pad, uint8_t, bool down) {
     if (!down) return;
     c.select_track(pad % track_count);
     if (c.ui.erase) erase_tap(c); // Erase + pad: that track cleared, once B3 says so (as with Pad Bank held)
+    else offer_new_track(c);      // an empty one: what it becomes
 }
 
 void wheel(Context& c, int delta) { c.select_track(unsigned(int(c.ui.track) + delta + int(track_count)) % track_count); }
-void push(Context& c) { c.open(PageId::Stage); }
+void push(Context& c) {
+    if (!c.track().used()) { offer_new_track(c); return; } // an empty track: what it becomes, not its Stage
+    c.open(PageId::Stage);
+}
 
 void soft(Context& c, int key) {
     if (c.ui.shift) { // MOVE, COPY: the pads are the tracks until both are picked

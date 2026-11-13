@@ -20,6 +20,7 @@
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/ui/widgets.h"
 #include <algorithm>
 #include <cmath>
@@ -304,7 +305,9 @@ void open_clip(Context& c, int index, bool motion) {
 }
 
 void pad(Context& c, unsigned pad, uint8_t, bool down) {
-    if (down) c.select_track(pad); // pads pick the lane
+    if (!down) return;
+    c.select_track(pad); // pads pick the lane
+    offer_new_track(c);  // an empty one: what it becomes
 }
 
 void wheel(Context& c, int delta) {

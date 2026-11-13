@@ -218,6 +218,7 @@ void Context::open(PageId page) {
         page = PageId::Stage;
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
+    if (page != PageId::Samples) ui.new_return = -1; // SAMPLES left without a sample: no going back later
     ui.sheet_open = false;
     ui.move_open = false;
     ui.map_open = false;
@@ -259,6 +260,7 @@ void Context::back() {
 void Context::select_track(unsigned t) {
     if (ui.page == PageId::Sounds) audition(-1);
     stage_tick(UINT32_MAX); // a sound still waiting to load lands on the track it was turned on
+    if (ui.track != t % track_count) ui.new_open = false; // the New track sheet was the last track's
     ui.track = uint8_t(t % track_count);
     ui.held_step = -1;
     if (ui.page == PageId::Sounds) ui.sounds_cursor = track().preset;

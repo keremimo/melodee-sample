@@ -4,6 +4,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/ask.h"
 #include "melodee/shell/context.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/shell/track_copy.h"
 #include <algorithm>
 
@@ -74,7 +75,7 @@ bool track_pad(Context& c, unsigned pad) {
         else ask(c, UiState::Ask::ClearTrack, int(pad));
         return true;
     }
-    if (ui.copying != UiState::Copying::Tracks) { c.select_track(pad); return true; }
+    if (ui.copying != UiState::Copying::Tracks) { c.select_track(pad); offer_new_track(c); return true; }
     if (ui.copy_from < 0) { // the track to move or copy
         if (!track_clearable(c.project.tracks[pad], c.patterns.at[pad])) { c.notice("Track " + std::to_string(pad + 1) + " is empty"); return true; }
         ui.copy_from = int8_t(pad);

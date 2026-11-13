@@ -761,6 +761,7 @@ const Preview previews[] {
          s.project.loop_fx[1].slots[0].kind = uint8_t(EffectKind::Echo);
      }},
     {"tracks2", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.playing = true; s.project.tracks[2].mix.mute = true; }},
+    {"newtrack", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tracks; s.ui.track = 9; s.ui.new_open = true; s.ui.new_pick = 2; }},
     {"keys", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Keys; s.ui.held_pads = 1u << 4 | 1u << 9; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;

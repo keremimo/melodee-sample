@@ -13,6 +13,7 @@
 #include "melodee/pages/page.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/fader.h"
 #include <chrono>
@@ -204,6 +205,7 @@ void Shell::press(Button b, bool pressed) {
     if (b == Button::Play && !pressed && ui.fill) context_.fill(false); // Fill lasts while Play is held
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
+    if (pressed && new_track_button(context_, b)) return; // an empty track picked: the New track sheet (shell/new_track.h)
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
         if (!pressed) { if (b == Button::TapTempo) tap_held = false; let_go(context_, b); return; }
         switch (b) {
@@ -418,7 +420,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     check_pickup(n, b);
     ui_.turning = int8_t(n); ui_.turned_at = context_.now; ui_.last_pot = int8_t(n); ui_.last_pot_shift = ui_.shift;
     if (ui_.shift) ui_.shift_used = true;
-    if (ui_.ask != UiState::Ask::None) return; // a question open: the pots wait
+    if (ui_.ask != UiState::Ask::None || ui_.new_open) return; // a question or the New track sheet open: the pots wait
     if (ui_.erase && b.kind == Binding::Kind::KnobParam) { // Erase + pot on Knob FX's cards: back to the effect's initial value
         context_.apply(b, effect_info(EffectKind(project_->knob_fx.kind)).params[size_t(b.id) % effect_params].initial);
         pot.engaged = false; pot.bound = 0;
@@ -444,6 +446,7 @@ void Shell::wheel(int delta) {
     if (ui_.erase) ui_.erase_used = true; // Erase + the wheel: its release erases nothing
     if (ui_.exit_open) { if (!ui_.exit_off) ui_.exit_pick = key_pick_turn(ui_.exit_pick, delta); return; } // STAY, POWER OFF, MPC APP
     if (ui_.ask != UiState::Ask::None) { ui_.ask_pick = key_pick_turn(ui_.ask_pick, delta, 0b101); return; } // CANCEL or the verb
+    if (ui_.new_open) { new_track_wheel(ui_, delta); return; } // the New track sheet's cards
     if (ui_.name.open()) { // Shift: the character under the cursor; else the cursor
         if (ui_.shift) { ui_.shift_used = true; ui_.name.step_char(delta); } else ui_.name.move(delta);
         return;

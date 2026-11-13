@@ -21,6 +21,7 @@
 // Melodee writes only to the card: Trim and Extract go to Samples/Edits;
 // without a card they stay in memory for the session.
 #include "melodee/shell/context.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/shell/sample_library.h"
 #include <cstdio>
 #include <filesystem>
@@ -206,6 +207,7 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
     edits.push(std::move(edit));
     dirty = true;
     notice(keep ? pad_text("Loaded", unsigned(kit)) + ", settings kept" : pad_text("Loaded", unsigned(kit)));
+    new_track_landed(*this); // a track SAMPLES made: back to the page it was picked on
 }
 
 // An instrument read: the envelope most of its regions have goes on its pad,
