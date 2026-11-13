@@ -5,6 +5,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/stage_map.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -120,15 +121,46 @@ void levels_button(Context& c) {
         c.notice(std::string("16 Levels: ") + levels_kind_name(LevelsKind(t.levels_kind)));
         return;
     }
-    if (ui.page == PageId::Levels) { t.levels = false; c.open(PageId::Stage); return; } // back to the SOUND hub
+    ui.levels_hit = -1;
+    if (t.levels) { t.levels = false; c.notice("16 Levels off"); return; } // the page stays as it is
     // A kit: its last pad on all sixteen; a synth: its last note.
     if (!kit && t.levels_kind == unsigned(LevelsKind::Filter)) t.levels_kind = uint8_t(LevelsKind::Velocity);
     if (drum_pads(t)) t.levels_kind = uint8_t(LevelsKind::Velocity); // Loop went to the Looper above
     t.levels = true;
     if (kit) t.levels_pad = t.last_pad;
     if (kit) t.levels_kind = uint8_t(levels_opening(c.project, t)); // a drum instrument's pad in Zones, a plain one's not
-    ui.levels_hit = -1;
-    c.open(PageId::Levels);
+    c.notice(std::string("16 Levels: ") + levels_kind_name(LevelsKind(t.levels_kind)));
+}
+
+// − / + with 16 Levels held: Zones the next sixteen of the instrument's keys; Scale (a synth's octave, and a kit's)
+// and a kit's Tune the pads an octave down or up.
+void levels_nudge(Context& c, int way) {
+    auto& t = c.track();
+    const auto kind = LevelsKind(t.levels_kind % unsigned(LevelsKind::Count));
+    const bool kit = t.engine == EngineKind::Sampler;
+    const auto* instrument = kit ? levels_instrument(c.project, t) : nullptr;
+    if (kind == LevelsKind::Zones && instrument) {
+        const unsigned pages = zone_pages(*instrument);
+        const int page = std::clamp(int(zone_page(t, pages)) + way, 0, int(pages) - 1);
+        t.octave = int8_t(kit_level_octave + page);
+        int last = -1;
+        for (unsigned n = 0; n < 16; ++n) if (!levels_of(c.project, t, n).none) last = levels_of(c.project, t, n).shown;
+        std::string keys = last >= 0 ? note_name(levels_of(c.project, t, 0).shown) + "\xe2\x80\x93" + note_name(last) : std::string("none");
+        c.notice(std::string("Pads ") + keys + (pages > 1 ? " (" + std::to_string(page + 1) + "/" + std::to_string(pages) + ")" : std::string()));
+        return;
+    }
+    if (!kit && kind == LevelsKind::Scale) { // a synth: the track's octave, and the notes the pads now play
+        t.octave = int8_t(std::clamp(t.octave + way, 0, 7));
+        c.notice(std::string("Pads ") + note_name(levels_of(c.project, t, 0).key) + "\xe2\x80\x93" + note_name(levels_of(c.project, t, 15).key));
+        return;
+    }
+    if (!kit || (kind != LevelsKind::Tune && kind != LevelsKind::Scale && kind != LevelsKind::Zones)) {
+        c.notice(std::string("16 Levels ") + levels_kind_name(kind) + ": no octave");
+        return;
+    }
+    t.octave = int8_t(std::clamp(t.octave + way, kit_lowest_octave, kit_highest_octave));
+    const int octave = t.octave - kit_level_octave;
+    c.notice(octave ? std::string("Octave ") + (octave > 0 ? "+" : "") + std::to_string(octave) : std::string("Octave 0, as it is"));
 }
 
 // Loop: the last pad plays on from its loop point after its end; on, Loop Lock

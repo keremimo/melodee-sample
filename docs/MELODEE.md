@@ -130,12 +130,12 @@ cards.
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
 | Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
-| 16 Levels | On release, the last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Zones (an instrument's pad), Loop |
+| 16 Levels | A tap: the last pad (or a synth's last note) on all sixteen pads, again off; the page stays. Held: K1–K3 are its settings on any page (the type, then the two ends or the key's root and scale) and − / + its octave or Zones' page; let go after a hold, nothing. Of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Zones (an instrument's pad), Loop |
 | Sample Select | Samples (the browser) on a kit, the plug-in picker on a PLUGIN track, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. MIDI: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
-| − / + | Lists move as the wheel does; on play pages the octave (a kit's 16 Levels in Tune or Scale too; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
+| − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
 | Sample Record | Record on a kit (there it ends the take and opens Stage's TRIM on the pad; B3 PRINT the PRINT sheet); the PRINT sheet on a PLUGIN or MIDI track (Print and freeze, below); with Seq held, the pattern pads freeze or thaw | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): what every track played last into its next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
@@ -393,9 +393,13 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   (its dots the page in view) opens the page map (wheel, Push jumps, B2 or
   Shift + Push closes).
 - **16 Levels**: on a kit the last pad on all sixteen pads, on a synth its
-  last note. Melodee's Scale first (a new track's type), Tune (semitones),
+  last note. It has no page: a tap turns it on or off where you are (the
+  notice names the type), and while it is held K1–K3 show its cards over
+  the page (`levels_held_cards()`, shell/sample_mode.h) and − / + move its
+  octave or Zones' page; a hold, a pot or − / + leaves the release doing
+  nothing. Melodee's Scale first (a new track's type), Tune (semitones),
   Zones (a kit pad holding an instrument), Velocity, Filter (kit pads: the
-  cutoff). **K1** the type. **Zones**: the keys the instrument's zones
+  cutoff). **K1** (LEVELS) the type. **Zones**: the keys the instrument's zones
   sound on when pressed (a release sample's not), lowest on pad 1, each pad
   one key at its real pitch, its velocity layers and round robins by the
   hit; pads past the last key are dark and silent; more than 16 keys make
@@ -414,17 +418,14 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   16's, the pads between evenly from one to the other, kept for each type
   with the track (sixteen levels between 40 and 127, a filter sweep over an
   octave; at first Velocity 8–127, Tune −3 to +12 with the original on pad
-  4, Filter 0–100). Shift + K1–K3 the pad's own pitch, volume and pan.
+  4, Filter 0–100). The pad's own pitch, volume and pan are on Pads.
   Seq Record keeps a Filter pad's cutoff with each note it writes (roadmap
   P3, the file's `LVCF`), so the pattern plays that note at that cutoff
   (the pad's filter, Classic where it has none), as it was heard.
-  Shift + 16 Levels or B1–B3 pick the type too: B1 Velocity, B2 Filter
-  (kits; nothing on a synth), B3 Scale and again Tune (and on an
-  instrument's pad again Zones), its dots saying which. The picture: Scale a step a pad at its height, the roots in the
-  track's colour; the others the ramp from end to end with a handle at each
-  in its knob's colour; a tick a pad, the pad hit marked with its note or
-  value. − / + move Scale an octave (a synth's pads with the track; a kit
-  three down to five up, kept with the track), and a kit's Tune too.
+  Shift + 16 Levels goes round the types too. The pad lights show the
+  levels. − / + (16 Levels held) move Scale an octave (a synth's pads with
+  the track; a kit three down to five up, kept with the track), and a
+  kit's Tune too.
   On a kit pad (no arp), a MIDI keyboard plays that pad on every key
   (`levels_key()`, shell/midi_route.h), whatever the type: key 60 a sample
   as a C, the pad's Semi kept; an instrument at its real pitch, its Semi

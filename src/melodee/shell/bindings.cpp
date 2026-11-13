@@ -514,6 +514,25 @@ std::array<Binding, 3> project_key(const Project& project, Binding third = {}) {
 namespace {
 // The TRIG row of Steps (`step`: its step in hand's notes) and Roll (the note in focus), roadmap P1: K1 the ratchet's
 // hits, K2 its velocity ramp, K3 its trig condition (beside the chance, K3 of the main row).
+// 16 Levels held, on any page (sample_mode.h): K1 the type, K2 and K3 the two ends (pad 1's and pad 16's), or of
+// type Scale the key's root and scale; Zones only the type (− / + its pages).
+std::array<Binding, 3> levels_cards(const Project& project, const Track& track) {
+    std::array<LevelsKind, 5> types {};
+    unsigned count = levels_types(project, track, types), at = 0;
+    auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
+    for (unsigned n = 0; n < count; ++n) if (types[n] == kind) at = n;
+    if (kind == LevelsKind::Loop || (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler)) return {};
+    if (kind == LevelsKind::Zones) return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}};
+    if (kind == LevelsKind::Scale) { // pad 1 the root, up the scale from there
+        auto key = project_key(project);
+        return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}, key[0], key[1]};
+    }
+    auto range = levels_range(kind);
+    const auto& ends = track.levels_ends[unsigned(kind) % 4];
+    return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}, Binding {Kind::LevelsLow, 0, range.low, range.high, ends[0]},
+            Binding {Kind::LevelsHigh, 0, range.low, range.high, ends[1]}};
+}
+
 std::array<Binding, 3> trig_cards(const Event& e, bool step) {
     return {Binding {step ? Kind::StepRatchet : Kind::EventRatchet, 0, 1, int(max_ratchet), int(e.hits())},
             Binding {step ? Kind::StepRamp : Kind::EventRamp, 0, -100, 100, e.ramp},
@@ -539,6 +558,7 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     const auto& track = project.tracks[ui.track % track_count];
     if (ui.name.open()) return {};
     if (ui.seq_held) return pattern_shift_cards(project, ui, pattern); // Seq held: the pattern's, on any page
+    if (ui.levels_held) return {}; // 16 Levels held: its cards have no Shift row
     if (auto pads = sample_held_page(project, ui); pads != PageId::Count) { // Sample held: its pads' (Pads, Keys)
         UiState on = ui; on.page = pads; on.sample_held = false;
         return shift_bindings(project, on, pattern);
@@ -636,14 +656,6 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
     case PageId::Compressor: // Shift + K3: In Boost
         return {Binding {}, Binding {}, Binding {Kind::CompBoost, 0, 0, 24, project.compressor.boost}};
     case PageId::Stage: return stage_bindings(project, ui, true);
-    case PageId::Levels: { // the pad's own pitch (a sample that is not a C tuned for Scale), volume and pan
-        bool kit = track.engine == EngineKind::Sampler;
-        const auto& pad = track.pads[track.levels_pad % sampler_pads];
-        Binding pan = kit && pad.used() ? Binding {Kind::PadPan, 0, -50, 50, pad.pan} : Binding {};
-        if (!kit) return favourite_bindings(track);
-        if (!pad.used()) return {};
-        return {Binding {Kind::PadPitch, 0, -24, 24, pad.pitch}, Binding {Kind::PadLevel, 0, 0, 127, pad.level}, pan};
-    }
     case PageId::Pads: case PageId::Tempo: return project_key(project); // Shift + K1 / K2: the project's key, no synth track needed
     case PageId::TimeCorrect: { // Shift: humanize, its velocity, the groove's amount (a pad picks the groove)
         auto feel = feel_cards(pattern, 0), more = feel_cards(pattern, 1);
@@ -684,6 +696,7 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         UiState on = ui; on.page = pads; on.sample_held = false;
         return base_bindings(project, on, pattern);
     }
+    if (levels_held_cards(project, ui)) return levels_cards(project, track); // 16 Levels held: its settings, on any page
     if (ui.page == PageId::Looper) { // the Looper (docs/LOOPER.md): LOOPS, the loop tracks' MIX, or the loop's sheet
         unsigned l = ui.loop % loop_tracks;
         const auto& m = project.loop_mix[l];
@@ -810,22 +823,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned bus = ui.sends_bus % bus_count;
         return {Binding {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
-    }
-    case PageId::Levels: { // K1 the type, K2 and K3 the two ends (pad 1's and pad 16's), or of type Scale the key
-        std::array<LevelsKind, 5> types {};
-        unsigned count = levels_types(project, track, types), at = 0;
-        auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
-        for (unsigned n = 0; n < count; ++n) if (types[n] == kind) at = n;
-        if (kind == LevelsKind::Loop || (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler)) return {};
-        if (kind == LevelsKind::Zones) return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}}; // − / + its pages
-        if (kind == LevelsKind::Scale) { // the root and the scale: pad 1 the root, up the scale from there
-            auto key = project_key(project);
-            return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}, key[0], key[1]};
-        }
-        auto range = levels_range(kind);
-        const auto& ends = track.levels_ends[unsigned(kind) % 4];
-        return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}, Binding {Kind::LevelsLow, 0, range.low, range.high, ends[0]},
-                Binding {Kind::LevelsHigh, 0, range.low, range.high, ends[1]}};
     }
     case PageId::Pads: {
         if (track.engine != EngineKind::Sampler) return favourite_bindings(track); // a synth: its own three

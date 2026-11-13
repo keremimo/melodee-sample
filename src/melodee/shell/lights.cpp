@@ -453,7 +453,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     on(B::Loop, ui.page == PageId::Looper || ui.loop_held || (ui.page == PageId::Song ? project.song.looping()
                     : track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the song's brace on Song, else the last pad loops; the Looper
     // 16 Levels: lit while the pads play levels (a kit pad or a synth's last note on all sixteen, or a synth's Levels layout).
-    on(B::SixteenLevels, ui.page == PageId::Levels || track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));
+    on(B::SixteenLevels, track.levels || (track.engine != EngineKind::Sampler && track.layout == PadLayout::Levels));
     on(B::Play, playing);
     on(B::Stop, false);
     // Seq Record: bright while recording, flashing while armed (Play starts the take) or counting in.

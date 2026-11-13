@@ -4558,14 +4558,20 @@ void projects_and_polish() {
             auto shifted = page_bindings(*p, ui, pattern, true);
             CHECK(shifted[0].kind == K::Root && shifted[1].kind == K::Scale && shifted[1].max == 12);
         }
-        ui.page = PageId::Levels; // K1 the type; of type Scale K2 the root and K3 the scale, of the others the two ends
+        // 16 Levels held, on any page (no page of its own): K1 the type; of type Scale K2 the root and K3 the scale,
+        // of the others the two ends. Let go, the page's own cards; of type Loop, none of its own.
+        ui.page = PageId::Stage; ui.levels_held = true;
         p->tracks[0].levels_kind = uint8_t(LevelsKind::Scale);
         auto levels = page_bindings(*p, ui, pattern, false);
         CHECK(levels[0].kind == K::LevelsType && levels[1].kind == K::Root && levels[2].kind == K::Scale && levels[2].max == 12);
-        CHECK(page_bindings(*p, ui, pattern, true)[0].kind != K::Root); // Shift: the pad's own, not the key again
         p->tracks[0].levels_kind = uint8_t(LevelsKind::Tune);
         levels = page_bindings(*p, ui, pattern, false);
         CHECK(levels[1].kind == K::LevelsLow && levels[2].kind == K::LevelsHigh && levels[2].value == 12);
+        p->tracks[0].levels_kind = uint8_t(LevelsKind::Loop);
+        CHECK(page_bindings(*p, ui, pattern, false)[0].kind != K::LevelsType);
+        p->tracks[0].levels_kind = uint8_t(LevelsKind::Tune);
+        ui.levels_held = false;
+        CHECK(page_bindings(*p, ui, pattern, false)[0].kind != K::LevelsType);
     }
     // The metronome is Melodee's, not the project's: kept in the settings file; older files read Off at 40.
     {

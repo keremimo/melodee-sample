@@ -17,7 +17,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Levels, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
+enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
@@ -360,8 +360,11 @@ struct UiState {
     bool loop_held = false, loop_grip = false, loop_on_song = false;
     bool loop_shift_held = false; // Shift + Loop down: let go soon, Reverse; held, the Looper on or off
     // 16 Levels down: its job waits for the release; used once Loop came with it (the Looper, shell/looper_chord.h)
-    // or Shift + 16 Levels took the type at once, and the release then does nothing.
+    // or Shift + 16 Levels took the type at once, and the release then does nothing. Held, K1-K3 and − / + are
+    // 16 Levels' own on any page (levels_held_cards); held past levels_hold_ms, or a pot or − / + turned, the
+    // release does nothing either.
     bool levels_held = false, levels_used = false;
+    uint32_t levels_down = 0; // ms: when 16 Levels went down
     int8_t loop_clear = -1;
     uint32_t loop_clear_at = 0;
     int8_t fx_loop = -1;

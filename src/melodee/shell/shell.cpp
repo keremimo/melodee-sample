@@ -269,6 +269,13 @@ void Shell::press(Button b, bool pressed) {
     if ((b == Button::Loop || b == Button::SixteenLevels) && (!ui.exit_open || !pressed)) {
         // Loop and 16 Levels together, in either order: the Looper, and neither's own job (shell/looper_chord.h).
         // 16 Levels alone acts on its release (the last pad on all sixteen; Shift: the type, as it goes down).
+        // Held, K1-K3 and − / + are its settings (sample_mode.h); let go after levels_hold_ms, nothing.
+        if (b == Button::SixteenLevels && pressed) {
+            ui.levels_down = context_.now;
+            auto& t = context_.track();
+            if (t.engine == EngineKind::Sampler && !t.levels) t.levels_pad = t.last_pad; // its cards are the last pad's
+        }
+        if (b == Button::SixteenLevels && !pressed && ui.levels_held && context_.now - ui.levels_down >= levels_hold_ms) ui.levels_used = true;
         switch (looper_chord(ui, b, pressed)) {
         case ChordAct::Looper: if (ui.shift) ui.shift_used = true; context_.open(PageId::Looper); end_copy_away(); return;
         case ChordAct::Levels:
@@ -394,11 +401,13 @@ void Shell::press(Button b, bool pressed) {
     // Pad Bank held: Minus / Plus jump banks.
     case Button::Minus:
         if (ui.shift) context_.undo();
+        else if (levels_held_cards(*project_, ui)) { ui.levels_used = true; levels_nudge(context_, -1); } // 16 Levels held
         else if (record_track_keys()) context_.record_octave(-1); // the source track's pads, while they play
         else if (!pad_bank_move(context_, -1)) page.nudge(context_, -1);
         break;
     case Button::Plus:
         if (ui.shift) context_.redo();
+        else if (levels_held_cards(*project_, ui)) { ui.levels_used = true; levels_nudge(context_, 1); }
         else if (record_track_keys()) context_.record_octave(1);
         else if (!pad_bank_move(context_, 1)) page.nudge(context_, 1);
         break;
@@ -452,6 +461,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     if (syncing) { pot.bound = 0; check_pickup(n, b); return; }
     if (ui_.seq_held) ui_.seq_used = true; // Seq + pot: the pattern's length, Q or swing; its release goes nowhere
     if (ui_.erase) ui_.erase_used = true; // Erase + pot: its release deletes nothing
+    if (ui_.levels_held) ui_.levels_used = true; // 16 Levels + pot: its setting; the release toggles nothing
     if (ui_.sheet_open && ui_.page == PageId::Roll) ui_.sheet_open = false; // a pot leaves Roll's sheet and does its job
     if (!b.bound()) return;
     check_pickup(n, b);

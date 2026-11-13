@@ -1424,7 +1424,7 @@ const Preview previews[] {
          s.ui.chop_slice = 2; s.ui.chop_zoom = 30; s.ui.chop_focus = 0; s.ui.chop_fine = true; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"levels", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         s.ui.page = PageId::Pads; s.ui.levels_held = true; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1;
          t.levels_kind = uint8_t(LevelsKind::Velocity); t.levels_ends[unsigned(LevelsKind::Velocity)] = {40, 127}; // sixteen levels from 40
          s.sample.frames = 26460;
@@ -1974,12 +1974,12 @@ const Preview previews[] {
     {"tune", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.pitch = -2; pad.warp = warp_seq; pad.beats = 8; s.ui.turning = 2; s.ui.turned_at = s.now; }},
     {"levelsfilter", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         s.ui.page = PageId::Pads; s.ui.levels_held = true; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1; t.levels_kind = uint8_t(LevelsKind::Filter);
          t.pads[1].cutoff = 70; s.sample.frames = 26460; s.ui.levels_hit = 5;
      }},
     {"levelssynth", [](Shell&, Snapshot& s) { // 16 Levels on a synth: its last note, by Tune
-         s.ui.page = PageId::Levels; s.ui.track = 0; s.playing = true;
+         s.ui.page = PageId::Keys; s.ui.levels_held = true; s.ui.track = 0; s.playing = true;
          auto& t = s.project.tracks[0]; t.levels = true; t.levels_kind = uint8_t(LevelsKind::Tune); s.ui.levels_hit = 3;
      }},
     {"shift", [](Shell&, Snapshot& s) { s.ui.page = PageId::Stage; s.ui.shift = true; s.playing = true; }},
@@ -1994,7 +1994,7 @@ const Preview previews[] {
          s.ui.page = PageId::Tempo; s.ui.shift = true; s.project.root = 0; s.project.scale = chromatic_scale;
      }},
     {"levelsoctave", [](Shell&, Snapshot& s) { // 16 Levels by Tune on an instrument's pad, + pressed once: an octave up
-         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true;
+         s.ui.page = PageId::Pads; s.ui.levels_held = true; s.ui.track = 3; s.playing = true;
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 8; t.last_pad = 8; t.levels_kind = uint8_t(LevelsKind::Tune);
          t.octave = int8_t(kit_level_octave + 1);
          choir_pad(s, 8);
@@ -2002,12 +2002,12 @@ const Preview previews[] {
          std::snprintf(s.ui.notice, sizeof(s.ui.notice), "Octave +1"); s.ui.notice_at = s.now;
      }},
     {"levelsscale", [](Shell&, Snapshot& s) { // 16 Levels up the scale on a kit: K2 the root, K3 the scale, pad 1 the root
-         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true; s.sample = break_sample();
+         s.ui.page = PageId::Pads; s.ui.levels_held = true; s.ui.track = 3; s.playing = true; s.sample = break_sample();
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1; t.levels_kind = uint8_t(LevelsKind::Scale);
          s.project.root = 0; s.project.scale = 7; s.ui.levels_hit = 5;
      }},
     {"levelszones", [](Shell&, Snapshot& s) { // Zones on a percussion instrument's pad: its 23 keys, page 1 of 2, pad 3 hit
-         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true;
+         s.ui.page = PageId::Pads; s.ui.levels_held = true; s.ui.track = 3; s.playing = true;
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 8; t.last_pad = 8; t.levels_kind = uint8_t(LevelsKind::Zones);
          t.octave = kit_level_octave;
          auto& ref = s.project.samples[t.pads[8].sample % sample_slots];
@@ -2019,7 +2019,7 @@ const Preview previews[] {
          s.ui.levels_hit = 2; s.ui.levels_value = 52;
      }},
     {"levelsscalesynth", [](Shell&, Snapshot& s) { // and on a synth: D Dorian from D3 in the track's octave, pad 10 hit
-         s.ui.page = PageId::Levels; s.ui.track = 0; s.playing = true;
+         s.ui.page = PageId::Keys; s.ui.levels_held = true; s.ui.track = 0; s.playing = true;
          auto& t = s.project.tracks[0]; t.levels = true; t.levels_kind = uint8_t(LevelsKind::Scale); t.octave = 3;
          s.project.root = 2; s.project.scale = 2; s.ui.levels_hit = 9;
      }},
