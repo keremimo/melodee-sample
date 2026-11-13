@@ -386,20 +386,28 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
 // its own: Settings::rec_grid). A note moved ahead of the playhead is skipped
 // once by the audio thread, as it was heard live.
 void Context::record(int key, int velocity, int cutoff) {
-    if (!ui.recording || !host.playing() || host.count_in()) return;
+    if (!ui.recording || !host.playing()) return;
+    // The count-in's last sixteenth: a hit meant for the first beat, a little early (or seen before the count-in's
+    // end reached this thread), goes on the take's first tick, and is not played again there.
+    const bool early = host.count_in() != 0;
+    if (early && (host.song_playing() || host.count_in_ticks() > sixteenth_ticks)) return;
     if (frozen(ui.track)) return; // freeze plan F2b: a frozen track takes no recording (for now)
     auto& p = pattern();
     int position = 0;
     uint32_t ticks = 0;
-    if (!host.heard_place(ui.track, hit_ns, position, ticks)) { position = host.position_of(ui.track); ticks = host.ticks(); }
-    int playhead = host.position_of(ui.track);
+    if (early) { // no tick played yet: where the pattern starts
+        Speed sp = speed_of(track().speed);
+        position = int(uint64_t(host.count_in_from() % std::max<uint32_t>(p.length, 1)) * sp.num / sp.den);
+        ticks = host.ticks();
+    } else if (!host.heard_place(ui.track, hit_ns, position, ticks)) { position = host.position_of(ui.track); ticks = host.ticks(); }
+    int playhead = early ? position : host.position_of(ui.track);
     if (playhead < 0) return;
     uint32_t at = wrap_tick(position, p.length);
-    bool ahead = false;
+    bool ahead = early;
     if (ui.settings.rec_quantize) {
         unsigned grid = division_ticks(grid_division(ui.settings.rec_grid, p.division));
         uint32_t snapped = quantise_tick(p, at, grid); // past the last step: the first, next time round
-        ahead = still_ahead(at, snapped, playhead, p.length);
+        ahead = early || still_ahead(at, snapped, playhead, p.length);
         at = snapped;
     }
     Event e;
@@ -1397,6 +1405,12 @@ void Context::apply_edit(const Edit& e, bool after) {
     if (const auto& m = after ? e.sound_after : e.sound_before) restore_sound(e.track, *m);
     if (const auto& m = after ? e.master_after : e.master_before) restore_master(*m);
     if (const auto& m = after ? e.chop_after : e.chop_before) restore_chop(*m);
+    if (const auto& m = after ? e.tempo_after : e.tempo_before) {
+        for (unsigned n = 0; n < pattern_count; ++n)
+            if (project.pattern_tempo[n] != m->patterns[n]) { project.pattern_tempo[n] = m->patterns[n]; send({Type::PatternTempo, 0, 0, uint16_t(n), int16_t(m->patterns[n])}); }
+        if (project.tempo != m->tempo) { project.tempo = m->tempo; send({Type::Tempo, 0, 0, 0, int16_t(project.tempo)}); }
+        if (project.seq_tempo != m->per_pattern) { project.seq_tempo = m->per_pattern; send({Type::SeqTempo, 0, 0, ui.lead_pattern, int16_t(m->per_pattern)}); }
+    }
     dirty = true;
     take_track = -1;
 }
@@ -1460,7 +1474,15 @@ void Context::set_signature(unsigned index) {
     notice("Time signature " + std::to_string(sig.beats) + "/" + std::to_string(sig.unit));
 }
 
+// A tempo change is one undo step: the wheel's and K1's turns join it until a press or two seconds still.
+static void touch_tempo(Context& c) {
+    auto& g = c.gesture;
+    if (g.edit && g.scope.kind == UndoScope::Kind::Tempo && c.now - g.last < gesture_quiet_ms) { g.last = c.now; return; }
+    c.touch_scope({UndoScope::Kind::Tempo, uint8_t(c.ui.track % track_count), 0}, uint32_t(UndoScope::Kind::Tempo) << 24);
+}
+
 void Context::set_seq_tempo(bool on) {
+    touch_tempo(*this);
     project.seq_tempo = on;
     send({Type::SeqTempo, 0, 0, ui.lead_pattern, int16_t(on)});
     notice(on ? "BPM per pattern" : "BPM global");
@@ -1836,6 +1858,7 @@ void Context::stop() {
 // The tempo in play: the global one, or with BPM per pattern the lead pattern's own.
 void Context::set_tempo(int tenths) {
     tenths = std::clamp(tenths, 300, 3000);
+    touch_tempo(*this);
     if (project.seq_tempo) {
         project.pattern_tempo[ui.lead_pattern % pattern_count] = uint16_t(tenths);
         send({Type::PatternTempo, 0, 0, ui.lead_pattern, int16_t(tenths)});

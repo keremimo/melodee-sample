@@ -470,7 +470,9 @@ beat; the meters show the mix.
 - **Tempo** (hold Tap Tempo): K1 tempo, K2 swing, K3 click level, Shift + K1
   and K2 the project's root and scale from any track; B1 halves,
   B3 doubles, B2 CLICK the metronome Off / On / Rec (its LED green on,
-  amber on Rec); the wheel by 0.1, −/+ by 1. The picture is a ring that
+  amber on Rec); the wheel by 0.1, −/+ by 1. A tempo change is one undo
+  step: K1's or the wheel's turns until a press or two seconds still, each
+  press of B1, B3, −/+ or Tap Tempo, Push's BPM per pattern. The picture is a ring that
   beats: sixteen marks for the sixteenths, the swung ones off their places,
   an arc sweeping the bar as it plays, the tempo in the middle.
 
@@ -651,7 +653,8 @@ hold to steer, Shift + Seq to zoom in**.
   they were heard at (the pad's stamp less the output latency, to the
   nearest tick, not where the playhead has got to by the time the MIDI
   thread sees it); with **Rec Quantize** on they land on its grid (a note
-  moved ahead of the playhead is not played twice). Shift + Pad 10 opens
+  moved ahead of the playhead is not played twice). A pad hit in the
+  count-in's last sixteenth goes on the take's first tick. Shift + Pad 10 opens
   REC QUANTIZE: B3 turns it on or off, K1, the wheel or −/+ pick the grid,
   the pattern's Q or one of its own (1/4 .. 1/64 with triplets), kept with
   Melodee's settings; B1 back, the pads play. Patterns' header names it

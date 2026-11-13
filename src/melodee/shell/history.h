@@ -105,6 +105,13 @@ struct MasterState {
             && modulators == o.modulators && macros == o.macros;
     }
 };
+// The tempo: the project's, each pattern's own and whether patterns keep their own (BPM per pattern).
+struct TempoState {
+    uint16_t tempo = 0;
+    std::array<uint16_t, pattern_count> patterns {};
+    bool per_pattern = false;
+    bool operator==(const TempoState& o) const { return tempo == o.tempo && patterns == o.patterns && per_pattern == o.per_pattern; }
+};
 // Chop's slices of the region in hand (UI state, not saved).
 struct ChopState {
     Slices slices {};
@@ -145,6 +152,7 @@ struct Edit {
     std::unique_ptr<SoundState> sound_before, sound_after;
     std::unique_ptr<MasterState> master_before, master_after;
     std::unique_ptr<ChopState> chop_before, chop_after;
+    std::unique_ptr<TempoState> tempo_before, tempo_after; // the wheel, K1, B1 / B3, Minus / Plus and Tap Tempo
 };
 
 class History {

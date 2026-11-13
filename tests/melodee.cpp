@@ -2152,10 +2152,13 @@ void timing() {
         host->send({Command::Type::Play, 1});
         render(*host, 2);
         CHECK(host->count_in() == 1 && host->position_of(0) < 0);
+        CHECK(host->count_in_from() == 0 && host->count_in_ticks() > 3 * ticks_per_quarter && host->count_in_ticks() < 4 * ticks_per_quarter);
         render(*host, 22050 / 128 + 2); // the second beat
         CHECK(host->count_in() == 2);
-        render(*host, 3 * 22050 / 128); // past the bar
-        CHECK(host->count_in() == 0 && host->position_of(0) >= 0);
+        render(*host, 3 * 22050 / 128 - 6); // just short of the bar's end: Seq Record keeps a hit here, on the first tick
+        CHECK(host->count_in() == 4 && host->count_in_ticks() > 0 && host->count_in_ticks() <= sixteenth_ticks);
+        render(*host, 22050 / 128); // past the bar
+        CHECK(host->count_in() == 0 && host->count_in_ticks() == 0 && host->position_of(0) >= 0);
     }
     // The metronome's blip lasts as long at 96 kHz as at 44.1 kHz (it fell a fixed step a frame).
     {
@@ -4592,7 +4595,10 @@ void projects_and_polish() {
     CHECK(scope(K::ChopStart).kind == S::Chop && scope(K::ChopMode).kind == S::Chop);
     CHECK(scope(K::Param).kind == S::Sound && scope(K::ModAmount).kind == S::Sound);
     CHECK(scope(K::SongLength, 2).kind == S::Song && scope(K::SongLength, -1).none());
-    CHECK(scope(K::Tempo).none() && scope(K::PatternLength).none() && scope(K::FileJump).none());
+    CHECK(scope(K::Tempo).kind == S::Tempo && scope_name(project, ui, scope(K::Tempo)) == "Tempo"); // K1 on TEMPO: one step a turn
+    project.tempo = 1200; project.pattern_tempo[3] = 900; project.seq_tempo = true;
+    CHECK((tempo_of(project) == TempoState {1200, project.pattern_tempo, true}));
+    CHECK(scope(K::ClickLevel).none() && scope(K::PatternLength).none() && scope(K::FileJump).none());
     ui.track = 0; // a synth track has no kit pad
     CHECK(scope(K::PadLevel).none());
     using B = SurfaceButton;

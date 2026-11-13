@@ -223,6 +223,8 @@ public:
     // And how many times its pattern has come round since it began (roadmap P1: a kit lane's place is from both).
     uint32_t pass_of(unsigned track) const { return passes_now[track % track_count].load(std::memory_order_relaxed); }
     unsigned count_in() const { return count_beat.load(std::memory_order_relaxed); } // the count-in's beat now, 1..; 0 none
+    uint32_t count_in_ticks() const { return count_rest.load(std::memory_order_relaxed); } // the count-in's ticks still to come
+    uint32_t count_in_from() const { return count_from.load(std::memory_order_relaxed); }  // the tick the song starts on after it
     unsigned tempo_now() const { return tempo_shown.load(std::memory_order_relaxed); } // tenths of a BPM, as it plays
     unsigned pattern_of(unsigned track) const { return patterns_now[track % track_count].load(std::memory_order_relaxed); }
     // Roadmap P5: how many follow actions have come on a track, and the tracks a STOP left silent (a bit each).
@@ -878,6 +880,7 @@ private:
     std::array<std::atomic<uint32_t>, track_count> passes_now {};
     std::array<std::atomic<uint8_t>, track_count> speeds_now {}; // each track's speed (roadmap P1), for place_at()
     std::atomic<unsigned> count_beat {0};
+    std::atomic<uint32_t> count_rest {0}, count_from {0};
     std::atomic<unsigned> tempo_shown {1200};
     std::array<std::atomic<unsigned>, track_count> patterns_now {};
     std::atomic<bool> in_song {false};

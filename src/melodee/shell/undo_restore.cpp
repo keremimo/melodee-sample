@@ -18,6 +18,7 @@ bool same(const MixState& a, const MixState& b) { return a == b; }
 bool same(const SoundState& a, const SoundState& b) { return a == b; }
 bool same(const MasterState& a, const MasterState& b) { return a == b; }
 bool same(const ChopState& a, const ChopState& b) { return a == b; }
+bool same(const TempoState& a, const TempoState& b) { return a == b; }
 bool same(const Pattern& a, const Pattern& b) { return a == b; } // its events are on the heap
 bool same(const TrackMotion& a, const TrackMotion& b) { return a == b; } // and its motion
 } // namespace
@@ -39,6 +40,7 @@ std::unique_ptr<Edit> Context::scope_edit(const UndoScope& s, const std::string&
     case S::Sound: e->sound_before = std::make_unique<SoundState>(sound_of(project.tracks[s.track])); break;
     case S::Song: e->song_before = std::make_unique<Song>(project.song); break;
     case S::Chop: e->chop_before = std::make_unique<ChopState>(chop_of(ui)); break;
+    case S::Tempo: e->tempo_before = std::make_unique<TempoState>(tempo_of(project)); break;
     case S::Pattern:
         e->pattern = int16_t(s.index);
         e->pattern_before = std::make_unique<Pattern>(patterns.at[s.track % track_count][s.index % pattern_count]);
@@ -69,6 +71,7 @@ bool Context::finish_scope(Edit& e) {
     part(e.sound_before, e.sound_after, sound_of(project.tracks[e.track]));
     part(e.song_before, e.song_after, project.song);
     part(e.chop_before, e.chop_after, chop_of(ui));
+    part(e.tempo_before, e.tempo_after, tempo_of(project));
     return changed;
 }
 

@@ -874,6 +874,8 @@ void EngineHost::apply(const Command& c) {
         song_mode = c.value == 1; song_bar_now = c.index;
         count_left = c.track == 1 ? bar : 0;
         count_beat.store(count_left ? 1 : 0, std::memory_order_relaxed);
+        count_rest.store(count_left, std::memory_order_relaxed);
+        count_from.store(tick_now, std::memory_order_relaxed);
         loop_restart = true;
         for (auto& s : slots) {
             s.start = 0; s.clip = -1; s.silent = song_mode;
@@ -897,7 +899,7 @@ void EngineHost::apply(const Command& c) {
         render_out.cancel(); // a render stopped by hand is dropped; one in its tail ends there
         if (take.state() == TakeRecorder::State::Cued) take.stop();
         cue_track = -1;
-        count_left = 0; count_beat.store(0, std::memory_order_relaxed);
+        count_left = 0; count_beat.store(0, std::memory_order_relaxed); count_rest.store(0, std::memory_order_relaxed);
         if (punch_from_song) { punch.stop(); punch_from_song = false; }
         for (auto& k : kept) { if (k.on) k.punch.stop(); k.on = k.due = false; } // pad-fx C
         song_mode = false;
@@ -1707,7 +1709,7 @@ void EngineHost::mtc_place(double seconds) {
         ticks = song.tempo.bars_at(std::max(0.0, seconds), double(bar) / ticks_per_quarter, global_tempo) * bar;
     auto at = uint32_t(std::ceil(ticks - 1e-9));
     sync_stop(frame_now); // the clocks out go on from the new place
-    count_left = 0; count_beat.store(0, std::memory_order_relaxed);
+    count_left = 0; count_beat.store(0, std::memory_order_relaxed); count_rest.store(0, std::memory_order_relaxed);
     until_tick = (at - ticks) * tick_length(); // the tick after the place, to the sample
     for (auto& s : slots) for (auto& skip : s.skips) skip.key = -1;
     if (song_mode) {
@@ -2221,6 +2223,7 @@ void EngineHost::tick() {
             count_beat.store(done / beat + 1, std::memory_order_relaxed);
         }
         --count_left;
+        count_rest.store(count_left, std::memory_order_relaxed);
         if (!count_left) count_beat.store(0, std::memory_order_relaxed);
         until_tick += tick_length();
         return;

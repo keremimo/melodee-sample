@@ -46,6 +46,7 @@ ChopState chop_of(const UiState& ui) {
     c.sample = ui.chop_sample; c.from = ui.chop_from; c.to = ui.chop_to;
     return c;
 }
+TempoState tempo_of(const Project& p) { return {p.tempo, p.pattern_tempo, p.seq_tempo}; }
 UndoScope binding_scope(const Project& project, const UiState& ui, const Binding& b) {
     using S = UndoScope::Kind;
     switch (b.kind) {
@@ -70,6 +71,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::PadFxParam: case Kind::FlexMode: case Kind::FlexMix: case Kind::PunchDepth: case Kind::PunchSnap: case Kind::PunchTail:
         return of(S::Master, ui);
     case Kind::SongPattern: case Kind::SongLength: return b.id >= 0 ? of(S::Song, ui) : UndoScope {};
+    case Kind::Tempo: return of(S::Tempo, ui);
     case Kind::SongTempo: case Kind::SongTempoShape: return of(S::Song, ui); // roadmap P5: the song's tempo lane
     case Kind::StepLength: case Kind::StepVelocity: case Kind::StepChance: case Kind::EventVelocity: case Kind::EventLength:
     case Kind::EventChance: case Kind::StepRatchet: case Kind::StepRamp: case Kind::StepPitchRamp: case Kind::EventRatchet:
@@ -162,6 +164,7 @@ std::string scope_name(const Project& project, const UiState& ui, const UndoScop
     case S::Sound: return "T" + std::to_string(s.track + 1) + " sound";
     case S::Song: return "Song";
     case S::Chop: return "Chop";
+    case S::Tempo: return "Tempo";
     case S::Pattern: return "T" + std::to_string(s.track + 1) + " P" + std::to_string(s.index + 1);
     default: (void)project; return {};
     }

@@ -26,7 +26,7 @@ namespace melodee {
 class Context;
 
 struct UndoScope {
-    enum class Kind : uint8_t { None, Pad, Mix, Chain, Master, Sound, Song, Chop, Pattern };
+    enum class Kind : uint8_t { None, Pad, Mix, Chain, Master, Sound, Song, Chop, Pattern, Tempo };
     Kind kind = Kind::None;
     uint8_t track = 0;
     uint16_t index = 0; // Pad: the kit pad (0..127); Chain: the chain's number; Pattern: the track's pattern
@@ -35,7 +35,7 @@ struct UndoScope {
     bool operator!=(const UndoScope& o) const { return !(*this == o); }
 };
 
-// What a card's value is part of; None for what is not kept (tempo, patterns' length, a page's cursor ...).
+// What a card's value is part of; None for what is not kept (the click level, patterns' length, a page's cursor ...).
 // The note cards (Steps and Roll's length, velocity, chance; Step Edit's event length and velocity): the pattern.
 UndoScope binding_scope(const Project& project, const UiState& ui, const Binding& binding);
 // What a press of `button` (or a pad, `pad` true) changes on the page in view: Loop, Shift + Loop and
@@ -46,7 +46,7 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
 // The selected track's pattern playing now.
 UndoScope pattern_scope(const Project& project, const UiState& ui);
 // The edit's name, shown on undo: "A01", "Mix", "T3 FX", "Bus A FX", "Master FX", "Knob FX", "T2 sound", "Song", "Chop",
-// "T1 P3".
+// "T1 P3", "Tempo".
 std::string scope_name(const Project& project, const UiState& ui, const UndoScope& scope);
 // Freeze plan F2c: whether a change in `scope` changes what a frozen track's prints are made of: its sound, a kit pad,
 // a frozen pattern, its chain (Post FX prints) or a kit pad's effects. The mix, the master and the song stay live.
@@ -59,6 +59,7 @@ MixState mix_of(const Project& project);
 SoundState sound_of(const Track& track);
 MasterState master_of(const Project& project);
 ChopState chop_of(const UiState& ui);
+TempoState tempo_of(const Project& project);
 constexpr uint32_t gesture_quiet_ms = 2000; // a control left this long: its next turn is a new step
 
 // A press on a page as one undo step: made before the press, finish() after it.
