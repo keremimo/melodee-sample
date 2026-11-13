@@ -16,9 +16,12 @@
 //   Sweep   a bar of light across the panel, left to right and back, a beat each way
 //   Chase   one pad a sixteenth, 1 to 16 through the bar; the buttons round the panel in eighths
 //   Ripple  rings from each pad pressed (and from the middle on beat 1) over the whole panel
-//   Levels  the pads, buttons and bank lights as a level meter of the mix
+//   Levels  the pads as a meter of the mix: left columns the left side, right the right; a hit starts in the
+//           inner columns and reaches the outer ones a moment later; a peak dot on each column falls slowly;
+//           scaled between the quietest and loudest of the last few seconds, so quiet, loud and dense
+//           songs all use the four rows
 // Bank lights A-H step through the bar in eighths (Levels: the level); the
-// meters show the mix. Pure but for its rings and the mix's held level: the
+// meters show the mix. Pure but for its rings and the mix's history: the
 // light pass (shell/lights.cpp) and the tests drive it with times in ms.
 namespace melodee {
 
@@ -35,7 +38,7 @@ struct ShowClock {
     double beats = 0;        // beats since Play (stopped: since any time at the tempo)
     unsigned bar_beats = 4;  // beats a bar
     bool playing = false;
-    float level = 0;         // the mix, linear (1 full scale)
+    std::array<float, 2> level {}; // the mix's sides, linear (1 full scale)
     std::array<uint8_t, surface_meter_lights> meters {}; // the mix's meter lights (meter_lights.h)
 };
 
@@ -108,6 +111,14 @@ constexpr float ring_width = 1.0f;   // pad pitches
 constexpr unsigned flash_ms = 300;   // a pressed pad's flash
 constexpr unsigned intro_ms = 600;   // turned on: the lights come up
 constexpr unsigned colour_bars = 4;  // the colour changes every four bars
+constexpr float level_min_range_db = 6; // Levels: the quietest and loudest at least this far apart
+constexpr float loudest_fall_db = 5;    // the loudest falls this many dB a second
+constexpr float quietest_rise_db = 8;   // the quietest rises this many dB a second
+constexpr float level_silence_db = -50; // quieter than this is silence: the columns empty
+constexpr float level_fall_ms = 260;    // a full column empties in this long
+constexpr unsigned peak_hold_ms = 350;  // a peak dot holds this long
+constexpr float peak_fall_ms = 900;     // then falls from the top in this long
+constexpr unsigned level_spread_ms = 70; // the outer columns this far behind the inner
 
 struct Ring {
     Point from;
@@ -124,7 +135,7 @@ public:
     void start(uint32_t now) {
         rings_ = {}; flashes_ = {};
         started_ = now + 1;
-        held_level_ = 0;
+        meter_ = {}; peaks_ = {}; peak_at_ = {}; history_ = {}; loudest_db_ = -40; quietest_db_ = -60; last_now_ = 0; ranged_ = false;
     }
     // A pad pressed by hand, `strength` 0..1: its flash; in Ripple a ring from it too.
     void tap(unsigned pad, float strength, uint32_t now, ShowStyle style) {
@@ -163,11 +174,7 @@ public:
         }
         const Glow main = hue(hue_), accent = hue(hue_ + 0.5f), white_hot = hue(hue_, 0.6f);
         const float pulse = (downbeat ? 1.0f : 0.55f) * std::exp(-beat_in * 6.0f); // each beat's hit, falling
-        // The mix's level held a moment, falling slowly (Levels).
-        {
-            float level = led_colour::clamp01(std::sqrt(led_colour::clamp01(clock.level * 2.5f)));
-            held_level_ = level > held_level_ ? level : held_level_ * 0.93f + level * 0.07f;
-        }
+        follow_mix(clock);
 
         std::array<Glow, surface_pad_lights> pads {};
         Glow fader;
@@ -237,20 +244,31 @@ public:
             for (unsigned n = 0; n < surface_bank_lights; ++n) banks[n] = banks[n] || light(bank_at(n)).peak() > 0.5f;
             break;
         }
-        case ShowStyle::Levels: { // rows fill with the mix (outer columns a little lower); top row the accent
-            for (unsigned n = 0; n < surface_pad_lights; ++n) {
-                unsigned col = n % 4, row = n / 4;
-                float height = held_level_ * (col == 0 || col == 3 ? 3.4f : 4.0f);
-                float fill = led_colour::clamp01(height - float(row));
-                pads[n].add(main, 0.08f);
-                pads[n].add(row == 3 ? accent : main, fill);
+        case ShowStyle::Levels: {
+            // Columns 1 and 2 the left and right sides now, 0 and 3 the same sides a moment ago; rows graded in
+            // colour from the style's colour at the bottom to the accent at the top; each column's peak a dot.
+            for (unsigned col = 0; col < 4; ++col) {
+                unsigned side = col < 2 ? 0 : 1;
+                bool outer = col == 0 || col == 3;
+                float value = outer ? meter_at_ago(side, now, level_spread_ms) : meter_[side];
+                // the quietest a little under row 1, so the bottom row moves too
+                float height = value * 4.6f - 0.6f, peak = (outer ? meter_at_ago(side + 2, now, level_spread_ms) : peaks_[side]) * 4.6f - 0.6f;
+                for (unsigned row = 0; row < 4; ++row) {
+                    auto& p = pads[row * 4 + col];
+                    Glow c = row == 3 ? accent : hue(hue_ + 0.06f * float(row));
+                    float fill = led_colour::clamp01(height - float(row));
+                    p.add(c, 0.06f + 0.94f * fill);
+                    if (peak > 0.25f && unsigned(std::ceil(peak)) - 1 == row && fill < 0.9f) p.add(hue(hue_ + 0.5f, 0.5f), 0.8f);
+                }
             }
-            fader.add(main, held_level_);
-            for (auto b : panel_lit_buttons) { // up both sides from the bottom
-                float y = button_at(b).y / 4.6f;
-                buttons[size_t(b)] = held_level_ > y + 0.05f ? ButtonLight::Bright : held_level_ > y - 0.15f ? ButtonLight::Dim : ButtonLight::Off;
+            float both = std::fmax(meter_[0], meter_[1]);
+            fader.add(main, 0.1f + 0.9f * both);
+            for (auto b : panel_lit_buttons) { // up each side from the bottom with its side of the mix
+                auto p = button_at(b);
+                float v = meter_[p.x < 1.5f ? 0 : 1], y = p.y / 4.6f;
+                buttons[size_t(b)] = v > y + 0.08f ? ButtonLight::Bright : v > y - 0.08f ? ButtonLight::Dim : ButtonLight::Off;
             }
-            for (unsigned n = 0; n < surface_bank_lights; ++n) banks[n] = held_level_ * surface_bank_lights > float(n) + 0.5f;
+            for (unsigned n = 0; n < surface_bank_lights; ++n) banks[n] = both * surface_bank_lights > float(n) + 0.25f;
             break;
         }
         }
@@ -282,6 +300,45 @@ public:
     }
 
 private:
+    // Levels: each side in dB between the quietest and loudest of the last few seconds, up at once and down
+    // over level_fall_ms; a peak that holds, then falls; a short history for the outer columns.
+    void follow_mix(const ShowClock& clock) {
+        using namespace show_light;
+        float dt = last_now_ ? float(clock.now - last_now_) : 0;
+        last_now_ = clock.now;
+        float loud = -120;
+        std::array<float, 2> db {};
+        for (unsigned side = 0; side < 2; ++side) {
+            db[side] = clock.level[side] > 1e-6f ? 20 * std::log10(clock.level[side]) : -120;
+            loud = std::fmax(loud, db[side]);
+        }
+        // Silence (below level_silence_db) leaves the range as it was: the columns empty, and the next sound
+        // scaled as the last was. The first sound heard sets the range.
+        if (loud > level_silence_db) {
+            float quiet = std::fmax(std::fmin(db[0], db[1]), level_silence_db);
+            if (!ranged_) { ranged_ = true; loudest_db_ = loud; quietest_db_ = loud - level_min_range_db; }
+            loudest_db_ = std::fmax(loud, loudest_db_ - dt * loudest_fall_db / 1000);
+            quietest_db_ = std::fmin(quiet, quietest_db_ + dt * quietest_rise_db / 1000);
+            quietest_db_ = std::fmin(quietest_db_, loudest_db_ - level_min_range_db);
+        }
+        const float range = loudest_db_ - quietest_db_;
+        for (unsigned side = 0; side < 2; ++side) {
+            float v = led_colour::clamp01((db[side] - quietest_db_) / range);
+            meter_[side] = v >= meter_[side] ? v : std::fmax(v, meter_[side] - dt / level_fall_ms);
+            if (meter_[side] >= peaks_[side]) { peaks_[side] = meter_[side]; peak_at_[side] = clock.now; }
+            else if (clock.now - peak_at_[side] > peak_hold_ms) peaks_[side] = std::fmax(meter_[side], peaks_[side] - dt / peak_fall_ms);
+        }
+        auto& h = history_[history_next_];
+        history_next_ = (history_next_ + 1) % history_.size();
+        h = {clock.now + 1, {meter_[0], meter_[1], peaks_[0], peaks_[1]}};
+    }
+    // What history value `what` (0, 1 the sides, 2, 3 their peaks) was `ago` ms before `now`: the newest kept then.
+    float meter_at_ago(unsigned what, uint32_t now, uint32_t ago) const {
+        const History* best = nullptr;
+        for (const auto& h : history_)
+            if (h.at && h.at - 1 + ago <= now && (!best || h.at > best->at)) best = &h;
+        return best ? best->v[what] : 0;
+    }
     void ring(show_light::Point from, uint32_t now, float strength) {
         rings_[next_] = {from, now + 1, led_colour::clamp01(strength)};
         next_ = (next_ + 1) % rings;
@@ -291,7 +348,15 @@ private:
     std::array<float, surface_pad_lights> flash_strength_ {};
     unsigned next_ = 0, ripple_beat_ = ~0u;
     uint32_t started_ = 0;
-    float hue_ = 0, held_level_ = 0;
+    float hue_ = 0;
+    struct History { uint32_t at = 0; std::array<float, 4> v {}; }; // ms + 1
+    std::array<float, 2> meter_ {}, peaks_ {};
+    std::array<uint32_t, 2> peak_at_ {};
+    std::array<History, 48> history_ {};
+    unsigned history_next_ = 0;
+    uint32_t last_now_ = 0;
+    float loudest_db_ = -40, quietest_db_ = -60;
+    bool ranged_ = false; // a sound heard since start()
 };
 
 // Sends a show frame (SurfaceLights sends only what changed).

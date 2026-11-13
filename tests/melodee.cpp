@@ -3046,15 +3046,57 @@ void light_show_lights() {
     LightShow other; // other styles: a press only flashes its pad
     other.tap(0, 1, 20000, S::Pulse);
     CHECK(other.newest() == 0);
-    // Levels: louder lights more pads and bank lights; silence leaves them dark but for a faint base.
-    LightShow levels;
-    clock.level = 0;
-    auto quiet = at(levels, S::Levels, 0.5);
-    clock.level = 0.5f;
-    auto loud = at(levels, S::Levels, 0.5);
-    CHECK(total(loud) > total(quiet) + 300 && loud.lights.banks[0] && !quiet.lights.banks[0]);
-    CHECK(peak(loud.lights.pads[12]) > peak(quiet.lights.pads[12]));
-    clock.level = 0;
+    // Levels: a hit fills the inner columns at once and the outer ones a moment later, then falls within a
+    // third of a second; a quiet song fills them as high as a loud one once it has played a while.
+    {
+        LightShow levels;
+        auto play = [&](float level, uint32_t from, uint32_t to) {
+            ShowFrame f;
+            for (uint32_t t = from; t <= to; t += 5) { clock.level = {level, level}; f = at(levels, S::Levels, 0.5, t); }
+            return f;
+        };
+        auto lit_rows = [&](const ShowFrame& f, unsigned col) { unsigned n = 0; for (unsigned r = 0; r < 4; ++r) n += peak(f.lights.pads[r * 4 + col]) > 40; return n; };
+        auto quiet = play(0, 40000, 40500);
+        CHECK(lit_rows(quiet, 1) == 0 && !quiet.lights.banks[0]);
+        auto hit = play(0.5f, 40505, 40505);
+        CHECK(lit_rows(hit, 1) >= 3 && lit_rows(hit, 2) >= 3 && lit_rows(hit, 0) == 0); // inner now, outer not yet
+        CHECK(hit.lights.banks[0] && peak(hit.lights.pads[13]) > peak(quiet.lights.pads[13]));
+        auto spread = play(0.5f, 40510, 40505 + show_light::level_spread_ms + 10);
+        CHECK(lit_rows(spread, 0) >= 3);
+        auto fallen = play(0, 40505 + show_light::level_spread_ms + 15, 40505 + show_light::level_spread_ms + 400);
+        auto body = [&](const ShowFrame& f, unsigned col) { unsigned n = 0; for (unsigned r = 0; r < 3; ++r) n += peak(f.lights.pads[r * 4 + col]) > 40; return n; };
+        CHECK(body(fallen, 1) == 0 && body(fallen, 0) == 0); // the column down; its peak dot still up top
+        CHECK(peak(fallen.lights.pads[13]) > 40);
+        // The rows differ in colour: bottom and top are not the same drive.
+        auto rgb_of = [](Rgb c) { return uint32_t(c.r) << 16 | uint32_t(c.g) << 8 | c.b; };
+        CHECK(rgb_of(hit.lights.pads[1]) != rgb_of(hit.lights.pads[13]));
+        // A quiet song (-30 dBFS hits on silence): after some seconds it fills as high as the loud one did.
+        ShowFrame soft;
+        for (uint32_t t = 50000; t < 60000; t += 250) { play(0.03f, t, t + 20); soft = play(0.001f, t + 25, t + 245); }
+        soft = play(0.03f, 60000, 60000);
+        CHECK(lit_rows(soft, 1) >= 3);
+        // A dense song (between -20 and -15 dBFS, never quiet): the columns still rise and fall with it.
+        ShowFrame low, high;
+        for (uint32_t t = 80000; t < 90000; t += 400) { high = play(0.18f, t, t + 100); low = play(0.1f, t + 105, t + 395); }
+        CHECK(lit_rows(high, 1) >= 3 && body(low, 1) <= 1);
+        // Turned on in silence, then a dense song starts: it moves from the first second, not once the range has
+        // climbed from silence.
+        LightShow late;
+        clock.level = {0, 0};
+        for (uint32_t t = 100000; t < 102000; t += 5) at(late, S::Levels, 0.5, t);
+        ShowFrame late_low, late_high;
+        for (uint32_t t = 102000; t < 103000; t += 400) {
+            for (uint32_t u = t; u <= t + 100; u += 5) { clock.level = {0.18f, 0.18f}; late_high = at(late, S::Levels, 0.5, u); }
+            for (uint32_t u = t + 105; u <= t + 395; u += 5) { clock.level = {0.1f, 0.1f}; late_low = at(late, S::Levels, 0.5, u); }
+        }
+        CHECK(lit_rows(late_high, 1) >= 3 && body(late_low, 1) <= 1);
+        // One side alone: its columns only.
+        LightShow side;
+        clock.level = {0.5f, 0};
+        auto left_only = at(side, S::Levels, 0.5, 70000);
+        CHECK(lit_rows(left_only, 1) >= 3 && lit_rows(left_only, 2) == 0);
+        clock.level = {};
+    }
     // Meters: the mix as it is.
     clock.meters = {0b00011, 0b00001};
     CHECK(at(show, S::Pulse, 0.5).meters[0] == 0b00011);

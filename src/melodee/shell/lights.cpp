@@ -110,7 +110,7 @@ bool Shell::light_show_pass(SurfaceLights& lights, uint32_t now) {
     if (clock.playing) clock.beats = double(host.ticks()) / std::max(1u, project_->beat_ticks());
     else clock.beats = double(now) * tempo_now.load(std::memory_order_relaxed) / 600000.0; // tenths of a BPM
     for (unsigned side = 0; side < surface_meter_lights; ++side) clock.meters[side] = meter_lit(host.out_level(side), meter_mix_db);
-    clock.level = std::max(host.out_level(0), host.out_level(1));
+    clock.level = {host.out_level(0), host.out_level(1)};
     auto frame = show_lights.frame(clock, style);
     show_frame(lights, frame);
     { // for `status`: the pads' rungs (white), the buttons' levels (red as bright), the meters

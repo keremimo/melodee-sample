@@ -263,7 +263,7 @@ beat; the meters show the mix.
 | Sweep | A bar of light across the panel, left to right and back, one beat each way |
 | Chase | One pad a sixteenth, pad 1 to 16 through the bar; the buttons round the panel in eighths |
 | Ripple | Rings from each pad pressed, and from the middle on beat 1, across pads, buttons, fader and bank lights |
-| Levels | Pads fill bottom to top with the mix; buttons up both sides, bank lights as a bar |
+| Levels | Pads as a meter of the mix, scaled between the quietest and loudest of the last few seconds: columns 2 and 3 the left and right sides, 1 and 4 the same a moment later; a peak dot on each column; buttons up each side, bank lights as a bar |
 
 ## Pages
 
