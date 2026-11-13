@@ -397,7 +397,7 @@ void Context::record(int key, int velocity, int cutoff) {
     if (early) { // no tick played yet: where the pattern starts
         Speed sp = speed_of(track().speed);
         position = int(uint64_t(host.count_in_from() % std::max<uint32_t>(p.length, 1)) * sp.num / sp.den);
-        ticks = host.ticks();
+        ticks = host.count_in_from() + 1; // as ticks() reads just after the first tick played (place_at)
     } else if (!host.heard_place(ui.track, hit_ns, position, ticks)) { position = host.position_of(ui.track); ticks = host.ticks(); }
     int playhead = early ? position : host.position_of(ui.track);
     if (playhead < 0) return;
@@ -428,10 +428,10 @@ void Context::record_release(int key) {
         int position = 0;
         uint32_t ticks = 0;
         if (!host.heard_place(h.track, hit_ns, position, ticks)) ticks = host.ticks();
-        uint32_t held = ticks - h.since;
+        int32_t held = int32_t(ticks - h.since); // let go before the first tick (an early hit): the shortest
         for (size_t n = p.lower(h.tick); n < p.events.size() && p.events[n].tick == h.tick; ++n)
             if (p.events[n].key == uint8_t(key) && p.events[n].pitch == int8_t(key >> 8)) {
-                p.events[n].length = uint16_t(std::clamp<uint32_t>(held, 1, 65535));
+                p.events[n].length = uint16_t(std::clamp<int32_t>(held, 1, 65535));
                 sync_pattern(h.track, h.pattern);
                 break;
             }

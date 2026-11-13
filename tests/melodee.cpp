@@ -2199,6 +2199,12 @@ void timing() {
         CHECK(host->count_in() == 4 && host->count_in_ticks() > 0 && host->count_in_ticks() <= sixteenth_ticks);
         render(*host, 22050 / 128); // past the bar
         CHECK(host->count_in() == 0 && host->count_in_ticks() == 0 && host->position_of(0) >= 0);
+        // Played again with a count-in: ticks() reads the start, not where the last run stopped (an early hit's length).
+        host->send({Command::Type::Stop});
+        render(*host, 2);
+        host->send({Command::Type::Play, 1});
+        render(*host, 2);
+        CHECK(host->count_in() == 1 && host->ticks() == host->count_in_from());
     }
     // The metronome's blip lasts as long at 96 kHz as at 44.1 kHz (it fell a fixed step a frame).
     {

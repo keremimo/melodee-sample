@@ -882,6 +882,7 @@ void EngineHost::apply(const Command& c) {
         count_beat.store(count_left ? 1 : 0, std::memory_order_relaxed);
         count_rest.store(count_left, std::memory_order_relaxed);
         count_from.store(tick_now, std::memory_order_relaxed);
+        tick_count.store(tick_now, std::memory_order_relaxed); // not the last run's count while the count-in plays
         loop_restart = true;
         for (auto& s : slots) {
             s.start = 0; s.clip = -1; s.silent = song_mode;
