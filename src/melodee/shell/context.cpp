@@ -218,6 +218,7 @@ void Context::open(PageId page) {
         page = PageId::Stage;
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
+    if (page == PageId::Patterns || page == PageId::Scenes || page == PageId::Song) ui.arrange_page = page; // ARRANGE's last
     if (page != PageId::Stage && page != PageId::Plugins && page != PageId::Samples && page != PageId::Record)
         ui.new_for = -1; // an empty track's Stage left: no going back to where it was picked
     if (page != PageId::Samples) ui.new_kit = -1;

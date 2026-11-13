@@ -119,7 +119,7 @@ cards.
 | --- | --- | --- |
 | Main volume | Master level, at once | |
 | Sample | The SOUND hub (docs/HUBS_PLAN.md): Stage from any page; on Stage, B1's first page; it opens no other page. Held: after 0.3 s the track's pads (Pads on a kit, Keys otherwise) over the page, K1-K3 theirs, B1-B3 Stage's sections; on Steps and Roll the editor stays and the header names the held sound. Held + pad: that kit pad becomes the last pad, unheard. A hold released after 0.3 s with nothing used opens nothing | Input Config |
-| Seq | Tap: Patterns; on Patterns the track's editor (Steps, Roll or Motion, the last open); on an editor or Step Edit back a level. Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, under the editor; again back to it |
+| Seq | The SEQUENCE hub (docs/HUBS_PLAN.md). Tap: the track's editor (Steps, Roll or Motion, the last open) from anywhere; on an editor home, Steps; on Step Edit back to its editor. Patterns is the ARRANGE hub's (Shift + Pad 12: Patterns, Scenes, Song, B1-B3 between them). Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, under the editor; again back to it |
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch. Acts on its release: with Knob FX, in either order, the MIX hub on Tracks (shell/mix_hub.h), and neither's own job | Flex Beat (at once) |
 | Knob FX | Knob FX mode on (lit, its page) or off, on its release; with Pad FX, the MIX hub | FX Select: the effect chains, Track → Sends → Bus → Master (at once) |
 | Shift | The second layer, held | |
@@ -523,11 +523,12 @@ first).
 Seq has three levels and a layer (`shell/seq_layer.h`): **tap to look,
 hold to steer, Shift + Seq to zoom in**.
 
-- A **tap** of Seq opens Patterns from any page. On Patterns it opens the
-  selected track's editor: the one last open on that track, else Steps on
-  a kit and Roll on a synth or MIDI track. On an editor it goes back to
-  Patterns; on Step Edit back to its editor. B1–B3 on Patterns and on every
-  editor are STEPS, ROLL, MOTION.
+- A **tap** of Seq opens the selected track's editor from any page: the one
+  last open on that track, else Steps on a kit and Roll on a synth or MIDI
+  track. On an editor it goes home, Steps; on Step Edit back to its editor.
+  B1–B3 on every editor are STEPS, ROLL, MOTION. Patterns, Scenes and Song are
+  the ARRANGE hub (Shift + Pad 12), B1–B3 PATTERNS, SCENES, SONG on Patterns
+  and Scenes (Song keeps its own keys).
 - **Seq held**, on any page, is the Sequence layer. A track has 128
   patterns, eight banks of sixteen (A–H, as the MPC's 128 sequences). The
   pads light at once as the track's patterns in the bank in view (playing
@@ -559,7 +560,7 @@ hold to steer, Shift + Seq to zoom in**.
   - B1–B3 open Steps, Roll and Motion (the sheet stays away until Seq is
     let go); Seq Record starts a new take in the next empty pattern, armed
     (playing: recording at once). Other buttons keep their jobs.
-- **Patterns** (Seq): tracks down, the bank in view's sixteen patterns
+- **Patterns** (Shift + Pad 12, ARRANGE's B1): tracks down, the bank in view's sixteen patterns
   across (the header names the bank). The pads play
   the selected track, so it is played and recorded with its patterns in
   view (Erase + pad and mute mode as on any play page). K1 length (1, 2, 4
@@ -570,7 +571,7 @@ hold to steer, Shift + Seq to zoom in**.
   pattern (each pattern number its own tempo, the one launched last
   leading) or one for the project: Push on the Tempo page. Push opens
   Scenes. A pattern with a follow action carries a dot in its corner.
-- **Scenes** (Push on Patterns; roadmap P5): a scene is a column, pattern
+- **Scenes** (ARRANGE's B2, or Push on Patterns; roadmap P5): a scene is a column, pattern
   n of every track, with a name and a tempo of its own. The sixteen sit as
   the pads do: a pad launches its scene, pattern n on every track holding
   notes there (and on the selected track) at the next bar (stopped, at
@@ -594,7 +595,7 @@ hold to steer, Shift + Seq to zoom in**.
   not on a bar line. A launch waiting for its bar comes first; in the song
   none come. A track playing a **pattern chain** plays the chain: its
   patterns' follow actions wait while it is chained (the chain is the
-  order asked for). B3 ALL puts the follow action on every track's
+  order asked for). Shift + B3 ALL puts the follow action on every track's
   pattern with notes in its column (one undo); each turn is one undo of
   the pattern. Files keep them in FOLW. `status`: `melodee_follows`,
   `melodee_stopped`.

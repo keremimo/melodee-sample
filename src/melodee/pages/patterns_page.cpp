@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// PATTERNS (Seq, the MPC's Sequence mode): tracks down, the sixteen patterns
+// PATTERNS (the ARRANGE hub's B1: Shift + Pad 12, docs/HUBS_PLAN.md): tracks down, the sixteen patterns
 // of the bank in view across (A-H, Seq held + Pad Bank; the header names it),
 // eight tracks in view following the selected one. The pads play
 // the selected track, so it can be played and recorded while its patterns
 // are in view; hold Seq for the pads to launch them (shell/seq_layer.h).
 // K1 the selected pattern's length (1, 2, 4 .. 128 bars; Shift + K1 any
 // bar count), K2 its Q (Shift + K2 the project's time signature), K3 swing
-// (Shift + K3 the metronome's level). B1-B3 open Steps, Roll and Motion, as
-// on every sequence page; Seq again opens the one last used on the track.
+// (Shift + K3 the metronome's level). B1-B3 the ARRANGE hub's PATTERNS,
+// SCENES, SONG; Seq opens the track's editor (Steps, Roll or Motion).
 // The wheel moves the playhead by a beat (Shift: by Q); stopped, it sets
 // where Shift + Play carries on from (the place bar shows it). The header
 // shows Rec Quantize (Shift + Pad 10) and the track. Minus / Plus
@@ -33,7 +33,7 @@ void draw(Paint& p, const Snapshot& s) {
         h.right.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), colour_of(s)));
     h.left.push_back(bank_pill(s));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"STEPS", "ROLL", "MOTION"}, -1, colour_of(s)}, h);
+    frame(p, s, arrange_keys(s), h);
 
     constexpr float gap = 2, label_w = 16, head_h = 9, top = zone::picture_y + 1.5f;
     constexpr float cw = (zone::width - 2 * zone::pad - label_w - 16 * gap) / 16;
@@ -109,10 +109,7 @@ void wheel(Context& c, int delta) { c.locate(delta); }
 
 void nudge(Context& c, int way) { c.select_track(unsigned(std::clamp<int>(c.ui.track + way, 0, int(track_count) - 1))); }
 
-void soft(Context& c, int key) {
-    static const PageId editors[] {PageId::Steps, PageId::Roll, PageId::Motion};
-    c.open(editors[key % 3]);
-}
+void soft(Context& c, int key) { arrange_soft(c, key); } // PATTERNS (here), SCENES, SONG
 } // namespace
 
 const PageSpec patterns_page {draw, play_pad, wheel, push, soft, nudge};

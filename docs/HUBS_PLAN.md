@@ -1,7 +1,7 @@
 # Hubs: plan
 
 Status: all picks made 2026-11-13 (S-B, P-a, M-b, R-a, T-a, PL-a, H-b).
-Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row) built 679355b; its opener became PAD FX + KNOB FX. Steps 4–6 open.
+Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row) built 679355b; its opener became PAD FX + KNOB FX. Step 4 (SEQ opens the editor, home Steps; ARRANGE row on Patterns and Scenes, Song keeps its own keys as a tool, Shift + Pad 12 opens the last ARRANGE page, home Patterns; Scenes ALL on Shift + B3) built. Steps 5–6 open.
 Nothing built. Mockups: https://claude.ai/artifact/KysLcHsF6LN7pnAVFtS6ut
 
 ## Problem
@@ -32,7 +32,7 @@ actions, where it has any.
 | SOUND | SAMPLE | source | play | out | kit pads / Keys layout |
 | SEQUENCE | SEQ | STEPS → TRIG → EUCLID | ROLL | MOTION → MOD | patterns (as today) |
 | MIX | PAD FX + KNOB FX together | TRACKS | SENDS | FX: TRACK → BUS → MASTER (→ PAD on a kit) | — (PAD BANK held keeps the tracks and B2 / B3 MOVE / COPY) |
-| ARRANGE | SHIFT + PAD 12 | PATTERNS | SCENES | SONG | — |
+| ARRANGE | SHIFT + PAD 12 | PATTERNS | SCENES | SONG (Song keeps EXPORT / MUTE / DUPLICATE on its own keys: Kerem asked for the simplest) | — |
 | Looper | LOOP + 16 LEVELS | LOOPS | MIX | MORE | LOOP held (as today) |
 
 SHIFT + KNOB FX stays FX Select and opens the FX section, as printed.

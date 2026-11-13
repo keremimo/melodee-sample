@@ -133,8 +133,9 @@ To chop a sample into slices, press **CHOP**. See [Chop](GUIDE.md#chop).
 
 ## 6. Record a beat
 
-1. Press **SEQ** to open **Patterns**. Tracks are listed down the screen and
-   their 16 patterns across it. The pads play the selected track.
+1. Press **SHIFT** + **Pad 12** to open **Patterns** (if Song opens, press
+   **B1**). Tracks are listed down the screen and their 16 patterns across
+   it. The pads play the selected track.
 2. Use **K1** to set the pattern length in bars, **K2** the grid (Q) and
    **K3** the swing.
 3. To choose a pattern, hold **SEQ** and press a pad. Pad 1 is pattern 1.

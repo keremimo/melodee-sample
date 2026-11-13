@@ -77,7 +77,7 @@ is different, and how to change your habits.
 - Push the encoder to move to the next knob card.
 - **SEQ RECORD** and **PLAY** record a pattern. **ERASE** + pad erases a pad
   or its notes, as on the stock app.
-- **SHIFT** + **Pad 12** opens Song. **SHIFT** + **Pad 16** opens Project.
+- **SHIFT** + **Pad 12** opens Song, Patterns and Scenes. **SHIFT** + **Pad 16** opens Project.
 - Knob FX, Pad FX, Flex Beat and the master compressor work as on the stock
   app, with the stock effects in the stock order.
 
@@ -88,7 +88,7 @@ is different, and how to change your habits.
 | A project is one kit. | A project has 16 tracks. Track 1 starts as a kit. The other tracks can be kits, plug-in instruments or MIDI tracks. |
 | **PAD BANK** held + Pads 1–8 jumps to bank A–H. | **PAD BANK** held + pad selects track 1–16. To jump banks, hold **PAD BANK** and turn the encoder or press **−** / **+**. |
 | **SAMPLE** opens Sample mode. | **SAMPLE** opens **Stage**, the selected track's sound pages, from any page. On a kit, Stage has the Sample mode pages. On Stage, **SAMPLE** goes back to **B1**'s first page. Hold **SAMPLE** to see the track's pads: **Pads** on a kit, **Keys** on an instrument. |
-| In Sequence mode the pads select sequences. | **SEQ** opens **Patterns**, and the pads play the selected track. To select a pattern, hold **SEQ** and press a pad. |
+| In Sequence mode the pads select sequences. | **SEQ** opens the selected track's editor (**Steps**, **Roll** or **Motion**). To select a pattern, hold **SEQ** and press a pad. The pattern overview is **Patterns**: **SHIFT** + **Pad 12**. |
 | A sequence plays every pad of the kit. | Each track has its own 16 patterns. To change every track at once, launch a **scene**: hold **SEQ** + **SHIFT** and press a pad. |
 | Song mode is a list of sequences. | **Song** is a timeline with a lane per track. You place pattern clips on it, add markers and tempo changes. |
 | The project saves in the background. | Save with **SHIFT** + **Pad 16**, then **B1** (**SAVE**). Leaving through the Exit screen also saves. |
@@ -113,7 +113,7 @@ These are the actions stock users look for first.
 2. **Use the kit as before.** Track 1 is a kit. **SAMPLE SELECT**, **SAMPLE**,
    **CHOP**, **SAMPLE RECORD** and **16 LEVELS** work on the kit as on the
    stock app.
-3. **Hold SEQ to change patterns.** A tap of **SEQ** opens a page. Holding
+3. **Hold SEQ to change patterns.** A tap of **SEQ** opens the editor. Holding
    **SEQ** turns the pads into the selected track's patterns. The pattern
    changes at the next bar, or at once when stopped.
 
@@ -800,9 +800,13 @@ how MIDI tracks were designed, see the
 
 ### Patterns
 
-Press **SEQ** to open **Patterns**. Tracks are listed down the screen and
-their 16 patterns across it. A filled cell has notes. The pads play the
-selected track.
+Press **SHIFT** + **Pad 12** to open Song, Patterns and Scenes: **B1**
+(**PATTERNS**), **B2** (**SCENES**) and **B3** (**SONG**) move between them.
+**SHIFT** + **Pad 12** opens the one you used last; pressed on one of them, it
+goes to **Patterns**.
+
+**Patterns** lists the tracks down the screen and their 16 patterns across
+it. A filled cell has notes. The pads play the selected track.
 
 ![Patterns](images/screens/patterns.png)
 
@@ -814,6 +818,7 @@ selected track.
 | Encoder | Move the playhead by a beat. **SHIFT** + **PLAY** continues from there. |
 | Encoder push | Open Scenes. |
 | **SEQ** | Open the selected track's editor: Steps, Roll or Motion. |
+| **B1**–**B3** | **PATTERNS**, **SCENES**, **SONG**. |
 
 ### Hold SEQ
 
@@ -982,7 +987,8 @@ the pattern does after it has played for a while.
 - **K2** (**AFTER**): after 1–64 bars, or 1–64 plays.
 - **K3** (**CHANCE**): the chance of the first action. **SHIFT** + **K1**
   (**OR**) sets the second action.
-- **B3** (**ALL**) applies the follow action to every track in the column.
+- **SHIFT** + **B3** (**ALL**) applies the follow action to every track in
+  the column.
 
 ### Tempo
 
@@ -1000,7 +1006,9 @@ TEMPO** to set the tempo by tapping.
 
 ## Song
 
-Press **SHIFT** + **Pad 12** to open **Song**. Each track has a lane. Each
+Press **SHIFT** + **Pad 12** (or **B3** on Patterns or Scenes) to open **Song**.
+Song's own keys stay its actions: **B1** export, **B2** mute, **B3** place or
+duplicate. **SHIFT** + **Pad 12** on Song goes to Patterns. Each track has a lane. Each
 lane holds clips of that track's patterns.
 
 ![Song](images/screens/song.png)
@@ -1462,7 +1470,7 @@ version on the **ABOUT** page.
 | Button | Press | With **SHIFT** |
 | --- | --- | --- |
 | **SAMPLE** | Stage, the track's sound pages; on Stage, its first page. Held: Pads or Keys; + pad: select a kit pad without playing it. | Input Config |
-| **SEQ** | Patterns, then the track's editor. Held: launch patterns. | Step Edit |
+| **SEQ** | The track's editor; on an editor, Steps. Held: launch patterns. | Step Edit |
 | **PAD FX** | Pad FX. Again on a kit: Pad Punch. With **KNOB FX**: the mixer (Tracks). | Flex Beat |
 | **KNOB FX** | Knob FX mode on or off. With **PAD FX**: the mixer (Tracks). | Effect chains |
 | **PAD BANK** | Next bank. Held + pad: select a track. | Previous bank |

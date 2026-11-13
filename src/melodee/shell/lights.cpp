@@ -427,8 +427,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     bool sound_hub = ui.page == PageId::Stage || is_sampler_page(ui.page) || ui.sample_held; // Sample's hub (docs/HUBS_PLAN.md)
     on(B::Sample, sound_hub || ui.page == PageId::InputConfig);
-    on(B::Seq, ui.page == PageId::Patterns || ui.page == PageId::Song || ui.page == PageId::StepEdit || ui.page == PageId::Steps
-                   || ui.page == PageId::Roll || ui.page == PageId::Motion);
+    on(B::Seq, ui.page == PageId::StepEdit || ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion); // its hub
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.arp && ui.page != PageId::Song); // on Song it repeats the clip

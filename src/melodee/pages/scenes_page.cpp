@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// SCENES (roadmap P5; Push on Patterns): the bank's sixteen scenes laid out
+// SCENES (roadmap P5; the ARRANGE hub's B2, or Push on Patterns): the bank's sixteen scenes laid out
 // as the pads sit (pad 1 bottom left; Seq held + Pad Bank another bank of
 // them), each a column of patterns, pattern n of every track. A pad launches its scene: pattern n on each track holding notes
 // there (and on the selected track) at the next bar, the scene's tempo with
@@ -8,7 +8,7 @@
 // the wheel sets its tempo (below 30 BPM: none of its own). The cards are the
 // selected track's pattern's follow action (model/follow.h): K1 FOLLOW, K2
 // AFTER (bars or plays), K3 CHANCE, Shift + K1 OR (the second action, on the
-// odds the first leaves); B3 ALL puts it on every track's pattern in its
+// odds the first leaves); Shift + B3 ALL puts it on every track's pattern in its
 // column. Minus / Plus move the track. Beside the grid: the scene in hand's
 // name and tempo, the follow action in glyphs, and a dot a track (in the
 // scene, playing something else, stopped by a follow action).
@@ -51,7 +51,8 @@ void draw(Paint& p, const Snapshot& s) {
     h.left.push_back(chip("SCENES", c));
     h.left.push_back(bank_pill(s));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"", "", "ALL"}, -1, c};
+    SoftKeys keys = arrange_keys(s);
+    if (s.ui.shift) keys = SoftKeys {{"", "", "ALL"}, -1, c}; // Shift + B3: the follow onto every track's pattern
     frame(p, s, keys, h);
 
     // The scenes as the pads sit: pads 13-16 along the top, 1-4 along the bottom.
@@ -125,7 +126,8 @@ void wheel(Context& c, int delta) {
 void push(Context& c) { c.name_scene(c.ui.scene); }
 
 void soft(Context& c, int key) {
-    if (key == 2) c.follow_to_column();
+    if (c.ui.shift) { if (key == 2) { c.ui.shift_used = true; c.follow_to_column(); } return; } // ALL
+    arrange_soft(c, key); // PATTERNS, SCENES (here), SONG
 }
 
 void nudge(Context& c, int way) { c.select_track(unsigned(std::clamp<int>(c.ui.track + way, 0, int(track_count) - 1))); }

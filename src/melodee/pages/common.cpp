@@ -739,6 +739,15 @@ void mix_soft(Context& c, int key) {
     if (next != c.ui.page) c.open(next);
 }
 
+ui::SoftKeys arrange_keys(const Snapshot& s) {
+    int here = s.ui.page == PageId::Patterns ? 0 : s.ui.page == PageId::Scenes ? 1 : s.ui.page == PageId::Song ? 2 : -1;
+    return {{"PATTERNS", "SCENES", "SONG"}, here, colour_of(s)};
+}
+void arrange_soft(Context& c, int key) {
+    static const PageId pages[] {PageId::Patterns, PageId::Scenes, PageId::Song};
+    if (pages[unsigned(key) % 3] != c.ui.page) c.open(pages[unsigned(key) % 3]);
+}
+
 void play_soft(Context& c, int key) {
     // Stage on that section: its first page, or its own kept when it was the one open (as Sample held's keys).
     const auto& t = c.track();

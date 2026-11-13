@@ -65,8 +65,9 @@ void shift_pad(Context& c, unsigned pad) {
     case 8: // Fader: what the selected track's fader follows, PIN, on / off (parity phase 8; round 2 fader C)
         c.open(PageId::FaderPage);
         return;
-    case 11: // Song
-        c.open(PageId::Song);
+    case 11: // Song: the ARRANGE hub (docs/HUBS_PLAN.md), on the page open last; inside it home, Patterns
+        if (c.ui.page == PageId::Patterns || c.ui.page == PageId::Scenes || c.ui.page == PageId::Song) c.open(PageId::Patterns);
+        else c.open(c.ui.arrange_page);
         return;
     case 15: // Project: SAVE, OPEN and NEW, the projects on the card behind OPEN
         c.ui.project_list = false; c.ui.sheet_open = false; c.ui.move_open = false; c.ui.project_pick = 0;

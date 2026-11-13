@@ -49,8 +49,8 @@ void remember_editor(UiState& ui, PageId page) {
 }
 
 PageId seq_tap_page(const UiState& ui, bool kit) {
-    if (ui.page == PageId::Patterns || ui.page == PageId::StepEdit) return seq_editor_page(ui, kit);
-    return PageId::Patterns; // from an editor, Song or any other page
+    if (seq_editor(ui.page)) return PageId::Steps; // home (hubs plan R-a)
+    return seq_editor_page(ui, kit);               // Step Edit, Patterns, Song or any other page: the track's editor
 }
 
 } // namespace melodee

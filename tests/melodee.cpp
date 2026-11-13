@@ -1819,19 +1819,19 @@ void button_remap() {
     // Opening a page already on the stack goes back to it instead of growing it.
     go(PageId::Sounds); go(PageId::Patterns); go(PageId::Sounds);
     CHECK(nav.back_depth == 1 && nav.back_stack[0] == PageId::Stage);
-    // Seq's levels: a tap opens Patterns from anywhere; on Patterns the track's editor (Steps on a kit, Roll on a
-    // synth until one is opened, then that one, per track); on an editor back to Patterns; Step Edit goes up to its editor.
+    // Seq, the SEQUENCE hub (docs/HUBS_PLAN.md): a tap opens the track's editor from anywhere (Steps on a kit, Roll on
+    // a synth until one is opened, then that one, per track); on an editor home, Steps; Step Edit goes up to its editor.
     {
         UiState q; q.track = 0;
-        q.page = PageId::Stage; CHECK(seq_tap_page(q, false) == PageId::Patterns);
-        q.page = PageId::Song; CHECK(seq_tap_page(q, true) == PageId::Patterns);
+        q.page = PageId::Stage; CHECK(seq_tap_page(q, false) == PageId::Roll && seq_tap_page(q, true) == PageId::Steps);
+        q.page = PageId::Song; CHECK(seq_tap_page(q, true) == PageId::Steps);
         q.page = PageId::Patterns; CHECK(seq_tap_page(q, false) == PageId::Roll && seq_tap_page(q, true) == PageId::Steps);
         remember_editor(q, PageId::Motion);
         CHECK(seq_tap_page(q, false) == PageId::Motion && seq_tap_page(q, true) == PageId::Motion);
         q.track = 1; CHECK(seq_tap_page(q, false) == PageId::Roll); // each track its own
         q.track = 0; remember_editor(q, PageId::Stage); CHECK(seq_editor_page(q, false) == PageId::Motion); // only editors count
-        q.page = PageId::Motion; CHECK(seq_tap_page(q, false) == PageId::Patterns);
-        q.page = PageId::Steps; CHECK(seq_tap_page(q, true) == PageId::Patterns);
+        q.page = PageId::Motion; CHECK(seq_tap_page(q, false) == PageId::Steps); // home
+        q.page = PageId::Steps; CHECK(seq_tap_page(q, true) == PageId::Steps);
         q.page = PageId::StepEdit; CHECK(seq_tap_page(q, false) == PageId::Motion);
         CHECK(seq_editor(PageId::Roll) && !seq_editor(PageId::StepEdit) && !seq_editor(PageId::Patterns));
     }

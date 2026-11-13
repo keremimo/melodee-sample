@@ -23,8 +23,9 @@ bool seq_editor(PageId page); // Steps, Roll or Motion
 PageId seq_editor_page(const UiState& ui, bool kit);
 // An editor opened: remembered for the selected track.
 void remember_editor(UiState& ui, PageId page);
-// A tap of Seq from ui.page: Patterns from anywhere; on Patterns the track's editor; on an
-// editor back to Patterns; on Step Edit back to the editor it sits under.
+// A tap of Seq from ui.page (the SEQUENCE hub, docs/HUBS_PLAN.md): the track's editor (Steps, Roll or Motion, the
+// last open) from anywhere; on an editor home, Steps (B1's page); on Step Edit back to the editor it sits under.
+// Patterns is the ARRANGE hub's (Shift + Pad 12).
 PageId seq_tap_page(const UiState& ui, bool kit);
 
 } // namespace melodee

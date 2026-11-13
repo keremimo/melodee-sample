@@ -60,7 +60,7 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
         if (kind == StageKind::Trim && last.used() && project.samples[last.sample % sample_slots].instrument()) return false; // ZONES (round 3)
         return kind == StageKind::Trim || kind == StageKind::Layers;
     }
-    case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks || ui.page == PageId::Punch; // Merge; COPY on Tracks; QUANTIZE on Pad FX
+    case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks || ui.page == PageId::Punch || ui.page == PageId::Scenes; // Merge; COPY on Tracks; QUANTIZE on Pad FX; ALL on Scenes
     case B::SampleRecord: return kit;                                            // Audio Recall
     case B::Erase: // Copy: what the page holds (shell/erase_copy.h), or off
         return ui.copying != UiState::Copying::Off || copy_here(project, ui, kit_pads, key_pads) != CopyHere::None;
