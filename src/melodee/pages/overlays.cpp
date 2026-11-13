@@ -60,7 +60,7 @@ void draw_update_sheet(Paint& p, const Snapshot& s) {
 void draw_overlays(Paint& p, const Snapshot& s) {
     if (s.ui.update.phase) { draw_update_sheet(p, s); return; } // full screen until the app restarts or B1 closes it
     if (s.ui.loading) { draw_loading_sheet(p, s); return; } // it owns the screen and the controls until it is in
-    bool tracks = track_overlay_shown(s.ui, s.now); // Pad Bank held a second, or a track copy
+    bool tracks = track_overlay_shown(s.ui); // a track move or copy
     bool sheet = s.ui.name.open() || s.ui.exit_open;
     bool seq = !tracks && seq_sheet_shown(s.ui, s.now); // Seq held a moment: the Sequence sheet
     bool sound = !tracks && !seq && sample_sheet_shown(s.ui, s.now); // Sample held a moment: the track's pads

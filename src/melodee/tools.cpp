@@ -1230,11 +1230,6 @@ const Preview previews[] {
          s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.mute_latch = true; s.playing = true;
          s.project.tracks[3].set_pad_muted(1, true); s.project.tracks[3].set_pad_muted(6, true);
      }},
-    {"padbank", [](Shell&, Snapshot& s) { // Pad Bank held on a kit in bank F: the sixteen tracks
-         s.ui.page = PageId::Pads; s.ui.track = 3; s.sample = break_sample(); s.ui.pad_bank = true; s.playing = true;
-         s.ui.pad_bank_down = s.now - pad_bank_overlay_ms; // held a second: the overlay is up
-         s.project.tracks[3].bank = 5;
-     }},
     {"copytrack", [](Shell&, Snapshot& s) { // Pad Bank held, Shift + Erase, track 2 picked: where does it go
          s.ui.page = PageId::Stage; s.ui.track = 1; s.ui.pad_bank = true;
          s.ui.copying = UiState::Copying::Tracks; s.ui.copy_from = 1;

@@ -123,8 +123,6 @@ struct UiState {
     PageId new_back = PageId::Stage;
     uint32_t new_taken = 0; // buttons whose press the carousel's lock took (a bit each): their release goes too
     int8_t new_kit = -1; // the kit made for Samples' first sample (CANCEL there makes it empty again), -1 none
-    // Pad Bank (shell/pad_bank.cpp): when it went down; held a second, the tracks over the page.
-    uint32_t pad_bank_down = 0;
     uint16_t sounds_cursor = 0;
     uint8_t sounds_filter = 0;       // all, favourites, recent
     uint8_t audition_velocity = 100;

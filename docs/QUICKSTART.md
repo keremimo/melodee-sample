@@ -72,10 +72,7 @@ These controls work the same on every page:
 Melodee has 16 tracks, one for each pad. Pad 1 (bottom left) is track 1.
 
 To select a track, hold **PAD BANK** and press a pad. This works on any
-page. If you hold **PAD BANK** for one second, the screen shows all 16
-tracks.
-
-![PAD BANK held: the 16 tracks](images/screens/padbank.png)
+page. To see all 16 tracks, press **PAD FX** and **KNOB FX** together.
 
 A new project has an empty kit on track 1. The other tracks are empty until
 you choose what they are (see [step 7](#7-add-a-plug-in-instrument)).

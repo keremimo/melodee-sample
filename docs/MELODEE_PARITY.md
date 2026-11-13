@@ -44,7 +44,7 @@ work from memory.
 
 | Control | Decision |
 | --- | --- |
-| Pad Bank | Hold + pad stays **track select** (from any page; while held the screen shows the 16 tracks). Tap = next bank, Shift + tap = previous. Hold + −/+ (or wheel) jumps banks. Kits grow to 8 banks (A–H lights). |
+| Pad Bank | Hold + pad stays **track select** (from any page; the screen stays the page's, Pad FX + Knob FX shows the 16 tracks). Tap = next bank, Shift + tap = previous. Hold + −/+ (or wheel) jumps banks. Kits grow to 8 banks (A–H lights). |
 | Seq | **Tap to look, hold to steer** (Kerem, 2026-11-11, the approved Seq flow mockup, replacing 1a's Patterns-launches): a tap opens Patterns, whose pads play the track; on Patterns the track's last editor, on an editor back. Held on any page: pads launch the track's patterns (Shift + pad a column), wheel the tempo, K1–K3 length / Q / swing, B1–B3 Steps / Roll / Motion, −/+ previous / next, Erase + pad clears (asked), Seq Record a new take; the Sequence sheet after 0.3 s. Seq + Sample, Patterns' B1 BPM hold and B3 COLUMN are gone; SEQ / GBL BPM is Push on the Tempo page. |
 | Shift + Seq | **Step Edit**, the level under the editor (from Roll on the note in focus); again, Seq, B1 CLOSE or Push go back. Roll on a kit draws a lane per pad, so kits and synths share Steps / Roll / Motion. |
 | Loop / Shift + Loop | Loop / reverse the **last pad's playback** (sampler). Built in phase 4: Loop toggles the last pad's loop, lit while it loops. |

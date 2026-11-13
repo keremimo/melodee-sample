@@ -5,9 +5,7 @@ Previous: [Basics](basics.md) · [Contents](../GUIDE.md) · Next: [Kits and samp
 ## Select a track
 
 Hold **PAD BANK** and press a pad. This works on any page. Pad 1 is track 1.
-While **PAD BANK** is held for a second, the screen shows all 16 tracks.
-
-![PAD BANK held](../images/screens/padbank.png)
+To see all 16 tracks, open the [Tracks page](#the-tracks-page).
 
 While **PAD BANK** is held:
 
