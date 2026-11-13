@@ -969,7 +969,7 @@ void draw(Paint& p, const Snapshot& s) {
         if (page.kind == StageKind::Layers) h.left.push_back(layers_pill(s));
     } else if (page.kind == StageKind::PluginSound && plugin_presets(s)) { // which preset of how many
         int at = plugin_preset_at(s);
-        h.left.push_back(pill((at >= 0 ? juce::String(at + 1) : juce::String("–")) + " / " + juce::String(int(s.presets.list.size()))));
+        h.left.push_back(pill((at >= 0 ? juce::String(at + 1) : juce::String::fromUTF8("\xe2\x80\x93")) + " / " + juce::String(int(s.presets.list.size()))));
     } else if (page.kind == StageKind::PluginEdit && plugin_ready(s)) { // the share of each audio block it takes, as Edit's
         const auto& panel = s.ui.plugin_panel;
         h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
