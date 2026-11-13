@@ -199,6 +199,7 @@ std::vector<SmfTrack> smf_tracks(const Project& project, const PatternBank& patt
         track.channel = uint8_t(tr.engine == EngineKind::Midi ? std::clamp<int>(tr.params[1], 1, 16) : kit ? 10 : tr.midi_channel ? tr.midi_channel : t % 16 + 1);
         for (const auto& e : lane.events) {
             if (e.tick >= lane.length) break;
+            if (e.flags & step_mute) continue; // muted on Roll: not played, not exported
             int key = e.key;
             if (kit) key = 36 + (int(e.key) - int(sampler_first_note)); // a kit's pad, as MIDI in hears it
             if (key < 0 || key > 127) continue;

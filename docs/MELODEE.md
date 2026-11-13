@@ -133,7 +133,7 @@ cards.
 | 16 Levels | A tap: the last pad (or a synth's last note) on all sixteen pads, again off; the page stays. Held: K1–K3 are its settings on any page (the type, then the two ends or the key's root and scale) and − / + its octave or Zones' page; let go after a hold, nothing. Of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Zones (an instrument's pad), Loop |
 | Sample Select | Samples (the browser) on a kit, the plug-in picker on a PLUGIN track, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. MIDI: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
-| Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
+| Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: marks notes; the wheel alone walks each chord's notes, then the next step) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
 | − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
 | Sample Record | Record on a kit (there it ends the take and opens Stage's TRIM on the pad; B3 PRINT the PRINT sheet); the PRINT sheet on a PLUGIN or MIDI track (Print and freeze, below); with Seq held, the pattern pads freeze or thaw | Audio Recall: the last 25 s onto the next empty pad |
@@ -644,9 +644,17 @@ hold to steer, Shift + Seq to zoom in**.
   to the editor.
 - **Roll** (B2): the pattern's notes, each at its own tick for its own length, over bar
   lines, any number to a step. The cursor is a step of Q and a pitch: the
-  wheel moves it a step (onto the nearest note starting there), Shift +
-  wheel every note in turn (a step's notes low to high, then the next
-  step's), −/+ walk the chord in the step and then a semitone;
+  wheel goes through a step's notes one by one, then on to the next step
+  (low to high going on, high to low going back; an empty step is one
+  detent and keeps the pitch), −/+ walk the chord in the step and then a
+  semitone; Shift + wheel marks notes one by one along the same walk
+  (header n SEL, marked notes outlined). With Shift let go the marked notes
+  take the controls: the wheel moves them a step of Q (hopping over notes
+  in the way), Shift + wheel moves them a row, Erase deletes them, Mute
+  mutes them (drawn hollow; kept but not played or exported; Mute again
+  plays them), Note Repeat steps their ratchet 2, 3, 4, 6, 8, off, and
+  K1-K3 set length, velocity and chance on all of them. A Shift tap clears
+  the marks;
   the view scrolls a step at a time, and dots on its edges mark notes above
   and below. It opens on the pattern's notes: when none lies in the rows it
   would show, the cursor's pitch goes to the note nearest its step. The note at the cursor is in focus, drawn white and named in

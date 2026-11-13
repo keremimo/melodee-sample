@@ -2151,6 +2151,7 @@ void EngineHost::play_event(unsigned t, Slot& slot, const Pattern& pattern, size
                             Slot::Held& holding) {
     const auto& events = pattern.events;
     const auto& e = events[n];
+    if (e.flags & step_mute) return; // muted on Roll: kept, not played
     if (e.key > 127 && slot.kind != EngineKind::Sampler) return; // past 127: kit pads only
     const int played = pad_note(e.key, e.pitch); // the key, and over it what a kit pad plays at
     if (skipped(slot, unsigned(played), at)) return;

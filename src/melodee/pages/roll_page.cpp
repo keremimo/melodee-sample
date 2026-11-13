@@ -4,8 +4,8 @@
 // selected track's pattern, read from its events (shell/roll.h); on a kit a
 // lane per pad, numbered as the pads are (the kit's bank in view). Each
 // note sits at its own tick for its own length, over bar lines, any number
-// to a step. The cursor is a step of Q (the wheel; Shift + wheel note to
-// note) and a pitch (Minus / Plus: the chord in the step, then a semitone);
+// to a step. The cursor is a step of Q (the wheel: through each chord's
+// notes, then the next step) and a pitch (Minus / Plus: the chord in the step, then a semitone);
 // the note there is in focus, drawn white, and the cards edit it (K1 length,
 // K2 velocity, K3 chance; B2 again the TRIG row: K1 a ratchet's hits, drawn
 // along the note, K2 their velocity ramp, Shift + K2 a kit pad's pitch ramp).
@@ -17,6 +17,11 @@
 // wheel moves, Push does the card (the three switches stay open to see them
 // change), B1 back; a pad or a pot closes it. With Seq Record on while
 // playing, pads play in live.
+// Shift + wheel marks notes one by one along the wheel's walk (drawn with a
+// white outline). Shift let go, the marked notes take the controls: the wheel
+// moves them a step of Q, Shift + wheel a row, Erase deletes, Mute mutes
+// (drawn hollow; again plays them), Note Repeat steps their ratchet, K1-K3
+// set all of them; a Shift tap clears the marks.
 #include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
 #include "melodee/pages/common.h"
@@ -54,6 +59,7 @@ void draw(Paint& p, const Snapshot& s) {
     int focus = roll_focus(pattern, ui, lane), top_key = ui.roll_top;
     const Event* focused = focus >= 0 ? &pattern.events[size_t(focus)] : nullptr;
 
+    const bool marks = roll_selection(ui, track.pattern); // Shift + wheel's marks (shell/roll.h)
     bool kit = lane < 0 && (track.engine == EngineKind::Sampler || drum_pads(track)); // lanes of pads, not keys (Drums pads too: 36 is A01)
     Header h = header_of(s);
     if (!ui.recording) {
@@ -61,6 +67,10 @@ void draw(Paint& p, const Snapshot& s) {
         if (focused) // where it sits: the place bar's
             h.left.push_back(chip(Icon::Note, juce::String(lane >= 0 ? note_name(roll_row(*focused, lane)) : key_label(track, focused->key)), c));
         else h.left.push_back(pill("BAR " + juce::String(cursor * q / bar + 1) + " / " + juce::String((pattern.length + bar - 1) / bar)));
+    }
+    if (marks) { // how many are marked; grey while Shift still marks
+        unsigned n = unsigned(roll_marked_events(pattern, ui).size());
+        if (n) h.left.push_back(ui.roll_marking ? pill(juce::String(n) + " SEL") : pill(juce::String(n) + " SEL", c));
     }
     h.right.push_back(tag_of(s, ui.track));
     bool sheet = ui.sheet_open && focused;
@@ -130,9 +140,11 @@ void draw(Paint& p, const Snapshot& s) {
         }
         float x = std::max(x_of(e.tick), gutter) + 1, xe = std::min(x_of(end), right + 1), y = top + r * row_h + 1;
         float w = std::max(xe - x - 1, 2.0f), hgt = row_h - 2.5f;
-        bool on = int(n) == focus;
+        bool on = int(n) == focus, muted = e.flags & step_mute, marked = marks && roll_is_marked(pattern, ui, n);
         unsigned hits = e.hits();
-        if (hits == 1) {
+        if (muted) { // kept, not played: hollow
+            p.ring(x, y, w, hgt, on ? colour::text : c.withAlpha(0.6f), 2.5f, 1.0f);
+        } else if (hits == 1) {
             p.fill(x, y, w, hgt, on ? colour::text : c.withAlpha(0.4f + e.velocity / 127.0f * 0.6f), 2.5f);
         } else { // a ratchet: its hits along the note, each as strong as it plays (the ramp)
             float each = float(e.length) / float(hits) / float(q) * column;
@@ -145,6 +157,7 @@ void draw(Paint& p, const Snapshot& s) {
             }
         }
         if (on) p.ring(x - 1, y - 1, w + 2, hgt + 2, c, 3, 1.2f);
+        else if (marked) p.ring(x - 1, y - 1, w + 2, hgt + 2, colour::text, 3, 1.2f);
         bool kit_lane = track.engine == EngineKind::Sampler;
         if (w > 6 && lock_in(pattern, e.tick, e.tick + 1, kit_lane ? int(e.key) - int(sampler_first_note) : -1)) // a Motion lock on it
             p.fill(x + 1, y + 1, 3, 3, on ? c : colour::bg, 0.5f);
@@ -221,11 +234,7 @@ void wheel(Context& c, int delta) {
         c.ui.sheet_row = uint8_t(std::clamp<int>(c.ui.sheet_row + delta, 0, int(sheet_rows) - 1));
         return;
     }
-    if (c.ui.shift) { // note to note, over empty bars
-        c.ui.shift_used = true;
-        if (!roll_jump(c.pattern(), c.ui, delta, roll_lane(c.track()))) c.notice(delta > 0 ? "No later note" : "No earlier note");
-        return;
-    }
+    if (roll_selection_wheel(c, delta)) return; // Shift: marks notes; marked, the wheel moves them (Shift: their pitch)
     roll_step(c.pattern(), c.ui, delta, roll_lane(c.track()));
 }
 

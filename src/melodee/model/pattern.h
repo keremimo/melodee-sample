@@ -40,7 +40,7 @@ inline Division legacy_division(unsigned value) {
     return value < 5 ? map[value] : Division::Sixteenth;
 }
 
-enum StepFlag : uint8_t { step_accent = 1, step_slide = 2, step_tie = 4 };
+enum StepFlag : uint8_t { step_accent = 1, step_slide = 2, step_tie = 4, step_mute = 8 }; // step_mute: kept, not played (Roll)
 
 // A ratchet (roadmap P1): a note played as so many hits spread evenly over its length.
 constexpr unsigned max_ratchet = 8;

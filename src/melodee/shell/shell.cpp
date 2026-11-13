@@ -222,7 +222,12 @@ void Shell::button(Button b, bool pressed) {
 
 void Shell::press(Button b, bool pressed) {
     auto& ui = ui_;
-    if (b == Button::Shift) { ui.shift = pressed; if (pressed) ui.shift_used = false; return; }
+    if (b == Button::Shift) {
+        ui.shift = pressed;
+        if (pressed) ui.shift_used = false;
+        else if (ui.page == PageId::Roll) roll_shift_up(context_); // Roll: marking ends, or a tap clears the marks
+        return;
+    }
     if (b == Button::Play && !pressed && ui.fill) context_.fill(false); // Fill lasts while Play is held
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
@@ -245,8 +250,12 @@ void Shell::press(Button b, bool pressed) {
     if (pressed && !ui.exit_open && (b == Button::TopLeft || b == Button::TopMiddle || b == Button::TopRight) &&
         sample_key(context_, b == Button::TopLeft ? 0 : b == Button::TopMiddle ? 1 : 2)) return; // Sample held: Stage's sections
     if (b == Button::PadBank) { pad_bank_button(context_, pressed); return; } // shell/pad_bank.cpp
-    if (b == Button::Mute) { mute_button(context_, pressed); return; }         // shell/mute_mode.cpp
+    if (b == Button::Mute) { // shell/mute_mode.cpp; Roll's marked notes first (shell/roll.h)
+        if (!pressed || !roll_selection_mute(context_)) mute_button(context_, pressed);
+        return;
+    }
     if (b == Button::NoteRepeat && (!ui.exit_open || !pressed)) { // shell/note_repeat.cpp; on Song the pads play nothing: it repeats the clip
+        if (pressed && roll_selection_repeat(context_)) return; // Roll's marked notes: their ratchet
         if (pressed && song_buttons()) song_repeat(context_);
         else repeat_button(context_, pressed);
         return;
@@ -499,7 +508,7 @@ void Shell::wheel(int delta) {
     }
     if (seq_wheel(context_, delta)) return;     // Seq held: the tempo
     if (pad_bank_move(context_, delta)) return; // Pad Bank held: the wheel jumps banks
-    if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns && ui_.page != PageId::Roll) { // Patterns: locates by Q; Roll: note to note
+    if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns && ui_.page != PageId::Roll) { // Patterns: locates by Q; Roll: marks notes
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
         ui_.shift_used = true;
         auto bindings = page_bindings(*project_, ui_, context_.pattern(), ui_.last_pot_shift);

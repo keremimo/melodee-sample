@@ -5575,10 +5575,10 @@ void roll() {
     roll_pitch(p, ui, 1); CHECK(ui.roll_key == 64);                           // Minus / Plus: the chord in the step first
     roll_pitch(p, ui, 1); CHECK(ui.roll_key == 65 && roll_focus(p, ui) < 0);  // then a semitone
     roll_pitch(p, ui, -1); CHECK(ui.roll_key == 64);                          // and back onto the chord's top
-    roll_step(p, ui, 2); CHECK(ui.step_cursor == 8 && ui.roll_key == 57);     // the wheel: onto the nearest note starting there
+    roll_step(p, ui, 2); CHECK(ui.step_cursor == 8 && ui.roll_key == 57);     // the wheel: past the chord's top, a step on; onto step 8's note
     roll_step(p, ui, 1); CHECK(ui.step_cursor == 9 && ui.roll_key == 57 && roll_focus(p, ui) < 0); // an empty step keeps the pitch
-    CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 40 && ui.roll_key == 69);  // Shift + wheel: note to note over empty bars
-    CHECK(!roll_jump(p, ui, 1) && ui.step_cursor == 40);
+    roll_step(p, ui, 31); CHECK(ui.step_cursor == 40 && ui.roll_key == 69);   // a detent a step over empty bars
+    roll_step(p, ui, 100); CHECK(ui.step_cursor == 63 && ui.roll_key == 69);  // stops at the pattern's end
     { // Round 2: NUDGE on Shift + K1, the note in focus off its nearest grid line (1/16: -12 .. 11 ticks).
         Pattern n;
         n.length = p.length;
@@ -5602,15 +5602,18 @@ void roll() {
         auto second = shift_bindings(project, entry, n);
         CHECK(second[0].kind == Binding::Kind::PatternLength && second[1].kind == Binding::Kind::Division && second[2].kind == Binding::Kind::TimeSignature);
     }
-    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 8 && ui.roll_key == 57);
-    // and through a chord one note at a time, low to high, both ways.
-    ui.step_cursor = 6; ui.roll_key = 60;
-    CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 6 && ui.roll_key == 64 && roll_focus(p, ui) >= 0);
-    CHECK(roll_jump(p, ui, 1) && ui.step_cursor == 8 && ui.roll_key == 57);
-    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 6 && ui.roll_key == 64);
-    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 6 && ui.roll_key == 60);
-    CHECK(roll_jump(p, ui, -1) && ui.step_cursor == 0 && ui.roll_key == 62);
-    CHECK(!roll_jump(p, ui, -1));
+    // The wheel through a chord a note at a time: in on its lowest going on, its highest going back.
+    ui.step_cursor = 5; ui.roll_key = 70;
+    roll_step(p, ui, 1); CHECK(ui.step_cursor == 6 && ui.roll_key == 60 && roll_focus(p, ui) >= 0);
+    roll_step(p, ui, 1); CHECK(ui.step_cursor == 6 && ui.roll_key == 64 && roll_focus(p, ui) >= 0);
+    roll_step(p, ui, 1); CHECK(ui.step_cursor == 7 && ui.roll_key == 64 && roll_focus(p, ui) < 0);
+    roll_step(p, ui, 1); CHECK(ui.step_cursor == 8 && ui.roll_key == 57);
+    roll_step(p, ui, -1); CHECK(ui.step_cursor == 7 && ui.roll_key == 57);
+    roll_step(p, ui, -1); CHECK(ui.step_cursor == 6 && ui.roll_key == 64);
+    roll_step(p, ui, -1); CHECK(ui.step_cursor == 6 && ui.roll_key == 60);
+    roll_step(p, ui, -1); CHECK(ui.step_cursor == 5 && ui.roll_key == 60 && roll_focus(p, ui) < 0);
+    roll_step(p, ui, -5); CHECK(ui.step_cursor == 0 && ui.roll_key == 62);
+    roll_step(p, ui, -1); CHECK(ui.step_cursor == 0 && ui.roll_key == 62);    // stops at the start
     // The view scrolls a step at a time, the cursor two steps from either edge, inside the pattern.
     ui.step_cursor = 40; ui.roll_view = 0; roll_follow(p, ui); CHECK(ui.roll_view == 27 && roll_first(p, ui) == 27);
     ui.step_cursor = 63; roll_follow(p, ui); CHECK(ui.roll_view == 48);
@@ -5632,6 +5635,56 @@ void roll() {
     ui.roll_key = 63; CHECK(!page_bindings(project, ui, p)[0].bound());
     Binding chance; chance.kind = Binding::Kind::EventChance;
     CHECK(binding_scope(project, ui, chance).kind == UndoScope::Kind::Pattern);
+}
+
+// Roll's selection: Shift + wheel marks notes along the wheel's walk; the marks then move, change pitch, mute,
+// ratchet and go together.
+void roll_marks() {
+    Pattern p;
+    p.length = 4 * 4 * ticks_per_quarter; // 64 steps of 1/16
+    auto add = [&](unsigned step, uint8_t key) { Event e; e.tick = step * sixteenth_ticks; e.key = key; CHECK(p.add(e)); };
+    add(0, 62); add(6, 60); add(6, 64); add(8, 57); add(10, 64);
+    const uint32_t s = sixteenth_ticks;
+    UiState ui;
+    ui.track = 3; ui.step_cursor = 5; ui.roll_key = 70;
+    roll_mark_walk(p, ui, 1, 2);                                  // nothing at the start; onto step 6's C4
+    CHECK(ui.roll_marking && ui.roll_marked == 1 && ui.roll_mark_track == 3 && ui.roll_mark_pattern == 2);
+    roll_mark_walk(p, ui, 2, 2);                                  // E4, then the empty step 7
+    CHECK(ui.roll_marked == 2 && ui.step_cursor == 7);
+    roll_mark_walk(p, ui, 1, 2);                                  // step 8's A3
+    CHECK(ui.roll_marked == 3 && roll_marked_events(p, ui).size() == 3);
+    CHECK(roll_selection(ui, 2) && !roll_selected(ui, 2));        // still marking
+    CHECK(!roll_selection(ui, 1));                                // another pattern: none
+    ui.roll_marking = false;
+    CHECK(roll_selected(ui, 2));
+    // The wheel: a step of Q later, the cursor with them.
+    CHECK(roll_marks_move(p, ui, 1) && ui.step_cursor == 9);
+    CHECK(p.events.size() == 5 && roll_marked_events(p, ui).size() == 3);
+    CHECK(p.events[size_t(roll_marked_events(p, ui).front())].tick == 7 * s);
+    CHECK(roll_marks_move(p, ui, 1) && roll_marks_move(p, ui, 1));
+    { auto m = roll_marked_events(p, ui); CHECK(m.size() == 3 && p.events[m.front()].tick == 9 * s); }
+    // The marked E4 on step 9 would land on step 10's E4: the notes hop over it to step 11 together.
+    CHECK(roll_marks_move(p, ui, 1) && ui.step_cursor == 13);
+    CHECK(p.events.size() == 5);
+    { auto m = roll_marked_events(p, ui); CHECK(m.size() == 3 && p.events[m.front()].tick == 11 * s); }
+    { int e4 = 0; for (const auto& e : p.events) e4 += e.key == 64; CHECK(e4 == 2); } // the unmarked E4 kept
+    CHECK(!roll_marks_move(p, ui, 100));                          // past the end: nothing moves
+    CHECK(p.events.size() == 5);
+    // Shift + wheel: a row up.
+    CHECK(roll_marks_pitch(p, ui, 1, -1, 127));
+    { auto m = roll_marked_events(p, ui); CHECK(m.size() == 3); int sum = 0; for (auto n : m) sum += p.events[n].key; CHECK(sum == 61 + 65 + 58); }
+    CHECK(!roll_marks_pitch(p, ui, 200, -1, 127));
+    // Mute: all on, then all off.
+    CHECK(roll_marks_mute(p, ui));
+    for (auto n : roll_marked_events(p, ui)) CHECK(p.events[n].flags & step_mute);
+    CHECK(!roll_marks_mute(p, ui));
+    for (auto n : roll_marked_events(p, ui)) CHECK(!(p.events[n].flags & step_mute));
+    // Note Repeat: 2, 3, 4, 6, 8, then off.
+    CHECK(roll_marks_ratchet(p, ui) == 2 && roll_marks_ratchet(p, ui) == 3 && roll_marks_ratchet(p, ui) == 4);
+    CHECK(roll_marks_ratchet(p, ui) == 6 && roll_marks_ratchet(p, ui) == 8 && roll_marks_ratchet(p, ui) == 1);
+    // Erase: the marked go, the rest stay, the marks cleared.
+    CHECK(roll_marks_erase(p, ui) == 3 && p.events.size() == 2 && !ui.roll_marked);
+    CHECK(p.events[0].key == 62 && p.events[1].key == 64 && p.events[1].tick == 10 * s);
 }
 
 // Roll on a kit with 16 Levels on: a row for each pitch of the levels pad (60 + its semitones, as Seq Record keeps
@@ -5663,10 +5716,11 @@ void roll_levels() {
     roll_pitch(p, ui, 1, lane); CHECK(ui.roll_key == 67);
     roll_pitch(p, ui, 1, lane); CHECK(ui.roll_key == 68 && roll_focus(p, ui, lane) < 0); // then a semitone
     roll_step(p, ui, 4, lane); CHECK(ui.step_cursor == 4 && ui.roll_key == 62); // onto step 4's D4
-    CHECK(roll_jump(p, ui, 1, lane) && ui.step_cursor == 9 && ui.roll_key == 55);
-    CHECK(!roll_jump(p, ui, 1, lane));
-    CHECK(roll_jump(p, ui, -1, lane) && ui.step_cursor == 4 && ui.roll_key == 62);
-    CHECK(roll_jump(p, ui, -1, lane) && ui.step_cursor == 0 && ui.roll_key == 67);
+    roll_step(p, ui, 5, lane); CHECK(ui.step_cursor == 9 && ui.roll_key == 55);
+    roll_step(p, ui, 1, lane); CHECK(ui.step_cursor == 10 && ui.roll_key == 55);
+    roll_step(p, ui, -6, lane); CHECK(ui.step_cursor == 4 && ui.roll_key == 62);
+    roll_step(p, ui, -4, lane); CHECK(ui.step_cursor == 0 && ui.roll_key == 67); // the chord's top going back
+    roll_step(p, ui, -1, lane); CHECK(ui.step_cursor == 0 && ui.roll_key == 64); // then down through it
     roll_select(p, ui, lane);
     CHECK(selected_event(p, ui) == roll_focus(p, ui, lane));      // Step Edit's selection: the note in focus
     UiState far; far.step_cursor = 9; far.roll_key = 100; far.roll_top = 110;
@@ -13008,6 +13062,7 @@ int main() {
     looper_engine();
     looper_rates();
     roll();
+    roll_marks();
     roll_opens_on_notes();
     roll_levels();
     stage();

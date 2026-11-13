@@ -2115,6 +2115,16 @@ const Preview previews[] {
          for (auto& e : p.events) if (e.tick == 34 * sixteenth_ticks) { e.ratchet = 3; e.ramp = 60; }
          s.ui.trig_cards = true; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    {"rollmarks", [](Shell& shell, Snapshot& s) { // Roll's selection: four notes marked by Shift + wheel, the last two muted
+         roll_bass(shell, s, 24, 57);
+         auto& p = shell.patterns().at[0][s.project.tracks[0].pattern % pattern_count];
+         s.ui.roll_marked = 0; s.ui.roll_mark_track = 0; s.ui.roll_mark_pattern = s.project.tracks[0].pattern;
+         for (auto& e : p.events) {
+             if (e.tick < 24 * sixteenth_ticks || s.ui.roll_marked >= 4) continue;
+             if (s.ui.roll_marked >= 2) e.flags |= step_mute;
+             s.ui.roll_marks[s.ui.roll_marked++] = {e.tick, e.key, e.pitch};
+         }
+     }},
     {"stepsratchet", [](Shell& shell, Snapshot& s) { // Steps' TRIG row on the kit, the hat's lane: step 5 a ratchet of three rising, Shift held
          step_edit_kit(shell, s);
          s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;

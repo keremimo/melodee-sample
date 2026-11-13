@@ -82,44 +82,38 @@ void nudge_event(Context& c, int ticks) {
     follow(c, e.tick, e.key);
 }
 
-void set_event_velocity(Context& c, int velocity) {
-    auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track())); // Roll's cards: the note in focus
-    int at = selected_event(pattern, c.ui);
-    if (at < 0) return;
-    pattern.events[size_t(at)].velocity = uint8_t(std::clamp(velocity, 1, 127));
-    c.sync_pattern(c.ui.track, c.track().pattern);
-}
-
-void set_event_length(Context& c, int steps) {
-    auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track()));
-    int at = selected_event(pattern, c.ui);
-    if (at < 0) return;
-    pattern.events[size_t(at)].length = uint16_t(std::clamp<int64_t>(int64_t(std::max(steps, 1)) * pattern.q(), 1, 0xffff));
-    c.sync_pattern(c.ui.track, c.track().pattern);
-}
-
-void set_event_chance(Context& c, int chance) {
-    auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track()));
-    int at = selected_event(pattern, c.ui);
-    if (at < 0) return;
-    pattern.events[size_t(at)].chance = uint8_t(std::clamp(chance, 0, 100));
-    c.sync_pattern(c.ui.track, c.track().pattern);
-}
-
 namespace {
-// The selected event (on Roll the note in focus) through `edit`, and the pattern to the audio thread.
+// The selected event through `edit`, and the pattern to the audio thread. On Roll the marked notes (shell/roll.h),
+// else the note in focus.
 template <class Edit> void edit_selected(Context& c, Edit&& edit) {
     auto& pattern = c.pattern();
-    if (c.ui.page == PageId::Roll) roll_select(pattern, c.ui, roll_lane(c.track()));
+    if (c.ui.page == PageId::Roll) {
+        if (roll_selected(c.ui, c.track().pattern)) {
+            auto marked = roll_marked_events(pattern, c.ui);
+            for (auto n : marked) edit(pattern.events[n]);
+            if (!marked.empty()) { c.sync_pattern(c.ui.track, c.track().pattern); return; }
+        }
+        roll_select(pattern, c.ui, roll_lane(c.track())); // Roll's cards: the note in focus
+    }
     int at = selected_event(pattern, c.ui);
     if (at < 0) return;
     edit(pattern.events[size_t(at)]);
     c.sync_pattern(c.ui.track, c.track().pattern);
 }
 } // namespace
+
+void set_event_velocity(Context& c, int velocity) {
+    edit_selected(c, [&](Event& e) { e.velocity = uint8_t(std::clamp(velocity, 1, 127)); });
+}
+
+void set_event_length(Context& c, int steps) {
+    const int64_t q = c.pattern().q();
+    edit_selected(c, [&](Event& e) { e.length = uint16_t(std::clamp<int64_t>(int64_t(std::max(steps, 1)) * q, 1, 0xffff)); });
+}
+
+void set_event_chance(Context& c, int chance) {
+    edit_selected(c, [&](Event& e) { e.chance = uint8_t(std::clamp(chance, 0, 100)); });
+}
 
 void set_event_ratchet(Context& c, int hits) {
     edit_selected(c, [&](Event& e) { e.ratchet = uint8_t(std::clamp<int>(hits, 1, int(max_ratchet))); });

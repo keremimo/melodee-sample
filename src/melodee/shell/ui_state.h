@@ -182,6 +182,15 @@ struct UiState {
     uint8_t roll_key = 62, roll_top = 65;
     int16_t roll_view = 0;
     uint16_t roll_new = 0;
+    // Roll's selection (shell/roll.h): Shift + wheel marks notes one by one (roll_marking while Shift is held); let
+    // go, the marked notes take the wheel, Shift + wheel, Erase, Mute, Note Repeat and K1-K3; a Shift tap clears
+    // them. Each mark is a note's tick, key and pitch on one track's pattern (roll_mark_track, roll_mark_pattern).
+    struct RollMark { uint32_t tick = 0; uint8_t key = 0; int8_t pitch = 0; };
+    static constexpr unsigned roll_marks_max = 128;
+    std::array<RollMark, roll_marks_max> roll_marks {};
+    uint8_t roll_marked = 0, roll_mark_track = 0;
+    uint16_t roll_mark_pattern = 0;
+    bool roll_marking = false;
     bool map_open = false;    // the page map over Edit
     uint8_t map_cursor = 0;
     int8_t pattern_held = -1; // Patterns: a pattern held (its number), so the next pad copies it there

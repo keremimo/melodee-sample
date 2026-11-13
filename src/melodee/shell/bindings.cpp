@@ -903,6 +903,10 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         return {Binding {Kind::PluginJump, 0, 0, std::max(int(ui.plugins_count) - 1, 1), ui.plugins_cursor}, Binding {}, Binding {}};
     case PageId::Roll: { // the note in focus: K1 its length in steps of Q, K2 velocity, K3 chance; none, no cards
         int at = roll_focus(pattern, ui, roll_lane(track));
+        if (at < 0 && roll_selected(ui, track.pattern)) { // marked notes: the cards set them all, read off the first
+            auto marked = roll_marked_events(pattern, ui);
+            if (!marked.empty() && ui.held_note < 0) at = int(marked.front());
+        }
         if (at < 0) return {};
         const auto& e = pattern.events[size_t(at)];
         if (ui.held_note >= 0) return lock_cards(project, ui, pattern, e.tick); // its pad held: locks there (roadmap P1)
