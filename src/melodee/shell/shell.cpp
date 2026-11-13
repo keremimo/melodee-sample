@@ -24,6 +24,7 @@
 #include <cstdio>
 #include "melodee/shell/pad_bank.h"
 #include "melodee/shell/roll.h"
+#include "melodee/shell/mix_hub.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/zoom_view.h"
 #include "melodee/shell/sample_mode.h"
@@ -231,6 +232,20 @@ void Shell::press(Button b, bool pressed) {
         return;
     }
     if (b == Button::Sample) { if (!ui.exit_open) sample_button(context_, true); return; } // shell/sample_mode.cpp: held, a pad picks a kit pad
+    if ((b == Button::PadFx || b == Button::KnobFx) && (!ui.exit_open || !pressed)) {
+        // Pad FX and Knob FX together, in either order: the MIX hub on Tracks (shell/mix_hub.h); alone, their own job
+        // when let go. Shift + either acts as it goes down (the cases below).
+        switch (fx_chord(ui, b, pressed)) {
+        case FxChord::Mix: context_.open(PageId::Tracks); end_copy_away(); return;
+        case FxChord::Wait: return;
+        case FxChord::Own:
+            if (pressed) break; // Shift: below, as printed
+            if (ui.exit_open || ui.ask != UiState::Ask::None) return; // let go under a sheet: nothing
+            if (b == Button::KnobFx) context_.knob_fx_button();
+            else context_.open(ui.page == PageId::Punch && context_.track().engine == EngineKind::Sampler ? PageId::PadPunch : PageId::Punch);
+            return;
+        }
+    }
     if ((b == Button::Loop || b == Button::SixteenLevels) && (!ui.exit_open || !pressed)) {
         // Loop and 16 Levels together, in either order: the Looper, and neither's own job (shell/looper_chord.h).
         // 16 Levels alone acts on its release (the last pad on all sixteen; Shift: the type, as it goes down).

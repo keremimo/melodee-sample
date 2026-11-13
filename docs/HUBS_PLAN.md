@@ -1,7 +1,7 @@
 # Hubs: plan
 
 Status: all picks made 2026-11-13 (S-B, P-a, M-b, R-a, T-a, PL-a, H-b).
-Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row, Pad Bank held B1-B3, MOVE / COPY on Shift) built. Steps 4–6 open.
+Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row) built 679355b; its opener became PAD FX + KNOB FX. Steps 4–6 open.
 Nothing built. Mockups: https://claude.ai/artifact/KysLcHsF6LN7pnAVFtS6ut
 
 ## Problem
@@ -31,7 +31,7 @@ actions, where it has any.
 | --- | --- | --- | --- | --- | --- |
 | SOUND | SAMPLE | source | play | out | kit pads / Keys layout |
 | SEQUENCE | SEQ | STEPS → TRIG → EUCLID | ROLL | MOTION → MOD | patterns (as today) |
-| MIX | PAD BANK held + B1–B3 | TRACKS | SENDS | FX: TRACK → SENDS → BUS → MASTER | the tracks (as today); SHIFT + B2 / B3 MOVE / COPY |
+| MIX | PAD FX + KNOB FX together | TRACKS | SENDS | FX: TRACK → BUS → MASTER (→ PAD on a kit) | — (PAD BANK held keeps the tracks and B2 / B3 MOVE / COPY) |
 | ARRANGE | SHIFT + PAD 12 | PATTERNS | SCENES | SONG | — |
 | Looper | LOOP + 16 LEVELS | LOOPS | MIX | MORE | LOOP held (as today) |
 
@@ -58,7 +58,7 @@ actions. Sheets keep B1 BACK / CANCEL and B3 the verb.
 | --- | --- | --- |
 | S | SOUND hub keys | B: same role on every track |
 | P | Patterns grid | P-a: ARRANGE hub (SHIFT + PAD 12) |
-| M | MIX hub opener | M-b: PAD BANK held, then B1–B3 (not SHIFT + KNOB FX: FX Select stays) |
+| M | MIX hub opener | PAD FX + KNOB FX pressed together (Kerem, after step 3; replaced M-b, PAD BANK held + B1–B3) |
 | R | Hub button inside its hub | R-a: home (B1's first page) |
 | T | Leaving a tool | T-a: its opener again |
 | PL | Plug-in's first page | PL-a: presets page when it has presets (the old Stage PRESET picture), else the plug-in's face (name, format, maker, load) |

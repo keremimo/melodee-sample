@@ -234,6 +234,8 @@ struct UiState {
     bool sample_held = false;   // Sample held: a pad picks a kit pad without playing it (as on the MPC)
     bool sample_used = false;   // a pad was picked meanwhile, so letting go opens no page
     uint32_t sample_down = 0;   // ms: when Sample went down (its sheet shows sample_sheet_ms after)
+    bool pad_fx_down = false, knob_fx_down = false; // Pad FX, Knob FX down (their own jobs wait for the release)
+    bool fx_chord_used = false;                     // both went down together: the MIX hub, and neither's own job
     // Seq held (shell/seq_layer.h): the Sequence layer on any page. When it went down, whether a control
     // did something meanwhile (its release then goes nowhere), and whether B1-B3 left for an editor (the
     // sheet stays away until Seq is let go). Each track's editor last open (0 none yet, then 1 + EditorKind).

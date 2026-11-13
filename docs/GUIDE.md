@@ -98,6 +98,7 @@ is different, and how to change your habits.
 | Press **STOP** twice to stop all sound. | Press **SHIFT** + **STOP** to stop all notes. |
 | **SHIFT** + **SEQ RECORD** brings the last loop into the sequence. | **SHIFT** + **SEQ RECORD** (Recall) puts the last phrase you played on every track into each track's next empty pattern. |
 | No looper. | Press **LOOP** and **16 LEVELS** together to open the **Looper**. |
+| No mixer. | Press **PAD FX** and **KNOB FX** together to open the mixer: **Tracks**, **Sends** and the effect chains. |
 | Power off with **POWER**. | A short press of **POWER** opens the Exit screen: stay, power off, or go back to the stock app. |
 
 ![Stage on a kit: AMP ENV, as in Sample mode](images/screens/stagekitampenv.png)
@@ -256,12 +257,9 @@ While **PAD BANK** is held for a second, the screen shows all 16 tracks.
 
 While **PAD BANK** is held:
 
-- Press **B1** (**TRACKS**), **B2** (**SENDS**) or **B3** (**FX**) to open
-  the mixer pages. They stay open when you let go.
-- Press **SHIFT** + **B2** (**MOVE**), then a track, then a pad to move the
-  track there. A track already there swaps places with it.
-- Press **SHIFT** + **B3** (**COPY**), then a track, then a pad to copy the
-  track there.
+- Press **B2** (**MOVE**), then a track, then a pad to move the track there.
+  A track already there swaps places with it.
+- Press **B3** (**COPY**), then a track, then a pad to copy the track there.
 - Press **ERASE** + pad to clear that track (asks first).
 - Turn the encoder or press **−** / **+** to change the kit's bank.
 
@@ -269,7 +267,7 @@ While **PAD BANK** is held:
 
 ### The Tracks page
 
-Hold **PAD BANK** and press **B1** (**TRACKS**) to open **Tracks**: all 16
+Press **PAD FX** and **KNOB FX** together to open **Tracks**: all 16
 tracks as the pads are laid out, with the selected track as a mixer strip on
 the right.
 
@@ -294,7 +292,8 @@ from 60 %, red from 85 %).
 | **SHIFT** + **B2** / **B3** | Move / copy a track. |
 
 Tracks, Sends and the effect chains share the keys **TRACKS**, **SENDS** and
-**FX**. Hold **PAD BANK** and press one of them to open it from any page.
+**FX**. Press **PAD FX** and **KNOB FX** together to open Tracks from any
+page; press them again there to come back to Tracks.
 
 ### Make a new track
 
@@ -1111,7 +1110,7 @@ own chain of four effects before the track's chain.
 
 ### Sends
 
-Press **B2** (**SENDS**) on Tracks, or hold **PAD BANK** and press **B2**, to
+Press **B2** (**SENDS**) on Tracks or on an effect chain to
 open **Sends**: one bus at a time, with every track's send to it. Press
 **−** / **+** to change the bus.
 
@@ -1464,8 +1463,8 @@ version on the **ABOUT** page.
 | --- | --- | --- |
 | **SAMPLE** | Stage, the track's sound pages; on Stage, its first page. Held: Pads or Keys; + pad: select a kit pad without playing it. | Input Config |
 | **SEQ** | Patterns, then the track's editor. Held: launch patterns. | Step Edit |
-| **PAD FX** | Pad FX. Again on a kit: Pad Punch. | Flex Beat |
-| **KNOB FX** | Knob FX mode on or off | Effect chains |
+| **PAD FX** | Pad FX. Again on a kit: Pad Punch. With **KNOB FX**: the mixer (Tracks). | Flex Beat |
+| **KNOB FX** | Knob FX mode on or off. With **PAD FX**: the mixer (Tracks). | Effect chains |
 | **PAD BANK** | Next bank. Held + pad: select a track. | Previous bank |
 | **ERASE** | Alone: erase the selection. Held + pad, knob, step or fader: erase | Copy |
 | **NOTE REPEAT** | Tap to latch, hold for momentary | |

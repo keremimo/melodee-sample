@@ -7,10 +7,9 @@
 // its next bank, A-H round (Shift: the previous one; on Punch the other bank
 // of punches); with Seq held, the bank of patterns the pads launch. Held: a pad picks that track, Minus / Plus or the wheel jump
 // banks, and after a second the screen shows the sixteen tracks (the pads are
-// the tracks at once); B1-B3 open the MIX hub (TRACKS, SENDS, FX); Shift + B2 MOVE moves a whole track to
-// another pad, Shift + B3 COPY (or Shift + Erase, as printed)
+// the tracks at once); B2 MOVE moves a whole track to another pad, B3 COPY (or Shift + Erase, as printed)
 // copies one, Erase + pad clears one (shell/track_copy.cpp). One job a tap, acted on release: no
-// double tap. MIDI thread.
+// double tap. MIDI thread. (The Tracks page itself: Pad FX + Knob FX, shell/mix_hub.h.)
 namespace melodee {
 
 class Context;
@@ -37,10 +36,9 @@ inline void start_track_pick(UiState& ui, bool move) {
     ui.copying = UiState::Copying::Tracks;
     ui.moving = move;
 }
-// B1-B3 while the pads are the tracks (Pad Bank held, or a move or copy picking its tracks): Shift + B2 MOVE and
-// Shift + B3 COPY start one (B2 / B3 alone while one is under way switch it, its track kept, and again end it); B1
-// steps back, from where to the track, then out. Nothing: Pad Bank held alone, B1-B3 open the MIX hub's TRACKS,
-// SENDS, FX (shell/mix_hub.h). Ignored: the pads are not the tracks, the page's keys answer.
+// B1-B3 while the pads are the tracks (Pad Bank held, or a move or copy picking its tracks): B2 MOVE and B3 COPY
+// start one, or switch the one under way (its track kept), and again end it; B1 steps back, from where to the
+// track, then out. Ignored: the pads are not the tracks, the page's keys answer.
 enum class TrackKey : uint8_t { Ignored, Nothing, Started, Switched, Back, Ended };
 inline TrackKey track_key(UiState& ui, int key) {
     if (!tracks_on_pads(ui)) return TrackKey::Ignored;
@@ -52,7 +50,6 @@ inline TrackKey track_key(UiState& ui, int key) {
         ui.stop_copying();
         return TrackKey::Ended;
     }
-    if (!picking && !ui.shift) return TrackKey::Nothing; // Pad Bank held alone: B1-B3 the MIX hub's (track_soft())
     bool move = key == 1;
     if (picking && ui.moving == move) { ui.stop_copying(); return TrackKey::Ended; }
     if (picking) { ui.moving = move; return TrackKey::Switched; }

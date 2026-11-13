@@ -2,10 +2,11 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/shell/ui_state.h"
+#include "surface/controls.h"
 
-// The MIX hub (docs/HUBS_PLAN.md, M-b): Tracks, Sends and the effect chains
-// share one row of keys, B1 TRACKS, B2 SENDS, B3 FX, on each of those pages
-// and while Pad Bank is held. FX is a cycle along the signal: the track's
+// The MIX hub (docs/HUBS_PLAN.md): Pad FX and Knob FX pressed together, in
+// either order, open it on Tracks from any page. Tracks, Sends and the effect
+// chains share one row of keys, B1 TRACKS, B2 SENDS, B3 FX. FX is a cycle along the signal: the track's
 // chain, a bus's, the master's, and on a kit the last pad's; the lit FX key
 // steps on, as Stage's keys do. A loop track's chain (the Looper's) keeps its
 // own keys. Pure, for the pages, the shell and the tests.
@@ -41,6 +42,27 @@ inline PageId mix_next(PageId page, unsigned key, bool kit) {
     unsigned count = mix_fx_pages(kit, pages);
     if (mix_section(page) != MixSection::Fx) return pages[0];
     return pages[(mix_fx_at(page, kit) + 1) % count];
+}
+
+// Pad FX and Knob FX: alone, each does its own job when let go (Pad FX the punches, Knob FX its mode on or off);
+// both down together, in either order, the MIX hub, and neither's own job. Shift + either (Flex Beat, FX Select,
+// as printed) acts as it goes down, as before.
+enum class FxChord : uint8_t { Own, Mix, Wait };
+inline FxChord fx_chord(UiState& ui, SurfaceButton b, bool pressed) {
+    bool pad = b == SurfaceButton::PadFx;
+    bool& mine = pad ? ui.pad_fx_down : ui.knob_fx_down;
+    bool other = pad ? ui.knob_fx_down : ui.pad_fx_down;
+    if (pressed) {
+        if (ui.shift && !other) return FxChord::Own; // printed Shift jobs: at once
+        mine = true;
+        if (other) { ui.fx_chord_used = true; return FxChord::Mix; }
+        return FxChord::Wait;
+    }
+    if (!mine) return FxChord::Wait; // went down with Shift: done then
+    mine = false;
+    bool used = ui.fx_chord_used;
+    if (!ui.pad_fx_down && !ui.knob_fx_down) ui.fx_chord_used = false;
+    return used ? FxChord::Wait : FxChord::Own;
 }
 
 } // namespace melodee

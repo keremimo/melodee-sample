@@ -9058,14 +9058,10 @@ void track_move() {
     swap_track_views(ui, 0, 1);
     CHECK(ui.track == 6);
 
-    // B1-B3 with Pad Bank held: alone, the MIX hub's TRACKS, SENDS, FX (Nothing here: track_soft() opens them);
-    // Shift + B2 MOVE, Shift + B3 COPY; then B1 steps back, then out; the active key again ends it.
+    // B1-B3 with Pad Bank held: B2 MOVE, B3 COPY; B1 steps back, then out; the active key again ends it.
     UiState held; held.pad_bank = true;
     CHECK(track_key(held, 0) == TrackKey::Nothing && held.copying == UiState::Copying::Off && held.pad_bank_used);
-    CHECK(track_key(held, 1) == TrackKey::Nothing && track_key(held, 2) == TrackKey::Nothing && held.copying == UiState::Copying::Off);
-    held.shift = true;
     CHECK(track_key(held, 1) == TrackKey::Started && held.copying == UiState::Copying::Tracks && held.moving && held.copy_from < 0);
-    held.shift = false;
     held.copy_from = 3;
     CHECK(track_key(held, 2) == TrackKey::Switched && !held.moving && held.copy_from == 3);
     CHECK(track_key(held, 0) == TrackKey::Back && held.copy_from < 0 && held.copying == UiState::Copying::Tracks);
@@ -9075,15 +9071,25 @@ void track_move() {
     start_track_pick(held, true); // Shift + B2 on Tracks
     CHECK(tracks_on_pads(held) && track_overlay_shown(held, 0) && held.moving);
     CHECK(track_key(held, 0) == TrackKey::Ended && !held.moving && !tracks_on_pads(held));
-    held.copying = UiState::Copying::Pads; held.pad_bank = true; held.shift = true;
+    held.copying = UiState::Copying::Pads; held.pad_bank = true;
     CHECK(track_key(held, 2) == TrackKey::Started && held.copying == UiState::Copying::Tracks && !held.moving); // a pad copy gives way
-    held.shift = false;
     // The MIX hub's row (shell/mix_hub.h): TRACKS, SENDS, and FX along the chains, a kit's pads' last.
     CHECK(mix_next(PageId::Stage, 0, false) == PageId::Tracks && mix_next(PageId::Tracks, 1, false) == PageId::Sends);
     CHECK(mix_next(PageId::Sends, 2, false) == PageId::Rack && mix_next(PageId::Rack, 2, false) == PageId::Bus);
     CHECK(mix_next(PageId::Bus, 2, false) == PageId::Master && mix_next(PageId::Master, 2, false) == PageId::Rack);
     CHECK(mix_next(PageId::Master, 2, true) == PageId::PadFx && mix_next(PageId::PadFx, 2, true) == PageId::Rack);
     CHECK(mix_section(PageId::Bus) == MixSection::Fx && mix_section(PageId::Stage) == MixSection::None);
+    {   // Pad FX + Knob FX together, either order: the MIX hub, neither's own job; alone, its job on release;
+        // Shift + either at once (Flex Beat, FX Select).
+        using SB = SurfaceButton;
+        UiState f;
+        CHECK(fx_chord(f, SB::PadFx, true) == FxChord::Wait && fx_chord(f, SB::PadFx, false) == FxChord::Own);
+        CHECK(fx_chord(f, SB::KnobFx, true) == FxChord::Wait && fx_chord(f, SB::PadFx, true) == FxChord::Mix);
+        CHECK(fx_chord(f, SB::KnobFx, false) == FxChord::Wait && fx_chord(f, SB::PadFx, false) == FxChord::Wait && !f.fx_chord_used);
+        CHECK(fx_chord(f, SB::KnobFx, true) == FxChord::Wait && fx_chord(f, SB::KnobFx, false) == FxChord::Own); // its own again
+        f.shift = true;
+        CHECK(fx_chord(f, SB::KnobFx, true) == FxChord::Own && fx_chord(f, SB::KnobFx, false) == FxChord::Wait && !f.knob_fx_down);
+    }
     held.moving = true; held.stop_copying();
     CHECK(!held.moving && held.copy_from < 0);
 

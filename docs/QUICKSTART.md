@@ -79,7 +79,8 @@ tracks.
 A new project has an empty kit on track 1. The other tracks are empty until
 you choose what they are (see [step 7](#7-add-a-plug-in-instrument)).
 
-To see all tracks as a mixer, hold **PAD BANK** and press **B1** (**TRACKS**).
+To see all tracks as a mixer, press **PAD FX** and **KNOB FX** together to
+open **Tracks**.
 Each cell shows a track's number, its pattern, its type and its level. Use
 **K2** to set the selected track's level and **K3** to set its pan.
 
