@@ -1066,7 +1066,12 @@ the file holds, to the bit.
   sequences, the amp envelope, tags as chokes (`silencedByTags`), and
   `trigger=release` samples on the key let go. Left out and counted: groups
   or samples disabled, a tag turned off, a legato trigger, a controller
-  where it does not start. Named, not played: effects, modulators.
+  where it does not start. Named, not played: effects, modulators. The
+  preset opens as its own screen shows it: each knob's, button's and menu's
+  starting value goes through its bindings (volume, tuning, pan, velocity,
+  the amp envelope, sample start, end and loop, groups and tags on or off),
+  so a start set past a file's silence plays from there; a layer at volume
+  0 is left out.
 - **MPC drum programs** (`.xpm` or `.xty` of type Drum, tagged KIT): Push loads the
   program as the selected kit track's kit, as Load Kit does (one undo), each
   instrument onto its pad (1 is A01, 17 is B01). A pad of one layer plays its

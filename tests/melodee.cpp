@@ -10832,6 +10832,53 @@ void instrument_formats_p3() {
         CHECK(!why.empty());
         CHECK(dspreset_decibels("0.5") && std::fabs(*dspreset_decibels("0.5") + 6.02) < 0.01);
     }
+    { // the preset as its face first shows it: each control's value through its bindings
+        auto knob = [](std::map<std::string, std::string> a, std::vector<DsElement> bindings) { return DsElement {"labeled-knob", std::move(a), std::move(bindings)}; };
+        auto binding = [](std::map<std::string, std::string> a) { return DsElement {"binding", std::move(a), {}}; };
+        DsElement ui {"ui", {}, {{"tab", {}, {
+            // a sample start past the files' 250 ms of silence (SamuFL's Home Percussions, TIGHT)
+            knob({{"minValue", "-50"}, {"maxValue", "0"}, {"value", "0"}},
+                 {binding({{"type", "general"}, {"level", "instrument"}, {"position", "0"}, {"parameter", "SAMPLE_START"},
+                           {"translation", "linear"}, {"translationOutputMin", "9600"}, {"translationOutputMax", "12000"}})}),
+            // one fader: the natural layer up, the hyped one down
+            knob({{"value", "0"}},
+                 {binding({{"type", "amp"}, {"level", "group"}, {"tags", "natural"}, {"parameter", "AMP_VOLUME"}, {"translation", "table"}, {"translationTable", "0,1;1,0"}}),
+                  binding({{"type", "amp"}, {"level", "group"}, {"tags", "hyped"}, {"parameter", "AMP_VOLUME"}, {"translation", "table"}, {"translationTable", "0,0;1,1"}}),
+                  binding({{"type", "effect"}, {"level", "instrument"}, {"position", "1"}, {"parameter", "LEVEL"}})}),
+            // a value past its range is held to it; no output range passes it as it is
+            knob({{"minValue", "0"}, {"maxValue", "4"}, {"value", "2000"}}, {binding({{"type", "amp"}, {"level", "instrument"}, {"parameter", "ENV_RELEASE"}})}),
+            knob({{"value", "0.25"}}, {binding({{"type", "amp"}, {"level", "instrument"}, {"parameter", "ENV_ATTACK"}, {"triggerOnLoad", "false"}})}),
+            {"menu", {{"value", "2"}}, {{"option", {}, {binding({{"type", "amp"}, {"level", "group"}, {"position", "2"}, {"parameter", "ENABLED"}, {"translation", "fixed_value"}, {"translationValue", "true"}})}},
+                                        {"option", {}, {binding({{"type", "amp"}, {"level", "group"}, {"position", "2"}, {"parameter", "ENABLED"}, {"translation", "fixed_value"}, {"translationValue", "false"}})}}}},
+        }}}};
+        DsElement groups {"groups", {{"attack", "0.0"}, {"release", "1.75"}}, {}};
+        groups.children.push_back({"group", {{"tags", "natural"}, {"volume", "6dB"}}, {{"sample", {{"path", "Samples/Thump.wav"}, {"rootNote", "60"}, {"loNote", "60"}, {"hiNote", "60"}}, {}}}});
+        groups.children.push_back({"group", {{"tags", "hyped"}, {"volume", "8dB"}}, {{"sample", {{"path", "Samples/Thump_HYPED.wav"}, {"rootNote", "60"}, {"loNote", "60"}, {"hiNote", "60"}}, {}}}});
+        groups.children.push_back({"group", {}, {{"sample", {{"path", "Samples/Slap.wav"}, {"rootNote", "62"}, {"start", "0"}}, {}}}});
+        DsElement root {"DecentSampler", {}, {ui, groups}};
+        auto read = read_dspreset(root);
+        CHECK(read.regions.size() == 1 && read.regions[0].sample == "Samples/Thump.wav");
+        CHECK(read.regions[0].offset == 12000 && std::fabs(read.regions[0].zone.gain) < 0.01f);
+        CHECK(read.left == 2 && read.left_by.count("volume") && read.left_by.count("enabled"));
+        CHECK(read.envelope.release && std::fabs(*read.envelope.release - 4) < 1e-9);
+        CHECK(read.envelope.attack && *read.envelope.attack == 0);
+        // a start set at level instrument reaches a sample that names its own (the format keeps start on samples only)
+        DsElement pad_ui {"ui", {}, {knob({{"minValue", "0.001"}, {"maxValue", "2"}, {"value", "1"}},
+            {binding({{"type", "general"}, {"level", "instrument"}, {"position", "0"}, {"parameter", "SAMPLE_START"}, {"translation", "linear"},
+                      {"translationInputMin", "0"}, {"translationInputMax", "2"}, {"translationOutputMin", "96000"}, {"translationOutputMax", "0"}}),
+             binding({{"type", "amp"}, {"level", "instrument"}, {"position", "0"}, {"parameter", "ENV_ATTACK"}})})}};
+        DsElement pad_groups {"groups", {{"attack", "0.01"}}, {{"group", {{"tags", "pad"}}, {{"sample", {{"path", "Samples/Pad.wav"}, {"start", "0"}}, {}}}}}};
+        auto pad = read_dspreset(DsElement {"DecentSampler", {}, {pad_ui, pad_groups}});
+        CHECK(pad.regions.size() == 1 && pad.regions[0].offset == 48000);
+        CHECK(pad.envelope.attack && std::fabs(*pad.envelope.attack - 1) < 1e-9);
+        // a tag turned off by a button's first state
+        DsElement tag_ui {"ui", {}, {{"button", {{"value", "0"}}, {{"state", {}, {binding({{"type", "general"}, {"level", "instrument"}, {"identifier", "room"},
+            {"parameter", "TAG_ENABLED"}, {"translation", "fixed_value"}, {"translationValue", "false"}})}}}}}};
+        DsElement tag_groups {"groups", {}, {{"group", {{"tags", "room"}}, {{"sample", {{"path", "Samples/Room.wav"}}, {}}}},
+                                             {"group", {}, {{"sample", {{"path", "Samples/Close.wav"}}, {}}}}}};
+        auto tagged = read_dspreset(DsElement {"DecentSampler", {}, {tag_ui, tag_groups}});
+        CHECK(tagged.regions.size() == 1 && tagged.regions[0].sample == "Samples/Close.wav" && tagged.left_by.count("tags"));
+    }
 }
 
 // Roadmap P3: Chop's slices kept with the project (CHOP; older files: none, a damaged one dropped).

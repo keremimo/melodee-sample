@@ -5,6 +5,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <set>
 
@@ -81,6 +82,204 @@ const std::set<std::string> known {
     "silencingMode", "enabled", "ampVelTrack", "name", "minVersion", "loopCrossfade",
 };
 constexpr double longest_stage = 10.0;
+
+// A volume written as linear 0: the format's way to mute a level.
+bool muted(const std::optional<std::string>& text) {
+    if (!text) return false;
+    auto t = lowered(trimmed(*text));
+    if (t.size() > 2 && t.compare(t.size() - 2, 2, "db") == 0) return false;
+    auto v = number(t);
+    return v && *v <= 0;
+}
+std::string text_of(double v) {
+    char made[32];
+    std::snprintf(made, sizeof(made), "%.9g", v);
+    return made;
+}
+bool truth(const std::string& text) {
+    auto t = lowered(trimmed(text));
+    if (auto v = number(t)) return *v >= 0.5;
+    return t == "true";
+}
+
+// A <binding>'s value from its control's: factor, then the translation (linear by default, from the control's range
+// or translationInputMin/Max to translationOutputMin/Max, or the value itself when no output range is named; a table
+// of input,output pairs drawn straight between; or a fixed value).
+std::optional<std::string> bound(const Level& b, double value, double low, double high) {
+    value *= number_at(b, "factor").value_or(1);
+    auto translation = lowered(at(b, "translation").value_or("linear"));
+    if (translation == "fixed_value") return at(b, "translationValue");
+    if (translation == "table") {
+        std::vector<std::pair<double, double>> points;
+        for (const auto& pair : [&] {
+                 std::vector<std::string> parts;
+                 auto text = at(b, "translationTable").value_or("0,0;1,1");
+                 size_t from = 0;
+                 while (from <= text.size()) {
+                     size_t semi = text.find(';', from);
+                     parts.push_back(text.substr(from, semi == std::string::npos ? std::string::npos : semi - from));
+                     if (semi == std::string::npos) break;
+                     from = semi + 1;
+                 }
+                 return parts;
+             }()) {
+            auto both = list(pair);
+            if (both.size() != 2) continue;
+            auto x = number(both[0]), y = number(both[1]);
+            if (x && y) points.push_back({*x, *y});
+        }
+        if (points.empty()) return std::nullopt;
+        std::sort(points.begin(), points.end());
+        if (value <= points.front().first) return text_of(points.front().second);
+        for (size_t n = 1; n < points.size(); ++n)
+            if (value <= points[n].first) {
+                const auto& [x0, y0] = points[n - 1];
+                const auto& [x1, y1] = points[n];
+                return text_of(x1 > x0 ? y0 + (value - x0) / (x1 - x0) * (y1 - y0) : y1);
+            }
+        return text_of(points.back().second);
+    }
+    auto out_low = number_at(b, "translationOutputMin"), out_high = number_at(b, "translationOutputMax");
+    if (!out_low && !out_high) return text_of(value);
+    const double in_low = number_at(b, "translationInputMin").value_or(low), in_high = number_at(b, "translationInputMax").value_or(high);
+    double t = in_high != in_low ? std::clamp((value - in_low) / (in_high - in_low), 0.0, 1.0) : 0.0;
+    if (lowered(at(b, "translationReversed").value_or("")) == "true") t = 1 - t;
+    const double lo = out_low.value_or(0), hi = out_high.value_or(1);
+    return text_of(lo + t * (hi - lo));
+}
+
+// Roadmap P3: the preset as its face first shows it. DecentSampler pushes each <ui> control's starting value through
+// its <binding>s when the preset opens (triggerOnLoad, on unless turned off): a knob's value, a button's state (its
+// 0-based value), a menu's option (its 1-based value). What a binding sets is written into the tree before it is read:
+// at level instrument the <groups>, at level group the groups its position or tags pick, at a tag the <tag>; a sample's
+// start, end and loop, which only a <sample> carries, into each sample in reach. Bindings to what the sampler has no
+// place for are named.
+void apply_bindings(DsElement& root, std::set<std::string>& ignored) {
+    struct Push { const Level* binding; double value, low, high; };
+    std::vector<Push> pushes;
+    auto controls = [&](auto& self, const DsElement& e) -> void {
+        auto value_of = [&](const char* name, double otherwise) { return number_at(e.attributes, name).value_or(otherwise); };
+        auto bindings_of = [&](const DsElement& holder, double value, double low, double high) {
+            for (const auto& c : holder.children)
+                if (c.name == "binding") pushes.push_back({&c.attributes, value, low, high});
+        };
+        if (e.name == "labeled-knob" || e.name == "control" || e.name == "knob" || e.name == "slider") {
+            double low = value_of("minValue", 0), high = value_of("maxValue", 1);
+            double value = value_of("value", 0);
+            if (low < high) value = std::clamp(value, low, high);
+            bindings_of(e, value, low, high);
+            return;
+        }
+        if (e.name == "button" || e.name == "menu") {
+            const bool menu = e.name == "menu";
+            const auto chosen = long(value_of("value", 0)) - (menu ? 1 : 0); // a menu at 0 has none chosen
+            long n = 0;
+            for (const auto& c : e.children)
+                if (c.name == (menu ? "option" : "state") && n++ == chosen) bindings_of(c, double(chosen), 0, 1);
+            return;
+        }
+        for (const auto& c : e.children) self(self, c);
+    };
+    for (const auto& c : root.children)
+        if (c.name == "ui") controls(controls, c);
+    if (pushes.empty()) return;
+    // Copies: a binding's attributes live in the tree the pushes change.
+    std::vector<std::pair<Level, Push>> work;
+    for (const auto& p : pushes) work.push_back({*p.binding, p});
+    std::map<std::string, Level> tag_changes;
+    for (const auto& [b, p] : work) {
+        if (lowered(at(b, "triggerOnLoad").value_or("true")) == "false" || lowered(at(b, "enabled").value_or("true")) == "false") continue;
+        const auto type = lowered(at(b, "type").value_or("")), level = lowered(at(b, "level").value_or(""));
+        const auto parameter = at(b, "parameter").value_or("");
+        if (type != "amp" && type != "general") continue; // effects (named elsewhere), the face's own controls
+        auto value = bound(b, p.value, p.low, p.high);
+        if (!value) continue;
+        if (parameter == "TAG_ENABLED" || parameter == "TAG_VOLUME") {
+            auto name = at(b, "identifier");
+            if (!name) name = at(b, "tags");
+            if (!name) continue;
+            for (const auto& tag : list(name))
+                tag_changes[tag][parameter == "TAG_ENABLED" ? "enabled" : "volume"] = parameter == "TAG_ENABLED" ? (truth(*value) ? "true" : "false") : *value;
+            continue;
+        }
+        std::vector<DsElement*> reach; // the <groups> or <group>s it sets
+        if (level == "instrument") {
+            for (auto& c : root.children) if (c.name == "groups") reach.push_back(&c);
+        } else if (level == "group") {
+            auto by = at(b, "groupTags");
+            if (!by) by = at(b, "tags");
+            auto wanted = list(by);
+            auto index = number_at(b, "groupIndex");
+            if (!index) index = number_at(b, "position");
+            long n = 0;
+            for (auto& gs : root.children) {
+                if (gs.name != "groups") continue;
+                for (auto& g : gs.children) {
+                    if (g.name != "group") continue;
+                    const bool picked = by ? std::any_of(wanted.begin(), wanted.end(), [&](const std::string& t) {
+                        auto has = list(at(g.attributes, "tags"));
+                        return std::find(has.begin(), has.end(), t) != has.end();
+                    }) : index && long(*index) == n;
+                    if (picked) reach.push_back(&g);
+                    ++n;
+                }
+            }
+        } else {
+            continue;
+        }
+        const bool instrument = level == "instrument";
+        auto set = [&](DsElement& e, const char* name, const std::string& v, const char* alias = nullptr) {
+            e.attributes[name] = v;
+            if (alias) e.attributes.erase(alias);
+        };
+        auto each_sample = [&](DsElement& e, const char* name) {
+            const auto frames = text_of(std::round(number(*value).value_or(0)));
+            auto into = [&](auto& self, DsElement& under) -> void {
+                for (auto& c : under.children) {
+                    if (c.name == "sample") c.attributes[name] = frames;
+                    else if (c.name == "group") self(self, c);
+                }
+            };
+            into(into, e);
+        };
+        static const std::map<std::string, std::pair<const char*, const char*>> stages {
+            {"ENV_ATTACK", {"attack", "ampEnvAttack"}}, {"ENV_DECAY", {"decay", "ampEnvDecay"}},
+            {"ENV_SUSTAIN", {"sustain", "ampEnvSustain"}}, {"ENV_RELEASE", {"release", "ampEnvRelease"}},
+        };
+        static const std::map<std::string, const char*> places {
+            {"SAMPLE_START", "start"}, {"SAMPLE_END", "end"}, {"LOOP_START", "loopStart"}, {"LOOP_END", "loopEnd"},
+        };
+        for (auto* e : reach) {
+            if (parameter == "AMP_VOLUME") set(*e, "volume", *value, instrument ? "globalVolume" : "groupVolume");
+            else if (parameter == "GLOBAL_TUNING" && instrument) set(*e, "globalTuning", *value);
+            else if (parameter == "GROUP_TUNING" && !instrument) set(*e, "groupTuning", *value, "tuning");
+            else if (parameter == "PAN") set(*e, "pan", *value);
+            else if (parameter == "AMP_VEL_TRACK") set(*e, "ampVelTrack", *value);
+            else if (parameter == "ENABLED" && !instrument) set(*e, "enabled", truth(*value) ? "true" : "false");
+            else if (auto s = stages.find(parameter); s != stages.end()) set(*e, s->second.first, *value, s->second.second);
+            else if (auto w = places.find(parameter); w != places.end()) each_sample(*e, w->second);
+            else ignored.insert(parameter);
+        }
+    }
+    for (const auto& change : tag_changes) {
+        const std::string& name = change.first;
+        const Level& changes = change.second;
+        bool found = false;
+        auto into = [&](auto& self, DsElement& e) -> void {
+            for (auto& c : e.children) {
+                if (c.name == "tag" && at(c.attributes, "name") == name) {
+                    for (const auto& [k, v] : changes) c.attributes[k] = v;
+                    found = true;
+                } else if (c.name != "ui") self(self, c);
+            }
+        };
+        into(into, root);
+        if (found) continue;
+        DsElement tag {"tag", changes, {}};
+        tag.attributes["name"] = name;
+        root.children.push_back({"tags", {}, {std::move(tag)}});
+    }
+}
 } // namespace
 
 std::optional<double> dspreset_decibels(const std::string& text) {
@@ -91,9 +290,11 @@ std::optional<double> dspreset_decibels(const std::string& text) {
     return *v > 0 ? 20 * std::log10(*v) : -96.0;
 }
 
-SfzRead read_dspreset(const DsElement& root, std::string* error) {
+SfzRead read_dspreset(const DsElement& preset, std::string* error) {
     SfzRead read;
-    if (root.name != "DecentSampler") { if (error) *error = "Not a DecentSampler preset"; return read; }
+    if (preset.name != "DecentSampler") { if (error) *error = "Not a DecentSampler preset"; return read; }
+    DsElement root = preset;
+    apply_bindings(root, read.ignored);
     struct Found { Level sample, group, groups; };
     std::vector<Found> samples;
     std::map<std::string, std::pair<bool, double>> tags; // on, level
@@ -148,6 +349,12 @@ SfzRead read_dspreset(const DsElement& root, std::string* error) {
         if (std::any_of(its.begin(), its.end(), [&](const std::string& t) { auto it = tags.find(t); return it != tags.end() && !it->second.first; })) {
             leave("tags");
             continue;
+        }
+        { // a level at linear 0 (often a layer's fader down on the preset's face) plays nothing: no voice spent on it
+            auto group_level = at(g, "groupVolume"); if (!group_level) group_level = at(g, "volume");
+            auto global_level = at(gs, "globalVolume"); if (!global_level) global_level = at(gs, "volume");
+            const bool tag_down = std::any_of(its.begin(), its.end(), [&](const std::string& t) { auto it = tags.find(t); return it != tags.end() && it->second.second <= 0; });
+            if (muted(at(s, "volume")) || muted(group_level) || muted(global_level) || tag_down) { leave("volume"); continue; }
         }
         auto trigger = lowered(look("trigger").value_or("attack"));
         if (trigger == "legato") { leave("trigger"); continue; } // only on a legato: every press would double it
