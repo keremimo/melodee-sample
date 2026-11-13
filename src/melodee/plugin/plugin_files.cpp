@@ -23,6 +23,14 @@ bool ends_with(const std::string& text, const char* end) {
 
 std::string stem(const fs::path& path) { return path.stem().string(); }
 
+bool is_zip(const std::string& name) { return ends_with(name, ".zip"); }
+
+// What a Mac adds to a zip: the __MACOSX folder and ._ resource forks.
+bool mac_extra(const juce::String& entry) {
+    return entry.startsWith("__MACOSX/") || entry.fromLastOccurrenceOf("/", false, false).startsWith("._")
+        || entry.endsWith(".DS_Store");
+}
+
 // Contents/<build> folders of a VST3 bundle, as names a person knows.
 std::string builds_named(const fs::path& bundle) {
     std::error_code error;
@@ -161,6 +169,15 @@ std::vector<PluginFile> list_plugins(const std::string& folder) {
         auto name = entry.path().filename().string();
         if (name.empty() || name[0] == '.') continue;
         bool dir = entry.is_directory(error);
+        if (!dir && is_zip(name)) { // one unzip_plugins() could not unzip: listed dimmed
+            PluginFile zip;
+            zip.path = entry.path().string();
+            zip.name = entry.path().stem().string();
+            zip.format = PluginFormat::Vst2;
+            zip.why = "Won't unzip";
+            out.push_back(zip);
+            continue;
+        }
         if (!dir && !ends_with(name, ".so")) continue;
         out.push_back(describe_plugin(entry.path().string()));
     }
@@ -169,6 +186,40 @@ std::vector<PluginFile> list_plugins(const std::string& folder) {
         return juce::String(a.name).compareNatural(juce::String(b.name)) < 0;
     });
     return out;
+}
+
+void unzip_plugins(const std::string& folder) {
+    std::error_code error;
+    std::vector<fs::path> zips;
+    for (const auto& entry : fs::directory_iterator(folder, error)) {
+        auto name = entry.path().filename().string();
+        if (!name.empty() && name[0] != '.' && is_zip(name) && !entry.is_directory(error)) zips.push_back(entry.path());
+    }
+    for (const auto& path : zips) {
+        juce::File file(juce::String(path.string()));
+        bool done = false;
+        {
+            juce::ZipFile zip(file);
+            int count = zip.getNumEntries();
+            // One top folder for every entry (a release's plug-in folder): unzipped here; else into a folder of its own.
+            juce::String top;
+            bool shared = true;
+            for (int n = 0; n < count && shared; ++n) {
+                auto name = zip.getEntry(n)->filename;
+                if (mac_extra(name)) continue;
+                auto first = name.upToFirstOccurrenceOf("/", false, false);
+                if (!name.containsChar('/') || (top.isNotEmpty() && first != top)) shared = false;
+                top = first;
+            }
+            auto target = shared ? file.getParentDirectory() : file.getParentDirectory().getChildFile(file.getFileNameWithoutExtension());
+            done = count > 0;
+            for (int n = 0; n < count && done; ++n) {
+                if (mac_extra(zip.getEntry(n)->filename)) continue;
+                done = zip.uncompressEntry(n, target, juce::ZipFile::OverwriteFiles::yes, juce::ZipFile::FollowSymlinks::no).wasOk();
+            }
+        }
+        if (done) fs::remove(path, error);
+    }
 }
 
 std::vector<int> qlink_order(const std::string& plugin_folder) {

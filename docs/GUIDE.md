@@ -589,8 +589,10 @@ The Melodee synths are Open MPC plug-ins:
 Each has factory presets, pad pressure and its own mod matrix. They are free
 downloads: [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
 [Melodee Chip](https://github.com/keremimo/mpc-vst-melodee-chip/releases/latest). From each release, download the
-`-mpc-sample.zip`, unzip it and copy the plug-in folder inside (for example
-`Ellic Studio - VST - Melodee Poly`) into `Plugins`.
+`-mpc-sample.zip` and copy it into `Plugins`. The next time the plug-in
+picker opens, Melodee unzips it, deletes the zip and lists the plug-in folder
+(for example `Ellic Studio - VST - Melodee Poly`). A zip that cannot be
+unzipped stays, dimmed, with **Won't unzip**.
 
 ### Plug-in instruments
 

@@ -46,8 +46,14 @@ struct PluginFile {
     bool several() const { return plugins > 1 && id == 0; }
 };
 
-// The folder's entries; an unreadable folder lists nothing.
+// The folder's entries; an unreadable folder lists nothing. A .zip left there (one unzip_plugins() could not
+// open) lists dimmed.
 std::vector<PluginFile> list_plugins(const std::string& folder);
+// Release downloads copied in as they came: each .zip in `folder` unzipped beside it (into a folder named as
+// the zip when its entries do not share one top folder; Mac `__MACOSX` and `._` files left out), and the zip
+// deleted once every entry is out. One that will not open or write stays. Run on the rack's thread before a
+// listing.
+void unzip_plugins(const std::string& folder);
 // One path as list_plugins() would describe it (a project names its plug-ins by path).
 PluginFile describe_plugin(const std::string& path);
 

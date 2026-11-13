@@ -211,6 +211,7 @@ struct UiState {
     PluginTarget plugin_target = PluginTarget::Instrument;
     uint8_t plugin_chain = 0, plugin_slot = 0;  // Effect: where it goes
     PageId plugin_back = PageId::Stage;          // where B1 (Back) at the top and a load go
+    PageId plugin_from = PageId::Stage;          // the page it opened over: B1 at the top while the track is not PLUGIN yet
     PluginPanel plugin_panel;
     std::array<uint16_t, max_plugins> plugin_row {};
     DrumVoices drum_voices; // the selected track's Drums pads: its drum plug-in's voices (Keys, the pad lights)

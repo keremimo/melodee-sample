@@ -509,8 +509,9 @@ void Context::apply(const Binding& b, int value) {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};
         unsigned count = available_engines(engines);
         if (unsigned(value) < count && engines[size_t(value)] != t.engine) {
-            load_sound(ui.track, engines[size_t(value)], 0);
-            if (t.engine == EngineKind::Plugin) open_plugin_picker(UiState::PluginTarget::Instrument); // which plug-in
+            // PLUGIN: which plug-in first; the track changes only when one is picked (choose_plugin)
+            if (engines[size_t(value)] == EngineKind::Plugin) open_plugin_picker(UiState::PluginTarget::Instrument);
+            else load_sound(ui.track, engines[size_t(value)], 0);
         }
         break;
     }

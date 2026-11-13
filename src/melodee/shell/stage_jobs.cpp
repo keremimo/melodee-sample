@@ -41,9 +41,11 @@ void Context::stage_new() {
         unsigned count = new_engines(engines);
         if (!count) return;
         auto kind = engines[ui.new_engine % count];
+        // A plug-in from the card first: the track turns PLUGIN only when one is picked (choose_plugin), so
+        // CANCEL, or a card with no plug-ins, leaves it empty.
+        if (kind == EngineKind::Plugin) { open_plugin_picker(UiState::PluginTarget::Instrument); return; }
         load_sound(ui.track, kind, std::min<unsigned>(ui.new_sound, std::max(engine_info(kind).sound_count, 1u) - 1));
         stage_go(ui, 0, 0); // PRESET
-        if (kind == EngineKind::Plugin) open_plugin_picker(UiState::PluginTarget::Instrument); // which plug-in, from the card
         break;
     }
     case StageKind::NewKit:

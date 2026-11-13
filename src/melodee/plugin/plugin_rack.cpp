@@ -718,6 +718,7 @@ void PluginRack::list(const std::string& at, int) {
                 return juce::String(a.name).compareNatural(juce::String(b.name)) < 0;
             });
         } else {
+            unzip_plugins(v.folder); // a release zip copied as it came: its plug-in folder takes its place
             v.files = list_plugins(v.folder);
         }
     }

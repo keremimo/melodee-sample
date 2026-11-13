@@ -58,6 +58,8 @@ void draw(Paint& p, const Snapshot& s) {
         float mid = zone::width / 2.0f, y = zone::picture_y + 40;
         icon(p, v.root.empty() ? Icon::Card : Icon::Folder, mid - 14, y, 28, colour::dim, 1.4f);
         p.text(v.root.empty() ? "NO CARD" : "NO PLUG-INS", 0, y + 36, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
+        if (!v.root.empty() && v.top) // where they go: unzipped plug-in folders in the card's Plugins folder
+            p.text(juce::String::fromUTF8("Card \xe2\x80\xba Plugins"), 0, y + 54, zone::width, 14, plain(colour::dim, type::small), juce::Justification::centred);
         return;
     }
     const auto* ref = loaded_ref(s);
@@ -99,7 +101,11 @@ void push(Context& c) {
 
 void soft(Context& c, int key) {
     if (key != 0 || !c.plugins) return;
-    if (c.plugins->view().top) { c.open(c.ui.plugin_back); return; }
+    if (c.plugins->view().top) { // CANCEL: an instrument not picked yet leaves the track as it was, on the page it came from
+        bool unpicked = c.ui.plugin_target == UiState::PluginTarget::Instrument && c.track().engine != EngineKind::Plugin;
+        c.open(unpicked ? c.ui.plugin_from : c.ui.plugin_back);
+        return;
+    }
     c.plugin_came_back = false; // the cursor lands on the folder it came out of
     c.plugins->browse_up();
 }
