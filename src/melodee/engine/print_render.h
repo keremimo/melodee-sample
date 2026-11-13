@@ -25,13 +25,18 @@ struct PrintAudio {
     uint64_t pass = 0;              // one pass of the pattern, device frames
     uint64_t rendered = 0;          // frames the host rendered for it
     unsigned latency = 0;           // the track's own, device frames
+    // A kit's pad sends (PrintRecord::sends): for each bus in `sends`, what its pads sent into it, as many frames as
+    // the print, moved back by the engine's latency alone (they leave before the chain), so they meet the print.
+    uint8_t sends = 0;
+    std::array<std::vector<float>, 4> send_left, send_right;
     std::string error;              // empty: made
 };
 
 // Track `track` of `host`, whose pattern is `ticks` ticks long as it plays (played_pattern()). `keep_going` is asked
 // between blocks; false stops it ("stopped"). The host must not be playing yet.
+// `sends`: the buses whose pad sends ride along (print_sends()), 0 none.
 PrintAudio render_print(EngineHost& host, unsigned track, uint32_t ticks, PrintTap tap, PrintTail tail,
-                        const std::function<bool()>& keep_going = {});
+                        const std::function<bool()>& keep_going = {}, uint8_t sends = 0);
 
 // The frames of a pass at the model rate, as render_print() counts a pass at the device's (for PrintRecord::pass).
 uint32_t model_frames_of(uint64_t device_frames, float rate);

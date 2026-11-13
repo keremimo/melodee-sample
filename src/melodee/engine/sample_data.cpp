@@ -280,12 +280,12 @@ namespace {
 // float, 58 (its fmt chunk carries the extension's size and a fact chunk follows, as formats other than PCM take).
 // Returns its length.
 // Stereo: 32-bit float (floating), else integer PCM of `width` bytes (3: 24-bit; 2: 16-bit, roadmap P4's mixdown).
-unsigned wav_header(unsigned char* h, uint32_t frames, bool floating, unsigned rate, unsigned int_width = 3) {
+unsigned wav_header(unsigned char* h, uint32_t frames, bool floating, unsigned rate, unsigned int_width = 3, unsigned channels = 2) {
     auto put = [&](unsigned at, uint32_t v, unsigned bytes) { for (unsigned n = 0; n < bytes; ++n) h[at + n] = uint8_t(v >> (8 * n)); };
-    const unsigned width = floating ? 4 : int_width, align = 2 * width;
+    const unsigned width = floating ? 4 : int_width, align = channels * width;
     const uint32_t data = frames * align;
     std::memcpy(h, "RIFF", 4); std::memcpy(h + 8, "WAVEfmt ", 8);
-    put(16, floating ? 18 : 16, 4); put(20, floating ? 3 : 1, 2); put(22, 2, 2); put(24, rate, 4); put(28, rate * align, 4);
+    put(16, floating ? 18 : 16, 4); put(20, floating ? 3 : 1, 2); put(22, channels, 2); put(24, rate, 4); put(28, rate * align, 4);
     put(32, align, 2); put(34, 8 * width, 2);
     unsigned at = 36;
     if (floating) { put(36, 0, 2); std::memcpy(h + 38, "fact", 4); put(42, 4, 4); put(46, frames, 4); at = 50; }
@@ -345,7 +345,7 @@ std::string keep_capture(SampleData& s, unsigned rate, const std::string& path, 
 
 std::vector<unsigned char> WavStream::header(uint32_t frames) const {
     std::vector<unsigned char> h(std::max(58u, data_at));
-    unsigned size = wav_header(h.data(), frames, bits == 32, rate, bits / 8);
+    unsigned size = wav_header(h.data(), frames, bits == 32, rate, bits / 8, channels);
     if (data_at >= size + 8 && (data_at - size) % 2 == 0) { // a JUNK chunk between the format and the frames
         unsigned char data[8];
         std::memcpy(data, h.data() + size - 8, 8);
@@ -363,10 +363,11 @@ std::vector<unsigned char> WavStream::header(uint32_t frames) const {
     return h;
 }
 
-bool WavStream::open(const std::string& path, unsigned at_rate, unsigned at_bits, unsigned at_data) {
+bool WavStream::open(const std::string& path, unsigned at_rate, unsigned at_bits, unsigned at_data, unsigned at_channels) {
     close();
     file = std::fopen(path.c_str(), "wb");
     written = 0; failed = !file; rate = at_rate; data_at = at_data;
+    channels = std::clamp(at_channels, 1u, max_wav_channels);
     bits = at_bits == 16 || at_bits == 24 ? at_bits : 32;
     auto h = header(0);
     if (file && std::fwrite(h.data(), 1, h.size(), file) != h.size()) failed = true;
@@ -377,28 +378,30 @@ bool WavStream::add(const float* interleaved, unsigned frames) {
     if (bits != 32) { // roadmap P4: integer PCM, TPDF dithered (two uniform draws a sample, a step either way), then clipped
         const unsigned width = bits / 8;
         const double scale = bits == 16 ? 32768.0 : 8388608.0, top = scale - 1;
-        unsigned char bytes[6 * 256];
-        for (unsigned at = 0; at < frames; at += 256) {
-            unsigned n = std::min(256u, frames - at);
-            for (unsigned f = 0; f < 2 * n; ++f) {
-                float v = interleaved[2 * at + f];
+        unsigned char bytes[3 * 512];
+        const unsigned run = 512 / channels;
+        for (unsigned at = 0; at < frames; at += run) {
+            unsigned n = std::min(run, frames - at);
+            for (unsigned f = 0; f < channels * n; ++f) {
+                float v = interleaved[channels * at + f];
                 if (!std::isfinite(v)) v = 0;
                 auto draw = [&] { noise ^= noise << 13; noise ^= noise >> 17; noise ^= noise << 5; return double(noise) / 4294967296.0; };
                 double d = draw() - draw(); // triangular, -1..1 of a step
                 auto s = int32_t(std::clamp(std::floor(double(v) * scale + d + 0.5), -scale, top));
                 for (unsigned k = 0; k < width; ++k) bytes[width * f + k] = uint8_t(uint32_t(s) >> (8 * k));
             }
-            if (std::fwrite(bytes, 1, 2 * width * n, file) != 2 * width * n) { failed = true; return false; }
+            if (std::fwrite(bytes, 1, channels * width * n, file) != channels * width * n) { failed = true; return false; }
         }
         written += frames;
         return true;
     }
     // 32-bit float as it comes: a mix past full scale is kept whole, not clipped.
-    unsigned char bytes[8 * 256];
-    for (unsigned at = 0; at < frames; at += 256) {
-        unsigned n = std::min(256u, frames - at);
-        for (unsigned f = 0; f < 2 * n; ++f) float_bytes(interleaved[2 * at + f], bytes + 4 * f);
-        if (std::fwrite(bytes, 1, 8 * n, file) != 8 * n) { failed = true; return false; }
+    unsigned char bytes[4 * 512];
+    const unsigned run = 512 / channels;
+    for (unsigned at = 0; at < frames; at += run) {
+        unsigned n = std::min(run, frames - at);
+        for (unsigned f = 0; f < channels * n; ++f) float_bytes(interleaved[channels * at + f], bytes + 4 * f);
+        if (std::fwrite(bytes, 1, 4 * channels * n, file) != 4 * channels * n) { failed = true; return false; }
     }
     written += frames;
     return true;

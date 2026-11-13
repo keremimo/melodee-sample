@@ -20,14 +20,17 @@
 // held, a wait).
 namespace melodee {
 
-// One print as the audio thread plays it: its frames interleaved stereo float, read by the pager as one side of
-// 2 floats a frame. The shell (shell/print_engine.cpp) maps it; tests hold the frames in memory (resident).
+// One print as the audio thread plays it: its frames interleaved float, read by the pager as one side of `stride`
+// floats a frame: the print's two, then a pair for each bus its kit's pad sends ride along for (PrintRecord::sends).
+// The shell (shell/print_engine.cpp) maps it; tests hold the frames in memory (resident).
 struct PrintClip {
     PrintClip() = default;
     PrintClip(const PrintClip&) = delete;
     PrintClip& operator=(const PrintClip&) = delete;
-    ZonePart part;          // left == right: 2 * frames floats
+    ZonePart part;          // left == right: stride * frames floats
     uint32_t frames = 0;    // device frames
+    uint8_t stride = 2;     // floats a frame
+    uint8_t sends = 0;      // a bit a bus with a pair of its own, in bus order after the print's
     uint32_t pass = 0;      // one pass of the pattern, device frames (a Ring print's tail follows it)
     uint32_t rate = 0;      // the device's rate it was printed at
     PrintTail tail = PrintTail::Loop;
@@ -38,8 +41,9 @@ struct PrintClip {
     const float* data() const { return part.left; }
     // Floats safe to read from frame `frame` on without the pager's word (0: none held there).
     uint32_t safe_from(uint32_t frame) const;
-    // Tests: interleaved frames held whole.
-    void hold_whole(std::vector<float> interleaved, uint32_t at_rate, uint32_t pass_frames, PrintTail how);
+    // Tests: interleaved frames held whole (`with_sends`: the pairs after the first two, as `sends` says).
+    void hold_whole(std::vector<float> interleaved, uint32_t at_rate, uint32_t pass_frames, PrintTail how, uint8_t with_sends = 0);
+    void set_sends(uint8_t bits); // `sends` and the stride they make
 };
 
 // A frozen track's prints, a clip a pattern (nullptr: that pattern plays live). The MIDI thread makes it, the audio
@@ -78,8 +82,10 @@ public:
     bool sounding() const;     // any voice
     bool playing() const { return voices[0].clip != nullptr; }
     uint32_t position() const { return voices[0].at; }
-    // Adds `frames` of every voice into `left` / `right`.
-    void render(float* left, float* right, unsigned frames);
+    // Adds `frames` of every voice into `left` / `right`; a print with pad sends adds them into `send_l` / `send_r`
+    // [bus] (nullptr: not heard), and sends_fed() then has a bit for each bus it added to.
+    void render(float* left, float* right, unsigned frames, float* const* send_l = nullptr, float* const* send_r = nullptr);
+    unsigned sends_fed() const { return fed; }
     uint32_t underruns = 0; // runs that met a frame the pager had not pinned yet
     uint32_t waits = 0;     // the same just after a jump to where nothing is held (counted apart: not late, not yet)
 
@@ -95,6 +101,7 @@ private:
     uint64_t expect = 0;  // the main voice's frame on the next tick
     double carry = 0;     // the next tick's place less `expect`, as render() counts ticks (-1..0]
     StreamPager* pager = nullptr;
+    unsigned fed = 0;
     void begin(PrintClip* clip, uint32_t frame, bool fade_in, float rate);
     void close(Voice& v);
     void retire_main(bool ring, float rate); // the main voice to another, ringing on or fading

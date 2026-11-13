@@ -686,6 +686,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             w.u32(p.frames); w.u32(p.pass); w.u32(uint32_t(p.hash)); w.u32(uint32_t(p.hash >> 32));
             w.text(p.file.c_str());
             w.u32(p.rate);
+            w.u8(p.sends); // after what older builds read: the buses its pad sends ride along for
             w.end(at);
         }
     if (prints)
@@ -1195,6 +1196,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             r.text(file, sizeof(file));
             p.file = file;
             p.rate = r.u32();
+            if (!r.done()) p.sends = uint8_t(r.u8() & 15); // a kit's pad sends beside it; none before they were kept
             if (!r.ok || p.rate < 8000 || p.track >= track_count || p.pattern >= pattern_count || tap > 1 || tail > 2 || p.file.empty()) continue;
             p.tap = PrintTap(tap); p.tail = PrintTail(tail);
             prints.put(p);

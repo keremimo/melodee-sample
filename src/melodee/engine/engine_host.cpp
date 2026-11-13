@@ -2511,7 +2511,12 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 std::fill(slot.print_l, slot.print_l + frames, 0.0f); std::fill(slot.print_r, slot.print_r + frames, 0.0f);
                 slot.print_fed = true;
             }
-            slot.print.render(slot.print_l + done, slot.print_r + done, n);
+            // A kit's pad sends printed beside it go where its live pads' would (mixed at the track's level, pan, mute).
+            float* to_l[bus_count];
+            float* to_r[bus_count];
+            for (unsigned b = 0; b < bus_count; ++b) { to_l[b] = slot.pad_sends->l[b] + done; to_r[b] = slot.pad_sends->r[b] + done; }
+            slot.print.render(slot.print_l + done, slot.print_r + done, n, to_l, to_r);
+            slot.send_pad_fed |= slot.print.sends_fed();
         }
         sync.run(frame_now + done, n, quarter_samples(), [&](const MidiOutEvent& e) { emit(e); });
         if (running && !held) {
@@ -2723,6 +2728,13 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                         level = std::max(level, std::max(std::fabs(l), std::fabs(r)));
                         if (stem) stem[f] += (l + r) * unpan;
                     }
+            }
+        }
+        if (tapping && t == tapped) { // a print host: the kit's pad sends beside the print (render_print())
+            tap_sends = slot.engine ? slot.send_pad_fed : 0;
+            for (unsigned b = 0; b < bus_count; ++b) {
+                if ((tap_sends >> b) & 1) { std::copy(slot.pad_sends->l[b], slot.pad_sends->l[b] + frames, tap_send_l[b]); std::copy(slot.pad_sends->r[b], slot.pad_sends->r[b] + frames, tap_send_r[b]); }
+                else { std::fill(tap_send_l[b], tap_send_l[b] + frames, 0.0f); std::fill(tap_send_r[b], tap_send_r[b] + frames, 0.0f); }
             }
         }
         float shown = meters[t].load(std::memory_order_relaxed) * dsp::fall_per_block(0.97f, frames); // a short fall, as fast at any rate

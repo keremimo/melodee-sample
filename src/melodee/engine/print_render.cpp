@@ -23,8 +23,12 @@ uint32_t model_frames_of(uint64_t device_frames, float rate) {
     return uint32_t(std::llround(double(device_frames) * dsp::model_rate / std::max(1.0f, rate)));
 }
 
-PrintAudio render_print(EngineHost& host, unsigned track, uint32_t ticks, PrintTap tap, PrintTail tail, const std::function<bool()>& keep_going) {
+PrintAudio render_print(EngineHost& host, unsigned track, uint32_t ticks, PrintTap tap, PrintTail tail, const std::function<bool()>& keep_going,
+                        uint8_t sends) {
     PrintAudio a;
+    a.sends = uint8_t(sends & 15);
+    // The pad sends from the first frame played, cut to the print's frames once its window is known.
+    std::array<std::vector<float>, 4> heard_l, heard_r;
     const float rate = dsp::sample_rate();
     const unsigned B = EngineHost::block;
     host.set_print_tap(track, tap == PrintTap::PostFx);
@@ -51,6 +55,12 @@ PrintAudio render_print(EngineHost& host, unsigned track, uint32_t ticks, PrintT
         }
         const float* l = host.print_left();
         const float* r = host.print_right();
+        for (unsigned b = 0; b < 4; ++b) {
+            if (!((a.sends >> b) & 1)) continue;
+            const float* sl = host.print_send_left(b);
+            const float* sr = host.print_send_right(b);
+            heard_l[b].insert(heard_l[b].end(), sl, sl + n); heard_r[b].insert(heard_r[b].end(), sr, sr + n);
+        }
         for (unsigned f = 0; f < n && !done; ++f) {
             uint64_t at = played + f;
             if (at < from) continue;
@@ -70,6 +80,18 @@ PrintAudio render_print(EngineHost& host, unsigned track, uint32_t ticks, PrintT
     }
     a.rendered = played;
     host.send({Command::Type::Stop});
+    if (a.error.empty() && a.sends) { // the sends' frames as the print's, `shift` sooner: they did not wait for the chain
+        const unsigned engine = host.engine_latency(track);
+        const uint64_t shift = a.latency > engine ? a.latency - engine : 0;
+        const uint64_t first = from > shift ? from - shift : 0;
+        for (unsigned b = 0; b < 4; ++b) {
+            if (!((a.sends >> b) & 1)) continue;
+            a.send_left[b].assign(a.left.size(), 0.0f); a.send_right[b].assign(a.left.size(), 0.0f);
+            for (size_t f = 0; f < a.left.size() && first + f < heard_l[b].size(); ++f) {
+                a.send_left[b][f] = heard_l[b][size_t(first + f)]; a.send_right[b][f] = heard_r[b][size_t(first + f)];
+            }
+        }
+    }
     return a;
 }
 

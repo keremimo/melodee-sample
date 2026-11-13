@@ -34,11 +34,24 @@ struct PrintRecord {
     uint32_t pass = 0;     // one pass of the pattern, in 44.1 kHz frames as the project counts (Ring: the file runs on past it)
     uint64_t hash = 0;     // print_hash() of what made it
     std::string file;      // its name in the Prints folder
+    // A kit's pads' own sends (PadSound::sends), a bit a bus: the file holds, after the print's two channels, a pair
+    // for each of these buses in order, what the pads send into it as they leave their chains (before the track's
+    // level and pan, as print_sends() names them). 0: a plain stereo print.
+    uint8_t sends = 0;
+    unsigned channels() const { unsigned n = 2; for (unsigned b = 0; b < 4; ++b) n += (sends >> b) & 1 ? 2 : 0; return n; }
     bool operator==(const PrintRecord& o) const {
         return track == o.track && pattern == o.pattern && tap == o.tap && tail == o.tail && rate == o.rate && frames == o.frames &&
-               pass == o.pass && hash == o.hash && file == o.file;
+               pass == o.pass && hash == o.hash && file == o.file && sends == o.sends;
     }
 };
+// The buses a print of `track` carries pad sends for: those a used pad of a kit sends into (bit a bus); 0 otherwise.
+inline uint8_t print_sends(const Track& track) {
+    if (track.engine != EngineKind::Sampler) return 0;
+    uint8_t bits = 0;
+    for (const auto& pad : track.pads)
+        if (pad.used()) for (unsigned b = 0; b < 4; ++b) if (pad.sends[b]) bits |= uint8_t(1u << b);
+    return bits;
+}
 
 // Freeze plan F2b: a track frozen plays its prints instead of its engine and chain (engine/print_player.h); a
 // deep freeze (F2d) also unloads them. Each pattern frozen plays its print; the rest of the track's patterns play

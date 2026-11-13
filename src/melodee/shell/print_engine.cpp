@@ -52,9 +52,10 @@ constexpr double plugin_wait_seconds = 60; // a plug-in not open by then fails t
 constexpr unsigned kept_lines = 8;
 constexpr unsigned print_data_at = 4096; // freeze plan F2b: a print's frames start on a page (WavStream's data_at)
 
-// A print file's frames: where they start and how many bytes, if it is stereo 32-bit float at `rate` with them on a
-// page's boundary (as print_one() writes it); false otherwise (an older print: printed again).
-bool print_layout(const std::string& path, unsigned rate, uint64_t& offset, uint64_t& bytes) {
+// A print file's frames: where they start and how many bytes, if it is `channels` (2, or more with a kit's pad sends
+// beside it) of 32-bit float at `rate` with them on a page's boundary (as print_one() writes it); false otherwise (an
+// older print: printed again).
+bool print_layout(const std::string& path, unsigned rate, unsigned channels, uint64_t& offset, uint64_t& bytes) {
     std::ifstream in(path, std::ios::binary);
     unsigned char h[12];
     if (!in.read(reinterpret_cast<char*>(h), 12) || std::memcmp(h, "RIFF", 4) || std::memcmp(h + 8, "WAVE", 4)) return false;
@@ -66,7 +67,7 @@ bool print_layout(const std::string& path, unsigned rate, uint64_t& offset, uint
         if (!std::memcmp(h, "fmt ", 4)) {
             unsigned char f[16];
             if (size < 16 || !in.read(reinterpret_cast<char*>(f), 16)) return false;
-            format = (f[0] | f[1] << 8) == 3 && (f[2] | f[3] << 8) == 2 && u32(f + 4) == rate && (f[14] | f[15] << 8) == 32;
+            format = (f[0] | f[1] << 8) == 3 && unsigned(f[2] | f[3] << 8) == channels && u32(f + 4) == rate && (f[14] | f[15] << 8) == 32;
             in.seekg(std::streamoff(at + 8 + size + (size & 1)));
         } else if (!std::memcmp(h, "data", 4)) {
             offset = at + 8; bytes = size;
@@ -281,7 +282,7 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
         if (!rec) { f.error = "no print of " + print_pattern_name(p); return f; }
         const std::string path = (fs::path(folder) / rec->file).string();
         uint64_t offset = 0, bytes = 0;
-        if (rec->rate != rate || !print_layout(path, rate, offset, bytes)) { f.error = "print " + rec->file + " unreadable"; return f; }
+        if (rec->rate != rate || !print_layout(path, rate, rec->channels(), offset, bytes)) { f.error = "print " + rec->file + " unreadable"; return f; }
         int fd = ::open(path.c_str(), O_RDONLY);
         struct stat st {};
         if (fd < 0 || fstat(fd, &st) != 0 || uint64_t(st.st_size) < offset + bytes) { if (fd >= 0) ::close(fd); f.error = "cannot open " + rec->file; return f; }
@@ -289,14 +290,16 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
         ::close(fd);
         if (map == MAP_FAILED) { f.error = "cannot map " + rec->file; return f; }
         auto clip = std::make_unique<PrintClip>();
+        clip->set_sends(rec->sends); // a kit's pad sends ride along in pairs after the print's own two
+        const unsigned s = clip->stride;
         auto& part = clip->part;
         part.mapping = map; part.mapping_bytes = size_t(st.st_size); // unmapped with the clip
-        clip->frames = uint32_t(std::min<uint64_t>(bytes / 8, rec->frames));
+        clip->frames = uint32_t(std::min<uint64_t>(bytes / (4 * s), rec->frames));
         clip->rate = rate;
         clip->tail = rec->tail;
         clip->pass = uint32_t(std::llround(double(rec->pass) * rate / dsp::model_rate));
         part.left = part.right = reinterpret_cast<const float*>(static_cast<const char*>(map) + offset);
-        part.total = 2 * clip->frames;
+        part.total = s * clip->frames;
         if (!part.total) { f.error = "empty print " + rec->file; return f; }
         part.pins.assign((part.total - 1) / stream_chunk + 1, 0);
         part.frames.store(part.total);
@@ -310,11 +313,11 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
             clip->held.push_back({from_float, end});
             return true;
         };
-        bool held = hold(0, std::max<uint32_t>(2 * rate, 2 * stream_chunk));
+        bool held = hold(0, std::max<uint32_t>(s * rate, 2 * stream_chunk));
         const uint32_t ticks = std::max<uint32_t>(1, played_pattern(job.bank->at[job.track][p], track.speed).length);
         for (uint32_t b = bar; held && b < ticks; b += bar) {
             uint64_t frame = uint64_t(clip->pass) * b / ticks;
-            if (2 * frame >= 2 * uint64_t(rate)) held = hold(uint32_t(std::min<uint64_t>(2 * frame, part.total)), 2 * stream_chunk);
+            if (frame >= uint64_t(rate)) held = hold(uint32_t(std::min<uint64_t>(s * frame, part.total)), 2 * stream_chunk);
         }
         if (!held) { f.error = "cannot hold " + rec->file + " in memory"; return f; }
         { // freeze plan F2c: its first pass in small for Stage, a few frames of each column read
@@ -326,7 +329,7 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
                 uint32_t step = std::max<uint32_t>(1, (to - from) / 48);
                 float most = 0;
                 for (uint32_t f0 = from; f0 < to && f0 < clip->frames; f0 += step)
-                    most = std::max({most, std::fabs(data[2 * size_t(f0)]), std::fabs(data[2 * size_t(f0) + 1])});
+                    most = std::max({most, std::fabs(data[s * size_t(f0)]), std::fabs(data[s * size_t(f0) + 1])});
                 peaks[col] = uint8_t(std::lround(std::clamp(most, 0.0f, 1.0f) * 255));
             }
             f.peaks.emplace_back(p, peaks);
@@ -346,6 +349,7 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     r.record.tap = job.tap;
     r.record.tail = job.tail;
     r.record.file = print_file_name(job.track, pattern);
+    r.record.sends = print_sends(job.project->tracks[job.track % track_count]); // a kit's pad sends ride along
     const unsigned t = r.record.track;
     auto t0 = Clock::now();
     auto project = std::make_unique<Project>(*job.project);
@@ -361,7 +365,8 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     std::error_code e;
     uint64_t offset = 0, bytes = 0;
     if (const auto* known = job.known.find(t, pattern); known && known->hash == r.record.hash && known->file == r.record.file &&
-                                                       fs::exists(path, e) && print_layout(path.string(), r.record.rate, offset, bytes)) {
+                                                       known->sends == r.record.sends && fs::exists(path, e) &&
+                                                       print_layout(path.string(), r.record.rate, known->channels(), offset, bytes)) {
         r.record = *known; // unchanged: never printed twice
         return r;
     }
@@ -450,7 +455,7 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
             ++blocks;
             if (rack && (blocks & 63) == 1) idle_new_threads(threads_before, threads_idle); // workers started on the way
             return !cancelled.load();
-        });
+        }, r.record.sends);
         rendering = since(r0);
         r.error = audio.error;
         if (r.error.empty() && host->streams().underruns()) r.error = "the card's reads came late";
@@ -468,11 +473,21 @@ PrintResult PrintEngine::print_one(const PrintJob& job, unsigned pattern, const 
     fs::create_directories(folder, e);
     const fs::path part = fs::path(folder) / (r.record.file + ".part");
     WavStream wav;
-    bool written = wav.open(part.string(), r.record.rate, 32, print_data_at); // its frames on a page, for a freeze's mapping
-    std::vector<float> interleaved(size_t(EngineHost::block) * 2);
+    const unsigned channels = r.record.channels(); // the print's two, then a pair for each bus its pads send into
+    bool written = wav.open(part.string(), r.record.rate, 32, print_data_at, channels); // its frames on a page, for a freeze's mapping
+    std::vector<float> interleaved(size_t(EngineHost::block) * channels);
     for (size_t at = 0; written && at < left.size(); at += EngineHost::block) {
         unsigned n = unsigned(std::min<size_t>(EngineHost::block, left.size() - at));
-        for (unsigned f = 0; f < n; ++f) { interleaved[2 * f] = left[at + f]; interleaved[2 * f + 1] = right[at + f]; }
+        for (unsigned f = 0; f < n; ++f) {
+            float* frame = interleaved.data() + size_t(channels) * f;
+            frame[0] = left[at + f]; frame[1] = right[at + f];
+            unsigned pair = 2;
+            for (unsigned b = 0; b < 4; ++b) {
+                if (!((r.record.sends >> b) & 1)) continue;
+                frame[pair] = audio.send_left[b][at + f]; frame[pair + 1] = audio.send_right[b][at + f];
+                pair += 2;
+            }
+        }
         written = wav.add(interleaved.data(), n);
     }
     written = wav.close() && written;

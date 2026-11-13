@@ -201,6 +201,11 @@ public:
     }
     const float* print_left() const { return tap_l; }
     const float* print_right() const { return tap_r; }
+    // And what its kit's pads sent into each bus that block, as they left their own chains (before the track's level
+    // and pan); a bit a bus with anything there.
+    unsigned print_sends_fed() const { return tap_sends; }
+    const float* print_send_left(unsigned bus) const { return tap_send_l[bus % bus_count]; }
+    const float* print_send_right(unsigned bus) const { return tap_send_r[bus % bus_count]; }
     // Device frames from Play (from the top) to the frame tick `ticks` plays on, at the tempo and swing playing now,
     // placed as render() places each tick (its frames counted up to each one).
     uint64_t tick_frame(uint32_t ticks) const;
@@ -688,6 +693,8 @@ private:
     float click_fall = 0.9985f; // the blip's fall a frame: 0.9985 a 44.1 kHz frame, the same time at any rate
     float record_l[block] {}, record_r[block] {};
     float tap_l[block] {}, tap_r[block] {}; // the Track source this block
+    float tap_send_l[bus_count][block] {}, tap_send_r[bus_count][block] {}; // a print host: the tapped kit's pad sends
+    unsigned tap_sends = 0;
     // Punch: one on the master or a track. A press while playing waits for
     // the next step of its snap grid.
     struct PendingPunch { bool waiting = false; uint8_t target = 255; PunchKind kind {}; float depth = 1; unsigned snap = 2, tail = 0; };

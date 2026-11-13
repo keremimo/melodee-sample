@@ -893,9 +893,10 @@ and the track plays the prints instead of running its engine and its
 chain, which saves CPU. The pads still play the sound live (the engine
 wakes while notes sound and sleeps again a second after it falls quiet).
 Level, pan, sends, mute, solo and punches stay live. Unfreezing is at
-once and keeps the prints. A kit's pad sends are not in its prints yet:
-while a frozen kit plays its prints, its pads' own sends are not heard
-(pads hit by hand still send).
+once and keeps the prints. A kit whose pads send into buses prints those
+sends too, a stereo pair a bus after the print's own two channels (PRNT
+names the buses): a frozen kit plays them into its buses at its level, pan
+and mute, as its pads send live.
 
 **PRINT sheet.** Sample Record on a PLUGIN or MIDI track opens it. On a
 kit, Sample Record opens Record as before; B3 PRINT there opens the same

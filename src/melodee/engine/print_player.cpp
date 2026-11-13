@@ -11,19 +11,26 @@ namespace {
 float ahead_speed(float rate) { return std::max(1.0f, rate / float(stream_chunk)); }
 } // namespace
 
+void PrintClip::set_sends(uint8_t bits) {
+    sends = uint8_t(bits & 15);
+    stride = 2;
+    for (unsigned b = 0; b < 4; ++b) stride = uint8_t(stride + ((sends >> b) & 1 ? 2 : 0));
+}
+
 uint32_t PrintClip::safe_from(uint32_t frame) const {
-    if (resident) return frame < frames ? 2 * (frames - frame) : 0;
-    const uint64_t at = uint64_t(frame) * 2;
+    if (resident) return frame < frames ? stride * (frames - frame) : 0;
+    const uint64_t at = uint64_t(frame) * stride;
     for (const auto& h : held)
         if (at >= h.from && at < h.to) return uint32_t(h.to - at);
     return 0;
 }
 
-void PrintClip::hold_whole(std::vector<float> interleaved, uint32_t at_rate, uint32_t pass_frames, PrintTail how) {
+void PrintClip::hold_whole(std::vector<float> interleaved, uint32_t at_rate, uint32_t pass_frames, PrintTail how, uint8_t with_sends) {
+    set_sends(with_sends);
     owned = std::move(interleaved);
-    frames = uint32_t(owned.size() / 2);
+    frames = uint32_t(owned.size() / stride);
     part.left = part.right = owned.data();
-    part.total = 2 * frames;
+    part.total = stride * frames;
     part.frames.store(part.total);
     rate = at_rate; pass = pass_frames; tail = how;
     resident = true;
@@ -65,7 +72,8 @@ void PrintPlayer::begin(PrintClip* clip, uint32_t frame, bool fade_in, float rat
     if (clip->resident) return;
     const uint32_t safe = clip->safe_from(frame);
     m.seeking = safe == 0;
-    m.stream = pager ? pager->open(clip->part, 2 * frame, false, ahead_speed(rate), safe) : -1;
+    // The look-ahead counts floats: a wider print (pad sends beside it) reads as much further ahead, still a second.
+    m.stream = pager ? pager->open(clip->part, clip->stride * frame, false, ahead_speed(rate) * clip->stride / 2, safe) : -1;
     if (m.stream < 0) ++underruns; // no stream free: silent until the next start
 }
 
@@ -127,7 +135,8 @@ void PrintPlayer::follow(PrintClip* clip, uint32_t at, double start, double tick
     carry -= run;
 }
 
-void PrintPlayer::render(float* left, float* right, unsigned frames) {
+void PrintPlayer::render(float* left, float* right, unsigned frames, float* const* send_l, float* const* send_r) {
+    fed = 0;
     for (unsigned n = 0; n < voice_count; ++n) {
         auto& v = voices[n];
         if (!v.clip) continue;
@@ -155,18 +164,36 @@ void PrintPlayer::render(float* left, float* right, unsigned frames) {
                 }
             }
             const unsigned run = unsigned(std::min<uint64_t>(frames - f, c.frames - v.at));
-            const uint64_t from = uint64_t(v.at) * 2;
-            const unsigned ready = limit > from ? unsigned(std::min<uint64_t>(run, (limit - from) / 2)) : 0;
+            const unsigned s = c.stride;
+            const uint64_t from = uint64_t(v.at) * s;
+            const unsigned ready = limit > from ? unsigned(std::min<uint64_t>(run, (limit - from) / s)) : 0;
             if (ready) v.seeking = false;
             const float* d = c.data() + from;
+            const float g0 = v.gain, st = v.step; // the fade as it runs here (the print's loop may end it)
             if (v.step == 0 && v.gain == 1) {
-                for (unsigned k = 0; k < ready; ++k) { left[f + k] += d[2 * k]; right[f + k] += d[2 * k + 1]; }
+                for (unsigned k = 0; k < ready; ++k) { left[f + k] += d[s * k]; right[f + k] += d[s * k + 1]; }
             } else {
                 for (unsigned k = 0; k < run; ++k) {
                     v.gain = std::clamp(v.gain + v.step, 0.0f, 1.0f);
-                    if (k < ready) { left[f + k] += d[2 * k] * v.gain; right[f + k] += d[2 * k + 1] * v.gain; }
+                    if (k < ready) { left[f + k] += d[s * k] * v.gain; right[f + k] += d[s * k + 1] * v.gain; }
                 }
                 if (v.step > 0 && v.gain >= 1) v.step = 0;
+            }
+            // The pad sends beside it, through the same fade: each bus's pair into that bus.
+            if (c.sends && send_l && send_r && ready) {
+                unsigned pair = 2;
+                for (unsigned b = 0; b < 4; ++b) {
+                    if (!((c.sends >> b) & 1)) continue;
+                    if (send_l[b] && send_r[b]) {
+                        float g = g0;
+                        for (unsigned k = 0; k < ready; ++k) {
+                            g = st == 0 && g0 == 1 ? 1.0f : std::clamp(g + st, 0.0f, 1.0f);
+                            send_l[b][f + k] += d[s * k + pair] * g; send_r[b][f + k] += d[s * k + pair + 1] * g;
+                        }
+                        fed |= 1u << b;
+                    }
+                    pair += 2;
+                }
             }
             if (ready < run) (v.seeking ? waited : late) = true;
             v.at += run;
@@ -175,7 +202,7 @@ void PrintPlayer::render(float* left, float* right, unsigned frames) {
         }
         underruns += late;
         waits += waited;
-        if (v.clip && v.stream >= 0) pager->place(v.stream, uint32_t(std::min<uint64_t>(uint64_t(v.at) * 2, c.part.total)));
+        if (v.clip && v.stream >= 0) pager->place(v.stream, uint32_t(std::min<uint64_t>(uint64_t(v.at) * c.stride, c.part.total)));
     }
 }
 

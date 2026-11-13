@@ -13182,6 +13182,74 @@ void pad_colours() {
     CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
 }
 
+// Pad sends, freeze: a kit's print carries its pads' sends in a pair a bus (A and C here), cut to the print's frames;
+// a frozen kit plays them into its buses as the live kit sends, at its level, so what the buses hear is the same.
+void pad_sends_freeze() {
+    const float rate = dsp::sample_rate();
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    tone_kit(*project, 0);
+    project->tempo = 1200;
+    auto& kit = project->tracks[0];
+    kit.pads[0].sends = {30, 0, 0, 0}; kit.pads[1].sends = {0, 0, 50, 0};
+    CHECK(print_sends(kit) == 5 && print_sends(project->tracks[1]) == 0);
+    const uint8_t pad = uint8_t(sampler_first_note);
+    put(bank->at[0][0], 0, pad, 100); put(bank->at[0][0], 8, uint8_t(pad + 1), 100);
+    auto tone = tone_sample();
+    const uint32_t ticks = played_pattern(bank->at[0][0], speed_normal).length;
+
+    auto p = std::make_unique<Project>(*project);
+    auto b = std::make_unique<PatternBank>(*bank);
+    print_project(*p, *b, 0, 0);
+    auto printer = std::make_unique<EngineHost>(EngineHost::Lean {2});
+    printer->load(*p, *b);
+    CHECK(printer->offer_sample(0, &tone));
+    auto a = render_print(*printer, 0, ticks, PrintTap::PostFx, PrintTail::Loop, {}, print_sends(kit));
+    CHECK(a.error.empty() && a.sends == 5 && a.send_left[0].size() == a.left.size() && a.send_left[2].size() == a.left.size() && a.send_left[1].empty());
+    const size_t early = size_t(rate / 2) + 37, late = size_t(rate * 3 / 2) + 37; // off the tone's zero crossings
+    CHECK(std::fabs(a.left[early]) > 0.01f && std::fabs(a.send_left[0][early] / a.left[early] - 0.30f) < 1e-3f && a.send_left[2][early] == 0.0f);
+    CHECK(std::fabs(a.left[late]) > 0.01f && std::fabs(a.send_left[2][late] / a.left[late] - 0.50f) < 1e-3f && a.send_left[0][late] == 0.0f);
+
+    // Held whole with its sends, as the shell maps the file: six floats a frame.
+    std::vector<float> frames(a.left.size() * 6);
+    for (size_t f = 0; f < a.left.size(); ++f) {
+        float* at = frames.data() + 6 * f;
+        at[0] = a.left[f]; at[1] = a.right[f]; at[2] = a.send_left[0][f]; at[3] = a.send_right[0][f]; at[4] = a.send_left[2][f]; at[5] = a.send_right[2][f];
+    }
+    auto* pack = new FreezePack;
+    pack->owned.push_back(std::make_unique<PrintClip>());
+    pack->owned.back()->hold_whole(std::move(frames), uint32_t(std::lround(rate)), uint32_t(a.pass), PrintTail::Loop, 5);
+    CHECK(pack->owned.back()->stride == 6 && pack->owned.back()->frames == a.left.size());
+    pack->clips[0] = pack->owned.back().get();
+
+    // Three passes, live and frozen: the pads' sends into A and C as the host taps them.
+    struct Heard { std::vector<float> a, c; };
+    const unsigned blocks = unsigned(uint64_t(a.pass) * 3 / 128);
+    auto run = [&](FreezePack* frozen, int level) {
+        Heard out;
+        EngineHost host;
+        host.load(*project, *bank);
+        CHECK(host.offer_sample(0, &tone));
+        host.set_print_tap(0, true);
+        if (level >= 0) host.send({Command::Type::Level, 0, 0, 0, int16_t(level)});
+        if (frozen) { Command c {Command::Type::Freeze, 0}; c.freeze = frozen; CHECK(host.send(c)); }
+        host.send({Command::Type::Play});
+        std::vector<int32_t> o(256);
+        for (unsigned n = 0; n < blocks; ++n) {
+            host.render(o.data(), 128, 1);
+            for (unsigned f = 0; f < 128; ++f) { out.a.push_back(host.print_send_left(0)[f]); out.c.push_back(host.print_send_left(2)[f]); }
+        }
+        return out;
+    };
+    auto live = run(nullptr, -1), frozen = run(pack, -1);
+    float most = 0, diff = 0;
+    for (size_t f = size_t(a.pass); f < live.a.size(); ++f) { // from the second pass: the first hit live eases its send in once
+        most = std::max(most, std::fabs(live.a[f]));
+        diff = std::max({diff, std::fabs(live.a[f] - frozen.a[f]), std::fabs(live.c[f] - frozen.c[f])});
+    }
+    CHECK(most > 0.05f && diff < 1e-3f);
+}
+
 // Pad sends, phase 4: each send is a lane of its pad (Motion records it, plays it back through the pad, the lane's card
 // is SEND n of that pad), and an MPC program's per-pad Send 1-4 come in as the pad's sends.
 void pad_sends_lanes() {
@@ -13477,6 +13545,7 @@ int main() {
     pad_sends_stage();
     pad_sends_mix();
     pad_sends_lanes();
+    pad_sends_freeze();
     plugin_macros();
     pad_colours();
     tempo_lane_p5();
