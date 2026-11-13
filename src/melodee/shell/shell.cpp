@@ -13,6 +13,7 @@
 #include "melodee/pages/page.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/ask.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/shell/card_access.h"
 #include "melodee/shell/fader.h"
 #include <chrono>
@@ -204,6 +205,7 @@ void Shell::press(Button b, bool pressed) {
     if (b == Button::Play && !pressed && ui.fill) context_.fill(false); // Fill lasts while Play is held
     if (b == Button::Sample && !pressed) { sample_button(context_, false); return; } // always heard, so Sample is never left held
     if (pressed && ask_button(context_, b)) return; // a question open (shell/ask.cpp): B1 Cancel, B3 Do it
+    if (new_track_lock(context_, b, pressed)) return; // an empty track in hand: made or left first (shell/new_track.h)
     if (ui.name.open()) { // the Name sheet takes the controls it uses; Play and Stop still work
         if (!pressed) { if (b == Button::TapTempo) tap_held = false; let_go(context_, b); return; }
         switch (b) {
@@ -501,6 +503,7 @@ void Shell::hit(unsigned pad, uint8_t velocity, bool down) {
         pad_job(ui_)(context_, pad, velocity, false);
         return;
     }
+    if (ui_.shift && new_track_locked(context_)) return; // Shift + pad's pages wait while an empty track is in hand
     // A press: what the pads are now, the same choice their lights make (shell/pad_context.h, shell/pad_lights.cpp).
     unsigned kit = context_.track().bank % sampler_banks * 16 + pad % 16;
     switch (pad_context(ui_, context_.track(), pad_facts(), pad)) {

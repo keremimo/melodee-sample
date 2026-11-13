@@ -12,9 +12,57 @@
 
 namespace melodee {
 
+bool new_track_locked(const Context& c) {
+    const auto& t = c.project.tracks[c.ui.track % track_count];
+    return !t.used() && (c.ui.page == PageId::Stage || (c.ui.page == PageId::Plugins && c.ui.plugin_target == UiState::PluginTarget::Instrument));
+}
+
+bool new_track_lock(Context& c, SurfaceButton button, bool pressed) {
+    using B = SurfaceButton;
+    auto& ui = c.ui;
+    uint32_t bit = 1u << unsigned(button);
+    if (!pressed) { // a release goes where its press went
+        if (!(ui.new_taken & bit)) return false;
+        ui.new_taken &= ~bit;
+        return true;
+    }
+    if (!new_track_locked(c)) return false;
+    bool carousel = ui.page == PageId::Stage;
+    switch (button) {
+    case B::Play: case B::Stop: case B::TapTempo: case B::TopLeft: return false;
+    case B::WheelPush: if (!ui.shift) return false; break; // Push makes it (Shift + Push, Back, waits)
+    case B::PadBank: if (carousel) return false; break;    // + pad: another track
+    default: break;
+    }
+    ui.new_taken |= bit;
+    return true;
+}
+
+int nearest_used_track(const Context& c) {
+    int at = int(c.ui.track % track_count);
+    for (int d = 1; d < int(track_count); ++d)
+        for (int t : {at - d, at + d})
+            if (t >= 0 && t < int(track_count) && c.project.tracks[size_t(t)].used()) return t;
+    return -1;
+}
+
+void cancel_new_track(Context& c) {
+    auto& ui = c.ui;
+    int to = nearest_used_track(c);
+    if (to < 0) return; // every track empty: nothing to go back to
+    bool picked = ui.new_for == int8_t(ui.track % track_count);
+    c.select_track(unsigned(to));
+    ui.new_for = -1;
+    if (picked && ui.new_back != PageId::Stage) c.open(ui.new_back);
+}
+
 void offer_new_track(Context& c) {
     auto& ui = c.ui;
-    if (c.track().used() || ui.recording) return;
+    if (c.track().used()) { // another track picked on the carousel: back where the empty one was picked
+        if (ui.new_for >= 0 && ui.page == PageId::Stage) { ui.new_for = -1; c.open(ui.new_back); }
+        return;
+    }
+    if (ui.recording) return;
     bool doors = ui.new_for >= 0 && ui.page == PageId::Stage; // another empty track picked on the doors: the same page to go back to
     if (!doors) ui.new_back = ui.page;
     ui.new_for = int8_t(ui.track % track_count);

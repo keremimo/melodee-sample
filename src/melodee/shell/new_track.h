@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/shell/ui_state.h"
+#include "surface/controls.h"
 #include <algorithm>
 #include <cstdint>
 
@@ -37,6 +38,17 @@ inline void new_pick_turn(UiState& ui, int delta, uint32_t now) {
     ui.new_pick = uint8_t(to);
     ui.new_pick_at = now ? now : 1;
 }
+
+// An empty track in hand on its carousel (or the plug-in picker it opened): the track is made, or another
+// picked (Pad Bank + pad, or B1 CANCEL), before anything else. The other buttons wait; Play, Stop and Tap
+// Tempo still work, and on the carousel Pad Bank (+ pad) too.
+bool new_track_locked(const Context& c);
+// A button pressed or let go while locked: true when the lock took it (a taken press's release goes too).
+bool new_track_lock(Context& c, SurfaceButton button, bool pressed);
+// The used track nearest the selected one (the lower of two as near), -1 when every track is empty.
+int nearest_used_track(const Context& c);
+// B1 CANCEL on the carousel: the nearest used track, back on the page the empty one was picked on.
+void cancel_new_track(Context& c);
 
 // The selected track empty: its Stage, the page in view kept to come back to.
 void offer_new_track(Context& c);

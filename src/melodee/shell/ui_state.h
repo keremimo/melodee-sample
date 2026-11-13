@@ -120,6 +120,7 @@ struct UiState {
     float new_pick_from = 0; // and where it was drawn when it last moved (new_pick_shown())
     uint32_t new_pick_at = 0; // ms, when (0: still)
     PageId new_back = PageId::Stage;
+    uint32_t new_taken = 0; // buttons whose press the carousel's lock took (a bit each): their release goes too
     int8_t new_kit = -1; // the kit made for Samples' first sample (CANCEL there makes it empty again), -1 none
     // Pad Bank (shell/pad_bank.cpp): when it went down; held a second, the tracks over the page.
     uint32_t pad_bank_down = 0;

@@ -927,9 +927,10 @@ void draw(Paint& p, const Snapshot& s) {
     if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler && !instrument_pad(s)) // the old Trim's Shift jobs on B1 and B2
         { keys = SoftKeys {{"LOOP LOCK", "NORMALIZE", ""}, -1, c}; keys.toggles = 1; keys.lit = sampler_pad(s).loop_lock ? 1 : 0; keys.leds[0] = c; }
     if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
-    if (!t.used()) { // what it becomes: B1 BACK to the page it was picked on
-        bool picked = s.ui.new_for == int8_t(s.ui.track % track_count);
-        keys = SoftKeys {{picked ? "BACK" : "", "", ""}, -1, c, {picked ? KeyIcon::Back : KeyIcon::None, KeyIcon::None, KeyIcon::None}};
+    if (!t.used()) { // what it becomes: B1 CANCEL to the nearest track that is not empty
+        bool any = false;
+        for (const auto& other : s.project.tracks) any |= other.used();
+        keys = SoftKeys {{any ? "CANCEL" : "", "", ""}, -1, c, {any ? KeyIcon::Back : KeyIcon::None, KeyIcon::None, KeyIcon::None}};
     }
     frame(p, s, keys, h);
     if (!t.used()) { new_track_picture(p, s); return; }
@@ -972,8 +973,8 @@ void soft(Context& c, int key) {
         return;
     }
     c.stage_tick(UINT32_MAX); // a sound still waiting to load lands first
-    if (!c.track().used()) { // B1 BACK: to the page it was picked on, still empty
-        if (key == 0 && c.ui.new_for == int8_t(c.ui.track % track_count)) { c.ui.new_for = -1; c.open(c.ui.new_back); }
+    if (!c.track().used()) { // B1 CANCEL: the nearest track that is not empty, on the page this one was picked on
+        if (key == 0) cancel_new_track(c);
         return;
     }
     stage_press(c.ui, c.track(), unsigned(key));
