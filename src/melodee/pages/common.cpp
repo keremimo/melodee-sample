@@ -483,13 +483,10 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::PadFine: c.label = "FINE"; c.value = juce::String(b.value); c.unit = "ct"; c.bipolar = true; break;
     case Kind::PadPlayMode: c.label = "NOTE ON"; c.value = b.value ? "Off" : "On"; break;
     case Kind::PadGroup: c.label = "MUTE GROUP"; c.value = b.value ? juce::String(b.value) : juce::String("Off"); break;
-    case Kind::PadColour: { // Stage's COLOUR: the last pad's, the card in it; Kit: the kit's own, none of the sixteen
-        const uint32_t own = track.pads[track.last_pad % sampler_pads].colour;
+    case Kind::PadColour: // Stage's COLOUR: the last pad's by name (the card keeps the track's colours); Kit: the kit's own
         c.label = "COLOUR";
         c.value = b.value == colour_track ? juce::String("Track") : b.value < colour_own ? juce::String(ui::track_colour_names[size_t(b.value - 1)]) : juce::String("Kit");
-        if (own) c.shade = c.track = juce::Colour(0xFF000000u | own);
         break;
-    }
     case Kind::PadReverse: c.label = "REVERSE"; c.value = b.value ? "On" : "Off"; break;
     case Kind::PadAttack: case Kind::PadDecay: case Kind::PadRelease: {
         c.label = b.kind == Kind::PadAttack ? "ATTACK" : b.kind == Kind::PadDecay ? "DECAY" : "RELEASE";

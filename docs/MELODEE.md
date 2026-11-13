@@ -328,8 +328,8 @@ beat; the meters show the mix.
     onto; Follow on or off is an LED in the header. COLOUR: the bank's pads as
     they sit, each filled with the colour it lights in, the last pad ringed; K1 and the wheel walk that pad's colour
     (`PadSound::colour`, `shell/pad_colour.h`): Track (0, the track's), the sixteen track colours by name, then Kit, the
-    pad's own when it is none of those (an MPC kit's), until another is picked. The header pill and the Pads page draw
-    each pad in its colour too. A colour is one undo step on the pad and is not heard, so a frozen track keeps its
+    pad's own when it is none of those (an MPC kit's), until another is picked. The Pads page draws each pad in its
+    colour too; names, the header and the cards keep the track's. A colour is one undo step on the pad and is not heard, so a frozen track keeps its
     print. CLOUD
     (the whole kit's pads as grain clouds): K1 position, K2 grain size, K3
     density, Shift + K1 scan, Shift + K2 spread, Shift + K3 Cloud on or off,

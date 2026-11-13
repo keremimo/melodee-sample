@@ -975,7 +975,7 @@ HeaderItem kit_pill(const Snapshot& s) {
     char label[4];
     pad_label(t.last_pad, label);
     auto name = pad_name(s, t.last_pad % sampler_pads, false);
-    return pill(juce::String(label) + (name.isNotEmpty() ? dot + name_case(name) : dot + "EMPTY"), pad_colour(s, t.last_pad));
+    return pill(juce::String(label) + (name.isNotEmpty() ? dot + name_case(name) : dot + "EMPTY"), colour_of(s));
 }
 
 void draw(Paint& p, const Snapshot& s) {
