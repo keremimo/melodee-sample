@@ -43,7 +43,7 @@ page and control, read the [user guide](docs/GUIDE.md).
   projects (`.xpj`) open too.
 - **MIDI tracks** for external synths and drum machines over USB-C or the
   MIDI jacks, with program changes, CC knobs and SysEx.
-- **Sequencing**: 16 patterns per track, up to 128 bars each. Step
+- **Sequencing**: 128 patterns per track in 8 banks, up to 128 bars each. Step
   sequencer, piano roll, step entry, parameter locks, ratchets and trig
   conditions. Scenes, pattern chains and follow actions.
 - **Song**: an arrangement with a lane per track, markers and a tempo lane.

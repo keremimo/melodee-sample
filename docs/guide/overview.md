@@ -12,11 +12,11 @@ A Melodee **project** has:
     or a sampled instrument.
   - **Plug-in** (PLUGIN): a VST3, LV2, CLAP or VST2 instrument from the card.
   - **MIDI**: notes, CCs and program changes sent to an external instrument.
-- **16 patterns per track**. A pattern holds notes and knob movements
-  (Motion), up to 128 bars long. Each track plays one pattern at a time and
-  can change pattern on its own.
-- **16 scenes**. Scene 3 is pattern 3 of every track. Launch a scene to change
-  all tracks at once.
+- **128 patterns per track**, in 8 banks (A–H) of 16. A pattern holds notes
+  and knob movements (Motion), up to 128 bars long. Each track plays one
+  pattern at a time and can change pattern on its own.
+- **128 scenes**. Scene 3 is pattern 3 of every track. Launch a scene to
+  change all tracks at once.
 - **A song**: an arrangement of pattern clips on a timeline, one lane per
   track.
 - **A mixer**: a level, pan and four sends per track, four buses (A–D) and

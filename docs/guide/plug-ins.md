@@ -47,8 +47,10 @@ unzipped stays, dimmed, with **Won't unzip**.
 
 ## Plug-in instruments
 
-1. Select an empty track and press **SAMPLE**.
-2. Press **B1** (**SYNTH**). The plug-in picker opens on `Melodee/Plugins`.
+1. Select an empty track with **PAD BANK** + pad. Stage shows the
+   new-track cards.
+2. Turn the encoder to **SYNTH** and push it. The plug-in picker opens on
+   `Melodee/Plugins`.
 3. Turn the encoder to a plug-in and push to load it.
 
 ![The plug-in picker](../images/screens/plugins.png)

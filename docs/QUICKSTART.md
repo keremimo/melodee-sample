@@ -173,14 +173,13 @@ the `Melodee/Plugins` folder on the card first (see [step 1](#1-install)). The
 Melodee synths are free downloads; see [Plug-ins](guide/plug-ins.md).
 
 1. Hold **PAD BANK** and press pad 2 to select track 2.
-2. Press **SAMPLE**. An empty track shows three choices: **SYNTH** (a
-   plug-in instrument), **KIT** (samples) and **MIDI** (an external
-   instrument).
+2. Stage shows a row of cards for the new track: **SYNTH** (a plug-in
+   instrument), **KIT** (samples) and **MIDI** (an external instrument).
 
    ![Stage on an empty track](images/screens/stageemptysynth.png)
 
-3. Press **B1** (**SYNTH**). The plug-in picker opens on the
-   `Melodee/Plugins` folder.
+3. Turn the encoder to **SYNTH** and push it. The plug-in picker opens on
+   the `Melodee/Plugins` folder.
 4. Turn the encoder to a plug-in and push the encoder to load it.
    Plug-ins that cannot run on the MPC are dimmed.
 

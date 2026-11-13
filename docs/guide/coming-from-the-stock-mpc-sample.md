@@ -42,7 +42,7 @@ is different, and how to change your habits.
 | **PAD BANK** held + Pads 1–8 jumps to bank A–H. | **PAD BANK** held + pad selects track 1–16. To jump banks, hold **PAD BANK** and turn the encoder or press **−** / **+**. |
 | **SAMPLE** opens Sample mode. | **SAMPLE** opens **Stage**, the selected track's sound pages, from any page. On a kit, Stage has the Sample mode pages. On Stage, **SAMPLE** goes back to **B1**'s first page. Hold **SAMPLE** to see the track's pads: **Pads** on a kit, **Keys** on an instrument. |
 | In Sequence mode the pads select sequences. | **SEQ** opens **Patterns**, **Roll** or **Motion**. On Patterns the pads launch the selected track's patterns, laid out as the pads. You can also hold **SEQ** and press a pad on any page. |
-| A sequence plays every pad of the kit. | Each track has its own 16 patterns. To change every track at once, launch a **scene**: hold **SEQ** + **SHIFT** and press a pad. |
+| A sequence plays every pad of the kit. | Each track has its own 128 patterns, in banks A–H. To change every track at once, launch a **scene**: hold **SEQ** + **SHIFT** and press a pad. |
 | Song mode is a list of sequences. | **Song** is a timeline with a lane per track. You place pattern clips on it, add markers and tempo changes. |
 | The project saves in the background. | Save with **SHIFT** + **Pad 16**, then **B1** (**SAVE**). Leaving through the Exit screen also saves. |
 | Projects are on the internal drive. | Projects are on the card in `Melodee/Projects`. Stock projects open as copies (see [MPC Sample projects](projects-and-files.md#mpc-sample-projects)). |

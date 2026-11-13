@@ -49,18 +49,29 @@ page; press them again there to come back to Tracks.
 
 ## Make a new track
 
-Select an empty track and press **SAMPLE**. Stage shows three choices,
-one above each soft key. The knob under each tile changes what it makes.
+Select an empty track with **PAD BANK** + pad, or press **SAMPLE** on an
+empty track. Stage shows a row of cards, one for each kind of track. Turn the encoder to move along the row and push it to make the card
+in the middle. Making a track is one undo step.
 
 ![An empty track](../images/screens/stageemptykit.png)
 
-- **B1** (**SYNTH**): a plug-in track. The plug-in picker opens.
-- **B2** (**KIT**): a kit. **K2** sets where its first sound comes from:
-  samples on the card, or a recording from the input.
-- **B3** (**MIDI**): a MIDI track. **K3** sets the MIDI port.
+| Card | Makes |
+| --- | --- |
+| **SYNTH** Plugin | A plug-in track. The plug-in picker opens. The track stays empty until you pick a plug-in. |
+| **KIT** Empty | A kit with no samples. |
+| **KIT** Card | A kit. The Samples browser opens for its first sample. **B1** (**CANCEL**) at the top of Samples leaves the track empty. |
+| **KIT** Input | A kit. Sample Record opens to record its first sample. |
+| **MIDI** Out jack | A MIDI track on the MIDI Out jack. |
+| **MIDI** USB-C | A MIDI track on the USB-C port. |
+| **MIDI** All USB | A MIDI track on every USB MIDI device. |
 
-Or turn the encoder to move between the three and push it to make the one
-lit.
+Until the track is made, the other buttons wait. **PLAY**, **STOP** and
+**TAP TEMPO** still work, and **PAD BANK** + pad selects another track.
+**B1** (**CANCEL**) selects the nearest track that is not empty.
+
+When you pick an empty track with a pad (on Tracks, with **PAD BANK** held,
+or on a Song lane), Stage opens and, once the track is made, you go back to
+the page you picked it on.
 
 ## Freeze a track
 
