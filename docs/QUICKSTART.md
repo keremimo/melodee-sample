@@ -160,7 +160,7 @@ Recording options:
   or off, and turn the encoder to choose the grid.
 - **SHIFT** + **TAP TEMPO**: set the metronome to Off, On or Rec.
 
-To edit the notes, press **SEQ** again on the Patterns page. The editor
+To edit the notes, press **SEQ**. The editor
 opens: **Steps** on a kit, **Roll** on an instrument track. **B1** opens
 **Steps**, **B2** the piano roll (**Roll**) and **B3** **Motion**. On
 Steps, each pad sets or clears a step. On a kit, Steps edits the last pad

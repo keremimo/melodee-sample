@@ -249,6 +249,9 @@ port wait behind it, with a warning if Play is pressed meanwhile.
 Each phase passes `./build.sh`, the tests and a device check, then commits
 and fast-forwards `feat/melodee-app` (standing rule).
 
+**Stage keys (2026-11-13, docs/HUBS_PLAN.md):** B1 DEVICE → PROGRAM → CC,
+B2 ARP → CHORD, B3 EDIT (opens the Edit page, below).
+
 **Stage (2026-11-10): program and CC. Built.** Stage's MIDI pages: DEVICE
 (port, channel), PROGRAM (bank MSB, bank LSB, program as the engine's
 parameters 2-4, each Off until set; bank selects and the program go out on a

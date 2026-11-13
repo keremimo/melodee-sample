@@ -383,7 +383,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   its right edge; K1 jumps (as on every list), the wheel walks, Push loads;
   FAVOURITES lists the starred (Shift + Sample Select). A synth's sounds are
   its plug-in's own presets (PRESETS on Edit, below, "Plug-ins").
-- **Edit** (Push on Keys; on a synth Stage's EDIT too): the engine's pages: a MIDI track's DEVICE and
+- **Edit** (a MIDI track's Stage B3 EDIT; a PLUGIN track's parameters are Stage's B1 EDIT): the engine's pages: a MIDI track's DEVICE and
   PROGRAM; a synth's, its plug-in's own values (below, "Plug-ins"). No title
   row: the page is the header's chip, and its curve fills the picture with
   every parameter named at the point it moves, in its knob's colour while
@@ -1111,12 +1111,12 @@ the file holds, to the bit.
   their chains replace that bank's, their mutes cleared; the other banks,
   the kit's own values and the patterns stay. Each file takes a sample slot
   once; a pad without a free slot stays empty and is counted. One undo.
-- **The eleven sample pages**, in the MPC's groups: **B1** Trim → Layers →
-  Mix → Amp Env, **B2** Tune → Play → Follow → Cloud, **B3** Filter → Filt
+- **The eleven sample pages**, in Stage's kit groups: **B1** Trim → Layers →
+  Tune → Amp Env, **B2** Play → Follow → Cloud, **B3** Mix → Filter → Filt
   Env → Kit filter. A B key goes round its group, or opens its first page from
   elsewhere; a dot a page under each key, as on Stage. **Push** opens the
   page map (three columns; wheel, Push jumps, a B key or Shift + Push
-  closes); Push on Pads opens it too. Trim itself lives on Stage (a kit's
+  closes). Trim itself lives on Stage (a kit's
   B1 TRIM): every way to Trim (B1 here, Chop again, Sample Record on
   Record, Shift + Pad 13) lands there.
   - Trim: K1 start, K2 end, K3 loop point; Shift + K1–K3 zoom at that
@@ -1741,8 +1741,8 @@ of the card (beside `Samples/`), in any folders under it.
   only"). Most commercial plug-ins have no Linux ARM build.
 - **An instrument.** PLUGIN is an engine like the others: SYNTH on Stage,
   or K1 on Sounds, then the PLUG-INS picker opens on the card's folder.
-  Sample Select on a PLUGIN track opens the picker again. Push on Stage
-  (but its FX page) or on Keys opens Edit, the plug-in: the share of each audio block it takes in the
+  Sample Select on a PLUGIN track opens the picker again. Stage's B1 EDIT
+  (or Edit) shows the plug-in: the share of each audio block it takes in the
   header, and its parameters as a list, each name on one full line with its
   number: the three on K1–K3 raised and ticked in their colours (their
   values on the cards, which carry their numbers), the row before (or

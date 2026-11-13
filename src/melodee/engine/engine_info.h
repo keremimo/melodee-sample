@@ -73,6 +73,7 @@ enum class StageKind : uint8_t {
     Colour,                                            // a kit: the last pad's colour (shell/pad_colour.h)
     PluginSound,       // a PLUGIN track's first page: its presets (K1-K3 its first row), or its face when it has none
     PluginEdit,        // a PLUGIN track's own parameters, three a row; the wheel moves the rows
+    OpenEdit,          // a button that opens the Edit page instead of a Stage page (a MIDI track's B3: its every page)
     NewSynth, NewKit, NewMidi,                         // an empty track: what it becomes (Push)
 };
 // What the picture over the knobs draws.

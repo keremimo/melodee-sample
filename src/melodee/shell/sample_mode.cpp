@@ -47,6 +47,7 @@ bool sample_key(Context& c, unsigned key) {
     ui.sample_used = true; // its release opens nothing more
     const auto& t = c.track();
     if (!t.used()) { c.open(PageId::Stage); return true; } // an empty track: what it becomes
+    if (stage_opens_edit(t, key)) { c.open(PageId::Edit); return true; } // a MIDI track's B3 EDIT
     if (!stage_has(stage_groups(t.engine), key)) return true;
     if (ui.page != PageId::Stage) {
         c.open(PageId::Stage);

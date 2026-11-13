@@ -113,14 +113,15 @@ const StageGroups& stage_groups(EngineKind kind) {
         {{{{"PLAY", K::Play, P::Wave}, {"COLOUR", K::Colour, P::Colours}, {"FOLLOW", K::Follow, P::Wave}, {"CLOUD", K::Cloud, P::Wave}}}, 4},
         {{{{"MIX", K::PadMix, P::Wave}, stage_sends, {"FILTER", K::Filter, P::Wave}, {"FILT ENV", K::FiltEnv, P::Wave}, {"KIT FILT", K::KitFilter, P::Wave}}}, 5},
     }}};
-    // MIDI: B1 where the notes go, bank and program, three controllers; B2 the arp and chord; B3 nothing (no audio).
+    // MIDI: B1 where the notes go, bank and program, three controllers; B2 the arp and chord; B3 EDIT, the Edit page's
+    // every page (slots, the drum map, expression, audio in, SysEx).
     using namespace midi_track;
     static const StageGroups midi {{{
         {{{{"DEVICE", K::Params, P::Route, {{Port, Channel, _}}},
            {"PROGRAM", K::Params, P::Program, {{BankMsb, BankLsb, Program}}},
            {"CC", K::Params, P::Cc, {{Cc1, Cc2, Cc3}}, {{CcNumber1, CcNumber2, CcNumber3}}}}}, 3},
         {{{stage_arp, stage_chord}}, 2},
-        {{{}}, 0},
+        {{{{"EDIT", K::OpenEdit, P::Bars}}}, 1},
     }}};
     // An empty track: what it becomes.
     static const StageGroups empty {{{

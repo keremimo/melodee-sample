@@ -16,13 +16,18 @@ namespace melodee {
 struct StageAt { unsigned group = 0, sub = 0; };
 
 inline unsigned stage_count(const StageGroups& g, unsigned group) { return std::max<unsigned>(g.groups[group % 3].count, 1); }
-// Whether a button has pages at all (a MIDI track's B3 has none: it does nothing).
+// Whether a button has pages at all (an empty table's has none: it does nothing).
 inline bool stage_has(const StageGroups& g, unsigned group) { return g.groups[group % 3].count > 0; }
+// Whether a button opens the Edit page instead of a Stage page (a MIDI track's B3 EDIT).
+inline bool stage_opens_edit(const Track& t, unsigned key) {
+    const auto& g = stage_groups(t.engine).groups[key % 3];
+    return g.count && g.pages[0].kind == StageKind::OpenEdit;
+}
 
 inline StageAt stage_at(const UiState& ui, const Track& t) {
     const auto& g = stage_groups(t.engine);
     unsigned track = ui.track % track_count, group = ui.stage_group[track] % 3;
-    if (!stage_has(g, group)) group = 0; // left on a button this track has no pages under
+    if (!stage_has(g, group) || stage_opens_edit(t, group)) group = 0; // left on a button with no Stage pages under it
     return {group, ui.stage_sub[track] % stage_count(g, group)};
 }
 
@@ -51,7 +56,7 @@ inline void stage_press(UiState& ui, const Track& t, unsigned key) {
     unsigned track = ui.track % track_count;
     auto at = stage_at(ui, t);
     key %= 3;
-    if (!stage_has(stage_groups(t.engine), key)) return;
+    if (!stage_has(stage_groups(t.engine), key) || stage_opens_edit(t, key)) return; // the page opens Edit (stage_page.cpp)
     if (at.group == key) { ui.stage_sub[track] = uint8_t((at.sub + 1) % stage_count(stage_groups(t.engine), key)); return; }
     ui.stage_group[track] = uint8_t(key);
     ui.stage_sub[track] = 0;

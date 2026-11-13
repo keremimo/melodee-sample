@@ -121,7 +121,8 @@ These are the actions stock users look for first.
 
 4. **Use SHIFT + encoder push to go back.** Melodee's pages open from each
    other. **SHIFT** + push goes back one page. **B1** is BACK or CANCEL on
-   every sheet.
+   every sheet. A page you opened with a **SHIFT** + pad job closes when you
+   press that job again.
 5. **Save on purpose.** There is no background save. Save with **SHIFT** +
    **Pad 16**, **B1**.
 6. **Open your stock projects.** On the Project page, press **B2** (**OPEN**)
@@ -787,7 +788,7 @@ instrument on its own port and channel.
 | --- | --- |
 | **B1** | **DEVICE**, **PROGRAM**, **CC** |
 | **B2** | **ARP**, **CHORD** |
-| **B3** | Nothing: a MIDI track has no audio. |
+| **B3** | **EDIT**: opens the Edit pages (below). |
 
 **DEVICE**: **K1** port (the MIDI Out jack, USB-C, all USB devices, or a
 USB device by name), **K2** channel. The picture shows the notes going out.
@@ -796,6 +797,10 @@ USB device by name), **K2** channel. The picture shows the notes going out.
 
 **PROGRAM**: bank MSB, bank LSB and program number. Melodee sends them
 when they change and when the track loads.
+
+**EDIT** (**B3**): every page of the MIDI track: device, program, eight
+pages of slots, the drum map (**PADS**), expression, audio in and SysEx.
+Press **SAMPLE** to go back to Stage.
 
 **CC**: three MIDI CCs on **K1**–**K3**. **SHIFT** + knob selects the CC
 number. Knob moves record as Motion.
@@ -984,7 +989,7 @@ without moving the notes.
 
 ### Scenes and follow actions
 
-Push the encoder on Patterns to open **Scenes**. A scene is one column of
+Press **B2** (**SCENES**) on Patterns, or push the encoder there, to open **Scenes**. A scene is one column of
 patterns: scene 3 is pattern 3 on every track.
 
 ![Scenes](images/screens/scenes.png)

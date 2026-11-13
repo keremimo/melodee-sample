@@ -5304,14 +5304,13 @@ void midi_tracks() {
 // Stage, context aware (shell/stage_map.h, the engines' stage tables, bindings.cpp).
 void stage() {
     using K = Binding::Kind;
-    // Every engine's table: three buttons of up to five pages (only a MIDI track's B3 has none: no audio), each named,
+    // Every engine's table: three buttons of one to five pages (a MIDI track's B3 EDIT opens the Edit page), each named,
     // its parameters the engine's own.
     for (EngineKind kind : {EngineKind::None, EngineKind::Sampler, EngineKind::Midi, EngineKind::Plugin}) {
         const auto& g = stage_groups(kind);
         const auto& info = engine_info(kind);
         for (const auto& group : g.groups) {
-            bool none = kind == EngineKind::Midi && &group == &g.groups[2];
-            CHECK(none ? group.count == 0 : group.count >= 1 && group.count <= 5);
+            CHECK(group.count >= 1 && group.count <= 5);
             for (unsigned n = 0; n < group.count; ++n) {
                 const auto& page = group.pages[n];
                 CHECK(page.key && std::strlen(page.key) > 0);
@@ -5451,7 +5450,7 @@ void stage() {
     }
 
     // MIDI: B1 DEVICE, PROGRAM (bank and program, Off at first), CC (values; their numbers on Shift); B2 ARP, CHORD;
-    // B3 has no pages: it does nothing.
+    // B3 EDIT opens the Edit page (every MIDI page), so Stage never shows it.
     ui.track = 3;
     auto& midi = project->tracks[3];
     stage_go(ui, 0, 1);
@@ -5461,7 +5460,7 @@ void stage() {
     CHECK(key() == "CC" && cards(false)[0].id == midi_track::Cc1 && cards(true)[0].id == midi_track::CcNumber1 && midi.params[midi_track::CcNumber1] == 74);
     CHECK(std::string(midi_track::cc_name(74)) == "Brightness" && !midi_track::cc_name(3));
     CHECK(binding_lane(midi, cards(false)[0]) == motion_lane(midi_track::Cc1)); // a CC records as motion
-    stage_press(ui, midi, 2); CHECK(key() == "CC"); // B3: nothing
+    stage_press(ui, midi, 2); CHECK(key() == "CC" && stage_opens_edit(midi, 2) && !stage_opens_edit(midi, 0)); // B3 EDIT opens Edit (stage_page.cpp)
     stage_press(ui, midi, 1); CHECK(key() == "ARP");
     ui.stage_group[3] = 2; CHECK(key() == "DEVICE" && stage_at(ui, midi).group == 0); // left on B3: B1's
 

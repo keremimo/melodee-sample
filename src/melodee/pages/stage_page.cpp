@@ -10,7 +10,7 @@
 // a PLUGIN track (a synth: Melodee Poly, PD and Chip are plug-ins): B1 its
 // presets (or its face when it has none) and its parameters, B2 arp and chord,
 // B3 mix, sends, effects; a MIDI track: B1 device, program, CC, B2 arp and
-// chord, B3 nothing; an empty track what it becomes. The wheel fine-edits the card touched last
+// chord, B3 EDIT (the Edit page); an empty track what it becomes. The wheel fine-edits the card touched last
 // (PRESETS: walks the presets; EDIT: the rows; an empty track: walks its list), Push moves to the next card
 // (PRESETS: the whole list; FX: the next effect, or with none yet the effect picker; an empty track: makes it),
 // Shift + Push is Back.
@@ -1070,6 +1070,7 @@ void soft(Context& c, int key) {
         if (key == 0) cancel_new_track(c);
         return;
     }
+    if (stage_opens_edit(c.track(), unsigned(key))) { c.open(PageId::Edit); return; } // a MIDI track's B3 EDIT
     stage_press(c.ui, c.track(), unsigned(key));
 }
 
