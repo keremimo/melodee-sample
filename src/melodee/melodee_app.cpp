@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/melodee_app.h"
+#include "melodee/crash_log.h"
 #include "drivers/card_share.h"
 #include "drivers/mixer.h"
 #include "drivers/platform.h"
@@ -46,6 +47,7 @@ bool request_power_off() {
 
 MelodeeApp::MelodeeApp()
     : shell(host), library(host), plugins(host), printer(&library), frame(std::make_unique<melodee::Snapshot>()) {
+    melodee::crash_log::install(); // before the threads start, so a crash on any of them leaves a report on the card
     shell.set_library(&library);
     shell.set_plugins(&plugins);
     shell.set_printer(&printer);
@@ -55,7 +57,9 @@ MelodeeApp::MelodeeApp()
     // The card's settings now, not first on the service thread: the runtime opens the audio device with
     // audio_format() as it starts, and Settings' rate from that first open spares a reopen moments later
     // (the codec powered down and up again, its mute shut a second, and the USB-C gadget rebound twice).
-    shell.start_settings(melodee::ProjectStore::read_settings_file(melodee::ProjectStore::projects_root(Platform().storage())).settings);
+    const std::string projects = melodee::ProjectStore::projects_root(Platform().storage());
+    if (!projects.empty()) melodee::crash_log::set_folder(std::filesystem::path(projects).parent_path().string() + "/Crashes");
+    shell.start_settings(melodee::ProjectStore::read_settings_file(projects).settings);
     host.load(shell.project(), shell.patterns());
     // The tracks render on several cores (roadmap P2). Floating: a worker for each core beside the audio thread, every
     // one free to run anywhere. Pinned: the audio thread on core 1 and two workers on cores 2 and 3, the rest of Melodee

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/shell.h"
+#include "melodee/crash_log.h"
 #include "melodee/shell/erase_copy.h"
 #include "melodee/shell/key_pick.h"
 #include "melodee/shell/p4_status.h"
@@ -121,6 +122,25 @@ void Shell::surface(const SurfaceEvent& event, uint32_t now) {
     context_.now = now;
     HitStamp stamp(context_, event.timestamp_ns);
     const auto& input = event.input;
+    { // the crash report's last presses (melodee/crash_log.h), with the page and track they were made on
+        char line[80] = {};
+        uint32_t key = 0;
+        const char* run = host.playing() ? "playing" : "stopped";
+        const unsigned page = unsigned(ui_.page), track = ui_.track + 1u;
+        if (event.pad >= 0) {
+            unsigned kind = event.midi.status & 0xf0;
+            if (kind == 0x90 || kind == 0x80)
+                std::snprintf(line, sizeof line, "page %u track %u %s: pad %d %s %u", page, track, run, event.pad + 1,
+                              kind == 0x90 && event.midi.value ? "down" : "up", unsigned(event.midi.value));
+        } else if (input.kind == SurfaceInput::Kind::Button) {
+            std::snprintf(line, sizeof line, "page %u track %u %s: %s %s", page, track, run, describe_last_input(pack_last_input(input)).c_str(),
+                          input.pressed ? "down" : "up");
+        } else if (input.kind == SurfaceInput::Kind::Control) {
+            if (input.index != uint8_t(SurfaceControl::Wheel)) key = 0x100u | input.index; // a pot turning is one line, its last value
+            std::snprintf(line, sizeof line, "page %u track %u %s: %s", page, track, run, describe_last_input(pack_last_input(input)).c_str());
+        }
+        if (line[0]) crash_log::note(line, key);
+    }
     // While a project loads (Loading sheet) or an update runs (shell/update.h), presses and their releases are
     // ignored; pads and keys held from before still release. K1-K3 and the fader keep their positions; the main
     // volume still works. After a failed update, B1 closes the update sheet.

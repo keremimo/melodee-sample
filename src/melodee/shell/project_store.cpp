@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/project_store.h"
 #include "drivers/platform.h"
+#include "melodee/crash_log.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
 #include "melodee/shell/mpc_program.h"
@@ -154,6 +155,7 @@ void ProjectStore::service(Hardware& hardware) {
         uint64_t free_bytes = card ? card->free_bytes : 0;
         if (found != root) {
             root = found;
+            crash_log::set_folder(root.empty() ? root : fs::path(root).parent_path().string() + "/Crashes"); // melodee/crash_log.h
             folder.clear();
             std::error_code error;
             // Nothing is created on the card until something is saved there.
