@@ -34,6 +34,14 @@ struct ProjectEntry {
 // read only. Its folders start with ':', which no folder on the card can hold.
 constexpr const char* internal_folder = ":internal";
 inline bool on_internal(const std::string& folder) { return folder.compare(0, 9, internal_folder) == 0; }
+// The card's own folders above Melodee/Projects (BACK at the top of the list), read only as the stock folder is:
+// ":card" is the card's top, ":card/<folder>..." below it. Melodee/Projects and MPC-Sample/Projects, reached
+// from there, are the list's top and its MPC Sample folder.
+constexpr const char* card_folder = ":card";
+inline bool on_card_top(const std::string& folder) { return folder.compare(0, 5, card_folder) == 0 && (folder.size() == 5 || folder[5] == '/'); }
+// A folder on the card ("" the list's top) as the list names it: under Melodee/Projects relative, the stock
+// projects as "MPC Sample...", anything else ":card/...". `card` is the card's path, `root` Melodee/Projects.
+std::string card_folder_of(const std::string& card, const std::string& root, const std::string& dir);
 
 struct LoadedProject {
     std::string path, error;

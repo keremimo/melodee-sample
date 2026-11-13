@@ -34,8 +34,15 @@ std::string internal_projects() {
     return forced ? forced : "/data/UserContent/Projects/User";
 }
 bool in_stock(const std::string& folder) { return folder == stock_folder || folder.rfind(std::string(stock_folder) + "/", 0) == 0; }
+std::string card_of(const std::string& root) { return fs::path(root).parent_path().parent_path().string(); }
+// Folders at the card's top that hold nothing to open: the system's own, and dot folders.
+bool skip_on_card(const fs::path& dir) {
+    auto name = dir.filename().string();
+    return name.empty() || name[0] == '.' || name == "System Volume Information" || name == "LOST.DIR" || name == "$RECYCLE.BIN";
+}
 // The directory a folder in view lists: on the card, in the stock app's card folder, or on the internal drive.
 std::string folder_dir(const std::string& root, const std::string& folder) {
+    if (on_card_top(folder)) return root.empty() ? std::string() : card_of(root) + folder.substr(std::strlen(card_folder));
     if (on_internal(folder)) {
         std::string rest = folder.substr(std::strlen(internal_folder)); // "" or "/<folder>..."
         if (rest.empty()) return internal_projects();
@@ -49,13 +56,24 @@ std::string folder_dir(const std::string& root, const std::string& folder) {
     return root + (folder.empty() ? "" : "/" + folder);
 }
 // Where a project or folder made while `folder` is in view goes: nothing is written to the stock app's folders.
-std::string write_dir(const std::string& root, const std::string& folder) { return folder.empty() || in_stock(folder) || on_internal(folder) ? root : root + "/" + folder; }
+std::string write_dir(const std::string& root, const std::string& folder) {
+    return folder.empty() || in_stock(folder) || on_internal(folder) || on_card_top(folder) ? root : root + "/" + folder;
+}
 
 std::vector<uint8_t> read_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(file), {});
 }
 } // namespace
+
+std::string card_folder_of(const std::string& card, const std::string& root, const std::string& dir) {
+    auto under = [&](const std::string& top) { return dir == top || dir.rfind(top + "/", 0) == 0; };
+    if (!root.empty() && under(root)) return dir.size() > root.size() ? dir.substr(root.size() + 1) : std::string();
+    const std::string stock = (fs::path(card) / "MPC-Sample" / "Projects").string();
+    if (under(stock)) return stock_folder + dir.substr(stock.size());
+    if (!card.empty() && under(card)) return card_folder + dir.substr(card.size());
+    return {};
+}
 
 ProjectStore::ProjectStore() = default;
 ProjectStore::~ProjectStore() {
@@ -414,6 +432,7 @@ void ProjectStore::scan() {
             e.name = item.path().stem().string();
             if (item.is_directory(error)) {
                 if (is_hidden_folder(item.path(), extension)) continue; // a project's loops or samples
+                if (on_card_top(folder) && skip_on_card(item.path())) continue;
                 e.kind = ProjectEntry::Kind::Folder;
                 e.projects = projects_in(item.path(), extension);
             } else if (item.path().extension() == extension) {
@@ -439,7 +458,7 @@ void ProjectStore::scan() {
                 e.projects = projects_in(e.path, extension);
                 entries.push_back(std::move(e));
             }
-        if (folder.empty() && projects_in(stock_projects(root), extension)) {
+        if (folder.empty() && fs::is_directory(stock_projects(root), error)) { // its projects may all be in folders
             ProjectEntry e;
             e.kind = ProjectEntry::Kind::Folder;
             e.name = stock_folder;

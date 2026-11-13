@@ -435,14 +435,8 @@ void Shell::press(Button b, bool pressed) {
     case Button::TopRight: if (!track_soft(context_, 2) && !repeat_soft(context_, 2)) page.soft(context_, 2); break;
     case Button::WheelPush:
         if (ui.shift && ui.page == PageId::Song) song_marker(context_);
-        else if (ui.shift && ui.page == PageId::Project && ui.project_list && !ui.sheet_open && !ui.move_open && !context_.project_folder.empty()) {
-            // up a folder
-            auto& f = context_.project_folder;
-            auto cut = f.find_last_of('/');
-            context_.project_row_path = cut == std::string::npos ? f : f.substr(cut + 1); // on the folder it came out of
-            f = cut == std::string::npos ? std::string() : f.substr(0, cut);
-            ui.project_cursor = 0;
-            if (store_) store_->list(f);
+        else if (ui.shift && ui.page == PageId::Project && ui.project_list && !ui.sheet_open && !ui.move_open && project_folder_up(context_)) {
+            // up a folder, done
         }
         else if (ui.shift) context_.back();
         else page.push(context_);

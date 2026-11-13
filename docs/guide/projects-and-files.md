@@ -22,6 +22,9 @@ In the list:
 
 - Turn the encoder to move. **K1** jumps, **K2** sorts.
 - Push the encoder or press **B3** to open a folder. **B1** goes back.
+  At the top of `Melodee/Projects`, **B1** goes up to the card's own folders,
+  so a project or kit anywhere on the card can be loaded. At the card's top,
+  **B1** closes the list.
 - Push the encoder on a project to open its sheet. Its jobs are cards:
   Save, Save as new, Rename, Duplicate, Move to folder, New folder here,
   Open at start and Delete. Another project has Load and **Load kit**
@@ -51,7 +54,8 @@ marker.
 ## MPC Sample projects
 
 Melodee opens stock MPC Sample projects (`.xpj`). On the project list, open
-the **MPC Sample** row at the top to see the stock app's projects.
+the **MPC Sample** row at the top to see the stock app's projects, in
+`MPC-Sample/Projects` and its folders.
 
 Load opens a copy. The stock project is not changed. Save makes a Melodee
 project (`.mldp`) that plays the samples from where they are.

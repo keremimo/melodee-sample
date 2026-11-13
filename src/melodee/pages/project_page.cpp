@@ -9,7 +9,8 @@
 // holds, in folders; SD card access at the top lends the card to a computer
 // (pages/card_access_page.cpp). Each row a glyph first and its facts last.
 // The wheel moves; Push or B3 opens: a folder goes in (B1 or Shift + Push
-// comes back out, B1 at the top back to the tiles), a project's sheet opens
+// comes back out; at the top up into the card's own folders, read only, and
+// at the card's top back to the tiles), a project's sheet opens
 // its jobs as cards, the likely one first and lit (Save on the open one, Load
 // on another; the wheel moves, Push does it, B1 back): on the open one Save, Save as new, Rename, Duplicate,
 // Move to folder, New folder here, Open at start, Delete; on another Load,
@@ -44,6 +45,9 @@ unsigned actions(bool open, std::array<Action, 8>& out, bool mpc = false) {
     out = {Load, LoadKit, Duplicate, Rename, MoveTo, NewFolder, OpenAtStart, Delete};
     return 8;
 }
+
+// The card itself: Melodee/Projects' grandparent.
+std::string card_dir(const ProjectStore::View& v) { return v.root.empty() ? std::string() : std::filesystem::path(v.root).parent_path().parent_path().string(); }
 
 // The list's rows: SD card access (at the top folder), then the folder's entries.
 bool has_card_row(const std::string& folder) { return folder.empty(); }
@@ -154,7 +158,10 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     const bool inside = on_internal(s.project_folder);
     juce::String where = inside ? "INTERNAL" + juce::String(s.project_folder.substr(std::strlen(internal_folder))).replace("/", " / ")
-                       : v.root.empty() ? juce::String("NO CARD") : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder));
+                       : v.root.empty() ? juce::String("NO CARD")
+                       : on_card_top(s.project_folder) ? "SD" + juce::String(s.project_folder.substr(std::strlen(card_folder))).replace("/", " / ")
+                       : s.project_folder.rfind("MPC Sample", 0) == 0 ? "SD / MPC PROJECTS" + juce::String(s.project_folder.substr(10)).replace("/", " / ")
+                       : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder));
     h.left.push_back(pill(where));
     if (v.free_bytes) h.right.push_back(pill(Icon::Card, free_text(v.free_bytes)));
     bool sheet = s.ui.sheet_open;
@@ -300,10 +307,9 @@ void open_list(Context& c) {
     if (!c.project_list_opened) { // the first time: the open project's folder, on it
         c.project_list_opened = true;
         auto v = view_of(c);
-        const std::string top = v.root + "/";
-        if (!v.root.empty() && c.project_path.rfind(top, 0) == 0) {
-            auto parent = std::filesystem::path(c.project_path).parent_path().string();
-            c.project_folder = parent.size() > v.root.size() ? parent.substr(top.size()) : std::string();
+        const std::string card = card_dir(v);
+        if (!card.empty() && c.project_path.rfind(card + "/", 0) == 0) { // anywhere on the card
+            c.project_folder = card_folder_of(card, v.root, std::filesystem::path(c.project_path).parent_path().string());
             c.project_row_path = c.project_path;
         }
     }
@@ -338,7 +344,9 @@ void open_row(Context& c) {
     const auto* e = entry_at(v, c.ui.project_cursor, c.project_folder);
     if (!e) return;
     if (e->kind == ProjectEntry::Kind::Folder) {
-        c.project_folder = c.project_folder.empty() ? e->name : c.project_folder + "/" + e->name;
+        if (on_card_top(c.project_folder)) // Melodee/Projects and MPC-Sample/Projects are the list's own folders
+            c.project_folder = card_folder_of(card_dir(v), v.root, card_dir(v) + c.project_folder.substr(std::strlen(card_folder)) + "/" + e->name);
+        else c.project_folder = c.project_folder.empty() ? e->name : c.project_folder + "/" + e->name;
         c.ui.project_cursor = 0;
         if (c.store) c.store->list(c.project_folder);
         return;
@@ -383,17 +391,33 @@ void soft(Context& c, int key) {
         return;
     }
     if (key != 0) return;
-    if (!c.project_folder.empty() && c.project_folder != internal_folder) { // BACK: up a folder, on the one it came out of, or from the top back to the tiles
-        auto cut = c.project_folder.find_last_of('/');
-        c.project_row_path = cut == std::string::npos ? c.project_folder : c.project_folder.substr(cut + 1);
-        c.project_folder = cut == std::string::npos ? std::string() : c.project_folder.substr(0, cut);
-        c.ui.project_cursor = 0;
-        if (c.store) c.store->list(c.project_folder);
-        return;
-    }
+    if (project_folder_up(c)) return; // BACK: up a folder, or from the card's top back to the tiles
     c.ui.project_list = false;
 }
 } // namespace
+
+bool project_folder_up(Context& c) {
+    auto& f = c.project_folder;
+    if (f == internal_folder || f == card_folder) return false;
+    auto v = view_of(c);
+    if (v.root.empty() && !on_internal(f)) return false;
+    std::string up, from;
+    if (f.empty() || f == "MPC Sample") { // the list's top and the MPC Sample folder: up into the card's own folders
+        const std::string card = card_dir(v);
+        auto dir = std::filesystem::path(f.empty() ? v.root : card + "/MPC-Sample/Projects");
+        up = card_folder_of(card, "", dir.parent_path().string());
+        from = dir.filename().string();
+    } else {
+        auto cut = f.find_last_of('/');
+        from = cut == std::string::npos ? f : f.substr(cut + 1);
+        up = cut == std::string::npos ? std::string() : f.substr(0, cut);
+    }
+    c.project_row_path = from; // on the folder it came out of
+    f = up;
+    c.ui.project_cursor = 0;
+    if (c.store) c.store->list(f);
+    return true;
+}
 
 void project_listed(Context& c) {
     if (c.project_row_path.empty() || !c.store) return;
