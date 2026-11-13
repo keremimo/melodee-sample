@@ -91,7 +91,6 @@ void Context::punch_release(bool latched_too) {
     bool changed = kept != ui.engaged_count;
     ui.engaged_count = uint8_t(kept);
     if (changed) { sync_live(); end_punch(); }
-    if (ui.pad_punch_held >= 0) { send({Type::PunchOff, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8)}); ui.pad_punch_held = -1; }
 }
 
 void Context::set_punch_target(unsigned target) {

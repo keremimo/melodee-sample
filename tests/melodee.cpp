@@ -1524,14 +1524,12 @@ void punches() {
         host->render(out.data(), 128, 1);
         CHECK(!host->punching());
     }
-    // Punch settings and each pad's punch survive a save.
+    // Punch settings survive a save.
     {
         auto project = std::make_unique<Project>();
         auto patterns = std::make_unique<PatternBank>();
         project->punch_target = 1; project->punch_bank = 1; project->punch_depth = 64; project->punch_snap = 3; project->punch_tail = 2;
         project->punch_quantize = false;
-        auto& pad = project->tracks[4].pads[9];
-        pad.sample = 0; pad.punch = 15; pad.punch_rate = 1; pad.punch_depth = 33;
         std::strcpy(project->samples[0].path, "/x.wav");
         auto bytes = save_project(*project, *patterns);
         auto back = std::make_unique<Project>();
@@ -1541,8 +1539,6 @@ void punches() {
         project->punch_quantize = true;
         auto again = std::make_unique<Project>();
         CHECK(load_project(save_project(*project, *patterns), *again, *patterns).empty() && again->punch_quantize);
-        const auto& p2 = back->tracks[4].pads[9];
-        CHECK(p2.punch == 15 && p2.punch_rate == 1 && p2.punch_depth == 33);
     }
 }
 void settings() {

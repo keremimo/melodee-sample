@@ -101,12 +101,10 @@ public:
     void set_route(unsigned route, const ModRoute& value);   // the selected track's mod matrix
     void pressure(unsigned pad, uint8_t value);             // poly aftertouch from a held pad
     // Punch: a pad of the Punch page (hold to punch), Push with it held to
-    // lock it on (Push again unlocks), and a kit pad on Pad Punch (the pad
-    // plays punched by its own).
+    // lock it on (Push again unlocks).
     // Pad FX (parity phase 7b, shell/pad_fx.cpp): four at once, B1 latch, pressure as depth.
     void punch_pad(unsigned pad, bool down);
     void latch_punch();                                     // B1 (or Push): the punch last pressed latched, or let go
-    void pad_punch(unsigned pad, uint8_t velocity, bool down);
     void punch_release(bool latched_too = false);           // let go of every punch a pad holds (and the latched ones)
     bool punch_pressure(unsigned pad, uint8_t value);       // a held punch's depth from its pad's pressure
     void set_punch_target(unsigned target);                 // 0 the master, 1 the selected track (everything lets go)

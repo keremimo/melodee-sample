@@ -544,14 +544,6 @@ Look flex_look(const PadScene& s, unsigned pad) {
     unsigned on = s.host.flex_playing();
     return pad == on ? white(full) : white(pad == 0 ? faint : dim); // pad 1 is Empty
 }
-Look pad_punch_look(const PadScene& s, const Heard& snd, unsigned pad) {
-    const auto& t = selected(s);
-    if (t.engine != EngineKind::Sampler) return play_look(s, snd, pad);
-    unsigned kit = kit_of(t, pad);
-    const auto& sound = t.pads[kit];
-    if (!sound.used()) return {};
-    return kit_hue(s, kit, s.ui.pad_punch_held == int(kit) ? full : sound.punch ? mid : faint);
-}
 
 // ---- held buttons and open sheets
 bool any_notes(const PadScene& s) {
@@ -715,7 +707,6 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::KnobFx: look = knob_fx_look(s, pad); break;
             case PageId::Punch: look = punch_look(s, pad); break;
             case PageId::FlexBeat: look = flex_look(s, pad); break;
-            case PageId::PadPunch: look = pad_punch_look(s, snd, pad); break;
             default: // the track's own pads (freeze plan F2d: dark on a deep-frozen track, they play nothing)
                 if (s.freeze && (*s.freeze)[selected_index(s) % track_count].state == FreezeState::Deep) break;
                 look = play_look(s, snd, pad);

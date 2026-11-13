@@ -1220,8 +1220,7 @@ pressure sets the depth.
   line of the **SNAP** grid. Off, it starts at once, and the header shows
   a magnet with **OFF**. Punches always stop at once.
 
-Press **PAD FX** again on a kit for **Pad Punch**: each kit pad gets its
-own punch. **SHIFT** + **PAD FX** opens **Flex Beat**: pad 1 is Empty, pads
+**SHIFT** + **PAD FX** opens **Flex Beat**: pad 1 is Empty, pads
 2–16 are 15 time effects on the master. **K1** One Shot or Loop, **K3** mix,
 **B3** quantize.
 
@@ -1492,7 +1491,7 @@ version on the **ABOUT** page.
 | --- | --- | --- |
 | **SAMPLE** | Stage, the track's sound pages; on Stage, its first page. Held: Pads or Keys; + pad: select a kit pad without playing it. | Input Config |
 | **SEQ** | The track's editor; on an editor, Steps. Held: launch patterns. | Step Edit |
-| **PAD FX** | Pad FX. Again on a kit: Pad Punch. With **KNOB FX**: the mixer (Tracks). | Flex Beat |
+| **PAD FX** | Pad FX. With **KNOB FX**: the mixer (Tracks). | Flex Beat |
 | **KNOB FX** | Knob FX mode on or off. With **PAD FX**: the mixer (Tracks). | Effect chains |
 | **PAD BANK** | Next bank. Held + pad: select a track. | Previous bank |
 | **ERASE** | Alone: erase the selection. Held + pad, knob, step or fader: erase | Copy |

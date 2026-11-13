@@ -508,11 +508,9 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = "CHARACTER"; c.value = ch == ' ' ? juce::String("Space") : juce::String::charToString(juce::juce_wchar(ch));
         break;
     }
-    case Kind::PunchDepth: case Kind::PadPunchDepth: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
+    case Kind::PunchDepth: c.label = "DEPTH"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::PunchSnap: c.label = "SNAP"; c.value = punch_snaps[b.value % punch_snap_count]; break;
-    case Kind::PadPunchRate: c.label = "RATE"; c.value = punch_snaps[b.value % punch_snap_count]; break;
     case Kind::PunchTail: c.label = "TAIL"; c.value = punch_tails[b.value % 3]; break;
-    case Kind::PadPunchKind: c.label = "PUNCH"; c.value = b.value ? punch_title(PunchKind(b.value - 1)) : "None"; break;
     case Kind::ClickLevel: c.label = "CLICK"; c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::RecGrid: // the pattern's Q, named, or a grid of its own
         c.label = "GRID";

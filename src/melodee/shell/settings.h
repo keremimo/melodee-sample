@@ -53,7 +53,7 @@ struct Settings {
         if (full_level()) pad_response = response_before == 3 ? 1 : response_before;
         else { response_before = pad_response; pad_response = 3; }
     }
-    bool pressure = true;     // off: the pads send no pressure (synths, Pad Punch depth)
+    bool pressure = true;     // off: the pads send no pressure (synths, Pad FX depth)
     uint8_t pad_lights = 0;   // 0 track colours, 1 white, 2 off
     // The MPC's defaults: Scaled for the knobs and Knob FX, Pickup for the fader. Before parity
     // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.

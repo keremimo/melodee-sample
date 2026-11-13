@@ -17,7 +17,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, PadPunch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
+enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
@@ -330,8 +330,6 @@ struct UiState {
     uint8_t flex_chosen = 0; // Flex Beat: the pad chosen last (0 Empty)
     int engaged_at(int kind) const { for (unsigned n = 0; n < engaged_count; ++n) if (engaged[n].kind == kind) return int(n); return -1; }
     bool punch_sounding(int kind) const { for (auto k : punch_slot) if (k == kind && kind >= 0) return true; return false; }
-    int8_t pad_punch_held = -1;               // Pad Punch: the kit pad held, punching
-    uint8_t pad_punch_pressure = 0;           // and how hard, 0..127
     Settings settings;                        // Melodee's own, from the card
     NameEntry name;                           // the Name sheet, over any page while open
     bool move_open = false;                   // Project: the folder picker for Move to folder

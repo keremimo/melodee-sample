@@ -100,9 +100,6 @@ public:
     void taps(TrackTaps& out) const;
     // The project's tempo, for Follow (tenths of a BPM).
     void set_tempo(unsigned tenths) { if (tenths != tempo) { tempo = tenths; tempo_moved = true; } }
-    // Pad Punch: the voices of `pad` go through `punch` on their own before
-    // they join the kit (nullptr: none). The punch belongs to the host.
-    void punch_pad(int pad, Punch* punch) { aside_pad = pad; aside = punch; }
     // PadFX: each pad's own chain (the host's). A pad with a chain plays
     // through it on a lane of its own, up to `lanes` pads at once; a lane
     // stays with its pad three seconds after the pad falls silent, for tails.
@@ -276,9 +273,6 @@ private:
     float accent = 1; // the sequencer's, for the voices started next (set_accent)
     float g = 1, k = 2, s1[2] {}, s2[2] {};
     bool filtered = false;
-    int aside_pad = -1;
-    Punch* aside = nullptr;
-    float aside_l[128] {}, aside_r[128] {};
     // A pad's chain plays on in its lane after the pad falls silent, until its own tail has been quiet for
     // lane_quiet_seconds (longer than any echo's time, so a late repeat is not lost) or lane_ring_seconds have gone.
     static constexpr float lane_quiet_seconds = 1.5f, lane_ring_seconds = 30.0f, lane_floor = 1e-5f;

@@ -33,7 +33,6 @@ struct Binding {
         ChordType, ChordVoicing, ChordInvert, // Chord
         PadFine, PadPlayMode, PadGroup, PadReverse, PadAttack, PadDecay, PadRelease, PadSustain, // sampler pages
         PunchDepth, PunchSnap, PunchTail,          // Punch
-        PadPunchKind, PadPunchRate, PadPunchDepth, // Pad Punch: the last pad hit
         NameSuggest, NameChar,                     // the Name sheet
         Transpose,                                 // Keys, Shift + K3: the pads by semitones
         EventVelocity, EventLength,                // Step Edit: the selected event (length in steps of Q)

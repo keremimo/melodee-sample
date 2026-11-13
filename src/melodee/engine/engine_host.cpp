@@ -46,7 +46,7 @@ EngineHost::EngineHost(Lean lean) : EngineHost(true, lean.delay_blocks) {}
 
 EngineHost::EngineHost(bool lean, unsigned delay_blocks)
     : is_lean(lean), fx_clock(lean ? &own_clock : &effect_clock), take(!lean), recall_ring(!lean), render_out(!lean),
-      punch(!lean), pad_punch(!lean), live {Live(!lean), Live(!lean), Live(!lean), Live(!lean)}, flex(!lean),
+      punch(!lean), live {Live(!lean), Live(!lean), Live(!lean), Live(!lean)}, flex(!lean),
       kept {Kept(!lean), Kept(!lean), Kept(!lean), Kept(!lean)}, pool(delay_blocks), lines(!lean) {
     static_assert(live_slots == 4, "one Live and one Kept a slot above");
     for (auto& t : patterns) for (auto& p : t) p = new Pattern;
@@ -107,7 +107,7 @@ void EngineHost::reload(ProjectPack& pack, bool keep_loops) {
         slot.print_on = false; slot.hand.reset(); wake(slot);
     }
     for (auto& s : slots) if (s.engine) s.engine->silence();
-    pending.waiting = false; punch.clear(); pad_punch.clear(); punch_target = 255;
+    pending.waiting = false; punch.clear(); punch_target = 255;
     for (auto& l : live) { l.pending.waiting = false; l.punch.stop(); l.punch.clear(); }
     for (auto& k : kept) { k.punch.clear(); k.target = 255; } // pad-fx C
     flex.clear(); flex_pad = 0; flex_waiting = false; flex_now.store(0, std::memory_order_relaxed);
@@ -570,18 +570,8 @@ void EngineHost::apply(const Command& c) {
     case Type::SongPunchCount: song.punch_count = uint16_t(std::clamp<int>(c.value, 0, song_punches)); break;
     case Type::SongRecord: song_recording = c.value != 0; break;
     case Type::PunchOn: {
-        unsigned pad = c.index >> 8;
         PendingPunch p {true, c.track, PunchKind((c.index & 0xff) % punch_count), std::clamp<int>(c.value, 0, 100) / 100.0f,
                         unsigned(c.pattern & 3), unsigned((c.pattern >> 4) & 3) % 3};
-        if (pad) { // one pad alone, at once: the pad's hit is the start
-            if (c.track >= track_count) break;
-            if (pad_punch_track >= 0 && pad_punch_track != c.track) slots[size_t(pad_punch_track)].sampler.punch_pad(-1, nullptr);
-            pad_punch_track = c.track; pad_punch_pad = int(pad - 1);
-            slot.sampler.punch_pad(pad_punch_pad, &pad_punch);
-            double grid = bar_length() / (4u << p.snap);
-            pad_punch.start(p.kind, p.depth, bar_length(), grid, p.tail, params_of(p.kind));
-            break;
-        }
         unsigned s = c.position ? (c.position - 1) % live_slots : 0;
         live_punch = true;
         if (punch_from_song) { punch.stop(); punch_from_song = false; } // a punch by hand wins over the song's
@@ -590,7 +580,6 @@ void EngineHost::apply(const Command& c) {
         break;
     }
     case Type::PunchOff:
-        if (c.index >> 8) { if (int(c.index >> 8) - 1 == pad_punch_pad && c.track == pad_punch_track) pad_punch.stop(); break; }
         for (unsigned s = 0; s < live_slots; ++s) {
             if (c.track != 254 && (c.position ? (c.position - 1) % live_slots : 0) != s) continue;
             live[s].pending.waiting = false; // let go before it began
@@ -600,20 +589,17 @@ void EngineHost::apply(const Command& c) {
         for (auto& l : live) live_punch |= l.punch.on() || l.pending.waiting;
         break;
     case Type::PunchDepth:
-        if (c.index >> 8) pad_punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f);
-        else
-            for (unsigned s = 0; s < live_slots; ++s) {
-                if (c.position && (c.position - 1) % live_slots != s) continue; // 0: every slot (K1 depth)
-                live[s].punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f);
-                live[s].pending.depth = std::clamp<int>(c.value, 0, 100) / 100.0f;
-            }
+        for (unsigned s = 0; s < live_slots; ++s) {
+            if (c.position && (c.position - 1) % live_slots != s) continue; // 0: every slot (K1 depth)
+            live[s].punch.set_depth(std::clamp<int>(c.value, 0, 100) / 100.0f);
+            live[s].pending.depth = std::clamp<int>(c.value, 0, 100) / 100.0f;
+        }
         break;
     case Type::PunchParam: {
         if (c.index >= 16 || c.pattern >= punch_params) break;
         mpc_params[c.index][c.pattern] = c.value;
         auto kind = PunchKind(punch_mpc_first + c.index);
         for (auto& l : live) if (l.punch.kind_now() == kind) l.punch.set_params(mpc_params[c.index].data());
-        if (pad_punch.kind_now() == kind) pad_punch.set_params(mpc_params[c.index].data());
         break;
     }
     case Type::FlexBeat:
@@ -2800,7 +2786,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     unsigned kept_sounding = 0; // pad-fx C
     for (unsigned s = 0; s < live_slots; ++s) kept_sounding |= unsigned(kept[s].on) << s;
     kept_on.store(kept_sounding, std::memory_order_relaxed);
-    punch_on.store(punch.on() || pad_punch.on() || sounding, std::memory_order_relaxed);
+    punch_on.store(punch.on() || sounding, std::memory_order_relaxed);
     // The input source (or the mix itself, before main volume): the take, the
     // Recall ring and the meter hear it; a render takes the mix.
     select_input(input, usb, frames);

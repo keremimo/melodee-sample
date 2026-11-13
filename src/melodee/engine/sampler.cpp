@@ -947,11 +947,9 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         }
         if (g.age >= g.length) g.sample = nullptr;
     }
-    // The punched pad renders on its own, and so does each pad with a chain
-    // (blocks of 128 at most here).
-    bool punching = aside && frames <= 128, chains = pad_effects && frames <= 128;
+    // Each pad with a chain renders on its own (blocks of 128 at most here).
+    bool chains = pad_effects && frames <= 128;
     bool knobbing = (knob_mask[0] || knob_mask[1]) && knob_l && knob_r && frames <= 128;
-    if (punching) { std::fill(aside_l, aside_l + frames, 0.0f); std::fill(aside_r, aside_r + frames, 0.0f); }
     if (chains) for (auto& l : lane) if (l.pad >= 0) { l.fed = false; std::fill(l.l, l.l + frames, 0.0f); std::fill(l.r, l.r + frames, 0.0f); }
     knob_used = false;
     // Where a pad's sound joins: the kit, the Sidechain's key (first: it must not duck itself), or Knob FX's own output.
@@ -965,8 +963,8 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
     for (auto& v : voices) {
         if (v.pad < 0 || v.cloud) continue;
         v.wrapped = false;
-        float* to_l = punching && v.pad == aside_pad ? aside_l : out_l(v.pad);
-        float* to_r = punching && v.pad == aside_pad ? aside_r : out_r(v.pad);
+        float* to_l = out_l(v.pad);
+        float* to_r = out_r(v.pad);
         if (chains && v.pad < int(sampler_pads) && (*pad_effects)[size_t(v.pad)][0].kind() != EffectKind::None)
             if (Lane* l = lane_for(v.pad)) {
                 l->fed = true;
@@ -1020,8 +1018,8 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             if (l.pad < 0) continue;
             auto& chain = (*pad_effects)[size_t(l.pad)];
             for (auto& effect : chain) effect.process(l.l, l.r, frames);
-            float* into_l = punching && l.pad == aside_pad ? aside_l : out_l(l.pad); // a punched pad: its chain, then the punch
-            float* into_r = punching && l.pad == aside_pad ? aside_r : out_r(l.pad);
+            float* into_l = out_l(l.pad);
+            float* into_r = out_r(l.pad);
             float loudest = 0;
             for (unsigned f = 0; f < frames; ++f) {
                 into_l[f] += l.l[f]; into_r[f] += l.r[f];
@@ -1035,12 +1033,6 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             if (rung) for (auto& effect : chain) effect.clear();
             if (rung || l.quiet >= uint32_t(lane_quiet_seconds * dsp::sample_rate()) || chain[0].kind() == EffectKind::None) l.pad = -1;
         }
-    if (punching) {
-        aside->process(aside_l, aside_r, frames);
-        float* into_l = out_l(aside_pad);
-        float* into_r = out_r(aside_pad);
-        for (unsigned f = 0; f < frames; ++f) { into_l[f] += aside_l[f]; into_r[f] += aside_r[f]; }
-    }
     for (auto& v : voices) if (v.stream >= 0 && v.pad < 0) end_stream(v); // what ended this block lets its stream go
     if (!filtered) return;
     float* io[2] {left, right};

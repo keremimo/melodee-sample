@@ -120,7 +120,7 @@ cards.
 | Main volume | Master level, at once | |
 | Sample | The SOUND hub (docs/HUBS_PLAN.md): Stage from any page; on Stage, B1's first page; it opens no other page. Held: after 0.3 s the track's pads (Pads on a kit, Keys otherwise) over the page, K1-K3 theirs, B1-B3 Stage's sections; on Steps and Roll the editor stays and the header names the held sound. Held + pad: that kit pad becomes the last pad, unheard. A hold released after 0.3 s with nothing used opens nothing | Input Config |
 | Seq | The SEQUENCE hub (docs/HUBS_PLAN.md). Tap: the track's editor (Steps, Roll or Motion, the last open) from anywhere; on an editor home, Steps; on Step Edit back to its editor. Patterns is the ARRANGE hub's (Shift + Pad 12: Patterns, Scenes, Song, B1-B3 between them). Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, under the editor; again back to it |
-| Pad FX | Pad FX (the punches); again on a kit track, Pad Punch. Acts on its release: with Knob FX, in either order, the MIX hub on Tracks (shell/mix_hub.h), and neither's own job | Flex Beat (at once) |
+| Pad FX | Pad FX (the punches). Acts on its release: with Knob FX, in either order, the MIX hub on Tracks (shell/mix_hub.h), and neither's own job | Flex Beat (at once) |
 | Knob FX | Knob FX mode on (lit, its page) or off, on its release; with Pad FX, the MIX hub | FX Select: the effect chains, Track → Sends → Bus → Master (at once) |
 | Shift | The second layer, held | |
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
@@ -229,7 +229,7 @@ grammar (`shell/pad_light.h`):
 | Chop | The slices, the one in hand Full, flaring as they play; Manual armed: pad 1 flashing red; cutting: pad 1 white, the rest white Faint; + Erase the slices that would go Faint red |
 | Record, Resample | The take's pad red (flashing while it waits), cuts white; Resample's empty pads pulse |
 | Punch | A held punch white as deep as it is pressed, latched Full, waiting blinking; Erase held: the punches the pattern keeps Dim red, the rest dark |
-| Knob FX, Flex Beat, Pad Punch, sidechain | On or playing Full, the rest Dim or Faint, empty dark |
+| Knob FX, Flex Beat, sidechain | On or playing Full, the rest Dim or Faint, empty dark |
 | Shift held | The jobs white (above) |
 | Erase held on a kit | Stopped: the pads that would empty Faint red; playing: the pads with notes Dim red, flaring as they play |
 | Pad Bank + Erase held | The tracks Erase + pad would clear Faint red (a sound, or notes in its patterns), empty ones dark |
@@ -1419,8 +1419,6 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
 - **Flex Beat** (Shift + Pad FX): a time effect over the master for a bar;
   pad 1 Empty, 2–16 fifteen effects; K1 One Shot / Loop, K3 mix, B3
   quantize.
-- **Pad Punch** (Pad FX again on a kit): each kit pad its own punch, rate
-  and depth.
 - **Compressor** (Shift + Pad 5): on the master. B1 Sidechain, B2 Color,
   B3 Bypass, each lit while on, with no messages. The header shows signs,
   not words: an LED beside COMPRESSOR (lit while it works, a ring while

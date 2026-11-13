@@ -423,12 +423,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
     w.end(at);
     at = w.begin("PNCH");
     w.u8(project.punch_target); w.u8(project.punch_bank); w.u8(project.punch_depth); w.u8(project.punch_snap); w.u8(project.punch_tail);
-    for (unsigned t = 0; t < track_count; ++t)
-        for (unsigned n = 0; n < sampler_pads; ++n) {
-            const auto& pad = project.tracks[t].pads[n];
-            if (pad.punch) { w.u8(t); w.u8(n); w.u8(pad.punch); w.u8(pad.punch_rate); w.u8(pad.punch_depth); }
-        }
-    w.u8(255);
+    w.u8(255); // where older builds wrote each pad's own punch (Pad Punch, removed)
     w.u8(project.punch_quantize); // after what older builds read: Pad FX quantize (Shift + B3)
     w.end(at);
     at = w.begin("KNFX"); // Knob FX (parity phase 7): the entry, its effect and values, bypass, the tracks and kit pads it is on
@@ -1243,11 +1238,9 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
         } else if (name == "PNCH") {
             project->punch_target = uint8_t(r.u8() % 2); project->punch_bank = uint8_t(r.u8() % 3);
             project->punch_depth = uint8_t(std::min(100u, r.u8())); project->punch_snap = uint8_t(r.u8() % 4); project->punch_tail = uint8_t(r.u8() % 3);
-            while (r.ok && !r.done()) {
-                unsigned t = r.u8();
-                if (t >= track_count) break;
-                auto& pad = project->tracks[t].pads[r.u8() % sampler_pads];
-                pad.punch = uint8_t(std::min(punch_kinds, r.u8())); pad.punch_rate = uint8_t(r.u8() % 4); pad.punch_depth = uint8_t(std::min(100u, r.u8()));
+            while (r.ok && !r.done()) { // older files: each pad's own punch (Pad Punch, removed), skipped
+                if (r.u8() >= track_count) break;
+                r.u8(); r.u8(); r.u8(); r.u8();
             }
             if (r.ok && !r.done()) project->punch_quantize = r.u8() != 0; // older files: quantized, as they played
         } else if (name == "KNFX") {

@@ -685,10 +685,10 @@ private:
     float click_fall = 0.9985f; // the blip's fall a frame: 0.9985 a 44.1 kHz frame, the same time at any rate
     float record_l[block] {}, record_r[block] {};
     float tap_l[block] {}, tap_r[block] {}; // the Track source this block
-    // Punch: one on the master or a track, one on a single sampler pad. A
-    // press while playing waits for the next step of its snap grid.
+    // Punch: one on the master or a track. A press while playing waits for
+    // the next step of its snap grid.
     struct PendingPunch { bool waiting = false; uint8_t target = 255; PunchKind kind {}; float depth = 1; unsigned snap = 2, tail = 0; };
-    Punch punch, pad_punch; // `punch`: the song's punches
+    Punch punch; // the song's punches
     uint8_t punch_target = 255;
     // Pad FX (parity phase 7b): four punches held at once, in series on their target, each with its own grid wait.
     static constexpr unsigned live_slots = 4;
@@ -708,7 +708,6 @@ private:
     double flex_left = 0; // samples of its bar left
     void start_flex();
     std::atomic<unsigned> flex_now {0};
-    int pad_punch_track = -1, pad_punch_pad = -1;
     PendingPunch pending;
     bool song_recording = false, punch_from_song = false, live_punch = false;
     uint32_t song_punch_until = 0; // the tick a song punch lets go

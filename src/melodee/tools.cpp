@@ -1915,14 +1915,6 @@ const Preview previews[] {
          s.following = true; s.following_mtc = true;
          s.ui.settings.midi.sync_in = MidiSync::Mtc;
      }},
-    {"padpunch", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::PadPunch; s.ui.track = 3; s.playing = true; s.sample = break_sample();
-         auto& t = s.project.tracks[3];
-         const uint8_t own[][2] {{1, 5}, {2, 14}, {3, 6}, {4, 2}, {8, 8}, {11, 15}};
-         for (auto& o : own) t.pads[o[0]].punch = o[1];
-         t.last_pad = 1; s.ui.pad_punch_held = 1; s.ui.pad_punch_pressure = 92; t.pads[1].punch_depth = 72;
-         s.ui.turning = 0; s.ui.turned_at = s.now;
-     }},
     {"pad", [](Shell&, Snapshot& s) { s.ui.page = PageId::PadPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.pitch = 3; pad.fine = -8; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     {"layers", [](Shell&, Snapshot& s) { s.ui.page = PageId::LayersPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;

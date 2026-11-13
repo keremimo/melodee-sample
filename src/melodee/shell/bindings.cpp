@@ -902,12 +902,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::FlexBeat: // K1 One Shot / Loop, K3 mix (as on the MPC)
         return {Binding {Kind::FlexMode, 0, 0, 1, project.flex.mode}, Binding {}, Binding {Kind::FlexMix, 0, 0, 100, project.flex.mix}};
-    case PageId::PadPunch: {
-        const auto& pad = track.pads[track.last_pad % sampler_pads];
-        if (!pad.used()) return {};
-        return {Binding {Kind::PadPunchKind, 0, 0, int(punch_kinds), pad.punch}, Binding {Kind::PadPunchRate, 0, 0, 3, pad.punch_rate},
-                Binding {Kind::PadPunchDepth, 0, 0, 100, pad.punch_depth}};
-    }
     case PageId::Samples: // every list: K1 jumps, the other pots draw nothing
         return {Binding {Kind::FileJump, 0, 0, std::max(int(ui.files_count) - 1, 1), ui.files_cursor}, Binding {}, Binding {}};
     case PageId::Plugins:

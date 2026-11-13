@@ -85,9 +85,6 @@ struct PadSound {
     uint8_t group = 0;            // mute group 1..16, 0 none: pads in a group cut each other
     uint8_t attack = 0, decay = 100, sustain = 100, release = 20; // 0..100
     uint16_t own_tempo = 0;       // tenths of a BPM the region was played at, for Follow; 0 unknown
-    uint8_t punch = 0;            // Pad Punch: 0 none, else PunchKind + 1
-    uint8_t punch_rate = 2;       // its grid, 0 1/4 .. 3 1/32
-    uint8_t punch_depth = 100;    // when pressure is not used
     // Parity phase 4, the MPC's Sample Mode (the file's PAD4 section).
     bool loop = false;            // Loop: after the end it plays on from the loop point
     bool loop_lock = true;        // Loop Lock (Shift + B1 on Trim): the loop point is the start

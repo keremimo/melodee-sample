@@ -9,7 +9,7 @@ namespace melodee {
 // Opening `page` from ui.page: a page already on the stack is gone back to
 // (it and what came after leave the stack); a sibling in ui.page's group
 // (Stage / Keys / Pads / Mix, Steps / Roll / Motion, the effect chains, the
-// sampler's pages, Punch / Pad Punch, Arp / Chord) takes its place;
+// sampler's pages, Arp / Chord) takes its place;
 // anything else goes on top, the oldest dropping when full. The caller then
 // sets ui.page.
 void push_back_stack(UiState& ui, PageId page);

@@ -19,17 +19,12 @@
 //   punches sound (its LED lit while a take waits); KEEP lays the take in
 //   the pattern, looping with it like Motion (drawn quieter), quiet while a
 //   live punch sounds; Erase + KEEP takes them out.
-// PAD PUNCH (Pad FX again, or B3): each kit pad carries a punch of its own;
-//   hit the pad and it alone plays punched while the kit runs on. Pressure
-//   is depth. K1 picks the punch of the last pad hit, K2 its rate, K3 the
-//   depth when pressure is not used.
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/punch.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/pages/sampler_common.h"
 #include "melodee/shell/ask.h"
-#include "melodee/ui/waveform.h"
 #include <algorithm>
 #include <cstdio>
 #include <vector>
@@ -37,13 +32,6 @@
 namespace melodee {
 namespace {
 using namespace ui;
-
-bool kit(const Snapshot& s) { return s.track().engine == EngineKind::Sampler; }
-
-SoftKeys punch_keys(const Snapshot& s, int active) {
-    juce::Colour c = active == 0 ? colour::text : colour_of(s);
-    return {{"MASTER", "TRACK", kit(s) ? "PAD" : ""}, active, c};
-}
 
 // ---------- Pad FX ----------
 const char* bank_name(unsigned bank) { static const char* const names[] {"MELODEE 1", "MELODEE 2", "MPC"}; return names[bank % punch_banks]; }
@@ -194,95 +182,8 @@ void punch_soft(Context& c, int key) {
 }
 void punch_bank(Context& c, int way) { c.step_punch_bank(way); }
 
-// ---------- Pad Punch ----------
-void pad_punch_draw(Paint& p, const Snapshot& s) {
-    const auto& track = s.track();
-    auto c = colour_of(s);
-    if (!kit(s)) {
-        frame(p, s, punch_keys(s, 2), header_of(s));
-        icon(p, Icon::Pads, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f); // pads of a kit only
-        p.text("KITS ONLY", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
-        return;
-    }
-    unsigned bank = track.bank % sampler_banks, with = 0;
-    for (const auto& pad : track.pads) with += pad.used() && pad.punch;
-    Header h = header_of(s);
-    h.left.push_back(pill(juce::String(with) + " OF " + juce::String(sampler_pads) + " PADS"));
-    h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, punch_keys(s, 2), h);
-
-    constexpr float gap = 3, top = zone::picture_y + 1.5f, grid_w = 204;
-    constexpr float w = (grid_w - 3 * gap) / 4, ch = (zone::picture_h - 1.5f - 3 * gap) / 4;
-    juce::StringArray punch_names; // the bank's punches share one case
-    for (unsigned n = 0; n < 16; ++n) {
-        const auto& pad = track.pads[bank * 16 + n];
-        if (pad.used() && pad.punch) punch_names.add(punch_name(PunchKind(pad.punch - 1)));
-    }
-    bool punch_capitals = cells_in_capitals(p, punch_names, plain(c, type::small, Weight::Medium), w - 6);
-    for (unsigned n = 0; n < 16; ++n) {
-        unsigned k = bank * 16 + n, row = 3 - n / 4, column = n % 4;
-        const auto& pad = track.pads[k];
-        float x = zone::pad + column * (w + gap), y = top + row * (ch + gap);
-        bool held = s.ui.pad_punch_held == int(k);
-        p.fill(x, y, w, ch, pad.used() && pad.punch ? colour::surf : held ? colour::surf : colour::quiet, 4);
-        float press = held ? (s.ui.pad_punch_pressure ? s.ui.pad_punch_pressure / 127.0f : pad.punch_depth / 100.0f) : 0;
-        constexpr float name_h = 16; // the name's row stays clear: pressure fills the pad from below up to it
-        float fill_top = y + name_h + (ch - name_h) * (1 - press);
-        if (held) p.fill(x, fill_top, w, (ch - name_h) * press, c, 4);
-        // The pad's name at the top and its punch at the foot, each in BG where the pressure has risen over it.
-        auto two_tone = [&](const juce::String& text, float tx, float ty, float tw, Paint::Text style) {
-            p.text(text, tx, ty, tw, 14, style);
-            if (!held || fill_top >= ty + 14) return;
-            p.g.saveState();
-            p.g.reduceClipRegion(juce::Rectangle<int>(int(x), int(fill_top), int(w) + 1, int(y + ch - fill_top) + 1));
-            style.colour = colour::bg;
-            p.text(text, tx, ty, tw, 14, style);
-            p.g.restoreState();
-        };
-        juce::String name = pad_name(s, k, true);
-        if (name.isNotEmpty()) two_tone(name, x + 4, y + 2, w - 8, p.fit(name, plain(colour::mid, type::small, Weight::SemiBold), w - 8, type::floor));
-        if (pad.used() && pad.punch) {
-            auto style = plain(c, type::small, Weight::Medium);
-            juce::String fx = cell_name(punch_name(PunchKind(pad.punch - 1)), punch_capitals);
-            two_tone(fx, x + 3, y + ch - 16, w - 6, style);
-        }
-    }
-    // The last pad hit, and its punch.
-    const auto& pad = track.pads[track.last_pad % sampler_pads];
-    float x = zone::pad + grid_w + 8, y = zone::picture_y + 2, iw = zone::width - zone::pad - x;
-    char label[4]; pad_label(track.last_pad, label);
-    juce::String title = juce::String("PAD ") + juce::String(label);
-    p.text(title, x, y, iw, 14, caps_text(colour::mid));
-    if (pad.used()) p.text(pad_name(s, track.last_pad % sampler_pads, false), x, y + 14, iw, 16, p.fit(pad_name(s, track.last_pad % sampler_pads, false), plain(colour::sec, type::body, Weight::Medium), iw, type::floor));
-    juce::String fx = !pad.used() ? juce::String("Empty") : pad.punch ? juce::String(punch_title(PunchKind(pad.punch - 1))) : juce::String("No punch");
-    p.text(fx, x, y + 31, iw, 24, p.fit(fx, plain(pad.used() && pad.punch ? colour::text : colour::dim, 20, Weight::SemiBold), iw, type::floor));
-    if (pad.used() && s.sample.frames) {
-        uint32_t end = pad.end ? pad.end : s.sample.frames;
-        float from = float(pad.start) / s.sample.frames, to = float(end) / s.sample.frames;
-        ui::WaveHead head; // the pad as it is heard: a head and its wake
-        bool heard = pad_head(s, track.last_pad % sampler_pads, pad, s.sample.frames, head);
-        waveform(p, x, y + 71, iw, 20, s.sample.overview, from, to, from, to, c, &head, heard ? 1 : 0, 1);
-        if (heard) draw_heads(p, x, y + 69, iw, 24, from, to, &head, 1, false);
-    }
-    bool pressing = s.ui.pad_punch_held >= 0 && s.ui.pad_punch_pressure;
-    int depth = pressing ? s.ui.pad_punch_pressure * 100 / 127 : pad.punch_depth;
-    p.text("PRESSURE", x, y + 108, iw, 14, caps_text(colour::mid)); // the depth as pressure makes it now (K3 holds the number)
-    p.fill(x, y + 126, iw, 4, colour::line, 2);
-    p.fill(x, y + 126, iw * depth / 100.0f, 4, knob_shade(s.ui.track, 2), 2);
-}
-void pad_punch_pad(Context& c, unsigned pad, uint8_t velocity, bool down) { c.pad_punch(pad, velocity, down); }
-void pad_punch_soft(Context& c, int key) {
-    if (key == 2) return;
-    c.set_punch_target(unsigned(key));
-    c.open(PageId::Punch);
-}
-void pad_punch_bank(Context& c, int way) {
-    c.punch_release();
-    c.track().bank = uint8_t((c.track().bank + sampler_banks + way) % sampler_banks);
-}
 } // namespace
 
 const PageSpec punch_page {punch_draw, punch_pad, no_wheel, [](Context& c) { c.latch_punch(); }, punch_soft, punch_bank};
-const PageSpec pad_punch_page {pad_punch_draw, pad_punch_pad, no_wheel, no_push, pad_punch_soft, pad_punch_bank};
 
 } // namespace melodee

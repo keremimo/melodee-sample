@@ -738,9 +738,6 @@ void Context::apply(const Binding& b, int value) {
         break;
     case Kind::PunchSnap: project.punch_snap = uint8_t(value); break;
     case Kind::PunchTail: project.punch_tail = uint8_t(value); break;
-    case Kind::PadPunchKind: pad().punch = uint8_t(value); break;
-    case Kind::PadPunchRate: pad().punch_rate = uint8_t(value); break;
-    case Kind::PadPunchDepth: pad().punch_depth = uint8_t(value); break;
     case Kind::RecGrid: // the REC QUANTIZE page's K1: the pattern's Q, or a grid of its own
         ui.settings.rec_grid = uint8_t(std::clamp(value, 0, int(Division::Count)));
         settings_save_at = std::max<uint32_t>(now, 1) + 1000;
@@ -868,19 +865,6 @@ void Context::set_route(unsigned r, const ModRoute& value) {
     Command c {Type::Mod, ui.track, 0, uint16_t(r)};
     c.route = value;
     send(c);
-}
-
-void Context::pad_punch(unsigned pad, uint8_t velocity, bool down) {
-    auto& t = track();
-    unsigned kit = t.bank % sampler_banks * 16 + pad % 16;
-    if (t.engine == EngineKind::Sampler && !t.levels && down && t.pads[kit].punch) { // the punch first, so the hit goes through it
-        const auto& sound = t.pads[kit];
-        send({Type::PunchOn, ui.track, uint8_t(sound.punch_rate | project.punch_tail << 4), uint16_t((sound.punch - 1) | (kit + 1) << 8),
-              int16_t(sound.punch_depth)});
-        ui.pad_punch_held = int8_t(kit); ui.pad_punch_pressure = 0;
-    }
-    play_pad(pad, velocity, down);
-    if (!down && ui.pad_punch_held == int(kit)) { send({Type::PunchOff, ui.track, 0, uint16_t((kit + 1) << 8)}); ui.pad_punch_held = -1; }
 }
 
 void Context::change_setting(unsigned row, int way) {
@@ -1027,11 +1011,6 @@ void Context::toggle_favourite() {
 void Context::pressure(unsigned pad, uint8_t value) {
     if (pad >= 16 || !ui.settings.pressure) return; // Settings: Pad pressure off
     if (punch_pressure(pad, value)) return;         // Pad FX: a held punch's depth
-    if (ui.page == PageId::PadPunch && ui.pad_punch_held >= 0 && ui.pad_punch_held % 16 == int(pad)) { // pressure is depth
-        ui.pad_punch_pressure = value;
-        send({Type::PunchDepth, ui.track, 0, uint16_t((ui.pad_punch_held + 1) << 8), int16_t(value * 100 / 127)});
-        return;
-    }
     // Every note of a chord, on the track the pad played (a Record take's source track presses that track's notes).
     unsigned to = pad_track[pad] % track_count;
     for (auto k : pad_keys[pad]) if (k >= 0) send({Type::Pressure, uint8_t(to), 0, uint16_t(k & 0xff), int16_t(value)});

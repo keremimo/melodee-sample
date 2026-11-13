@@ -14,7 +14,7 @@ int page_group(PageId page) {
     case PageId::Trim: case PageId::PadPage: case PageId::PlayPage: case PageId::EnvelopePage:
     case PageId::FilterPage: case PageId::FollowPage: case PageId::CloudPage:
     case PageId::PadMix: case PageId::PadFilterPage: case PageId::FilterEnvPage: case PageId::LayersPage: return 4;
-    case PageId::Punch: case PageId::PadPunch: return 5;
+    case PageId::Punch: return 5;
     default: return 0;
     }
 }

@@ -523,7 +523,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                       : state == TakeRecorder::State::Armed || state == TakeRecorder::State::Cued ? (blink ? L::Bright : L::Dim)
                       : job(B::SampleRecord) ? L::Dim : L::Off);
     }
-    on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::PadPunch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
+    on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
     on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
     const bool editor = ui.page == PageId::Roll || ui.page == PageId::Steps || ui.page == PageId::StepEdit;
     on(B::Loop, ui.page == PageId::Looper || ui.loop_held || (ui.page == PageId::Song ? project.song.looping()

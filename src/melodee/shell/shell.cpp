@@ -273,7 +273,7 @@ void Shell::press(Button b, bool pressed) {
             if (pressed) break; // Shift: below, as printed
             if (ui.exit_open || ui.ask != UiState::Ask::None) return; // let go under a sheet: nothing
             if (b == Button::KnobFx) context_.knob_fx_button();
-            else context_.open(ui.page == PageId::Punch && context_.track().engine == EngineKind::Sampler ? PageId::PadPunch : PageId::Punch);
+            else context_.open(PageId::Punch);
             return;
         }
     }
@@ -349,9 +349,9 @@ void Shell::press(Button b, bool pressed) {
     }
     const auto& page = page_spec(ui.page);
     switch (b) {
-    case Button::PadFx: // Pad FX: the punches, or (again, on a sampler track) each pad's own; Shift: Flex Beat (as printed)
+    case Button::PadFx: // Pad FX: the punches; Shift: Flex Beat (as printed)
         if (ui.shift) { context_.open(PageId::FlexBeat); break; }
-        context_.open(ui.page == PageId::Punch && context_.track().engine == EngineKind::Sampler ? PageId::PadPunch : PageId::Punch);
+        context_.open(PageId::Punch);
         break;
     case Button::KnobFx:
         if (!ui.shift) { context_.knob_fx_button(); break; } // Knob FX, as on the MPC: the mode on or off (shell/knob_fx.cpp)
