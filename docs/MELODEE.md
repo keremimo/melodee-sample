@@ -1154,12 +1154,19 @@ the file holds, to the bit.
   hits at least that strong: a hit is a change in the spectrum (a drum, a hat
   over a held pad, a chord change at the same loudness), cut at the quiet
   point just before its attack, its strength against the sample's strongest
-  hit (`engine/onsets.cpp`). Beats cuts every 1-8 of the sample's own beats
-  from the region's start: its tempo and beats are found when it loads (the
-  flux's autocorrelation and a beat tracker, a loop's tempo exact from its
-  length), shown at the picture's top right; each cut takes the tracked beat
-  within an eighth of a beat (so a take that drifts is followed), else the hit
-  within 30 ms. A sample with no steady pulse cuts at the project's tempo.
+  hit (`engine/onsets.cpp`). Beats cuts every 1-8 of the sample's own beats,
+  counted from its beat nearest the region's start (a lead-in before it a
+  slice of its own), or from where its steady beat starts when that is later
+  (a free intro before it, and a free ending after its last beat, one slice
+  each): its tempo, beats and where they fall are found when it
+  loads (the flux's autocorrelation, a beat tracker, the phase where the flux
+  is highest beat after beat; a loop's tempo exact from its length, and a
+  loop cut to bars that starts with an attack starts on a beat), the tempo
+  shown at the picture's top right; each cut takes the tracked beat within an
+  eighth of a beat (so a take that drifts is followed), else the hit within
+  30 ms. Which beat is a bar's 1 is the region's start: kicks and snares alone
+  did not tell it apart. A sample with no steady pulse cuts at the project's
+  tempo.
   Manual (K3 or Push):
   pad 1 plays the region and pads tapped meanwhile cut it, each pulled onto
   the strongest hit. Shift + B1 Extract (`Samples/Edits/<NAME>-Slice n.wav`

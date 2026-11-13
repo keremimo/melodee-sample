@@ -472,11 +472,13 @@ Press **CHOP** to slice the last pad's sample. The pads play the slices.
 | **SHIFT** + **B2** / **B3** | Split / merge slices. |
 | **ERASE** + pad | Remove a slice. |
 
-**Beats chop**: Melodee finds the sample's own tempo when it loads, and
-Beats cuts a slice every 1–8 of its beats from the start of the region. The
-tempo shows at the top right. Each cut lands on the hit at that beat. To cut
-on the bar, set the region's start on the first beat. A sample with no
-steady beat uses the project's tempo.
+**Beats chop**: Melodee finds the sample's own tempo and where its beats
+fall when it loads. Beats cuts a slice every 1–8 of those beats, counted from
+the beat nearest the region's start, so a lead-in before the first beat gets
+a slice of its own. A free intro or ending with no steady beat stays one
+slice. The tempo shows at the top right. Each cut lands on the hit at that
+beat. To cut on the bar, set the region's start near the bar's first beat. A
+sample with no steady beat uses the project's tempo.
 
 **Manual chop**: set **K3** to Manual, or push the encoder. Pad 1 plays the
 sample. Tap other pads while it plays to cut there.

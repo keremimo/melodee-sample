@@ -12,6 +12,8 @@ namespace melodee {
 struct BeatGrid {
     uint16_t tempo = 0;       // tenths of a BPM; 0: none (a one shot, a sound with no steady pulse)
     std::vector<uint32_t> at; // each beat's frame (44.1 kHz), on the hit nearest it within 30 ms
+    uint32_t first = 0;       // the first beat: where the beats fall, within the sample's first beat
+    uint32_t pulse_from = 0, pulse_to = 0; // where the steady beat starts and ends (its first and last beat)
     bool found() const { return tempo && at.size() >= 2; }
 };
 

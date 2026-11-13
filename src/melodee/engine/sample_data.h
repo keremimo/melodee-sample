@@ -79,7 +79,9 @@ struct WavInfo {
 using Overview = std::array<uint8_t, 512>;
 // Where the hits are, for chopping: a frame and how strong the rise was, 0..255.
 struct Hit { uint32_t frame = 0; uint8_t strength = 0; };
-constexpr unsigned max_hits = 128;
+// Enough for a minute of busy playing (about 8 a second), so a long take keeps the hits early in it that Beats
+// lands its cuts on, not only its strongest 128.
+constexpr unsigned max_hits = 512;
 
 // Reads a WAV file (PCM 16, 24 or 32 bit, or 32-bit float; mono or stereo;
 // any rate, converted to 44.1 kHz) of at most `max_seconds`. Returns an

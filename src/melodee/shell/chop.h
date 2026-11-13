@@ -12,9 +12,11 @@
 // Chop: where the slices of a pad's region start and end, as the MPC's Chop
 // Mode cuts it (parity phase 5). THRESHOLD keeps the hits at least as strong
 // as the threshold asks; REGIONS cuts it into equal parts; BEATS puts a
-// slice on every beat (or every 2 ... 8) from the region's start at the
-// sample's own tempo, each cut on its tracked beat or a hit near it, or at the
-// project's tempo where the sample has none (Melodee's); MANUAL is what the
+// slice on every beat (or every 2 ... 8) at the sample's own tempo, counted
+// from its beat nearest the region's start (a lead-in before that beat a
+// slice of its own), each cut on its tracked beat or a hit near it, or at the
+// project's tempo from the region's start where the sample has none
+// (Melodee's); MANUAL is what the
 // pads tapped while it played, or what was edited by hand. Slices touch: one
 // ends where the next starts, the last at `last`. The result lands on pads as
 // regions of the same file, or one slice as a file of its own (Extract).
@@ -131,13 +133,23 @@ inline Slices chop(ChopMode mode, int amount, uint32_t from, uint32_t to, uint32
         break;
     }
     case ChopMode::Beats: {
-        if (grid && grid->found()) { // a slice every `amount` of the sample's beats, from where the region starts
+        if (grid && grid->found()) { // a slice every `amount` of the sample's beats, from the beat nearest the region's start
             const double beat = 44100.0 * 600 / grid->tempo, step = beat * std::clamp(amount, 1, 8);
             const double reach = std::min(beat / 8, step * 0.06); // a beat this near the end is the end
-            for (double at = from + step; at + reach < to;) {
+            // Counted from the beat nearest the region's start, or where the steady beat starts if that is later
+            // (a free intro before it is one slice); the last cut where its last beat ends (a free outro after it
+            // is one slice).
+            double start = double(grid->pulse_from) > from + beat / 2 ? double(grid->pulse_from) : double(from);
+            double at = grid->first + std::round((start - grid->first) / beat) * beat;
+            const double last = std::min(double(to), double(grid->pulse_to) + beat * 1.5);
+            bool on_beat = false;
+            uint32_t anchor = beat_cut(at, step, beat, *grid, hits, hit_count, on_beat);
+            if (on_beat) at = anchor;
+            if (at > from + reach && at + reach < to) s.add(anchor, frames); // a lead-in before that beat: a slice of its own
+            for (at += step; at + reach < last;) {
                 bool tracked = false;
                 uint32_t cut = beat_cut(at, step, beat, *grid, hits, hit_count, tracked);
-                if (cut >= to) break;
+                if (cut >= last) break;
                 s.add(cut, frames);
                 at = (tracked ? cut : at) + step; // the next from a tracked beat; from the grid past a hit
             }

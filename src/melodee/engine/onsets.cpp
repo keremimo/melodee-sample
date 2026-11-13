@@ -195,7 +195,7 @@ void analyse(const SampleData& s, std::vector<Hit>& found, std::vector<float>& f
 // start; a frame peaks about 10 ms before); one with no hit there goes between the nearest beats that have one.
 // The tempo shown is the beats' average spacing, or exact where the sample is 2, 4, 8, 16, 32 or 64 such beats
 // long within 4% (a loop cut to its bars). None for under a second, under four hits or no steady pulse.
-BeatGrid track_beats(const std::vector<float>& flux, const std::vector<Hit>& hits, uint32_t frames) {
+BeatGrid track_beats(const std::vector<float>& flux, const std::vector<Hit>& hits, uint32_t frames, bool starts) {
     BeatGrid grid;
     constexpr double fps = 44100.0 / hop;
     const size_t n = flux.size();
@@ -323,6 +323,63 @@ BeatGrid track_beats(const std::vector<float>& flux, const std::vector<Hit>& hit
     if (bpm < 30 || bpm > 300) return grid;
     grid.tempo = uint16_t(std::lround(bpm * 10));
     grid.at = std::move(at);
+
+    // The beats' phase: within one beat from the start, where the flux (over its spread), looked up beat after
+    // beat as its highest within 20 ms (swing, a take's drift), is highest on average. Kicks and snares fall on
+    // the beat; hats between beats count less often. A loop cut to whole bars (within 3%) that `starts` with an
+    // attack starts on a beat (its 1). Then onto the hit at the steady beat's start. Which beat is a bar's 1 is not guessed:
+    // kicks and snares alone did not tell it apart (about 4 loops in 10); the region's start says it.
+    auto level = [&](double x) {
+        int64_t c = std::llround(x);
+        if (c < 0 || c >= int64_t(n)) return std::nan("");
+        float most = flux[size_t(c)];
+        for (int64_t i = std::max<int64_t>(0, c - 2); i <= std::min<int64_t>(int64_t(n) - 1, c + 2); ++i) most = std::max(most, flux[size_t(i)]);
+        return (double(most) - mean) / spread;
+    };
+    const double step = 60 * fps / bpm, bars = frames / (4 * step * hop);
+    int64_t phase = 0;
+    const bool loop = starts && std::fabs(bars - std::round(bars)) < 0.03 * std::round(bars) && bars >= 0.97;
+    // Where the steady beat runs: from the first tracked beat to the last, each stretched a beat at a time while a
+    // hit sits there (within 30 ms), so a first or last beat the tracker let go still counts, while a free intro or
+    // outro (hits off the beat) stays outside it. A loop cut to bars runs end to end.
+    const double beat_frames = step * hop;
+    auto hit_near = [&](double frame, uint32_t& at_hit) {
+        auto it = std::lower_bound(hits.begin(), hits.end(), uint32_t(std::max(0.0, frame - 1323)),
+                                   [](const Hit& h, uint32_t f) { return h.frame < f; });
+        if (it == hits.end() || double(it->frame) > frame + 1323) return false;
+        at_hit = it->frame;
+        return true;
+    };
+    double from_beat = grid.at.front(), to_beat = grid.at.back();
+    for (uint32_t h = 0; from_beat - beat_frames > -1323 && hit_near(from_beat - beat_frames, h);) from_beat = h;
+    for (uint32_t h = 0; to_beat + beat_frames < frames && hit_near(to_beat + beat_frames, h);) to_beat = h;
+    grid.pulse_from = loop ? 0 : uint32_t(from_beat); // a loop's beat runs end to end
+    grid.pulse_to = loop ? frames : uint32_t(to_beat);
+    // The phase is voted on only where the steady beat runs: a free intro's hits do not count.
+    const double vote_from = grid.pulse_from / double(hop) - 2, vote_to = grid.pulse_to / double(hop) + 2;
+    if (!loop) {
+        double best_phase = -1e300;
+        for (int64_t t = 0; t < std::min<int64_t>(int64_t(n), std::llround(step)); ++t) {
+            double sum = 0;
+            unsigned seen = 0;
+            for (double at_beat = double(t); at_beat < double(n); at_beat += step) {
+                if (at_beat < vote_from || at_beat > vote_to) continue;
+                double v = level(at_beat);
+                if (std::isnan(v)) continue;
+                sum += v;
+                ++seen;
+            }
+                    if (seen && sum / seen > best_phase + 1e-9) { best_phase = sum / seen; phase = t; }
+        }
+    }
+    // On a real hit where the steady beat starts (the frame-0 hit find_hits() always keeps is not one, unless the
+    // sample starts with an attack), then back by whole beats to the first beat in the sample.
+    double anchor = phase * double(hop);
+    anchor += std::round((grid.pulse_from - anchor) / beat_frames) * beat_frames;
+    uint32_t on_hit = 0;
+    if (hit_near(anchor, on_hit) && (on_hit || starts)) anchor = on_hit;
+    grid.first = uint32_t(std::max(0.0, anchor - std::floor(anchor / beat_frames) * beat_frames));
+
     return grid;
 }
 
@@ -332,7 +389,15 @@ unsigned find_hits(const SampleData& s, std::array<Hit, max_hits>& out, BeatGrid
     std::vector<Hit> found;
     std::vector<float> flux;
     analyse(s, found, flux);
-    beats = track_beats(flux, found, s.frames);
+    // Whether it starts with an attack: a peak in its first 10 ms at least a quarter of its highest.
+    const uint32_t frames = std::min<uint32_t>(s.frames, uint32_t(std::min(s.left.size(), s.right.size())));
+    float peak = 0, opening = 0;
+    for (uint32_t n = 0; n < frames; ++n) {
+        float v = std::fabs(s.left[n] + s.right[n]);
+        peak = std::max(peak, v);
+        if (n < 441) opening = std::max(opening, v);
+    }
+    beats = track_beats(flux, found, s.frames, peak > 0 && opening >= 0.25f * peak);
     if (found.size() > out.size()) { // keep the strongest, then put them back in time order
         std::sort(found.begin() + 1, found.end(), [](const Hit& a, const Hit& b) { return a.strength > b.strength; });
         found.resize(out.size());

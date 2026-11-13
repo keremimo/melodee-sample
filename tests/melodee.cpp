@@ -2716,7 +2716,8 @@ void onset_hits() {
 }
 
 // A sample's own beats (engine/onsets.cpp) and Chop's Beats on them (shell/chop.h): a loop's tempo exact from its
-// length, slices from the region's start, cuts that follow a performance that speeds up; none for a one shot.
+// length, its beats found past a lead-in, slices from the beat nearest the region's start, a free intro and outro one
+// slice each, cuts that follow a performance that speeds up; none for a one shot.
 void beat_grid() {
     struct Made { SampleData sample; std::array<Hit, max_hits> hits {}; unsigned count = 0; BeatGrid grid; };
     auto analysed = [](std::vector<float> wave) {
@@ -2776,6 +2777,41 @@ void beat_grid() {
     }
     auto swung = analysed(wave);
     CHECK(swung.grid.tempo == 930 || swung.grid.tempo == 1860);
+
+    // The first loop after 0.3 s of a quiet pad: its beats fall on the kicks, not on the file's start. From the
+    // start, the lead-in is a slice of its own, then a slice a beat from the first kick.
+    std::vector<float> lead(size_t(0.3 * 44100), 0.0f);
+    for (size_t n = 0; n < lead.size(); ++n) lead[n] = float(0.02 * std::sin(2 * M_PI * 220 * n / 44100.0));
+    std::fill(wave.begin(), wave.end(), 0.0f);
+    for (unsigned b = 0; b < 8; ++b) {
+        if (b % 2 == 0) add_kick(wave, b * beat);
+        else add_noise(wave, b * beat, 0.5, 0.05);
+        add_noise(wave, (b + 0.5) * beat, 0.12, 0.01);
+    }
+    lead.insert(lead.end(), wave.begin(), wave.end());
+    auto late = analysed(lead);
+    CHECK(late.grid.found() && late.grid.tempo == 930);
+    double gap = std::fmod(late.grid.first / 44100.0 - 0.3 + 8 * beat, beat);
+    CHECK(std::min(gap, beat - gap) < 0.03);
+    auto after_lead = chop(ChopMode::Beats, 1, late.sample.frames, late.hits, late.count, 1200, &late.grid);
+    CHECK(after_lead.count == 9 && on_beat(after_lead.start[1], 0.3));
+    for (unsigned n = 2; n < after_lead.count; ++n) CHECK(on_beat(after_lead.start[n], 0.3 + (n - 1) * beat));
+    // The same 8 beats between a free intro and a free outro (hits off the beat): from the file's start, the intro
+    // is one slice, then a slice a beat, and the outro one slice from where the last beat ends.
+    std::vector<float> free_take(size_t(2.0 * 44100), 0.0f);
+    for (double at : {0.38, 0.95, 1.67}) add_noise(free_take, at, 0.3, 0.05); // a third to a half of a beat off the beats
+    free_take.insert(free_take.end(), wave.begin(), wave.end());
+    free_take.resize(free_take.size() + size_t(1.5 * 44100), 0.0f);
+    for (double at : {0.21, 0.83}) add_noise(free_take, 2.0 + 8 * beat + at, 0.3, 0.05);
+    auto framed = analysed(free_take);
+    CHECK(framed.grid.found());
+    auto parts = chop(ChopMode::Beats, 1, framed.sample.frames, framed.hits, framed.count, 1200, &framed.grid);
+    CHECK(parts.count == 10 && on_beat(parts.start[1], 2.0));
+    for (unsigned n = 2; n < parts.count; ++n) CHECK(on_beat(parts.start[n], 2.0 + (n - 1) * beat));
+    // A region that starts 50 ms before a beat counts from that beat: no lead-in slice that short.
+    auto sloppy = chop(ChopMode::Beats, 2, uint32_t((0.3 + 4 * beat - 0.05) * 44100), 0, late.sample.frames, late.hits, late.count, 1200,
+                       &late.grid);
+    CHECK(sloppy.count == 2 && on_beat(sloppy.start[1], 0.3 + 6 * beat));
 
     // A take that speeds up from 100 to 106 BPM over 12 beats, not cut to bars: the slices follow its kicks.
     wave.assign(size_t(7.4 * 44100), 0.0f);
