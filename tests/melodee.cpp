@@ -13211,6 +13211,107 @@ void pad_colours() {
     CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
 }
 
+// Pad sends: each kit pad into buses A-D at its own send, after its own chain, eased; none from a pad at 0. In the
+// host they follow the kit's level and mute, and PSND / BSND keep them.
+void pad_sends() {
+    SampleData data;
+    data.frames = 44100;
+    data.left.assign(data.frames, 0.3f); data.right = data.left;
+    SamplerEngine::Table table {};
+    table[1] = &data;
+    auto engine = std::make_unique<SamplerEngine>();
+    engine->set_samples(&table);
+    std::vector<float> l(128), r(128);
+    std::array<std::vector<float>, 4> bus_l, bus_r;
+    for (unsigned b = 0; b < 4; ++b) { bus_l[b].assign(128, 0.0f); bus_r[b].assign(128, 0.0f); }
+    auto wire = [&](bool on) {
+        for (unsigned b = 0; b < 4; ++b) engine->set_send_out(b, on ? bus_l[b].data() : nullptr, on ? bus_r[b].data() : nullptr);
+    };
+    auto block = [&] {
+        std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+        for (unsigned b = 0; b < 4; ++b) { std::fill(bus_l[b].begin(), bus_l[b].end(), 0.0f); std::fill(bus_r[b].begin(), bus_r[b].end(), 0.0f); }
+        engine->render_stereo(l.data(), r.data(), 128);
+    };
+    PadSound kick, snare, hat, clap;
+    kick.sample = snare.sample = hat.sample = clap.sample = 1;
+    snare.sends = {30, 0, 0, 0}; hat.sends = {15, 0, 0, 0}; clap.sends = {30, 20, 0, 0};
+    CHECK(!kick.sending() && snare.sending());
+    engine->set_pad(0, kick); engine->set_pad(1, snare); engine->set_pad(2, hat); engine->set_pad(3, clap);
+    wire(true);
+    auto hit = [&](int pad) { engine->silence(); engine->note_on(int(sampler_first_note) + pad, 100); block(); };
+    hit(0); // Kick: dry
+    float dry = l[100];
+    CHECK(dry > 0.05f && engine->sends_fed() == 0 && bus_l[0][100] == 0.0f);
+    hit(1); // Snare: its send eases up over its first block, then holds at 30 %
+    CHECK(engine->sends_fed() == 1 && bus_l[0][2] < bus_l[0][120] && std::fabs(l[100] - dry) < 1e-6f);
+    block();
+    CHECK(std::fabs(bus_l[0][100] / l[100] - 0.30f) < 1e-4f && std::fabs(bus_r[0][100] / r[100] - 0.30f) < 1e-4f && bus_l[1][100] == 0.0f);
+    hit(2); block();
+    CHECK(std::fabs(bus_l[0][100] / l[100] - 0.15f) < 1e-4f);
+    hit(3); block(); // Clap into A and B
+    CHECK(engine->sends_fed() == 3 && std::fabs(bus_l[0][100] / l[100] - 0.30f) < 1e-4f && std::fabs(bus_l[1][100] / l[100] - 0.20f) < 1e-4f);
+    clap.sends = {0, 20, 0, 0}; // turned down while it plays: eased away, not cut
+    engine->set_pad(3, clap); block();
+    CHECK(bus_l[0][2] > 0.0f && bus_l[0][127] < bus_l[0][2] && engine->sends_fed() == 3);
+    block();
+    CHECK(engine->sends_fed() == 2);
+    wire(false); // no buses handed over: the kit plays as it would
+    hit(1); block();
+    CHECK(std::fabs(l[100] - dry) < 1e-6f && engine->sends_fed() == 0);
+
+    // The host: a kit whose Snare sends 30 % into bus A (return 100) is heard 1.3 times as loud; Kick at 0 as dry;
+    // the send follows the kit's level, and its mute silences it.
+    auto heard = [](unsigned pad, uint8_t send, int level, bool mute) {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        tone_kit(*project, 0);
+        project->tracks[0].pads[pad].sends[0] = send;
+        EngineHost host;
+        host.load(*project, *bank);
+        auto tone = tone_sample();
+        CHECK(host.offer_sample(0, &tone));
+        host.send({Command::Type::Return, 0, 0, 0, 100});
+        if (level >= 0) host.send({Command::Type::Level, 0, 0, 0, int16_t(level)});
+        if (mute) host.send({Command::Type::Mute, 0, 0, 0, 1});
+        std::vector<int32_t> out(256);
+        for (unsigned n = 0; n < 4; ++n) host.render(out.data(), 128, 1);
+        host.send({Command::Type::NoteOn, 0, 0, uint16_t(sampler_first_note + pad), 25});
+        double peak = 0;
+        for (unsigned n = 0; n < 40; ++n) {
+            host.render(out.data(), 128, 1);
+            for (auto v : out) peak = std::max(peak, std::fabs(double(v) / 2147483648.0));
+        }
+        return peak;
+    };
+    double plain = heard(1, 0, -1, false), sent = heard(1, 30, -1, false);
+    CHECK(plain > 0.05 && std::fabs(sent / plain - 1.3) < 0.01);
+    CHECK(heard(0, 0, -1, false) == plain);
+    double low = heard(1, 0, 50, false), low_sent = heard(1, 30, 50, false);
+    CHECK(low < plain * 0.8 && std::fabs(low_sent / low - 1.3) < 0.01);
+    CHECK(heard(1, 30, -1, true) < 1e-6);
+
+    // PSND keeps them, an empty pad's are not kept; without PSND none; BSND carries them in a bank file.
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& kit = project->tracks[2];
+    kit.engine = EngineKind::Sampler;
+    std::snprintf(project->samples[0].path, sizeof(project->samples[0].path), "Samples/Snare.wav");
+    project->samples[0].frames = 44100;
+    kit.pads[1].sample = 0; kit.pads[2].sample = 0;
+    kit.pads[1].sends = {30, 0, 0, 100}; kit.pads[2].sends = {15, 0, 0, 0}; kit.pads[9].sends = {50, 0, 0, 0};
+    auto file = save_project(*project, *bank);
+    auto loaded = std::make_unique<Project>();
+    auto loaded_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(file, *loaded, *loaded_bank).empty());
+    CHECK((loaded->tracks[2].pads[1].sends == std::array<uint8_t, 4> {30, 0, 0, 100}) && loaded->tracks[2].pads[2].sends[0] == 15 &&
+          !loaded->tracks[2].pads[9].sending() && !loaded->tracks[2].pads[0].sending());
+    std::string text(file.begin(), file.end());
+    file[text.find("PSND")] = 'X';
+    CHECK(load_project(file, *loaded, *loaded_bank).empty() && !loaded->tracks[2].pads[1].sending());
+    BankFile saved = bank_of(*project, 2, 0, "Sends"), back;
+    CHECK(load_bank(save_bank(saved), back) && back.pads[1].sends[3] == 100 && back.pads[2].sends[0] == 15);
+}
+
 // A PLUGIN track's performance knobs (engine/macros.h): the filter cuts, the echo rings on after its knob is turned
 // back, and the sends' delay memory goes back to the pool once they fall silent (or the track stops being a plug-in's).
 void plugin_macros() {
@@ -13262,6 +13363,7 @@ void plugin_macros() {
 }
 
 int main() {
+    pad_sends();
     plugin_macros();
     pad_colours();
     tempo_lane_p5();

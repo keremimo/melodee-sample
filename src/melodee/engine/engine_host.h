@@ -395,6 +395,9 @@ private:
         float left[block] {}, right[block] {};
         float knob_pad_l[block] {}, knob_pad_r[block] {}; // a kit's pads under Knob FX, as the sampler left them
         bool knob_pad_fed = false;                         // and some sub-block of this block put something there
+        struct PadSendBuffers { float l[bus_count][block] {}, r[bus_count][block] {}; };
+        std::unique_ptr<PadSendBuffers> pad_sends = std::make_unique<PadSendBuffers>(); // a kit's pad sends, each bus apart (heap: 4 kB a track)
+        unsigned send_pad_fed = 0;                                                // a bit a bus: something there this block
         Arp arp;
         PendingOn arp_late;
         std::array<PendingHit, 32> hits {}; // ratchets' hits to come, each on its frame
@@ -801,6 +804,7 @@ private:
     std::array<std::atomic<unsigned>, bus_count> pdc_buses {};
     unsigned click_wait = 0; // frames the metronome's blip waits, as late as what it counts
     float knob_pad_sum_l[block] {}, knob_pad_sum_r[block] {}; // compensating: kits' pads into Knob FX, held back apart
+    float pad_send_sum_l[bus_count][block] {}, pad_send_sum_r[bus_count][block] {}; // compensating: kits' pad sends, held back apart
     // Knob FX (parity phase 7): one effect the chosen tracks and kit pads go
     // through on their way to the master (`knob_in`, its twin, on the input
     // during a take with Rec Input FX); after its targets let go it rings on

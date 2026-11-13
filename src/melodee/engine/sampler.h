@@ -11,6 +11,7 @@
 #include "melodee/model/pad_params.h"
 #include "melodee/model/sampler.h"
 #include <array>
+#include <memory>
 
 // SAMPLER: a kit of 128 pads, each a region of a sample (up to four, its
 // layers, picked by velocity, in turn or at random), written for
@@ -100,12 +101,18 @@ public:
     void taps(TrackTaps& out) const;
     // The project's tempo, for Follow (tenths of a BPM).
     void set_tempo(unsigned tenths) { if (tenths != tempo) { tempo = tenths; tempo_moved = true; } }
-    // PadFX: each pad's own chain (the host's). A pad with a chain plays
-    // through it on a lane of its own, up to `lanes` pads at once; a lane
-    // stays with its pad three seconds after the pad falls silent, for tails.
+    // PadFX: each pad's own chain (the host's). A pad with a chain, or with a
+    // send of its own, plays through a lane of its own, up to `lanes` pads at
+    // once; a chain's lane stays with its pad after the pad falls silent, for tails.
     using PadEffects = std::array<std::array<Effect, pad_slots>, sampler_pads>;
     void set_pad_effects(PadEffects* effects) { pad_effects = effects; }
-    static constexpr unsigned lanes = 8;
+    static constexpr unsigned lanes = 16;
+    // Pad sends (PadSound::sends): a pad's lane, after its chain, also plays into bus `bus`'s l / r at its send into
+    // it, eased, added to what is there. The host hands this sub-block's place in its own buffers before each render,
+    // as for Knob FX; nullptr: none (no pad sends into that bus).
+    static constexpr unsigned send_buses = 4;
+    void set_send_out(unsigned bus, float* l, float* r) { if (bus < send_buses) { send_l[bus] = l; send_r[bus] = r; } }
+    unsigned sends_fed() const { return send_used; } // a bit a bus: the last render put something there
     // Knob FX (parity phase 7): the voices of these pads (a bit a pad) play
     // into the host's l / r instead, after their own chain and punch, added to
     // what is there, for the host to put through Knob FX. No bits: none. Like
@@ -285,8 +292,15 @@ private:
     int key_pad = -1;
     float* key_l = nullptr;
     float* key_r = nullptr;
+    float* send_l[send_buses] {};
+    float* send_r[send_buses] {};
+    unsigned send_used = 0;
+    std::array<std::array<float, send_buses>, sampler_pads> send_now {}; // each pad's sends as heard, easing to its own
     bool knobbed(int pad) const { return pad >= 0 && pad < 128 && ((knob_mask[pad / 64] >> (pad % 64)) & 1); }
-    std::array<Lane, lanes> lane {};
+    bool chained(int pad) const { return pad_effects && (*pad_effects)[size_t(pad)][0].kind() != EffectKind::None; }
+    bool sends_heard(int pad) const; // its sends, or what is left of them easing away
+    // On the heap: sixteen lanes are 16 kB a kit, and the host keeps sixteen kits (made with the engine, not on the audio thread).
+    std::unique_ptr<std::array<Lane, lanes>> lane = std::make_unique<std::array<Lane, lanes>>();
     Lane* lane_for(int pad); // the pad's lane, a free one, or nullptr
     void stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames);
 };

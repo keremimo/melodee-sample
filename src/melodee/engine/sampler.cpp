@@ -886,9 +886,16 @@ void SamplerEngine::play_zone(Voice& v, float* to_l, float* to_r, unsigned from,
     }
 }
 
+bool SamplerEngine::sends_heard(int pad) const {
+    if (pad < 0 || pad >= int(sampler_pads)) return false;
+    if (pads[size_t(pad)].sending()) return true;
+    for (float g : send_now[size_t(pad)]) if (g > 0) return true;
+    return false;
+}
+
 SamplerEngine::Lane* SamplerEngine::lane_for(int pad) {
     Lane* free = nullptr;
-    for (auto& l : lane) {
+    for (auto& l : *lane) {
         if (l.pad == pad) return &l;
         if (l.pad < 0 && !free) free = &l;
     }
@@ -947,10 +954,14 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         }
         if (g.age >= g.length) g.sample = nullptr;
     }
-    // Each pad with a chain renders on its own (blocks of 128 at most here).
-    bool chains = pad_effects && frames <= 128;
+    // Each pad with a chain or sends of its own renders on its own lane (blocks of 128 at most here).
+    bool laned = frames <= 128;
+    bool sending = false;
+    for (unsigned b = 0; b < send_buses; ++b) sending |= send_l[b] && send_r[b];
+    send_used = 0;
+    auto on_lane = [&](int pad) { return laned && pad < int(sampler_pads) && (chained(pad) || (sending && sends_heard(pad))); };
     bool knobbing = (knob_mask[0] || knob_mask[1]) && knob_l && knob_r && frames <= 128;
-    if (chains) for (auto& l : lane) if (l.pad >= 0) { l.fed = false; std::fill(l.l, l.l + frames, 0.0f); std::fill(l.r, l.r + frames, 0.0f); }
+    if (laned) for (auto& l : *lane) if (l.pad >= 0) { l.fed = false; std::fill(l.l, l.l + frames, 0.0f); std::fill(l.r, l.r + frames, 0.0f); }
     knob_used = false;
     // Where a pad's sound joins: the kit, the Sidechain's key (first: it must not duck itself), or Knob FX's own output.
     bool keying = key_pad >= 0 && frames <= 128;
@@ -965,7 +976,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         v.wrapped = false;
         float* to_l = out_l(v.pad);
         float* to_r = out_r(v.pad);
-        if (chains && v.pad < int(sampler_pads) && (*pad_effects)[size_t(v.pad)][0].kind() != EffectKind::None)
+        if (on_lane(v.pad))
             if (Lane* l = lane_for(v.pad)) {
                 l->fed = true;
                 to_l = l->l; to_r = l->r;
@@ -1013,11 +1024,11 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             if (!v.env.active()) { v.pad = -1; break; }
         }
     }
-    if (chains)
-        for (auto& l : lane) {
+    if (laned)
+        for (auto& l : *lane) {
             if (l.pad < 0) continue;
-            auto& chain = (*pad_effects)[size_t(l.pad)];
-            for (auto& effect : chain) effect.process(l.l, l.r, frames);
+            bool own_chain = chained(l.pad);
+            if (own_chain) for (auto& effect : (*pad_effects)[size_t(l.pad)]) effect.process(l.l, l.r, frames);
             float* into_l = out_l(l.pad);
             float* into_r = out_r(l.pad);
             float loudest = 0;
@@ -1025,13 +1036,26 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
                 into_l[f] += l.l[f]; into_r[f] += l.r[f];
                 loudest = std::max(loudest, std::max(std::fabs(l.l[f]), std::fabs(l.r[f])));
             }
+            // Its sends: into each bus as much as the pad sends there, eased across the block so a turn never clicks.
+            auto& now = send_now[size_t(l.pad)];
+            for (unsigned b = 0; b < send_buses; ++b) {
+                float aim = pads[size_t(l.pad)].sends[b] / 100.0f;
+                if (!send_l[b] || !send_r[b]) { now[b] = aim; continue; }
+                if (now[b] <= 0 && aim <= 0) continue;
+                float g = now[b], step = (aim - now[b]) / float(frames);
+                for (unsigned f = 0; f < frames; ++f, g += step) { send_l[b][f] += l.l[f] * g; send_r[b][f] += l.r[f] * g; }
+                now[b] = aim;
+                send_used |= 1u << b;
+            }
             // Its tail plays out: the lane goes once the chain has been quiet a while (it holds nothing to come back
             // then), or after lane_ring_seconds of ringing (a loop or a long feedback), cleared so none of it returns.
             if (l.fed) { l.quiet = l.ringing = 0; }
             else { l.ringing += frames; l.quiet = loudest < lane_floor ? l.quiet + frames : 0; }
             bool rung = l.ringing >= uint32_t(lane_ring_seconds * dsp::sample_rate());
-            if (rung) for (auto& effect : chain) effect.clear();
-            if (rung || l.quiet >= uint32_t(lane_quiet_seconds * dsp::sample_rate()) || chain[0].kind() == EffectKind::None) l.pad = -1;
+            if (rung && own_chain) for (auto& effect : (*pad_effects)[size_t(l.pad)]) effect.clear();
+            // A lane for sends alone holds no tail: it goes as soon as nothing fed it.
+            bool done = own_chain ? rung || l.quiet >= uint32_t(lane_quiet_seconds * dsp::sample_rate()) : !l.fed;
+            if (done) l.pad = -1;
         }
     for (auto& v : voices) if (v.stream >= 0 && v.pad < 0) end_stream(v); // what ended this block lets its stream go
     if (!filtered) return;

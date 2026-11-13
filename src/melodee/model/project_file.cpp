@@ -539,6 +539,17 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used() && tr.pads[n].colour) { w.u8(n); w.u32(tr.pads[n].colour); }
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // kit pads' own sends into buses A-D: pad, four sends
+        const auto& tr = project.tracks[t];
+        unsigned used = 0;
+        for (const auto& pad : tr.pads) used += pad.used() && pad.sending();
+        if (!used) continue;
+        at = w.begin("PSND");
+        w.u8(t); w.u8(used);
+        for (unsigned n = 0; n < sampler_pads; ++n)
+            if (tr.pads[n].used() && tr.pads[n].sending()) { w.u8(n); for (auto send : tr.pads[n].sends) w.u8(send); }
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // kit pads with layers, or layer values of their own (roadmap P3)
         const auto& tr = project.tracks[t];
         unsigned used = 0;
@@ -824,6 +835,16 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 unsigned n = r.u8();
                 uint32_t colour = r.u32() & 0xFFFFFF;
                 if (r.ok) project->tracks[t].pads[n % sampler_pads].colour = colour;
+            }
+        } else if (name == "PSND") { // kit pads' own sends; without it no pad sends on its own
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) {
+                unsigned n = r.u8();
+                std::array<uint8_t, 4> sends {};
+                for (auto& send : sends) send = uint8_t(std::min(r.u8(), 100u));
+                if (r.ok) project->tracks[t].pads[n % sampler_pads].sends = sends;
             }
         } else if (name == "LAYR") { // pad layers (roadmap P3); without it every pad plays its one sample
             unsigned t = r.u8();
@@ -1373,6 +1394,15 @@ std::vector<uint8_t> save_bank(const BankFile& bank) {
         for (unsigned k = 0; k < bank_pads; ++k) if (bank.pads[k].used() && bank.pads[k].colour) { w.u8(k); w.u32(bank.pads[k].colour); }
         w.end(at);
     }
+    unsigned sending = 0; // the pads' own sends, as PSND: pad, four sends
+    for (const auto& pad : bank.pads) sending += pad.used() && pad.sending();
+    if (sending) {
+        at = w.begin("BSND");
+        w.u8(sending);
+        for (unsigned k = 0; k < bank_pads; ++k)
+            if (bank.pads[k].used() && bank.pads[k].sending()) { w.u8(k); for (auto send : bank.pads[k].sends) w.u8(send); }
+        w.end(at);
+    }
     if (layered) {
         at = w.begin("BLYR");
         w.u8(layered);
@@ -1425,6 +1455,14 @@ bool load_bank(const std::vector<uint8_t>& data, BankFile& out) {
                 unsigned n = r.u8();
                 uint32_t colour = r.u32() & 0xFFFFFF;
                 if (r.ok) bank.pads[n % bank_pads].colour = colour;
+            }
+        } else if (name == "BSND") {
+            unsigned sending = r.u8();
+            for (unsigned k = 0; k < sending && r.ok; ++k) {
+                unsigned n = r.u8();
+                std::array<uint8_t, 4> sends {};
+                for (auto& send : sends) send = uint8_t(std::min(r.u8(), 100u));
+                if (r.ok) bank.pads[n % bank_pads].sends = sends;
             }
         } else if (name == "BLYR") {
             unsigned used = r.u8();

@@ -1113,10 +1113,11 @@ void EngineHost::render_engine(unsigned t, Slot& slot, unsigned at, unsigned fra
         bool pad_key = keyed_pad == int(t);
         slot.sampler.set_key_pad(pad_key ? int(comp.key_pad()) : -1, pad_key ? key_pad_l + at : nullptr, pad_key ? key_pad_r + at : nullptr);
         slot.sampler.set_knob_out(knob_heard ? slot.knob_pad_l + at : nullptr, knob_heard ? slot.knob_pad_r + at : nullptr);
+        for (unsigned b = 0; b < bus_count; ++b) slot.sampler.set_send_out(b, slot.pad_sends->l[b] + at, slot.pad_sends->r[b] + at);
     }
     if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + at, slot.right + at, frames);
     else slot.engine->render(slot.buffer + at, frames);
-    if (slot.engine == &slot.sampler) slot.knob_pad_fed |= slot.sampler.knob_fed();
+    if (slot.engine == &slot.sampler) { slot.knob_pad_fed |= slot.sampler.knob_fed(); slot.send_pad_fed |= slot.sampler.sends_fed(); }
 }
 
 // A track's engine over the whole block (its job): in runs from one kept call to the next, each call made on its frame.
@@ -1397,6 +1398,7 @@ void EngineHost::plan_compensation() {
     plan.delay[CompensationLines::knob] = plan.returns - knob_own;
     plan.delay[CompensationLines::direct] = plan.delay[CompensationLines::aside] = plan.delay[CompensationLines::key] = plan.returns;
     plan.delay[CompensationLines::knob_pads] = plan.delay[CompensationLines::key_pad] = plan.tracks;
+    for (unsigned b = 0; b < bus_count; ++b) plan.delay[CompensationLines::pad_sends0 + b] = plan.tracks; // they leave before the chain
     // On while anything is late, and for one block after it all came back to none (the lines ease back).
     bool late = plan.tracks || plan.returns;
     plan.on = late || (pdc.on && (pdc.tracks || pdc.returns));
@@ -2429,6 +2431,9 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         std::fill(slot.buffer, slot.buffer + frames, 0.0f);
         std::fill(slot.left, slot.left + frames, 0.0f); std::fill(slot.right, slot.right + frames, 0.0f);
         slot.knob_pad_fed = false;
+        for (unsigned b = 0; b < bus_count; ++b) // pad sends: only what the last block wrote needs clearing
+            if ((slot.send_pad_fed >> b) & 1) { std::fill(slot.pad_sends->l[b], slot.pad_sends->l[b] + block, 0.0f); std::fill(slot.pad_sends->r[b], slot.pad_sends->r[b] + block, 0.0f); }
+        slot.send_pad_fed = 0;
         slot.print_fed = false; // freeze plan F2b: this block's print, from the first run a voice sounds in
         if (knob_heard && slot.engine == &slot.sampler) { // Knob FX on kit pads: they play apart, into the slot's knob_pad_l / knob_pad_r
             std::fill(slot.knob_pad_l, slot.knob_pad_l + frames, 0.0f); std::fill(slot.knob_pad_r, slot.knob_pad_r + frames, 0.0f);
@@ -2481,6 +2486,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                 bool pad_key = pad_keyed >= 0 && &slot == &slots[unsigned(pad_keyed)];
                 slot.sampler.set_key_pad(pad_key ? int(comp.key_pad()) : -1, pad_key ? key_pad_l + done : nullptr, pad_key ? key_pad_r + done : nullptr);
                 slot.sampler.set_knob_out(knob_heard ? slot.knob_pad_l + done : nullptr, knob_heard ? slot.knob_pad_r + done : nullptr);
+                for (unsigned b = 0; b < bus_count; ++b) slot.sampler.set_send_out(b, slot.pad_sends->l[b] + done, slot.pad_sends->r[b] + done);
             }
         }
         cuts[cut_count++] = uint16_t(done); // a run starts here (at most one a frame)
@@ -2493,7 +2499,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
             auto t0 = std::chrono::steady_clock::now();
             if (slot.engine->stereo()) slot.engine->render_stereo(slot.left + done, slot.right + done, n);
             else slot.engine->render(slot.buffer + done, n);
-            if (slot.engine == &slot.sampler) slot.knob_pad_fed |= slot.sampler.knob_fed();
+            if (slot.engine == &slot.sampler) { slot.knob_pad_fed |= slot.sampler.knob_fed(); slot.send_pad_fed |= slot.sampler.sends_fed(); }
             track_ns[t] += uint32_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
         };
         if (parallel) workers.run(active, engine_job, true); // the old way keeps the workers awake between its runs
@@ -2527,6 +2533,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     std::fill(master_l, master_l + frames, 0.0f); std::fill(master_r, master_r + frames, 0.0f);
     std::fill(knob_l, knob_l + frames, 0.0f); std::fill(knob_r, knob_r + frames, 0.0f);
     if (pdc.on) { std::fill(knob_pad_sum_l, knob_pad_sum_l + frames, 0.0f); std::fill(knob_pad_sum_r, knob_pad_sum_r + frames, 0.0f); }
+    if (pdc.on) for (unsigned b = 0; b < bus_count; ++b) { std::fill(pad_send_sum_l[b], pad_send_sum_l[b] + frames, 0.0f); std::fill(pad_send_sum_r[b], pad_send_sum_r[b] + frames, 0.0f); }
     bool knob_fed = false;
     // Sidechain: the key track keys the compressor and stays aside while the rest ducks under it.
     bool keyed = comp.keyed();
@@ -2698,6 +2705,17 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
                         bus_l[b][f] += slot.left[f] * g; bus_r[b][f] += slot.right[f] * g;
                     }
                 }
+                // A kit's own pad sends: each pad's after its own chain, at the track's level and pan, muted with it;
+                // they left before the track's chain (compensating: held back apart, below).
+                for (unsigned b = 0; b < bus_count; ++b) {
+                    if (!((slot.send_pad_fed >> b) & 1)) continue;
+                    float* to_l = pdc.on ? pad_send_sum_l[b] : bus_l[b];
+                    float* to_r = pdc.on ? pad_send_sum_r[b] : bus_r[b];
+                    for (unsigned f = 0; f < frames; ++f) {
+                        float a = slot.audible.at(f);
+                        to_l[f] += slot.pad_sends->l[b][f] * slot.mix_l.at(f) * a; to_r[f] += slot.pad_sends->r[b][f] * slot.mix_r.at(f) * a;
+                    }
+                }
                 if (pad_keyed == int(t)) // the key pad joins after the ducking, untouched (no send: it left before the chain)
                     for (unsigned f = 0; f < frames; ++f) {
                         float a = slot.audible.at(f), l = key_l[f] * a, r = key_r[f] * a;
@@ -2714,6 +2732,10 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     if (pdc.on) { // roadmap P4: kits' pads into Knob FX as late as the latest track; the direct mix as late as the latest return
         compensate(CompensationLines::knob_pads, knob_pad_sum_l, knob_pad_sum_r, frames);
         for (unsigned f = 0; f < frames; ++f) { knob_l[f] += knob_pad_sum_l[f]; knob_r[f] += knob_pad_sum_r[f]; }
+        for (unsigned b = 0; b < bus_count; ++b) { // kits' pad sends as late as the latest track, then into their buses
+            compensate(CompensationLines::pad_sends0 + b, pad_send_sum_l[b], pad_send_sum_r[b], frames);
+            for (unsigned f = 0; f < frames; ++f) { bus_l[b][f] += pad_send_sum_l[b][f]; bus_r[b][f] += pad_send_sum_r[b][f]; }
+        }
         compensate(CompensationLines::direct, master_l, master_r, frames);
         if (keyed) { compensate(CompensationLines::aside, aside_l, aside_r, frames); compensate(CompensationLines::key, key_l, key_r, frames); }
     }
