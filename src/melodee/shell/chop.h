@@ -90,18 +90,23 @@ inline uint32_t zero_crossing_toward(const SampleData& sample, uint32_t frame, i
 }
 
 // The cut for a beat expected at `want`, a `step` after the cut before (`beat` frames a beat): the sample's tracked
-// beat within an eighth of a beat of it and within 6% of the step (so the slices follow a take that drifts, yet a
-// tracker that found the off-beats, a 16th or more away, or squeezed its last beats to reach a hit, never pulls
-// them off the region's own beat), else the hit within 30 ms, else `want` itself. `tracked`: it was a beat.
+// beat within an eighth of a beat of it and within 6% of the step, or within an eighth of a beat of `on_grid`, the
+// same beat counted on the region's grid (so the slices follow a take that drifts, and a beat a drummer played
+// late after one played early, yet a tracker that found the off-beats, a 16th or more away, or squeezed its last
+// beats to reach a hit, never pulls them off the region's own beat), else the hit within 30 ms, else `want`
+// itself. `tracked`: it was a beat.
 inline uint32_t beat_cut(double want, double step, double beat, const BeatGrid& grid, const std::array<Hit, max_hits>& hits,
-                         unsigned hit_count, bool& tracked) {
+                         unsigned hit_count, bool& tracked, double on_grid = -1) {
     auto gap = [&](uint32_t frame) { return std::fabs(double(frame) - want); };
     tracked = false;
     auto b = std::lower_bound(grid.at.begin(), grid.at.end(), uint32_t(want));
     uint32_t best = uint32_t(want);
-    double nearest = std::min(beat / 8, step * 0.06);
-    for (auto it : {b, b == grid.at.begin() ? b : b - 1})
-        if (it != grid.at.end() && gap(*it) <= nearest) { nearest = gap(*it); best = *it; tracked = true; }
+    double nearest = 1e300;
+    for (auto it : {b, b == grid.at.begin() ? b : b - 1, b + 1 < grid.at.end() ? b + 1 : b})
+        if (it != grid.at.end() && gap(*it) < nearest
+            && (gap(*it) <= std::min(beat / 8, step * 0.06) || (on_grid >= 0 && std::fabs(double(*it) - on_grid) <= beat / 8))) {
+            nearest = gap(*it); best = *it; tracked = true;
+        }
     if (tracked) return best;
     nearest = 1323; // 30 ms
     for (unsigned n = 0; n < hit_count; ++n)
@@ -146,9 +151,11 @@ inline Slices chop(ChopMode mode, int amount, uint32_t from, uint32_t to, uint32
             uint32_t anchor = beat_cut(at, step, beat, *grid, hits, hit_count, on_beat);
             if (on_beat) at = anchor;
             if (at > from + reach && at + reach < to) s.add(anchor, frames); // a lead-in before that beat: a slice of its own
+            double counted = at; // the same beats on the region's grid
             for (at += step; at + reach < last;) {
                 bool tracked = false;
-                uint32_t cut = beat_cut(at, step, beat, *grid, hits, hit_count, tracked);
+                counted += step;
+                uint32_t cut = beat_cut(at, step, beat, *grid, hits, hit_count, tracked, counted);
                 if (cut >= last) break;
                 s.add(cut, frames);
                 at = (tracked ? cut : at) + step; // the next from a tracked beat; from the grid past a hit

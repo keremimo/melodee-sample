@@ -140,12 +140,13 @@ void analyse(const SampleData& s, std::vector<Hit>& found, std::vector<float>& f
         }
 
         // Backtrack: in 1 ms steps of the sound's edges (its first difference, so a hat over a held pad shows), the
-        // steepest rise from 10 ms before the frame's centre to 25 ms after (a frame peaks as a sharp attack
-        // enters its window, about 10 ms early). It counts when the attack (the loudest edge in the 5 ms from it)
-        // is twice the loudest edge from 30 ms to 8 ms before; the cut then goes back down the rise until the edges
-        // stop falling or reach the background (their middle level there), at most 20 ms, and lands where the rise
-        // starts. A peak with no clear rise (a chord change at the same loudness, a beating chord) keeps the
-        // frame's centre: a cut a little early keeps the attack, a late one loses it.
+        // steepest rise from 25 ms before the frame's centre to 25 ms after (a 46 ms frame peaks anywhere from as
+        // an attack enters its window to half a window after). It counts when the attack (the loudest edge in the
+        // 5 ms from it) is twice the loudest edge from 30 ms to 8 ms before; the cut then goes back while the edges
+        // stay above twice the background (their middle level there), at most 20 ms, and lands where the sound
+        // rises out of it: an attack is loud and ragged, so it is not walked back step by falling step. A peak with
+        // no clear rise (a chord change at the same loudness, a beating chord) keeps the frame's centre: a cut a
+        // little early keeps the attack, a late one leaves it at the end of the slice before.
         const uint32_t steps = frames / fine;
         std::vector<float> edge(steps);
         for (uint32_t j = 0; j < steps; ++j) {
@@ -156,11 +157,19 @@ void analyse(const SampleData& s, std::vector<Hit>& found, std::vector<float>& f
             }
             edge[j] = std::sqrt(sum / fine);
         }
+        std::vector<float> level(steps); // the sound's level in the same steps
+        for (uint32_t j = 0; j < steps; ++j) {
+            float sum = 0;
+            for (uint32_t n = j * fine; n < (j + 1) * fine; ++n) sum += mono[n] * mono[n];
+            level[j] = std::sqrt(sum / fine);
+        }
+        auto level_at = [&](int64_t j) { return j >= 0 && j < int64_t(steps) ? level[size_t(j)] : 0.0f; };
+        auto edge_at = [&](int64_t j) { return j >= 0 && j < int64_t(steps) ? edge[size_t(j)] : 0.0f; };
         std::vector<float> around;
         for (size_t p = 0; p < peaks.size(); ++p) {
             const unsigned t = peaks[p];
             uint32_t centre = t * hop, cut = centre;
-            int64_t lo = std::max<int64_t>(1, int64_t(centre / fine) - 10), hi = std::min<int64_t>(int64_t(steps) - 1, centre / fine + 25);
+            int64_t lo = std::max<int64_t>(1, int64_t(centre / fine) - 25), hi = std::min<int64_t>(int64_t(steps) - 1, centre / fine + 25);
             int64_t steepest = -1;
             float most = 0;
             for (int64_t j = lo; j <= hi; ++j)
@@ -176,8 +185,24 @@ void analyse(const SampleData& s, std::vector<Hit>& found, std::vector<float>& f
                 for (int64_t j = steepest; j <= std::min<int64_t>(int64_t(steps) - 1, steepest + 5); ++j) attack = std::max(attack, edge[size_t(j)]);
                 if (attack >= 2 * loudest_before) {
                     int64_t j = steepest - 1, floor = std::max<int64_t>(0, steepest - 21);
-                    while (j > floor && edge[size_t(j - 1)] < edge[size_t(j)] && edge[size_t(j)] > background) --j;
+                    while (j > floor && edge[size_t(j)] > 2 * background) --j;
                     cut = uint32_t(j + 1) * fine;
+                }
+            }
+            // Then the trough: the quietest 1 ms (by level) up to 20 ms before the cut. Where both the level and the
+            // edges between it and the cut are 12 dB (4 times) above it (the edges too: a held low note's level
+            // swings with its wave within a millisecond, its edges do not), the attack rose out of it, from a soft first stroke (a flam,
+            // a grace note) or past a tail the edges missed: the cut moves to where it starts rising, the trough's
+            // last step within 3 dB of its quietest (in a silence, the end nearest the attack).
+            if (cut > fine * 2) {
+                int64_t c = cut / fine, quietest = c, from = std::max<int64_t>(0, c - 20);
+                for (int64_t j = c - 1; j >= from; --j) if (level_at(j) < level_at(quietest)) quietest = j;
+                float between = 0, edges = 0;
+                for (int64_t j = quietest + 1; j < c; ++j) { between = std::max(between, level_at(j)); edges = std::max(edges, edge_at(j)); }
+                if (quietest < c && between >= 4 * level_at(quietest) && edges >= 4 * edge_at(quietest)) {
+                    int64_t end = c - 1; // the trough's last step as quiet as it (within 3 dB): where the rise starts
+                    while (end > quietest && level_at(end) > 1.4f * level_at(quietest)) --end;
+                    cut = uint32_t(end + 1) * fine;
                 }
             }
             if (cut <= found.back().frame + spacing * hop) continue; // too near the hit before (or the start)

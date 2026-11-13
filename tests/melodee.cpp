@@ -2715,6 +2715,19 @@ void onset_hits() {
     auto quiet = hits_of(make(1.2, [](double t) { return t >= 0.7 ? 0.008 * std::sin(2 * M_PI * 200 * t) * std::exp(-(t - 0.7) / 0.1) : 0; }));
     CHECK(quiet.size() == 2 && near(quiet[1], 0.7, 2));
     CHECK(hits_of(SampleData {}).size() == 1);
+
+    // A flam: a soft stroke 8 ms before the main one, a short dip between. The cut goes before the soft stroke, so
+    // the slice before ends clean of it.
+    uint32_t grain = 3;
+    auto flam = hits_of(make(1.0, [&](double t) {
+        auto burst = [&](double at, double level, double decay) {
+            if (t < at) return 0.0;
+            grain = grain * 1664525u + 1013904223u;
+            return level * ((grain >> 8) / 8388608.0 - 1) * std::exp(-(t - at) / decay);
+        };
+        return burst(0.1, 0.5, 0.03) + burst(0.5, 0.06, 0.002) + burst(0.508, 0.6, 0.04);
+    }));
+    CHECK(flam.size() == 3 && near(flam[2], 0.5, 3));
 }
 
 // A sample's own beats (engine/onsets.cpp) and Chop's Beats on them (shell/chop.h): a loop's tempo exact from its
