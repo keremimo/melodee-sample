@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -89,11 +90,25 @@ fs::path stage_root() {
     return fs::temp_directory_path(error) / "melodee-plugins/stage";
 }
 
-// A plug-in's files into `to`: a VST3 bundle without other machines' builds, an Open MPC folder whole, a .so alone.
+// The folders beside a plug-in on the card, linked beside its copy: one that looks beside itself for its data finds
+// it there (Surge XT: its SurgeXTData folder, patches and wavetables).
+void link_neighbours(const fs::path& from, const fs::path& to) {
+    std::error_code e;
+    for (auto it = fs::directory_iterator(from.parent_path(), e); !e && it != fs::directory_iterator(); it.increment(e)) {
+        std::error_code f;
+        auto name = it->path().filename();
+        if (it->path() == from || name.string().empty() || name.string()[0] == '.' || !it->is_directory(f)) continue;
+        if (!fs::exists(to / name, f)) fs::create_directory_symlink(it->path(), to / name, f);
+    }
+}
+
+// A plug-in's files into `to`: a VST3 bundle without other machines' builds, an Open MPC folder whole, a .so alone;
+// the folders beside it linked.
 bool stage_copy(const PluginFile& file, const fs::path& to, std::string& error) {
     std::error_code e;
     fs::create_directories(to, e);
     fs::path from(file.path);
+    link_neighbours(from, to);
     if (!fs::is_directory(from, e)) {
         fs::copy_file(from, to / from.filename(), fs::copy_options::overwrite_existing, e);
         if (e) { error = "Could not copy: " + e.message(); return false; }
@@ -168,14 +183,23 @@ bool hidden(const juce::AudioProcessorParameter& p) {
 
 // The programs PRESETS lists: those with a name. Plug-ins that keep a fixed
 // number of slots name the unused ones "(empty)" (TONE3000), or leave them blank.
-std::vector<PluginProgram> named_programs(juce::AudioPluginInstance& instance) {
+PluginProgramList named_programs(juce::AudioPluginInstance& instance) {
     std::vector<PluginProgram> out;
     for (int i = 0; i < instance.getNumPrograms(); ++i) {
         auto name = instance.getProgramName(i).trim();
         if (name.isEmpty() || name.equalsIgnoreCase("(empty)")) continue;
-        out.push_back({i, name.toStdString()});
+        out.push_back({i, name.toStdString(), {}});
     }
-    return out;
+    return PluginProgramList(std::move(out));
+}
+
+// Where Melodee keeps what a CLAP plug-in's preset files said (plugin/clap_instance.h), in the plug-ins' home on the
+// card: read again only where a file changed. None without a card.
+juce::File clap_preset_cache(const std::string& home, const std::string& id) {
+    if (home.empty()) return {};
+    std::string name = id;
+    for (auto& c : name) if (!std::isalnum((unsigned char) c) && c != '.' && c != '-' && c != '_') c = '_';
+    return juce::File(juce::String((fs::path(home) / ".cache" / "melodee" / ("clap-presets-" + name + ".txt")).string()));
 }
 
 // Where plug-ins keep presets and settings: Melodee/Plugin Data on the card,
@@ -303,9 +327,10 @@ public:
     std::atomic<float> load {0};         // share of a block's time
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
-    std::vector<PluginProgram> programs; // its named programs, as it listed them on opening
+    PluginProgramList programs;          // its named programs, as it listed them on opening (a CLAP one's: once found)
     int program = -1;                    // the one picked last here (under the rack's lock)
     bool switching = false;              // a pick queued for the rack's thread (under the rack's lock)
+    bool finding = false;                // a CLAP plug-in's presets still being looked for (under the rack's lock)
 
 private:
     struct Midi { uint8_t status = 0, data1 = 0, data2 = 0; };
@@ -577,6 +602,7 @@ PluginPrograms PluginRack::programs(unsigned entry) const {
     out.list = e.live->programs;
     out.current = e.live->program;
     out.loading = e.live->switching;
+    out.finding = e.live->finding;
     return out;
 }
 
@@ -612,7 +638,7 @@ void PluginRack::switch_program(unsigned entry, uint32_t generation, int program
     if (program >= 0 && program < instance->getNumPrograms()) {
         // TONE3000 reads the preset's file now: one copied over it since it opened is made lite too.
         if (is_tone3000(instance->getName().toStdString())) tone3000_lite_presets(use_plugin_home());
-        if (instance->getCurrentProgram() == program && instance->getNumPrograms() > 1) {
+        if (instance->getCurrentProgram() == program && instance->getNumPrograms() > 1 && !dynamic_cast<ClapInstance*>(instance)) {
             instance->setCurrentProgram(program == 0 ? 1 : 0);
             std::this_thread::sleep_for(std::chrono::milliseconds(150));
         }
@@ -715,6 +741,7 @@ void PluginRack::run() {
         }
         case Job::Kind::Probe: probe_listed(); break;
         case Job::Kind::Program: switch_program(job.entry, job.generation, job.id); break;
+        case Job::Kind::Presets: find_presets(job.entry, job.generation); break;
         }
         free_retired();
     }
@@ -936,6 +963,7 @@ void PluginRack::load(const Job& job) {
     handle->stage = stage.string();
     handle->format = file.format;
     handle->programs = named_programs(*handle->instance);
+    handle->finding = file.format == PluginFormat::Clap; // looked for once it plays: find_presets()
     if (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) { // an Open MPC skin's Q-Link pages first, then the rest
         auto order = qlink_order(file.path);
         if (!order.empty()) {
@@ -975,6 +1003,35 @@ void PluginRack::load(const Job& job) {
     if (!offer(job.entry, raw)) {
         std::lock_guard<std::mutex> held(lock);
         unoffered.emplace_back(job.entry, raw);
+    }
+    changed();
+    if (file.format == PluginFormat::Clap) push({Job::Kind::Presets, job.entry, job.generation, {}, 0, 0});
+}
+
+// Rack thread: a CLAP plug-in's presets, looked for once it plays (the first time, Surge XT's on the card take a
+// while: thousands of files), then PRESETS' programs.
+void PluginRack::find_presets(unsigned entry, uint32_t generation) {
+    ClapInstance* clap = nullptr;
+    {
+        std::lock_guard<std::mutex> held(lock);
+        auto& e = entries[entry];
+        if (e.generation != generation || !e.live) return; // changed since: the plug-in it was for is gone
+        clap = dynamic_cast<ClapInstance*>(e.live->instance.get()); // freed only on this thread, so it outlives this
+    }
+    std::vector<PluginProgram> list;
+    if (clap) {
+        auto found = clap->findPresets(clap_preset_cache(use_plugin_home(), clap->clapId()));
+        list.reserve(found.size());
+        for (size_t n = 0; n < found.size(); ++n) list.push_back({int(n), found[n].name, found[n].folder});
+        clap->setPresets(std::move(found));
+    }
+    {
+        std::lock_guard<std::mutex> held(lock);
+        auto& e = entries[entry];
+        if (e.generation == generation && e.live && e.live->instance.get() == clap) {
+            e.live->programs = PluginProgramList(std::move(list));
+            e.live->finding = false;
+        }
     }
     changed();
 }

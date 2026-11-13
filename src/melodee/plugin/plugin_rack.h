@@ -79,7 +79,8 @@ public:
     void set_param(unsigned entry, unsigned shown, int value);
     // PRESETS: the plug-in's named programs, and one of them picked (by its
     // number in the plug-in), switched to on the rack's thread. Picking the
-    // one it is on loads it again (edits since are dropped).
+    // one it is on loads it again (edits since are dropped). A CLAP plug-in's
+    // presets are files: listed once the rack has looked for them (`finding`).
     PluginPrograms programs(unsigned entry) const;
     void select_program(unsigned entry, int program);
     PluginStatus status(unsigned entry) const;
@@ -114,7 +115,7 @@ private:
         PluginFile file;
     };
     struct Job {
-        enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program, Sleep } kind = Kind::Browse;
+        enum class Kind : uint8_t { Load, Unload, Browse, Probe, Program, Sleep, Presets } kind = Kind::Browse;
         unsigned entry = 0;
         uint32_t generation = 0;
         std::string path;
@@ -126,6 +127,7 @@ private:
     void unload(unsigned entry, uint32_t generation);
     void sleep(unsigned entry, uint32_t generation); // freeze plan F2d: its state taken, then let go as unload() does
     void switch_program(unsigned entry, uint32_t generation, int program);
+    void find_presets(unsigned entry, uint32_t generation); // a CLAP plug-in's, once it plays
     std::string use_plugin_home();                  // before a plug-in opens: $HOME on the card; it ("" no card)
     void list(const std::string& folder, int came_from);
     void probe_listed();                            // instrument or effect, for listed plug-ins not known yet

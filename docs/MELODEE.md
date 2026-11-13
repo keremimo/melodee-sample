@@ -1750,8 +1750,15 @@ of the card (beside `Samples/`), in any folders under it.
   takes MIDI. A parameter set on K1–K3 goes to the plug-in with its next
   block; the value shown is the one the plug-in last gave. A project keeps
   the plug-in's own state. Its latency counts for delay compensation. CLAP
-  has no program list (its presets are files found by preset discovery,
-  not read yet), so PRESETS lists none. No editor windows, as for VST3.
+  has no program list: a plug-in's presets are files its library's preset
+  discovery names, and preset-load loads one by its file. The rack looks
+  for them once the plug-in plays, reading each file the first time
+  (Surge XT's 3,563 take a while) and keeping what it read in
+  `Melodee/Plugin Data/.cache/melodee/`, so later it reads only new or
+  changed files. Each preset's folder under its location is its folder in
+  PRESETS; with more than one location holding presets (Surge XT: Factory,
+  Third Party, User), each location is a folder too, named without the
+  plug-in's name. No editor windows, as for VST3.
 - **LV2.** JUCE's own LV2 host (lilv, bundled in JUCE), with a lilv world
   for each plug-in opened, made on the message thread. A bundle's presets
   (`pset:Preset`) are its programs, so PRESETS lists them. JUCE cannot
@@ -1769,7 +1776,11 @@ of the card (beside `Samples/`), in any folders under it.
   move, Push loads one and stays, so the next is heard straight after (the
   pads play the track); the one picked says LOADED, B1 goes back. Picking
   the one loaded loads it again, dropping edits since. What a preset loads
-  goes into the plug-in's state, so the project keeps it.
+  goes into the plug-in's state, so the project keeps it. Presets in
+  folders (a CLAP plug-in's) list as those folders first, each with how
+  many presets it holds; Push opens one, B1 comes back out on it, and the
+  folder holding the one picked has the check. PRESETS opens in the folder
+  of the one picked last (`plugin/preset_rows.h`).
 - **Plugin Data.** Plug-ins keep presets and settings under their home
   folder, and the MPC's is read only: before a plug-in opens, `$HOME` is
   `Melodee/Plugin Data` on the card, laid out as on a Linux computer. Most
@@ -1828,7 +1839,9 @@ of the card (beside `Samples/`), in any folders under it.
   from (and CC 68 held over a tie), above, "Steps".
 - **Loading.** The card is mounted `noexec`, so a plug-in runs from a copy
   in `/run` (RAM), made when a project uses it and removed when nothing
-  does. The picker opens each plug-in it lists once, to tag it INSTRUMENT
+  does. The folders beside it on the card are linked beside the copy, so a
+  plug-in that looks beside itself for its data finds it there (Surge XT:
+  `SurgeXTData`). The picker opens each plug-in it lists once, to tag it INSTRUMENT
   or EFFECT. Opening takes from a few ms (VST2) to a quarter second (a
   32-bit plug-in starting its bridge).
 - **Support carried in the binary.** No-op stand-ins for the GUI libraries

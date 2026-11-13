@@ -16,6 +16,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_rack.h"
+#include "melodee/plugin/preset_rows.h"
 #include "melodee/shell/sample_library.h"
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
@@ -161,15 +162,28 @@ void Context::set_plugin_param(int32_t id, int value) {
     dirty = true;
 }
 
+namespace {
+std::string presets_folder(const UiState& ui) { return std::string(ui.presets_folder.data()); }
+void set_presets_folder(UiState& ui, const std::string& folder) {
+    ui.presets_folder.fill(0);
+    folder.copy(ui.presets_folder.data(), ui.presets_folder.size() - 1);
+}
+} // namespace
+
+// PRESETS opens where the preset picked last is: its folder, its row (plugin/preset_rows.h).
 void Context::open_plugin_presets(unsigned entry) {
     if (!plugins || entry >= max_plugins) return;
+    if (ui.preset_due && ui.presets_entry == entry) { // Stage's turn still to load: now, as the cursor means a row here
+        ui.preset_due = 0;
+        choose_plugin_program(ui.presets_cursor);
+    }
     auto programs = plugins->programs(entry);
-    if (programs.list.empty()) { notice("No presets in this plug-in"); return; }
+    if (programs.list.empty()) { notice(programs.finding ? "Looking for presets" : "No presets in this plug-in"); return; }
+    auto place = preset_place(programs.list, programs.current);
     ui.presets_entry = uint8_t(entry);
     ui.presets_back = ui.page;
-    ui.presets_cursor = 0;
-    for (size_t n = 0; n < programs.list.size(); ++n)
-        if (programs.list[n].index == programs.current) ui.presets_cursor = uint16_t(n);
+    set_presets_folder(ui, place.folder);
+    ui.presets_cursor = uint16_t(place.row);
     open(PageId::PluginPresets);
 }
 
@@ -179,6 +193,32 @@ void Context::choose_plugin_program(int index) {
     if (index < 0 || size_t(index) >= programs.list.size()) return;
     plugins->select_program(ui.presets_entry, programs.list[size_t(index)].index);
     dirty = true; // the plug-in's state, saved with the project, now holds it
+}
+
+void Context::push_plugin_preset() {
+    if (!plugins) return;
+    auto programs = plugins->programs(ui.presets_entry);
+    auto inside = presets_folder(ui);
+    auto rows = preset_rows(programs.list, inside, programs.current);
+    if (rows.empty()) return;
+    const auto& row = rows[std::min<size_t>(ui.presets_cursor, rows.size() - 1)];
+    if (!row.folder) { choose_plugin_program(int(row.at)); return; }
+    std::string into = inside.empty() ? row.name : inside + "/" + row.name;
+    if (into.size() >= ui.presets_folder.size()) { notice("Folder name too long"); return; }
+    set_presets_folder(ui, into);
+    ui.presets_cursor = 0;
+    if (!row.current) return;
+    auto in = preset_rows(programs.list, into, programs.current); // the preset picked last is in here: open on it
+    for (size_t n = 0; n < in.size(); ++n)
+        if (in[n].current) { ui.presets_cursor = uint16_t(n); break; }
+}
+
+void Context::back_plugin_presets() {
+    auto inside = presets_folder(ui);
+    if (inside.empty() || !plugins) { open(ui.presets_back); return; }
+    auto programs = plugins->programs(ui.presets_entry);
+    ui.presets_cursor = uint16_t(preset_row_of_folder(programs.list, inside, programs.current));
+    set_presets_folder(ui, preset_folder_up(inside));
 }
 
 int Context::plugin_in_focus() const {

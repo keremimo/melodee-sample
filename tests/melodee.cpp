@@ -100,6 +100,7 @@
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/nam.h"
 #include "melodee/plugin/tone3000.h"
+#include "melodee/plugin/preset_rows.h"
 #include <algorithm>
 #include <tuple>
 #include <array>
@@ -8327,6 +8328,41 @@ struct FakePlugin final : PluginRunner {
 // values and routes the plug-in's state in a free entry; FM6 and 909 tracks open empty with their patterns. Open MPC
 // plug-ins run at 44.1 kHz (MPC OS's contract): at another device rate they are heard through a band-limited
 // conversion, so they play in tune, and an effect passes what it is given.
+// PRESETS' folders (plugin/preset_rows.h): a folder's folders first, each with how many presets it holds at any
+// depth, then its own presets; the one picked last and the folders holding it marked; where PRESETS opens on it, and
+// the row of the folder B1 comes back out of. Presets with no folder list at the top, as before.
+void preset_folders() {
+    PluginProgramList list({{0, "Init", ""}, {1, "Deep", "Factory/Basses"}, {2, "Sub", "Factory/Basses"},
+                            {3, "Glass", "Factory/Keys"}, {4, "Rough", "Factory/Basses/Dirty"},
+                            {5, "Mine", "User"}, {6, "Bad", "Factorya"}});
+    auto top = preset_rows(list, "", 4);
+    CHECK(top.size() == 4);
+    CHECK(top[0].folder && top[0].name == "Factory" && top[0].count == 4 && top[0].at == 1 && top[0].current);
+    CHECK(top[1].folder && top[1].name == "User" && top[1].count == 1 && !top[1].current);
+    CHECK(top[2].folder && top[2].name == "Factorya" && top[2].count == 1);
+    CHECK(!top[3].folder && top[3].name == "Init" && top[3].at == 0);
+    auto factory = preset_rows(list, "Factory", 4);
+    CHECK(factory.size() == 2 && factory[0].name == "Basses" && factory[0].count == 3 && factory[0].current);
+    CHECK(factory[1].name == "Keys" && factory[1].count == 1 && !factory[1].current);
+    auto basses = preset_rows(list, "Factory/Basses", 4);
+    CHECK(basses.size() == 3 && basses[0].folder && basses[0].name == "Dirty" && basses[0].current);
+    CHECK(!basses[1].folder && basses[1].name == "Deep" && basses[1].at == 1 && !basses[2].current);
+    CHECK(preset_rows(list, "Nowhere", 4).empty());
+
+    auto place = preset_place(list, 2);
+    CHECK(place.folder == "Factory/Basses" && place.row == 2); // after Dirty and Deep
+    CHECK(preset_place(list, -1).folder.empty() && preset_place(list, -1).row == 0);
+    CHECK(preset_folder_up("Factory/Basses/Dirty") == "Factory/Basses" && preset_folder_up("Factory").empty());
+    CHECK(preset_folder_name("Factory/Basses") == "Basses" && preset_folder_name("User") == "User");
+    CHECK(preset_row_of_folder(list, "Factory/Keys", -1) == 1 && preset_row_of_folder(list, "User", -1) == 1);
+
+    PluginProgramList flat({{0, "One", ""}, {3, "Four", ""}}); // a VST3's programs: no folders
+    auto rows = preset_rows(flat, "", 3);
+    CHECK(rows.size() == 2 && !rows[0].folder && rows[1].name == "Four" && rows[1].current && rows[1].at == 1);
+    PluginProgramList none;
+    CHECK(none.empty() && preset_rows(none, "", -1).empty() && none.begin() == none.end());
+}
+
 // TONE3000's NAM blocks always lite (plugin/tone3000.h): each "slimSize" double set to 0 in its data and its
 // presets on the card, and nothing else.
 void tone3000_always_lite() {
@@ -12734,6 +12770,7 @@ int main() {
     kit_lanes();
     plugins();
     tone3000_always_lite();
+    preset_folders();
     nam_page();
     qlink_pages();
     synths_as_plugins();

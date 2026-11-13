@@ -8,9 +8,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
+#include <filesystem>
+#include <fstream>
+#include <map>
 
 namespace melodee {
 using namespace juce;
@@ -145,6 +150,13 @@ struct ClapInstance::Host
             [] (const clap_host*) -> uint32_t { return CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI; },
             [] (const clap_host*, uint32_t) {},
         };
+        static const clap_host_preset_load presetLoad {
+            [] (const clap_host*, uint32_t, const char* location, const char*, int32_t, const char* message) {
+                std::fprintf (stderr, "clap: preset %s: %s\n", location != nullptr ? location : "(inside)",
+                              message != nullptr ? message : "");
+            },
+            [] (const clap_host*, uint32_t, const char*, const char*) {}, // PRESETS marks the one picked here
+        };
         if (std::strcmp (id, CLAP_EXT_THREAD_CHECK) == 0) return &threads;
         if (std::strcmp (id, CLAP_EXT_LOG) == 0) return &logger;
         if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &params;
@@ -153,6 +165,7 @@ struct ClapInstance::Host
         if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &state;
         if (std::strcmp (id, CLAP_EXT_AUDIO_PORTS) == 0) return &audioPorts;
         if (std::strcmp (id, CLAP_EXT_NOTE_PORTS) == 0) return &notePorts;
+        if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0 || std::strcmp (id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0) return &presetLoad;
         return nullptr;
     }
 };
@@ -337,6 +350,9 @@ ClapInstance::ClapInstance (std::unique_ptr<Host> h, Library* l, const clap_plug
     state = static_cast<const clap_plugin_state*> (plugin->get_extension (plugin, CLAP_EXT_STATE));
     latency = static_cast<const clap_plugin_latency*> (plugin->get_extension (plugin, CLAP_EXT_LATENCY));
     tail = static_cast<const clap_plugin_tail*> (plugin->get_extension (plugin, CLAP_EXT_TAIL));
+    presetLoad = static_cast<const clap_plugin_preset_load*> (plugin->get_extension (plugin, CLAP_EXT_PRESET_LOAD));
+    if (presetLoad == nullptr)
+        presetLoad = static_cast<const clap_plugin_preset_load*> (plugin->get_extension (plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
     events.resize (maxEvents);
     std::lock_guard<std::recursive_mutex> held (mainLock);
     readParameters();
@@ -628,6 +644,334 @@ void ClapInstance::setStateInformation (const void* data, int size)
     } };
     std::lock_guard<std::recursive_mutex> held (mainLock);
     if (state->load (plugin, &stream)) refreshValues();
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Presets: preset discovery (clap/factory/preset-discovery.h) to find them, preset-load to load one.
+
+namespace
+{
+namespace fs = std::filesystem;
+
+// One file's presets as its provider named them (the ones for this plug-in), and what it was when read.
+struct FileFound
+{
+    uint64_t size = 0;
+    int64_t time = 0;
+    std::vector<std::pair<std::string, std::string>> presets; // name, load key
+};
+
+int64_t fileTime (const fs::path& p, std::error_code& e)
+{
+    return (int64_t) fs::last_write_time (p, e).time_since_epoch().count();
+}
+
+// The cache file: a first line naming it, then each file read ("F", path, size, time) and its presets after it
+// ("P", name, key), tab separated. Names never hold a tab or a line break (clean() makes them spaces).
+constexpr char cacheHeader[] = "melodee clap presets 1";
+
+std::string clean (const char* s)
+{
+    std::string out = text (s).toStdString();
+    for (auto& c : out) if (c == '\t' || c == '\n' || c == '\r') c = ' ';
+    return out;
+}
+
+std::vector<std::string> fields (const std::string& line)
+{
+    std::vector<std::string> out (1);
+    for (char c : line)
+        if (c == '\t') out.emplace_back();
+        else out.back() += c;
+    return out;
+}
+
+std::map<std::string, FileFound> readCache (const File& cache)
+{
+    std::map<std::string, FileFound> out;
+    if (cache == File()) return out;
+    std::ifstream in (cache.getFullPathName().toStdString());
+    std::string line;
+    if (! std::getline (in, line) || line != cacheHeader) return out;
+    FileFound* file = nullptr;
+    while (std::getline (in, line))
+    {
+        auto f = fields (line);
+        if (f[0] == "F" && f.size() == 4)
+        {
+            file = &out[f[1]];
+            file->size = std::strtoull (f[2].c_str(), nullptr, 10);
+            file->time = std::strtoll (f[3].c_str(), nullptr, 10);
+        }
+        else if (f[0] == "P" && f.size() == 3 && file != nullptr)
+            file->presets.emplace_back (f[1], f[2]);
+    }
+    return out;
+}
+
+void writeCache (const File& cache, const std::map<std::string, FileFound>& files)
+{
+    if (cache == File()) return;
+    std::error_code e;
+    const fs::path to (cache.getFullPathName().toStdString()), part (to.string() + ".part");
+    fs::create_directories (to.parent_path(), e);
+    {
+        std::ofstream out (part, std::ios::trunc);
+        out << cacheHeader << '\n';
+        for (const auto& [path, file] : files)
+        {
+            out << "F\t" << path << '\t' << file.size << '\t' << file.time << '\n';
+            for (const auto& [name, key] : file.presets) out << "P\t" << name << '\t' << key << '\n';
+        }
+        if (! out) { fs::remove (part, e); return; }
+    }
+    fs::rename (part, to, e); // whole or not at all
+}
+
+// What a provider declares in init(): the files its presets are in and where to look for them.
+struct Indexer
+{
+    struct Location { std::string name, path; bool inside = false; };
+    std::vector<std::string> extensions; // lower case, no dot; "" any file
+    std::vector<Location> locations;
+    clap_preset_discovery_indexer indexer {};
+
+    Indexer()
+    {
+        indexer.clap_version = CLAP_VERSION;
+        indexer.name = "Melodee";
+        indexer.vendor = "Ellic Studio";
+        indexer.url = "";
+        indexer.version = "1";
+        indexer.indexer_data = this;
+        indexer.declare_filetype = [] (const clap_preset_discovery_indexer* i, const clap_preset_discovery_filetype* t) {
+            if (t == nullptr) return false;
+            auto ext = text (t->file_extension).toLowerCase().trimCharactersAtStart (".").toStdString();
+            static_cast<Indexer*> (i->indexer_data)->extensions.push_back (ext);
+            return true;
+        };
+        indexer.declare_location = [] (const clap_preset_discovery_indexer* i, const clap_preset_discovery_location* l) {
+            if (l == nullptr) return false;
+            const bool inside = l->kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN;
+            if (! inside && (l->kind != CLAP_PRESET_DISCOVERY_LOCATION_FILE || l->location == nullptr)) return false;
+            static_cast<Indexer*> (i->indexer_data)->locations.push_back ({ text (l->name).toStdString(),
+                                                                           inside ? std::string() : std::string (l->location), inside });
+            return true;
+        };
+        indexer.declare_soundpack = [] (const clap_preset_discovery_indexer*, const clap_preset_discovery_soundpack*) { return true; };
+        indexer.get_extension = [] (const clap_preset_discovery_indexer*, const char*) -> const void* { return nullptr; };
+    }
+
+    bool wanted (const fs::path& p) const
+    {
+        const auto name = p.filename().string();
+        if (name.empty() || name[0] == '.') return false; // a Mac's ._ files beside each on the card
+        if (extensions.empty()) return true;
+        auto ext = String (p.extension().string()).toLowerCase().trimCharactersAtStart (".").toStdString();
+        for (const auto& want : extensions)
+            if (want.empty() || want == ext) return true;
+        return false;
+    }
+};
+
+// What get_metadata() says of one file: each preset, and whether it is for this plug-in (it names no plug-in, or
+// names this one).
+struct Receiver
+{
+    struct Found { std::string name, key; bool named = false, ours = false; };
+    const std::string& id;
+    std::vector<Found> found;
+    clap_preset_discovery_metadata_receiver receiver {};
+
+    explicit Receiver (const std::string& pluginId) : id (pluginId)
+    {
+        receiver.receiver_data = this;
+        receiver.on_error = [] (const clap_preset_discovery_metadata_receiver*, int32_t, const char*) {};
+        receiver.begin_preset = [] (const clap_preset_discovery_metadata_receiver* r, const char* name, const char* key) {
+            of (r).found.push_back ({ clean (name), key != nullptr ? clean (key) : std::string() });
+            return true;
+        };
+        receiver.add_plugin_id = [] (const clap_preset_discovery_metadata_receiver* r, const clap_universal_plugin_id* p) {
+            auto& self = of (r);
+            if (self.found.empty() || p == nullptr) return;
+            auto& f = self.found.back();
+            f.named = true;
+            if (p->abi != nullptr && p->id != nullptr && std::strcmp (p->abi, "clap") == 0 && p->id == self.id) f.ours = true;
+        };
+        receiver.set_soundpack_id = [] (const clap_preset_discovery_metadata_receiver*, const char*) {};
+        receiver.set_flags = [] (const clap_preset_discovery_metadata_receiver*, uint32_t) {};
+        receiver.add_creator = [] (const clap_preset_discovery_metadata_receiver*, const char*) {};
+        receiver.set_description = [] (const clap_preset_discovery_metadata_receiver*, const char*) {};
+        receiver.set_timestamps = [] (const clap_preset_discovery_metadata_receiver*, clap_timestamp, clap_timestamp) {};
+        receiver.add_feature = [] (const clap_preset_discovery_metadata_receiver*, const char*) {};
+        receiver.add_extra_info = [] (const clap_preset_discovery_metadata_receiver*, const char*, const char*) {};
+    }
+    static Receiver& of (const clap_preset_discovery_metadata_receiver* r) { return *static_cast<Receiver*> (r->receiver_data); }
+
+    // The presets for this plug-in, a file's single unnamed one by the file's name.
+    std::vector<std::pair<std::string, std::string>> ours (const fs::path& file) const
+    {
+        std::vector<std::pair<std::string, std::string>> out;
+        for (const auto& f : found)
+            if (! f.named || f.ours)
+                out.emplace_back (f.name.empty() ? file.stem().string() : f.name, f.key);
+        return out;
+    }
+};
+
+// Case-blind, with "/" before any other character, so a folder's own presets come before a folder beside it.
+bool sortsBefore (const std::string& a, const std::string& b)
+{
+    auto rank = [] (char c) { return c == '/' ? 0 : std::tolower ((unsigned char) c) + 1; };
+    for (size_t n = 0; n < a.size() && n < b.size(); ++n)
+        if (rank (a[n]) != rank (b[n])) return rank (a[n]) < rank (b[n]);
+    return a.size() < b.size();
+}
+} // namespace
+
+std::vector<ClapInstance::Preset> ClapInstance::findPresets (const File& cache) const
+{
+    auto* factory = static_cast<const clap_preset_discovery_factory*> (library->entry->get_factory (CLAP_PRESET_DISCOVERY_FACTORY_ID));
+    if (factory == nullptr)
+        factory = static_cast<const clap_preset_discovery_factory*> (library->entry->get_factory (CLAP_PRESET_DISCOVERY_FACTORY_ID_COMPAT));
+    if (factory == nullptr) return {};
+
+    const auto started = Time::getMillisecondCounterHiRes();
+    const auto cached = readCache (cache);
+    std::map<std::string, FileFound> after;
+    size_t read = 0;
+    struct Found { Preset preset; size_t location; };
+    std::vector<Found> found;
+    std::vector<std::string> locationNames;
+
+    for (uint32_t p = 0, providers = factory->count (factory); p < providers; ++p)
+    {
+        auto* d = factory->get_descriptor (factory, p);
+        if (d == nullptr || d->id == nullptr) continue;
+        Indexer indexer;
+        auto* provider = factory->create (factory, &indexer.indexer, d->id);
+        if (provider == nullptr) continue;
+        if (! provider->init (provider)) { provider->destroy (provider); continue; }
+
+        for (const auto& location : indexer.locations)
+        {
+            const size_t at = locationNames.size();
+            auto shown = String (location.name);
+            if (shown.startsWithIgnoreCase (name + " ")) shown = shown.substring (name.length() + 1); // "Surge XT Factory Presets"
+            locationNames.push_back ((shown.isEmpty() ? String ("Presets") : shown).replaceCharacter ('/', '-').toStdString());
+
+            Receiver receiver (info.id);
+            if (location.inside)
+            {
+                if (provider->get_metadata (provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, &receiver.receiver))
+                    for (auto& [n, key] : receiver.ours ({}))
+                        found.push_back ({ { n, {}, {}, key }, at });
+                continue;
+            }
+            // A link (Surge XT's data beside its copy in RAM) read where it leads, so the cache and the files PRESETS
+            // loads stay the same from one opening to the next.
+            std::error_code e;
+            fs::path root = fs::canonical (location.path, e);
+            if (e) continue;
+            std::vector<fs::path> files;
+            const bool single = fs::is_regular_file (root, e);
+            const fs::path base = single ? root.parent_path() : root; // where its folders count from
+            if (single) files.push_back (root);
+            else if (fs::is_directory (root, e))
+                for (auto it = fs::recursive_directory_iterator (root, fs::directory_options::skip_permission_denied, e);
+                     ! e && it != fs::recursive_directory_iterator(); it.increment (e))
+                {
+                    std::error_code f;
+                    const auto leaf = it->path().filename().string();
+                    if (! leaf.empty() && leaf[0] == '.') { if (it->is_directory (f)) it.disable_recursion_pending(); continue; }
+                    if (it->is_regular_file (f) && indexer.wanted (it->path())) files.push_back (it->path());
+                }
+            for (const auto& path : files)
+            {
+                std::error_code f, g;
+                FileFound now;
+                now.size = (uint64_t) fs::file_size (path, f);
+                now.time = fileTime (path, g);
+                if (f || g) continue;
+                auto known = cached.find (path.string());
+                if (known != cached.end() && known->second.size == now.size && known->second.time == now.time)
+                    now.presets = known->second.presets;
+                else
+                {
+                    receiver.found.clear();
+                    if (provider->get_metadata (provider, CLAP_PRESET_DISCOVERY_LOCATION_FILE, path.string().c_str(), &receiver.receiver))
+                        now.presets = receiver.ours (path);
+                    ++read;
+                }
+                std::string where = path.parent_path().lexically_relative (base).generic_string();
+                if (where == ".") where.clear();
+                for (const auto& [n, key] : now.presets)
+                    found.push_back ({ { n, where, path.string(), key }, at });
+                after[path.string()] = std::move (now);
+            }
+        }
+        provider->destroy (provider);
+    }
+
+    // More than one location holding presets: each a folder of its own, by its name.
+    std::vector<bool> holds (locationNames.size(), false);
+    for (const auto& f : found) holds[f.location] = true;
+    if (std::count (holds.begin(), holds.end(), true) > 1)
+        for (auto& f : found)
+            f.preset.folder = locationNames[f.location] + (f.preset.folder.empty() ? "" : "/" + f.preset.folder);
+    std::stable_sort (found.begin(), found.end(), [] (const Found& a, const Found& b) {
+        if (a.location != b.location) return a.location < b.location;
+        if (a.preset.folder != b.preset.folder) return sortsBefore (a.preset.folder, b.preset.folder);
+        return sortsBefore (a.preset.name, b.preset.name);
+    });
+    if (read > 0 || after.size() != cached.size()) writeCache (cache, after);
+
+    std::vector<Preset> out;
+    out.reserve (found.size());
+    for (auto& f : found) out.push_back (std::move (f.preset));
+    std::fprintf (stderr, "clap: %s: %zu presets, %zu files read, %.0f ms\n", name.toRawUTF8(), out.size(), read,
+                  Time::getMillisecondCounterHiRes() - started);
+    return out;
+}
+
+void ClapInstance::setPresets (std::vector<Preset> found)
+{
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    presets = std::move (found);
+    currentPreset = -1;
+}
+
+int ClapInstance::getNumPrograms()
+{
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    return std::max (1, (int) presets.size());
+}
+
+int ClapInstance::getCurrentProgram()
+{
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    return std::max (currentPreset, 0);
+}
+
+const String ClapInstance::getProgramName (int index)
+{
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    return index >= 0 && index < (int) presets.size() ? String::fromUTF8 (presets[(size_t) index].name.c_str()) : String();
+}
+
+// The plug-in takes it in its own time (Surge XT: at its next block).
+void ClapInstance::setCurrentProgram (int index)
+{
+    std::lock_guard<std::recursive_mutex> held (mainLock);
+    if (presetLoad == nullptr || index < 0 || index >= (int) presets.size()) return;
+    const auto& p = presets[(size_t) index];
+    const bool inside = p.location.empty();
+    if (presetLoad->from_location (plugin, inside ? CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN : CLAP_PRESET_DISCOVERY_LOCATION_FILE,
+                                   inside ? nullptr : p.location.c_str(), p.key.empty() ? nullptr : p.key.c_str()))
+    {
+        currentPreset = index;
+        refreshValues();
+    }
 }
 
 } // namespace melodee

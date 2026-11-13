@@ -220,6 +220,7 @@ struct UiState {
     uint8_t presets_entry = no_plugin;
     uint16_t presets_cursor = 0;
     PageId presets_back = PageId::Edit;
+    std::array<char, 192> presets_folder {}; // PRESETS: the folder in view, "" the top (plugin/preset_rows.h)
     uint16_t files_cursor = 0;  // Samples, the browser: the row under the cursor
     uint16_t files_count = 0;   // rows in the folder listed, copied in by the shell
     uint8_t files_drive = 0;    // B2: 0 the card, 1 the internal drive (Drive in sample_library.h)

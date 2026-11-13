@@ -4,6 +4,7 @@
 #include "melodee/model/limits.h"
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -42,15 +43,34 @@ struct PluginPanel {
 
 // A plug-in's programs as PRESETS lists them: the named ones, each with its
 // number in the plug-in, and the one picked last (-1: none picked here yet).
+// A CLAP plug-in's presets are files, so each also has the folder it is in
+// ("Leads", "Third Party Presets/Kinsey Dulcet/Percussion"; "" none).
 struct PluginProgram {
     int index = 0;
     std::string name;
+    std::string folder;
+};
+// The list shared rather than copied: a plug-in may have thousands of presets
+// (Surge XT), and the pages take it with every frame. Never changed once made.
+class PluginProgramList {
+public:
+    PluginProgramList() = default;
+    explicit PluginProgramList(std::vector<PluginProgram> items)
+        : items_(std::make_shared<const std::vector<PluginProgram>>(std::move(items))) {}
+    size_t size() const { return items_ ? items_->size() : 0; }
+    bool empty() const { return size() == 0; }
+    const PluginProgram& operator[](size_t n) const { return (*items_)[n]; }
+    const PluginProgram* begin() const { return items_ ? items_->data() : nullptr; }
+    const PluginProgram* end() const { return items_ ? items_->data() + items_->size() : nullptr; }
+private:
+    std::shared_ptr<const std::vector<PluginProgram>> items_;
 };
 struct PluginPrograms {
     uint8_t entry = no_plugin;
-    std::vector<PluginProgram> list;
+    PluginProgramList list;
     int current = -1;
     bool loading = false;          // a pick still on its way to the plug-in
+    bool finding = false;          // its presets still being looked for (a CLAP plug-in's, on the card)
 };
 
 // A drum plug-in's voices as the selected track's Drums pads reach them (plugin/drum_map.h): the name on each of

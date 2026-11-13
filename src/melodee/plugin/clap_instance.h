@@ -30,6 +30,7 @@ struct clap_plugin_latency;
 struct clap_plugin_tail;
 struct clap_plugin_audio_ports;
 struct clap_plugin_note_ports;
+struct clap_plugin_preset_load;
 struct clap_event_header;
 struct clap_output_events;
 
@@ -64,11 +65,27 @@ public:
     bool producesMidi() const override { return false; }
     juce::AudioProcessorEditor* createEditor() override { return nullptr; }
     bool hasEditor() const override { return false; }
-    // CLAP has no program list (presets are files, found through preset discovery): PRESETS lists none.
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    // Presets. CLAP has no program list: a plug-in's presets are files (or kept inside it) that its library's preset
+    // discovery names, and the plug-in loads one by its place (preset-load). findPresets() looks for them;
+    // setPresets() makes them its programs, for PRESETS.
+    struct Preset
+    {
+        std::string name;
+        std::string folder;   // where it is under its location ("/" between levels; "" at the top)
+        std::string location; // its file ("" one kept inside the plug-in)
+        std::string key;      // which one in a file of several ("" the file's only one)
+    };
+    // Every preset its library's providers find for this plug-in, in the order they name their locations, then by
+    // folder, then by name; with more than one location holding presets, each location is a folder of its own.
+    // `cache`: a file keeping what was read, so the next time reads only files new or changed since (none: read
+    // them all). Slow the first time (Surge XT: thousands of files on the card); any thread but the audio thread.
+    std::vector<Preset> findPresets (const juce::File& cache) const;
+    void setPresets (std::vector<Preset>);
+    const std::string& clapId() const { return info.id; }
+    int getNumPrograms() override;                      // its presets (1 with none, as JUCE has it)
+    int getCurrentProgram() override;                   // the one loaded here last (0 none yet)
+    void setCurrentProgram (int) override;              // loads that preset, again if it is the one loaded
+    const juce::String getProgramName (int) override;
     void changeProgramName (int, const juce::String&) override {}
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
@@ -98,6 +115,9 @@ private:
     const clap_plugin_state* state = nullptr;
     const clap_plugin_latency* latency = nullptr;
     const clap_plugin_tail* tail = nullptr;
+    const clap_plugin_preset_load* presetLoad = nullptr;
+    std::vector<Preset> presets;    // under `mainLock`
+    int currentPreset = -1;         // under `mainLock`
     juce::File file;
     Info info;
     juce::String name;

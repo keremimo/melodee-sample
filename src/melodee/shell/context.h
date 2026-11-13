@@ -291,7 +291,9 @@ public:
     void choose_plugin(const PluginFile& file);
     void set_plugin_param(int32_t id, int value);
     void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
-    void choose_plugin_program(int index);    // PRESETS: Push on the row at `index`
+    void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
+    void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
+    void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from
     void plugins_tick(uint32_t now);
     int plugin_in_focus() const; // the entry the page in view shows, -1 none
     void split_shared_plugins(); // a copy's second user of an entry gets one of its own

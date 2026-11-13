@@ -5,6 +5,14 @@
 // and says so as an output event) and Test Gain (an effect). Each counts the
 // calls it got on the wrong thread, by the host's thread-check, and
 // fixture_counts() reports them.
+//
+// Presets, as Surge XT keeps its own: files in folders beside the library
+// (TestPresets, and TestUser once there), found through preset discovery and
+// loaded through preset-load. A .tsp file holds a preset a line: its name, a
+// tab, its value (Sine's Level, Gain's Gain), and maybe a tab and who it is
+// for ("gain" Test Gain, "-" no one named; else Test Sine). A file of several
+// gives each its line number as its load key. fixture_preset_reads() counts
+// the files read.
 #include <clap/clap.h>
 
 #include <atomic>
@@ -12,10 +20,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <map>
+#include <string>
+#include <sys/stat.h>
+#include <vector>
 
 namespace {
-std::atomic<int> wrongThread {0}, mainCallbacks {0}, inits {0};
+std::atomic<int> wrongThread {0}, mainCallbacks {0}, inits {0}, presetReads {0};
+std::string libraryPath;
 
 struct Plugin {
     clap_plugin plugin {};
@@ -108,6 +121,93 @@ const clap_plugin_note_ports notePorts {noteCount, noteInfo};
 uint32_t latency(const clap_plugin* p) { return of(p).instrument ? 0 : 32; }
 const clap_plugin_latency latencyExt {latency};
 
+struct PresetLine { std::string name; double value = 0; std::string forWhom; };
+std::vector<PresetLine> presetFile(const char* path) {
+    std::vector<PresetLine> out;
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        auto tab = line.find('\t');
+        if (tab == std::string::npos) continue;
+        PresetLine p;
+        p.name = line.substr(0, tab);
+        auto rest = line.substr(tab + 1);
+        auto second = rest.find('\t');
+        p.value = std::atof(rest.substr(0, second).c_str());
+        if (second != std::string::npos) p.forWhom = rest.substr(second + 1);
+        out.push_back(p);
+    }
+    return out;
+}
+std::string besideLibrary(const char* folder) { return libraryPath.substr(0, libraryPath.rfind('/') + 1) + folder; }
+bool isFolder(const std::string& path) { struct stat st {}; return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode); }
+
+bool fromLocation(const clap_plugin* p, uint32_t kind, const char* location, const char* key) {
+    auto& s = of(p);
+    s.main();
+    if (kind != CLAP_PRESET_DISCOVERY_LOCATION_FILE || location == nullptr) return false;
+    auto lines = presetFile(location);
+    size_t n = key != nullptr ? std::strtoul(key, nullptr, 10) : 0;
+    if (n >= lines.size()) return false;
+    (s.instrument ? s.level : s.gain) = lines[n].value;
+    if (auto* told = static_cast<const clap_host_preset_load*>(s.host->get_extension(s.host, CLAP_EXT_PRESET_LOAD)))
+        told->loaded(s.host, kind, location, key);
+    return true;
+}
+const clap_plugin_preset_load presetLoad {fromLocation};
+
+// One provider for both plug-ins: TestPresets ("Test Sine Factory") and TestUser ("User"), where they are.
+const clap_preset_discovery_provider_descriptor providerDescriptor {CLAP_VERSION_INIT, "org.melodee.test.presets", "Test Presets", "Melodee"};
+struct Provider {
+    clap_preset_discovery_provider provider {};
+    const clap_preset_discovery_indexer* indexer = nullptr;
+};
+bool providerInit(const clap_preset_discovery_provider* p) {
+    auto* indexer = static_cast<Provider*>(p->provider_data)->indexer;
+    clap_preset_discovery_filetype type {"Test preset", "", "tsp"};
+    if (!indexer->declare_filetype(indexer, &type)) return false;
+    for (auto [name, folder] : {std::pair {"Test Sine Factory", "TestPresets"}, std::pair {"User", "TestUser"}}) {
+        auto path = besideLibrary(folder);
+        if (!isFolder(path)) continue;
+        clap_preset_discovery_location location {CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT, name, CLAP_PRESET_DISCOVERY_LOCATION_FILE, path.c_str()};
+        if (!indexer->declare_location(indexer, &location)) return false;
+    }
+    return true;
+}
+bool providerMetadata(const clap_preset_discovery_provider*, uint32_t kind, const char* location,
+                      const clap_preset_discovery_metadata_receiver* r) {
+    ++presetReads;
+    if (kind != CLAP_PRESET_DISCOVERY_LOCATION_FILE || location == nullptr) return false;
+    auto lines = presetFile(location);
+    if (lines.empty()) { r->on_error(r, 0, "Not a test preset"); return false; }
+    for (size_t n = 0; n < lines.size(); ++n) {
+        auto key = std::to_string(n);
+        if (!r->begin_preset(r, lines[n].name.c_str(), lines.size() > 1 ? key.c_str() : nullptr)) return false;
+        if (lines[n].forWhom == "-") continue;
+        clap_universal_plugin_id id {"clap", lines[n].forWhom == "gain" ? "org.melodee.test.gain" : "org.melodee.test.sine"};
+        r->add_plugin_id(r, &id);
+    }
+    return true;
+}
+uint32_t providerCount(const clap_preset_discovery_factory*) { return 1; }
+const clap_preset_discovery_provider_descriptor* providerAt(const clap_preset_discovery_factory*, uint32_t i) {
+    return i == 0 ? &providerDescriptor : nullptr;
+}
+const clap_preset_discovery_provider* makeProvider(const clap_preset_discovery_factory*, const clap_preset_discovery_indexer* indexer,
+                                                   const char* id) {
+    if (std::strcmp(id, providerDescriptor.id)) return nullptr;
+    auto* s = new Provider;
+    s->indexer = indexer;
+    s->provider.desc = &providerDescriptor;
+    s->provider.provider_data = s;
+    s->provider.init = providerInit;
+    s->provider.destroy = [](const clap_preset_discovery_provider* p) { delete static_cast<Provider*>(p->provider_data); };
+    s->provider.get_metadata = providerMetadata;
+    s->provider.get_extension = [](const clap_preset_discovery_provider*, const char*) -> const void* { return nullptr; };
+    return &s->provider;
+}
+const clap_preset_discovery_factory presetFactory {providerCount, providerAt, makeProvider};
+
 void event(Plugin& s, const clap_event_header* e) {
     if (e->space_id != CLAP_CORE_EVENT_SPACE_ID) return;
     if (e->type == CLAP_EVENT_PARAM_VALUE) {
@@ -161,6 +261,7 @@ const void* extension(const clap_plugin*, const char* id) {
     if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &audioPorts;
     if (!std::strcmp(id, CLAP_EXT_NOTE_PORTS)) return &notePorts;
     if (!std::strcmp(id, CLAP_EXT_LATENCY)) return &latencyExt;
+    if (!std::strcmp(id, CLAP_EXT_PRESET_LOAD)) return &presetLoad;
     return nullptr;
 }
 
@@ -202,12 +303,18 @@ const clap_plugin_factory factory {count, descriptor, create};
 extern "C" {
 const clap_plugin_entry clap_entry { // exported by its declaration in clap/entry.h
     CLAP_VERSION_INIT,
-    [](const char*) { ++inits; return true; },
+    [](const char* path) { libraryPath = path; ++inits; return true; },
     [] { --inits; },
-    [](const char* id) -> const void* { return std::strcmp(id, CLAP_PLUGIN_FACTORY_ID) ? nullptr : &factory; },
+    [](const char* id) -> const void* {
+        if (!std::strcmp(id, CLAP_PLUGIN_FACTORY_ID)) return &factory;
+        if (!std::strcmp(id, CLAP_PRESET_DISCOVERY_FACTORY_ID)) return &presetFactory;
+        return nullptr;
+    },
 };
 // Calls on the wrong thread, on_main_thread calls, and init() calls not yet matched by deinit().
 CLAP_EXPORT void fixture_counts(int* wrong, int* callbacks, int* initialised) {
     *wrong = wrongThread; *callbacks = mainCallbacks; *initialised = inits;
 }
+// Preset files read through get_metadata().
+CLAP_EXPORT int fixture_preset_reads() { return presetReads; }
 }

@@ -583,6 +583,9 @@ any subfolders. Melodee loads plug-ins built for the MPC's ARM processor:
 - VST3 bundles with a `Contents/aarch64-linux/` build.
 - LV2 bundles (`.lv2` folders) built for 64-bit ARM Linux (aarch64).
 - CLAP plug-ins (`.clap` files) built for 64-bit ARM Linux (aarch64).
+  Surge XT needs its data folder: put `SurgeXTData` (the `resources/data`
+  folder of Surge XT's source, for the same version) next to
+  `Surge XT.clap`. Without it Surge XT has no presets or wavetables.
 - [Open MPC](https://open-mpc.github.io) plug-in folders (a VST2 `.so`
   with a `plugin-meta.xml`).
 - VST2 `.so` files for 64-bit ARM (aarch64), or 32-bit ARM (armv7). 32-bit
@@ -634,7 +637,13 @@ To change a track's plug-in, press **SAMPLE SELECT** on the track.
 
 **Presets**: turn the encoder to a preset and push to load it. The page
 stays open, so you can play each preset in turn. **B1** goes back.
-CLAP plug-ins list no presets here.
+
+A plug-in that keeps its presets in folders (most CLAP plug-ins) lists the
+folders first, each with the number of presets in it. Push to open a
+folder; **B1** goes back out. A check marks the preset loaded and the
+folder it is in. A CLAP plug-in's presets show a moment after it loads.
+The first time, Melodee reads every preset file, which takes a while for
+a plug-in with thousands.
 
 ![Plug-in presets](images/screens/pluginpresets.png)
 

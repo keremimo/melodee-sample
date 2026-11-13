@@ -676,9 +676,37 @@ void stage_plugin(Snapshot& s, StageKind kind, bool presets) {
                                       "Warm Keys", "Sub Bass", "String Machine", "Poly Sweep", "Unison Lead", "Noise Hat"};
     auto& v = s.presets;
     v.entry = 0;
-    for (int i = 0; i < 13; ++i) v.list.push_back({i, names[i]});
+    std::vector<PluginProgram> list;
+    for (int i = 0; i < 13; ++i) list.push_back({i, names[i], {}});
+    v.list = PluginProgramList(std::move(list));
     v.current = 2;
     s.ui.plugin_panel.programs = 13;
+}
+
+// PRESETS for Surge XT, a CLAP plug-in whose presets are files in folders (plugin/preset_rows.h): Factory Presets'
+// folders as Surge XT ships them, with their counts, the first Leads by name, and Third Party Presets beside it.
+void surge_presets(Snapshot& s) {
+    s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Edit; s.ui.presets_entry = 0;
+    auto& t = s.project.tracks[0];
+    t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("SURGE XT");
+    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Plugins/Surge XT/Surge XT.clap");
+    plugin_panel(s, 0, "Surge XT", "CLAP", true, PluginStatus::Ready);
+    static const std::pair<const char*, int> folders[] {{"Basses", 59}, {"Brass", 11}, {"Chords", 8}, {"FX", 27}, {"Keys", 16},
+        {"Leads", 131}, {"MPE", 9}, {"Pads", 65}, {"Percussion", 9}, {"Plucks", 111}, {"Polysynths", 104}, {"Sequences", 45},
+        {"Splits", 5}, {"Templates", 16}, {"Tutorials", 14}, {"Vocoder", 3}, {"Winds", 8}};
+    static const char* const leads[] {"Acidofil", "Agroculture", "Asymptote", "Bad Childhood", "Banjo Remains", "Banter", "Bee", "Bitten"};
+    std::vector<PluginProgram> list;
+    for (auto [folder, count] : folders)
+        for (int n = 0; n < count; ++n) {
+            bool lead = std::string(folder) == "Leads" && n < 8;
+            list.push_back({int(list.size()), lead ? leads[n] : std::string(folder) + " " + std::to_string(n + 1),
+                            std::string("Factory Presets/") + folder});
+            if (lead && n == 4) s.presets.current = list.back().index; // Banjo Remains loaded
+        }
+    for (int n = 0; n < 2922; ++n) list.push_back({int(list.size()), "Patch " + std::to_string(n + 1), "Third Party Presets"});
+    s.ui.plugin_panel.programs = uint16_t(list.size());
+    s.presets.entry = 0;
+    s.presets.list = PluginProgramList(std::move(list));
 }
 
 struct Preview {
@@ -894,8 +922,18 @@ const Preview previews[] {
          v.entry = 4;
          const char* names[] {"Bass Drive", "Clean", "Clean Chorus", "Crunch",
                               "Crunch Verb", "Fuzz", "High Gain", "Lead"};
-         for (int i = 0; i < 8; ++i) v.list.push_back({i, names[i]});
+         std::vector<PluginProgram> list;
+         for (int i = 0; i < 8; ++i) list.push_back({i, names[i], {}});
+         v.list = PluginProgramList(std::move(list));
          v.current = 3; s.ui.presets_cursor = 4;
+     }},
+    {"pluginpresetfolders", [](Shell&, Snapshot& s) { // PRESETS for Surge XT (CLAP): its two locations as folders
+         surge_presets(s);
+     }},
+    {"pluginpresetfolder", [](Shell&, Snapshot& s) { // inside Factory Presets/Leads, Banjo Remains loaded
+         surge_presets(s);
+         std::snprintf(s.ui.presets_folder.data(), s.ui.presets_folder.size(), "Factory Presets/Leads");
+         s.ui.presets_cursor = 3;
      }},
     {"pickerplugins", [](Shell&, Snapshot& s) { // the effect picker on the Plug-ins family
          s.ui.page = PageId::Rack; s.ui.track = 0; s.ui.picker_open = true; s.ui.picker_family = uint8_t(Family::Plugins); s.ui.picker_items = true;
