@@ -17,7 +17,9 @@
 
 #include <juce_audio_processors_headless/juce_audio_processors_headless.h>
 
+#include <array>
 #include <atomic>
+#include <bitset>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -142,6 +144,10 @@ private:
     struct Event;                   // room for any event this host sends
     std::vector<Event> events;
     uint32_t eventCount = 0;
+    // The keys this host started on each MIDI channel (audio thread): held, and played since the last all sound off.
+    // All notes off (CC 123) releases each held key and all sound off (CC 120) chokes each played one, key by key:
+    // a note event with key and channel -1 crashed Surge XT (its releaseNote() indexes by them).
+    std::array<std::bitset<128>, 16> heldKeys {}, playedKeys {};
 };
 
 } // namespace melodee

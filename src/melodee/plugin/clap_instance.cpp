@@ -528,17 +528,35 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
             const bool allOff = kind == 0xb0 && (d1 == 120 || d1 == 123);
             if (clapNotes && (noteOn || noteOff || allOff))
             {
-                if (auto* e = add())
+                auto note = [&] (uint16_t type, int key, double velocity)
                 {
-                    auto& n = e->note;
-                    n = {};
-                    uint16_t type = allOff ? CLAP_EVENT_NOTE_CHOKE : noteOn ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
-                    n.header = { sizeof (clap_event_note), time, CLAP_CORE_EVENT_SPACE_ID, type, 0 };
-                    n.note_id = -1;
-                    n.port_index = (int16_t) notePort;
-                    n.channel = allOff ? -1 : (int16_t) channel;
-                    n.key = allOff ? -1 : (int16_t) (d1 & 0x7f);
-                    n.velocity = allOff ? 0.0 : (d2 & 0x7f) / 127.0;
+                    if (auto* e = add())
+                    {
+                        auto& n = e->note;
+                        n = {};
+                        n.header = { sizeof (clap_event_note), time, CLAP_CORE_EVENT_SPACE_ID, type, 0 };
+                        n.note_id = -1;
+                        n.port_index = (int16_t) notePort;
+                        n.channel = (int16_t) channel;
+                        n.key = (int16_t) key;
+                        n.velocity = velocity;
+                    }
+                };
+                const int key = d1 & 0x7f;
+                if (allOff) // key by key, never key -1 (heldKeys)
+                {
+                    const bool cut = d1 == 120;
+                    const auto& keys = cut ? playedKeys[channel] : heldKeys[channel];
+                    for (int k = 0; k < 128; ++k)
+                        if (keys.test ((size_t) k)) note (cut ? CLAP_EVENT_NOTE_CHOKE : CLAP_EVENT_NOTE_OFF, k, 0.0);
+                    heldKeys[channel].reset();
+                    if (cut) playedKeys[channel].reset();
+                }
+                else
+                {
+                    note (noteOn ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF, key, (d2 & 0x7f) / 127.0);
+                    heldKeys[channel].set ((size_t) key, noteOn);
+                    if (noteOn) playedKeys[channel].set ((size_t) key);
                 }
                 if (! allOff || ! midiNotes) continue; // all notes off goes on as MIDI too, for a plug-in's own handling
             }
