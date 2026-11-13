@@ -2969,10 +2969,12 @@ void meter_lights() {
     host->send({Command::Type::Monitor, 0, 0, 0, 1});
     for (unsigned n = 0; n < 4; ++n) host->render(out.data(), 128, 2, input.data());
     CHECK(std::fabs(host->in_level(0) - 0.5f) < 1e-3f && std::fabs(host->in_level(1) - 0.25f) < 1e-3f);
-    CHECK(std::fabs(host->out_level(0) - 0.5f) < 1e-3f && std::fabs(host->out_level(1) - 0.25f) < 1e-3f); // main volume 2 unheard
+    // Monitor at a centred pad's pan law, as the take will play back from a kit pad at unity; main volume 2 unheard.
+    const float centre = std::cos(dsp::pi / 4);
+    CHECK(std::fabs(host->out_level(0) - 0.5f * centre) < 1e-3f && std::fabs(host->out_level(1) - 0.25f * centre) < 1e-3f);
     host->send({Command::Type::Monitor, 0, 0, 0, 0});
     for (unsigned n = 0; n < unsigned(dsp::sample_rate()) / 128; ++n) host->render(out.data(), 128, 2, silent.data());
-    float fell = 20 * std::log10(host->in_level(0) / 0.5f), fell_out = 20 * std::log10(host->out_level(1) / 0.25f);
+    float fell = 20 * std::log10(host->in_level(0) / 0.5f), fell_out = 20 * std::log10(host->out_level(1) / (0.25f * centre));
     CHECK(fell < -29 && fell > -31 && fell_out < -29 && fell_out > -31);
 
     // A bar up to the level, nothing held. The input's steps (-42, -30, -18, -9, -2 dBFS); the mix's: a synth's

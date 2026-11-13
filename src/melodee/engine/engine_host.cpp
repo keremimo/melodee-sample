@@ -2785,6 +2785,29 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
         comp.duck(key_l, key_r, master_l, master_r, frames);
         for (unsigned f = 0; f < frames; ++f) { master_l[f] += aside_l[f]; master_r[f] += aside_r[f]; }
     }
+    // The input source, after the gain: the take, the Recall ring and the meter hear it. Rec Input FX: Knob FX on it
+    // while it is monitored or a take waits or runs, fading in and out as Bypass does. Resample takes the mix itself,
+    // so it is taken after the master (below); any other source here, so Monitor can join the mix before the master.
+    const bool resampling = source_now.load(std::memory_order_relaxed) == unsigned(InputSource::Resample);
+    const bool monitored = monitor_on.load(std::memory_order_relaxed) && !resampling;
+    auto take_input = [&] {
+        select_input(input, usb, frames);
+        auto taking = take.state();
+        knob_in.set_bypass(!(knob_rec && knob_heard && (monitored || taking == TakeRecorder::State::Armed
+                                                        || taking == TakeRecorder::State::Recording || taking == TakeRecorder::State::Cued)));
+        knob_in.process(record_l, record_r, frames);
+    };
+    // Monitor: the source heard with the mix, eased in and out, through the master chain and compressor as a take
+    // played back from a pad is. A hardware or USB source at a centred pad's pan law, the level a kit pad at unity
+    // plays its take at; a tapped track as it is. Never into a render.
+    monitor_now.aim(monitored && !render_out.running() && !render_out.cued() ? 1.0f : 0.0f, frames, snap_mix);
+    if (!resampling) {
+        take_input();
+        if (!monitor_now.silent()) {
+            const float pan = source_now.load(std::memory_order_relaxed) == unsigned(InputSource::Track) ? 1.0f : pan_centre;
+            for (unsigned f = 0; f < frames; ++f) { float g = monitor_now.at(f) * pan; master_l[f] += record_l[f] * g; master_r[f] += record_r[f] * g; }
+        }
+    }
     run_chain(master_chain, master_l, master_r, frames);
     if (punch_target == 255) punch.process(master_l, master_r, frames);
     // Flex Beat over the whole master: a bar, then Empty again (One Shot) or the same again (Loop).
@@ -2809,16 +2832,7 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     for (unsigned s = 0; s < live_slots; ++s) kept_sounding |= unsigned(kept[s].on) << s;
     kept_on.store(kept_sounding, std::memory_order_relaxed);
     punch_on.store(punch.on() || sounding, std::memory_order_relaxed);
-    // The input source (or the mix itself, before main volume): the take, the
-    // Recall ring and the meter hear it; a render takes the mix.
-    select_input(input, usb, frames);
-    // Rec Input FX: Knob FX on the input while it is monitored or a take waits or runs, so Monitor hears what the
-    // take will record. It fades in and out as Bypass does.
-    auto taking = take.state();
-    const bool monitored = monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample);
-    knob_in.set_bypass(!(knob_rec && knob_heard && (monitored || taking == TakeRecorder::State::Armed || taking == TakeRecorder::State::Recording
-                                                    || taking == TakeRecorder::State::Cued)));
-    knob_in.process(record_l, record_r, frames);
+    if (resampling) take_input(); // the mix itself, before main volume
     take.process(record_l, record_r, frames);
     // The meters' fall over this block: meter_fall_db a second at the device's rate.
     float meter_fall = std::pow(10.0f, -meter_fall_db / 20 * float(frames) / float(dsp::sample_rate()));
@@ -2834,11 +2848,6 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     keep_sources(input, usb, frames);
     take_stems(frames); // roadmap P4: the stems by the same bounds, before the bounce moves on
     render_out.process(master_l, master_r, frames);
-    // Monitor: the source heard with the mix (never the mix itself, heard already), eased in and out.
-    monitor_now.aim(monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample)
-                    ? 1.0f : 0.0f, frames, snap_mix);
-    if (!monitor_now.silent())
-        for (unsigned f = 0; f < frames; ++f) { float g = monitor_now.at(f); master_l[f] += record_l[f] * g; master_r[f] += record_r[f] * g; }
     volume_now.aim(volume, frames, snap_mix); // main volume eased too: the knob's steps are up to dB apart
     park_gain.aim(park_wanted ? 0.0f : 1.0f, frames); // a Park fades out (and the next project in), never a jump
     bool park_fading = !(park_gain.flat() && park_gain.to == 1.0f);
