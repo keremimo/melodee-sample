@@ -126,7 +126,7 @@ void levels_button(Context& c) {
     if (drum_pads(t)) t.levels_kind = uint8_t(LevelsKind::Velocity); // Loop went to the Looper above
     t.levels = true;
     if (kit) t.levels_pad = t.last_pad;
-    if (t.levels_kind == unsigned(LevelsKind::Zones) && !levels_instrument(c.project, t)) t.levels_kind = uint8_t(LevelsKind::Scale); // a pad of no instrument
+    if (kit) t.levels_kind = uint8_t(levels_opening(c.project, t)); // a drum instrument's pad in Zones, a plain one's not
     ui.levels_hit = -1;
     c.open(PageId::Levels);
 }

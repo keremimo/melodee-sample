@@ -401,7 +401,11 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   hit; pads past the last key are dark and silent; more than 16 keys make
   pages (up to six), − / + walk them, the picture a block a pad holding a
   key with the page's first and last key under it and the page number; no
-  K2 / K3 (`levels_of()`, `SampleRef::keys`). **Scale**:
+  K2 / K3 (`levels_of()`, `SampleRef::keys`). On an instrument whose zones
+  each sit on a key of their own (two keys or more: a drum or percussion
+  layout, `SampleRef::one_key_zones`), 16 Levels opens in Zones where the
+  track had Scale or Tune, which would play its hits from other keys
+  (`levels_opening()`); Velocity and Filter stay. **Scale**:
   **K2** the root, **K3** the scale (the project's key, as on Keys), pad 1
   the root and each pad the next note of the scale up, no repeats: a synth
   plays those notes in the track's octave; a kit's sample counts as a C,

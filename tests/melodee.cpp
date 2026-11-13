@@ -10897,10 +10897,17 @@ void instrument_formats_p3() {
         t.octave = kit_level_octave + 1; // − / +: the next page
         CHECK(levels_of(*project, t, 0).shown == 83 && levels_of(*project, t, 6).shown == 89 && levels_of(*project, t, 7).none);
         t.octave = kit_highest_octave; CHECK(levels_of(*project, t, 0).shown == 83); // held to the last page
+        // 16 Levels opens in Zones on a drum or percussion instrument's pad in place of Scale or Tune, not of Velocity
+        t.levels_kind = uint8_t(LevelsKind::Scale); CHECK(levels_opening(*project, t) == LevelsKind::Scale); // a melodic one
+        ref.one_key_zones = true;
+        CHECK(levels_opening(*project, t) == LevelsKind::Zones);
+        t.levels_kind = uint8_t(LevelsKind::Tune); CHECK(levels_opening(*project, t) == LevelsKind::Zones);
+        t.levels_kind = uint8_t(LevelsKind::Velocity); CHECK(levels_opening(*project, t) == LevelsKind::Velocity);
+        t.levels_kind = uint8_t(LevelsKind::Zones);
         // a plain sample's pad has no Zones: it plays as Scale
         std::snprintf(project->samples[6].path, sizeof(project->samples[6].path), "/media/card/Samples/Hit.wav");
         t.pads[4].sample = 6; t.levels_pad = 4;
-        CHECK(!levels_of(*project, t, 0).none && levels_types(*project, t, types) == 4);
+        CHECK(!levels_of(*project, t, 0).none && levels_types(*project, t, types) == 4 && levels_opening(*project, t) == LevelsKind::Scale);
     }
 }
 

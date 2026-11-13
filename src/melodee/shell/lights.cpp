@@ -83,10 +83,14 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 project_->samples[n].frames = shown.frames;
                 project_->samples[n].zones = uint16_t(std::min<size_t>(shown.shapes.size(), 0xffff));
                 std::array<uint64_t, 2> keys {}; // 16 Levels' Zones: the keys a press sounds
+                bool one_key = true; // and whether each such zone has a key of its own (16 Levels opens in Zones)
                 for (const auto& z : shown.shapes)
-                    if (!(z.flags & ZoneShape::Release))
+                    if (!(z.flags & ZoneShape::Release)) {
+                        one_key = one_key && z.low_key == z.high_key;
                         for (unsigned k = z.low_key; k <= z.high_key && k < 128; ++k) keys[k / 64] |= uint64_t(1) << (k % 64);
+                    }
                 project_->samples[n].keys = keys;
+                project_->samples[n].one_key_zones = one_key && zone_key_count(project_->samples[n]) >= 2;
             }
         ui_.files_count = uint16_t(std::min<size_t>(library_->files().size(), 0xffff));
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();

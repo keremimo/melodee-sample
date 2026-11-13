@@ -169,6 +169,16 @@ inline unsigned zone_pages(const SampleRef& ref) {
 inline unsigned zone_page(const Track& track, unsigned pages) {
     return unsigned(std::clamp(int(track.octave) - kit_level_octave, 0, int(pages) - 1));
 }
+// The type 16 Levels opens in on a kit pad: Zones on a drum or percussion instrument's pad in place of a pitch type
+// (Scale and Tune would play its hits from other keys and skip some), Scale in place of Zones on a pad of no
+// instrument; Velocity, Filter and Loop as they were.
+inline LevelsKind levels_opening(const Project& project, const Track& track) {
+    auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
+    const SampleRef* instrument = levels_instrument(project, track);
+    if (kind == LevelsKind::Zones && !instrument) return LevelsKind::Scale;
+    if (instrument && instrument->one_key_zones && (kind == LevelsKind::Scale || kind == LevelsKind::Tune)) return LevelsKind::Zones;
+    return kind;
+}
 // The types a track's K1 turns through with its pad in view: an instrument's pad has Zones after Tune.
 inline unsigned levels_types(const Project& project, const Track& track, std::array<LevelsKind, 5>& out) {
     std::array<LevelsKind, 4> base {};
