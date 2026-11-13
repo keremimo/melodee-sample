@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/shell/mix_hub.h"
 #include "melodee/shell/pad_bank.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/ask.h"
@@ -93,7 +94,12 @@ bool track_pad(Context& c, unsigned pad) {
 bool track_soft(Context& c, int key) {
     bool moving = c.ui.moving;
     auto did = track_key(c.ui, key);
-    if (did == TrackKey::Nothing && key == 0 && c.ui.pad_bank) { c.open(PageId::Tracks); return true; } // B1 TRACKS (the MIX hub)
+    if (did == TrackKey::Nothing && c.ui.pad_bank) { // B1-B3: the MIX hub's TRACKS, SENDS, FX
+        PageId next = mix_next(c.ui.page, unsigned(key), c.track().engine == EngineKind::Sampler);
+        if (next == PageId::Rack) c.ui.fx_loop = -1;
+        if (next != c.ui.page) c.open(next);
+        return true;
+    }
     if (did == TrackKey::Ended) c.notice(moving ? "Move off" : "Copy off");
     return did != TrackKey::Ignored;
 }

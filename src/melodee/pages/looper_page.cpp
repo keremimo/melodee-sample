@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// LOOPER (LOOPER on Tracks; Loop and 16 Levels pressed together; 16 Levels of type Loop): the four loops
+// LOOPER (Loop and 16 Levels pressed together; 16 Levels of type Loop): the four loops
 // (docs/LOOPER.md). B1 LOOPS (round 2, looper B): four rings, each loop's
 // waveform bent round, a hand sweeping where it plays, its state and length
 // under it; K1 the loop, K2 its length,

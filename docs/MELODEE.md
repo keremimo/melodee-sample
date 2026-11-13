@@ -123,7 +123,7 @@ cards.
 | Pad FX | Pad FX (the punches); again on a kit track, Pad Punch | Flex Beat |
 | Knob FX | Knob FX mode on (lit, its page) or off | FX Select: the effect chains, Track → Sends → Bus → Master |
 | Shift | The second layer, held | |
-| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 TRACKS opens the Tracks page (while picking: B1 steps back); Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
+| Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B1-B3 open the MIX hub, TRACKS, SENDS, FX (shell/mix_hub.h); Shift + B2 MOVE moves a track to another pad (one there trades places with it), Shift + B3 COPY (or Shift + Erase) copies one (while picking: B1 steps back); Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). A tap on its own erases the page's selection (below); on Song, the clip under the cursor | Copy of what the page holds (below). With Pad Bank held, Erase + pad clears a track |
 | Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B2). On Song, repeats the clip to the next marker | |
@@ -343,8 +343,10 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   play that much faster or slower against the tempo, their notes and
   motion as written, ×1½ turning sixteenths into sixteenth triplets; the
   header names it, Patterns too; kept in TSPD);
-  the wheel or −/+ the track, Push its Stage; the fader is its level. **B2
-  LOOPER**, **B3 SENDS**; with Shift, **MOVE** and **COPY** (below). Pad Bank
+  the wheel or −/+ the track, Push its Stage; the fader is its level. The MIX
+  hub's keys, **B1 TRACKS**, **B2 SENDS**, **B3 FX** (Tracks, Sends and the
+  chains share them; FX steps track, bus, master, a kit's pad); with Shift,
+  **MOVE** and **COPY** (below). Pad Bank
   held + pad still picks a track from any page, the same picture over it.
 - **Keys** (Sample held on a synth): the sixteen pads fill the
   picture, each its note large and its degree in the scale small, the roots
@@ -431,7 +433,7 @@ Four tempo-synced audio loops on tracks of their own, **L1–L4**, there while
 the Looper is on ([LOOPER.md](LOOPER.md) has the design). Each loop track has
 a mix strip (level, pan, mute, solo, send and bus) and a chain of six.
 
-- **Looper** (LOOPER on Tracks; Loop and 16 Levels pressed together, in
+- **Looper** (Loop and 16 Levels pressed together, in
   either order, from any page; 16 Levels of type Loop): off, it asks first
   (B3 or Push turns it on: 45 MB a loop, made in the background). **B1 LOOPS**:
   four rings, a loop each: its waveform bent round from twelve o'clock, a
@@ -1279,7 +1281,7 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   left / right, remove as cards, bypass lit (it stays open to hear the
   difference); the wheel moves, Push does it, B1 back; Push on the
   plus opens the picker, its families each with the strip's glyph. Sends
-  (also B3 on Tracks): one bus at a time, every track's send into it as a
+  (also B2 SENDS on Tracks and the chains, or Pad Bank held + B2): one bus at a time, every track's send into it as a
   strip; K1 the selected track's send into it, K2 which bus (the one Bus
   then shows), K3 the bus's return. B1 from Track on a kit: the last
   pad's chain.

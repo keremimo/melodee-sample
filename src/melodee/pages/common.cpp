@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
+#include "melodee/shell/mix_hub.h"
 #include "melodee/pages/common.h"
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/midi_ports.h"
@@ -722,6 +723,22 @@ void octave(Context& c, int way) {
 }
 void no_wheel(Context&, int) {}
 void no_push(Context&) {}
+ui::SoftKeys mix_keys(const Snapshot& s) {
+    bool kit = s.track().engine == EngineKind::Sampler;
+    auto here = mix_section(s.ui.page);
+    std::array<PageId, 4> fx {};
+    unsigned count = mix_fx_pages(kit, fx);
+    ui::SoftKeys keys {{"TRACKS", "SENDS", "FX"}, here == MixSection::None ? -1 : int(here), colour_of(s)};
+    keys.dots[2] = uint8_t(count);
+    keys.dot_at[2] = uint8_t(here == MixSection::Fx ? mix_fx_at(s.ui.page, kit) : 0);
+    return keys;
+}
+void mix_soft(Context& c, int key) {
+    PageId next = mix_next(c.ui.page, unsigned(key), c.track().engine == EngineKind::Sampler);
+    if (next == PageId::Rack) c.ui.fx_loop = -1; // the track's own chain, not a loop's
+    if (next != c.ui.page) c.open(next);
+}
+
 void play_soft(Context& c, int key) {
     // Stage on that section: its first page, or its own kept when it was the one open (as Sample held's keys).
     const auto& t = c.track();

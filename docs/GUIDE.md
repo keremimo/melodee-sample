@@ -256,10 +256,12 @@ While **PAD BANK** is held for a second, the screen shows all 16 tracks.
 
 While **PAD BANK** is held:
 
-- Press **B1** (**TRACKS**) to open the Tracks page.
-- Press **B2** (**MOVE**), then a track, then a pad to move the track there.
-  A track already there swaps places with it.
-- Press **B3** (**COPY**), then a track, then a pad to copy the track there.
+- Press **B1** (**TRACKS**), **B2** (**SENDS**) or **B3** (**FX**) to open
+  the mixer pages. They stay open when you let go.
+- Press **SHIFT** + **B2** (**MOVE**), then a track, then a pad to move the
+  track there. A track already there swaps places with it.
+- Press **SHIFT** + **B3** (**COPY**), then a track, then a pad to copy the
+  track there.
 - Press **ERASE** + pad to clear that track (asks first).
 - Turn the encoder or press **−** / **+** to change the kit's bank.
 
@@ -287,9 +289,12 @@ from 60 %, red from 85 %).
 | **SHIFT** + **K1** | Track speed: ×½, ×¾, ×1, ×1½ or ×2. The track's patterns play that much slower or faster. |
 | Fader | Level of the selected track. |
 | Encoder push | Open the track's Stage. |
-| **B2** | Open the Looper. |
-| **B3** | Open Sends. |
+| **B2** | Open Sends. |
+| **B3** | Open the effect chains (press again for the next chain). |
 | **SHIFT** + **B2** / **B3** | Move / copy a track. |
+
+Tracks, Sends and the effect chains share the keys **TRACKS**, **SENDS** and
+**FX**. Hold **PAD BANK** and press one of them to open it from any page.
 
 ### Make a new track
 
@@ -1097,8 +1102,9 @@ own chain of four effects before the track's chain.
 
 ### Sends
 
-Press **B3** on Tracks to open **Sends**: one bus at a time, with every
-track's send to it.
+Press **B2** (**SENDS**) on Tracks, or hold **PAD BANK** and press **B2**, to
+open **Sends**: one bus at a time, with every track's send to it. Press
+**−** / **+** to change the bus.
 
 ![Sends](images/screens/sends.png)
 
@@ -1107,9 +1113,10 @@ the bus return.
 
 ### Effect chains
 
-Press **SHIFT** + **KNOB FX** to open the effect chains. **B1** and **B3**
-move between **TRACK**, **SENDS**, **BUS** and **MASTER**. On a kit,
-**B1** from TRACK opens the last pad's own chain.
+Press **SHIFT** + **KNOB FX**, or **B3** (**FX**) on Tracks or Sends, to open
+the effect chains. Press **FX** again to go to the next chain: **TRACK**,
+**BUS**, **MASTER**, and on a kit the last pad's own chain. The header names
+the chain in view.
 
 ![A track's effect chain](images/screens/rack.png)
 

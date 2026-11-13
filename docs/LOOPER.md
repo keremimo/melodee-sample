@@ -93,7 +93,7 @@ again at the new rate; a loop with audio keeps its own.
 
 ## The page
 
-**Looper** (LOOPER on Tracks; **Loop + 16 Levels** together from any page;
+**Looper** (**Loop + 16 Levels** together from any page;
 16 Levels of type Loop). Calm, as every page: the four loops as rings, each
 its waveform bent round with a hand where it plays, its tag (L1–L4 in its
 colour), its state as a word (ARM, REC, DUB, PLAY, STOP; a change waiting

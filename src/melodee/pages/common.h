@@ -96,5 +96,7 @@ void octave(Context& c, int way);
 void no_wheel(Context&, int);
 void no_push(Context&);
 void play_soft(Context& c, int key); // B1-B3 open Stage on that section (Pads, Keys)
+ui::SoftKeys mix_keys(const Snapshot& s); // the MIX hub's row (shell/mix_hub.h): TRACKS SENDS FX, the page's lit
+void mix_soft(Context& c, int key);       // and where its keys go
 
 } // namespace melodee

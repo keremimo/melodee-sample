@@ -1,7 +1,7 @@
 # Hubs: plan
 
 Status: all picks made 2026-11-13 (S-B, P-a, M-b, R-a, T-a, PL-a, H-b).
-Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built. Steps 3–6 open.
+Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row, Pad Bank held B1-B3, MOVE / COPY on Shift) built. Steps 4–6 open.
 Nothing built. Mockups: https://claude.ai/artifact/KysLcHsF6LN7pnAVFtS6ut
 
 ## Problem

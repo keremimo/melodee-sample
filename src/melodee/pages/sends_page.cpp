@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
-// SENDS (B3 on Tracks): four buses, A-D, each with its own chain and
+// SENDS (the MIX hub's B2): four buses, A-D, each with its own chain and
 // return. Every track sends into each of the four (Stage's SENDS sets one
 // track's four); here one bus at a time, its sends drawn as strips, eight
 // tracks at a time (the half with the selected track). K1 the selected
 // track's send into the bus in view, K2 which bus, K3 that bus's return.
-// The wheel (or Pad Bank + pad) picks the track.
+// The wheel (or Pad Bank + pad) picks the track, Minus / Plus the bus.
 #include "melodee/engine/effect_info.h"
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
@@ -21,9 +21,8 @@ void draw(Paint& p, const Snapshot& s) {
     unsigned half = (s.ui.track % track_count) / 8;
     h.left.push_back(pill(half ? "TRACKS 9-16" : "TRACKS 1-8"));
     h.right.push_back(tag_of(s, s.ui.track));
-    SoftKeys keys {{"TRACK", "SENDS", juce::String("BUS ") + char('A' + bus)}, 1, c};
-    keys.glyphs[0] = Icon::ChevronLeft; keys.after[2] = Icon::ChevronRight; // the chains before and after
-    frame(p, s, keys, h);
+    h.left.push_back(pill(juce::String("BUS ") + char('A' + bus), c)); // the bus in view (was B3's name)
+    frame(p, s, mix_keys(s), h);
 
     // The four buses: letter, first effect, return.
     float y = zone::picture_y + 4, gap = 4, bw = (zone::width - 2 * zone::pad - 3 * gap) / 4, bh = 22;
@@ -65,12 +64,9 @@ void draw(Paint& p, const Snapshot& s) {
 
 void wheel(Context& c, int delta) { c.select_track(unsigned(int(c.ui.track) + delta + 16) % 16); }
 
-void soft(Context& c, int key) {
-    if (key == 0) c.open(PageId::Rack);
-    if (key == 2) c.open(PageId::Bus);
-}
+void bus(Context& c, int way) { c.ui.sends_bus = uint8_t((c.ui.sends_bus + bus_count + way) % bus_count); }
 } // namespace
 
-const PageSpec sends_page {draw, play_pad, wheel, no_push, soft, wheel}; // Minus / Plus: the track, as the wheel
+const PageSpec sends_page {draw, play_pad, wheel, no_push, mix_soft, bus}; // Minus / Plus: the bus
 
 } // namespace melodee

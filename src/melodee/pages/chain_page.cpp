@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // PAD EFFECTS (B1 from Track on a sampler track), TRACK EFFECTS (Knob FX),
-// BUS (B3 from Sends) and MASTER (B3 from Bus): one page shape for every
+// BUS and MASTER (the MIX hub's FX, shell/mix_hub.h): one page shape for every
 // stop along the signal, Stage's FX strip: up to six effects in a row (a
 // pad's chain is the last pad hit's, four slots), each its family's glyph
 // and name, and under it the one in hand drawn as what it does to sound.
-// B1 and B3 name the chains before and after. The wheel picks a device,
+// B1-B3 are the MIX hub's TRACKS, SENDS, FX (the lit FX steps along the chains,
+// shell/mix_hub.h); the header names the chain. The wheel picks a device,
 // the three pots hold three of its parameters and Minus / Plus the other row
 // (two dots by its name). Push on a device opens its sheet: change, presets,
 // bypass, move, remove as cards, Bypass lit; the wheel moves, Push does it,
@@ -96,7 +97,7 @@ void draw(Paint& p, const Snapshot& s) {
         keys.after[2] = after.isEmpty() ? Icon::None : Icon::ChevronRight;
     };
     if (pad && !kit) { // pad effects belong to a kit's pads
-        ends("", "PAD", "TRACK");
+        keys = mix_keys(s);
         frame(p, s, keys, h);
         icon(p, Icon::Pads, zone::width / 2.0f - 14, zone::picture_y + 44, 28, colour::dim, 1.4f);
         icon(p, Icon::Cross, zone::width / 2.0f + 8, zone::picture_y + 64, 12, colour::dim, 1.8f);
@@ -107,7 +108,6 @@ void draw(Paint& p, const Snapshot& s) {
         char label[4]; pad_label(last, label);
         juce::String name = "PAD " + juce::String(label);
         if (s.track().pads[last].used()) name += juce::String::fromUTF8(" \xc2\xb7 ") + name_case(pad_name(s, last, false));
-        ends("", "PAD", "TRACK");
         h.left.push_back(pill(name, c));
         h.right.push_back(tag_of(s, s.ui.track));
     } else if (track && s.ui.fx_loop >= 0) { // a loop track's chain (docs/LOOPER.md): B1 back to the Looper
@@ -116,15 +116,16 @@ void draw(Paint& p, const Snapshot& s) {
         keys.accent = c;
         ends("LOOPER", "L" + juce::String(l + 1), "");
         h.right.push_back(chip("L" + juce::String(l + 1), c));
-    } else if (track) { ends(kit ? "PAD" : "", "TRACK", "SENDS"); h.right.push_back(tag_of(s, s.ui.track)); }
+    } else if (track) { keys = mix_keys(s); h.left.push_back(pill("TRACK FX", c)); h.right.push_back(tag_of(s, s.ui.track)); }
     else if (s.ui.page == PageId::Bus) {
-        ends("SENDS", bus_name(bus), "MASTER");
+        keys = mix_keys(s); keys.accent = c; // a bus belongs to no track: neutral
         h.left.push_back(pill("RETURN " + juce::String(s.project.buses[bus].level) + " %"));
         h.right.push_back(label(bus_name(bus), colour::mid));
     } else {
-        ends(bus_name(bus), "MASTER", "");
+        keys = mix_keys(s); keys.accent = c;
         h.right.push_back(label("MASTER", colour::mid));
     }
+    if (pad) keys = mix_keys(s); // the pad's name is in the header
     if (s.ui.sheet_open && cursor < count) // the device's cards: B1 BACK, the wheel and Push the rest
         keys = SoftKeys {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     if (s.ui.picker_open) {
@@ -258,12 +259,7 @@ void soft(Context& c, int key) {
         return;
     }
     if (ui.page == PageId::Rack && ui.fx_loop >= 0) { if (key == 0) c.open(PageId::Looper); return; } // a loop track's chain
-    bool kit = c.track().engine == EngineKind::Sampler;
-    PageId before = ui.page == PageId::PadFx ? PageId::PadFx : ui.page == PageId::Rack ? (kit ? PageId::PadFx : PageId::Rack)
-                  : ui.page == PageId::Bus ? PageId::Sends : PageId::Bus;
-    PageId after = ui.page == PageId::PadFx ? PageId::Rack : ui.page == PageId::Rack ? PageId::Sends : PageId::Master;
-    if (key == 0 && before != ui.page) c.open(before);
-    if (key == 2 && after != ui.page) c.open(after);
+    mix_soft(c, key); // the MIX hub's row
 }
 
 // Minus / Plus: the device's other row of parameters; a plug-in's rows, one at a time.
