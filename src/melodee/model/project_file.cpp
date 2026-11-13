@@ -649,9 +649,9 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // a track's own MIDI channel (parity phase 9)
-        if (!project.tracks[t].midi_channel) continue;
+        if (!project.tracks[t].midi_channel && project.tracks[t].midi_in == TrackMidiIn::Any) continue;
         at = w.begin("MIDC");
-        w.u8(t); w.u8(project.tracks[t].midi_channel);
+        w.u8(t); w.u8(project.tracks[t].midi_channel); w.u8(unsigned(project.tracks[t].midi_in)); // the port: after the channel
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // muted kit pads, a bit each
@@ -1153,6 +1153,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
         } else if (name == "MIDC") { // a track's own MIDI channel; without it none
             unsigned t = r.u8(), channel = r.u8();
             if (r.ok && t < track_count) project->tracks[t].midi_channel = uint8_t(channel <= 16 ? channel : 0);
+            if (r.ok && t < track_count && !r.done()) project->tracks[t].midi_in = TrackMidiIn(std::min<unsigned>(r.u8(), unsigned(TrackMidiIn::Count) - 1));
         } else if (name == "TIME") {
             project->signature = uint8_t(std::min<unsigned>(r.u8(), time_signature_count - 1));
             project->seq_tempo = r.u8() != 0;

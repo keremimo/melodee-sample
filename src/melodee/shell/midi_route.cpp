@@ -25,12 +25,35 @@ bool dest_is(MidiDest dest, MidiPort config, const std::string& driver, bool sur
 }
 
 uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_count>& own, unsigned selected, unsigned channel) {
+    return note_tracks(config, own, 0xffff, selected, channel, true);
+}
+
+uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_count>& own, uint16_t heard, unsigned selected,
+                     unsigned channel, bool config_port) {
     uint16_t tracks = 0;
     for (unsigned t = 0; t < track_count; ++t)
-        if (own[t] && own[t] == channel) tracks = uint16_t(tracks | (1u << t));
-    if (tracks) return tracks; // a channel a track has taken is that track's
-    if (config.in_channel == 0 || config.in_channel == channel) tracks = uint16_t(1u << (selected % track_count));
+        if (own[t] && own[t] == channel && ((heard >> t) & 1)) tracks = uint16_t(tracks | (1u << t));
+    if (tracks) return tracks; // a channel a track has taken is that track's (from the ports it listens on)
+    if (config_port && (config.in_channel == 0 || config.in_channel == channel)) tracks = uint16_t(1u << (selected % track_count));
     return tracks;
+}
+
+bool track_hears(TrackMidiIn in, const std::string& driver, bool surface) {
+    if (surface) return false;
+    switch (in) {
+    case TrackMidiIn::External: return driver == "SerialMIDI";
+    case TrackMidiIn::Usb: return driver != "SerialMIDI";
+    default: return true;
+    }
+}
+
+RemoteJob remote_cc(const MidiConfig& config, unsigned channel, unsigned cc, unsigned value) {
+    using K = RemoteJob::Kind;
+    if (!config.remote_channel || channel != config.remote_channel || !cc) return {};
+    if (cc == config.track_cc) return value < track_count ? RemoteJob {K::Track, value} : RemoteJob {K::Ignored, 0};
+    if (cc == config.pattern_cc) return value < pattern_count ? RemoteJob {K::Pattern, value} : RemoteJob {K::Ignored, 0};
+    if (cc == config.scene_cc) return value < pattern_count ? RemoteJob {K::Scene, value} : RemoteJob {K::Ignored, 0};
+    return {};
 }
 
 int note_key(const Track& track, int note, bool every_key) {

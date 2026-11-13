@@ -133,7 +133,10 @@ struct Command {
         // Freeze plan F2b: track, freeze = its prints (engine/print_player.h) to play instead of its engine and chain,
         // on the next bar while playing (value 1) or at once (0); none: it plays live again at once. The pack it
         // replaces goes back to be freed (EngineHost::take_done_freeze).
-        Freeze
+        Freeze,
+        // A controller from MIDI in on a kit or PLUGIN track (a MIDI track's goes out as MidiEcho): track, index = the
+        // CC number, value 0..127. Not CC 1: the mod wheel is Wheel.
+        Control
 
     };
     Command() = default;

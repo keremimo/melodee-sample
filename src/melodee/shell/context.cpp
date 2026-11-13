@@ -46,14 +46,14 @@ void Context::send(const Command& command) {
     // Anything but playing changes the project (the metronome is Melodee's setting, not the project's).
     switch (command.type) {
     case Type::NoteOn: case Type::NoteOff: case Type::AllNotesOff: case Type::Wheel: case Type::Bend: case Type::Pressure:
-    case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
+    case Type::Control: case Type::Audition: case Type::PadNote: case Type::Play: case Type::Stop: case Type::Reload:
     case Type::RecordArm: case Type::RecordNow: case Type::RecordStop: case Type::RecordAutoEnd: case Type::Locate: case Type::Recorded:
     case Type::Click: break;
     default: dirty = true;
     }
     // A note played by hand or by MIDI in plays at the frame it came in, a block late, not at the next block's start.
     switch (command.type) {
-    case Type::NoteOn: case Type::NoteOff: case Type::PadNote: case Type::ArpKey: case Type::Pressure: case Type::Audition:
+    case Type::NoteOn: case Type::NoteOff: case Type::PadNote: case Type::ArpKey: case Type::Pressure: case Type::Control: case Type::Audition:
         host.send_at(command, hit_ns);
         break;
     default: host.send(command);
@@ -422,7 +422,7 @@ void Context::record(int key, int velocity, int cutoff) {
 // A recorded note let go: it is as long as it was held (from its press to its release, both as heard).
 void Context::record_release(int key) {
     for (auto& h : held_notes) {
-        if (h.key != key) continue;
+        if (h.key != key || h.track % track_count != ui.track % track_count) continue; // the same key on another track is its own
         h.key = -1;
         auto& p = patterns.at[h.track % track_count][h.pattern % pattern_count];
         int position = 0;

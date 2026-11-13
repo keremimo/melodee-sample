@@ -2,10 +2,12 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/midi_io.h"
 #include "melodee/engine/engine_host.h"
+#include "melodee/model/print.h"
 #include "melodee/model/sampler.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/midi_config_rows.h"
 #include "melodee/shell/project_store.h"
+#include "melodee/shell/step_edit.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <algorithm>
 #include <cstdio>
@@ -41,22 +43,22 @@ void Context::midi_key(unsigned t, int k, int velocity, bool down) {
     else return; // never started here (or already let go)
     // A kit pad under 16 Levels has the keyboard: the note is that pad, at the key
     // played. Kept from the press, so its end finds it whatever has changed meanwhile.
-    if (down) {
-        const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
-        int levels = levels_key(tr, k, project.samples[pad.sample % sample_slots].instrument());
-        midi_played[t][size_t(k)] = levels >= 0 ? levels : k;
-    }
+    const auto& pad = tr.pads[tr.levels_pad % sampler_pads];
+    const bool instrument = project.samples[pad.sample % sample_slots].instrument();
+    const int levels = levels_key(tr, k, instrument);
+    if (down) midi_played[t][size_t(k)] = levels >= 0 ? levels : k;
     const int played = midi_played[t][size_t(k)];
     from_midi = true;
-    if (t == ui.track) { // as the pads: the arp, Seq Record, Capture's history
+    if (t == ui.track) { // as the pads: the arp, Seq Record, Capture's history; Step Edit and Roll write it
         if (down && played == k && tr.engine == EngineKind::Sampler) tr.last_pad = uint8_t((unsigned(k) - sampler_first_note) % sampler_pads);
         key(played, velocity, down);
-    } else if (tr.arp) {
-        if (down || !tr.arp_latch) send({Type::ArpKey, uint8_t(t), 0, uint16_t(played), int16_t(down ? velocity : 0)});
-        keep_played(t, played, velocity, down); // roadmap P5: Capture keeps every track's
-    } else {
-        note(t, played, down ? velocity : 0);
-        keep_played(t, played, velocity, down);
+        if (levels >= 0) midi_entry(*this, int(sampler_first_note + tr.levels_pad % sampler_pads), k - 60 - (instrument ? int(pad.pitch) : 0), uint8_t(velocity), down);
+        else midi_entry(*this, k, 0, uint8_t(velocity), down);
+    } else { // a track on its own channel: played as the selected one is, and Seq Record takes it too (every track at once)
+        const uint8_t selected = ui.track;
+        ui.track = uint8_t(t);
+        key(played, velocity, down);
+        ui.track = selected;
     }
     from_midi = false;
 }
@@ -72,7 +74,7 @@ void Context::midi_release_all() {
 void Context::change_midi(unsigned row, int way) {
     if (row >= PanicRow) return;
     midi_row_step(ui.settings, track(), row, way);
-    if (row == TrackChannelRow) dirty = true; // the project keeps it
+    if (row == TrackChannelRow || row == TrackInRow) dirty = true; // the project keeps them
     if (store) store->save_settings(ui.settings.text());
 }
 
@@ -95,18 +97,32 @@ void Context::reset_settings() {
 
 void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& packet) {
     const auto& config = c.ui.settings.midi;
-    if (!packet.size || !port_is(config.port, port.driver, port.surface)) return;
+    if (!packet.size || port.surface) return;
+    // MIDI Config's port leads the selected track, the clocks, Thru and program changes; a track with a channel of its
+    // own listens on its own input (Track::midi_in); Remote listens everywhere.
+    const bool config_port = port_is(config.port, port.driver, port.surface);
+    const bool channel_message = packet.size <= 3 && packet.bytes[0] >= 0x80 && packet.bytes[0] < 0xf0;
+    uint16_t heard = 0;
+    std::array<uint8_t, track_count> own {};
+    for (unsigned t = 0; t < track_count; ++t) {
+        own[t] = c.project.tracks[t].midi_channel;
+        if (own[t] && track_hears(c.project.tracks[t].midi_in, port.driver, port.surface)) heard = uint16_t(heard | 1u << t);
+    }
+    juce::MidiMessage m(packet.bytes.data(), int(packet.size));
+    const RemoteJob remote = channel_message && m.isController()
+        ? remote_cc(config, unsigned(m.getChannel()), unsigned(m.getControllerNumber()), unsigned(m.getControllerValue())) : RemoteJob {};
+    if (!config_port && remote.kind == RemoteJob::Kind::None &&
+        !(channel_message && note_tracks(config, own, heard, c.ui.track, unsigned(m.getChannel()), false)))
+        return; // not for anything here
     ins.fetch_add(1, std::memory_order_relaxed);
     c.ui.midi_in_at = c.now;
-    juce::MidiMessage m(packet.bytes.data(), int(packet.size));
+    if (remote.kind != RemoteJob::Kind::None) { do_remote(c, remote); return; }
     // Roadmap P4 (docs/MIDI_TRACKS.md M3): a channel message for a MIDI track goes out again on its own port and channel
     // (notes, pressure, bend; CCs as they came), unless it would come straight back in (the input is one of its
     // outputs and the channel is its own: the instrument wants Local Off); Thru then skips it, so nothing doubles.
     uint16_t echo = 0;
     if (packet.size <= 3 && packet.bytes[0] >= 0x80 && packet.bytes[0] < 0xf0 && !m.isProgramChange()) {
-        std::array<uint8_t, track_count> own {};
-        for (unsigned t = 0; t < track_count; ++t) own[t] = c.project.tracks[t].midi_channel;
-        uint16_t tracks = note_tracks(config, own, c.ui.track, unsigned(m.getChannel()));
+        uint16_t tracks = note_tracks(config, own, heard, c.ui.track, unsigned(m.getChannel()), config_port);
         for (unsigned t = 0; t < track_count; ++t) {
             const auto& tr = c.project.tracks[t];
             if (!((tracks >> t) & 1) || tr.engine != EngineKind::Midi) continue;
@@ -116,10 +132,11 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         }
     }
     c.midi_echo = echo;
-    if (config.thru && !echo && thru_count < thru.size()) thru[thru_count++] = packet;
+    if (config.thru && config_port && !echo && thru_count < thru.size()) thru[thru_count++] = packet;
     last_in.store((unsigned(packet.bytes[0]) << 16) | (packet.size > 1 ? unsigned(packet.bytes[1]) << 8 : 0) |
                   (packet.size > 2 ? packet.bytes[2] : 0), std::memory_order_relaxed);
 
+    if (!channel_message && !config_port) return; // the clocks and the rest: MIDI Config's port only
     // Sync In: MIDI clock leads the transport and the tempo.
     bool clock_in = config.sync_in == MidiSync::Clock;
     if (m.isMidiClock()) {
@@ -180,16 +197,14 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     // Channel messages.
     int channel = m.getChannel();
     if (m.isProgramChange()) {
-        if (!config.program_change || (config.in_channel && config.in_channel != channel)) return;
+        if (!config_port || !config.program_change || (config.in_channel && config.in_channel != channel)) return;
         int pattern = m.getProgramChangeNumber();
         if (pattern >= int(pattern_count)) return;
         for (unsigned t = 0; t < track_count; ++t) if (c.project.tracks[t].used()) c.launch(t, unsigned(pattern));
         c.notice("Program change: P" + std::to_string(pattern + 1));
         return;
     }
-    std::array<uint8_t, track_count> own {};
-    for (unsigned t = 0; t < track_count; ++t) own[t] = c.project.tracks[t].midi_channel;
-    uint16_t tracks = note_tracks(config, own, c.ui.track, unsigned(channel));
+    uint16_t tracks = note_tracks(config, own, heard, c.ui.track, unsigned(channel), config_port);
     if (m.isNoteOff(true)) { // a note off (or on at velocity 0) ends the note wherever it is held, even after a track change
         for (unsigned t = 0; t < track_count; ++t) {
             int key = m.getNoteNumber();
@@ -208,11 +223,11 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
     }
     if (echo && (m.isPitchWheel() || (m.isController() && m.getControllerNumber() != 1) || ((m.isAftertouch() || m.isChannelPressure()) && !c.ui.settings.pressure)))
         echo_raw(c, packet.bytes.data(), packet.size, echo, packet.timestamp_ns); // what the engine does not play: on each MIDI track's port and channel
-    if (m.isPitchWheel()) { // a keyboard's pitch wheel, whole, on the PLUGIN tracks it plays (a MIDI track's went out above as its BEND)
+    if (m.isPitchWheel()) { // a keyboard's pitch wheel, whole, on the PLUGIN tracks and kits it plays (a MIDI track's went out above as its BEND)
         int value = m.getPitchWheelValue() - 8192; // -8192..8191
         for (unsigned t = 0; t < track_count; ++t) {
             auto& tr = c.project.tracks[t];
-            if (!((tracks >> t) & 1) || tr.engine != EngineKind::Plugin) continue;
+            if (!((tracks >> t) & 1) || (tr.engine != EngineKind::Plugin && tr.engine != EngineKind::Sampler)) continue;
             tr.bend = int8_t(std::clamp(value / 128, -64, 63)); // as the fader's card and the PITCH BEND lane show it
             c.fader_bent = uint16_t(c.fader_bent & ~(1u << t)); // the wheel springs back by itself: the fader's return gives way
             c.send({Type::Bend, uint8_t(t), 0, 0, int16_t(value)});
@@ -236,15 +251,40 @@ void MidiIo::receive(Context& c, const MidiPortInfo& port, const MidiPacket& pac
         return;
     }
     if (m.isController()) {
+        const int number = m.getControllerNumber(), value = m.getControllerValue();
         for (unsigned t = 0; t < track_count; ++t) {
             if (!((tracks >> t) & 1)) continue;
-            if (m.getControllerNumber() == 1) { // the mod wheel, as the fader's
-                c.project.tracks[t].wheel = uint8_t(m.getControllerValue());
-                c.send({Type::Wheel, uint8_t(t), 0, 0, int16_t(m.getControllerValue() * 1000 / 127)});
+            auto& tr = c.project.tracks[t];
+            if (number == 1) { // the mod wheel, as the fader's, recorded as its lane
+                tr.wheel = uint8_t(value);
+                c.send({Type::Wheel, uint8_t(t), 0, 0, int16_t(value * 1000 / 127)});
+                if (t == c.ui.track % track_count) c.record_motion(int(motion_wheel), value);
             } else if (m.isAllNotesOff() || m.isAllSoundOff()) {
                 for (int k = 0; k < 128; ++k) if (c.midi_held[t].test(size_t(k))) c.midi_key(t, k, 0, false);
+            } else if (tr.engine == EngineKind::Plugin || tr.engine == EngineKind::Sampler) { // the sustain pedal and the rest, as they came
+                c.send({Type::Control, uint8_t(t), 0, uint16_t(number), int16_t(value)}); // (a MIDI track's went out above)
             }
         }
+    }
+}
+
+// Remote: a CC on MIDI Config's Remote channel selects a track, launches a pattern on the selected track or a scene.
+void MidiIo::do_remote(Context& c, const RemoteJob& job) {
+    using K = RemoteJob::Kind;
+    switch (job.kind) {
+    case K::Track:
+        if (job.index != c.ui.track % track_count) c.select_track(job.index);
+        c.notice("Track " + std::to_string(job.index + 1));
+        break;
+    case K::Pattern:
+        c.launch(c.ui.track % track_count, job.index);
+        c.notice("Pattern " + print_pattern_name(job.index));
+        break;
+    case K::Scene:
+        c.launch_scene(job.index);
+        c.notice("Scene " + print_pattern_name(job.index));
+        break;
+    default: break;
     }
 }
 

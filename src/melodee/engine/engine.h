@@ -44,6 +44,8 @@ public:
     virtual void set_bend(float /*-1..1*/) {}
     virtual void set_mod(unsigned /*route*/, const ModRoute&) {}
     virtual void set_pressure(int /*key*/, float /*0..1*/) {}
+    // A controller from MIDI in other than the mod wheel (CC 1, set_wheel): the sustain pedal (CC 64), expression and the rest.
+    virtual void control(int /*cc*/, int /*0..127*/) {}
     // The sequencer's accent: the notes started until the next call this much louder (1: none; accent_gain).
     virtual void set_accent(float /*gain*/) {}
     // A note's Slide or Tie: `from`, still held, carries on as `to` without a new attack, its pitch

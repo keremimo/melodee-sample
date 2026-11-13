@@ -351,7 +351,7 @@ private:
     // frame, kept for the track's job to make at that frame (play_calls()).
     struct EngineCall {
         enum class Op : uint8_t { NoteOn, NoteOff, Slide, Param, Wheel, Pressure, Mod, PlayPad, Audition, MovePad, RestorePad,
-                                  RestorePads, PadFxParam, Bend };
+                                  RestorePads, PadFxParam, Bend, Control };
         Op op = Op::NoteOn;
         bool flag = false;  // Slide: glide
         uint16_t frame = 0; // into the block

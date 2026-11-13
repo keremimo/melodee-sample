@@ -107,7 +107,7 @@ Binding filter_second(const PadSound& pad, bool other) {
 }
 } // namespace
 
-// The mod wheel's lane, as Motion shows it (parity phase 8), and a plug-in track's pitch bend.
+// The mod wheel's lane, as Motion shows it (parity phase 8), and a plug-in track's or a kit's pitch bend.
 const ParamInfo wheel_info {"MOD WHEEL", 0, 127, 0, Format::Number};
 const ParamInfo bend_info {"PITCH BEND", -64, 63, 0, Format::Number};
 
@@ -123,7 +123,7 @@ MotionParam motion_param(const Track& track, int lane, const Project* project) {
     if (lane < 0) return {};
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {&wheel_info, track.wheel};
-    if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin ? MotionParam {&bend_info, track.bend} : MotionParam {};
+    if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.engine == EngineKind::Sampler ? MotionParam {&bend_info, track.bend} : MotionParam {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4
         unsigned p = unsigned(param);
         if (p == motion_level) return {&level_info, track.mix.level};
@@ -169,7 +169,7 @@ std::string lane_name(const Track& track, int lane, const Project* project) {
 Binding lane_binding(const Track& track, unsigned t, int lane, const Project* project) {
     int param = int(lane_param(lane));
     if (unsigned(param) == motion_wheel) return {Kind::ModWheel, 0, 0, 127, track.wheel};
-    if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
+    if (unsigned(param) == motion_bend) return track.engine == EngineKind::Plugin || track.engine == EngineKind::Sampler ? Binding {Kind::PitchBend, 0, -64, 63, track.bend} : Binding {};
     if (is_mix_lane(unsigned(param))) { // roadmap P4: the card that turns it (the selected track's strip, the master's, a return)
         auto m = motion_param(track, lane, project);
         if (!m.info) return {};

@@ -171,6 +171,11 @@ void SamplerEngine::aim(Voice& v, const PadSound& sound, const SampleZone* zone,
     const double per_frame = v.native ? 1.0 : dsp::model_rate / dsp::sample_rate();
     v.aim.step = (tape ? step * rate : step) * per_frame;             // what it reads at (a stretch's taps)
     v.aim.advance = rate * (keep_length ? 1.0 : step) * per_frame;    // how fast the sound moves on
+    if (bend != 0.0f && pad < int(sampler_pads)) { // the pitch wheel (not Chop's audition): a stretched voice keeps its length, the rest move with it as tape does
+        const double bent = std::exp2(double(bend) / 12.0);
+        v.aim.step *= bent;
+        if (!v.stretch) v.aim.advance *= bent;
+    }
     v.aim.beats = p[FollowHow] == 0 && !(keep_length && shifted);     // a note held to length wants overlapped windows
     // Volume (dB, as the MPC shows it), Normalize, and velocity by the pad's sensitivity: at 100 the gain follows
     // the velocity (64 is -6 dB, 20 is -16 dB), at 0 every hit is full.
@@ -486,6 +491,11 @@ void SamplerEngine::hit(int pad, int velocity, int semitones, int cutoff) {
 // A note is a pad's key, and over it the semitones from the pad's root it plays at (an instrument's), and over those a
 // 16 Levels cutoff a pattern kept (roadmap P3: model/sampler.h pad_note).
 void SamplerEngine::note_on(int key, int velocity) {
+    if (pedal) { // pressed again under the pedal: its earlier off is not owed any more
+        unsigned kept = 0;
+        for (unsigned n = 0; n < pedal_count; ++n) if ((pedal_offs[n] & 0xffff) != (key & 0xffff)) pedal_offs[kept++] = pedal_offs[n];
+        pedal_count = kept;
+    }
     const int cutoff = (key >> 16) & 0xff;
     hit((key & 0xff) - int(sampler_first_note), velocity, int8_t(key >> 8), cutoff ? std::min(cutoff - 1, 100) : -1);
 }
@@ -503,7 +513,33 @@ void SamplerEngine::set_pad_mutes(const std::array<uint64_t, (sampler_pads + 63)
     for (unsigned pad = 0; pad < sampler_pads; ++pad) set_pad_mute(pad, (bits[pad / 64] >> (pad % 64)) & 1);
 }
 
+void SamplerEngine::set_bend(float amount) {
+    const float semitones = std::clamp(amount, -1.0f, 1.0f) * bend_range;
+    if (semitones == bend) return;
+    bend = semitones;
+    retune_all = true;
+}
+
+void SamplerEngine::control(int cc, int value) {
+    if (cc != 64) return;
+    const bool down = value >= 64;
+    if (down == pedal) return;
+    pedal = down;
+    if (down) return;
+    const unsigned count = pedal_count;
+    pedal_count = 0;
+    for (unsigned n = 0; n < count; ++n) note_off(pedal_offs[n]);
+}
+
 void SamplerEngine::note_off(int key) {
+    if (pedal) { // held on by the sustain pedal; the oldest goes now when too many wait
+        for (unsigned n = 0; n < pedal_count; ++n) if (pedal_offs[n] == key) return;
+        if (pedal_count < pedal_offs.size()) { pedal_offs[pedal_count++] = key; return; }
+        const int oldest = pedal_offs[0];
+        std::copy(pedal_offs.begin() + 1, pedal_offs.end(), pedal_offs.begin());
+        pedal_offs.back() = key;
+        key = oldest;
+    }
     int pad = (key & 0xff) - int(sampler_first_note), semis = int8_t(key >> 8);
     for (auto& v : voices)
         if (v.trigger == pad && v.pad >= 0 && v.held && (!v.zone || v.semis == semis)) { // a one shot plays on to its end (a loop until hit again)
@@ -557,9 +593,11 @@ void SamplerEngine::sample_gone(uint16_t slot) {
 }
 
 void SamplerEngine::all_notes_off() {
+    pedal = false; pedal_count = 0; // as a plug-in's: the pedal up too
     for (auto& v : voices) if (v.pad >= 0) { v.held = false; v.env.gate(false); v.filter_env.gate(false); }
 }
 void SamplerEngine::silence() {
+    pedal = false; pedal_count = 0;
     for (auto& v : voices) { end_stream(v); v = Voice {}; }
     for (auto& g : grains) g.sample = nullptr;
     s1[0] = s1[1] = s2[0] = s2[1] = 0;

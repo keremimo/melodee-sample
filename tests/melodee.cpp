@@ -3,6 +3,7 @@
 // the engine host's sequencer and mixer, and synth tracks as plug-ins.
 #include "melodee/engine/effects.h"
 #include "melodee/engine/macros.h"
+#include <sstream>
 #include <fstream>
 #include <filesystem>
 #include <functional>
@@ -848,6 +849,45 @@ void sampler_kit() {
     CHECK(engine.sounding());
     engine.sample_gone(3); // a sample about to be replaced: everything playing it stops
     CHECK(!engine.sounding());
+
+    // MIDI in: a keyboard's pitch wheel bends the kit's voices (two semitones each way, gliding there), and the
+    // sustain pedal (CC 64) holds a note let go until it comes up.
+    {
+        SamplerEngine kit;
+        kit.set_samples(&table);
+        PadSound pad; pad.sample = 3; pad.play = PadPlay::Gate;
+        kit.set_pad(4, pad);
+        const int key = int(sampler_first_note) + 4;
+        kit.note_on(key, 120);
+        std::vector<float> l(128, 0), r(128, 0);
+        TrackTaps taps;
+        kit.render_stereo(l.data(), r.data(), 128); kit.taps(taps);
+        CHECK(taps.count == 1);
+        const float straight = taps.voice[0].step;
+        kit.set_bend(1.0f);
+        for (unsigned b = 0; b < 40; ++b) kit.render_stereo(l.data(), r.data(), 128);
+        kit.taps(taps);
+        CHECK(std::fabs(taps.voice[0].step / straight - float(std::exp2(2.0 / 12))) < 0.01f);
+        kit.set_bend(0.0f);
+        for (unsigned b = 0; b < 40; ++b) kit.render_stereo(l.data(), r.data(), 128);
+        kit.taps(taps);
+        CHECK(std::fabs(taps.voice[0].step / straight - 1.0f) < 0.01f);
+        kit.control(64, 127);
+        kit.note_off(key);
+        for (unsigned b = 0; b < 100; ++b) kit.render_stereo(l.data(), r.data(), 128);
+        kit.taps(taps);
+        CHECK(kit.sounding() && taps.voice[0].level > 0.5f); // held on by the pedal
+        kit.control(64, 0);
+        for (unsigned b = 0; b < 100; ++b) kit.render_stereo(l.data(), r.data(), 128);
+        CHECK(!kit.sounding());
+        kit.control(64, 127); // a key pressed again under the pedal is not let go when it comes up
+        kit.note_on(key, 120);
+        kit.note_off(key);
+        kit.note_on(key, 120);
+        kit.control(64, 0);
+        for (unsigned b = 0; b < 100; ++b) kit.render_stereo(l.data(), r.data(), 128);
+        CHECK(kit.sounding());
+    }
 
     // Cloud: a held pad becomes grains, and sounds while held.
     {
@@ -4097,6 +4137,13 @@ void midi_and_sync() {
         CHECK(set.midi.in_channel == 16 && midi_row_value(set, track, InChannelRow) == "16");
         midi_row_step(set, track, TrackChannelRow, 1); CHECK(track.midi_channel == 1 && midi_row_value(set, track, TrackChannelRow) == "1");
         midi_row_step(set, track, TrackChannelRow, -1); CHECK(midi_row_value(set, track, TrackChannelRow) == "Off");
+        midi_row_step(set, track, TrackInRow, 1); CHECK(track.midi_in == TrackMidiIn::External && midi_row_value(set, track, TrackInRow) == "External");
+        midi_row_step(set, track, TrackInRow, -1); CHECK(midi_row_value(set, track, TrackInRow) == "Any");
+        CHECK(midi_row_value(set, track, RemoteChannelRow) == "Off" && midi_row_value(set, track, SceneCcRow) == "104");
+        midi_row_step(set, track, RemoteChannelRow, 1); CHECK(set.midi.remote_channel == 1);
+        for (int n = 0; n < 200; ++n) midi_row_step(set, track, TrackCcRow, -1);
+        CHECK(midi_row_value(set, track, TrackCcRow) == "Off");
+        set.midi.remote_channel = 0; set.midi.track_cc = 102;
         midi_row_step(set, track, PadOutRow, -1); CHECK(set.midi.pad_out == PadMidiOut::Empty);
         midi_row_step(set, track, SyncOutRow, 1); CHECK(midi_row_value(set, track, SyncOutRow) == "MIDI Clock");
         midi_row_step(set, track, FaderTakeoverRow, 1); CHECK(set.fader_takeover == Takeover::Scaled);
@@ -4119,6 +4166,42 @@ void midi_and_sync() {
         CHECK(port_is(MidiPort::Usb, "MIDI Gadget", false) && port_is(MidiPort::Usb, "USB-Audio", false) && !port_is(MidiPort::Usb, "SerialMIDI", false));
         Track own_channel; own_channel.midi_channel = 9;
         CHECK(out_channel_of(config, own_channel) == 9 && out_channel_of(config, synth) == 1);
+        // Each track on its own input: a channel of its own counts only from the ports the track listens on; the
+        // selected track only from MIDI Config's port.
+        config.in_channel = 0;
+        CHECK(track_hears(TrackMidiIn::Any, "SerialMIDI", false) && track_hears(TrackMidiIn::Any, "MIDI Gadget", false));
+        CHECK(track_hears(TrackMidiIn::External, "SerialMIDI", false) && !track_hears(TrackMidiIn::External, "USB-Audio", false));
+        CHECK(track_hears(TrackMidiIn::Usb, "USB-Audio", false) && !track_hears(TrackMidiIn::Usb, "SerialMIDI", false));
+        CHECK(!track_hears(TrackMidiIn::Any, "Surface", true));
+        uint16_t heard = 1u << 9; // track 10 listens here, track 6 does not
+        CHECK(note_tracks(config, own, heard, 2, 3, false) == (1u << 9));
+        CHECK(note_tracks(config, own, 0, 2, 3, false) == 0);       // nobody listens, not MIDI Config's port
+        CHECK(note_tracks(config, own, 0, 2, 3, true) == (1u << 2)); // MIDI Config's port: the selected track
+        CHECK(note_tracks(config, own, heard, 2, 1, false) == 0);
+        // Remote: CCs on its channel select a track, launch a pattern or a scene; the rest go on to the tracks.
+        MidiConfig remote;
+        CHECK(remote_cc(remote, 1, remote.track_cc, 3).kind == RemoteJob::Kind::None); // Off
+        remote.remote_channel = 16;
+        auto job = remote_cc(remote, 16, remote.track_cc, 3);
+        CHECK(job.kind == RemoteJob::Kind::Track && job.index == 3);
+        job = remote_cc(remote, 16, remote.pattern_cc, 17);
+        CHECK(job.kind == RemoteJob::Kind::Pattern && job.index == 17);
+        job = remote_cc(remote, 16, remote.scene_cc, 2);
+        CHECK(job.kind == RemoteJob::Kind::Scene && job.index == 2);
+        CHECK(remote_cc(remote, 16, remote.track_cc, 16).kind == RemoteJob::Kind::Ignored); // past T16: taken, nothing done
+        CHECK(remote_cc(remote, 15, remote.track_cc, 3).kind == RemoteJob::Kind::None);
+        CHECK(remote_cc(remote, 16, 7, 3).kind == RemoteJob::Kind::None);
+        remote.track_cc = 0;
+        CHECK(remote_cc(remote, 16, 0, 3).kind == RemoteJob::Kind::None); // a CC row Off
+        std::ostringstream text;
+        write_midi_config(text, remote);
+        MidiConfig back;
+        std::istringstream lines(text.str());
+        for (std::string line; std::getline(lines, line);) {
+            auto eq = line.find('=');
+            CHECK(eq != std::string::npos && read_midi_config(back, line.substr(0, eq), std::stoi(line.substr(eq + 1))));
+        }
+        CHECK(back == remote);
     }
     // MIDI clock in: the tempo from the pulses' stamps, steady through jitter; a pause starts over.
     {
@@ -4277,10 +4360,12 @@ void midi_and_sync() {
         auto project = std::make_unique<Project>();
         auto patterns = std::make_unique<PatternBank>();
         project->tracks[4].midi_channel = 11;
+        project->tracks[6].midi_channel = 2; project->tracks[6].midi_in = TrackMidiIn::External;
         auto bytes = save_project(*project, *patterns);
         auto loaded = std::make_unique<Project>();
         CHECK(load_project(bytes, *loaded, *patterns).empty());
         CHECK(loaded->tracks[4].midi_channel == 11 && loaded->tracks[3].midi_channel == 0);
+        CHECK(loaded->tracks[4].midi_in == TrackMidiIn::Any && loaded->tracks[6].midi_in == TrackMidiIn::External);
         for (size_t n = 0; n + 4 <= bytes.size(); ++n) if (std::memcmp(&bytes[n], "MIDC", 4) == 0) std::memcpy(&bytes[n], "XXXX", 4);
         auto older = std::make_unique<Project>();
         CHECK(load_project(bytes, *older, *patterns).empty());

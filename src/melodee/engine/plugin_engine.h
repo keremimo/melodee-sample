@@ -66,6 +66,9 @@ public:
         int value = std::clamp(int(std::lround((amount + 1) * 8192)), 0, 16383);
         runner->midi(0xe0, uint8_t(value & 0x7f), uint8_t(value >> 7));
     }
+    void control(int cc, int value) override {
+        if (runner) runner->midi(0xb0, uint8_t(std::clamp(cc, 0, 127)), uint8_t(std::clamp(value, 0, 127)));
+    }
     void set_pressure(int key, float amount) override {
         if (runner) runner->midi(0xa0, uint8_t(std::clamp(key, 0, 127)), uint8_t(std::lround(std::clamp(amount, 0.0f, 1.0f) * 127)));
     }

@@ -63,6 +63,12 @@ void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down);
 void entry_rest(Context& c);
 void entry_back(Context& c);
 void entry_move(Context& c, int way);
+// MIDI in on Step Edit and Roll: a key of the selected track (Context::midi_key, heard already) writes as a pad does
+// there. `key` is the track's note (a kit pad's key); on a kit under 16 Levels the pad's key, `pitch` the semitones
+// played over it. Step Edit: at the caret, the caret on a step once every key and pad is let go; with a step held on
+// its pads, into that step. Roll: at the cursor, as a pad. Nothing while Seq Record writes the take, or a sheet, a
+// question, Erase or a copy holds the pads.
+void midi_entry(Context& c, int key, int pitch, uint8_t velocity, bool down);
 // Roll's Shift + K1 NUDGE: the note in focus `offset` ticks off its nearest grid line of Q (bindings.h nudge_card()),
 // the cursor following it so it stays in focus.
 void set_event_nudge(Context& c, int offset);

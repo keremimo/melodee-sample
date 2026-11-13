@@ -6,8 +6,9 @@
 // (External jacks or USB), In channel (All or 1-16: what plays the selected
 // track), Out channel, Melodee's Track Channel (the selected track's own:
 // notes on it play that track wherever you are, and its notes go out on it),
-// Pad MIDI In, Pad MIDI Out (Never, Always, Empty), Sync In and Out (Off,
-// MIDI Clock, MTC), Thru, Receive Program Change (patterns), CV/Sync Out with
+// Track MIDI In (where that channel is heard: Any port, External, USB), Pad MIDI In, Pad MIDI Out (Never, Always,
+// Empty), Sync In and Out (Off, MIDI Clock, MTC), Thru, Receive Program Change (patterns), the Remote rows (a
+// channel, and the CCs that select a track, launch a pattern or a scene by their value), CV/Sync Out with
 // its Base and Division (pulses a quarter: base x division), the three
 // takeover modes (Settings has them too), MIDI Panic (Push: every note off,
 // everywhere) and Reset Factory Settings (Push, then B3 YES or B1 NO). B1 goes back. The pads play, so what they send can
@@ -45,7 +46,7 @@ void draw(Paint& p, const Snapshot& s) {
         auto ink = here ? colour::text : colour::sec;
         p.text(midi_row_name(row), x + 9, y, w * 0.62f, rh - 1, plain(row == ResetRow && here ? colour::rec : ink, type::body, Weight::Medium));
         juce::String value = midi_row_value(s.ui.settings, track, row);
-        if (row == TrackChannelRow) value = "T" + juce::String(s.ui.track + 1) + "  " + value;
+        if (row == TrackChannelRow || row == TrackInRow) value = "T" + juce::String(s.ui.track + 1) + "  " + value;
         if (row == CvDivisionRow && s.ui.settings.midi.cv_out) value += "  (" + juce::String(s.ui.settings.midi.cv_ppqn()) + " PPQN)";
         if (row == ResetRow || row == PanicRow) value = here ? "PUSH" : "";
         auto style = plain(here ? colour::text : colour::mid, type::small, Weight::Medium);

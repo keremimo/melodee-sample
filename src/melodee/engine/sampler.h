@@ -89,6 +89,12 @@ public:
     void set_accent(float gain) override { accent = gain; }
     void note_off(int key) override;
     void all_notes_off() override;
+    // A keyboard's pitch wheel: every voice of the kit bent up to `bend_range` semitones either way, its speed with it
+    // (a stretched voice its pitch only), gliding there as any change does. New hits start bent.
+    static constexpr float bend_range = 2.0f;
+    void set_bend(float amount) override;
+    // The sustain pedal (CC 64 at 64 or more): a note let go while it is down goes on until it comes up.
+    void control(int cc, int value) override;
     void silence() override;
     void set_param(int id, int value) override;
     void render(float* out, unsigned frames) override; // mono fold, for callers that want one channel
@@ -278,6 +284,10 @@ private:
     std::array<int, sampler::Count> p {};
     uint32_t clock = 0;
     float accent = 1; // the sequencer's, for the voices started next (set_accent)
+    float bend = 0;   // semitones, set_bend
+    bool pedal = false;
+    std::array<int32_t, max_voices> pedal_offs {}; // the note offs the sustain pedal holds back, in order
+    unsigned pedal_count = 0;
     float g = 1, k = 2, s1[2] {}, s2[2] {};
     bool filtered = false;
     // A pad's chain plays on in its lane after the pad falls silent, until its own tail has been quiet for

@@ -271,7 +271,7 @@ bool EngineHost::mid_block(Command::Type type) {
     using Type = Command::Type;
     switch (type) {
     case Type::NoteOn: case Type::NoteOff: case Type::PadNote: case Type::ArpKey: case Type::Pressure: case Type::Audition:
-    case Type::Param: case Type::Wheel: case Type::Bend: case Type::Mod: case Type::Level: case Type::Pan: case Type::FxParam:
+    case Type::Param: case Type::Wheel: case Type::Bend: case Type::Control: case Type::Mod: case Type::Level: case Type::Pan: case Type::FxParam:
     case Type::PadFxParam: case Type::PatternData: case Type::Recorded:
         return true;
     default:
@@ -805,10 +805,16 @@ void EngineHost::apply(const Command& c) {
             emit(e);
         }
         break;
-    case Type::Bend: // the fader's pitch bend on a PLUGIN track (a MIDI track's goes out as its BEND)
+    case Type::Bend: // the fader's or MIDI in's pitch bend on a PLUGIN track or a kit (a MIDI track's goes out as its BEND)
         slot.bend = std::clamp(c.value / 8192.0f, -1.0f, 1.0f);
         engine_bend(slot, slot.bend);
         break;
+    case Type::Control: { // MIDI in's controllers on a PLUGIN track or a kit: the sustain pedal and the rest
+        EngineCall call;
+        call.op = EngineCall::Op::Control; call.a = c.index & 0x7f; call.b = std::clamp<int>(c.value, 0, 127);
+        if (!keep_call(slot, call)) make_call(c.track % track_count, slot, call);
+        break;
+    }
     case Type::Level: slot.mix_level = c.value; set_level(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_level, 0, c.value, true); break; // roadmap P4: kept, Motion borrows it
     case Type::Pan: slot.mix_pan = c.value; set_pan(slot, c.value); if (mods_on) mod_note(c.track % track_count, motion_pan, 0, c.value, true); break;
     case Type::Send: // index: the bus
@@ -1055,6 +1061,7 @@ void EngineHost::make_call(unsigned t, Slot& slot, const EngineCall& c) {
     case Op::Wheel: e->set_wheel(c.x); break;
     case Op::Bend: e->set_bend(c.x); break;
     case Op::Pressure: e->set_pressure(c.a, c.x); break;
+    case Op::Control: e->control(c.a, c.b); break;
     case Op::Mod: e->set_mod(unsigned(c.a), ModRoute {uint8_t(c.b), uint8_t(c.c), int8_t(c.d)}); break;
     case Op::PlayPad: if (e == &slot.sampler) slot.sampler.play_pad(unsigned(c.a), c.b, c.c, c.d); break;
     case Op::Audition: if (e == &slot.sampler) slot.sampler.audition(uint16_t(c.a), uint32_t(c.b), uint32_t(c.c), c.d); break;

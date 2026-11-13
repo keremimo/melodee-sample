@@ -67,6 +67,7 @@ For the complete control reference, see [MELODEE.md](MELODEE.md).
    - [Compressor](guide/mixer-and-effects.md#compressor)
    - [Fader](guide/mixer-and-effects.md#fader)
 12. [MIDI and sync](guide/midi-and-sync.md)
+   - [Using a MIDI controller](guide/midi-and-sync.md#using-a-midi-controller)
 13. [Projects and files](guide/projects-and-files.md)
    - [The Project page](guide/projects-and-files.md#the-project-page)
    - [Naming](guide/projects-and-files.md#naming)

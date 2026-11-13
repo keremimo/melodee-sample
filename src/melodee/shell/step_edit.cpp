@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/step_edit.h"
+#include "melodee/engine/engine_host.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/context.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/step_lane.h"
 #include "melodee/shell/undo_scope.h"
 #include <string>
 #include <algorithm>
@@ -155,27 +157,11 @@ void caret_to(Context& c, int step) {
     c.ui.step_event = 0;
 }
 constexpr uint32_t entry_gesture = 0xE7700000u; // a step's entry, one undo however many pads it writes (| the step)
-} // namespace
+constexpr uint32_t roll_midi_gesture = 0x3D1D0000u; // a key played into Roll: one undo (| the key)
 
-void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
+// The note a step's entry writes at the caret: `key` (a kit under 16 Levels: its pad's, `level` over it).
+void entry_write(Context& c, int key, const Level& level, uint8_t velocity) {
     auto& ui = c.ui;
-    uint16_t bit = uint16_t(1u << (pad % 16));
-    c.play_pad(pad, velocity, down); // heard as it goes in
-    if (!down) {
-        ui.entry_held = uint16_t(ui.entry_held & ~bit);
-        if (!ui.entry_held && ui.entry_wrote) { // the last pad of the step let go: on to the next
-            ui.entry_wrote = false;
-            caret_to(c, int(caret_of(c.pattern(), ui)) + 1);
-        }
-        return;
-    }
-    const auto& t = c.track();
-    int key = pad_key(c.project, t, pad);
-    if (key < 0 || !t.used()) return;
-    Level level; // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
-    if (t.engine == EngineKind::Sampler && t.levels) { level = levels_of(c.project, t, pad); key = int(sampler_first_note + t.levels_pad % sampler_pads); }
-    if (level.none) return; // Zones: a pad past the instrument's last key
-    ui.entry_held = uint16_t(ui.entry_held | bit);
     auto& p = c.pattern();
     unsigned q = p.q(), caret = caret_of(p, ui);
     c.touch_scope(pattern_scope(c.project, ui), entry_gesture | caret);
@@ -190,6 +176,84 @@ void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     p.add(e); // a note of the same key already there is replaced
     c.sync_pattern(ui.track, c.track().pattern);
     ui.entry_wrote = true;
+}
+
+// Nothing held writes any more (pads or MIDI keys): the caret on a step of Q.
+void entry_let_go(Context& c) {
+    auto& ui = c.ui;
+    if (ui.entry_held || c.midi_held[ui.track % track_count].any() || !ui.entry_wrote) return;
+    ui.entry_wrote = false;
+    caret_to(c, int(caret_of(c.pattern(), ui)) + 1);
+}
+
+// A key played with a step held on Step Edit's pads: into that step (a synth: the step's notes are the keys played
+// while it is held; a kit: that pad's note added).
+void held_step_key(Context& c, int key, uint8_t velocity) {
+    auto& ui = c.ui;
+    auto& pattern = c.pattern();
+    auto& t = c.track();
+    unsigned st = unsigned(ui.held_step) % pattern.steps();
+    uint8_t v = ui.entry_velocity ? ui.entry_velocity : std::max<uint8_t>(velocity, 1);
+    if (steps_lane(t) >= 0) {
+        if (key < 0 || key > 255) return;
+        if (!step_velocity(pattern, st, key)) {
+            if (add_lane_note(pattern, st, uint8_t(key), v)) c.sync_pattern(ui.track, t.pattern);
+            else c.notice("The pattern is full");
+        }
+    } else {
+        Step step = pattern.step(st);
+        if (!ui.held_edited) step.notes = {}; // the first key replaces what the step had
+        bool there = false;
+        for (auto& n : step.notes) if (n.velocity && n.key == key) { n.velocity = v; there = true; }
+        if (!there)
+            for (auto& n : step.notes) if (!n.velocity) { n = {uint8_t(std::clamp(key, 0, 127)), v}; there = true; break; }
+        if (!there) return; // a full chord
+        t.last_note = uint8_t(std::clamp(key, 0, 127));
+        c.set_step(ui.track, st, step);
+    }
+    ui.held_edited = true;
+}
+} // namespace
+
+void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
+    auto& ui = c.ui;
+    uint16_t bit = uint16_t(1u << (pad % 16));
+    c.play_pad(pad, velocity, down); // heard as it goes in
+    if (!down) {
+        ui.entry_held = uint16_t(ui.entry_held & ~bit);
+        entry_let_go(c); // the last pad of the step let go: on to the next
+        return;
+    }
+    const auto& t = c.track();
+    int key = pad_key(c.project, t, pad);
+    if (key < 0 || !t.used()) return;
+    Level level; // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
+    if (t.engine == EngineKind::Sampler && t.levels) { level = levels_of(c.project, t, pad); key = int(sampler_first_note + t.levels_pad % sampler_pads); }
+    if (level.none) return; // Zones: a pad past the instrument's last key
+    ui.entry_held = uint16_t(ui.entry_held | bit);
+    entry_write(c, key, level, velocity);
+}
+
+void midi_entry(Context& c, int key, int pitch, uint8_t velocity, bool down) {
+    auto& ui = c.ui;
+    if (ui.page != PageId::StepEdit && ui.page != PageId::Roll) return;
+    if (ui.page == PageId::StepEdit && !down) { entry_let_go(c); return; }
+    const auto& t = c.track();
+    if (!down || !t.used() || key < 0) return;
+    if (ui.exit_open || ui.ask != UiState::Ask::None || ui.name.open() || ui.erase || ui.seq_held || ui.copying != UiState::Copying::Off) return;
+    if (ui.recording && c.host.playing()) return; // played in live by Seq Record
+    if (ui.page == PageId::Roll) {
+        ui.sheet_open = false; // a key leaves the sheet and writes, as a pad does
+        const int lane = roll_lane(t);
+        c.touch_scope(pattern_scope(c.project, ui), roll_midi_gesture | uint32_t(key & 0xffff));
+        if (lane >= 0) roll_write(c, lane, velocity, pitch);
+        else roll_write(c, key, velocity);
+        return;
+    }
+    if (ui.step_pads && ui.held_step >= 0) { held_step_key(c, key, velocity); return; }
+    Level level;
+    level.semitones = pitch;
+    entry_write(c, key, level, velocity);
 }
 
 void entry_rest(Context& c) { caret_to(c, int(caret_of(c.pattern(), c.ui)) + 1); }

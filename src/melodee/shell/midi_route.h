@@ -25,6 +25,21 @@ bool dest_is(MidiDest dest, MidiPort config, const std::string& driver, bool sur
 // its own channel; when none does, the selected track if MIDI Config's In
 // channel is All or this one. A bit a track.
 uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_count>& own, unsigned selected, unsigned channel);
+// The same for a message from one port: a track's own channel counts only from a port it listens on (`heard`, a bit a
+// track: track_heard()); the selected track only from MIDI Config's port (`config_port`).
+uint16_t note_tracks(const MidiConfig& config, const std::array<uint8_t, track_count>& own, uint16_t heard, unsigned selected,
+                     unsigned channel, bool config_port);
+// Whether a track with its own channel listens on a device (Track::midi_in). Never the surface.
+bool track_hears(TrackMidiIn in, const std::string& driver, bool surface);
+
+// Remote (MIDI Config's Remote rows): what a CC does. Track: select `index`; Pattern: launch `index` on the selected
+// track; Scene: launch scene `index`. None: not a remote CC (it goes on to the tracks), or a value past the end
+// (Ignored: taken, nothing done).
+struct RemoteJob {
+    enum class Kind : uint8_t { None, Ignored, Track, Pattern, Scene } kind = Kind::None;
+    unsigned index = 0;
+};
+RemoteJob remote_cc(const MidiConfig& config, unsigned channel, unsigned cc, unsigned value);
 
 // The key a MIDI note plays on a track: a synth the note itself; a kit the
 // pad it names (36 = A01, as Melodee's own pad keys and its MIDI out), -1

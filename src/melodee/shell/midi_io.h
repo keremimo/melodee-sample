@@ -58,6 +58,7 @@ private:
     // A CC, bend or pressure (`bytes`) echoed on `tracks` (MIDI tracks); a CC a slot sends turns that slot (heard, and
     // recorded under Seq Record on the selected track), as the bend does BEND.
     void echo_raw(Context& c, const uint8_t* bytes, unsigned size, uint16_t tracks, uint64_t ns);
+    void do_remote(Context& c, const RemoteJob& job); // MIDI Config's Remote rows: a track, a pattern or a scene
     // Roadmap P4 (M4): the SysEx going out now (Context::sysex_queue's first): its track, bytes, how far, the next piece.
     struct SysexSending { bool active = false; uint8_t track = 0; std::vector<uint8_t> bytes; size_t at = 0; int64_t next_ns = 0; } sysex;
     std::atomic<unsigned> sysex_sent {0}, sysex_bytes {0};
