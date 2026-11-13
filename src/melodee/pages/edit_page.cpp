@@ -224,6 +224,8 @@ void soft(Context& c, int key) {
     c.ui.edit_row[t] = 0;
 }
 
+} // namespace
+
 // A PLUGIN track's rows of parameters (the panel knows how many).
 void plugin_rows(Context& c, int delta) {
     unsigned entry = c.track().plugin;
@@ -233,6 +235,8 @@ void plugin_rows(Context& c, int delta) {
     c.ui.plugin_panel.row = row;
     c.plugin_panel_at = 0; // its cards again at once
 }
+
+namespace {
 
 void wheel(Context& c, int delta) {
     if (c.track().engine == EngineKind::Plugin) { plugin_rows(c, delta); return; }

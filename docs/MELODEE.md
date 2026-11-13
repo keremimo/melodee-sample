@@ -126,7 +126,7 @@ cards.
 | Pad Bank | Next bank of the kit, A–H round. Held: the pads are the tracks at once, a pad picks one, and after a second the screen shows all sixteen; −/+ or the wheel jump banks; B2 MOVE moves a track to another pad (one there trades places with it), B3 COPY (or Shift + Erase) copies one, B1 steps back; Erase + pad clears that track, asked first (sound, kit, patterns; its mix strip stays; one undo). One job a tap, on release: no double tap. On Roll with a synth or MIDI track: the pads an octave up | Previous bank; on Roll the octave down |
 | Fader | The pot turned last on the track (PIN keeps it) or a target the Fader page's wheel picks, or the page's own job (Fader below); its light follows the value | |
 | Erase | Held + pad, pot, step or fader: clear it (below). A tap on its own erases the page's selection (below); on Song, the clip under the cursor | Copy of what the page holds (below). With Pad Bank held, Erase + pad clears a track |
-| Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B3). On Song, repeats the clip to the next marker | |
+| Note Repeat | A tap latches, a hold lasts (its arp is Stage's ARP, B2). On Song, repeats the clip to the next marker | |
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
 | Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
@@ -246,18 +246,26 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
 
 ### Playing
 
-- **Stage** (Sample): the selected track's quick pages, as the MPC's Sample
-  mode. **B1–B3** each hold a cycle of up to four pages: the lit one again
+- **Stage** (Sample): the selected track's quick pages. Every track gives
+  **B1–B3** the same jobs (docs/HUBS_PLAN.md): B1 the source, B2 how it
+  plays, B3 where it goes. Each holds a cycle of up to five pages (a MIDI
+  track's B3 none: it does nothing): the lit one again
   steps to the next, another jumps to its first; the soft keys name each
   button's page, with a dot a page under a cycle. Each track keeps its own
   button and page. The pads play the track (a kit's pad played is the pad
   edited), the **wheel** fine-edits the card touched last (ringed), **Push**
-  moves to the next card (on a synth, opens its plug-in on Edit), Shift +
-  Push is Back, −/+ the octave (a kit's bank).
+  moves to the next card (PRESETS: the whole list), Shift +
+  Push is Back, −/+ the octave (a kit's bank; EDIT: the rows).
   - **A synth** (a PLUGIN track: Melodee Poly, PD and Chip are plug-ins,
-    below, "Synths"): B1 **MIX → SENDS**, B2 **ARP → CHORD**, B3 **FX**; the
-    synth's own values are on Edit (Push on any of these but FX, or on
-    Keys), the plug-in's pages. MIX:
+    below, "Synths"): B1 **PRESETS → EDIT**, B2 **ARP → CHORD**, B3 **MIX →
+    SENDS → FX**. PRESETS: the plug-in's presets as a poster, the one
+    playing large with the plug-in and its format under it and the ones
+    before and after small in the corners, the header n / count; the wheel
+    walks them, the one turned to loading 250 ms after the last turn
+    (amber till then), Push opens the whole list (PRESETS, B1 back); K1–K3
+    the plug-in's first row. A plug-in with no presets: B1 says
+    **PLUG-IN**, its face (name, format, the share of each block it takes).
+    EDIT: its own values, as Edit's list (the wheel and −/+ the rows). MIX:
     level, pan and the quick send into bus A; its meter carries the five
     steps of the meter LEDs as a scale. SENDS: a track sends into each of the
     four buses: K1 picks the bus (A–D, the one Tracks' SENDS and Bus show
@@ -276,9 +284,9 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     on two octaves of keys. FX: the slot of the track's chain the cards edit
     (Push the next one; with none yet, Push opens the effect picker; Shift +
     Knob FX adds effects), all six slots drawn with their family glyphs.
-  - **A kit**: Akai's pages in Akai's order on the last pad hit, B1 **TRIM →
-    LAYERS → MIX → AMP ENV → SENDS** (LAYERS the pad's four samples; SENDS the kit track's four), B2 **TUNE → PLAY → FOLLOW → CLOUD**, B3 **FILTER →
-    FILT ENV → KIT FILT** (Melodee's own pages join Akai's): the pad's
+  - **A kit**: Akai's pages on the last pad hit, B1 **TRIM →
+    LAYERS → TUNE → AMP ENV** (LAYERS the pad's four samples), B2 **PLAY → FOLLOW → CLOUD**, B3 **MIX → SENDS → FILTER →
+    FILT ENV → KIT FILT** (SENDS the kit track's four; the sampler pages keep the same groups, without SENDS): the pad's
     waveform with its volume on the left and pan on the right, chips for
     how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
     + B1 Loop Lock, Shift + B2 Normalize), the envelopes and the filter lie
@@ -302,7 +310,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
     it began to where it reads, at its window's strength, leaving a faint
     mark for 150 ms; the bars a grain covers lighten, and with Scan moving
     the cloud travels and GRAINS AROUND follows it (K1's line stays).
-  - **A MIDI track**: B1 **DEVICE → PROGRAM**, B2 **CC**, B3 **ARP → CHORD**. DEVICE
+  - **A MIDI track**: B1 **DEVICE → PROGRAM → CC**, B2 **ARP → CHORD**, B3 nothing (no audio). DEVICE
     (and Edit's DEVICE alike): the route, alive. The track, its port (the
     MIDI Out jack, a computer over USB-C, every USB device; amber when
     nothing is there) and the instrument as glyphs on one line, notes
@@ -367,7 +375,7 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   its right edge; K1 jumps (as on every list), the wheel walks, Push loads;
   FAVOURITES lists the starred (Shift + Sample Select). A synth's sounds are
   its plug-in's own presets (PRESETS on Edit, below, "Plug-ins").
-- **Edit** (Push on Keys; on a synth Push on Stage too): the engine's pages: a MIDI track's DEVICE and
+- **Edit** (Push on Keys; on a synth Stage's EDIT too): the engine's pages: a MIDI track's DEVICE and
   PROGRAM; a synth's, its plug-in's own values (below, "Plug-ins"). No title
   row: the page is the header's chip, and its curve fills the picture with
   every parameter named at the point it moves, in its knob's colour while

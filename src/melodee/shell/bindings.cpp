@@ -488,6 +488,9 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         if (slot >= track.fx.count()) return {};
         return effect_row(t * 64 + slot * 8, track.fx.slots[slot], shift_row ? 1 : 0);
     }
+    case SK::PluginSound: case SK::PluginEdit: // the plug-in's row of three (PRESETS keeps them while presets are heard)
+        if (shift_row) return {};
+        return plugin_cards(ui, track.plugin);
     case SK::NewSynth: case SK::NewKit: case SK::NewMidi: return {}; // an empty track: the wheel and Push (shell/new_track.h)
     default: return {};
     }

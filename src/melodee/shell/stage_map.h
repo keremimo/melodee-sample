@@ -9,18 +9,31 @@
 // which button (B1-B3) and page of its cycle the track is on, the page itself
 // (a 909's VOICE is the voice the last pad played), and what B1-B3 do there,
 // as the MPC's Sample Mode: the lit button again steps on through its cycle,
-// another one jumps to the first page of its own. Each track keeps its own
+// another one jumps to the first page of its own, one with no pages does nothing. Each track keeps its own
 // button and page. Pure, for the pages, the shell and the tests.
 namespace melodee {
 
 struct StageAt { unsigned group = 0, sub = 0; };
 
 inline unsigned stage_count(const StageGroups& g, unsigned group) { return std::max<unsigned>(g.groups[group % 3].count, 1); }
+// Whether a button has pages at all (a MIDI track's B3 has none: it does nothing).
+inline bool stage_has(const StageGroups& g, unsigned group) { return g.groups[group % 3].count > 0; }
 
 inline StageAt stage_at(const UiState& ui, const Track& t) {
     const auto& g = stage_groups(t.engine);
     unsigned track = ui.track % track_count, group = ui.stage_group[track] % 3;
+    if (!stage_has(g, group)) group = 0; // left on a button this track has no pages under
     return {group, ui.stage_sub[track] % stage_count(g, group)};
+}
+
+// Where a kind of page sits on an engine's Stage (the first one of that kind); found false when it has none.
+struct StageFound { StageAt at; bool found = false; };
+inline StageFound stage_find(EngineKind engine, StageKind kind) {
+    const auto& g = stage_groups(engine);
+    for (unsigned group = 0; group < 3; ++group)
+        for (unsigned sub = 0; sub < g.groups[group].count; ++sub)
+            if (g.groups[group].pages[sub].kind == kind) return {{group, sub}, true};
+    return {};
 }
 
 inline const StagePage& stage_page_at(const Track& t, unsigned group, unsigned sub) {
@@ -38,6 +51,7 @@ inline void stage_press(UiState& ui, const Track& t, unsigned key) {
     unsigned track = ui.track % track_count;
     auto at = stage_at(ui, t);
     key %= 3;
+    if (!stage_has(stage_groups(t.engine), key)) return;
     if (at.group == key) { ui.stage_sub[track] = uint8_t((at.sub + 1) % stage_count(stage_groups(t.engine), key)); return; }
     ui.stage_group[track] = uint8_t(key);
     ui.stage_sub[track] = 0;
@@ -47,6 +61,12 @@ inline void stage_press(UiState& ui, const Track& t, unsigned key) {
 inline void stage_go(UiState& ui, unsigned group, unsigned sub) {
     ui.stage_group[ui.track % track_count] = uint8_t(group % 3);
     ui.stage_sub[ui.track % track_count] = uint8_t(sub);
+}
+// The same by the kind of page; false (nothing moves) when the engine's Stage has none.
+inline bool stage_go(UiState& ui, EngineKind engine, StageKind kind) {
+    auto f = stage_find(engine, kind);
+    if (f.found) stage_go(ui, f.at.group, f.at.sub);
+    return f.found;
 }
 
 // The card the wheel fine-edits on Stage, and Push moves on (the MPC's encoder press): the pot touched last.

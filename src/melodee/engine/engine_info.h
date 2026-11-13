@@ -55,8 +55,8 @@ struct EditPage {
 };
 
 // Stage (pages/stage_page.cpp, docs/MELODEE.md): the selected track's quick
-// pages, as the MPC's Sample Mode has them. B1-B3 each hold a cycle of up to
-// four pages; pressing the lit button again steps to the next, another
+// pages. B1-B3 each hold a cycle of up to five pages (none: the key does
+// nothing); pressing the lit button again steps to the next, another
 // button jumps to the first of its own. Each engine states its pages here as
 // data; StageKind says where a page's cards come from.
 enum class StageKind : uint8_t {
@@ -70,6 +70,8 @@ enum class StageKind : uint8_t {
     Trim, PadMix, AmpEnv, Tune, Play, Filter, FiltEnv, // a kit: the last pad's Sample Mode values
     Follow, Cloud, KitFilter,                          // a kit: Melodee's own kit-wide pages
     Layers,                                            // a kit: the last pad's four layers (roadmap P3)
+    PluginSound,       // a PLUGIN track's first page: its presets (K1-K3 its first row), or its face when it has none
+    PluginEdit,        // a PLUGIN track's own parameters, three a row; the wheel moves the rows
     NewSynth, NewKit, NewMidi,                         // an empty track: what it becomes (Push)
 };
 // What the picture over the knobs draws.
@@ -81,11 +83,12 @@ enum class StagePicture : uint8_t {
     Lfo,       // params[0] rate, params[1] shape (Triangle, Saw, Square, Random), params[2] amount
     ShiftRows, // the Shift row as rows: what Shift + K1-K3 reach
     Mix, Sends, Arp, Chord, Fx, Wave, Route, Program, Cc, Engines, Sources, Ports,
+    PluginSound, PluginEdit,
 };
 struct StagePage {
-    const char* key; // as the soft key names it: "AMP ENV"
-    StageKind kind;
-    StagePicture picture;
+    const char* key = ""; // as the soft key names it: "AMP ENV"
+    StageKind kind {};
+    StagePicture picture {};
     std::array<int8_t, 3> params {{-1, -1, -1}};
     std::array<int8_t, 3> shift {{-1, -1, -1}};
 };
@@ -131,9 +134,10 @@ struct EngineInfo {
 const EngineInfo& engine_info(EngineKind kind);
 // Stage's pages for an engine (None: the empty track's chooser).
 const StageGroups& stage_groups(EngineKind kind);
-// Stage's shared pages: B1 SOUND (PRESET, MIX, SENDS) and B3 PLAY (ARP,
-// CHORD, FX).
-constexpr StagePage stage_preset {"PRESET", StageKind::Preset, StagePicture::Preset};
+// Stage's shared pages. Every track gives B1-B3 the same jobs: B1 the
+// source (a kit's sample, a plug-in, a MIDI device), B2 how it plays (a kit's
+// play pages, ARP and CHORD), B3 where it goes (MIX, SENDS, then a kit's
+// filters or a plug-in's FX).
 constexpr StagePage stage_mix {"MIX", StageKind::Mix, StagePicture::Mix};
 constexpr StagePage stage_sends {"SENDS", StageKind::Sends, StagePicture::Sends};
 constexpr StagePage stage_arp {"ARP", StageKind::Arp, StagePicture::Arp};

@@ -85,10 +85,12 @@ const EngineInfo& engine_info(EngineKind kind) {
     // rack's), so the engine states none here and its Edit page draws the plug-in's. Melodee's synths are plug-ins
     // of this kind (Melodee Poly, PD and Chip, docs/MELODEE.md, Synths).
     static const Sound plugin_sounds[] {{"PLUG-IN", {{{-1, 0}}}}};
+    // B1 the plug-in: its presets (or its face when it has none), then its parameters; B2 ARP, CHORD; B3 MIX,
+    // SENDS, FX (engine_info.h, stage_mix).
     static const StageGroups plugin_stage {{{
-        {{{stage_mix, stage_sends, {}}}, 2},
-        {{{stage_arp, stage_chord, {}}}, 2},
-        {{{stage_fx, {}, {}}}, 1},
+        {{{{"PRESETS", StageKind::PluginSound, StagePicture::PluginSound}, {"EDIT", StageKind::PluginEdit, StagePicture::PluginEdit}}}, 2},
+        {{{stage_arp, stage_chord}}, 2},
+        {{{stage_mix, stage_sends, stage_fx}}, 3},
     }}};
     static const EngineInfo plugin {EngineKind::Plugin, "PLUGIN", true, nullptr, 0, nullptr, 0, {-1, -1, -1},
                                     plugin_sounds, 1, nullptr, 0, false, &plugin_stage};
@@ -104,20 +106,21 @@ const StageGroups& stage_groups(EngineKind kind) {
     using K = StageKind;
     using P = StagePicture;
     constexpr int8_t _ = -1;
-    // A kit: the MPC's Sample Mode pages in Akai's order, on the last pad hit; Melodee's own join
-    // the group they belong with, as on the sampler pages: Follow and Cloud B2's, Kit filter B3's.
+    // A kit, on the last pad hit: B1 the sample (trim, layers, tune, its envelope), B2 how it plays (as
+    // the sampler pages, shell/sampler_map.h), B3 where it goes (mix, sends) and its filters.
     static const StageGroups kit {{{
-        {{{{"TRIM", K::Trim, P::Wave}, {"LAYERS", K::Layers, P::Wave}, {"MIX", K::PadMix, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}, stage_sends}}, 5},
-        {{{{"TUNE", K::Tune, P::Wave}, {"PLAY", K::Play, P::Wave}, {"FOLLOW", K::Follow, P::Wave}, {"CLOUD", K::Cloud, P::Wave}}}, 4},
-        {{{{"FILTER", K::Filter, P::Wave}, {"FILT ENV", K::FiltEnv, P::Wave}, {"KIT FILT", K::KitFilter, P::Wave}}}, 3},
+        {{{{"TRIM", K::Trim, P::Wave}, {"LAYERS", K::Layers, P::Wave}, {"TUNE", K::Tune, P::Wave}, {"AMP ENV", K::AmpEnv, P::Wave}}}, 4},
+        {{{{"PLAY", K::Play, P::Wave}, {"FOLLOW", K::Follow, P::Wave}, {"CLOUD", K::Cloud, P::Wave}}}, 3},
+        {{{{"MIX", K::PadMix, P::Wave}, stage_sends, {"FILTER", K::Filter, P::Wave}, {"FILT ENV", K::FiltEnv, P::Wave}, {"KIT FILT", K::KitFilter, P::Wave}}}, 5},
     }}};
-    // MIDI: where the notes go, bank and program; three controllers; the arp.
+    // MIDI: B1 where the notes go, bank and program, three controllers; B2 the arp and chord; B3 nothing (no audio).
     using namespace midi_track;
     static const StageGroups midi {{{
         {{{{"DEVICE", K::Params, P::Route, {{Port, Channel, _}}},
-           {"PROGRAM", K::Params, P::Program, {{BankMsb, BankLsb, Program}}}, {}}}, 2},
-        {{{{"CC", K::Params, P::Cc, {{Cc1, Cc2, Cc3}}, {{CcNumber1, CcNumber2, CcNumber3}}}, {}, {}}}, 1},
-        {{{stage_arp, stage_chord, {}}}, 2},
+           {"PROGRAM", K::Params, P::Program, {{BankMsb, BankLsb, Program}}},
+           {"CC", K::Params, P::Cc, {{Cc1, Cc2, Cc3}}, {{CcNumber1, CcNumber2, CcNumber3}}}}}, 3},
+        {{{stage_arp, stage_chord}}, 2},
+        {{{}}, 0},
     }}};
     // An empty track: what it becomes.
     static const StageGroups empty {{{
@@ -125,19 +128,14 @@ const StageGroups& stage_groups(EngineKind kind) {
         {{{{"KIT", K::NewKit, P::Sources}, {}, {}}}, 1},
         {{{{"MIDI", K::NewMidi, P::Ports}, {}, {}}}, 1},
     }}};
-    // An engine that states none: its sounds and mix, the arp, its effects.
-    static const StageGroups plain {{{
-        {{{stage_preset, stage_mix, stage_sends}}, 3},
-        {{{stage_arp, stage_chord, {}}}, 2},
-        {{{stage_fx, {}, {}}}, 1},
-    }}};
+    static const StageGroups nothing {}; // an engine that states none (there is none left)
     switch (kind) {
     case EngineKind::None: return empty;
     case EngineKind::Sampler: return kit;
     case EngineKind::Midi: return midi;
     default: {
         const auto* own = engine_info(kind).stage;
-        return own ? *own : plain;
+        return own ? *own : nothing;
     }
     }
 }

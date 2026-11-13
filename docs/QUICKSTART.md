@@ -117,9 +117,9 @@ pad you hit.
 
 ![Stage on a kit: TRIM](images/screens/trim.png)
 
-- **B1** cycles **TRIM**, **LAYERS**, **MIX**, **AMP ENV** and **SENDS**.
-- **B2** cycles **TUNE**, **PLAY**, **FOLLOW** and **CLOUD**.
-- **B3** cycles **FILTER**, **FILT ENV** and **KIT FILT**.
+- **B1** cycles **TRIM**, **LAYERS**, **TUNE** and **AMP ENV**.
+- **B2** cycles **PLAY**, **FOLLOW** and **CLOUD**.
+- **B3** cycles **MIX**, **SENDS**, **FILTER**, **FILT ENV** and **KIT FILT**.
 
 Press the lit key again to go to its next page. The dots under a key show
 which page of its cycle is open.

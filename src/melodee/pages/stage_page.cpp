@@ -3,14 +3,17 @@
 // STAGE (Sample): the selected track's quick pages, as the MPC's Sample Mode.
 // B1-B3 each hold a cycle of pages (engine/engine_info.h, stage_groups()):
 // the lit one again steps to the next page, another jumps to its first; the
-// soft keys name each button's page, with a dot a page under a cycle. A kit
-// has Akai's Trim / Mix / Amp Env, Tune / Play and Filter / Filt Env on the
-// last pad hit; a PLUGIN track (a synth: Melodee Poly, PD and Chip are plug-ins)
-// mix and sends, arp and chord, effects; a MIDI track device and program, CC,
-// arp and chord; an empty track what it becomes. The wheel fine-edits the card touched last
-// (PRESET: walks the sounds; an empty track: walks its list), Push moves to the next card (PRESET: the Sounds
-// list; FX: the next effect, or with none yet the effect picker; an empty track: makes it; a PLUGIN track: the
-// plug-in's own values, Edit), Shift + Push is Back.
+// soft keys name each button's page, with a dot a page under a cycle. Every
+// track gives the buttons the same jobs: B1 the source, B2 how it plays, B3
+// where it goes. A kit: B1 Trim / Layers / Tune / Amp Env, B2 Play / Follow /
+// Cloud, B3 Mix / Sends / Filter / Filt Env / Kit filter, on the last pad hit;
+// a PLUGIN track (a synth: Melodee Poly, PD and Chip are plug-ins): B1 its
+// presets (or its face when it has none) and its parameters, B2 arp and chord,
+// B3 mix, sends, effects; a MIDI track: B1 device, program, CC, B2 arp and
+// chord, B3 nothing; an empty track what it becomes. The wheel fine-edits the card touched last
+// (PRESETS: walks the presets; EDIT: the rows; an empty track: walks its list), Push moves to the next card
+// (PRESETS: the whole list; FX: the next effect, or with none yet the effect picker; an empty track: makes it),
+// Shift + Push is Back.
 // The pads play the track; on a kit the pad played is the pad edited.
 #include "melodee/engine/arp.h"
 #include "melodee/engine/dsp.h"
@@ -859,6 +862,8 @@ void frozen_picture(Paint& p, const Snapshot& s) {
     p.text(held, px, ly + 17, pw, 13, mid, juce::Justification::centredTop);
 }
 
+bool plugin_has_presets(const Snapshot& s);
+
 ui::SoftKeys stage_keys(const Snapshot& s) {
     const auto& t = s.track();
     const auto& g = stage_groups(t.engine);
@@ -866,13 +871,70 @@ ui::SoftKeys stage_keys(const Snapshot& s) {
     std::array<juce::String, 3> labels;
     SoftKeys keys {labels, int(at.group), colour_of(s)};
     for (unsigned n = 0; n < 3; ++n) {
+        if (!stage_has(g, n)) continue; // no pages: a blank key
         unsigned sub = n == at.group ? at.sub : 0;
         keys.labels[n] = stage_page_at(t, n, sub).key;
+        if (stage_page_at(t, n, sub).kind == StageKind::PluginSound && !plugin_has_presets(s)) keys.labels[n] = "PLUG-IN"; // its face
         if (stage_page_at(t, n, sub).kind == StageKind::Trim && instrument_pad(s)) keys.labels[n] = "ZONES"; // round 3 "instrument C"
         keys.dots[n] = uint8_t(stage_count(g, n) > 1 ? stage_count(g, n) : 0);
         keys.dot_at[n] = uint8_t(sub);
     }
     return keys;
+}
+
+// Whether the track's plug-in is open and has presets (Stage B1's first page is PRESETS, else its face).
+bool plugin_ready(const Snapshot& s) {
+    const auto& panel = s.ui.plugin_panel;
+    return panel.entry == s.track().plugin && panel.status == PluginStatus::Ready;
+}
+bool plugin_has_presets(const Snapshot& s) { return plugin_ready(s) && s.ui.plugin_panel.programs > 0; } // B1's name: PRESETS
+bool plugin_presets(const Snapshot& s) { return plugin_has_presets(s) && !s.presets.list.empty(); }          // and the list to show
+// PRESETS: the preset in view, while turning the one under the cursor, else the one it plays (-1: none yet).
+int plugin_preset_at(const Snapshot& s) {
+    const auto& list = s.presets.list;
+    if (s.ui.preset_due && s.ui.presets_entry == s.track().plugin) return std::min<int>(s.ui.presets_cursor, int(list.size()) - 1);
+    for (size_t n = 0; n < list.size(); ++n) if (list[n].index == s.presets.current) return int(n);
+    return -1;
+}
+
+// PRESETS (hubs plan, PL-a): the preset's name at poster size, the plug-in under it, the presets before and after
+// it small in the corners, as PRESET's sound poster. Without presets the plug-in's face: its name, its format and the
+// share of each block it takes. While it opens, or when it failed, the plug-in view says so (pages/plugin_view.cpp).
+void plugin_sound_picture(Paint& p, const Snapshot& s) {
+    const auto& t = s.track();
+    const auto& panel = s.ui.plugin_panel;
+    if (!plugin_ready(s)) { draw_plugin_view(p, s, t.plugin, top); return; }
+    auto poster_at = [&](const juce::String& name, juce::Colour colour) {
+        auto poster = p.fit(name, plain(colour, 30, Weight::SemiBold), pw - 12, type::title);
+        p.text(name, px + 4, top + 14, pw - 12, 36, poster);
+    };
+    juce::String format = juce::String::fromUTF8(panel.format);
+    if (!plugin_presets(s)) {
+        poster_at(plugin_name(s, t.plugin), colour::text);
+        p.text(format, px + 6, top + 54, pw - 12, 16, plain(colour::sec, type::body));
+        float load = panel.load / 1000.0f, bar = 80;
+        p.fill(px + 6, top + 80, bar, 3, colour::line, 1.5f);
+        p.fill(px + 6, top + 80, bar * std::clamp(load, 0.0f, 1.0f), 3, load_colour(load), 1.5f);
+        p.text(juce::String(panel.load / 10) + " %", px + 14 + bar, top + 74, 60, 14, plain(colour::mid, type::small));
+        return;
+    }
+    const auto& list = s.presets.list;
+    int at = plugin_preset_at(s);
+    auto name_of = [&](int n) { return juce::String::fromUTF8(list[size_t(n)].name.c_str()); };
+    if (at < 0) poster_at("No preset yet", colour::sec);
+    else poster_at(name_of(at), s.ui.preset_due ? colour::amber : colour::text);
+    juce::String sub = plugin_name(s, t.plugin) + (format.isNotEmpty() ? dot + format : juce::String());
+    p.text(sub, px + 6, top + 54, pw - 12, 16, p.fit(sub, plain(colour::sec, type::body), pw - 12, type::floor));
+    auto side = plain(colour::mid, type::body);
+    if (at > 0) {
+        icon(p, Icon::ChevronLeft, px, bottom - 16, 10, colour::dim, 1.6f);
+        p.text(name_of(at - 1), px + 13, bottom - 19, pw / 2 - 20, 16, p.fit(name_of(at - 1), side, pw / 2 - 20, type::floor));
+    }
+    if (at + 1 < int(list.size())) {
+        icon(p, Icon::ChevronRight, px + pw - 10, bottom - 16, 10, colour::dim, 1.6f);
+        p.text(name_of(at + 1), px + pw / 2, bottom - 19, pw / 2 - 13, 16, p.fit(name_of(at + 1), side, pw / 2 - 20, type::floor),
+               juce::Justification::centredRight);
+    }
 }
 
 // Cloud's on or off, as an LED in the header (its K3 on Shift turns it).
@@ -905,6 +967,12 @@ void draw(Paint& p, const Snapshot& s) {
         if (page.kind == StageKind::Cloud) h.left.push_back(cloud_pill(s));
         if (page.kind == StageKind::Follow) h.left.push_back(follow_pill(s));
         if (page.kind == StageKind::Layers) h.left.push_back(layers_pill(s));
+    } else if (page.kind == StageKind::PluginSound && plugin_presets(s)) { // which preset of how many
+        int at = plugin_preset_at(s);
+        h.left.push_back(pill((at >= 0 ? juce::String(at + 1) : juce::String("–")) + " / " + juce::String(int(s.presets.list.size()))));
+    } else if (page.kind == StageKind::PluginEdit && plugin_ready(s)) { // the share of each audio block it takes, as Edit's
+        const auto& panel = s.ui.plugin_panel;
+        h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
     } else if (page.kind == StageKind::Arp || page.kind == StageKind::Chord) { // on or off, as the LED on the MPC would say
         bool on = page.kind == StageKind::Arp ? t.arp : t.chord;
         h.left.push_back(pill(on ? Icon::Check : Icon::None, on ? "ON" : "OFF", on ? c : colour::mid));
@@ -950,6 +1018,8 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Route: route_picture(p, s); break;
     case StagePicture::Program: program_picture(p, s); break;
     case StagePicture::Cc: cc_picture(p, s); break;
+    case StagePicture::PluginSound: plugin_sound_picture(p, s); break;
+    case StagePicture::PluginEdit: draw_plugin_view(p, s, t.plugin, top); break;
     case StagePicture::Engines: case StagePicture::Sources: case StagePicture::Ports: break; // new_track_picture
     }
 }
@@ -987,6 +1057,8 @@ void wheel(Context& c, int delta) {
         if (cards[0].kind == Binding::Kind::StageSound) c.preset_turn(cards[0].value + delta);
         return;
     }
+    if (page.kind == StageKind::PluginSound) { c.plugin_preset_turn(delta); return; } // its presets (none: nothing)
+    if (page.kind == StageKind::PluginEdit) { plugin_rows(c, delta); return; }       // its rows of three
     int n = stage_focus(c.ui, c.track());
     if (!c.track().used()) { // the carousel: Push makes the card in the middle
         new_pick_turn(c.ui, delta, c.now);
@@ -1017,7 +1089,11 @@ void push(Context& c) {
         slot = uint8_t((slot + 1) % t.fx.count());
         return;
     }
-    if (t.engine == EngineKind::Plugin) { c.open(PageId::Edit); return; } // its own values, without Sample to Keys first
+    if (page.kind == StageKind::PluginSound) { // the whole list (PRESETS; B1 there comes back)
+        c.stage_tick(UINT32_MAX);
+        if (t.plugin < max_plugins && c.ui.plugin_panel.entry == t.plugin && c.ui.plugin_panel.programs) c.open_plugin_presets(t.plugin);
+        return;
+    }
     auto cards = page_bindings(c.project, c.ui, c.pattern(), false);
     int from = stage_focus(c.ui, t);
     for (int k = 1; k <= 3; ++k) { // the next card that holds something
@@ -1032,6 +1108,7 @@ void push(Context& c) {
 
 // Minus / Plus: a synth's octave; a kit's bank, as on its pages.
 void nudge(Context& c, int way) {
+    if (stage_page_now(c.ui, c.track()).kind == StageKind::PluginEdit) { plugin_rows(c, way); return; } // as Edit's
     if (c.track().engine == EngineKind::Sampler) sampler_bank(c, way);
     else octave(c, way);
 }

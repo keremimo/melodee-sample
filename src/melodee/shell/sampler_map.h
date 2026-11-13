@@ -3,21 +3,20 @@
 #pragma once
 #include "melodee/shell/ui_state.h"
 
-// The sampler's pages in the MPC's Sample Mode groups (parity phase 10):
-// B1 Trim / Mix / Amp Env, B2 Tune / Play, B3 Filter / Filt Env; Layers
-// (roadmap P3) after Trim, the samples a pad plays. Melodee's
-// own pages join the group they belong with: Follow and Cloud B2's, Kit
-// filter B3's. A B key on a page of its group goes to the group's next
+// The sampler's pages in Stage's kit groups (engine/engine_info.cpp): B1 the
+// sample (Trim, Layers, Tune, Amp Env), B2 how it plays (Play, Follow,
+// Cloud), B3 where it goes (Mix) and its filters (Filter, Filt Env, Kit
+// filter). Stage's B3 has SENDS after Mix as well. A B key on a page of its group goes to the group's next
 // page, on any other page to the group's first; Push opens the map of all
 // ten (pages/sampler_common.cpp). Pure, for the pages and the tests.
 namespace melodee {
 
 constexpr unsigned sampler_page_count = 11;
 constexpr unsigned sampler_groups = 3;
-constexpr PageId sampler_order[sampler_page_count] {PageId::Trim, PageId::LayersPage, PageId::PadMix, PageId::EnvelopePage, PageId::PadPage,
-                                                    PageId::PlayPage, PageId::FollowPage, PageId::CloudPage, PageId::PadFilterPage,
-                                                    PageId::FilterEnvPage, PageId::FilterPage};
-constexpr unsigned sampler_group_starts[sampler_groups + 1] {0, 4, 8, sampler_page_count};
+constexpr PageId sampler_order[sampler_page_count] {PageId::Trim, PageId::LayersPage, PageId::PadPage, PageId::EnvelopePage,
+                                                    PageId::PlayPage, PageId::FollowPage, PageId::CloudPage,
+                                                    PageId::PadMix, PageId::PadFilterPage, PageId::FilterEnvPage, PageId::FilterPage};
+constexpr unsigned sampler_group_starts[sampler_groups + 1] {0, 4, 7, sampler_page_count};
 
 constexpr bool is_sampler_page(PageId page) {
     for (auto p : sampler_order) if (p == page) return true;

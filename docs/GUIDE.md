@@ -318,12 +318,14 @@ select it without playing it.
 
 | Key | Pages |
 | --- | --- |
-| **B1** | **TRIM**, **LAYERS**, **MIX**, **AMP ENV**, **SENDS** |
-| **B2** | **TUNE**, **PLAY**, **FOLLOW**, **CLOUD** |
-| **B3** | **FILTER**, **FILT ENV**, **KIT FILT** |
+| **B1** | **TRIM**, **LAYERS**, **TUNE**, **AMP ENV** |
+| **B2** | **PLAY**, **FOLLOW**, **CLOUD** |
+| **B3** | **MIX**, **SENDS**, **FILTER**, **FILT ENV**, **KIT FILT** |
 
-Press the lit key again to go to its next page. Each track remembers its
-last page. Press **−** / **+** to change the bank.
+Every track uses the keys the same way: **B1** for the sound's source, **B2**
+for how it plays, **B3** for where it goes. Press the lit key again to go to
+its next page. Each track remembers its last page. Press **−** / **+** to
+change the bank.
 
 **TRIM**
 
@@ -612,8 +614,8 @@ plug-ins shows as one row with a count; push to open it.
 
 To change a track's plug-in, press **SAMPLE SELECT** on the track.
 
-**Edit**: push the encoder on Stage (**MIX**, **SENDS**, **ARP** or
-**CHORD**) or on **Keys** to open the plug-in's parameters.
+**Edit**: press **B1** twice on Stage (**EDIT**), or push the encoder on
+**Keys**, to open the plug-in's parameters.
 
 ![Edit: a plug-in's parameters](images/screens/pluginedit.png)
 
@@ -688,9 +690,21 @@ kHz Melodee converts their audio, so they play in tune at any rate.
 
 | Key | Pages |
 | --- | --- |
-| **B1** | **MIX**, **SENDS** |
+| **B1** | **PRESETS** (or **PLUG-IN**), **EDIT** |
 | **B2** | **ARP**, **CHORD** |
-| **B3** | **FX** |
+| **B3** | **MIX**, **SENDS**, **FX** |
+
+**PRESETS**: the plug-in's presets. The name of the one playing is large,
+with the ones before and after it in the corners. Turn the encoder to load
+the next one; it loads when you stop turning. Push the encoder for the whole
+list. **K1**–**K3** set the plug-in's first three parameters. A plug-in with
+no presets shows **PLUG-IN** instead: its name, its format and how much of
+each audio block it uses.
+
+![PRESETS](images/screens/stagepluginpresets.png)
+
+**EDIT**: all of the plug-in's parameters, as on the Edit page. Turn the
+encoder or press **−** / **+** to move through them.
 
 **MIX**: **K1** level, **K2** pan, **K3** send to bus A.
 
@@ -740,9 +754,9 @@ instrument on its own port and channel.
 
 | Key | Pages |
 | --- | --- |
-| **B1** | **DEVICE**, **PROGRAM** |
-| **B2** | **CC** |
-| **B3** | **ARP**, **CHORD** |
+| **B1** | **DEVICE**, **PROGRAM**, **CC** |
+| **B2** | **ARP**, **CHORD** |
+| **B3** | Nothing: a MIDI track has no audio. |
 
 **DEVICE**: **K1** port (the MIDI Out jack, USB-C, all USB devices, or a
 USB device by name), **K2** channel. The picture shows the notes going out.

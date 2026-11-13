@@ -627,6 +627,11 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     if (store_ && (ui_.page == PageId::Project || ui_.exit_open)) store_->view(out.projects);
     if (context_.plugins && ui_.page == PageId::Plugins) out.plugins = context_.plugins->view();
     if (context_.plugins && ui_.page == PageId::PluginPresets) out.presets = context_.plugins->programs(ui_.presets_entry);
+    if (context_.plugins && ui_.page == PageId::Stage) { // Stage PRESETS: the track's plug-in's
+        const auto& t = project_->tracks[ui_.track % track_count];
+        if (t.engine == EngineKind::Plugin && t.plugin < max_plugins && stage_page_now(ui_, t).kind == StageKind::PluginSound)
+            out.presets = context_.plugins->programs(t.plugin);
+    }
     if (library_) {
         const auto& t = project_->tracks[ui_.track];
         unsigned slot = ui_.page == PageId::Chop ? ui_.chop_sample : t.pads[t.last_pad % sampler_pads].sample;

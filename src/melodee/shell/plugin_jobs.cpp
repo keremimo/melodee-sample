@@ -17,6 +17,7 @@
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
 #include <algorithm>
 #include <cctype>
@@ -130,6 +131,7 @@ void Context::choose_plugin(const PluginFile& file) {
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return char(std::toupper(ch)); });
         tr.set_name(name.c_str());
         if (made) {
+            stage_go(ui, 0, 0); // B1: its PRESETS (or its face), as a new kit's TRIM
             made->track_after = std::make_unique<TrackState>(track_state(*this, t));
             edits.push(std::move(*made));
         }
@@ -183,6 +185,7 @@ int Context::plugin_in_focus() const {
     const auto& t = project.tracks[ui.track % track_count];
     if (ui.page == PageId::PluginPresets && ui.presets_entry < max_plugins) return ui.presets_entry;
     if (ui.page == PageId::Edit && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin;
+    if (ui.page == PageId::Stage && t.engine == EngineKind::Plugin && t.plugin < max_plugins) return t.plugin; // B1 PRESETS, EDIT
     if (chain_page(ui.page) && !ui.picker_open) {
         unsigned n = page_chain(project, ui), k = ui.fx_cursor[UiState::cursor_of(n)];
         const auto& chain = project.chain(n);

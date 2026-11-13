@@ -9,11 +9,10 @@
 namespace melodee {
 namespace {
 using namespace ui;
-// The MPC's Sample Mode groups (parity phase 10): B1 Trim / Mix / Amp Env, B2 Tune / Play, B3 Filter / Filt Env;
-// Melodee's own pages join the group they belong with: Follow and Cloud B2's, Kit filter B3's.
+// Stage's kit groups (shell/sampler_map.h): B1 the sample, B2 how it plays, B3 its mix and filters.
 constexpr const PageId* order = sampler_order;
-const char* keys[sampler_page_count] {"TRIM", "LAYERS", "MIX", "AMP ENV", "TUNE", "PLAY", "FOLLOW", "CLOUD", "FILTER", "FILT ENV", "KIT FILT"};
-const char* titles[sampler_page_count] {"Trim", "Layers", "Mix", "Amp env", "Tune", "Play", "Follow", "Cloud", "Filter", "Filter env", "Kit filter"};
+const char* keys[sampler_page_count] {"TRIM", "LAYERS", "TUNE", "AMP ENV", "PLAY", "FOLLOW", "CLOUD", "MIX", "FILTER", "FILT ENV", "KIT FILT"};
+const char* titles[sampler_page_count] {"Trim", "Layers", "Tune", "Amp env", "Play", "Follow", "Cloud", "Mix", "Filter", "Filter env", "Kit filter"};
 } // namespace
 
 // A group's key: the page in view, else the group's first page; a dot a page under it, as on Stage.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/tools.h"
+#include "melodee/shell/stage_map.h"
 #include "melodee/shell/expansion_install.h"
 #include "melodee/shell/mpc_program.h"
 #include "melodee/shell/mpc_project.h"
@@ -658,6 +659,28 @@ void plugin_track(Snapshot& s, PluginStatus status) {
     plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status);
 }
 
+// The same by the kind of page, wherever the track's Stage keeps it (shell/stage_map.h); a PLUGIN track's plug-in
+// open, as the MPC has it on every Stage page (B1 then says PRESETS).
+void on_stage(Snapshot& s, unsigned track, StageKind kind) {
+    const auto& t = s.project.tracks[track];
+    auto f = stage_find(t.engine, kind);
+    on_stage(s, track, f.at.group, f.at.sub);
+    if (t.engine == EngineKind::Plugin) plugin_panel(s, t.plugin, t.plugin == 0 ? "Melodee Poly" : "Plug-in", "VST3", true, PluginStatus::Ready);
+}
+// Stage B1 on track 1 (Melodee Poly, plug-in entry 0): its presets, `programs` of them (0: its face instead).
+void stage_plugin(Snapshot& s, StageKind kind, bool presets) {
+    on_stage(s, 0, kind); s.playing = true;
+    plugin_panel(s, 0, "Melodee Poly", "VST3", true, PluginStatus::Ready);
+    if (!presets) { s.ui.plugin_panel.programs = 0; return; }
+    static const char* const names[] {"Init Voice", "Funk Bass II", "Rubber Bass", "Sync Lead", "Brass Stab", "Soft Pad", "Glass Pluck",
+                                      "Warm Keys", "Sub Bass", "String Machine", "Poly Sweep", "Unison Lead", "Noise Hat"};
+    auto& v = s.presets;
+    v.entry = 0;
+    for (int i = 0; i < 13; ++i) v.list.push_back({i, names[i]});
+    v.current = 2;
+    s.ui.plugin_panel.programs = 13;
+}
+
 struct Preview {
     const char* name;
     void (*set)(Shell&, Snapshot&);
@@ -677,57 +700,60 @@ const Preview previews[] {
          place_scene(shell, s); s.ui.locate = 37 * sixteenth_ticks;
      }},
     // Stage, context aware: each track type's pages (pages/stage_page.cpp).
-    {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 0); s.playing = true; }},
-    {"stagesends", [](Shell&, Snapshot& s) { on_stage(s, 0, 0, 1); s.playing = true; s.ui.turning = 1; s.ui.turned_at = s.now; }}, // the four sends
+    {"stagepluginpresets", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, true); }}, // B1: Melodee Poly's presets
+    {"stagepluginface", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginSound, false); }}, // B1, a plug-in with none
+    {"stagepluginedit", [](Shell&, Snapshot& s) { stage_plugin(s, StageKind::PluginEdit, true); }},   // B1 again: its parameters
+    {"stagemix", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Mix); s.playing = true; }},
+    {"stagesends", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Sends); s.playing = true; s.ui.turning = 1; s.ui.turned_at = s.now; }}, // the four sends
     {"stagearp", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 0); s.playing = true; s.project.tracks[0].arp_octaves = 2; }},
     {"stagearpheld", [](Shell&, Snapshot& s) { // keys held: the notes it plays from them, up and down
          on_stage(s, 0, 1, 0); s.playing = true; auto& t = s.project.tracks[0]; t.arp = true; t.arp_mode = 2;
          s.held_keys.fill(-1); s.held_keys[0] = 50; s.held_keys[4] = 53; s.held_keys[9] = 57;
      }},
     {"stagechord", [](Shell&, Snapshot& s) { on_stage(s, 0, 1, 1); s.playing = true; auto& t = s.project.tracks[0]; t.chord = true; t.chord_type = 1; s.ui.chord_pad = 1; }},
-    {"stagefx", [](Shell&, Snapshot& s) { on_stage(s, 2, 2, 0); s.playing = true; s.ui.fx_cursor[2] = 1; }},
-    {"stagefxempty", [](Shell&, Snapshot& s) { on_stage(s, 0, 2, 0); s.playing = true; }},
+    {"stagefx", [](Shell&, Snapshot& s) { on_stage(s, 2, StageKind::Fx); s.playing = true; s.ui.fx_cursor[2] = 1; }},
+    {"stagefxempty", [](Shell&, Snapshot& s) { on_stage(s, 0, StageKind::Fx); s.playing = true; }},
     {"stagekitlayers", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); s.playing = true; layered_pad(s, LayerPlay::Velocity); }},
     {"stagekitlayersshift", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 1); s.sample = break_sample(); layered_pad(s, LayerPlay::Random); s.ui.shift = true; }},
-    {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
+    {"stagekitmix", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::PadMix); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pan = 12; }},
     {"stagekitampenv", [](Shell&, Snapshot& s) {
-         on_stage(s, 3, 0, 3); s.sample = break_sample(); s.playing = true;
+         on_stage(s, 3, StageKind::AmpEnv); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.attack = 20; pad.decay = 70; pad.velocity_sense = 60;
      }},
-    {"stagekittune", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 0); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pitch = -2; }},
-    {"stagekitplay", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 1); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].group = 2; }},
-    {"stagekitfollow", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Follow] = 1; }},
-    {"stagekitcloud", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Cloud] = 1; }},
-    {"stagekitcloudoff", [](Shell&, Snapshot& s) { on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true; }},
+    {"stagekittune", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Tune); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].pitch = -2; }},
+    {"stagekitplay", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Play); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].group = 2; }},
+    {"stagekitfollow", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Follow); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Follow] = 1; }},
+    {"stagekitcloud", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Cloud] = 1; }},
+    {"stagekitcloudoff", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true; }},
     {"stagecloudplaying", [](Shell&, Snapshot& s) { // CLOUD while A09 is held: its grains, the bars they cover lit, where they are
-         on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true;
+         on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 38;
          auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; // the whole break
          uint32_t end = pad.end ? pad.end : s.sample.frames;
          cloud_heard(s, pad.start + (end - pad.start) * 0.38);
      }},
     {"stagecloudscan", [](Shell&, Snapshot& s) { // Scan moving: the cloud has travelled on from K1's line, the label with it
-         on_stage(s, 3, 1, 3); s.sample = break_sample(); s.playing = true;
+         on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true;
          auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 20; t.params[sampler::Scan] = 75;
          auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; // the whole break
          uint32_t end = pad.end ? pad.end : s.sample.frames;
          cloud_heard(s, pad.start + (end - pad.start) * 0.52);
      }},
-    {"stagekitfilt", [](Shell&, Snapshot& s) { on_stage(s, 3, 2, 2); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Filter] = 55; }},
+    {"stagekitfilt", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::KitFilter); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Filter] = 55; }},
     {"stagekitfilter", [](Shell&, Snapshot& s) {
-         on_stage(s, 3, 2, 0); s.sample = break_sample(); s.playing = true;
+         on_stage(s, 3, StageKind::Filter); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Lpf4; pad.cutoff = 45; pad.resonance = 40;
      }},
     {"stagekitfiltenv", [](Shell&, Snapshot& s) {
-         on_stage(s, 3, 2, 1); s.sample = break_sample(); s.playing = true;
+         on_stage(s, 3, StageKind::FiltEnv); s.sample = break_sample(); s.playing = true;
          auto& pad = s.project.tracks[3].pads[8]; pad.filter = PadFilter::Classic; pad.filter_attack = 30; pad.filter_decay = 70; pad.filter_amount = 60;
      }},
     {"stagekitempty", [](Shell&, Snapshot& s) { on_stage(s, 3, 0, 0); s.project.tracks[3].last_pad = 20; s.playing = true; }}, // B05: no sample
     {"stagemidi", [](Shell&, Snapshot& s) { stage_midi(s, 0, 0); s.ui.track_out_at[11] = s.now; sent_notes(s, 11); }},
     {"stagemidiprogram", [](Shell&, Snapshot& s) { stage_midi(s, 0, 1); s.ui.turning = 2; s.ui.turned_at = s.now; }},
-    {"stagemidicc", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); }},
-    {"stagemidiccshift", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); s.ui.shift = true; }},
-    {"stagemidiarp", [](Shell&, Snapshot& s) { stage_midi(s, 2, 0); }},
+    {"stagemidicc", [](Shell&, Snapshot& s) { stage_midi(s, 0, 2); }},
+    {"stagemidiccshift", [](Shell&, Snapshot& s) { stage_midi(s, 0, 2); s.ui.shift = true; }},
+    {"stagemidiarp", [](Shell&, Snapshot& s) { stage_midi(s, 1, 0); }},
     {"stageemptysynth", [](Shell&, Snapshot& s) { on_stage(s, 12, 0, 0); s.ui.new_pick = 0; }},
     {"stageemptykit", [](Shell&, Snapshot& s) { on_stage(s, 12, 1, 0); s.ui.new_pick = 2; s.ui.new_for = 12; }}, // picked from Tracks: B1 BACK
     {"stageemptymidi", [](Shell&, Snapshot& s) { on_stage(s, 12, 2, 0); s.ui.new_pick = 5; }},

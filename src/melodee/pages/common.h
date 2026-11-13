@@ -88,6 +88,7 @@ void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::
 // parameters out of how many; Edit for a PLUGIN track, the chain pages for a plug-in effect.
 void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, float top);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
+void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 
 // Defaults: pads play the selected track, Minus / Plus move its octave.
 void play_pad(Context& c, unsigned pad, uint8_t velocity, bool down);

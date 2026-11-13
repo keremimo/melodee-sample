@@ -239,11 +239,11 @@ void bindings() {
     load_sound(project.tracks[0], EngineKind::Midi, 0);
     UiState ui;
     Pattern pattern;
-    ui.stage_group[0] = 1; // a MIDI track's Stage CC: its three controllers
+    ui.stage_sub[0] = 2; // a MIDI track's Stage B1 CC: its three controllers
     auto stage = page_bindings(project, ui, pattern);
     CHECK(stage[0].kind == Binding::Kind::Param && stage[0].id == midi_track::Cc1);
     CHECK(stage[0].at(0) == 0 && stage[0].at(127) == 127 && stage[0].at(64) == 64);
-    ui.stage_group[0] = 0;
+    ui.stage_sub[0] = 0;
     ui.page = PageId::Tracks; // the strip in hand: the track, its level and pan
     auto mix = page_bindings(project, ui, pattern);
     CHECK(mix[0].kind == Binding::Kind::TrackPick && mix[1].kind == Binding::Kind::Level);
@@ -4412,15 +4412,16 @@ void card_access() {
 }
 
 void projects_and_polish() {
-    // B1 Trim -> Layers -> Mix -> Amp Env, B2 Tune -> Play -> Follow -> Cloud, B3 Filter -> Filt Env -> Kit filter; another group's key: its first.
-    CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadMix);
-    CHECK(sampler_next(PageId::PadMix, 0) == PageId::EnvelopePage);
+    // B1 Trim -> Layers -> Tune -> Amp Env, B2 Play -> Follow -> Cloud, B3 Mix -> Filter -> Filt Env -> Kit filter (as
+    // Stage's kit, hubs plan S-B); another group's key: its first.
+    CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadPage);
+    CHECK(sampler_next(PageId::PadPage, 0) == PageId::EnvelopePage);
     CHECK(sampler_next(PageId::EnvelopePage, 0) == PageId::Trim);
-    CHECK(sampler_next(PageId::Trim, 1) == PageId::PadPage && sampler_next(PageId::PadPage, 1) == PageId::PlayPage);
-    CHECK(sampler_next(PageId::PlayPage, 1) == PageId::FollowPage && sampler_next(PageId::CloudPage, 1) == PageId::PadPage);
+    CHECK(sampler_next(PageId::Trim, 1) == PageId::PlayPage && sampler_next(PageId::PlayPage, 1) == PageId::FollowPage);
+    CHECK(sampler_next(PageId::FollowPage, 1) == PageId::CloudPage && sampler_next(PageId::CloudPage, 1) == PageId::PlayPage);
     CHECK(sampler_next(PageId::PadMix, 2) == PageId::PadFilterPage && sampler_next(PageId::PadFilterPage, 2) == PageId::FilterEnvPage);
-    CHECK(sampler_next(PageId::FilterEnvPage, 2) == PageId::FilterPage && sampler_next(PageId::FilterPage, 2) == PageId::PadFilterPage);
-    CHECK(sampler_next(PageId::Pads, 1) == PageId::PadPage); // from outside the ten: the group's first
+    CHECK(sampler_next(PageId::FilterEnvPage, 2) == PageId::FilterPage && sampler_next(PageId::FilterPage, 2) == PageId::PadMix);
+    CHECK(sampler_next(PageId::Pads, 1) == PageId::PlayPage); // from outside the ten: the group's first
     CHECK(is_sampler_page(PageId::CloudPage) && !is_sampler_page(PageId::Chop) && !is_sampler_page(PageId::Pads));
     unsigned covered = 0;
     for (unsigned g = 0; g < sampler_groups; ++g) {
@@ -5286,13 +5287,14 @@ void midi_tracks() {
 // Stage, context aware (shell/stage_map.h, the engines' stage tables, bindings.cpp).
 void stage() {
     using K = Binding::Kind;
-    // Every engine's table: three buttons of one to four pages (a kit's B1 five: LAYERS beside TRIM, roadmap P3),
-    // each named, its parameters the engine's own.
-    for (unsigned k = 0; k < unsigned(EngineKind::Count); ++k) {
-        const auto& g = stage_groups(EngineKind(k));
-        const auto& info = engine_info(EngineKind(k));
+    // Every engine's table: three buttons of up to five pages (only a MIDI track's B3 has none: no audio), each named,
+    // its parameters the engine's own.
+    for (EngineKind kind : {EngineKind::None, EngineKind::Sampler, EngineKind::Midi, EngineKind::Plugin}) {
+        const auto& g = stage_groups(kind);
+        const auto& info = engine_info(kind);
         for (const auto& group : g.groups) {
-            CHECK(group.count >= 1 && group.count <= (EngineKind(k) == EngineKind::Sampler && &group == &g.groups[0] ? 5 : 4));
+            bool none = kind == EngineKind::Midi && &group == &g.groups[2];
+            CHECK(none ? group.count == 0 : group.count >= 1 && group.count <= 5);
             for (unsigned n = 0; n < group.count; ++n) {
                 const auto& page = group.pages[n];
                 CHECK(page.key && std::strlen(page.key) > 0);
@@ -5301,8 +5303,9 @@ void stage() {
             }
         }
     }
-    CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::Mix);
-    CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 4);
+    CHECK(stage_groups(EngineKind::Plugin).groups[0].pages[0].kind == StageKind::PluginSound);
+    CHECK(stage_groups(EngineKind::Plugin).groups[2].pages[0].kind == StageKind::Mix && stage_groups(EngineKind::Sampler).groups[2].pages[0].kind == StageKind::PadMix);
+    CHECK(stage_groups(EngineKind::Sampler).groups[0].pages[0].kind == StageKind::Trim && stage_groups(EngineKind::Sampler).groups[1].count == 3);
     CHECK(stage_groups(EngineKind::None).groups[2].pages[0].kind == StageKind::NewMidi);
 
     auto project = std::make_unique<Project>();
@@ -5317,23 +5320,34 @@ void stage() {
     auto key = [&] { return std::string(stage_page_now(ui, project->tracks[ui.track]).key); };
     auto cards = [&](bool shift) { return page_bindings(*project, ui, pattern, shift); };
 
-    // B1 on a synth (a PLUGIN track): MIX -> SENDS -> MIX; B2 jumps to its own first page; each track keeps its own.
-    CHECK(key() == "MIX");
-    stage_press(ui, project->tracks[0], 0); CHECK(key() == "SENDS");
-    stage_press(ui, project->tracks[0], 0); CHECK(key() == "MIX");
+    // Every track gives B1-B3 the same jobs (hubs plan, S-B): B1 the source, B2 how it plays, B3 where it goes.
+    // A synth (a PLUGIN track): B1 PRESETS -> EDIT, B2 ARP -> CHORD, B3 MIX -> SENDS -> FX; another button jumps to
+    // its own first page; each track keeps its own.
+    CHECK(key() == "PRESETS");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "EDIT");
+    stage_press(ui, project->tracks[0], 0); CHECK(key() == "PRESETS");
     stage_press(ui, project->tracks[0], 1); CHECK(key() == "ARP");
     stage_press(ui, project->tracks[0], 1); CHECK(key() == "CHORD");
     ui.track = 1; CHECK(key() == "TRIM");
-    stage_press(ui, project->tracks[1], 2); CHECK(key() == "FILTER");
+    stage_press(ui, project->tracks[1], 2); CHECK(key() == "MIX");
     ui.track = 0; CHECK(key() == "CHORD");
-    stage_press(ui, project->tracks[0], 0); CHECK(key() == "MIX"); // another button: its first page
+    stage_press(ui, project->tracks[0], 2); CHECK(key() == "MIX"); // another button: its first page
+    stage_press(ui, project->tracks[0], 2); CHECK(key() == "SENDS");
+    stage_press(ui, project->tracks[0], 2); CHECK(key() == "FX");
+    stage_press(ui, project->tracks[0], 2); CHECK(key() == "MIX");
+    // PRESETS and EDIT: the plug-in's own row of three, once it is open (none before), no Shift row.
+    CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound) && !cards(false)[0].bound() && !cards(true)[0].bound());
+    ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.params[0].used = true;
+    CHECK(cards(false)[0].kind == K::PluginParam && !shift_bindings(*project, ui, pattern)[0].bound());
+    CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit) && key() == "EDIT" && cards(false)[0].kind == K::PluginParam);
+    ui.plugin_panel = {};
 
     // MIX: level, pan, send; Shift + K3 the bus.
-    stage_go(ui, 0, 0);
+    stage_go(ui, 2, 0);
     CHECK(cards(false)[0].kind == K::Level && cards(false)[1].kind == K::Pan && cards(false)[2].kind == K::Send && cards(false)[2].id == 0);
     CHECK(!shift_bindings(*project, ui, pattern)[2].bound()); // the quick send is A's; SENDS has all four
-    // SENDS (B1 again): K1 the bus, K2 the send into it, K3 its return; every bus, D too, without Shift.
-    stage_go(ui, 0, 1);
+    // SENDS (B3 again): K1 the bus, K2 the send into it, K3 its return; every bus, D too, without Shift.
+    stage_go(ui, 2, 1);
     ui.sends_bus = 0;
     CHECK(key() == "SENDS" && cards(false)[0].kind == K::SendBus && cards(false)[1].kind == K::Send && cards(false)[1].id == 0);
     CHECK(cards(false)[2].kind == K::BusReturn && cards(false)[2].id == 0 && !shift_bindings(*project, ui, pattern)[0].bound());
@@ -5347,13 +5361,14 @@ void stage() {
     CHECK(key() == "CHORD" && cards(false)[0].kind == K::ChordType && cards(false)[2].kind == K::ChordInvert);
     CHECK(cards(true)[0].kind == K::ChordOn && cards(true)[2].kind == K::ArpHold);
     // FX: nothing without effects; with one, its first row and (Shift) its second.
-    stage_go(ui, 2, 0);
+    stage_go(ui, 2, 2);
     CHECK(!cards(false)[0].bound());
     project->tracks[0].fx.slots[0].kind = uint8_t(EffectKind::Echo);
     CHECK(cards(false)[0].kind == K::FxParam && cards(false)[0].id == 0 * 64 + 0 * 8 + 0);
     CHECK(!cards(true)[0].bound() || cards(true)[0].id == 3);
 
-    // A kit: Akai's pages on the last pad hit. TRIM start, end, loop, zoom on Shift; MIX K2 the kit's volume;
+    // A kit, on the last pad hit: B1 TRIM LAYERS TUNE AMP ENV, B2 PLAY FOLLOW CLOUD, B3 MIX SENDS FILTER FILT ENV
+    // KIT FILT. TRIM start, end, loop, zoom on Shift; MIX K2 the kit's volume;
     // AMP ENV Shift + K2 Decay From; TUNE Shift + K3 # Beats; PLAY Shift + K2 Pad Link.
     ui.track = 1;
     auto& kit = project->tracks[1];
@@ -5363,42 +5378,52 @@ void stage() {
     CHECK(cards(true)[0].kind == K::TrimZoom);
     stage_go(ui, 0, 1); // LAYERS (roadmap P3): the layer in hand, its velocities; Shift + K1 how a hit picks
     CHECK(key() == "LAYERS" && cards(false)[0].kind == K::LayerPick && cards(false)[1].kind == K::LayerLow && cards(true)[0].kind == K::LayerPlayMode);
-    stage_go(ui, 0, 2);
-    CHECK(cards(false)[0].kind == K::PadLevel && cards(false)[1].kind == K::Param && cards(false)[1].id == sampler::Level && cards(false)[2].kind == K::PadPan);
-    stage_go(ui, 0, 3);
-    CHECK(cards(false)[0].kind == K::PadAttack && cards(true)[1].kind == K::PadDecayFrom);
-    stage_go(ui, 1, 0);
-    CHECK(cards(false)[0].kind == K::PadPitch && cards(true)[2].kind == K::PadBeats);
-    stage_go(ui, 1, 1);
-    CHECK(cards(false)[0].kind == K::PadMono && cards(true)[1].kind == K::PadLink);
     stage_go(ui, 2, 0);
-    CHECK(cards(false)[2].kind == K::PadFilterType);
+    CHECK(key() == "MIX" && cards(false)[0].kind == K::PadLevel && cards(false)[1].kind == K::Param && cards(false)[1].id == sampler::Level && cards(false)[2].kind == K::PadPan);
+    stage_go(ui, 0, 3);
+    CHECK(key() == "AMP ENV" && cards(false)[0].kind == K::PadAttack && cards(true)[1].kind == K::PadDecayFrom);
+    stage_go(ui, 0, 2);
+    CHECK(key() == "TUNE" && cards(false)[0].kind == K::PadPitch && cards(true)[2].kind == K::PadBeats);
+    stage_go(ui, 1, 0);
+    CHECK(key() == "PLAY" && cards(false)[0].kind == K::PadMono && cards(true)[1].kind == K::PadLink);
     stage_go(ui, 2, 1);
-    CHECK(cards(false)[2].kind == K::PadFAmount);
-    // Melodee's own kit pages join Akai's groups: B2 TUNE -> PLAY -> FOLLOW -> CLOUD, B3 ... -> KIT FILT.
-    stage_go(ui, 1, 1);
+    CHECK(key() == "SENDS" && cards(false)[0].kind == K::SendBus);
+    stage_go(ui, 2, 2);
+    CHECK(key() == "FILTER" && cards(false)[2].kind == K::PadFilterType);
+    stage_go(ui, 2, 3);
+    CHECK(key() == "FILT ENV" && cards(false)[2].kind == K::PadFAmount);
+    // B2 PLAY -> FOLLOW -> CLOUD -> PLAY; B3 ends on KIT FILT.
+    stage_go(ui, 1, 0);
     stage_press(ui, kit, 1); CHECK(key() == "FOLLOW" && cards(false)[0].id == sampler::Follow && cards(false)[1].id == sampler::FollowHow);
     stage_press(ui, kit, 1); CHECK(key() == "CLOUD" && cards(false)[0].id == sampler::Position && cards(false)[2].id == sampler::Density);
     CHECK(cards(true)[0].id == sampler::Scan && cards(true)[2].id == sampler::Cloud);
-    stage_press(ui, kit, 1); CHECK(key() == "TUNE");
-    stage_go(ui, 2, 2);
+    stage_press(ui, kit, 1); CHECK(key() == "PLAY");
+    stage_go(ui, 2, 4);
     CHECK(key() == "KIT FILT" && cards(false)[0].id == sampler::Filter && cards(false)[2].id == sampler::FilterType);
     kit.last_pad = 6; // a pad without a sample: nothing to turn, but the kit's own values still are
     CHECK(cards(false)[0].bound() && cards(false)[0].id == sampler::Filter);
-    stage_go(ui, 2, 1);
+    stage_go(ui, 2, 3);
     CHECK(!cards(false)[0].bound());
+    // The old sampler pages keep the same groups (shell/sampler_map.h).
+    CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadPage);
+    CHECK(sampler_next(PageId::Trim, 1) == PageId::PlayPage && sampler_next(PageId::CloudPage, 1) == PageId::PlayPage);
+    CHECK(sampler_next(PageId::Trim, 2) == PageId::PadMix && sampler_next(PageId::FilterPage, 2) == PageId::PadMix);
     CHECK(stage_kit_page(StageKind::AmpEnv) == PageId::EnvelopePage && stage_kit_page(StageKind::Preset) == PageId::Count);
 
-    // MIDI: DEVICE, PROGRAM (bank and program, Off at first), CC (values; their numbers on Shift).
+    // MIDI: B1 DEVICE, PROGRAM (bank and program, Off at first), CC (values; their numbers on Shift); B2 ARP, CHORD;
+    // B3 has no pages: it does nothing.
     ui.track = 3;
     auto& midi = project->tracks[3];
     stage_go(ui, 0, 1);
     CHECK(key() == "PROGRAM" && cards(false)[2].id == midi_track::Program && midi.params[midi_track::Program] == 0);
     CHECK(show(engine_info(EngineKind::Midi).params[midi_track::Program], 0).value == "Off" && show(engine_info(EngineKind::Midi).params[midi_track::BankMsb], 1).value == "0");
-    stage_go(ui, 1, 0);
-    CHECK(cards(false)[0].id == midi_track::Cc1 && cards(true)[0].id == midi_track::CcNumber1 && midi.params[midi_track::CcNumber1] == 74);
+    stage_go(ui, 0, 2);
+    CHECK(key() == "CC" && cards(false)[0].id == midi_track::Cc1 && cards(true)[0].id == midi_track::CcNumber1 && midi.params[midi_track::CcNumber1] == 74);
     CHECK(std::string(midi_track::cc_name(74)) == "Brightness" && !midi_track::cc_name(3));
     CHECK(binding_lane(midi, cards(false)[0]) == motion_lane(midi_track::Cc1)); // a CC records as motion
+    stage_press(ui, midi, 2); CHECK(key() == "CC"); // B3: nothing
+    stage_press(ui, midi, 1); CHECK(key() == "ARP");
+    ui.stage_group[3] = 2; CHECK(key() == "DEVICE" && stage_at(ui, midi).group == 0); // left on B3: B1's
 
     // An empty track: SYNTH (a plug-in: Melodee's synths are plug-ins), KIT (where its sample comes from), MIDI (port,
     // channel).
@@ -10325,7 +10350,7 @@ void pad_layers_p3() {
         CHECK(shifted[0].kind == Binding::Kind::LayerPlayMode && shifted[1].kind == Binding::Kind::LayerPitch && shifted[2].kind == Binding::Kind::LayerGain);
         project.tracks[1].pads[9].layer_play = LayerPlay::Cycle;
         CHECK(!base_bindings(project, ui, none)[1].bound());
-        CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadMix);
+        CHECK(sampler_next(PageId::Trim, 0) == PageId::LayersPage && sampler_next(PageId::LayersPage, 0) == PageId::PadPage);
         CHECK(stage_kit_page(StageKind::Layers) == PageId::LayersPage);
     }
     {   // An MPC drum pad of three velocity layers onto the pad's own layers.
