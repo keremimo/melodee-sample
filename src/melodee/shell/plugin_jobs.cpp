@@ -17,10 +17,12 @@
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/track_copy.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <string>
 
 namespace melodee {
@@ -103,6 +105,13 @@ void Context::choose_plugin(const PluginFile& file) {
     if (entry < 0) { notice("Every plug-in entry is in use"); return; }
 
     close_gesture();
+    // An empty track turned PLUGIN: one undo step, as the carousel's KIT and MIDI ("New track"; shell/new_track.h).
+    std::unique_ptr<Edit> made;
+    if (instrument && !track().used()) {
+        made = std::make_unique<Edit>(begin_edit("New track", ui.track, -1, false));
+        made->motion_before.reset();
+        made->track_before = std::make_unique<TrackState>(track_state(*this, ui.track));
+    }
     auto& ref = project.plugins[size_t(entry)];
     bool same = file.path == ref.path && file.id == ref.id;
     std::snprintf(ref.path, plugin_path_length, "%s", file.path.c_str());
@@ -120,6 +129,10 @@ void Context::choose_plugin(const PluginFile& file) {
         std::string name = file.name;
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return char(std::toupper(ch)); });
         tr.set_name(name.c_str());
+        if (made) {
+            made->track_after = std::make_unique<TrackState>(track_state(*this, t));
+            edits.push(std::move(*made));
+        }
     } else {
         unsigned count = project.chain(n).count();
         if (k > count) k = count;
