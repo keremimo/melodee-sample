@@ -197,6 +197,7 @@ private:
         int16_t levels_cutoff = -1;         // 16 Levels' cutoff it was hit with, -1 the pad's own
         float accent = 1, fall = 1;         // the sequencer's accent; a release sample's rt_decay
         bool native = false;                // reads the sample's copy at the device's rate (roadmap P2)
+        const SampleGrowth* grow = nullptr; // its sample is still being read: it reads only what landed (admit_grown)
         bool follows = false;               // its speed comes from the tempo (Warp's Seq, Follow)
         Multisample* multi = nullptr;       // a zone's instrument, and the zone's place in it
         uint32_t zone_index = 0;
@@ -229,6 +230,7 @@ private:
     void end_stream(Voice& v);
     void came_round(Voice& v);          // a zone's loop went back to its start
     bool admit(Voice& v, unsigned frames); // whether its next frames are safe to read
+    bool admit_grown(Voice& v, unsigned frames); // the same for a sample still being read (SampleGrowth)
     void play_zone(Voice& v, float* to_l, float* to_r, unsigned from, unsigned frames);
     float frames_left(const Voice& v, double at, double speed) const; // output frames to the end, for the fades
     static float edge_gain(const Voice& v, double at);                // the region edges' fades, 0..1

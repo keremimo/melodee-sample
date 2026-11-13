@@ -22,6 +22,13 @@
 namespace melodee {
 namespace fs = std::filesystem;
 
+struct SampleLibrary::Hearing {
+    AudioReader file;
+    SampleFill fill;
+    std::vector<float> left, right;
+    std::string path;
+};
+
 SampleLibrary::SampleLibrary(EngineHost& h) : host(h) {}
 SampleLibrary::~SampleLibrary() = default;
 
@@ -281,6 +288,7 @@ void SampleLibrary::service(Hardware& hardware) {
         { std::lock_guard<std::mutex> guard(lock); std::swap(pending, preview_pending); heard = preview_wanted; }
         if (pending && !heard.empty()) hear(heard);
     }
+    hear_more(); // the preview's next piece, every pass, so the reading keeps ahead of what plays
     // The card's Samples folder: $MELODEE_SAMPLES, else the first card's, looked for every few seconds. A card
     // without one is still a card: what Melodee writes makes the folder, and browsing starts at the card's top.
     bool browse_wanted;
@@ -514,20 +522,55 @@ void SampleLibrary::make(const SampleJob& job) {
     changes.fetch_add(1, std::memory_order_release);
 }
 
-// The browser's preview (B3): the file in the preview slot, at most 30 s of it.
+// The browser's preview (B3): the file in the preview slot, at most 30 s of it. It plays once its first piece is
+// read, not when all of it is: the sample is laid out at its full length and filled in a piece a pass (hear_more()),
+// and the voice reads only what has landed (SampleGrowth), so a long file starts as soon as a short one.
 void SampleLibrary::hear(const std::string& path) {
+    stop_hearing(); // the last one's file goes before anything takes its place in the preview slot
     // An MPC program with a preview of its own (an expansion's [Previews]): that, as the MPC plays it.
     const std::string preview = is_mpc_program(path) ? program_preview(path) : std::string();
     if (preview.empty() && is_expansion(path)) return;
     if (preview.empty() && is_drum_program(path)) return; // a kit with no preview: nothing to hear
     if (preview.empty() && is_instrument(path)) { hear_instrument(path); return; }
+    auto h = std::make_unique<Hearing>();
+    if (!h->file.open(preview.empty() ? path : preview, 30).empty()) return;
     auto data = std::make_unique<SampleData>();
-    if (!read_audio(preview.empty() ? path : preview, *data, 30, nullptr, dsp::sample_rate()).empty()
-        || !data->frames) return;
-    if (!offer(preview_slot, data.get())) return;
+    size_t held = 0; // the device's copy as offer() makes one: none past the budget
+    for (const auto& d : owned) held += d->play_bytes();
+    h->fill.begin(*data, h->file.frames(), h->file.rate(), dsp::sample_rate(), held < playback_budget ? playback_budget - held : 0);
+    h->path = path;
+    hearing = std::move(h);
+    if (!hear_piece() && !data->growth->whole.load(std::memory_order_relaxed) && !data->growth->frames.load(std::memory_order_relaxed))
+        return; // not a frame of it could be read
+    if (!offer(preview_slot, data.get())) { stop_hearing(); return; }
     owned.push_back(std::move(data));
     { std::lock_guard<std::mutex> guard(lock); preview_heard = path; }
     preview_count.fetch_add(1, std::memory_order_release);
+}
+
+bool SampleLibrary::hear_piece() {
+    if (!hearing) return false;
+    auto& h = *hearing;
+    const uint32_t piece = std::max(1u, h.file.rate() / 8); // an eighth of a second: a pass every few ms keeps ahead
+    h.left.resize(piece); h.right.resize(piece);
+    h.fill.add(h.left.data(), h.right.data(), h.file.read(h.left.data(), h.right.data(), piece));
+    if (h.fill.to_come() && !h.file.ended()) return true;
+    stop_hearing(); // all of it, or the file ended early: cut there
+    return false;
+}
+
+void SampleLibrary::hear_more() {
+    if (!hearing) return;
+    bool wanted;
+    { std::lock_guard<std::mutex> guard(lock); wanted = preview_wanted == hearing->path; }
+    if (wanted) hear_piece();
+    else stop_hearing();
+}
+
+void SampleLibrary::stop_hearing() {
+    if (!hearing) return;
+    hearing->fill.finish();
+    hearing.reset();
 }
 
 // A finished take: copied out of the recorder, written to Samples/Recorded on
@@ -544,7 +587,7 @@ void SampleLibrary::save_take() {
 }
 
 bool SampleLibrary::offer(unsigned slot, SampleData* data) {
-    if (data && !data->multi) {
+    if (data && !data->multi && !data->growth) { // a preview being read has its device copy laid out already (hear())
         const float rate = dsp::sample_rate();
         size_t held = 0;
         for (const auto& d : owned) held += d->play_bytes();

@@ -218,6 +218,13 @@ private:
     void read(const Request& request);
     void make(const SampleJob& job);
     void hear(const std::string& path);
+    // The browser's preview read a piece a pass while its start plays (hear()): the file, the sample it fills and
+    // the frames of a piece; `path` the file asked for (a program's preview is another file).
+    struct Hearing;
+    std::unique_ptr<Hearing> hearing;
+    bool hear_piece();   // the next piece; false once it is all there (or cut short) and the file let go
+    void hear_more();    // a pass: the next piece, unless another file, or none, is wanted now
+    void stop_hearing(); // what is there plays to its end; nothing more is read
     void finish(const std::string& text, int failed = -1);
     std::string free_name(const std::string& folder, const std::string& name, const char* extension = ".wav") const;
     void bank_files(); // the bank writes and reads asked for

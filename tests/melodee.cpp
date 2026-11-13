@@ -652,6 +652,122 @@ void effects() {
 void put32(std::ofstream& f, uint32_t v) { for (int n = 0; n < 4; ++n) f.put(char(v >> (8 * n))); }
 void put16(std::ofstream& f, uint16_t v) { f.put(char(v)); f.put(char(v >> 8)); }
 
+// The browser's preview read a piece at a time: WavReader's pieces filled into a SampleFill make read_wav()'s sample to
+// the bit, at every file and device rate, each copy published as it lands; a fill stopped short is cut there; and a
+// voice on a sample still being read plays what has landed, waits silent at its edge, goes on when more lands and
+// ends where a cut one stops.
+void preview_progressive() {
+    const std::string path = "/tmp/melodee-progressive-" + std::to_string(::getpid()) + ".wav";
+    auto write = [&](unsigned rate, unsigned channels, unsigned bits, unsigned frames) {
+        std::ofstream f(path, std::ios::binary);
+        const unsigned block = channels * bits / 8;
+        f.write("RIFF", 4); put32(f, 36 + frames * block); f.write("WAVEfmt ", 8); put32(f, 16); put16(f, 1); put16(f, uint16_t(channels));
+        put32(f, rate); put32(f, rate * block); put16(f, uint16_t(block)); put16(f, uint16_t(bits)); f.write("data", 4); put32(f, frames * block);
+        uint32_t noise = 12345;
+        for (unsigned n = 0; n < frames; ++n)
+            for (unsigned c = 0; c < channels; ++c) {
+                noise = noise * 1664525u + 1013904223u;
+                double v = 0.6 * std::sin(n * (c ? 0.031 : 0.017)) + 0.2 * (int32_t(noise) / 2147483648.0);
+                if (bits == 16) put16(f, uint16_t(int16_t(v * 32767)));
+                else { int32_t s = int32_t(v * 8388607); f.put(char(s)); f.put(char(s >> 8)); f.put(char(s >> 16)); }
+            }
+    };
+    struct Kind { unsigned rate, channels, bits; };
+    for (Kind k : {Kind {22050, 2, 16}, Kind {44100, 2, 16}, Kind {48000, 1, 24}, Kind {96000, 2, 24}}) {
+        write(k.rate, k.channels, k.bits, k.rate * 13 / 10);
+        for (float play_at : {0.0f, 44100.0f, 48000.0f, 96000.0f}) {
+            SampleData whole;
+            CHECK(read_wav(path, whole, 60, nullptr, play_at).empty());
+            WavReader reader;
+            CHECK(reader.open(path, 60).empty() && reader.rate() == k.rate && reader.frames() == k.rate * 13 / 10);
+            SampleData grown;
+            SampleFill fill;
+            fill.begin(grown, reader.frames(), reader.rate(), play_at);
+            CHECK(grown.growth && grown.frames == whole.frames && grown.play_frames == whole.play_frames && grown.play_rate == whole.play_rate);
+            CHECK(grown.left.size() == whole.left.size() && grown.play_left.size() == whole.play_left.size());
+            std::vector<float> l(777), r(777);
+            uint32_t landed = 0, play_landed = 0, got;
+            while ((got = reader.read(l.data(), r.data(), 777))) {
+                fill.add(l.data(), r.data(), got);
+                uint32_t now = grown.growth->frames.load(), play_now = grown.growth->play_frames.load();
+                CHECK(now >= landed && now <= grown.frames && play_now >= play_landed && play_now <= grown.play_frames);
+                landed = now; play_landed = play_now;
+            }
+            CHECK(!fill.to_come() && fill.filling() && !grown.growth->whole.load());
+            fill.finish();
+            CHECK(!fill.filling() && grown.growth->whole.load() && !grown.growth->cut.load());
+            CHECK(grown.growth->frames.load() == grown.frames && grown.growth->play_frames.load() == grown.play_frames);
+            CHECK(grown.left == whole.left && grown.right == whole.right);
+            CHECK(grown.play_left == whole.play_left && grown.play_right == whole.play_right);
+            CHECK(grown.source_rate == whole.source_rate);
+        }
+    }
+    { // Stopped after a piece: cut where it got to, the rest silent; a device copy past the budget is not made.
+        write(48000, 2, 16, 48000);
+        WavReader reader;
+        CHECK(reader.open(path, 60).empty());
+        SampleData grown;
+        SampleFill fill;
+        fill.begin(grown, reader.frames(), reader.rate(), 48000.0f, 1000);
+        CHECK(grown.play_frames == 0 && grown.play_left.empty() && grown.frames == 44100);
+        std::vector<float> l(6000), r(6000);
+        fill.add(l.data(), r.data(), reader.read(l.data(), r.data(), 6000));
+        fill.finish();
+        const uint32_t landed = grown.growth->frames.load();
+        CHECK(grown.growth->cut.load() && !grown.growth->whole.load() && landed > 5000 && landed < 6000);
+        CHECK(std::all_of(grown.left.begin() + landed, grown.left.end(), [](float v) { return v == 0.0f; }));
+        CHECK(reader.open(path, 0) == "no audio" && reader.open(path + ".none", 60) == "cannot open");
+        WavReader second;
+        CHECK(second.open(path, 1).empty() && second.frames() == 48000); // at most a second of it
+    }
+    std::remove(path.c_str());
+
+    // A voice on it: the audition plays what has landed, waits silent at its edge, goes on when the rest lands.
+    dsp::device_rate.store(44100.0f);
+    SampleData data;
+    data.frames = 44100; data.left.assign(44100, 0.5f); data.right.assign(44100, 0.5f);
+    data.growth = std::make_shared<SampleGrowth>();
+    data.growth->frames.store(4410);
+    SamplerEngine::Table table {};
+    table[preview_slot] = &data;
+    auto loudest = [](SamplerEngine& e) {
+        std::vector<float> l(128, 0.0f), r(128, 0.0f);
+        e.render_stereo(l.data(), r.data(), 128);
+        float most = 0;
+        for (float v : l) most = std::max(most, std::fabs(v));
+        return most;
+    };
+    {
+        SamplerEngine engine;
+        engine.set_samples(&table);
+        engine.audition(uint16_t(preview_slot), 0, 0, 100);
+        float first = 0;
+        for (unsigned b = 0; b < 8; ++b) first = std::max(first, loudest(engine));
+        CHECK(first > 0.01f);
+        for (unsigned b = 0; b < 30; ++b) loudest(engine); // up to the edge: 4410 frames is 34 blocks
+        CHECK(engine.sounding() && loudest(engine) == 0.0f && loudest(engine) == 0.0f); // waiting, not ended
+        data.growth->frames.store(44100);
+        data.growth->whole.store(true);
+        float again = 0;
+        for (unsigned b = 0; b < 4; ++b) again = std::max(again, loudest(engine));
+        CHECK(again > 0.01f);
+        engine.audition(no_sample, 0, 0, 0);
+        for (unsigned b = 0; b < 40; ++b) loudest(engine);
+        CHECK(!engine.sounding());
+    }
+    { // Cut short: it plays to there and ends.
+        data.growth = std::make_shared<SampleGrowth>();
+        data.growth->frames.store(4410);
+        data.growth->cut.store(true);
+        SamplerEngine engine;
+        engine.set_samples(&table);
+        engine.audition(uint16_t(preview_slot), 0, 0, 100);
+        CHECK(loudest(engine) > 0.01f);
+        for (unsigned b = 0; b < 40; ++b) loudest(engine);
+        CHECK(!engine.sounding());
+    }
+}
+
 void sampler_kit() {
     // A 16-bit stereo WAV at 22.05 kHz: four clicks a quarter second apart, read back at 44.1 kHz.
     std::string path = "/tmp/melodee-test-" + std::to_string(::getpid()) + ".wav";
@@ -12584,6 +12700,7 @@ int main() {
     project_files();
     recording();
     sampler_kit();
+    preview_progressive();
     effects();
     arrange();
     motion();

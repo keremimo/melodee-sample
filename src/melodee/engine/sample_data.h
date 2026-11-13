@@ -3,11 +3,17 @@
 #pragma once
 #include "melodee/engine/multisample.h"
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
+#include <limits>
+#include <memory>
 #include <string>
 #include <vector>
+
+template <unsigned Channels> class SincResampler; // dsp/frame_ring.h
 
 // A sample in memory at 44.1 kHz, and what the screen needs about it. Read,
 // converted and analysed on the service thread (it allocates and reads
@@ -18,10 +24,21 @@
 // copy the device plays when the rates agree (play_*, source_rate).
 namespace melodee {
 
+// A sample still being read (the browser's preview, SampleFill): its frames are laid out at their full length, silent,
+// before the audio thread has it, and filled in from the start while it plays. How far each copy is filled in,
+// published as it lands; the audio thread reads below that only. `cut`: no more will come (the file ran out early,
+// or it is no longer wanted), so a voice plays to there and ends; `whole`: everything is there.
+struct SampleGrowth {
+    std::atomic<uint32_t> frames {0};      // of `left` and `right`
+    std::atomic<uint32_t> play_frames {0}; // of `play_left` and `play_right`
+    std::atomic<bool> cut {false}, whole {false};
+};
+
 struct SampleData {
     std::vector<float> left, right;
     uint32_t frames = 0;
     std::shared_ptr<Multisample> multi; // a multisampled instrument: no frames of its own, its zones' instead
+    std::shared_ptr<SampleGrowth> growth; // still being read (SampleFill); none: all of it is there
     // Roadmap P2: the same sound at the device's rate (prepare_playback()), made once before the audio thread has
     // it; the sampler plays it a frame a frame, its 44.1 kHz positions scaled. None at 44.1 kHz, for an instrument,
     // or past the library's budget: the 44.1 kHz frames are then read that much further each device frame.
@@ -70,6 +87,57 @@ constexpr unsigned max_hits = 128;
 // `play_at` (roadmap P2): the device's rate, for the copy it plays made straight from the file (its own frames when
 // the rates agree, else one conversion); 0 or 44.1 kHz none.
 std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds = 60, WavInfo* info = nullptr, float play_at = 0);
+
+// A WAV file's frames a piece at a time, as read_wav() reads them whole (it is read_wav()'s reader): open() reads
+// the head (and, with `info`, the smpl chunk wherever it lies) and finds the frames, at most `max_seconds` of them;
+// read() hands on the next ones as floats at the file's own rate (a mono file's on both sides), fewer at the end of
+// the file. open() is empty on success, else what went wrong (read_wav()'s words).
+class WavReader {
+public:
+    std::string open(const std::string& path, unsigned max_seconds = 60, WavInfo* info = nullptr);
+    unsigned rate() const { return hz; }
+    uint32_t frames() const { return count; }
+    uint32_t read(float* left, float* right, uint32_t frames);
+private:
+    std::ifstream file;
+    unsigned format = 0, channels = 0, hz = 0, bits = 0;
+    uint32_t count = 0, done = 0;
+    std::vector<uint8_t> bytes;
+};
+
+// A sample laid out at its full length before its frames are there, then filled in a piece at a time from the start
+// (the browser's preview: it plays while the rest is read). The frames are adopt()'s, to the bit: its 44.1 kHz frames
+// and the device's copy, each the file's own frames or one conversion of them; each copy's progress is published
+// through the sample's growth as it lands (SampleGrowth). Service thread: allocates and converts.
+class SampleFill {
+public:
+    SampleFill();
+    ~SampleFill();
+    SampleFill(const SampleFill&) = delete;
+    SampleFill& operator=(const SampleFill&) = delete;
+    // `frames` to come at `rate` Hz: `sample` laid out for them, silent, nothing landed. The device's copy at
+    // `play_at` as adopt() makes it, none when it would take more than `play_room` bytes (the library's budget).
+    void begin(SampleData& sample, uint32_t frames, unsigned rate, float play_at, size_t play_room = std::numeric_limits<size_t>::max());
+    // The next frames from the file; any past the `frames` begun with are left out.
+    void add(const float* left, const float* right, uint32_t frames);
+    // The end: each conversion lets out its last frames, and the sample is whole, or, short of the frames begun with
+    // (the file ran out early, or it is no longer wanted), cut there.
+    void finish();
+    bool filling() const { return sample != nullptr; }
+    uint32_t to_come() const { return left_to_add; }
+private:
+    struct Copy {
+        std::vector<float>* left = nullptr;
+        std::vector<float>* right = nullptr;
+        std::atomic<uint32_t>* landed = nullptr;
+        uint32_t length = 0, written = 0;
+        std::unique_ptr<SincResampler<2>> converter; // none: the file's own frames
+    };
+    SampleData* sample = nullptr;
+    std::shared_ptr<SampleGrowth> growth;
+    std::array<Copy, 2> copies;                    // the 44.1 kHz frames, the device's copy
+    uint32_t left_to_add = 0;
+};
 // The loop a FLAC file keeps from the WAV it was made of (flac --keep-foreign-metadata: an
 // APPLICATION block "riff" holding the smpl chunk), into `info`; false when it has none.
 bool read_flac_loop(const std::string& path, WavInfo& info);

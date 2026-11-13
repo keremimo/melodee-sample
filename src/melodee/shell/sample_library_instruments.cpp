@@ -489,6 +489,7 @@ bool SampleLibrary::reap() {
 }
 
 bool SampleLibrary::release_instruments() {
+    stop_hearing(); // the preview's file is on the card too: what was read of it plays out
     std::vector<std::pair<uint8_t, std::string>> putting;
     {
         std::lock_guard<std::mutex> guard(lock);

@@ -95,7 +95,9 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
         v.loop_at = zone->loop_start; v.loop_hi = zone->loop_end;
         v.loop_held = zone->loop == ZoneLoop::UntilReleased;
     } else loop_setup(v, sound);
-    v.cloud = p[Cloud] != 0 && pad < int(sampler_pads); // not for Chop's audition
+    // A sample still being read (the browser's preview) plays what has landed, as a stream plays what is pinned.
+    if (!part && data->growth && !data->growth->whole.load(std::memory_order_acquire)) v.grow = data->growth.get();
+    v.cloud = p[Cloud] != 0 && pad < int(sampler_pads) && !v.grow; // not for Chop's audition, nor before all is there
     v.held = true; v.gate = sound.play == PadPlay::Gate && !(zone && zone->one_shot); v.group = sound.group;
     if (zone && zone->on_release) v.held = v.gate = v.loop = false; // a release sample plays out once
     aim(v, sound, zone, multi, key);
@@ -750,7 +752,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
         ++v.since_hop;
         glide(v);
         float a = v.env.next(v.shape) * v.gain * v.fade;
-        if (v.zone) { v.duck += std::clamp(v.duck_to - v.duck, -edge_step, edge_step); a *= v.duck; }
+        if (v.zone || v.grow) { v.duck += std::clamp(v.duck_to - v.duck, -edge_step, edge_step); a *= v.duck; }
         if (v.choked) { v.fade -= edge_step; if (v.fade <= 0) { v.pad = -1; return; } }
         float sum_l = 0, sum_r = 0;
         for (unsigned t = 0; t < 2; ++t) {
@@ -826,6 +828,32 @@ bool SamplerEngine::admit(Voice& v, unsigned frames) {
         return false;
     }
     v.starved = false; v.played = true;
+    v.duck_to = plenty ? 1.0f : 0.0f;
+    return true;
+}
+
+// A sample still being read (SampleGrowth: the browser's preview), as admit() a stream: it reads only what has landed,
+// ducking out short of that and holding its place, silent, until the reading catches up. Reversed, looped or with a
+// crossfaded seam it reads near its end too, so it waits for all of it. Once the reading is cut short (the file ran
+// out early, or it is no longer wanted), it plays up to there and ends.
+bool SamplerEngine::admit_grown(Voice& v, unsigned frames) {
+    const bool cut = v.grow->cut.load(std::memory_order_acquire); // first: what it reads below is then all that comes
+    const uint32_t limit = (v.native ? v.grow->play_frames : v.grow->frames).load(std::memory_order_acquire);
+    bool enough = limit >= v.end, plenty = enough;
+    if (!enough && !v.reverse && !v.loop && !v.xfade_kind) {
+        const double at = v.stretch ? v.place : v.position;
+        const double speed = v.stretch ? std::max(v.advance, v.step) : v.step;
+        const double extra = (v.stretch ? v.window * v.step : 0.0) + 2.0;
+        enough = at + frames * speed + extra < limit;
+        plenty = at + 2.0 * frames * speed + extra < limit;
+    }
+    if (!enough) {
+        if (cut) { v.pad = -1; return false; } // no more to come
+        v.duck = 0;
+        for (unsigned f = 0; f < frames; ++f) { v.env.next(v.shape); if (v.filter != PadFilter::Off) v.filter_env.next(v.filter_shape); }
+        if (!v.env.active() || v.choked) v.pad = -1;
+        return false;
+    }
     v.duck_to = plenty ? 1.0f : 0.0f;
     return true;
 }
@@ -961,6 +989,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             if (v.stream >= 0 && v.pad >= 0) pager->place(v.stream, uint32_t(v.stretch ? v.place : v.position));
             continue;
         }
+        if (v.grow && !admit_grown(v, frames - from)) continue;
         if (v.stretch) { stretch(v, l, r, to_l, to_r, from, frames); continue; }
         // A loop runs from its loop point to the region's end and round again (backwards: from the end down to the
         // loop point), keeping the fraction and reading across the seam, so a seamless loop stays seamless and in
@@ -977,6 +1006,7 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
             glide(v);
             float a = v.env.next(v.shape) * v.gain * v.fade;
             if (v.edge_in || v.edge_out) a *= edge_gain(v, v.position);
+            if (v.grow) { v.duck += std::clamp(v.duck_to - v.duck, -edge_step, edge_step); a *= v.duck; }
             if (v.choked) { v.fade -= edge_step; if (v.fade <= 0) { v.pad = -1; break; } } // a quick fade, not a click
             float sl = l[i] + (l[j] - l[i]) * frac, sr = r[i] + (r[j] - r[i]) * frac;
             if (v.xfade_kind) seam(v, l, r, v.position, sl, sr);

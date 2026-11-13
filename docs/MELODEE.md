@@ -942,7 +942,12 @@ the file holds, to the bit.
   or INTERNAL: the factory categories and the stock app's User folder, read
   only), B3 PREVIEW (its LED) plays each file as the cursor lands (its row
   fills in the track colour as it plays, with the seconds heard of its
-  length on the right); Shift + pad loads onto the
+  length on the right). A preview starts once its first eighth of a second
+  is read, however long the file: the sample is laid out at its full length
+  (up to 30 s) and read in a piece each service pass while it plays
+  (`SampleFill`, `AudioReader`), and the voice reads only what has landed
+  (`SampleGrowth`), holding silent at that edge should the reading fall
+  behind; Shift + pad loads onto the
   next empty pad. Melodee writes only to the card. On **Pads** every pad that
   sounds lights, with a head through its waveform as far as its newest voice
   has played through its region.

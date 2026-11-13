@@ -16,12 +16,27 @@ uint16_t u16(const uint8_t* p) { return uint16_t(p[0] | p[1] << 8); }
 } // namespace
 
 std::string read_wav(const std::string& path, SampleData& out, unsigned max_seconds, WavInfo* info, float play_at) {
-    std::ifstream file(path, std::ios::binary);
+    WavReader reader;
+    auto error = reader.open(path, max_seconds, info);
+    if (!error.empty()) return error;
+    // To 44.1 kHz, band-limited (roadmap P2; it was linear): straight through when it is at that rate already.
+    std::vector<float> l(reader.frames()), r(reader.frames());
+    l.resize(reader.read(l.data(), r.data(), reader.frames()));
+    r.resize(l.size());
+    if (l.empty()) return "no audio";
+    adopt(out, std::move(l), std::move(r), reader.rate(), play_at);
+    return {};
+}
+
+std::string WavReader::open(const std::string& path, unsigned max_seconds, WavInfo* info) {
+    file = std::ifstream(path, std::ios::binary);
+    format = channels = hz = bits = 0;
+    count = done = 0;
     if (!file) return "cannot open";
     uint8_t head[12];
     if (!file.read(reinterpret_cast<char*>(head), 12) || std::memcmp(head, "RIFF", 4) || std::memcmp(head + 8, "WAVE", 4)) return "not a WAV file";
-    unsigned format = 0, channels = 0, rate = 0, bits = 0;
-    std::vector<uint8_t> data;
+    uint64_t data_at = 0, data_size = 0;
+    bool found = false;
     while (file) {
         uint8_t chunk[8];
         if (!file.read(reinterpret_cast<char*>(chunk), 8)) break;
@@ -29,18 +44,13 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
         if (!std::memcmp(chunk, "fmt ", 4)) {
             std::vector<uint8_t> fmt(size);
             if (size < 16 || !file.read(reinterpret_cast<char*>(fmt.data()), size)) return "broken format chunk";
-            format = u16(&fmt[0]); channels = u16(&fmt[2]); rate = u32(&fmt[4]); bits = u16(&fmt[14]);
+            format = u16(&fmt[0]); channels = u16(&fmt[2]); hz = u32(&fmt[4]); bits = u16(&fmt[14]);
             if (format == 0xfffe && size >= 26) format = u16(&fmt[24]); // WAVE_FORMAT_EXTENSIBLE: the sub-format
         } else if (!std::memcmp(chunk, "data", 4)) {
             if (!format) return "data before format";
-            uint64_t limit = uint64_t(max_seconds) * rate * channels * (bits / 8);
-            auto after = file.tellg() + std::streamoff(uint64_t(size) + (size & 1));
-            data.resize(size_t(std::min<uint64_t>(size, limit)));
-            file.read(reinterpret_cast<char*>(data.data()), std::streamsize(data.size()));
-            data.resize(size_t(file.gcount()));
+            if (!found) { found = true; data_at = uint64_t(file.tellg()); data_size = size; }
             if (!info) break;
-            file.clear(); // a smpl chunk may follow the audio
-            file.seekg(after);
+            file.seekg(std::streamoff(uint64_t(size) + (size & 1)), std::ios::cur); // a smpl chunk may follow the audio
         } else if (info && !std::memcmp(chunk, "smpl", 4) && size >= 60) {
             uint8_t body[60];
             if (!file.read(reinterpret_cast<char*>(body), 60)) break;
@@ -52,22 +62,110 @@ std::string read_wav(const std::string& path, SampleData& out, unsigned max_seco
     }
     bool pcm = format == 1 && (bits == 16 || bits == 24 || bits == 32), floating = format == 3 && bits == 32;
     if (!pcm && !floating) return "unsupported sample format";
-    if (channels < 1 || channels > 2 || rate < 8000 || rate > 192000) return "unsupported channels or rate";
-    unsigned bytes = bits / 8, frames = unsigned(data.size() / (bytes * channels));
-    if (!frames) return "no audio";
-    if (info) { info->channels = channels; info->rate = rate; }
+    if (channels < 1 || channels > 2 || hz < 8000 || hz > 192000) return "unsupported channels or rate";
+    // As much of the data chunk as the file holds (a chunk may say more than was written), at most max_seconds.
+    file.clear();
+    file.seekg(0, std::ios::end);
+    const uint64_t end = uint64_t(std::max<std::streamoff>(file.tellg(), 0));
+    const uint64_t held = found && end > data_at ? std::min(data_size, end - data_at) : 0;
+    const uint64_t limit = uint64_t(max_seconds) * hz * channels * (bits / 8);
+    count = uint32_t(std::min(held, limit) / ((bits / 8) * channels));
+    if (!count) return "no audio";
+    if (info) { info->channels = channels; info->rate = hz; }
+    file.seekg(std::streamoff(data_at));
+    return {};
+}
+
+uint32_t WavReader::read(float* left, float* right, uint32_t frames) {
+    const uint32_t wanted = std::min(frames, count - done);
+    if (!wanted || !file) return 0;
+    const unsigned size = bits / 8, block = size * channels;
+    const bool floating = format == 3;
+    bytes.resize(size_t(wanted) * block);
+    file.read(reinterpret_cast<char*>(bytes.data()), std::streamsize(bytes.size()));
+    frames = uint32_t(uint64_t(std::max<std::streamsize>(file.gcount(), 0)) / block);
+    if (frames < wanted) count = done + frames; // it could not be read: no more
     auto sample = [&](unsigned frame, unsigned channel) {
-        const uint8_t* p = &data[(size_t(frame) * channels + channel) * bytes];
+        const uint8_t* p = &bytes[(size_t(frame) * channels + channel) * size];
         if (floating) { float f; std::memcpy(&f, p, 4); return std::isfinite(f) ? f : 0.0f; }
         if (bits == 16) return int16_t(u16(p)) / 32768.0f;
         if (bits == 24) return int32_t(uint32_t(p[0]) << 8 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 24) / 2147483648.0f;
         return int32_t(u32(p)) / 2147483648.0f;
     };
-    // To 44.1 kHz, band-limited (roadmap P2; it was linear): straight through when it is at that rate already.
-    std::vector<float> l(frames), r(frames);
-    for (unsigned n = 0; n < frames; ++n) { l[n] = sample(n, 0); r[n] = sample(n, std::min(1u, channels - 1)); }
-    adopt(out, std::move(l), std::move(r), rate, play_at);
-    return {};
+    for (unsigned n = 0; n < frames; ++n) { left[n] = sample(n, 0); right[n] = sample(n, std::min(1u, channels - 1)); }
+    done += frames;
+    return frames;
+}
+
+SampleFill::SampleFill() = default;
+SampleFill::~SampleFill() = default;
+
+void SampleFill::begin(SampleData& s, uint32_t frames, unsigned rate, float play_at, size_t play_room) {
+    sample = &s;
+    growth = std::make_shared<SampleGrowth>();
+    s.growth = growth;
+    s.multi = nullptr;
+    s.source_rate = rate;
+    left_to_add = frames;
+    const auto model = unsigned(dsp::model_rate), to = unsigned(std::lround(play_at));
+    // As adopt(): a copy at the file's own rate is its frames, any other one band-limited conversion of them, as long as
+    // resample() makes it.
+    auto length = [&](unsigned at) { return at == rate ? frames : uint32_t(std::llround(double(frames) * at / rate)); };
+    auto lay_out = [&](Copy& c, std::vector<float>& l, std::vector<float>& r, std::atomic<uint32_t>& landed, unsigned at) {
+        c.left = &l; c.right = &r; c.landed = &landed;
+        c.length = length(at); c.written = 0;
+        l.assign(c.length, 0.0f); r.assign(c.length, 0.0f);
+        c.converter.reset();
+        if (at != rate) { c.converter = std::make_unique<SincResampler<2>>(); c.converter->reset(rate, at); }
+    };
+    copies = {};
+    lay_out(copies[0], s.left, s.right, growth->frames, model);
+    s.frames = copies[0].length;
+    s.play_left = {}; s.play_right = {};
+    s.play_frames = 0; s.play_rate = 0;
+    if (to >= 8000 && to != model && size_t(length(to)) * 2 * sizeof(float) <= play_room) {
+        lay_out(copies[1], s.play_left, s.play_right, growth->play_frames, to);
+        s.play_frames = copies[1].length;
+        s.play_rate = play_at;
+    }
+}
+
+void SampleFill::add(const float* left, const float* right, uint32_t frames) {
+    if (!sample) return;
+    frames = std::min(frames, left_to_add);
+    for (auto& c : copies) {
+        if (!c.left) continue;
+        if (!c.converter) {
+            const uint32_t n = std::min(frames, c.length - c.written);
+            std::copy(left, left + n, c.left->begin() + c.written);
+            std::copy(right, right + n, c.right->begin() + c.written);
+            c.written += n;
+        } else {
+            auto keep = [&](float l, float r) { if (c.written < c.length) { (*c.left)[c.written] = l; (*c.right)[c.written] = r; ++c.written; } };
+            for (uint32_t n = 0; n < frames; ++n) c.converter->feed(left[n], right[n], keep);
+        }
+        c.landed->store(c.written, std::memory_order_release);
+    }
+    left_to_add -= frames;
+}
+
+void SampleFill::finish() {
+    if (!sample) return;
+    const bool whole = !left_to_add;
+    for (auto& c : copies) {
+        if (!c.left) continue;
+        if (c.converter) { // it answers `half` frames late: silence after the last frame lets the end out (resample())
+            auto keep = [&](float l, float r) { if (c.written < c.length) { (*c.left)[c.written] = l; (*c.right)[c.written] = r; ++c.written; } };
+            for (unsigned n = 0; n <= SincResampler<2>::max_half && c.written < c.length; ++n) c.converter->feed(0.0f, 0.0f, keep);
+        }
+        if (whole) c.written = c.length; // what the conversion did not reach stays silent, as resample() pads it
+        c.landed->store(c.written, std::memory_order_release);
+        c.converter.reset();
+    }
+    (whole ? growth->whole : growth->cut).store(true, std::memory_order_release);
+    copies = {};
+    growth.reset();
+    sample = nullptr;
 }
 
 void adopt(SampleData& out, std::vector<float> left, std::vector<float> right, unsigned rate, float play_at) {
