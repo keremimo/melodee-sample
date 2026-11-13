@@ -1883,7 +1883,8 @@ of the card (beside `Samples/`), in any folders under it.
 - **Support carried in the binary.** No-op stand-ins for the GUI libraries
   editors link (`libGL`, the X11 and xcb families, `libcairo`; Melodee never
   opens an editor), the real `libsndfile` with its codecs (plug-ins read
-  audio files with it), and the 32-bit bridge with Debian's armhf runtime
+  audio files with it), `libsamplerate` and FFTW (single and double
+  precision), and the 32-bit bridge with Debian's armhf runtime
   go into `/run/melodee-plugins/support` the first time a plug-in loads.
   `tools/plugin_support/SURVEY.md` says why these and no others.
 - **32-bit plug-ins** run in a bridge process: audio, MIDI and parameters

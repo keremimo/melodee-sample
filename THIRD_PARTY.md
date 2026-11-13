@@ -59,7 +59,8 @@ own code, under the same licence; the MP3 patents ran out in 2017.
 - Libraries plug-ins use for sound and the MPC lacks
   (`tools/plugin_support/SURVEY.md`): Debian bookworm's aarch64 libsndfile
   (LGPL-2.1+) with libFLAC, libogg, libvorbis, libvorbisenc, libopus
-  (BSD-style) and libmp3lame (LGPL-2.0+), unchanged, in the same pack;
+  (BSD-style) and libmp3lame (LGPL-2.0+), libsamplerate (BSD-2-Clause)
+  and FFTW 3 (GPL-2+), unchanged, in the same pack;
   their copyright files travel in `licenses/armhf-runtime/` too.
 - The 32-bit bridge's runtime: Debian bookworm's armhf loader, glibc
   (LGPL-2.1+), libstdc++ and libgcc_s (GPL-3 with the GCC Runtime Library

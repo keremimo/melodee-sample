@@ -8,7 +8,9 @@
   bridge32/armhf/   Debian bookworm's armhf loader, glibc, libstdc++ and
                     libgcc_s, which the bridge and armv7 plug-ins run on
   libs/             real aarch64 libraries plug-ins use for sound and the MPC
-                    lacks: libsndfile and its codecs (SURVEY.md), loaded
+                    lacks: libsndfile and its codecs, libsamplerate and
+                    FFTW (single and double, with their threads
+                    builds) (SURVEY.md), loaded
                     before any plug-in
   licenses/         their Debian copyright files, the LGPL and GPL texts and
                     the package versions (the release zip carries them too)
@@ -45,11 +47,14 @@ def bridge(out):
 
 # Real libraries for plug-ins' sound the MPC lacks (tools/plugin_support/SURVEY.md): libsndfile (LGPL-2.1+) and the
 # codecs it links that the MPC has not (FLAC, Ogg, Vorbis, Opus: BSD; LAME: LGPL-2.0+). libmpg123 the MPC has.
-# Loaded in this order, each before what needs it.
+# libsamplerate (BSD-2-Clause) and FFTW 3 (GPL-2+), double and single precision with their threads builds; not the
+# OpenMP builds, which need libgomp. Loaded in this order, each before what needs it.
 AARCH64_LIB = Path("/usr/lib/aarch64-linux-gnu")
 REAL = ["libogg.so.0", "libFLAC.so.12", "libvorbis.so.0", "libvorbisenc.so.2", "libopus.so.0", "libmp3lame.so.0",
-        "libsndfile.so.1"]
-REAL_PACKAGES = ["libogg0", "libflac12", "libvorbis0a", "libvorbisenc2", "libopus0", "libmp3lame0", "libsndfile1"]
+        "libsndfile.so.1", "libsamplerate.so.0", "libfftw3.so.3", "libfftw3_threads.so.3", "libfftw3f.so.3",
+        "libfftw3f_threads.so.3"]
+REAL_PACKAGES = ["libogg0", "libflac12", "libvorbis0a", "libvorbisenc2", "libopus0", "libmp3lame0", "libsndfile1",
+                 "libsamplerate0", "libfftw3-double3", "libfftw3-single3"]
 
 
 def real_libs(out):
@@ -71,14 +76,15 @@ def licenses(out):
         shutil.copyfile(Path("/usr/share/doc") / package / "copyright", out / f"{package}.copyright")
         version = subprocess.run(["dpkg-query", "-W", "-f=${Version}", package], capture_output=True, text=True, check=True).stdout
         versions.append(f"{package} {version}")
-    for text in ["LGPL-2.1", "GPL-3"]:
+    for text in ["LGPL-2.1", "GPL-2", "GPL-3"]:
         shutil.copyfile(Path("/usr/share/common-licenses") / text, out / f"{text}.txt")
     (out / "README.txt").write_text(
         "Melodee carries Debian bookworm's armhf runtime for 32-bit plug-ins (the loader, glibc,\n"
         "libstdc++ and libgcc_s), unchanged. glibc is under the LGPL 2.1 or later; libstdc++ and\n"
         "libgcc_s under the GPL 3 with the GCC Runtime Library Exception (see the copyright files).\n"
         "It also carries Debian bookworm's aarch64 libsndfile (LGPL 2.1 or later) with libFLAC, libogg,\n"
-        "libvorbis, libvorbisenc, libopus (BSD-style) and libmp3lame (LGPL 2 or later), unchanged.\n"
+        "libvorbis, libvorbisenc, libopus (BSD-style) and libmp3lame (LGPL 2 or later), libsamplerate\n"
+        "(BSD 2-clause) and FFTW 3 (GPL 2 or later), unchanged.\n"
         "Their source is these Debian packages' source, on snapshot.debian.org:\n" + "".join(f"  {v}\n" for v in versions) +
         "It is also available on request from the Melodee project for three years from each release.\n")
 

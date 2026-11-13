@@ -60,5 +60,11 @@ does Wolf Shaper (1.6 %).
 - Done since: a bundle holding many plug-ins (LSP's VST3: 198) lists them
   one by one in the picker, and any of them loads (checked with LSP's
   Flanger Stereo, 2.5 % of a block).
-- Not added on speculation: FFTW, libsamplerate, GTK. If a plug-in needs
-  one, its page names the missing library ("Could not open").
+- Added since without a surveyed plug-in asking (2026-11-13): the real
+  `libsamplerate.so.0` (0.2.2, BSD-2-Clause) and FFTW 3.3.10
+  (`libfftw3.so.3`, `libfftw3f.so.3` and their `_threads` builds,
+  GPL-2+), Debian bookworm arm64, about 3.7 MB. They are DSP libraries a
+  desktop Linux plug-in commonly links; a stub would mean silence. FFTW's
+  OpenMP builds are left out (they need `libgomp`).
+- Not added on speculation: GTK. If a plug-in needs a library the pack
+  lacks, its page names it ("Could not open").

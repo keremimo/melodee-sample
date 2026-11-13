@@ -70,7 +70,7 @@ void load_stubs(const fs::path& folder) {
     std::error_code error;
     for (const auto& entry : fs::directory_iterator(folder / "stubs", error))
         dlopen(entry.path().c_str(), RTLD_NOW | RTLD_GLOBAL); // its soname now satisfies any plug-in that lists it
-    // The real libraries the MPC lacks (libsndfile and its codecs), in the order their names give: each before what
+    // The real libraries the MPC lacks (libsndfile and its codecs, libsamplerate, FFTW), in the order their names give: each before what
     // links it. One the MPC has after all is left alone.
     std::vector<fs::path> real;
     for (const auto& entry : fs::directory_iterator(folder / "libs", error)) real.push_back(entry.path());
