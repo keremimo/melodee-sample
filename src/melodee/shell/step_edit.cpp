@@ -180,6 +180,7 @@ void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     if (key < 0 || !t.used()) return;
     Level level; // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
     if (t.engine == EngineKind::Sampler && t.levels) { level = levels_of(c.project, t, pad); key = int(sampler_first_note + t.levels_pad % sampler_pads); }
+    if (level.none) return; // Zones: a pad past the instrument's last key
     ui.entry_held = uint16_t(ui.entry_held | bit);
     auto& p = c.pattern();
     unsigned q = p.q(), caret = caret_of(p, ui);

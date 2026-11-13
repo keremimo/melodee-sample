@@ -94,9 +94,11 @@ inline int level_scale_step(const Project& project, unsigned pad) {
 // pads only). On a kit − / + move Scale and Tune a whole octave. velocity 0:
 // the pad's own; cutoff -1: the pad's own; key -1: a synth's last note moved.
 // Loop: 16 Levels opens the Looper, its pads the loop grid (docs/LOOPER.md).
-enum class LevelsKind : uint8_t { Velocity, Scale, Tune, Filter, Loop, Count };
+// Zones (a kit pad holding an instrument): the keys its zones sound on, lowest
+// on pad 1, each pad one of them at its real pitch, sixteen to a page.
+enum class LevelsKind : uint8_t { Velocity, Scale, Tune, Filter, Loop, Zones, Count };
 inline const char* levels_kind_name(LevelsKind k) {
-    static const char* const names[] {"Velocity", "Scale", "Tune", "Filter", "Loop"};
+    static const char* const names[] {"Velocity", "Scale", "Tune", "Filter", "Loop", "Zones"};
     return names[unsigned(k) % unsigned(LevelsKind::Count)];
 }
 // How far each type's ends go.
@@ -136,10 +138,51 @@ inline int kit_root_shift(const Project& project, const Track& track) {
     int root = ((int(project.root) + track.transpose) % 12 + 12) % 12;
     return root > 6 ? root - 12 : root;
 }
-struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0, key = -1; };
+// A kit's 16 Levels octave (the track's, level_octave() below): 2 as it is.
+constexpr int kit_level_octave = 2, kit_lowest_octave = -1, kit_highest_octave = 7;
+struct Level { int velocity = 0, semitones = 0, cutoff = -1, shown = 0, key = -1; bool none = false; }; // none: a pad past Zones' last key
+
+// Zones: the instrument on the 16 Levels pad (a kit's), nullptr for none.
+inline const SampleRef* levels_instrument(const Project& project, const Track& track) {
+    if (track.engine != EngineKind::Sampler) return nullptr;
+    const auto& pad = track.pads[track.levels_pad % sampler_pads];
+    if (!pad.used()) return nullptr;
+    const auto& ref = project.samples[pad.sample % sample_slots];
+    return ref.used() && ref.instrument() ? &ref : nullptr;
+}
+inline unsigned zone_key_count(const SampleRef& ref) {
+    unsigned n = 0;
+    for (auto word : ref.keys) for (; word; word &= word - 1) ++n;
+    return n;
+}
+// The index'th key its zones sound on, lowest first; -1 past the last.
+inline int zone_key(const SampleRef& ref, unsigned index) {
+    for (unsigned key = 0; key < 128; ++key)
+        if ((ref.keys[key / 64] >> (key % 64)) & 1) { if (!index) return int(key); --index; }
+    return -1;
+}
+// Its pages of sixteen and the one in view: − / + walk them as a kit's octaves, kit_level_octave the first, so at
+// most as many as those octaves go up.
+inline unsigned zone_pages(const SampleRef& ref) {
+    return std::clamp((zone_key_count(ref) + 15) / 16, 1u, unsigned(kit_highest_octave - kit_level_octave + 1));
+}
+inline unsigned zone_page(const Track& track, unsigned pages) {
+    return unsigned(std::clamp(int(track.octave) - kit_level_octave, 0, int(pages) - 1));
+}
+// The types a track's K1 turns through with its pad in view: an instrument's pad has Zones after Tune.
+inline unsigned levels_types(const Project& project, const Track& track, std::array<LevelsKind, 5>& out) {
+    std::array<LevelsKind, 4> base {};
+    unsigned count = levels_types(track, base);
+    if (!drum_pads(track) && levels_instrument(project, track)) {
+        out = {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Zones, LevelsKind::Velocity, LevelsKind::Filter};
+        return 5;
+    }
+    for (unsigned n = 0; n < 4; ++n) out[n] = base[n];
+    out[4] = base[0];
+    return count;
+}
 // A kit pad's 16 Levels in pitch (Scale, Tune) an octave a step of the track's
 // octave, 2 as it is (− / + step it there); a synth's pads keep their own.
-constexpr int kit_level_octave = 2, kit_lowest_octave = -1, kit_highest_octave = 7;
 inline int level_octave(const Track& track) { return track.engine == EngineKind::Sampler ? 12 * (track.octave - kit_level_octave) : 0; }
 inline Level levels_of(const Project& project, const Track& track, unsigned pad) {
     pad %= 16;
@@ -147,6 +190,8 @@ inline Level levels_of(const Project& project, const Track& track, unsigned pad)
     auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
     if (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler) kind = LevelsKind::Velocity; // a synth has no pad filter
     if (kind == LevelsKind::Loop || drum_pads(track)) kind = LevelsKind::Velocity;
+    const SampleRef* instrument = kind == LevelsKind::Zones ? levels_instrument(project, track) : nullptr;
+    if (kind == LevelsKind::Zones && !instrument) kind = LevelsKind::Scale; // its pad no instrument now
     const auto& ends = track.levels_ends[unsigned(kind) % 4];
     int at = level_between(ends[0], ends[1], pad);
     switch (kind) {
@@ -156,6 +201,13 @@ inline Level levels_of(const Project& project, const Track& track, unsigned pad)
         out.shown = out.key >= 0 ? out.key : out.semitones;
         break;
     case LevelsKind::Tune: out.semitones = at + level_octave(track); out.shown = out.semitones; break;
+    case LevelsKind::Zones: { // the key itself: a hit plays 60 + the pad's Semi + these
+        const int key = zone_key(*instrument, 16 * zone_page(track, zone_pages(*instrument)) + pad);
+        if (key < 0) { out.none = true; out.shown = -1; break; }
+        out.semitones = std::clamp(key - 60 - int(track.pads[track.levels_pad % sampler_pads].pitch), -64, 63);
+        out.shown = key;
+        break;
+    }
     case LevelsKind::Filter: out.cutoff = std::clamp(at, 0, 100); out.shown = out.cutoff; break;
     case LevelsKind::Velocity:
     default: out.velocity = std::clamp(at, 1, 127); out.shown = out.velocity; break;

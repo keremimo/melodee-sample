@@ -2006,6 +2006,18 @@ const Preview previews[] {
          auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 1; t.last_pad = 1; t.levels_kind = uint8_t(LevelsKind::Scale);
          s.project.root = 0; s.project.scale = 7; s.ui.levels_hit = 5;
      }},
+    {"levelszones", [](Shell&, Snapshot& s) { // Zones on a percussion instrument's pad: its 23 keys, page 1 of 2, pad 3 hit
+         s.ui.page = PageId::Levels; s.ui.track = 3; s.playing = true;
+         auto& t = s.project.tracks[3]; t.levels = true; t.levels_pad = 8; t.last_pad = 8; t.levels_kind = uint8_t(LevelsKind::Zones);
+         t.octave = kit_level_octave;
+         auto& ref = s.project.samples[t.pads[8].sample % sample_slots];
+         std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Percussion/Percussion.dspreset");
+         std::snprintf(ref.name, sizeof(ref.name), "PERCUSSION");
+         ref.frames = 0; ref.zones = 67; ref.keys = {};
+         for (unsigned key : {48u, 50u, 52u, 53u, 55u, 57u, 59u, 60u, 61u, 62u, 63u, 64u, 65u, 66u, 67u, 68u, 69u, 70u, 71u, 72u, 74u, 76u, 77u})
+             ref.keys[key / 64] |= uint64_t(1) << (key % 64);
+         s.ui.levels_hit = 2; s.ui.levels_value = 52;
+     }},
     {"levelsscalesynth", [](Shell&, Snapshot& s) { // and on a synth: D Dorian from D3 in the track's octave, pad 10 hit
          s.ui.page = PageId::Levels; s.ui.track = 0; s.playing = true;
          auto& t = s.project.tracks[0]; t.levels = true; t.levels_kind = uint8_t(LevelsKind::Scale); t.octave = 3;

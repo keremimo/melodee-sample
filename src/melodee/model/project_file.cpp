@@ -743,7 +743,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             }
             read_chain(r, tr.fx);
             tr.bank = uint8_t(r.u8() % sampler_banks); tr.last_pad = uint8_t(r.u8() % sampler_pads);
-            tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 5); // LevelsKind: Velocity, Scale, Tune, Filter, Loop
+            tr.levels = r.u8() != 0; tr.levels_pad = uint8_t(r.u8() % sampler_pads); tr.levels_kind = uint8_t(r.u8() % 6); // LevelsKind: Velocity, Scale, Tune, Filter, Loop, Zones
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_pad(r, tr.pads.data(), sampler_pads);
         } else if (name == "PVER") {

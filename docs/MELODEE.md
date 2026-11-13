@@ -130,7 +130,7 @@ cards.
 | Chop | Chop on the last pad's region; again back to Stage's TRIM. On Song, splits the clip at the cursor | Note On (the last pad plays while held), or One shot |
 | Mute | Mute mode: a tap latches, a hold lasts | Unmute everything |
 | Loop | On release, the last kit pad's loop on or off, lit while it loops (on Song, the clip's bars as the song loop). Held: the pads are the loop grid on any page while it is down (lit at once; half a second or a grid pad makes it a hold, and its release does nothing). With 16 Levels, pressed together in either order: the Looper from any page, and neither does its own job. No double tap | Reverse the last pad; held half a second: the Looper on or off (off asks first while a loop holds audio) |
-| 16 Levels | On release, the last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Loop |
+| 16 Levels | On release, the last pad (or a synth's last note) on all sixteen pads, again back; of type Loop, the Looper. With Loop, pressed together in either order: the Looper, and no toggle | The type: Velocity, Filter (kits), Tune, Scale, Zones (an instrument's pad), Loop |
 | Sample Select | Samples (the browser) on a kit, the plug-in picker on a PLUGIN track, Sounds elsewhere | Kit: Save Sample; on Samples, Save Bank. MIDI: Save sound. On Sounds: star |
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: note to note) | |
@@ -214,7 +214,7 @@ grammar (`shell/pad_light.h`):
 | --- | --- |
 | A kit (play pages, the sample pages, the browser) | The selected pad Full (an empty one too), a sample Dim, empty dark, a muted pad Faint red; each flares as it sounds; held white, red while Seq Record writes it |
 | A synth or MIDI track | The key's roots in the track's colour (Mid), its other notes white Dim, out of the key (chromatic) white Faint; a held chord's notes white Full. The key is the track's: the project's moved by its transpose. Record with a synth as the source shows its keys the same way |
-| 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Scale the key's roots in the track's colour (Mid) from pad 1, its other notes white Dim; Tune the same, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); the pad hit last white as its sound fades |
+| 16 Levels | Soft to loud (Velocity, Filter) Faint to Full; Scale the key's roots in the track's colour (Mid) from pad 1, its other notes white Dim; Tune the same, out of the key white Faint (a kit's sample as recorded counts as the root; a synth's pads by the note they play); Zones a pad holding a key in the track's colour Full, the rest dark; the pad hit last white as its sound fades |
 | Tracks, Pad Bank held | Picked Full, heard Dim rising with the meter, muted Faint red, a pattern change blinking for the bar; a solo white, the tracks it silences Faint; a track copy's source white, where it lands Faint (red where it replaces); a move's in their own colour, Dim where a track trades places |
 | Mute mode | Muted Dim red, heard Mid (kit pads flaring), soloed white, silenced by a solo Faint |
 | Song | The lane picked Full, a clip under the cursor Mid, clips elsewhere Dim, not in the song Faint |
@@ -394,7 +394,14 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   Shift + Push closes).
 - **16 Levels**: on a kit the last pad on all sixteen pads, on a synth its
   last note. Melodee's Scale first (a new track's type), Tune (semitones),
-  Velocity, Filter (kit pads: the cutoff). **K1** the type. **Scale**:
+  Zones (a kit pad holding an instrument), Velocity, Filter (kit pads: the
+  cutoff). **K1** the type. **Zones**: the keys the instrument's zones
+  sound on when pressed (a release sample's not), lowest on pad 1, each pad
+  one key at its real pitch, its velocity layers and round robins by the
+  hit; pads past the last key are dark and silent; more than 16 keys make
+  pages (up to six), − / + walk them, the picture a block a pad holding a
+  key with the page's first and last key under it and the page number; no
+  K2 / K3 (`levels_of()`, `SampleRef::keys`). **Scale**:
   **K2** the root, **K3** the scale (the project's key, as on Keys), pad 1
   the root and each pad the next note of the scale up, no repeats: a synth
   plays those notes in the track's octave; a kit's sample counts as a C,
@@ -408,8 +415,8 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
   P3, the file's `LVCF`), so the pattern plays that note at that cutoff
   (the pad's filter, Classic where it has none), as it was heard.
   Shift + 16 Levels or B1–B3 pick the type too: B1 Velocity, B2 Filter
-  (kits; nothing on a synth), B3 Scale and again Tune, its two dots saying
-  which. The picture: Scale a step a pad at its height, the roots in the
+  (kits; nothing on a synth), B3 Scale and again Tune (and on an
+  instrument's pad again Zones), its dots saying which. The picture: Scale a step a pad at its height, the roots in the
   track's colour; the others the ramp from end to end with a handle at each
   in its knob's colour; a tick a pad, the pad hit marked with its note or
   value. − / + move Scale an octave (a synth's pads with the track; a kit
@@ -984,7 +991,7 @@ the file holds, to the bit.
   `sw_default`): a key in the switch range sounds nothing and picks the zones
   that play from then on (the default first). A hit plays key 60 plus the
   pad's Semi. **16 Levels** on the pad plays it: Tune or Scale for notes,
-  Velocity through its layers; while 16 Levels is on it, a MIDI keyboard plays
+  Zones its keys that sound one a pad, Velocity through its layers; while 16 Levels is on it, a MIDI keyboard plays
   it at real pitch. On such a pad Stage's TRIM is **ZONES** (round 3
   "instrument C"): a tile a zone over a keyboard of its range (keys across,
   velocities up, a dot at each root), its format, zones, files, velocity

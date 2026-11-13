@@ -595,9 +595,9 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     case Kind::ArpHold: c.label = "HOLD"; c.value = b.value ? "On" : "Off"; break;
     case Kind::ChordOn: c.label = "CHORD"; c.value = b.value ? "On" : "Off"; break;
     case Kind::LevelsType: {
-        std::array<LevelsKind, 4> types {};
-        levels_types(track, types);
-        c.label = "TYPE"; c.value = levels_kind_name(types[size_t(b.value) % types.size()]);
+        std::array<LevelsKind, 5> types {};
+        unsigned count = levels_types(s.project, track, types);
+        c.label = "TYPE"; c.value = levels_kind_name(types[size_t(b.value) % std::max(count, 1u)]);
         break;
     }
     case Kind::LevelsLow: case Kind::LevelsHigh: { // as the pad at that end plays it

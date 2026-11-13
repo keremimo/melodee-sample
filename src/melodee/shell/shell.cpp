@@ -903,14 +903,14 @@ std::string Shell::input_summary() const {
 // Phase 4: the last pad's Sample Mode values, for remote checks.
 std::string Shell::pad_summary() const {
     uint32_t b = pad_bits.load(std::memory_order_relaxed);
-    static const char* const kinds[] {"velocity", "scale", "tune", "filter"};
+    static const char* const kinds[] {"velocity", "scale", "tune", "filter", "loop", "zones", "-", "-"};
     return " melodee_last_pad=" + std::to_string(((b >> 8) & 0xff) + 1) + " melodee_pad_loop=" + std::to_string(b & 1) +
            " melodee_pad_lock=" + std::to_string((b >> 1) & 1) + " melodee_pad_note_on=" + std::to_string((b >> 2) & 1) +
            " melodee_pad_reverse=" + std::to_string((b >> 3) & 1) + " melodee_pad_mono=" + std::to_string((b >> 4) & 1) +
            " melodee_pad_filter=" + pad_filter_name(PadFilter((b >> 16) & 0xf)) + " melodee_pad_link=" + std::to_string((b >> 20) & 0x1f) +
            " melodee_pad_decay_from=" + ((b >> 25) & 1 ? "start" : "end") +
            " melodee_pad_gain=" + std::to_string(pad_gain.load(std::memory_order_relaxed)) +
-           " melodee_levels=" + std::to_string((b >> 5) & 1) + " melodee_levels_kind=" + kinds[(b >> 6) & 3] + p3_summary();
+           " melodee_levels=" + std::to_string((b >> 5) & 1) + " melodee_levels_kind=" + kinds[(b >> 26) & 7] + p3_summary();
 }
 
 // Roadmap P3: the last pad's layers and loop crossfade, the voices heard and their sample slots.

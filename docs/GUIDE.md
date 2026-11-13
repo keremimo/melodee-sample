@@ -559,6 +559,10 @@ Use **K1** or **SHIFT** + **16 LEVELS** to choose the type:
 - **Tune**: each pad plays a semitone higher. The original pitch is on pad 4.
 - **Scale**: each pad plays the next note of the project's scale. **K2**
   sets the root, **K3** the scale.
+- **Zones** (a pad holding an instrument): each pad plays one key that has
+  a sound in the instrument, lowest on pad 1, so a drum or percussion
+  instrument has every hit on a pad. Keys without a sound are skipped.
+  With more than 16 keys, **−** / **+** show the next 16.
 - **Loop**: opens the Looper.
 
 For Velocity, Filter and Tune, **K2** sets pad 1's value and **K3** pad 16's.

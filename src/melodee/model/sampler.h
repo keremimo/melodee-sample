@@ -218,6 +218,9 @@ struct SampleRef {
     char name[28] {};
     uint32_t frames = 0; // at 44.1 kHz, once loaded
     uint16_t zones = 0;  // a multisampled instrument's zones, once read (round 3 "instrument C": Stage's ZONES walks them)
+    // The keys its zones sound on when pressed (a release sample's not), once read: 16 Levels' Zones lays them over
+    // the pads. Not kept in the file.
+    std::array<uint64_t, 2> keys {};
     bool used() const { return path[0] != 0; }
     // A multisampled instrument, by what it is called: an .sfz, an MPC keygroup
     // program (.xpm, the MPC 3's .xty), a Logic EXS24 instrument (.exs), one

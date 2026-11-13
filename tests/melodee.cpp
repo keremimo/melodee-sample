@@ -10879,6 +10879,30 @@ void instrument_formats_p3() {
         auto tagged = read_dspreset(DsElement {"DecentSampler", {}, {tag_ui, tag_groups}});
         CHECK(tagged.regions.size() == 1 && tagged.regions[0].sample == "Samples/Close.wav" && tagged.left_by.count("tags"));
     }
+    { // 16 Levels' Zones: an instrument's pad plays the keys its zones sound on, lowest on pad 1, sixteen to a page
+        auto project = std::make_unique<Project>();
+        auto& t = project->tracks[0];
+        t.engine = EngineKind::Sampler; t.levels = true; t.levels_pad = 3; t.octave = kit_level_octave;
+        auto& ref = project->samples[5];
+        std::snprintf(ref.path, sizeof(ref.path), "/media/card/Samples/Kit.dspreset");
+        t.pads[3].sample = 5; t.pads[3].pitch = 2;
+        for (int k : {60, 62, 65}) ref.keys[unsigned(k) / 64] |= uint64_t(1) << (unsigned(k) % 64);
+        for (int k = 70; k < 90; ++k) ref.keys[unsigned(k) / 64] |= uint64_t(1) << (unsigned(k) % 64);
+        t.levels_kind = uint8_t(LevelsKind::Zones);
+        auto first = levels_of(*project, t, 0);
+        CHECK(!first.none && first.shown == 60 && first.semitones == -2); // a hit plays 60 + the pad's Semi + these
+        CHECK(levels_of(*project, t, 2).shown == 65 && levels_of(*project, t, 3).shown == 70 && levels_of(*project, t, 15).shown == 82);
+        std::array<LevelsKind, 5> types {};
+        CHECK(levels_types(*project, t, types) == 5 && types[2] == LevelsKind::Zones);
+        CHECK(zone_key_count(ref) == 23 && zone_pages(ref) == 2);
+        t.octave = kit_level_octave + 1; // − / +: the next page
+        CHECK(levels_of(*project, t, 0).shown == 83 && levels_of(*project, t, 6).shown == 89 && levels_of(*project, t, 7).none);
+        t.octave = kit_highest_octave; CHECK(levels_of(*project, t, 0).shown == 83); // held to the last page
+        // a plain sample's pad has no Zones: it plays as Scale
+        std::snprintf(project->samples[6].path, sizeof(project->samples[6].path), "/media/card/Samples/Hit.wav");
+        t.pads[4].sample = 6; t.levels_pad = 4;
+        CHECK(!levels_of(*project, t, 0).none && levels_types(*project, t, types) == 4);
+    }
 }
 
 // Roadmap P3: Chop's slices kept with the project (CHOP; older files: none, a damaged one dropped).

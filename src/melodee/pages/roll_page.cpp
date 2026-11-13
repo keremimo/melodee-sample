@@ -207,6 +207,7 @@ void pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     const int lane = roll_lane(t);
     if (lane >= 0) { // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
         auto level = levels_of(c.project, t, pad);
+        if (level.none) return; // Zones: a pad past the instrument's last key
         roll_write(c, lane, uint8_t(level.velocity ? level.velocity : velocity), level.semitones, level.cutoff);
     } else {
         int v = t.layout == PadLayout::Levels ? level_velocity(pad) : velocity;

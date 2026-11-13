@@ -102,14 +102,17 @@ void levels_button(Context& c) {
         return;
     }
     if (!t.used() && !ui.shift) { c.notice("16 Levels: an empty track"); return; }
-    if (ui.shift) { // the type: Melodee's Scale first (the most played), Tune, Velocity, Filter (kit pads), the Looper's Loop
+    if (ui.shift) { // the type: Melodee's Scale first (the most played), Tune, Zones (an instrument's pad), Velocity, Filter (kit pads), the Looper's Loop
         static const LevelsKind kit_order[] {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Filter, LevelsKind::Loop};
+        static const LevelsKind instrument_order[] {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Zones, LevelsKind::Velocity, LevelsKind::Filter, LevelsKind::Loop};
         static const LevelsKind synth_order[] {LevelsKind::Scale, LevelsKind::Tune, LevelsKind::Velocity, LevelsKind::Loop};
         static const LevelsKind empty_order[] {LevelsKind::Scale, LevelsKind::Loop};
         static const LevelsKind drum_order[] {LevelsKind::Velocity, LevelsKind::Loop}; // Drums pads: another pitch is another drum
         bool drums = drum_pads(t);
-        const LevelsKind* order = !t.used() ? empty_order : kit ? kit_order : drums ? drum_order : synth_order;
-        unsigned count = !t.used() ? 2 : kit ? 5 : drums ? 2 : 4, at = 0;
+        if (kit && !t.levels) t.levels_pad = t.last_pad; // the pad 16 Levels opens on decides Zones
+        bool instrument = kit && levels_instrument(c.project, t);
+        const LevelsKind* order = !t.used() ? empty_order : instrument ? instrument_order : kit ? kit_order : drums ? drum_order : synth_order;
+        unsigned count = !t.used() ? 2 : instrument ? 6 : kit ? 5 : drums ? 2 : 4, at = 0;
         for (unsigned n = 0; n < count; ++n) if (unsigned(order[n]) == t.levels_kind) at = n;
         t.levels_kind = uint8_t(order[(at + 1) % count]);
         ui.levels_hit = -1;
@@ -122,6 +125,7 @@ void levels_button(Context& c) {
     if (drum_pads(t)) t.levels_kind = uint8_t(LevelsKind::Velocity); // Loop went to the Looper above
     t.levels = true;
     if (kit) t.levels_pad = t.last_pad;
+    if (t.levels_kind == unsigned(LevelsKind::Zones) && !levels_instrument(c.project, t)) t.levels_kind = uint8_t(LevelsKind::Scale); // a pad of no instrument
     ui.levels_hit = -1;
     c.open(PageId::Levels);
 }

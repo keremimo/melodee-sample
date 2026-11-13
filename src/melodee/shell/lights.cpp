@@ -82,6 +82,11 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                 const auto shown = library_->slot(n);
                 project_->samples[n].frames = shown.frames;
                 project_->samples[n].zones = uint16_t(std::min<size_t>(shown.shapes.size(), 0xffff));
+                std::array<uint64_t, 2> keys {}; // 16 Levels' Zones: the keys a press sounds
+                for (const auto& z : shown.shapes)
+                    if (!(z.flags & ZoneShape::Release))
+                        for (unsigned k = z.low_key; k <= z.high_key && k < 128; ++k) keys[k / 64] |= uint64_t(1) << (k % 64);
+                project_->samples[n].keys = keys;
             }
         ui_.files_count = uint16_t(std::min<size_t>(library_->files().size(), 0xffff));
         if (ui_.page == PageId::Chop && !ui_.slices.count) context_.rechop();
@@ -231,8 +236,9 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         pad_sample.store(pad.sample, std::memory_order_relaxed);
         { // phase 4: the last pad's Sample Mode switches, gain, link and filter; 16 Levels' type
             pad_bits.store(uint32_t(pad.loop) | uint32_t(pad.loop_lock) << 1 | uint32_t(pad.play == PadPlay::Gate) << 2 | uint32_t(pad.reverse) << 3
-                           | uint32_t(pad.mono) << 4 | uint32_t(t.levels) << 5 | uint32_t(t.levels_kind % 4) << 6 | uint32_t(t.last_pad) << 8
-                           | uint32_t(pad.filter) << 16 | uint32_t(pad.link) << 20 | uint32_t(pad.decay_from_start) << 25, std::memory_order_relaxed);
+                           | uint32_t(pad.mono) << 4 | uint32_t(t.levels) << 5 | uint32_t(t.last_pad) << 8
+                           | uint32_t(pad.filter) << 16 | uint32_t(pad.link) << 20 | uint32_t(pad.decay_from_start) << 25
+                           | uint32_t(t.levels_kind & 7) << 26, std::memory_order_relaxed);
             pad_gain.store(pad.gain, std::memory_order_relaxed);
             unsigned layers = 0;
             for (unsigned n = 0; n < pad_layers; ++n) layers += pad.layer(n).used();

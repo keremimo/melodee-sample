@@ -178,6 +178,8 @@ Look levels_base(const PadScene& s, unsigned pad) {
     auto kind = LevelsKind(t.levels_kind % unsigned(LevelsKind::Count));
     if (!t.levels || (kind == LevelsKind::Filter && t.engine != EngineKind::Sampler)) kind = LevelsKind::Velocity;
     auto lv = levels_of(s.project, t, pad);
+    if (kind == LevelsKind::Zones && levels_instrument(s.project, t)) return lv.none ? Look {} : track(at, full); // a pad a key, the rest dark
+    if (kind == LevelsKind::Zones) kind = LevelsKind::Scale; // its pad no instrument: played as Scale
     if (kind == LevelsKind::Tune || kind == LevelsKind::Scale) { // notes: the key's roots in the track's colour, its other notes white
         // Scale goes up the key from its root on pad 1. Tune: a synth's pad plays its last note moved; a kit's sample
         // stands for the key's root as recorded.
@@ -397,6 +399,7 @@ RollAt roll_at(const PadScene& s) {
 }
 Look roll_look(const PadScene& s, const Heard& snd, const RollAt& at, const std::array<bool, 192>& keys, unsigned pad) {
     const auto& t = selected(s);
+    if (at.lane >= 0 && levels_of(s.project, t, pad).none) return {}; // Zones: past the last key
     int key = at.lane >= 0 ? std::clamp(60 + levels_of(s.project, t, pad).semitones, 0, 127) : pad_key(s.project, t, pad); // the pad's row
     if (key < 0 || !t.used()) return {};
     if (key == at.focus) return white(full);

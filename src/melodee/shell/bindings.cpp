@@ -812,11 +812,12 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
     case PageId::Levels: { // K1 the type, K2 and K3 the two ends (pad 1's and pad 16's), or of type Scale the key
-        std::array<LevelsKind, 4> types {};
-        unsigned count = levels_types(track, types), at = 0;
+        std::array<LevelsKind, 5> types {};
+        unsigned count = levels_types(project, track, types), at = 0;
         auto kind = LevelsKind(track.levels_kind % unsigned(LevelsKind::Count));
         for (unsigned n = 0; n < count; ++n) if (types[n] == kind) at = n;
         if (kind == LevelsKind::Loop || (kind == LevelsKind::Filter && track.engine != EngineKind::Sampler)) return {};
+        if (kind == LevelsKind::Zones) return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}}; // − / + its pages
         if (kind == LevelsKind::Scale) { // the root and the scale: pad 1 the root, up the scale from there
             auto key = project_key(project);
             return {Binding {Kind::LevelsType, 0, 0, int(count) - 1, int(at)}, key[0], key[1]};

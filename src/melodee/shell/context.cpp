@@ -330,6 +330,7 @@ void Context::play_pad(unsigned pad, uint8_t velocity, bool down) {
         if (t.levels) { // 16 Levels: one kit pad, soft to loud, its filter swept, or in pitch
             auto level = levels_of(project, t, pad);
             ui.levels_hit = int8_t(pad); ui.levels_value = int16_t(level.shown);
+            if (level.none) return; // Zones: a pad past the instrument's last key
             pad_keys[pad][0] = pad_note(int(sampler_first_note + t.levels_pad), level.semitones); // what it plays, so Seq Record keeps it
             int v = level.velocity ? level.velocity : velocity;
             keep_played(ui.track, pad_keys[pad][0], v, true); // roadmap P5: Capture keeps it (its release goes through key())
@@ -814,9 +815,9 @@ void Context::apply(const Binding& b, int value) {
         if (!t.arp_latch) { send({Type::Arp, ui.track, 0, 0, 0}); if (t.arp) send({Type::Arp, ui.track, 0, 0, 1}); }
         break;
     case Kind::ChordOn: t.chord = value != 0; break; // Shift + K1 on Stage's CHORD
-    case Kind::LevelsType: { // K1 on 16 Levels: Scale, Tune, Velocity (and Filter on a kit)
-        std::array<LevelsKind, 4> types {};
-        unsigned count = levels_types(t, types);
+    case Kind::LevelsType: { // K1 on 16 Levels: Scale, Tune, Velocity (and Filter on a kit, Zones on an instrument's pad)
+        std::array<LevelsKind, 5> types {};
+        unsigned count = levels_types(project, t, types);
         t.levels_kind = uint8_t(types[unsigned(std::clamp(value, 0, int(count) - 1))]);
         ui.levels_hit = -1;
         break;
