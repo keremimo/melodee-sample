@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/mix_hub.h"
 #include "melodee/model/note_edits.h"
 #include "melodee/shell/midi_ports.h"
 #include "melodee/shell/input_choices.h"
@@ -837,9 +838,14 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         if (c.slots[slot].kind == plugin_effect_kind) return plugin_cards(ui, unsigned(c.slots[slot].params[0]));
         return effect_row(chain * 64 + slot * 8, c.slots[slot], ui.fx_row[UiState::cursor_of(chain)]); // a keyed kind's KEY last (roadmap P4)
     }
-    case PageId::Sends: { // one bus at a time: K1 the track's send into it, K2 which bus, K3 its return
+    case PageId::Sends: { // one bus at a time: K1 the track's send into it (a kit's pads: the last pad's), K2 which bus, K3 its return
         unsigned bus = ui.sends_bus % bus_count;
-        return {Binding {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]}, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
+        Binding first {Kind::Send, int(bus), 0, 100, track.mix.sends[bus]};
+        if (mix_sends_pads(ui, track.engine == EngineKind::Sampler)) {
+            const auto& pad = track.pads[track.last_pad % sampler_pads];
+            first = pad.used() ? Binding {Kind::PadSend, int(bus), 0, 100, pad.sends[bus]} : Binding {};
+        }
+        return {first, Binding {Kind::SendBus, 0, 0, int(bus_count) - 1, int(bus)},
                 Binding {Kind::BusReturn, int16_t(bus), 0, 100, project.buses[bus].level}};
     }
     case PageId::Pads: {

@@ -746,10 +746,13 @@ ui::SoftKeys mix_keys(const Snapshot& s) {
     ui::SoftKeys keys {{"TRACKS", "SENDS", "FX"}, here == MixSection::None ? -1 : int(here), colour_of(s)};
     keys.dots[2] = uint8_t(count);
     keys.dot_at[2] = uint8_t(here == MixSection::Fx ? mix_fx_at(s.ui.page, kit) : 0);
+    if (kit) { keys.dots[1] = 2; keys.dot_at[1] = uint8_t(mix_sends_pads(s.ui, kit)); } // SENDS: the tracks, then the kit's pads
     return keys;
 }
 void mix_soft(Context& c, int key) {
-    PageId next = mix_next(c.ui.page, unsigned(key), c.track().engine == EngineKind::Sampler);
+    bool kit = c.track().engine == EngineKind::Sampler;
+    if (key == 1) mix_sends_key(c.ui, kit); // B2 again on a kit's Sends: its pads (or back to the tracks)
+    PageId next = mix_next(c.ui.page, unsigned(key), kit);
     if (next == PageId::Rack) c.ui.fx_loop = -1; // the track's own chain, not a loop's
     if (next != c.ui.page) c.open(next);
 }

@@ -1142,6 +1142,18 @@ const Preview previews[] {
          s.ui.page = PageId::Sends; s.ui.track = 2; s.playing = true;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
+    {"sendspads", [](Shell&, Snapshot& s) { // a kit's SENDS, B2 again: its pads' own sends into bus A
+         s.ui.page = PageId::Sends; s.ui.track = 3; s.ui.sends_pads = true; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3];
+         const uint8_t sends[16] {0, 30, 15, 15, 20, 30, 10, 10, 0, 0, 25, 25, 0, 0, 40, 60};
+         for (unsigned n = 0; n < 16; ++n) t.pads[n].sends[0] = sends[n];
+         t.pads[14].sends[1] = 35;
+     }},
+    {"sendspadsb", [](Shell&, Snapshot& s) { // bus B: the pads that send there
+         s.ui.page = PageId::Sends; s.ui.track = 3; s.ui.sends_pads = true; s.ui.sends_bus = 1; s.playing = true; s.sample = break_sample();
+         auto& t = s.project.tracks[3];
+         t.pads[5].sends[1] = 20; t.pads[11].sends[1] = 10; t.pads[14].sends[1] = 35; t.last_pad = 14;
+     }},
     {"bus", [](Shell&, Snapshot& s) {
          s.ui.page = PageId::Bus; s.ui.track = 2; s.playing = true;
          s.ui.turning = 1; s.ui.turned_at = s.now;

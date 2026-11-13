@@ -18,6 +18,7 @@
 #include "melodee/shell/track_copy.h"
 #include "melodee/shell/shift_pad_jobs.h"
 #include "melodee/shell/stage_map.h"
+#include "melodee/shell/mix_hub.h"
 #include "melodee/shell/step_edit.h"
 #include "melodee/shell/step_lane.h"
 #include <algorithm>
@@ -216,11 +217,13 @@ Look play_look(const PadScene& s, const Heard& snd, unsigned pad) {
     return counting(s, playing(s, snd, base, pad));
 }
 
-// Stage's SENDS on a kit: each pad as bright as its own send into the bus in view, a dry pad dark, the last pad hit
+// Stage's SENDS on a kit (and the MIX hub's SENDS on its pads): each pad as bright as its own send into the bus in view, a dry pad dark, the last pad hit
 // white (the one K2 sets); held and hit pads flare as on any page.
 bool sends_lit(const PadScene& s) {
     const auto& t = selected(s);
-    return s.ui.page == PageId::Stage && t.engine == EngineKind::Sampler && !levels_on(t) && stage_page_now(s.ui, t).kind == StageKind::Sends;
+    if (t.engine != EngineKind::Sampler || levels_on(t)) return false;
+    if (mix_sends_pads(s.ui, true)) return true; // the MIX hub's SENDS, on the kit's pads
+    return s.ui.page == PageId::Stage && stage_page_now(s.ui, t).kind == StageKind::Sends;
 }
 Look sends_look(const PadScene& s, const Heard& snd, unsigned pad) {
     const auto& t = selected(s);

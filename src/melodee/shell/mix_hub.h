@@ -44,6 +44,13 @@ inline PageId mix_next(PageId page, unsigned key, bool kit) {
     return pages[(mix_fx_at(page, kit) + 1) % count];
 }
 
+// SENDS shows the kit's pads instead of the tracks: B2 again on a kit's Sends; any other track the tracks.
+inline bool mix_sends_pads(const UiState& ui, bool kit) { return kit && ui.sends_pads && ui.page == PageId::Sends; }
+// B2 on Sends of a kit steps Tracks -> Pads -> Tracks; opened from elsewhere it starts on the tracks.
+inline void mix_sends_key(UiState& ui, bool kit) {
+    ui.sends_pads = kit && ui.page == PageId::Sends && !ui.sends_pads;
+}
+
 // Pad FX and Knob FX: alone, each does its own job when let go (Pad FX the punches, Knob FX its mode on or off);
 // both down together, in either order, the MIX hub, and neither's own job. Shift + either (Flex Beat, FX Select,
 // as printed) acts as it goes down, as before.

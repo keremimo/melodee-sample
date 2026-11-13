@@ -293,6 +293,7 @@ struct UiState {
     bool render_resume = false;          // Resample stopped what was playing: Play it again afterwards
     bool song_export = false;            // Song, B1: Cancel, Audio mixdown, New pattern
     bool project_list = false;    // Project: the list behind OPEN (else SAVE, OPEN and NEW as tiles)
+    bool sends_pads = false;      // MIX hub SENDS on a kit: the kit's pads and their own sends (B2 again), not the tracks
     uint8_t sends_bus = 0;        // the bus in view on Sends and Bus (round 2: a track sends into all four; K2 on Sends picks)
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).

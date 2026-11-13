@@ -13182,6 +13182,45 @@ void pad_colours() {
     CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
 }
 
+// Pad sends, phase 3: the MIX hub's SENDS on a kit, B2 again, shows its pads: K1 the last pad's own send; B2 once
+// more goes back to the tracks; a synth never; the pads light by their send there too.
+void pad_sends_mix() {
+    using K = Binding::Kind;
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& kit = project->tracks[1];
+    kit.engine = EngineKind::Sampler;
+    std::snprintf(project->samples[0].path, sizeof(project->samples[0].path), "Samples/Snare.wav");
+    project->samples[0].frames = 44100;
+    for (unsigned n : {0u, 1u, 2u}) kit.pads[n].sample = 0;
+    kit.pads[1].sends = {30, 0, 0, 0}; kit.pads[2].sends = {15, 0, 0, 0}; kit.mix.sends = {20, 0, 0, 0};
+    kit.last_pad = 1;
+    UiState ui;
+    ui.track = 1; ui.page = PageId::Sends;
+    Pattern none;
+    CHECK(page_bindings(*project, ui, none, false)[0].kind == K::Send && page_bindings(*project, ui, none, false)[0].value == 20);
+    mix_sends_key(ui, true); // B2 again
+    CHECK(ui.sends_pads && mix_sends_pads(ui, true));
+    auto cards = page_bindings(*project, ui, none, false);
+    CHECK(cards[0].kind == K::PadSend && cards[0].value == 30 && cards[1].kind == K::SendBus && cards[2].kind == K::BusReturn);
+    kit.last_pad = 7; // empty
+    CHECK(!page_bindings(*project, ui, none, false)[0].bound());
+    mix_sends_key(ui, true);
+    CHECK(!ui.sends_pads);
+    mix_sends_key(ui, true);
+    CHECK(!mix_sends_pads(ui, false)); // on a synth it is the tracks
+    ui.page = PageId::Tracks; mix_sends_key(ui, true); // B2 from Tracks: Sends opens on the tracks
+    CHECK(!ui.sends_pads);
+
+    ui.page = PageId::Sends; ui.sends_pads = true; kit.last_pad = 0;
+    EngineHost host;
+    TrackTaps taps;
+    PadFacts plays; plays.kit_pads = true;
+    std::array<pad_light::Look, 16> looks;
+    pad_looks(PadScene {ui, *project, *bank, host, taps, plays, 1000, nullptr, 0}, looks);
+    CHECK(looks[0].hue == pad_light::Hue::White && looks[1].level > looks[2].level && looks[2].lit());
+}
+
 // Pad sends, phase 2: Stage's SENDS on a kit is the last pad's (K2), Shift + K2 the whole kit's; an empty pad has no K2;
 // a synth keeps its track's; undo keeps the pad; the pads light by their send into the bus in view.
 void pad_sends_stage() {
@@ -13391,6 +13430,7 @@ void plugin_macros() {
 int main() {
     pad_sends();
     pad_sends_stage();
+    pad_sends_mix();
     plugin_macros();
     pad_colours();
     tempo_lane_p5();
