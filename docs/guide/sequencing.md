@@ -34,15 +34,15 @@ and a progress bar (– when nothing plays). The pads light as the cells.
 | Hold a pad + pad | Copy the pattern. |
 | **ERASE** + pad | Clear the pattern (asks first). |
 | **SHIFT** + pad | The printed **SHIFT** jobs. |
-| Encoder | Move the amber cursor over the cells in pad order. |
+| Encoder | Select the previous / next track. |
 | **SHIFT** + encoder | Move the playhead by one grid step. Stopped, this sets where **SHIFT** + **PLAY** continues from. |
-| Encoder push | Launch the cursor's scene on every track. |
+| Encoder push | Launch the scene of the selected track's pattern on every track. |
 | **PAD BANK** | Pattern bank A–H. The bank LEDs show it. |
 | **−** / **+** | Select the previous / next track. |
 | **K1** | Pattern length: 1, 2, 4 … 128 bars. **SHIFT**: any number of bars. |
 | **K2** | Grid (Q): 1/4 to 1/64, with triplets. **SHIFT**: time signature. |
 | **K3** | Swing (50–75 %). **SHIFT**: metronome level. |
-| **SHIFT** + **B1** | **SCENE**: the cursor's scene tempo and name. |
+| **SHIFT** + **B1** | **SCENE**: the scene's tempo and name. |
 | **SHIFT** + **B2** | **FOLLOW**: the selected pattern's follow action. |
 | **SHIFT** + **B3** | **VARY**: the variation sheet. |
 
@@ -241,11 +241,11 @@ without moving the notes.
 A scene is one column of patterns: scene 3 is pattern 3 on every track. On
 Patterns, cell n is also scene n.
 
-- Turn the encoder to move the amber cursor to a cell. Push the encoder to
-  launch that scene at the next bar: pattern n plays on every track that has
-  notes there, and on the selected track, at the scene's tempo. Tracks with
-  no notes in that column keep playing.
-- **SHIFT** + **B1** (**SCENE**): **K1** sets the cursor's scene tempo
+- The scene in view is the column of the selected track's pattern. Push the
+  encoder to launch it at the next bar: pattern n plays on every track that
+  has notes there, at the scene's tempo. Tracks with no notes in that column
+  keep playing.
+- **SHIFT** + **B1** (**SCENE**): **K1** sets the scene's tempo
   (below 30 is None). Push the encoder to name the scene. Press **ERASE**
   to clear the scene's name and tempo. The header shows **S** and the scene
   number, and its name.

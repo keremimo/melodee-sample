@@ -625,8 +625,9 @@ hold to steer, Shift + Seq to zoom in**.
   Shift jobs. Pad Bank steps the bank A–H (the bank lights show it), as
   Seq held + Pad Bank. Minus / Plus move the track. K1 length (1, 2, 4 ..
   128 bars; Shift: any count), K2 Q (Shift: time signature, 1/4 .. 15/16),
-  K3 swing (Shift: metronome level). The wheel moves an amber cursor over
-  the cells in pad order; cell n is also scene n, and Push launches it.
+  K3 swing (Shift: metronome level). The wheel selects the track; the
+  selected track's pattern is the scene in view (cell n is also scene n),
+  and Push launches it.
   Shift + wheel moves the playhead by Q; stopped, that is where Shift +
   Play continues. The header chip shows S<n> and the scene's name, then
   Rec Quantize when there is room. BPM per pattern (each
@@ -642,11 +643,11 @@ hold to steer, Shift + Seq to zoom in**.
   the next bar (one undo); B1 BACK.
 - **Scenes** (on Patterns; roadmap P5): a scene is a column, pattern n of
   every track, with a name and a tempo of its own. Push on Patterns
-  launches the cursor's scene: pattern n on every track holding notes
+  launches the scene of the selected track's pattern: pattern n on every track holding notes
   there (and on the selected track) at the next bar (stopped, at once),
   tracks with nothing there playing on; its tempo takes over on that bar
   (with BPM per pattern on, a pattern's own still leads). Shift + B1 SCENE:
-  K1 sets the cursor's scene tempo (below 30 BPM: None), Push names it
+  K1 sets the scene's tempo (below 30 BPM: None), Push names it
   (the ready names are the markers'). Files keep scenes in SCNE.
 - **Follow actions** (Patterns' Shift + B2 FOLLOW cards): what the selected track's pattern
   does once it has played a while, as melodee-ios's clips. K1 FOLLOW Next,

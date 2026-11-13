@@ -12112,8 +12112,9 @@ void scenes_p5() {
               cards[1].value == 66 && cards[2].kind == Binding::Kind::FollowChance && cards[2].value == 75);
         auto shifted = shift_bindings(*project, ui, p);
         CHECK(shifted[0].kind == Binding::Kind::FollowOther && shifted[0].value == int(FA::Previous) && !shifted[1].bound());
-        // SCENE (Shift + B1): K1 the cursor's scene's tempo, in its bank; the pattern's cards again on PATTERNS.
-        ui.patterns_cards = 1; ui.pattern_bank = 1; ui.scene = 3; project->scenes[19].tempo = 1284;
+        // SCENE (Shift + B1): K1 the tempo of the scene in view, the selected track's pattern's column; the pattern's cards
+        // again on PATTERNS.
+        ui.patterns_cards = 1; project->tracks[1].pattern = 19; project->scenes[19].tempo = 1284;
         auto scene = base_bindings(*project, ui, p);
         CHECK(scene[0].kind == Binding::Kind::SceneTempo && scene[0].id == 19 && scene[0].value == 128 && !scene[1].bound());
         CHECK(!shift_bindings(*project, ui, p)[0].bound());

@@ -7,9 +7,9 @@
 // In each cell: the number, ▶ playing, NEXT queued, a tinted cell for notes, a dot a track in view for the other
 // tracks (a ring: notes there; filled: playing it), an arrow for a follow action, an amber dot for a scene tempo.
 // Right: the eight tracks in view, each with the pattern it plays and how far along it is.
-// The wheel moves the cursor (amber) over the cells in pad order: cell n is scene n too, and Push launches it on
-// every track; Shift + wheel moves the playhead by Q (stopped: where Shift + Play carries on from). Minus / Plus move the track. K1-K3: the pattern's length, Q, swing (Shift: any bars, time signature,
-// the metronome's level). B1-B3 PATTERNS / ROLL / MOTION; Shift + B1 SCENE (K1 the cursor's scene tempo, Push
+// The wheel selects the track (the list on the right follows it, eight at a time). The selected track's pattern
+// in hand is the scene in view: cell n is scene n too, and Push launches it on every track; Shift + wheel moves the playhead by Q (stopped: where Shift + Play carries on from). Minus / Plus move the track. K1-K3: the pattern's length, Q, swing (Shift: any bars, time signature,
+// the metronome's level). B1-B3 PATTERNS / ROLL / MOTION; Shift + B1 SCENE (K1 the scene's tempo, Push
 // names it), Shift + B2 FOLLOW (the pattern's follow action, Shift + K1 OR, Push puts it on its column), Shift + B3
 // VARY (a variation of the pattern into the next empty one; the wheel picks, Push or B3 makes it).
 #include "melodee/pages/common.h"
@@ -26,8 +26,8 @@ using namespace ui;
 constexpr float cell_w = 47, cell_h = 32.5f, cell_gap = 3, grid_x = zone::pad, grid_y = zone::picture_y + 3;
 constexpr float list_x = 214, list_w = zone::width - zone::pad - list_x;
 
-// The cursor: a cell of the bank in view (UiState::scene keeps its place in the bank).
-unsigned cursor_of(const UiState& ui) { return ui.pattern_bank % pattern_banks * pattern_pads + ui.scene % pattern_pads; }
+// The scene in view: the column of the selected track's pattern in hand.
+unsigned scene_of(const Project& project, const UiState& ui) { return project.tracks[ui.track % track_count].pattern % pattern_count; }
 
 void draw_cell(Paint& p, const Snapshot& s, unsigned k, unsigned first) {
     unsigned t = s.ui.track % track_count, n = s.ui.pad_pattern(k);
@@ -73,7 +73,6 @@ void draw_cell(Paint& p, const Snapshot& s, unsigned k, unsigned first) {
         if (on) p.circle(dx, dy, 1.9f, dc);
         else p.ring(dx - 1.6f, dy - 1.6f, 3.2f, 3.2f, dc, 1.6f, 0.9f);
     }
-    if (n == cursor_of(s.ui)) p.ring(x - 1.5f, y - 1.5f, cell_w + 3, cell_h + 3, colour::amber, 5, 1.5f);
     if (s.ui.pattern_held == int(n)) p.ring(x - 1.5f, y - 1.5f, cell_w + 3, cell_h + 3, colour::text, 5, 2);
 }
 
@@ -106,16 +105,16 @@ void draw_tracks(Paint& p, const Snapshot& s, unsigned first) {
 }
 
 void draw(Paint& p, const Snapshot& s) {
-    unsigned first = s.ui.track / 8 * 8, cursor = cursor_of(s.ui);
+    unsigned first = s.ui.track / 8 * 8, column = scene_of(s.project, s.ui);
     auto c = colour_of(s);
     Header h = header_of(s);
     h.left.push_back(bank_pill(s));
-    const auto& scene = s.project.scenes[cursor];
+    const auto& scene = s.project.scenes[column];
     if (s.ui.patterns_cards == 2) // FOLLOW: the pattern in hand's
         h.left.push_back(chip("T" + juce::String(s.ui.track + 1) + " P" + juce::String(s.track().pattern % pattern_count + 1), c));
     else
         {
-        juce::String id = "S" + juce::String(cursor + 1), name(scene.name);
+        juce::String id = "S" + juce::String(column + 1), name(scene.name);
         h.left.push_back(chip(name.isEmpty() || name == id ? id : id + " " + name, colour::amber)); // a name of its own beside its number
     }
     // Rec Quantize's grid (Shift + Pad 10), after the scene: the header leaves it out when there is no room.
@@ -157,24 +156,23 @@ void do_vary(Context& c) {
     c.vary(Variation(c.ui.sheet_row % unsigned(Variation::Count)));
 }
 
-// Push: the cursor's scene on every track; on SCENE its name, on FOLLOW the follow action onto its column; on VARY
+// Push: the scene in view (the selected track's pattern's column) on every track; on SCENE its name, on FOLLOW the follow action onto its column; on VARY
 // the variation.
 void push(Context& c) {
     auto& ui = c.ui;
     if (ui.sheet_open) { do_vary(c); return; }
-    ui.scene = uint8_t(cursor_of(ui));
+    ui.scene = uint8_t(scene_of(c.project, ui));
     if (ui.patterns_cards == 1) { c.name_scene(ui.scene); return; }
     if (ui.patterns_cards == 2) { c.follow_to_column(); return; }
     c.launch_scene(ui.scene);
 }
 
-// The wheel: the cursor through the cells in pad order (the VARY sheet: its rows).
+// The wheel: the track (the VARY sheet: its rows; Shift: the playhead).
 void wheel(Context& c, int delta) {
     auto& ui = c.ui;
     if (ui.sheet_open) { ui.sheet_row = uint8_t(std::clamp<int>(ui.sheet_row + delta, 0, int(Variation::Count) - 1)); return; }
     if (ui.shift) { ui.shift_used = true; c.locate(delta); return; } // Shift: the playhead by Q (stopped: where Shift + Play carries on)
-    int k = std::clamp<int>(int(ui.scene % pattern_pads) + delta, 0, int(pattern_pads) - 1);
-    ui.scene = uint8_t(ui.pattern_bank % pattern_banks * pattern_pads + unsigned(k));
+    c.select_track(unsigned(std::clamp<int>(int(ui.track) + delta, 0, int(track_count) - 1)));
 }
 
 // The pads launch patterns before the page sees them (shell/pad_context.h SeqLayer); nothing is left for it.

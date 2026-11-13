@@ -65,8 +65,8 @@ bool erase_tap(Context& c) {
         erase_event(c);
         return true;
     case PageId::Patterns: {
-        if (ui.patterns_cards == 1) { // SCENE: the cursor's scene's name and tempo
-            c.clear_scene(ui.pattern_bank % pattern_banks * pattern_pads + ui.scene % pattern_pads);
+        if (ui.patterns_cards == 1) { // SCENE: the scene in view's name and tempo (the selected track's pattern's column)
+            c.clear_scene(c.track().pattern % pattern_count);
             return true;
         }
         unsigned n = c.track().pattern % pattern_count;
