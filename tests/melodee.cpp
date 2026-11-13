@@ -5488,12 +5488,12 @@ void stage() {
     std::array<EngineKind, size_t(EngineKind::Count)> engines {};
     unsigned count = new_engines(engines);
     CHECK(count == 1 && engines[0] == EngineKind::Plugin);
-    // Three doors on one page, whichever key is lit: K1 the engine, K2 the kit's source, K3 the MIDI port.
-    for (unsigned door = 0; door < 3; ++door) {
-        stage_go(ui, door, 0);
-        auto doors = cards(false);
-        CHECK(doors[0].kind == K::NewEngine && doors[1].kind == K::NewSource && doors[1].max == int(new_sources) - 1 && doors[2].kind == K::NewPort);
-        CHECK(!shift_bindings(*project, ui, pattern)[0].bound()); // no Shift row on the doors
+    // No knob cards, whichever key is lit: the empty track's Stage is a carousel the wheel and Push work (shell/new_track.h).
+    for (unsigned key = 0; key < 3; ++key) {
+        stage_go(ui, key, 0);
+        auto none = cards(false);
+        CHECK(!none[0].bound() && !none[1].bound() && !none[2].bound());
+        CHECK(!shift_bindings(*project, ui, pattern)[0].bound()); // no Shift row either
     }
     stage_go(ui, 0, 0);
     ui.last_pot = 2; // the pot touched last picks the door Push makes, on an empty track too
