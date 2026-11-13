@@ -2790,10 +2790,11 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     // The input source (or the mix itself, before main volume): the take, the
     // Recall ring and the meter hear it; a render takes the mix.
     select_input(input, usb, frames);
-    // Rec Input FX: Knob FX on the input while a take waits or runs (so Monitor hears it too). It fades in and out
-    // as Bypass does, and starts each take cleared, never with the last one's tail.
+    // Rec Input FX: Knob FX on the input while it is monitored or a take waits or runs, so Monitor hears what the
+    // take will record. It fades in and out as Bypass does.
     auto taking = take.state();
-    knob_in.set_bypass(!(knob_rec && knob_heard && (taking == TakeRecorder::State::Armed || taking == TakeRecorder::State::Recording
+    const bool monitored = monitor_on.load(std::memory_order_relaxed) && source_now.load(std::memory_order_relaxed) != unsigned(InputSource::Resample);
+    knob_in.set_bypass(!(knob_rec && knob_heard && (monitored || taking == TakeRecorder::State::Armed || taking == TakeRecorder::State::Recording
                                                     || taking == TakeRecorder::State::Cued)));
     knob_in.process(record_l, record_r, frames);
     take.process(record_l, record_r, frames);

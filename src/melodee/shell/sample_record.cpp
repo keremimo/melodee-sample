@@ -148,7 +148,7 @@ void Context::input_changed() {
     send(source_command(in));
     send({Type::RecordGain, 0, 0, 0, int16_t(in.gain)});
     gain_sent = in.gain;
-    send_knob_state(); // Rec Input FX: Knob FX on the input during a take
+    send_knob_state(); // Rec Input FX: Knob FX on the input while monitored or during a take
     settings_save_at = std::max<uint32_t>(now, 1) + 1000; // pots move in many steps: the card gets the last
 }
 
