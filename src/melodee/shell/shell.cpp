@@ -498,6 +498,11 @@ void Shell::pot(unsigned n, int position, bool syncing) {
         pot.engaged = false; pot.bound = 0;
         return;
     }
+    if (ui_.erase && b.kind == Binding::Kind::PluginParam) { // a plug-in's: back to its default
+        if (const auto* card = plugin_card(ui_.plugin_panel, b.id)) context_.apply(b, card->initial);
+        pot.engaged = false; pot.bound = 0;
+        return;
+    }
     learn_fader(context_, b, n); // fader C: the fader follows the pot turned last, unless PIN holds it
     int value = 0;
     if (takeover_move(pot_takeover(b), pot, before, position, b, value)) context_.apply(b, value);

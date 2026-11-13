@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/engine/engine.h"
+#include "melodee/engine/macros.h"
 #include "melodee/plugin/plugin_runner.h"
 #include <algorithm>
 #include <cmath>
@@ -12,7 +13,8 @@
 // The sequencer's accent goes out as the notes' velocity, and a Slide or Tie
 // step as CC 84 (portamento control: the key the next note goes on from), a
 // tie with the legato pedal (CC 68) held over it, as Melodee's own synths
-// (Melodee Poly, PD and Chip) take them.
+// (Melodee Poly, PD and Chip) take them. Its three performance knobs (engine/macros.h) run on what the plug-in
+// plays, before the track's level, pan and chain.
 namespace melodee {
 
 class PluginEngine final : public Engine {
@@ -47,7 +49,15 @@ public:
         runner->midi(0xb0, 123, 0); // all notes off
     }
     void silence() override { if (runner) runner->silence(); }
-    void set_param(int, int) override {} // a plug-in's parameters are its own (the rack sets them)
+    // The track's parameters are its performance knobs (plugin_track); a plug-in's own are the rack's to set.
+    void set_param(int id, int value) override {
+        if (id < 0 || id >= plugin_track::Count) return;
+        stored[size_t(id)] = value;
+        unsigned slot = unsigned(id) % macro_slots;
+        macros.set(slot, macro_kind(stored[plugin_track::Kind1 + slot], slot), stored[plugin_track::Macro1 + slot]);
+    }
+    void set_pool(DelayPool* pool) { macros.set_pool(pool); }
+    void release_macros() { macros.release(); } // the track plays something else now
     void set_wheel(float amount) override {
         if (runner) runner->midi(0xb0, 1, uint8_t(std::lround(std::clamp(amount, 0.0f, 1.0f) * 127)));
     }
@@ -68,13 +78,16 @@ public:
     bool stereo() const override { return true; }
     void render_stereo(float* left, float* right, unsigned frames) override {
         if (runner) runner->render(left, right, frames);
+        macros.process(left, right, frames);
     }
-    // A plug-in's tail is its own business: while one is attached it is heard.
-    bool sounding() const override { return runner != nullptr; }
+    // A plug-in's tail is its own business: while one is attached it is heard (and while a knob's echo or reverb rings).
+    bool sounding() const override { return runner != nullptr || macros.sounding(); }
 
 private:
     PluginRunner* runner = nullptr;
     float accent = 1; // for the notes started next (set_accent)
+    MacroStage macros;
+    std::array<int, plugin_track::Count> stored {};
 };
 
 } // namespace melodee

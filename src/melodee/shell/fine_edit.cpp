@@ -20,6 +20,11 @@ WheelPace pace; // MIDI thread: how fast the wheel turns
 void Context::fine_edit(const Binding& b, int delta) {
     using K = Binding::Kind;
     if (!delta) return;
+    if (b.kind == K::PluginParam) {
+        const auto* card = plugin_card(ui.plugin_panel, b.id);
+        apply(b, card ? plugin_param_step(*card, b.value, delta) : b.value + delta);
+        return;
+    }
     if (!handle_kind(b.kind)) { apply(b, b.value + delta); return; }
     focus_handle(ui, b);
     int64_t steps = int64_t(delta) * wheel_gain(pace, now, delta);

@@ -56,6 +56,7 @@ EngineHost::EngineHost(bool lean, unsigned delay_blocks)
     for (unsigned t = 0; t < track_count; ++t) {
         slots[t].sampler.set_pad_effects(&(*pad_fx)[t]); slots[t].sampler.set_pager(&pager);
         slots[t].print.set_pager(&pager); // freeze plan F2b
+        slots[t].plugin.set_pool(&pool);   // its performance knobs' echo and reverb (engine/macros.h)
         slots[t].print_l = print_frames->data() + 2 * block * t;
         slots[t].print_r = slots[t].print_l + block;
     }
@@ -383,6 +384,7 @@ void EngineHost::select_engine(Slot& slot, EngineKind kind) {
                 : kind == EngineKind::Midi ? static_cast<Engine*>(&slot.midi)
                 : kind == EngineKind::Plugin ? static_cast<Engine*>(&slot.plugin) : nullptr;
     slot.plugin.attach(kind == EngineKind::Plugin ? runner_of(slot.plugin_entry) : nullptr);
+    if (kind != EngineKind::Plugin) slot.plugin.release_macros();
     slot.sampler.set_samples(&samples);
     slot.arp.top = kind == EngineKind::Sampler ? int(sampler_last_key) : 127; // a kit's notes run past 127
     for (auto& off : slot.offs) off.key = -1;

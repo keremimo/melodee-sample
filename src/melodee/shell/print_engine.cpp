@@ -92,6 +92,7 @@ unsigned delay_blocks_for(const Track& t) {
     auto count = [&](const Chain& c) { for (const auto& s : c.slots) n += s.used() && effect_needs_memory(EffectKind(s.kind)); };
     count(t.fx);
     for (const auto& c : t.pad_fx.at) count(c);
+    if (t.engine == EngineKind::Plugin) n += 2; // its performance knobs' echo and reverb (engine/macros.h)
     return std::min(n, DelayPool::blocks);
 }
 

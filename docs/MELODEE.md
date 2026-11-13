@@ -281,8 +281,14 @@ softer ring from the middle of the pads. The show is off at startup.
     playing large with the plug-in and its format under it and the ones
     before and after small in the corners, the header n / count; the wheel
     walks them, the one turned to loading 250 ms after the last turn
-    (amber till then), Push opens the whole list (PRESETS, B1 back); K1–K3
-    the plug-in's first row. A plug-in with no presets: B1 says
+    (amber till then), Push opens the whole list (PRESETS, B1 back). K1–K3
+    are the same three knobs on every plug-in, run on what it plays
+    (`engine/macros.h`): **FILTER** (left low pass, right high pass, off in
+    the middle, its resonance rising as it goes), **ECHO** (how much goes into
+    a dotted-eighth echo on the song's tempo) and **SPACE** (how much goes into
+    a reverb); the echo's repeats and the reverb's tail ring on when their knob
+    is turned back. They are saved with the track and record as motion; Erase
+    + pot sets one back to off. A plug-in with no presets: B1 says
     **PLUG-IN**, its face (name, format, the share of each block it takes).
     EDIT: its own values, as Edit's list (the wheel and −/+ the rows). MIX:
     level, pan and the quick send into bus A; its meter carries the five
@@ -1789,9 +1795,13 @@ of the card (beside `Samples/`), in any folders under it.
   (or Edit) shows the plug-in: the share of each audio block it takes in the
   header, and its parameters as a list, each name on one full line with its
   number: the three on K1–K3 raised and ticked in their colours (their
-  values on the cards, which carry their numbers), the row before (or
+  values on the cards, which carry their names: capitals, else mixed case,
+  else over two lines), the row before (or
   after) with its values; the wheel or Minus / Plus step the rows, B1 opens
-  the picker. Open MPC plug-ins put their skin's Q-Link pages first.
+  the picker. Shift + wheel steps the last card turned by one of the
+  parameter's own values (a thousandth of its range when it has more), and
+  Erase + pot puts it back to the plug-in's default. Open MPC plug-ins put
+  their skin's Q-Link pages first.
   MIDI-CC stand-ins, host settings and the plug-in's own bypass (the slot
   has one) are left out.
 - **Drum machines.** An Open MPC drum machine that states its voices (8W8,

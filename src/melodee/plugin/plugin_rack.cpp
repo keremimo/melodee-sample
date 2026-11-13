@@ -568,6 +568,9 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
         float v = p->getValue();
         put(card.text, sizeof(card.text), tidy(p->getText(v, 64).trim().toStdString()));
         card.value = int16_t(std::lround(std::clamp(v, 0.0f, 1.0f) * plugin_param_max));
+        card.initial = int16_t(std::lround(std::clamp(p->getDefaultValue(), 0.0f, 1.0f) * plugin_param_max));
+        int steps = p->getNumSteps();
+        card.steps = uint16_t(steps > 1 && steps < plugin_param_max ? steps : 0);
     };
     for (unsigned k = 0; k < 3; ++k) {
         size_t at = size_t(out.row) * 3 + k;

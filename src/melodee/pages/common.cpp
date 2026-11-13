@@ -8,6 +8,7 @@
 #include "melodee/engine/arp.h"
 #include "melodee/engine/effect_info.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/macros.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/engine/sampler.h"
@@ -151,7 +152,7 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     char text[32];
     switch (b.kind) {
     case Kind::Param: {
-        const auto& p = engine_info(track.engine).params[b.id];
+        const auto& p = track_param_info(track.engine, track.params, unsigned(b.id));
         auto shown = show(p, b.value);
         c.label = p.label; c.value = shown.value; c.unit = shown.unit; c.bipolar = bipolar(p);
         c.fill = gauge_of(p, b.value);
@@ -560,7 +561,11 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
     }
     case Kind::PluginParam: { // as the shell last read it from the plug-in (plugin/plugin_panel.h)
         const auto& card = s.ui.plugin_panel.params[plugin_binding_shown(b.id) % 3];
-        c.label = juce::String(plugin_binding_shown(b.id) + 1); // its number: the page lists its name in full
+        // Its name as the plug-in gives it (capitals, else mixed case, else over two lines: ui/knobs.cpp); its number
+        // where it has none.
+        auto name = juce::String::fromUTF8(card.name).trim();
+        c.label = name.isEmpty() ? juce::String(plugin_binding_shown(b.id) + 1) : name.toUpperCase();
+        if (name.isNotEmpty()) c.label_mixed = name;
         c.value = juce::String::fromUTF8(card.text);
         c.fill = std::clamp(b.value / float(plugin_param_max), 0.0f, 1.0f);
         break;

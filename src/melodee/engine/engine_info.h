@@ -32,6 +32,7 @@ enum class Format : uint8_t {
     Program,   // a MIDI program: 0 Off (not sent), 1..128 as numbered
     CcNumber,  // a MIDI controller number 0..127, "CC 74"
     MidiSlot,  // a MIDI track's slot address (engine/midi_engine.h): "CC 74", "CC14 1", "BEND", "PRESS", "NRPN 12"; -1 none
+    Sweep,     // -100..100, a DJ filter: "LP 40" to the left, "HP 25" to the right, "Off" in the middle (engine/macros.h)
 };
 
 struct ParamInfo {
@@ -71,7 +72,7 @@ enum class StageKind : uint8_t {
     Follow, Cloud, KitFilter,                          // a kit: Melodee's own kit-wide pages
     Layers,                                            // a kit: the last pad's four layers (roadmap P3)
     Colour,                                            // a kit: the last pad's colour (shell/pad_colour.h)
-    PluginSound,       // a PLUGIN track's first page: its presets (K1-K3 its first row), or its face when it has none
+    PluginSound,       // a PLUGIN track's first page: its presets (K1-K3 its performance knobs, engine/macros.h), or its face when it has none
     PluginEdit,        // a PLUGIN track's own parameters, three a row; the wheel moves the rows
     OpenEdit,          // a button that opens the Edit page instead of a Stage page (a MIDI track's B3: its every page)
     NewSynth, NewKit, NewMidi,                         // an empty track: what it becomes (Push)

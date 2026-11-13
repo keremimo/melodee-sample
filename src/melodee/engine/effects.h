@@ -68,6 +68,7 @@ public:
     // cleared a slice a block from its next process(), which passes the sound through dry until it is all clear.
     void clear();
     bool clearing() const { return memory && cleared < DelayPool::block_floats; }
+    bool holding_memory() const { return memory != nullptr; } // a kind that needs delay memory got a block
     // Off the audio thread while it is parked (a project load): what is left of its delay memory cleared now, so its
     // first process() plays it whole instead of passing the sound through dry while a slice a block is cleared.
     void finish_clearing() {

@@ -2,7 +2,9 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -21,6 +23,8 @@ struct PluginPanelParam {
     char name[48] {};   // as the plug-in names it (the card writes it in capitals where they fit, else over two lines)
     char text[20] {};   // its value as the plug-in shows it
     int16_t value = 0;  // 0..1000 of its range
+    int16_t initial = 0; // its default, 0..1000 (Erase + pot)
+    uint16_t steps = 0;  // the values it takes when fewer than plugin_param_max (Shift + wheel steps by one), else 0
 };
 
 struct PluginPanel {
@@ -92,5 +96,20 @@ constexpr int plugin_param_max = 1000; // a card's range for a plug-in parameter
 constexpr int32_t plugin_binding(unsigned entry, unsigned shown) { return int32_t(entry << 16 | shown); }
 constexpr unsigned plugin_binding_entry(int32_t id) { return unsigned(id) >> 16; }
 constexpr unsigned plugin_binding_shown(int32_t id) { return unsigned(id) & 0xffff; }
+// The panel's card for a binding id, null when that parameter is not on K1-K3 now.
+inline const PluginPanelParam* plugin_card(const PluginPanel& panel, int32_t id) {
+    unsigned shown = plugin_binding_shown(id);
+    if (panel.entry != plugin_binding_entry(id) || shown < panel.row * 3u || shown >= panel.row * 3u + 3) return nullptr;
+    const auto& card = panel.params[shown - panel.row * 3u];
+    return card.used ? &card : nullptr;
+}
+// Shift + wheel on a plug-in card: `delta` of the parameter's own values when it takes fewer than plugin_param_max
+// (a detent is never lost to the plug-in rounding it back), else `delta` thousandths of its range.
+inline int plugin_param_step(const PluginPanelParam& card, int value, int delta) {
+    if (card.steps < 2) return std::clamp(value + delta, 0, plugin_param_max);
+    int last = card.steps - 1;
+    int at = std::clamp(int(std::lround(value * double(last) / plugin_param_max)) + delta, 0, last);
+    return int(std::lround(at * double(plugin_param_max) / last));
+}
 
 } // namespace melodee

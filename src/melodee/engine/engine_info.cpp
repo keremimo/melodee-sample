@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/macros.h"
 #include "melodee/engine/midi_engine.h"
 #include "melodee/engine/sampler.h"
 #include <algorithm>
@@ -92,7 +93,13 @@ const EngineInfo& engine_info(EngineKind kind) {
         {{{stage_arp, stage_chord}}, 2},
         {{{stage_mix, stage_sends, stage_fx}}, 3},
     }}};
-    static const EngineInfo plugin {EngineKind::Plugin, "PLUGIN", true, nullptr, 0, nullptr, 0, {-1, -1, -1},
+    // Its parameters are PRESETS' three performance knobs (engine/macros.h): each slot's value, whose card, range
+    // and lane name follow the slot's kind (macro_param()), then each slot's kind (0: the slot's default).
+    static const ParamInfo plugin_params[plugin_track::Count] {
+        {"KNOB 1", -100, 100, 0, Format::Number}, {"KNOB 2", -100, 100, 0, Format::Number}, {"KNOB 3", -100, 100, 0, Format::Number},
+        {"KIND 1", 0, int16_t(MacroKind::End) - 1, 0, Format::Number}, {"KIND 2", 0, int16_t(MacroKind::End) - 1, 0, Format::Number},
+        {"KIND 3", 0, int16_t(MacroKind::End) - 1, 0, Format::Number}};
+    static const EngineInfo plugin {EngineKind::Plugin, "PLUGIN", true, plugin_params, plugin_track::Count, nullptr, 0, {-1, -1, -1},
                                     plugin_sounds, 1, nullptr, 0, false, &plugin_stage};
     switch (kind) {
     case EngineKind::Midi: return midi;
@@ -235,6 +242,7 @@ Shown show(const ParamInfo& p, int v) {
     case Format::Bank: return {v ? std::to_string(v - 1) : "Off", ""};
     case Format::Program: return {v ? std::to_string(v) : "Off", ""};
     case Format::CcNumber: return {std::to_string(v), ""};
+    case Format::Sweep: return {v == 0 ? std::string("Off") : (v < 0 ? "LP " : "HP ") + std::to_string(std::abs(v)), ""};
     case Format::MidiSlot: {
         using namespace midi_track;
         switch (slot_kind(v)) {

@@ -2,6 +2,7 @@
 // Melodee's model and audio side on the host: pad layouts, knob bindings,
 // the engine host's sequencer and mixer, and synth tracks as plug-ins.
 #include "melodee/engine/effects.h"
+#include "melodee/engine/macros.h"
 #include <fstream>
 #include <filesystem>
 #include <functional>
@@ -5430,11 +5431,39 @@ void stage() {
     stage_press(ui, project->tracks[0], 2); CHECK(key() == "SENDS");
     stage_press(ui, project->tracks[0], 2); CHECK(key() == "FX");
     stage_press(ui, project->tracks[0], 2); CHECK(key() == "MIX");
-    // PRESETS and EDIT: the plug-in's own row of three, once it is open (none before), no Shift row.
-    CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound) && !cards(false)[0].bound() && !cards(true)[0].bound());
+    // PRESETS: the performance knobs, the plug-in open or not; EDIT: its own row of three once it is open (none
+    // before). No Shift row on either.
+    CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound) && cards(false)[0].kind == K::Param && !shift_bindings(*project, ui, pattern)[0].bound());
+    CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit) && !cards(false)[0].bound());
+    CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginSound));
     ui.plugin_panel.entry = project->tracks[0].plugin; ui.plugin_panel.status = PluginStatus::Ready; ui.plugin_panel.params[0].used = true;
-    CHECK(cards(false)[0].kind == K::PluginParam && !shift_bindings(*project, ui, pattern)[0].bound());
+    { // PRESETS: the three performance knobs, whatever the plug-in (engine/macros.h); a slot's kind 0 is its default
+        auto knobs = cards(false);
+        CHECK(knobs[0].kind == K::Param && knobs[0].id == plugin_track::Macro1 && knobs[0].min == -100 && knobs[0].max == 100);
+        CHECK(knobs[1].id == plugin_track::Macro2 && knobs[1].min == 0 && knobs[2].id == plugin_track::Macro3 && knobs[2].max == 100);
+        auto& pt = project->tracks[0];
+        CHECK(std::string(track_param_info(pt.engine, pt.params, 0).label) == "FILTER" &&
+              std::string(track_param_info(pt.engine, pt.params, 1).label) == "ECHO" && std::string(track_param_info(pt.engine, pt.params, 2).label) == "SPACE");
+        pt.params[plugin_track::Kind3] = int16_t(MacroKind::Echo); // a slot set to another kind: its card and lane follow
+        CHECK(std::string(track_param_info(pt.engine, pt.params, 2).label) == "ECHO" && lane_name(pt, plugin_track::Macro3) == "ECHO");
+        pt.params[plugin_track::Kind3] = 0;
+        CHECK(show(macro_param(MacroKind::Filter), -40).value == "LP 40" && show(macro_param(MacroKind::Filter), 0).value == "Off" &&
+              show(macro_param(MacroKind::Filter), 25).value == "HP 25");
+        CHECK(!shift_bindings(*project, ui, pattern)[0].bound());
+    }
     CHECK(stage_go(ui, EngineKind::Plugin, StageKind::PluginEdit) && key() == "EDIT" && cards(false)[0].kind == K::PluginParam);
+    {
+        // Shift + wheel: a parameter with 401 values (x42 Fat1's Tuning, 400-480 Hz) moves one of them a detent, so
+        // 440 Hz (500) is reached and a detent is never rounded back; a smooth one moves a thousandth.
+        const auto& b = cards(false)[0];
+        CHECK(plugin_card(ui.plugin_panel, b.id) == &ui.plugin_panel.params[0]);
+        PluginPanelParam tuning; tuning.used = true; tuning.steps = 401;
+        CHECK(plugin_param_step(tuning, 500, 1) == 503 && plugin_param_step(tuning, 503, -1) == 500 &&
+              plugin_param_step(tuning, 498, 1) == 500 && plugin_param_step(tuning, 1000, 1) == 1000);
+        PluginPanelParam smooth; smooth.used = true;
+        CHECK(plugin_param_step(smooth, 500, 1) == 501 && plugin_param_step(smooth, 0, -1) == 0);
+        ui.plugin_panel.row = 1; CHECK(!plugin_card(ui.plugin_panel, b.id)); // another row on K1-K3
+    }
     ui.plugin_panel = {};
 
     // MIX: level, pan, send; Shift + K3 the bus.
@@ -13129,7 +13158,58 @@ void pad_colours() {
     CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
 }
 
+// A PLUGIN track's performance knobs (engine/macros.h): the filter cuts, the echo rings on after its knob is turned
+// back, and the sends' delay memory goes back to the pool once they fall silent (or the track stops being a plug-in's).
+void plugin_macros() {
+    DelayPool pool(4);
+    MacroStage stage;
+    stage.set_pool(&pool);
+    std::vector<float> l(256), r(256);
+    auto run = [&](float in, bool alternate) {
+        for (unsigned f = 0; f < 256; ++f) l[f] = r[f] = alternate && (f & 1) ? -in : in;
+        stage.process(l.data(), r.data(), 256);
+        float peak = 0;
+        for (unsigned f = 0; f < 256; ++f) peak = std::max(peak, std::fabs(l[f]));
+        return peak;
+    };
+    CHECK(run(0.5f, true) == 0.5f); // all at 0: untouched
+    stage.set(0, MacroKind::Filter, -90); // low pass, far down: the highest frequency all but gone
+    float cut = 1;
+    for (int b = 0; b < 8; ++b) cut = run(0.5f, true);
+    CHECK(cut < 0.05f && pool.free_blocks() == 4); // the filter takes no delay memory
+    stage.set(0, MacroKind::Filter, 0);
+    CHECK(run(0.5f, true) == 0.5f);
+
+    stage.set(1, MacroKind::Echo, 100);
+    run(0.5f, false); // a block in at full send
+    CHECK(pool.free_blocks() == 3);
+    stage.set(1, MacroKind::Echo, 0); // turned back: what went in still repeats
+    float tail = 0;
+    for (int b = 0; b < 200; ++b) tail = std::max(tail, run(0, false));
+    CHECK(tail > 0.05f && stage.sounding());
+    for (int b = 0; b < 2400 && pool.free_blocks() < 4; ++b) run(0, false);
+    CHECK(pool.free_blocks() == 4 && !stage.sounding()); // silent a second: its block back
+
+    stage.set(2, MacroKind::Space, 60);
+    run(0.5f, false);
+    CHECK(pool.free_blocks() == 3);
+    stage.release(); // the track plays something else now
+    CHECK(pool.free_blocks() == 4 && !stage.sounding());
+
+    DelayPool none(0); // the pool used up: a send stays silent, never the dry sound twice
+    MacroStage starved;
+    starved.set_pool(&none);
+    starved.set(2, MacroKind::Space, 100);
+    std::fill(l.begin(), l.end(), 0.5f); std::fill(r.begin(), r.end(), 0.5f);
+    starved.process(l.data(), r.data(), 256);
+    CHECK(l[100] == 0.5f);
+
+    CHECK(macro_kind(0, 0) == MacroKind::Filter && macro_kind(0, 1) == MacroKind::Echo && macro_kind(0, 2) == MacroKind::Space &&
+          macro_kind(int(MacroKind::Space), 0) == MacroKind::Space && macro_kind(99, 1) == MacroKind::Echo);
+}
+
 int main() {
+    plugin_macros();
     pad_colours();
     tempo_lane_p5();
     capture_p5();

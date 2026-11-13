@@ -11,6 +11,7 @@
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/shell/name_suggest.h"
 #include "melodee/engine/engine_info.h"
+#include "melodee/engine/macros.h"
 #include "melodee/engine/sampler.h"
 #include "melodee/model/mod_matrix.h"
 #include "melodee/model/pad_params.h"
@@ -33,7 +34,7 @@ using Kind = Binding::Kind;
 Binding param(const Track& track, int id) {
     const auto& info = engine_info(track.engine);
     if (id < 0 || unsigned(id) >= info.param_count) return {};
-    const auto& p = info.params[id];
+    const auto& p = track_param_info(track.engine, track.params, unsigned(id));
     return {Kind::Param, int16_t(id), p.min, p.max, track.params[size_t(id)]};
 }
 Binding engine_param(const Track& track, int id) { return param(track, id); }
@@ -143,7 +144,7 @@ MotionParam motion_param(const Track& track, int lane, const Project* project) {
     if (unsigned(param) < motion_fx_base) {
         const auto& info = engine_info(track.engine);
         if (unsigned(param) >= info.param_count) return {};
-        return {&info.params[param], track.params[size_t(param)]};
+        return {&track_param_info(track.engine, track.params, unsigned(param)), track.params[size_t(param)]};
     }
     unsigned slot = (unsigned(param) - motion_fx_base) / effect_params, q = (unsigned(param) - motion_fx_base) % effect_params;
     if (slot >= track.fx.count()) return {};
@@ -496,7 +497,10 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         if (slot >= track.fx.count()) return {};
         return effect_row(t * 64 + slot * 8, track.fx.slots[slot], shift_row ? 1 : 0);
     }
-    case SK::PluginSound: case SK::PluginEdit: // the plug-in's row of three (PRESETS keeps them while presets are heard)
+    case SK::PluginSound: // the three performance knobs, the same on every plug-in (engine/macros.h)
+        if (shift_row) return {};
+        return {param(track, plugin_track::Macro1), param(track, plugin_track::Macro2), param(track, plugin_track::Macro3)};
+    case SK::PluginEdit: // the plug-in's own row of three
         if (shift_row) return {};
         return plugin_cards(ui, track.plugin);
     case SK::NewSynth: case SK::NewKit: case SK::NewMidi: return {}; // an empty track: the wheel and Push (shell/new_track.h)
