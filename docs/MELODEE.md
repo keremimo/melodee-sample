@@ -243,6 +243,24 @@ The Pad lights setting (Colour, White, Off) comes last. `status` reports each
 lit pad's hue and rung (`melodee_pads=2:t4,9:r1`: pad 2 the track's colour
 Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
 
+### Light show
+
+Sample + Mute turns the light show on or off (`shell/light_show.h`). Every
+light follows the tempo and the pads; the pads, buttons and pages work as
+usual. SD card access still shows its own lights.
+
+| Light | In the show |
+| --- | --- |
+| Pads, fader | One colour per bar, moving across the panel; a pulse on each beat, stronger on beat 1; stopped, half strength at the tempo |
+| Bank lights A-H | Playing: the bar in eighths |
+| Buttons | Lit where a ring passes; red on beat 1 while playing; Play lit while playing, Tap Tempo on the beat |
+| Meters | The mix as usual, plus rings passing |
+
+A pad press, or a sound starting on a pad of the selected track's bank in
+view (the sequence, Note Repeat), sends a ring out from that pad across the
+pads, buttons, fader, bank lights and meters. A loud hit in the mix sends a
+softer ring from the middle of the pads. The show is off at startup.
+
 ## Pages
 
 ### Playing

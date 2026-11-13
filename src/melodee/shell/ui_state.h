@@ -76,6 +76,7 @@ struct UiState {
     bool mute_latch = false, mute_used = false;
     uint32_t mute_down = 0;
     bool mute_mode() const { return mute || mute_latch; }
+    bool light_show = false; // Sample + Mute: every light follows the tempo and the pads (shell/light_show.h)
     // Note Repeat (shell/note_repeat.cpp): a tap latches, a hold lasts while held.
     bool repeat_held = false, repeat_turned_on = false;
     uint8_t repeat_track = 0;    // the track it went down on

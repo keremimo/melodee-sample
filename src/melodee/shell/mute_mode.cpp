@@ -9,6 +9,12 @@ namespace melodee {
 void mute_button(Context& c, bool pressed) {
     auto& ui = c.ui;
     if (pressed) {
+        if (ui.sample_held && !ui.shift) { // Sample + Mute: the light show on or off; Mute's release does nothing
+            ui.sample_used = true;
+            ui.light_show = !ui.light_show;
+            c.notice(ui.light_show ? "Light show on" : "Light show off");
+            return;
+        }
         if (ui.shift) { ui.shift_used = true; unmute_all(c); return; } // its release changes nothing: Mute was not held
         ui.mute = true; ui.mute_down = c.now; ui.mute_used = false;
         return;

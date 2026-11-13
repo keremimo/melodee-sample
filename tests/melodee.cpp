@@ -25,6 +25,7 @@
 #include "melodee/shell/sample_cache.h"
 #include "melodee/engine/take_recorder.h"
 #include "melodee/shell/chop.h"
+#include "melodee/shell/light_show.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/engine/print_player.h"
 #include "melodee/engine/print_render.h"
@@ -2986,6 +2987,67 @@ void meter_lights() {
     CHECK(meter_lit(at(0), in) == surface_meter_all && meter_lit(at(6), in) == surface_meter_all);
     CHECK(meter_lit(at(-22), meter_mix_db) == 0b00011 && meter_lit(at(-9), meter_mix_db) == 0b01111);
     CHECK(meter_lit(at(-6), meter_mix_db) == surface_meter_all);
+}
+
+// Light show (Sample + Mute, shell/light_show.h): the beat, the bar's eighths, a tap's ring crossing the panel.
+void light_show_lights() {
+    using B = SurfaceButton;
+    auto peak = [](Rgb c) { return std::max({c.r, c.g, c.b}); };
+    LightShow show;
+    ShowClock clock;
+    clock.playing = true; clock.bar_beats = 4;
+    clock.now = 10000; clock.beats = 0; // past the intro, on the bar's first beat
+    auto first = show.frame(clock);
+    clock.beats = 0.5;
+    auto later = show.frame(clock);
+    CHECK(peak(first.lights.pads[5]) > peak(later.lights.pads[5])); // the beat's pulse falls through the beat
+    CHECK(first.lights.buttons[size_t(B::Chop)] == ButtonLight::RedBright); // the bar's first beat: red
+    CHECK(first.lights.buttons[size_t(B::Play)] == ButtonLight::Bright);
+    CHECK(first.lights.buttons[size_t(B::SampleRecord)] != ButtonLight::RedBright); // a red-only light is never sent red values
+    CHECK(later.lights.buttons[size_t(B::Chop)] != ButtonLight::RedBright);
+    for (unsigned eighth = 0; eighth < 8; ++eighth) { // the bank lights step through the bar
+        clock.beats = 4 + eighth * 0.5 + 0.4;
+        CHECK(show.frame(clock).lights.banks[eighth]);
+    }
+    clock.playing = false; clock.beats = 0; // stopped: half strength
+    CHECK(peak(show.frame(clock).lights.pads[5]) < peak(first.lights.pads[5]));
+
+    // A tap on pad 1: the pad flashes at once; the ring reaches pad 16, then the right-hand buttons, then fades.
+    clock.playing = true; clock.beats = 0.9;
+    auto calm = show.frame(clock);
+    show.tap(0, 1, clock.now);
+    CHECK(show.newest() == clock.now + 1);
+    auto now = show.frame(clock);
+    CHECK(peak(now.lights.pads[0]) > peak(calm.lights.pads[0]) + 40);
+    CHECK(peak(now.lights.pads[15]) <= peak(calm.lights.pads[15]) + 2);
+    clock.now += unsigned(std::sqrt(18.0f) / show_light::ring_speed); // the ring's radius at pad 16
+    CHECK(peak(show.frame(clock).lights.pads[15]) > peak(calm.lights.pads[15]) + 10);
+    auto play_light = [&](uint32_t at) {
+        clock.now = at;
+        auto f = show.frame(clock);
+        return f.lights.buttons[size_t(B::SampleSelect)];
+    };
+    float reach = std::hypot(show_light::button_at(B::SampleSelect).x, show_light::button_at(B::SampleSelect).y) / show_light::ring_speed;
+    CHECK(play_light(10000 + unsigned(reach)) == ButtonLight::Bright);
+    clock.now = 10000 + show_light::ring_ms + 50; // gone
+    auto after = show.frame(clock);
+    CHECK(peak(after.lights.pads[0]) == peak(calm.lights.pads[0]) || std::abs(int(peak(after.lights.pads[0])) - int(peak(calm.lights.pads[0]))) < 30);
+
+    // Meters: the mix shows through; a ring climbs them.
+    clock.meters = {0b00011, 0};
+    clock.now = 20000;
+    CHECK((show.frame(clock).meters[0] & 0b00011) == 0b00011);
+    // Turned on: dark first, then up over the intro.
+    LightShow fresh;
+    fresh.start(30000);
+    clock.now = 30000; clock.meters = {};
+    unsigned dark = 0;
+    for (auto c : fresh.frame(clock).lights.pads) dark += peak(c);
+    CHECK(dark == 0);
+    clock.now = 30000 + show_light::intro_ms;
+    unsigned lit = 0;
+    for (auto c : fresh.frame(clock).lights.pads) lit += peak(c);
+    CHECK(lit > 16 * 10);
 }
 
 void audio_input_and_rendering() {
@@ -13154,6 +13216,7 @@ int main() {
     pad_fx_and_flex();
     performance_effects();
     audio_input_and_rendering();
+    light_show_lights();
     meter_lights();
     onset_hits();
     beat_grid();
