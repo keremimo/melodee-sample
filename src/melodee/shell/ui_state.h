@@ -113,12 +113,14 @@ struct UiState {
     uint16_t preset_cursor = 0; // and where it is in the list (sound_list())
     // An empty track's choosers: the engine and its sound (SYNTH), the source (KIT), port and channel (MIDI).
     uint8_t new_engine = 0, new_sound = 0, new_source = 0, new_port = 1, new_channel = 1;
-    // The New track sheet (shell/new_track.h): open, its card lit, the page it was opened over, and the track
-    // whose first sample from Samples goes back to that page (-1 none).
-    bool new_open = false;
-    uint8_t new_pick = 0;
+    // An empty track picked (shell/new_track.h): that track, its Stage open (-1 none), and the page to go back to
+    // once it is made.
+    int8_t new_for = -1;
+    uint8_t new_pick = 0; // the carousel's card in the middle (NewChoice)
+    float new_pick_from = 0; // and where it was drawn when it last moved (new_pick_shown())
+    uint32_t new_pick_at = 0; // ms, when (0: still)
     PageId new_back = PageId::Stage;
-    int8_t new_return = -1;
+    int8_t new_kit = -1; // the kit made for Samples' first sample (CANCEL there makes it empty again), -1 none
     // Pad Bank (shell/pad_bank.cpp): when it went down; held a second, the tracks over the page.
     uint32_t pad_bank_down = 0;
     uint16_t sounds_cursor = 0;

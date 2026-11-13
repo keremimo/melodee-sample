@@ -184,6 +184,49 @@ void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y, float h) 
     }
 }
 
+void carousel(Paint& p, const std::vector<CarouselCard>& cards, float position, juce::Colour accent, float y, float h) {
+    if (cards.empty()) return;
+    const float last = float(cards.size() - 1);
+    constexpr float dots_h = 14, gap = 8, mid_w = 148, side_w = 116;
+    const float card_h = h - dots_h, side_h = card_h * 0.84f, step = mid_w / 2 + gap + side_w / 2, centre = zone::width / 2.0f;
+    // Each card by how far it sits from the middle (`position` runs between cards while the wheel's move eases in):
+    // the nearer, the bigger and brighter; two away and more, gone.
+    auto draw = [&](unsigned n) {
+        float off = float(n) - position, d = std::abs(off);
+        if (d >= 2.6f) return;
+        float lit = std::clamp(1 - d, 0.0f, 1.0f), fade = std::clamp((2.6f - d) / 0.8f, 0.0f, 1.0f);
+        auto mix = [&](juce::Colour side, juce::Colour mid) { return side.interpolatedWith(mid, lit).withMultipliedAlpha(fade); };
+        float sign = off < 0 ? -1.0f : 1.0f, cx = centre + sign * (d <= 1 ? d * step : step + (d - 1) * (side_w + gap));
+        float w = side_w + (mid_w - side_w) * lit, ch = side_h + (card_h - side_h) * lit, x = cx - w / 2, cy = y + (card_h - ch) / 2;
+        const auto& it = cards[n];
+        p.fill(x, cy, w, ch, mix(colour::panel, colour::raised), 8);
+        if (lit > 0.01f) p.ring(x, cy, w, ch, accent.withAlpha(lit * fade), 8, 1.4f);
+        float s = 24 + 6 * lit, top = cy + 12 + 2 * lit;
+        if (it.kind.isNotEmpty()) p.text(it.kind, x + 4, top, w - 8, 13, caps_text(mix(colour::dim, colour::sec)), juce::Justification::centred);
+        icon(p, it.icon, cx - s / 2, top + 22, s, mix(colour::mid, accent), 1.5f);
+        auto word = plain(mix(colour::mid, colour::text), type::list + (type::title - type::list) * lit, Weight::SemiBold);
+        float wy = top + 22 + s + 10;
+        p.text(it.word, x + 6, wy, w - 12, 24, p.fit(it.word, word, w - 12, type::body), juce::Justification::centred);
+        if (it.sub.isNotEmpty()) {
+            auto sub = caps_text(mix(colour::dim, colour::sec));
+            p.text(it.sub, x + 6, wy + 26, w - 12, 14, p.fit(it.sub, sub, w - 12, type::floor), juce::Justification::centred);
+        }
+    };
+    std::vector<unsigned> order(cards.size()); // the far ones first, under the near ones
+    for (unsigned n = 0; n < order.size(); ++n) order[n] = n;
+    std::sort(order.begin(), order.end(), [&](unsigned a, unsigned b) { return std::abs(float(a) - position) > std::abs(float(b) - position); });
+    for (unsigned n : order) draw(n);
+    // A dot a card, the one in the middle drawn out into a bar.
+    constexpr float dot = 5, room = 4, stretch = 8;
+    float total = float(cards.size()) * (dot + room) - room + stretch, dx = centre - total / 2, dy = y + h - dots_h / 2 - dot / 2 + 2;
+    float at = std::clamp(position, 0.0f, last);
+    for (unsigned n = 0; n < cards.size(); ++n) {
+        float lit = std::clamp(1 - std::abs(float(n) - at), 0.0f, 1.0f), w = dot + stretch * lit;
+        p.fill(dx, dy, w, dot, colour::line.interpolatedWith(accent, lit), dot / 2);
+        dx += w + room;
+    }
+}
+
 void card_sheet(Paint& p, const CardSheet& m) {
     // The page behind goes: the header becomes the sheet's, the picture and knob zones its cards.
     p.fill(0, zone::header_y, zone::width, zone::height - zone::header_y, colour::bg);

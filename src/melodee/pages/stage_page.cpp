@@ -22,6 +22,7 @@
 #include "melodee/pages/sampler_common.h"
 #include "melodee/shell/key_pick.h"
 #include "melodee/shell/meter_lights.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/print_engine.h"
 #include "melodee/shell/stage_map.h"
@@ -781,28 +782,19 @@ void cc_picture(Paint& p, const Snapshot& s) {
     rows(p, {}, list, 44); // DEVICE says where they go
 }
 
-// An empty track's three doors, a tile under each key showing what it would make, the pot under it choosing:
-// K1 the engine, K2 the source of a kit's first sound, K3 the MIDI port. The door lit is the one the wheel moved
-// to, or the pot touched last; Push makes it.
-void doors_picture(Paint& p, const Snapshot& s) {
-    std::array<EngineKind, size_t(EngineKind::Count)> engines {};
-    unsigned count = new_engines(engines);
-    EngineKind engine = count ? engines[s.ui.new_engine % count] : EngineKind::None;
-    const auto& info = engine_info(engine);
-    int focus = stage_focus(s.ui, s.track());
-    static const char* sources[] {"Card", "Input"};
-    static const char* source_subs[] {"SAMPLES", "RECORD"};
-    static const Icon source_icons[] {Icon::Folder, Icon::Mic};
-    static const char* ports[] {"Out jack", "USB-C", "All USB"};
-    unsigned source = s.ui.new_source % new_sources, port = s.ui.new_port % 3;
-    // A plug-in's sounds are its own, picked from the card once the track is made: the formats it hosts instead.
-    juce::String synth_sub = engine == EngineKind::Plugin ? juce::String("VST3 / VST2")
-                           : juce::String(info.sound_count) + (info.sound_count == 1 ? " SOUND" : " SOUNDS");
-    auto synth = value_tile(engine_icon(engine), engine_word(engine), synth_sub, focus == 0);
-    auto kit = value_tile(source_icons[source], sources[source], source_subs[source], focus == 1);
-    auto midi = value_tile(Icon::Din, ports[port], "CHANNEL " + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16)), focus == 2);
-    for (auto* t : {&synth, &kit, &midi}) if (t->primary) t->colour = colour_of(s);
-    key_tiles(p, {synth, kit, midi});
+// An empty track: what it can become, as a carousel; the wheel moves along it, Push makes the card in the middle.
+void new_track_picture(Paint& p, const Snapshot& s) {
+    p.fill(0, zone::picture_y, zone::width, zone::height - zone::picture_y, colour::bg); // the knob strip too: no pots here
+    juce::String channel = juce::String::fromUTF8("MIDI \xc2\xb7 CH ") + juce::String(std::clamp<int>(s.ui.new_channel, 1, 16));
+    std::vector<CarouselCard> cards(new_choice_count);
+    cards[size_t(NewChoice::Plugin)] = {Icon::Plug, "SYNTH", "Plugin", "VST3 / VST2"};
+    cards[size_t(NewChoice::Kit)] = {Icon::Pads, "KIT", "Empty", "NO SAMPLES"};
+    cards[size_t(NewChoice::Samples)] = {Icon::Folder, "KIT", "Card", "SAMPLES"};
+    cards[size_t(NewChoice::Record)] = {Icon::Mic, "KIT", "Input", "RECORD"};
+    cards[size_t(NewChoice::MidiOut)] = {Icon::Din, "MIDI", "Out jack", channel};
+    cards[size_t(NewChoice::MidiUsb)] = {Icon::Din, "MIDI", "USB-C", channel};
+    cards[size_t(NewChoice::MidiAllUsb)] = {Icon::Din, "MIDI", "All USB", channel};
+    carousel(p, cards, new_pick_shown(s.ui, s.now), colour_of(s), zone::picture_y + 8, zone::height - zone::picture_y - 12);
 }
 
 void bars_picture(Paint& p, const Snapshot& s, const StagePage& page, bool shift_row, float y0 = top) {
@@ -935,8 +927,12 @@ void draw(Paint& p, const Snapshot& s) {
     if (s.ui.shift && page.kind == StageKind::Trim && t.engine == EngineKind::Sampler && !instrument_pad(s)) // the old Trim's Shift jobs on B1 and B2
         { keys = SoftKeys {{"LOOP LOCK", "NORMALIZE", ""}, -1, c}; keys.toggles = 1; keys.lit = sampler_pad(s).loop_lock ? 1 : 0; keys.leds[0] = c; }
     if (s.ui.shift && page.kind == StageKind::Layers && t.engine == EngineKind::Sampler) keys = layers_keys(s);
-    if (!t.used()) { keys.active = stage_focus(s.ui, t); keys.dots = {}; } // the doors: the one Push makes lit
+    if (!t.used()) { // what it becomes: B1 BACK to the page it was picked on
+        bool picked = s.ui.new_for == int8_t(s.ui.track % track_count);
+        keys = SoftKeys {{picked ? "BACK" : "", "", ""}, -1, c, {picked ? KeyIcon::Back : KeyIcon::None, KeyIcon::None, KeyIcon::None}};
+    }
     frame(p, s, keys, h);
+    if (!t.used()) { new_track_picture(p, s); return; }
     if (frozen) { frozen_picture(p, s); return; }
     switch (page.picture) {
     case StagePicture::Preset: preset_picture(p, s); break;
@@ -953,7 +949,7 @@ void draw(Paint& p, const Snapshot& s) {
     case StagePicture::Route: route_picture(p, s); break;
     case StagePicture::Program: program_picture(p, s); break;
     case StagePicture::Cc: cc_picture(p, s); break;
-    case StagePicture::Engines: case StagePicture::Sources: case StagePicture::Ports: doors_picture(p, s); break;
+    case StagePicture::Engines: case StagePicture::Sources: case StagePicture::Ports: break; // new_track_picture
     }
 }
 
@@ -976,7 +972,10 @@ void soft(Context& c, int key) {
         return;
     }
     c.stage_tick(UINT32_MAX); // a sound still waiting to load lands first
-    if (!c.track().used()) { stage_go(c.ui, unsigned(key), 0); c.stage_new(); return; } // the door under the key: the track is made
+    if (!c.track().used()) { // B1 BACK: to the page it was picked on, still empty
+        if (key == 0 && c.ui.new_for == int8_t(c.ui.track % track_count)) { c.ui.new_for = -1; c.open(c.ui.new_back); }
+        return;
+    }
     stage_press(c.ui, c.track(), unsigned(key));
 }
 
@@ -988,9 +987,8 @@ void wheel(Context& c, int delta) {
         return;
     }
     int n = stage_focus(c.ui, c.track());
-    if (!c.track().used()) { // the doors: the wheel walks SYNTH, KIT, MIDI and Push makes the one lit (K1-K3 set each)
-        c.ui.last_pot = int8_t(key_pick_turn(unsigned(n), delta));
-        c.ui.last_pot_shift = false;
+    if (!c.track().used()) { // the carousel: Push makes the card in the middle
+        new_pick_turn(c.ui, delta, c.now);
         return;
     }
     const auto& b = cards[size_t(n)];
@@ -1004,7 +1002,7 @@ void wheel(Context& c, int delta) {
 void push(Context& c) {
     auto& t = c.track();
     const auto& page = stage_page_now(c.ui, t);
-    if (!t.used()) { stage_go(c.ui, unsigned(stage_focus(c.ui, t)), 0); c.stage_new(); return; } // the door of the pot touched last
+    if (!t.used()) { make_new_track(c, NewChoice(c.ui.new_pick % new_choice_count)); return; } // the card in the middle
     if (page.kind == StageKind::Preset) { c.stage_tick(UINT32_MAX); c.open(PageId::Sounds); return; }
     if (page.kind == StageKind::Fx && !t.fx.count()) { // nothing yet: the picker on the track's chain, to add the first
         c.ui.fx_loop = -1;

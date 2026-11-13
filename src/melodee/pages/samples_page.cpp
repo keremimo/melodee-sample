@@ -18,6 +18,7 @@
 #include "melodee/pages/pages.h"
 #include "melodee/engine/dsp.h"
 #include "melodee/shell/sample_library.h"
+#include "melodee/shell/new_track.h"
 #include "melodee/ui/widgets.h"
 #include <cstdio>
 #include <filesystem>
@@ -47,7 +48,7 @@ void draw(Paint& p, const Snapshot& s) {
     juce::String other = drive == Drive::Card ? "INTERNAL" : "CARD";
     // The file under the cursor as it previews (mock 7): its row fills as it plays; B3 lit while there is sound.
     PreviewPlace heard = s.ui.preview ? preview_place(s.heads, int(sampler_pads), uint16_t(preview_slot), dsp::model_rate) : PreviewPlace {};
-    SoftKeys keys {{s.files_top ? "" : "BACK", other, "PREVIEW"}, -1, c, {s.files_top ? KeyIcon::None : KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    SoftKeys keys {{s.files_top ? "CANCEL" : "BACK", other, "PREVIEW"}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
     keys.toggles = 4; // PREVIEW names a thing that is on or off: its LED, never ON / OFF (the row fills while it sounds)
     keys.lit = s.ui.preview ? 4 : 0;
     frame(p, s, keys, h);
@@ -117,7 +118,7 @@ void push(Context& c) {
 void soft(Context& c, int key) {
     if (!c.library) return;
     auto& ui = c.ui;
-    if (key == 0) c.library->browse_up();
+    if (key == 0) { if (c.library->top()) samples_cancel(c); else c.library->browse_up(); } // at the top: CANCEL
     if (key == 1) { ui.files_drive = uint8_t((ui.files_drive + 1) % unsigned(Drive::Count)); c.library->browse(Drive(ui.files_drive), ""); }
     if (key == 2) { ui.preview = !ui.preview; c.preview_cursor(); } // its LED says which
 }

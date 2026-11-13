@@ -5,6 +5,7 @@
 #include "melodee/ui/card_rows.h"
 #include "melodee/ui/paint.h"
 #include <array>
+#include <vector>
 #include <utility>
 
 // The smaller shared pieces the pictures are made of.
@@ -100,6 +101,15 @@ struct KeyTile {
     bool danger = false; // a loss (it asks first): its glyph and word in REC
 };
 void key_tiles(Paint& p, const std::array<KeyTile, 3>& tiles, float y = zone::picture_y + 12, float h = 116);
+
+// A carousel: choices as cards in one row, the one lit big in the middle, its neighbours a size smaller at the
+// edges, a dot each under them. The wheel moves along the row, Push takes the card in the middle. `position` is
+// the card in the middle, between two while a move eases in (cards slide, grow and brighten as they near it).
+struct CarouselCard {
+    Icon icon = Icon::None;
+    juce::String kind, word, sub; // what it is (small, over the glyph), its name, and a line under it
+};
+void carousel(Paint& p, const std::vector<CarouselCard>& cards, float position, juce::Colour accent, float y, float h);
 inline KeyTile word_tile(Icon i, juce::String word, bool primary = false, juce::Colour c = colour::text) {
     KeyTile t; t.icon = i; t.word = std::move(word); t.primary = primary; t.colour = c; return t;
 }

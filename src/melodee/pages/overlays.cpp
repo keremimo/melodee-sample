@@ -64,9 +64,8 @@ void draw_overlays(Paint& p, const Snapshot& s) {
     if (!sheet && !tracks && !seq) draw_sampler_map(p, s); // under the notice and the cards
     if (tracks && !sheet) draw_track_overlay(p, s);
     if (seq && !sheet) draw_seq_sheet(p, s);
-    if (!sheet && !tracks && s.ui.new_open) draw_new_track_sheet(p, s); // an empty track picked: what it becomes
     if (!sheet && s.ui.ask != UiState::Ask::None) draw_ask_sheet(p, s); // B1 Cancel / B3 Do it before an erase
-    if (!sheet && s.ui.ask == UiState::Ask::None && !tracks && !seq && !s.ui.new_open) draw_fader_header(p, s);
+    if (!sheet && s.ui.ask == UiState::Ask::None && !tracks && !seq) draw_fader_header(p, s);
     draw_notice(p, s); // over the fader's line: a copy in hand or what an undo did comes first
     if (s.ui.name.open()) draw_name_sheet(p, s);
     if (s.ui.exit_open) draw_exit_sheet(p, s);

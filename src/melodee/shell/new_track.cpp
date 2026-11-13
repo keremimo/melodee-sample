@@ -7,6 +7,7 @@
 #include "melodee/shell/stage_map.h"
 #include "melodee/shell/track_copy.h"
 #include <algorithm>
+#include <cstring>
 #include <memory>
 
 namespace melodee {
@@ -14,60 +15,43 @@ namespace melodee {
 void offer_new_track(Context& c) {
     auto& ui = c.ui;
     if (c.track().used() || ui.recording) return;
-    if (!ui.new_open) { ui.new_back = ui.page; ui.new_pick = 0; }
-    ui.new_open = true;
-    ui.new_return = -1;
-}
-
-bool new_track_button(Context& c, SurfaceButton button) {
-    using B = SurfaceButton;
-    auto& ui = c.ui;
-    if (!ui.new_open) return false;
-    if (button == B::Play || button == B::Stop || button == B::PadBank) return false;
-    if (button == B::TopLeft) { ui.new_open = false; return true; } // BACK: the track stays empty
-    if (button == B::WheelPush) make_new_track(c, NewChoice(ui.new_pick % new_choice_count));
-    return true; // the rest wait
-}
-
-void new_track_wheel(UiState& ui, int delta) {
-    ui.new_pick = uint8_t(std::clamp<int>(int(ui.new_pick) + delta, 0, int(new_choice_count) - 1));
+    bool doors = ui.new_for >= 0 && ui.page == PageId::Stage; // another empty track picked on the doors: the same page to go back to
+    if (!doors) ui.new_back = ui.page;
+    ui.new_for = int8_t(ui.track % track_count);
+    c.open(PageId::Stage);
+    if (!doors) { ui.new_pick_from = float(ui.new_pick % new_choice_count) + 0.9f; ui.new_pick_at = c.now ? c.now : 1; } // the cards slide in
 }
 
 void make_new_track(Context& c, NewChoice choice) {
     auto& ui = c.ui;
-    ui.new_open = false;
+    unsigned t = ui.track % track_count;
     if (c.track().used()) return;
+    bool picked = ui.new_for == int8_t(t);
     PageId back = ui.new_back;
-    if (choice == NewChoice::Plugin) { // the card's instruments; the one picked loads and this page comes back
+    if (choice == NewChoice::Plugin) { // the card's instruments: the track turns PLUGIN once one is picked (choose_plugin)
         c.open_plugin_picker(UiState::PluginTarget::Instrument);
-        ui.plugin_back = back;
+        if (picked) ui.plugin_back = back;
         return;
     }
     // One undo for the track made (Shift + Minus leaves it empty again), as Load Kit.
-    unsigned t = ui.track % track_count;
     Edit edit = c.begin_edit("New track", t, -1, false);
     edit.motion_before.reset();
     edit.track_before = std::make_unique<TrackState>(track_state(c, t));
     auto kit = [&] {
-        c.load_sound(ui.track, EngineKind::Sampler, 0);
+        c.load_sound(t, EngineKind::Sampler, 0);
         c.track().set_name("KIT");
-        stage_go(ui, 0, 0); // TRIM when Stage opens
+        stage_go(ui, 0, 0); // TRIM
     };
     auto midi = [&](unsigned port) {
-        c.load_sound(ui.track, EngineKind::Midi, 0);
-        c.set_param(ui.track, midi_track::Port, int(port));
-        c.set_param(ui.track, midi_track::Channel, std::clamp<int>(ui.new_channel, 1, 16));
+        c.load_sound(t, EngineKind::Midi, 0);
+        c.set_param(t, midi_track::Port, int(port));
+        c.set_param(t, midi_track::Channel, std::clamp<int>(ui.new_channel, 1, 16));
         stage_go(ui, 0, 0); // DEVICE
     };
     switch (choice) {
     case NewChoice::Kit: kit(); break;
-    case NewChoice::Samples: // Sample Select; the first sample loaded comes back here
-        kit();
-        c.open(PageId::Samples);
-        if (c.library) c.library->rescan();
-        ui.new_return = int8_t(ui.track);
-        break;
-    case NewChoice::Record: kit(); c.open(PageId::Record); break; // Sample Record
+    case NewChoice::Samples: kit(); break;
+    case NewChoice::Record: kit(); break;
     case NewChoice::MidiOut: midi(0); break;
     case NewChoice::MidiUsb: midi(1); break;
     case NewChoice::MidiAllUsb: midi(2); break;
@@ -76,13 +60,33 @@ void make_new_track(Context& c, NewChoice choice) {
     edit.track_after = std::make_unique<TrackState>(track_state(c, t));
     c.edits.push(std::move(edit));
     c.dirty = true;
+    if (choice == NewChoice::Samples) { // Sample Select: the first sample loaded goes back (new_track_landed)
+        c.open(PageId::Samples);
+        ui.new_kit = int8_t(t); // CANCEL there leaves it empty
+        if (c.library) c.library->rescan();
+        return;
+    }
+    if (choice == NewChoice::Record) { ui.new_for = -1; c.open(PageId::Record); return; } // Sample Record: a take of its own
+    if (picked) { ui.new_for = -1; c.open(back); }
 }
 
 void new_track_landed(Context& c) {
     auto& ui = c.ui;
-    if (ui.new_return < 0 || unsigned(ui.new_return) != ui.track % track_count) return;
-    ui.new_return = -1;
-    if (ui.page == PageId::Samples) c.open(ui.new_back);
+    if (ui.new_for != int8_t(ui.track % track_count) || ui.page != PageId::Samples) return;
+    ui.new_for = -1;
+    c.open(ui.new_back);
+}
+
+void samples_cancel(Context& c) {
+    auto& ui = c.ui;
+    unsigned t = ui.track % track_count;
+    const auto& tr = c.project.tracks[t];
+    bool bare = tr.engine == EngineKind::Sampler && std::none_of(tr.pads.begin(), tr.pads.end(), [](const auto& p) { return p.used(); });
+    const Edit* last = c.edits.latest();
+    if (ui.new_kit == int8_t(t) && bare && last && last->track == t && !std::strcmp(last->what.c_str(), "New track"))
+        c.undo(); // the kit made for its first sample: empty again
+    ui.new_kit = -1;
+    c.back();
 }
 
 } // namespace melodee

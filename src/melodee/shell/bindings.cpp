@@ -488,14 +488,7 @@ std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui,
         if (slot >= track.fx.count()) return {};
         return effect_row(t * 64 + slot * 8, track.fx.slots[slot], shift_row ? 1 : 0);
     }
-    case SK::NewSynth: case SK::NewKit: case SK::NewMidi: { // an empty track's three doors: K1 the engine, K2 the source, K3 the port
-        if (shift_row) return {};
-        std::array<EngineKind, size_t(EngineKind::Count)> engines {};
-        unsigned count = new_engines(engines);
-        return {count ? Binding {Kind::NewEngine, 0, 0, int(std::max(count, 2u)) - 1, int(ui.new_engine % count)} : Binding {},
-                Binding {Kind::NewSource, 0, 0, int(new_sources) - 1, ui.new_source % int(new_sources)},
-                Binding {Kind::NewPort, 0, 0, midi_track::PortCount - 1, ui.new_port % midi_track::PortCount}};
-    }
+    case SK::NewSynth: case SK::NewKit: case SK::NewMidi: return {}; // an empty track: the wheel and Push (shell/new_track.h)
     default: return {};
     }
 }
