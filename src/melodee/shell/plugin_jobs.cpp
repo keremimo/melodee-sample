@@ -78,8 +78,7 @@ void Context::open_plugin_picker(UiState::PluginTarget target, unsigned chain, u
     ui.plugin_chain = uint8_t(chain);
     ui.plugin_slot = uint8_t(slot);
     ui.plugin_back = target == UiState::PluginTarget::Instrument ? PageId::Edit : ui.page;
-    ui.plugins_cursor = 0;
-    plugins->browse(""); // the Plugins folder, listed afresh
+    plugins->browse(plugins->view().folder); // where the picker was left, listed afresh, on the row it was on
     if (ui.page != PageId::Plugins) ui.plugin_from = ui.page;
     open(PageId::Plugins);
 }

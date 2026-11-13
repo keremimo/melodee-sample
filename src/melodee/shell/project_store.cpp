@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -24,8 +25,31 @@ constexpr const char* extension = ".mldp";
 constexpr const char* stock_folder = "MPC Sample";
 
 std::string stock_projects(const std::string& root) { return (fs::path(root).parent_path().parent_path() / "MPC-Sample" / "Projects").string(); }
-// Where a project or folder made while `folder` is in view goes.
-std::string write_dir(const std::string& root, const std::string& folder) { return folder.empty() || folder == stock_folder ? root : root + "/" + folder; }
+// The internal drive's folders: the stock app's projects ($MELODEE_INTERNAL_PROJECTS on a host), with its autosave and
+// the factory projects as folders at the top.
+struct InternalFolder { const char* name; const char* path; };
+constexpr InternalFolder internal_extras[] {{"Autosave", "/data/TempProjects"}, {"Demos", "/content/Projects/Demos"}, {"Kits", "/content/Projects/Kits"}};
+std::string internal_projects() {
+    const char* forced = std::getenv("MELODEE_INTERNAL_PROJECTS");
+    return forced ? forced : "/data/UserContent/Projects/User";
+}
+bool in_stock(const std::string& folder) { return folder == stock_folder || folder.rfind(std::string(stock_folder) + "/", 0) == 0; }
+// The directory a folder in view lists: on the card, in the stock app's card folder, or on the internal drive.
+std::string folder_dir(const std::string& root, const std::string& folder) {
+    if (on_internal(folder)) {
+        std::string rest = folder.substr(std::strlen(internal_folder)); // "" or "/<folder>..."
+        if (rest.empty()) return internal_projects();
+        auto cut = rest.find('/', 1);
+        std::string first = rest.substr(1, cut == std::string::npos ? std::string::npos : cut - 1), tail = cut == std::string::npos ? "" : rest.substr(cut);
+        for (const auto& extra : internal_extras) if (first == extra.name) return extra.path + tail;
+        return internal_projects() + rest;
+    }
+    if (root.empty()) return {};
+    if (in_stock(folder)) return stock_projects(root) + folder.substr(std::strlen(stock_folder));
+    return root + (folder.empty() ? "" : "/" + folder);
+}
+// Where a project or folder made while `folder` is in view goes: nothing is written to the stock app's folders.
+std::string write_dir(const std::string& root, const std::string& folder) { return folder.empty() || in_stock(folder) || on_internal(folder) ? root : root + "/" + folder; }
 
 std::vector<uint8_t> read_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
@@ -382,8 +406,8 @@ void ProjectStore::write_settings(std::error_code& error) {
 void ProjectStore::scan() {
     std::vector<ProjectEntry> entries;
     std::error_code error;
-    auto dir = folder == stock_folder ? stock_projects(root) : root + (folder.empty() ? "" : "/" + folder);
-    if (!root.empty() && fs::is_directory(dir, error)) {
+    auto dir = folder_dir(root, folder);
+    if (!dir.empty() && fs::is_directory(dir, error)) {
         for (const auto& item : fs::directory_iterator(dir, error)) {
             ProjectEntry e;
             e.path = item.path().string();
@@ -405,6 +429,16 @@ void ProjectStore::scan() {
             }
             entries.push_back(std::move(e));
         }
+        if (folder == internal_folder)
+            for (const auto& extra : internal_extras) {
+                if (!fs::is_directory(extra.path, error)) continue;
+                ProjectEntry e;
+                e.kind = ProjectEntry::Kind::Folder;
+                e.name = extra.name;
+                e.path = extra.path;
+                e.projects = projects_in(e.path, extension);
+                entries.push_back(std::move(e));
+            }
         if (folder.empty() && projects_in(stock_projects(root), extension)) {
             ProjectEntry e;
             e.kind = ProjectEntry::Kind::Folder;

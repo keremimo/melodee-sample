@@ -1029,7 +1029,8 @@ the file holds, to the bit.
   listed; wheel and −/+ move, Push opens a folder or loads onto the last pad
   (keeping its settings), B1 back out, B2 the drive (CARD from `Samples`,
   or INTERNAL: the factory categories and the stock app's User folder, read
-  only), B3 PREVIEW (its LED) plays each file as the cursor lands (its row
+  only; each drive keeps its folder and row, so B2 there and back lands
+  where it was), B3 PREVIEW (its LED) plays each file as the cursor lands (its row
   fills in the track colour as it plays, with the seconds heard of its
   length on the right). A preview starts once its first eighth of a second
   is read, however long the file: the sample is laid out at its full length
@@ -1549,7 +1550,12 @@ while following.
   first and its facts last: **SD card access** at the top, folders with how
   many they hold (Push or B3 in, B1 or Shift + Push out, B1 at the top back
   to the tiles) and projects with their tracks and tempo, the open one
-  OPEN (after an amber dot while unsaved). K1 jumps, K2 sorts. Push or B3 on
+  OPEN (after an amber dot while unsaved). K1 jumps, K2 sorts. B2 picks
+  the drive, as on Samples: the card, or INTERNAL (the stock app's projects,
+  with its Autosave and the factory Demos and Kits as folders; read only,
+  Load and Load kit). The list keeps its place: it first opens on the open
+  project, then where it was left, each drive its own folder and row; going
+  up lands on the folder come out of. Push or B3 on
   a project opens its sheet: its jobs as cards, the likely one first and
   lit (SAVE on the open one, LOAD on another), the wheel moving, Push doing
   it, B1 back: on the open one Save, Save as new, Rename, Duplicate, Move to folder, New folder here,
@@ -1805,7 +1811,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   picker lists the rest dimmed with the reason ("Windows and Mac builds
   only"). Most commercial plug-ins have no Linux ARM build.
 - **An instrument.** PLUGIN is an engine like the others: SYNTH on Stage,
-  or K1 on Sounds, then the PLUG-INS picker opens on the card's folder.
+  or K1 on Sounds, then the PLUG-INS picker opens on the card's folder,
+  and after that on the folder and row it was left on.
   Sample Select on a PLUGIN track opens the picker again. Stage's B1 EDIT
   (or Edit) shows the plug-in: the share of each audio block it takes in the
   header, and its parameters as a list, each name on one full line with its
@@ -1988,8 +1995,8 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   `.syx` files.
 
 Nothing is created on the card until something is saved. On a host,
-`$MELODEE_PROJECTS`, `$MELODEE_SAMPLES` and `$MELODEE_INTERNAL` stand in
-for the card and the internal drive.
+`$MELODEE_PROJECTS`, `$MELODEE_SAMPLES`, `$MELODEE_INTERNAL` and
+`$MELODEE_INTERNAL_PROJECTS` stand in for the card and the internal drive.
 
 ## Remote
 

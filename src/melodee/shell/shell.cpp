@@ -438,6 +438,7 @@ void Shell::press(Button b, bool pressed) {
             // up a folder
             auto& f = context_.project_folder;
             auto cut = f.find_last_of('/');
+            context_.project_row_path = cut == std::string::npos ? f : f.substr(cut + 1); // on the folder it came out of
             f = cut == std::string::npos ? std::string() : f.substr(0, cut);
             ui.project_cursor = 0;
             if (store_) store_->list(f);

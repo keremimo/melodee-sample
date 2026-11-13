@@ -380,6 +380,13 @@ public:
     void card_access();                // Project's SD card access row: lend the card, open its page
     std::string project_path;         // the file this project came from or went to; empty when new
     std::string project_folder;       // the Project page's folder, relative to the root
+    // The browsers keep their place: each drive's folder and row (Samples by Drive; Project 0 the card, 1 internal),
+    // so B2 there and back, or leaving and coming back, lands where it was.
+    struct BrowserPlace { std::string folder; uint16_t row = 0; bool set = false; };
+    std::array<BrowserPlace, 2> files_places {}, project_places {};
+    int files_row_wanted = -1;        // Samples: the row to land on once the folder asked for lists
+    std::string project_row_path;     // Project: the entry to land on once the folder lists (the open project, at first)
+    bool project_list_opened = false; // the list has been opened since start
     bool dirty = false;               // changed since it was saved or loaded
     void save_project_to(const std::string& path);
     void save_project();              // to its file, or a new one

@@ -16,13 +16,16 @@
 // Load kit (its pads and samples onto the selected track, no patterns) and
 // the same. Delete asks once more. Save as new and Rename open the Name
 // sheet; Move to folder opens a picker of every folder (the wheel picks,
-// Push or B3 moves, B1 backs out). K1 jumps, K2 sorts.
+// Push or B3 moves, B1 backs out). K1 jumps, K2 sorts. B2 picks the drive:
+// the card, or the internal one (the stock app's projects, its Autosave and
+// the factory Demos and Kits, read only: Load and Load kit).
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/shell/key_pick.h"
 #include "melodee/shell/project_store.h"
 #include "melodee/ui/widgets.h"
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -149,7 +152,9 @@ void draw(Paint& p, const Snapshot& s) {
     sort_view(v, s.ui.project_sort);
     if (!s.ui.project_list) { draw_tiles(p, s, v); return; }
     Header h = header_of(s);
-    juce::String where = v.root.empty() ? juce::String("NO CARD") : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder));
+    const bool inside = on_internal(s.project_folder);
+    juce::String where = inside ? "INTERNAL" + juce::String(s.project_folder.substr(std::strlen(internal_folder))).replace("/", " / ")
+                       : v.root.empty() ? juce::String("NO CARD") : "SD / PROJECTS" + (s.project_folder.empty() ? juce::String() : " / " + juce::String(s.project_folder));
     h.left.push_back(pill(where));
     if (v.free_bytes) h.right.push_back(pill(Icon::Card, free_text(v.free_bytes)));
     bool sheet = s.ui.sheet_open;
@@ -158,13 +163,13 @@ void draw(Paint& p, const Snapshot& s) {
     bool open_one = in_hand && in_hand->path == s.project_path, mpc = in_hand && in_hand->mpc();
     if (s.ui.move_open) frame(p, s, {{"BACK", "", "MOVE"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
     else if (sheet) frame(p, s, {{"BACK", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}, h); // the cards
-    else frame(p, s, {{"BACK", "", "OPEN"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h);
+    else frame(p, s, {{"BACK", inside ? "CARD" : "INTERNAL", "OPEN"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}}, h); // B2: the other drive
 
     unsigned first = cursor < 3 ? 0 : std::min(cursor - 3, count > visible ? count - visible : 0);
     for (unsigned row = 0; row < visible && first + row < count; ++row)
         draw_row(p, s, v, first + row, zone::picture_y + 1 + row * (list_row_h + list_row_gap), first + row == cursor);
     if (!count) { // an empty folder, or no card
-        icon(p, v.root.empty() ? Icon::Card : Icon::Folder, zone::width / 2.0f - 14, zone::picture_y + 50, 28, colour::dim, 1.4f);
+        icon(p, v.root.empty() && !inside ? Icon::Card : Icon::Folder, zone::width / 2.0f - 14, zone::picture_y + 50, 28, colour::dim, 1.4f);
         return;
     }
     if (s.ui.move_open) { // the folder picker over the list
@@ -292,8 +297,17 @@ void move_here(Context& c) {
 
 void open_list(Context& c) {
     c.ui.project_list = true;
-    c.ui.project_cursor = 0;
-    if (c.store) c.store->list(c.project_folder);
+    if (!c.project_list_opened) { // the first time: the open project's folder, on it
+        c.project_list_opened = true;
+        auto v = view_of(c);
+        const std::string top = v.root + "/";
+        if (!v.root.empty() && c.project_path.rfind(top, 0) == 0) {
+            auto parent = std::filesystem::path(c.project_path).parent_path().string();
+            c.project_folder = parent.size() > v.root.size() ? parent.substr(top.size()) : std::string();
+            c.project_row_path = c.project_path;
+        }
+    }
+    if (c.store) c.store->list(c.project_folder); // else where it was left, on the same row
 }
 
 void wheel(Context& c, int delta) {
@@ -358,9 +372,20 @@ void soft(Context& c, int key) {
         return;
     }
     if (key == 2) { open_row(c); return; }
+    if (key == 1) { // the other drive: the card, or the internal one (as Samples' B2), where it was left
+        bool inside = on_internal(c.project_folder);
+        c.project_places[inside ? 1 : 0] = {c.project_folder, c.ui.project_cursor, true};
+        const auto& back = c.project_places[inside ? 0 : 1];
+        c.project_folder = back.set ? back.folder : inside ? std::string() : std::string(internal_folder);
+        c.ui.project_cursor = back.set ? back.row : 0;
+        c.project_row_path.clear();
+        if (c.store) c.store->list(c.project_folder);
+        return;
+    }
     if (key != 0) return;
-    if (!c.project_folder.empty()) { // BACK: up a folder, or from the top back to the tiles
+    if (!c.project_folder.empty() && c.project_folder != internal_folder) { // BACK: up a folder, on the one it came out of, or from the top back to the tiles
         auto cut = c.project_folder.find_last_of('/');
+        c.project_row_path = cut == std::string::npos ? c.project_folder : c.project_folder.substr(cut + 1);
         c.project_folder = cut == std::string::npos ? std::string() : c.project_folder.substr(0, cut);
         c.ui.project_cursor = 0;
         if (c.store) c.store->list(c.project_folder);
@@ -369,6 +394,18 @@ void soft(Context& c, int key) {
     c.ui.project_list = false;
 }
 } // namespace
+
+void project_listed(Context& c) {
+    if (c.project_row_path.empty() || !c.store) return;
+    auto v = view_of(c);
+    if (v.folder != c.project_folder) return; // the folder asked for has not listed yet
+    for (size_t n = 0; n < v.entries.size(); ++n)
+        if (v.entries[n].path == c.project_row_path || (v.entries[n].kind == ProjectEntry::Kind::Folder && v.entries[n].name == c.project_row_path)) {
+            c.ui.project_cursor = uint16_t(first_entry(c.project_folder) + n);
+            break;
+        }
+    c.project_row_path.clear();
+}
 
 // Erase tapped on the list (shell/erase_copy.h): the project under the cursor's sheet open on DELETE, armed; tapped
 // again, deleted (as Push on DELETE twice). False on a folder, SD card access or the MPC's own file.

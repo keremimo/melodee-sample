@@ -20,6 +20,8 @@ bool chain_erase(Context& c);
 bool chain_copy(Context& c);
 bool project_erase(Context& c);
 bool project_copy(Context& c);
+// The Project list's folder listed: the cursor onto the entry it was to land on (Context::project_row_path).
+void project_listed(Context& c);
 void song_repeat(Context& c);
 // Loop: the brace on the clip's bars, or off. False when there was nothing to do.
 bool song_loop(Context& c);

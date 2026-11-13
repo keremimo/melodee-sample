@@ -386,7 +386,8 @@ void Context::browser_tick() {
     auto folder = library->folder();
     if (folder != files_folder_seen) { // a new folder: the cursor on the one it came out of, else the top
         files_folder_seen = folder;
-        ui.files_cursor = uint16_t(std::max(library->came_from(), 0));
+        ui.files_cursor = uint16_t(files_row_wanted >= 0 ? files_row_wanted : std::max(library->came_from(), 0)); // B2's drive: its row
+        files_row_wanted = -1;
         ui.files_drive = uint8_t(library->drive());
         if (here && ui.preview) preview_cursor();
     }

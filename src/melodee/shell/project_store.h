@@ -30,6 +30,11 @@ struct ProjectEntry {
     bool mpc() const { return kind == Kind::Project && path.size() > 4 && !path.compare(path.size() - 4, 4, ".xpj"); } // the MPC's own (shell/mpc_project.h)
 };
 
+// The MPC's internal drive in the Project list (B2): the stock app's own projects, its autosave and the factory ones,
+// read only. Its folders start with ':', which no folder on the card can hold.
+constexpr const char* internal_folder = ":internal";
+inline bool on_internal(const std::string& folder) { return folder.compare(0, 9, internal_folder) == 0; }
+
 struct LoadedProject {
     std::string path, error;
     std::vector<uint8_t> bytes;

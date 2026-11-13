@@ -7,6 +7,7 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/model/project_file.h"
+#include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/sampler_map.h"
@@ -237,6 +238,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         ProjectStore::View v;
         store_->view(v);
         ui_.project_rows = uint16_t(project_rows(v.entries.size(), context_.project_folder));
+        project_listed(context_); // the open project's row, the first time the list opens
     }
     // Slots a Load Kit or Load Bank named past what the queue holds, as it drains.
     while (library_ && !context_.slots_waiting.empty()) {
