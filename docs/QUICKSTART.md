@@ -37,7 +37,7 @@ To install Melodee:
 3. Optional: to use plug-ins, make a folder named `Plugins` inside the
    `Melodee` folder on the card (`Melodee/Plugins`) and copy your plug-ins
    into it. See
-   [Plug-ins](GUIDE.md#plug-ins) for what runs.
+   [Plug-ins](guide/plug-ins.md) for what runs.
 4. Put the card in the MPC and switch it on. The stock app starts first. A
    few seconds later Melodee starts.
 
@@ -109,7 +109,7 @@ To load a file onto the next empty pad, hold **SHIFT** and press any pad.
 
 The browser also loads SFZ, MPC programs and expansions, EXS24, SoundFont
 and DecentSampler instruments onto a pad. See
-[Sampled instruments](GUIDE.md#sampled-instruments).
+[Sampled instruments](guide/kits-and-sampling.md#sampled-instruments).
 
 ## 5. Edit a pad
 
@@ -130,7 +130,7 @@ On **TRIM**, use **K1** to set the start point, **K2** the end point and
 **K3** the loop point. Hold **SHIFT** and turn a knob to zoom in at that
 point.
 
-To chop a sample into slices, press **CHOP**. See [Chop](GUIDE.md#chop).
+To chop a sample into slices, press **CHOP**. See [Chop](guide/kits-and-sampling.md#chop).
 
 ## 6. Record a beat
 
@@ -174,7 +174,7 @@ you hit.
 Melodee loads VST3, LV2, CLAP and VST2 instruments built for the MPC's ARM processor,
 including the Melodee Poly, Melodee PD and Melodee Chip synths. Put them in
 the `Melodee/Plugins` folder on the card first (see [step 1](#1-install)). The
-Melodee synths are free downloads; see [Plug-ins](GUIDE.md#plug-ins).
+Melodee synths are free downloads; see [Plug-ins](guide/plug-ins.md).
 
 1. Hold **PAD BANK** and press pad 2 to select track 2.
 2. Press **SAMPLE**. An empty track shows three choices: **SYNTH** (a
@@ -238,10 +238,10 @@ When Melodee starts again, it opens the project you had open.
 
 ## Next steps
 
-- [Coming from the stock MPC Sample](GUIDE.md#coming-from-the-stock-mpc-sample):
+- [Coming from the stock MPC Sample](guide/coming-from-the-stock-mpc-sample.md):
   what is the same and what is different.
-- [Sequencing](GUIDE.md#sequencing): patterns, scenes, Steps, Roll, Step
+- [Sequencing](guide/sequencing.md): patterns, scenes, Steps, Roll, Step
   Edit and parameter locks.
-- [Song](GUIDE.md#song): arrange patterns and export a mixdown.
-- [Looper](GUIDE.md#looper): press **LOOP** and **16 LEVELS** together.
-- [Effects](GUIDE.md#mixer-and-effects): effect chains, Knob FX and Pad FX.
+- [Song](guide/song.md): arrange patterns and export a mixdown.
+- [Looper](guide/looper.md): press **LOOP** and **16 LEVELS** together.
+- [Effects](guide/mixer-and-effects.md): effect chains, Knob FX and Pad FX.
