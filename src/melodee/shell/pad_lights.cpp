@@ -268,27 +268,6 @@ Look song_look(const PadScene& s, unsigned pad) {
     return track(pad, faint);
 }
 
-// ---- SCENES (roadmap P5): a pad a scene, the column of patterns it launches. The one playing (every track with notes
-// there playing it) bright, one waiting for its bar blinking, the rest as many tracks as hold notes there; Erase held:
-// the scenes with a name or tempo to clear.
-Look scenes_look(const PadScene& s, unsigned pad) {
-    unsigned n = s.ui.pad_pattern(pad), with = 0, on = 0, waiting = 0; // the bank in view's
-    bool rolling = s.host.playing();
-    for (unsigned t = 0; t < track_count; ++t) {
-        const auto& tr = s.project.tracks[t];
-        if (!tr.used() || s.patterns.at[t][n].empty()) continue;
-        ++with;
-        bool live = rolling ? s.host.pattern_of(t) == n && !(s.host.stopped_tracks() >> t & 1) : tr.pattern == n;
-        on += live;
-        waiting += rolling && !live && tr.pattern == n;
-    }
-    if (s.ui.erase) return s.project.scenes[n].plain() ? Look {} : red(dim);
-    if (with && on == with) return white(full);
-    if (waiting) return (s.now / 150) % 2 ? white(mid) : white(faint);
-    if (!with) return s.project.scenes[n].plain() ? Look {} : white(faint);
-    return with == 1 ? white(faint) : with < 4 ? white(dim) : white(mid);
-}
-
 // ---- the Looper's grid (docs/LOOPER.md): a column a loop, pad 1 bottom left
 Look loop_look(const PadScene& s, unsigned pad, bool muting) {
     using S = Looper::State;
@@ -627,7 +606,7 @@ Look key_copy_look(const PadScene& s, const std::array<bool, 192>& keys, unsigne
     if (s.ui.copy_from == key) return white(full);
     return notes ? red(faint) : track(selected_index(s), faint);
 }
-// Shift + Erase on Steps: the steps with notes (on a kit, the lane's); then the step copied white, where it goes Faint.
+// Shift + Erase on Step Edit with the pads on the steps: the steps with notes (on a kit, the lane's); then the step copied white, where it goes Faint.
 Look step_copy_look(const PadScene& s, unsigned pad) {
     const auto& p = shown(s);
     unsigned step = unsigned(s.ui.steps_bar) * bar_steps + pad;
@@ -715,9 +694,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::Looper: look = loop_look(s, pad, false); break;
             case PageId::Tracks: look = tracks_look(s, pad); break;
             case PageId::Song: look = song_look(s, pad); break;
-            case PageId::Scenes: look = scenes_look(s, pad); break; // roadmap P5
-            case PageId::Steps: look = steps_look(s, pad); break;
-            case PageId::StepEdit: look = step_edit_look(s, pad); break;
+            case PageId::StepEdit: look = s.ui.step_pads ? steps_look(s, pad) : step_edit_look(s, pad); break; // the bar's steps, or the keys
             case PageId::Roll: look = roll_look(s, snd, roll, keys, pad); break;
             case PageId::TimeCorrect: look = time_correct_look(s, keys, pad); break;
             case PageId::Motion: look = motion_look(s, snd, moving, pad); break;

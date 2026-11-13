@@ -36,8 +36,8 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
     switch (ui.page) {
     case PageId::Tracks: return CopyHere::Tracks;
     case PageId::Patterns: return CopyHere::Patterns;
-    case PageId::Steps: return t.used() ? CopyHere::Steps : CopyHere::None;
-    case PageId::Roll: case PageId::StepEdit: return t.used() ? CopyHere::Keys : CopyHere::None;
+    case PageId::StepEdit: return !t.used() ? CopyHere::None : ui.step_pads ? CopyHere::Steps : CopyHere::Keys; // the bar's steps, or keys
+    case PageId::Roll: return t.used() ? CopyHere::Keys : CopyHere::None;
     case PageId::Song:
         if (ui.song_export) return CopyHere::None;
         return project.song.clip_at(ui.track % track_count, ui.song_cursor) >= 0 ? CopyHere::Clip : CopyHere::None;
@@ -60,8 +60,8 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
 // something to erase and says so when there is not).
 inline bool erase_tap_page(const UiState& ui) {
     switch (ui.page) {
-    case PageId::Roll: case PageId::Steps: case PageId::StepEdit: case PageId::Patterns: case PageId::Tracks:
-    case PageId::Scenes: case PageId::Looper: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx:
+    case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Tracks:
+    case PageId::Looper: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx:
     case PageId::Chop: case PageId::LayersPage: case PageId::ModPage:
         return true;
     case PageId::Project: return ui.project_list && !ui.move_open;

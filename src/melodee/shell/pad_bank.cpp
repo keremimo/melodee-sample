@@ -46,7 +46,7 @@ void pad_bank_button(Context& c, bool pressed) {
     ui.pad_bank = false;
     if (ui.pad_bank_used) return; // held for a pad, a jump or a copy: no step
     if (ui.shift) ui.shift_used = true;
-    if (ui.seq_held) { step_pattern_bank(c, ui.shift ? -1 : 1); return; } // the patterns' bank (Seq's layer)
+    if (ui.seq_held || ui.page == PageId::Patterns) { step_pattern_bank(c, ui.shift ? -1 : 1); return; } // the patterns' bank (Seq's layer)
     if (ui.page == PageId::Punch) { c.step_punch_bank(ui.shift ? -1 : 1); return; } // the next bank of punches
     if (c.track().engine == EngineKind::Sampler || drum_pads(c.track())) { step_bank(c, ui.shift ? -1 : 1); say_bank(c); return; }
     if (ui.page == PageId::Roll) step_octave(c, ui.shift ? -1 : 1); // Roll on a synth: −/+ are its pitch
@@ -56,7 +56,7 @@ bool pad_bank_move(Context& c, int way) {
     auto& ui = c.ui;
     if (!ui.pad_bank || !way) return false;
     ui.pad_bank_used = true;
-    if (ui.seq_held) step_pattern_bank(c, way);
+    if (ui.seq_held || ui.page == PageId::Patterns) step_pattern_bank(c, way);
     else if (ui.page == PageId::Punch) c.step_punch_bank(way);
     else if (c.track().engine == EngineKind::Sampler || drum_pads(c.track())) { step_bank(c, way); say_bank(c); }
     else c.notice("Banks: kit and Drums tracks");

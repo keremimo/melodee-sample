@@ -27,7 +27,6 @@ void view_of(Context& c, uint32_t& from, uint32_t& to) {
     const auto& ui = c.ui;
     unsigned q = p.q();
     if (ui.page == PageId::Roll) { from = roll_first(p, ui) * q; to = from + roll_columns * q; }
-    else if (ui.page == PageId::Steps) { from = uint32_t(ui.steps_bar) * bar_steps * q; to = from + bar_steps * q; }
     else { unsigned bar = std::max(1u, c.project.bar_ticks()); from = cursor_of(p, ui) * q / bar * bar; to = from + bar; }
     to = std::min(to, p.length);
 }
@@ -41,7 +40,7 @@ std::vector<size_t> targets(Context& c, Scope scope) {
     const int lane = ui.page == PageId::Roll ? roll_lane(t) : -1;
     auto fits = [&](const Event& e) {
         if (ui.page == PageId::Roll) return roll_row(e, lane) >= 0;
-        if (ui.page == PageId::Steps) { int key = steps_lane(t); return key < 0 || e.key == key; }
+        if (ui.page == PageId::StepEdit && ui.step_pads) { int key = steps_lane(t); return key < 0 || e.key == key; }
         return true;
     };
     if (scope == Scope::Note && ui.page == PageId::Roll) {
@@ -85,7 +84,7 @@ std::string count_of(size_t n, const char* one, const char* many) { return std::
 
 bool note_editor_open(Context& c) {
     auto page = c.ui.page;
-    return (page == PageId::Roll || page == PageId::Steps || page == PageId::StepEdit) && c.track().used();
+    return (page == PageId::Roll || page == PageId::StepEdit) && c.track().used();
 }
 
 bool note_chop(Context& c) {
@@ -177,7 +176,7 @@ void edit_loop_off(Context& c) {
 void edit_loop_check(Context& c) {
     const auto& ui = c.ui;
     if (!ui.edit_loop) return;
-    bool editor = ui.page == PageId::Roll || ui.page == PageId::Steps || ui.page == PageId::StepEdit;
+    bool editor = ui.page == PageId::Roll || ui.page == PageId::StepEdit;
     if (!editor || ui.track != ui.edit_loop_track || c.project.tracks[ui.edit_loop_track % track_count].pattern != ui.edit_loop_pattern)
         edit_loop_off(c);
 }

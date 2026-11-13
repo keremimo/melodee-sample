@@ -77,7 +77,7 @@ void draw(Paint& p, const Snapshot& s) {
     if (ui.copying == UiState::Copying::Notes) h.left.push_back(pill("COPY", c));          // Push pastes the marked notes
     h.right.push_back(tag_of(s, ui.track));
     bool sheet = ui.sheet_open && focused;
-    SoftKeys keys {{"STEPS", "ROLL", "MOTION"}, 1, c};
+    SoftKeys keys {{"PATTERNS", "ROLL", "MOTION"}, 1, c};
     keys.dots[1] = 2; keys.dot_at[1] = ui.trig_cards ? 1 : 0; // ROLL again: the TRIG row of cards
     if (sheet) keys = SoftKeys {{"BACK", "", ""}, -1, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}}; // the cards: wheel and Push
     frame(p, s, keys, h);
@@ -265,8 +265,7 @@ void soft(Context& c, int key) {
         return;
     }
     if (key == 1) { c.ui.trig_cards = !c.ui.trig_cards; return; } // ROLL again: the note's TRIG cards, or back
-    static const PageId pages[] {PageId::Steps, PageId::Roll, PageId::Motion};
-    c.open(pages[key % 3]);
+    seq_hub_soft(c, key);
 }
 
 void pitch(Context& c, int way) {

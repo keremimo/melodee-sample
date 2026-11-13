@@ -2,6 +2,7 @@
 
 Status: all picks made 2026-11-13 (S-B, P-a, M-b, R-a, T-a, PL-a, H-b).
 Step 1 (Stage tables, plug-in B1) built 1c25308. Step 2 (SAMPLE hub, SAMPLE held sheet; PAD BANK held B1 opens Tracks, step 3's first piece) built ecbca82. Step 3 (MIX hub: one TRACKS / SENDS / FX row) built 679355b; its opener became PAD FX + KNOB FX. Step 4 (SEQ opens the editor, home Steps; ARRANGE row on Patterns and Scenes, Song keeps its own keys as a tool, Shift + Pad 12 opens the last ARRANGE page, home Patterns; Scenes ALL on Shift + B3) built. Step 5 (Fader, Rec Quantize, Time Correct, Input Config, Step Edit lose B1 BACK; Shift + Pad 4/8/9/10/14/16 and Shift + Sample close their page again; Settings and About keep B1 BACK for their sections) built. Step 6 (docs pass; a MIDI track's Stage B3 became EDIT, the Edit page's only way in after Keys became Sample held's) built.
+2026-11-13: Patterns moved into SEQ as B1, in place of Steps (SEQ's home is Patterns; Step Edit with its PLAY / STEPS pad modes is the step editor). Scenes folded into Patterns (Shift + B1 SCENE, Shift + B2 FOLLOW, Push launches the cursor's scene). The ARRANGE hub is removed: SHIFT + PAD 12 opens Song, as printed. The tables below are the plan as it was picked.
 Nothing built. Mockups: https://claude.ai/artifact/KysLcHsF6LN7pnAVFtS6ut
 
 ## Problem

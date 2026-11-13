@@ -14,7 +14,6 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Keys: return keys_page;
     case PageId::Sounds: return sounds_page;
     case PageId::Edit: return edit_page;
-    case PageId::Steps: return steps_page;
     case PageId::Roll: return roll_page;
     case PageId::Motion: return motion_page;
     case PageId::Patterns: return patterns_page;
@@ -34,7 +33,6 @@ const PageSpec& page_spec(PageId page) {
     case PageId::PlayPage: return play_edit_page;
     case PageId::LayersPage: return layers_page;
     case PageId::ModPage: return mod_page; // roadmap P4
-    case PageId::Scenes: return scenes_page; // roadmap P5
     case PageId::EnvelopePage: return envelope_page;
     case PageId::FilterPage: return filter_page;
     case PageId::FollowPage: return follow_page;

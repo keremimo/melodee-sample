@@ -96,7 +96,7 @@ struct Binding {
         MidiSysexFile, // roadmap P4 (M4), SYSEX's K1: a .syx of the card's SysEx folder (0 none)
         // Roadmap P5, SCENES (Push on Patterns): the selected track's pattern's follow action (model/follow.h): the first
         // and (Shift + K1) the second action, after so many (0..63: 1..64 bars, 64..127: 1..64 plays), the first's odds.
-        FollowAction, FollowOther, FollowAfter, FollowChance,
+        FollowAction, FollowOther, FollowAfter, FollowChance, SceneTempo,
         // Roadmap P5, Song's Shift + K1 / K2: the tempo lane's point at the cursor's bar, its tempo in whole BPM (29: none
         // there; with none, the lane's tempo there) and its shape (0 a step on its bar, 1 a ramp from the point before).
         SongTempo, SongTempoShape,

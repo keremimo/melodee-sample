@@ -99,7 +99,7 @@ type.
 Hold **SAMPLE** on a kit to see **Pads**: the bank in view, each pad with
 its own waveform. While you hold it, press a pad to select it without
 playing it, and turn **K1** pitch, **K2** level, **K3** pan of the last pad.
-**B1**–**B3** open Stage's pages. On **Steps** and **Roll** the editor stays
+**B1**–**B3** open Stage's pages. On **Step Edit** and **Roll** the editor stays
 in view and the header names the held pad.
 
 ![Pads](../images/screens/pads.png)

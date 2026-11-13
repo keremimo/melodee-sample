@@ -134,12 +134,12 @@ To chop a sample into slices, press **CHOP**. See [Chop](guide/kits-and-sampling
 
 ## 6. Record a beat
 
-1. Press **SHIFT** + **Pad 12** to open **Patterns** (if Song opens, press
-   **B1**). Tracks are listed down the screen and their 16 patterns across
-   it. The pads play the selected track.
+1. Press **SEQ**, then **B1** (**PATTERNS**). The 16 patterns of the
+   selected track are laid out as the pads: pad 1 bottom left.
 2. Use **K1** to set the pattern length in bars, **K2** the grid (Q) and
    **K3** the swing.
-3. To choose a pattern, hold **SEQ** and press a pad. Pad 1 is pattern 1.
+3. To choose a pattern, press its pad. Pad 1 is pattern 1. On other pages,
+   hold **SEQ** and press a pad.
 
    ![Patterns](images/screens/patterns.png)
 
@@ -161,13 +161,12 @@ Recording options:
   or off, and turn the encoder to choose the grid.
 - **SHIFT** + **TAP TEMPO**: set the metronome to Off, On or Rec.
 
-To edit the notes, press **SEQ**. The editor
-opens: **Steps** on a kit, **Roll** on an instrument track. **B1** opens
-**Steps**, **B2** the piano roll (**Roll**) and **B3** **Motion**. On
-Steps, each pad sets or clears a step. On a kit, Steps edits the last pad
-you hit.
+To edit the notes, press **B2** (**ROLL**) for the piano roll, or **SHIFT** +
+**SEQ** for **Step Edit**. In Step Edit, press **SHIFT** + **B1** (**PADS**)
+for **STEPS** mode: each pad sets or clears a step of the bar. On a kit,
+STEPS edits the last pad you hit.
 
-![Steps](images/screens/steps.png)
+![Step Edit in STEPS mode](images/screens/stepeditsteps.png)
 
 ## 7. Add a plug-in instrument
 
@@ -240,8 +239,8 @@ When Melodee starts again, it opens the project you had open.
 
 - [Coming from the stock MPC Sample](guide/coming-from-the-stock-mpc-sample.md):
   what is the same and what is different.
-- [Sequencing](guide/sequencing.md): patterns, scenes, Steps, Roll, Step
-  Edit and parameter locks.
+- [Sequencing](guide/sequencing.md): patterns, scenes, Roll, Step Edit and
+  parameter locks.
 - [Song](guide/song.md): arrange patterns and export a mixdown.
 - [Looper](guide/looper.md): press **LOOP** and **16 LEVELS** together.
 - [Effects](guide/mixer-and-effects.md): effect chains, Knob FX and Pad FX.

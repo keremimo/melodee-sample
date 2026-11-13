@@ -8,24 +8,22 @@ namespace melodee {
 
 // Opening `page` from ui.page: a page already on the stack is gone back to
 // (it and what came after leave the stack); a sibling in ui.page's group
-// (Stage / Keys / Pads / Mix, Steps / Roll / Motion, the effect chains, the
+// (Stage / Keys / Pads / Mix, Patterns / Roll / Motion, the effect chains, the
 // sampler's pages, Arp / Chord) takes its place;
 // anything else goes on top, the oldest dropping when full. The caller then
 // sets ui.page.
 void push_back_stack(UiState& ui, PageId page);
 // Where Back goes from here: the top of the stack, or Stage when it is empty.
 PageId back_target(const UiState& ui);
-// Seq's three levels (shell/seq_layer.h): Patterns, an editor (Steps, Roll,
-// Motion: one remembered per track), and Step Edit under it.
-bool seq_editor(PageId page); // Steps, Roll or Motion
-// The selected track's editor: the one last open on it, else Steps on a kit (the sampler or
-// the 909) and Roll on a synth or MIDI track.
-PageId seq_editor_page(const UiState& ui, bool kit);
+// The SEQUENCE hub (shell/seq_layer.h): Patterns, Roll and Motion (one remembered per track), and Step Edit
+// (Shift + Seq) over them.
+bool seq_editor(PageId page); // Patterns, Roll or Motion
+// The selected track's hub page: the one last open on it, else Patterns.
+PageId seq_editor_page(const UiState& ui);
 // An editor opened: remembered for the selected track.
 void remember_editor(UiState& ui, PageId page);
-// A tap of Seq from ui.page (the SEQUENCE hub, docs/HUBS_PLAN.md): the track's editor (Steps, Roll or Motion, the
-// last open) from anywhere; on an editor home, Steps (B1's page); on Step Edit back to the editor it sits under.
-// Patterns is the ARRANGE hub's (Shift + Pad 12).
-PageId seq_tap_page(const UiState& ui, bool kit);
+// A tap of Seq from ui.page (the SEQUENCE hub, docs/HUBS_PLAN.md): the hub's page last open (Patterns, Roll or
+// Motion) from anywhere; inside the hub home, Patterns (B1's page); on Step Edit back to the page it sits over.
+PageId seq_tap_page(const UiState& ui);
 
 } // namespace melodee

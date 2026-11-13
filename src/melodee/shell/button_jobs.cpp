@@ -50,8 +50,9 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
     case B::Loop: return kit;                                                    // reverse the last pad
     case B::Chop: return kit && project.tracks[ui.track % track_count].pads[project.tracks[ui.track % track_count].last_pad % sampler_pads].used(); // Note On
     case B::SixteenLevels: return project.tracks[ui.track % track_count].used(); // the 16 Levels type
-    case B::TopLeft: case B::TopMiddle: { // Loop Lock, Normalize on a kit's Stage TRIM; Extract, Split on Chop; LOAD, CLEAR on LAYERS
+    case B::TopLeft: case B::TopMiddle: { // Loop Lock, Normalize on a kit's Stage TRIM; Extract, Split on Chop; LOAD, CLEAR on LAYERS; Patterns', Step Edit's
         if (button == B::TopMiddle && ui.page == PageId::Tracks) return true; // MOVE on Tracks
+        if (ui.page == PageId::Patterns || ui.page == PageId::StepEdit) return true; // SCENE, FOLLOW; PADS, TIE
         if (!kit) return false;
         if (ui.page == PageId::Chop || ui.page == PageId::LayersPage) return true;
         const auto& tr = project.tracks[ui.track % track_count];
@@ -60,7 +61,7 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
         if (kind == StageKind::Trim && last.used() && project.samples[last.sample % sample_slots].instrument()) return false; // ZONES (round 3)
         return kind == StageKind::Trim || kind == StageKind::Layers;
     }
-    case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks || ui.page == PageId::Punch || ui.page == PageId::Scenes; // Merge; COPY on Tracks; QUANTIZE on Pad FX; ALL on Scenes
+    case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks || ui.page == PageId::Punch || ui.page == PageId::Patterns || ui.page == PageId::StepEdit; // Merge; COPY on Tracks; QUANTIZE on Pad FX; VARY on Patterns; INSERT on Step Edit
     case B::SampleRecord: return kit;                                            // Audio Recall
     case B::Erase: // Copy: what the page holds (shell/erase_copy.h), or off
         return ui.copying != UiState::Copying::Off || copy_here(project, ui, kit_pads, key_pads) != CopyHere::None;

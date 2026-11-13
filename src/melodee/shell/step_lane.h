@@ -7,7 +7,7 @@
 #include "melodee/model/scales.h"
 #include <algorithm>
 
-// Steps (pages/steps_page.cpp) on a kit shows and toggles one lane, the last
+// Step Edit's pads on the steps (pages/step_edit_page.cpp) on a kit show and toggle one lane, the last
 // pad's: a tap sets or clears that pad's note in the step and leaves the
 // other pads' notes alone (Roll keeps the whole kit). A synth's Steps works
 // on the whole step. The pads light the same (shell/pad_lights.cpp).

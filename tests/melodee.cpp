@@ -254,10 +254,11 @@ void bindings() {
     auto mix = page_bindings(project, ui, pattern);
     CHECK(mix[0].kind == Binding::Kind::TrackPick && mix[1].kind == Binding::Kind::Level);
     CHECK(mix[2].kind == Binding::Kind::Pan && mix[2].at(0) == -50 && mix[2].at(127) == 50);
-    ui.page = PageId::Steps;
+    ui.page = PageId::StepEdit; ui.step_pads = true; // Step Edit's pads on the steps
     CHECK(!page_bindings(project, ui, pattern)[0].bound()); // an empty step has nothing on the cards
     put(pattern, 0, 50, 90);
     CHECK(page_bindings(project, ui, pattern)[1].value == 90);
+    ui.step_pads = false;
     ui.page = PageId::Edit; ui.edit_page[0] = 1; ui.edit_row[0] = 0; // a MIDI track's PROGRAM page
     CHECK(page_bindings(project, ui, pattern)[0].id == midi_track::BankMsb);
     // Every engine's every sound sets values inside its parameters' ranges.
@@ -1805,34 +1806,33 @@ void button_remap() {
     CHECK(page_bindings(*project, ui, pattern)[0].kind != Binding::Kind::PatternLength); // Knob FX's again
     project->knob_fx.on = false; project->knob_fx.kind = 0;
 
-    // Back: Stage -> Sounds -> Steps -> Roll -> Motion -> Song; Back walks Song, Steps group, Sounds, Stage.
+    // Back: Stage -> Sounds -> Patterns -> Roll -> Motion -> Song; Back walks Song, the SEQ group, Sounds, Stage.
     UiState nav;
     auto go = [&](PageId page) { push_back_stack(nav, page); nav.page = page; };
     auto back = [&] { PageId to = back_target(nav); go(to); };
-    go(PageId::Sounds); go(PageId::Steps); go(PageId::Roll); go(PageId::Motion); go(PageId::Song);
+    go(PageId::Sounds); go(PageId::Patterns); go(PageId::Roll); go(PageId::Motion); go(PageId::Song);
     CHECK(nav.back_depth == 3);
     back(); CHECK(nav.page == PageId::Motion);
-    back(); CHECK(nav.page == PageId::Sounds); // Steps, Roll and Motion are one stop
+    back(); CHECK(nav.page == PageId::Sounds); // Patterns, Roll and Motion are one stop
     back(); CHECK(nav.page == PageId::Stage && nav.back_depth == 0);
     back(); CHECK(nav.page == PageId::Stage);
     // Opening a page already on the stack goes back to it instead of growing it.
     go(PageId::Sounds); go(PageId::Patterns); go(PageId::Sounds);
     CHECK(nav.back_depth == 1 && nav.back_stack[0] == PageId::Stage);
-    // Seq, the SEQUENCE hub (docs/HUBS_PLAN.md): a tap opens the track's editor from anywhere (Steps on a kit, Roll on
-    // a synth until one is opened, then that one, per track); on an editor home, Steps; Step Edit goes up to its editor.
+    // Seq, the SEQUENCE hub (docs/HUBS_PLAN.md): a tap opens the hub's page last open on the track (Patterns until
+    // another is), per track; inside the hub home, Patterns; Step Edit goes back to the page under it.
     {
         UiState q; q.track = 0;
-        q.page = PageId::Stage; CHECK(seq_tap_page(q, false) == PageId::Roll && seq_tap_page(q, true) == PageId::Steps);
-        q.page = PageId::Song; CHECK(seq_tap_page(q, true) == PageId::Steps);
-        q.page = PageId::Patterns; CHECK(seq_tap_page(q, false) == PageId::Roll && seq_tap_page(q, true) == PageId::Steps);
+        q.page = PageId::Stage; CHECK(seq_tap_page(q) == PageId::Patterns);
+        q.page = PageId::Song; CHECK(seq_tap_page(q) == PageId::Patterns);
         remember_editor(q, PageId::Motion);
-        CHECK(seq_tap_page(q, false) == PageId::Motion && seq_tap_page(q, true) == PageId::Motion);
-        q.track = 1; CHECK(seq_tap_page(q, false) == PageId::Roll); // each track its own
-        q.track = 0; remember_editor(q, PageId::Stage); CHECK(seq_editor_page(q, false) == PageId::Motion); // only editors count
-        q.page = PageId::Motion; CHECK(seq_tap_page(q, false) == PageId::Steps); // home
-        q.page = PageId::Steps; CHECK(seq_tap_page(q, true) == PageId::Steps);
-        q.page = PageId::StepEdit; CHECK(seq_tap_page(q, false) == PageId::Motion);
-        CHECK(seq_editor(PageId::Roll) && !seq_editor(PageId::StepEdit) && !seq_editor(PageId::Patterns));
+        q.page = PageId::Stage; CHECK(seq_tap_page(q) == PageId::Motion);
+        q.track = 1; CHECK(seq_tap_page(q) == PageId::Patterns); // each track its own
+        q.track = 0; remember_editor(q, PageId::Stage); CHECK(seq_editor_page(q) == PageId::Motion); // only the hub's pages count
+        q.page = PageId::Motion; CHECK(seq_tap_page(q) == PageId::Patterns); // home
+        q.page = PageId::Patterns; CHECK(seq_tap_page(q) == PageId::Patterns);
+        q.page = PageId::StepEdit; CHECK(seq_tap_page(q) == PageId::Motion);
+        CHECK(seq_editor(PageId::Roll) && !seq_editor(PageId::StepEdit) && seq_editor(PageId::Patterns));
     }
     // A full stack drops its oldest page.
     for (unsigned n = 0; n < 40; ++n) go(n % 2 ? PageId::Tempo : PageId::Project), go(PageId(unsigned(PageId::Samples) + n % 3));
@@ -4625,14 +4625,13 @@ void projects_and_polish() {
     // Roll R0: on Roll, Steps and Step Edit a press keeps the selected track's pattern, and so do the note cards.
     project.tracks[2].pattern = 3;
     ui.page = PageId::Roll; CHECK(press_scope(project, ui, B::Count, true) == (UndoScope {S::Pattern, 2, 3}));
-    ui.page = PageId::Steps; CHECK(press_scope(project, ui, B::WheelPush, false).kind == S::Pattern);
     ui.page = PageId::StepEdit; CHECK(press_scope(project, ui, B::TopRight, false).kind == S::Pattern);
     CHECK(press_scope(project, ui, B::Play, false).none()); // the transport is not an edit
     CHECK(scope(K::StepVelocity) == (UndoScope {S::Pattern, 2, 3}) && scope(K::StepLength).kind == S::Pattern);
     CHECK(scope(K::StepChance).kind == S::Pattern && scope(K::EventVelocity).kind == S::Pattern && scope(K::EventLength).kind == S::Pattern);
     CHECK(scope(K::Division).none()); // the grid moves no note
     CHECK(scope_name(project, ui, pattern_scope(project, ui)) == "T3 P4");
-    ui.page = PageId::Patterns; CHECK(press_scope(project, ui, B::Count, true).none()); // a pad there plays, it writes nothing
+    ui.page = PageId::Patterns; CHECK(press_scope(project, ui, B::Count, true).none()); // a pad there launches, it writes nothing
     ui.page = PageId::Roll; ui.seq_held = true; // Seq held: a pad launches, B1-B3 open editors; nothing is written
     CHECK(press_scope(project, ui, B::Count, true).none() && press_scope(project, ui, B::TopMiddle, false).none());
     ui.seq_held = false;
@@ -5599,7 +5598,7 @@ void stage() {
         UiState held;
         held.page = PageId::Stage; held.sample_held = true; held.sample_down = 1000;
         CHECK(!sample_sheet_shown(held, 1000 + sample_sheet_ms - 1) && sample_sheet_shown(held, 1000 + sample_sheet_ms));
-        held.page = PageId::Steps;
+        held.page = PageId::StepEdit;
         CHECK(!sample_sheet_shown(held, 5000) && sample_held_named(held, 5000));
         held.page = PageId::Roll;
         CHECK(!sample_sheet_shown(held, 5000) && sample_held_named(held, 5000));
@@ -5613,7 +5612,7 @@ void stage() {
         CHECK(keys[0].kind == K::Root && keys[1].kind == K::Scale && keys[2].kind == K::Layout);
         CHECK(sample_held_page(*project, u) == PageId::Keys);
         u.track = 1; CHECK(sample_held_page(*project, u) == PageId::Pads);
-        u.page = PageId::Steps; CHECK(sample_held_page(*project, u) == PageId::Count);
+        u.page = PageId::StepEdit; CHECK(sample_held_page(*project, u) == PageId::Count);
         u.page = PageId::Stage; u.track = 9; CHECK(sample_held_page(*project, u) == PageId::Count); // empty: nothing
     }
 
@@ -9069,8 +9068,8 @@ void pad_lights() {
     ui.shift = false; ui.copying = UiState::Copying::Patterns; ui.copy_from = 0; ui.copy_track = 1; light(plays);
     CHECK(is(0, Hue::White, 4) && is(2, Hue::Red, 1) && is(3, Hue::Track, 1));
     ui.copying = UiState::Copying::Off; ui.copy_from = -1; ui.seq_held = false;
-    // Steps on a kit: the last pad's lane only, by velocity; past the pattern's end dark.
-    ui.page = PageId::Steps; light(plays);
+    // Step Edit's pads on the steps, on a kit: the last pad's lane only, by velocity; past the pattern's end dark.
+    ui.page = PageId::StepEdit; ui.step_pads = true; light(plays);
     CHECK(is(0, Hue::Track, 4) && is(2, Hue::Track, 1) && is(1, Hue::Track, 1));
     p.length = 12 * sixteenth_ticks; light(plays);
     CHECK(is(12, Hue::None, 0) && is(11, Hue::Track, 1));
@@ -9082,7 +9081,7 @@ void pad_lights() {
     CHECK(!clear_lane(p, 5, 37));
     CHECK(move_lane(p, 0, 37, 38) && step_velocity(p, 0, 38) == 127 && step_velocity(p, 0, 37) == 0 && move_lane(p, 0, 38, 37));
     // Step Edit: the chosen event white, a pad with nothing on the step Faint.
-    ui.page = PageId::StepEdit; ui.step_cursor = 0; light({});
+    ui.page = PageId::StepEdit; ui.step_pads = false; ui.step_cursor = 0; light({});
     CHECK(is(1, Hue::White, 4) && is(0, Hue::Track, 1) && is(12, Hue::None, 0));
     // Roll: the note in focus white, notes elsewhere Dim, none Faint.
     ui.page = PageId::Roll; ui.roll_key = 37; light({});
@@ -9234,12 +9233,12 @@ void erase_copy_everywhere() {
     ui.seq_held = true; CHECK(copy_here(*project, ui, true, false) == C::Patterns); ui.seq_held = false;
     ui.page = PageId::Tracks; CHECK(copy_here(*project, ui, false, false) == C::Tracks);
     ui.page = PageId::Patterns; CHECK(copy_here(*project, ui, true, false) == C::Patterns); // the page's patterns before the kit's pads
-    ui.page = PageId::Steps; CHECK(copy_here(*project, ui, false, false) == C::Steps);
+    ui.page = PageId::StepEdit; ui.step_pads = true; CHECK(copy_here(*project, ui, false, false) == C::Steps);
     ui.page = PageId::Roll; CHECK(copy_here(*project, ui, false, false) == C::Keys);
-    ui.page = PageId::StepEdit; CHECK(copy_here(*project, ui, false, false) == C::Keys);
+    ui.page = PageId::StepEdit; ui.step_pads = false; CHECK(copy_here(*project, ui, false, false) == C::Keys);
     ui.track = 5; // an empty track: no notes to copy
     ui.page = PageId::Roll; CHECK(copy_here(*project, ui, false, false) == C::None);
-    ui.page = PageId::Steps; CHECK(copy_here(*project, ui, false, false) == C::None);
+    ui.page = PageId::StepEdit; CHECK(copy_here(*project, ui, false, false) == C::None);
     ui.track = 0;
     ui.page = PageId::Song; ui.song_cursor = 0;
     CHECK(copy_here(*project, ui, false, false) == C::None); // no clip under the cursor
@@ -9260,7 +9259,7 @@ void erase_copy_everywhere() {
     ui.page = PageId::SettingsPage; ui.track = 0; CHECK(copy_here(*project, ui, false, false) == C::None);
 
     // Where a tap of Erase has a job.
-    for (PageId page : {PageId::Roll, PageId::Steps, PageId::StepEdit, PageId::Patterns, PageId::Tracks, PageId::Scenes,
+    for (PageId page : {PageId::Roll, PageId::StepEdit, PageId::Patterns, PageId::Tracks,
                         PageId::Looper, PageId::Rack, PageId::Bus, PageId::Master, PageId::PadFx, PageId::Chop,
                         PageId::LayersPage, PageId::ModPage}) {
         ui.page = page; CHECK(erase_tap_page(ui));
@@ -9300,13 +9299,21 @@ void erase_copy_everywhere() {
     light(keys); CHECK(is(0, Hue::White, 4) && is(2, Hue::Track, 1)); // the source white, where it can land Faint
     CHECK(k2 != k0);
     ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::KeyCopy);
-    ui.page = PageId::Steps; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page); // keys are not steps
+    ui.page = PageId::StepEdit; ui.step_pads = true; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page); // keys are not steps
     ui.copying = UiState::Copying::Steps; ui.copy_from = -1; ui.steps_bar = 0;
     CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::StepCopy);
     light({}); CHECK(is(0, Hue::Track, 2) && is(1, Hue::None, 0)); // step 1 holds the note
     ui.copy_from = 0;
     light({}); CHECK(is(0, Hue::White, 4) && is(1, Hue::Track, 1));
-    ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page); // steps only on Steps
+    ui.page = PageId::Roll; CHECK(pad_context(ui, synth, PadFacts {}, 0) == PadContext::Page); // steps only on Step Edit's steps
+    // Patterns' pads are the track's patterns without Seq held; Shift + pad keeps the printed jobs.
+    {
+        UiState q; q.page = PageId::Patterns;
+        Track kit; kit.engine = EngineKind::Sampler;
+        CHECK(pad_context(q, kit, PadFacts {}, 0) == PadContext::SeqLayer);
+        q.shift = true; CHECK(pad_context(q, kit, PadFacts {}, 0) == PadContext::Shift);
+        q.shift = false; q.page = PageId::Roll; CHECK(pad_context(q, kit, PadFacts {}, 0) != PadContext::SeqLayer);
+    }
     ui.stop_copying();
 }
 
@@ -10047,19 +10054,19 @@ void ratchets() {
         Pattern q;
         put(q, 1, 60, 100);
         q.events[0].ratchet = 3; q.events[0].ramp = -40;
-        ui.page = PageId::Steps; ui.step_cursor = 1;
+        ui.page = PageId::StepEdit; ui.step_pads = true; ui.step_cursor = 1;
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::StepLength); // the main row: its length
-        ui.trig_cards = true;
+        ui.step_cards = 2; // TRIG
         auto trig = page_bindings(*project, ui, q, false);
         CHECK(trig[0].kind == Binding::Kind::StepRatchet && trig[0].value == 3 && trig[0].min == 1 && trig[0].max == 8);
         CHECK(trig[1].kind == Binding::Kind::StepRamp && trig[1].value == -40);
-        CHECK(!shift_bindings(*project, ui, q)[1].bound()); // a synth has no pitch ramp
-        ui.page = PageId::Roll; ui.step_cursor = 1; ui.roll_key = 60;
+        CHECK(shift_bindings(*project, ui, q)[1].kind == Binding::Kind::Division); // a synth has no pitch ramp: Q, as on NOTE
+        ui.page = PageId::Roll; ui.step_cursor = 1; ui.roll_key = 60; ui.trig_cards = true; // Roll's TRIG row
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::EventRatchet);
         ui.trig_cards = false;
         CHECK(page_bindings(*project, ui, q, false)[0].kind == Binding::Kind::EventLength
               && shift_bindings(*project, ui, q)[0].kind == Binding::Kind::EventNudge); // Shift + K1 off the TRIG row: NUDGE (round 2)
-        ui.track = 3; ui.page = PageId::Steps; ui.trig_cards = true;
+        ui.track = 3; ui.page = PageId::StepEdit; ui.step_cards = 2; ui.trig_cards = false;
         Pattern kit;
         Event hit;
         hit.tick = sixteenth_ticks; hit.key = uint8_t(sampler_first_note); hit.pitch_ramp = 5;
@@ -10073,7 +10080,7 @@ void ratchets() {
         first.key = uint8_t(sampler_first_note + 1); first.velocity = 50;
         kit.add(other); kit.add(first);
         project->tracks[3].last_pad = 4;
-        ui.page = PageId::Steps; ui.trig_cards = false;
+        ui.page = PageId::StepEdit; ui.step_cards = 0;
         CHECK(page_bindings(*project, ui, kit, false)[1].value == 30);
     }
 }
@@ -10160,10 +10167,10 @@ void trig_conditions() {
         Pattern q;
         put(q, 1, 60, 100);
         q.events[0].condition = uint8_t(trig_of(3, 4));
-        ui.page = PageId::Steps; ui.step_cursor = 1; ui.trig_cards = true;
+        ui.page = PageId::StepEdit; ui.step_cursor = 1; ui.step_cards = 2;
         auto cards = page_bindings(*project, ui, q, false);
         CHECK(cards[2].kind == Binding::Kind::StepCondition && cards[2].value == int(trig_of(3, 4)) && cards[2].max == int(trig_count) - 1);
-        ui.page = PageId::Roll; ui.roll_key = 60;
+        ui.page = PageId::Roll; ui.roll_key = 60; ui.trig_cards = true; // Roll's TRIG row
         CHECK(page_bindings(*project, ui, q, false)[2].kind == Binding::Kind::EventCondition);
         Step s = q.step(1);
         s.notes[0].key = 61;
@@ -10267,7 +10274,7 @@ void pattern_motion() {
         Pattern q;
         put(q, 3, 60, 100, 2);
         q.write_motion(point(3, unsigned(info.favourites[0]), 1, 0, 48));
-        ui.page = PageId::Steps; ui.held_step = 3; ui.step_cursor = 3;
+        ui.page = PageId::StepEdit; ui.step_pads = true; ui.held_step = 3; ui.step_cursor = 3;
         auto cards = page_bindings(*project, ui, q, false);
         CHECK(cards[0].kind == Binding::Kind::Lock && cards[0].id == motion_lane(unsigned(info.favourites[0])) && cards[0].value == 1);
         CHECK(cards[1].kind == Binding::Kind::Lock && cards[1].id == motion_lane(unsigned(info.favourites[1])));
@@ -10341,7 +10348,7 @@ void kit_lanes() {
         load_sound(project->tracks[3], EngineKind::Sampler, 0);
         project->tracks[3].last_pad = 1;
         UiState ui;
-        ui.track = 3; ui.page = PageId::Steps;
+        ui.track = 3; ui.page = PageId::StepEdit; ui.step_pads = true;
         Pattern q;
         q.set_lane_length(b, 6 * sixteenth_ticks);
         auto shifted = shift_bindings(*project, ui, q);
@@ -10350,7 +10357,7 @@ void kit_lanes() {
         CHECK(shift_bindings(*project, ui, q)[0].value == 16);
         synth(project->tracks[0], 0);
         ui.track = 0;
-        CHECK(!shift_bindings(*project, ui, q)[0].bound()); // a synth's Steps: the whole step, no lanes
+        CHECK(shift_bindings(*project, ui, q)[0].kind == Binding::Kind::PatternLength); // a synth's steps: the whole step, no lanes
     }
 }
 
@@ -10507,10 +10514,10 @@ void generators() {
         load_sound(project->tracks[3], EngineKind::Sampler, 0);
         project->tracks[3].last_pad = 2;
         UiState ui;
-        ui.track = 3; ui.page = PageId::Steps; ui.euclid_cards = true;
+        ui.track = 3; ui.page = PageId::StepEdit; ui.step_cards = 3;
         auto cards = page_bindings(*project, ui, p, false);
         CHECK(cards[0].kind == Binding::Kind::EuclidHits && cards[0].value == 16 && cards[1].kind == Binding::Kind::EuclidSteps && cards[2].value == 3);
-        ui.sheet_open = true; ui.euclid_cards = false;
+        ui.page = PageId::Patterns; ui.sheet_open = true; // Shift + B3 VARY on Patterns
         CHECK(page_bindings(*project, ui, p, false)[0].kind == Binding::Kind::VaryAmount);
     }
     // Variations.
@@ -12097,7 +12104,7 @@ void scenes_p5() {
         auto project = std::make_unique<Project>();
         synth(project->tracks[1], 2);
         UiState ui;
-        ui.page = PageId::Scenes; ui.track = 1;
+        ui.page = PageId::Patterns; ui.patterns_cards = 2; ui.track = 1; // FOLLOW
         Pattern p;
         p.follow = f;
         auto cards = base_bindings(*project, ui, p);
@@ -12105,6 +12112,13 @@ void scenes_p5() {
               cards[1].value == 66 && cards[2].kind == Binding::Kind::FollowChance && cards[2].value == 75);
         auto shifted = shift_bindings(*project, ui, p);
         CHECK(shifted[0].kind == Binding::Kind::FollowOther && shifted[0].value == int(FA::Previous) && !shifted[1].bound());
+        // SCENE (Shift + B1): K1 the cursor's scene's tempo, in its bank; the pattern's cards again on PATTERNS.
+        ui.patterns_cards = 1; ui.pattern_bank = 1; ui.scene = 3; project->scenes[19].tempo = 1284;
+        auto scene = base_bindings(*project, ui, p);
+        CHECK(scene[0].kind == Binding::Kind::SceneTempo && scene[0].id == 19 && scene[0].value == 128 && !scene[1].bound());
+        CHECK(!shift_bindings(*project, ui, p)[0].bound());
+        ui.patterns_cards = 0;
+        CHECK(base_bindings(*project, ui, p)[0].kind == Binding::Kind::PatternLength);
     }
     // Heard: a MIDI track's patterns 1-3 (one note each), P1 Next after a bar, P2 (half a bar) Next after two plays,
     // P3 Stop after a bar: 60, 62 62, 64, then nothing, the track stopped; three follow actions came.

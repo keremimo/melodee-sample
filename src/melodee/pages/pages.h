@@ -25,11 +25,11 @@ void project_listed(Context& c);
 void song_repeat(Context& c);
 // Loop: the brace on the clip's bars, or off. False when there was nothing to do.
 bool song_loop(Context& c);
-extern const PageSpec stage_page, keys_page, sounds_page, edit_page, steps_page, roll_page, motion_page, patterns_page, song_page, input_config_page,
+extern const PageSpec stage_page, keys_page, sounds_page, edit_page, roll_page, motion_page, patterns_page, song_page, input_config_page,
     rack_page, sends_page, bus_page, master_page,
     pads_page, samples_page, chop_page,
     record_page, project_page, tempo_page,
-    pad_edit_page, play_edit_page, envelope_page, filter_page, follow_page, cloud_page, layers_page, mod_page, scenes_page,
+    pad_edit_page, play_edit_page, envelope_page, filter_page, follow_page, cloud_page, layers_page, mod_page,
     punch_page, settings_page, about_page, pad_fx_page, time_correct_page, step_edit_page,
     pad_mix_page, pad_filter_page, filter_env_page, knob_fx_page, compressor_page, flex_beat_page,
     fader_page, midi_config_page, card_access_page, tracks_page, looper_page, rec_quantize_page, plugins_page,

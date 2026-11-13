@@ -18,21 +18,21 @@
 namespace melodee {
 
 constexpr uint32_t sample_sheet_ms = 300;
-// Whether the screen shows Sample held's pads now (not on Steps and Roll, nor under the Name or Exit sheet).
+// Whether the screen shows Sample held's pads now (not on Step Edit and Roll, nor under the Name or Exit sheet).
 inline bool sample_sheet_shown(const UiState& ui, uint32_t now) {
-    return ui.sample_held && now - ui.sample_down >= sample_sheet_ms && ui.page != PageId::Steps && ui.page != PageId::Roll &&
+    return ui.sample_held && now - ui.sample_down >= sample_sheet_ms && ui.page != PageId::StepEdit && ui.page != PageId::Roll &&
            !ui.name.open() && !ui.exit_open;
 }
-// Whether Steps or Roll name the held sound instead (the editor stays in view).
+// Whether Step Edit or Roll name the held sound instead (the editor stays in view).
 inline bool sample_held_named(const UiState& ui, uint32_t now) {
-    return ui.sample_held && now - ui.sample_down >= sample_sheet_ms && (ui.page == PageId::Steps || ui.page == PageId::Roll);
+    return ui.sample_held && now - ui.sample_down >= sample_sheet_ms && (ui.page == PageId::StepEdit || ui.page == PageId::Roll);
 }
 
 // The page whose cards K1-K3 are while Sample is held (Pads on a kit, Keys otherwise: Keys' root, scale and
 // layout); PageId::Count when it is not held, on Steps and Roll (their own cards stay) or on an empty track.
 inline PageId sample_held_page(const Project& project, const UiState& ui) {
     const auto& t = project.tracks[ui.track % track_count];
-    if (!ui.sample_held || ui.page == PageId::Steps || ui.page == PageId::Roll || !t.used()) return PageId::Count;
+    if (!ui.sample_held || ui.page == PageId::StepEdit || ui.page == PageId::Roll || !t.used()) return PageId::Count;
     return t.engine == EngineKind::Sampler ? PageId::Pads : PageId::Keys;
 }
 

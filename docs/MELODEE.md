@@ -118,8 +118,8 @@ cards.
 | Control | Press | With Shift |
 | --- | --- | --- |
 | Main volume | Master level, at once | |
-| Sample | The SOUND hub (docs/HUBS_PLAN.md): Stage from any page; on Stage, B1's first page; it opens no other page. Held: after 0.3 s the track's pads (Pads on a kit, Keys otherwise) over the page, K1-K3 theirs, B1-B3 Stage's sections; on Steps and Roll the editor stays and the header names the held sound. Held + pad: that kit pad becomes the last pad, unheard. A hold released after 0.3 s with nothing used opens nothing | Input Config |
-| Seq | The SEQUENCE hub (docs/HUBS_PLAN.md). Tap: the track's editor (Steps, Roll or Motion, the last open) from anywhere; on an editor home, Steps; on Step Edit back to its editor. Patterns is the ARRANGE hub's (Shift + Pad 12: Patterns, Scenes, Song, B1-B3 between them). Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, under the editor; again back to it |
+| Sample | The SOUND hub (docs/HUBS_PLAN.md): Stage from any page; on Stage, B1's first page; it opens no other page. Held: after 0.3 s the track's pads (Pads on a kit, Keys otherwise) over the page, K1-K3 theirs, B1-B3 Stage's sections; on Step Edit and Roll the editor stays and the header names the held sound. Held + pad: that kit pad becomes the last pad, unheard. A hold released after 0.3 s with nothing used opens nothing | Input Config |
+| Seq | The SEQUENCE hub (docs/HUBS_PLAN.md). Tap: the hub page last open on the track (Patterns, Roll or Motion; Patterns until another is opened) from anywhere; on a hub page home, Patterns; on Step Edit back to the page under it. B1-B3 PATTERNS, ROLL, MOTION on all three. Held, on any page: the Sequence layer (Sequencing, below); after 0.3 s the Sequence sheet | Step Edit, over the page in view; again back to it |
 | Pad FX | Pad FX (the punches). Acts on its release: with Knob FX, in either order, the MIX hub on Tracks (shell/mix_hub.h), and neither's own job | Flex Beat (at once) |
 | Knob FX | Knob FX mode on (lit, its page) or off, on its release; with Pad FX, the MIX hub | FX Select: the effect chains, Track → Sends → Bus → Master (at once) |
 | Shift | The second layer, held | |
@@ -135,7 +135,7 @@ cards.
 | Tap Tempo | Tap the tempo; held half a second, the Tempo page | Metronome Off → On → Rec |
 | Wheel | Moves the cursor or the value; turned while a pot was touched last with Shift, fine edit (on Roll: marks notes; the wheel alone walks each chord's notes, then the next step) | |
 | Push | Opens or confirms | Back along the page stack (16 deep; on Song a marker, on Project up a folder) |
-| − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Steps nudge; sampler pages and Punch the bank | Undo / redo, on every page |
+| − / + | Lists move as the wheel does; on play pages the octave (16 Levels held: its octave or Zones' page; on Roll the pitch: the chord in the step, then a semitone); Settings and Tempo the value; Song markers; Patterns the track; sampler pages and Punch the bank | Undo / redo, on every page |
 | Sample Record | Record on a kit (there it ends the take and opens Stage's TRIM on the pad; B3 PRINT the PRINT sheet); the PRINT sheet on a PLUGIN or MIDI track (Print and freeze, below); with Seq held, the pattern pads freeze or thaw | Audio Recall: the last 25 s onto the next empty pad |
 | Seq Record | Stopped: arms (flashing), Play starts; playing: records at once; recording: stops recording, playback goes on | Recall (Capture): what every track played last into its next empty pattern, no page |
 | Stop | Stop (on Record, ends the take) | All notes off |
@@ -221,8 +221,9 @@ grammar (`shell/pad_light.h`):
 | Seq held | The pattern playing Full, queued blinking, with notes Dim, frozen white (Dim; playing Full); + Shift a column, white by how many tracks hold notes there; + Erase red; a copy's source white, where it lands Faint (red where it replaces); + Sample Record the patterns to freeze white |
 | PRINT sheet | Patterns lit for printing Full, others with notes Faint; printing: done white, the one printing blinking white, waiting Dim |
 | A deep-frozen track | Its own pads dark: they play nothing |
-| Steps | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end dark, the playhead white (red while recording); on a kit the last pad's lane |
-| Step Edit | The step's events by velocity, the chosen one white |
+| Patterns | As the Seq held pads: the selected track's patterns of the bank in view as the cells show them |
+| Step Edit, STEPS mode | The bar's steps by velocity (accent Full, 90 and up Mid, softer Dim, empty Faint), past the pattern's end dark, the playhead white (red while recording); on a kit the last pad's lane |
+| Step Edit, PLAY mode | The step's events by velocity, the chosen one white |
 | Roll | The note in focus white, the cursor's step Full, notes elsewhere Dim, none Faint |
 | Time Correct | Whose notes move Full, with notes Dim |
 | Motion on a kit | The last pad Full, pads with recorded motion Mid |
@@ -235,7 +236,7 @@ grammar (`shell/pad_light.h`):
 | Pad Bank + Erase held | The tracks Erase + pad would clear Faint red (a sound, or notes in its patterns), empty ones dark |
 | Shift + Erase on a kit | The pads that can be copied Dim; then the source white, where it lands Faint (red where it replaces) |
 | Erase held on a synth's keys | The keys with notes in the pattern Dim red, flaring as they play |
-| Key or step copy | The keys (or Steps' steps) with notes Dim; then the source white, where it lands Faint (red where it replaces) |
+| Key or step copy | The keys (or Step Edit's steps in STEPS mode) with notes Dim; then the source white, where it lands Faint (red where it replaces) |
 | Name sheet | Keys white Dim, delete red, the key just typed bright for the retap window |
 | A question, Exit | The pad the question is about flashing red, the rest dark; Exit all dark |
 
@@ -397,7 +398,7 @@ beat; the meters show the mix.
   on the bank lights. The chip says DRUMS, the pill the bank; each pad
   names the plug-in's voice there (else its note), a pad with no voice
   dark, the drum hit last in the track's colour, and the pads light the
-  same. Steps works one drum's lane at a time as on a kit (the drum hit
+  same. Step Edit's STEPS mode works one drum's lane at a time as on a kit (the drum hit
   last); Roll draws pad lanes; chords play the pad's note alone; 16 Levels
   is Velocity alone (another pitch would be another drum); the variations
   that move octaves are left out, as on a kit.
@@ -551,7 +552,7 @@ rolled once for all of them, an accent lifts every one. Its **ramp**
 (−100..100 %) sets the last hit's velocity against the note's, the hits
 between going evenly; on a kit pad a **pitch ramp** (−24..24 semitones)
 does the same to its tune. Slide and Tie wait for a note of one hit. The
-editors' TRIG row holds them: the lit key again (STEPS on Steps, ROLL on
+editors' TRIG row holds them: B1's TRIG set on Step Edit (ROLL again on
 Roll) turns the cards to K1 the hits, K2 the ramp, Shift + K2 the pitch
 ramp (a kit); again, back. Files keep them in RTCH.
 
@@ -564,7 +565,7 @@ played, or not: a kit's pad, else the track), NEI / NOT NEI (the same of
 the lane before: a kit's pad below, else the track before; nothing weighed
 there yet counts as played). A note is weighed when it has a condition of
 its own (not PRE or NEI) or a chance; the chance is rolled after the
-condition. Steps rings a step's foot and Roll a note's end when it has
+condition. Step Edit rings a step's foot and Roll a note's end when it has
 one; files keep them in COND. `status`: `melodee_trigs` (let through /
 held back), `melodee_fill`, `melodee_hits` (ratchets' hits after their
 first).
@@ -572,12 +573,12 @@ first).
 Seq has three levels and a layer (`shell/seq_layer.h`): **tap to look,
 hold to steer, Shift + Seq to zoom in**.
 
-- A **tap** of Seq opens the selected track's editor from any page: the one
-  last open on that track, else Steps on a kit and Roll on a synth or MIDI
-  track. On an editor it goes home, Steps; on Step Edit back to its editor.
-  B1–B3 on every editor are STEPS, ROLL, MOTION. Patterns, Scenes and Song are
-  the ARRANGE hub (Shift + Pad 12), B1–B3 PATTERNS, SCENES, SONG on Patterns
-  and Scenes (Song keeps its own keys).
+- A **tap** of Seq opens the selected track's hub page from any page: the
+  one last open on that track (Patterns, Roll or Motion), Patterns until
+  another is opened. On a hub page it goes home, Patterns; on Step Edit
+  back to the page under it. B1–B3 on all three are PATTERNS, ROLL,
+  MOTION. Song is Shift + Pad 12, as printed; again on Song closes it (Song
+  keeps its own keys).
 - **Seq held**, on any page, is the Sequence layer. A track has 128
   patterns, eight banks of sixteen (A–H, as the MPC's 128 sequences). The
   pads light at once as the track's patterns in the bank in view (playing
@@ -600,39 +601,54 @@ hold to steer, Shift + Seq to zoom in**.
     copy: the pattern, then where (on this or another track; the pads stay
     patterns until it ends).
   - Pad Bank the next bank of patterns (Shift: the previous); the pads,
-    the sheet, Patterns, Scenes and Time Correct's groove row show it. It
+    the sheet, Patterns and Time Correct's groove row show it. It
     follows the selected track's pattern again whenever that changes. Hold
     a pad, step the bank, tap a pad: a copy across banks.
   - −/+ the previous / next pattern, across the banks; the wheel the tempo (Push: whole BPM
     or tenths); K1–K3 the pattern's length, Q and swing (Shift: any bar
     count, time signature, metronome level), over Knob FX's.
-  - B1–B3 open Steps, Roll and Motion (the sheet stays away until Seq is
+  - B1–B3 open Patterns, Roll and Motion (the sheet stays away until Seq is
     let go); Seq Record starts a new take in the next empty pattern, armed
     (playing: recording at once). Other buttons keep their jobs.
-- **Patterns** (Shift + Pad 12, ARRANGE's B1): tracks down, the bank in view's sixteen patterns
-  across (the header names the bank). The pads play
-  the selected track, so it is played and recorded with its patterns in
-  view (Erase + pad and mute mode as on any play page). K1 length (1, 2, 4
-  .. 128 bars; Shift: any count), K2 Q (Shift: time signature, 1/4 ..
-  15/16), K3 swing (Shift: metronome level). The wheel moves the playhead
-  by a beat (Shift: by Q); stopped, that is where Shift + Play continues.
-  The header shows the position, time signature and Rec Quantize. BPM per
-  pattern (each pattern number its own tempo, the one launched last
-  leading) or one for the project: Push on the Tempo page. Push opens
-  Scenes. A pattern with a follow action carries a dot in its corner.
-- **Scenes** (ARRANGE's B2, or Push on Patterns; roadmap P5): a scene is a column, pattern
-  n of every track, with a name and a tempo of its own. The sixteen sit as
-  the pads do: a pad launches its scene, pattern n on every track holding
-  notes there (and on the selected track) at the next bar (stopped, at
-  once), tracks with nothing there playing on; its tempo takes over on that
-  bar (with BPM per pattern on, a pattern's own still leads). Lit bright
-  while the scene plays whole, blinking while it waits for its bar. Push
-  names the scene in hand (the ready names are the markers'), the wheel
-  sets its tempo (below 30 BPM: none), Erase + pad clears both. Beside the
-  grid: the scene in hand, its tempo, the follow action and a dot a track
-  (in the scene, playing another pattern, or stopped: a ring). Files keep
-  scenes in SCNE. Minus / Plus move the track.
-- **Follow actions** (Scenes' cards): what the selected track's pattern
+- **Patterns** (Seq's home, B1 PATTERNS; Seq held + B1): the selected
+  track's sixteen patterns of the bank in view, drawn as the pads sit (pad
+  1 bottom left, pad 13 top left), so a cell is the pad that launches it.
+  Each cell: the pattern number, ▶ while it plays, NEXT (a blinking ring)
+  while it waits for the next bar, tinted when it has notes, an arrow for a
+  follow action, an amber dot for a scene with a tempo of its own, and a
+  small dot for each other track in view (a ring: that track has notes in
+  this pattern; filled: it plays it). Right: the eight tracks in view, each
+  with ▶ and the pattern it plays and a progress bar (– when nothing
+  plays). The pads light as the cells. A pad launches the selected track's
+  pattern (next bar; stopped, at once); hold a pad and tap another to
+  copy; Erase + pad asks, then clears it; Shift + pad keeps the printed
+  Shift jobs. Pad Bank steps the bank A–H (the bank lights show it), as
+  Seq held + Pad Bank. Minus / Plus move the track. K1 length (1, 2, 4 ..
+  128 bars; Shift: any count), K2 Q (Shift: time signature, 1/4 .. 15/16),
+  K3 swing (Shift: metronome level). The wheel moves an amber cursor over
+  the cells in pad order; cell n is also scene n, and Push launches it.
+  Shift + wheel moves the playhead by Q; stopped, that is where Shift +
+  Play continues. The header chip shows S<n> and the scene's name, then
+  Rec Quantize when there is room. BPM per pattern (each
+  pattern number its own tempo, the one launched last leading) or one for
+  the project: Push on the Tempo page. Shift + B1 SCENE and Shift + B2
+  FOLLOW turn the cards to the scene and the follow action; again (or B1
+  PATTERNS) back to the pattern cards. Shift + B3 VARY opens the
+  variation sheet: Thinner (the weakest notes by where they fall in the
+  bar and how hard), Busier (a kit: softer hits beside a lane's; a line:
+  passing notes in the project's key), Humanised, Reversed, Octave up and
+  down (not on a kit); the wheel picks, K1 the amount of the first three,
+  B3 DO IT or Push makes it into the next empty pattern, which plays from
+  the next bar (one undo); B1 BACK.
+- **Scenes** (on Patterns; roadmap P5): a scene is a column, pattern n of
+  every track, with a name and a tempo of its own. Push on Patterns
+  launches the cursor's scene: pattern n on every track holding notes
+  there (and on the selected track) at the next bar (stopped, at once),
+  tracks with nothing there playing on; its tempo takes over on that bar
+  (with BPM per pattern on, a pattern's own still leads). Shift + B1 SCENE:
+  K1 sets the cursor's scene tempo (below 30 BPM: None), Push names it
+  (the ready names are the markers'). Files keep scenes in SCNE.
+- **Follow actions** (Patterns' Shift + B2 FOLLOW cards): what the selected track's pattern
   does once it has played a while, as melodee-ios's clips. K1 FOLLOW Next,
   Previous (round the track's patterns with notes), Any (another at
   random), Again (from its top), Stop (the track silent until a launch or
@@ -644,7 +660,7 @@ hold to steer, Shift + Seq to zoom in**.
   not on a bar line. A launch waiting for its bar comes first; in the song
   none come. A track playing a **pattern chain** plays the chain: its
   patterns' follow actions wait while it is chained (the chain is the
-  order asked for). Shift + B3 ALL puts the follow action on every track's
+  order asked for). Push puts the follow action on every track's
   pattern with notes in its column (one undo); each turn is one undo of
   the pattern. Files keep them in FOLW. `status`: `melodee_follows`,
   `melodee_stopped`.
@@ -660,20 +676,52 @@ hold to steer, Shift + Seq to zoom in**.
   Melodee's settings; B1 back, the pads play. Patterns' header names it
   (REC Q 1/32T, REC Q OFF). Overdub. A take is one undo.
   While the song plays, a pattern launched is written as a clip.
-- **Step Edit** (Shift + Seq, under the editor): step entry, a pattern
-  typed in with the transport stopped. A caret stands on a step of Q
-  (shared with Steps and Roll); play a pad or a chord and it is written
-  there, heard as it goes in, and when the pads let go the caret moves on;
-  B2 REST moves it on without writing, B3 ERASE steps back and takes that
-  step out, the wheel moves it without writing (all round the pattern).
-  K1–K3 are what a pad writes: its length in steps, velocity (Played: as
-  hit) and chance; Shift + K1 the pattern's length, Shift + K2 Q, Shift + K3
-  the time signature; −/+ the octave (a kit's bank). Sixteen steps round
-  the caret show each step's notes as bars (lower keys lower, taller for
-  harder), and a panel the pads held (else what the step holds) and the
-  step the caret goes to. A chord on a step is one undo. Erase + pad asks,
-  then erases that pad's events. Push, Seq or Shift + Seq go back
-  to the editor.
+- **Step Edit** (Shift + Seq, over the page in view): the step editor. A
+  caret stands on a step of Q (shared with Roll); the wheel moves it
+  through every bar. The screen draws the caret's bar as a drum machine
+  draws a bar: sixteen columns in four beats, each stacking its notes by
+  pitch, taller for harder hits (a ratchet as its hits side by side, each
+  as tall as it plays), a dot over it for an accent, an arc under it for a
+  tie, a slide sign, a square for a lock, a ring for a condition, the
+  playhead tick, the caret's column amber with its mark, the pattern's bars
+  as blocks at the foot, and a panel with the pads held (else what the step
+  holds) and the step the caret goes to. Header chip STEP n · BAR b. Shift
+  + B1 PADS switches the pads between two modes (its LED lit: STEPS).
+  - **PLAY** (the default, step entry): play a pad or a chord and it is
+    written at the caret, heard as it goes in, and when the pads let go
+    the caret moves on; B2 REST moves it on without writing, B3 ERASE
+    steps back and takes that step out. K1–K3 are what a pad writes: its
+    length in steps, velocity (Played: as hit) and chance. A chord on a
+    step is one undo. Erase + pad asks, then erases that pad's events.
+  - **STEPS**: the pads are the sixteen steps of the caret's bar for one
+    sound (header chip STEPS · the sound): on a kit or Drums track the last
+    pad (Sample held + pad picks another), the lane's notes alone (Roll
+    edits the whole kit); on a synth the last note. A tap sets or clears
+    the step; the pads light the bar's steps. K1–K3 the step's length,
+    velocity and chance; on a kit Shift + K1 is the lane's own **length**
+    (LANE: 1 step to the pattern's, All): a shorter lane loops on its own
+    from where the pattern began, polymeter inside the kit, and counts its
+    own passes for trig conditions; the bar darkens what lies past it, its
+    playhead goes round with it and the header names it (LANE 6). Files
+    keep lanes in LANE. **Held, a step is locked**: while a pad is down
+    the cards are the Motion page's three lanes, each showing its lock on
+    that step (else the track's own value), and a turn writes a lock
+    there, for as long as the step's longest note on its lane (a step at
+    least); a locked step has a square at its top. The wheel changes a
+    held step's pitch (a kit: moves the note to the next pad, the lane with
+    it). Erase + pad clears the step.
+  B1 steps through the card sets: NOTE, LOCK (the Motion lanes locked on
+  the caret's step), TRIG (ratchet, ramp, condition; Shift + K2 a kit
+  pad's pitch ramp), and on a kit or Drums lane EUCLID: K1 hits, K2 steps
+  (1–64), K3 rotation, Shift + K1 the lane length; each turn lays that
+  rhythm on the lane at once as notes a step of Q each (its old notes go,
+  one undo), the lane looping over its steps on its own; the header names
+  it (E(5,8)) and EUCL keeps it with the pattern. Shift + B2 TIE ties the
+  caret's notes into the next step (again: untie). Shift + B3 INSERT puts
+  an empty step at the caret and moves the rest later (the last step's
+  notes fall off the end). Otherwise Shift + K1 the pattern's length,
+  Shift + K2 Q, Shift + K3 the time signature; −/+ the octave (a kit's
+  bank). Push, Seq or Shift + Seq go back to the page under it.
 - **Roll** (B2): the pattern's notes, each at its own tick for its own length, over bar
   lines, any number to a step. The cursor is a step of Q and a pitch: the
   wheel goes through a step's notes one by one, then on to the next step
@@ -690,7 +738,7 @@ hold to steer, Shift + Seq to zoom in**.
   wheel pulls them a quarter of the way to the grid each detent, − / + move
   them an octave, and Shift + Erase copies them (header COPY: Push pastes
   them at the cursor, the copies marked; Erase leaves). A Shift tap clears
-  the marks. On Roll, Steps and Step Edit the printed buttons act on the
+  the marks. On Roll and Step Edit the printed buttons act on the
   marked notes, else the note in hand: Chop splits each note at the grid
   line nearest its middle, Shift + Chop holds each note until the next
   starts (legato; on a kit, until that pad's next hit), Shift + Loop reverses
@@ -706,7 +754,7 @@ hold to steer, Shift + Seq to zoom in**.
   the header; K1 its length, K2 velocity, K3 chance, Shift + K1 NUDGE (how
   many ticks it sits early or late of its nearest grid line; the cursor
   follows it) (ROLL again: its ratchet, drawn as its hits along the note). A pad held on the note in
-  focus turns the cards to locks on it, as a step held on Steps (header
+  focus turns the cards to locks on it, as a step held on Step Edit's STEPS mode (header
   LOCK; a locked note has a square at its start). A pad writes its note
   at the cursor (one step of Q long) or focuses it if it is there; Pad Bank
   is the pads' octave (Shift: down). Erase tapped alone deletes the note in
@@ -725,37 +773,7 @@ hold to steer, Shift + Seq to zoom in**.
   live. On a kit the rows are its pads, a lane
   each, the kit's bank in view and numbered as the pads are (every other
   lane, the cursor's always); it opens on the last pad's lane.
-- **Steps, Motion** (B1, B3): Steps the bar's steps
-  on the pads, drawn as a drum machine draws a bar: sixteen columns in four
-  beats, each stacking its notes by pitch, taller for harder hits (a
-  ratchet as its hits side by side, each as tall as it plays), a dot
-  over it for an accent, an arc under it for a tie, the numbers under them
-  and the pattern's bars as blocks at the foot; the step in hand is the
-  header's. On a kit the pads are the last pad's lane: a tap sets or clears
-  that pad's note and leaves the others' (Roll edits the whole kit), the
-  cards are that pad's note in the step, and
-  the wheel moves a held step's note to the next pad, the lane with it.
-  Shift + K1 there is the lane's own **length** (LANE: 1 step to the
-  pattern's, All): a shorter lane loops on its own from where the pattern
-  began, polymeter inside the kit, and counts its own passes for trig
-  conditions; Steps darkens what lies past it, its playhead goes round with
-  it and the header names it (LANE 6). Files keep lanes in LANE.
-  On a kit STEPS a third time (after the TRIG row) is the **EUCLID** row of
-  the last pad's lane: K1 hits, K2 steps (1–64), K3 rotation; each turn
-  lays that rhythm on the lane at once as notes a step of Q each (its old
-  notes go, one undo), the lane looping over its steps on its own; the
-  header names it (E(5,8)) and EUCL keeps it with the pattern. **Push** opens
-  **VARY**: Thinner (the weakest notes by where they fall in the bar and
-  how hard), Busier (a kit: softer hits beside a lane's; a line: passing
-  notes in the project's key), Humanised, Reversed, Octave up and down (not
-  on a kit); the wheel picks, K1 the amount of the first three, B3 DO IT or
-  Push makes it into the next empty pattern, which plays from the next bar
-  (one undo); B1 or a pad backs out.
-  **Held, a step is locked**: while a pad is down the cards are the Motion
-  page's three lanes, each showing its lock on that step (else the track's
-  own value), and a turn writes a lock there, for as long as the step's
-  longest note on its lane (a step at least); a locked step has a square
-  at its top. Motion the lanes of recorded pot moves (Seq Record + a pot
+- **Motion** (B3): the lanes of recorded pot moves (Seq Record + a pot
   writes at the playing tick; a kit pad's level, tune, pan, envelopes,
   filter and more are lanes of that pad; Erase + pot asks, then clears the
   lane, locks too), all three on one large graph in their knobs' colours,
@@ -805,7 +823,7 @@ hold to steer, Shift + Seq to zoom in**.
   GROOVE taken from another pattern (any track's: how far each of its
   sixteenths falls off the grid and how hard it plays against its mean,
   folded onto 64 steps at most) laid on its notes by AMOUNT. The audio
-  thread plays the pattern with its feel laid on (`feel_pattern`); Steps,
+  thread plays the pattern with its feel laid on (`feel_pattern`); Step Edit,
   Roll and the file keep the notes as written. Time Correct's page holds
   the cards (`feel_cards`).
 - **Time Correct** (Shift + Pad 14): heard live, no commit. The selected
@@ -913,7 +931,10 @@ wraps into the start), Ring (one pass, then its tail until it falls
 silent, 10 s at most) or Cut (one pass). K3 is empty. Beside the pads:
 how many patterns are lit, what the prints take on the card, and the
 share of a block the track takes now (what freezing saves). B1 CANCEL,
-B3 FREEZE (Push too), Shift + B3 DEEP FREEZE (below).
+B3 FREEZE (Push too), Shift + B3 DEEP FREEZE (below). On a frozen track
+Shift + B1 UNFREEZE plays it live again at once (a deep-frozen one thaws)
+and closes the sheet; with no pattern lit B3 reads UNFREEZE and does the
+same. Neither asks: the prints stay for the next freeze.
 
 While prints are made the header shows PRINTING n/m, each pad its print's
 progress (a ring filling; done ones solid with a snowflake), and the
@@ -1710,9 +1731,9 @@ while following.
   value (on Motion: asks to clear the lane). + fader asks to clear its lane.
   Tapped on its own (nothing else pressed or turned while it is down) it
   erases the page's selection (shell/erase_copy.h): Roll's note in focus,
-  Steps' step under the cursor (a kit: the lane's note), Step Edit's
-  event, Patterns' pattern in hand (asks), Tracks' track (asks), Scenes'
-  scene name and tempo, the Looper's loop (asks), a chain's effect in
+  Step Edit's event (STEPS mode: the caret's step; a kit: the lane's
+  note), Patterns' pattern in hand (asks), Tracks' track (asks), the
+  Looper's loop (asks), a chain's effect in
   focus, Chop's slice in hand (it joins the one before), LAYERS' layer in
   hand, MOD's target in hand, and on Project the project under the cursor
   (the sheet opens on DELETE, armed; a second tap deletes). Song's Erase
@@ -1720,8 +1741,8 @@ while following.
   undo.
 - **Copy** (Shift + Erase) copies what the page holds. Pad Bank held, or
   Tracks: whole tracks (sound, kit, its 128 patterns and their motion; the
-  target keeps its mix strip). Seq held, or Patterns: patterns. Steps: a
-  step onto another (a kit: the lane's notes). Roll, Step Edit and a
+  target keeps its mix strip). Seq held, or Patterns: patterns. Step Edit in STEPS mode: a
+  step onto another (a kit: the lane's notes). Roll, Step Edit in PLAY mode and a
   synth's play pages: a key's notes onto another key in the pattern. A
   kit's play pages: kit pads. These pick: the first pad is the source, the
   next the target, whose own notes or sound go first (one undo). Again, or
@@ -1740,7 +1761,7 @@ while following.
 - **Undo** (Shift + −, redo Shift + +): the last 32 steps. A take is one; a
   pot's turns are one per control (closed by another control, a press or
   two seconds still); a press on a page is one step of what the page edits.
-  On Roll, Steps and Step Edit a pad is one step of the pattern from press
+  On Roll and Step Edit a pad is one step of the pattern from press
   to release: the note it writes, toggles or picks and whatever the wheel,
   the pots or the fader do to it while it is held (undo while holding takes
   that step back). The note cards and Roll's NUDGE are steps like any
@@ -1932,7 +1953,7 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
 - **Notes.** Notes, the wheel (CC 1), bend and each note's pressure (poly
   aftertouch) go to a PLUGIN track's plug-in as MIDI; the sequencer's accent
   as a harder velocity, a Slide or Tie as CC 84 with the key it goes on
-  from (and CC 68 held over a tie), above, "Steps".
+  from (and CC 68 held over a tie), above, "Roll".
 - **Loading.** The card is mounted `noexec`, so a plug-in runs from a copy
   in `/run` (RAM), made when a project uses it and removed when nothing
   does. The folders beside it on the card are linked beside the copy, so a

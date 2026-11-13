@@ -13,11 +13,6 @@ namespace melodee {
 namespace {
 using B = SurfaceButton;
 
-bool kit_track(Context& c) {
-    auto engine = c.track().engine;
-    return engine == EngineKind::Sampler;
-}
-
 std::string name_of(unsigned pattern) { return "P" + std::to_string(pattern % pattern_count + 1); }
 
 // The pattern the selected track plays now (stopped: the one that will play).
@@ -65,7 +60,7 @@ void new_take(Context& c) {
 void step_edit(Context& c) {
     auto& ui = c.ui;
     ui.shift_used = true;
-    if (ui.page == PageId::StepEdit) { c.open(seq_editor_page(ui, kit_track(c))); return; }
+    if (ui.page == PageId::StepEdit) { c.open(seq_editor_page(ui)); return; }
     if (ui.page == PageId::Roll) roll_select(c.pattern(), ui, roll_lane(c.track())); // the note in focus is the event chosen
     c.open(PageId::StepEdit);
 }
@@ -90,7 +85,7 @@ void seq_press(Context& c, bool pressed) {
     ui.seq_held = false; ui.seq_left = false;
     if (!tap) return;
     if (ui.shift) step_edit(c); // Shift came down during the tap
-    else c.open(seq_tap_page(ui, kit_track(c)));
+    else c.open(seq_tap_page(ui));
 }
 
 bool seq_pad(Context& c, unsigned pad, bool down) {
@@ -108,8 +103,8 @@ bool seq_pad(Context& c, unsigned pad, bool down) {
     }
     unsigned under = pad;
     pad = ui.pad_pattern(pad); // the pattern under it, in the bank in view (Seq held + Pad Bank)
-    if (!ui.seq_held) return false;
-    ui.seq_used = true;
+    if (!ui.seq_held && ui.page != PageId::Patterns) return false; // Patterns: its pads are the patterns too
+    if (ui.seq_held) ui.seq_used = true;
     if (ui.seq_print) { c.seq_print_pad(under); return true; } // freeze plan F2c: that pattern frozen or thawed
     unsigned t = ui.track % track_count;
     if (ui.erase) {
@@ -136,7 +131,7 @@ bool seq_button(Context& c, SurfaceButton button) {
     ui.seq_used = true; // whatever it does, letting go of Seq then goes nowhere
     switch (button) {
     case B::TopLeft: case B::TopMiddle: case B::TopRight: {
-        static const PageId editors[] {PageId::Steps, PageId::Roll, PageId::Motion};
+        static const PageId editors[] {PageId::Patterns, PageId::Roll, PageId::Motion};
         ui.seq_left = true; // the sheet stays away: the editor is what was asked for
         c.open(editors[button == B::TopLeft ? 0 : button == B::TopMiddle ? 1 : 2]);
         return true;

@@ -7,7 +7,7 @@ Previous: [Exit and troubleshooting](exit-and-troubleshooting.md) · [Contents](
 | Button | Press | With **SHIFT** |
 | --- | --- | --- |
 | **SAMPLE** | Stage, the track's sound pages; on Stage, its first page. Held: Pads or Keys; + pad: select a kit pad without playing it. | Input Config |
-| **SEQ** | The track's editor; on an editor, Steps. Held: launch patterns. | Step Edit |
+| **SEQ** | Patterns, Roll or Motion, the last open on the track; on one of them, Patterns. Held: launch patterns. | Step Edit |
 | **PAD FX** | Pad FX. With **KNOB FX**: the mixer (Tracks). | Flex Beat |
 | **KNOB FX** | Knob FX mode on or off. With **PAD FX**: the mixer (Tracks). | Effect chains |
 | **PAD BANK** | Next bank. Held + pad: select a track. | Previous bank |

@@ -59,12 +59,16 @@ bool erase_tap(Context& c) {
     unsigned t = ui.track % track_count;
     switch (ui.page) {
     case PageId::Roll: return !ui.sheet_open && roll_erase(c);
-    case PageId::Steps: return erase_step(c);
     case PageId::StepEdit:
+        if (ui.step_pads) return erase_step(c); // the pads on the steps: the caret's step, as Steps had it
         if (selected_event(c.pattern(), ui) < 0) return false;
         erase_event(c);
         return true;
     case PageId::Patterns: {
+        if (ui.patterns_cards == 1) { // SCENE: the cursor's scene's name and tempo
+            c.clear_scene(ui.pattern_bank % pattern_banks * pattern_pads + ui.scene % pattern_pads);
+            return true;
+        }
         unsigned n = c.track().pattern % pattern_count;
         if (c.patterns.at[t][n].empty()) c.notice(pattern_name(n) + " is empty");
         else ask(c, UiState::Ask::ClearPattern, int(n));
@@ -75,7 +79,6 @@ bool erase_tap(Context& c) {
         else if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) c.notice("Track " + std::to_string(t + 1) + " is empty");
         else ask(c, UiState::Ask::ClearTrack, int(t));
         return true;
-    case PageId::Scenes: c.clear_scene(ui.scene % pattern_count); return true;
     case PageId::Looper: {
         unsigned loop = ui.loop % loop_tracks;
         if (c.host.looper().view(loop).state == Looper::State::Empty) c.notice("L" + std::to_string(loop + 1) + " is empty");

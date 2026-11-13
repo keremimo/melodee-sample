@@ -9,7 +9,7 @@
 // graph of the pattern with all three lanes on it, each in its knob's colour,
 // the one in hand heavy and the others thin; the cards are its legend. Motion
 // is the pattern's own (roadmap P1), at tick resolution; a lock (a pot turned
-// with a step or note held on Steps or Roll) is drawn as a short raised bar
+// with a step held on Step Edit or a note on Roll) is drawn as a short raised bar
 // at its value for as long as it holds.
 #include "melodee/model/limits.h"
 #include "melodee/model/pad_params.h"
@@ -29,7 +29,7 @@ void draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.left.push_back(pill(Icon::Motion, juce::String(unsigned(motion.size()))));
     h.right.push_back(tag_of(s, s.ui.track));
-    frame(p, s, {{"STEPS", "ROLL", "MOTION"}, 2, c}, h);
+    frame(p, s, {{"PATTERNS", "ROLL", "MOTION"}, 2, c}, h);
 
     // One graph: the pattern across, bars and beats marked, quarters of the range up.
     constexpr float x = zone::pad, y = zone::picture_y + 4, w = zone::width - 2 * zone::pad, gh = zone::picture_h - 8;
@@ -88,9 +88,8 @@ void draw(Paint& p, const Snapshot& s) {
 }
 
 void soft(Context& c, int key) {
-    static const PageId pages[] {PageId::Steps, PageId::Roll, PageId::Motion};
     if (key == 2) { c.open(PageId::ModPage); return; } // MOTION again, lit: the modulators and macros (roadmap P4)
-    c.open(pages[key % 3]);
+    seq_hub_soft(c, key);
 }
 } // namespace
 

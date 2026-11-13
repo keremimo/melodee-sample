@@ -224,8 +224,10 @@ std::array<Binding, 3> feel_cards(const Pattern& pattern, unsigned row) {
 bool lock_place(const Project& project, const UiState& ui, const Pattern& pattern, uint32_t& tick, uint32_t& hold) {
     const auto& track = project.tracks[ui.track % track_count];
     unsigned q = pattern.q();
-    if (ui.page == PageId::Steps && ui.held_step >= 0) { // the step, as long as its longest note on its lane (a step at least)
-        unsigned st = unsigned(ui.held_step) % pattern.steps();
+    // Step Edit: a step held (the pads on the steps), or the caret's on LOCK; as long as its longest note on its lane
+    // (a step at least)
+    if (ui.page == PageId::StepEdit && (ui.held_step >= 0 || ui.step_cards % (steps_lane(track) >= 0 ? 4 : 3) == 1)) {
+        unsigned st = unsigned(ui.held_step >= 0 ? ui.held_step : std::max<int>(ui.step_cursor, 0)) % pattern.steps();
         tick = st * q; hold = q;
         int lane = steps_lane(track);
         for (size_t n = pattern.lower(tick); n < pattern.events.size() && pattern.events[n].tick < tick + q; ++n)
@@ -597,7 +599,12 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         Binding tap = in.source == InputSource::Track ? Binding {Kind::RecTap, 0, 0, 1, int(in.post)} : Binding {};
         return {tap, Binding {}, Binding {Kind::RecGain, 0, -12, 24, in.gain}};
     }
-    case PageId::Patterns: return pattern_shift_cards(project, ui, pattern);
+    case PageId::Patterns: // FOLLOW: Shift + K1 the follow action's second, on the odds the first leaves; SCENE none
+        if (ui.sheet_open || ui.patterns_cards == 1) return {};
+        if (ui.patterns_cards == 2)
+            return track.used() ? std::array<Binding, 3> {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}}
+                                : std::array<Binding, 3> {};
+        return pattern_shift_cards(project, ui, pattern);
     case PageId::Song: { // roadmap P5: the tempo lane at the cursor's bar: its tempo, and (a point there) its shape
         if (ui.song_export) return {};
         const auto& lane = project.song.tempo;
@@ -606,25 +613,28 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
         Binding shape = at >= 0 ? Binding {Kind::SongTempoShape, 0, 0, 1, int(lane.points[size_t(at)].ramp)} : Binding {};
         return {Binding {Kind::SongTempo, 0, 29, 300, tempo}, shape, Binding {}};
     }
-    case PageId::Scenes: // roadmap P5: Shift + K1 the follow action's second, on the odds the first leaves
-        if (!track.used()) return {};
-        return {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}};
-    case PageId::StepEdit: { // step entry: Shift + K1 the pattern's length, Shift + K2 Q (the caret's step), Shift + K3 the time signature
+    case PageId::StepEdit: { // Shift + K1 the pattern's length, Shift + K2 Q (the caret's step), Shift + K3 the time signature;
+        // on a kit lane (EUCLID, or the pads on the steps) Shift + K1 the lane's own length, on TRIG Shift + K2 its pitch ramp
+        int lane = steps_lane(track);
+        if (ui.held_step >= 0) return {};
+        if (lane >= 0) {
+            unsigned q = pattern.q(), steps = pattern.steps(), set = ui.step_cards % 4;
+            unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % steps;
+            if (set == 2) {
+                int n = lane_event(pattern, at, lane);
+                if (n < 0) return {};
+                return {Binding {}, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
+            }
+            if (set == 3 || ui.step_pads) {
+                unsigned own = std::clamp<unsigned>((pattern.lane_length(unsigned(lane)) + q - 1) / q, 1, steps);
+                return {Binding {Kind::LaneLength, lane, 1, int(std::max(steps, 2u)), int(own)}, Binding {}, Binding {}};
+            }
+        }
         unsigned bars = pattern_bars(project, pattern), index = 0;
         while (index + 1 < pattern_length_count && pattern_lengths[index + 1] <= bars) ++index;
         return {Binding {Kind::PatternLength, 0, 0, int(pattern_length_count) - 1, int(index)},
                 Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)},
                 Binding {Kind::TimeSignature, 0, 0, int(time_signature_count) - 1, project.signature}};
-    }
-    case PageId::Steps: { // a kit: Shift + K1 the lane's own length; on the TRIG row Shift + K2 its note's pitch ramp
-        int lane = steps_lane(track);
-        if (lane < 0 || ui.sheet_open) return {}; // the VARY sheet has its amount alone
-        unsigned q = pattern.q(), steps = pattern.steps();
-        unsigned own = std::clamp<unsigned>((pattern.lane_length(unsigned(lane)) + q - 1) / q, 1, steps);
-        Binding length = {Kind::LaneLength, lane, 1, int(std::max(steps, 2u)), int(own)};
-        int n = lane_event(pattern, unsigned(std::max<int>(ui.step_cursor, 0)) % steps, lane);
-        if (!ui.trig_cards || n < 0) return {length, Binding {}, Binding {}};
-        return {length, Binding {Kind::StepPitchRamp, 0, -max_pitch_ramp, max_pitch_ramp, pattern.events[size_t(n)].pitch_ramp}, Binding {}};
     }
     case PageId::Roll: { // Shift + K1 NUDGE (round 2): the note in focus off its grid line; the TRIG row: Shift + K2 a kit pad's pitch ramp
         int at = roll_focus(pattern, ui, roll_lane(track));
@@ -783,7 +793,21 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned t = ui.track % track_count;
         return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
     }
-    case PageId::Patterns: return pattern_cards(project, pattern);
+    case PageId::Patterns: { // the pattern's cards; SCENE: the cursor's scene's tempo; FOLLOW: the pattern's follow action
+        if (ui.sheet_open) return {Binding {Kind::VaryAmount, 0, 0, 100, ui.vary_amount}, Binding {}, Binding {}}; // the VARY sheet
+        if (ui.patterns_cards == 1) {
+            unsigned scene = ui.pattern_bank % pattern_banks * pattern_pads + ui.scene % pattern_pads;
+            unsigned tempo = project.scenes[scene].tempo;
+            return {Binding {Kind::SceneTempo, int32_t(scene), 29, 300, tempo ? int((tempo + 5) / 10) : 29}, Binding {}, Binding {}};
+        }
+        if (ui.patterns_cards == 2) { // roadmap P5: the selected track's pattern's follow action, after how long, on what odds
+            if (!track.used()) return {};
+            const auto& f = pattern.follow;
+            return {Binding {Kind::FollowAction, 0, 0, int(FollowAction::Count) - 1, f.action}, Binding {Kind::FollowAfter, 0, 0, 127, follow_after_card(f)},
+                    Binding {Kind::FollowChance, 0, 0, 100, f.chance}};
+        }
+        return pattern_cards(project, pattern);
+    }
     case PageId::ModPage: { // roadmap P4: the modulator in hand, its rate (or a follower's rise), the target in hand's depth; a macro, its value, a target's high
         if (ui.mod_view == 1) {
             const auto& macro = project.macros[ui.macro_index % macro_count];
@@ -805,9 +829,38 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     }
     case PageId::RecQuantize: // K1 the grid: the pattern's Q, or 1/4 .. 1/64 of its own
         return {Binding {Kind::RecGrid, 0, 0, int(Division::Count), ui.settings.rec_grid}, Binding {}, Binding {}};
-    case PageId::StepEdit: // step entry (round 2, step-edit2 C): what a pad writes, its length in steps of Q, velocity (0 as played), chance
+    case PageId::StepEdit: { // B1's card sets on the caret's step; on a kit (or Drums) its lane's note, the last pad's
+        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
+        if (ui.held_step >= 0) return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q()); // STEPS, held: locks
+        int lane = steps_lane(track);
+        switch (ui.step_cards % (lane >= 0 ? 4 : 3)) {
+        case 1: return lock_cards(project, ui, pattern, at * pattern.q()); // LOCK: the Motion lanes locked on the caret's step
+        case 2: { // TRIG: its ratchet, ramp and condition
+            int n = lane_event(pattern, at, lane);
+            if (n < 0) return {};
+            return trig_cards(pattern.events[size_t(n)], true);
+        }
+        case 3: { // EUCLID: the last pad's lane's rhythm (roadmap P1)
+            unsigned key = unsigned(lane);
+            const EuclidLane* e = euclid_of(pattern, key);
+            int steps = e ? e->steps : int(std::min(pattern.steps(), euclid_max_steps));
+            return {Binding {Kind::EuclidHits, int(key), 0, steps, e ? e->hits : 0}, Binding {Kind::EuclidSteps, int(key), 1, int(euclid_max_steps), steps},
+                    Binding {Kind::EuclidRotate, int(key), 0, std::max(steps - 1, 1), e ? e->rotate : 0}};
+        }
+        default: break;
+        }
+        if (ui.step_pads) { // NOTE with the pads on the steps: the caret's step, as the pads show it
+            int n = lane_event(pattern, at, lane);
+            if (n < 0) return {};
+            const auto& e = pattern.events[size_t(n)];
+            unsigned q = pattern.q(), length = std::clamp<unsigned>((e.length + q / 2) / q, 1, 16);
+            return {Binding {Kind::StepLength, 0, 1, 16, int(length)}, Binding {Kind::StepVelocity, 0, 1, 127, e.velocity},
+                    Binding {Kind::StepChance, 0, 0, 100, e.chance}};
+        }
+        // NOTE, step entry: what a pad writes, its length in steps of Q, velocity (0 as played), chance
         return {Binding {Kind::EntryLength, 0, 1, 16, ui.entry_length}, Binding {Kind::EntryVelocity, 0, 0, 127, ui.entry_velocity},
                 Binding {Kind::EntryChance, 0, 0, 100, ui.entry_chance}};
+    }
     case PageId::TimeCorrect: { // time-correct C: Q (the pattern's), and the strength and swing heard live (its feel)
         auto feel = feel_cards(pattern, 0);
         return {Binding {Kind::Division, 0, 0, int(Division::Count) - 1, int(pattern.division)}, feel[0], feel[1]};
@@ -816,12 +869,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         const auto& sheet = ui.print_sheet;
         if (sheet.printing || project.tracks[sheet.track % track_count].engine == EngineKind::Midi) return {};
         return {Binding {Kind::PrintTapPick, 0, 0, 1, int(sheet.tap)}, Binding {Kind::PrintTailPick, 0, 0, 2, int(sheet.tail)}, Binding {}};
-    }
-    case PageId::Scenes: { // roadmap P5: the selected track's pattern's follow action, after how long, on what odds
-        if (!project.tracks[ui.track % track_count].used()) return {};
-        const auto& f = pattern.follow;
-        return {Binding {Kind::FollowAction, 0, 0, int(FollowAction::Count) - 1, f.action}, Binding {Kind::FollowAfter, 0, 0, 127, follow_after_card(f)},
-                Binding {Kind::FollowChance, 0, 0, 100, f.chance}};
     }
     case PageId::Song: {
         int clip = project.song.clip_at(ui.track, ui.song_cursor);
@@ -935,25 +982,6 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
         unsigned q = pattern.q(), steps = std::max(1u, (e.length + q / 2) / q);
         return {Binding {Kind::EventLength, 0, 1, 64, int(std::min(steps, 64u))}, Binding {Kind::EventVelocity, 0, 1, 127, e.velocity},
                 Binding {Kind::EventChance, 0, 0, 100, e.chance}};
-    }
-    case PageId::Steps: { // the step in hand; on a kit its lane's note (the last pad's), as the pads show it
-        if (ui.held_step >= 0) return lock_cards(project, ui, pattern, unsigned(ui.held_step) % pattern.steps() * pattern.q()); // held: locks
-        if (ui.sheet_open) return {Binding {Kind::VaryAmount, 0, 0, 100, ui.vary_amount}, Binding {}, Binding {}}; // the VARY sheet
-        if (ui.euclid_cards && steps_lane(track) >= 0) { // the EUCLID row: the last pad's lane's rhythm (roadmap P1)
-            unsigned key = unsigned(steps_lane(track));
-            const EuclidLane* e = euclid_of(pattern, key);
-            int steps = e ? e->steps : int(std::min(pattern.steps(), euclid_max_steps));
-            return {Binding {Kind::EuclidHits, int(key), 0, steps, e ? e->hits : 0}, Binding {Kind::EuclidSteps, int(key), 1, int(euclid_max_steps), steps},
-                    Binding {Kind::EuclidRotate, int(key), 0, std::max(steps - 1, 1), e ? e->rotate : 0}};
-        }
-        unsigned at = unsigned(std::max<int>(ui.step_cursor, 0)) % pattern.steps();
-        int n = lane_event(pattern, at, steps_lane(track));
-        if (n < 0) return {};
-        const auto& e = pattern.events[size_t(n)];
-        if (ui.trig_cards) return trig_cards(e, true); // B1 again: its ratchet and ramp
-        unsigned q = pattern.q(), length = std::clamp<unsigned>((e.length + q / 2) / q, 1, 16);
-        return {Binding {Kind::StepLength, 0, 1, 16, int(length)}, Binding {Kind::StepVelocity, 0, 1, 127, e.velocity},
-                Binding {Kind::StepChance, 0, 0, 100, e.chance}};
     }
     case PageId::Stage: return stage_bindings(project, ui, false);
     // System pages: their rows take the wheel; no pots, so no cards (never the synth's favourites there). The Fader

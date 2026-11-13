@@ -649,8 +649,8 @@ void Shell::end_copy_away() {
     bool here = true; // tracks, patterns: on any page
     switch (ui_.copying) {
     case UiState::Copying::Pads: here = kit_pads(); break;
-    case UiState::Copying::Keys: here = key_pads() || ui_.page == PageId::Roll || ui_.page == PageId::StepEdit; break;
-    case UiState::Copying::Steps: here = ui_.page == PageId::Steps; break;
+    case UiState::Copying::Keys: here = key_pads() || ui_.page == PageId::Roll || (ui_.page == PageId::StepEdit && !ui_.step_pads); break;
+    case UiState::Copying::Steps: here = ui_.page == PageId::StepEdit && ui_.step_pads; break;
     case UiState::Copying::Notes: here = ui_.page == PageId::Roll; break;
     default: break;
     }

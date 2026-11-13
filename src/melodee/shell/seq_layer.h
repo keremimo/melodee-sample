@@ -4,10 +4,9 @@
 #include "melodee/shell/ui_state.h"
 #include "surface/controls.h"
 
-// Seq (docs/MELODEE.md, Sequencing): tap to look, hold to steer, Shift + Seq
-// to zoom in. A tap opens Patterns; on Patterns the track's editor (Steps,
-// Roll or Motion, the one last open); on an editor or Step Edit back a level
-// (shell/page_stack.h). Held, on any page, the Sequence layer:
+// Seq (docs/MELODEE.md, Sequencing): tap to open the SEQUENCE hub (Patterns, Roll, Motion: the one last open;
+// inside it home, Patterns; on Step Edit back to the page under it, shell/page_stack.h), hold to steer, Shift +
+// Seq for Step Edit. Patterns' pads are this layer's pads without Seq held. Held, on any page, the Sequence layer:
 //   pad              launches that pattern of the selected track (next bar; stopped,
 //                    at once); an empty one starts as long as the one playing
 //   Shift + pad      that column on every track holding notes there (and the selected one)
@@ -16,7 +15,7 @@
 //   Minus / Plus     the previous / next pattern
 //   wheel            the tempo (Push: whole BPM or tenths)
 //   K1-K3            length, Q, swing of the pattern (shell/bindings.cpp; Shift as on Patterns)
-//   B1-B3            Steps, Roll, Motion
+//   B1-B3            Patterns, Roll, Motion
 //   Seq Record       a new take: the next empty pattern, armed (recording at once while playing)
 // After seq_sheet_ms the screen shows the Sequence sheet (pages/seq_sheet.cpp); a release
 // that quick with nothing touched is a tap. Shift + Seq: Step Edit. MIDI thread.

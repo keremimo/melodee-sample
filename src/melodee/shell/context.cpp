@@ -221,7 +221,6 @@ void Context::open(PageId page) {
     }
     if (page != ui.page) punch_release(); // a pad held over a page change would never let go
     if (page != ui.page && page == PageId::Sends) ui.sends_pads = false; // SENDS opens on the tracks (B2 again: a kit's pads)
-    if (page == PageId::Patterns || page == PageId::Scenes || page == PageId::Song) ui.arrange_page = page; // ARRANGE's last
     if (page != PageId::Stage && page != PageId::Plugins && page != PageId::Samples && page != PageId::Record)
         ui.new_for = -1; // an empty track's Stage left: no going back to where it was picked
     if (page != PageId::Samples) ui.new_kit = -1;
@@ -803,6 +802,7 @@ void Context::apply(const Binding& b, int value) {
     case Kind::TrackSpeed: set_speed(unsigned(b.id), value); break;
     case Kind::VaryAmount: ui.vary_amount = uint8_t(std::clamp(value, 0, 100)); break;
     case Kind::FollowAction: case Kind::FollowOther: case Kind::FollowAfter: case Kind::FollowChance: set_follow(b.kind, value); break; // roadmap P5
+    case Kind::SceneTempo: set_scene_tempo(unsigned(b.id), value * 10); break; // Patterns' SCENE: below 30, none of its own
     case Kind::PrintTapPick: ui.print_sheet.tap = value ? PrintTap::PreFx : PrintTap::PostFx; break; // freeze plan F2c
     case Kind::PrintTailPick: ui.print_sheet.tail = PrintTail(std::clamp(value, 0, 2)); break;
     case Kind::PatternProgram:

@@ -41,7 +41,7 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
     bool blink = (s.now / 150) % 2;
 
     p.fill(0, zone::soft_y, zone::width, zone::soft_h + zone::header_h + zone::picture_h, colour::bg);
-    soft_keys(p, {{"STEPS", "ROLL", "MOTION"}, -1, c});
+    soft_keys(p, {{"PATTERNS", "ROLL", "MOTION"}, -1, c});
     Header h = header_of(s);
     h.left.push_back(chip("SEQUENCE", c));
     const bool printing = s.ui.seq_print; // freeze plan F2c: Seq held + Sample Record, the pads freeze or thaw

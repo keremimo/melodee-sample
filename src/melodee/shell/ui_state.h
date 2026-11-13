@@ -17,7 +17,7 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
+enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
@@ -30,7 +30,6 @@ enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Steps, Roll, Motion, Pa
                             PluginPresets,                     // PRESETS: a plug-in's programs (docs/MELODEE.md)
                             LayersPage,                        // roadmap P3: a kit pad's four layers
                             ModPage,                           // roadmap P4: modulators and macros (MOTION again on Motion)
-                            Scenes,                            // roadmap P5: scenes and follow actions (Push on Patterns)
                             Print,                             // freeze plan F2c: the PRINT sheet (Sample Record on a plug-in or MIDI track)
                             Count };
 
@@ -252,7 +251,6 @@ struct UiState {
     uint32_t sample_down = 0;   // ms: when Sample went down (its sheet shows sample_sheet_ms after)
     bool pad_fx_down = false, knob_fx_down = false; // Pad FX, Knob FX down (their own jobs wait for the release)
     bool fx_chord_used = false;                     // both went down together: the MIX hub, and neither's own job
-    PageId arrange_page = PageId::Song;             // the ARRANGE hub's page open last (Shift + Pad 12 opens it)
     // Seq held (shell/seq_layer.h): the Sequence layer on any page. When it went down, whether a control
     // did something meanwhile (its release then goes nowhere), and whether B1-B3 left for an editor (the
     // sheet stays away until Seq is let go). Each track's editor last open (0 none yet, then 1 + EditorKind).
@@ -298,7 +296,10 @@ struct UiState {
     // Roadmap P4, the MOD page: modulators (0) or macros (1), the one in hand and its target in hand; the lane a pot
     // turned last (-1 none) and its track, which ADD takes (shell/mod_jobs.h).
     uint8_t mod_view = 0, mod_index = 0, mod_target = 0, macro_index = 0, macro_target = 0;
-    uint8_t scene = 0; // roadmap P5: the scene in hand (SCENES; the one launched last)
+    uint8_t scene = 0; // roadmap P5: the scene in hand: Patterns' cursor (its place in the bank) and the one launched last
+    uint8_t patterns_cards = 0; // Patterns' cards: 0 the pattern's, 1 SCENE (Shift + B1), 2 FOLLOW (Shift + B2)
+    uint8_t step_cards = 0;     // Step Edit's B1: 0 NOTE, 1 LOCK, 2 TRIG, 3 EUCLID (a kit or Drums lane)
+    bool step_pads = false;     // Step Edit's Shift + B1 PADS: false PLAY (entry at the caret), true STEPS (the bar's steps)
     int16_t learn_lane = -1;
     uint8_t learn_track = 0;
     uint16_t project_cursor = 0;  // Project: row under the cursor (0 is SD card access at the top)

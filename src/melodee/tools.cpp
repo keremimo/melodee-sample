@@ -750,8 +750,8 @@ const Preview previews[] {
          on_stage(s, 0, StageKind::Mix); s.playing = true;
          s.ui.sample_held = true; s.ui.sample_down = s.now - 400;
      }},
-    {"sampleheldsteps", [](Shell&, Snapshot& s) { // on Steps: the steps stay, the header names the held notes
-         s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
+    {"sampleheldsteps", [](Shell&, Snapshot& s) { // on Step Edit: the steps stay, the header names the held notes
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.ui.step_cursor = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
          s.ui.sample_held = true; s.ui.sample_down = s.now - 400;
          s.held_keys.fill(-1); s.held_keys[0] = 48; s.held_keys[2] = 52; s.held_keys[4] = 55; s.ui.held_pads = 1u | 4u | 16u;
      }},
@@ -879,8 +879,8 @@ const Preview previews[] {
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
     {"edit", [](Shell&, Snapshot& s) { s.ui.page = PageId::Edit; s.playing = true; }}, // a synth plug-in's own values
-    {"steps", [](Shell&, Snapshot& s) {
-         s.ui.page = PageId::Steps; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
+    {"stepeditsteps", [](Shell&, Snapshot& s) { // Step Edit's pads on the steps (Shift + B1 PADS), step 7 held: its locks
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.ui.step_cursor = 6; s.ui.held_step = 6; s.playing = true; s.position = 9 * sixteenth_ticks;
          s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
     {"motion", [](Shell&, Snapshot& s) { // the kit's FILTER and RESO over its pattern 2
@@ -1586,12 +1586,12 @@ const Preview previews[] {
          preview_projects(s);
      }},
     {"tempo", [](Shell&, Snapshot& s) { s.ui.page = PageId::Tempo; s.playing = true; s.ticks = ticks_per_quarter; s.ui.settings.click = 1; s.project.swing = 54; s.ui.turning = 0; s.ui.turned_at = s.now; }},
-    {"captured", [](Shell&, Snapshot& s) { // Shift + Seq Record on Steps (capture C): P3 took the last bars, the undo keys a moment
-         s.ui.page = PageId::Steps; s.ui.track = 0; s.playing = true;
+    {"captured", [](Shell&, Snapshot& s) { // Shift + Seq Record on Patterns (capture C): P3 took the last bars, the undo keys a moment
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.playing = true;
          s.ui.captured_pattern = 2; s.ui.captured_at = s.now;
      }},
     {"capturedmany", [](Shell&, Snapshot& s) { // roadmap P5: three tracks played in the phrase, each into its next empty pattern
-         s.ui.page = PageId::Steps; s.ui.track = 0; s.playing = true;
+         s.ui.page = PageId::Patterns; s.ui.track = 0; s.playing = true;
          s.ui.captured_pattern = 2; s.ui.captured_tracks = 3; s.ui.captured_at = s.now;
      }},
     {"padfx", [](Shell&, Snapshot& s) {
@@ -2144,23 +2144,23 @@ const Preview previews[] {
      }},
     {"stepsratchet", [](Shell& shell, Snapshot& s) { // Steps' TRIG row on the kit, the hat's lane: step 5 a ratchet of three rising, Shift held
          step_edit_kit(shell, s);
-         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2;
          for (auto& e : shell.patterns().at[3][0].events) if (e.tick == 96 && e.key == sampler_first_note + 2) { e.ratchet = 3; e.ramp = 40; e.pitch_ramp = 5; }
          for (auto& e : shell.patterns().at[3][0].events) if (e.tick == 144) { e.ratchet = 2; }
-         s.ui.trig_cards = true; s.ui.shift = true;
+         s.ui.step_cards = 2; s.ui.shift = true;
      }},
     {"stepstrig", [](Shell& shell, Snapshot& s) { // Steps' TRIG row: K3 turning a trig condition, the hat at step 5 on 3:4, step 3 FILL
          step_edit_kit(shell, s);
-         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2;
          for (auto& e : shell.patterns().at[3][0].events) {
              if (e.tick == 96 && e.key == sampler_first_note + 2) { e.ratchet = 3; e.ramp = 40; e.condition = uint8_t(trig_of(3, 4)); }
              if (e.tick == 48) e.condition = uint8_t(trig_fill);
          }
-         s.ui.trig_cards = true; s.ui.turning = 2; s.ui.turned_at = s.now;
+         s.ui.step_cards = 2; s.ui.turning = 2; s.ui.turned_at = s.now;
      }},
     {"stepslock", [](Shell& shell, Snapshot& s) { // step 5 held on the kit's hat lane: the cards lock the hat's level, tune and pan there
          step_edit_kit(shell, s);
-         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2; s.ui.held_step = 4;
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2; s.ui.held_step = 4;
          auto& p = shell.patterns().at[3][0];
          auto lock = [&](uint32_t tick, PadParam which, int value) {
              MotionPoint m;
@@ -2182,13 +2182,13 @@ const Preview previews[] {
      }},
     {"stepseuclid", [](Shell& shell, Snapshot& s) { // STEPS a third time on the kit: the hat's lane as E(5,8), K1 turning its hits
          step_edit_kit(shell, s);
-         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2;
          lay_euclid(shell.patterns().at[3][0], uint8_t(sampler_first_note + 2), 5, 8, 0, 90);
-         s.ui.euclid_cards = true; s.ui.turning = 0; s.ui.turned_at = s.now;
+         s.ui.step_cards = 3; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
-    {"stepsvary", [](Shell& shell, Snapshot& s) { // Push on Steps: VARY, Busier picked, amount 30 %
+    {"patternsvary", [](Shell& shell, Snapshot& s) { // Shift + B3 on Patterns: VARY, Busier picked, amount 30 %
          step_edit_kit(shell, s);
-         s.ui.page = PageId::Steps; s.ui.sheet_open = true; s.ui.sheet_row = 1;
+         s.ui.page = PageId::Patterns; s.ui.sheet_open = true; s.ui.sheet_row = 1;
      }},
     {"tracksspeed", [](Shell&, Snapshot& s) { // Shift on Tracks: track 3 plays its patterns at x1 1/2
          s.ui.page = PageId::Tracks; s.ui.track = 2; s.playing = true; s.project.tracks[2].speed = 3;
@@ -2200,27 +2200,38 @@ const Preview previews[] {
      }},
     {"stepslane", [](Shell& shell, Snapshot& s) { // Shift + K1 on the kit's Steps: the hat's lane loops over six steps of the bar's sixteen
          step_edit_kit(shell, s);
-         s.ui.page = PageId::Steps; s.project.tracks[3].last_pad = 2;
+         s.ui.page = PageId::StepEdit; s.ui.step_pads = true; s.project.tracks[3].last_pad = 2;
          auto& p = shell.patterns().at[3][0];
          p.set_lane_length(sampler_first_note + 2, 6 * sixteenth_ticks);
          s.position = 9 * sixteenth_ticks; s.pass = 0; // the hat's lane at its step 4 while the pattern is at 10
          s.ui.shift = true; s.ui.turning = 0; s.ui.turned_at = s.now;
      }},
-    // Roadmap P5: SCENES (Push on Patterns), the columns as scenes and the selected track's pattern's follow action.
-    {"scenes", [](Shell& shell, Snapshot& s) {
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+    // Roadmap P5: scenes on Patterns. Shift + B1 SCENE: the cursor's scene, its tempo on K1 (Push names it).
+    {"patternsscene", [](Shell& shell, Snapshot& s) {
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.playing = true; s.ui.patterns_cards = 1;
          s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[1].tempo = 1240;
          s.project.scenes[2].set_name("DROP"); s.project.scenes[2].tempo = 1280; s.project.scenes[5].set_name("BREAKDOWN");
          s.project.tracks[2].pattern = 1;
          for (unsigned t = 0; t < track_count; ++t) { s.playing_patterns[t] = t == 2 ? 1 : 0; s.positions[t] = t == 5 ? -1 : int(t * sixteenth_ticks); }
          auto& f = shell.patterns().at[2][1].follow;
          f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
+         s.ui.turning = 0; s.ui.turned_at = s.now;
+     }},
+    {"patternsfollow", [](Shell& shell, Snapshot& s) { // Shift + B2 FOLLOW: the pattern in hand's follow action on K1-K3
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.playing = true; s.ui.patterns_cards = 2;
+         s.project.tracks[2].pattern = 1;
+         auto& f = shell.patterns().at[2][1].follow;
+         f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"scenesshift", [](Shell& shell, Snapshot& s) { // Shift + K1: the second action
-         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.ui.shift = true; s.project.tracks[2].pattern = 1;
+    {"patternsshift", [](Shell& shell, Snapshot& s) { // Shift held on Patterns: SCENE, FOLLOW, VARY; FOLLOW's Shift + K1 the second action
+         s.ui.page = PageId::Patterns; s.ui.track = 2; s.ui.scene = 1; s.ui.shift = true; s.ui.patterns_cards = 2; s.project.tracks[2].pattern = 1;
          auto& f = shell.patterns().at[2][1].follow;
          f.action = uint8_t(FollowAction::Again); f.other = uint8_t(FollowAction::Stop); f.chance = 50; f.count = 2; f.plays = true;
+     }},
+    {"stepeditshift", [](Shell& shell, Snapshot& s) { // Shift held on Step Edit: PADS, TIE, INSERT; the pattern's length, Q, time signature
+         step_edit_kit(shell, s);
+         s.ui.shift = true;
      }},
 };
 

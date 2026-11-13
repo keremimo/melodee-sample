@@ -2,9 +2,9 @@
 
 Previous: [Sequencing](sequencing.md) · [Contents](../GUIDE.md) · Next: [Looper](looper.md)
 
-Press **SHIFT** + **Pad 12** (or **B3** on Patterns or Scenes) to open **Song**.
-Song's own keys stay its actions: **B1** export, **B2** mute, **B3** place or
-duplicate. **SHIFT** + **Pad 12** on Song goes to Patterns. Each track has a lane. Each
+Press **SHIFT** + **Pad 12** to open **Song**. Press it again on Song to close
+it. Song's own keys stay its actions: **B1** export, **B2** mute, **B3** place or
+duplicate. Each track has a lane. Each
 lane holds clips of that track's patterns.
 
 ![Song](../images/screens/song.png)

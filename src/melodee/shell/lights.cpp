@@ -436,10 +436,10 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
                    && (ui.page == PageId::Compressor || ui.page == PageId::FlexBeat || ui.page == PageId::KnobFx);
         lights.fader(level <= 0 ? Rgb {} : master ? led_colour::white(level) : pad_light::track(ui.track, level).rgb);
     }
-    // Bank lights A-H: with Seq held, the bank of patterns in view; else the sampler track's bank in view, or the Drums
+    // Bank lights A-H: with Seq held or on Patterns, the bank of patterns in view; else the sampler track's bank in view, or the Drums
     // pads' (A-D).
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
-        lights.bank(bank, ui.seq_held ? bank == ui.pattern_bank % pattern_banks
+        lights.bank(bank, ui.seq_held || ui.page == PageId::Patterns ? bank == ui.pattern_bank % pattern_banks
                                       : (track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks) || (drum_pads(track) && bank == drum_bank(track)));
     { // The meters beside the screen, as on the MPC: the input source while Record or Input Config is in view or a
       // take waits or runs (what is about to be sampled), else main out.
@@ -514,7 +514,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     bool sound_hub = ui.page == PageId::Stage || is_sampler_page(ui.page) || ui.sample_held; // Sample's hub (docs/HUBS_PLAN.md)
     on(B::Sample, sound_hub || ui.page == PageId::InputConfig);
-    on(B::Seq, ui.page == PageId::StepEdit || ui.page == PageId::Steps || ui.page == PageId::Roll || ui.page == PageId::Motion); // its hub
+    on(B::Seq, ui.page == PageId::StepEdit || ui.page == PageId::Patterns || ui.page == PageId::Roll || ui.page == PageId::Motion); // its hub
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.arp && ui.page != PageId::Song); // on Song it repeats the clip
@@ -527,7 +527,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     on(B::PadFx, ui.page == PageId::Punch || ui.page == PageId::FlexBeat || ui.engaged_count || host.flex_playing());
     on(B::KnobFx, project.knob_fx.on); // the mode, as on the MPC (Shift + Knob FX opens the chains)
-    const bool editor = ui.page == PageId::Roll || ui.page == PageId::Steps || ui.page == PageId::StepEdit;
+    const bool editor = ui.page == PageId::Roll || ui.page == PageId::StepEdit;
     on(B::Loop, ui.page == PageId::Looper || ui.loop_held || (ui.page == PageId::Song ? project.song.looping()
                     : editor ? ui.edit_loop
                     : track.engine == EngineKind::Sampler && track.pads[track.last_pad % sampler_pads].loop)); // the song's brace on Song, the editor's loop, else the last pad loops; the Looper

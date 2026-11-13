@@ -60,11 +60,9 @@ creating a project clears the undo history.
 | Page | ERASE alone |
 | --- | --- |
 | Roll | The selected note |
-| Steps | The step under the cursor |
-| Step Edit | The selected event |
+| Step Edit | The selected event. In STEPS mode: the caret's step |
 | Patterns | The pattern (asks first) |
 | Tracks | The track (asks first) |
-| Scenes | The scene's name and tempo |
 | Looper | The selected loop (asks first) |
 | Effect chains | The selected effect |
 | Chop | The selected slice |
@@ -80,8 +78,8 @@ creating a project clears the undo history.
 | --- | --- |
 | **PAD BANK** held, or Tracks | Tracks |
 | **SEQ** held, or Patterns | Patterns |
-| Steps | A step to another step |
-| Roll, Step Edit, a synth's play pages | A key's notes to another key |
+| Step Edit in STEPS mode | A step to another step |
+| Roll, Step Edit in PLAY mode, a synth's play pages | A key's notes to another key |
 | A kit's play pages | Kit pads |
 | Song | The clip, placed after itself |
 | Project | The selected project |
