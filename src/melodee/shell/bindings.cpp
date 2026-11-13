@@ -61,7 +61,7 @@ const ParamInfo pad_infos[pad_param_count] {
     {"PAN", -50, 50, 0, Format::Number}, {"ATTACK", 0, 100, 0}, {"DECAY", 0, 100, 100}, {"SUSTAIN", 0, 100, 100},
     {"RELEASE", 0, 100, 20}, {"VEL SENS", 0, 100, 100}, {"OFFSET", 0, 100, 0}, {"F ATTACK", 0, 100, 0},
     {"F DECAY", 0, 100, 50}, {"F SUSTAIN", 0, 100, 0}, {"F RELEASE", 0, 100, 20}, {"F DEPTH", 0, 100, 0},
-    {"CUTOFF", 0, 100, 100}, {"RESO", 0, 100, 0},
+    {"CUTOFF", 0, 100, 100}, {"RESO", 0, 100, 0}, {"SEND A", 0, 100, 0}, {"SEND B", 0, 100, 0}, {"SEND C", 0, 100, 0}, {"SEND D", 0, 100, 0},
 };
 Binding::Kind pad_kind(PadParam p) {
     using K = Binding::Kind;
@@ -83,6 +83,7 @@ Binding::Kind pad_kind(PadParam p) {
     case PadParam::FilterAmount: return K::PadFAmount;
     case PadParam::FilterCutoff: return K::PadCutoff;
     case PadParam::FilterResonance: return K::PadResonance;
+    case PadParam::SendA: case PadParam::SendB: case PadParam::SendC: case PadParam::SendD: return K::PadSend; // id: the bus
     default: return K::None;
     }
 }
@@ -183,7 +184,8 @@ Binding lane_binding(const Track& track, unsigned t, int lane, const Project* pr
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // the pad's card, as on the sampler pages (they edit the last pad hit)
         auto m = motion_param(track, lane);
         if (!m.info || lane_pad(lane) != track.last_pad % sampler_pads) return {};
-        return {pad_kind(PadParam(which)), 0, m.info->min, m.info->max, m.value};
+        int bus = which >= int(PadParam::SendA) ? which - int(PadParam::SendA) : 0; // a send's card names its bus
+        return {pad_kind(PadParam(which)), bus, m.info->min, m.info->max, m.value};
     }
     if (param >= int(motion_fx_base)) {
         auto m = motion_param(track, param);
@@ -250,7 +252,8 @@ int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::PitchBend) return motion_lane(motion_bend);
     if (track.engine != EngineKind::Sampler) return -1;
     for (unsigned p = 0; p < pad_param_count; ++p) // a kit pad's own value: its lane on the last pad hit
-        if (pad_kind(PadParam(p)) == b.kind) return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads);
+        if (pad_kind(PadParam(p)) == b.kind && (b.kind != Kind::PadSend || p == unsigned(PadParam::SendA) + unsigned(b.id) % bus_count))
+            return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads);
     return -1;
 }
 

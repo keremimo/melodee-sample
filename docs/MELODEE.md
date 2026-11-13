@@ -315,7 +315,8 @@ beat; the meters show the mix.
     Knob FX adds effects), all six slots drawn with their family glyphs.
   - **A kit**: Akai's pages on the last pad hit, B1 **TRIM →
     LAYERS → TUNE → AMP ENV** (LAYERS the pad's four samples), B2 **PLAY → COLOUR → FOLLOW → CLOUD**, B3 **MIX → SENDS → FILTER →
-    FILT ENV → KIT FILT** (SENDS the kit track's four; the sampler pages keep the same groups, without SENDS): the pad's
+    FILT ENV → KIT FILT** (SENDS the last pad's own four, K2 its send, Shift + K2 KIT SEND the track's; the pads light by
+    their send into the bus shown; the sampler pages keep the same groups, without SENDS): the pad's
     waveform with its volume on the left and pan on the right, chips for
     how it plays; TRIM draws its handles (Shift + K1–K3 zoom at each; Shift
     + B1 Loop Lock, Shift + B2 Normalize), the envelopes and the filter lie
@@ -892,7 +893,9 @@ and the track plays the prints instead of running its engine and its
 chain, which saves CPU. The pads still play the sound live (the engine
 wakes while notes sound and sleeps again a second after it falls quiet).
 Level, pan, sends, mute, solo and punches stay live. Unfreezing is at
-once and keeps the prints.
+once and keeps the prints. A kit's pad sends are not in its prints yet:
+while a frozen kit plays its prints, its pads' own sends are not heard
+(pads hit by hand still send).
 
 **PRINT sheet.** Sample Record on a PLUGIN or MIDI track opens it. On a
 kit, Sample Record opens Record as before; B3 PRINT there opens the same
@@ -1360,7 +1363,10 @@ loud in what is heard. At 44.1 kHz they play to the bit as before.
   plus opens the picker, its families each with the strip's glyph. Sends
   (also B2 SENDS on Tracks and the chains): one bus at a time, every track's send into it as a
   strip; K1 the selected track's send into it, K2 which bus (the one Bus
-  then shows), K3 the bus's return. B1 from Track on a kit: the last
+  then shows), K3 the bus's return. On a kit B2 again shows its pads (two
+  dots on SENDS): the bank in hand as the pads sit, each with its own send
+  into the bus shown; a pad hit or the wheel picks one, K1 its send; B2
+  again goes back to the tracks. B1 from Track on a kit: the last
   pad's chain.
 - **Keyed Compressor and Gate (roadmap P4).** On a track, bus, master or
   loop-track chain, a Compressor's or Gate's last row (−/+ past its

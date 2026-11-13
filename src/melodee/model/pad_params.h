@@ -7,7 +7,7 @@
 
 // A kit pad's own values that Motion records, one lane per pad (the MPC's
 // pad automation: volume, tuning, pan, the amp and filter envelopes,
-// velocity sensitivity and offset, and the pad's filter). Plain data:
+// velocity sensitivity and offset, the pad's filter, and its sends). Plain data:
 // reading and writing them on a PadSound, and their ranges. New lanes go at
 // the end: the file keeps a lane by this number (MOTP).
 namespace melodee {
@@ -17,6 +17,7 @@ enum class PadParam : uint8_t {
     VelocitySense, Offset,
     FilterAttack, FilterDecay, FilterSustain, FilterRelease, FilterAmount, // the pad filter's envelope
     FilterCutoff, FilterResonance,                                         // and the filter
+    SendA, SendB, SendC, SendD,                                            // the pad's own sends into buses A-D
     Count
 };
 constexpr unsigned pad_param_count = unsigned(PadParam::Count);
@@ -61,6 +62,8 @@ inline int pad_param_value(const PadSound& pad, PadParam p) {
     case PadParam::FilterAmount: return pad.filter_amount;
     case PadParam::FilterCutoff: return pad.cutoff;
     case PadParam::FilterResonance: return pad.resonance;
+    case PadParam::SendA: case PadParam::SendB: case PadParam::SendC: case PadParam::SendD:
+        return pad.sends[unsigned(p) - unsigned(PadParam::SendA)];
     default: return 0;
     }
 }
@@ -86,6 +89,8 @@ inline void set_pad_param(PadSound& pad, PadParam p, int value) {
     case PadParam::FilterAmount: pad.filter_amount = uint8_t(value); break;
     case PadParam::FilterCutoff: pad.cutoff = uint8_t(value); break;
     case PadParam::FilterResonance: pad.resonance = uint8_t(value); break;
+    case PadParam::SendA: case PadParam::SendB: case PadParam::SendC: case PadParam::SendD:
+        pad.sends[unsigned(p) - unsigned(PadParam::SendA)] = uint8_t(value); break;
     default: break;
     }
 }

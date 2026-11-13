@@ -610,7 +610,13 @@ void Context::apply(const Binding& b, int value) {
     case Kind::PadPitch: pad().pitch = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pitch, value); break;
     case Kind::PadLevel: pad().level = uint8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Level, value); break;
     case Kind::PadPan: pad().pan = int8_t(value); send_pad(ui.track, t.last_pad); record_pad_motion(PadParam::Pan, value); break;
-    case Kind::PadSend: pad().sends[unsigned(b.id) % bus_count] = uint8_t(std::clamp(value, 0, 100)); send_pad(ui.track, t.last_pad); break;
+    case Kind::PadSend: {
+        unsigned bus = unsigned(b.id) % bus_count;
+        pad().sends[bus] = uint8_t(std::clamp(value, 0, 100));
+        send_pad(ui.track, t.last_pad);
+        record_pad_motion(PadParam(unsigned(PadParam::SendA) + bus), pad().sends[bus]); // its lane on the pad
+        break;
+    }
     case Kind::PadStart: { // Trim's handles, in frames
         auto was = trim_view(project, ui);
         pad().start = uint32_t(value); send_pad(ui.track, t.last_pad);

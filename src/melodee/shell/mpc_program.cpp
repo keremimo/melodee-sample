@@ -152,6 +152,8 @@ std::string import_mpc_program(const std::vector<uint8_t>& file, const std::stri
     };
     track.mix.level = mpc_level(number("Volume", 0.7079));
     track.mix.pan = mpc_pan(number("Pan", 0.5));
+    for (unsigned b = 0; b < bus_count; ++b) // the program's own Send 1-4: the whole kit's
+        track.mix.sends[b] = uint8_t(std::clamp(std::lround(number(("Send" + std::to_string(b + 1)).c_str(), 0) * 100), 0l, 100l));
     std::array<uint32_t, 128> colours {}; // <ProgramPads-v2.10> (an .xty's or MPC 3 program's: ProgramPads)
     for (const auto& [tag, text] : program.tags)
         if (tag.rfind("ProgramPads", 0) == 0) { colours = mpc_pad_colours(text); break; }

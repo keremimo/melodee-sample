@@ -13182,6 +13182,51 @@ void pad_colours() {
     CHECK(into.pads[2 * 16 + 5].colour == 0xFF0000);
 }
 
+// Pad sends, phase 4: each send is a lane of its pad (Motion records it, plays it back through the pad, the lane's card
+// is SEND n of that pad), and an MPC program's per-pad Send 1-4 come in as the pad's sends.
+void pad_sends_lanes() {
+    PadSound pad;
+    set_pad_param(pad, PadParam::SendB, 140);
+    CHECK(pad.sends[1] == 100 && pad_param_value(pad, PadParam::SendB) == 100 && pad_param_value(pad, PadParam::SendA) == 0);
+    CHECK(motion_pad_param(PadParam::SendD) < motion_mix_base);
+    Track kit;
+    kit.engine = EngineKind::Sampler;
+    kit.last_pad = 5;
+    kit.pads[5].sample = 0; kit.pads[5].sends = {0, 0, 45, 0};
+    Binding card {Binding::Kind::PadSend, 2, 0, 100, 45};
+    int lane = binding_lane(kit, card);
+    CHECK(lane == motion_lane(motion_pad_param(PadParam::SendC), 5));
+    CHECK(binding_lane(kit, Binding {Binding::Kind::PadSend, 0, 0, 100, 0}) == motion_lane(motion_pad_param(PadParam::SendA), 5));
+    Binding back = lane_binding(kit, 1, lane);
+    CHECK(back.kind == Binding::Kind::PadSend && back.id == 2 && back.value == 45);
+    // The sampler plays a moved lane: a send turned up by Motion is heard on its bus.
+    SampleData data;
+    data.frames = 44100;
+    data.left.assign(data.frames, 0.3f); data.right = data.left;
+    SamplerEngine::Table table {};
+    table[1] = &data;
+    auto engine = std::make_unique<SamplerEngine>();
+    engine->set_samples(&table);
+    PadSound dry; dry.sample = 1;
+    engine->set_pad(0, dry);
+    std::vector<float> l(128), r(128), bl(128), br(128);
+    engine->set_send_out(0, bl.data(), br.data());
+    engine->move_pad(0, PadParam::SendA, 50);
+    engine->note_on(int(sampler_first_note), 100);
+    for (int n = 0; n < 2; ++n) {
+        std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f); std::fill(bl.begin(), bl.end(), 0.0f); std::fill(br.begin(), br.end(), 0.0f);
+        engine->render_stereo(l.data(), r.data(), 128);
+    }
+    CHECK(std::fabs(bl[100] / l[100] - 0.5f) < 1e-4f);
+    // An MPC drum program's instrument: Send1 0.3 and Send3 1.0 into A and C.
+    KeygroupInstrument hit;
+    hit.tags = {{"Send1", "0.300000"}, {"Send2", "0.000000"}, {"Send3", "1.000000"}, {"Send4", "0.000000"}};
+    hit.layers.push_back({{"Active", "True"}, {"SampleName", "Snare"}, {"VelStart", "0"}, {"VelEnd", "127"}});
+    PadSound read;
+    keygroup_pad(hit, 1.0, read);
+    CHECK((read.sends == std::array<uint8_t, 4> {30, 0, 100, 0}));
+}
+
 // Pad sends, phase 3: the MIX hub's SENDS on a kit, B2 again, shows its pads: K1 the last pad's own send; B2 once
 // more goes back to the tracks; a synth never; the pads light by their send there too.
 void pad_sends_mix() {
@@ -13431,6 +13476,7 @@ int main() {
     pad_sends();
     pad_sends_stage();
     pad_sends_mix();
+    pad_sends_lanes();
     plugin_macros();
     pad_colours();
     tempo_lane_p5();

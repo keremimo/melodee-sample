@@ -361,8 +361,14 @@ change the bank.
 velocity sensitivity. **SHIFT** + **K2** sets whether decay starts from the
 start or the end.
 
-**SENDS**: the kit track's four sends. **K1** selects bus A–D, **K2** sets
-the send, **K3** the bus return.
+**SENDS**: the last pad's own sends. **K1** selects bus A–D, **K2** sets
+the pad's send to it, **K3** the bus return. **SHIFT** + **K2** sets the
+send of the whole kit track (**KIT SEND**). A pad's send is taken after its
+Pad FX, volume and pan, and follows the kit's level, pan and mute. The pads
+light as bright as their send to the bus shown; pads that send nothing stay
+dark. With Seq Record on, turning a pad's send writes a lane of that pad.
+
+![SENDS on a kit](images/screens/stagekitsends.png)
 
 **TUNE**: **K1** semitones, **K2** fine tune in cents, **K3** Warp (Off,
 50–200 %, or Seq to fit the sample to the tempo). **SHIFT** + **K3** sets
@@ -438,7 +444,7 @@ with its type.
 | --- | --- |
 | SFZ | `.sfz` |
 | MPC keygroup program | `.xpm`, or `.xty` from MPC 3 |
-| MPC drum program | `.xpm` or `.xty`, tagged **KIT**: loads as the whole kit, with its pad colours |
+| MPC drum program | `.xpm` or `.xty`, tagged **KIT**: loads as the whole kit, with its pad colours and sends |
 | MPC expansion | `.xpn`, tagged **INSTALL**: installs into `Samples/Expansions` |
 | Logic EXS24 / Sampler | `.exs`, with its samples in the same folder |
 | SoundFont | `.sf2`: opens as a folder of presets |
@@ -1142,7 +1148,8 @@ Each track plays through its effect chain (six slots), its level and pan,
 and its sends to four buses (A–D). Each bus has its own chain (six slots)
 and a return level. Everything then goes through the master chain (six
 slots), the master compressor and **MAIN VOLUME**. A kit pad can have its
-own chain of four effects before the track's chain.
+own chain of four effects before the track's chain, and its own sends to
+the four buses.
 
 ### Sends
 
@@ -1154,6 +1161,13 @@ open **Sends**: one bus at a time, with every track's send to it. Press
 
 **K1** sets the selected track's send, **K2** selects the bus, **K3** sets
 the bus return.
+
+On a kit track press **B2** (**SENDS**) again to see the kit's pads
+instead of the tracks, each with its own send to the bus shown. Hit a pad
+or turn the encoder to select it; **K1** sets its send. Press **B2** again
+to go back to the tracks.
+
+![Sends on the pads](images/screens/sendspads.png)
 
 ### Effect chains
 

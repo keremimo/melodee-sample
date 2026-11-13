@@ -301,6 +301,8 @@ void keygroup_pad(const KeygroupInstrument& instrument, double to_model, PadSoun
     pad.resonance = percent(number_at(t, "Resonance").value_or(0));
     pad.filter_amount = percent(number_at(t, "FilterEnvAmt").value_or(0));
     pad.filter = mpc_filter(int_at(t, "FilterType").value_or(0));
+    for (unsigned b = 0; b < pad.sends.size(); ++b) // the MPC's per-pad Send 1-4 into Melodee's buses A-D
+        pad.sends[b] = percent(number_at(t, ("Send" + std::to_string(b + 1)).c_str()).value_or(0));
     if ((pad.filter == PadFilter::Classic || pad.filter == PadFilter::Lpf2 || pad.filter == PadFilter::Lpf4) && pad.cutoff == 100 &&
         !pad.resonance && !pad.filter_amount) pad.filter = PadFilter::Off; // wide open: nothing to hear
     if (pad.filter_amount) {
