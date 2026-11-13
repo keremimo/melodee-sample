@@ -64,10 +64,17 @@ void Shell::update_tick() {
 }
 
 // Light show (Sample + Mute, shell/light_show.h): every light from the show; false where the page's lights stay
-// (SD card access). Pads pressed and sounds starting on the selected track's pads send rings; a loud hit in the mix
-// sends one from the middle.
+// (SD card access). Pads pressed flash (in Ripple, send rings); sounds starting on the selected track's pads flash.
+void Shell::light_style_step(int by) {
+    constexpr int count = int(ShowStyle::Count);
+    ui_.sample_used = true; // Sample's release opens nothing
+    ui_.light_style = uint8_t(((int(ui_.light_style) + by) % count + count) % count);
+    context_.notice(std::string("Light show: ") + show_style_names[ui_.light_style]);
+}
+
 bool Shell::light_show_pass(SurfaceLights& lights, uint32_t now) {
     if (card_owns_controls(ui_)) return false;
+    const auto style = ShowStyle(ui_.light_style % unsigned(ShowStyle::Count));
     if (!show_was_on) {
         show_lights.start(now);
         show_was_on = true;
@@ -75,9 +82,9 @@ bool Shell::light_show_pass(SurfaceLights& lights, uint32_t now) {
         show_voices_seen = {};
     }
     for (unsigned pad = 0; pad < 16; ++pad) // pressed since the last pass
-        if ((ui_.held_pads & ~show_pads_seen) >> pad & 1) show_lights.tap(pad, 1.0f, now);
+        if ((ui_.held_pads & ~show_pads_seen) >> pad & 1) show_lights.tap(pad, 1.0f, now, style);
     show_pads_seen = ui_.held_pads;
-    { // the selected track's voices: a new one on a pad of the bank in view (the sequence, Note Repeat) is a tap
+    { // the selected track's voices: a new one on a pad of the bank in view (the sequence, Note Repeat) flashes it
         host.watch_taps(int(ui_.track % track_count));
         TrackTaps taps;
         std::array<uint32_t, TrackTaps::voices> seen {};
@@ -90,19 +97,11 @@ bool Shell::light_show_pass(SurfaceLights& lights, uint32_t now) {
                 bool known = std::find(show_voices_seen.begin(), show_voices_seen.end(), v.serial) != show_voices_seen.end();
                 if (known || v.pad < 0 || unsigned(v.pad) >= sampler_pads || double(v.age) > dsp::sample_rate() / 10) continue; // started within a tenth of a second
                 unsigned kit = unsigned(v.pad);
-                if (kit < first || kit >= first + 16 || ui_.held_pads >> (kit - first) & 1) continue; // a hand's press rang already
-                show_lights.tap(kit - first, 0.5f + 0.5f * v.level, now);
+                if (kit < first || kit >= first + 16 || ui_.held_pads >> (kit - first) & 1) continue; // a hand's press flashed already
+                show_lights.play(kit - first, 0.5f + 0.5f * v.level, now);
             }
         }
         show_voices_seen = seen;
-    }
-    { // a loud hit in the mix: well over its recent level
-        float level = std::max(host.out_level(0), host.out_level(1));
-        if (level > 0.12f && level > show_level_slow * 1.6f && now - show_hit_at > 150) {
-            show_lights.hit(std::min(1.0f, level * 1.5f), now);
-            show_hit_at = now;
-        }
-        show_level_slow += (level - show_level_slow) * 0.05f;
     }
     ShowClock clock;
     clock.now = now;
@@ -111,7 +110,8 @@ bool Shell::light_show_pass(SurfaceLights& lights, uint32_t now) {
     if (clock.playing) clock.beats = double(host.ticks()) / std::max(1u, project_->beat_ticks());
     else clock.beats = double(now) * tempo_now.load(std::memory_order_relaxed) / 600000.0; // tenths of a BPM
     for (unsigned side = 0; side < surface_meter_lights; ++side) clock.meters[side] = meter_lit(host.out_level(side), meter_mix_db);
-    auto frame = show_lights.frame(clock);
+    clock.level = std::max(host.out_level(0), host.out_level(1));
+    auto frame = show_lights.frame(clock, style);
     show_frame(lights, frame);
     { // for `status`: the pads' rungs (white), the buttons' levels (red as bright), the meters
         uint64_t rungs = 0, hues = 0, levels = 0;

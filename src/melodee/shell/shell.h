@@ -42,6 +42,7 @@ public:
     void surface(const SurfaceEvent& event, uint32_t now_ms);
     void lights(SurfaceLights& lights, uint32_t now_ms);
     bool light_show_pass(SurfaceLights& lights, uint32_t now_ms); // Sample + Mute (shell/light_show.h)
+    void light_style_step(int by); // Sample + Minus / Plus while the light show is on: the next style
     // MIDI thread (parity phase 9, shell/midi_io.cpp): MIDI in from an external port, its loss, and the timed output.
     void midi(const MidiPortInfo& port, const MidiPacket& packet, uint32_t now_ms);
     void midi_lost();
@@ -109,14 +110,12 @@ private:
     std::array<uint32_t, 16> pad_let_go {}; // when each pad was let go, ms + 1: its flare fades from there (shell/pad_lights.h)
     unsigned count_beat_seen = 0;           // the count-in's beat the pads last pulsed for
     uint32_t count_beat_at = 0;             // and when it began, ms
-    // Light show (shell/light_show.h): its rings, whether it was on last pass, the pads held then, the selected
-    // track's voices seen then, and the mix's level for its hits.
+    // Light show (shell/light_show.h): its rings and flashes, whether it was on last pass, the pads held then, and
+    // the selected track's voices seen then.
     LightShow show_lights;
     bool show_was_on = false;
     uint32_t show_pads_seen = 0;
     std::array<uint32_t, TrackTaps::voices> show_voices_seen {};
-    float show_level_slow = 0;
-    uint32_t show_hit_at = 0;
     PadFacts pad_facts() const;             // what pad_context() asks of the shell (shell/pad_context.h)
     std::atomic<uint32_t> meter_bits {0}; // their LEDs (left, right << 8) and the input shown (<< 16), for `status`
     bool record_track_keys() const; // Record: a synth track source plays the pads (Minus / Plus: its octave)

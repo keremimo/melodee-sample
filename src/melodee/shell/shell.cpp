@@ -414,12 +414,14 @@ void Shell::press(Button b, bool pressed) {
     // Shift + Minus / Plus: undo and redo, as printed, on every page.
     // Pad Bank held: Minus / Plus jump banks.
     case Button::Minus:
+        if (ui.sample_held && ui.light_show && !ui.shift) { light_style_step(-1); break; } // the light show's style
         if (ui.shift) context_.undo();
         else if (levels_held_cards(*project_, ui)) { ui.levels_used = true; levels_nudge(context_, -1); } // 16 Levels held
         else if (record_track_keys()) context_.record_octave(-1); // the source track's pads, while they play
         else if (!pad_bank_move(context_, -1)) page.nudge(context_, -1);
         break;
     case Button::Plus:
+        if (ui.sample_held && ui.light_show && !ui.shift) { light_style_step(1); break; }
         if (ui.shift) context_.redo();
         else if (levels_held_cards(*project_, ui)) { ui.levels_used = true; levels_nudge(context_, 1); }
         else if (record_track_keys()) context_.record_octave(1);

@@ -245,21 +245,25 @@ Full, pad 9 red Faint; hues t track, l loop, w white, r red, o orange).
 
 ### Light show
 
-Sample + Mute turns the light show on or off (`shell/light_show.h`). Every
-light follows the tempo and the pads; the pads, buttons and pages work as
-usual. SD card access still shows its own lights.
+Sample + Mute turns the light show on or off (`shell/light_show.h`); while
+it is on, Sample + Minus / Plus picks the style. The pads, buttons and pages
+work as usual. SD card access still shows its own lights. The show is off
+at startup.
 
-| Light | In the show |
+Every style keeps time with the tempo (stopped: at the tempo, half as
+bright) and changes colour every four bars. A pad press flashes that pad
+white; a sound starting on a pad of the selected track's bank in view (the
+sequence, Note Repeat) flashes it more softly. Playing, the bank lights A-H
+step through the bar in eighths, Play is lit and Tap Tempo flashes on the
+beat; the meters show the mix.
+
+| Style | Lights |
 | --- | --- |
-| Pads, fader | One colour per bar, moving across the panel; a pulse on each beat, stronger on beat 1; stopped, half strength at the tempo |
-| Bank lights A-H | Playing: the bar in eighths |
-| Buttons | Lit where a ring passes; red on beat 1 while playing; Play lit while playing, Tap Tempo on the beat |
-| Meters | The mix as usual, plus rings passing |
-
-A pad press, or a sound starting on a pad of the selected track's bank in
-view (the sequence, Note Repeat), sends a ring out from that pad across the
-pads, buttons, fader, bank lights and meters. A loud hit in the mix sends a
-softer ring from the middle of the pads. The show is off at startup.
+| Pulse | The whole panel on the beat, harder on beat 1; white / red buttons red on beat 1 |
+| Sweep | A bar of light across the panel, left to right and back, one beat each way |
+| Chase | One pad a sixteenth, pad 1 to 16 through the bar; the buttons round the panel in eighths |
+| Ripple | Rings from each pad pressed, and from the middle on beat 1, across pads, buttons, fader and bank lights |
+| Levels | Pads fill bottom to top with the mix; buttons up both sides, bank lights as a bar |
 
 ## Pages
 

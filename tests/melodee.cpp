@@ -2990,65 +2990,80 @@ void meter_lights() {
     CHECK(meter_lit(at(-6), meter_mix_db) == surface_meter_all);
 }
 
-// Light show (Sample + Mute, shell/light_show.h): the beat, the bar's eighths, a tap's ring crossing the panel.
+// Light show (Sample + Mute, shell/light_show.h): each style keeps time with the beat and stays still between
+// beats; Chase walks the pads in sixteenths; Sweep crosses the panel; Ripple's rings come only from presses and
+// beat 1; Levels follows the mix; a press flashes its pad.
 void light_show_lights() {
     using B = SurfaceButton;
+    using S = ShowStyle;
     auto peak = [](Rgb c) { return std::max({c.r, c.g, c.b}); };
-    LightShow show;
+    auto total = [&](const ShowFrame& f) { unsigned sum = 0; for (auto c : f.lights.pads) sum += peak(c); return sum; };
     ShowClock clock;
-    clock.playing = true; clock.bar_beats = 4;
-    clock.now = 10000; clock.beats = 0; // past the intro, on the bar's first beat
-    auto first = show.frame(clock);
-    clock.beats = 0.5;
-    auto later = show.frame(clock);
-    CHECK(peak(first.lights.pads[5]) > peak(later.lights.pads[5])); // the beat's pulse falls through the beat
-    CHECK(first.lights.buttons[size_t(B::Chop)] == ButtonLight::RedBright); // the bar's first beat: red
-    CHECK(first.lights.buttons[size_t(B::Play)] == ButtonLight::Bright);
-    CHECK(first.lights.buttons[size_t(B::SampleRecord)] != ButtonLight::RedBright); // a red-only light is never sent red values
-    CHECK(later.lights.buttons[size_t(B::Chop)] != ButtonLight::RedBright);
-    for (unsigned eighth = 0; eighth < 8; ++eighth) { // the bank lights step through the bar
-        clock.beats = 4 + eighth * 0.5 + 0.4;
-        CHECK(show.frame(clock).lights.banks[eighth]);
+    clock.playing = true; clock.bar_beats = 4; clock.now = 10000;
+    auto at = [&](LightShow& show, S style, double beats, uint32_t now = 10000) { clock.beats = beats; clock.now = now; return show.frame(clock, style); };
+    for (unsigned n = 0; n < unsigned(S::Count); ++n) CHECK(show_style_names[n] && *show_style_names[n]);
+
+    // Pulse: the beat's hit falls through the beat; beat 1 red on white / red buttons, never on red-only ones.
+    LightShow show;
+    auto hit = at(show, S::Pulse, 0), mid = at(show, S::Pulse, 0.5), beat2 = at(show, S::Pulse, 1);
+    CHECK(total(hit) > total(mid) && total(hit) > total(beat2) && total(beat2) > total(mid));
+    CHECK(hit.lights.buttons[size_t(B::Chop)] == ButtonLight::RedBright && beat2.lights.buttons[size_t(B::Chop)] != ButtonLight::RedBright);
+    CHECK(hit.lights.buttons[size_t(B::SampleRecord)] != ButtonLight::RedBright);
+    CHECK(hit.lights.buttons[size_t(B::Play)] == ButtonLight::Bright);
+    // The same moment twice is the same frame: nothing random.
+    auto again = at(show, S::Pulse, 0.5);
+    CHECK(std::memcmp(&again.lights, &mid.lights, sizeof mid.lights) == 0);
+    for (unsigned eighth = 0; eighth < 8; ++eighth) CHECK(at(show, S::Pulse, eighth * 0.5 + 0.1).lights.banks[eighth]);
+    clock.playing = false; // stopped: half as bright, no red
+    auto stopped = at(show, S::Pulse, 0);
+    CHECK(total(stopped) < total(hit) && stopped.lights.buttons[size_t(B::Chop)] != ButtonLight::RedBright);
+    clock.playing = true;
+
+    // Chase: the brightest pad is the bar's sixteenth.
+    for (unsigned step = 0; step < 16; ++step) {
+        auto f = at(show, S::Chase, step * 0.25 + 0.01);
+        unsigned best = 0;
+        for (unsigned p = 1; p < 16; ++p) if (peak(f.lights.pads[p]) > peak(f.lights.pads[best])) best = p;
+        CHECK(best == step);
     }
-    clock.playing = false; clock.beats = 0; // stopped: half strength
-    CHECK(peak(show.frame(clock).lights.pads[5]) < peak(first.lights.pads[5]));
+    // Sweep: left buttons lit early in beat 1, right buttons late; back the other way in beat 2.
+    auto left = at(show, S::Sweep, 0.02), right = at(show, S::Sweep, 0.98), back = at(show, S::Sweep, 1.98);
+    CHECK(left.lights.buttons[size_t(B::Sample)] != ButtonLight::Off && left.lights.buttons[size_t(B::Mute)] == ButtonLight::Off);
+    CHECK(right.lights.buttons[size_t(B::Mute)] != ButtonLight::Off && right.lights.buttons[size_t(B::Sample)] == ButtonLight::Off);
+    CHECK(back.lights.buttons[size_t(B::Sample)] != ButtonLight::Off);
+    CHECK(peak(at(show, S::Sweep, 0.5).lights.pads[5]) > peak(left.lights.pads[5]));
 
-    // A tap on pad 1: the pad flashes at once; the ring reaches pad 16, then the right-hand buttons, then fades.
-    clock.playing = true; clock.beats = 0.9;
-    auto calm = show.frame(clock);
-    show.tap(0, 1, clock.now);
-    CHECK(show.newest() == clock.now + 1);
-    auto now = show.frame(clock);
-    CHECK(peak(now.lights.pads[0]) > peak(calm.lights.pads[0]) + 40);
-    CHECK(peak(now.lights.pads[15]) <= peak(calm.lights.pads[15]) + 2);
-    clock.now += unsigned(std::sqrt(18.0f) / show_light::ring_speed); // the ring's radius at pad 16
-    CHECK(peak(show.frame(clock).lights.pads[15]) > peak(calm.lights.pads[15]) + 10);
-    auto play_light = [&](uint32_t at) {
-        clock.now = at;
-        auto f = show.frame(clock);
-        return f.lights.buttons[size_t(B::SampleSelect)];
-    };
-    float reach = std::hypot(show_light::button_at(B::SampleSelect).x, show_light::button_at(B::SampleSelect).y) / show_light::ring_speed;
-    CHECK(play_light(10000 + unsigned(reach)) == ButtonLight::Bright);
-    clock.now = 10000 + show_light::ring_ms + 50; // gone
-    auto after = show.frame(clock);
-    CHECK(peak(after.lights.pads[0]) == peak(calm.lights.pads[0]) || std::abs(int(peak(after.lights.pads[0])) - int(peak(calm.lights.pads[0]))) < 30);
-
-    // Meters: the mix shows through; a ring climbs them.
-    clock.meters = {0b00011, 0};
-    clock.now = 20000;
-    CHECK((show.frame(clock).meters[0] & 0b00011) == 0b00011);
+    // Ripple: a press on pad 1 rings out to pad 16; with no press and off beat 1, nothing moves.
+    LightShow ripple;
+    auto calm = at(ripple, S::Ripple, 1.5, 20000), calm2 = at(ripple, S::Ripple, 1.5, 20400);
+    CHECK(std::memcmp(&calm.lights, &calm2.lights, sizeof calm.lights) == 0);
+    ripple.tap(0, 1, 20000, S::Ripple);
+    CHECK(ripple.newest() == 20001);
+    auto pressed = at(ripple, S::Ripple, 1.5, 20000);
+    CHECK(peak(pressed.lights.pads[0]) > peak(calm.lights.pads[0]) + 40); // the flash
+    auto reach = at(ripple, S::Ripple, 1.5, 20000 + unsigned(std::sqrt(18.0f) / show_light::ring_speed));
+    CHECK(peak(reach.lights.pads[15]) > peak(calm.lights.pads[15]) + 10);
+    LightShow other; // other styles: a press only flashes its pad
+    other.tap(0, 1, 20000, S::Pulse);
+    CHECK(other.newest() == 0);
+    // Levels: louder lights more pads and bank lights; silence leaves them dark but for a faint base.
+    LightShow levels;
+    clock.level = 0;
+    auto quiet = at(levels, S::Levels, 0.5);
+    clock.level = 0.5f;
+    auto loud = at(levels, S::Levels, 0.5);
+    CHECK(total(loud) > total(quiet) + 300 && loud.lights.banks[0] && !quiet.lights.banks[0]);
+    CHECK(peak(loud.lights.pads[12]) > peak(quiet.lights.pads[12]));
+    clock.level = 0;
+    // Meters: the mix as it is.
+    clock.meters = {0b00011, 0b00001};
+    CHECK(at(show, S::Pulse, 0.5).meters[0] == 0b00011);
+    clock.meters = {};
     // Turned on: dark first, then up over the intro.
     LightShow fresh;
     fresh.start(30000);
-    clock.now = 30000; clock.meters = {};
-    unsigned dark = 0;
-    for (auto c : fresh.frame(clock).lights.pads) dark += peak(c);
-    CHECK(dark == 0);
-    clock.now = 30000 + show_light::intro_ms;
-    unsigned lit = 0;
-    for (auto c : fresh.frame(clock).lights.pads) lit += peak(c);
-    CHECK(lit > 16 * 10);
+    CHECK(total(at(fresh, S::Pulse, 0.5, 30000)) == 0);
+    CHECK(total(at(fresh, S::Pulse, 0.5, 30000 + show_light::intro_ms)) > 16 * 5);
 }
 
 void audio_input_and_rendering() {
