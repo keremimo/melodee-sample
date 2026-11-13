@@ -172,8 +172,9 @@ void SamplerEngine::aim(Voice& v, const PadSound& sound, const SampleZone* zone,
     v.aim.step = (tape ? step * rate : step) * per_frame;             // what it reads at (a stretch's taps)
     v.aim.advance = rate * (keep_length ? 1.0 : step) * per_frame;    // how fast the sound moves on
     v.aim.beats = p[FollowHow] == 0 && !(keep_length && shifted);     // a note held to length wants overlapped windows
-    // Volume (dB, as the MPC shows it), Normalize, and velocity by the pad's sensitivity.
-    const float sense = sound.velocity_sense / 100.0f, curve = 0.25f + 0.75f * v.velocity / 127.0f;
+    // Volume (dB, as the MPC shows it), Normalize, and velocity by the pad's sensitivity: at 100 the gain follows
+    // the velocity (64 is -6 dB, 20 is -16 dB), at 0 every hit is full.
+    const float sense = sound.velocity_sense / 100.0f, curve = v.velocity / 127.0f;
     const float velocity_gain = 1.0f - sense * (1.0f - curve);
     v.aim.gain = volume_gain(sound.level) * volume_gain(p[Level]) * velocity_gain * std::pow(10.0f, sound.gain / 2000.0f) * v.accent * v.fall;
     if (zone) v.aim.gain *= std::pow(10.0f, (zone->gain + (trim ? trim->level / 10.0f : 0.0f)) / 20.0f)

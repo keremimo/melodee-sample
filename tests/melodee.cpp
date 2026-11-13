@@ -7612,7 +7612,7 @@ struct ZoneRig {
         }
         return out;
     }
-    void key(int semitones, int velocity = 100) { engine->note_on(int(sampler_first_note) | (uint8_t(int8_t(semitones)) << 8), velocity); }
+    void key(int semitones, int velocity = 127) { engine->note_on(int(sampler_first_note) | (uint8_t(int8_t(semitones)) << 8), velocity); }
     void off(int semitones) { engine->note_off(int(sampler_first_note) | (uint8_t(int8_t(semitones)) << 8)); }
 };
 
