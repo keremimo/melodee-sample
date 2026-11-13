@@ -75,8 +75,8 @@ The [quickstart](docs/QUICKSTART.md) has the full steps, with screenshots.
 
 ### Plug-ins
 
-Put plug-ins in a folder named `Plugins` at the top level of the card, in
-any subfolders. Melodee loads:
+Put plug-ins in `Melodee/Plugins` on the card (the `Plugins` folder inside
+the `Melodee` folder at the top level), in any subfolders. Melodee loads:
 
 - VST3 bundles with a `Contents/aarch64-linux/` build
 - LV2 bundles (`.lv2` folders) built for 64-bit ARM Linux (aarch64)
@@ -91,7 +91,7 @@ The Melodee synths are free downloads:
 [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
 [Melodee Chip](https://github.com/keremimo/mpc-vst-melodee-chip/releases/latest). From each release, download the
 `-mpc-sample.zip`, unzip it and copy the plug-in folder inside (for example
-`Ellic Studio - VST - Melodee Poly`) into `Plugins`. The synths also run on
+`Ellic Studio - VST - Melodee Poly`) into `Melodee/Plugins`. The synths also run on
 MPC OS devices that load Open MPC plug-ins; those devices use the
 `-mpc-aarch64.zip` or `-mpc-armv7.zip`.
 

@@ -33,9 +33,11 @@ Projects are saved on the card in Melodee/Projects. Put samples in a
 folder named "Samples" at the top level of the card.
 
 Plug-ins: put VST3 and VST2 plug-ins built for 64-bit or 32-bit ARM Linux,
-and Open MPC plug-ins, in a folder named "Plugins" at the top level of the
-card. Melodee's own synths, Melodee Poly, Melodee PD and Melodee Chip, are
-free downloads:
+and Open MPC plug-ins, in the folder "Melodee/Plugins" on the card (make a
+folder named "Plugins" inside the "Melodee" folder). Earlier versions read a
+"Plugins" folder at the top level of the card: move its contents into
+"Melodee/Plugins"; saved projects find them there. Melodee's own synths,
+Melodee Poly, Melodee PD and Melodee Chip, are free downloads:
 https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest
 https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest
 https://github.com/keremimo/mpc-vst-melodee-chip/releases/latest

@@ -652,13 +652,13 @@ std::string PluginRack::use_plugin_home() {
 }
 
 void PluginRack::set_card(const std::string& top) {
-    std::string wanted_root = top.empty() ? std::string() : (fs::path(top) / "Plugins").string();
+    std::string wanted_root = plugin_folder(top);
     {
         std::lock_guard<std::mutex> held(lock);
         if (top == card_top) return;
         card_top = top;
         root = wanted_root;
-        // Entries named from the card's top (Plugins/...) that could not open try again on this card at the next sync().
+        // Entries named from the card's top (Melodee/Plugins/...) that could not open try again on this card at the next sync().
         for (auto& entry : entries)
             if (!entry.path.empty() && fs::path(entry.path).is_relative() && entry.status == PluginStatus::Failed) entry.reload = true;
     }
@@ -850,12 +850,14 @@ void PluginRack::probe_listed() {
 }
 
 void PluginRack::load(const Job& job) {
-    std::string path = job.path;
+    std::string top;
     {
         std::lock_guard<std::mutex> held(lock);
-        // A path relative to the card's top (a track Melodee's own synth was, Plugins/...): on the card in now.
-        if (fs::path(path).is_relative() && !card_top.empty()) path = (fs::path(card_top) / path).string();
+        top = card_top;
     }
+    // A path relative to the card's top (a track Melodee's own synth was), or one in the card's old top-level
+    // Plugins folder: on the card in now, in Melodee/Plugins.
+    std::string path = card_plugin_path(top, job.path);
     auto file = describe_plugin(path);
     std::vector<uint8_t> state;
     {

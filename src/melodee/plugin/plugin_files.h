@@ -4,6 +4,7 @@
 #include "melodee/plugin/drum_map.h"
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,6 +60,27 @@ std::vector<PluginFile> list_plugins(const std::string& folder);
 void unzip_plugins(const std::string& folder);
 // One path as list_plugins() would describe it (a project names its plug-ins by path).
 PluginFile describe_plugin(const std::string& path);
+
+// The card's plug-in folder: Melodee/Plugins under the card's top. Empty: no card.
+inline std::string plugin_folder(const std::string& card_top) {
+    if (card_top.empty()) return {};
+    return (std::filesystem::path(card_top) / "Melodee" / "Plugins").string();
+}
+
+// Where a project's plug-in path opens on the card in now. A relative path is from the card's top. A path in
+// Plugins/ at the card's top (where older builds read plug-ins) opens from the same place in Melodee/Plugins when
+// it is there or when neither is, else where it was. Plain C++, no JUCE: the host tests read it too.
+inline std::string card_plugin_path(const std::string& card_top, const std::string& saved) {
+    namespace fs = std::filesystem;
+    if (card_top.empty() || saved.empty()) return saved;
+    fs::path path(saved);
+    if (path.is_relative()) path = fs::path(card_top) / path;
+    fs::path inside = path.lexically_relative(fs::path(card_top) / "Plugins");
+    if (inside.empty() || inside == "." || *inside.begin() == "..") return path.string();
+    fs::path moved = fs::path(plugin_folder(card_top)) / inside;
+    std::error_code e;
+    return fs::exists(moved, e) || !fs::exists(path, e) ? moved.string() : path.string();
+}
 
 // An Open MPC plug-in's Q-Link pages: its parameter indices in the order the
 // skin lays them out, tab by tab, each once. Empty: none given.

@@ -58,8 +58,8 @@ void draw(Paint& p, const Snapshot& s) {
         float mid = zone::width / 2.0f, y = zone::picture_y + 40;
         icon(p, v.root.empty() ? Icon::Card : Icon::Folder, mid - 14, y, 28, colour::dim, 1.4f);
         p.text(v.root.empty() ? "NO CARD" : "NO PLUG-INS", 0, y + 36, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
-        if (!v.root.empty() && v.top) // where they go: unzipped plug-in folders in the card's Plugins folder
-            p.text(juce::String::fromUTF8("Card \xe2\x80\xba Plugins"), 0, y + 54, zone::width, 14, plain(colour::dim, type::small), juce::Justification::centred);
+        if (!v.root.empty() && v.top) // where they go: unzipped plug-in folders in the card's Melodee/Plugins folder
+            p.text(juce::String::fromUTF8("Card \xe2\x80\xba Melodee \xe2\x80\xba Plugins"), 0, y + 54, zone::width, 14, plain(colour::dim, type::small), juce::Justification::centred);
         return;
     }
     const auto* ref = loaded_ref(s);

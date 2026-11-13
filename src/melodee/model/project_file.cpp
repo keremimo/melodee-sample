@@ -17,7 +17,7 @@ constexpr char magic[8] {'M', 'E', 'L', 'O', 'D', 'E', 'E', '1'};
 
 // The synths that left Melodee (model/project.h, legacy_engine): a file's track of one opens as a PLUGIN track on
 // the same voice, now an Open MPC plug-in of its own (Melodee Poly, PD and Chip), named from the card's top so the
-// rack finds it in the card's Plugins folder (plugin/plugin_rack.cpp), with the track's values and routes as the
+// rack finds it in the card's Melodee/Plugins folder (plugin/plugin_rack.cpp), with the track's values and routes as the
 // plug-in's state: its `melodee=` and `melodee_mods=` lines, which take them in Melodee's order and numbering.
 struct LegacySynth {
     uint8_t engine;
@@ -27,9 +27,9 @@ struct LegacySynth {
     unsigned params, before_pressure; // its values, and how many a file from before params_version 1 carries
 };
 constexpr LegacySynth legacy_synths[] {
-    {legacy_engine::prophet, "Plugins/Ellic Studio - VST - Melodee Poly", "Melodee Poly", "melodee-poly", 53, 50},
-    {legacy_engine::cz, "Plugins/Ellic Studio - VST - Melodee PD", "Melodee PD", "melodee-pd", 20, 17},
-    {legacy_engine::sid, "Plugins/Ellic Studio - VST - Melodee Chip", "Melodee Chip", "melodee-chip", 22, 18},
+    {legacy_engine::prophet, "Melodee/Plugins/Ellic Studio - VST - Melodee Poly", "Melodee Poly", "melodee-poly", 53, 50},
+    {legacy_engine::cz, "Melodee/Plugins/Ellic Studio - VST - Melodee PD", "Melodee PD", "melodee-pd", 20, 17},
+    {legacy_engine::sid, "Melodee/Plugins/Ellic Studio - VST - Melodee Chip", "Melodee Chip", "melodee-chip", 22, 18},
 };
 
 // A VST2 plug-in's state as Melodee's VST2 hosts keep it (plugin/vst2_instance.cpp, vst2_bridge_instance.cpp: "MVS2",

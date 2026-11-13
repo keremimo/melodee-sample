@@ -16,7 +16,7 @@
 #include <vector>
 
 // Melodee's plug-ins (docs/MELODEE.md, Plug-ins): VST3 bundles, CLAP and VST2
-// libraries and Open MPC plug-ins from the card's Plugins folder, as PLUGIN
+// libraries and Open MPC plug-ins from the card's Melodee/Plugins folder, as PLUGIN
 // tracks and as effects in the track, bus and master chains.
 //
 // The rack follows the project. sync() compares Project::plugins and what uses
@@ -94,7 +94,7 @@ public:
     void browse(const std::string& folder); // "" the Plugins folder itself
     void browse_up();
     struct View {
-        std::string root;   // the card's Plugins folder; empty: no card
+        std::string root;   // the card's Melodee/Plugins folder; empty: no card
         std::string folder; // the folder listed
         bool top = true;    // nothing above it to go back to
         int came_from = -1; // after going up: the row of the folder it came out of

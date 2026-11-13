@@ -180,7 +180,7 @@ int memory(const Args& a) {
 
 int project(const Args& a) {
     std::string card = a.get("card", ""), name = a.get("name", "Print Test");
-    std::string plugin = a.get("plugin", "Plugins/Ellic Studio - VST - Melodee Poly");
+    std::string plugin = a.get("plugin", "Melodee/Plugins/Ellic Studio - VST - Melodee Poly");
     if (card.empty()) { std::fprintf(stderr, "print-spike project: card=DIR (the card's top)\n"); return 1; }
     auto p = std::make_unique<Project>();
     auto b = std::make_unique<PatternBank>();

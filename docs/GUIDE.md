@@ -593,8 +593,13 @@ Melodee hosts VST3, LV2, CLAP and VST2 plug-ins, instruments and effects.
 
 ### What runs
 
-Put plug-ins in a folder named `Plugins` at the top level of the card, in
-any subfolders. Melodee loads plug-ins built for the MPC's ARM processor:
+Put plug-ins in `Melodee/Plugins` on the card (the `Plugins` folder inside
+the `Melodee` folder at the top level), in any subfolders. Earlier versions
+read a `Plugins` folder at the top level of the card: move its contents into
+`Melodee/Plugins`. Projects saved with an earlier version find their
+plug-ins there.
+
+Melodee loads plug-ins built for the MPC's ARM processor:
 
 - VST3 bundles with a `Contents/aarch64-linux/` build.
 - LV2 bundles (`.lv2` folders) built for 64-bit ARM Linux (aarch64).
@@ -622,7 +627,7 @@ The Melodee synths are Open MPC plug-ins:
 Each has factory presets, pad pressure and its own mod matrix. They are free
 downloads: [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest), [Melodee PD](https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest) and
 [Melodee Chip](https://github.com/keremimo/mpc-vst-melodee-chip/releases/latest). From each release, download the
-`-mpc-sample.zip` and copy it into `Plugins`. The next time the plug-in
+`-mpc-sample.zip` and copy it into `Melodee/Plugins`. The next time the plug-in
 picker opens, Melodee unzips it, deletes the zip and lists the plug-in folder
 (for example `Ellic Studio - VST - Melodee Poly`). A zip that cannot be
 unzipped stays, dimmed, with **Won't unzip**.
@@ -630,7 +635,7 @@ unzipped stays, dimmed, with **Won't unzip**.
 ### Plug-in instruments
 
 1. Select an empty track and press **SAMPLE**.
-2. Press **B1** (**SYNTH**). The plug-in picker opens on `Plugins`.
+2. Press **B1** (**SYNTH**). The plug-in picker opens on `Melodee/Plugins`.
 3. Turn the encoder to a plug-in and push to load it.
 
 ![The plug-in picker](images/screens/plugins.png)
@@ -691,7 +696,7 @@ Melodee's own amp sim is the **Amp sim** effect in the Dirt family. For amp
 and pedal captures, the Neural Amp Modeler plug-in can be added on its own.
 It plays amp and pedal captures (`.nam` files) with a cab
 IR. Its MPC Sample build comes as `NeuralAmpModeler-<version>-mpc-sample.zip`:
-unzip it into `Plugins`. Put the files it plays in
+unzip it into `Melodee/Plugins`. Put the files it plays in
 `Melodee/Plugin Data/Neural Amp Modeler`:
 
 - `Models`: `.nam` captures, in folders if you like.
@@ -1391,10 +1396,10 @@ the drive, Melodee asks whether to take the card back anyway.
 | `Melodee/Stems/` | Stems |
 | `Melodee/MIDI/` | Exported MIDI files |
 | `Melodee/Cache/` | Decoded instrument samples. Safe to delete: Melodee makes them again. |
+| `Melodee/Plugins/` | VST3, LV2, CLAP and VST2 plug-ins |
 | `Melodee/Plugin Data/` | Plug-in settings and presets |
 | `Melodee/settings` | Melodee's settings |
 | `Samples/` | Your samples. Melodee writes `Recorded/`, `Edits/`, `Banks/`, `Looper/` and `Expansions/` here. |
-| `Plugins/` | VST3, LV2, CLAP and VST2 plug-ins |
 | `SysEx/` | `.syx` files for MIDI tracks |
 
 ### Update Melodee

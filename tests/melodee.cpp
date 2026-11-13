@@ -8708,6 +8708,29 @@ void nam_page() {
     fs::remove_all(home);
 }
 
+// The card's plug-in folder (plugin/plugin_files.h): Melodee/Plugins. A path saved in the old top-level Plugins folder,
+// relative or absolute, opens from Melodee/Plugins once it is there, else where it was; any other path as saved.
+void card_plugin_paths() {
+    namespace fs = std::filesystem;
+    auto top = fs::temp_directory_path() / ("melodee-plugins-" + std::to_string(getpid()));
+    const std::string t = top.string();
+    fs::remove_all(top);
+    fs::create_directories(top / "Plugins" / "Old.vst3");
+    fs::create_directories(top / "Melodee" / "Plugins" / "New.vst3");
+    CHECK(plugin_folder(t) == t + "/Melodee/Plugins" && plugin_folder("").empty());
+    CHECK(card_plugin_path(t, "Plugins/Old.vst3") == t + "/Plugins/Old.vst3");                  // not moved yet
+    CHECK(card_plugin_path(t, t + "/Plugins/Old.vst3") == t + "/Plugins/Old.vst3");
+    CHECK(card_plugin_path(t, "Plugins/New.vst3") == t + "/Melodee/Plugins/New.vst3");          // moved
+    CHECK(card_plugin_path(t, t + "/Plugins/New.vst3") == t + "/Melodee/Plugins/New.vst3");
+    CHECK(card_plugin_path(t, "Plugins/Gone.vst3") == t + "/Melodee/Plugins/Gone.vst3");        // on neither: the new place
+    CHECK(card_plugin_path(t, "Melodee/Plugins/New.vst3") == t + "/Melodee/Plugins/New.vst3");
+    CHECK(card_plugin_path(t, "/elsewhere/Plugins/X.vst3") == "/elsewhere/Plugins/X.vst3");
+    CHECK(card_plugin_path("", "Plugins/X.vst3") == "Plugins/X.vst3");                          // no card
+    fs::create_directories(top / "Melodee" / "Plugins" / "Old.vst3");                           // both: the new one
+    CHECK(card_plugin_path(t, "Plugins/Old.vst3") == t + "/Melodee/Plugins/Old.vst3");
+    fs::remove_all(top);
+}
+
 // An Open MPC skin's Q-Link pages (plugin/plugin_files.h): a "Column" page (every toolkit skin) is read in its
 // layout's slot order, Q-Links 13, 9, 5, 1, 14, ... 4, so each three are one K1-K3 row as the skin shows them; any
 // other direction in Q-Link number order. -1 skipped, each parameter once.
@@ -8754,7 +8777,7 @@ void synths_as_plugins() {
         auto text = [&](unsigned entry) { return std::string(states[entry].begin(), states[entry].end()); };
         const auto& poly = copy->tracks[0];
         CHECK(poly.engine == EngineKind::Plugin && poly.plugin == 1 && std::string(poly.name) == "FUNK BASS II");
-        CHECK(std::string(copy->plugins[1].path) == "Plugins/Ellic Studio - VST - Melodee Poly" && std::string(copy->plugins[1].name) == "Melodee Poly");
+        CHECK(std::string(copy->plugins[1].path) == "Melodee/Plugins/Ellic Studio - VST - Melodee Poly" && std::string(copy->plugins[1].name) == "Melodee Poly");
         CHECK(text(1).compare(0, 5, std::string("MVS2\x01", 5)) == 0 && states[1].back() == 0);
         CHECK(text(1).find("melodee-poly 1\nmelodee=0,1,2,3,4,5,6,0,") != std::string::npos);
         auto values = text(1).substr(text(1).find("melodee=") + 8);
@@ -8762,7 +8785,7 @@ void synths_as_plugins() {
         CHECK(std::count(values.begin(), values.end(), ',') == 52 && values.find(",33,") != std::string::npos); // 53 values
         CHECK(text(1).find("\nmelodee_mods=0:0:0,0:0:0,1:1:-45,0:0:0,") != std::string::npos);
         CHECK(copy->tracks[2].engine == EngineKind::Plugin && copy->tracks[2].plugin == 2
-              && std::string(copy->plugins[2].path) == "Plugins/Ellic Studio - VST - Melodee PD" && text(2).find("melodee-pd 1\n") == 5);
+              && std::string(copy->plugins[2].path) == "Melodee/Plugins/Ellic Studio - VST - Melodee PD" && text(2).find("melodee-pd 1\n") == 5);
         CHECK(copy->tracks[3].engine == EngineKind::Plugin && copy->tracks[3].plugin == 3 && text(3).find("melodee-chip 1\n") == 5);
         CHECK(copy->tracks[1].engine == EngineKind::None && copy->tracks[4].engine == EngineKind::None); // FM6, the 909
         CHECK(copy_bank->at[1][0].events.size() == 1 && copy_bank->at[1][0].events[0].key == 60);          // their notes kept
@@ -13405,6 +13428,7 @@ int main() {
     plugins();
     preset_folders();
     nam_page();
+    card_plugin_paths();
     qlink_pages();
     synths_as_plugins();
     voice_taps();

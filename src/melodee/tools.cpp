@@ -606,7 +606,7 @@ void looper_sheet(Snapshot& s, unsigned l) {
 // Plug-ins (docs/MELODEE.md): a Plugins folder as the picker lists it, and a PLUGIN track's panel as the rack fills it.
 void plugin_listing(Snapshot& s) {
     auto& v = s.plugins;
-    v.root = "/media/card/Plugins"; v.folder = v.root; v.top = true;
+    v.root = "/media/card/Melodee/Plugins"; v.folder = v.root; v.top = true;
     auto add = [&](const char* name, bool folder, PluginFormat format, int8_t instrument, const char* why = "") {
         PluginFile f;
         f.name = name; f.folder = folder; f.format = format; f.instrument = instrument; f.why = why;
@@ -660,7 +660,7 @@ void plugin_track(Snapshot& s, PluginStatus status) {
     s.ui.page = PageId::Edit; s.ui.track = 2;
     auto& t = s.project.tracks[2];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("BASS SYNTH");
-    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Plugins/Bass Synth");
+    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Bass Synth");
     plugin_panel(s, 0, "Bass Synth", "ARMV7", true, status);
 }
 
@@ -702,7 +702,7 @@ void surge_presets(Snapshot& s) {
     s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Edit; s.ui.presets_entry = 0;
     auto& t = s.project.tracks[0];
     t.engine = EngineKind::Plugin; t.plugin = 0; t.set_name("SURGE XT");
-    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Plugins/Surge XT/Surge XT.clap");
+    std::snprintf(s.project.plugins[0].path, plugin_path_length, "/media/card/Melodee/Plugins/Surge XT/Surge XT.clap");
     plugin_panel(s, 0, "Surge XT", "CLAP", true, PluginStatus::Ready);
     static const std::pair<const char*, int> folders[] {{"Basses", 59}, {"Brass", 11}, {"Chords", 8}, {"FX", 27}, {"Keys", 16},
         {"Leads", 131}, {"MPE", 9}, {"Pads", 65}, {"Percussion", 9}, {"Plucks", 111}, {"Polysynths", 104}, {"Sequences", 45},
@@ -900,7 +900,7 @@ const Preview previews[] {
     {"pluginsbundle", [](Shell&, Snapshot& s) { // a bundle opened for track 1's third slot: a row a plug-in
          s.ui.page = PageId::Plugins; s.ui.plugin_target = UiState::PluginTarget::Effect; s.ui.plugin_chain = 0; s.ui.plugin_slot = 2;
          auto& v = s.plugins;
-         v.root = "/media/card/Plugins"; v.folder = v.root + "/Effects/Effect Pack.vst3"; v.top = false;
+         v.root = "/media/card/Melodee/Plugins"; v.folder = v.root + "/Effects/Effect Pack.vst3"; v.top = false;
          const char* names[] {"Compressor Mono", "Compressor Stereo", "Delay Stereo", "Equalizer x16 Stereo",
                               "Gate Stereo", "Limiter Stereo", "Reverb Stereo", "Trigger Stereo"};
          int32_t id = 1;
@@ -923,7 +923,7 @@ const Preview previews[] {
          s.ui.page = PageId::Rack; s.ui.track = 0;
          s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
          s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
-         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/Plate Reverb.vst3");
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Plate Reverb.vst3");
          s.ui.fx_cursor[0] = 1;
          plugin_panel(s, 4, "Plate Reverb", "VST3", false, PluginStatus::Ready);
      }},
@@ -931,7 +931,7 @@ const Preview previews[] {
          s.ui.page = PageId::Rack; s.ui.track = 0;
          s.project.tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 40, 30, 60, 0, 0}};
          s.project.tracks[0].fx.slots[1] = {plugin_effect_kind, false, {4, 0, 0, 0, 0, 0}};
-         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/Amp Sim.vst3");
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Amp Sim.vst3");
          s.ui.fx_cursor[0] = 1;
          plugin_panel(s, 4, "Amp Sim", "VST3", false, PluginStatus::Ready);
          s.ui.plugin_panel.programs = 8;
@@ -939,7 +939,7 @@ const Preview previews[] {
      }},
     {"pluginpresets", [](Shell&, Snapshot& s) { // PRESETS for an amp sim on track 1's chain: the eight factory ones, one loaded
          s.ui.page = PageId::PluginPresets; s.ui.track = 0; s.ui.presets_back = PageId::Rack; s.ui.presets_entry = 4;
-         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Plugins/Amp Sim.vst3");
+         std::snprintf(s.project.plugins[4].path, plugin_path_length, "/media/card/Melodee/Plugins/Amp Sim.vst3");
          plugin_panel(s, 4, "Amp Sim", "VST3", false, PluginStatus::Ready);
          auto& v = s.presets;
          v.entry = 4;

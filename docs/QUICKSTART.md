@@ -34,8 +34,9 @@ To install Melodee:
    card. The card now has `autorun/autorun.sh` and `autorun/melodee/`. Do
    not edit or rename anything inside `autorun`: the MPC does not start an
    autorun whose files have changed.
-3. Optional: to use plug-ins, make a folder named `Plugins` at the top level
-   of the card and copy your plug-ins into it. See
+3. Optional: to use plug-ins, make a folder named `Plugins` inside the
+   `Melodee` folder on the card (`Melodee/Plugins`) and copy your plug-ins
+   into it. See
    [Plug-ins](GUIDE.md#plug-ins) for what runs.
 4. Put the card in the MPC and switch it on. The stock app starts first. A
    few seconds later Melodee starts.
@@ -172,7 +173,7 @@ you hit.
 
 Melodee loads VST3, LV2, CLAP and VST2 instruments built for the MPC's ARM processor,
 including the Melodee Poly, Melodee PD and Melodee Chip synths. Put them in
-the `Plugins` folder on the card first (see [step 1](#1-install)). The
+the `Melodee/Plugins` folder on the card first (see [step 1](#1-install)). The
 Melodee synths are free downloads; see [Plug-ins](GUIDE.md#plug-ins).
 
 1. Hold **PAD BANK** and press pad 2 to select track 2.
@@ -182,8 +183,8 @@ Melodee synths are free downloads; see [Plug-ins](GUIDE.md#plug-ins).
 
    ![Stage on an empty track](images/screens/stageemptysynth.png)
 
-3. Press **B1** (**SYNTH**). The plug-in picker opens on the `Plugins`
-   folder.
+3. Press **B1** (**SYNTH**). The plug-in picker opens on the
+   `Melodee/Plugins` folder.
 4. Turn the encoder to a plug-in and push the encoder to load it.
    Plug-ins that cannot run on the MPC are dimmed.
 

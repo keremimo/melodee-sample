@@ -358,7 +358,7 @@ beat; the meters show the mix.
     as Motion.
   - **An empty track**: three doors on one page, a tile under each key
     showing what it would make, the pot under it choosing: **SYNTH** (a
-    PLUGIN track: the plug-in picker opens on the card's Plugins folder),
+    PLUGIN track: the plug-in picker opens on the card's Melodee/Plugins folder),
     **KIT** (K2 where its first sound comes from: samples on
     the card or record the input; Audio Recall and Resample stay on their
     keys and need a kit track), **MIDI** (K3 the port). The key under a
@@ -1768,11 +1768,11 @@ factory sounds as presets, pad pressure and an eight-route mod matrix of
 its own. They were Melodee's built-in PROPHET, CZ and SID engines, the same
 voices to the sample; FM6 and the 909 kit are gone. Copy a synth's folder
 (`Ellic Studio - VST - Melodee Poly`, from its aarch64 release) into
-`Plugins/` on the card.
+`Melodee/Plugins/` on the card.
 
 A project saved while the synths were built in (0.1.0-alpha.6 and before)
 opens a PROPHET, CZ or SID track as a PLUGIN track on Melodee Poly, PD or
-Chip, named from the card's top (`Plugins/Ellic Studio - VST - …`, so it
+Chip, named from the card's top (`Melodee/Plugins/Ellic Studio - VST - …`, so it
 plays from whichever card holds it), with the track's values and routes as
 the plug-in's state: it sounds as it did. An FM6 or 909 track opens empty,
 its patterns kept (`model/project_file.cpp`, `legacy_engine` in
@@ -1780,8 +1780,11 @@ its patterns kept (`model/project_file.cpp`, `legacy_engine` in
 
 ## Plug-ins
 
-VST3, LV2, CLAP and VST2 plug-ins, instruments and effects, from `Plugins/` at the top
-of the card (beside `Samples/`), in any folders under it.
+VST3, LV2, CLAP and VST2 plug-ins, instruments and effects, from `Melodee/Plugins/` on
+the card, in any folders under it. Builds before this one read `Plugins/` at the card's top;
+a project saved then names its plug-ins there and opens each from `Melodee/Plugins/` once
+it is moved, or from the old folder while it is still there (`card_plugin_path()` in
+`plugin/plugin_files.h`).
 
 - **What loads.** Builds for this MPC only: a `.vst3` bundle with
   `Contents/aarch64-linux/`, an `.lv2` bundle, a `.clap` library (both
@@ -1937,7 +1940,7 @@ of the card (beside `Samples/`), in any folders under it.
   the page says it stopped working and picking it again reopens it.
 - **Saving.** A project names each plug-in by path (`Project::plugins`,
   32 entries) and keeps what each saves of itself (its state) in the file.
-  A path not starting at `/` is the card's (`Plugins/...` from its top): it
+  A path not starting at `/` is the card's (`Melodee/Plugins/...` from its top): it
   opens from whichever card is in, and tries again when a card comes.
 - **Not yet.** Plug-in parameters take no Motion and no undo; Knob FX and
   a kit pad's chain take no plug-ins; editors are never shown.
@@ -1957,7 +1960,7 @@ of the card (beside `Samples/`), in any folders under it.
   each plug-in's path and state). Saved beside
   the file, then renamed into place.
 - `Melodee/Sounds/<name>.mlds`: a sound's values and mod routes.
-- `Plugins/`: plug-ins, read only (above, "Plug-ins").
+- `Melodee/Plugins/`: plug-ins, read only (above, "Plug-ins").
 - `Melodee/Plugin Data/`: the plug-ins' home: their presets and settings
   (above, "Plug-ins").
 - `Melodee/settings`: Melodee's settings, MIDI Config, Input Config, the
