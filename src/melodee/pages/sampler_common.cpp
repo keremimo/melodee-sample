@@ -224,6 +224,16 @@ void sampler_rows_wheel(Context& c, int delta) {
 }
 void sampler_bank(Context& c, int way) { c.track().bank = uint8_t((c.track().bank + sampler_banks + way) % sampler_banks); }
 
+ui::WaveSides wave_sides(const Snapshot& s) {
+    ui::WaveSides sides;
+    if (!s.sample.stereo) return sides;
+    for (unsigned side = 0; side < 2; ++side) {
+        sides.overview[side] = &s.sample.sides[side];
+        if (s.detail_to > s.detail_from) sides.detail[side] = &s.detail_sides[side];
+    }
+    return sides;
+}
+
 const PlayHead* pad_head(const Snapshot& s, unsigned pad, const PadSound& sound, uint32_t frames, ui::WaveHead& out) {
     if (!frames) return nullptr;
     for (const auto& head : s.heads) {

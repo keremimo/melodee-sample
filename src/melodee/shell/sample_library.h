@@ -55,6 +55,8 @@ struct LoadedSample {
     std::string name, path, error;
     uint32_t frames = 0;
     Overview overview {};
+    bool stereo = false;                 // its sides differ: the pages draw each side's waveform
+    std::array<Overview, 2> sides {};    // left, right (stereo only)
     std::array<Hit, max_hits> hits {};
     unsigned hit_count = 0;
     BeatGrid beats;          // its own tempo and beats, for Chop's Beats type
@@ -201,7 +203,8 @@ public:
     uint32_t zero_crossing_toward(unsigned n, uint32_t frame, int way) const;
     // Trim and Chop zoomed in (shell/zoom_view.h): slot `n`'s peaks between two frames in `columns` columns
     // 0..255, read from its audio (the overview is too coarse that close); false when it holds no audio.
-    bool detail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const;
+    // With `sides` (two arrays of `columns`), the left and right apart as well.
+    bool detail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns, uint8_t* const* sides = nullptr) const;
     std::vector<SampleFile> files() const;
     std::string root() const;
     std::string folder() const;

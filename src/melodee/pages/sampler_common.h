@@ -37,6 +37,8 @@ void draw_filter_curve(ui::Paint& p, float x, float y, float w, float h, unsigne
 void draw_envelope(ui::Paint& p, float x, float y, float w, float h, double seconds, double attack, double decay, float sustain,
                    double release, bool fade_end, unsigned track, float soft = 1); // soft < 1: the softer hit's envelope, dashed
 
+// The sample in hand's two sides for ui::waveform, and their zoomed-in peaks when there are some; none for a mono one.
+ui::WaveSides wave_sides(const Snapshot& s);
 // The newest voice of `pad` playing `sound`'s sample (or its wake, still
 // fading) as a head over a file `frames` long (ui/waveform.h); nullptr: none.
 // The wake runs from the region's start (reversed: its end; after a loop

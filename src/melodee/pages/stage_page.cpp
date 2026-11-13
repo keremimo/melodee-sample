@@ -594,8 +594,10 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
     // Cloud (mock 6): its grains as heard; the bars a live grain covers lighten.
     CloudGrains cloud = page.kind == StageKind::Cloud ? cloud_grains(s, t.last_pad % sampler_pads, pad, frames, from, to, ww) : CloudGrains {};
     if (page.kind == StageKind::Cloud)
-        waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, cloud.wakes.data(), cloud.wake_count);
-    else waveform(p, wx, wy, ww, wh, s.sample.overview, from, to, region_from, region_to, c, heads.wave.data(), heads.count, detail);
+        waveform(p, wx, wy, ww, wh, s.sample.overview, wave_sides(s), from, to, region_from, region_to, c, cloud.wakes.data(),
+                 cloud.wake_count, WaveDetail {});
+    else waveform(p, wx, wy, ww, wh, s.sample.overview, wave_sides(s), from, to, region_from, region_to, c, heads.wave.data(), heads.count,
+                  detail);
     // A loop going round: for a moment a ghost stays at the place the head left (drawn last), so the jump reads as one.
     const float wrap = heard && (heard->flags & tap::Loop) ? heard->wrap : 0.0f;
     float loop_x = -1;

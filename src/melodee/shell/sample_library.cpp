@@ -93,7 +93,7 @@ uint32_t SampleLibrary::zero_crossing_toward(unsigned n, uint32_t frame, int way
     return data && data->frames ? melodee::zero_crossing_toward(*data, frame, way) : frame;
 }
 
-bool SampleLibrary::detail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns) const {
+bool SampleLibrary::detail(unsigned n, uint32_t from, uint32_t to, uint8_t* out, unsigned columns, uint8_t* const* sides) const {
     std::lock_guard<std::mutex> guard(lock);
     const SampleData* data = data_of[n % sample_slots];
     if (!data || !data->frames || !columns) return false;
@@ -103,10 +103,15 @@ bool SampleLibrary::detail(unsigned n, uint32_t from, uint32_t to, uint8_t* out,
     if (to <= from) return false;
     for (unsigned c = 0; c < columns; ++c) {
         uint32_t a = from + uint32_t(uint64_t(to - from) * c / columns), b = from + uint32_t(uint64_t(to - from) * (c + 1) / columns);
-        float peak = 0; // at most 128 frames a column looked at, so a wide view stays cheap
+        float l = 0, r = 0; // at most 128 frames a column looked at, so a wide view stays cheap
         uint32_t stride = std::max<uint32_t>(1, (b - a) / 128);
-        for (uint32_t f = a; f < std::max(b, a + 1) && f < to; f += stride) peak = std::max({peak, std::fabs(data->left[f]), std::fabs(data->right[f])});
-        out[c] = uint8_t(std::lround(std::min(1.0f, peak) * 255));
+        for (uint32_t f = a; f < std::max(b, a + 1) && f < to; f += stride) {
+            l = std::max(l, std::fabs(data->left[f]));
+            r = std::max(r, std::fabs(data->right[f]));
+        }
+        auto byte = [](float v) { return uint8_t(std::lround(std::min(1.0f, v) * 255)); };
+        out[c] = byte(std::max(l, r));
+        if (sides) { sides[0][c] = byte(l); sides[1][c] = byte(r); }
     }
     return true;
 }
@@ -508,7 +513,7 @@ void SampleLibrary::make(const SampleJob& job) {
     loaded.name = upper(name).substr(0, 27);
     loaded.path = path;
     loaded.frames = data->frames;
-    make_overview(*data, loaded.overview);
+    loaded.stereo = make_overview(*data, loaded.overview, &loaded.sides);
     loaded.hit_count = find_hits(*data, loaded.hits, loaded.beats);
     if (!offer(job.target % sample_slots, data.get())) { fail("busy, try again"); return; }
     const SampleData* held = data.get();
@@ -651,7 +656,7 @@ void SampleLibrary::land(unsigned slot, std::unique_ptr<SampleData> data, unsign
     auto failed = keep_capture(*data, rate, path, dsp::sample_rate());
     if (!path.empty()) { if (failed.empty()) loaded.path = path; else loaded.error = "not saved: " + failed; }
     loaded.frames = data->frames;
-    make_overview(*data, loaded.overview);
+    loaded.stereo = make_overview(*data, loaded.overview, &loaded.sides);
     loaded.hit_count = find_hits(*data, loaded.hits, loaded.beats);
     const SampleData* held = nullptr;
     if (offer(slot, data.get())) { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }
@@ -686,7 +691,7 @@ void SampleLibrary::read(const Request& request) {
         loaded.error = error;
     } else {
         loaded.frames = data->frames;
-        make_overview(*data, loaded.overview);
+        loaded.stereo = make_overview(*data, loaded.overview, &loaded.sides);
         loaded.hit_count = find_hits(*data, loaded.hits, loaded.beats);
         if (!offer(request.slot, data.get())) { loaded.error = "busy, try again"; }
         else { held = data.get(); owned.push_back(std::move(data)); loaded.ready = true; }

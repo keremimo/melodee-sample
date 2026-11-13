@@ -412,15 +412,25 @@ bool WavStream::close() {
     return !failed;
 }
 
-void make_overview(const SampleData& s, Overview& out) {
+bool make_overview(const SampleData& s, Overview& out, std::array<Overview, 2>* sides) {
     out.fill(0);
-    if (!s.frames) return;
+    if (sides) { (*sides)[0].fill(0); (*sides)[1].fill(0); }
+    uint32_t frames = std::min<uint32_t>(s.frames, uint32_t(std::min(s.left.size(), s.right.size())));
+    if (!frames) return false;
+    bool stereo = false;
     for (unsigned column = 0; column < out.size(); ++column) {
-        unsigned from = unsigned(uint64_t(s.frames) * column / out.size()), to = unsigned(uint64_t(s.frames) * (column + 1) / out.size());
-        float peak = 0;
-        for (unsigned n = from; n < std::max(to, from + 1) && n < s.frames; ++n) peak = std::max({peak, std::fabs(s.left[n]), std::fabs(s.right[n])});
-        out[column] = uint8_t(std::lround(std::min(1.0f, peak) * 255));
+        unsigned from = unsigned(uint64_t(frames) * column / out.size()), to = unsigned(uint64_t(frames) * (column + 1) / out.size());
+        float l = 0, r = 0;
+        for (unsigned n = from; n < std::max(to, from + 1) && n < frames; ++n) {
+            l = std::max(l, std::fabs(s.left[n]));
+            r = std::max(r, std::fabs(s.right[n]));
+            if (s.left[n] != s.right[n]) stereo = true;
+        }
+        auto byte = [](float v) { return uint8_t(std::lround(std::min(1.0f, v) * 255)); };
+        out[column] = byte(std::max(l, r));
+        if (sides) { (*sides)[0][column] = byte(l); (*sides)[1][column] = byte(r); }
     }
+    return stereo;
 }
 
 } // namespace melodee

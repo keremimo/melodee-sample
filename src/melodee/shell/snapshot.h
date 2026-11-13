@@ -62,6 +62,7 @@ struct Snapshot {
     std::array<std::array<PatternSketch, pattern_count>, track_count> sketches {};
     LoadedSample sample;               // the sample in hand: the last pad's, or Chop's
     Overview detail {};                // Trim and Chop zoomed in: the frames detail_from..detail_to as peaks (detail_to 0: none)
+    std::array<Overview, 2> detail_sides {}; // the same, left and right apart
     uint32_t detail_from = 0, detail_to = 0;
     std::string zone_file;             // an instrument's zone in hand (UiState::zone): its file, as its regions name it
     // Pads (round 2, pads B): each pad of the bank in view drawn as its own waveform, start to end; a bit a pad that has one.

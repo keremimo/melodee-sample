@@ -62,6 +62,22 @@ void waveform(Paint& p, float x, float y, float w, float h, const std::array<uin
     }
 }
 
+void waveform(Paint& p, float x, float y, float w, float h, const std::array<uint8_t, 512>& overview, const WaveSides& sides,
+              float from, float to, float keep_from, float keep_to, juce::Colour colour,
+              const WaveHead* heads, unsigned count, const WaveDetail& detail, float bar) {
+    if (!sides.stereo()) {
+        waveform(p, x, y, w, h, overview, from, to, keep_from, keep_to, colour, heads, count, detail, bar);
+        return;
+    }
+    const float gap = 2, lane = (h - gap) / 2;
+    for (unsigned side = 0; side < 2; ++side) {
+        WaveDetail own = detail;
+        own.peaks = sides.detail[side] ? sides.detail[side] : nullptr;
+        waveform(p, x, y + side * (lane + gap), w, lane, *sides.overview[side], from, to, keep_from, keep_to, colour, heads, count,
+                 own, bar);
+    }
+}
+
 void draw_heads(Paint& p, float x, float y, float w, float h, float from, float to, const WaveHead* heads, unsigned count, bool cap) {
     for (unsigned n = 0; n < count; ++n) {
         const auto& head = heads[n];

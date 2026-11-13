@@ -96,14 +96,15 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(l, y, r - l, wh, colour::quiet);
     }
     p.fill(x_of(a), y, x_of(b) - x_of(a), wh, c.withAlpha(0.22f)); // the one in hand, lit
-    waveform(p, x, y, w, wh, s.sample.overview, from, to, a, b, c, nullptr, 0, detail);
+    const WaveSides sides = wave_sides(s);
+    waveform(p, x, y, w, wh, s.sample.overview, sides, from, to, a, b, c, nullptr, 0, detail);
     if (sounding >= 0) { // its bars again, in full colour (dim ones too, while it plays), the head and its wake over them
         p.g.saveState();
         float l = std::floor(x_of(sa)), r = std::ceil(x_of(sb));
         p.g.reduceClipRegion(juce::Rectangle<int>(int(l), int(y), int(std::max(0.0f, r - l)), int(wh)));
         p.fill(l, y, r - l, wh, sounding == int(selected) ? colour::raised : colour::bg);
         p.fill(l, y, r - l, wh, c.withAlpha(0.17f * head.wake));
-        waveform(p, x, y, w, wh, s.sample.overview, from, to, sa, sb, c, &head, 1, detail);
+        waveform(p, x, y, w, wh, s.sample.overview, sides, from, to, sa, sb, c, &head, 1, detail);
         p.g.restoreState();
     }
     // The numbers under the slices: where they would run into each other, some step aside; the slice in hand and

@@ -213,8 +213,12 @@ LoadedSample break_sample() {
     for (unsigned c = 0; c < s.overview.size(); ++c) {
         float in_hit = std::fmod(c * 12.0f / s.overview.size(), 1.0f);
         float level = (c % 86 < 40 ? 0.9f : 0.6f) * std::exp(-in_hit * 4.0f) * (0.75f + 0.25f * std::sin(c * 1.3f));
-        s.overview[c] = uint8_t(std::clamp(level, 0.03f, 1.0f) * 255);
+        float right = level * (0.8f + 0.2f * std::cos(c * 0.7f)); // stereo: the right side a little apart
+        s.sides[0][c] = uint8_t(std::clamp(level, 0.03f, 1.0f) * 255);
+        s.sides[1][c] = uint8_t(std::clamp(right, 0.03f, 1.0f) * 255);
+        s.overview[c] = std::max(s.sides[0][c], s.sides[1][c]);
     }
+    s.stereo = true;
     s.hit_count = 12;
     for (unsigned n = 0; n < 12; ++n) s.hits[n] = {230087u * n / 12, 200};
     return s;
