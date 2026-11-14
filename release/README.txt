@@ -34,10 +34,12 @@ folder named "Samples" at the top level of the card.
 
 Plug-ins: put VST3, LV2 and CLAP plug-ins built for 64-bit ARM Linux, VST2
 plug-ins built for 64-bit or 32-bit ARM Linux, and Open MPC plug-ins, in
-the folder "Melodee/Plugins" on the card (make a
-folder named "Plugins" inside the "Melodee" folder). Earlier versions read a
-"Plugins" folder at the top level of the card: move its contents into
-"Melodee/Plugins"; saved projects find them there. Melodee's own synths,
+the folder "Melodee/Plugins" on the card (make a folder named "Plugins"
+inside the "Melodee" folder). Earlier versions read a "Plugins" folder at
+the top level of the card: move its contents into "Melodee/Plugins";
+saved projects find them there. Or install a plug-in's zip without moving
+the card: on http://melodee.local, Device, drop it on Plug-ins and press
+Install. Melodee's own synths,
 Melodee Poly, Melodee PD and Melodee Chip, are free downloads:
 https://github.com/keremimo/mpc-vst-melodee-poly/releases/latest
 https://github.com/keremimo/mpc-vst-melodee-pd/releases/latest
@@ -53,7 +55,9 @@ Update
 ------
 1. Download the new release zip. Do not unzip it.
 2. Copy the zip to the top level of the card (Project > SD card access,
-   or a card reader).
+   or a card reader). Or, with the MPC connected to a computer by USB-C
+   and Melodee running, open http://melodee.local (or
+   http://192.168.155.1), choose the zip under Update and press Send.
 3. When Melodee asks "Update to <version>?", press B3 (INSTALL). Melodee
    saves the project, installs the new version on the card and restarts.
 Only official, signed releases are offered. If the update fails, the card
