@@ -95,7 +95,7 @@ struct Settings {
 
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
-                                    "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Screen", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
+                                    "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution"};
         return names[row % Rows];
     }

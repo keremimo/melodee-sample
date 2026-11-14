@@ -11,11 +11,10 @@ it. **B1** goes back.
 | --- | --- |
 | **PADS** | Pad response (soft, medium, hard, full level), pad pressure, pad lights, what Double Seq copies, Recall length and grid |
 | **KNOBS** | Knob, Knob FX and fader takeover: Pickup, Scaled or Instant |
-| **SCREEN** | Palette, brightness, place bar at the top or bottom |
+| **SCREEN** | Palette, brightness, place bar at the top or bottom, Screen mirror (on or off) and its resolution: the screen as a USB camera for a computer |
 | **AUDIO** | Sample rate (44.1, 48 or 96 kHz) and audio buffer (256 to 1024 frames). A longer buffer gives fewer crackles on a busy project. A shorter one responds sooner. |
 | **SAMPLING** | Audio Recall settings, and when a Free take ends on its own |
 | **MIDI** | MIDI Config (see [MIDI and sync](midi-and-sync.md)) |
-| **SCREEN MIRROR** | Screen mirror (on or off) and resolution (320 x 240 up to 2560 x 1920): the screen as a USB camera for a computer |
 | **ABOUT** | How the MPC is doing: processor load, audio dropouts, card space, plug-in load |
 
 ![AUDIO](../images/screens/settingsaudio.png)
@@ -25,7 +24,7 @@ playback for about a second while the audio restarts.
 
 ## Screen Mirror
 
-With **Screen mirror** on, a computer connected by USB-C sees the MPC as a
+In **SCREEN**, with **Screen mirror** on, a computer connected by USB-C sees the MPC as a
 camera named **MPC Sample**. Choose it in any camera app (QuickTime Player,
 OBS, a video call) to show the screen. Macs, Windows and Linux computers
 and iPads with USB-C take it; iPhones do not take USB cameras.
@@ -47,7 +46,7 @@ pixel; the JPEG sizes are larger than USB could carry uncompressed. If the
 picture looks soft in an app, pick a larger size: the app then stretches
 it less.
 
-Under the rows: **READY** (the computer has the camera), **LIVE** (an app
+Under the rows while it is on: **READY** (the computer has the camera), **LIVE** (an app
 shows it), **CARD SHARED** (the camera pauses while the card is shared
 over USB, and comes back after). USB audio, MIDI and the network drop for
 about a second when you turn it on or off or change the resolution.
@@ -59,7 +58,7 @@ and does not start, and a new sample rate reaches the computer once the
 camera is closed. If Melodee restarts while an app shows the camera, the
 picture stops for a moment and then goes on.
 
-![SCREEN MIRROR](../images/screens/settingsmirror.png)
+![Screen Mirror in SCREEN](../images/screens/settingsmirror.png)
 
 ---
 

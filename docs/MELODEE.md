@@ -159,7 +159,7 @@ holds the table the dispatch and the lights share.
 | 5 | Compressor | 13 | Trim Sample |
 | 6 | Half Speed | 14 | Time Correct |
 | 7 | Double Speed | 15 | Warp: Time stretch or Pitch for the kit |
-| 8 | Settings (eight doors; MIDI Config one of them) | 16 | Project |
+| 8 | Settings (seven doors; MIDI Config one of them) | 16 | Project |
 
 Toggles (1, 4, 10) are kept in the settings file. While Shift is held the
 pads light white, the panel's own: a toggle that is on Full, a job Dim, and
@@ -1625,14 +1625,29 @@ while following.
   access"); the page is `pages/card_access_page.cpp`, the controls
   `shell/card_access.*`.
 - **Settings** (Shift + Pad 8; Melodee's, the same for every project, as is
-  the metronome): eight doors, four by two (the wheel picks, Push or B3
+  the metronome): seven doors, four by two (the wheel picks, Push or B3
   opens, B1 back), each a short list (Push opens a value, the wheel changes
   it, −/+ at once, B1 back to the doors). **PADS**: pad response (soft,
   medium, hard, full level), pad pressure on / off, pad lights, Double Seq.
   **KNOBS**: Knob / Knob FX / Fader takeover (Pickup, Scaled, Instant;
   Scaled, Scaled, Pickup by default). **SCREEN**: palette, brightness,
-  where the place bar sits (Top, Bottom). **AUDIO**: sample rate (44.1, 48,
-  96 kHz) and audio buffer (256, 384, 512, 768, 1024 frames, shown with the
+  where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror
+  (Off, On) and Resolution (320 x 240, 640 x 480, 1280 x 720, 1280 x 960,
+  1920 x 1440, 2560 x 1920: the screen times 1, 2, 3 with black at the
+  sides, 4, 6, 8; 1920 x 1440 by default): the screen as a USB webcam over
+  USB-C (`App::screen_mirror()`, base `drivers/screen_mirror.h`: the two
+  smallest as YUYV, exact to the pixel, the rest made JPEG at quality 95 by
+  the RK3566's encoder, 30 fps, a new picture only when the screen changed).
+  Under the rows, while it is on, its state: STARTING, READY, LIVE, CARD SHARED (the
+  webcam steps out while the card is lent), FAILED; the size offered, amber
+  with a warning, only when a JPEG size fell back to 640 x 480 (no encoder).
+  On, off or a new size reconnects the gadget (USB audio, MIDI and the
+  network drop for a second), never under a computer showing the camera:
+  then the change waits (IN USE, amber, a lock) until the computer closes
+  it, Card Access says CAMERA IN USE (CardNote::Camera) and lends nothing,
+  and the USB rate follows later; a restart mid-stream resumes the stream.
+  Kept as `screen_mirror=` and `mirror_size=`. **AUDIO**: sample rate
+  (44.1, 48, 96 kHz) and audio buffer (256, 384, 512, 768, 1024 frames, shown with the
   delay it makes: longer rides out a busy moment without a crackle, shorter
   is heard sooner); the header says what the device runs at now and, in
   amber, its dropouts since start. **SAMPLING**: Recall grab (Last Phrase, First Sound, Whole 25 s), Recall
@@ -1656,22 +1671,7 @@ while following.
   mixdowns and loops are recorded and saved at it (Sampler, Looper). Plug-ins are loaded
   again at the new rate, Monitor hears the source at it, and effects keep
   their timing at it (Effects). Kept in `Melodee/settings` with the project to open at
-  start. **MIDI**: MIDI Config's page. **SCREEN MIRROR**: Screen mirror
-  (Off, On) and Resolution (320 x 240, 640 x 480, 1280 x 720, 1280 x 960,
-  1920 x 1440, 2560 x 1920: the screen times 1, 2, 3 with black at the
-  sides, 4, 6, 8; 1920 x 1440 by default): the screen as a USB webcam over
-  USB-C (`App::screen_mirror()`, base `drivers/screen_mirror.h`: the two
-  smallest as YUYV, exact to the pixel, the rest made JPEG at quality 95 by
-  the RK3566's encoder, 30 fps, a new picture only when the screen changed).
-  Under the rows its state: OFF, STARTING, READY, LIVE, CARD SHARED (the
-  webcam steps out while the card is lent), FAILED; the size offered, amber
-  with a warning, only when a JPEG size fell back to 640 x 480 (no encoder). On, off or a
-  new size reconnects the gadget (USB audio, MIDI and the network drop for
-  a second), never under a computer showing the camera: then the change
-  waits (IN USE, amber, a lock) until the computer closes it, Card Access
-  says CAMERA IN USE (CardNote::Camera) and lends nothing, and the USB
-  rate follows later; a restart mid-stream resumes the stream. Kept as
-  `screen_mirror=` and `mirror_size=`. **ABOUT**: how the machine is
+  start. **MIDI**: MIDI Config's page. **ABOUT**: how the machine is
   doing, the page to open when something crackles: RENDER (each core's load
   as a meter, the audio blocks' share of their time), AUDIO (rate and
   buffer; its dropouts in amber, a check while there are none), CARD (room

@@ -1714,14 +1714,13 @@ const Preview previews[] {
     {"settingssampling", [](Shell&, Snapshot& s) { // the sampling rows: how Audio Recall cuts, when a take ends on its own
         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 4; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;
     }},
-    {"settingsmirror", [](Shell&, Snapshot& s) { // SCREEN MIRROR's rows: on at 1920 x 1440, a computer showing it
-        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 6; s.ui.settings_cursor = Settings::MirrorSize;
+    {"settingsmirror", [](Shell&, Snapshot& s) { // SCREEN's rows with Screen Mirror on at 1920 x 1440, a computer showing it
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 2; s.ui.settings_cursor = Settings::MirrorSize;
         s.ui.settings.mirror = true; s.ui.settings.mirror_size = 4;
         s.mirror_state = uint8_t(MirrorState::Streaming); s.mirror_width = 1920; s.mirror_height = 1440;
     }},
-    {"settingsmirrordoor", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_door = 6; }}, // the doors, SCREEN MIRROR in hand
     {"settingsmirrorheld", [](Shell&, Snapshot& s) { // turned off while a computer shows it: it waits for the computer to close the camera
-        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 6; s.ui.settings_cursor = Settings::Mirror;
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 2; s.ui.settings_cursor = Settings::Mirror;
         s.ui.settings.mirror = false; s.ui.settings.mirror_size = 4;
         s.mirror_state = uint8_t(MirrorState::Streaming); s.mirror_width = 1920; s.mirror_height = 1440; s.mirror_held = true;
     }},

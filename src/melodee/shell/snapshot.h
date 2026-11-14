@@ -105,7 +105,7 @@ struct Snapshot {
     // The audio device as it runs now (the app fills these from the runtime's session): Settings shows them.
     unsigned audio_rate = 44100, audio_periods = 3, audio_xruns = 0;
     // Screen Mirror as it goes (the runtime's session().mirror): a MirrorState, the size offered, whether a larger
-    // size fell back to 320 x 240 (no encoder). Settings' SCREEN MIRROR shows it.
+    // size fell back to 640 x 480 (no encoder). Settings' SCREEN shows it under its rows.
     uint8_t mirror_state = 0;
     unsigned mirror_width = 0, mirror_height = 0;
     bool mirror_fallback = false;

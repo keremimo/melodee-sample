@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 // SETTINGS (Shift + Pad 8): Melodee's own settings, kept on the card next
-//   to the projects, as eight doors (four by two): PADS (response, pressure,
+//   to the projects, as seven doors (four by two): PADS (response, pressure,
 //   lights, what Double Seq puts in the new half, how many bars Capture keeps
 //   and how it puts them on the grid), KNOBS (how the knobs,
 //   Knob FX and the fader take over a value: Pickup, Scaled, Instant),
-//   SCREEN (palette, brightness, where the place bar sits), AUDIO (the
+//   SCREEN (palette, brightness, where the place bar sits, and Screen Mirror:
+//   the screen as a USB webcam for a computer, on or off, and its size;
+//   under the rows, while it is on, how it goes: ready, live, paused while
+//   the card is shared), AUDIO (the
 //   sample rate and the buffer: longer rides out a slow moment without a
 //   crackle, shorter is heard sooner), SAMPLING (how Audio Recall cuts the
-//   ring and when a Free take ends on its own), MIDI (MIDI Config's page),
-//   SCREEN MIRROR (the screen as a USB webcam for a computer, on or off, and
-//   its size; under the rows, how it goes: off, ready, live, paused while the
-//   card is shared) and ABOUT. The wheel picks a door, Push or B3 opens it,
-//   B1 goes back.
+//   ring and when a Free take ends on its own), MIDI (MIDI Config's page)
+//   and ABOUT. The wheel picks a door, Push or B3 opens it, B1 goes back.
 //   Behind a door its rows, one screen each: the wheel moves, Push opens a
 //   value and the wheel changes it, Push keeps it; Minus / Plus change the
 //   one under the cursor straight away; B1 back to the doors. The header of
 //   the doors and of AUDIO says what the audio device runs at, and its
 //   dropouts (amber) if any.
-// ABOUT (the eighth door; round 2, about C "how the machine is doing"): the
+// ABOUT (the seventh door; round 2, about C "how the machine is doing"): the
 //   page to open when something crackles. A row each: RENDER (each core's
 //   load as a meter, and the audio blocks' share of their time), AUDIO (the
 //   rate and the buffer, its dropouts in amber), CARD (room on it, and the
@@ -41,22 +41,21 @@ using namespace ui;
 
 struct Door { Icon icon; const char* name; std::array<int8_t, 6> rows; };
 constexpr int8_t none = -1;
-const std::array<Door, 8> doors {{
+const std::array<Door, 7> doors {{
     {Icon::Pads, "PADS", {Settings::PadResponse, Settings::PadPressure, Settings::PadLights, Settings::DoubleSeq, Settings::CaptureBars,
                           Settings::CaptureQuantize}},
     {Icon::Knob, "KNOBS", {Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover, none, none, none}},
-    {Icon::Screen, "SCREEN", {Settings::Palette, Settings::Screen, Settings::PlaceBarRow, none, none, none}},
+    {Icon::Screen, "SCREEN", {Settings::Palette, Settings::Screen, Settings::PlaceBarRow, Settings::Mirror, Settings::MirrorSize, none}},
     {Icon::Speaker, "AUDIO", {Settings::SampleRate, Settings::AudioBuffer, none, none, none, none}},
     {Icon::Mic, "SAMPLING", {Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
                              Settings::SilenceBelow}},
     {Icon::Din, "MIDI", {none, none, none, none, none, none}},  // MIDI Config's own page
-    {Icon::Laptop, "SCREEN MIRROR", {Settings::Mirror, Settings::MirrorSize, none, none, none, none}},
     {Icon::Info, "ABOUT", {none, none, none, none, none, none}}, // the About page
 }};
-constexpr unsigned audio_door = 3, midi_door = 5, mirror_door = 6, about_door = 7;
+constexpr unsigned screen_door = 2, audio_door = 3, midi_door = 5, about_door = 6;
 void trouble(Paint& p, float right, float cy, unsigned count);
 
-// SCREEN MIRROR, under its rows: how it goes (the runtime's state). Amber when it waits on the card or failed, and
+// Screen Mirror, under SCREEN's rows while it is on: how it goes (the runtime's state). Amber when it waits on the card or failed, and
 // IN USE (a lock) while a change made in the rows waits for the computer to close the camera (never unplugged under
 // an app showing it); the size offered only when a JPEG size fell back to 640 x 480 (no JPEG encoder), else the row
 // above says it.
@@ -113,17 +112,8 @@ void doors_draw(Paint& p, const Snapshot& s) {
         p.fill(x, y, w, h, on ? colour::raised : colour::surf, 5);
         if (on) p.fill(x, y, w, 2.5f, colour::text, 1);
         auto c = on ? colour::text : colour::mid;
-        auto style = caps_text(c);
-        juce::String name(doors[n].name);
-        int space = name.indexOfChar(' ');
-        if (space > 0 && p.width(name, style) > w - 8) { // a long name on two lines, the icon higher
-            icon(p, doors[n].icon, x + w / 2 - 11, y + 8, 22, c, 1.5f);
-            p.text(name.substring(0, space), x, y + 35, w, 13, style, juce::Justification::centred);
-            p.text(name.substring(space + 1), x, y + 48, w, 13, style, juce::Justification::centred);
-            continue;
-        }
         icon(p, doors[n].icon, x + w / 2 - 11, y + 12, 22, c, 1.5f);
-        p.text(doors[n].name, x, y + 42, w, 14, style, juce::Justification::centred);
+        p.text(doors[n].name, x, y + 42, w, 14, caps_text(c), juce::Justification::centred);
     }
 }
 
@@ -152,8 +142,9 @@ void rows_draw(Paint& p, const Snapshot& s) {
         if (row == Settings::Palette) // the palette's first track colours
             for (unsigned t = 0; t < 4; ++t) p.fill(vx - 10 - (4 - t) * 9.5f, y + 8, 7, 7, track_colour(t), 2);
     }
-    if (s.ui.settings_door % doors.size() == mirror_door) {
-        mirror_line(p, s, x, zone::picture_y + 1 + door_rows(d) * (list_row_h + list_row_gap) + 6, w);
+    if (s.ui.settings_door % doors.size() == screen_door) { // Screen Mirror, while it is on or a change waits
+        if (MirrorState(s.mirror_state) != MirrorState::Off || s.mirror_held)
+            mirror_line(p, s, x, zone::picture_y + 1 + door_rows(d) * (list_row_h + list_row_gap) + 6, w);
         return;
     }
     if (s.ui.settings_door % doors.size() != audio_door) return;
