@@ -244,6 +244,8 @@ bool is_loops_folder(const fs::path& dir, const char* extension) {
             return true;
     return false;
 }
+// A dot file or folder (.Trashes, a Mac's ._ copies): never listed.
+bool dot_name(const fs::path& path) { auto name = path.filename().string(); return name.empty() || name[0] == '.'; }
 // An MPC project's samples, beside its .xpj: not a folder of projects.
 bool is_hidden_folder(const fs::path& dir, const char* extension) {
     const std::string tail = "_[ProjectData]", name = dir.filename().string();
@@ -252,7 +254,8 @@ bool is_hidden_folder(const fs::path& dir, const char* extension) {
 unsigned projects_in(const fs::path& dir, const char* extension) {
     unsigned count = 0;
     std::error_code error;
-    for (const auto& inner : fs::directory_iterator(dir, error)) count += inner.path().extension() == extension || is_mpc_project(inner.path().string());
+    for (const auto& inner : fs::directory_iterator(dir, error))
+        count += !dot_name(inner.path()) && (inner.path().extension() == extension || is_mpc_project(inner.path().string()));
     return count;
 }
 // An MPC project read and turned into a Melodee project's bytes (on the service thread: it takes a moment).
@@ -427,6 +430,7 @@ void ProjectStore::scan() {
     auto dir = folder_dir(root, folder);
     if (!dir.empty() && fs::is_directory(dir, error)) {
         for (const auto& item : fs::directory_iterator(dir, error)) {
+            if (dot_name(item.path())) continue;
             ProjectEntry e;
             e.path = item.path().string();
             e.name = item.path().stem().string();
@@ -476,7 +480,7 @@ void ProjectStore::scan() {
     if (!root.empty()) {
         std::function<void(const fs::path&, const std::string&, unsigned)> walk = [&](const fs::path& at, const std::string& rel, unsigned depth) {
             for (const auto& item : fs::directory_iterator(at, error)) {
-                if (!item.is_directory(error) || folders.size() >= 128 || is_hidden_folder(item.path(), extension)) continue;
+                if (dot_name(item.path()) || !item.is_directory(error) || folders.size() >= 128 || is_hidden_folder(item.path(), extension)) continue;
                 auto name = rel.empty() ? item.path().filename().string() : rel + "/" + item.path().filename().string();
                 folders.push_back(name);
                 if (depth < 4) walk(item.path(), name, depth + 1);
