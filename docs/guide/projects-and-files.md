@@ -96,6 +96,7 @@ the drive, Melodee asks whether to take the card back anyway.
 | `Melodee/Cache/` | Decoded instrument samples. Safe to delete: Melodee makes them again. |
 | `Melodee/Plugins/` | VST3, LV2, CLAP and VST2 plug-ins |
 | `Melodee/Plugin Data/` | Plug-in settings and presets |
+| `Melodee/Crashes/` | Crash reports, one file a crash |
 | `Melodee/settings` | Melodee's settings |
 | `Samples/` | Your samples. Melodee writes `Recorded/`, `Edits/`, `Banks/`, `Looper/` and `Expansions/` here. |
 | `SysEx/` | `.syx` files for MIDI tracks |
@@ -121,6 +122,9 @@ did not come from Melodee's releases page, is ignored. If the update fails
 (for example, the card is full), the screen shows the reason and nothing is
 changed. Press **B1** to close it. The previous version stays on the card
 in `autorun/melodee.prev`.
+
+Melodee 0.1.0 cannot update this way. To move from 0.1.0, install the new
+version by hand, as in [Install](../../README.md#install).
 
 ---
 

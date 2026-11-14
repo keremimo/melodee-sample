@@ -142,7 +142,7 @@ every boot.
 To make a release zip from a committed tree:
 
 ```sh
-./release.sh v0.1.0
+./release.sh v0.2.0
 ```
 
 This writes `dist/Melodee-MPC-Sample-<version>.zip`.

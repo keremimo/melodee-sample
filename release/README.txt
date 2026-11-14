@@ -2,9 +2,9 @@ Melodee {version} for the Akai MPC Sample
 ==========================================
 
 Melodee is a 16-track groovebox that runs on the MPC Sample in place of the
-stock app: one track per pad, each a kit of samples, a VST3 or VST2
-instrument, or a MIDI track. Patterns, scenes and a song, a looper, a mixer
-and effect chains that take VST effects.
+stock app: one track per pad, each a kit of samples, a VST3, LV2,
+CLAP or VST2 instrument, or a MIDI track. Patterns, scenes and a song, a
+looper, a mixer and effect chains that take plug-in effects.
 
 Melodee changes nothing on the MPC itself, only files on the microSD card.
 If it fails to start, or crashes, the stock MPC app comes back. Back up the
@@ -32,8 +32,9 @@ Install
 Projects are saved on the card in Melodee/Projects. Put samples in a
 folder named "Samples" at the top level of the card.
 
-Plug-ins: put VST3 and VST2 plug-ins built for 64-bit or 32-bit ARM Linux,
-and Open MPC plug-ins, in the folder "Melodee/Plugins" on the card (make a
+Plug-ins: put VST3, LV2 and CLAP plug-ins built for 64-bit ARM Linux, VST2
+plug-ins built for 64-bit or 32-bit ARM Linux, and Open MPC plug-ins, in
+the folder "Melodee/Plugins" on the card (make a
 folder named "Plugins" inside the "Melodee" folder). Earlier versions read a
 "Plugins" folder at the top level of the card: move its contents into
 "Melodee/Plugins"; saved projects find them there. Melodee's own synths,
@@ -73,9 +74,10 @@ Back to the stock app
 Reporting problems
 ------------------
 Say what you pressed, what you saw and the version (Settings, ABOUT,
-press B3 for the credits, or the line below). If Melodee did not start at
-all, check that the firmware is 1.3.0.12 and that the autorun folder sits
-at the top level of the card.
+press B3 for the credits, or the line below). After a crash, add the
+report Melodee wrote to the card's "Melodee/Crashes" folder. If Melodee
+did not start at all, check that the firmware is 1.3.0.12 and that the
+autorun folder sits at the top level of the card.
 Issues: https://github.com/keremimo/melodee-sample/issues
 
 

@@ -27,6 +27,8 @@ unchanged.
 
 **The stock app came back.** If Melodee crashes or fails to start, the
 stock app starts instead. Switch the MPC off and on to start Melodee again.
+A crash writes a report to `Melodee/Crashes` on the card: add it when you
+report the problem.
 
 **Crackles or dropouts.** Open Settings, **ABOUT**. It shows the processor
 load per core, the audio dropouts, and card read problems. Use a larger
