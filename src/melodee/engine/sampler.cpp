@@ -807,6 +807,16 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
     // neither drifts out of tune nor cuts a tap off at the turn.
     const bool pad_loop = !v.zone && v.loop;
     const double span = double(v.end - v.loop_at);
+    // Tones' windows (sin², always 60 ms) from the engine's table, worked out with the same expression once a rate.
+    const float* tones = !v.beats && plain_runs ? tones_table(v.window) : nullptr;
+    if (tones) ++plain_taken;
+    // Clear of its tail's fades for the whole run: frames_left() need not be worked out frame by frame.
+    bool tail_far = !(!v.loop && (v.tail > 0 || v.filter_tail > 0));
+    if (!tail_far && plain_runs && !v.gliding) {
+        const double travel = double(frames - from + 1) * v.advance;
+        const double distance = v.reverse ? (v.place - travel) - v.start : (v.end - 1) - (v.place + travel);
+        tail_far = distance / std::max(v.advance, 1e-6) >= double(std::max(v.tail, v.filter_tail)) + 2;
+    }
     for (unsigned f = from; f < frames; ++f) {
         const bool round = v.zone && v.loop && (!v.loop_held || v.held);
         if (pad_loop) {
@@ -852,6 +862,8 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             if (v.beats) {
                 uint32_t age = v.tap_age[t], left = v.window - age;
                 w = age < edge ? float(age) / edge : left < edge ? float(left) / edge : 1.0f;
+            } else if (tones) {
+                w = tones[v.tap_age[t]];
             } else {
                 float s = std::sin(dsp::pi * float(v.tap_age[t]) / float(v.window));
                 w = s * s;
@@ -867,10 +879,24 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             v.tap[t] += way * v.step;
             ++v.tap_age[t];
         }
-        voice_out(v, sum_l, sum_r, a, frames_left(v, v.place, v.advance), to_l, to_r, f);
+        voice_out(v, sum_l, sum_r, a, tail_far ? 1e9f : frames_left(v, v.place, v.advance), to_l, to_r, f);
         v.place += way * v.advance;
         if (!v.env.active()) { v.pad = -1; return; }
     }
+}
+
+// Tones' sin² window of `window` frames, a weight a tap age, as stretch() would work each out (nullptr: too long for
+// the table). Built the first time a window of that length plays: one window's worth of sin(), once a rate.
+const float* SamplerEngine::tones_table(uint32_t window) {
+    if (window > tones_weights.size()) return nullptr;
+    if (tones_window != window) {
+        for (uint32_t age = 0; age < window; ++age) {
+            float s = std::sin(dsp::pi * float(age) / float(window));
+            tones_weights[age] = s * s;
+        }
+        tones_window = window;
+    }
+    return tones_weights.data();
 }
 
 // A zone's loop went round: a loop held whole needs no stream any more; a longer one starts a new run.

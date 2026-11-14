@@ -255,6 +255,9 @@ private:
     void run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames, double span);
     // The same for a zone voice (play_zone()).
     bool zone_plain(const Voice& v, unsigned frames) const;
+    const float* tones_table(uint32_t window);              // stretch(): Tones' window weights, worked out once
+    std::array<float, 5760> tones_weights {};               // 60 ms at 96 kHz
+    uint32_t tones_window = 0;                              // the window they are for (0 none yet)
     void zone_run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames);
     Voice& free_voice();
 

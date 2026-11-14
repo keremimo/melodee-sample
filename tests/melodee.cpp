@@ -899,6 +899,62 @@ void sampler_kit() {
         if (differ) std::fprintf(stderr, "run_plain: %zu samples differ\n", differ);
         CHECK(differ == 0 && loudest > 0.05f);
     }
+    // Warped pads (stretch()) the same way: Tones' window weights from the engine's table and the tail check made once a
+    // run sound exactly as working each out frame by frame, in Beats and in Tones, looped, reversed, sliced, filtered.
+    {
+        SampleData noise;
+        noise.frames = 44100;
+        noise.left.resize(44100); noise.right.resize(44100);
+        uint32_t seed = 11;
+        for (unsigned n = 0; n < 44100; ++n) {
+            seed = seed * 1664525u + 1013904223u;
+            noise.left[n] = float(int32_t(seed) >> 8) / float(1 << 23) * 0.5f;
+            noise.right[n] = 0.4f * float(std::sin(n * 0.017));
+        }
+        SamplerEngine::Table warp_table {};
+        warp_table[1] = &noise;
+        auto play = [&](bool plain, int how) {
+            SamplerEngine::plain_runs = plain;
+            SamplerEngine e;
+            e.set_samples(&warp_table);
+            e.set_param(sampler::FollowHow, how);
+            std::array<PadSound, 6> pads {};
+            for (auto& p : pads) { p.sample = 1; p.warp = 150; p.play = PadPlay::Gate; }
+            pads[1].warp = 70; pads[1].start = 3000; pads[1].end = 20000;               // a slice, its edges
+            pads[2].reverse = true; pads[2].end = 30000;
+            pads[3].loop = true; pads[3].loop_lock = false; pads[3].loop_start = 5000; pads[3].end = 15000;
+            pads[4].filter = PadFilter::Lpf4; pads[4].cutoff = 50; pads[4].decay = 30; pads[4].play = PadPlay::OneShot;
+            pads[5].warp = 120; pads[5].pitch = 5; pads[5].play = PadPlay::OneShot; pads[5].end = 9000; pads[5].decay = 50;
+            for (unsigned p = 0; p < 6; ++p) e.set_pad(p, pads[p]);
+            std::vector<float> out;
+            std::vector<float> l(128), r(128);
+            const unsigned sizes[] {128, 64, 128, 19, 128};
+            for (unsigned b = 0; b < 400; ++b) {
+                if (b % 11 == 0) e.note_on(int(sampler_first_note) + int(b / 11 % 6), 70 + int(b % 50));
+                if (b % 17 == 8) e.note_off(int(sampler_first_note) + int(b / 17 % 6));
+                if (b == 150) e.set_bend(0.4f);
+                if (b == 230) { pads[0].warp = 90; e.set_pad(0, pads[0]); }
+                unsigned n = sizes[b % 5];
+                std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+                e.render_stereo(l.data(), r.data(), n);
+                out.insert(out.end(), l.begin(), l.begin() + n);
+                out.insert(out.end(), r.begin(), r.begin() + n);
+            }
+            SamplerEngine::plain_runs = true;
+            return out;
+        };
+        for (int how : {0, 1}) {
+            const auto full = play(false, how);
+            SamplerEngine::plain_taken = 0;
+            const auto plain = play(true, how);
+            CHECK(how == 0 || SamplerEngine::plain_taken > 300); // Tones: its runs took the table
+            size_t differ = 0;
+            float loudest = 0;
+            for (size_t n = 0; n < std::min(full.size(), plain.size()); ++n) { differ += full[n] != plain[n]; loudest = std::max(loudest, std::fabs(full[n])); }
+            if (differ) std::fprintf(stderr, "stretch (how %d): %zu samples differ\n", how, differ);
+            CHECK(full.size() == plain.size() && differ == 0 && loudest > 0.05f);
+        }
+    }
     // A mute group: the second pad cuts the first.
     SamplerEngine engine;
     engine.set_samples(&table);
