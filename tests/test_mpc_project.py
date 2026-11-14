@@ -93,6 +93,19 @@ class MpcProject(unittest.TestCase):
         self.assertIn("pattern 0 1 length=768 notes=2 first=0:36:127", out)
         self.assertIn("pattern 0 0 length=768 notes=1 first=0:37:127", out)
 
+    def test_two_members(self):
+        # The factory kits in /content/Projects/Kits: the header in one gzip member, the JSON in the next.
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder) / "Kit_[ProjectData]"
+            data.mkdir()
+            (data / "Kick.wav").write_bytes(wav(44100))
+            path = Path(folder) / "Kit.xpj"
+            path.write_bytes(gzip.compress(HEADER.encode()) + gzip.compress(json.dumps(project([instrument("Kick.wav", 10, 90)])).encode()))
+            result = self.run_tool(path)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("name=Kit tracks=1", result.stdout)
+        self.assertIn("pad A01 file=Kick start=10 end=90", result.stdout)
+
     def test_not_a_project(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "Bad.xpj"

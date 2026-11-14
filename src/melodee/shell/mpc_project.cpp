@@ -22,14 +22,36 @@ constexpr unsigned mpc_ticks_per_tick = 960 / ticks_per_quarter; // the MPC coun
 constexpr int note_event = 3;                                    // an event's "type"
 constexpr int mpc_pads = 128;
 
+// The file unpacked. It can be several gzip members one after another: the MPC Sample's factory kits and demos
+// (/content/Projects) are the header in one member and the JSON in the next. A member's last four bytes are its
+// unpacked size, which marks where the next member starts.
+juce::MemoryBlock unpack(const std::vector<uint8_t>& file) {
+    juce::MemoryBlock text;
+    size_t start = 0;
+    while (start + 18 <= file.size() && ssize_t(text.getSize()) < largest_document) { // 18: a gzip member's least
+        juce::MemoryBlock member;
+        {
+            juce::MemoryInputStream raw(file.data() + start, file.size() - start, false);
+            juce::GZIPDecompressorInputStream inflated(&raw, false, juce::GZIPDecompressorInputStream::gzipFormat);
+            inflated.readIntoMemoryBlock(member, largest_document - ssize_t(text.getSize()));
+        }
+        if (member.getSize() == 0) break;
+        text.append(member.getData(), member.getSize());
+        const uint32_t size = uint32_t(member.getSize());
+        size_t next = 0;
+        for (size_t k = start + 18; k + 2 < file.size() && !next; ++k)
+            if (file[k] == 0x1f && file[k + 1] == 0x8b && file[k + 2] == 8
+                && (uint32_t(file[k - 4]) | uint32_t(file[k - 3]) << 8 | uint32_t(file[k - 2]) << 16 | uint32_t(file[k - 1]) << 24) == size)
+                next = k;
+        if (!next) break;
+        start = next;
+    }
+    return text;
+}
+
 // The document's "data": unpacked, its header checked, parsed. Void on failure.
 juce::var read_document(const std::vector<uint8_t>& file) {
-    juce::MemoryBlock text;
-    {
-        juce::MemoryInputStream raw(file.data(), file.size(), false);
-        juce::GZIPDecompressorInputStream inflated(&raw, false, juce::GZIPDecompressorInputStream::gzipFormat);
-        inflated.readIntoMemoryBlock(text, largest_document);
-    }
+    const juce::MemoryBlock text = unpack(file);
     const char* begin = static_cast<const char*>(text.getData());
     const char* end = begin + text.getSize();
     std::array<std::string, 5> header;
