@@ -43,7 +43,7 @@ struct Door { Icon icon; const char* name; std::array<int8_t, 6> rows; };
 constexpr int8_t none = -1;
 const std::array<Door, 8> doors {{
     {Icon::Pads, "PADS", {Settings::PadResponse, Settings::PadPressure, Settings::DoubleSeq, Settings::CaptureBars, Settings::CaptureQuantize,
-                          none}},
+                          Settings::RepeatVelocity}},
     {Icon::Bulb, "LIGHTS", {Settings::PadLights, Settings::PadFade, Settings::TapLight, none, none, none}},
     {Icon::Knob, "KNOBS", {Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover, none, none, none}},
     {Icon::Screen, "SCREEN", {Settings::Palette, Settings::Screen, Settings::PlaceBarRow, Settings::Mirror, Settings::MirrorSize,

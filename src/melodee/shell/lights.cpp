@@ -227,7 +227,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         settings_seen = store_->generation();
         ProjectStore::View v;
         store_->view(v);
-        if (v.settings_read) { ui_.settings.read(v.settings); settings_loaded = true; context_.send_click(); }
+        if (v.settings_read) { ui_.settings.read(v.settings); settings_loaded = true; context_.send_click(); context_.send_repeat_velocity(); }
     }
     // The backlight stays as the stock app left it until Screen asks for less (and then follows it).
     if (ui_.settings.screen != 100 || screen_wanted.load(std::memory_order_relaxed)) screen_wanted.store(ui_.settings.screen, std::memory_order_relaxed);

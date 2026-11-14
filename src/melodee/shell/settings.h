@@ -35,7 +35,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
@@ -56,6 +56,10 @@ struct Settings {
         else { response_before = pad_response; pad_response = 3; }
     }
     bool pressure = true;     // off: the pads send no pressure (synths, Pad FX depth)
+    // Note Repeat's velocity: Strike, every repeat as hard as the pad was struck; Pressure, each as hard as the pad is
+    // held then. Full Level plays them all at 127 either way.
+    bool repeat_pressure = false;
+    bool repeats_by_pressure() const { return repeat_pressure && pressure && !full_level(); }
     uint8_t pad_lights = 0;   // 0 track colours, 1 white, 2 off
     // How fast a pad's light fades when its sound stops or it is let go (shell/pad_lights.cpp): ms, one of fades.
     static constexpr std::array<uint16_t, 4> fades {{60, 100, 150, 250}};
@@ -103,7 +107,7 @@ struct Settings {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
-                                    "Pad fade", "Tap Tempo light"};
+                                    "Pad fade", "Tap Tempo light", "Repeat velocity"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -139,6 +143,7 @@ struct Settings {
         case MirrorRate: return std::to_string(mirror_mode().fps) + " fps";
         case PadFade: return std::to_string(fade_ms()) + " ms";
         case TapLight: return tap_light ? "On" : "Off";
+        case RepeatVelocity: return repeat_pressure ? "Pressure" : "Strike";
         default: return std::to_string(screen) + " %";
         }
     }
@@ -169,6 +174,7 @@ struct Settings {
         case MirrorRate: mirror_fps = way < 0 ? 30 : 60; break;
         case PadFade: pad_fade = uint8_t(step_in(pad_fade % fades.size(), unsigned(fades.size()), way)); break;
         case TapLight: tap_light = !tap_light; break;
+        case RepeatVelocity: repeat_pressure = !repeat_pressure; break;
         default: break;
         }
     }
@@ -209,7 +215,7 @@ struct Settings {
             << "\nscreen=" << int(screen) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize) << "\nrec_grid=" << int(rec_grid)
             << "\nzero_snap=" << int(zero_snap) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
             << "\ncapture_bars=" << int(capture_bars) << "\ncapture_quantize=" << int(capture_quantise)
-            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
+            << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure) << "\nrepeat_pressure=" << int(repeat_pressure)
             << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nmonitor_before_mic=" << int(input.before_mic) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
             << "\ninput_track=" << int(input.track) << "\ninput_tap=" << int(input.post)
@@ -249,6 +255,7 @@ struct Settings {
             else if (key == "knob_fx_takeover") knob_fx_takeover = takeover(value);
             else if (key == "fader_takeover") fader_takeover = takeover(value);
             else if (key == "pressure") pressure = value != 0;
+            else if (key == "repeat_pressure") repeat_pressure = value != 0;
             else if (key == "screen") screen = uint8_t(std::clamp(value, 20, 100));
             else if (key == "place_bar") place_bottom = value != 0;
             else if (key == "count_in") count_in = value != 0;

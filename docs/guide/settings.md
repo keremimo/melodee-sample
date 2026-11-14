@@ -14,7 +14,7 @@ runs at, and in amber the audio dropouts since Melodee started.
 
 | Page | Settings |
 | --- | --- |
-| **PADS** | Pad response (soft, medium, hard, full level), pad pressure, what Double Seq copies, Recall length and grid |
+| **PADS** | Pad response (soft, medium, hard, full level), pad pressure, what Double Seq copies, Recall length and grid, Repeat velocity (Strike: every repeat as hard as the pad was struck; Pressure: as hard as the pad is held) |
 | **LIGHTS** | Pad lights (track colours, white, off), **Pad fade** (how fast a pad's light fades after its sound stops: 60, 100, 150 or 250 ms), **Tap Tempo light** (flashes on the beat while playing, on or off) |
 | **KNOBS** | Knob, Knob FX and fader takeover: Pickup, Scaled or Instant |
 | **SCREEN** | Palette, **Brightness** (20 to 100 %), place bar at the top or bottom, Screen mirror (on or off) and its resolution: the screen as a USB camera for a computer |

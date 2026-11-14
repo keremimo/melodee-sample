@@ -554,6 +554,7 @@ public:
     bool loop_click = false;
     void set_click(unsigned mode); // the metronome: 0 off, 1 on, 2 only while Seq Record
     void send_click();
+    void send_repeat_velocity();
     // Capture (Shift + Seq Record; round 2, capture C; roadmap P5): the last bars every track played (the phrase, or as
     // many bars as Settings keeps), each track's into its next empty pattern, which then plays; one undo. Nothing
     // played, or no pattern empty: a notice, and nothing changes.

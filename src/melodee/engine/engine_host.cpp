@@ -639,6 +639,11 @@ void EngineHost::apply(const Command& c) {
     case Type::ArpKey:
         if (c.value && slot.freeze && slot.freeze->deep) break; // freeze plan F2d
         if (c.value && slot.freeze) wake(slot);
+        if (c.value && !running && slot.arp.on && !slot.arp.count) { // stopped: the first key held plays at once, as on the MPC
+            bool others = false;                                      // unless another track's arp plays on the same clock
+            for (const auto& s : slots) others |= &s != &slot && s.arp.on && s.arp.count;
+            if (!others) { arp_ticks = 0; until_arp = 0; }
+        }
         if (c.value) slot.arp.press(int(c.index) | int(c.position & 0xff) << 16, c.value); else slot.arp.release(c.index); // position: a 16 Levels cutoff + 1
         if (!slot.arp.count) slot.arp.position = 0;
         break;

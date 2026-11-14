@@ -2156,6 +2156,24 @@ void parity_1c() {
     arp.press(150, 90);
     int velocity = 0;
     CHECK(arp.next(velocity) == 150 && velocity == 90); // a kit pad in bank H repeats as itself
+    { // Stopped, the first pad held plays at once, not on the next step of a clock that ran on before it (1/8 here)
+        auto p = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        tone_kit(*p, 0);
+        EngineHost host;
+        host.load(*p, *bank);
+        auto tone = tone_sample();
+        CHECK(host.offer_sample(0, &tone));
+        host.send({Command::Type::Arp, 0, 0, 0, 1});
+        host.send({Command::Type::Arp, 0, 0, 2, 2});
+        std::vector<int32_t> out(256);
+        for (unsigned n = 0; n < 37; ++n) host.render(out.data(), 128, 1);
+        host.send({Command::Type::ArpKey, 0, 0, uint16_t(sampler_first_note), 100});
+        host.render(out.data(), 128, 1);
+        float peak = 0;
+        for (auto s : out) peak = std::max(peak, std::fabs(s / 2147483648.0f));
+        CHECK(peak > 0.01f);
+    }
     { // 16 Levels: a pad's key with its semitones and Filter cutoff repeats as it is; its release names it without the cutoff
         Arp levels; levels.top = int(sampler_last_key);
         int up = pad_note(40, 5, 30), down = pad_note(40, -3), v = 0;
@@ -5467,6 +5485,19 @@ void device_rates() {
         b.read("pad_fade=9\n");
         CHECK(b.fade_ms() == 250);
         CHECK(std::string(Settings::row_name(Settings::PadFade)) == "Pad fade" && std::string(Settings::row_name(Settings::TapLight)) == "Tap Tempo light");
+    }
+    { // Repeat velocity: Strike by default; Pressure kept in the file, and off with Full Level or Pad pressure off
+        Settings a;
+        CHECK(!a.repeats_by_pressure() && a.value_text(Settings::RepeatVelocity) == "Strike");
+        a.step(Settings::RepeatVelocity, 1);
+        CHECK(a.repeats_by_pressure() && a.value_text(Settings::RepeatVelocity) == "Pressure");
+        Settings b;
+        b.read(a.text());
+        CHECK(b.repeats_by_pressure() && std::string(Settings::row_name(Settings::RepeatVelocity)) == "Repeat velocity");
+        b.toggle_full_level();
+        CHECK(!b.repeats_by_pressure());
+        b.toggle_full_level(); b.pressure = false;
+        CHECK(!b.repeats_by_pressure());
     }
 }
 

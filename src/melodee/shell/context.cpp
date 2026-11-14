@@ -132,6 +132,7 @@ void Context::switch_to(const Project& next, const PatternBank& bank, const std:
     for (const auto& ref : project.samples) ui.loading_total += ref.used() && ref.path[0] == '/';
     ui.loading_left = ui.loading_total;
     send_click(); // the metronome is Melodee's, and no take is running now
+    send_repeat_velocity();
     project_path = path;
     if (store) store->opened(path); // a file of its own: the one the next start resumes
     dirty = false;
@@ -893,6 +894,7 @@ void Context::set_route(unsigned r, const ModRoute& value) {
 
 void Context::change_setting(unsigned row, int way) {
     ui.settings.step(row, way);
+    if (row == Settings::RepeatVelocity || row == Settings::PadResponse || row == Settings::PadPressure) send_repeat_velocity();
     if (store) store->save_settings(ui.settings.text());
 }
 
@@ -1712,7 +1714,7 @@ void Context::set_arp(unsigned track, bool on) {
         send({Type::Arp, n, 0, 1, t.arp_mode}); send({Type::Arp, n, 0, 2, t.arp_rate});
         send({Type::Arp, n, 0, 3, int16_t(t.engine == EngineKind::Sampler ? 1 : t.arp_octaves)}); // a kit repeats its pad
         send({Type::Arp, n, 0, 4, t.arp_gate});
-        send({Type::Arp, n, 0, 5, int16_t(!ui.settings.full_level())}); // pressure sets the repeats' velocity, unless Full Level
+        send({Type::Arp, n, 0, 5, int16_t(ui.settings.repeats_by_pressure())}); // Settings > PADS: Repeat velocity
     }
     send({Type::Arp, n, 0, 0, int16_t(on)});
 }
@@ -1724,6 +1726,11 @@ void Context::set_click(unsigned mode) {
 }
 
 // The audio thread only hears on or off: Rec is on while Seq Record is.
+// Note Repeat's velocity on every track: the pad's strike, or its pressure (Settings > PADS: Repeat velocity).
+void Context::send_repeat_velocity() {
+    for (unsigned t = 0; t < track_count; ++t) send({Type::Arp, uint8_t(t), 0, 5, int16_t(ui.settings.repeats_by_pressure())});
+}
+
 void Context::send_click() {
     const auto& set = ui.settings;
     bool on = set.click == 1 || (set.click == 2 && (ui.recording || loop_click)); // a loop recording counts (docs/LOOPER.md)
