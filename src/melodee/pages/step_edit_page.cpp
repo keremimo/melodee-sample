@@ -49,6 +49,25 @@ juce::String key_name(const Snapshot& s, int key, bool with_name) {
     return label;
 }
 
+// A pad held, as it was written: its key, and under 16 Levels the level it plays ("A01 +7", "A01 V96", "C3 V40").
+juce::String held_name(const Snapshot& s, unsigned pad) {
+    const auto& t = s.track();
+    if (t.engine == EngineKind::Sampler && t.levels) {
+        auto lv = levels_of(s.project, t, pad);
+        juce::String name = key_name(s, int(sampler_first_note + t.levels_pad % sampler_pads), false);
+        if (lv.none) return name;
+        if (lv.cutoff >= 0) return name + " F" + juce::String(lv.cutoff);
+        if (lv.velocity) return name + " V" + juce::String(lv.velocity);
+        return name + " " + (lv.semitones > 0 ? "+" : "") + juce::String(lv.semitones);
+    }
+    int key = s.held_keys[pad];
+    if (key < 0) return {};
+    juce::String name = key_name(s, key, true);
+    if (t.engine != EngineKind::Sampler && t.levels && levels_of(s.project, t, pad).velocity) name += " V" + juce::String(levels_of(s.project, t, pad).velocity);
+    else if (t.engine != EngineKind::Sampler && !t.levels && t.layout == PadLayout::Levels) name += " V" + juce::String(level_velocity(pad));
+    return name;
+}
+
 const char* const card_names[] {"NOTE", "LOCK", "TRIG", "EUCLID"};
 
 unsigned bars_of(const Pattern& p) { return std::max(1u, (p.steps() + bar_steps - 1) / bar_steps); }
@@ -70,10 +89,15 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
         for (int i = 0; i < 80; ++i) if (row_key(i) <= key) best = i;
         return best;
     };
+    auto pitch_of = [](const Event& e) { return int(e.key) + e.pitch; }; // 16 Levels on a kit: its pad at the level's pitch
     int lo = 1000, hi = -1;
-    for (unsigned st = first; st < first + bar_steps && st < steps; ++st)
-        for (auto& n : pattern.step(st).notes)
-            if (n.velocity) { lo = std::min(lo, index_of(n.key)); hi = std::max(hi, index_of(n.key)); }
+    for (unsigned st = first; st < first + bar_steps && st < steps; ++st) {
+        auto in = step_events(pattern, st);
+        for (unsigned n = 0; n < in.count && n < notes_per_step; ++n) {
+            int at = index_of(pitch_of(pattern.events[in.first + n]));
+            lo = std::min(lo, at); hi = std::max(hi, at);
+        }
+    }
     if (hi < 0) lo = hi = index_of(s.track().step_note());
     constexpr int rows = 5;
     int base = (lo + hi) / 2 - rows / 2;
@@ -83,6 +107,8 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
     unsigned lane_steps = std::max(1u, (loop + pattern.q() - 1) / pattern.q());
     uint64_t elapsed = uint64_t(s.pass) * std::max<uint32_t>(pattern.length, 1) + s.position % std::max<uint32_t>(pattern.length, 1);
     int playing_step = s.playing ? int((elapsed % std::max<uint32_t>(loop, 1)) / pattern.q()) : -1;
+    uint32_t now = uint32_t(elapsed % std::max<uint32_t>(loop, 1)); // where it plays, in ticks
+    auto sounding = [&](const Event& e) { return s.playing && now >= e.tick && now < e.tick + std::max<uint32_t>(e.length, pattern.q() / 2); };
     for (unsigned k = 0; k < bar_steps; ++k) {
         unsigned st = first + k;
         float x = x_of(k);
@@ -103,10 +129,10 @@ void draw_bar(Paint& p, const Snapshot& s, unsigned caret, juce::Colour c) {
         auto in = step_events(pattern, st);
         for (unsigned n = 0; n < in.count && n < notes_per_step; ++n) { // each note at its pitch's row, as tall as it is hard
             const auto& e = pattern.events[in.first + n];
-            int row = std::clamp(index_of(e.key) - base, 0, rows - 1);
+            int row = std::clamp(index_of(pitch_of(e)) - base, 0, rows - 1);
             float cy = top + ch - (row + 0.5f) * (ch / rows);
             bool other = lane_only && int(e.key) != lane;
-            auto ink_note = held ? colour::text : past || other ? colour::line : c;
+            auto ink_note = held || (sounding(e) && !past) ? colour::text : past || other ? colour::line : c; // white: held, or sounding now
             unsigned hits = e.hits();
             if (hits == 1) {
                 float bh = 4 + 6 * e.velocity / 127.0f;
@@ -176,19 +202,25 @@ void draw(Paint& p, const Snapshot& s) {
     // The panel: the pads held (bright), else what the caret's step holds (quiet); and where the caret goes next.
     float py = zone::picture_y + 103, ph = zone::knobs_y - 4 - py, px = zone::pad, pw = zone::width - 2 * zone::pad;
     p.fill(px, py, pw, ph, colour::panel, 4);
-    std::vector<int> keys_shown;
+    std::vector<juce::String> keys_shown;
     bool held = s.ui.entry_held != 0;
+    auto add = [&](const juce::String& name) {
+        if (name.isNotEmpty() && std::find(keys_shown.begin(), keys_shown.end(), name) == keys_shown.end()) keys_shown.push_back(name);
+    };
     if (held) {
         for (unsigned pad = 0; pad < 16; ++pad)
-            if (s.ui.entry_held & (1u << pad)) keys_shown.push_back(s.held_keys[pad]);
+            if (s.ui.entry_held & (1u << pad)) add(held_name(s, pad));
     } else {
-        for (size_t n = pattern.lower(caret * q); n < pattern.events.size() && pattern.events[n].tick < (caret + 1) * q; ++n)
-            if (std::find(keys_shown.begin(), keys_shown.end(), int(pattern.events[n].key)) == keys_shown.end()) keys_shown.push_back(pattern.events[n].key);
+        for (size_t n = pattern.lower(caret * q); n < pattern.events.size() && pattern.events[n].tick < (caret + 1) * q; ++n) {
+            const auto& e = pattern.events[n];
+            juce::String name = key_name(s, e.key, true);
+            if (e.pitch) name = key_name(s, e.key, false) + " " + (e.pitch > 0 ? "+" : "") + juce::String(int(e.pitch));
+            add(name);
+        }
     }
     float ix = px + 10, cy = py + ph / 2;
     for (unsigned k = 0; k < keys_shown.size() && k < 3; ++k) {
-        if (keys_shown[k] < 0) continue;
-        auto name = key_name(s, keys_shown[k], true);
+        const auto& name = keys_shown[k];
         auto style = plain(held ? colour::text : colour::sec, type::body, Weight::SemiBold);
         float tw = std::min(p.width(name, style), 82.0f);
         p.fill(ix - 4, cy - 9, tw + 8, 18, held ? c.withAlpha(0.25f) : colour::raised, 9);

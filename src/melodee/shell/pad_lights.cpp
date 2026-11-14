@@ -402,17 +402,21 @@ Look steps_look(const PadScene& s, unsigned pad) {
     if (s.host.playing() && position >= 0 && elapsed % std::max<uint32_t>(loop, 1) / p.q() == step) return writing(s) ? red(mid) : white(mid);
     return velocity_look(selected_index(s), step_velocity(p, step, steps_lane(selected(s))));
 }
-Look step_edit_look(const PadScene& s, unsigned pad) {
+// Step Edit's PLAY pads: the caret's step (its notes by velocity, the selected one white), each pad flaring as it
+// sounds and white held; under 16 Levels the levels' pads, as on the track's own page.
+Look step_edit_look(const PadScene& s, const Heard& snd, unsigned pad) {
     const auto& t = selected(s);
+    if (levels_on(t)) return counting(s, levels_look(s, snd, pad));
     const auto& p = shown(s);
     int key = pad_key(s.project, t, pad);
     if (key < 0) return {};
+    Look base;
     int chosen = selected_event(p, s.ui);
-    if (chosen >= 0 && p.events[size_t(chosen)].key == key) return white(full);
     unsigned velocity = step_velocity(p, unsigned(std::max<int>(s.ui.step_cursor, 0)) % p.steps(), key);
-    if (velocity) return velocity_look(selected_index(s), velocity);
-    bool empty = t.engine == EngineKind::Sampler && !t.pads[unsigned(key - int(sampler_first_note)) % sampler_pads].used();
-    return empty ? Look {} : track(selected_index(s), faint);
+    if (chosen >= 0 && p.events[size_t(chosen)].key == key) base = white(full);
+    else if (velocity) base = velocity_look(selected_index(s), velocity);
+    else if (t.engine != EngineKind::Sampler || t.pads[unsigned(key - int(sampler_first_note)) % sampler_pads].used()) base = track(selected_index(s), faint);
+    return counting(s, playing(s, snd, base, pad));
 }
 // Roll: the row in focus, the rows of the cursor's step and, under 16 Levels on a kit, every row the pattern uses
 // (its rows are the levels pad's pitches: shell/roll.h roll_lane()), as the page draws them.
@@ -733,7 +737,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::Looper: look = loop_look(s, pad, false); break;
             case PageId::Tracks: look = tracks_look(s, pad); break;
             case PageId::Song: look = song_look(s, pad); break;
-            case PageId::StepEdit: look = s.ui.step_pads ? steps_look(s, pad) : step_edit_look(s, pad); break; // the bar's steps, or the keys
+            case PageId::StepEdit: look = s.ui.step_pads ? steps_look(s, pad) : step_edit_look(s, snd, pad); break; // the bar's steps, or the keys
             case PageId::Roll: look = roll_look(s, snd, roll, keys, pad); break;
             case PageId::TimeCorrect: look = time_correct_look(s, keys, pad); break;
             case PageId::Motion: look = motion_look(s, snd, moving, pad); break;

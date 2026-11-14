@@ -232,11 +232,22 @@ void entry_pad(Context& c, unsigned pad, uint8_t velocity, bool down) {
     const auto& t = c.track();
     int key = pad_key(c.project, t, pad);
     if (key < 0 || !t.used()) return;
-    Level level; // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
-    if (t.engine == EngineKind::Sampler && t.levels) { level = levels_of(c.project, t, pad); key = int(sampler_first_note + t.levels_pad % sampler_pads); }
-    if (level.none) return; // Zones: a pad past the instrument's last key
+    if (t.engine == EngineKind::Sampler && t.levels) { // 16 Levels on a kit: its pad at this pad's pitch, velocity and cutoff, as Seq Record keeps it
+        Level level = levels_of(c.project, t, pad);
+        if (level.none) return; // Zones: a pad past the instrument's last key
+        ui.entry_held = uint16_t(ui.entry_held | bit);
+        entry_write(c, int(sampler_first_note + t.levels_pad % sampler_pads), level, velocity);
+        return;
+    }
+    // Any other track: the keys the pad played (a chord's, 16 Levels' on a synth), at the velocity heard.
+    Level level;
+    if (t.engine != EngineKind::Sampler && t.levels) level.velocity = levels_of(c.project, t, pad).velocity;
+    else if (t.engine != EngineKind::Sampler && t.layout == PadLayout::Levels) level.velocity = level_velocity(pad);
+    bool wrote = false;
+    for (auto k : c.pad_keys[pad % 16])
+        if (k >= 0 && k <= 127) { entry_write(c, k, level, velocity); wrote = true; }
+    if (!wrote) entry_write(c, key, level, velocity);
     ui.entry_held = uint16_t(ui.entry_held | bit);
-    entry_write(c, key, level, velocity);
 }
 
 void midi_entry(Context& c, int key, int pitch, uint8_t velocity, bool down) {
