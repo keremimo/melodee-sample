@@ -317,6 +317,27 @@ Look tracks_look(const PadScene& s, unsigned pad) {
     float m = meter(s, pad);
     return t.mix.solo ? white(between(dim, mid, m)) : track(pad, between(dim, mid, m));
 }
+// ---- SCENES (roadmap P5): a pad a scene, the column of patterns it launches. The one playing (every track with notes
+// there playing it) bright, one waiting for its bar blinking, the rest as many tracks as hold notes there; Erase held:
+// the scenes with a name or tempo to clear.
+Look scenes_look(const PadScene& s, unsigned pad) {
+    unsigned n = s.ui.pad_pattern(pad), with = 0, on = 0, waiting = 0; // the bank in view's
+    bool rolling = s.host.playing();
+    for (unsigned t = 0; t < track_count; ++t) {
+        const auto& tr = s.project.tracks[t];
+        if (!tr.used() || s.patterns.at[t][n].empty()) continue;
+        ++with;
+        bool live = rolling ? s.host.pattern_of(t) == n && !(s.host.stopped_tracks() >> t & 1) : tr.pattern == n;
+        on += live;
+        waiting += rolling && !live && tr.pattern == n;
+    }
+    if (s.ui.erase) return s.project.scenes[n].plain() ? Look {} : red(dim);
+    if (with && on == with) return white(full);
+    if (waiting) return (s.now / 150) % 2 ? white(mid) : white(faint);
+    if (!with) return s.project.scenes[n].plain() ? Look {} : white(faint);
+    return with == 1 ? white(faint) : with < 4 ? white(dim) : white(mid);
+}
+
 Look song_look(const PadScene& s, unsigned pad) {
     const auto& t = s.project.tracks[pad];
     if (!t.used()) return {};
@@ -759,6 +780,7 @@ void pad_looks(const PadScene& s, std::array<Look, 16>& out) {
             case PageId::Looper: look = loop_look(s, pad, false); break;
             case PageId::Tracks: look = tracks_look(s, pad); break;
             case PageId::Song: look = song_look(s, pad); break;
+            case PageId::Scenes: look = scenes_look(s, pad); break; // roadmap P5
             case PageId::StepEdit: look = s.ui.step_pads ? steps_look(s, pad) : step_edit_look(s, snd, pad); break; // the bar's steps, or the keys
             case PageId::Roll: look = roll_look(s, snd, roll, keys, pad); break;
             case PageId::TimeCorrect: look = time_correct_look(s, keys, pad); break;

@@ -17,6 +17,7 @@ const PageSpec& page_spec(PageId page) {
     case PageId::Roll: return roll_page;
     case PageId::Motion: return motion_page;
     case PageId::Patterns: return patterns_page;
+    case PageId::Scenes: return scenes_page; // roadmap P5: B1 again on Patterns
     case PageId::Song: return song_page;
     case PageId::InputConfig: return input_config_page;
     case PageId::Rack: return rack_page;

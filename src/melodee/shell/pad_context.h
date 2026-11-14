@@ -55,6 +55,7 @@ inline PadContext pad_context(const UiState& ui, const Track& track, const PadFa
     if (ui.shift && ui.page == PageId::Looper && pad % 16 >= 8 && pad % 16 < 12) return C::LoopNow;
     if (ui.shift) return C::Shift;
     if (ui.page == PageId::Patterns) return C::SeqLayer; // Patterns' pads are the track's patterns, as Seq held's
+    if (ui.page == PageId::Scenes) return C::Page;       // Scenes' pads launch scenes; Erase + pad clears one
     if (ui.resample_pick) return C::ResamplePick;
     if (facts.kit_pads && ui.copying == UiState::Copying::Pads) return C::PadCopy;
     if (ui.copying == UiState::Copying::Keys && (facts.key_pads || ui.page == PageId::Roll || (ui.page == PageId::StepEdit && !ui.step_pads)))

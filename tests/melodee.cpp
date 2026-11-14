@@ -4873,7 +4873,7 @@ void card_access() {
     CHECK(ui.ask_pick == 2 && card_press(ui, B::WheelPush).request == CardRequest::Force);
     lent.ejected = true; card_follow(ui, lent);                        // ejected on the computer: B1 simply returns it
     CHECK(card_press(ui, B::TopLeft).request == CardRequest::Return);
-    CHECK(std::string(card_title(ui.card)) == "Ejected");
+    CHECK(std::string(card_title(ui.card)) == "Ejected on the computer");
 
     CardView back; back.returns = 1;
     ui.ask = UiState::Ask::TakeCardBack;

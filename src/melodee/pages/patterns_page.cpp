@@ -9,7 +9,7 @@
 // Right: the eight tracks in view, each with the pattern it plays and how far along it is.
 // The wheel selects the track (the list on the right follows it, eight at a time). The selected track's pattern
 // in hand is the scene in view: cell n is scene n too, and Push launches it on every track; Shift + wheel moves the playhead by Q (stopped: where Shift + Play carries on from). Minus / Plus move the track. K1-K3: the pattern's length, Q, swing (Shift: any bars, time signature,
-// the metronome's level). B1-B3 PATTERNS / ROLL / MOTION; Shift + B1 SCENE (K1 the scene's tempo, Push
+// the metronome's level). B1-B3 PATTERNS / ROLL / MOTION (B1 again: SCENES); Shift + B1 SCENE (K1 the scene's tempo, Push
 // names it), Shift + B2 FOLLOW (the pattern's follow action, Shift + K1 OR, Push puts it on its column), Shift + B3
 // VARY (a variation of the pattern into the next empty one; the wheel picks, Push or B3 makes it).
 #include "melodee/pages/common.h"
@@ -125,6 +125,7 @@ void draw(Paint& p, const Snapshot& s) {
         h.right.push_back(pill(juce::String::fromUTF8(speed_name(s.track().speed)), c));
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"PATTERNS", "ROLL", "MOTION"}, 0, c};
+    keys.dots[0] = 2; // B1's two pages: Patterns, Scenes
     if (s.ui.sheet_open) keys = SoftKeys {{"BACK", "", "DO IT"}, 2, c, {KeyIcon::Back, KeyIcon::None, KeyIcon::Check}};
     else if (s.ui.shift) {
         keys = SoftKeys {{"SCENE", "FOLLOW", "VARY"}, -1, c};
@@ -194,7 +195,7 @@ void soft(Context& c, int key) {
         if (key == 2) { ui.patterns_cards = 0; ui.sheet_open = true; }
         return;
     }
-    if (key == 0) { ui.patterns_cards = 0; return; } // PATTERNS again: the pattern's cards
+    if (key == 0) { ui.patterns_cards = 0; c.open(PageId::Scenes); return; } // PATTERNS again: B1's second page, Scenes
     seq_hub_soft(c, key);
 }
 } // namespace

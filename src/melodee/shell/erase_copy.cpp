@@ -74,6 +74,7 @@ bool erase_tap(Context& c) {
         else ask(c, UiState::Ask::ClearPattern, int(n));
         return true;
     }
+    case PageId::Scenes: c.clear_scene(ui.scene % pattern_count); return true; // the scene in hand's name and tempo
     case PageId::Tracks:
         if (ui.recording) c.notice("Clear track: not in a take");
         else if (!track_clearable(c.project.tracks[t], c.patterns.at[t])) c.notice("Track " + std::to_string(t + 1) + " is empty");

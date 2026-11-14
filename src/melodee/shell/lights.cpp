@@ -441,7 +441,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     // Bank lights A-H: with Seq held or on Patterns, the bank of patterns in view; else the sampler track's bank in view, or the Drums
     // pads' (A-D).
     for (unsigned bank = 0; bank < surface_bank_lights; ++bank)
-        lights.bank(bank, ui.seq_held || ui.page == PageId::Patterns ? bank == ui.pattern_bank % pattern_banks
+        lights.bank(bank, ui.seq_held || ui.page == PageId::Patterns || ui.page == PageId::Scenes ? bank == ui.pattern_bank % pattern_banks
                                       : (track.engine == EngineKind::Sampler && bank == track.bank % sampler_banks) || (drum_pads(track) && bank == drum_bank(track)));
     { // The meters beside the screen, as on the MPC: the input source while Record or Input Config is in view or a
       // take waits or runs (what is about to be sampled), else main out.
@@ -516,7 +516,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     }
     bool sound_hub = ui.page == PageId::Stage || is_sampler_page(ui.page) || ui.sample_held; // Sample's hub (docs/HUBS_PLAN.md)
     on(B::Sample, sound_hub || ui.page == PageId::InputConfig);
-    on(B::Seq, ui.page == PageId::StepEdit || ui.page == PageId::Patterns || ui.page == PageId::Roll || ui.page == PageId::Motion); // its hub
+    on(B::Seq, ui.page == PageId::StepEdit || ui.page == PageId::Patterns || ui.page == PageId::Scenes || ui.page == PageId::Roll || ui.page == PageId::Motion); // its hub
     on(B::SampleSelect, ui.page == PageId::Sounds || ui.page == PageId::Samples);
     on(B::Chop, ui.page == PageId::Chop);
     on(B::NoteRepeat, track.arp && ui.page != PageId::Song); // on Song it repeats the clip

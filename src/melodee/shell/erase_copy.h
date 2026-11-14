@@ -60,7 +60,7 @@ inline CopyHere copy_here(const Project& project, const UiState& ui, bool kit_pa
 // something to erase and says so when there is not).
 inline bool erase_tap_page(const UiState& ui) {
     switch (ui.page) {
-    case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Tracks:
+    case PageId::Roll: case PageId::StepEdit: case PageId::Patterns: case PageId::Scenes: case PageId::Tracks:
     case PageId::Looper: case PageId::Rack: case PageId::Bus: case PageId::Master: case PageId::PadFx:
     case PageId::Chop: case PageId::LayersPage: case PageId::ModPage:
         return true;

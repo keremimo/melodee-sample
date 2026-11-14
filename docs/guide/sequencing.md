@@ -79,7 +79,8 @@ Hold **SEQ** on any page. The pads become the selected track's patterns:
   copies a pattern: press the pattern, then where it goes.
 - **K1**–**K3** set the pattern's length, grid and swing. The encoder sets
   the tempo. Push it to switch between whole BPM and tenths.
-- **B1**–**B3** open Patterns, Roll and Motion.
+- **B1**–**B3** open Patterns, Roll and Motion. Press **B1** again for
+  Scenes. The dots under **B1** show which of the two pages is open.
 - **PAD BANK** steps the pattern bank A–H (**SHIFT**: back). Hold a pad,
   step the bank and press a pad to copy across banks.
 - **−** / **+** launch the previous / next pattern.
@@ -317,6 +318,24 @@ pattern: what the pattern does after it has played for a while.
   (**OR**) sets the second action.
 - Push the encoder to put the follow action on every track's pattern in
   that column.
+
+### Scenes page
+
+Press **B1** on Patterns to open **Scenes**. Press **B1** again to go back.
+
+![Scenes](../images/screens/scenes.png)
+
+- The pads are the bank's 16 scenes, laid out as on Patterns. Press a pad
+  to launch its scene at the next bar. **ERASE** + pad clears the scene's
+  name and tempo. **PAD BANK** steps the bank.
+- The scene launched last is the scene in hand. The encoder sets its tempo
+  (below 30 is None). Push the encoder to name it. **ERASE** clears it.
+- **K1**–**K3** set the selected pattern's follow action, as on **FOLLOW**.
+  **SHIFT** + **K1** sets the second action. **SHIFT** + **B3** (**ALL**)
+  puts the follow action on every track's pattern in that column.
+- **−** / **+** select the track. The dots on the right are the tracks:
+  bright in the scene, dim on another pattern, a red ring stopped by a
+  follow action.
 
 ## Tempo
 

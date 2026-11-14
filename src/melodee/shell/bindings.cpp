@@ -620,6 +620,9 @@ std::array<Binding, 3> shift_bindings(const Project& project, const UiState& ui,
             return track.used() ? std::array<Binding, 3> {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}}
                                 : std::array<Binding, 3> {};
         return pattern_shift_cards(project, ui, pattern);
+    case PageId::Scenes: // roadmap P5: Shift + K1 the follow action's second, on the odds the first leaves
+        if (!track.used()) return {};
+        return {Binding {Kind::FollowOther, 0, 0, int(FollowAction::Count) - 1, pattern.follow.other}, Binding {}, Binding {}};
     case PageId::Song: { // roadmap P5: the tempo lane at the cursor's bar: its tempo, and (a point there) its shape
         if (ui.song_export) return {};
         const auto& lane = project.song.tempo;
@@ -822,6 +825,12 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
                     Binding {Kind::FollowChance, 0, 0, 100, f.chance}};
         }
         return pattern_cards(project, pattern);
+    }
+    case PageId::Scenes: { // roadmap P5: the selected track's pattern's follow action, after how long, on what odds
+        if (!track.used()) return {};
+        const auto& f = pattern.follow;
+        return {Binding {Kind::FollowAction, 0, 0, int(FollowAction::Count) - 1, f.action}, Binding {Kind::FollowAfter, 0, 0, 127, follow_after_card(f)},
+                Binding {Kind::FollowChance, 0, 0, 100, f.chance}};
     }
     case PageId::ModPage: { // roadmap P4: the modulator in hand, its rate (or a follower's rise), the target in hand's depth; a macro, its value, a target's high
         if (ui.mod_view == 1) {

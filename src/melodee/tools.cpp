@@ -2238,6 +2238,16 @@ const Preview previews[] {
          auto& f = shell.patterns().at[2][1].follow;
          f.action = uint8_t(FollowAction::Again); f.other = uint8_t(FollowAction::Stop); f.chance = 50; f.count = 2; f.plays = true;
      }},
+    // Roadmap P5: SCENES (B1 again on Patterns), the bank's scenes and the selected track's pattern's follow action.
+    {"scenes", [](Shell& shell, Snapshot& s) {
+         s.ui.page = PageId::Scenes; s.ui.track = 2; s.ui.scene = 1; s.playing = true;
+         s.project.scenes[0].set_name("INTRO"); s.project.scenes[1].set_name("VERSE"); s.project.scenes[1].tempo = 1240;
+         s.project.scenes[2].set_name("DROP"); s.project.scenes[2].tempo = 1280; s.project.scenes[5].set_name("BREAK");
+         s.project.tracks[2].pattern = 1;
+         for (unsigned t = 0; t < track_count; ++t) { s.playing_patterns[t] = t == 2 ? 1 : 0; s.positions[t] = t == 5 ? -1 : int(t * sixteenth_ticks); }
+         auto& f = shell.patterns().at[2][1].follow;
+         f.action = uint8_t(FollowAction::Next); f.other = uint8_t(FollowAction::Any); f.chance = 75; f.count = 4;
+     }},
     {"stepeditshift", [](Shell& shell, Snapshot& s) { // Shift held on Step Edit: PADS, TIE, INSERT; the pattern's length, Q, time signature
          step_edit_kit(shell, s);
          s.ui.shift = true;
