@@ -647,6 +647,7 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
         w.out.insert(w.out.end(), state.begin(), state.end());
         w.u32(uint32_t(ref.id)); w.text(ref.name); // after the state: which plug-in of a bundle, and its name
         w.u8(ref.transport ? 1 : 0);              // and TRANSPORT (without it: on)
+        w.text(ref.preset);                       // and the preset picked last (without it: none)
         w.end(at);
     }
     for (unsigned t = 0; t < track_count; ++t) { // a track's own MIDI channel (parity phase 9)
@@ -1152,6 +1153,7 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
             plugin_states[e] = std::move(state);
             if (!r.done()) { project->plugins[e].id = int32_t(r.u32()); r.text(project->plugins[e].name, sizeof(project->plugins[e].name)); }
             if (!r.done()) project->plugins[e].transport = r.u8() != 0;
+            if (!r.done()) r.text(project->plugins[e].preset, sizeof(project->plugins[e].preset));
         } else if (name == "MIDC") { // a track's own MIDI channel; without it none
             unsigned t = r.u8(), channel = r.u8();
             if (r.ok && t < track_count) project->tracks[t].midi_channel = uint8_t(channel <= 16 ? channel : 0);

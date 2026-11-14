@@ -439,6 +439,8 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
             auto& entry = entries[e];
             entry.transport = project.plugins[e].transport;
             if (entry.live) entry.live->transport.store(entry.transport, std::memory_order_relaxed);
+            entry.preset = project.plugins[e].preset;
+            if (entry.live && entry.live->program < 0) entry.live->program = program_keyed(entry.live->programs, entry.preset);
             std::string want = project.plugins[e].used() && referenced(project, e) ? project.plugins[e].path : "";
             int32_t id = want.empty() ? 0 : project.plugins[e].id;
             // Freeze plan F2d: used only by deep-frozen tracks, it sleeps (plugin/plugin_sleep.h).
@@ -663,6 +665,7 @@ void PluginRack::select_program(unsigned entry, int program) {
         if (!e.live || e.status != PluginStatus::Ready) return;
         e.live->program = program;
         e.live->switching = true;
+        for (const auto& p : e.live->programs) if (p.index == program) { e.preset = program_key(p); break; }
         job.generation = e.generation;
     }
     push(std::move(job));
@@ -1044,6 +1047,7 @@ void PluginRack::load(const Job& job) {
             handles.push_back(std::move(handle));
             if (entry.live) retiring.push_back(entry.live);
             raw->transport.store(entry.transport, std::memory_order_relaxed); // before the audio thread first runs it
+            raw->program = program_keyed(raw->programs, entry.preset); // its state already plays it: the name only
             entry.live = raw;
             entry.status = PluginStatus::Ready;
             entry.file.instrument = is_instrument ? 1 : 0;
@@ -1082,6 +1086,8 @@ void PluginRack::find_presets(unsigned entry, uint32_t generation) {
         if (e.generation == generation && e.live && e.live->instance.get() == clap) {
             e.live->programs = PluginProgramList(std::move(list));
             e.live->finding = false;
+            if (e.live->program < 0) e.live->program = program_keyed(e.live->programs, e.preset); // as at opening
+
         }
     }
     changed();

@@ -9007,6 +9007,7 @@ void plugins() {
         project->buses[0].fx.slots[0] = {plugin_effect_kind, false, {7, 0, 0, 0, 0, 0}};
         project->master.slots[0] = {plugin_effect_kind, false, {9, 0, 0, 0, 0, 0}};
         project->plugins[9].transport = false; // a plug-in with its own sequencer, played only by its notes
+        std::snprintf(project->plugins[5].preset, sizeof(project->plugins[5].preset), "Leads/Acid Line");
         std::array<std::vector<uint8_t>, max_plugins> states;
         states[5] = {1, 2, 3, 250};
         auto data = save_project(*project, *bank, &states);
@@ -9022,6 +9023,7 @@ void plugins() {
         CHECK(copy->master.slots[0].kind == plugin_effect_kind && copy->master.slots[0].params[0] == 9);
         CHECK(plugin_used_by(*copy, 5) && plugin_used_by(*copy, 9) && !plugin_used_by(*copy, 4));
         CHECK(!copy->plugins[9].transport && copy->plugins[5].transport && copy->plugins[7].transport);
+        CHECK(std::string(copy->plugins[5].preset) == "Leads/Acid Line" && copy->plugins[7].preset[0] == 0);
         copy->tracks[2].engine = EngineKind::Midi; // the entry stays in the table but nothing plays it
         CHECK(!plugin_used_by(*copy, 5));
     }

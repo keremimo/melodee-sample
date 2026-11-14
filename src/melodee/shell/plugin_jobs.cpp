@@ -118,6 +118,7 @@ void Context::choose_plugin(const PluginFile& file) {
     std::snprintf(ref.path, plugin_path_length, "%s", file.path.c_str());
     std::snprintf(ref.name, sizeof(ref.name), "%s", file.name.c_str());
     ref.id = file.id;
+    if (!same) ref.preset[0] = 0; // another plug-in: none of its presets picked yet
     if (same) plugins->reload(unsigned(entry)); // picked again: opened afresh (after it failed or stopped working)
     if (instrument) {
         unsigned t = ui.track % track_count;
@@ -198,7 +199,10 @@ void Context::choose_plugin_program(int index) {
     if (!plugins) return;
     auto programs = plugins->programs(ui.presets_entry);
     if (index < 0 || size_t(index) >= programs.list.size()) return;
-    plugins->select_program(ui.presets_entry, programs.list[size_t(index)].index);
+    const auto& picked = programs.list[size_t(index)];
+    plugins->select_program(ui.presets_entry, picked.index);
+    if (ui.presets_entry < max_plugins) // its name kept with the project, shown again when it is opened
+        std::snprintf(project.plugins[ui.presets_entry].preset, sizeof(project.plugins[0].preset), "%s", program_key(picked).c_str());
     dirty = true; // the plug-in's state, saved with the project, now holds it
 }
 

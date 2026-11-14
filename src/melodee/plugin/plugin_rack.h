@@ -114,6 +114,7 @@ private:
     struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
         bool transport = true;            // the project's TRANSPORT for it (PluginRef::transport), for the next one too
+        std::string preset;               // the preset picked last (PluginRef::preset), named again when it reopens
         std::string error;
         PluginFile file;
     };

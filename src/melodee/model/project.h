@@ -350,6 +350,9 @@ struct PluginRef {
     // TRANSPORT: it hears Play and Stop. Off, it is always told the song is stopped (still the tempo and the place),
     // so a plug-in with a sequencer of its own plays only the notes it is sent.
     bool transport = true;
+    // PRESETS: the preset picked last, as "folder/name" ("" none), so its name shows again once the project is opened.
+    // Its sound comes back with the plug-in's state; this only finds the row for it.
+    char preset[128] {};
     bool used() const { return path[0] != 0; }
 };
 

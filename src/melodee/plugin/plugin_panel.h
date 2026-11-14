@@ -69,6 +69,14 @@ public:
 private:
     std::shared_ptr<const std::vector<PluginProgram>> items_;
 };
+// A program's key as PluginRef::preset keeps it: "folder/name", or the name alone.
+inline std::string program_key(const PluginProgram& p) { return p.folder.empty() ? p.name : p.folder + "/" + p.name; }
+// The program with that key (its number in the plug-in), -1 none.
+inline int program_keyed(const PluginProgramList& list, const std::string& key) {
+    if (key.empty()) return -1;
+    for (const auto& p : list) if (program_key(p) == key) return p.index;
+    return -1;
+}
 struct PluginPrograms {
     uint8_t entry = no_plugin;
     PluginProgramList list;
