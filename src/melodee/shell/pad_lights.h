@@ -22,6 +22,7 @@ struct TrackTaps;
 // (pad_light::hand_ms) instead of going dark at once. Kept by the shell across frames; for one track and bank.
 struct PadGlow {
     std::array<float, 16> level {};
+    std::array<float, 16> levels {}; // 16 Levels' pads, the same
     uint32_t at = 0;  // ms of the frame it was kept
     int owner = -1;   // track * 256 + bank it belongs to
 };

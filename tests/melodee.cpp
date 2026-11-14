@@ -9438,6 +9438,18 @@ void pad_lights() {
     CHECK(is(0, Hue::Track, 1) && is(15, Hue::Track, 4) && looks[7].level < looks[8].level);
     kit.levels_kind = uint8_t(LevelsKind::Tune); light({}); // -3..12: the sample as recorded (pad 4) the root
     CHECK(is(3, Hue::Track, 3) && is(15, Hue::Track, 3) && is(0, Hue::White, 2) && is(1, Hue::White, 1));
+    { // the level hit last fades as a pad let go when its voice stops, not dark at once
+        PadGlow glow;
+        auto glowing = [&](uint32_t now) { PadScene scene {ui, *project, *bank, host, taps, {}, now, nullptr, 0}; scene.glow = &glow; pad_looks(scene, looks); };
+        ui.levels_hit = 1;
+        glowing(1000); Look rest = looks[1];
+        taps.track = 1; taps.count = 1; taps.voice[0].pad = int16_t(kit.levels_pad); taps.voice[0].level = 1;
+        glowing(1010); CHECK(is(1, Hue::White, 4));
+        taps.count = 0;
+        glowing(1110); CHECK(looks[1].hue == Hue::White && looks[1].rgb.r > rest.rgb.r && looks[1].rgb.r < 255);
+        glowing(3000); CHECK(looks[1].rgb.r == rest.rgb.r && looks[1].hue == rest.hue);
+        taps = TrackTaps {}; ui.levels_hit = -1;
+    }
     { // the sequence plays: its note lights the pad written at its pitch, not the pad hit last, though the voice is that pad's
         auto& p = bank->at[1][0];
         p.length = 16 * sixteenth_ticks;

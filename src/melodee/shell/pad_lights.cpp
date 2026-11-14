@@ -62,8 +62,10 @@ std::array<bool, 192> keys_in(const Pattern& p) {
 // go, fading (hand_ms).
 struct Heard {
     std::array<float, 16> level {};
+    std::array<float, 16> levels {}; // under 16 Levels: what each level's pad sounds (levels_sound())
     std::array<float, 16> hand {};
 };
+float levels_sound(const PadScene& s, unsigned pad);
 // A pattern's note at `pos`: its velocity while held, fading over a sixteenth after (round the loop).
 float note_now(const Event& e, uint32_t pos, uint32_t length) {
     uint32_t since = pos >= e.tick ? pos - e.tick : pos + length - e.tick;
@@ -101,15 +103,20 @@ Heard heard_now(const PadScene& s) {
             }
         }
     }
+    if (levels_on(t)) for (unsigned pad = 0; pad < 16; ++pad) out.levels[pad] = levels_sound(s, pad);
     if (s.glow) { // a sound falls no faster than a pad let go fades
-        int owner = int(at) * 256 + int(t.bank);
+        int owner = int(at) * 256 + int(t.bank) * 2 + int(levels_on(t));
         auto& g = *s.glow;
         float keep = g.owner == owner && s.now >= g.at ? std::exp(-float(s.now - g.at) / hand_ms) : 0.0f;
-        for (unsigned pad = 0; pad < 16; ++pad) {
-            float faded = g.level[pad] * keep;
-            out.level[pad] = std::max(out.level[pad], faded > 0.002f ? faded : 0.0f);
-            g.level[pad] = out.level[pad];
-        }
+        auto fade = [&](std::array<float, 16>& now, std::array<float, 16>& kept) {
+            for (unsigned pad = 0; pad < 16; ++pad) {
+                float faded = kept[pad] * keep;
+                now[pad] = std::max(now[pad], faded > 0.002f ? faded : 0.0f);
+                kept[pad] = now[pad];
+            }
+        };
+        fade(out.level, g.level);
+        fade(out.levels, g.levels);
         g.at = s.now; g.owner = owner;
     }
     if (s.let_go)
@@ -251,12 +258,15 @@ float levels_pattern(const PadScene& s, unsigned pad) {
     }
     return level;
 }
+// What a level's pad sounds: the sequence, each note on its own pad; stopped, the pad hit last as its voice fades.
+float levels_sound(const PadScene& s, unsigned pad) {
+    if (s.host.playing()) return levels_pattern(s, pad);
+    return int(pad) == s.ui.levels_hit ? levels_voice(s) : 0;
+}
 Look levels_look(const PadScene& s, const Heard& snd, unsigned pad) {
     Look base = levels_base(s, pad);
     if (held(s, pad)) return writing(s) ? red(full) : white(full);
-    float sound = snd.hand[pad];
-    if (s.host.playing()) sound = std::max(sound, levels_pattern(s, pad)); // the sequence: each note on its own pad
-    else if (int(pad) == s.ui.levels_hit) sound = std::max(sound, levels_voice(s)); // the pad hit last, white as its sound fades
+    float sound = std::max(snd.hand[pad], snd.levels[pad]);
     if (sound <= 0) return base;
     return writing(s) ? red_flare(base, sound) : blend(base, white(full), sound);
 }
