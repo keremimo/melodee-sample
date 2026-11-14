@@ -3279,15 +3279,23 @@ void audio_input_and_rendering() {
     in.source = InputSource::Rear; CHECK(in.monitoring(false) && !in.mutes_speaker(false));
     in.source = InputSource::Resample; CHECK(!in.monitoring(true));
     in.monitor = Monitor::Off; in.source = InputSource::Usb; CHECK(!in.monitoring(true));
+    // Picking the mic turns Monitor off; leaving it puts Monitor back, even after a turn through other sources.
+    in.monitor = Monitor::On; in.set_source(InputSource::Mic);
+    CHECK(in.monitor == Monitor::Off && !in.mutes_speaker(true));
+    in.set_source(InputSource::Rear); CHECK(in.monitor == Monitor::On);
+    in.set_source(InputSource::Usb); CHECK(in.monitor == Monitor::On);
+    in.monitor = Monitor::Auto; in.set_source(InputSource::Mic); in.monitor = Monitor::On; // turned on by hand: kept while on the mic
+    in.set_source(InputSource::Mic); CHECK(in.monitor == Monitor::On);
+    in.set_source(InputSource::Track); CHECK(in.monitor == Monitor::Auto);
     CHECK(std::string(input_route(InputSource::Mic)) == "mic" && std::string(input_route(InputSource::RearR)) == "line"
           && std::string(input_route(InputSource::UsbL)) == "off" && std::string(input_route(InputSource::Resample)) == "off");
     CHECK(rec_bars(rec_free) == 0 && rec_bars(rec_seq) == 0 && rec_bars(2) == 1 && rec_bars(rec_lengths - 1) == 16);
     // Kept with the settings; an older settings file (no input keys) gets the defaults.
     Settings saved;
-    saved.input.source = InputSource::UsbR; saved.input.monitor = Monitor::On; saved.input.threshold = -72;
+    saved.input.source = InputSource::UsbR; saved.input.monitor = Monitor::On; saved.input.before_mic = Monitor::Off; saved.input.threshold = -72;
     saved.input.length = rec_seq; saved.input.fx = true; saved.input.gain = -6;
     Settings back; back.read(saved.text());
-    CHECK(back.input.source == InputSource::UsbR && back.input.monitor == Monitor::On && back.input.threshold == -72
+    CHECK(back.input.source == InputSource::UsbR && back.input.monitor == Monitor::On && back.input.before_mic == Monitor::Off && back.input.threshold == -72
           && back.input.length == rec_seq && back.input.fx && back.input.gain == -6);
     Settings old; old.read("pad_response=2\npickup=1\n");
     CHECK(old.input.source == InputSource::Rear && old.input.monitor == Monitor::Auto && old.input.threshold == -30 && old.input.length == rec_free);
@@ -7259,6 +7267,13 @@ void sample_cache() {
     CHECK(!cache.ready(file, info));
     { std::ofstream(source, std::ios::app) << "more"; }
     CHECK(cache.file_of(source) != file); // the source changed
+    { // two packs' C3.wav of one size and date: apart
+        fs::create_directories(base / "A"); fs::create_directories(base / "B");
+        std::ofstream(base / "A/C3.wav") << "abc"; std::ofstream(base / "B/C3.wav") << "abc";
+        fs::last_write_time(base / "B/C3.wav", fs::last_write_time(base / "A/C3.wav"));
+        CHECK(cache.file_of((base / "A/C3.wav").string()) != cache.file_of((base / "B/C3.wav").string()));
+        CHECK(cache.file_of((base / "A/C3.wav").string()) == cache.file_of((base / "A/../A/C3.wav").string()));
+    }
     fs::remove_all(base / "Cache");
     fs::create_directories(base / "Cache");
     for (unsigned n = 0; n < 3; ++n) {
@@ -7267,8 +7282,14 @@ void sample_cache() {
         fs::last_write_time(name, fs::file_time_type::clock::now() - std::chrono::hours(10 - n));
     }
     { std::ofstream(base / "Cache/other.txt") << std::string(5000, 'x'); }
+    { std::ofstream(base / "Cache/3.f32.part") << "x"; } // a stop mid-write
+    { // not played for a long time
+        std::ofstream(base / "Cache/old.f32") << "x";
+        fs::last_write_time(base / "Cache/old.f32", fs::file_time_type::clock::now() - std::chrono::hours(24 * (cache_unplayed_days + 1)));
+    }
     cache.tidy(2000);
     CHECK(!fs::exists(base / "Cache/0.f32") && fs::exists(base / "Cache/1.f32") && fs::exists(base / "Cache/2.f32") && fs::exists(base / "Cache/other.txt"));
+    CHECK(!fs::exists(base / "Cache/3.f32.part") && !fs::exists(base / "Cache/old.f32"));
     fs::remove_all(base);
 }
 

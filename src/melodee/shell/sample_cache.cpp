@@ -3,6 +3,7 @@
 #include "melodee/shell/sample_cache.h"
 #include "melodee/engine/dsp.h"
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -46,9 +47,15 @@ std::string SampleCache::file_of(const std::string& source, const std::string& p
     if (folder_.empty()) return {};
     struct stat st {};
     if (stat(source.c_str(), &st)) return {};
+    // Its path from the card's top (the folder's is <top>/Melodee/Cache), so two packs' C3.wav of one size and
+    // date stay apart, and the same card under another mount still finds it; off the card, the whole path.
+    fs::path whole = fs::path(source).lexically_normal();
+    fs::path where = whole.lexically_relative(fs::path(folder_).parent_path().parent_path());
+    if (where.empty() || *where.begin() == "..") where = whole;
     char name[32];
-    std::snprintf(name, sizeof(name), "%016llx.f32", (unsigned long long)fnv(fs::path(source).filename().string() + "|" + std::to_string(st.st_size) + "|"
-                  + std::to_string(st.st_mtime) + "|" + std::to_string(unsigned(dsp::model_rate)) + (part.empty() ? "" : "|" + part)));
+    std::snprintf(name, sizeof(name), "%016llx.f32", (unsigned long long)fnv(where.generic_string() + "|" + std::to_string(st.st_size) + "|"
+                  + std::to_string(st.st_mtime) + "|" + std::to_string(unsigned(dsp::model_rate)) + "|v" + std::to_string(cache_version)
+                  + (part.empty() ? "" : "|" + part)));
     return folder_ + "/" + name;
 }
 
@@ -121,15 +128,21 @@ void SampleCache::tidy(uint64_t most) const {
     std::vector<Kept> kept;
     std::error_code error;
     uint64_t total = 0;
+    const auto unplayed = fs::file_time_type::clock::now() - std::chrono::hours(24 * cache_unplayed_days);
+    std::vector<fs::path> gone;
     for (auto it = fs::directory_iterator(folder_, error); !error && it != fs::directory_iterator(); it.increment(error)) {
-        if (it->path().extension() != ".f32") continue;
+        const auto kind = it->path().extension();
+        if (kind == ".part") { gone.push_back(it->path()); continue; }
+        if (kind != ".f32") continue;
         std::error_code e;
         uint64_t bytes = it->file_size(e);
         auto used = it->last_write_time(e);
         if (e) continue;
+        if (used < unplayed) { gone.push_back(it->path()); continue; }
         kept.push_back({it->path(), bytes, used});
         total += bytes;
     }
+    for (const auto& path : gone) fs::remove(path, error);
     std::sort(kept.begin(), kept.end(), [](const Kept& a, const Kept& b) { return a.used < b.used; });
     for (const auto& k : kept) {
         if (total <= most) break;

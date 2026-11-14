@@ -10,8 +10,8 @@
 // melodee-ios's mapped audio: 32-bit float at the project's rate, the left
 // side, then the right starting on a chunk boundary, so chunks are whole pages
 // to pin. A 64 KB header says what the file holds, so opening it again reads
-// nothing else. Named by the source's name, size and date; a copy or a change
-// finds or misses it by itself. Service thread only.
+// nothing else. Named by the source's path on the card, size and date and the
+// cache version; a change misses it by itself. Service thread only.
 namespace melodee {
 
 struct LaidOut {
@@ -21,6 +21,10 @@ struct LaidOut {
 };
 
 constexpr uint64_t cache_most_bytes = 4000000000ull; // least lately played go first past this
+constexpr int cache_unplayed_days = 30;               // not played for this long: removed
+// Raise when what a source reads as changes (a decoder or loop fix, the layout):
+// every older file then misses and ages out.
+constexpr unsigned cache_version = 2;
 
 class SampleCache {
 public:
@@ -38,6 +42,8 @@ public:
     static bool map(const std::string& file, const LaidOut& info, ZonePart& part);
     static uint64_t bytes_of(uint32_t frames, uint32_t channels);
     bool has_room(uint64_t bytes) const; // on the card, beyond a margin
+    // Removes .part files, files not played for cache_unplayed_days, then the least lately played past `most`.
+    // Before any lay_out of this run: a .part found is one a stop left behind.
     void tidy(uint64_t most = cache_most_bytes) const;
 private:
     std::string folder_;
