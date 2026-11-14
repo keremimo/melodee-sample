@@ -19,7 +19,7 @@ class EngineHost;
 struct TrackTaps;
 
 // A pad's sound as last lit, so a sound that stops (a one-shot's end, a choke) fades as a pad let go does
-// (pad_light::hand_ms) instead of going dark at once. Kept by the shell across frames; for one track and bank.
+// (Settings > LIGHTS > Pad fade) instead of going dark at once. Kept by the shell across frames; for one track and bank.
 struct PadGlow {
     std::array<float, 16> level {};
     std::array<float, 16> levels {}; // 16 Levels' pads, the same

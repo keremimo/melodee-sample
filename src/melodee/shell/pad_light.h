@@ -23,7 +23,6 @@ namespace melodee::pad_light {
 constexpr float off = 0, faint = 0.25f, dim = 0.4f, mid = 0.65f, full = 1.0f;
 constexpr uint32_t blink_ms = 150; // a change waiting for the bar: a pattern, a track's next pattern
 constexpr uint32_t flash_ms = 250; // waiting on you: a take's pad, the pad a question is about
-constexpr uint32_t hand_ms = 250;  // a pad let go: how fast its flare fades
 
 enum class Hue : uint8_t { None, Track, Loop, White, Red, Orange };
 

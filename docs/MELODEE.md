@@ -214,7 +214,8 @@ grammar (`shell/pad_light.h`):
 - **Motion** is timing: a blink waits for a boundary (a pattern or a track's
   next pattern for the bar), a flare is a sound fading (a kit's voices, the
   pattern at the playhead for synths and MIDI, a pad let go; a sound that
-  stops, as a one-shot's end, fades as a pad let go does), the
+  stops, as a one-shot's end, fades as a pad let go does, over Settings'
+  Pad fade), the
   Count-In pulses every pad white on its beats, the bar's first brighter.
 
 | Context | The pads |
@@ -1636,10 +1637,13 @@ while following.
   access"); the page is `pages/card_access_page.cpp`, the controls
   `shell/card_access.*`.
 - **Settings** (Shift + Pad 8; Melodee's, the same for every project, as is
-  the metronome): seven doors, four by two (the wheel picks, Push or B3
+  the metronome): eight doors, four by two (the wheel picks, Push or B3
   opens, B1 back), each a short list (Push opens a value, the wheel changes
   it, −/+ at once, B1 back to the doors). **PADS**: pad response (soft,
-  medium, hard, full level), pad pressure on / off, pad lights, Double Seq.
+  medium, hard, full level), pad pressure on / off, Double Seq. **LIGHTS**:
+  Pad lights, Pad fade (60, 100, 150, 250 ms; 100 by default: how fast a
+  pad's flare fades after its sound stops or it is let go), Tap Tempo light
+  (On, Off: its flash on the beat while playing).
   **KNOBS**: Knob / Knob FX / Fader takeover (Pickup, Scaled, Instant;
   Scaled, Scaled, Pickup by default). **SCREEN**: palette, brightness,
   where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror

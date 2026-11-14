@@ -59,7 +59,7 @@ std::array<bool, 192> keys_in(const Pattern& p) {
 
 // What sounds now, pad by pad: a voice's envelope (a kit), or the pattern at
 // the playhead (plug-in and MIDI tracks have no voice taps); and a pad let
-// go, fading (hand_ms).
+// go, fading (Settings > LIGHTS > Pad fade).
 struct Heard {
     std::array<float, 16> level {};
     std::array<float, 16> levels {}; // under 16 Levels: what each level's pad sounds (levels_sound())
@@ -103,11 +103,12 @@ Heard heard_now(const PadScene& s) {
             }
         }
     }
+    const float fade = float(std::max<uint32_t>(s.ui.settings.fade_ms(), 1)); // Settings > LIGHTS > Pad fade
     if (levels_on(t)) for (unsigned pad = 0; pad < 16; ++pad) out.levels[pad] = levels_sound(s, pad);
     if (s.glow) { // a sound falls no faster than a pad let go fades
         int owner = int(at) * 256 + int(t.bank) * 2 + int(levels_on(t));
         auto& g = *s.glow;
-        float keep = g.owner == owner && s.now >= g.at ? std::exp(-float(s.now - g.at) / hand_ms) : 0.0f;
+        float keep = g.owner == owner && s.now >= g.at ? std::exp(-float(s.now - g.at) / fade) : 0.0f;
         auto fade = [&](std::array<float, 16>& now, std::array<float, 16>& kept) {
             for (unsigned pad = 0; pad < 16; ++pad) {
                 float faded = kept[pad] * keep;
@@ -124,7 +125,7 @@ Heard heard_now(const PadScene& s) {
             uint32_t up = (*s.let_go)[pad];
             if (!up || held(s, pad) || s.now + 1 < up) continue;
             uint32_t since = s.now + 1 - up;
-            if (since < 4 * hand_ms) out.hand[pad] = std::exp(-float(since) / hand_ms);
+            if (since < 4 * fade) out.hand[pad] = std::exp(-float(since) / fade);
         }
     return out;
 }

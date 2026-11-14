@@ -146,6 +146,7 @@ Shape make(Icon icon) {
     case Icon::Sliders: s = "M6 4 V20 M12 4 V20 M18 4 V20"; f = box(3.5f, 7, 5, 4, 1) + box(9.5f, 13, 5, 4, 1) + box(15.5f, 6, 5, 4, 1); break;
     case Icon::Layers: s = "M12 4 L21 9 L12 14 L3 9 Z M3 13.5 L12 18.5 L21 13.5"; break;
     case Icon::Screen: s = box(3, 5, 18, 13, 2) + "M9 21 H15"; break;
+    case Icon::Bulb: s = "M9 17 C9 14 6 13 6 9 A6 6 0 0 1 18 9 C18 13 15 14 15 17 Z M9.5 20 H14.5 M10.5 22.5 H13.5"; break;
     case Icon::File: s = "M6 2 H14 L19 7 V22 H6 Z M14 2 V7 H19"; break;
     case Icon::Wheel: s = circle(12, 12, 8.5f); f = circle(12, 6.6f, 1.6f); break;
     case Icon::ArrowLeft: s = "M20 12 H5 M11 6 L5 12 L11 18"; break;

@@ -542,7 +542,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
     else on(B::SeqRecord, ui.recording);
     // Tap Tempo flashes on the beat while playing.
     unsigned beat = project.beat_ticks();
-    on(B::TapTempo, playing && ticks % beat < beat / 3);
+    on(B::TapTempo, ui.settings.tap_light && playing && ticks % beat < beat / 3); // Settings > LIGHTS > Tap Tempo light
     on(B::Mute, ui.mute_mode());           // bright while mute mode is on, latched or held
     on(B::PadBank, tracks_on_pads(ui));    // held, or a track copy under way
     on(B::Erase, ui.erase || ui.copying != UiState::Copying::Off); // lit while copying

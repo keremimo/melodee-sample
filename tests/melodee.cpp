@@ -5331,6 +5331,21 @@ void device_rates() {
         b.mirror = true; b.mirror_fps = 60; b.reset_factory();
         CHECK(!b.mirror && b.mirror_size == 3 && b.mirror_fps == 30);
     }
+    // LIGHTS: Pad fade 100 ms and Tap Tempo light on until changed; kept and read back; the fade stops at the list's ends.
+    {
+        Settings a;
+        CHECK(a.fade_ms() == 100 && a.value_text(Settings::PadFade) == "100 ms" && a.tap_light && a.value_text(Settings::TapLight) == "On");
+        a.step(Settings::PadFade, -1); a.step(Settings::PadFade, -1); a.step(Settings::TapLight, 1);
+        CHECK(a.fade_ms() == 60 && !a.tap_light && a.value_text(Settings::TapLight) == "Off");
+        for (int n = 0; n < 6; ++n) a.step(Settings::PadFade, 1);
+        CHECK(a.value_text(Settings::PadFade) == "250 ms");
+        Settings b;
+        b.read(a.text());
+        CHECK(b.fade_ms() == 250 && !b.tap_light);
+        b.read("pad_fade=9\n");
+        CHECK(b.fade_ms() == 250);
+        CHECK(std::string(Settings::row_name(Settings::PadFade)) == "Pad fade" && std::string(Settings::row_name(Settings::TapLight)) == "Tap Tempo light");
+    }
 }
 
 // Sampling from an engine: the Track input source (before or after the

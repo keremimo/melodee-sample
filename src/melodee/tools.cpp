@@ -1701,26 +1701,27 @@ const Preview previews[] {
          }
          s.ui.turning = 1; s.ui.turned_at = s.now;
      }},
-    {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_door = 3; }}, // the doors, AUDIO in hand
+    {"settings", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.playing = true; s.ui.settings_door = 4; }}, // the doors, AUDIO in hand
     {"settingspads", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 0; s.ui.settings_cursor = Settings::PadResponse; }},
-    {"settingsscreen", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 2; s.ui.settings_cursor = Settings::Palette; }},
+    {"settingslights", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 1; s.ui.settings_cursor = Settings::PadFade; }},
+    {"settingsscreen", [](Shell&, Snapshot& s) { s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Palette; }},
     {"settingsaudio", [](Shell&, Snapshot& s) { // AUDIO's rows, 48 kHz with a dropout
-        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::AudioBuffer; s.ui.settings_editing = true;
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 4; s.ui.settings_cursor = Settings::AudioBuffer; s.ui.settings_editing = true;
         s.ui.settings.audio_rate = 48000; s.ui.settings.audio_periods = 4;
         s.audio_rate = 48000; s.audio_periods = 4; s.audio_xruns = 1;
         s.machine.render_load = 0.47f; // the blocks' share of their time, beside the dropout (roadmap P2)
         s.machine.pdc_frames = 152;    // a 44.1 kHz plug-in effect's converter held back (roadmap P4)
     }},
     {"settingssampling", [](Shell&, Snapshot& s) { // the sampling rows: how Audio Recall cuts, when a take ends on its own
-        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 4; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 5; s.ui.settings_cursor = Settings::RecallGrabRow; s.ui.settings_editing = true;
     }},
     {"settingsmirror", [](Shell&, Snapshot& s) { // SCREEN's rows with Screen Mirror on at 1280 x 960, 60 fps, a computer showing it
-        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 2; s.ui.settings_cursor = Settings::MirrorSize;
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::MirrorSize;
         s.ui.settings.mirror = true; s.ui.settings.mirror_size = 3; s.ui.settings.mirror_fps = 60;
         s.mirror_state = uint8_t(MirrorState::Streaming); s.mirror_width = 1280; s.mirror_height = 960;
     }},
     {"settingsmirrorheld", [](Shell&, Snapshot& s) { // turned off while a computer shows it: it waits for the computer to close the camera
-        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 2; s.ui.settings_cursor = Settings::Mirror;
+        s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 3; s.ui.settings_cursor = Settings::Mirror;
         s.ui.settings.mirror = false; s.ui.settings.mirror_size = 3;
         s.mirror_state = uint8_t(MirrorState::Streaming); s.mirror_width = 1280; s.mirror_height = 960; s.mirror_held = true;
     }},
@@ -1847,7 +1848,7 @@ const Preview previews[] {
          s.ui.fader = {20, false, 1}; s.ui.fader_moved_at = s.now;
      }},
     {"fadersettings", [](Shell&, Snapshot& s) { // Settings: the three takeover rows, the fader's open
-         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 1; s.ui.settings_cursor = Settings::FaderTakeover; s.ui.settings_editing = true;
+         s.ui.page = PageId::SettingsPage; s.ui.settings_in = true; s.ui.settings_door = 2; s.ui.settings_cursor = Settings::FaderTakeover; s.ui.settings_editing = true;
      }},
     // Parity phase 9: MIDI and sync.
     {"midiconfig", [](Shell&, Snapshot& s) { // Shift + Pad 8: Sync In open on MIDI Clock, MIDI just came in

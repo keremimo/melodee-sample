@@ -41,9 +41,10 @@ using namespace ui;
 
 struct Door { Icon icon; const char* name; std::array<int8_t, 6> rows; };
 constexpr int8_t none = -1;
-const std::array<Door, 7> doors {{
-    {Icon::Pads, "PADS", {Settings::PadResponse, Settings::PadPressure, Settings::PadLights, Settings::DoubleSeq, Settings::CaptureBars,
-                          Settings::CaptureQuantize}},
+const std::array<Door, 8> doors {{
+    {Icon::Pads, "PADS", {Settings::PadResponse, Settings::PadPressure, Settings::DoubleSeq, Settings::CaptureBars, Settings::CaptureQuantize,
+                          none}},
+    {Icon::Bulb, "LIGHTS", {Settings::PadLights, Settings::PadFade, Settings::TapLight, none, none, none}},
     {Icon::Knob, "KNOBS", {Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover, none, none, none}},
     {Icon::Screen, "SCREEN", {Settings::Palette, Settings::Screen, Settings::PlaceBarRow, Settings::Mirror, Settings::MirrorSize,
                               Settings::MirrorRate}},
@@ -53,7 +54,7 @@ const std::array<Door, 7> doors {{
     {Icon::Din, "MIDI", {none, none, none, none, none, none}},  // MIDI Config's own page
     {Icon::Info, "ABOUT", {none, none, none, none, none, none}}, // the About page
 }};
-constexpr unsigned screen_door = 2, audio_door = 3, midi_door = 5, about_door = 6;
+constexpr unsigned screen_door = 3, audio_door = 4, midi_door = 6, about_door = 7;
 void trouble(Paint& p, float right, float cy, unsigned count);
 
 // Screen Mirror, under SCREEN's rows while it is on: how it goes (the runtime's state). Amber when it waits on the card or failed, and

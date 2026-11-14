@@ -35,7 +35,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
@@ -57,6 +57,11 @@ struct Settings {
     }
     bool pressure = true;     // off: the pads send no pressure (synths, Pad FX depth)
     uint8_t pad_lights = 0;   // 0 track colours, 1 white, 2 off
+    // How fast a pad's light fades when its sound stops or it is let go (shell/pad_lights.cpp): ms, one of fades.
+    static constexpr std::array<uint16_t, 4> fades {{60, 100, 150, 250}};
+    uint8_t pad_fade = 1;
+    uint32_t fade_ms() const { return fades[pad_fade % fades.size()]; }
+    bool tap_light = true;    // Tap Tempo flashes on the beat while playing
     // The MPC's defaults: Scaled for the knobs and Knob FX, Pickup for the fader. Before parity
     // phase 8 one row, "Knob pickup" (key pickup): off reads as Instant for all three.
     Takeover knob_takeover = Takeover::Scaled, knob_fx_takeover = Takeover::Scaled, fader_takeover = Takeover::Pickup;
@@ -97,7 +102,8 @@ struct Settings {
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
-                                    "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate"};
+                                    "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
+                                    "Pad fade", "Tap Tempo light"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -131,6 +137,8 @@ struct Settings {
         case Mirror: return mirror ? "On" : "Off";
         case MirrorSize: { auto m = mirror_mode(); return std::to_string(m.width) + " x " + std::to_string(m.height); }
         case MirrorRate: return std::to_string(mirror_mode().fps) + " fps";
+        case PadFade: return std::to_string(fade_ms()) + " ms";
+        case TapLight: return tap_light ? "On" : "Off";
         default: return std::to_string(screen) + " %";
         }
     }
@@ -159,6 +167,8 @@ struct Settings {
         case Mirror: mirror = !mirror; break;
         case MirrorSize: mirror_size = uint8_t(step_in(mirror_size % ScreenMirror::size_count, ScreenMirror::size_count, way)); break;
         case MirrorRate: mirror_fps = way < 0 ? 30 : 60; break;
+        case PadFade: pad_fade = uint8_t(step_in(pad_fade % fades.size(), unsigned(fades.size()), way)); break;
+        case TapLight: tap_light = !tap_light; break;
         default: break;
         }
     }
@@ -193,7 +203,7 @@ struct Settings {
     std::string text() const {
         std::ostringstream out;
         // pickup= stays for the builds before parity phase 8, which know only that.
-        out << "pad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights)
+        out << "pad_response=" << int(pad_response) << "\npad_lights=" << int(pad_lights) << "\npad_fade=" << int(pad_fade) << "\ntap_light=" << int(tap_light)
             << "\npickup=" << int(knob_takeover != Takeover::Instant) << "\nknob_takeover=" << int(knob_takeover)
             << "\nknob_fx_takeover=" << int(knob_fx_takeover) << "\nfader_takeover=" << int(fader_takeover)
             << "\nscreen=" << int(screen) << "\nplace_bar=" << int(place_bottom) << "\ncount_in=" << int(count_in) << "\nrec_quantize=" << int(rec_quantize) << "\nrec_grid=" << int(rec_grid)
@@ -232,6 +242,8 @@ struct Settings {
             int value = std::atoi(line.c_str() + eq + 1);
             if (key == "pad_response") pad_response = uint8_t(std::clamp(value, 0, 3));
             else if (key == "pad_lights") pad_lights = uint8_t(std::clamp(value, 0, 2));
+            else if (key == "pad_fade") pad_fade = uint8_t(std::clamp(value, 0, int(fades.size()) - 1));
+            else if (key == "tap_light") tap_light = value != 0;
             else if (key == "pickup") pickup = value != 0;
             else if (key == "knob_takeover") knob_takeover = takeover(value);
             else if (key == "knob_fx_takeover") knob_fx_takeover = takeover(value);
