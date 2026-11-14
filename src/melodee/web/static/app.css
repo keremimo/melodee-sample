@@ -1,0 +1,189 @@
+/* Melodee's web page. Colours, type and shapes are the device's
+   (src/melodee/ui/tokens.h, docs/design tokens): cards with a capital label
+   in a track colour, a value and a thin gauge; lanes with a stripe; the
+   four track colours turning round the page. */
+@font-face { font-family: Rubik; src: url(/font/rubik.ttf) format("truetype"); font-weight: 300 900; font-display: swap; }
+:root {
+  --bg: #17141F; --panel: #1D1926; --surf: #221E2C; --raised: #262033; --quiet: #1A1722; --line: #2E2939;
+  --text: #F3EEF8; --sec: #C9C2D6; --mid: #9A93A8; --dim: #5A5468;
+  --coral: #FF7A5C; --amber: #FFC145; --mint: #46D9B0; --lilac: #9D8CFF; --rec: #FF4848; --play: #5FD97A; --ice: #BFE3FF;
+  --tone: var(--coral);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 76px; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 Rubik, system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+main { max-width: 1120px; margin: 0 auto; padding: 28px 24px 96px; }
+.label { font-size: 12px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--tone); margin: 0; }
+
+/* Header: the brand, the three pages, the link to the MPC. */
+.top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 28px; height: 60px; padding: 0 24px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 600; font-size: 19px; letter-spacing: .01em; }
+.brand svg { width: 22px; height: 22px; }
+.tabs { display: flex; gap: 4px; height: 100%; }
+.tabs a { display: flex; align-items: center; padding: 0 14px; text-decoration: none; color: var(--mid); font-size: 13px; font-weight: 500;
+  letter-spacing: .08em; text-transform: uppercase; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs a:hover { color: var(--sec); }
+.tabs a[aria-current] { color: var(--text); border-bottom-color: var(--coral); }
+.link { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--mid); white-space: nowrap; }
+.led { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--dim); }
+.link[data-state=on] .led { background: var(--play); border-color: var(--play); box-shadow: 0 0 8px color-mix(in srgb, var(--play) 60%, transparent); }
+.link[data-state=off] .led { border-color: var(--rec); }
+.link[data-state=off] { color: var(--rec); }
+.link[data-state=busy] .led { background: var(--amber); border-color: var(--amber); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* Cards: label, value, gauge, as Stage's knob cards. */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.card { background: var(--surf); border-radius: 12px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card .label { color: var(--tone); }
+.card .value { font-size: 30px; font-weight: 500; line-height: 1.15; overflow-wrap: anywhere; }
+.card .value small { font-size: 14px; color: var(--mid); font-weight: 400; margin-left: 6px; }
+.gauge { display: block; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.gauge i { display: block; height: 100%; width: 0; background: var(--tone); border-radius: 2px; transition: width .25s ease; }
+.card .gauge { margin-top: 8px; }
+
+/* The two jobs. */
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+.panel > header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.aside { font-size: 13px; color: var(--dim); }
+.drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 148px; padding: 18px;
+  border: 1.5px dashed var(--line); border-radius: 12px; background: var(--quiet); cursor: pointer; text-align: center; transition: background .15s, border-color .15s; }
+.drop:hover { border-color: var(--dim); }
+.drop.over, .drop.chosen { border-style: solid; border-color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, var(--surf)); }
+.drop .glyph { width: 34px; height: 34px; color: var(--tone); margin-bottom: 4px; }
+.drop-name { font-weight: 500; color: var(--sec); overflow-wrap: anywhere; }
+.drop.chosen .drop-name { color: var(--text); }
+.drop-hint { font-size: 13px; color: var(--mid); }
+.panel.busy .drop { pointer-events: none; opacity: .6; }
+.action { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+.gauge.wide { flex: 1; height: 6px; border-radius: 3px; }
+button { font: inherit; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--bg); background: var(--tone);
+  border: 0; border-radius: 9px; padding: 11px 22px; cursor: pointer; transition: filter .15s; }
+button:hover:not(:disabled) { filter: brightness(1.08); }
+button:disabled { background: var(--line); color: var(--dim); cursor: default; }
+.say { min-height: 22px; margin: 12px 0 0; font-size: 14px; color: var(--sec); }
+.say.ok { color: var(--play); } .say.bad { color: var(--rec); } .say.ask { color: var(--amber); }
+
+/* The update's steps, as the MPC's update sheet names them; each lights as it comes. */
+.steps { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 16px 0 0; padding: 0; }
+.steps li { font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; padding: 4px 9px; border-radius: 6px;
+  border: 1px solid var(--line); color: var(--dim); }
+.steps li.done { color: var(--tone); border-color: color-mix(in srgb, var(--tone) 45%, transparent); }
+.steps li.now { color: var(--bg); background: var(--tone); border-color: var(--tone); }
+.steps li.now.wait { background: var(--amber); border-color: var(--amber); }
+.steps li.failed { color: var(--bg); background: var(--rec); border-color: var(--rec); }
+
+/* Plug-ins as lanes: a stripe in a track colour, the name, its format. */
+.lanes { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lanes li { position: relative; display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 8px 12px 8px 18px; background: var(--quiet); border-radius: 9px; overflow: hidden; }
+.lanes li::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--stripe, var(--mint)); }
+.lanes .name { flex: 1; min-width: 0; color: var(--sec); overflow-wrap: anywhere; }
+.lanes .chip { font-size: 10px; font-weight: 600; letter-spacing: .08em; padding: 3px 7px; border-radius: 5px; border: 1px solid var(--stripe, var(--mint)); color: var(--stripe, var(--mint)); white-space: nowrap; }
+.lanes li.off { opacity: .55; }
+.lanes li.off .chip { border-color: var(--dim); color: var(--mid); }
+.lanes .why { font-size: 12px; color: var(--mid); white-space: nowrap; }
+.lanes li.new { background: color-mix(in srgb, var(--stripe, var(--mint)) 14%, var(--quiet)); }
+.lanes .empty { justify-content: center; color: var(--dim); font-size: 14px; }
+.lanes .empty::before { display: none; }
+
+/* The device page's way into the docs. */
+.learn { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.learn-card { display: flex; flex-direction: column; gap: 6px; padding: 18px; background: var(--surf); border: 1px solid transparent; border-radius: 14px; text-decoration: none; transition: border-color .15s, background .15s; }
+.learn-card:hover { border-color: var(--tone); background: color-mix(in srgb, var(--tone) 6%, var(--surf)); }
+.learn-title { font-size: 22px; font-weight: 500; color: var(--text); }
+.learn-steps { margin: 8px 0 0; padding: 0; list-style: none; columns: 2; column-gap: 20px; counter-reset: n; }
+.learn-steps li { counter-increment: n; font-size: 13px; color: var(--mid); padding: 3px 0; break-inside: avoid; }
+.learn-steps li::before { content: counter(n, decimal-leading-zero); color: var(--tone); font-weight: 600; font-size: 11px; margin-right: 8px; }
+
+/* Docs: a side list, then the text at reading width. */
+.kicker { font-size: 12px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--coral); margin: 0 0 8px; }
+.doc-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 48px; }
+.doc-layout aside { position: sticky; top: 84px; align-self: start; max-height: calc(100vh - 100px); overflow: auto; padding-right: 4px; scrollbar-width: thin; }
+.toc .label, .chapters-menu summary { font-size: 11px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; color: var(--mid); margin: 0 0 10px; }
+.chapters-menu summary { cursor: pointer; list-style: none; }
+.chapters-menu summary::-webkit-details-marker { display: none; }
+.toc ol, .chapter-list { list-style: none; margin: 0; padding: 0; }
+.toc a { display: block; padding: 5px 10px; margin-left: -10px; border-radius: 7px; text-decoration: none; color: var(--mid); font-size: 14px; line-height: 1.35; }
+.toc a:hover, .toc a.here { color: var(--text); background: var(--surf); }
+.chapter-list > li > a { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 8px; text-decoration: none; color: var(--sec); font-size: 14px; line-height: 1.35; }
+.chapter-list > li > a:hover { background: var(--surf); color: var(--text); }
+.chapter-list .num { font-size: 11px; font-weight: 600; color: var(--dim); min-width: 18px; font-variant-numeric: tabular-nums; }
+.chapter-list > li.here > a { background: var(--surf); color: var(--text); font-weight: 500; }
+.chapter-list > li.here > a .num { color: var(--coral); }
+.chapter-list .toc { margin: 4px 0 10px 28px; border-left: 1px solid var(--line); padding-left: 10px; }
+.chapter-list .toc a { font-size: 13px; padding: 4px 8px; margin-left: 0; }
+
+.doc { max-width: 760px; font-size: 17px; line-height: 1.65; color: var(--sec); }
+.doc h1 { font-size: 38px; line-height: 1.15; font-weight: 600; color: var(--text); margin: 0 0 28px; letter-spacing: -.01em; }
+.doc h2 { font-size: 24px; line-height: 1.25; font-weight: 600; color: var(--text); margin: 56px 0 14px; padding-top: 22px; border-top: 1px solid var(--line); }
+.doc h1 + h2, .doc > h2:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+.doc h3 { font-size: 19px; font-weight: 600; color: var(--text); margin: 34px 0 10px; }
+.doc p, .doc ul, .doc ol { margin: 0 0 16px; }
+.doc ul, .doc ol { padding-left: 24px; }
+.doc li { margin: 4px 0; }
+.doc li::marker { color: var(--dim); }
+.doc ol > li::marker { color: var(--coral); font-weight: 600; }
+.doc a { color: var(--ice); text-decoration-color: color-mix(in srgb, var(--ice) 35%, transparent); text-underline-offset: 3px; }
+.doc a:hover { text-decoration-color: var(--ice); }
+.doc strong { color: var(--text); font-weight: 600; }
+.doc strong.key { display: inline-block; font-size: .74em; font-weight: 600; letter-spacing: .06em; line-height: 1.5; padding: 0 .55em; border-radius: 5px;
+  background: var(--raised); border: 1px solid var(--line); border-bottom-width: 2px; color: var(--text); vertical-align: .08em; white-space: nowrap; }
+.doc code { font: .86em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surf); border: 1px solid var(--line); border-radius: 5px; padding: .1em .4em; color: var(--text); overflow-wrap: anywhere; }
+.doc hr { border: 0; border-top: 1px solid var(--line); margin: 36px 0; }
+.doc figure { margin: 24px 0; }
+.doc img { display: block; max-width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
+.doc li img { margin: 12px 0; }
+.doc figcaption { font-size: 13px; color: var(--mid); margin-top: 10px; }
+.doc .table { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--line); border-radius: 12px; }
+.doc table { border-collapse: collapse; width: 100%; font-size: 15px; line-height: 1.5; }
+.doc th { text-align: left; font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--mid); background: var(--panel); padding: 10px 14px; }
+.doc td { padding: 10px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+.doc td:first-child { color: var(--text); }
+.doc tr:hover td { background: color-mix(in srgb, var(--surf) 50%, transparent); }
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 56px; }
+.pager a { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: var(--text); font-weight: 500; }
+.pager a:hover { border-color: var(--coral); background: var(--panel); }
+.pager .label { color: var(--mid); font-size: 11px; }
+.pager .next { grid-column: 2; text-align: right; }
+
+/* The manual's contents: a card for each chapter. */
+.manual-index h1 { font-size: 38px; line-height: 1.15; font-weight: 600; margin: 0 0 14px; }
+.manual-index .lead { max-width: 680px; color: var(--sec); font-size: 17px; margin-bottom: 32px; }
+.manual-index .lead a { color: var(--ice); }
+.chapters { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.chapter { display: flex; flex-direction: column; gap: 6px; padding: 18px; background: var(--surf); border-radius: 12px; text-decoration: none; border: 1px solid transparent; transition: border-color .15s, background .15s; }
+.chapter:hover { border-color: var(--tone); background: color-mix(in srgb, var(--tone) 7%, var(--surf)); }
+.chapter:nth-child(4n+1) { --tone: var(--coral); } .chapter:nth-child(4n+2) { --tone: var(--amber); }
+.chapter:nth-child(4n+3) { --tone: var(--mint); } .chapter:nth-child(4n+4) { --tone: var(--lilac); }
+.chapter .num { font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--tone); }
+.chapter .name { font-size: 19px; font-weight: 500; color: var(--text); }
+.chapter .sections { font-size: 13px; color: var(--mid); line-height: 1.45; }
+
+@media (max-width: 860px) {
+  main { padding: 20px 16px 72px; }
+  .top { gap: 14px; padding: 0 16px; }
+  .brand span { display: none; }
+  .tabs a { padding: 0 10px; font-size: 12px; }
+  .link .word { display: none; }
+  .cards { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .card { padding: 12px; }
+  .card .value { font-size: 20px; }
+  .panels, .learn { grid-template-columns: 1fr; }
+  .learn-steps { columns: 1; }
+  .doc-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .doc td { min-width: 9em; }
+  .card .value small { display: block; margin: 0; }
+  .doc-layout aside { position: static; max-height: none; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .doc-layout aside .toc .label { margin-bottom: 6px; }
+  .chapters-menu summary { margin: 0; }
+  .chapters-menu[open] summary { margin-bottom: 10px; }
+  .doc { font-size: 16px; }
+  .doc h1, .manual-index h1 { font-size: 30px; }
+  .pager { grid-template-columns: 1fr; }
+  .pager .next { grid-column: 1; }
+}
+@media (max-width: 420px) { .tabs a { padding: 0 7px; letter-spacing: .04em; } .card .value { font-size: 17px; } }

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <system_error>
 
 namespace melodee {
@@ -252,7 +253,10 @@ std::vector<PluginFile> list_plugins(const std::string& folder) {
     return out;
 }
 
-void unzip_plugins(const std::string& folder) {
+std::vector<std::string> unzip_plugins(const std::string& folder) {
+    static std::mutex one_at_a_time; // the rack's thread and the web page's: each clears the other's hidden folder
+    std::lock_guard<std::mutex> held(one_at_a_time);
+    std::vector<std::string> placed;
     std::error_code error;
     std::vector<fs::path> zips;
     for (const auto& entry : fs::directory_iterator(folder, error)) {
@@ -298,10 +302,12 @@ void unzip_plugins(const std::string& folder) {
             fs::remove_all(to, error);
             fs::rename(item, to, error);
             if (error) { done = false; break; }
+            placed.push_back(item.filename().string());
         }
         fs::remove_all(temp, error);
         if (done) fs::remove(path, error);
     }
+    return placed;
 }
 
 std::vector<int> qlink_order(const std::string& plugin_folder) {

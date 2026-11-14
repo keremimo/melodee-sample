@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#17141F">
+<title>{{title}}</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2317141F'/%3E%3Crect x='3' y='3' width='4.5' height='4.5' rx='1' fill='%23FF7A5C'/%3E%3Crect x='8.5' y='3' width='4.5' height='4.5' rx='1' fill='%23FFC145'/%3E%3Crect x='3' y='8.5' width='4.5' height='4.5' rx='1' fill='%2346D9B0'/%3E%3Crect x='8.5' y='8.5' width='4.5' height='4.5' rx='1' fill='%239D8CFF'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/" aria-label="Melodee">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="2" width="7" height="7" rx="1.6" fill="var(--coral)"/><rect x="11" y="2" width="7" height="7" rx="1.6" fill="var(--amber)"/><rect x="2" y="11" width="7" height="7" rx="1.6" fill="var(--mint)"/><rect x="11" y="11" width="7" height="7" rx="1.6" fill="var(--lilac)"/></svg>
+    <span>Melodee</span>
+  </a>
+  <nav class="tabs" aria-label="Pages">
+    <a href="/"{{device}}>Device</a>
+    <a href="/docs/quickstart"{{quickstart}}>Quickstart</a>
+    <a href="/docs/manual"{{manual}}>Manual</a>
+  </nav>
+  <div class="link" id="link" data-state="wait" title="Connection to the MPC">
+    <span class="led"></span><span class="word" id="link-word">MPC</span>
+  </div>
+</header>
+<main>
+{{main}}
+</main>
+<script src="/app.js" defer></script>
+</body>
+</html>

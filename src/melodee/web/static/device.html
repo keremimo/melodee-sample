@@ -1,0 +1,73 @@
+<div class="device" id="device">
+  <section class="cards" aria-label="This MPC">
+    <div class="card" style="--tone:var(--coral)">
+      <span class="label">Version</span>
+      <span class="value" id="v-version">–</span>
+      <span class="gauge"><i id="g-version"></i></span>
+    </div>
+    <div class="card" style="--tone:var(--amber)">
+      <span class="label">SD card</span>
+      <span class="value" id="v-card">–</span>
+      <span class="gauge"><i id="g-card"></i></span>
+    </div>
+    <div class="card" style="--tone:var(--mint)">
+      <span class="label">Plug-ins</span>
+      <span class="value" id="v-plugins">–</span>
+      <span class="gauge"><i id="g-plugins"></i></span>
+    </div>
+  </section>
+
+  <div class="panels">
+    <section class="panel" id="update" style="--tone:var(--coral)" data-kind="update">
+      <header><h2 class="label">Update</h2><span class="aside">Release .zip</span></header>
+      <label class="drop" data-drop>
+        <input type="file" accept=".zip" hidden>
+        <svg class="glyph" viewBox="0 0 32 32" aria-hidden="true"><path d="M9 4h10l6 6v18H9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M19 4v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 13v10m-4-4 4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="drop-name" data-name>Melodee-MPC-Sample-&lt;version&gt;.zip</span>
+        <span class="drop-hint" data-hint>Drop here or choose</span>
+      </label>
+      <div class="action">
+        <span class="gauge wide"><i data-bar></i></span>
+        <button type="button" data-send disabled>Send</button>
+      </div>
+      <ol class="steps" aria-label="Update steps">
+        <li data-step="send">Send</li>
+        <li data-step="ask">Install on MPC</li>
+        <li data-step="saving">Save</li>
+        <li data-step="checking">Check</li>
+        <li data-step="writing">Copy</li>
+        <li data-step="starting">Restart</li>
+      </ol>
+      <p class="say" data-say></p>
+    </section>
+
+    <section class="panel" id="plugins" style="--tone:var(--mint)" data-kind="plugin">
+      <header><h2 class="label">Plug-ins</h2><span class="aside">Melodee/Plugins</span></header>
+      <label class="drop" data-drop>
+        <input type="file" accept=".zip" hidden>
+        <svg class="glyph" viewBox="0 0 32 32" aria-hidden="true"><path d="M12 4v7m8-7v7M8 11h16v5a8 8 0 0 1-16 0zM16 24v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="drop-name" data-name>Plug-in .zip</span>
+        <span class="drop-hint" data-hint>Drop here or choose</span>
+      </label>
+      <div class="action">
+        <span class="gauge wide"><i data-bar></i></span>
+        <button type="button" data-send disabled>Install</button>
+      </div>
+      <p class="say" data-say></p>
+      <ul class="lanes" id="plugin-list" aria-label="Installed plug-ins"></ul>
+    </section>
+  </div>
+
+  <section class="learn" aria-label="Docs">
+    <a class="learn-card" href="/docs/quickstart" style="--tone:var(--amber)">
+      <span class="label">Quickstart</span>
+      <span class="learn-title">From the zip to a saved beat</span>
+      <ol class="learn-steps">{{quickstart_steps}}</ol>
+    </a>
+    <a class="learn-card" href="/docs/manual" style="--tone:var(--lilac)">
+      <span class="label">Manual</span>
+      <span class="learn-title">{{chapter_count}} chapters</span>
+      <ol class="learn-steps">{{chapter_names}}</ol>
+    </a>
+  </section>
+</div>

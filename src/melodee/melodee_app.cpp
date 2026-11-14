@@ -42,6 +42,18 @@ bool request_power_off() {
     int status = 0;
     return waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0; // --no-block: it only queues the job
 }
+
+// Service thread: stops the stock web server (Akai's updater, port 80) so the web page (web/web_app.h) takes port 80.
+// Only on the MPC. The base's restore-stock.sh starts it again whenever Melodee stops, a crash too.
+void stop_stock_web_server() {
+    if (access("/usr/bin/MPC Sample", F_OK) != 0) return;
+    char systemctl[] = "/bin/systemctl", stop[] = "stop", unit[] = "az0x-webserver.service";
+    char* argv[] = {systemctl, stop, unit, nullptr};
+    pid_t pid = 0;
+    if (posix_spawn(&pid, systemctl, nullptr, nullptr, argv, environ) != 0) return;
+    int status = 0;
+    waitpid(pid, &status, 0);
+}
 } // namespace
 
 
@@ -462,6 +474,7 @@ void MelodeeApp::service(Hardware& hardware) {
     host.looper().service(); // the Looper's memory in and out, its fits (docs/LOOPER.md)
     card_access(hardware);
     card_update(hardware);
+    web_service(hardware);
     // The card is Melodee's only while the base has it home: nothing reads or writes it meanwhile.
     if (hardware.card.status().state == CardShareState::Home) {
         library.service(hardware);
@@ -548,6 +561,12 @@ void MelodeeApp::card_update(Hardware& hardware) {
     using melodee::UpdatePhase;
     auto& link = shell.updates();
     const uint32_t now = now_ms();
+    if (web.take_rescan()) { // a zip sent from the web page: check now, skipped ones too, and forget an old failure
+        update_rescan = true;
+        update_skip.clear();
+        update_declined.clear();
+        if (!update_installing) link.progress(UpdatePhase::None, UpdateError::None);
+    }
     // Show the notice after the boot animation (ui/boot.h), with a second for the first frame to appear.
     constexpr uint32_t boot_ms = melodee::ui::BootAnimation::out_at + melodee::ui::BootAnimation::out_ms + 1000;
     if (!update_note.empty() && now >= boot_ms) {
@@ -558,6 +577,7 @@ void MelodeeApp::card_update(Hardware& hardware) {
     switch (link.take_request(zip)) {
     case 1: // LATER
         if (!zip.empty()) update_skip.push_back(zip);
+        update_declined = zip;
         break;
     case 2: { // INSTALL, after the project was saved
         std::string error = "the offer went away";
@@ -618,6 +638,7 @@ void MelodeeApp::card_update(Hardware& hardware) {
     update_rescan = false;
     sd_update::Offer offer;
     if (!card.empty() && update_ready()) offer = sd_update::find(update_setup, card, melodee::melodee_version(), update_skip);
+    ++update_scans;
     update_zip = offer.zip;
     update_version = offer.version;
     update_offered.store(!offer.empty());
@@ -640,4 +661,42 @@ bool MelodeeApp::update_ready() {
     }
     std::error_code error;
     return !update_setup.key.empty() && std::filesystem::is_regular_file(update_setup.script, error);
+}
+
+// The web page (web/web_app.h): started with the first pass (every ten seconds again while the port will not open),
+// then told each pass what it shows. The card's folder is looked up once a second, and only while the card is home.
+void MelodeeApp::web_service(Hardware& hardware) {
+    const uint32_t now = now_ms();
+    if (!web_running && (!web_tried_at || now - web_tried_at >= 10000)) {
+        if (!web_tried_at) stop_stock_web_server();
+        web_tried_at = now ? now : 1;
+        std::string error;
+        web_running = web.start(error);
+        if (!web_running) std::fprintf(stderr, "melodee: web page not started on port %u or %u: %s\n", unsigned(melodee::web::port),
+                                       unsigned(melodee::web::spare_port), error.c_str());
+    }
+    if (!web_running) return;
+    if (!web_card_at || now - web_card_at >= 1000) {
+        web_card_at = now ? now : 1;
+        web_card.clear();
+        if (hardware.card.status().state == CardShareState::Home)
+            for (const auto& space : hardware.platform.storage())
+                if (space.path.rfind("/media/", 0) == 0) { web_card = space.path; break; }
+    }
+    auto& link = shell.updates();
+    melodee::web::Facts facts;
+    facts.version = melodee::melodee_version();
+    facts.card = web_card;
+    if (!update_zip.empty() && update_zip != update_declined) {
+        facts.offer_zip = update_zip;
+        facts.offer_version = update_version;
+    }
+    facts.phase = uint8_t(link.phase());
+    facts.error = uint8_t(link.error());
+    facts.scans = update_scans;
+    facts.card_free = machine.card_free.load(std::memory_order_relaxed);
+    facts.card_total = machine.card_total.load(std::memory_order_relaxed);
+    web.publish(facts);
+    std::string note;
+    if (web.take_note(note)) link.note(note);
 }

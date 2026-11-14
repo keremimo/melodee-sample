@@ -2162,5 +2162,44 @@ instead of the card (for device tests). `status` adds `melodee_update`
 5 failed) and `melodee_update_offer`. Previews: `updateask`, `updating`,
 `updatefailed`.
 
+### Web page
+
+While Melodee runs, a computer connected to the MPC by USB-C opens
+**http://melodee.local** or **http://192.168.155.1** (`web/`). The name is
+answered by Melodee's own multicast DNS responder (`web/mdns.*`: A, with an
+NSEC so a computer asking for AAAA does not wait), beside systemd-resolved,
+which keeps answering for `mpc-sample.local`; it goes when Melodee stops.
+Melodee stops the stock web server
+(`az0x-webserver`, Akai's updater) as the page starts and takes port 80; the
+base's `restore-stock.sh` starts it again whenever Melodee stops, a crash
+too. If port 80 is still held, the page is on port 8080.
+It has three tabs: **Device**, **Quickstart** and **Manual**. The last two
+are this repository's `QUICKSTART.md`, `GUIDE.md` and `guide/*.md` with
+their images, turned into pages by `tools/web_bundle.py` at build time and
+carried in the binary (`web/web_bundle.*`, about 5 MB); they read the same
+with no internet. The page's own files are in `src/melodee/web/static/`, in
+the device's colours and Rubik. **Device** shows the version running, the
+card's free space and the plug-ins in `Melodee/Plugins`, and takes two kinds
+of zip:
+
+- **Update**: a Melodee release zip. It is written to the card's top folder
+  and the card is checked at once, as above. A newer signed release opens
+  **Update to v0.2.0?** on the MPC; nothing installs until INSTALL is
+  pressed there. The page follows the install and shows **Updated to** the
+  new version once it has restarted. A zip that is not a newer signed
+  release is deleted again.
+- **Plug-ins**: a plug-in zip (a release's `-mpc-sample.zip`). It is written
+  to `Melodee/Plugins` and unzipped at once (`unzip_plugins()`); the header
+  shows **Plug-in installed** and the picker lists it the next time it
+  opens. A folder of the same name is replaced. A zip that will not unzip
+  is deleted again.
+
+Uploads need the card home (not lent to a computer). The server
+(`web/web_server.*`) serves one request at a time and refuses a Host that is
+not an IP address or localhost and any POST without an `X-Melodee` header,
+so a web site in the same browser cannot send files to the MPC. A first
+install still goes on the card: the stock web page only takes Akai firmware,
+and it is there again once Melodee has stopped.
+
 Limits that are single constants (`model/limits.h`): 16 tracks, 16
 patterns a track, 8 mod routes, 8192 motion points a pattern, 64 samples.

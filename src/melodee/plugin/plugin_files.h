@@ -56,8 +56,9 @@ std::vector<PluginFile> list_plugins(const std::string& folder);
 // Release downloads copied in as they came: each .zip in `folder` unzipped beside it (into a folder named as
 // the zip when its entries do not share one top folder; Mac `__MACOSX` and `._` files left out), and the zip
 // deleted once every entry is out. One that will not open or write stays. Run on the rack's thread before a
-// listing.
-void unzip_plugins(const std::string& folder);
+// listing, and on the web page's thread after an upload (web/web_app.h): one call at a time. Returns the
+// names of the folders it put in place.
+std::vector<std::string> unzip_plugins(const std::string& folder);
 // One path as list_plugins() would describe it (a project names its plug-ins by path).
 PluginFile describe_plugin(const std::string& path);
 

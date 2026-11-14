@@ -11,6 +11,7 @@
 #include "melodee/shell/shell.h"
 #include "melodee/shell/snapshot.h"
 #include "melodee/ui/boot.h"
+#include "melodee/web/web_app.h"
 #include "drivers/platform.h"
 #include "drivers/sd_update.h"
 #include "drivers/usb_audio.h"
@@ -115,5 +116,13 @@ private:
     uint32_t update_looked_at = 0, update_polled = 0, update_started = 0; // ms
     std::atomic<bool> update_offered {false};  // for status
     std::string update_note;                   // notice held until the boot animation has ended
+    uint64_t update_scans = 0;                 // card checks done, for the web page
+    std::string update_declined;               // the zip LATER was pressed on, no longer shown as asked on the web page
     unsigned screen_applied = 0; // the brightness % last set; 0: never touched (the runtime restores it on leaving)
+    // The web page (web/web_app.h), on its own thread; the service thread tells it about the card and updates.
+    void web_service(Hardware& hardware);
+    std::string web_card;                      // service thread: the card's top folder while home
+    uint32_t web_card_at = 0, web_tried_at = 0; // ms: the card last looked up, the port last tried
+    bool web_running = false;
+    melodee::web::WebApp web;                  // last: its thread stops first
 };

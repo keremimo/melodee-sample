@@ -45,6 +45,14 @@ picker opens, Melodee unzips it, deletes the zip and lists the plug-in folder
 (for example `Ellic Studio - VST - Melodee Poly`). A zip that cannot be
 unzipped stays, dimmed, with **Won't unzip**.
 
+To install a plug-in without moving the card, connect the MPC to a computer
+with USB-C and open **http://melodee.local** (or **http://192.168.155.1**) while Melodee runs. On
+**Device**, drop the `-mpc-sample.zip` on **Plug-ins** and press **Install**. Melodee
+unzips it into `Melodee/Plugins` and the header shows **Plug-in installed**.
+The same page updates Melodee: drop the release zip on **Update**, press
+**Send**, then press **INSTALL** on the MPC. Its **Quickstart** and
+**Manual** tabs hold this guide.
+
 ## Plug-in instruments
 
 1. Select an empty track with **PAD BANK** + pad. Stage shows the

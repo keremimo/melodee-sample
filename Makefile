@@ -19,6 +19,16 @@ build/obj/melodee/shell/update.o: CPPFLAGS += -DMELODEE_VERSION='"$(MELODEE_VERS
 .PHONY: FORCE
 FORCE:
 
+# The web page's files (src/melodee/web/web_bundle.h): its own pages, the
+# quickstart and the user guide as HTML, and the images they show, in one
+# file the binary carries.
+WEB_INPUTS := tools/web_bundle.py $(wildcard src/melodee/web/static/*) docs/QUICKSTART.md docs/GUIDE.md \
+	$(wildcard docs/guide/*.md) $(wildcard docs/images/*/*.png docs/images/*.png)
+build/gen/web_bundle.bin: $(WEB_INPUTS)
+	@mkdir -p build/gen
+	python3 tools/web_bundle.py $@
+build/obj/melodee/web/web_bundle.o: build/gen/web_bundle.bin
+
 # JUCE's decoders, for an SFZ's FLAC, Ogg and AIFF samples and an MPC
 # expansion's MP3 previews. Melodee's alone, so the base stays as it is.
 FORMATS := $(JUCE)/juce_audio_formats

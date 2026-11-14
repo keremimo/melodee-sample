@@ -106,7 +106,9 @@ the drive, Melodee asks whether to take the card back anyway.
 1. Download the new release zip (`Melodee-MPC-Sample-<version>.zip`).
    Do not unzip it.
 2. Copy the zip to the top level of the card, with **SD card access** or
-   a card reader.
+   a card reader. Or send it from a browser: with the MPC connected to the
+   computer by USB-C, open **http://melodee.local** (or **http://192.168.155.1**), choose the zip
+   under **Update** and press **Send**.
 3. When playback is stopped, Melodee asks **Update to <version>?**. Press
    **B3** (**INSTALL**). To keep this version for now, press **B1**
    (**LATER**). Melodee asks again after SD card access or the next time
