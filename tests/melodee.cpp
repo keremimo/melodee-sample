@@ -5190,6 +5190,29 @@ void device_rates() {
         b.reset_factory();
         CHECK(b.audio_rate == 44100 && b.audio_periods == 3);
     }
+    // Screen Mirror: off and 1920 x 1440 until asked for; kept and read back; the size stops at the list's ends; a
+    // size past the list reads as its last.
+    {
+        Settings a;
+        CHECK(!a.mirror && a.value_text(Settings::Mirror) == "Off" && a.value_text(Settings::MirrorSize) == "1920 x 1440");
+        CHECK(a.mirror_mode() == (ScreenMirrorMode {false, 1920, 1440}));
+        a.step(Settings::Mirror, 1); a.step(Settings::MirrorSize, -1);
+        CHECK(a.mirror && a.value_text(Settings::Mirror) == "On" && a.mirror_mode() == (ScreenMirrorMode {true, 1280, 960}));
+        for (int n = 0; n < 6; ++n) a.step(Settings::MirrorSize, -1);
+        CHECK(a.value_text(Settings::MirrorSize) == "320 x 240");
+        for (int n = 0; n < 4; ++n) a.step(Settings::MirrorSize, 1);
+        CHECK(a.value_text(Settings::MirrorSize) == "1920 x 1440");
+        for (int n = 0; n < 3; ++n) a.step(Settings::MirrorSize, 1);
+        CHECK(a.value_text(Settings::MirrorSize) == "2560 x 1920");
+        Settings b;
+        b.read(a.text());
+        CHECK(b.mirror_mode() == (ScreenMirrorMode {true, 2560, 1920}));
+        b.read("mirror_size=9\nscreen_mirror=0\n");
+        CHECK(!b.mirror && b.mirror_size == 5);
+        CHECK(std::string(Settings::row_name(Settings::Mirror)) == "Screen mirror" && std::string(Settings::row_name(Settings::MirrorSize)) == "Resolution");
+        b.mirror = true; b.reset_factory();
+        CHECK(!b.mirror && b.mirror_size == 4);
+    }
 }
 
 // Sampling from an engine: the Track input source (before or after the

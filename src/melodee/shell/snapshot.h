@@ -104,6 +104,12 @@ struct Snapshot {
     double loop_tick = 0;
     // The audio device as it runs now (the app fills these from the runtime's session): Settings shows them.
     unsigned audio_rate = 44100, audio_periods = 3, audio_xruns = 0;
+    // Screen Mirror as it goes (the runtime's session().mirror): a MirrorState, the size offered, whether a larger
+    // size fell back to 320 x 240 (no encoder). Settings' SCREEN MIRROR shows it.
+    uint8_t mirror_state = 0;
+    unsigned mirror_width = 0, mirror_height = 0;
+    bool mirror_fallback = false;
+    bool mirror_held = false; // a change asked for waits: a computer shows the camera
     // About (round 2, about C): how the machine is doing, filled by the app (melodee_app.cpp).
     struct Machine {
         std::array<uint8_t, 8> core_load {}; // each core busy, percent, over the last half second

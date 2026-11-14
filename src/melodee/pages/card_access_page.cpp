@@ -28,6 +28,7 @@ std::pair<juce::String, juce::Colour> state_word(const CardView& card) {
     switch (card.note) {
     case CardNote::NoCard: return {"NO CARD", colour::amber};
     case CardNote::InUse: return {"IN USE", colour::amber};
+    case CardNote::Camera: return {"CAMERA IN USE", colour::amber};
     case CardNote::Writing: return {"WRITING", colour::amber};
     case CardNote::Empty: return {"EMPTY", colour::amber};
     case CardNote::Failed: return {"FAILED", colour::rec};
@@ -87,7 +88,7 @@ void draw(Paint& p, const Snapshot& s) {
         step(p, 157, ly, eject, card.locked && !card.ejected ? Icon::Warn : Icon::Eject, {}, "EJECT");
         step(p, 206, ly, back, Icon::None, "B1", "TAKE BACK");
     } else if (!busy && card.note != CardNote::None && !none) { // why it did not go: one glyph, on the link
-        Icon why = card.note == CardNote::NoCard ? Icon::Card : card.note == CardNote::InUse ? Icon::Lock
+        Icon why = card.note == CardNote::NoCard ? Icon::Card : card.note == CardNote::InUse ? Icon::Lock : card.note == CardNote::Camera ? Icon::Laptop
                  : card.note == CardNote::Writing ? Icon::Rec : card.note == CardNote::Failed ? Icon::Warn : Icon::Folder;
         icon(p, why, 157 - 12, ly - 12, 24, tone, 1.6f);
     }

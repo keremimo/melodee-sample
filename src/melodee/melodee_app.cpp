@@ -408,6 +408,11 @@ void MelodeeApp::draw(juce::Graphics& g) {
     frame->audio_rate = session().audio.rate.load(std::memory_order_relaxed);
     frame->audio_periods = session().audio.periods.load(std::memory_order_relaxed);
     frame->audio_xruns = session().audio.xruns.load(std::memory_order_relaxed);
+    frame->mirror_state = session().mirror.state.load(std::memory_order_relaxed);
+    frame->mirror_width = session().mirror.width.load(std::memory_order_relaxed);
+    frame->mirror_height = session().mirror.height.load(std::memory_order_relaxed);
+    frame->mirror_fallback = session().mirror.fallback.load(std::memory_order_relaxed);
+    frame->mirror_held = session().mirror.held.load(std::memory_order_relaxed);
     { // About: how the machine is doing
         auto& m = frame->machine;
         m.cores = machine.cores.load(std::memory_order_relaxed);
@@ -508,7 +513,8 @@ void MelodeeApp::card_access(Hardware& hardware) {
     switch (CardRequest(link.request.exchange(0))) {
     case CardRequest::Lend:
         card_note = CardNote::None;
-        if (library.busy()) card_note = CardNote::Writing; // a take or a render still writes to it
+        if (gadget_mirror_live()) card_note = CardNote::Camera; // nothing let go: the camera would be unplugged under the computer
+        else if (library.busy()) card_note = CardNote::Writing; // a take or a render still writes to it
         else if (!library.release_instruments()) card_note = CardNote::Failed;
         else if (!card.lend()) card_note = card.status().message == "no card" ? CardNote::NoCard : CardNote::Failed;
         break;
@@ -526,7 +532,8 @@ void MelodeeApp::card_access(Hardware& hardware) {
     CardNote note = card_note;
     if (note == CardNote::None && !now.message.empty()) {
         const auto& m = now.message;
-        note = m == "no card" ? CardNote::NoCard : m == "the card is in use" || m == "the card is still mounted" ? CardNote::InUse
+        note = m == "no card" ? CardNote::NoCard : m == mirror_in_use ? CardNote::Camera
+             : m == "the card is in use" || m == "the card is still mounted" ? CardNote::InUse
              : m == "the card came back with nothing to mount" ? CardNote::Empty : now.locked ? CardNote::Locked : CardNote::Failed;
     }
     if (now.state != CardShareState::Home) card_note = CardNote::None; // a note of Melodee's own lasts until the next try
