@@ -370,7 +370,7 @@ void preview_projects(Snapshot& s) {
     v.folders = {"Beats", "Beats/Drafts", "Songs", "Songs/2026"};
     s.project_path = v.root + "/Project 1.mldp";
     s.dirty = true;
-    s.ui.project_rows = uint16_t(project_rows(v.entries.size(), s.project_folder)); // as the shell copies it in
+    s.ui.project_rows = uint16_t(project_rows(v.entries.size())); // as the shell copies it in
 }
 
 // Step Edit on the kit (track 4), step entry: the caret on step 5 of pattern 1, which holds a kick, a hat and

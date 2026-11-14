@@ -237,7 +237,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         store_seen = store_->generation();
         ProjectStore::View v;
         store_->view(v);
-        ui_.project_rows = uint16_t(project_rows(v.entries.size(), context_.project_folder));
+        ui_.project_rows = uint16_t(project_rows(v.entries.size()));
         project_listed(context_); // the open project's row, the first time the list opens
     }
     // Slots a Load Kit or Load Bank named past what the queue holds, as it drains.
