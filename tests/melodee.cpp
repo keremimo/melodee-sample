@@ -35,6 +35,7 @@
 #include "melodee/engine/plugin_engine.h"
 #include "melodee/plugin/plugin_sleep.h"
 #include "melodee/plugin/rate_bridge.h"
+#include "melodee/plugin/idle_gate.h"
 #include "melodee/engine/punch.h"
 #include "melodee/engine/pad_fx_info.h"
 #include "melodee/model/mod_matrix.h"
@@ -8988,6 +8989,42 @@ void synths_as_plugins() {
             for (size_t n = 0; n < std::min(a.size(), b.size()); ++n) worst = std::max(worst, std::fabs(a[n] - b[n]));
             CHECK(worst < 1e-5f);
         }
+    }
+    // Idle sleep (plugin/idle_gate.h): an instrument sleeps after half a second of silence with no key held and the
+    // song not playing; a key, the pedal or the song keeps it awake; any MIDI wakes it. An effect sleeps once its input
+    // and output are quiet, whatever the song does, and wakes on sound in its input.
+    {
+        const std::array<float, 128> silent {}, tone = [] { std::array<float, 128> t {}; for (unsigned f = 0; f < 128; ++f) t[f] = 0.3f * float(std::sin(f * 0.1)); return t; }();
+        auto quiet_for = [&](IdleGate& g, unsigned blocks) { for (unsigned b = 0; b < blocks; ++b) g.heard(silent.data(), silent.data(), 128); };
+        IdleGate g;
+        g.reset(true, 48000);
+        CHECK(!g.asleep(false, false, nullptr, nullptr, 128)); // not quiet for long enough yet
+        quiet_for(g, 186);                                        // 0.496 s
+        CHECK(!g.asleep(false, false, nullptr, nullptr, 128));
+        quiet_for(g, 2);
+        CHECK(g.asleep(false, false, nullptr, nullptr, 128));
+        CHECK(!g.asleep(false, true, nullptr, nullptr, 128));     // the song playing: awake
+        CHECK(!g.asleep(true, false, nullptr, nullptr, 128));     // MIDI for it: awake, and the quiet counts again
+        CHECK(!g.asleep(false, false, nullptr, nullptr, 128));
+        g.midi(0x90, 60, 100);
+        quiet_for(g, 400);
+        CHECK(!g.asleep(false, false, nullptr, nullptr, 128));    // a key held, its sound or not
+        g.midi(0x90, 60, 0);                                      // note on at 0 lets go
+        CHECK(g.keys_held() == 0 && g.asleep(false, false, nullptr, nullptr, 128));
+        g.midi(0xb0, 64, 127);
+        CHECK(!g.asleep(false, false, nullptr, nullptr, 128));    // the pedal down
+        g.midi(0xb0, 64, 0);
+        g.midi(0x91, 62, 90); g.midi(0x91, 64, 90);
+        g.midi(0xb1, 123, 0);                                     // all notes off on that channel
+        CHECK(g.keys_held() == 0 && g.asleep(false, false, nullptr, nullptr, 128));
+        g.heard(tone.data(), tone.data(), 128);                   // a sound (a free-running drone) starts it counting again
+        CHECK(!g.asleep(false, false, nullptr, nullptr, 128));
+        IdleGate fx;
+        fx.reset(false, 44100);
+        quiet_for(fx, 200);
+        CHECK(fx.asleep(false, true, silent.data(), silent.data(), 128)); // the song playing does not keep an effect awake
+        CHECK(!fx.asleep(false, true, tone.data(), tone.data(), 128));    // sound in: awake
+        CHECK(!fx.asleep(false, true, silent.data(), silent.data(), 128));
     }
     // An effect at 44.1 kHz in a 96 kHz chain: what it passes comes out as it went in, later by a constant few ms.
     {

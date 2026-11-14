@@ -4,6 +4,7 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/idle_gate.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
 #include "melodee/plugin/rate_bridge.h"
@@ -241,6 +242,7 @@ public:
         auto* bypass = instance->getBypassParameter(); // the slot's own Bypass does that job
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
         instance->setPlayHead(&clock);
+        idle.reset(is_instrument, this->plugin_rate);
     }
     ~PluginHandle() override {
         if (!instance) return;
@@ -250,6 +252,7 @@ public:
 
     void midi(uint8_t status, uint8_t data1, uint8_t data2) override {
         if (pending_count < pending.size()) pending[pending_count++] = {status, data1, data2};
+        idle.midi(status, data1, data2);
     }
     void silence() override {
         for (uint8_t ch = 0; ch < 16; ++ch) {
@@ -282,6 +285,14 @@ public:
         if (!frames) return;
         auto t0 = std::chrono::steady_clock::now();
         follow_clock(frames);
+        // Asleep (plugin/idle_gate.h): not run at all. An effect's input is as quiet as its output; it gives silence.
+        bool sleeping = !warming && idle.asleep(pending_count > 0, now.playing, instrument ? nullptr : left, instrument ? nullptr : right, frames);
+        asleep.store(sleeping, std::memory_order_relaxed);
+        if (sleeping) {
+            if (!instrument) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
+            load.store(load.load(std::memory_order_relaxed) * 0.95f, std::memory_order_relaxed);
+            return;
+        }
         if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false); });
         else run(left, right, frames, instrument);
         double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -315,6 +326,7 @@ public:
         }
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
+        idle.heard(l, r, frames);
         auto safe = [](float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; };
         if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += safe(l[f]); right[f] += safe(r[f]); }
         else for (unsigned f = 0; f < frames; ++f) { left[f] = safe(l[f]); right[f] = safe(r[f]); }
@@ -329,6 +341,7 @@ public:
     bool nam = false;                    // Neural Amp Modeler: shorter card names (plugin/nam.h)
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
+    std::atomic<bool> asleep {false};    // its last render skipped (plugin/idle_gate.h)
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
     PluginProgramList programs;          // its named programs, as it listed them on opening (a CLAP one's: once found)
@@ -378,6 +391,7 @@ private:
     double per_frame = 0;      // and how far a frame at the plug-in's rate moves it
     bool warming = false;
     PluginRateBridge bridge;
+    IdleGate idle;             // when it may sleep
     std::array<Midi, 512> pending {};
     unsigned pending_count = 0;
     int channels = 2;

@@ -87,6 +87,12 @@ one owner per piece of state.
   every engine's released voices end their tails as fast (a kit's pads
   let go are choked). Until the blocks come back under 70 % the tails stay
   short and no more voices go. Plug-ins have none to give.
+- **Idle plug-ins sleep** (`plugin/idle_gate.h`): an instrument with no key
+  held, the sustain pedal up and the song stopped (or its TRANSPORT off)
+  is not run once its output has stayed under -100 dB for half a second;
+  an effect sleeps once its input and output have, whether the song plays
+  or not. Any MIDI for it, or sound into an effect, runs it again from that
+  block. A sleeping plug-in's load shows 0.
 - **Screen thread** copies a `Snapshot` under a short lock shared with the
   MIDI thread, then draws without it.
 - **Rack thread** (`plugin/plugin_rack.*`) opens and frees plug-ins: it
