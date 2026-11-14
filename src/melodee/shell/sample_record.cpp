@@ -86,9 +86,11 @@ bool arm_take(Context& c, unsigned kit) {
 
 void Context::set_input_source(InputSource source, unsigned track) {
     if (host_recording()) { notice("Source stays while recording"); return; }
-    ui.settings.input.source = source;
+    Monitor monitor_was = ui.settings.input.monitor;
+    ui.settings.input.set_source(source);
     ui.settings.input.track = uint8_t(track % track_count);
     input_changed();
+    if (ui.settings.input.monitor != monitor_was) notice(std::string("Monitor ") + monitor_name(ui.settings.input.monitor));
 }
 
 void Context::set_input_tap(bool post) {

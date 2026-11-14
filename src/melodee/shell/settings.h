@@ -210,7 +210,7 @@ struct Settings {
             << "\nzero_snap=" << int(zero_snap) << "\ndouble_copies=" << int(double_copies) << "\nclick=" << int(click) << "\nclick_level=" << int(click_level)
             << "\ncapture_bars=" << int(capture_bars) << "\ncapture_quantize=" << int(capture_quantise)
             << "\nresponse_before=" << int(response_before) << "\npressure=" << int(pressure)
-            << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nthreshold=" << int(input.threshold)
+            << "\ninput_source=" << int(input.source) << "\nmonitor=" << int(input.monitor) << "\nmonitor_before_mic=" << int(input.before_mic) << "\nthreshold=" << int(input.threshold)
             << "\nrec_length=" << int(input.length) << "\nrec_fx=" << int(input.fx) << "\nrec_gain=" << int(input.gain)
             << "\ninput_track=" << int(input.track) << "\ninput_tap=" << int(input.post)
             << "\nrecall_grab=" << int(sampling.grab) << "\nrecall_gap=" << int(sampling.gap) << "\nrecall_trim=" << int(sampling.trim_end)
@@ -263,6 +263,7 @@ struct Settings {
             else if (key == "response_before") response_before = uint8_t(std::clamp(value, 0, 2));
             else if (key == "input_source") input.source = InputSource(std::clamp(value, 0, int(InputSource::Count) - 1));
             else if (key == "monitor") input.monitor = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1));
+            else if (key == "monitor_before_mic") input.before_mic = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1));
             else if (key == "threshold") input.threshold = int8_t(std::clamp(value, int(InputConfig::threshold_min), 0));
             else if (key == "rec_length") input.length = uint8_t(std::clamp(value, 0, int(rec_lengths) - 1));
             else if (key == "rec_fx") input.fx = value != 0;

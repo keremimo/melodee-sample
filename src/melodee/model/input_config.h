@@ -60,6 +60,7 @@ struct InputConfig {
     int8_t gain = 0;        // dB, -12..24 (Melodee's)
     uint8_t track = 0;      // Track: which track (0..15)
     bool post = true;       // Track: after its chain, level and pan (else the engine alone)
+    Monitor before_mic = Monitor::Auto; // Monitor as it was before the mic was picked
     static constexpr int threshold_min = -96;
     bool at_once() const { return threshold <= threshold_min; }
     // Whether the source is heard now: Auto only while the Record page is in view; the mix never (it is heard already).
@@ -69,9 +70,16 @@ struct InputConfig {
     }
     // The built-in speaker goes quiet while the mic is heard (as on the MPC: no howl).
     bool mutes_speaker(bool record_page) const { return source == InputSource::Mic && monitoring(record_page); }
+    // A new source. Picking the mic turns Monitor off (the speaker stays on); leaving it puts Monitor back as it was.
+    void set_source(InputSource s) {
+        if (s == InputSource::Mic && source != InputSource::Mic) { before_mic = monitor; monitor = Monitor::Off; }
+        else if (s != InputSource::Mic && source == InputSource::Mic) monitor = before_mic;
+        source = s;
+    }
     void clamp() {
         source = InputSource(std::min<unsigned>(unsigned(source), unsigned(InputSource::Count) - 1));
         monitor = Monitor(std::min<unsigned>(unsigned(monitor), unsigned(Monitor::Count) - 1));
+        before_mic = Monitor(std::min<unsigned>(unsigned(before_mic), unsigned(Monitor::Count) - 1));
         threshold = int8_t(std::clamp<int>(threshold, threshold_min, 0));
         length = uint8_t(std::min<unsigned>(length, rec_lengths - 1));
         gain = int8_t(std::clamp<int>(gain, -12, 24));

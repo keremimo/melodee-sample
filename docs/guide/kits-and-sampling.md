@@ -256,7 +256,9 @@ Resample, or any track with a sound. **K2** length, **K3** threshold,
 records it **Post FX** (with its effect chain) or **Pre FX**.
 
 - **B2** (**MONITOR**): Off, Auto or On. You hear the input as loud as the
-  take will play back. While the mic is monitored the speaker goes quiet.
+  take will play back. Choosing Mic sets Monitor to Off; choosing another
+  source sets it back to what it was. While the mic is monitored the
+  speaker goes quiet.
 - **B3** (**INPUT FX**): run Knob FX on the input. You hear them while the
   input is monitored, and they are recorded.
 
