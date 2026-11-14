@@ -347,6 +347,9 @@ struct PluginRef {
     char path[plugin_path_length] {}; // a .vst3 bundle, a VST2 .so, or an Open MPC plug-in folder; empty: free
     int32_t id = 0;                   // which plug-in of a bundle holding several (its JUCE unique id); 0: its first
     char name[40] {};                 // as the picker named it, for the cards while it is not open
+    // TRANSPORT: it hears Play and Stop. Off, it is always told the song is stopped (still the tempo and the place),
+    // so a plug-in with a sequencer of its own plays only the notes it is sent.
+    bool transport = true;
     bool used() const { return path[0] != 0; }
 };
 

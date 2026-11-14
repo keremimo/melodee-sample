@@ -8974,7 +8974,7 @@ void synths_as_plugins() {
 
 void plugins() {
     // The file: PLGT makes the track a PLUGIN track (TRAK says None, as older builds should see it), PLUG keeps
-    // each entry's path and state.
+    // each entry's path and state, and TRANSPORT (on unless turned off; a file from before it: on).
     {
         auto project = std::make_unique<Project>();
         auto bank = std::make_unique<PatternBank>();
@@ -8987,6 +8987,7 @@ void plugins() {
         std::snprintf(project->plugins[7].name, sizeof(project->plugins[7].name), "Compressor x2 Stereo");
         project->buses[0].fx.slots[0] = {plugin_effect_kind, false, {7, 0, 0, 0, 0, 0}};
         project->master.slots[0] = {plugin_effect_kind, false, {9, 0, 0, 0, 0, 0}};
+        project->plugins[9].transport = false; // a plug-in with its own sequencer, played only by its notes
         std::array<std::vector<uint8_t>, max_plugins> states;
         states[5] = {1, 2, 3, 250};
         auto data = save_project(*project, *bank, &states);
@@ -9001,6 +9002,7 @@ void plugins() {
         CHECK(copy->plugins[7].id == -123456789 && std::string(copy->plugins[7].name) == "Compressor x2 Stereo" && copy->plugins[5].id == 0);
         CHECK(copy->master.slots[0].kind == plugin_effect_kind && copy->master.slots[0].params[0] == 9);
         CHECK(plugin_used_by(*copy, 5) && plugin_used_by(*copy, 9) && !plugin_used_by(*copy, 4));
+        CHECK(!copy->plugins[9].transport && copy->plugins[5].transport && copy->plugins[7].transport);
         copy->tracks[2].engine = EngineKind::Midi; // the entry stays in the table but nothing plays it
         CHECK(!plugin_used_by(*copy, 5));
     }

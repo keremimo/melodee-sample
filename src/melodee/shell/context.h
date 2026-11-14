@@ -289,6 +289,7 @@ public:
     void choose_plugin(const PluginFile& file);
     void set_plugin_param(int32_t id, int value);
     void open_plugin_presets(unsigned entry); // PRESETS for that plug-in; B1 there comes back here
+    void toggle_plugin_transport(unsigned entry); // TRANSPORT on or off for that plug-in (PluginRef::transport)
     void choose_plugin_program(int index);    // that program, by its place in the plug-in's list (Stage's wheel)
     void push_plugin_preset();                // PRESETS' Push: into the folder under the cursor, or load the preset
     void back_plugin_presets();               // PRESETS' B1: out of the folder in view, else back where it came from

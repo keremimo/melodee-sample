@@ -113,6 +113,7 @@ public:
 private:
     struct Entry : PluginPlan {           // its bookkeeping (plugin/plugin_sleep.h), and:
         PluginHandle* live = nullptr;     // offered to the host (owned in `handles`)
+        bool transport = true;            // the project's TRANSPORT for it (PluginRef::transport), for the next one too
         std::string error;
         PluginFile file;
     };

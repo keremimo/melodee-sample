@@ -170,6 +170,14 @@ void set_presets_folder(UiState& ui, const std::string& folder) {
 } // namespace
 
 // PRESETS opens where the preset picked last is: its folder, its row (plugin/preset_rows.h).
+void Context::toggle_plugin_transport(unsigned entry) {
+    if (entry >= max_plugins || !project.plugins[entry].used()) return;
+    auto& ref = project.plugins[entry];
+    ref.transport = !ref.transport;
+    dirty = true;
+    if (plugins) plugins->sync(project, plugins_asleep()); // heard from the next block
+}
+
 void Context::open_plugin_presets(unsigned entry) {
     if (!plugins || entry >= max_plugins) return;
     if (ui.preset_due && ui.presets_entry == entry) { // Stage's turn still to load: now, as the cursor means a row here

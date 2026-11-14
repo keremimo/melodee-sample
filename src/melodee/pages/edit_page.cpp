@@ -153,14 +153,17 @@ void draw(Paint& p, const Snapshot& s) {
     const auto& info = engine_info(s.track().engine);
     auto c = colour_of(s);
     Header h = header_of(s);
-    if (s.track().engine == EngineKind::Plugin) { // the plug-in's own parameters, three at a time; B1 another from the card, B2 its presets
+    if (s.track().engine == EngineKind::Plugin) { // the plug-in's own parameters, three at a time; B1 another from the card, B2 its presets,
+                                                  // B3 TRANSPORT (it hears Play and Stop: its LED)
         const auto& panel = s.ui.plugin_panel;
         bool ours = panel.entry == s.track().plugin;
         if (ours && panel.status == PluginStatus::Ready) // the share of each audio block it takes
             h.left.push_back(pill(Icon::Chip, juce::String(panel.load / 10) + " %", panel.load > 700 ? colour::amber : colour::mid));
         h.right.push_back(tag_of(s, s.ui.track));
-        bool presets = ours && panel.programs > 0;
-        frame(p, s, {{"PLUG-INS", presets ? "PRESETS" : "", ""}, -1, c}, h);
+        bool presets = ours && panel.programs > 0, chosen = s.track().plugin < max_plugins;
+        SoftKeys keys {{"PLUG-INS", presets ? "PRESETS" : "", chosen ? "TRANSPORT" : ""}, -1, c};
+        if (chosen) { keys.toggles = 4; keys.lit = s.project.plugins[s.track().plugin].transport ? 4 : 0; }
+        frame(p, s, keys, h);
         if (s.track().plugin >= max_plugins) { // none yet: B1 picks one from the card
             icon(p, Icon::Plug, zone::width / 2.0f - 14, zone::picture_y + 40, 28, colour::dim, 1.4f);
             p.text("NONE", 0, zone::picture_y + 76, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
@@ -210,6 +213,7 @@ void soft(Context& c, int key) {
     if (c.track().engine == EngineKind::Plugin) {
         if (key == 0) c.open_plugin_picker(UiState::PluginTarget::Instrument);
         if (key == 1 && c.ui.plugin_panel.entry == c.track().plugin && c.ui.plugin_panel.programs > 0) c.open_plugin_presets(c.track().plugin);
+        if (key == 2) c.toggle_plugin_transport(c.track().plugin);
         return;
     }
     unsigned count = page_count(c), t = c.ui.track;

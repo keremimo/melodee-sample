@@ -24,14 +24,18 @@
 namespace melodee {
 namespace {
 using namespace ui;
-// A device's sheet: Presets only on a plug-in that has some (its programs, PRESETS).
-enum class Action : uint8_t { Change, Presets, Bypass, Left, Right, Remove };
-using Actions = std::array<Action, 6>;
+// A device's sheet: Presets only on a plug-in that has some (its programs, PRESETS); Transport on a plug-in, after
+// Bypass (whether it hears Play and Stop).
+enum class Action : uint8_t { Change, Presets, Bypass, Transport, Left, Right, Remove };
+using Actions = std::array<Action, 7>;
 unsigned device_actions(const UiState& ui, const EffectSlot& slot, Actions& out) {
     unsigned n = 0;
+    bool plugin = slot.kind == plugin_effect_kind;
     out[n++] = Action::Change;
-    if (slot.kind == plugin_effect_kind && ui.plugin_panel.entry == unsigned(slot.params[0]) && ui.plugin_panel.programs > 0) out[n++] = Action::Presets;
-    for (Action a : {Action::Bypass, Action::Left, Action::Right, Action::Remove}) out[n++] = a;
+    if (plugin && ui.plugin_panel.entry == unsigned(slot.params[0]) && ui.plugin_panel.programs > 0) out[n++] = Action::Presets;
+    out[n++] = Action::Bypass;
+    if (plugin) out[n++] = Action::Transport;
+    for (Action a : {Action::Left, Action::Right, Action::Remove}) out[n++] = a;
     return n;
 }
 
@@ -158,6 +162,11 @@ void draw(Paint& p, const Snapshot& s) {
             case Action::Change: m.items[r] = card_item(Icon::Swap, "CHANGE", ""); break;
             case Action::Presets: m.items[r] = card_item(Icon::Star, "PRESETS", juce::String(int(s.ui.plugin_panel.programs))); break;
             case Action::Bypass: m.items[r] = card_item(Icon::Power, "BYPASS", slot.bypass ? "ON" : "OFF", bool(slot.bypass)); break;
+            case Action::Transport: {
+                bool on = unsigned(slot.params[0]) < max_plugins && s.project.plugins[unsigned(slot.params[0])].transport;
+                m.items[r] = card_item(Icon::Play, "TRANSPORT", on ? "ON" : "OFF", on);
+                break;
+            }
             case Action::Left: m.items[r] = card_item(Icon::ArrowLeft, "MOVE LEFT", "", false, false, cursor == 0); break;
             case Action::Right: m.items[r] = card_item(Icon::ArrowRight, "MOVE RIGHT", "", false, false, cursor + 1 >= count); break;
             case Action::Remove: m.items[r] = card_item(Icon::Trash, "REMOVE", "", false, true); break;
@@ -230,6 +239,7 @@ void push(Context& c) {
         case Action::Change: ui.picker_open = true; ui.picker_items = false; ui.picker_replaces = true; break;
         case Action::Presets: ui.sheet_open = false; c.open_plugin_presets(unsigned(chain.slots[cursor].params[0])); return;
         case Action::Bypass: c.toggle_bypass(n, cursor); return; // stays open to see it change
+        case Action::Transport: c.toggle_plugin_transport(unsigned(chain.slots[cursor].params[0])); return; // and this
         case Action::Left: c.move_effect(n, cursor, -1); if (cursor) ui.fx_cursor[at] = uint8_t(cursor - 1); break;
         case Action::Right: c.move_effect(n, cursor, 1); if (cursor + 1 < chain.count()) ui.fx_cursor[at] = uint8_t(cursor + 1); break;
         case Action::Remove: c.set_effect(n, cursor, EffectKind::None); break;

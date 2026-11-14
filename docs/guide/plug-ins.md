@@ -83,6 +83,10 @@ To change a track's plug-in, press **SAMPLE SELECT** on the track.
 - Turn the encoder or press **−** / **+** to move to other parameters.
 - The header shows how much of each audio block the plug-in uses.
 - **B1** opens the picker. **B2** (**PRESETS**) opens the plug-in's presets.
+- **B3** (**TRANSPORT**) sets whether the plug-in hears Play and Stop. Its
+  light is on by default. Turn it off for a plug-in with its own sequencer
+  or arpeggiator, so that only the track's notes play it. It still follows
+  the tempo.
 
 **Presets**: turn the encoder to a preset and push to load it. The page
 stays open, so you can play each preset in turn. **B1** goes back.
@@ -116,7 +120,8 @@ loop chains take plug-ins.
 
 ![A plug-in effect on a track chain](../images/screens/rackplugin.png)
 
-To open a plug-in effect's presets, push the encoder on its slot.
+To open a plug-in effect's presets, push the encoder on its slot. The same
+sheet has **TRANSPORT**, as on a plug-in track's Edit page.
 
 ## Neural Amp Modeler
 

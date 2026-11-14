@@ -327,6 +327,7 @@ public:
     std::vector<int> shown;              // parameter indices the pages show, in order
     bool qlinks = false;
     bool nam = false;                    // Neural Amp Modeler: shorter card names (plugin/nam.h)
+    std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
     std::atomic<float> load {0};         // share of a block's time
     std::string stage;                   // the RAM copy it runs from, removed with it
     PluginFormat format = PluginFormat::Vst3;
@@ -341,6 +342,7 @@ private:
     void follow_clock(unsigned frames) {
         if (warming) { now = EffectClock {}; quarters = 0; per_frame = 0; return; }
         now = *effect_clock_now;
+        if (!transport.load(std::memory_order_relaxed)) now.playing = false; // TRANSPORT off: the place, never Play
         if (now.block != block_seen) { block_seen = now.block; into_block = 0; }
         double quarter = std::max(now.quarter, 1.0);
         quarters = now.playing ? now.song + into_block / quarter : now.song;
@@ -435,6 +437,8 @@ void PluginRack::sync(const Project& project, uint32_t asleep) {
         std::lock_guard<std::mutex> held(lock);
         for (unsigned e = 0; e < max_plugins; ++e) {
             auto& entry = entries[e];
+            entry.transport = project.plugins[e].transport;
+            if (entry.live) entry.live->transport.store(entry.transport, std::memory_order_relaxed);
             std::string want = project.plugins[e].used() && referenced(project, e) ? project.plugins[e].path : "";
             int32_t id = want.empty() ? 0 : project.plugins[e].id;
             // Freeze plan F2d: used only by deep-frozen tracks, it sleeps (plugin/plugin_sleep.h).
@@ -1039,6 +1043,7 @@ void PluginRack::load(const Job& job) {
         else {
             handles.push_back(std::move(handle));
             if (entry.live) retiring.push_back(entry.live);
+            raw->transport.store(entry.transport, std::memory_order_relaxed); // before the audio thread first runs it
             entry.live = raw;
             entry.status = PluginStatus::Ready;
             entry.file.instrument = is_instrument ? 1 : 0;
