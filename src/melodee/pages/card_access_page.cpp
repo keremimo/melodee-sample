@@ -17,12 +17,12 @@ using namespace ui;
 // The state in two words at most, for the header chip, in its colour.
 std::pair<juce::String, juce::Colour> state_word(const CardView& card) {
     switch (card.state) {
-    case 1: return {"LENDING", colour::mid};
-    case 3: return {"TAKING BACK", colour::mid};
+    case 1: return {"MOUNTING", colour::mid};
+    case 3: return {"EJECTING", colour::mid};
     case 2:
-        if (card.ejected) return {"EJECTED", colour::play};
-        if (card.locked) return {"STILL HELD", colour::amber};
-        return {card.connected ? "CARD LENT" : "NO COMPUTER", card.connected ? colour::amber : colour::mid};
+        if (card.ejected) return {"READY", colour::play};
+        if (card.locked) return {"STILL MOUNTED", colour::amber};
+        return {card.connected ? "MOUNTED" : "NO COMPUTER", card.connected ? colour::amber : colour::mid};
     default: break;
     }
     switch (card.note) {
@@ -56,7 +56,7 @@ void draw(Paint& p, const Snapshot& s) {
     bool lent = card.state == 2, busy = card.state == 1 || card.state == 3, away = card.state != 0;
     SoftKeys keys {{"", "", ""}};
     if (lent) { // B1 takes it back: lit once the computer has let it go
-        keys = SoftKeys {{"TAKE BACK", "", ""}, card.ejected ? 0 : -1, colour::play};
+        keys = SoftKeys {{"EJECT", "", ""}, card.ejected ? 0 : -1, colour::play};
         keys.glyphs[0] = Icon::Card;
     } else if (!busy) {
         keys = SoftKeys {{"BACK", "", ""}, -1, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
@@ -86,7 +86,7 @@ void draw(Paint& p, const Snapshot& s) {
         Step back = card.ejected ? Step::Now : Step::Later;
         step(p, 108, ly, plug, Icon::Usb, {}, "PLUG IN");
         step(p, 157, ly, eject, card.locked && !card.ejected ? Icon::Warn : Icon::Eject, {}, "EJECT");
-        step(p, 206, ly, back, Icon::None, "B1", "TAKE BACK");
+        step(p, 206, ly, back, Icon::None, "B1", "EJECT");
     } else if (!busy && card.note != CardNote::None && !none) { // why it did not go: one glyph, on the link
         Icon why = card.note == CardNote::NoCard ? Icon::Card : card.note == CardNote::InUse ? Icon::Lock : card.note == CardNote::Camera ? Icon::Laptop
                  : card.note == CardNote::Writing ? Icon::Rec : card.note == CardNote::Failed ? Icon::Warn : Icon::Folder;

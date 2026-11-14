@@ -106,7 +106,7 @@ one owner per piece of state.
 - **Service thread** does every file on the card (projects, sounds,
   settings, samples, takes, renders), the input routes and the speaker,
   the power key, and SD card access. It leaves the card alone while the
-  card is lent to a computer.
+  card is mounted on a computer.
 
 Wheel Push belongs to Melodee (`App::claims_wheel_push()`); the Exit sheet
 (a short press of Power) saves and returns to the stock app through
@@ -1625,10 +1625,10 @@ while following.
   goes to a computer over USB-C as a drive. The page draws the MPC and the
   computer with the link between them, and the three steps on the link,
   done (a check), now (amber, the only one with a word) and to come:
-  connect, then eject the drive on the computer, then **B1** TAKE BACK
+  connect, then eject the drive on the computer, then **B1** EJECT
   (Projects and Samples are read again, and Project is in view); what still
-  answers is four dim glyphs in the corner. If the computer still holds the drive, B1 says so
-  and B1 again asks whether to take it anyway (B3, B1 Cancel). Meanwhile
+  answers is four dim glyphs in the corner. If the drive is still mounted on the computer, B1 says so
+  and B1 again asks whether to eject anyway (B3, B1 Cancel). Meanwhile
   every other mode waits: only B1, Play, Stop, the pads (the selected
   track's sound) and main volume answer, and Melodee reads and writes
   nothing on the card. USB audio and stems, USB MIDI and the network keep
@@ -1654,8 +1654,8 @@ while following.
   to the pixel, where one endpoint carries it (320 x 240, and 640 x 480 at
   30), else JPEG at quality 95 from the RK3566's encoder; a new picture only
   when the screen changed, sent from a steady buffer two frames behind).
-  Under the rows, while it is on, its state: STARTING, READY, LIVE, CARD SHARED (the
-  webcam steps out while the card is lent), FAILED; the size offered, amber
+  Under the rows, while it is on, its state: STARTING, READY, LIVE, CARD MOUNTED (the
+  webcam steps out while the card is mounted), FAILED; the size offered, amber
   with a warning, only when a JPEG size fell back to YUYV (no encoder).
   On, off or a new size reconnects the gadget (USB audio, MIDI and the
   network drop for a second), never under a computer showing the camera:
@@ -2253,7 +2253,7 @@ of zip:
   removes that entry from `Melodee/Plugins` (`POST /plugin/delete?file=`,
   one name straight in the folder) and the header shows **Plug-in removed**.
 
-Uploads need the card home (not lent to a computer). The server
+Uploads need the card on the MPC (not mounted on a computer). The server
 (`web/web_server.*`) serves one request at a time and refuses a Host that is
 not an IP address or localhost and any POST without an `X-Melodee` header,
 so a web site in the same browser cannot send files to the MPC. A first

@@ -114,9 +114,9 @@ void draw_ask_sheet(Paint& p, const Snapshot& s) {
     }
     case Ask::TakeCardBack:
         sheet.icon = Icon::Card;
-        sheet.title = "Take the card back?";
-        sheet.lines = {"The computer has not ejected it.", "Files being written may break."};
-        verb = "TAKE"; verb_glyph = Icon::Check;
+        sheet.title = "Eject anyway?";
+        sheet.lines = {"The card is still mounted.", "Files being written may break."};
+        verb = "EJECT"; verb_glyph = Icon::Check;
         break;
     case Ask::ClearLoop: {
         unsigned loop = unsigned(s.ui.ask_target) % 4;

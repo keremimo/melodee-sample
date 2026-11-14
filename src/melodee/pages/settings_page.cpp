@@ -71,7 +71,7 @@ void mirror_line(Paint& p, const Snapshot& s, float x, float y, float w) {
     case MirrorState::Starting: word = "STARTING"; break;
     case MirrorState::Waiting: word = "READY"; c = colour::text; break;
     case MirrorState::Streaming: word = "LIVE"; c = colour::play; break;
-    case MirrorState::CardShared: word = "CARD SHARED"; c = colour::amber; break;
+    case MirrorState::CardShared: word = "CARD MOUNTED"; c = colour::amber; break;
     case MirrorState::Failed: word = "FAILED"; c = colour::amber; break;
     }
     if (s.mirror_held) { word = "IN USE"; c = colour::amber; }

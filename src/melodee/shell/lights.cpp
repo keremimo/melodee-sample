@@ -144,7 +144,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         view.locked = card_link.locked.load(); view.note = CardNote(card_link.note.load()); view.returns = card_link.returns.load();
         auto change = card_follow(ui_, view);
         if (change.left && ui_.page != PageId::CardAccess) { ui_.shift = false; ui_.ask = UiState::Ask::None; context_.open(PageId::CardAccess); }
-        if (change.back && ui_.page == PageId::CardAccess) { context_.open(PageId::Project); context_.notice("Card back"); }
+        if (change.back && ui_.page == PageId::CardAccess) { context_.open(PageId::Project); context_.notice("Card ejected"); }
     }
     update_tick();
     // Power was pressed: the Exit sheet opens (the service thread only counts presses).

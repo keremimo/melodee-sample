@@ -88,13 +88,13 @@ taking it out.
    encoder on **SD card access** at the top.
 3. The card appears on the computer as a drive. Copy your files.
 4. Eject the drive on the computer.
-5. Press **B1** (**TAKE BACK**). Melodee reads the card again.
+5. Press **B1** (**EJECT**). Melodee reads the card again.
 
 ![SD card access](../images/screens/cardaccess.png)
 
-While the card is on the computer, the pads still play the selected track.
+While the card is mounted on the computer, the pads still play the selected track.
 USB audio and USB MIDI keep working. If you press **B1** before you eject
-the drive, Melodee asks whether to take the card back anyway.
+the drive, Melodee asks whether to eject anyway.
 
 ## Files on the card
 

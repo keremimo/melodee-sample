@@ -76,7 +76,7 @@ std::string ask_title(const Project& project, const UiState& ui) {
     case UiState::Ask::EraseLane: return "Erase " + lane_name(t, int(ui.ask_target), &project) + " motion?";
     case UiState::Ask::ResetSettings: return "Reset factory settings?";
     case UiState::Ask::NewProject: return "New project?";
-    case UiState::Ask::TakeCardBack: return "Take the card back anyway?";
+    case UiState::Ask::TakeCardBack: return "Eject anyway?";
     case UiState::Ask::ClearLoop: return "Clear L" + std::to_string(ui.ask_target + 1) + "?";
     case UiState::Ask::LooperOff: return "Turn the Looper off?";
     case UiState::Ask::ClearPattern: return "Clear P" + std::to_string(ui.ask_target % pattern_count + 1) + " of track " + std::to_string(ui.track % track_count + 1) + "?";

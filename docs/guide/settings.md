@@ -52,8 +52,8 @@ frames behind the MPC's screen. If the picture looks soft in an app, pick a
 larger size: the app then stretches it less.
 
 Under the rows while it is on: **READY** (the computer has the camera), **LIVE** (an app
-shows it), **CARD SHARED** (the camera pauses while the card is shared
-over USB, and comes back after). USB audio, MIDI and the network drop for
+shows it), **CARD MOUNTED** (the camera pauses while the card is mounted on a computer,
+and comes back after). USB audio, MIDI and the network drop for
 about a second when you turn it on or off or change the resolution.
 
 The MPC never unplugs the camera while an app shows it. Turning it off or

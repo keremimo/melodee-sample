@@ -153,7 +153,7 @@ Reply WebApp::plugins() {
 
 Reply WebApp::upload_update(const Request& request, const Body& body) {
     Facts f = current();
-    if (f.card.empty()) return fail(409, "No SD card in the MPC, or it is lent to a computer");
+    if (f.card.empty()) return fail(409, "No SD card in the MPC, or it is mounted on a computer");
     if (update_running(f.phase)) return fail(409, "An update is installing");
     auto name = request.query.count("name") ? safe_name(request.query.at("name"), ".zip") : std::string();
     if (name.empty()) return fail(400, "Choose the Melodee release .zip");
@@ -183,7 +183,7 @@ Reply WebApp::upload_update(const Request& request, const Body& body) {
 
 Reply WebApp::upload_plugin(const Request& request, const Body& body) {
     Facts f = current();
-    if (f.card.empty()) return fail(409, "No SD card in the MPC, or it is lent to a computer");
+    if (f.card.empty()) return fail(409, "No SD card in the MPC, or it is mounted on a computer");
     auto name = request.query.count("name") ? safe_name(request.query.at("name"), ".zip") : std::string();
     if (name.empty()) return fail(400, "Choose a plug-in .zip");
     if (request.length == 0) return fail(400, "The file is empty");
@@ -216,7 +216,7 @@ Reply WebApp::upload_plugin(const Request& request, const Body& body) {
 
 Reply WebApp::delete_plugin(const Request& request) {
     Facts f = current();
-    if (f.card.empty()) return fail(409, "No SD card in the MPC, or it is lent to a computer");
+    if (f.card.empty()) return fail(409, "No SD card in the MPC, or it is mounted on a computer");
     auto file = request.query.count("file") ? safe_name(request.query.at("file"), "") : std::string();
     if (file.empty()) return fail(400, "No such plug-in");
     const fs::path place = fs::path(plugin_folder(f.card)) / file; // one entry straight in Melodee/Plugins, no further

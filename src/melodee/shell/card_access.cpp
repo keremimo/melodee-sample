@@ -42,31 +42,31 @@ CardChange card_follow(UiState& ui, const CardView& now) {
 
 const char* card_title(const CardView& card) {
     switch (card.state) {
-    case lending: return "Handing the card over";
-    case returning: return "Taking the card back";
+    case lending: return "Mounting the card";
+    case returning: return "Ejecting the card";
     case lent:
-        if (card.ejected) return "Ejected";
-        return card.connected ? "On the computer as a drive" : "Connect USB-C to a computer";
+        if (card.ejected) return "Ejected on the computer";
+        return card.connected ? "Mounted on the computer" : "Connect USB-C to a computer";
     default: break;
     }
     switch (card.note) {
     case CardNote::NoCard: return "No card";
     case CardNote::InUse: return "The card is in use";
     case CardNote::Writing: return "A file is being written";
-    case CardNote::Empty: return "Card back, nothing on it to open";
-    case CardNote::Failed: return "The card could not go";
+    case CardNote::Empty: return "Card ejected, nothing on it to open";
+    case CardNote::Failed: return "The card could not mount";
     default: return "SD card access";
     }
 }
 
 const char* card_detail(const CardView& card) {
     switch (card.state) {
-    case lending: return "Projects and samples wait until it is back.";
+    case lending: return "Projects and samples wait until it is ejected.";
     case returning: return "Projects and samples are read again.";
     case lent:
-        if (card.ejected) return "B1 brings the card back to Melodee.";
-        if (card.locked) return "The computer still has it. Eject it there, or B1 again.";
-        return card.connected ? "Eject the drive on the computer, then press B1." : "The card waits for the computer.";
+        if (card.ejected) return "Press B1 to eject.";
+        if (card.locked) return "Still mounted. Eject it there, or press B1 again.";
+        return card.connected ? "Eject it on the computer, then press B1." : "The card mounts when a computer connects.";
     default: break;
     }
     switch (card.note) {
@@ -74,7 +74,7 @@ const char* card_detail(const CardView& card) {
     case CardNote::InUse: return "Something has a file open on it; try again.";
     case CardNote::Writing: return "Wait for the recording or render to finish.";
     case CardNote::Empty: return "The computer may have formatted it.";
-    case CardNote::Failed: return "The USB gadget would not take it.";
+    case CardNote::Failed: return "The USB gadget would not mount it.";
     default: return "";
     }
 }
