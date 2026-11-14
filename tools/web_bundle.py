@@ -15,6 +15,7 @@ import html
 import re
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -230,6 +231,80 @@ def toc(headings, here=""):
     return '<nav class="toc" aria-label="On this page"><p class="label">On this page</p><ol>%s</ol></nav>' % items
 
 
+def read_png(path):
+    """An 8-bit palette PNG (non-interlaced): (width, height, rows of indices, PLTE, tRNS). No Pillow on the builder."""
+    data = path.read_bytes()
+    at, chunks, idat = 8, {}, b""
+    while at < len(data):
+        size, kind = struct.unpack(">I4s", data[at:at + 8])
+        body = data[at + 8:at + 8 + size]
+        at += 12 + size
+        if kind == b"IDAT":
+            idat += body
+        else:
+            chunks.setdefault(kind, body)
+    width, height, depth, colour, _, _, interlace = struct.unpack(">IIBBBBB", chunks[b"IHDR"])
+    assert depth == 8 and colour == 3 and not interlace, "wordmark: 8-bit palette, not interlaced"
+    raw, rows, prev, at = zlib.decompress(idat), [], bytearray(width), 0
+    for _ in range(height):
+        kind, line = raw[at], bytearray(raw[at + 1:at + 1 + width])
+        at += 1 + width
+        for x in range(width):
+            a = line[x - 1] if x else 0
+            b = prev[x]
+            c = prev[x - 1] if x else 0
+            if kind == 1:
+                line[x] = (line[x] + a) & 255
+            elif kind == 2:
+                line[x] = (line[x] + b) & 255
+            elif kind == 3:
+                line[x] = (line[x] + (a + b) // 2) & 255
+            elif kind == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        rows.append(bytes(line))
+        prev = line
+    return width, height, rows, chunks[b"PLTE"], chunks.get(b"tRNS", b"")
+
+
+def write_png(width, height, rows, plte, trns):
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
+    raw = b"".join(b"\x00" + bytes(r) for r in rows)
+    out = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 3, 0, 0, 0)) + chunk(b"PLTE", plte)
+    if trns:
+        out += chunk(b"tRNS", trns)
+    return out + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+
+
+def logo(scale_to):
+    """docs/images/melodee-wordmark.png (the art drawn 4x) as the word alone, no dash at either side, at
+    `scale_to` screen pixels for each of the art's pixels: every art pixel a square block, nothing smoothed."""
+    width, height, rows, plte, trns = read_png(DOCS / "images/melodee-wordmark.png")
+    seen = lambda v: v >= len(trns) or trns[v] > 0
+    art = 4
+    w, h = width // art, height // art
+    grid = [[rows[y * art][x * art] for x in range(w)] for y in range(h)]
+    # The dashes sit in a band of rows in the middle; the word reaches above or below it in every column but the
+    # dashes'. From each side, the columns whose pixels all lie in the band are dash (or the gap before the word).
+    left_band = {y for y in range(h) if any(seen(grid[y][x]) for x in range(w // 8))}
+    def dash(x):
+        ys = [y for y in range(h) if seen(grid[y][x])]
+        return all(y in left_band for y in ys)
+    first = 0
+    while first < w and dash(first):
+        first += 1
+    last = w - 1
+    while last > first and dash(last):
+        last -= 1
+    top = next(y for y in range(h) if any(seen(grid[y][x]) for x in range(first, last + 1)))
+    bottom = next(y for y in range(h - 1, -1, -1) if any(seen(grid[y][x]) for x in range(first, last + 1)))
+    cut = [row[first:last + 1] for row in grid[top:bottom + 1]]
+    big = [bytes(v for v in row for _ in range(scale_to)) for row in cut for _ in range(scale_to)]
+    return write_png(len(cut[0]) * scale_to, len(cut) * scale_to, big, plte, trns), (len(cut[0]), len(cut))
+
+
 def main():
     out_path = Path(sys.argv[1])
     files, images = {}, set()
@@ -286,6 +361,10 @@ def main():
     files["/"] = shell("Melodee", "device", (STATIC / "device.html").read_text()
                        .replace("{{quickstart_steps}}", steps).replace("{{chapter_names}}", names)
                        .replace("{{chapter_count}}", str(len(parts))))
+
+    # The wordmark at 4 screen pixels to each of its own: shown at 1 CSS pixel to each (34 px high), it lands on whole
+    # device pixels at 1x, 2x and 4x, and image-rendering: pixelated keeps every block square at 3x.
+    files["/logo.png"], _ = logo(4)
 
     for rel in sorted(images):
         files["/img/" + rel] = (DOCS / "images" / rel).read_bytes()
