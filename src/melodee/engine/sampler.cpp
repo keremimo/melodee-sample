@@ -6,6 +6,9 @@
 #include <climits>
 #include <cmath>
 #include <cstring>
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 
 namespace melodee {
 using namespace sampler;
@@ -321,8 +324,9 @@ void SamplerEngine::begin_stretch(Voice& v, bool live) {
     if (v.beats) {
         if (!live) return;
     } else {
-        // Tones reads ahead for hits from here (not round a loop, nor an instrument's zone, nor a sample still landing).
-        v.hits = !v.loop && !v.zone && !v.grow;
+        // Tones reads ahead for hits from here (not in a sample still landing; scan_hits() leaves out loops too short
+        // for a hit to stand in, and an instrument zone stops looking once its loop goes round).
+        v.hits = !v.grow;
         v.hit_ahead = false;
         v.hit_last = v.position;
         v.hit_before = hit_energy(v, v.l, v.r, std::lround(v.position));
@@ -842,6 +846,11 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             else while (v.place >= v.end) { v.place -= span; turned = true; }
             if (turned) {
                 v.wrapped = true; v.turned = true;
+                if (!v.beats) { // Tones' hits and starts are in the place's own lap: they go round with it
+                    const double moved = v.reverse ? span : -span;
+                    v.hit_at += moved; v.hit_scan += moved; v.hit_last += moved; v.next_start += moved;
+                    for (auto& from_at : v.tap_from) from_at += moved;
+                }
                 if (v.beats) { // a fresh segment from the loop point; the one playing fades out over its edge meanwhile
                     unsigned playing = v.next_tap ^ 1;
                     if (v.tap_on[playing] && v.window > edge) v.tap_age[playing] = std::max(v.tap_age[playing], v.window - edge);
@@ -854,6 +863,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             v.wrapped = true;
             v.since_hop = v.hop; // a fresh tap from the loop point
             v.prepared = false;
+            v.hits = v.hit_ahead = false; // a zone's held loop: no hits looked for in it
             came_round(v);
         }
         if (v.hit_ahead && (v.place - v.hit_at) * way >= 0) { cut_on_hit(v); scan_hits(v, l, r); }
@@ -893,8 +903,10 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             if (!v.tap_on[t]) continue;
             double at = v.tap[t];
             if (pad_loop) { // round the loop, as the place goes
-                if (v.reverse) while (at < v.loop_at) at += span;
-                else while (at >= v.end) at -= span;
+                if (v.beats) {
+                    if (v.reverse) while (at < v.loop_at) at += span;
+                    else while (at >= v.end) at -= span;
+                } else at = loop_place(v, at); // Tones' starts may lie either side of the loop's ends
                 v.tap[t] = at;
             }
             if (at < v.start || (!pad_loop && at >= v.end - 1) || v.tap_age[t] >= v.window) { v.tap_on[t] = false; continue; }
@@ -915,7 +927,7 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
                     w *= v.tap_gain[t];
                 }
                 if (v.hit_ahead && (v.hit_at - v.tap_from[t]) * way > 0) { // the hit ahead is the place's to start, not this tap's
-                    const double gap = (v.hit_at - at) * way;
+                    const double gap = (v.hit_at - (pad_loop ? same_lap(v, at) : at)) * way;
                     if (gap <= 0) { v.tap_on[t] = false; continue; }
                     if (gap < edge) w *= float(gap / edge);
                 }
@@ -928,6 +940,8 @@ void SamplerEngine::stretch(Voice& v, const float* l, const float* r, float* to_
             float tl, tr;
             if (v.beats) {
                 tl = l[i] + (l[j] - l[i]) * frac; tr = r[i] + (r[j] - r[i]) * frac;
+            } else if (v.step > 1.0) { // Tones read faster than a frame a frame: band-limited, so nothing above folds back
+                band_read(v, l, r, at, pad_loop, tl, tr);
             } else { // Tones: a cubic (Hermite) read through four frames, clean of linear reading's dulled, folded top
                 const unsigned h = i > 0 ? i - 1 : i, k = after(j);
                 auto cubic = [frac](float a, float b, float c, float d) {
@@ -970,13 +984,9 @@ double SamplerEngine::align(const Voice& v, const float* l, const float* r, doub
     AlignScratch& s = *aligning;
     const double way = v.reverse ? -1.0 : 1.0;
     const bool pad_loop = !v.zone && v.loop && v.end > v.loop_at;
-    const long loop_at = long(v.loop_at), end = long(v.end), span = end - loop_at;
-    const long first = long(v.start), last = end - 1;
+    const long first = long(v.start), last = long(v.end) - 1;
     auto mono = [&](long n) { // frame n as a tap reads it: round a pad's loop, silence outside the region
-        if (pad_loop) {
-            if (!v.reverse && n >= end) n = loop_at + (n - loop_at) % span;
-            else if (v.reverse && n < loop_at) n += ((loop_at - n + span - 1) / span) * span;
-        }
+        if (pad_loop) n = long(loop_place(v, double(n)));
         return n < first || n >= last ? 0.0f : 0.5f * (l[n] + r[n]);
     };
     const unsigned overlap = v.window - age;
@@ -1044,8 +1054,10 @@ double SamplerEngine::align(const Voice& v, const float* l, const float* r, doub
 float SamplerEngine::hit_energy(const Voice& v, const float* l, const float* r, long at) {
     const long dir = v.reverse ? -1 : 1;
     float e = 0;
+    const bool pad_loop = !v.zone && v.loop && v.end > v.loop_at;
     for (long i = 0; i < 64; ++i) {
-        const long n = at + dir * i;
+        long n = at + dir * i;
+        if (pad_loop) n = long(loop_place(v, double(n)));
         if (n < long(v.start) || n >= long(v.end)) break;
         e += 0.5f * std::fabs(l[n] + r[n]);
     }
@@ -1057,9 +1069,19 @@ float SamplerEngine::hit_energy(const Voice& v, const float* l, const float* r, 
 void SamplerEngine::scan_hits(Voice& v, const float* l, const float* r) {
     if (!v.hits || v.hit_ahead) return;
     const double way = v.reverse ? -1.0 : 1.0;
+    const bool pad_loop = !v.zone && v.loop && v.end > v.loop_at;
+    // A loop shorter than two windows' read has no room for a hit to stand in.
+    if (pad_loop && double(v.end - v.loop_at) < 2.0 * double(v.window) * std::max(v.step, 1.0)) { v.hits = false; return; }
     const double horizon = v.place + way * (double(v.window) * v.step + double(v.hop) * v.advance + 128);
     const double spacing = 0.03 * dsp::model_rate * v.scale;
-    while ((horizon - v.hit_scan) * way > 0 && v.hit_scan >= v.start && v.hit_scan < v.end) {
+    // A zone read from the card: only as far as is pinned (admit()'s limit), the rest when it lands.
+    double ready_to = v.reverse ? -1e18 : 1e18;
+    if (v.stream >= 0 || v.capped) {
+        const uint32_t limit = v.stream >= 0 ? pager->limit(v.stream) : v.head_end;
+        if (v.reverse) ready_to = limit == UINT32_MAX ? 1e18 : double(limit) + 64;
+        else ready_to = double(limit) - 64;
+    }
+    while ((horizon - v.hit_scan) * way > 0 && (ready_to - v.hit_scan) * way > 0 && (pad_loop || (v.hit_scan >= v.start && v.hit_scan < v.end))) {
         const float e = hit_energy(v, l, r, std::lround(v.hit_scan));
         const bool hit = e > 4.0f * v.hit_before && e > 64 * 0.02f && (v.hit_scan - v.hit_last) * way >= spacing;
         v.hit_before = std::max(e, v.hit_before * 0.97f); // the level it rises from: recent peaks, slowly let go
@@ -1079,6 +1101,116 @@ void SamplerEngine::cut_on_hit(Voice& v) {
     v.prepared = false;
     v.hit_last = v.hit_at;
     v.hit_ahead = false;
+}
+
+// Tones on a kit pad's loop: a place in the loop's frames. Past the end it goes round to the loop point; before the
+// loop point (once round, or reversed) round to the end.
+double SamplerEngine::loop_place(const Voice& v, double at) {
+    const double span = double(v.end - v.loop_at);
+    if (span <= 0) return at;
+    if (at >= v.end) at = v.loop_at + std::fmod(at - v.loop_at, span);
+    else if (at < v.loop_at && (v.turned || v.reverse)) at = v.end - std::fmod(v.loop_at - at, span);
+    if (at >= v.end) at -= span; // fmod's edge
+    return at;
+}
+
+// Tones on a kit pad's loop: a tap's place (in the loop's frames) on the place's own lap, the nearest way round.
+double SamplerEngine::same_lap(const Voice& v, double at) {
+    const double span = double(v.end - v.loop_at);
+    while (at - v.place > span / 2) at -= span;
+    while (v.place - at > span / 2) at += span;
+    return at;
+}
+
+namespace {
+// A Kaiser-windowed sinc (beta 7), eight zero crossings either side, 256 points between crossings: Tones' reads
+// faster than a frame a frame, its crossings spread by the speed so the band ends below the output's half rate.
+struct BandKernel {
+    static constexpr int half = 8, per = 256;
+    std::array<float, (half + 2) * per> weights {}; // zeros past the last crossing, so a read never checks its end
+    BandKernel() {
+        auto bessel = [](double x) { double sum = 1, term = 1; for (int k = 1; k < 32; ++k) { term *= (x / (2 * k)) * (x / (2 * k)); sum += term; } return sum; };
+        const double beta = 7.0, norm = bessel(beta);
+        for (int i = 0; i < half * per; ++i) {
+            const double x = double(i) / per, ratio = x / half;
+            const double window = bessel(beta * std::sqrt(1 - ratio * ratio)) / norm;
+            const double sinc = i == 0 ? 1.0 : std::sin(dsp::pi * x) / (dsp::pi * x);
+            weights[size_t(i)] = float(window * sinc);
+        }
+    }
+    float at(float x) const { // x in crossings, |x| < half + 1
+        const float place = std::fabs(x) * float(per);
+        const int i = int(place);
+        const float f = place - float(i);
+        return weights[size_t(i)] + (weights[size_t(i) + 1] - weights[size_t(i)]) * f;
+    }
+};
+const BandKernel band_kernel; // built at start-up, not on the audio thread
+}
+
+// Tones: the sound at `at` read through band_kernel spread to the speed (at most 4x): two rows of the voice's table,
+// for the places either side of where it reads, blended.
+void SamplerEngine::band_read(const Voice& v, const float* l, const float* r, double at, bool pad_loop, float& out_l, float& out_r) {
+    BandRows& rows = (*band_rows)[size_t(&v - voices.data())];
+    const double speed = std::min(v.step, 4.0);
+    if (std::fabs(speed - rows.step) > speed * 0.005) { // its table, for this speed
+        const double band = 0.9 / speed; // where the kernel's crossings fall, in input frames
+        rows.step = speed;
+        rows.half = int(std::ceil(BandKernel::half / band));
+        rows.count = (2 * rows.half + 3) / 4 * 4; // whole fours (NEON), the last weights 0
+        for (int p = 0; p <= 32; ++p) {
+            float* row = rows.weights.data() + size_t(p) * size_t(rows.count);
+            const double place = p / 32.0;
+            double sum = 0;
+            for (int k = 0; k < rows.count; ++k) {
+                row[k] = k < 2 * rows.half ? band_kernel.at(float((k - rows.half + 1 - place) * band)) : 0.0f;
+                sum += row[k];
+            }
+            const float scale = sum > 1e-9 ? float(1.0 / sum) : 0.0f;
+            for (int k = 0; k < rows.count; ++k) row[k] *= scale;
+        }
+    }
+    const long i = long(std::floor(at));
+    const float where = float(at - double(i)) * 32.0f;
+    const int p = std::min(int(where), 31);
+    const float blend = where - float(p);
+    const float* a = rows.weights.data() + size_t(p) * size_t(rows.count);
+    const float* b = a + rows.count;
+    const long first = i - rows.half + 1, last = first + rows.count - 1;
+    const long top = long(v.total ? v.total : v.end) - 1;
+    float sum_l = 0, sum_r = 0;
+    if (first >= 0 && last <= top && !(pad_loop && (last >= long(v.end) || (first < long(v.loop_at) && (v.turned || v.reverse))))) {
+        const float* pl = l + first;
+        const float* pr = r + first;
+#if defined(__ARM_NEON)
+        float32x4_t to_l = vdupq_n_f32(0.0f), to_r = vdupq_n_f32(0.0f);
+        const float32x4_t by = vdupq_n_f32(blend);
+        for (int k = 0; k < rows.count; k += 4) { // the usual case: every frame there, in a row, four at a time
+            const float32x4_t wa = vld1q_f32(a + k);
+            const float32x4_t w = vfmaq_f32(wa, vsubq_f32(vld1q_f32(b + k), wa), by);
+            to_l = vfmaq_f32(to_l, vld1q_f32(pl + k), w);
+            to_r = vfmaq_f32(to_r, vld1q_f32(pr + k), w);
+        }
+        sum_l = vaddvq_f32(to_l); sum_r = vaddvq_f32(to_r);
+#else
+        float l4[4] {}, r4[4] {};
+        for (int k = 0; k < rows.count; k += 4) // the usual case: every frame there, in a row
+            for (int j = 0; j < 4; ++j) {
+                const float w = a[k + j] + (b[k + j] - a[k + j]) * blend;
+                l4[j] += pl[k + j] * w; r4[j] += pr[k + j] * w;
+            }
+        sum_l = (l4[0] + l4[1]) + (l4[2] + l4[3]); sum_r = (r4[0] + r4[1]) + (r4[2] + r4[3]);
+#endif
+    } else {
+        for (int k = 0; k < rows.count; ++k) { // round a loop's ends, or at the file's
+            const float w = a[k] + (b[k] - a[k]) * blend;
+            long m = first + k;
+            if (pad_loop) m = long(loop_place(v, double(m)));
+            m = std::clamp(m, 0L, top);
+            sum_l += l[m] * w; sum_r += r[m] * w;
+        }
+    }
+    out_l = sum_l; out_r = sum_r;
 }
 
 // Tones: the tap the next one overlaps: the youngest at full (-1 none).
@@ -1113,7 +1245,7 @@ bool SamplerEngine::admit(Voice& v, unsigned frames) {
     if (v.stream < 0 && !v.capped) { v.duck_to = 1; v.played = true; return true; }
     const double at = v.stretch ? v.place : v.position;
     const double speed = v.stretch ? std::max(v.advance, v.step) : v.step;
-    const double extra = (v.stretch ? v.window * v.step + align_seconds * dsp::model_rate * v.scale : 0.0) + 2.0;
+    const double extra = (v.stretch ? v.window * v.step + align_seconds * dsp::model_rate * v.scale + 40.0 : 0.0) + 2.0;
     const double one = frames * speed + extra, two = 2.0 * frames * speed + extra;
     const uint32_t limit = v.stream >= 0 ? pager->limit(v.stream) : v.head_end;
     bool enough = false, plenty = false;
@@ -1152,7 +1284,7 @@ bool SamplerEngine::admit_grown(Voice& v, unsigned frames) {
     if (!enough && !v.reverse && !v.loop && !v.xfade_kind) {
         const double at = v.stretch ? v.place : v.position;
         const double speed = v.stretch ? std::max(v.advance, v.step) : v.step;
-        const double extra = (v.stretch ? v.window * v.step + align_seconds * dsp::model_rate * v.scale : 0.0) + 2.0;
+        const double extra = (v.stretch ? v.window * v.step + align_seconds * dsp::model_rate * v.scale + 40.0 : 0.0) + 2.0;
         enough = at + frames * speed + extra < limit;
         plenty = at + 2.0 * frames * speed + extra < limit;
     }

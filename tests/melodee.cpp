@@ -1223,6 +1223,64 @@ void sampler_kit() {
             if (hits != 4) std::fprintf(stderr, "tones clicks %+d: %u hits\n", semitones, hits);
             CHECK(hits == 4);
         }
+        // Round a kit pad's loop too: two clicks in a loop of 20000 frames, each heard once a lap, on time.
+        auto looped = [&](int semitones) {
+            SamplerEngine::Table table {};
+            table[0] = clicks.get();
+            auto engine = std::make_unique<SamplerEngine>();
+            engine->set_samples(&table);
+            engine->set_param(sampler::FollowHow, 1);
+            PadSound sound; sound.sample = 0; sound.pitch = int8_t(semitones); sound.decay = 100; sound.warp = 100;
+            sound.loop = true; sound.loop_lock = false; sound.loop_start = 2000; sound.end = 22000; sound.play = PadPlay::Gate;
+            engine->set_pad(0, sound);
+            engine->note_on(int(sampler_first_note), 127);
+            std::vector<float> l(128), r(128), all;
+            for (unsigned b = 0; b < 600; ++b) { // 76800 frames: three laps and more
+                std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+                engine->render_stereo(l.data(), r.data(), 128);
+                all.insert(all.end(), l.begin(), l.end());
+            }
+            std::vector<size_t> at;
+            float before = 0;
+            for (size_t n = 0; n + 64 <= all.size(); n += 64) {
+                float e = 0;
+                for (size_t k = n; k < n + 64; ++k) e += std::fabs(all[k]);
+                if (e > 4 * before && e > 64 * 0.02f) at.push_back(n);
+                before = std::max(e, before * 0.97f);
+            }
+            return at;
+        };
+        for (int semitones : {12, -7}) {
+            const auto at = looped(semitones);
+            // The clicks at 4000 and 14000 (2000 and 12000 into the loop), every 20000 frames.
+            bool on_time = at.size() == 8;
+            for (size_t k = 0; k < at.size() && on_time; ++k) {
+                const long want = 4000 + long(k % 2) * 10000 + long(k / 2) * 20000;
+                on_time = std::labs(long(at[k]) - want) <= 128;
+            }
+            if (!on_time) {
+                std::fprintf(stderr, "tones loop clicks %+d:", semitones);
+                for (size_t n : at) std::fprintf(stderr, " %zu", n);
+                std::fprintf(stderr, "\n");
+            }
+            CHECK(on_time);
+        }
+        // Read faster than a frame a frame, band-limited: 13 kHz an octave up (26 kHz) is gone, not folded back to
+        // 18 kHz; 3 kHz a fifth up keeps its level.
+        auto tone = [&](double hz, int semitones) {
+            auto data = std::make_unique<SampleData>();
+            data->frames = 44100;
+            data->left.resize(44100); data->right.resize(44100);
+            for (unsigned n = 0; n < 44100; ++n) data->left[n] = data->right[n] = float(0.5 * std::sin(2 * 3.14159265 * hz * n / 44100.0));
+            const auto out = play(*data, semitones);
+            double e = 0;
+            unsigned count = 0;
+            for (size_t n = 4096; n < std::min<size_t>(out.size(), 36000); ++n) { e += out[n] * out[n]; ++count; }
+            return count ? std::sqrt(e / count) : 0.0;
+        };
+        const double own = tone(3000, 0), folded = tone(13000, 12) / own, kept = tone(3000, 7) / own;
+        if (!(folded < 0.003 && kept > 0.9 && kept < 1.1)) std::fprintf(stderr, "tones band: folded %f, kept %f\n", folded, kept);
+        CHECK(folded < 0.003 && kept > 0.9 && kept < 1.1);
     }
     // Punches written into the song play where they were written, for as long, and survive a save.
     {

@@ -159,7 +159,7 @@ private:
         std::array<bool, 4> tap_on {};
         std::array<double, 4> tap_from {};             // Tones: where each tap began
         std::array<float, 4> tap_gain {1, 1, 1, 1};    // Tones: 1, or falling to 0 after a hit cut it
-        // Tones' hits (not on a loop, nor an instrument's zone): the next hit ahead of `place`, found by reading
+        // Tones' hits: the next hit ahead of `place` (in its own lap on a kit pad's loop), found by reading
         // ahead to `hit_scan`, and the last one cut on. Taps do not read across a hit ahead of them; when the place
         // reaches it, those playing fade out over a short edge and a tap starts on it at full.
         bool hits = false, hit_ahead = false;
@@ -347,7 +347,19 @@ private:
     void cut_on_hit(Voice& v);                                    // Tones: the place reached the hit ahead
     static float hit_energy(const Voice& v, const float* l, const float* r, long at); // 64 frames from `at`, its way
     unsigned open_tap(Voice& v, double at, uint32_t age);
-    static int playing_tap(const Voice& v);         // Tones: a free tap (else the oldest) from `at`
+    static int playing_tap(const Voice& v);
+    static double loop_place(const Voice& v, double at);           // Tones on a kit pad's loop: into the loop's frames
+    static double same_lap(const Voice& v, double at);             // Tones on a kit pad's loop: onto the place's lap
+    void band_read(const Voice& v, const float* l, const float* r, double at, bool pad_loop, float& out_l, float& out_r);
+    // Tones' band-limited reads, a table a voice for its speed: 33 places between two frames, each a row of weights
+    // summed to one, over `count` frames from `half` - 1 before the frame read. Worked out again when the speed moves
+    // more than 0.5 %. On the heap: 10 kB a voice.
+    struct BandRows {
+        double step = 0;
+        int half = 0, count = 0;
+        std::array<float, 33 * 76> weights {};
+    };
+    std::unique_ptr<std::array<BandRows, max_voices + spare_voices>> band_rows = std::make_unique<std::array<BandRows, max_voices + spare_voices>>();         // Tones: a free tap (else the oldest) from `at`
     static constexpr double align_seconds = 0.012; // how far either side of its place a tap may start
     struct AlignScratch {
         std::array<float, 384> ref {};      // what the playing tap reads over the overlap, a point every 8 frames
