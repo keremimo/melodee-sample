@@ -45,12 +45,13 @@ public:
     // Any thread.
     bool speaker_on() const { return speaker.load(std::memory_order_relaxed) == 1; }
     bool speaker_quieted() const { return quieted.load(std::memory_order_relaxed); } // by the monitored mic
+    bool jack_out() const { return plugged_now.load(std::memory_order_relaxed); }   // headphones or line out in
     UsbStreamState usb_state() const { return usb.state(); }
 
 private:
     UsbAudioInput usb;
     std::atomic<uint16_t> wanted {uint16_t(InputSource::Rear)};
-    std::atomic<bool> usb_live {false}, quieted {false};
+    std::atomic<bool> usb_live {false}, quieted {false}, plugged_now {false};
     std::atomic<int> speaker {-1}; // as last set: 1 on, 0 off, -1 not touched
     int routed = -1;               // the InputSource and loop needs routed, -1 none yet
     float block[2 * 128] {};

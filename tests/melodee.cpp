@@ -3280,22 +3280,25 @@ void audio_input_and_rendering() {
     in.source = InputSource::Resample; CHECK(!in.monitoring(true));
     in.monitor = Monitor::Off; in.source = InputSource::Usb; CHECK(!in.monitoring(true));
     // Picking the mic turns Monitor off; leaving it puts Monitor back, even after a turn through other sources.
-    in.monitor = Monitor::On; in.set_source(InputSource::Mic);
+    in.monitor = Monitor::On; in.set_source(InputSource::Mic, true);
     CHECK(in.monitor == Monitor::Off && !in.mutes_speaker(true));
-    in.set_source(InputSource::Rear); CHECK(in.monitor == Monitor::On);
-    in.set_source(InputSource::Usb); CHECK(in.monitor == Monitor::On);
-    in.monitor = Monitor::Auto; in.set_source(InputSource::Mic); in.monitor = Monitor::On; // turned on by hand: kept while on the mic
-    in.set_source(InputSource::Mic); CHECK(in.monitor == Monitor::On);
-    in.set_source(InputSource::Track); CHECK(in.monitor == Monitor::Auto);
+    in.set_source(InputSource::Rear, true); CHECK(in.monitor == Monitor::On);
+    in.set_source(InputSource::Usb, true); CHECK(in.monitor == Monitor::On);
+    in.monitor = Monitor::Auto; in.set_source(InputSource::Mic, true); in.monitor = Monitor::On; // turned on by hand: kept while on the mic
+    in.set_source(InputSource::Mic, true); CHECK(in.monitor == Monitor::On);
+    in.set_source(InputSource::Track, true); CHECK(in.monitor == Monitor::Auto);
+    // Headphones or line out in: the mic leaves Monitor alone, and leaving the mic changes nothing.
+    in.monitor = Monitor::On; in.set_source(InputSource::Mic, false); CHECK(in.monitor == Monitor::On);
+    in.monitor = Monitor::Auto; in.set_source(InputSource::Rear, true); CHECK(in.monitor == Monitor::Auto);
     CHECK(std::string(input_route(InputSource::Mic)) == "mic" && std::string(input_route(InputSource::RearR)) == "line"
           && std::string(input_route(InputSource::UsbL)) == "off" && std::string(input_route(InputSource::Resample)) == "off");
     CHECK(rec_bars(rec_free) == 0 && rec_bars(rec_seq) == 0 && rec_bars(2) == 1 && rec_bars(rec_lengths - 1) == 16);
     // Kept with the settings; an older settings file (no input keys) gets the defaults.
     Settings saved;
-    saved.input.source = InputSource::UsbR; saved.input.monitor = Monitor::On; saved.input.before_mic = Monitor::Off; saved.input.threshold = -72;
+    saved.input.source = InputSource::UsbR; saved.input.monitor = Monitor::On; saved.input.before_mic = int8_t(Monitor::Off); saved.input.threshold = -72;
     saved.input.length = rec_seq; saved.input.fx = true; saved.input.gain = -6;
     Settings back; back.read(saved.text());
-    CHECK(back.input.source == InputSource::UsbR && back.input.monitor == Monitor::On && back.input.before_mic == Monitor::Off && back.input.threshold == -72
+    CHECK(back.input.source == InputSource::UsbR && back.input.monitor == Monitor::On && back.input.before_mic == int8_t(Monitor::Off) && back.input.threshold == -72
           && back.input.length == rec_seq && back.input.fx && back.input.gain == -6);
     Settings old; old.read("pad_response=2\npickup=1\n");
     CHECK(old.input.source == InputSource::Rear && old.input.monitor == Monitor::Auto && old.input.threshold == -30 && old.input.length == rec_free);

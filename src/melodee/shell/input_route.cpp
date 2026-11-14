@@ -28,6 +28,7 @@ void InputRoute::service(Hardware& hardware, bool plugged) {
     }
     // The speaker: off with headphones or line out in, and while the mic is heard through it.
     int on = !plugged && !mute ? 1 : 0;
+    plugged_now.store(plugged, std::memory_order_relaxed);
     quieted.store(!plugged && mute, std::memory_order_relaxed);
     if (on != speaker.load(std::memory_order_relaxed) && hardware.mixer.available() && hardware.mixer.speaker(on != 0))
         speaker.store(on, std::memory_order_relaxed);

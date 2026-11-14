@@ -263,7 +263,7 @@ struct Settings {
             else if (key == "response_before") response_before = uint8_t(std::clamp(value, 0, 2));
             else if (key == "input_source") input.source = InputSource(std::clamp(value, 0, int(InputSource::Count) - 1));
             else if (key == "monitor") input.monitor = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1));
-            else if (key == "monitor_before_mic") input.before_mic = Monitor(std::clamp(value, 0, int(Monitor::Count) - 1));
+            else if (key == "monitor_before_mic") input.before_mic = int8_t(std::clamp(value, -1, int(Monitor::Count) - 1));
             else if (key == "threshold") input.threshold = int8_t(std::clamp(value, int(InputConfig::threshold_min), 0));
             else if (key == "rec_length") input.length = uint8_t(std::clamp(value, 0, int(rec_lengths) - 1));
             else if (key == "rec_fx") input.fx = value != 0;
