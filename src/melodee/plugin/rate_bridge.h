@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "dsp/frame_ring.h"
+#include "melodee/plugin/polyphase.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -11,7 +12,7 @@
 // plug-ins (open-mpc.github.io) are written to MPC OS's contract, 44.1 kHz
 // whatever the host says: at 48 or 96 kHz Melodee runs one at 44.1 kHz and
 // converts its output up to the device's rate (an effect's input down first)
-// with the base's band-limited SincResampler (dsp/frame_ring.h), so it plays in tune. An
+// with the base's band-limited SincResampler's kernel (dsp/frame_ring.h; plugin/polyphase.h), so it plays in tune. An
 // instrument lags by the converter's half kernel, under a millisecond; an
 // effect by both converters and a margin, about 3 ms. Audio thread only;
 // nothing allocates.
@@ -117,7 +118,7 @@ private:
         in[2 * (in_write % in_ring)] = a; in[2 * (in_write % in_ring) + 1] = b; ++in_write;
     }
 
-    ::SincResampler<2> up, down;
+    PolyphaseResampler up, down; // the base's SincResampler, its weights worked out once
     std::array<float, 2 * out_ring> out {};
     std::array<float, 2 * in_ring> in {};
     unsigned out_read = 0, out_write = 0, in_read = 0, in_write = 0;

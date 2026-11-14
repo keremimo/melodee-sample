@@ -8966,6 +8966,29 @@ void synths_as_plugins() {
         CHECK(std::abs(int(plugin_frames) - 44100) < 200);    // as many of its frames as a second of its own
         CHECK(peak_of(heard, 9600) > 0.45f && peak_of(heard, 9600) < 0.55f);
     }
+    // The bridge's converter (plugin/polyphase.h) gives what the base's SincResampler gives, frame for frame, at every
+    // rate pair the bridge meets, and one too fine for a table (played through a SincResampler).
+    {
+        const std::pair<unsigned, unsigned> pairs[] {{44100, 48000}, {48000, 44100}, {44100, 96000}, {96000, 44100}, {44100, 47999}};
+        for (auto [from, to] : pairs) {
+            ::SincResampler<2> slow;
+            PolyphaseResampler fast;
+            slow.reset(from, to);
+            fast.reset(from, to);
+            std::vector<float> a, b;
+            uint32_t seed = 1;
+            for (unsigned n = 0; n < 20000; ++n) {
+                seed = seed * 1664525u + 1013904223u;
+                float l = float(int32_t(seed) >> 8) / float(1 << 23), r = 0.5f * float(std::sin(n * 0.03));
+                slow.feed(l, r, [&](float x, float y) { a.push_back(x); a.push_back(y); });
+                fast.feed(l, r, [&](float x, float y) { b.push_back(x); b.push_back(y); });
+            }
+            CHECK(a.size() == b.size());
+            float worst = 0;
+            for (size_t n = 0; n < std::min(a.size(), b.size()); ++n) worst = std::max(worst, std::fabs(a[n] - b[n]));
+            CHECK(worst < 1e-5f);
+        }
+    }
     // An effect at 44.1 kHz in a 96 kHz chain: what it passes comes out as it went in, later by a constant few ms.
     {
         PluginRateBridge bridge;
