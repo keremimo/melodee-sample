@@ -451,7 +451,7 @@ unsigned new_engines(std::array<EngineKind, size_t(EngineKind::Count)>& out) {
 
 std::array<Binding, 3> stage_bindings(const Project& project, const UiState& ui, bool shift_row) {
     const auto& track = project.tracks[ui.track % track_count];
-    const auto& page = stage_page_now(ui, track);
+    const auto& page = stage_page_now(ui, track, stage_instrument(project, track));
     using SK = StageKind;
     if (PageId kit = stage_kit_page(page.kind); kit != PageId::Count) {
         if (shift_row) return page.kind == SK::PadMix ? std::array<Binding, 3> {} : pad_page_shift(project, track, ui, kit);

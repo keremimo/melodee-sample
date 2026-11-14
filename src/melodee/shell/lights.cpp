@@ -272,12 +272,13 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         page_track.store(uint32_t(ui_.page) | uint32_t(ui_.track) << 8, std::memory_order_relaxed);
         { // Stage: the button and page in view, the card the wheel edits, a sound waiting to load
             const auto& t = project_->tracks[ui_.track];
-            auto at = stage_at(ui_, t);
+            const bool instrument = stage_instrument(*project_, t);
+            auto at = stage_at(ui_, t, instrument);
             stage_bits.store(at.group | at.sub << 4 | unsigned(stage_focus(ui_, t)) << 8 | unsigned(ui_.preset_due != 0) << 12
                              | unsigned(t.preset & 0x3ff) << 16 | unsigned(t.bank % sampler_banks) << 26,
                              std::memory_order_relaxed);
             std::lock_guard<std::mutex> text(text_lock);
-            stage_key_text = stage_page_now(ui_, t).key;
+            stage_key_text = stage_page_now(ui_, t, instrument).key;
         }
         // The tempo in play: MIDI clock in's while it leads (Sync In), else the project's.
         tempo_now.store(ui_.settings.midi.sync_in == MidiSync::Clock && midi_io.tempo_in() ? host.tempo_now() : context_.tempo_now(),

@@ -24,11 +24,37 @@ inline bool stage_opens_edit(const Track& t, unsigned key) {
     return g.count && g.pages[0].kind == StageKind::OpenEdit;
 }
 
-inline StageAt stage_at(const UiState& ui, const Track& t) {
+// A kit whose last pad holds a multisampled instrument (an .sfz, a keygroup, an .sf2 preset, an MPC drum program's
+// pad "<file>#<pad>"): its zones are its layers, picked by key and velocity, so its Stage has no LAYERS (TRIM is ZONES).
+inline bool stage_instrument(const Project& p, const Track& t) {
+    if (t.engine != EngineKind::Sampler) return false;
+    const auto& pad = t.pads[t.last_pad % sampler_pads];
+    return pad.used() && p.samples[pad.sample % sample_slots].instrument();
+}
+// Whether Stage passes over a page: LAYERS on an instrument pad.
+inline bool stage_skips(const StageGroups& g, unsigned group, unsigned sub, bool instrument) {
+    return instrument && g.groups[group % 3].pages[sub % stage_count(g, group)].kind == StageKind::Layers;
+}
+// A button's pages as its dots count them, and a page's place among them (a page passed over is not one).
+inline unsigned stage_shown(const StageGroups& g, unsigned group, bool instrument) {
+    unsigned n = 0;
+    for (unsigned sub = 0; sub < stage_count(g, group); ++sub) n += !stage_skips(g, group, sub, instrument);
+    return n;
+}
+inline unsigned stage_shown_at(const StageGroups& g, unsigned group, unsigned sub, bool instrument) {
+    unsigned n = 0;
+    for (unsigned k = 0; k < sub; ++k) n += !stage_skips(g, group, k, instrument);
+    return n;
+}
+
+// `instrument`: stage_instrument() for the track.
+inline StageAt stage_at(const UiState& ui, const Track& t, bool instrument) {
     const auto& g = stage_groups(t.engine);
     unsigned track = ui.track % track_count, group = ui.stage_group[track] % 3;
     if (!stage_has(g, group) || stage_opens_edit(t, group)) group = 0; // left on a button with no Stage pages under it
-    return {group, ui.stage_sub[track] % stage_count(g, group)};
+    unsigned sub = ui.stage_sub[track] % stage_count(g, group);
+    if (stage_skips(g, group, sub, instrument)) sub = 0; // left on LAYERS: an instrument pad shows ZONES, a sample pad LAYERS again
+    return {group, sub};
 }
 
 // Where a kind of page sits on an engine's Stage (the first one of that kind); found false when it has none.
@@ -46,18 +72,24 @@ inline const StagePage& stage_page_at(const Track& t, unsigned group, unsigned s
     return g.groups[group % 3].pages[sub % stage_count(g, group)];
 }
 
-inline const StagePage& stage_page_now(const UiState& ui, const Track& t) {
-    auto at = stage_at(ui, t);
+inline const StagePage& stage_page_now(const UiState& ui, const Track& t, bool instrument) {
+    auto at = stage_at(ui, t, instrument);
     return stage_page_at(t, at.group, at.sub);
 }
 
 // B1-B3 (`key` 0-2) on Stage.
-inline void stage_press(UiState& ui, const Track& t, unsigned key) {
+inline void stage_press(UiState& ui, const Track& t, unsigned key, bool instrument) {
+    const auto& g = stage_groups(t.engine);
     unsigned track = ui.track % track_count;
-    auto at = stage_at(ui, t);
+    auto at = stage_at(ui, t, instrument);
     key %= 3;
-    if (!stage_has(stage_groups(t.engine), key) || stage_opens_edit(t, key)) return; // the page opens Edit (stage_page.cpp)
-    if (at.group == key) { ui.stage_sub[track] = uint8_t((at.sub + 1) % stage_count(stage_groups(t.engine), key)); return; }
+    if (!stage_has(g, key) || stage_opens_edit(t, key)) return; // the page opens Edit (stage_page.cpp)
+    if (at.group == key) {
+        unsigned count = stage_count(g, key), sub = (at.sub + 1) % count;
+        while (sub != at.sub && stage_skips(g, key, sub, instrument)) sub = (sub + 1) % count;
+        ui.stage_sub[track] = uint8_t(sub);
+        return;
+    }
     ui.stage_group[track] = uint8_t(key);
     ui.stage_sub[track] = 0;
 }

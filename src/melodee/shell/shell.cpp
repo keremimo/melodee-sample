@@ -695,7 +695,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
     if (context_.plugins && ui_.page == PageId::PluginPresets) out.presets = context_.plugins->programs(ui_.presets_entry);
     if (context_.plugins && ui_.page == PageId::Stage) { // Stage PRESETS: the track's plug-in's
         const auto& t = project_->tracks[ui_.track % track_count];
-        if (t.engine == EngineKind::Plugin && t.plugin < max_plugins && stage_page_now(ui_, t).kind == StageKind::PluginSound)
+        if (t.engine == EngineKind::Plugin && t.plugin < max_plugins && stage_page_now(ui_, t, false).kind == StageKind::PluginSound)
             out.presets = context_.plugins->programs(t.plugin);
     }
     if (library_) {
@@ -706,7 +706,7 @@ void Shell::snapshot(Snapshot& out, uint32_t now) {
         // Trim and Chop zoomed in: the view's own peaks, from the audio (the overview's 512 are too few that close).
         FrameView view;
         if (ui_.page == PageId::Chop && ui_.chop_zoom) view = chop_view(*project_, ui_);
-        if (ui_.page == PageId::Stage && ui_.trim_zoom && stage_page_now(ui_, t).kind == StageKind::Trim) view = trim_view(*project_, ui_);
+        if (ui_.page == PageId::Stage && ui_.trim_zoom && stage_page_now(ui_, t, stage_instrument(*project_, t)).kind == StageKind::Trim) view = trim_view(*project_, ui_);
         out.detail_from = out.detail_to = 0;
         uint8_t* const sides[2] = {out.detail_sides[0].data(), out.detail_sides[1].data()};
         if (view.width() && slot < sample_slots && library_->detail(slot, view.from, view.to, out.detail.data(), unsigned(out.detail.size()), sides)) {

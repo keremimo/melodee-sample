@@ -200,6 +200,9 @@ void Context::load_file(const std::string& path, const std::string& name, bool n
     if (project.samples[size_t(slot)].instrument()) { // played on keys: held while held, no region of its own
         sound.play = PadPlay::Gate; sound.decay = 100; sound.sustain = 100; sound.mono = false; // Poly: chords on Keys
         sound.loop = false; sound.warp = warp_off; sound.beats = 0;
+        const PadSound fresh; // its zones are its layers: the pad's own layers go
+        sound.layers = fresh.layers; sound.low_velocity = fresh.low_velocity; sound.high_velocity = fresh.high_velocity;
+        sound.layer_play = fresh.layer_play;
         landing_pads.push_back({ui.track, uint8_t(kit), uint16_t(slot)});
     }
     edit.what = pad_text("Load", unsigned(kit));

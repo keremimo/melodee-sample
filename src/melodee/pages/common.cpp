@@ -767,7 +767,7 @@ void play_soft(Context& c, int key) {
     // Stage on that section: its first page, or its own kept when it was the one open (as Sample held's keys).
     const auto& t = c.track();
     c.open(PageId::Stage);
-    if (t.used() && stage_has(stage_groups(t.engine), unsigned(key) % 3) && stage_at(c.ui, t).group != unsigned(key) % 3)
+    if (t.used() && stage_has(stage_groups(t.engine), unsigned(key) % 3) && stage_at(c.ui, t, stage_instrument(c.project, t)).group != unsigned(key) % 3)
         stage_go(c.ui, unsigned(key) % 3, 0);
 }
 

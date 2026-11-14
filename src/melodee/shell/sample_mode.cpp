@@ -52,10 +52,10 @@ bool sample_key(Context& c, unsigned key) {
     if (!stage_has(stage_groups(t.engine), key)) return true;
     if (ui.page != PageId::Stage) {
         c.open(PageId::Stage);
-        if (stage_at(ui, t).group != key % 3) stage_go(ui, key % 3, 0); // the section's first page; its own, kept, when it was the one open
+        if (stage_at(ui, t, stage_instrument(c.project, t)).group != key % 3) stage_go(ui, key % 3, 0); // the section's first page; its own, kept, when it was the one open
         return true;
     }
-    stage_press(ui, t, key);
+    stage_press(ui, t, key, stage_instrument(c.project, t));
     return true;
 }
 

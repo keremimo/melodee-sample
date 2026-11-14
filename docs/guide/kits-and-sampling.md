@@ -36,7 +36,8 @@ Stage to go back to **TRIM**. Press **−** / **+** to change the bank.
 A stereo sample's waveform shows both sides, left above right, on every
 Stage page and on Chop.
 
-**LAYERS**: up to four samples on one pad.
+**LAYERS**: up to four samples on one pad. A pad with a sampled instrument
+has no **LAYERS** page (see [Sampled instruments](#sampled-instruments)).
 
 ![LAYERS](../images/screens/stagekitlayers.png)
 
@@ -165,6 +166,10 @@ instrument's key and velocity zones over a keyboard. The key you play
 selects the zone. **K1** selects a zone, **K2** tunes it and **K3** sets its
 level, for this pad only. If the instrument asks for something Melodee does
 not play, it is named on this page.
+
+An instrument has its velocity layers in its zones, so an instrument pad has
+no **LAYERS** page: **B1** steps through **ZONES**, **TUNE** and **AMP ENV**.
+Loading an instrument onto a pad removes the pad's layers.
 
 ![ZONES on an instrument](../images/screens/triminstrument.png)
 

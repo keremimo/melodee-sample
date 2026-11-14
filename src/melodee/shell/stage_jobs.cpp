@@ -55,7 +55,7 @@ void Context::stage_tick(uint32_t at) {
 void Context::stage_new() {
     auto& t = track();
     if (t.used()) return;
-    const auto& page = stage_page_now(ui, t);
+    const auto& page = stage_page_now(ui, t, false); // an empty track: no pad
     switch (page.kind) {
     case StageKind::NewSynth: {
         std::array<EngineKind, size_t(EngineKind::Count)> engines {};

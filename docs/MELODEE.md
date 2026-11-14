@@ -315,7 +315,7 @@ beat; the meters show the mix.
     (Push the next one; with none yet, Push opens the effect picker; Shift +
     Knob FX adds effects), all six slots drawn with their family glyphs.
   - **A kit**: Akai's pages on the last pad hit, B1 **TRIM →
-    LAYERS → TUNE → AMP ENV** (LAYERS the pad's four samples), B2 **PLAY → COLOUR → FOLLOW → CLOUD**, B3 **MIX → SENDS → FILTER →
+    LAYERS → TUNE → AMP ENV** (LAYERS the pad's four samples; on a pad holding an instrument **ZONES → TUNE → AMP ENV**), B2 **PLAY → COLOUR → FOLLOW → CLOUD**, B3 **MIX → SENDS → FILTER →
     FILT ENV → KIT FILT** (SENDS the last pad's own four, K2 its send, Shift + K2 KIT SEND the track's; the pads light by
     their send into the bus shown; the sampler pages keep the same groups, without SENDS): the pad's
     waveform with its volume on the left and pan on the right, chips for
@@ -1227,8 +1227,12 @@ the file holds, to the bit.
     with its sample's name, its offsets, and on the right its velocity range
     across 1–127 (K2 and K3 its ends) or, under Cycle and Random, a dot a
     layer with its own turn lit. The header pill says how a hit picks. A
-    pad playing an instrument (SFZ, keygroup) has its zones instead. Kept in
-    the file's `LAYR` section and bank files' `BLSM` / `BLYR`.
+    pad playing an instrument (SFZ, keygroup, an MPC drum pad read as one)
+    has no Layers page: its zones are its layers. Stage's B1 passes over
+    LAYERS there (a track left on it shows ZONES, and LAYERS again on a
+    sample pad), and loading an instrument onto a pad takes the pad's layers
+    off (one undo with the load). Kept in the file's `LAYR` section and
+    bank files' `BLSM` / `BLYR`.
   - Mix: K1 volume in dB (−inf, −74..+6) with its meter, K3 pan, Shift + K2
     kit volume.
   - Amp Env: attack, decay (One shot) or release (Note On), velocity

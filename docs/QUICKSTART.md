@@ -123,7 +123,8 @@ pad you hit.
 
 ![Stage on a kit: TRIM](images/screens/trim.png)
 
-- **B1** cycles **TRIM**, **LAYERS**, **TUNE** and **AMP ENV**.
+- **B1** cycles **TRIM**, **LAYERS**, **TUNE** and **AMP ENV** (on a sampled
+  instrument: **ZONES**, **TUNE** and **AMP ENV**).
 - **B2** cycles **PLAY**, **COLOUR**, **FOLLOW** and **CLOUD**.
 - **B3** cycles **MIX**, **SENDS**, **FILTER**, **FILT ENV** and **KIT FILT**.
 

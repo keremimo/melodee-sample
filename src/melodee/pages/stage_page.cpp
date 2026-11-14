@@ -494,12 +494,7 @@ void layers_picture(Paint& p, const Snapshot& s) {
 }
 
 // A kit whose last pad holds a multisampled instrument (round 3 "instrument C": its TRIM is ZONES).
-bool instrument_pad(const Snapshot& s) {
-    const auto& t = s.track();
-    if (t.engine != EngineKind::Sampler) return false;
-    const auto& pad = t.pads[t.last_pad % sampler_pads];
-    return pad.used() && s.project.samples[pad.sample % sample_slots].instrument();
-}
+bool instrument_pad(const Snapshot& s) { return stage_instrument(s.project, s.track()); }
 
 // How the pad's layers play, as an LED-less pill in the header (Shift + K1 turns it).
 HeaderItem layers_pill(const Snapshot& s) {
@@ -896,7 +891,8 @@ bool plugin_has_presets(const Snapshot& s);
 ui::SoftKeys stage_keys(const Snapshot& s) {
     const auto& t = s.track();
     const auto& g = stage_groups(t.engine);
-    auto at = stage_at(s.ui, t);
+    const bool instrument = instrument_pad(s);
+    auto at = stage_at(s.ui, t, instrument);
     std::array<juce::String, 3> labels;
     SoftKeys keys {labels, int(at.group), colour_of(s)};
     for (unsigned n = 0; n < 3; ++n) {
@@ -904,9 +900,10 @@ ui::SoftKeys stage_keys(const Snapshot& s) {
         unsigned sub = n == at.group ? at.sub : 0;
         keys.labels[n] = stage_page_at(t, n, sub).key;
         if (stage_page_at(t, n, sub).kind == StageKind::PluginSound && !plugin_has_presets(s)) keys.labels[n] = "PLUG-IN"; // its face
-        if (stage_page_at(t, n, sub).kind == StageKind::Trim && instrument_pad(s)) keys.labels[n] = "ZONES"; // round 3 "instrument C"
-        keys.dots[n] = uint8_t(stage_count(g, n) > 1 ? stage_count(g, n) : 0);
-        keys.dot_at[n] = uint8_t(sub);
+        if (stage_page_at(t, n, sub).kind == StageKind::Trim && instrument) keys.labels[n] = "ZONES"; // round 3 "instrument C"
+        const unsigned shown = stage_shown(g, n, instrument); // an instrument pad's B1: no LAYERS, three dots
+        keys.dots[n] = uint8_t(shown > 1 ? shown : 0);
+        keys.dot_at[n] = uint8_t(stage_shown_at(g, n, sub, instrument));
     }
     return keys;
 }
@@ -988,7 +985,7 @@ HeaderItem kit_pill(const Snapshot& s) {
 
 void draw(Paint& p, const Snapshot& s) {
     const auto& t = s.track();
-    const auto& page = stage_page_now(s.ui, t);
+    const auto& page = stage_page_now(s.ui, t, instrument_pad(s));
     auto c = colour_of(s);
     Header h = header_of(s);
     bool kit_sends = page.kind == StageKind::Sends && t.engine == EngineKind::Sampler; // the last pad's own sends
@@ -1056,14 +1053,13 @@ void draw(Paint& p, const Snapshot& s) {
 }
 
 void soft(Context& c, int key) {
-    const auto& page = stage_page_now(c.ui, c.track());
+    const bool zones = stage_instrument(c.project, c.track()); // ZONES: no Trim jobs, no LAYERS
+    const auto& page = stage_page_now(c.ui, c.track(), zones);
     if (c.ui.shift && c.frozen(c.ui.track) && page.picture != StagePicture::Mix && page.picture != StagePicture::Sends
         && page.picture != StagePicture::Colours) {
         if (key == 2) c.deep_freeze(c.ui.track); // freeze plan F2d
         return;
     }
-    const auto& last = c.track().pads[c.track().last_pad % sampler_pads];
-    const bool zones = last.used() && c.project.samples[last.sample % sample_slots].instrument(); // ZONES: no Trim jobs
     if (c.ui.shift && page.kind == StageKind::Trim && c.track().engine == EngineKind::Sampler && !zones) {
         if (key == 0) c.toggle_loop_lock(); // Shift + B1, as on the MPC's Trim
         if (key == 1) c.normalize();        // Shift + B2
@@ -1080,11 +1076,11 @@ void soft(Context& c, int key) {
         return;
     }
     if (stage_opens_edit(c.track(), unsigned(key))) { c.open(PageId::Edit); return; } // a MIDI track's B3 EDIT
-    stage_press(c.ui, c.track(), unsigned(key));
+    stage_press(c.ui, c.track(), unsigned(key), zones);
 }
 
 void wheel(Context& c, int delta) {
-    const auto& page = stage_page_now(c.ui, c.track());
+    const auto& page = stage_page_now(c.ui, c.track(), stage_instrument(c.project, c.track()));
     auto cards = page_bindings(c.project, c.ui, c.pattern(), false);
     if (page.kind == StageKind::Preset) { // the sounds, one a detent
         if (cards[0].kind == Binding::Kind::StageSound) c.preset_turn(cards[0].value + delta);
@@ -1107,7 +1103,7 @@ void wheel(Context& c, int delta) {
 
 void push(Context& c) {
     auto& t = c.track();
-    const auto& page = stage_page_now(c.ui, t);
+    const auto& page = stage_page_now(c.ui, t, stage_instrument(c.project, t));
     if (!t.used()) { make_new_track(c, NewChoice(c.ui.new_pick % new_choice_count)); return; } // the card in the middle
     if (page.kind == StageKind::Preset) { c.stage_tick(UINT32_MAX); c.open(PageId::Sounds); return; }
     if (page.kind == StageKind::Fx && !t.fx.count()) { // nothing yet: the picker on the track's chain, to add the first
@@ -1141,7 +1137,7 @@ void push(Context& c) {
 
 // Minus / Plus: a synth's octave; a kit's bank, as on its pages.
 void nudge(Context& c, int way) {
-    if (stage_page_now(c.ui, c.track()).kind == StageKind::PluginEdit) { plugin_rows(c, way); return; } // as Edit's
+    if (stage_page_now(c.ui, c.track(), false).kind == StageKind::PluginEdit) { plugin_rows(c, way); return; } // as Edit's (a plug-in track)
     if (c.track().engine == EngineKind::Sampler) sampler_bank(c, way);
     else octave(c, way);
 }

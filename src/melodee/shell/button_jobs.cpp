@@ -56,9 +56,9 @@ bool button_has_shift_job(const Project& project, const UiState& ui, SurfaceButt
         if (!kit) return false;
         if (ui.page == PageId::Chop || ui.page == PageId::LayersPage) return true;
         const auto& tr = project.tracks[ui.track % track_count];
-        auto kind = ui.page == PageId::Stage ? stage_page_now(ui, tr).kind : StageKind::Params;
-        const auto& last = tr.pads[tr.last_pad % sampler_pads];
-        if (kind == StageKind::Trim && last.used() && project.samples[last.sample % sample_slots].instrument()) return false; // ZONES (round 3)
+        const bool instrument = stage_instrument(project, tr);
+        auto kind = ui.page == PageId::Stage ? stage_page_now(ui, tr, instrument).kind : StageKind::Params;
+        if (kind == StageKind::Trim && instrument) return false; // ZONES (round 3)
         return kind == StageKind::Trim || kind == StageKind::Layers;
     }
     case B::TopRight: return (ui.page == PageId::Chop && kit) || ui.page == PageId::Tracks || ui.page == PageId::Punch || ui.page == PageId::Patterns || ui.page == PageId::StepEdit; // Merge; COPY on Tracks; QUANTIZE on Pad FX; VARY on Patterns; INSERT on Step Edit

@@ -262,7 +262,7 @@ bool sends_lit(const PadScene& s) {
     const auto& t = selected(s);
     if (t.engine != EngineKind::Sampler || levels_on(t)) return false;
     if (mix_sends_pads(s.ui, true)) return true; // the MIX hub's SENDS, on the kit's pads
-    return s.ui.page == PageId::Stage && stage_page_now(s.ui, t).kind == StageKind::Sends;
+    return s.ui.page == PageId::Stage && stage_page_now(s.ui, t, stage_instrument(s.project, t)).kind == StageKind::Sends;
 }
 Look sends_look(const PadScene& s, const Heard& snd, unsigned pad) {
     const auto& t = selected(s);

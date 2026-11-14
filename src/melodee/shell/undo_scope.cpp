@@ -136,7 +136,7 @@ UndoScope press_scope(const Project& project, const UiState& ui, SurfaceButton b
     case PageId::Roll: case PageId::StepEdit: return pattern_scope(project, ui); // notes written, toggled, moved
     case PageId::Stage: { // a kit's TRIM: Shift + B1 Loop Lock and Shift + B2 Normalize, as on the old Trim
         const auto& t = project.tracks[ui.track % track_count];
-        bool kit_page = stage_kit_page(stage_page_now(ui, t).kind) != PageId::Count;
+        bool kit_page = stage_kit_page(stage_page_now(ui, t, stage_instrument(project, t)).kind) != PageId::Count;
         return kit_page && ui.shift && !pad ? pad_scope(ui, project) : UndoScope {};
     }
     default: return {};
