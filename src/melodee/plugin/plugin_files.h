@@ -51,8 +51,9 @@ struct PluginFile {
 };
 
 // The folder's entries; an unreadable folder lists nothing. A .zip left there (one unzip_plugins() could not
-// open) lists dimmed.
-std::vector<PluginFile> list_plugins(const std::string& folder);
+// open) lists dimmed; with `zips` false (a folder outside Melodee/Plugins, where zips are not unzipped) it is
+// left out. System Volume Information is left out too.
+std::vector<PluginFile> list_plugins(const std::string& folder, bool zips = true);
 // Release downloads copied in as they came: each .zip in `folder` unzipped beside it (into a folder named as
 // the zip when its entries do not share one top folder; Mac `__MACOSX` and `._` files left out), and the zip
 // deleted once every entry is out. One that will not open or write stays. Run on the rack's thread before a

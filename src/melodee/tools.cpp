@@ -606,7 +606,7 @@ void looper_sheet(Snapshot& s, unsigned l) {
 // Plug-ins (docs/MELODEE.md): a Plugins folder as the picker lists it, and a PLUGIN track's panel as the rack fills it.
 void plugin_listing(Snapshot& s) {
     auto& v = s.plugins;
-    v.root = "/media/card/Melodee/Plugins"; v.folder = v.root; v.top = true;
+    v.root = "/media/card/Melodee/Plugins"; v.folder = v.root; v.top = false; v.home = true; // above it: Melodee, then the card's top
     auto add = [&](const char* name, bool folder, PluginFormat format, int8_t instrument, const char* why = "") {
         PluginFile f;
         f.name = name; f.folder = folder; f.format = format; f.instrument = instrument; f.why = why;
@@ -900,7 +900,7 @@ const Preview previews[] {
     {"pluginsbundle", [](Shell&, Snapshot& s) { // a bundle opened for track 1's third slot: a row a plug-in
          s.ui.page = PageId::Plugins; s.ui.plugin_target = UiState::PluginTarget::Effect; s.ui.plugin_chain = 0; s.ui.plugin_slot = 2;
          auto& v = s.plugins;
-         v.root = "/media/card/Melodee/Plugins"; v.folder = v.root + "/Effects/Effect Pack.vst3"; v.top = false;
+         v.root = "/media/card/Melodee/Plugins"; v.folder = v.root + "/Effects/Effect Pack.vst3"; v.top = false; v.home = false;
          const char* names[] {"Compressor Mono", "Compressor Stereo", "Delay Stereo", "Equalizer x16 Stereo",
                               "Gate Stereo", "Limiter Stereo", "Reverb Stereo", "Trigger Stereo"};
          int32_t id = 1;

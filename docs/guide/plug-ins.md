@@ -12,6 +12,10 @@ read a `Plugins` folder at the top level of the card: move its contents into
 `Melodee/Plugins`. Projects saved with an earlier version find their
 plug-ins there.
 
+The plug-in picker opens on `Melodee/Plugins`. Press **B1** (**BACK**) to go
+up a folder, as far as the top of the card, to load a plug-in kept anywhere
+else on the card. At the top of the card **B1** reads **CANCEL**.
+
 Melodee loads plug-ins built for the MPC's ARM processor:
 
 - VST3 bundles with a `Contents/aarch64-linux/` build.
@@ -43,7 +47,8 @@ downloads: [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/relea
 `-mpc-sample.zip` and copy it into `Melodee/Plugins`. The next time the plug-in
 picker opens, Melodee unzips it, deletes the zip and lists the plug-in folder
 (for example `Ellic Studio - VST - Melodee Poly`). A zip that cannot be
-unzipped stays, dimmed, with **Won't unzip**.
+unzipped stays, dimmed, with **Won't unzip**. Zips in other folders on the
+card are left as they are.
 
 To install a plug-in without moving the card, connect the MPC to a computer
 with USB-C and open **http://melodee.local** (or **http://192.168.155.1**) while Melodee runs. On

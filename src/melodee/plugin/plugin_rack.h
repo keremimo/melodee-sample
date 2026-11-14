@@ -89,14 +89,16 @@ public:
     void drum_voices(unsigned entry, DrumVoices& out) const;
 
     // The picker. set_card(): the card's top folder ("" none), from the sample
-    // library; the picker starts in its Plugins folder.
+    // library; the picker starts in its Plugins folder and goes up as far as
+    // the card's top, so a plug-in anywhere on the card can be picked.
     void set_card(const std::string& top);
     void browse(const std::string& folder); // "" the Plugins folder itself
     void browse_up();
     struct View {
         std::string root;   // the card's Melodee/Plugins folder; empty: no card
         std::string folder; // the folder listed
-        bool top = true;    // nothing above it to go back to
+        bool top = true;    // the card's top: nothing above it to go back to
+        bool home = true;   // the Plugins folder itself
         int came_from = -1; // after going up: the row of the folder it came out of
         std::vector<PluginFile> files;
     };

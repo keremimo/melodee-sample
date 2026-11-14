@@ -1850,7 +1850,11 @@ it is moved, or from the old folder while it is still there (`card_plugin_path()
   only"). Most commercial plug-ins have no Linux ARM build.
 - **An instrument.** PLUGIN is an engine like the others: SYNTH on Stage,
   or K1 on Sounds, then the PLUG-INS picker opens on the card's folder,
-  and after that on the folder and row it was left on.
+  and after that on the folder and row it was left on. B1 BACK goes up a
+  folder, past Melodee/Plugins as far as the card's top (header CARD, B1
+  CANCEL there; autorun and sample-base not listed), so a plug-in anywhere
+  on the card loads. Release zips are unzipped only inside Melodee/Plugins;
+  elsewhere a zip is not listed.
   Sample Select on a PLUGIN track opens the picker again. Stage's B1 EDIT
   (or Edit) shows the plug-in: the share of each audio block it takes in the
   header, and its parameters as a list, each name on one full line with its

@@ -210,6 +210,13 @@ fs::path plugin_home(const std::string& card_top) {
     return fs::path(card_top) / "Melodee" / "Plugin Data";
 }
 
+// Whether `inside` is `folder` or in it, part by part (so /media/card2 is not in /media/card).
+bool under(const fs::path& folder, const fs::path& inside) {
+    if (folder.empty()) return false;
+    auto rel = inside.lexically_normal().lexically_relative(folder.lexically_normal());
+    return !rel.empty() && *rel.begin() != "..";
+}
+
 } // namespace
 
 // Melodee's transport as a plug-in hears it (plugin/host_time.h): set before each of its processBlocks.
@@ -783,19 +790,22 @@ void PluginRack::run() {
 }
 
 void PluginRack::list(const std::string& at, int) {
-    std::string top;
+    std::string top, card;
     {
         std::lock_guard<std::mutex> held(lock);
         top = root;
+        card = card_top;
     }
     View v;
     v.root = top;
     if (!top.empty()) {
+        // Anywhere on the card; a folder off it lists the Plugins folder.
         std::error_code e;
-        auto canonical_top = fs::weakly_canonical(top, e), canonical_at = fs::weakly_canonical(at.empty() ? top : at, e);
-        bool inside = canonical_at.string().rfind(canonical_top.string(), 0) == 0;
-        v.folder = inside ? canonical_at.string() : canonical_top.string();
-        v.top = v.folder == canonical_top.string();
+        auto canonical_card = fs::weakly_canonical(card, e), canonical_top = fs::weakly_canonical(top, e),
+             canonical_at = fs::weakly_canonical(at.empty() ? top : at, e);
+        v.folder = (under(canonical_card, canonical_at) ? canonical_at : canonical_top).string();
+        v.top = v.folder == canonical_card.string();
+        v.home = v.folder == canonical_top.string();
         auto here = describe_plugin(v.folder);
         if (!here.folder && here.loadable()) { // a bundle of several, opened: a row for each plug-in in it
             Known found;
@@ -817,8 +827,16 @@ void PluginRack::list(const std::string& at, int) {
                 return juce::String(a.name).compareNatural(juce::String(b.name)) < 0;
             });
         } else {
-            unzip_plugins(v.folder); // a release zip copied as it came: its plug-in folder takes its place
-            v.files = list_plugins(v.folder);
+            // A release zip copied as it came into the Plugins folder: its plug-in folder takes its place. A zip
+            // elsewhere on the card is someone's own, left as it is and not listed.
+            bool plugins_here = under(canonical_top, v.folder);
+            if (plugins_here) unzip_plugins(v.folder);
+            v.files = list_plugins(v.folder, plugins_here);
+            if (v.top) // what starts the app and the base's own files: no plug-ins, and libraries not to open
+                v.files.erase(std::remove_if(v.files.begin(), v.files.end(), [](const PluginFile& f) {
+                    auto name = fs::path(f.path).filename().string();
+                    return name == "autorun" || name == "sample-base";
+                }), v.files.end());
         }
     }
     {

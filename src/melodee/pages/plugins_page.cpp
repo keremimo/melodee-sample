@@ -9,8 +9,9 @@
 // one row with how many, and Push opens it: a row for each. One that cannot
 // run here says why: a Windows or Mac download, a PC build. The wheel and Minus / Plus move, Push opens a folder
 // or loads the plug-in (on the track, or into the slot) and goes back; B1
-// goes back out of a folder, or at the top back where it came from. The pads
-// play the track.
+// goes up a folder, past the Plugins folder as far as the card's top (a
+// plug-in anywhere on the card can be picked), and there back where it came
+// from. The pads play the track.
 #include "melodee/pages/common.h"
 #include "melodee/pages/pages.h"
 #include "melodee/plugin/plugin_rack.h"
@@ -48,8 +49,8 @@ void draw(Paint& p, const Snapshot& s) {
     auto c = s.ui.plugin_target == UiState::PluginTarget::Instrument ? colour_of(s) : colour::text;
     const auto& v = s.plugins;
     Header h = header_of(s);
-    juce::String folder = v.root.empty() ? juce::String("NO CARD")
-                        : v.top ? juce::String("PLUGINS") : juce::String(std::filesystem::path(v.folder).stem().string());
+    juce::String folder = v.root.empty() ? juce::String("NO CARD") : v.home ? juce::String("PLUGINS")
+                        : v.top ? juce::String("CARD") : juce::String(std::filesystem::path(v.folder).stem().string());
     h.left.push_back(chip(target_text(s), c));
     h.left.push_back(pill(folder + juce::String::fromUTF8(" \xc2\xb7 ") + juce::String(int(v.files.size())), c));
     if (s.ui.plugin_target == UiState::PluginTarget::Instrument) h.right.push_back(tag_of(s, s.ui.track));
@@ -58,7 +59,7 @@ void draw(Paint& p, const Snapshot& s) {
         float mid = zone::width / 2.0f, y = zone::picture_y + 40;
         icon(p, v.root.empty() ? Icon::Card : Icon::Folder, mid - 14, y, 28, colour::dim, 1.4f);
         p.text(v.root.empty() ? "NO CARD" : "NO PLUG-INS", 0, y + 36, zone::width, 14, caps_text(colour::dim), juce::Justification::centred);
-        if (!v.root.empty() && v.top) // where they go: unzipped plug-in folders in the card's Melodee/Plugins folder
+        if (!v.root.empty() && v.home) // where they go: unzipped plug-in folders in the card's Melodee/Plugins folder
             p.text(juce::String::fromUTF8("Card \xe2\x80\xba Melodee \xe2\x80\xba Plugins"), 0, y + 54, zone::width, 14, plain(colour::dim, type::small), juce::Justification::centred);
         return;
     }

@@ -224,14 +224,15 @@ PluginFile describe_plugin(const std::string& path) {
     return f;
 }
 
-std::vector<PluginFile> list_plugins(const std::string& folder) {
+std::vector<PluginFile> list_plugins(const std::string& folder, bool zips) {
     std::vector<PluginFile> out;
     std::error_code error;
     for (const auto& entry : fs::directory_iterator(folder, error)) {
         auto name = entry.path().filename().string();
-        if (name.empty() || name[0] == '.') continue;
+        if (name.empty() || name[0] == '.' || name == "System Volume Information") continue;
         bool dir = entry.is_directory(error);
         if (!dir && is_zip(name)) { // one unzip_plugins() could not unzip: listed dimmed
+            if (!zips) continue;
             PluginFile zip;
             zip.path = entry.path().string();
             zip.name = entry.path().stem().string();
