@@ -109,6 +109,7 @@ private:
     void process_extra(float* left, float* right, unsigned frames);
     template <EffectKind Kind> void extra_frames_of(float* left, float* right, unsigned frames);
     void reverb(float& l, float& r);
+    void reverb_block(float* l, float* r, unsigned frames); // reverb() for a run of up to 128 frames, a stage at a time
     template <EffectKind Kind> void frames_of(float* left, float* right, unsigned frames, const float* heard_l, const float* heard_r);
     float delayed(const float* line, unsigned at, float back) const; // fractional read behind `at`
     // SYNC (roadmap P4): the delay's time this frame, gliding to the note value's at the clock's tempo (a tempo change

@@ -274,6 +274,54 @@ void Effect::reverb(float& l, float& r) {
     l = out[0]; r = out[1];
 }
 
+// reverb() for a whole run of frames, a stage at a time: the predelay for every frame, then each comb line over
+// them all, then each allpass. Every line runs on its own state alone, and each frame's sums are added in reverb()'s
+// order, so a frame comes out as reverb() makes it; a line read along for the run, not one frame of eight lines at once.
+void Effect::reverb_block(float* l, float* r, unsigned frames) {
+    float* pre = memory;
+    std::array<float, 128> in_l, in_r;
+    for (unsigned f = 0; f < frames; ++f) {
+        const unsigned at = write + f;
+        pre[at % pre_length] = l[f]; pre[pre_length + at % pre_length] = r[f];
+        unsigned back = (at + pre_length - predelay) % pre_length;
+        in_l[f] = pre[back] * 0.03f; in_r[f] = pre[pre_length + back] * 0.03f;
+        l[f] = 0; r[f] = 0;
+    }
+    for (unsigned side = 0; side < 2; ++side) {
+        const float* in = side ? in_r.data() : in_l.data();
+        float* out = side ? r : l;
+        for (unsigned n = side * 4; n < side * 4 + 4; ++n) {
+            float* line = memory + comb_base + n * comb_room;
+            unsigned at = comb_at[n];
+            const unsigned length = comb_length[n];
+            float filter = comb_filter[n];
+            for (unsigned f = 0; f < frames; ++f) {
+                float y = line[at];
+                filter = y * (1 - damp) + filter * damp;
+                line[at] = in[f] + filter * feedback;
+                if (++at >= length) at = 0;
+                out[f] += y;
+            }
+            comb_at[n] = at;
+            comb_filter[n] = filter;
+        }
+        for (unsigned n = side * 2; n < side * 2 + 2; ++n) {
+            float* line = memory + pass_base + n * pass_room;
+            unsigned at = pass_at[n];
+            const unsigned length = pass_length[n];
+            for (unsigned f = 0; f < frames; ++f) {
+                float buffered = line[at];
+                float y = -out[f] + buffered;
+                line[at] = out[f] + buffered * 0.5f;
+                if (++at >= length) at = 0;
+                out[f] = y;
+            }
+            pass_at[n] = at;
+        }
+    }
+    write += frames;
+}
+
 float Effect::sync_back(float limit) {
     int index = delay_sync_param(current);
     double quarters = index >= 0 ? delay_sync_quarters(p[size_t(index)]) : 0;
@@ -288,6 +336,22 @@ float Effect::sync_back(float limit) {
 // own case alone.
 template <EffectKind Kind>
 void Effect::frames_of(float* left, float* right, unsigned frames, const float* heard_l, const float* heard_r) {
+    if constexpr (Kind == K::Room || Kind == K::Reverb || Kind == K::Plate) { // the reverb a stage at a time (reverb_block())
+        std::array<float, 128> wet_l, wet_r;
+        for (unsigned from = 0; from < frames; from += 128) {
+            const unsigned n = std::min(frames - from, 128u);
+            std::copy(left + from, left + from + n, wet_l.begin());
+            std::copy(right + from, right + from + n, wet_r.begin());
+            reverb_block(wet_l.data(), wet_r.data(), n);
+            for (unsigned f = 0; f < n; ++f) {
+                float l = left[from + f], r = right[from + f];
+                float m = blend();
+                left[from + f] = l + (wet_l[f] - l) * m;
+                right[from + f] = r + (wet_r[f] - r) * m;
+            }
+        }
+        return;
+    }
     float* line_l = memory;
     float* line_r = memory ? memory + DelayPool::half : nullptr;
     for (unsigned f = 0; f < frames; ++f) {
