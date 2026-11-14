@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/host_time.h"
 #include "melodee/plugin/plugin_files.h"
 
 #include <clap/clap.h>
@@ -498,10 +499,17 @@ void ClapInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         auto& t = e->transport;
         t = {};
         t.header = { sizeof (clap_event_transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0 };
-        t.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_TIME_SIGNATURE | CLAP_TRANSPORT_IS_PLAYING;
-        t.tempo = 120.0;
-        t.song_pos_beats = (clap_beattime) std::llround ((double) steadyTime / rate * 2.0 * (double) CLAP_BEATTIME_FACTOR);
-        t.tsig_num = t.tsig_denom = 4;
+        const auto time = hostTime (getPlayHead());
+        t.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_SECONDS_TIMELINE
+                | CLAP_TRANSPORT_HAS_TIME_SIGNATURE | (time.playing ? (uint32_t) CLAP_TRANSPORT_IS_PLAYING : 0u);
+        t.tempo = time.bpm;
+        t.song_pos_beats = (clap_beattime) std::llround (time.ppq * (double) CLAP_BEATTIME_FACTOR);
+        t.song_pos_seconds = (clap_sectime) std::llround (time.seconds * (double) CLAP_SECTIME_FACTOR);
+        t.bar_start = (clap_beattime) std::llround (time.barStart * (double) CLAP_BEATTIME_FACTOR);
+        const double barLength = 4.0 * time.numerator / time.denominator;
+        t.bar_number = (int32_t) std::floor (time.barStart / barLength + 0.5);
+        t.tsig_num = (uint16_t) time.numerator;
+        t.tsig_denom = (uint16_t) time.denominator;
     }
     if (anyPending.exchange (false, std::memory_order_acq_rel))
         for (auto* p : parameters)

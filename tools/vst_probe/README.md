@@ -40,6 +40,10 @@ presets and settings there, and the MPC's own `/root` is read only.
 10 s, processing silent blocks) until the plug-in's state changes, so
 plug-ins that load a preset's files in the background are timed with it
 loaded. The program list (first 16 named) is printed with the parameters.
+`--transport` sends no notes or input; the host's transport (120 BPM, 4/4)
+is stopped for the first third of the run, plays from the top for the
+second and is stopped for the last, and the level of each third is printed.
+A plug-in with its own sequencer (LXRXXL BAZZLINE) is silent while stopped.
 
 ## Findings (2026-11-11, AC50 1.3.0.12, Cortex-A55 x4, 2 GB)
 

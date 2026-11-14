@@ -13,6 +13,7 @@ CPPFLAGS := -Isrc -I$(JUCE) -I$(JUCE)/juce_audio_processors_headless/format_type
 CXXFLAGS := -std=c++17 -O2 -pthread -MMD -MP
 JUCE_OBJECTS := build/obj/juce_core.o build/obj/juce_core_CompilationTime.o build/obj/juce_core_zlib.o \
     build/obj/juce_events.o build/obj/juce_audio_basics.o build/obj/juce_audio_processors_headless.o \
+    build/obj/juce_audio_processors_headless_lv2_libs.o \
     build/obj/melodee/plugin/vst2_instance.o build/obj/melodee/plugin/vst2_bridge_instance.o
 OBJECTS := $(OUT)/obj/vst_probe.o
 

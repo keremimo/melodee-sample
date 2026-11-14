@@ -10,13 +10,17 @@
 //       library), and the plug-ins inside (instrument or effect, buses).
 //   vst_probe run BUNDLE_OR_SO [--index N] [--rate HZ] [--block FRAMES]
 //                        [--seconds S] [--instances N] [--wav OUT.wav]
-//                        [--program N] [--home DIR]
+//                        [--program N] [--home DIR] [--transport]
 //       Loads the plug-in (with $HOME set to DIR, where a plug-in looks for
 //       its presets; the MPC's own is read only), switches to program N and
 //       waits for its state to change, plays chords into an instrument or noise bursts
 //       and a tone into an effect, times every processBlock against the
 //       block's real-time budget, round-trips its state and writes what it
-//       played to a WAV file.
+//       played to a WAV file. With --transport it sends no notes or input
+//       and plays the host's transport instead (120 BPM, 4/4): stopped for
+//       the first third, playing from the top for the second, stopped again
+//       for the last, with the level of each third (a plug-in with its own
+//       sequencer is silent when stopped).
 //
 // It opens no audio device, so it runs beside Melodee without taking ALSA.
 // The main thread is JUCE's message thread (VST3 creation and the Linux
@@ -204,6 +208,27 @@ struct RunOptions
     int instances = 1;
     int program = -1;  // -1 leaves the plug-in's own default
     File wav;
+    bool transport = false;
+};
+
+// --transport: the host's play head, moved on each block.
+class ProbeClock final : public AudioPlayHead
+{
+public:
+    Optional<PositionInfo> getPosition() const override { return position; }
+    void set (bool playing, int64 samples, double rate)
+    {
+        const double seconds = (double) samples / rate, quarters = seconds * 2.0; // 120 BPM
+        position = {};
+        position.setIsPlaying (playing);
+        position.setBpm (120.0);
+        position.setTimeSignature (TimeSignature { 4, 4 });
+        position.setPpqPosition (quarters);
+        position.setPpqPositionOfLastBarStart (std::floor (quarters / 4.0) * 4.0);
+        position.setTimeInSamples (samples);
+        position.setTimeInSeconds (seconds);
+    }
+    PositionInfo position;
 };
 
 // 32-bit float stereo WAV, so no decoder module is needed.
@@ -366,6 +391,13 @@ int run (const RunOptions& options)
         extraMidi[p].ensureSize (4096);
     }
     const auto blocks = (int) std::ceil (options.seconds * options.rate / options.block);
+    ProbeClock clock;
+    clock.set (false, 0, options.rate);
+    if (options.transport)
+        for (auto& plugin : plugins)
+            plugin->setPlayHead (&clock);
+    double thirdSquares[3] = {};
+    int64 thirdSamples[3] = {}, songAt = 0;
     const auto beat = (int64) options.rate;  // one chord or burst a second
     const int chords[4][4] = { { 48, 52, 55, 60 }, { 45, 48, 52, 57 }, { 41, 45, 48, 53 }, { 43, 47, 50, 55 } };
     std::mt19937 noise (1);
@@ -383,7 +415,13 @@ int run (const RunOptions& options)
         const int64 start = (int64) b * options.block;
         buffer.clear();
         midi.clear();
-        if (description.isInstrument)
+        const int third = std::min (2, b * 3 / std::max (1, blocks));
+        if (options.transport)
+        {
+            clock.set (third == 1, songAt, options.rate);
+            songAt = third == 1 ? songAt + options.block : 0;
+        }
+        else if (description.isInstrument)
         {
             for (int64 s = start; s < start + options.block; ++s)
             {
@@ -435,6 +473,8 @@ int run (const RunOptions& options)
                     badSamples = true;
                 peak = std::max (peak, std::abs (v));
                 sumSquares += (double) v * v;
+                thirdSquares[third] += (double) v * v;
+                ++thirdSamples[third];
                 recorded.push_back (v);
             }
     }
@@ -461,6 +501,11 @@ int run (const RunOptions& options)
     std::printf ("  blocks over budget: %d of %d\n", overruns, (int) times.size());
     const auto rms = std::sqrt (sumSquares / std::max<size_t> (1, recorded.size()));
     std::printf ("output: peak %.3f, rms %.4f%s\n", peak, rms, badSamples ? ", NaN/Inf present" : "");
+    if (options.transport)
+    {
+        const auto level = [&] (int t) { return std::sqrt (thirdSquares[t] / (double) std::max<int64> (1, thirdSamples[t])); };
+        std::printf ("transport: rms stopped %.4f, playing %.4f, stopped again %.4f\n", level (0), level (1), level (2));
+    }
 
     checkState (first);
     if (auto* bridged = dynamic_cast<Vst2BridgeInstance*> (&first))
@@ -506,7 +551,7 @@ int usage()
     std::printf ("usage: vst_probe scan DIR_OR_BUNDLE\n"
                  "       vst_probe run BUNDLE [--index N] [--rate HZ] [--block FRAMES]\n"
                  "                            [--seconds S] [--instances N] [--wav OUT.wav]\n"
-                 "                            [--program N] [--home DIR]\n");
+                 "                            [--program N] [--home DIR] [--transport]\n");
     return 2;
 }
 
@@ -519,10 +564,17 @@ int dispatch (const StringArray& args)
 
     RunOptions options;
     options.bundle = File::getCurrentWorkingDirectory().getChildFile (args[1]);
-    for (int i = 2; i + 1 < args.size(); i += 2)
+    for (int i = 2; i < args.size(); ++i)
     {
         const auto& key = args[i];
-        const auto& value = args[i + 1];
+        if (key == "--transport")
+        {
+            options.transport = true;
+            continue;
+        }
+        if (i + 1 >= args.size())
+            return usage();
+        const auto& value = args[++i];
         if (key == "--index") options.index = value.getIntValue();
         else if (key == "--rate") options.rate = value.getDoubleValue();
         else if (key == "--block") options.block = value.getIntValue();

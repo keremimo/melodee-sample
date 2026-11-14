@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/plugin/vst2_bridge_instance.h"
 #include "melodee/plugin/vst2_abi.h"
+#include "melodee/plugin/host_time.h"
 
 #include <algorithm>
 #include <chrono>
@@ -314,6 +315,9 @@ void Vst2BridgeInstance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& m
     }
     shared->numEvents = count;
     shared->frames = (uint32_t) frames;
+    const auto time = hostTime (getPlayHead());
+    shared->time = { (double) time.samples, time.ppq, time.barStart, time.bpm,
+                     time.playing ? 1 : 0, time.numerator, time.denominator, 0 };
     for (int c = 0; c < info.numInputs; ++c)
     {
         if (c < buffer.getNumChannels())

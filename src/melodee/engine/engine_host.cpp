@@ -2431,6 +2431,19 @@ void EngineHost::render(int32_t* out, unsigned frames, float volume, const int32
     effect_clock_now = fx_clock; // this thread's effects hear this host's clock (a print host beside the live one)
     fx_clock->quarter = tick_length() * ticks_per_quarter;
     if (running) fx_clock->beats = (double(tick_now) - std::max(until_tick, 0.0) / tick_length()) / ticks_per_quarter;
+    // The transport plug-ins hear: playing once any count-in is over (when MIDI clock out starts too), at the song's
+    // place counted as Song Position is (Song: from the song's first bar), the tempo and the time signature.
+    fx_clock->bpm = tempo / 10.0;
+    fx_clock->sig_beats = std::max(1u, bar / std::max(beat, 1u));
+    fx_clock->sig_unit = std::max(1u, 4 * ticks_per_quarter / std::max(beat, 1u));
+    fx_clock->block = block_count;
+    fx_clock->playing = running && !count_left;
+    if (fx_clock->playing) {
+        unsigned bar_ticks = std::max(bar, 1u), in_bar = tick_now % bar_ticks;
+        // The next tick's bar: one on from song_bar_now when it starts a bar (bar_start() has not counted it yet).
+        double from = song_mode ? double(tick_now && !in_bar ? song_bar_now + 1 : song_bar_now) * bar_ticks + in_bar : double(tick_now);
+        fx_clock->song = std::max(0.0, (from - std::max(until_tick, 0.0) / tick_length()) / ticks_per_quarter);
+    }
     if (mods_on) run_modulators(frames); // roadmap P4: before the tracks' buffers are cleared (a follower hears the last block)
     // The arps' clock, at the block's start (within 3 ms of the beat).
     until_arp -= frames;

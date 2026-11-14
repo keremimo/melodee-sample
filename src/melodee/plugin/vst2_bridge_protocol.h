@@ -14,6 +14,7 @@
 // aarch64. `layoutSize` lets the bridge refuse a host built differently.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace bridge
@@ -29,7 +30,7 @@ enum class Command : uint32_t
     open,             // text: library path -> info, text: name, data: vendor
     setRateAndBlock,  // f0: rate, i0: block
     mains,            // i0: 1 on (and start), 0 off (and stop)
-    process,          // frames, events, audioIn -> audioOut
+    process,          // frames, events, time, audioIn -> audioOut
     getParameter,     // i0 -> f0
     setParameter,     // i0, f0
     parameterName,    // i0 -> text
@@ -56,6 +57,13 @@ struct Info
     int32_t initialDelay; // roadmap P4: the latency it reports, frames at its rate (kept when it is switched on)
 };
 
+// The host's transport at the start of a process block (vst2::setTime).
+struct Time
+{
+    double samplePos, ppqPos, barStartPos, tempo;
+    int32_t playing, numerator, denominator, unused;
+};
+
 struct Shared
 {
     uint32_t layoutSize;
@@ -66,12 +74,15 @@ struct Shared
     float f0;
     uint32_t frames, numEvents, dataSize;
     Info info;
+    Time time;
     Event events[maxEvents];
     char text[maxText];
     uint8_t data[maxData];
     float audioIn[maxChannels][maxFrames];
     float audioOut[maxChannels][maxFrames];
 };
+
+static_assert (offsetof (Shared, time) == 80, "Shared must lay out the same on armv7 and aarch64");
 
 // A sequence number is complete when the bridge has echoed it.
 inline uint32_t load (const uint32_t& word) { return __atomic_load_n (&word, __ATOMIC_ACQUIRE); }

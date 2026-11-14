@@ -9060,6 +9060,68 @@ void plugins() {
     CHECK(handed == 2);
 }
 
+// The transport plug-ins hear (engine/effects.h, EffectClock; the rack hands it on as each plug-in's play head):
+// stopped until Play, then where the song is in quarter notes from its top at the tempo; held where Stop left it;
+// stopped through a count-in and from the top once it is over. A plug-in with a sequencer of its own (LXRXXL
+// BAZZLINE) starts and stops with Melodee instead of playing from the moment it loads.
+struct ClockPlugin final : PluginRunner {
+    std::vector<EffectClock> heard;
+    void midi(uint8_t, uint8_t, uint8_t) override {}
+    void silence() override {}
+    void render(float*, float*, unsigned) override { heard.push_back(*effect_clock_now); }
+};
+
+void plugin_transport() {
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    project->tracks[0].engine = EngineKind::Plugin;
+    project->tracks[0].plugin = 3;
+    EngineHost host;
+    host.load(*project, *bank);
+    ClockPlugin plugin;
+    CHECK(host.offer_plugin(3, &plugin));
+    std::vector<int32_t> out(256);
+    auto play = [&](unsigned blocks) { for (unsigned n = 0; n < blocks; ++n) host.render(out.data(), 128, 1); };
+    const double block = 128 / 22050.0; // quarter notes a block at 120 BPM
+    play(4);
+    CHECK(!plugin.heard.empty());
+    for (const auto& c : plugin.heard) CHECK(!c.playing);
+    CHECK(plugin.heard.back().bpm == 120 && plugin.heard.back().sig_beats == 4 && plugin.heard.back().sig_unit == 4);
+    CHECK(plugin.heard.back().block != plugin.heard.front().block);
+
+    host.send({Command::Type::Play});
+    plugin.heard.clear();
+    play(172);
+    CHECK(plugin.heard.front().playing && std::fabs(plugin.heard.front().song) < 1e-6);
+    double at = plugin.heard.back().song;
+    CHECK(plugin.heard.back().playing && std::fabs(at - 171 * block) < 1e-3);
+    for (size_t n = 1; n < plugin.heard.size(); ++n) CHECK(plugin.heard[n].song >= plugin.heard[n - 1].song);
+
+    host.send({Command::Type::Stop});
+    plugin.heard.clear();
+    play(3);
+    for (const auto& c : plugin.heard) CHECK(!c.playing && c.song == at);
+
+    host.send({Command::Type::Play, 1}); // a bar's count-in: 88200 frames at 120 BPM
+    plugin.heard.clear();
+    play(680);
+    for (const auto& c : plugin.heard) CHECK(!c.playing);
+    plugin.heard.clear();
+    play(20);
+    auto first = std::find_if(plugin.heard.begin(), plugin.heard.end(), [](const EffectClock& c) { return c.playing; });
+    CHECK(first != plugin.heard.end() && first->song < 2 * block);
+    CHECK(plugin.heard.back().playing && plugin.heard.back().song > 0);
+
+    // Another tempo and time signature: what the plug-in reads next block.
+    host.send({Command::Type::Stop});
+    host.send({Command::Type::Tempo, 0, 0, 0, 900});
+    host.send({Command::Type::Signature, 0, 0, 48, 288}); // 6/8: a beat 48 ticks, a bar 288
+    plugin.heard.clear();
+    play(2);
+    CHECK(plugin.heard.back().bpm == 90 && plugin.heard.back().sig_beats == 6 && plugin.heard.back().sig_unit == 8);
+    host.send({Command::Type::Signature, 0, 0, 96, 384});
+}
+
 #include "melodee/shell/pad_lights.h"
 #include "melodee/shell/step_lane.h"
 
@@ -13736,6 +13798,7 @@ int main() {
     pattern_motion();
     kit_lanes();
     plugins();
+    plugin_transport();
     preset_folders();
     nam_page();
     card_plugin_paths();

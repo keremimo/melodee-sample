@@ -212,6 +212,13 @@ fs::path plugin_home(const std::string& card_top) {
 
 } // namespace
 
+// Melodee's transport as a plug-in hears it (plugin/host_time.h): set before each of its processBlocks.
+class PluginClock final : public juce::AudioPlayHead {
+public:
+    juce::Optional<PositionInfo> getPosition() const override { return position; }
+    PositionInfo position;
+};
+
 // What the audio thread runs (PluginRunner): the plug-in, its buffers made up
 // front, and MIDI gathered between renders. Made on the rack's thread. A
 // plug-in at a rate of its own (an Open MPC one at 44.1 kHz) is heard at the
@@ -226,8 +233,13 @@ public:
         midi_in.ensureSize(8192);
         auto* bypass = instance->getBypassParameter(); // the slot's own Bypass does that job
         for (auto& p : instance->getParameters()) if (!hidden(*p) && p != bypass) shown.push_back(p->getParameterIndex());
+        instance->setPlayHead(&clock);
     }
-    ~PluginHandle() override { if (instance) instance->releaseResources(); }
+    ~PluginHandle() override {
+        if (!instance) return;
+        instance->releaseResources();
+        instance->setPlayHead(nullptr); // the clock goes before it
+    }
 
     void midi(uint8_t status, uint8_t data1, uint8_t data2) override {
         if (pending_count < pending.size()) pending[pending_count++] = {status, data1, data2};
@@ -246,19 +258,23 @@ public:
     // Not on the audio thread: blocks of silence through it before it is offered (PluginRack::load), so its code and
     // buffers are paged in, and whatever it does on its first calls is done, here rather than in the audio thread's
     // first blocks with it.
+    // It hears the transport stopped at the top meanwhile: the engine host's clock belongs to the audio thread.
     void warm_up(unsigned blocks = 8) {
         std::array<float, EngineHost::block> l {}, r {};
+        warming = true;
         for (unsigned b = 0; b < blocks; ++b) {
             l.fill(0.0f);
             r.fill(0.0f);
             render(l.data(), r.data(), EngineHost::block);
         }
+        warming = false;
         load.store(0.0f, std::memory_order_relaxed); // what it costs to play counts from here
     }
     void render(float* left, float* right, unsigned frames) override {
         frames = std::min(frames, EngineHost::block);
         if (!frames) return;
         auto t0 = std::chrono::steady_clock::now();
+        follow_clock(frames);
         if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false); });
         else run(left, right, frames, instrument);
         double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -284,6 +300,7 @@ public:
             midi_in.addEvent(bytes, size, 0);
         }
         pending_count = 0;
+        stamp_clock(frames);
         instance->processBlock(buffer, midi_in);
         if (outs <= 0) {
             if (!add) { std::fill(left, left + frames, 0.0f); std::fill(right, right + frames, 0.0f); }
@@ -312,7 +329,45 @@ public:
     bool finding = false;                // a CLAP plug-in's presets still being looked for (under the rack's lock)
 
 private:
+    // The engine host's clock at its block's start (engine/effects.h, EffectClock), counted on by the device frames
+    // this plug-in has played of the block already: an instrument is played in parts, between the block's steps.
+    void follow_clock(unsigned frames) {
+        if (warming) { now = EffectClock {}; quarters = 0; per_frame = 0; return; }
+        now = *effect_clock_now;
+        if (now.block != block_seen) { block_seen = now.block; into_block = 0; }
+        double quarter = std::max(now.quarter, 1.0);
+        quarters = now.playing ? now.song + into_block / quarter : now.song;
+        per_frame = now.playing ? sample_rate / plugin_rate / quarter : 0.0; // quarter notes a frame at its rate
+        into_block += frames;
+    }
+    // Where this processBlock of `frames` (at the plug-in's rate) starts; the next one starts after it.
+    void stamp_clock(unsigned frames) {
+        using Head = juce::AudioPlayHead;
+        double bar = 4.0 * now.sig_beats / now.sig_unit, bpm = now.bpm > 0 ? now.bpm : 120.0;
+        double bars = std::floor(quarters / bar + 1e-9), seconds = quarters * 60.0 / bpm;
+        Head::PositionInfo p;
+        p.setIsPlaying(now.playing);
+        p.setIsRecording(false);
+        p.setIsLooping(false);
+        p.setBpm(bpm);
+        p.setTimeSignature(Head::TimeSignature {int(now.sig_beats), int(now.sig_unit)});
+        p.setPpqPosition(quarters);
+        p.setPpqPositionOfLastBarStart(bars * bar);
+        p.setBarCount(int64_t(bars));
+        p.setTimeInSeconds(seconds);
+        p.setTimeInSamples(int64_t(std::llround(seconds * plugin_rate)));
+        clock.position = p;
+        quarters += frames * per_frame;
+    }
+
     struct Midi { uint8_t status = 0, data1 = 0, data2 = 0; };
+    PluginClock clock;
+    EffectClock now;           // the engine host's clock as this render found it
+    uint64_t block_seen = ~uint64_t(0);
+    double into_block = 0;     // device frames of that block played already
+    double quarters = 0;       // where the next processBlock starts, quarter notes from the song's top
+    double per_frame = 0;      // and how far a frame at the plug-in's rate moves it
+    bool warming = false;
     PluginRateBridge bridge;
     std::array<Midi, 512> pending {};
     unsigned pending_count = 0;

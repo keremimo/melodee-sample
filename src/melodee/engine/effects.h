@@ -36,11 +36,19 @@ private:
     std::array<bool, blocks> used {}, dirty {};
 };
 
-// The song's clock as tempo-synced effects hear it (Pumper): the host sets
-// it at the start of each block, before any effect runs. Audio thread only.
+// The song's clock as tempo-synced effects hear it (Pumper), and the
+// transport plug-ins hear (plugin/plugin_rack.cpp): the host sets it at the
+// start of each block, before any effect runs. Audio thread only.
 struct EffectClock {
     double quarter = 22050; // samples a quarter note
     double beats = 0;       // quarter notes since Play (running on while stopped), at the block's start
+    // For plug-ins: the song plays (after any count-in), where it is at the block's start in quarter notes from its
+    // top (Song: from bar 1 of the song; held where it stopped), the tempo and the time signature.
+    bool playing = false;
+    double song = 0;
+    double bpm = 120;
+    unsigned sig_beats = 4, sig_unit = 4; // 4/4
+    uint64_t block = 0;     // which block: a plug-in heard in parts of a block counts on from its start
 };
 // The live host's clock, which its render workers read too. A print host (EngineHost::Lean) renders beside it on
 // another thread with its own: it points effect_clock_now at that for its thread at the start of each block.

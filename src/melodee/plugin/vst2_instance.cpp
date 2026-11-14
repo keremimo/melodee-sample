@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/plugin/vst2_instance.h"
+#include "melodee/plugin/host_time.h"
 
 #include <cstring>
 #include <dlfcn.h>
@@ -144,8 +145,7 @@ Vst2Instance::Vst2Instance (void* libraryToOwn, vst2::Effect* effectToOwn, const
     for (int i = 0; i < effect->numParams; ++i)
         addHostedParameter (std::make_unique<Parameter> (*this, i));
 
-    timeInfo.tempo = 120.0;
-    timeInfo.timeSigNumerator = timeInfo.timeSigDenominator = 4;
+    vst2::setTime (timeInfo, false, 0.0, 0.0, 0.0, 120.0, 4, 4); // stopped at the top until the first block says
     midiEvents.resize (std::size (events.events));
     for (size_t i = 0; i < midiEvents.size(); ++i)
         events.events[i] = &midiEvents[i];
@@ -254,7 +254,6 @@ void Vst2Instance::prepareToPlay (double newRate, int newBlock)
         outputPointers[c] = outputs.data() + c * (size_t) block;
 
     timeInfo.sampleRate = rate;
-    timeInfo.samplePos = timeInfo.ppqPos = 0.0;
     dispatch (vst2::op::mainsChanged, 0, 1);
     dispatch (vst2::op::startProcess);
     active = true;
@@ -292,7 +291,9 @@ void Vst2Instance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         dispatch (vst2::op::processEvents, 0, 0, &events);
     }
 
-    timeInfo.flags = vst2::time::playing | vst2::time::tempoValid | vst2::time::ppqValid | vst2::time::timeSigValid;
+    const auto time = hostTime (getPlayHead());
+    vst2::setTime (timeInfo, time.playing, (double) time.samples, time.ppq, time.barStart, time.bpm,
+                   time.numerator, time.denominator);
     for (int c = 0; c < effect->numInputs; ++c)
     {
         if (c < buffer.getNumChannels())
@@ -308,9 +309,6 @@ void Vst2Instance::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         else
             buffer.clear (c, 0, frames);
     }
-
-    timeInfo.samplePos += frames;
-    timeInfo.ppqPos = timeInfo.samplePos / rate * timeInfo.tempo / 60.0;
 }
 
 double Vst2Instance::getTailLengthSeconds() const

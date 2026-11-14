@@ -111,6 +111,8 @@ bool open (const char* path)
         effect = nullptr;
         return false;
     }
+    timeInfo.sampleRate = rate;
+    vst2::setTime (timeInfo, false, 0.0, 0.0, 0.0, 120.0, 4, 4); // stopped at the top until the first block says
     dispatch (vst2::op::open);
     shared->info = { effect->numInputs, effect->numOutputs, effect->numParams, effect->numPrograms,
                      effect->flags, effect->uniqueId, effect->version, effect->initialDelay };
@@ -118,8 +120,6 @@ bool open (const char* path)
     if (shared->text[0] == 0)
         dispatchText (vst2::op::getProductString, 0, shared->text, bridge::maxText);
     dispatchText (vst2::op::getVendorString, 0, (char*) shared->data, 256);
-    timeInfo.tempo = 120.0;
-    timeInfo.timeSigNumerator = timeInfo.timeSigDenominator = 4;
     for (uint32_t i = 0; i < bridge::maxEvents; ++i)
         events.events[i] = &midiEvents[i];
     for (uint32_t c = 0; c < bridge::maxChannels; ++c)
@@ -148,11 +148,11 @@ void process()
         events.count = (int32_t) count;
         dispatch (vst2::op::processEvents, 0, 0, &events);
     }
+    const auto& time = shared->time;
     timeInfo.sampleRate = rate;
-    timeInfo.flags = vst2::time::playing | vst2::time::tempoValid | vst2::time::ppqValid | vst2::time::timeSigValid;
+    vst2::setTime (timeInfo, time.playing != 0, time.samplePos, time.ppqPos, time.barStartPos, time.tempo,
+                   time.numerator, time.denominator);
     effect->processReplacing (effect, inputs, outputs, frames);
-    timeInfo.samplePos += frames;
-    timeInfo.ppqPos = timeInfo.samplePos / rate * timeInfo.tempo / 60.0;
 }
 
 #ifndef SCHED_RESET_ON_FORK
@@ -198,7 +198,6 @@ bool run (bridge::Command command)
         case Command::mains:
             if (shared->i0 != 0)
             {
-                timeInfo.samplePos = timeInfo.ppqPos = 0.0;
                 dispatch (vst2::op::mainsChanged, 0, 1);
                 dispatch (vst2::op::startProcess);
                 shared->info.initialDelay = effect->initialDelay; // a plug-in may set it as it is switched on

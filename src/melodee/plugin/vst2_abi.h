@@ -101,5 +101,21 @@ constexpr int32_t changed = 1 << 0, playing = 1 << 1, nanosValid = 1 << 8, ppqVa
                   tempoValid = 1 << 10, barsValid = 1 << 11, timeSigValid = 1 << 13;
 }
 
+// The host's transport for one block, as the plug-in reads it (audioMasterGetTime): `changed` set when it starts or
+// stops.
+inline void setTime (TimeInfo& t, bool isPlaying, double samplePos, double ppq, double barStart, double tempo,
+                     int32_t numerator, int32_t denominator)
+{
+    const bool was = (t.flags & time::playing) != 0;
+    t.samplePos = samplePos;
+    t.ppqPos = ppq;
+    t.barStartPos = barStart;
+    t.tempo = tempo;
+    t.timeSigNumerator = numerator;
+    t.timeSigDenominator = denominator;
+    t.flags = time::tempoValid | time::ppqValid | time::barsValid | time::timeSigValid
+            | (isPlaying ? time::playing : 0) | (isPlaying != was ? time::changed : 0);
+}
+
 constexpr int hostVersion = 2400;
 } // namespace vst2
