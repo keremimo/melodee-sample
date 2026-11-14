@@ -20,9 +20,25 @@ A Melodee **project** has:
 - **A song**: an arrangement of pattern clips on a timeline, one lane per
   track.
 - **A mixer**: a level, pan and four sends per track, four buses (A–D) and
-  the master.
-- **Effects**: a six-slot chain on every track, bus and the master.
+  the master. On a kit, each pad also has its own four sends.
+- **Effects**: a six-slot chain on every track, bus and the master. A slot
+  holds a built-in effect or a plug-in effect.
 - **The Looper**: four audio loops (L1–L4) that follow the tempo.
+- **Prints**: a track can be frozen. Its patterns are rendered to audio on
+  the card and play from there, which saves CPU (see
+  [Freeze a track](tracks.md#freeze-a-track)).
+
+Around the project:
+
+- **Plug-ins** go in `Melodee/Plugins` on the card. The plug-in picker
+  can also load one from any folder on the card (see
+  [Plug-ins](plug-ins.md)).
+- **The web page**: connect the MPC to a computer with USB-C and open
+  **http://melodee.local** while Melodee runs. Its tabs are **Device**
+  (updates and plug-in zips), **Files** (the card's files), **Quickstart**
+  and **Manual** (this guide).
+- **Updates**: a release zip copied to the card, or sent from the web page,
+  updates Melodee (see [Update Melodee](projects-and-files.md#update-melodee)).
 
 ---
 

@@ -14,7 +14,8 @@ Press **POWER** briefly. The Exit screen opens.
   next time the MPC is switched on.
 
 Or turn the encoder to pick one and push it. **STAY** is picked when the
-screen opens.
+screen opens. The header shows **UNSAVED** while the project has changes,
+and **SAVED** once they are kept.
 
 The next time Melodee starts, it opens the project set to open at start,
 or else the last project you opened or saved.
@@ -27,24 +28,29 @@ unchanged.
 
 **The stock app came back.** If Melodee crashes or fails to start, the
 stock app starts instead. Switch the MPC off and on to start Melodee again.
-A crash writes a report to `Melodee/Crashes` on the card: add it when you
+A crash writes a report to `Melodee/Crashes` on the card, one file a crash,
+with the last buttons pressed and the pages they were on. Add it when you
 report the problem.
 
 **Crackles or dropouts.** Open Settings, **ABOUT**. It shows the processor
-load per core, the audio dropouts, and card read problems. Use a larger
+load per core, the audio dropouts and card read problems, each in amber
+with a count once it happens. Use a larger
 audio buffer in **AUDIO**, or remove effects or plug-ins from the busiest
 track (the Tracks page shows each track's load).
 
-![About](../images/screens/about.png)
+![About with dropouts and card read problems](../images/screens/abouttrouble.png)
 
 **A plug-in does not load.** The picker shows the reason, for example
-"Windows and Mac builds only". Melodee runs only Linux ARM builds.
+"Windows and Mac builds only". Melodee runs only Linux ARM builds. A
+plug-in that loads but cannot open shows **WON'T OPEN** or **MISSING
+LIBRARY** on its Edit page. If a 32-bit plug-in crashes, its page says
+**STOPPED**: pick it again to reopen it.
 
 **An instrument loads slowly.** The first load decodes its files into
 `Melodee/Cache`. Later loads are fast.
 
 When you report a problem, say what you pressed, what you saw, and the
-version on the **ABOUT** page.
+version (press **B3** on the **ABOUT** page).
 
 ---
 

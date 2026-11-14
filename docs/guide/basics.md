@@ -29,7 +29,7 @@ the right edge. **K1** jumps through any list.
 | Encoder (turn) | Move through a list, or fine-tune the outlined card. |
 | Encoder (push) | Open the item under the cursor, or move to the next card. |
 | **SHIFT** + encoder push | Go back one page. |
-| The button that opened a page | On Fader, Rec Quantize, Time Correct, Compressor, Settings, Project, Input Config and Step Edit, press it again to close the page. |
+| The button that opened a page | On Fader, Rec Quantize, Time Correct, Compressor, Settings, Song, Project, Input Config and Step Edit, press it again to close the page. |
 | **−** / **+** | Change the octave on play pages, the bank on kit pages, or move through a list. |
 | **SHIFT** + **−** / **+** | Undo / redo. |
 
@@ -62,9 +62,9 @@ creating a project clears the undo history.
 
 | Page | ERASE alone |
 | --- | --- |
-| Roll | The selected note |
+| Roll | The selected note, or the marked notes |
 | Step Edit | The selected event. In STEPS mode: the caret's step |
-| Patterns | The pattern (asks first) |
+| Patterns | The pattern (asks first). On the **SCENE** cards: the scene's name and tempo |
 | Tracks | The track (asks first) |
 | Looper | The selected loop (asks first) |
 | Effect chains | The selected effect |
@@ -82,6 +82,7 @@ creating a project clears the undo history.
 | **PAD BANK** held, or Tracks | Tracks |
 | **SEQ** held, or Patterns | Patterns |
 | Step Edit in STEPS mode | A step to another step |
+| Roll with marked notes | The marked notes: push the encoder to paste them at the cursor |
 | Roll, Step Edit in PLAY mode, a synth's play pages | A key's notes to another key |
 | A kit's play pages | Kit pads |
 | Song | The clip, placed after itself |
@@ -121,6 +122,15 @@ The pads show what a press does on the page:
 - A blink means the pad waits for the next bar.
 
 Change the pad lights to white or off in [Settings](settings.md) (**PADS**).
+
+## Light show
+
+Hold **SAMPLE** and press **MUTE** to turn the light show on or off. Every
+light on the panel keeps time with the tempo, and a pad you press flashes
+white. The pads, buttons and pages work as usual. While the light show is
+on, hold **SAMPLE** and press **−** / **+** to pick its style: **Pulse**,
+**Sweep**, **Chase**, **Ripple** or **Levels** (the pads show the mix as a
+meter). The light show is off when Melodee starts.
 
 ---
 

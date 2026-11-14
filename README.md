@@ -35,8 +35,10 @@ page and control, read the [user guide](docs/GUIDE.md).
   (chip voice), each with factory presets.
 - **Kits** of 128 pads in 8 banks, with the stock Sample mode pages (Trim,
   Mix, Amp Env, Tune, Play, Filter, Filt Env) plus Layers, Follow (tempo
-  follow), Cloud (granular) and a kit filter.
+  follow), Cloud (granular) and a kit filter. Each pad has its own effects
+  and sends to the four buses.
 - **Sampling**: Chop, Sample Record, Audio Recall, Resample and 16 Levels.
+  Samples load from WAV, MP3, FLAC, Ogg Vorbis and AIFF files.
 - **Sampled instruments**: SFZ, MPC keygroup and drum programs (`.xpm`,
   `.xty`), MPC expansions (`.xpn`), Logic EXS24 (`.exs`), SoundFont (`.sf2`)
   and DecentSampler (`.dspreset`), streamed from the card. Stock MPC Sample
@@ -52,7 +54,15 @@ page and control, read the [user guide](docs/GUIDE.md).
 - **Effects**: 41 effects. A six-slot chain on every track, four send buses
   and the master. Knob FX, Pad FX, Flex Beat and the master compressor work
   as on the stock app.
+- **Freeze**: print a track to audio and play it from the card, or deep
+  freeze it to unload its plug-ins too.
 - **Sync**: MIDI clock and MTC in and out, and CV clock out.
+- **Web page**: connect the MPC to a computer by USB-C and open
+  http://melodee.local to install updates and plug-ins, manage the card's
+  files and read this guide. The MPC can also show up as a USB webcam with
+  Melodee's screen.
+- **Updates from the card**: copy a release zip to the card and Melodee
+  installs it.
 
 ## Requirements
 

@@ -13,9 +13,20 @@ Previous: [Plug-ins](plug-ins.md) · [Contents](../GUIDE.md) · Next: [Sequencin
 **PRESETS**: the plug-in's presets. The name of the one playing is large,
 with the ones before and after it in the corners. Turn the encoder to load
 the next one; it loads when you stop turning. Push the encoder for the whole
-list. **K1**–**K3** set the plug-in's first three parameters. A plug-in with
-no presets shows **PLUG-IN** instead: its name, its format and how much of
-each audio block it uses.
+list. A plug-in with no presets shows **PLUG-IN** instead: its name, its
+format and how much of each audio block it uses.
+
+**K1**–**K3** are the same three knobs on every plug-in, applied to what it
+plays:
+
+- **K1** (**FILTER**): left of the middle a low pass, right of it a high
+  pass, off in the middle.
+- **K2** (**ECHO**): how much goes into a dotted-eighth echo at the tempo.
+- **K3** (**SPACE**): how much goes into a reverb.
+
+The echo's repeats and the reverb's tail ring on when you turn their knob
+back. The knobs are saved with the track and record as Motion. **ERASE** +
+knob sets one back to off.
 
 ![PRESETS](../images/screens/stagepluginpresets.png)
 
@@ -24,7 +35,7 @@ encoder or press **−** / **+** to move through them.
 
 **MIX**: **K1** level, **K2** pan, **K3** send to bus A.
 
-![MIX](../images/screens/stage.png)
+![MIX](../images/screens/stagemix.png)
 
 **SENDS**: **K1** selects bus A–D, **K2** sets the send to it, **K3** the
 bus return. The picture shows the four buses and each bus's first effect.
@@ -57,7 +68,8 @@ the scale and **K3** the pad layout.
 ![Keys](../images/screens/keys.png)
 
 - **K1**: root. **K2**: scale. **K3**: layout (Scale, Chromatic, Chords,
-  16 Levels or Drums).
+  16 Levels or Drums). Drums lays the pads out as a kit's; see
+  [Drum machine plug-ins](plug-ins.md#drum-machine-plug-ins).
 - **−** / **+**: octave.
 - **SHIFT** + **K3**: transpose the pads −12 to +12 semitones.
 - Encoder push: open Edit.

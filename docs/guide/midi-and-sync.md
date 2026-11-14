@@ -2,42 +2,45 @@
 
 Previous: [Mixer and effects](mixer-and-effects.md) · [Contents](../GUIDE.md) · Next: [Projects and files](projects-and-files.md)
 
-Press **SHIFT** + **Pad 8**, then open **MIDI**. Turn the encoder to a row,
-push to edit it, and press **−** / **+** to change it.
+Press **SHIFT** + **Pad 8**, then open **MIDI**. Turn the encoder to a row
+and push to open it. Turn the encoder to change it and push again to keep
+it. **−** / **+** change the row under the cursor at once. **B1** goes
+back. The header lights **IN** and **OUT** as MIDI passes.
 
 ![MIDI Config](../images/screens/midiconfig.png)
 
 | Row | Setting |
 | --- | --- |
-| Port | External (the MIDI jacks) or USB |
-| In channel | All or 1–16. Notes on this channel play the selected track. |
-| Out channel | The channel for pads and patterns |
-| Track channel | A track's own channel: it plays that track whichever track is selected |
+| MIDI port | External (the MIDI jacks) or USB |
+| MIDI in channel | All or 1–16. Notes on this channel play the selected track. |
+| MIDI out channel | The channel for pads and patterns |
+| Track channel | Off or 1–16: the selected track's own channel. It plays that track whichever track is selected, and the track's notes go out on it. |
 | Track MIDI in | Where the track's own channel is heard: Any, External or USB |
-| Pad MIDI in / out | Never, Always or Empty |
+| Pad MIDI in | On or off: whether notes and pressure in play the tracks |
+| Pad MIDI out | Never, Always or Empty |
 | MIDI sync in / out | Off, MIDI Clock or MTC |
 | MIDI thru | On or off |
-| Receive program change | A program change launches that pattern |
+| Receive program change | Off or Sequence: a program change launches that pattern on every track |
 | Remote channel | Off or 1–16: the channel of the Remote CCs |
 | Remote track CC | Selects a track. Value 0 is track 1. Default CC 102. |
 | Remote pattern CC | Launches a pattern on the selected track. Value 0 is A01. Default CC 103. |
 | Remote scene CC | Launches a scene. Value 0 is the first scene. Default CC 104. |
-| CV/sync out | Clock pulses on the sync output, with base and division |
+| CV/sync out | On or off: clock pulses on the sync output. **CV/sync base** (1–8) and **CV/sync division** (1–24) set how many a quarter note. |
 | Takeover rows | Knob, Knob FX and fader takeover |
-| MIDI panic | Ends every note on every channel and port |
-| Reset factory settings | Asks first |
+| MIDI panic | Push: ends every note on every channel and port |
+| Reset factory settings | Push, then **B3** to reset or **B1** to keep |
 
 - **MIDI in**: notes, pressure, CC 1 (mod wheel), the pitch wheel, the
-  sustain pedal and other CCs, and All Notes Off. A kit
-  plays note 36 as pad A01. Notes record with **SEQ RECORD**.
+  sustain pedal and other CCs, and All Notes Off, on every page and every
+  kind of track. A kit plays note 36 as pad A01. Notes record with **SEQ RECORD**.
   - The pitch wheel bends plug-in tracks and kits (2 semitones each way on a
     kit). The mod wheel and the pitch wheel record as Motion lanes on the
     selected track.
   - The sustain pedal (CC 64) holds a kit's notes. Plug-in tracks get every
     CC as it comes. MIDI tracks send CCs out on their own port and channel.
   - Each track can take its own controller. Select the track (**PAD BANK**
-    + pad), set **Track channel**, then **Track MIDI in**. Port, In channel,
-    sync, Thru and program change use the **Port** row; a track's own channel
+    + pad), set **Track channel**, then **Track MIDI in**. The selected
+    track, sync, Thru and program change listen on **MIDI port**; a track's own channel
     uses its Track MIDI in. Seq Record records every track that a channel
     plays, at once.
   - Remote CCs are heard from any port and are not passed on to the tracks.

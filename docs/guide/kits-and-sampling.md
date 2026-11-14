@@ -19,16 +19,22 @@ select it without playing it.
 
 Every track uses the keys the same way: **B1** for the sound's source, **B2**
 for how it plays, **B3** for where it goes. Press the lit key again to go to
-its next page. Each track remembers its last page. Press **−** / **+** to
-change the bank.
+its next page. Each track remembers its last page. Press **SAMPLE** on
+Stage to go back to **TRIM**. Press **−** / **+** to change the bank.
 
 **TRIM**
 
 ![TRIM](../images/screens/trim.png)
 
 - **K1**: start. **K2**: end. **K3**: loop point.
+- After you turn **K1**–**K3**, turn the encoder to move that point in fine
+  steps. Zoomed all the way in, one step is one frame. Turn it fast to
+  travel further.
 - **SHIFT** + **K1**–**K3**: zoom in at that point.
 - **SHIFT** + **B1**: Loop Lock. **SHIFT** + **B2**: Normalize.
+
+A stereo sample's waveform shows both sides, left above right, on every
+Stage page and on Chop.
 
 **LAYERS**: up to four samples on one pad.
 
@@ -45,8 +51,9 @@ change the bank.
 **MIX**: **K1** volume, **K2** kit volume, **K3** pan.
 
 **AMP ENV**: **K1** attack, **K2** decay (release in Note On mode), **K3**
-velocity sensitivity. **SHIFT** + **K2** sets whether decay starts from the
-start or the end.
+velocity sensitivity. At 100 %, a hit at velocity 64 plays 6 dB below a
+full hit, and softer hits quieter still. **SHIFT** + **K2** sets whether
+decay starts from the start or the end.
 
 **SENDS**: the last pad's own sends. **K1** selects bus A–D, **K2** sets
 the pad's send to it, **K3** the bus return. **SHIFT** + **K2** sets the
@@ -98,7 +105,7 @@ type.
 
 Hold **SAMPLE** on a kit to see **Pads**: the bank in view, each pad with
 its own waveform. While you hold it, press a pad to select it without
-playing it, and turn **K1** pitch, **K2** level, **K3** pan of the last pad.
+playing it, and turn **K1** pitch, **K2** volume, **K3** pan of the last pad.
 **B1**–**B3** open Stage's pages. On **Step Edit** and **Roll** the editor stays
 in view and the header names the held pad.
 
@@ -113,15 +120,18 @@ Press **SAMPLE SELECT** on a kit to open the sample browser.
 | Control | Action |
 | --- | --- |
 | Encoder, **−** / **+** | Move through the list. |
-| Encoder push | Open a folder, or load the file onto the last pad you hit. |
-| **B1** | Go back out of a folder. |
-| **B2** | Switch between the card (**CARD**) and the MPC's factory samples (**INTERNAL**). The internal drive is read only. |
+| **K1** (**JUMP**) | Jump through the list. |
+| Encoder push | Open a folder, or load the file onto the last pad you hit. The pad keeps its settings. |
+| **B1** | Go back out of a folder. At the top, **CANCEL** closes the browser. |
+| **B2** | Switch between the card (**CARD**) and the MPC's factory samples (**INTERNAL**). The key names the other drive. Each drive keeps its folder and row. The internal drive is read only. |
 | **B3** | **PREVIEW**: play each file when you move to it. |
 | **SHIFT** + pad | Load the file onto the next empty pad. |
 
 Put your samples in a folder named `Samples` at the top level of the card.
 Melodee reads WAV (16, 24 or 32-bit), MP3, FLAC, Ogg Vorbis and AIFF files, any sample
-rate, up to 60 seconds. MP3, FLAC, Ogg and AIFF rows show their format at the right. It writes recordings and edits into `Samples` too.
+rate, up to 60 seconds. MP3, FLAC, Ogg and AIFF rows show their format at
+the right. A row with a pad chip is a sample this kit already plays. Melodee
+writes recordings and edits into `Samples` too.
 
 To move samples without taking the card out, connect the MPC to a computer
 with USB-C and open **http://melodee.local** while Melodee runs. On
@@ -131,18 +141,18 @@ to delete it. **Folder** makes a new folder. `autorun` is read-only.
 
 ## Sampled instruments
 
-The browser loads multi-sampled instruments onto one pad. Each is tagged
-with its type.
+The browser loads multi-sampled instruments onto one pad. Each row has a
+keyboard icon and its type at the right.
 
 | Type | Files |
 | --- | --- |
-| SFZ | `.sfz` |
-| MPC keygroup program | `.xpm`, or `.xty` from MPC 3 |
-| MPC drum program | `.xpm` or `.xty`, tagged **KIT**: loads as the whole kit, with its pad colours and sends |
-| MPC expansion | `.xpn`, tagged **INSTALL**: installs into `Samples/Expansions` |
-| Logic EXS24 / Sampler | `.exs`, with its samples in the same folder |
-| SoundFont | `.sf2`: opens as a folder of presets |
-| DecentSampler | `.dspreset` |
+| SFZ | `.sfz`, shown as **SFZ** |
+| MPC keygroup program | `.xpm` (**XPM**), or `.xty` from MPC 3 (**XTY**) |
+| MPC drum program | `.xpm` or `.xty` with a pads icon: loads as the whole kit, with its pad colours and sends |
+| MPC expansion | `.xpn` with a down arrow: installs into `Samples/Expansions` |
+| Logic EXS24 / Sampler | `.exs` (**EXS**), with its samples in the same folder |
+| SoundFont | `.sf2` (**SF2**): opens as a folder of presets |
+| DecentSampler | `.dspreset` (**DS**): opens with its controls as its own screen sets them |
 
 ![Instruments in the browser](../images/screens/samplesinstruments.png)
 
@@ -169,7 +179,7 @@ A bank file saves one bank of 16 pads, with their settings and effects.
 - To save the bank in view: open the sample browser and press **SHIFT** +
   **SAMPLE SELECT**. Name the bank. It is saved in `Samples/Banks`.
 - To load a bank: select the bank with **PAD BANK**, then push the encoder
-  on a bank file (tagged **BANK**) in the browser.
+  on a bank file (the stacked-layers icon) in the browser.
 
 ![Bank files in the browser](../images/screens/banks.png)
 
@@ -183,6 +193,7 @@ Press **CHOP** to slice the last pad's sample. The pads play the slices.
 | --- | --- |
 | **K1** / **K2** | Start / end of the selected slice. |
 | **K3** | Chop type: Threshold, Regions, Beats or Manual. |
+| Encoder | Select a slice. After **K1** or **K2**, move that cut in fine steps. |
 | **SHIFT** + **K3** | The amount for that type (threshold, number of regions, beats). |
 | **SHIFT** + **K1** / **K2** | Zoom. |
 | **B2** (**SNAP**) | Snap cuts to zero crossings, so slices do not click. |
@@ -191,6 +202,10 @@ Press **CHOP** to slice the last pad's sample. The pads play the slices.
 | **SHIFT** + **B1** | Extract the slice to a new file on the next empty pad. |
 | **SHIFT** + **B2** / **B3** | Split / merge slices. |
 | **ERASE** + pad | Remove a slice. |
+
+**Threshold chop**: cuts at every hit at least as strong as the threshold.
+A hit is a change in the sound: a drum, a hat over a held note, or a chord
+change at the same loudness. Each cut lands just before the hit's attack.
 
 **Beats chop**: Melodee finds the sample's own tempo and where its beats
 fall when it loads. Beats cuts a slice every 1–8 of those beats, counted from
@@ -203,8 +218,9 @@ sample with no steady beat uses the project's tempo.
 **Manual chop**: set **K3** to Manual, or push the encoder. Pad 1 plays the
 sample. Tap other pads while it plays to cut there.
 
-Press **CHOP** again to return to **TRIM**. Melodee keeps each sample's
-slices with the project.
+Slices put on pads keep the chopped pad's tune, Warp, mute group and other
+settings. Press **CHOP** again to return to **TRIM**. Melodee keeps each
+sample's slices with the project.
 
 ## Record a sample
 
@@ -220,13 +236,23 @@ Press **SAMPLE RECORD** on a kit to open **Record**.
 4. To stop, tap the pad again, press **STOP** or push the encoder. To stop
    and open **TRIM**, press **SAMPLE RECORD**.
 
-Takes are saved in `Samples/Recorded`, up to 60 seconds each.
+Takes are saved in `Samples/Recorded`, up to 60 seconds each. With the
+length Free, a take also ends by itself after a quiet stretch.
+
+On Record, **B1** (**MONITOR**) sets monitoring, **B2** (**INPUT**) opens
+Input Config, and **B3** (**PRINT**) opens the PRINT sheet to
+[freeze the track](tracks.md#freeze-a-track).
 
 **Input Config** (**SHIFT** + **SAMPLE**, or **B2** on Record) sets the
 input. **K1** source: Mic, Rear (L, R or both), USB (L, R or both),
 Resample, or any track with a sound. **K2** length, **K3** threshold,
-**SHIFT** + **K3** gain. **B2** sets monitoring (Off, Auto, On). **B3**
-records through Knob FX.
+**SHIFT** + **K3** gain. With a track as the source, **SHIFT** + **K1**
+records it **Post FX** (with its effect chain) or **Pre FX**.
+
+- **B2** (**MONITOR**): Off, Auto or On. You hear the input as loud as the
+  take will play back. While the mic is monitored the speaker goes quiet.
+- **B3** (**INPUT FX**): run Knob FX on the input. You hear them while the
+  input is monitored, and they are recorded.
 
 ![Input Config](../images/screens/inputconfig.png)
 
@@ -248,34 +274,41 @@ the pads play that track.
 
 ## 16 Levels
 
-Press **16 LEVELS** to spread the last pad (or a plug-in track's last note)
-over all 16 pads. Press it again to go back.
+Tap **16 LEVELS** to spread the last pad (or a plug-in track's last note)
+over all 16 pads. Tap it again to go back. 16 Levels has no page of its
+own: the page in view stays.
 
-![16 Levels: Velocity](../images/screens/levels.png)
+Hold **16 LEVELS** to set it up from any page. The cards show **LEVELS**
+(the type) and its two ends, **LOW** and **HIGH**.
 
-Use **K1** or **SHIFT** + **16 LEVELS** to choose the type:
+![Holding 16 LEVELS: Velocity](../images/screens/levels.png)
+
+Turn **K1** while you hold **16 LEVELS**, or press **SHIFT** + **16 LEVELS**,
+to choose the type:
 
 - **Velocity**: each pad plays louder, from pad 1 to pad 16.
 - **Filter** (kits): each pad opens the filter more.
 - **Tune**: each pad plays a semitone higher. The original pitch is on pad 4.
 - **Scale**: each pad plays the next note of the project's scale. **K2**
-  sets the root, **K3** the scale.
+  (**ROOT**) sets the root, **K3** (**SCALE**) the scale.
 - **Zones** (a pad holding an instrument): each pad plays one key that has
   a sound in the instrument, lowest on pad 1, so a drum or percussion
   instrument has every hit on a pad. Keys without a sound are skipped.
-  With more than 16 keys, **−** / **+** show the next 16. On an
-  instrument with one sound per key, such as a drum kit, 16 Levels opens in
-  Zones when Scale or Tune was chosen.
-- **Loop**: opens the Looper.
+  With more than 16 keys, hold **16 LEVELS** and press **−** / **+** for the
+  next 16. On an instrument with one sound per key, such as a drum kit, 16
+  Levels opens in Zones when Scale or Tune was chosen.
+- **Loop** (**SHIFT** + **16 LEVELS** only): **16 LEVELS** opens the Looper.
 
-For Velocity, Filter and Tune, **K2** sets pad 1's value and **K3** pad 16's.
-Press **−** / **+** to change the octave in Scale and Tune.
+For Velocity, Filter and Tune, **K2** (**LOW**) sets pad 1's value and **K3**
+(**HIGH**) pad 16's. Hold **16 LEVELS** and press **−** / **+** to change the
+octave in Scale and Tune. Letting go after a hold does not turn 16 Levels on
+or off.
 
 While 16 Levels is on a kit pad, a MIDI keyboard plays that pad on every key.
 C4 (key 60) plays a sample as the pad plays it; an instrument plays at its
 real pitch.
 
-![16 Levels: Scale](../images/screens/levelsscale.png)
+![Holding 16 LEVELS: Scale](../images/screens/levelsscale.png)
 
 ## Loop, reverse and Note On
 

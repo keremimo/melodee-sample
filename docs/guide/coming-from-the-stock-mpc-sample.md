@@ -23,13 +23,16 @@ is different, and how to change your habits.
   its pages.
 - A kit has 128 pads in 8 banks (A–H). Press **PAD BANK** for the next bank
   and **SHIFT** + **PAD BANK** for the previous one.
-- A kit's pad pages are the stock Sample mode pages, in the same order:
-  Trim, Mix and Amp Env on **B1**; Tune and Play on **B2**; Filter and Filt
-  Env on **B3**. The knobs do the same jobs.
+- A kit's pad pages are the stock Sample mode pages: Trim, Tune, Amp Env,
+  Play, Mix, Filter and Filt Env. The knobs do the same jobs. On Stage they
+  are grouped by what they do: Trim, Tune and Amp Env on **B1**; Play on
+  **B2**; Mix, Filter and Filt Env on **B3**.
+- MPC kits keep their pad colours.
 - Hold **SAMPLE** and press a pad to select that pad without playing it.
 - Push the encoder to move to the next knob card.
 - **SEQ RECORD** and **PLAY** record a pattern. **ERASE** + pad erases a pad
-  or its notes, as on the stock app.
+  or its notes, as on the stock app. **ERASE** + **SEQ RECORD** erases the
+  selected pad's notes, and asks first in the stock app's words.
 - **SHIFT** + **Pad 12** opens Song. **SHIFT** + **Pad 16** opens Project.
 - Knob FX, Pad FX, Flex Beat and the master compressor work as on the stock
   app, with the stock effects in the stock order.
@@ -45,11 +48,12 @@ is different, and how to change your habits.
 | A sequence plays every pad of the kit. | Each track has its own 128 patterns, in banks A–H. To change every track at once, launch a **scene**: hold **SEQ** + **SHIFT** and press a pad. |
 | Song mode is a list of sequences. | **Song** is a timeline with a lane per track. You place pattern clips on it, add markers and tempo changes. |
 | The project saves in the background. | Save with **SHIFT** + **Pad 16**, then **B1** (**SAVE**). Leaving through the Exit screen also saves. |
-| Projects are on the internal drive. | Projects are on the card in `Melodee/Projects`. Stock projects open as copies (see [MPC Sample projects](projects-and-files.md#mpc-sample-projects)). |
+| Projects are on the internal drive. | Melodee's projects are on the card in `Melodee/Projects`. On the project list, **B2** (**INTERNAL**) shows the internal drive. Stock projects open as copies (see [MPC Sample projects](projects-and-files.md#mpc-sample-projects)). |
 | **SHIFT** + **KNOB FX** (FX Select) picks pad effects. | **SHIFT** + **KNOB FX** opens the effect chains: Track, Sends, Bus and Master, six slots each. |
 | Hold **TAP TEMPO** and turn the encoder to set the tempo. | Hold **TAP TEMPO** to open the **Tempo** page. Or hold **SEQ** and turn the encoder. |
 | Press **STOP** twice to stop all sound. | Press **SHIFT** + **STOP** to stop all notes. |
 | **SHIFT** + **SEQ RECORD** brings the last loop into the sequence. | **SHIFT** + **SEQ RECORD** (Recall) puts the last phrase you played on every track into each track's next empty pattern. |
+| **SAMPLE RECORD** records a sample. | On a kit, the same. On a plug-in or MIDI track, **SAMPLE RECORD** opens the **PRINT** sheet, which freezes the track to audio (see [Freeze a track](tracks.md#freeze-a-track)). |
 | No looper. | Press **LOOP** and **16 LEVELS** together to open the **Looper**. |
 | No mixer. | Press **PAD FX** and **KNOB FX** together to open the mixer: **Tracks**, **Sends** and the effect chains. |
 | Power off with **POWER**. | A short press of **POWER** opens the Exit screen: stay, power off, or go back to the stock app. |
@@ -66,9 +70,10 @@ These are the actions stock users look for first.
 2. **Use the kit as before.** Track 1 is a kit. **SAMPLE SELECT**, **SAMPLE**,
    **CHOP**, **SAMPLE RECORD** and **16 LEVELS** work on the kit as on the
    stock app.
-3. **Hold SEQ to change patterns.** A tap of **SEQ** opens the editor. Holding
-   **SEQ** turns the pads into the selected track's patterns. The pattern
-   changes at the next bar, or at once when stopped.
+3. **Hold SEQ to change patterns.** A tap of **SEQ** opens **Patterns** (or
+   Roll or Motion, if one of them was open last on the track). Holding
+   **SEQ** turns the pads into the selected track's patterns, from any
+   page. The pattern changes at the next bar, or at once when stopped.
 
    ![SEQ held: the Sequence sheet](../images/screens/seqsheet.png)
 
@@ -78,8 +83,9 @@ These are the actions stock users look for first.
    press that job again.
 5. **Save on purpose.** There is no background save. Save with **SHIFT** +
    **Pad 16**, **B1**.
-6. **Open your stock projects.** On the Project page, press **B2** (**OPEN**)
-   and open the **MPC Sample** row at the top of the list.
+6. **Open your stock projects.** On the Project page, press **B2** (**OPEN**).
+   Press **B2** (**INTERNAL**) for the projects on the internal drive, or
+   open the **MPC Sample** folder for stock projects on the card.
 
 ---
 

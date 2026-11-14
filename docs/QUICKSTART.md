@@ -36,13 +36,20 @@ To install Melodee:
    autorun whose files have changed.
 3. Optional: to use plug-ins, make a folder named `Plugins` inside the
    `Melodee` folder on the card (`Melodee/Plugins`) and copy your plug-ins
-   into it. See
+   into it. A plug-in's release zip can go in as it is: Melodee unzips it
+   the next time the plug-in picker opens. See
    [Plug-ins](guide/plug-ins.md) for what runs.
 4. Put the card in the MPC and switch it on. The stock app starts first. A
    few seconds later Melodee starts.
 
 Melodee changes nothing on the MPC itself. To stop it from starting, delete
 the `autorun` folder from the card.
+
+While Melodee runs, connect the MPC to a computer with USB-C and open
+**http://melodee.local** in a browser. The page installs plug-ins and
+updates, moves files to and from the card, and holds this quickstart and
+the user guide. To update Melodee later, see
+[Update Melodee](guide/projects-and-files.md#update-melodee).
 
 ## 2. Learn the controls
 
@@ -72,7 +79,7 @@ These controls work the same on every page:
 Melodee has 16 tracks, one for each pad. Pad 1 (bottom left) is track 1.
 
 To select a track, hold **PAD BANK** and press a pad. This works on any
-page. To see all 16 tracks, press **PAD FX** and **KNOB FX** together.
+page.
 
 A new project has an empty kit on track 1. The other tracks are empty until
 you choose what they are (see [step 7](#7-add-a-plug-in-instrument)).
@@ -117,7 +124,7 @@ pad you hit.
 ![Stage on a kit: TRIM](images/screens/trim.png)
 
 - **B1** cycles **TRIM**, **LAYERS**, **TUNE** and **AMP ENV**.
-- **B2** cycles **PLAY**, **FOLLOW** and **CLOUD**.
+- **B2** cycles **PLAY**, **COLOUR**, **FOLLOW** and **CLOUD**.
 - **B3** cycles **MIX**, **SENDS**, **FILTER**, **FILT ENV** and **KIT FILT**.
 
 Press the lit key again to go to its next page. The dots under a key show
@@ -131,8 +138,9 @@ To chop a sample into slices, press **CHOP**. See [Chop](guide/kits-and-sampling
 
 ## 6. Record a beat
 
-1. Press **SEQ**, then **B1** (**PATTERNS**). The 16 patterns of the
-   selected track are laid out as the pads: pad 1 bottom left.
+1. Press **SEQ** to open **Patterns**. If Roll or Motion opens instead,
+   press **B1** (**PATTERNS**). The selected track's 16 patterns of the
+   bank in view (**BANK A**) are laid out as the pads: pad 1 bottom left.
 2. Use **K1** to set the pattern length in bars, **K2** the grid (Q) and
    **K3** the swing.
 3. To choose a pattern, press its pad. Pad 1 is pattern 1. On other pages,
@@ -173,30 +181,40 @@ the `Melodee/Plugins` folder on the card first (see [step 1](#1-install)). The
 Melodee synths are free downloads; see [Plug-ins](guide/plug-ins.md).
 
 1. Hold **PAD BANK** and press pad 2 to select track 2.
-2. Stage shows a row of cards for the new track: **SYNTH** (a plug-in
-   instrument), **KIT** (samples) and **MIDI** (an external instrument).
+2. The track is empty, so Stage opens with a row of cards for what it
+   becomes: **SYNTH** (a plug-in instrument), **KIT** (an empty kit,
+   samples from the card, or a recording) and **MIDI** (an external
+   instrument on the MIDI Out jack or USB).
 
    ![Stage on an empty track](images/screens/stageemptysynth.png)
 
 3. Turn the encoder to **SYNTH** and push it. The plug-in picker opens on
    the `Melodee/Plugins` folder.
 4. Turn the encoder to a plug-in and push the encoder to load it.
-   Plug-ins that cannot run on the MPC are dimmed.
+   Plug-ins that cannot run on the MPC are dimmed. Once it loads, Melodee
+   goes back to the page you were on.
 
    ![The plug-in picker](images/screens/plugins.png)
 
-5. Play the pads. To set the key and scale the pads play in, hold
-   **SAMPLE** to see **Keys** and turn **K1** for the root, **K2** for the
-   scale and **K3** for the pad layout. Press **−** / **+** to change the
-   octave.
+5. Press **SAMPLE** to open Stage, and play the pads. To set the key and
+   scale the pads play in, hold **SAMPLE** to see **Keys** and turn **K1**
+   for the root, **K2** for the scale and **K3** for the pad layout. Press
+   **−** / **+** to change the octave.
 
    ![Keys](images/screens/keys.png)
 
-6. To edit the plug-in's parameters, press **B1** twice on Stage
-   (**EDIT**). The plug-in's parameters come on **K1**–**K3**.
-   Press **B2** (**PRESETS**) to load one of its presets.
+6. Press **SAMPLE** again for **PRESETS**, the first page of **B1**. Turn
+   the encoder to step through the plug-in's presets, or push it for the
+   whole list. **K1**–**K3** are **FILTER**, **ECHO** and **SPACE** on
+   every plug-in.
 
-   ![Edit: a plug-in's parameters](images/screens/pluginedit.png)
+   ![Stage PRESETS on a plug-in track](images/screens/stagepluginpresets.png)
+
+7. Press **B1** for **EDIT**, its next page: the plug-in's own parameters
+   come on **K1**–**K3**. Turn the encoder or press **−** / **+** to move
+   through the rows.
+
+   ![Stage EDIT: a plug-in's parameters](images/screens/stagepluginedit.png)
 
 Record the plug-in track the same way as the kit in
 [step 6](#6-record-a-beat).

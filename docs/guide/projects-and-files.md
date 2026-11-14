@@ -9,7 +9,7 @@ Press **SHIFT** + **Pad 16**.
 ![Project](../images/screens/project.png)
 
 - **B1** (**SAVE**): save the project. The first time, name it.
-- **B2** (**OPEN**): the list of projects on the card.
+- **B2** (**OPEN**): the list of projects.
 - **B3** (**NEW**): start a new project (asks first).
 
 Or turn the encoder to pick one and push it.
@@ -25,12 +25,20 @@ In the list:
   At the top of `Melodee/Projects`, **B1** goes up to the card's own folders,
   so a project or kit anywhere on the card can be loaded. At the card's top,
   **B1** closes the list.
-- Push the encoder on a project to open its sheet. Its jobs are cards:
-  Save, Save as new, Rename, Duplicate, Move to folder, New folder here,
-  Open at start and Delete. Another project has Load and **Load kit**
-  (no patterns) first, which loads its first kit onto the selected track.
+- **B2** switches between the card and the MPC's internal drive
+  (**INTERNAL**). The internal drive holds the stock app's projects, its
+  **Autosave**, and the factory **Demos** and **Kits**. It is read only:
+  its projects have Load and Load kit.
+- The list opens on the open project the first time, then where you left
+  it. Each drive keeps its own folder and row.
+- Push the encoder or press **B3** on a project to open its sheet. Its jobs
+  are cards. The open project has Save, Save as new, Rename, Duplicate,
+  Move to folder, New folder here, Open at start and Delete. Another
+  project has Load and **Load kit** (no patterns) first, which loads its
+  first kit onto the selected track.
 - Save (or Load) is picked when the sheet opens. Turn the encoder to pick
-  another card and push it. **B1** closes the sheet. Delete asks again.
+  another card and push it. **B1** closes the sheet. Delete says **PRESS
+  AGAIN**: push once more to delete.
 
 ![A project's sheet](../images/screens/filesheetscroll.png)
 
@@ -47,17 +55,21 @@ marker.
 - The pads type like phone keys. Each pad shows the letter it types next.
   Pad 14 types a space, pad 15 switches to digits, pad 16 deletes.
 - Turn the encoder to move the cursor. **K1** chooses a suggested name.
+- **K2**, or **SHIFT** + encoder, changes the character under the cursor.
 - **ERASE** deletes. **SHIFT** + **ERASE** clears the name.
 - **B2** switches between capitals and lower case.
 - **B3** (**SAVE**) or encoder push saves. **B1** cancels.
 
 ## MPC Sample projects
 
-Melodee opens stock MPC Sample projects (`.xpj`). On the project list, open
-the **MPC Sample** row at the top to see the stock app's projects, in
-`MPC-Sample/Projects` and its folders.
+Melodee opens stock MPC Sample projects (`.xpj`), wherever they are on the
+card. When the card has the stock app's `MPC-Sample/Projects` folder, the
+project list shows it as the **MPC Sample** folder. Press **B2**
+(**INTERNAL**) for the projects on the MPC's internal drive, with the
+factory demos and kits.
 
-Load opens a copy. The stock project is not changed. Save makes a Melodee
+Their sheet has Load and Load kit. Load opens a copy. The stock project is
+not changed. Save makes a Melodee
 project (`.mldp`) that plays the samples from where they are.
 
 - Each Drum track becomes a kit track. Each sequence becomes that numbered
@@ -89,17 +101,40 @@ the drive, Melodee asks whether to take the card back anyway.
 | Folder | Contents |
 | --- | --- |
 | `autorun/` | Melodee itself. Do not change it. |
-| `Melodee/Projects/` | Projects (`.mldp`), and each project's loops |
+| `Melodee/Projects/` | Projects (`.mldp`), and each project's `Loops` and `Prints` folders |
 | `Melodee/Mixdowns/` | Song mixdowns |
 | `Melodee/Stems/` | Stems |
 | `Melodee/MIDI/` | Exported MIDI files |
+| `Melodee/Sounds/` | Sounds you save |
 | `Melodee/Cache/` | Decoded instrument samples. Safe to delete: Melodee makes them again. |
 | `Melodee/Plugins/` | VST3, LV2, CLAP and VST2 plug-ins |
 | `Melodee/Plugin Data/` | Plug-in settings and presets |
-| `Melodee/Crashes/` | Crash reports, one file a crash |
+| `Melodee/Crashes/` | Crash reports, one file a crash (see [Troubleshooting](exit-and-troubleshooting.md#troubleshooting)) |
 | `Melodee/settings` | Melodee's settings |
 | `Samples/` | Your samples. Melodee writes `Recorded/`, `Edits/`, `Banks/`, `Looper/` and `Expansions/` here. |
 | `SysEx/` | `.syx` files for MIDI tracks |
+
+## The web page
+
+While Melodee runs, connect the MPC to a computer with USB-C and open
+**http://melodee.local** (or **http://192.168.155.1**) in a browser. It has
+four tabs:
+
+- **Device**: the version running, the card's free space and the plug-ins
+  in `Melodee/Plugins`. Drop a Melodee release zip on **Update** and press
+  **Send** (see [Update Melodee](#update-melodee)), or a plug-in's
+  `-mpc-sample.zip` on **Plug-ins** and press **Install** (see
+  [What runs](plug-ins.md#what-runs)).
+- **Files**: the folders on the card. Play audio files in the browser,
+  download files, upload files (with **Upload** or by dropping them on the
+  list), make folders and delete files or folders. The browser asks before
+  it deletes. An upload never replaces a file of the same name.
+  `autorun` is read only.
+- **Quickstart** and **Manual**: the quickstart and this guide. They work
+  without an internet connection.
+
+Uploads wait while the card is on a computer with SD card access. When
+Melodee stops, the MPC's own web page comes back.
 
 ## Update Melodee
 

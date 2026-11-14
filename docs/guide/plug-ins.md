@@ -12,9 +12,11 @@ read a `Plugins` folder at the top level of the card: move its contents into
 `Melodee/Plugins`. Projects saved with an earlier version find their
 plug-ins there.
 
-The plug-in picker opens on `Melodee/Plugins`. Press **B1** (**BACK**) to go
-up a folder, as far as the top of the card, to load a plug-in kept anywhere
-else on the card. At the top of the card **B1** reads **CANCEL**.
+The plug-in picker opens on `Melodee/Plugins` (the header says
+**PLUGINS**), and after that on the folder and row you left it on. Press
+**B1** (**BACK**) to go up a folder, as far as the top of the card, to load
+a plug-in kept anywhere else on the card. At the top of the card the header
+says **CARD** and **B1** reads **CANCEL**.
 
 Melodee loads plug-ins built for the MPC's ARM processor:
 
@@ -33,6 +35,10 @@ Melodee loads plug-ins built for the MPC's ARM processor:
 Most commercial plug-ins have no Linux ARM build. The picker shows plug-ins
 that cannot run dimmed, with the reason.
 
+Melodee carries the libraries that plug-ins often need beside their own
+files: libsndfile, libsamplerate and FFTW. A plug-in that needs another
+library shows **MISSING LIBRARY** when it opens.
+
 The Melodee synths are Open MPC plug-ins:
 
 | Plug-in | Sound |
@@ -47,7 +53,8 @@ downloads: [Melodee Poly](https://github.com/keremimo/mpc-vst-melodee-poly/relea
 `-mpc-sample.zip` and copy it into `Melodee/Plugins`. The next time the plug-in
 picker opens, Melodee unzips it, deletes the zip and lists the plug-in folder
 (for example `Ellic Studio - VST - Melodee Poly`). A zip that cannot be
-unzipped stays, dimmed, with **Won't unzip**. Zips in other folders on the
+unzipped stays, dimmed, with **Won't unzip** (or **Card full** when the
+card has no room for it). Zips in other folders on the
 card are left as they are.
 
 To install a plug-in without moving the card, connect the MPC to a computer
@@ -62,43 +69,63 @@ The same page updates Melodee: drop the release zip on **Update**, press
 
 1. Select an empty track with **PAD BANK** + pad. Stage shows the
    new-track cards.
-2. Turn the encoder to **SYNTH** and push it. The plug-in picker opens on
-   `Melodee/Plugins`.
+2. Turn the encoder to **SYNTH** and push it. The plug-in picker opens.
 3. Turn the encoder to a plug-in and push to load it.
 
 ![The plug-in picker](../images/screens/plugins.png)
 
 The picker tags each plug-in with its format (VST3, LV2, CLAP, VST2, ARMV7) and shows
-a keyboard for instruments or sliders for effects. A bundle with many
-plug-ins shows as one row with a count; push to open it.
+a keyboard for instruments or sliders for effects. A check marks the plug-in
+loaded. A bundle with many plug-ins shows as one row with a count; push to
+open it. **K1** jumps through the list.
+
+![A bundle of plug-ins, opened](../images/screens/pluginsbundle.png)
 
 To change a track's plug-in, press **SAMPLE SELECT** on the track.
 
-**Edit**: press **B1** twice on Stage (**EDIT**), or push the encoder on
-**Keys**, to open the plug-in's parameters.
+On Stage's **PRESETS** page, **K1**–**K3** are **FILTER**, **ECHO** and
+**SPACE** on every plug-in (see
+[Stage on a plug-in track](instrument-and-midi-tracks.md#stage-on-a-plug-in-track)).
+
+**Edit**: once you pick a plug-in, the Edit page opens. Press **B1** twice
+on Stage (**EDIT**) to see the same parameters there.
 
 ![Edit: a plug-in's parameters](../images/screens/pluginedit.png)
 
-- **K1**–**K3** set the three parameters shown, in their colours.
+- **K1**–**K3** set the three parameters shown, in their colours. Each card
+  shows the parameter's name.
 - Turn the encoder or press **−** / **+** to move to other parameters.
+- **SHIFT** + encoder steps the parameter turned last by one of its own
+  values.
+- **ERASE** + a pot sets its parameter back to the plug-in's default.
 - The header shows how much of each audio block the plug-in uses.
-- **B1** opens the picker. **B2** (**PRESETS**) opens the plug-in's presets.
-- **B3** (**TRANSPORT**) sets whether the plug-in hears Play and Stop. Its
+- **B1** (**PLUG-INS**) opens the picker. **B2** (**PRESETS**) opens the
+  plug-in's presets, when it has some.
+- Every plug-in hears Melodee's Play and Stop, the tempo and the place in
+  the song, so its own sequencer plays only while Melodee plays.
+  **B3** (**TRANSPORT**) sets whether the plug-in hears Play and Stop. Its
   light is on by default. Turn it off for a plug-in with its own sequencer
   or arpeggiator, so that only the track's notes play it. It still follows
   the tempo.
 
 **Presets**: turn the encoder to a preset and push to load it. The page
-stays open, so you can play each preset in turn. **B1** goes back.
+stays open, so you can play each preset in turn. **B1** goes back. Push
+the encoder on Stage's **PRESETS** page to open the same list.
+
+![Plug-in presets](../images/screens/pluginpresets.png)
 
 A plug-in that keeps its presets in folders (most CLAP plug-ins) lists the
 folders first, each with the number of presets in it. Push to open a
 folder; **B1** goes back out. A check marks the preset loaded and the
-folder it is in. A CLAP plug-in's presets show a moment after it loads.
-The first time, Melodee reads every preset file, which takes a while for
-a plug-in with thousands.
+folder it is in. The list opens in the folder of the preset picked last.
 
-![Plug-in presets](../images/screens/pluginpresets.png)
+![Presets in folders](../images/screens/pluginpresetfolders.png)
+
+LV2 plug-ins list their presets too. A CLAP plug-in's presets show a moment
+after it loads; until then the page says **LOOKING**. The first time,
+Melodee reads every preset file, which takes a while for a plug-in with
+thousands. It keeps what it read in `Melodee/Plugin Data/.cache`, so later
+it reads only new or changed files.
 
 The project saves each plug-in's state, so presets and edits come back when
 you load the project.
@@ -120,8 +147,12 @@ loop chains take plug-ins.
 
 ![A plug-in effect on a track chain](../images/screens/rackplugin.png)
 
-To open a plug-in effect's presets, push the encoder on its slot. The same
-sheet has **TRANSPORT**, as on a plug-in track's Edit page.
+Push the encoder on a plug-in effect's slot to open its sheet.
+**PRESETS** opens its presets, when it has some. **TRANSPORT** works as on a
+plug-in track's Edit page. A kit pad's own chain and Knob FX take no
+plug-ins.
+
+![A plug-in effect's sheet](../images/screens/rackpluginsheet.png)
 
 ## Neural Amp Modeler
 
@@ -142,7 +173,13 @@ Load it as a plug-in effect on a track chain. Its first row is **Model**,
 **Cab** and **Output**; turn **K1** or **K2** to pick a file. The second row
 is **Bass**, **Middle** and **Treble**. **Slim** sets the size an A2 capture
 plays at: 0 (lite) runs in about a sixth of a block on the MPC, full costs
-about four times that. A cab IR longer than 8192 samples is cut there.
+about four times that. Melodee leaves it as you set it. A cab IR longer than
+8192 samples is cut there.
+
+The TONE3000 plug-in plays its amp captures at the size its preset or the
+saved project gives, lite or full. Full takes about three times the
+processor of lite and can crackle. TONE3000 reads its presets from
+`.config/TONE3000/Presets` in `Melodee/Plugin Data`.
 
 ## Plugin Data
 

@@ -11,11 +11,20 @@ slots), the master compressor and **MAIN VOLUME**. A kit pad can have its
 own chain of four effects before the track's chain, and its own sends to
 the four buses.
 
+The input you monitor joins the mix before the master chain, at the level
+a take of it plays back. Its Rec Input FX are heard while you monitor.
+
+Press **PAD FX** and **KNOB FX** together, from any page, to open the mixer
+on **Tracks** (see [The Tracks page](tracks.md#the-tracks-page)). Tracks,
+Sends and the effect chains share one row of keys: **B1** (**TRACKS**),
+**B2** (**SENDS**) and **B3** (**FX**).
+
 ## Sends
 
 Press **B2** (**SENDS**) on Tracks or on an effect chain to
-open **Sends**: one bus at a time, with every track's send to it. Press
-**−** / **+** to change the bus.
+open **Sends**: one bus at a time, with every track's send to it, eight
+tracks at a time. Press **−** / **+** to change the bus. The top row shows
+each bus with its first effect and its return.
 
 ![Sends](../images/screens/sends.png)
 
@@ -23,7 +32,8 @@ open **Sends**: one bus at a time, with every track's send to it. Press
 the bus return.
 
 On a kit track press **B2** (**SENDS**) again to see the kit's pads
-instead of the tracks, each with its own send to the bus shown. Hit a pad
+instead of the tracks (the bank in view, as the pads sit), each with its
+own send to the bus shown. Hit a pad
 or turn the encoder to select it; **K1** sets its send. Press **B2** again
 to go back to the tracks.
 
@@ -33,10 +43,10 @@ to go back to the tracks.
 
 On a kit, each pad has its own send to each of the four buses. Several pads
 can share one effect on a bus. The effect runs once, however many pads send
-to it. Pad FX (each pad's own chain) still work as before.
+to it. Each pad's own effect chain still works as before.
 
-A pad's send is taken after its Pad FX, its volume and its pan, before the
-kit track's chain. It then follows the kit track's level, pan, mute and
+A pad's send is taken after its own chain, its volume and its pan, before
+the kit track's chain. It then follows the kit track's level, pan, mute and
 solo: turn the kit down and its reverb goes down with it.
 
 ### Example: one reverb for snare and hat, kick dry
@@ -98,19 +108,33 @@ the kit track's sends. Stock MPC Sample projects (`.xpj`) bring no sends.
 
 ## Effect chains
 
-Press **SHIFT** + **KNOB FX**, or **B3** (**FX**) on Tracks or Sends, to open
-the effect chains. Press **FX** again to go to the next chain: **TRACK**,
-**BUS**, **MASTER**, and on a kit the last pad's own chain. The header names
-the chain in view.
+Press **B3** (**FX**) on Tracks or Sends to open the effect chains. Press
+**FX** again to go to the next chain. The header names the chain in view,
+and the dots under **FX** show where you are:
+
+- **TRACK FX**: the selected track's chain.
+- **BUS A**–**D**: the chain of the bus shown on Sends, with its return.
+- **MASTER**: the master chain.
+- On a kit, **PAD** and the pad's name: the last pad's own chain, four
+  slots.
+
+**SHIFT** + **KNOB FX** opens the track's chain from any page. Press it again
+for Sends, the bus, then the master.
 
 ![A track's effect chain](../images/screens/rack.png)
+
+![A pad's effect chain](../images/screens/padfx.png)
 
 - Turn the encoder to select a slot.
 - Push the encoder on the **+** to open the effect picker. Choose a family,
   then an effect.
 - Push the encoder on an effect to open its sheet: change, presets, bypass,
   move and remove as cards, with bypass picked. Turn the encoder to pick one
-  and push it. **B1** closes it.
+  and push it. **B1** closes it. A plug-in effect's sheet also has
+  **TRANSPORT**: whether the plug-in hears **PLAY** and **STOP** (see
+  [Plug-in effects](plug-ins.md#plug-in-effects)).
+- **ERASE** pressed alone removes the selected effect. **SHIFT** +
+  **ERASE** copies it, placed after itself.
 - **K1**–**K3** set the effect's values. **−** / **+** show its second row.
 
 ![The effect picker](../images/screens/fxpick.png)
@@ -127,6 +151,9 @@ Melodee has 41 effects in six families:
 | Dynamics | Compressor, Gate, Transient, Limiter, Pumper |
 
 The seventh family, **Plug-ins**, loads a plug-in effect (VST3, LV2, CLAP or VST2).
+A pad's own chain takes no plug-ins. For amp captures beside the **Amp
+sim**, add the Neural Amp Modeler plug-in (see
+[Neural Amp Modeler](plug-ins.md#neural-amp-modeler)).
 
 - **Sidechain**: the last row of a Compressor or Gate has **KEY**. Set it to
   a track or bus, and that sound controls the effect. For example, duck a
@@ -153,20 +180,28 @@ performance effect on any page until you press **KNOB FX** again.
 ## Pad FX
 
 Press **PAD FX**. Hold pads to play effect punches: up to four at once. Pad
-pressure sets the depth.
+pressure sets the depth. Over the pads, the screen draws the bar the
+pattern is in: a row for each punch, where it sounds.
 
-![Pad FX](../images/screens/padfx.png)
+![Pad FX](../images/screens/punch.png)
 
 - 47 punches in three banks: the MPC's 16 in the stock order, then Melodee 1
   and Melodee 2. Press **PAD BANK** or **−** / **+** to change the bank.
+  The header names the bank.
+- On Melodee's punches, **K1** sets the depth, **K2** the **SNAP** grid and
+  **K3** the tail. An MPC punch has its own **K1**–**K3**; with **SHIFT**,
+  depth, snap and tail.
 - **B1** (**LATCH**) keeps the last punch on.
 - **B2** switches between the master and the selected track.
 - **B3** (**KEEP**) records the punches of the last pass into the pattern.
   They play back with it. **ERASE** + pad removes a pad's kept punches.
+  **ERASE** + **B3** removes them all (asks first).
 - **SHIFT** + **B3** (**QUANTIZE**) turns quantize on or off. On (the
   default), a punch pressed while the sequence plays starts on the next
   line of the **SNAP** grid. Off, it starts at once, and the header shows
   a magnet with **OFF**. Punches always stop at once.
+
+![Pad FX with quantize off](../images/screens/punchfree.png)
 
 **SHIFT** + **PAD FX** opens **Flex Beat**: pad 1 is Empty, pads
 2–16 are 15 time effects on the master. **K1** One Shot or Loop, **K3** mix,
@@ -196,12 +231,16 @@ engine parameter, an effect, a pad value, the level, pan or a send. Some
 pages give it their own job: the level on Tracks, the send on Sends, A to
 B on Knob FX, the amount on the Compressor and the mix on Flex Beat.
 
-Press **SHIFT** + **Pad 9** to open the **Fader** page.
+Press **SHIFT** + **Pad 9** to open the **Fader** page. It shows the value
+the fader follows, its name and the fader. Press **SHIFT** + **Pad 9** again
+to close it.
 
 ![The Fader page](../images/screens/fader.png)
 
+- **K1**–**K3** are the track's favourite values. Turn one, or any knob on
+  any page, and the fader takes it.
 - **B2** (**PIN**) keeps the fader on its current target.
-- **B3** turns the fader on or off.
+- **B3** (**FADER**) turns the fader on or off.
 - Turn the encoder to choose a fader target. On a kit track: Pad Volume,
   Pad Pan, Pad Tune, Pad Attack, Pad Decay, Pad Cutoff, Kit Volume. On
   every track: Mod Wheel, Track Level, Track Pan, Send A, Send B, Send C,
