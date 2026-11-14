@@ -153,9 +153,23 @@ private:
         // began at `step` (the pitch), each faded over `window`, a new one every `hop`.
         bool stretch = false, beats = false;
         double place = 0, advance = 1;
-        std::array<double, 2> tap {};
-        std::array<uint32_t, 2> tap_age {};
-        std::array<bool, 2> tap_on {};
+        // Beats uses taps 0 and 1; Tones up to four (two fading out at a hit while two start on it).
+        std::array<double, 4> tap {};
+        std::array<uint32_t, 4> tap_age {};
+        std::array<bool, 4> tap_on {};
+        std::array<double, 4> tap_from {};             // Tones: where each tap began
+        std::array<float, 4> tap_gain {1, 1, 1, 1};    // Tones: 1, or falling to 0 after a hit cut it
+        // Tones' hits (not on a loop, nor an instrument's zone): the next hit ahead of `place`, found by reading
+        // ahead to `hit_scan`, and the last one cut on. Taps do not read across a hit ahead of them; when the place
+        // reaches it, those playing fade out over a short edge and a tap starts on it at full.
+        bool hits = false, hit_ahead = false;
+        double hit_at = 0, hit_scan = 0, hit_last = 0;
+        float hit_before = 0;
+        // Tones: the next tap's start, worked out ahead at `prepare_at` frames into the hop (a voice's own point in it,
+        // so a chord's voices do not all search in the same block).
+        bool prepared = false;
+        uint32_t prepare_at = 0;
+        double next_start = 0;
         uint32_t window = 1, hop = 1, since_hop = 0;
         unsigned next_tap = 0;
         uint8_t group = 0;
@@ -326,6 +340,20 @@ private:
     std::unique_ptr<std::array<Lane, lanes>> lane = std::make_unique<std::array<Lane, lanes>>();
     Lane* lane_for(int pad); // the pad's lane, a free one, or nullptr
     void stretch(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames);
+    // Tones' next tap (WSOLA): where near `natural` it reads most like the playing tap over their overlap.
+    // `from` and `age`: where the playing tap will read, and its age, when the new one starts.
+    double align(const Voice& v, const float* l, const float* r, double from, uint32_t age, double natural);
+    void scan_hits(Voice& v, const float* l, const float* r);   // Tones: read ahead for the next hit
+    void cut_on_hit(Voice& v);                                    // Tones: the place reached the hit ahead
+    static float hit_energy(const Voice& v, const float* l, const float* r, long at); // 64 frames from `at`, its way
+    unsigned open_tap(Voice& v, double at, uint32_t age);
+    static int playing_tap(const Voice& v);         // Tones: a free tap (else the oldest) from `at`
+    static constexpr double align_seconds = 0.012; // how far either side of its place a tap may start
+    struct AlignScratch {
+        std::array<float, 384> ref {};      // what the playing tap reads over the overlap, a point every 8 frames
+        std::array<float, 8192> span {};    // the mono sound around where it starts, on the same points' grid
+    };
+    std::unique_ptr<AlignScratch> aligning = std::make_unique<AlignScratch>(); // on the heap, as `lane`
 };
 
 } // namespace melodee

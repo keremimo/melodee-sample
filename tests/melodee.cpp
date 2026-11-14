@@ -1169,6 +1169,61 @@ void sampler_kit() {
         heard("pitch 50", hear(2, 0, 0, 12, 50), 22050, 882);
         heard("pitch off up", hear(2, 0, 0, 12), 22050, 882);
     }
+    // Tones (WSOLA): a held tone pitched up a fifth and kept to length holds its level (its windows add in phase, no
+    // beating) from its first frame; clicks an octave up, or down, are each heard once.
+    {
+        auto play = [](const SampleData& data, int semitones) {
+            SamplerEngine::Table table {};
+            table[0] = &data;
+            auto engine = std::make_unique<SamplerEngine>();
+            engine->set_samples(&table);
+            engine->set_param(sampler::FollowHow, 1);
+            PadSound sound; sound.sample = 0; sound.pitch = int8_t(semitones); sound.decay = 100; sound.warp = 100;
+            engine->set_pad(0, sound);
+            engine->note_on(int(sampler_first_note), 127);
+            std::vector<float> l(128), r(128), all;
+            for (unsigned b = 0; b < 1000 && engine->sounding(); ++b) {
+                std::fill(l.begin(), l.end(), 0.0f); std::fill(r.begin(), r.end(), 0.0f);
+                engine->render_stereo(l.data(), r.data(), 128);
+                all.insert(all.end(), l.begin(), l.end());
+            }
+            return all;
+        };
+        auto chord = std::make_unique<SampleData>();
+        chord->frames = 44100;
+        chord->left.resize(44100); chord->right.resize(44100);
+        for (unsigned n = 0; n < 44100; ++n)
+            chord->left[n] = chord->right[n] = float(0.3 * std::sin(2 * 3.14159265 * 220 * n / 44100.0) + 0.2 * std::sin(2 * 3.14159265 * 440 * n / 44100.0)
+                                                    + 0.1 * std::sin(2 * 3.14159265 * 660 * n / 44100.0));
+        const auto held = play(*chord, 7);
+        auto rms = [&](size_t at) { double e = 0; for (size_t n = at; n < at + 512; ++n) e += held[n] * held[n]; return std::sqrt(e / 512); };
+        double low = 1e9, high = 0, sum = 0;
+        unsigned count = 0;
+        for (size_t at = 4096; at + 512 < std::min<size_t>(held.size(), 36000); at += 256) { const double x = rms(at); low = std::min(low, x); high = std::max(high, x); sum += x; ++count; }
+        const double mean = count ? sum / count : 0;
+        const bool steady = count > 100 && mean > 0.05 && (high - low) / mean < 0.06 && rms(0) > 0.7 * mean;
+        if (!steady) std::fprintf(stderr, "tones held: mean %f, swing %f, first %f\n", mean, mean > 0 ? (high - low) / mean : 0.0, rms(0));
+        CHECK(steady);
+        auto clicks = std::make_unique<SampleData>();
+        clicks->frames = 44100;
+        clicks->left.assign(44100, 0.0f); clicks->right.assign(44100, 0.0f);
+        for (unsigned c = 0; c < 4; ++c)
+            for (unsigned n = 0; n < 400; ++n)
+                clicks->left[4000 + c * 10000 + n] = clicks->right[4000 + c * 10000 + n] = float(0.8 * std::exp(-double(n) / 60.0) * std::sin(n * 0.9));
+        for (int semitones : {12, -12}) {
+            const auto out = play(*clicks, semitones);
+            unsigned hits = 0;
+            float before = 0;
+            for (size_t at = 0; at + 64 <= out.size(); at += 64) {
+                float e = 0;
+                for (size_t n = at; n < at + 64; ++n) e += std::fabs(out[n]);
+                if (e > 4 * before && e > 64 * 0.02f) ++hits;
+                before = e;
+            }
+            if (hits != 4) std::fprintf(stderr, "tones clicks %+d: %u hits\n", semitones, hits);
+            CHECK(hits == 4);
+        }
+    }
     // Punches written into the song play where they were written, for as long, and survive a save.
     {
         auto project = std::make_unique<Project>();
