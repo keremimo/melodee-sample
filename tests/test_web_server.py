@@ -17,7 +17,7 @@ class WebServerTests(unittest.TestCase):
             binary = Path(temp) / "web_server"
             subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread",
                             "-I" + str(ROOT / "src"), str(ROOT / "tests/web_server.cpp"),
-                            str(ROOT / "src/melodee/web/web_server.cpp"), str(ROOT / "src/melodee/web/mdns.cpp"),
+                            str(ROOT / "src/melodee/web/web_server.cpp"), str(ROOT / "src/melodee/web/mdns.cpp"), str(ROOT / "src/melodee/web/card_files.cpp"),
                             "-o", str(binary)], check=True)
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)

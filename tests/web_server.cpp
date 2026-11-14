@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The web page's server (src/melodee/web/web_server.h) on a free port: what it refuses, and a body read whole.
+#include "melodee/web/card_files.h"
 #include "melodee/web/mdns.h"
+#include <filesystem>
+#include <fstream>
 #include "melodee/web/web_server.h"
 #include <cstring>
 #include <vector>
@@ -97,10 +100,39 @@ int main() {
           && safe_name(".zip", ".zip").empty() && safe_name("a\nb.zip", ".zip").empty()
           && safe_name(std::string(300, 'a') + ".zip", ".zip").empty(), "safe_name refuses");
 
+    // The Files tab's places: inside the card only.
+    namespace fs = std::filesystem;
+    fs::path card = fs::temp_directory_path() / ("melodee-web-test-" + std::to_string(::getpid()));
+    fs::create_directories(card / "Samples/Kicks");
+    fs::create_directories(card / "autorun");
+    fs::create_directories(card.string() + "-outside");
+    { std::ofstream(card / "Samples/Kicks/kick.wav") << "RIFFxxxx"; }
+    std::error_code e;
+    fs::create_directory_symlink(card.string() + "-outside", card / "Samples/away", e);
+    fs::path place;
+    std::string why;
+    check(card_place(card.string(), "", place, why) && place == card, "card_place: the top");
+    check(card_place(card.string(), "Samples/Kicks", place, why) && place == card / "Samples/Kicks", "card_place: a folder");
+    check(card_place(card.string(), "Samples/new.wav", place, why), "card_place: a file not there yet");
+    check(!card_place(card.string(), "../etc", place, why) && !card_place(card.string(), "Samples/../../x", place, why)
+          && !card_place(card.string(), "Samples//Kicks", place, why) && !card_place(card.string(), ".hidden", place, why)
+          && !card_place(card.string(), "Samples\\..\\x", place, why) && !card_place(card.string(), "/etc", place, why)
+          && !card_place(card.string(), "Samples/away", place, why) && !card_place(card.string(), "Samples/away/x", place, why)
+          && !card_place("", "Samples", place, why), "card_place refuses ways off the card");
+    check(card_writable("") && card_writable("Samples") && card_writable("Melodee/Plugins") && !card_writable("autorun")
+          && !card_writable("autorun/melodee") && !card_writable("Autorun") && !card_writable("sample-base/x"), "card_writable");
+    check(free_path(card / "Samples/Kicks", "kick.wav") == card / "Samples/Kicks/kick 2.wav"
+          && free_path(card / "Samples/Kicks", "snare.wav") == card / "Samples/Kicks/snare.wav", "free_path");
+    auto listing = folder_json(card / "Samples");
+    check(listing.find("\"name\":\"Kicks\",\"dir\":true") != std::string::npos, "folder_json lists folders");
+    check(file_type("A.WAV") == "audio/wav" && file_type("x.flac") == "audio/flac" && file_type("x.html") == "application/octet-stream",
+          "file_type");
+
     Server server;
     std::string error;
     bool started = server.start(0, [](const Request& request, const Body& body) {
         if (request.path == "/early") return Reply {409, "text/plain", "early"}; // the body left unread
+        if (request.path == "/sample") return Reply {200, "audio/wav", {}, request.query.at("file"), "kick \"1\".wav"};
         uint64_t got = 0;
         bool all_x = true;
         char buffer[3000];
@@ -140,7 +172,15 @@ int main() {
     check(status_is(r, 400), "a bad request line");
     r = ask(port, "GET / HTTP/1.1\r\n" + host + "X-Big: " + std::string(20000, 'a') + "\r\n\r\n");
     check(status_is(r, 400), "a head over 16 KB");
+    r = ask(port, "GET /sample?file=" + (card / "Samples/Kicks/kick.wav").string() + " HTTP/1.1\r\n" + host + "\r\n");
+    check(status_is(r, 200) && body_of(r) == "RIFFxxxx" && r.find("Content-Length: 8") != std::string::npos
+          && r.find("filename=\"kick _1_.wav\"") != std::string::npos && r.find("filename*=UTF-8''kick%20%221%22.wav") != std::string::npos,
+          "a file sent from disk, named for a save");
+    r = ask(port, "GET /sample?file=" + (card / "Samples").string() + " HTTP/1.1\r\n" + host + "\r\n");
+    check(status_is(r, 404), "a folder is not sent as a file");
     server.stop();
+    fs::remove_all(card, e);
+    fs::remove_all(card.string() + "-outside", e);
     if (failures) return 1;
     std::printf("web server ok\n");
     return 0;

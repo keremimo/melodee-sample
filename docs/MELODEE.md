@@ -2173,7 +2173,16 @@ Melodee stops the stock web server
 (`az0x-webserver`, Akai's updater) as the page starts and takes port 80; the
 base's `restore-stock.sh` starts it again whenever Melodee stops, a crash
 too. If port 80 is still held, the page is on port 8080.
-It has three tabs: **Device**, **Quickstart** and **Manual**. The last two
+It has four tabs: **Device**, **Files**, **Quickstart** and **Manual**.
+**Files** (`web/card_files.*`) lists the card's folders (hidden files and
+System Volume Information left out), plays audio files in the browser,
+downloads any file, uploads files by button or drop into the folder open
+(one at a time, never over a file of the same name: "Kick 2.wav"), makes
+folders and deletes files or folders after the browser asks. `autorun/` and
+`sample-base/` are read-only, and the card's top and `Melodee/` cannot be
+deleted. Paths are checked to stay on the card (no `..`, no hidden parts,
+links followed). A change makes the sample browser and the project list look
+again. The last two
 are this repository's `QUICKSTART.md`, `GUIDE.md` and `guide/*.md` with
 their images, turned into pages by `tools/web_bundle.py` at build time and
 carried in the binary (`web/web_bundle.*`, about 5 MB); they read the same

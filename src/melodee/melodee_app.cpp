@@ -699,4 +699,8 @@ void MelodeeApp::web_service(Hardware& hardware) {
     web.publish(facts);
     std::string note;
     if (web.take_note(note)) link.note(note);
+    if (web.take_files_changed()) { // the Files tab added or deleted something: the browser and projects look again
+        library.rescan();
+        store.rescan();
+    }
 }

@@ -2,9 +2,12 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/web/web_server.h"
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/sendfile.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <algorithm>
@@ -46,16 +49,49 @@ bool send_all(int fd, const char* data, size_t size) {
     return true;
 }
 
+Reply error_reply(int status, const std::string& words);
+
+// A name for Content-Disposition: plain ASCII with quotes and controls taken out, and the whole name UTF-8 encoded.
+std::string disposition(const std::string& name) {
+    std::string plain, encoded;
+    for (unsigned char c : name) {
+        plain += (c < 0x20 || c >= 0x7f || c == '"' || c == '\\') ? '_' : char(c);
+        if (std::isalnum(c) || std::strchr("-._~", c)) encoded += char(c);
+        else { char hex[4]; std::snprintf(hex, sizeof(hex), "%%%02X", c); encoded += hex; }
+    }
+    return "attachment; filename=\"" + plain + "\"; filename*=UTF-8''" + encoded;
+}
+
 void send_reply(int fd, const Reply& reply, bool head_only) {
+    int file = -1;
+    uint64_t length = reply.body.size();
+    if (!reply.file.empty()) {
+        file = ::open(reply.file.c_str(), O_RDONLY | O_CLOEXEC);
+        struct stat info {};
+        if (file < 0 || ::fstat(file, &info) != 0 || !S_ISREG(info.st_mode)) {
+            if (file >= 0) ::close(file);
+            return send_reply(fd, error_reply(404, "Not found"), head_only);
+        }
+        length = uint64_t(info.st_size);
+    }
     std::string out = "HTTP/1.1 " + std::to_string(reply.status) + " " + status_text(reply.status) + "\r\n"
         + "Content-Type: " + reply.type + "\r\n"
-        + "Content-Length: " + std::to_string(reply.body.size()) + "\r\n"
+        + "Content-Length: " + std::to_string(length) + "\r\n"
+        + (reply.download.empty() ? std::string() : "Content-Disposition: " + disposition(reply.download) + "\r\n")
         + "Cache-Control: no-store\r\n"
         + "X-Content-Type-Options: nosniff\r\n"
         + "X-Frame-Options: DENY\r\n"
         + "Connection: close\r\n\r\n";
-    if (!head_only) out += reply.body;
-    send_all(fd, out.data(), out.size());
+    if (!head_only && file < 0) out += reply.body;
+    bool ok = send_all(fd, out.data(), out.size());
+    if (file >= 0) {
+        for (off_t at = 0; ok && !head_only && uint64_t(at) < length;) {
+            ssize_t sent = ::sendfile(fd, file, &at, size_t(std::min<uint64_t>(length - uint64_t(at), 1 << 20)));
+            if (sent < 0 && errno == EINTR) continue;
+            ok = sent > 0;
+        }
+        ::close(file);
+    }
 }
 
 Reply error_reply(int status, const std::string& words) { return {status, "application/json; charset=utf-8", "{\"error\":" + json_text(words) + "}"}; }

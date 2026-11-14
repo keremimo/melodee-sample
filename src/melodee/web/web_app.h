@@ -50,6 +50,7 @@ public:
     void publish(const Facts& facts);
     bool take_rescan() { return rescan.exchange(false); } // an update zip came: check the card again now
     bool take_note(std::string& text);                    // "Installed Melodee Poly", for the header
+    bool take_files_changed() { return files_changed.exchange(false); } // the Files tab changed the card: look again
 
 private:
     Reply handle(const Request& request, const Body& body);
@@ -57,6 +58,11 @@ private:
     Reply plugins();
     Reply upload_update(const Request& request, const Body& body);
     Reply upload_plugin(const Request& request, const Body& body);
+    Reply list_files(const Request& request);
+    Reply send_file(const Request& request);
+    Reply upload_file(const Request& request, const Body& body);
+    Reply make_folder(const Request& request);
+    Reply delete_entry(const Request& request);
     Facts current();
     Server server;
     Mdns mdns; // melodee.local
@@ -64,7 +70,7 @@ private:
     std::condition_variable published;
     Facts facts;
     std::string note;
-    std::atomic<bool> rescan {false};
+    std::atomic<bool> rescan {false}, files_changed {false};
     bool closing = false; // under `lock`
 };
 

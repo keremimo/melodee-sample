@@ -8,6 +8,7 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <utility>
 
 // A small HTTP/1.1 server for Melodee's web page (web/web_app.h), on its own
 // thread, one connection at a time, each closed after its reply. It runs on
@@ -32,9 +33,14 @@ struct Request {
 };
 
 struct Reply {
+    Reply() = default;
+    Reply(int s, std::string t, std::string b, std::string f = {}, std::string d = {})
+        : status(s), type(std::move(t)), body(std::move(b)), file(std::move(f)), download(std::move(d)) {}
     int status = 200;
     std::string type = "application/json; charset=utf-8";
     std::string body;
+    // A file sent as the body instead, read as it goes out (a sample of any size); `download` names it for a save.
+    std::string file, download;
 };
 
 // Reads up to `size` bytes of the request's body into `into`: the bytes read,

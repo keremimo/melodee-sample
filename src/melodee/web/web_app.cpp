@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/web/web_app.h"
+#include "melodee/web/card_files.h"
 #include "melodee/web/web_bundle.h"
 #include "melodee/plugin/plugin_files.h"
 #include "melodee/shell/update.h"
@@ -19,15 +20,6 @@ constexpr uint64_t plugin_limit = (uint64_t(4) << 30) - 1; // a FAT32 card's lar
 constexpr uint64_t room_margin = uint64_t(8) << 20;
 
 Reply fail(int status, const std::string& words) { return {status, "application/json; charset=utf-8", "{\"error\":" + json_text(words) + "}"}; }
-
-// `name` in `folder`, else "<stem> 2.zip", "<stem> 3.zip"... so nothing already there is written over.
-fs::path free_path(const fs::path& folder, const std::string& name) {
-    std::error_code error;
-    fs::path path = folder / name;
-    for (int n = 2; fs::exists(path, error) && n < 1000; ++n)
-        path = folder / (fs::path(name).stem().string() + " " + std::to_string(n) + fs::path(name).extension().string());
-    return path;
-}
 
 // The request's body into `path`, flushed to the card. False, with nothing left behind, when it stopped short.
 bool receive(const Body& body, uint64_t length, const fs::path& path) {
@@ -121,6 +113,11 @@ Reply WebApp::handle(const Request& request, const Body& body) {
     if (get && request.path == "/plugins") return plugins();
     if (request.method == "POST" && request.path == "/update") return upload_update(request, body);
     if (request.method == "POST" && request.path == "/plugin") return upload_plugin(request, body);
+    if (get && request.path == "/list") return list_files(request);
+    if (get && request.path == "/file") return send_file(request);
+    if (request.method == "POST" && request.path == "/upload") return upload_file(request, body);
+    if (request.method == "POST" && request.path == "/mkdir") return make_folder(request);
+    if (request.method == "POST" && request.path == "/delete") return delete_entry(request);
     if (get)
         if (auto file = bundled(request.path)) return {200, file.type, std::string(file.data, file.size)};
     if (get && request.path == "/favicon.ico") return {204, "image/x-icon", ""}; // the page names its own icon
@@ -214,6 +211,91 @@ Reply WebApp::upload_plugin(const Request& request, const Body& body) {
     std::string out = "{\"installed\":[";
     for (size_t n = 0; n < placed.size(); ++n) out += (n ? "," : "") + json_text(placed[n]);
     return {200, "application/json; charset=utf-8", out + "]}"};
+}
+
+// ---- Files: the card's folders, read and changed from the page's Files tab ----
+
+namespace {
+std::string query_of(const Request& request, const char* key) {
+    auto found = request.query.find(key);
+    return found == request.query.end() ? std::string() : found->second;
+}
+} // namespace
+
+Reply WebApp::list_files(const Request& request) {
+    Facts f = current();
+    const std::string rel = query_of(request, "path");
+    fs::path folder;
+    std::string why;
+    if (!card_place(f.card, rel, folder, why)) return fail(f.card.empty() ? 409 : 404, why);
+    std::error_code error;
+    if (!fs::is_directory(folder, error)) return fail(404, "Not a folder");
+    return {200, "application/json; charset=utf-8", "{\"path\":" + json_text(rel) + ",\"writable\":"
+        + (card_writable(rel) ? "true" : "false") + ",\"entries\":" + folder_json(folder) + "}"};
+}
+
+Reply WebApp::send_file(const Request& request) {
+    Facts f = current();
+    fs::path file;
+    std::string why;
+    if (!card_place(f.card, query_of(request, "path"), file, why)) return fail(f.card.empty() ? 409 : 404, why);
+    Reply reply {200, file_type(file.filename().string()), {}, file.string(), {}};
+    if (query_of(request, "save") == "1") reply.download = file.filename().string(); // else shown or played in place
+    return reply;
+}
+
+Reply WebApp::upload_file(const Request& request, const Body& body) {
+    Facts f = current();
+    const std::string rel = query_of(request, "path");
+    fs::path folder;
+    std::string why;
+    if (!card_place(f.card, rel, folder, why)) return fail(f.card.empty() ? 409 : 404, why);
+    if (!card_writable(rel)) return fail(403, "This folder is read-only");
+    auto name = safe_name(query_of(request, "name"), "");
+    if (name.empty()) return fail(400, "Not a name the card takes");
+    if (request.length > plugin_limit) return fail(413, "Too big for the SD card (4 GB at most)");
+    std::error_code error;
+    if (!fs::is_directory(folder, error)) return fail(404, "Not a folder");
+    if (!room_for(folder, request.length)) return fail(507, "The SD card is full");
+    const fs::path temp = folder / ".melodee-upload.part";
+    if (!receive(body, request.length, temp)) return fail(400, "The upload stopped before the end");
+    const fs::path to = free_path(folder, name);
+    fs::rename(temp, to, error);
+    if (error) { fs::remove(temp, error); return fail(500, "Could not write to the SD card"); }
+    files_changed.store(true);
+    return {200, "application/json; charset=utf-8", "{\"name\":" + json_text(to.filename().string()) + "}"};
+}
+
+Reply WebApp::make_folder(const Request& request) {
+    Facts f = current();
+    const std::string rel = query_of(request, "path");
+    fs::path folder;
+    std::string why;
+    if (!card_place(f.card, rel, folder, why)) return fail(f.card.empty() ? 409 : 404, why);
+    if (!card_writable(rel)) return fail(403, "This folder is read-only");
+    auto name = safe_name(query_of(request, "name"), "");
+    if (name.empty()) return fail(400, "Not a name the card takes");
+    std::error_code error;
+    if (fs::exists(folder / name, error)) return fail(409, "Already there");
+    if (!fs::create_directory(folder / name, error) || error) return fail(500, "Could not write to the SD card");
+    files_changed.store(true);
+    return {200, "application/json; charset=utf-8", "{\"name\":" + json_text(name) + "}"};
+}
+
+Reply WebApp::delete_entry(const Request& request) {
+    Facts f = current();
+    const std::string rel = query_of(request, "path");
+    fs::path place;
+    std::string why;
+    if (!card_place(f.card, rel, place, why)) return fail(f.card.empty() ? 409 : 404, why);
+    if (rel.empty() || !card_writable(rel) || rel == "Melodee") return fail(403, "This one stays"); // Melodee's own folder too
+    std::error_code error;
+    if (!fs::exists(place, error)) return fail(404, "Not found");
+    fs::remove_all(place, error);
+    if (error) return fail(500, "Could not delete it");
+    ::sync();
+    files_changed.store(true);
+    return {200, "application/json; charset=utf-8", "{}"};
 }
 
 } // namespace melodee::web

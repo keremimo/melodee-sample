@@ -1,0 +1,26 @@
+<div class="files" id="files">
+  <div class="files-bar">
+    <nav class="crumbs" id="crumbs" aria-label="Folder"></nav>
+    <span class="readonly" id="readonly" hidden>Read-only</span>
+    <div class="files-tools" id="tools">
+      <button type="button" class="quiet" id="new-folder">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5.5h5l1.5 2h8.5v8h-15z M10 10v4 M8 12h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        Folder
+      </button>
+      <label class="button">
+        <input type="file" id="upload-input" multiple hidden>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 14V4 M6 8l4-4 4 4 M4 16h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Upload
+      </label>
+    </div>
+  </div>
+  <div class="queue" id="queue" hidden>
+    <span class="queue-words" id="queue-words"></span>
+    <span class="gauge wide"><i id="queue-bar"></i></span>
+  </div>
+  <div class="file-list" id="file-list" data-drop-target>
+    <div class="drop-veil"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 22V8 M10 14l6-6 6 6 M7 26h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Drop to upload here</span></div>
+    <ul class="lanes" id="entries" aria-label="Files"></ul>
+  </div>
+  <audio id="player" preload="none"></audio>
+</div>
