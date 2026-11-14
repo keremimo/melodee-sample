@@ -7942,6 +7942,41 @@ void instrument_zones_r3() {
 }
 
 void sampler_zones() {
+    // A zone voice's short loop (SamplerEngine::zone_run_plain()) sounds exactly as play_zone()'s full one: looped and
+    // one-shot zones, a loop until released, a filtered zone, chords, bends gliding and keys let go.
+    {
+        auto render = [](bool plain) {
+            SamplerEngine::plain_runs = plain;
+            ZoneRig rig;
+            rig.part(zone_tone(220, 0.5f, 30000));
+            rig.part(zone_tone(331, 0.4f, 20000));
+            auto& low = rig.zone(0); low.high_key = 59; low.root = 57; low.loop = ZoneLoop::On; low.loop_start = 4000; low.loop_end = 9000;
+            auto& high = rig.zone(1); high.low_key = 60; high.root = 64; high.loop = ZoneLoop::UntilReleased; high.loop_start = 2000; high.loop_end = 7000;
+            high.filter = PadFilter::Lpf2; high.cutoff = 0.4f; high.resonance = 0.3f;
+            auto& top = rig.zone(0); top.low_key = 72; top.root = 72; top.one_shot = true; top.end = 12000;
+            rig.build(PadPlay::Gate);
+            std::vector<float> out;
+            for (unsigned b = 0; b < 300; ++b) {
+                if (b % 20 == 0) { rig.key(-5 + int(b / 20 % 4) * 7); rig.key(14); }
+                if (b % 20 == 12) { rig.off(-5 + int(b / 20 % 4) * 7); rig.off(14); }
+                if (b == 100) rig.engine->set_bend(0.5f);
+                if (b == 180) rig.engine->set_bend(0.0f);
+                auto part = rig.run(b % 3 ? 128 : 45);
+                out.insert(out.end(), part.begin(), part.end());
+            }
+            SamplerEngine::plain_runs = true;
+            return out;
+        };
+        SamplerEngine::plain_taken = 0;
+        const auto full = render(false);
+        CHECK(SamplerEngine::plain_taken == 0);
+        const auto plain = render(true);
+        CHECK(SamplerEngine::plain_taken > 200);
+        size_t differ = 0;
+        for (size_t n = 0; n < std::min(full.size(), plain.size()); ++n) differ += full[n] != plain[n];
+        if (differ) std::fprintf(stderr, "zone_run_plain: %zu samples differ\n", differ);
+        CHECK(full.size() == plain.size() && differ == 0 && peak_of(full, 0) > 0.05f);
+    }
     { // a key plays its zone in tune, whichever zone it is
         ZoneRig r;
         r.part(zone_tone(220, 0.5f, 44100)); r.part(zone_tone(880, 0.5f, 44100));

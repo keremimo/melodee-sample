@@ -942,11 +942,59 @@ bool SamplerEngine::admit_grown(Voice& v, unsigned frames) {
     return true;
 }
 
+// A zone voice's next `frames` with nothing to check frame by frame: no glide or choke, its duck all the way up, and
+// clear of its tail's fades. (A zone has no edge fades or seam.)
+bool SamplerEngine::zone_plain(const Voice& v, unsigned frames) const {
+    if (v.gliding || v.choked || v.duck != 1.0f || v.duck_to != 1.0f) return false;
+    if (!v.loop && (v.tail > 0 || v.filter_tail > 0)) { // voice_out()'s fades to the end not begun
+        const double travel = double(frames + 1) * v.step;
+        const double distance = v.reverse ? (v.position - travel) - v.start : (v.end - 1) - (v.position + travel);
+        if (distance / std::max(v.step, 1e-6) < double(std::max(v.tail, v.filter_tail)) + 2) return false;
+    }
+    return true;
+}
+
+// play_zone()'s loop with what zone_plain() ruled out taken away; the same arithmetic in the same order.
+void SamplerEngine::zone_run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames) {
+    const bool filtered = v.filter != PadFilter::Off, reverse = v.reverse;
+    const bool round = v.loop && (!v.loop_held || v.held);
+    const double step = v.step;
+    const float gain = v.gain, fade = v.fade, pan_l = v.left, pan_r = v.right;
+    dsp::Envelope env = v.env;
+    for (unsigned f = from; f < frames; ++f) {
+        if (round && v.position >= v.loop_hi) {
+            while (v.position >= v.loop_hi) v.position -= double(v.loop_hi - v.loop_at);
+            came_round(v);
+        }
+        if (!round && (reverse ? v.position < v.start : v.position >= v.end - 1)) { v.pad = -1; break; }
+        unsigned i = unsigned(v.position);
+        float frac = float(v.position - i);
+        unsigned j = i + 1;
+        if (round && j >= v.loop_hi) j = v.loop_at;
+        else j = std::min(j, v.end - 1);
+        float a = env.next(v.shape) * gain * fade;
+        float sl = l[i] + (l[j] - l[i]) * frac, sr = r[i] + (r[j] - r[i]) * frac;
+        if (filtered) voice_out(v, sl, sr, a, 1e9f, to_l, to_r, f); // clear of its tail (zone_plain())
+        else {
+            to_l[f] += sl * a * pan_l;
+            to_r[f] += sr * a * pan_r;
+        }
+        v.position += reverse ? -step : step;
+        if (!env.active()) { v.pad = -1; break; }
+    }
+    v.env = env;
+}
+
 // A zone's frames: as a pad's, but round a loop of its own, the fraction kept
 // and the seam read across, so a loop in tune at any pitch does not click.
 void SamplerEngine::play_zone(Voice& v, float* to_l, float* to_r, unsigned from, unsigned frames) {
     const float* l = v.l;
     const float* r = v.r;
+    if (plain_runs && zone_plain(v, frames - from)) { // nothing this run needs looking at frame by frame: the short loop
+        zone_run_plain(v, l, r, to_l, to_r, from, frames);
+        ++plain_taken;
+        return;
+    }
     for (unsigned f = from; f < frames; ++f) {
         const bool round = v.loop && (!v.loop_held || v.held);
         if (round && v.position >= v.loop_hi) {

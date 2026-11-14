@@ -253,6 +253,9 @@ private:
     // its edge fades and tail): run_plain() plays them in a shorter loop, sample for sample as the full one would.
     bool plain_run(const Voice& v, unsigned frames) const;
     void run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames, double span);
+    // The same for a zone voice (play_zone()).
+    bool zone_plain(const Voice& v, unsigned frames) const;
+    void zone_run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames);
     Voice& free_voice();
 
     struct Grain {
