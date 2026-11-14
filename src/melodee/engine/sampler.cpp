@@ -97,7 +97,7 @@ void SamplerEngine::start(Voice& v, const PadSound& sound, int pad, int velocity
     } else loop_setup(v, sound);
     // A sample still being read (the browser's preview) plays what has landed, as a stream plays what is pinned.
     if (!part && data->growth && !data->growth->whole.load(std::memory_order_acquire)) v.grow = data->growth.get();
-    v.cloud = p[Cloud] != 0 && pad < int(sampler_pads) && !v.grow; // not for Chop's audition, nor before all is there
+    v.cloud = sound.cloud && pad < int(sampler_pads) && !v.grow; // not for Chop's audition, nor before all is there
     v.held = true; v.gate = sound.play == PadPlay::Gate && !(zone && zone->one_shot); v.group = sound.group;
     if (zone && zone->on_release) v.held = v.gate = v.loop = false; // a release sample plays out once
     aim(v, sound, zone, multi, key);
@@ -626,12 +626,13 @@ void SamplerEngine::spawn(Voice& v) {
     seed = seed * 1664525u + 1013904223u;
     float random = int32_t(seed) / 2147483648.0f;
     double span = v.zone ? std::min(v.end - v.start, stream_chunk) : v.end - v.start; // an instrument's clouds stay in what is held
-    double at = v.start + span * (p[Position] / 100.0) + v.scan + random * span * 0.05;
+    const PadSound& own = pads[size_t(v.pad) % sampler_pads]; // the pad's cloud, as it is now (Motion moves it)
+    double at = v.start + span * (own.cloud_position / 100.0) + v.scan + random * span * 0.05;
     at = std::fmod(std::fmod(at - v.start, span) + span, span) + v.start;
     seed = seed * 1664525u + 1013904223u;
-    float detune = int32_t(seed) / 2147483648.0f * p[Spread] / 100.0f; // up to a semitone either way per 100 cents
+    float detune = int32_t(seed) / 2147483648.0f * own.cloud_spread / 100.0f; // up to a semitone either way per 100 cents
     double step = v.step * std::exp2(detune / 12.0);
-    uint32_t length = uint32_t(0.01f * std::pow(100.0f, p[Size] / 100.0f) * dsp::sample_rate());
+    uint32_t length = uint32_t(0.01f * std::pow(100.0f, own.cloud_size / 100.0f) * dsp::sample_rate());
     // A grain never runs off its region's end (and round to its start: a jump in the sound). Near the end it is
     // cut short, its window with it; with hardly any room left it starts early enough to fit.
     const double top = v.start + span, fit = (top - 1 - at) / step;
@@ -1090,9 +1091,10 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         if (v.life > 0 && (v.life -= frames) <= 0) { v.env.gate(false); v.filter_env.gate(false); }
         v.sounded += frames;
         if (!v.env.active() || (v.choked && (v.fade -= 0.25f) <= 0)) { v.pad = -1; continue; }
-        v.scan += (p[Scan] - 50) / 50.0 * v.step * frames; // forwards or backwards at up to its own speed
+        const PadSound& own = pads[size_t(v.pad) % sampler_pads];
+        v.scan += (own.cloud_scan - 50) / 50.0 * v.step * frames; // forwards or backwards at up to its own speed
         v.next_grain -= frames;
-        double every = dsp::sample_rate() / std::max(1, int(1 + p[Density] * 0.99));
+        double every = dsp::sample_rate() / std::max(1, int(1 + own.cloud_density * 0.99));
         while (v.next_grain <= 0) { spawn(v); v.next_grain += every; }
     }
     for (auto& g : grains) {
@@ -1254,9 +1256,10 @@ void SamplerEngine::taps(TrackTaps& out) const {
         uint8_t flags = 0;
         if (v.cloud) { // where the grains come from (spawn's centre), and how fast Scan carries it
             double span = v.zone ? std::min(v.end - v.start, stream_chunk) : v.end - v.start;
-            double at = v.start + span * (p[sampler::Position] / 100.0) + v.scan;
+            const PadSound& own = pads[size_t(v.pad) % sampler_pads];
+            double at = v.start + span * (own.cloud_position / 100.0) + v.scan;
             at = std::fmod(std::fmod(at - v.start, span) + span, span) + v.start;
-            t.at = uint32_t(at); t.step = float((p[sampler::Scan] - 50) / 50.0 * v.step);
+            t.at = uint32_t(at); t.step = float((own.cloud_scan - 50) / 50.0 * v.step);
             t.to = v.start + uint32_t(span);
             flags |= tap::Cloud;
         } else if (v.stretch) { t.at = uint32_t(std::max(0.0, v.place)); t.step = float(way * v.advance); flags |= tap::Stretch; }

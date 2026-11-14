@@ -173,6 +173,12 @@ void describe_card(const Snapshot& s, const Binding& b, ui::KnobCard& c) {
         c.label = juce::String(track.engine == EngineKind::Sampler && s.ui.page == PageId::Stage ? "KIT SEND " : "SEND ") + char('A' + unsigned(b.id) % bus_count);
         c.value = juce::String(b.value); c.unit = "%";
         break;
+    case Kind::PadCloud: { // the pad's cloud, shown as the kit's CLOUD values were
+        const auto& p = track_param_info(EngineKind::Sampler, track.params, unsigned(sampler::Cloud + std::clamp(b.id, 0, 5)));
+        auto shown = show(p, b.value);
+        c.label = p.label; c.value = shown.value; c.unit = shown.unit; c.fill = gauge_of(p, b.value);
+        break;
+    }
     case Kind::PadSend: c.label = juce::String("SEND ") + char('A' + unsigned(b.id) % bus_count); c.value = juce::String(b.value); c.unit = "%"; break;
     case Kind::Root: c.label = "ROOT"; c.value = note_letter(unsigned(b.value)); break;
     case Kind::Scale: c.label = "SCALE"; c.value = scales()[size_t(b.value)].name; break;

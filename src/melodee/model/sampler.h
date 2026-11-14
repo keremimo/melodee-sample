@@ -112,6 +112,14 @@ struct PadSound {
     // The pad's own send into each bus A-D, 0..100 (kept in PSND): taken after its Pad FX, its volume and pan, before
     // the track's chain, at the track's level, pan and mute. The track's sends (Mix::sends) still send the whole kit.
     std::array<uint8_t, 4> sends {};
+    // Cloud (Stage's CLOUD, kept in PCLD): the pad played as grains. Where they come from, their size, how many a
+    // second, how fast the place moves (50 still), their detune; 0..100. A file from before kept one Cloud for the
+    // whole kit: it lands on every pad.
+    bool cloud = false;
+    uint8_t cloud_position = 38, cloud_size = 50, cloud_density = 24, cloud_scan = 50, cloud_spread = 12;
+    bool plain_cloud() const {
+        return !cloud && cloud_position == 38 && cloud_size == 50 && cloud_density == 24 && cloud_scan == 50 && cloud_spread == 12;
+    }
     bool sending() const { for (auto s : sends) if (s) return true; return false; }
     uint32_t loop_point() const { return loop_lock ? start : loop_start; }
     bool used() const { return sample != no_sample; }

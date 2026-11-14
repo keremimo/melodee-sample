@@ -788,19 +788,19 @@ const Preview previews[] {
     {"stagekitplay", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Play); s.sample = break_sample(); s.playing = true; s.project.tracks[3].pads[8].group = 2; }},
     {"stagekitcolour", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Colour); s.sample = break_sample(); s.playing = true; coloured_kit(s); }},
     {"stagekitfollow", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Follow); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Follow] = 1; }},
-    {"stagekitcloud", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true; s.project.tracks[3].params[sampler::Cloud] = 1; }},
+    {"stagekitcloud", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true; auto& t = s.project.tracks[3]; t.pads[t.last_pad % sampler_pads].cloud = true; }},
     {"stagekitcloudoff", [](Shell&, Snapshot& s) { on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true; }},
     {"stagecloudplaying", [](Shell&, Snapshot& s) { // CLOUD while A09 is held: its grains, the bars they cover lit, where they are
          on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true;
-         auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 38;
-         auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; // the whole break
+         auto& t = s.project.tracks[3];
+         auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; pad.cloud = true; pad.cloud_position = 38; // the whole break
          uint32_t end = pad.end ? pad.end : s.sample.frames;
          cloud_heard(s, pad.start + (end - pad.start) * 0.38);
      }},
     {"stagecloudscan", [](Shell&, Snapshot& s) { // Scan moving: the cloud has travelled on from K1's line, the label with it
          on_stage(s, 3, StageKind::Cloud); s.sample = break_sample(); s.playing = true;
-         auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 20; t.params[sampler::Scan] = 75;
-         auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; // the whole break
+         auto& t = s.project.tracks[3];
+         auto& pad = t.pads[8]; pad.start = 0; pad.end = 0; pad.cloud = true; pad.cloud_position = 20; pad.cloud_scan = 75; // the whole break
          uint32_t end = pad.end ? pad.end : s.sample.frames;
          cloud_heard(s, pad.start + (end - pad.start) * 0.52);
      }},
@@ -1962,12 +1962,12 @@ const Preview previews[] {
          auto& t = s.project.tracks[3]; t.params[sampler::Follow] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; t.pads[4].own_tempo = 920;
          s.ui.turning = 1; s.ui.turned_at = s.now; }},
     {"cloudplaying", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
-         auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.params[sampler::Position] = 38; t.last_pad = 8;
-         auto& pad = t.pads[8]; pad.start = 0; pad.end = 230087;
+         auto& t = s.project.tracks[3]; t.last_pad = 8;
+         auto& pad = t.pads[8]; pad.start = 0; pad.end = 230087; pad.cloud = true; pad.cloud_position = 38;
          cloud_heard(s, 230087 * 0.38);
      }},
     {"cloud", [](Shell&, Snapshot& s) { s.ui.page = PageId::CloudPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
-         auto& t = s.project.tracks[3]; t.params[sampler::Cloud] = 1; t.last_pad = 4; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
+         auto& t = s.project.tracks[3]; t.last_pad = 4; t.pads[4].cloud = true; t.pads[4].start = 0; t.pads[4].end = 230087; s.ui.turning = 0; s.ui.turned_at = s.now; }},
     // Parity phase 10: the sampler's page map (Push) over Play.
     {"samplermap", [](Shell&, Snapshot& s) { s.ui.page = PageId::PlayPage; s.ui.track = 3; s.sample = break_sample(); s.playing = true;
          s.ui.map_open = true; s.ui.map_cursor = 7; }},

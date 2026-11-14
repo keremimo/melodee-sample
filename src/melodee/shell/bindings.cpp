@@ -62,6 +62,8 @@ const ParamInfo pad_infos[pad_param_count] {
     {"RELEASE", 0, 100, 20}, {"VEL SENS", 0, 100, 100}, {"OFFSET", 0, 100, 0}, {"F ATTACK", 0, 100, 0},
     {"F DECAY", 0, 100, 50}, {"F SUSTAIN", 0, 100, 0}, {"F RELEASE", 0, 100, 20}, {"F DEPTH", 0, 100, 0},
     {"CUTOFF", 0, 100, 100}, {"RESO", 0, 100, 0}, {"SEND A", 0, 100, 0}, {"SEND B", 0, 100, 0}, {"SEND C", 0, 100, 0}, {"SEND D", 0, 100, 0},
+    {"POSITION", 0, 100, 38}, {"SIZE", 0, 100, 50}, {"DENSITY", 0, 100, 24, Format::Number}, {"SCAN", 0, 100, 50},
+    {"SPREAD", 0, 100, 12, Format::Cents},
 };
 Binding::Kind pad_kind(PadParam p) {
     using K = Binding::Kind;
@@ -84,8 +86,17 @@ Binding::Kind pad_kind(PadParam p) {
     case PadParam::FilterCutoff: return K::PadCutoff;
     case PadParam::FilterResonance: return K::PadResonance;
     case PadParam::SendA: case PadParam::SendB: case PadParam::SendC: case PadParam::SendD: return K::PadSend; // id: the bus
+    case PadParam::CloudPosition: case PadParam::CloudSize: case PadParam::CloudDensity: case PadParam::CloudScan:
+    case PadParam::CloudSpread: return K::PadCloud; // id: cloud_id()
     default: return K::None;
     }
+}
+// A PadCloud card's id for a cloud lane (0 is Cloud on or off, which has none), and the card of one.
+int cloud_id(PadParam p) { return int(p) - int(PadParam::CloudPosition) + 1; }
+Binding cloud_card(const PadSound& pad, int id) {
+    if (!id) return {Kind::PadCloud, 0, 0, 1, pad.cloud};
+    auto p = PadParam(int(PadParam::CloudPosition) + id - 1);
+    return {Kind::PadCloud, id, 0, 100, pad_param_value(pad, p)};
 }
 // The Sample Mode cards of the last pad hit (parity phase 4).
 Binding trim_zoom(const UiState& ui, int handle) { return {Kind::TrimZoom, handle, 0, zoom_top, ui.trim_zoom}; }
@@ -184,8 +195,9 @@ Binding lane_binding(const Track& track, unsigned t, int lane, const Project* pr
     if (int which = pad_param_of(unsigned(param)); which >= 0) { // the pad's card, as on the sampler pages (they edit the last pad hit)
         auto m = motion_param(track, lane);
         if (!m.info || lane_pad(lane) != track.last_pad % sampler_pads) return {};
-        int bus = which >= int(PadParam::SendA) ? which - int(PadParam::SendA) : 0; // a send's card names its bus
-        return {pad_kind(PadParam(which)), bus, m.info->min, m.info->max, m.value};
+        int id = which >= int(PadParam::CloudPosition) ? cloud_id(PadParam(which)) // a cloud card names its value
+               : which >= int(PadParam::SendA) ? which - int(PadParam::SendA) : 0; // a send's its bus
+        return {pad_kind(PadParam(which)), id, m.info->min, m.info->max, m.value};
     }
     if (param >= int(motion_fx_base)) {
         auto m = motion_param(track, param);
@@ -254,7 +266,8 @@ int binding_lane(const Track& track, const Binding& b) {
     if (b.kind == Kind::PitchBend) return motion_lane(motion_bend);
     if (track.engine != EngineKind::Sampler) return -1;
     for (unsigned p = 0; p < pad_param_count; ++p) // a kit pad's own value: its lane on the last pad hit
-        if (pad_kind(PadParam(p)) == b.kind && (b.kind != Kind::PadSend || p == unsigned(PadParam::SendA) + unsigned(b.id) % bus_count))
+        if (pad_kind(PadParam(p)) == b.kind && (b.kind != Kind::PadSend || p == unsigned(PadParam::SendA) + unsigned(b.id) % bus_count)
+            && (b.kind != Kind::PadCloud || cloud_id(PadParam(p)) == b.id))
             return motion_lane(motion_pad_param(PadParam(p)), track.last_pad % sampler_pads);
     return -1;
 }
@@ -357,13 +370,13 @@ std::array<Binding, 3> pad_page_bindings(const Project& project, const Track& tr
     switch (page) { // Melodee's kit-wide pages, with or without a pad
     case PageId::FilterPage: return {param(track, sampler::Filter), param(track, sampler::Resonance), param(track, sampler::FilterType)};
     case PageId::FollowPage: return {param(track, sampler::Follow), param(track, sampler::FollowHow), param(track, sampler::PitchHow)};
-    case PageId::CloudPage: // where, grain size, grains a second; row 2 scan, spread and Cloud on or off
-        if (row2) return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
-        return {param(track, sampler::Position), param(track, sampler::Size), param(track, sampler::Density)};
     default: break;
     }
     if (!pad.used()) return {};
     switch (page) {
+    case PageId::CloudPage: // the pad's cloud: where, grain size, grains a second; row 2 scan, spread and Cloud on or off
+        if (row2) return {cloud_card(pad, 4), cloud_card(pad, 5), cloud_card(pad, 0)};
+        return {cloud_card(pad, 1), cloud_card(pad, 2), cloud_card(pad, 3)};
     case PageId::LayersPage: { // roadmap P3: K1 the layer in hand, K2 / K3 its velocities (Velocity alone)
         unsigned n = ui.pad_layer % pad_layers;
         const PadLayer l = pad.layer(n);
@@ -426,7 +439,9 @@ std::array<Binding, 3> pad_page_shift(const Project& project, const Track& track
         const auto& l = pad.layers[n - 1];
         return {play, Binding {Kind::LayerPitch, int32_t(n), -24, 24, l.pitch}, Binding {Kind::LayerGain, int32_t(n), -480, 120, l.gain / 10}};
     }
-    case PageId::CloudPage: return {param(track, sampler::Scan), param(track, sampler::Spread), param(track, sampler::Cloud)};
+    case PageId::CloudPage:
+        if (!pad.used()) return {};
+        return {cloud_card(pad, 4), cloud_card(pad, 5), cloud_card(pad, 0)};
     default: return {};
     }
 }

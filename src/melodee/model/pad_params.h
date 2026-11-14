@@ -7,7 +7,7 @@
 
 // A kit pad's own values that Motion records, one lane per pad (the MPC's
 // pad automation: volume, tuning, pan, the amp and filter envelopes,
-// velocity sensitivity and offset, the pad's filter, and its sends). Plain data:
+// velocity sensitivity and offset, the pad's filter, its sends and its cloud). Plain data:
 // reading and writing them on a PadSound, and their ranges. New lanes go at
 // the end: the file keeps a lane by this number (MOTP).
 namespace melodee {
@@ -18,6 +18,7 @@ enum class PadParam : uint8_t {
     FilterAttack, FilterDecay, FilterSustain, FilterRelease, FilterAmount, // the pad filter's envelope
     FilterCutoff, FilterResonance,                                         // and the filter
     SendA, SendB, SendC, SendD,                                            // the pad's own sends into buses A-D
+    CloudPosition, CloudSize, CloudDensity, CloudScan, CloudSpread,        // its cloud (Cloud on or off is not a lane)
     Count
 };
 constexpr unsigned pad_param_count = unsigned(PadParam::Count);
@@ -64,6 +65,11 @@ inline int pad_param_value(const PadSound& pad, PadParam p) {
     case PadParam::FilterResonance: return pad.resonance;
     case PadParam::SendA: case PadParam::SendB: case PadParam::SendC: case PadParam::SendD:
         return pad.sends[unsigned(p) - unsigned(PadParam::SendA)];
+    case PadParam::CloudPosition: return pad.cloud_position;
+    case PadParam::CloudSize: return pad.cloud_size;
+    case PadParam::CloudDensity: return pad.cloud_density;
+    case PadParam::CloudScan: return pad.cloud_scan;
+    case PadParam::CloudSpread: return pad.cloud_spread;
     default: return 0;
     }
 }
@@ -91,6 +97,11 @@ inline void set_pad_param(PadSound& pad, PadParam p, int value) {
     case PadParam::FilterResonance: pad.resonance = uint8_t(value); break;
     case PadParam::SendA: case PadParam::SendB: case PadParam::SendC: case PadParam::SendD:
         pad.sends[unsigned(p) - unsigned(PadParam::SendA)] = uint8_t(value); break;
+    case PadParam::CloudPosition: pad.cloud_position = uint8_t(value); break;
+    case PadParam::CloudSize: pad.cloud_size = uint8_t(value); break;
+    case PadParam::CloudDensity: pad.cloud_density = uint8_t(value); break;
+    case PadParam::CloudScan: pad.cloud_scan = uint8_t(value); break;
+    case PadParam::CloudSpread: pad.cloud_spread = uint8_t(value); break;
     default: break;
     }
 }

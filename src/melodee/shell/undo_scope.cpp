@@ -63,7 +63,7 @@ UndoScope binding_scope(const Project& project, const UiState& ui, const Binding
     case Kind::PadFilterType: case Kind::PadCutoff: case Kind::PadResonance: case Kind::PadFAttack: case Kind::PadFDecay:
     case Kind::PadFSustain: case Kind::PadFRelease: case Kind::PadFAmount: case Kind::PadWarp: case Kind::PadBeats:
     case Kind::LayerLow: case Kind::LayerHigh: case Kind::LayerPitch: case Kind::LayerGain: case Kind::LayerPlayMode: case Kind::PadLoopXfade:
-    case Kind::PadColour: case Kind::PadSend:
+    case Kind::PadColour: case Kind::PadSend: case Kind::PadCloud:
     case Kind::ZoneTune: case Kind::ZoneLevel: // round 3 "instrument C": the pad's state holds its trims
         return pad_scope(ui, project);
     case Kind::ChopMode: case Kind::ChopAmount: case Kind::ChopStart: case Kind::ChopEnd: return of(S::Chop, ui);

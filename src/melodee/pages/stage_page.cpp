@@ -654,10 +654,10 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
 
     float cloud_x = -1;
     if (page.kind == StageKind::Cloud) { // POSITION the line (K1), SIZE the band round it (K2), Spread a paler band, Scan an arrow
-        cloud_x = x_of(region_from + (region_to - region_from) * t.params[sampler::Position] / 100.0f);
-        float size = std::max(3.0f, ww / (to - from) * float(0.01 * std::pow(100.0, t.params[sampler::Size] / 100.0) * 44100 / frames));
-        float spread = size * (1 + 3 * t.params[sampler::Spread] / 100.0f);
-        auto shade = t.params[sampler::Cloud] ? 1.0f : 0.5f;
+        cloud_x = x_of(region_from + (region_to - region_from) * pad.cloud_position / 100.0f);
+        float size = std::max(3.0f, ww / (to - from) * float(0.01 * std::pow(100.0, pad.cloud_size / 100.0) * 44100 / frames));
+        float spread = size * (1 + 3 * pad.cloud_spread / 100.0f);
+        auto shade = pad.cloud ? 1.0f : 0.5f;
         // While a cloud is heard its window travels with the grains (Scan); K1's line stays where K1 put it.
         float centre = cloud.centre >= 0 ? x_of(float(cloud.centre / frames)) : cloud_x;
         p.fill(centre - spread / 2, wy, spread, wh, knob_shade(s.ui.track, 1).withAlpha(0.08f * shade));
@@ -678,9 +678,9 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         icon(p, Icon::Flag, ex - 2, wy - 14, 12, knob_shade(s.ui.track, 1), 1.5f);
         if (loop_x >= 0) icon(p, Icon::Flag, loop_x - 2, wy - 14, 12, knob_shade(s.ui.track, 2).withAlpha(pad.loop ? 1.0f : 0.5f), 1.5f);
     }
-    if (page.kind == StageKind::Cloud && t.params[sampler::Scan] > 0) { // Scan: the way the window travels
+    if (page.kind == StageKind::Cloud && pad.cloud_scan > 0) { // Scan: the way the window travels
         juce::Path arrow;
-        float ay = wy - 7, ax = cloud_x + 6, bx = ax + 8 + 18 * t.params[sampler::Scan] / 100.0f;
+        float ay = wy - 7, ax = cloud_x + 6, bx = ax + 8 + 18 * pad.cloud_scan / 100.0f;
         arrow.startNewSubPath(ax, ay); arrow.lineTo(bx, ay);
         arrow.startNewSubPath(bx - 4, ay - 3.5f); arrow.lineTo(bx, ay); arrow.lineTo(bx - 4, ay + 3.5f);
         p.g.setColour(knob_shade(s.ui.track, 0));
@@ -742,7 +742,7 @@ void wave_picture(Paint& p, const Snapshot& s, const StagePage& page) {
         return;
     }
     if (page.kind == StageKind::Cloud) { // where the grains come from (or are now), at the line; the file's length dim
-        double at = cloud.centre >= 0 && cloud.view.sounding() ? cloud.centre : double(start) + (end - start) * t.params[sampler::Position] / 100.0;
+        double at = cloud.centre >= 0 && cloud.view.sounding() ? cloud.centre : double(start) + (end - start) * pad.cloud_position / 100.0;
         juce::String place = seconds(uint32_t(at)), whole = seconds(zoomed ? end - start : uint32_t((to - from) * frames));
         auto a_style = plain(colour::text, type::small, Weight::SemiBold), b_style = plain(colour::dim, type::small, Weight::SemiBold);
         float aw = p.width(place, a_style), bw = p.width(whole, b_style);
@@ -963,9 +963,9 @@ void plugin_sound_picture(Paint& p, const Snapshot& s) {
     }
 }
 
-// Cloud's on or off, as an LED in the header (its K3 on Shift turns it).
+// The last pad's Cloud on or off, as an LED in the header (its K3 on Shift turns it).
 HeaderItem cloud_pill(const Snapshot& s) {
-    bool on = s.track().params[sampler::Cloud];
+    bool on = s.track().pads[s.track().last_pad % sampler_pads].cloud;
     return pill(on ? Icon::Rec : Icon::Ring, "CLOUD", on ? colour_of(s) : colour::mid);
 }
 // Follow (round 2, follow A): on or off as an LED in the header, as Cloud's.

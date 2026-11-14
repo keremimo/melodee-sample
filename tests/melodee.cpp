@@ -1011,9 +1011,8 @@ void sampler_kit() {
     {
         SamplerEngine cloud;
         cloud.set_samples(&table);
-        PadSound pad; pad.sample = 3; pad.play = PadPlay::Gate;
+        PadSound pad; pad.sample = 3; pad.play = PadPlay::Gate; pad.cloud = true; pad.cloud_density = 60;
         cloud.set_pad(2, pad);
-        cloud.set_param(sampler::Cloud, 1); cloud.set_param(sampler::Density, 60);
         cloud.note_on(int(sampler_first_note) + 2, 120);
         std::vector<float> l(128, 0), r(128, 0);
         float peak = 0;
@@ -1031,9 +1030,8 @@ void sampler_kit() {
     {
         SamplerEngine cloud;
         cloud.set_samples(&table);
-        PadSound pad; pad.sample = 3; pad.start = 0; pad.end = 4410; pad.play = PadPlay::OneShot;
+        PadSound pad; pad.sample = 3; pad.start = 0; pad.end = 4410; pad.play = PadPlay::OneShot; pad.cloud = true; pad.cloud_density = 60;
         cloud.set_pad(2, pad);
-        cloud.set_param(sampler::Cloud, 1); cloud.set_param(sampler::Density, 60);
         cloud.note_on(int(sampler_first_note) + 2, 120);
         cloud.note_off(int(sampler_first_note) + 2);
         std::vector<float> l(128, 0), r(128, 0);
@@ -5826,8 +5824,9 @@ void stage() {
     stage_go(ui, 1, 0);
     stage_press(ui, kit, 1, false); CHECK(key() == "COLOUR" && cards(false)[0].kind == K::PadColour && !cards(false)[1].bound() && cards(true)[0].kind == K::PadColour);
     stage_press(ui, kit, 1, false); CHECK(key() == "FOLLOW" && cards(false)[0].id == sampler::Follow && cards(false)[1].id == sampler::FollowHow);
-    stage_press(ui, kit, 1, false); CHECK(key() == "CLOUD" && cards(false)[0].id == sampler::Position && cards(false)[2].id == sampler::Density);
-    CHECK(cards(true)[0].id == sampler::Scan && cards(true)[2].id == sampler::Cloud);
+    stage_press(ui, kit, 1, false);
+    CHECK(key() == "CLOUD" && cards(false)[0].kind == K::PadCloud && cards(false)[0].id == 1 && cards(false)[2].id == 3);
+    CHECK(cards(true)[0].kind == K::PadCloud && cards(true)[0].id == 4 && cards(true)[2].id == 0);
     stage_press(ui, kit, 1, false); CHECK(key() == "PLAY");
     // A pad holding an instrument: its zones are its layers, so B1 is ZONES -> TUNE -> AMP ENV, three dots. A track
     // left on LAYERS shows ZONES on an instrument pad and LAYERS again on a sample pad.
@@ -8552,9 +8551,8 @@ void voice_taps() {
     {
         SamplerEngine e;
         e.set_samples(&table);
-        PadSound pad; pad.sample = 2; pad.play = PadPlay::Gate;
+        PadSound pad; pad.sample = 2; pad.play = PadPlay::Gate; pad.cloud = true; pad.cloud_density = 80; pad.cloud_position = 50;
         e.set_pad(2, pad);
-        e.set_param(sampler::Cloud, 1); e.set_param(sampler::Density, 80); e.set_param(sampler::Position, 50);
         e.note_on(int(sampler_first_note) + 2, 100);
         for (unsigned b = 0; b < 20; ++b) block(e);
         auto t = tapped(e);
@@ -8569,7 +8567,7 @@ void voice_taps() {
         }
         CHECK(whole);
         // Dense and long, more grains play than the taps carry: the newest sixteen.
-        e.set_param(sampler::Density, 100); e.set_param(sampler::Size, 100);
+        e.move_pad(2, PadParam::CloudDensity, 100); e.move_pad(2, PadParam::CloudSize, 100);
         for (unsigned b = 0; b < 200; ++b) block(e);
         t = tapped(e);
         CHECK(t.grain_count == TrackTaps::grains && t.grain[0].age < t.grain[15].age);
@@ -10282,8 +10280,8 @@ void audio_quality() {
         table[0] = &high;
         SamplerEngine e;
         e.set_samples(&table);
-        e.set_param(sampler::Cloud, 1); e.set_param(sampler::Spread, 0); e.set_param(sampler::Size, 60); e.set_param(sampler::Density, 20);
         PadSound pad; pad.sample = 0; pad.pitch = 1; // a semitone up: every grain reads between frames
+        pad.cloud = true; pad.cloud_spread = 0; pad.cloud_size = 60; pad.cloud_density = 20;
         e.set_pad(0, pad);
         e.note_on(int(sampler_first_note), 127);
         std::vector<float> l;
@@ -10305,9 +10303,8 @@ void audio_quality() {
         table[0] = &edged;
         SamplerEngine cut;
         cut.set_samples(&table);
-        cut.set_param(sampler::Cloud, 1); cut.set_param(sampler::Spread, 0); cut.set_param(sampler::Size, 80); cut.set_param(sampler::Density, 50);
-        cut.set_param(sampler::Position, 98);
         PadSound region; region.sample = 0; region.start = 10000; region.end = 30000; // silent inside, loud outside
+        region.cloud = true; region.cloud_spread = 0; region.cloud_size = 80; region.cloud_density = 50; region.cloud_position = 98;
         cut.set_pad(0, region);
         cut.note_on(int(sampler_first_note), 127);
         play(cut, l, 88200);
@@ -13980,6 +13977,59 @@ void pad_sends() {
     CHECK(load_bank(save_bank(saved), back) && back.pads[1].sends[3] == 100 && back.pads[2].sends[0] == 15);
 }
 
+// Cloud is each pad's own: one pad plays grains while the pad beside it plays plain; PCLD keeps it, BCLD in a bank
+// file; a file from before, whose kit held one Cloud, gives its values to every pad and the kit's go back to their start.
+void pad_cloud() {
+    SampleData noise = tone_sample();
+    SamplerEngine::Table table {};
+    table[0] = &noise;
+    SamplerEngine e;
+    e.set_samples(&table);
+    PadSound plain; plain.sample = 0; plain.play = PadPlay::Gate;
+    PadSound grains = plain; grains.cloud = true; grains.cloud_density = 60;
+    e.set_pad(0, plain); e.set_pad(1, grains);
+    std::vector<float> l(128), r(128);
+    auto flags_of = [&](int note) {
+        e.note_on(note, 100);
+        for (unsigned b = 0; b < 4; ++b) e.render_stereo(l.data(), r.data(), 128);
+        TrackTaps t; t.track = 0;
+        e.taps(t);
+        uint8_t flags = t.count ? t.voice[0].flags : 0xFF;
+        e.note_off(note);
+        for (unsigned b = 0; b < 400; ++b) e.render_stereo(l.data(), r.data(), 128);
+        return flags;
+    };
+    CHECK(!(flags_of(int(sampler_first_note)) & tap::Cloud));
+    CHECK(flags_of(int(sampler_first_note) + 1) & tap::Cloud);
+
+    auto project = std::make_unique<Project>();
+    auto bank = std::make_unique<PatternBank>();
+    auto& kit = project->tracks[2];
+    kit.engine = EngineKind::Sampler;
+    std::snprintf(project->samples[0].path, sizeof(project->samples[0].path), "Samples/Pad.wav");
+    project->samples[0].frames = 44100;
+    kit.pads[1].sample = 0; kit.pads[2].sample = 0;
+    kit.pads[1].cloud = true; kit.pads[1].cloud_position = 70; kit.pads[1].cloud_scan = 90;
+    auto file = save_project(*project, *bank);
+    auto loaded = std::make_unique<Project>();
+    auto loaded_bank = std::make_unique<PatternBank>();
+    CHECK(load_project(file, *loaded, *loaded_bank).empty());
+    const auto& back = loaded->tracks[2];
+    CHECK(back.pads[1].cloud && back.pads[1].cloud_position == 70 && back.pads[1].cloud_scan == 90 && back.pads[2].plain_cloud());
+    BankFile saved = bank_of(*project, 2, 0, "Cloud"), read;
+    CHECK(load_bank(save_bank(saved), read) && read.pads[1].cloud && read.pads[1].cloud_position == 70 && read.pads[2].plain_cloud());
+
+    // An older file: no PCLD, the kit's own Cloud on.
+    kit.pads[1] = kit.pads[2];
+    kit.params[sampler::Cloud] = 1; kit.params[sampler::Position] = 20; kit.params[sampler::Density] = 90;
+    file = save_project(*project, *bank);
+    CHECK(load_project(file, *loaded, *loaded_bank).empty());
+    const auto& old = loaded->tracks[2];
+    const auto& info = engine_info(EngineKind::Sampler);
+    CHECK(old.pads[1].cloud && old.pads[2].cloud && old.pads[0].cloud && old.pads[2].cloud_position == 20 && old.pads[2].cloud_density == 90);
+    CHECK(old.params[sampler::Cloud] == 0 && old.params[sampler::Position] == info.params[sampler::Position].initial);
+}
+
 // A PLUGIN track's performance knobs (engine/macros.h): the filter cuts, the echo rings on after its knob is turned
 // back, and the sends' delay memory goes back to the pool once they fall silent (or the track stops being a plug-in's).
 void plugin_macros() {
@@ -14032,6 +14082,7 @@ void plugin_macros() {
 
 int main() {
     pad_sends();
+    pad_cloud();
     pad_sends_stage();
     pad_sends_mix();
     pad_sends_lanes();

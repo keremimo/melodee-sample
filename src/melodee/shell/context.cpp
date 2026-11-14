@@ -624,6 +624,14 @@ void Context::apply(const Binding& b, int value) {
         record_pad_motion(PadParam(unsigned(PadParam::SendA) + bus), pad().sends[bus]); // its lane on the pad
         break;
     }
+    case Kind::PadCloud: { // the pad's cloud: on or off, or a value Motion records as a lane of the pad
+        if (!b.id) { pad().cloud = value != 0; send_pad(ui.track, t.last_pad); break; }
+        auto which = PadParam(int(PadParam::CloudPosition) + std::clamp(b.id, 1, 5) - 1);
+        set_pad_param(pad(), which, value);
+        send_pad(ui.track, t.last_pad);
+        record_pad_motion(which, pad_param_value(pad(), which));
+        break;
+    }
     case Kind::PadStart: { // Trim's handles, in frames
         auto was = trim_view(project, ui);
         pad().start = uint32_t(value); send_pad(ui.track, t.last_pad);

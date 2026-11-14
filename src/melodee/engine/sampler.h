@@ -30,7 +30,7 @@ namespace sampler {
 enum Param : int8_t {
     Tune, Filter, Resonance, Decay, Level,      // the kit
     FilterType, Follow,                         // Filter, Follow pages
-    Cloud, Position, Size, Density, Scan, Spread, // Cloud: pads as clouds of grains
+    Cloud, Position, Size, Density, Scan, Spread, // unused: Cloud is each pad's now (PadSound::cloud); old files' move there on load
     FollowHow, PitchHow,                        // Follow: Beats / Tones / Tape; a pitch change moves speed or is stretched
     Count
 };

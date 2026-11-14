@@ -88,7 +88,8 @@ mode (Beats, Tones or Tape), **K3** how pitch follows.
 
 ![FOLLOW](../images/screens/stagekitfollow.png)
 
-**CLOUD**: every pad of the kit plays as a grain cloud. **K1** position,
+**CLOUD**: the selected pad plays as a grain cloud. Each pad has its own
+Cloud settings. **K1** position,
 **K2** grain size, **K3** density. **SHIFT** + **K1** scan, **SHIFT** +
 **K2** spread, **SHIFT** + **K3** Cloud on or off.
 

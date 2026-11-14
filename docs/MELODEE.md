@@ -341,7 +341,7 @@ beat; the meters show the mix.
     pad's own when it is none of those (an MPC kit's), until another is picked. The Pads page draws each pad in its
     colour too; names, the header and the cards keep the track's. A colour is one undo step on the pad and is not heard, so a frozen track keeps its
     print. CLOUD
-    (the whole kit's pads as grain clouds): K1 position, K2 grain size, K3
+    (the selected pad as a grain cloud, each pad its own): K1 position, K2 grain size, K3
     density, Shift + K1 scan, Shift + K2 spread, Shift + K3 Cloud on or off,
     the place and grains drawn on the wave. KIT FILT: cutoff, resonance,
     type of the one filter after every pad. While the pad sounds each of its
@@ -1264,7 +1264,7 @@ the file holds, to the bit.
   - Filter (Off, Classic, LPF2/4, HPF2/4, BPF2/4) and Filt Env (up to seven
     octaves; Shift + K2 decay from).
   - Melodee's Follow (the kit keeps the project's tempo: Beats, Tones or
-    Tape), Cloud (pads as grain clouds) and Kit filter (one filter after
+    Tape), Cloud (a pad as a grain cloud, each pad its own) and Kit filter (one filter after
     every pad).
   - Each page draws the one thing its knobs change, in their colours, over
     the shared kit picture: TRIM a flag for start, end and loop (the

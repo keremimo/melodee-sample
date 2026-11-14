@@ -6,6 +6,7 @@
 #include "melodee/model/scales.h"
 #include "melodee/engine/engine_info.h"
 #include "melodee/engine/midi_engine.h"
+#include "melodee/engine/sampler.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -178,6 +179,22 @@ void read_pad4(Reader& r, PadSound* pads, unsigned count) {
 // A kit pad's layers (roadmap P3), in LAYR: how a hit picks, layer 1's
 // velocities, then layers 2-4 as they are set. Older builds skip the section
 // and play layer 1 alone; older files have no layers.
+// A pad's cloud (PCLD, BCLD): pad, on or off, position, size, density, scan, spread.
+void write_cloud(Writer& w, unsigned n, const PadSound& pad) {
+    w.u8(n); w.u8(pad.cloud);
+    w.u8(pad.cloud_position); w.u8(pad.cloud_size); w.u8(pad.cloud_density); w.u8(pad.cloud_scan); w.u8(pad.cloud_spread);
+}
+void read_cloud(Reader& r, PadSound* pads, unsigned count) {
+    unsigned n = r.u8();
+    bool on = r.u8() != 0;
+    std::array<uint8_t, 5> v {};
+    for (auto& one : v) one = uint8_t(std::min(r.u8(), 100u));
+    if (!r.ok) return;
+    auto& pad = pads[n % count];
+    pad.cloud = on;
+    pad.cloud_position = v[0]; pad.cloud_size = v[1]; pad.cloud_density = v[2]; pad.cloud_scan = v[3]; pad.cloud_spread = v[4];
+}
+
 void write_layers(Writer& w, unsigned n, const PadSound& pad) {
     w.u8(n); w.u8(unsigned(pad.layer_play)); w.u8(pad.low_velocity); w.u8(pad.high_velocity);
     w.u8(pad_layers - 1);
@@ -550,6 +567,16 @@ std::vector<uint8_t> save_project(const Project& project, const PatternBank& pat
             if (tr.pads[n].used() && tr.pads[n].sending()) { w.u8(n); for (auto send : tr.pads[n].sends) w.u8(send); }
         w.end(at);
     }
+    for (unsigned t = 0; t < track_count; ++t) { // kit pads with a cloud, or cloud values of their own
+        const auto& tr = project.tracks[t];
+        unsigned used = 0;
+        for (const auto& pad : tr.pads) used += pad.used() && !pad.plain_cloud();
+        if (!used) continue;
+        at = w.begin("PCLD");
+        w.u8(t); w.u8(used);
+        for (unsigned n = 0; n < sampler_pads; ++n) if (tr.pads[n].used() && !tr.pads[n].plain_cloud()) write_cloud(w, n, tr.pads[n]);
+        w.end(at);
+    }
     for (unsigned t = 0; t < track_count; ++t) { // kit pads with layers, or layer values of their own (roadmap P3)
         const auto& tr = project.tracks[t];
         unsigned used = 0;
@@ -849,6 +876,11 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
                 for (auto& send : sends) send = uint8_t(std::min(r.u8(), 100u));
                 if (r.ok) project->tracks[t].pads[n % sampler_pads].sends = sends;
             }
+        } else if (name == "PCLD") { // kit pads' clouds; without it a pad plays as a cloud only from an older file's kit-wide Cloud
+            unsigned t = r.u8();
+            if (t >= track_count) continue;
+            unsigned used = r.u8();
+            for (unsigned k = 0; k < used && r.ok; ++k) read_cloud(r, project->tracks[t].pads.data(), sampler_pads);
         } else if (name == "LAYR") { // pad layers (roadmap P3); without it every pad plays its one sample
             unsigned t = r.u8();
             if (t >= track_count) continue;
@@ -1315,6 +1347,18 @@ std::string load_project(const std::vector<uint8_t>& data, Project& target, Patt
     if (!file.ok) return "damaged file";
     for (unsigned t = 0; t < track_count; ++t) // before parity phase 4 a pad's decay ran from its start, and pads were Poly
         if (!pad4[t]) for (auto& pad : project->tracks[t].pads) { pad.decay_from_start = true; pad.mono = false; }
+    for (unsigned t = 0; t < track_count; ++t) { // before Cloud was each pad's, a kit had one: when on, its values onto every pad
+        auto& tr = project->tracks[t];
+        if (tr.engine != EngineKind::Sampler || !tr.params[sampler::Cloud]) continue;
+        const auto& info = engine_info(EngineKind::Sampler);
+        auto value = [&](unsigned p) { return uint8_t(std::clamp<int>(tr.params[p], 0, 100)); };
+        for (auto& pad : tr.pads) {
+            pad.cloud = tr.params[sampler::Cloud] != 0;
+            pad.cloud_position = value(sampler::Position); pad.cloud_size = value(sampler::Size); pad.cloud_density = value(sampler::Density);
+            pad.cloud_scan = value(sampler::Scan); pad.cloud_spread = value(sampler::Spread);
+        }
+        for (unsigned p = sampler::Cloud; p <= sampler::Spread; ++p) tr.params[p] = info.params[p].initial;
+    }
     for (unsigned t = 0; t < track_count; ++t) // PROPHET, CZ and SID as their plug-ins; FM6 and the 909 empty, patterns kept
         for (const auto& synth : legacy_synths)
             if (legacy[t] == synth.engine) open_as_plugin(*project, t, synth, file_version, plugin_states);
@@ -1410,6 +1454,14 @@ std::vector<uint8_t> save_bank(const BankFile& bank) {
             if (bank.pads[k].used() && bank.pads[k].sending()) { w.u8(k); for (auto send : bank.pads[k].sends) w.u8(send); }
         w.end(at);
     }
+    unsigned clouded = 0; // the pads' clouds, as PCLD
+    for (const auto& pad : bank.pads) clouded += pad.used() && !pad.plain_cloud();
+    if (clouded) {
+        at = w.begin("BCLD");
+        w.u8(clouded);
+        for (unsigned k = 0; k < bank_pads; ++k) if (bank.pads[k].used() && !bank.pads[k].plain_cloud()) write_cloud(w, k, bank.pads[k]);
+        w.end(at);
+    }
     if (layered) {
         at = w.begin("BLYR");
         w.u8(layered);
@@ -1471,6 +1523,9 @@ bool load_bank(const std::vector<uint8_t>& data, BankFile& out) {
                 for (auto& send : sends) send = uint8_t(std::min(r.u8(), 100u));
                 if (r.ok) bank.pads[n % bank_pads].sends = sends;
             }
+        } else if (name == "BCLD") {
+            unsigned clouded = r.u8();
+            for (unsigned k = 0; k < clouded && r.ok; ++k) read_cloud(r, bank.pads.data(), bank_pads);
         } else if (name == "BLYR") {
             unsigned used = r.u8();
             for (unsigned k = 0; k < used && r.ok; ++k) read_layers(r, bank.pads.data(), bank_pads, unsigned(bank.samples.size()));
