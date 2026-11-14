@@ -178,6 +178,7 @@ void Context::load_layer(const std::string& path, const std::string& name) {
 void Context::load_file(const std::string& path, const std::string& name, bool next_empty) {
     auto& t = track();
     if (t.engine != EngineKind::Sampler) return;
+    if (library) { stop_preview(); library->preview(""); } // the pad plays the file now, not its preview too
     if (ui.layer_load > 0 && !next_empty) { load_layer(path, name); return; }
     int kit = next_empty ? next_empty_pad(t.last_pad) : int(t.last_pad % sampler_pads);
     if (kit < 0) { notice("No empty pad"); return; }
@@ -371,13 +372,16 @@ void Context::preview_cursor() {
     auto files = library->files();
     const SampleFile* file = ui.files_cursor < files.size() ? &files[ui.files_cursor] : nullptr;
     std::string path = ui.preview && file && !file->folder && !file->bank && !file->midi ? file->path : std::string(); // a MIDI file has no sound to preview
-    if (previewing >= 0) { // what played stops as the cursor moves on
-        Command stop {Command::Type::Audition, uint8_t(previewing)};
-        stop.pad.sample = no_sample;
-        send(stop);
-        previewing = -1;
-    }
+    stop_preview(); // what played stops as the cursor moves on
     library->preview(path);
+}
+
+void Context::stop_preview() {
+    if (previewing < 0) return;
+    Command stop {Command::Type::Audition, uint8_t(previewing)};
+    stop.pad.sample = no_sample;
+    send(stop);
+    previewing = -1;
 }
 
 void Context::browser_tick() {
@@ -392,10 +396,7 @@ void Context::browser_tick() {
         if (here && ui.preview) preview_cursor();
     }
     if (!here && previewing >= 0) { // away from the browser: what it played stops (B3 stays as it was)
-        Command stop {Command::Type::Audition, uint8_t(previewing)};
-        stop.pad.sample = no_sample;
-        send(stop);
-        previewing = -1;
+        stop_preview();
         library->preview("");
     }
     unsigned arrived = library->previews();

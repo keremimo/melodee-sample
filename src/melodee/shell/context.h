@@ -497,8 +497,10 @@ public:
     int next_empty_pad(unsigned after) const;            // the kit's next pad without a sample after `after`, -1 none
     // The browser (Samples): the file under the cursor heard when B3 is on;
     // a new listing puts the cursor on the folder it came out of; a preview
-    // that has arrived plays, and stops away from the page.
+    // that has arrived plays, and stops away from the page and when its file
+    // goes onto a pad.
     void preview_cursor();
+    void stop_preview();
     void browser_tick();
     std::string files_folder_seen;
     unsigned previews_seen = 0;
