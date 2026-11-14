@@ -113,6 +113,7 @@ Reply WebApp::handle(const Request& request, const Body& body) {
     if (get && request.path == "/plugins") return plugins();
     if (request.method == "POST" && request.path == "/update") return upload_update(request, body);
     if (request.method == "POST" && request.path == "/plugin") return upload_plugin(request, body);
+    if (request.method == "POST" && request.path == "/plugin/delete") return delete_plugin(request);
     if (get && request.path == "/list") return list_files(request);
     if (get && request.path == "/file") return send_file(request);
     if (request.method == "POST" && request.path == "/upload") return upload_file(request, body);
@@ -211,6 +212,25 @@ Reply WebApp::upload_plugin(const Request& request, const Body& body) {
     std::string out = "{\"installed\":[";
     for (size_t n = 0; n < placed.size(); ++n) out += (n ? "," : "") + json_text(placed[n]);
     return {200, "application/json; charset=utf-8", out + "]}"};
+}
+
+Reply WebApp::delete_plugin(const Request& request) {
+    Facts f = current();
+    if (f.card.empty()) return fail(409, "No SD card in the MPC, or it is lent to a computer");
+    auto file = request.query.count("file") ? safe_name(request.query.at("file"), "") : std::string();
+    if (file.empty()) return fail(400, "No such plug-in");
+    const fs::path place = fs::path(plugin_folder(f.card)) / file; // one entry straight in Melodee/Plugins, no further
+    std::error_code error;
+    if (!fs::exists(fs::symlink_status(place, error))) return fail(404, "No such plug-in");
+    fs::remove_all(place, error);
+    if (error) return fail(500, "Could not delete it");
+    ::sync();
+    files_changed.store(true);
+    {
+        std::lock_guard<std::mutex> held(lock);
+        note = "Plug-in removed";
+    }
+    return {200, "application/json; charset=utf-8", "{}"};
 }
 
 // ---- Files: the card's folders, read and changed from the page's Files tab ----

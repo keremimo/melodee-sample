@@ -47,7 +47,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 24px 96px; }
 .card .gauge { margin-top: 8px; }
 
 /* The two jobs. */
-.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
 .panel > header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
 .aside { font-size: 13px; color: var(--dim); }
@@ -88,6 +88,14 @@ button:disabled { background: var(--line); color: var(--dim); cursor: default; }
 .lanes li.off .chip { border-color: var(--dim); color: var(--mid); }
 .lanes .why { font-size: 12px; color: var(--mid); white-space: nowrap; }
 .lanes li.new { background: color-mix(in srgb, var(--stripe, var(--mint)) 14%, var(--quiet)); }
+/* Installed plug-ins: under both upload panels, two lanes a row, scrolling past a few rows. */
+.panel.installed { grid-column: 1 / -1; }
+#plugin-list { display: grid; grid-template-columns: 1fr 1fr; align-content: start; margin: 0; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 2px; }
+#plugin-list .empty { grid-column: 1 / -1; }
+#plugin-list li { flex: none; }
+.lanes .act { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; margin: -4px -6px -4px 0; padding: 0; border-radius: 8px; background: transparent; color: var(--mid); border: 0; }
+.lanes .act:hover { background: var(--raised); color: var(--rec); filter: none; }
+.lanes .act svg { width: 16px; height: 16px; }
 .lanes .empty { justify-content: center; color: var(--dim); font-size: 14px; }
 .lanes .empty::before { display: none; }
 
@@ -215,6 +223,7 @@ button.quiet:hover { color: var(--text); filter: none; border-color: var(--dim);
   .card { padding: 12px; }
   .card .value { font-size: 20px; }
   .panels, .learn { grid-template-columns: 1fr; }
+  #plugin-list { grid-template-columns: 1fr; max-height: 360px; }
   .entry .when { display: none; }
   .entry .meta { min-width: 0; }
   .files-tools { width: 100%; }

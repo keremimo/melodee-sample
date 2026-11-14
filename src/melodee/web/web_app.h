@@ -22,7 +22,8 @@
 // - A plug-in zip (a release's -mpc-sample.zip). It goes to Melodee/Plugins
 //   and is unzipped there at once (plugin/plugin_files.h, unzip_plugins());
 //   the picker lists it the next time it opens. One that will not unzip is
-//   deleted again, with the reason.
+//   deleted again, with the reason. A plug-in listed there can be deleted
+//   from the page too.
 //
 // The page's thread writes the card only while the base has it home; the
 // service thread says so in publish().
@@ -58,6 +59,7 @@ private:
     Reply plugins();
     Reply upload_update(const Request& request, const Body& body);
     Reply upload_plugin(const Request& request, const Body& body);
+    Reply delete_plugin(const Request& request); // ?file=<name in Melodee/Plugins>, bundle or folder and all
     Reply list_files(const Request& request);
     Reply send_file(const Request& request);
     Reply upload_file(const Request& request, const Body& body);

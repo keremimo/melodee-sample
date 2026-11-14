@@ -205,9 +205,29 @@ async function plugins(fresh = []) {
       chip.className = "chip";
       chip.textContent = item.folder ? "FOLDER" : item.format;
       li.append(chip);
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "act del";
+      del.title = "Delete";
+      del.setAttribute("aria-label", "Delete " + item.name);
+      del.innerHTML = glyphs.del;
+      del.addEventListener("click", () => removePlugin(item));
+      li.append(del);
       list.append(li);
     });
   } catch (e) { /* the next status ask says whether the MPC is there */ }
+}
+
+async function removePlugin(item) {
+  const what = item.folder ? `Delete the folder "${item.file}" and everything in it?` : `Delete ${item.name} (${item.file})?`;
+  if (!confirm(what + " This cannot be undone.")) return;
+  try {
+    const r = await fetch("/plugin/delete?file=" + encodeURIComponent(item.file), {method: "POST", headers: {"X-Melodee": "1"}, body: ""});
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || "Failed");
+    pluginPanel.say("Deleted " + item.name, "ok");
+  } catch (e) { pluginPanel.say(e.message, "bad"); }
+  plugins();
 }
 
 // ---- Files: the card's folders ----

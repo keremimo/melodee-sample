@@ -61,6 +61,7 @@ To install a plug-in without moving the card, connect the MPC to a computer
 with USB-C and open **http://melodee.local** (or **http://192.168.155.1**) while Melodee runs. On
 **Device**, drop the `-mpc-sample.zip` on **Plug-ins** and press **Install**. Melodee
 unzips it into `Melodee/Plugins` and the header shows **Plug-in installed**.
+To remove one, press the delete button on its row under **Installed**.
 The same page updates Melodee: drop the release zip on **Update**, press
 **Send**, then press **INSTALL** on the MPC. Its **Quickstart** and
 **Manual** tabs hold this guide.

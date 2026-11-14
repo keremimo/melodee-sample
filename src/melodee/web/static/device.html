@@ -42,7 +42,7 @@
     </section>
 
     <section class="panel" id="plugins" style="--tone:var(--mint)" data-kind="plugin">
-      <header><h2 class="label">Plug-ins</h2><span class="aside">Melodee/Plugins</span></header>
+      <header><h2 class="label">Plug-ins</h2><span class="aside">-mpc-sample.zip</span></header>
       <label class="drop" data-drop>
         <input type="file" accept=".zip" hidden>
         <svg class="glyph" viewBox="0 0 32 32" aria-hidden="true"><path d="M12 4v7m8-7v7M8 11h16v5a8 8 0 0 1-16 0zM16 24v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -54,6 +54,10 @@
         <button type="button" data-send disabled>Install</button>
       </div>
       <p class="say" data-say></p>
+    </section>
+
+    <section class="panel installed" style="--tone:var(--mint)">
+      <header><h2 class="label">Installed</h2><span class="aside">Melodee/Plugins</span></header>
       <ul class="lanes" id="plugin-list" aria-label="Installed plug-ins"></ul>
     </section>
   </div>
