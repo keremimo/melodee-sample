@@ -35,7 +35,7 @@ inline const char* takeover_name(Takeover t) {
 struct Settings {
     enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
                          Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, Rows };
+                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, Rows };
     uint8_t pad_response = 1; // 0 soft, 1 medium, 2 hard, 3 full level (127, Shift + Pad 1)
     uint8_t response_before = 1; // what Shift + Pad 1 goes back to
     bool count_in = false;    // a bar before Seq Record records (phase 2)
@@ -69,13 +69,14 @@ struct Settings {
     uint32_t audio_rate = 44100;
     uint8_t audio_periods = 3;
     // Screen Mirror: the screen offered to a computer over USB-C as a webcam, at one of ScreenMirror's sizes, the
-    // screen times a whole number (0 320 x 240, 1 640 x 480, 2 1280 x 720, 3 1280 x 960, 4 1920 x 1440, 5 2560 x 1920).
-    // Off until asked for: on or off, or another size, rebinds the USB gadget (about a second without USB audio and MIDI).
+    // screen times a whole number (0 320 x 240, 1 640 x 480, 2 1280 x 720, 3 1280 x 960), 30 or 60 fps. Off until
+    // asked for: on or off, another size or rate rebinds the USB gadget (about a second without USB audio and MIDI).
     bool mirror = false;
-    uint8_t mirror_size = 4; // 1920 x 1440: sharp in a Retina window, which stretches 1280 x 720 soft
+    uint8_t mirror_size = 3;  // 1280 x 960: the sharpest (1280 x 720 is stretched soft in a Retina window)
+    uint8_t mirror_fps = 30;  // 30 or 60
     ScreenMirrorMode mirror_mode() const {
         unsigned n = mirror_size % ScreenMirror::size_count;
-        return {mirror, ScreenMirror::widths[n], ScreenMirror::heights[n]};
+        return {mirror, ScreenMirror::widths[n], ScreenMirror::heights[n], mirror_fps == 60 ? 60u : 30u};
     }
     InputConfig input;        // Input Config: what Sample Record and Audio Recall hear (parity phase 6)
     SamplingPrefs sampling;   // how Audio Recall cuts the ring, and when a Free take ends on its own
@@ -96,7 +97,7 @@ struct Settings {
     static const char* row_name(unsigned row) {
         static const char* names[] {"Palette", "Pad response", "Pad pressure", "Pad lights", "Knob takeover", "Knob FX takeover",
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
-                                    "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution"};
+                                    "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -129,6 +130,7 @@ struct Settings {
         case SilenceBelow: return std::to_string(sampling.silence_db()) + " dB";
         case Mirror: return mirror ? "On" : "Off";
         case MirrorSize: { auto m = mirror_mode(); return std::to_string(m.width) + " x " + std::to_string(m.height); }
+        case MirrorRate: return std::to_string(mirror_mode().fps) + " fps";
         default: return std::to_string(screen) + " %";
         }
     }
@@ -156,6 +158,7 @@ struct Settings {
         case SilenceBelow: sampling.silence = uint8_t(step_in(sampling.silence, SamplingPrefs::silence_count, way)); break;
         case Mirror: mirror = !mirror; break;
         case MirrorSize: mirror_size = uint8_t(step_in(mirror_size % ScreenMirror::size_count, ScreenMirror::size_count, way)); break;
+        case MirrorRate: mirror_fps = way < 0 ? 30 : 60; break;
         default: break;
         }
     }
@@ -204,7 +207,7 @@ struct Settings {
             << "\nauto_end=" << int(sampling.auto_end) << "\nauto_end_after=" << int(sampling.end_after)
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods)
-            << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << '\n';
+            << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
@@ -263,7 +266,8 @@ struct Settings {
             else if (key == "audio_rate") { if (std::find(rates.begin(), rates.end(), unsigned(value)) != rates.end()) audio_rate = uint32_t(value); }
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (key == "screen_mirror") mirror = value != 0;
-            else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1));
+            else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960
+            else if (key == "mirror_fps") mirror_fps = value >= 60 ? 60 : 30;
             else if (read_midi_config(midi, key, value)) {}
             else if (key.rfind("favourites", 0) == 0) { // favourites3=0,4,12
                 unsigned e = unsigned(std::atoi(key.c_str() + 10));

@@ -34,22 +34,21 @@ camera named **MPC Sample**. Choose it in any camera app (QuickTime Player,
 OBS, a video call) to show the screen. Macs, Windows and Linux computers
 and iPads with USB-C take it; iPhones do not take USB cameras.
 
-**Resolution** sets the picture size the computer gets. Each is the screen
-scaled up by a whole number, so its pixels stay sharp squares:
+**Resolution** sets the picture size the computer gets, and **Frame rate**
+how many pictures a second (30 or 60). Each size is the screen scaled up by
+a whole number, so its pixels stay sharp squares:
 
-| Resolution | Scale | Picture |
-| --- | --- | --- |
-| 320 x 240 | 1 | uncompressed |
-| 640 x 480 | 2 | uncompressed |
-| 1280 x 720 | 3, black bars at the sides | JPEG |
-| 1280 x 960 | 4 | JPEG |
-| 1920 x 1440 | 6 | JPEG |
-| 2560 x 1920 | 8 | JPEG |
+| Resolution | Scale | 30 fps | 60 fps |
+| --- | --- | --- | --- |
+| 320 x 240 | 1 | uncompressed | uncompressed |
+| 640 x 480 | 2 | uncompressed | JPEG |
+| 1280 x 720 | 3, black bars at the sides | JPEG | JPEG |
+| 1280 x 960 | 4 | JPEG | JPEG |
 
-All run at 30 pictures a second. The uncompressed sizes are exact to the
-pixel; the JPEG sizes are larger than USB could carry uncompressed. If the
-picture looks soft in an app, pick a larger size: the app then stretches
-it less.
+Uncompressed pictures are exact to the pixel; JPEG is used where USB could
+not carry them uncompressed. The pictures go out evenly spaced, about two
+frames behind the MPC's screen. If the picture looks soft in an app, pick a
+larger size: the app then stretches it less.
 
 Under the rows while it is on: **READY** (the computer has the camera), **LIVE** (an app
 shows it), **CARD SHARED** (the camera pauses while the card is shared
@@ -57,7 +56,7 @@ over USB, and comes back after). USB audio, MIDI and the network drop for
 about a second when you turn it on or off or change the resolution.
 
 The MPC never unplugs the camera while an app shows it. Turning it off or
-changing the resolution then waits, with **IN USE** under the rows, until
+changing the resolution or frame rate then waits, with **IN USE** under the rows, until
 you close the camera in that app. SD card access says **CAMERA IN USE**
 and does not start, and a new sample rate reaches the computer once the
 camera is closed. If Melodee restarts while an app shows the camera, the

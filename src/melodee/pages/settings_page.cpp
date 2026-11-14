@@ -6,7 +6,7 @@
 //   and how it puts them on the grid), KNOBS (how the knobs,
 //   Knob FX and the fader take over a value: Pickup, Scaled, Instant),
 //   SCREEN (palette, brightness, where the place bar sits, and Screen Mirror:
-//   the screen as a USB webcam for a computer, on or off, and its size;
+//   the screen as a USB webcam for a computer, on or off, its size and rate;
 //   under the rows, while it is on, how it goes: ready, live, paused while
 //   the card is shared), AUDIO (the
 //   sample rate and the buffer: longer rides out a slow moment without a
@@ -45,7 +45,8 @@ const std::array<Door, 7> doors {{
     {Icon::Pads, "PADS", {Settings::PadResponse, Settings::PadPressure, Settings::PadLights, Settings::DoubleSeq, Settings::CaptureBars,
                           Settings::CaptureQuantize}},
     {Icon::Knob, "KNOBS", {Settings::KnobTakeover, Settings::KnobFxTakeover, Settings::FaderTakeover, none, none, none}},
-    {Icon::Screen, "SCREEN", {Settings::Palette, Settings::Screen, Settings::PlaceBarRow, Settings::Mirror, Settings::MirrorSize, none}},
+    {Icon::Screen, "SCREEN", {Settings::Palette, Settings::Screen, Settings::PlaceBarRow, Settings::Mirror, Settings::MirrorSize,
+                              Settings::MirrorRate}},
     {Icon::Speaker, "AUDIO", {Settings::SampleRate, Settings::AudioBuffer, none, none, none, none}},
     {Icon::Mic, "SAMPLING", {Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
                              Settings::SilenceBelow}},

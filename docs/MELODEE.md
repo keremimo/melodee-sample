@@ -1632,15 +1632,16 @@ while following.
   **KNOBS**: Knob / Knob FX / Fader takeover (Pickup, Scaled, Instant;
   Scaled, Scaled, Pickup by default). **SCREEN**: palette, brightness,
   where the place bar sits (Top, Bottom), and Screen Mirror: Screen mirror
-  (Off, On) and Resolution (320 x 240, 640 x 480, 1280 x 720, 1280 x 960,
-  1920 x 1440, 2560 x 1920: the screen times 1, 2, 3 with black at the
-  sides, 4, 6, 8; 1920 x 1440 by default): the screen as a USB webcam over
-  USB-C (`App::screen_mirror()`, base `drivers/screen_mirror.h`: the two
-  smallest as YUYV, exact to the pixel, the rest made JPEG at quality 95 by
-  the RK3566's encoder, 30 fps, a new picture only when the screen changed).
+  (Off, On), Resolution (320 x 240, 640 x 480, 1280 x 720, 1280 x 960: the
+  screen times 1, 2, 3 with black at the sides, 4; 1280 x 960 by default)
+  and Frame rate (30, 60 fps; 30 by default): the screen as a USB webcam over
+  USB-C (`App::screen_mirror()`, base `drivers/screen_mirror.h`: YUYV, exact
+  to the pixel, where one endpoint carries it (320 x 240, and 640 x 480 at
+  30), else JPEG at quality 95 from the RK3566's encoder; a new picture only
+  when the screen changed, sent from a steady buffer two frames behind).
   Under the rows, while it is on, its state: STARTING, READY, LIVE, CARD SHARED (the
   webcam steps out while the card is lent), FAILED; the size offered, amber
-  with a warning, only when a JPEG size fell back to 640 x 480 (no encoder).
+  with a warning, only when a JPEG size fell back to YUYV (no encoder).
   On, off or a new size reconnects the gadget (USB audio, MIDI and the
   network drop for a second), never under a computer showing the camera:
   then the change waits (IN USE, amber, a lock) until the computer closes

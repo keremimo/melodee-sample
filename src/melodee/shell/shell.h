@@ -57,8 +57,8 @@ public:
     // Any thread: Settings' Screen Mirror (on, and its size), published with the audio format.
     ScreenMirrorMode screen_mirror() const {
         uint32_t wanted = mirror_wanted.load(std::memory_order_relaxed);
-        unsigned n = (wanted >> 1) % ScreenMirror::size_count;
-        return {(wanted & 1) != 0, ScreenMirror::widths[n], ScreenMirror::heights[n]};
+        unsigned n = (wanted >> 1 & 7) % ScreenMirror::size_count;
+        return {(wanted & 1) != 0, ScreenMirror::widths[n], ScreenMirror::heights[n], (wanted & 16) ? 60u : 30u};
     }
     // Before the threads start: the card's settings (Settings::read() text), so that the runtime opens the audio
     // device at their rate and buffer at once. The service thread reads the same file again later.
@@ -145,10 +145,11 @@ private:
     std::atomic<float> main_volume {0.7f};
     std::atomic<unsigned> screen_wanted {0}; // 0 until the settings say; then 20..100 %
     std::atomic<uint32_t> audio_wanted {44100u | 3u << 20}; // rate | periods << 20
-    std::atomic<uint32_t> mirror_wanted {4u << 1}; // on | size << 1: off, 1920 x 1440
+    std::atomic<uint32_t> mirror_wanted {3u << 1}; // on | size << 1 | 60 fps << 4: off, 1280 x 960, 30 fps
     void want_audio_format() {
         audio_wanted.store(ui_.settings.audio_rate | uint32_t(ui_.settings.audio_periods) << 20, std::memory_order_relaxed);
-        mirror_wanted.store(uint32_t(ui_.settings.mirror) | uint32_t(ui_.settings.mirror_size) << 1, std::memory_order_relaxed);
+        mirror_wanted.store(uint32_t(ui_.settings.mirror) | uint32_t(ui_.settings.mirror_size & 7) << 1 | uint32_t(ui_.settings.mirror_fps == 60) << 4,
+                            std::memory_order_relaxed);
     }
     std::atomic<unsigned> power {0};
     unsigned power_seen = 0;
