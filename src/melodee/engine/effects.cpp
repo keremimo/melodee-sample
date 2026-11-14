@@ -284,35 +284,15 @@ float Effect::sync_back(float limit) {
     return synced;
 }
 
-void Effect::process(float* left, float* right, unsigned frames) {
-    const float* keyed_l = key_l; // what set_key() gave this call (roadmap P4)
-    const float* keyed_r = key_r;
-    key_l = key_r = nullptr;
-    if (current == K::None || current == K::Plugin || !effect_info(current).built) return; // a plug-in: the host runs it
-    if (needs_memory(current) && !memory) return; // the pool ran out: sound passes through
-    // Bypass fades the effect out (blend()), then it rests; back again, it starts from silence, so no echo or
-    // tail it held when it stopped comes back long after.
-    fade_step = 1.0f / std::max(bypass_seconds * fs(), 1.0f);
-    if (bypass && on <= 0) { resting = true; return; }
-    if (resting) { clear(); resting = false; }
-    if (memory && cleared < DelayPool::block_floats) { // a block being cleared, a slice a call: until it is done the effect
-        unsigned n = std::min(clear_slice, DelayPool::block_floats - cleared); // sounds as with an empty line (its dry share)
-        std::fill(memory + cleared, memory + cleared + n, 0.0f);
-        cleared += n;
-        if (cleared < DelayPool::block_floats) {
-            float keep = 1 - mix * on;
-            for (unsigned f = 0; f < frames; ++f) { left[f] *= keep; right[f] *= keep; }
-            return;
-        }
-    }
-    if (current >= K::DiffDelay) { process_extra(left, right, frames); return; }
-    const float* heard_l = keyed_l ? keyed_l : left; // a keyed Compressor or Gate hears its key (roadmap P4)
-    const float* heard_r = keyed_r ? keyed_r : right;
+// Effect::process()'s frames for one kind: the switch below takes `Kind`, known here, so each kind's loop holds its
+// own case alone.
+template <EffectKind Kind>
+void Effect::frames_of(float* left, float* right, unsigned frames, const float* heard_l, const float* heard_r) {
     float* line_l = memory;
     float* line_r = memory ? memory + DelayPool::half : nullptr;
     for (unsigned f = 0; f < frames; ++f) {
         float l = left[f], r = right[f], wet_l = l, wet_r = r;
-        switch (current) {
+        switch (Kind) {
         case K::Room: case K::Reverb: case K::Plate:
             reverb(wet_l, wet_r);
             ++write;
@@ -415,12 +395,12 @@ void Effect::process(float* left, float* right, unsigned frames) {
         }
         case K::Echo: case K::TapeEcho: case K::PingPong: {
             float back = sync_back(float(DelayPool::half - 64)); // SYNC: a note value (roadmap P4); else TIME
-            if (current == K::TapeEcho) { lfo += 0.6f / fs(); lfo -= std::floor(lfo); back *= 1 + c * 0.004f * std::sin(two_pi * lfo); }
+            if (Kind == K::TapeEcho) { lfo += 0.6f / fs(); lfo -= std::floor(lfo); back *= 1 + c * 0.004f * std::sin(two_pi * lfo); }
             float dl = delayed(line_l, write, back), dr = delayed(line_r, write, back);
             tone_l += (dl - tone_l) * b; tone_r += (dr - tone_r) * b;
             float fl = tone_l * a, fr = tone_r * a;
-            if (current == K::TapeEcho) { fl = dsp::soft_clip(fl * 1.2f); fr = dsp::soft_clip(fr * 1.2f); }
-            if (current == K::PingPong) { line_l[write] = (l + r) * 0.5f + fr; line_r[write] = fl; }
+            if (Kind == K::TapeEcho) { fl = dsp::soft_clip(fl * 1.2f); fr = dsp::soft_clip(fr * 1.2f); }
+            if (Kind == K::PingPong) { line_l[write] = (l + r) * 0.5f + fr; line_r[write] = fl; }
             else { line_l[write] = l + fl; line_r[write] = r + fr; }
             wet_l = dl; wet_r = dr;
             if (++write >= DelayPool::half) write = 0;
@@ -428,7 +408,7 @@ void Effect::process(float* left, float* right, unsigned frames) {
         }
         case K::Chorus: case K::Flanger: {
             lfo += a / fs(); lfo -= std::floor(lfo);
-            float base = current == K::Chorus ? 0.015f * fs() : 0.003f * fs(), depth = current == K::Chorus ? 0.007f * fs() : 0.0025f * fs();
+            float base = Kind == K::Chorus ? 0.015f * fs() : 0.003f * fs(), depth = Kind == K::Chorus ? 0.007f * fs() : 0.0025f * fs();
             float ml = base + depth * b * std::sin(two_pi * lfo), mr = base + depth * b * std::sin(two_pi * (lfo + 0.25f));
             wet_l = delayed(line_l, write, ml); wet_r = delayed(line_r, write, mr);
             line_l[write] = l + wet_l * c; line_r[write] = r + wet_r * c;
@@ -563,6 +543,64 @@ void Effect::process(float* left, float* right, unsigned frames) {
         float m = blend();
         left[f] = l + (wet_l - l) * m;
         right[f] = r + (wet_r - r) * m;
+    }
+}
+
+void Effect::process(float* left, float* right, unsigned frames) {
+    const float* keyed_l = key_l; // what set_key() gave this call (roadmap P4)
+    const float* keyed_r = key_r;
+    key_l = key_r = nullptr;
+    if (current == K::None || current == K::Plugin || !effect_info(current).built) return; // a plug-in: the host runs it
+    if (needs_memory(current) && !memory) return; // the pool ran out: sound passes through
+    // Bypass fades the effect out (blend()), then it rests; back again, it starts from silence, so no echo or
+    // tail it held when it stopped comes back long after.
+    fade_step = 1.0f / std::max(bypass_seconds * fs(), 1.0f);
+    if (bypass && on <= 0) { resting = true; return; }
+    if (resting) { clear(); resting = false; }
+    if (memory && cleared < DelayPool::block_floats) { // a block being cleared, a slice a call: until it is done the effect
+        unsigned n = std::min(clear_slice, DelayPool::block_floats - cleared); // sounds as with an empty line (its dry share)
+        std::fill(memory + cleared, memory + cleared + n, 0.0f);
+        cleared += n;
+        if (cleared < DelayPool::block_floats) {
+            float keep = 1 - mix * on;
+            for (unsigned f = 0; f < frames; ++f) { left[f] *= keep; right[f] *= keep; }
+            return;
+        }
+    }
+    if (current >= K::DiffDelay) { process_extra(left, right, frames); return; }
+    const float* heard_l = keyed_l ? keyed_l : left; // a keyed Compressor or Gate hears its key (roadmap P4)
+    const float* heard_r = keyed_r ? keyed_r : right;
+    // The frame loop for this kind (frames_of()): its switch settled when compiled, not once a frame.
+    switch (current) {
+    case K::Room: frames_of<K::Room>(left, right, frames, heard_l, heard_r); break;
+    case K::Reverb: frames_of<K::Reverb>(left, right, frames, heard_l, heard_r); break;
+    case K::Plate: frames_of<K::Plate>(left, right, frames, heard_l, heard_r); break;
+    case K::Shimmer: frames_of<K::Shimmer>(left, right, frames, heard_l, heard_r); break;
+    case K::Echo: frames_of<K::Echo>(left, right, frames, heard_l, heard_r); break;
+    case K::TapeEcho: frames_of<K::TapeEcho>(left, right, frames, heard_l, heard_r); break;
+    case K::PingPong: frames_of<K::PingPong>(left, right, frames, heard_l, heard_r); break;
+    case K::Looper: frames_of<K::Looper>(left, right, frames, heard_l, heard_r); break;
+    case K::Chorus: frames_of<K::Chorus>(left, right, frames, heard_l, heard_r); break;
+    case K::Flanger: frames_of<K::Flanger>(left, right, frames, heard_l, heard_r); break;
+    case K::Phaser: frames_of<K::Phaser>(left, right, frames, heard_l, heard_r); break;
+    case K::PedalChorus: frames_of<K::PedalChorus>(left, right, frames, heard_l, heard_r); break;
+    case K::PedalPhaser: frames_of<K::PedalPhaser>(left, right, frames, heard_l, heard_r); break;
+    case K::AutoPan: frames_of<K::AutoPan>(left, right, frames, heard_l, heard_r); break;
+    case K::Tremolo: frames_of<K::Tremolo>(left, right, frames, heard_l, heard_r); break;
+    case K::Drive: frames_of<K::Drive>(left, right, frames, heard_l, heard_r); break;
+    case K::Tape: frames_of<K::Tape>(left, right, frames, heard_l, heard_r); break;
+    case K::Crush: frames_of<K::Crush>(left, right, frames, heard_l, heard_r); break;
+    case K::Spit: frames_of<K::Spit>(left, right, frames, heard_l, heard_r); break;
+    case K::Fuzz: frames_of<K::Fuzz>(left, right, frames, heard_l, heard_r); break;
+    case K::Eq: frames_of<K::Eq>(left, right, frames, heard_l, heard_r); break;
+    case K::Filter: frames_of<K::Filter>(left, right, frames, heard_l, heard_r); break;
+    case K::Formant: frames_of<K::Formant>(left, right, frames, heard_l, heard_r); break;
+    case K::Width: frames_of<K::Width>(left, right, frames, heard_l, heard_r); break;
+    case K::Compressor: frames_of<K::Compressor>(left, right, frames, heard_l, heard_r); break;
+    case K::Gate: frames_of<K::Gate>(left, right, frames, heard_l, heard_r); break;
+    case K::Transient: frames_of<K::Transient>(left, right, frames, heard_l, heard_r); break;
+    case K::Limiter: frames_of<K::Limiter>(left, right, frames, heard_l, heard_r); break;
+    default: frames_of<K::None>(left, right, frames, heard_l, heard_r); break;
     }
 }
 

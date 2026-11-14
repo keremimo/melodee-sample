@@ -171,12 +171,15 @@ void Effect::update_extra() {
     }
 }
 
-void Effect::process_extra(float* left, float* right, unsigned frames) {
+// process_extra()'s frames for one kind: the switch below takes `Kind`, known here, so each kind's loop holds its
+// own case alone.
+template <EffectKind Kind>
+void Effect::extra_frames_of(float* left, float* right, unsigned frames) {
     float* line_l = memory;
     const EffectClock& clock = *effect_clock_now; // this thread's host's (a print host's own)
     for (unsigned f = 0; f < frames; ++f) {
         float l = left[f], r = right[f], wet_l = l, wet_r = r;
-        switch (current) {
+        switch (Kind) {
         case K::DiffDelay: {
             // Each echo goes through four diffusers before it is heard and fed back, so the repeats smear like echoes in a room.
             float out[2];
@@ -406,6 +409,26 @@ void Effect::process_extra(float* left, float* right, unsigned frames) {
         float m = blend(); // the mix, under Bypass's fade
         left[f] = l + (wet_l - l) * m;
         right[f] = r + (wet_r - r) * m;
+    }
+}
+
+void Effect::process_extra(float* left, float* right, unsigned frames) {
+    // The frame loop for this kind (extra_frames_of()): its switch settled when compiled, not once a frame.
+    switch (current) {
+    case K::DiffDelay: extra_frames_of<K::DiffDelay>(left, right, frames); break;
+    case K::SampleDelay: extra_frames_of<K::SampleDelay>(left, right, frames); break;
+    case K::Spring: extra_frames_of<K::Spring>(left, right, frames); break;
+    case K::Pumper: extra_frames_of<K::Pumper>(left, right, frames); break;
+    case K::AmpSim: extra_frames_of<K::AmpSim>(left, right, frames); break;
+    case K::TubeDrive: extra_frames_of<K::TubeDrive>(left, right, frames); break;
+    case K::SoftClip: extra_frames_of<K::SoftClip>(left, right, frames); break;
+    case K::Ensemble: extra_frames_of<K::Ensemble>(left, right, frames); break;
+    case K::MultiChorus: extra_frames_of<K::MultiChorus>(left, right, frames); break;
+    case K::AutoWah: extra_frames_of<K::AutoWah>(left, right, frames); break;
+    case K::Vintage: extra_frames_of<K::Vintage>(left, right, frames); break;
+    case K::Vinyl: extra_frames_of<K::Vinyl>(left, right, frames); break;
+    case K::TapeEmu: extra_frames_of<K::TapeEmu>(left, right, frames); break;
+    default: extra_frames_of<K::None>(left, right, frames); break;
     }
 }
 
