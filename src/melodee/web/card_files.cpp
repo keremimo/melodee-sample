@@ -17,6 +17,12 @@ std::string lowered(std::string text) {
 
 std::string top_part(const std::string& rel) { return lowered(rel.substr(0, rel.find('/'))); }
 
+// What the MPC starts (autorun/) and the base's own files (sample-base/): the page never shows or reaches them.
+bool system_name(const std::string& top) {
+    auto name = lowered(top);
+    return name == "autorun" || name == "sample-base";
+}
+
 // Whether `inside` is `root` or under it, both made whole first.
 bool under(const fs::path& root, const fs::path& inside) {
     auto r = root.lexically_normal(), i = inside.lexically_normal();
@@ -47,6 +53,8 @@ bool card_place(const std::string& card, const std::string& rel, fs::path& out, 
     if (e) return false;
     auto real = fs::weakly_canonical(place, e);
     if (e || !under(real_card, real)) return false;
+    auto inside = real.lexically_relative(real_card); // by its real place, so a link or another case does not reach them
+    if (!inside.empty() && inside != "." && system_name(inside.begin()->string())) return false;
     out = place;
     error.clear();
     return true;
@@ -54,17 +62,16 @@ bool card_place(const std::string& card, const std::string& rel, fs::path& out, 
 
 bool card_writable(const std::string& rel) {
     if (rel.empty()) return true; // the top: files go there (a release zip, a folder of samples), it is never deleted
-    auto top = top_part(rel);
-    return top != "autorun" && top != "sample-base";
+    return !system_name(top_part(rel));
 }
 
-std::string folder_json(const fs::path& folder) {
+std::string folder_json(const fs::path& folder, bool top) {
     struct Entry { std::string name; bool dir; uint64_t size; int64_t time; };
     std::vector<Entry> entries;
     std::error_code e;
     for (const auto& item : fs::directory_iterator(folder, e)) {
         auto name = item.path().filename().string();
-        if (name.empty() || name[0] == '.' || name == "System Volume Information") continue;
+        if (name.empty() || name[0] == '.' || name == "System Volume Information" || (top && system_name(name))) continue;
         std::error_code f;
         bool dir = item.is_directory(f);
         uint64_t size = dir ? 0 : uint64_t(item.file_size(f));

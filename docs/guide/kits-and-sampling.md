@@ -139,7 +139,7 @@ To move samples without taking the card out, connect the MPC to a computer
 with USB-C and open **http://melodee.local** while Melodee runs. On
 **Files**, open a folder, then drop files on the list or press **Upload**.
 Press a sample to hear it in the browser, the arrow to download it, the bin
-to delete it. **Folder** makes a new folder. `autorun` is read-only.
+to delete it. **Folder** makes a new folder.
 
 ## Sampled instruments
 

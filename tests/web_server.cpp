@@ -125,6 +125,14 @@ int main() {
           && free_path(card / "Samples/Kicks", "snare.wav") == card / "Samples/Kicks/snare.wav", "free_path");
     auto listing = folder_json(card / "Samples");
     check(listing.find("\"name\":\"Kicks\",\"dir\":true") != std::string::npos, "folder_json lists folders");
+    fs::create_directories(card / "sample-base");
+    fs::create_directory_symlink(card / "autorun", card / "Samples/run", e);
+    check(!card_place(card.string(), "autorun", place, why) && !card_place(card.string(), "AUTORUN/melodee", place, why)
+          && !card_place(card.string(), "sample-base", place, why) && !card_place(card.string(), "Samples/run", place, why),
+          "card_place keeps autorun and sample-base out of reach");
+    auto top = folder_json(card, true);
+    check(top.find("\"Samples\"") != std::string::npos && top.find("autorun") == std::string::npos
+          && top.find("sample-base") == std::string::npos, "folder_json leaves autorun and sample-base out at the top");
     check(file_type("A.WAV") == "audio/wav" && file_type("x.flac") == "audio/flac" && file_type("x.html") == "application/octet-stream",
           "file_type");
 

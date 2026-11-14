@@ -13,15 +13,15 @@ namespace melodee::web {
 
 // `rel` as a place under `card`: false with `error` when a part is empty,
 // ".", "..", hidden (a leading dot) or holds a backslash, or when the place,
-// its links followed, is not on the card.
+// its links followed, is not on the card or is in autorun/ (what the MPC
+// starts) or sample-base/ (the base's own files), in any case.
 bool card_place(const std::string& card, const std::string& rel, std::filesystem::path& out, std::string& error);
-// Whether the page may change things at `rel`: not in autorun/ (what the MPC
-// starts) or sample-base/ (the base's own files), nor the top itself.
+// Whether the page may change things at `rel`: not in autorun/ or sample-base/.
 bool card_writable(const std::string& rel);
 // A folder's entries as JSON: {"name","dir","size","time"} each, folders
 // first, then by name ignoring case; hidden ones and System Volume
-// Information left out.
-std::string folder_json(const std::filesystem::path& folder);
+// Information left out, and at the card's top (`top`) autorun and sample-base.
+std::string folder_json(const std::filesystem::path& folder, bool top = false);
 // `name` in `folder`, else "<stem> 2<ext>", "<stem> 3<ext>"..., so nothing there is written over.
 std::filesystem::path free_path(const std::filesystem::path& folder, const std::string& name);
 // The type a file is sent as, by its extension: audio/wav, audio/mpeg..., else application/octet-stream.

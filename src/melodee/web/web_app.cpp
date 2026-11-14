@@ -251,7 +251,7 @@ Reply WebApp::list_files(const Request& request) {
     std::error_code error;
     if (!fs::is_directory(folder, error)) return fail(404, "Not a folder");
     return {200, "application/json; charset=utf-8", "{\"path\":" + json_text(rel) + ",\"writable\":"
-        + (card_writable(rel) ? "true" : "false") + ",\"entries\":" + folder_json(folder) + "}"};
+        + (card_writable(rel) ? "true" : "false") + ",\"entries\":" + folder_json(folder, rel.empty()) + "}"};
 }
 
 Reply WebApp::send_file(const Request& request) {

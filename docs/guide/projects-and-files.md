@@ -129,7 +129,7 @@ four tabs:
   download files, upload files (with **Upload** or by dropping them on the
   list), make folders and delete files or folders. The browser asks before
   it deletes. An upload never replaces a file of the same name.
-  `autorun` is read only.
+  `autorun` and `sample-base` are not shown.
 - **Quickstart** and **Manual**: the quickstart and this guide. They work
   without an internet connection.
 

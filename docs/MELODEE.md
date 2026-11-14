@@ -2226,8 +2226,9 @@ System Volume Information left out), plays audio files in the browser,
 downloads any file, uploads files by button or drop into the folder open
 (one at a time, never over a file of the same name: "Kick 2.wav"), makes
 folders and deletes files or folders after the browser asks. `autorun/` and
-`sample-base/` are read-only, and the card's top and `Melodee/` cannot be
-deleted. Paths are checked to stay on the card (no `..`, no hidden parts,
+`sample-base/` are not listed and the server refuses any path into them
+(their real place, so a link or another case does not reach them either);
+the card's top and `Melodee/` cannot be deleted. Paths are checked to stay on the card (no `..`, no hidden parts,
 links followed). A change makes the sample browser and the project list look
 again. The last two
 are this repository's `QUICKSTART.md`, `GUIDE.md` and `guide/*.md` with
