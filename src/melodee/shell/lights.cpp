@@ -413,6 +413,7 @@ void Shell::lights(SurfaceLights& lights, uint32_t now) {
         if (!host.taps(taps) || taps.track != ui.track % track_count) taps = TrackTaps {};
         PadScene scene {ui, project, *patterns_, host, taps, pad_facts(), now, &pad_let_go, count_beat_at};
         scene.freeze = &context_.prints.freeze; // freeze plan F2c
+        scene.glow = &pad_glow;
         if (ui.page == PageId::Print && context_.printer) {
             auto job = context_.printer->progress();
             if (job.busy && job.freeze && job.track == ui.print_sheet.track) { scene.printed = job.done; scene.printing = job.pattern; }

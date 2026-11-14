@@ -101,6 +101,17 @@ Heard heard_now(const PadScene& s) {
             }
         }
     }
+    if (s.glow) { // a sound falls no faster than a pad let go fades
+        int owner = int(at) * 256 + int(t.bank);
+        auto& g = *s.glow;
+        float keep = g.owner == owner && s.now >= g.at ? std::exp(-float(s.now - g.at) / hand_ms) : 0.0f;
+        for (unsigned pad = 0; pad < 16; ++pad) {
+            float faded = g.level[pad] * keep;
+            out.level[pad] = std::max(out.level[pad], faded > 0.002f ? faded : 0.0f);
+            g.level[pad] = out.level[pad];
+        }
+        g.at = s.now; g.owner = owner;
+    }
     if (s.let_go)
         for (unsigned pad = 0; pad < 16; ++pad) {
             uint32_t up = (*s.let_go)[pad];

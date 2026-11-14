@@ -213,7 +213,8 @@ grammar (`shell/pad_light.h`):
   colours keep their hue.
 - **Motion** is timing: a blink waits for a boundary (a pattern or a track's
   next pattern for the bar), a flare is a sound fading (a kit's voices, the
-  pattern at the playhead for synths and MIDI, a pad let go), the
+  pattern at the playhead for synths and MIDI, a pad let go; a sound that
+  stops, as a one-shot's end, fades as a pad let go does), the
   Count-In pulses every pad white on its beats, the bar's first brighter.
 
 | Context | The pads |

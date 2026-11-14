@@ -18,6 +18,14 @@ namespace melodee {
 class EngineHost;
 struct TrackTaps;
 
+// A pad's sound as last lit, so a sound that stops (a one-shot's end, a choke) fades as a pad let go does
+// (pad_light::hand_ms) instead of going dark at once. Kept by the shell across frames; for one track and bank.
+struct PadGlow {
+    std::array<float, 16> level {};
+    uint32_t at = 0;  // ms of the frame it was kept
+    int owner = -1;   // track * 256 + bank it belongs to
+};
+
 struct PadScene {
     const UiState& ui;
     const Project& project;
@@ -33,6 +41,7 @@ struct PadScene {
     const std::array<TrackFreeze, track_count>* freeze = nullptr;
     std::array<uint64_t, (pattern_count + 63) / 64> printed {};
     int printing = -1;
+    PadGlow* glow = nullptr; // null: a sound's flare follows it exactly (the tests)
 };
 
 // Pad 1 (bottom left) first.

@@ -9403,6 +9403,17 @@ void pad_lights() {
     light(plays, 2000, &let_go); CHECK(is(0, Hue::Track, 2));
     taps.track = 1; taps.count = 1; taps.voice[0].pad = 2; taps.voice[0].level = 0.5f; // a voice at half its envelope
     light(plays); CHECK(is(2, Hue::Track, 3));
+    { // a voice that stops (a one-shot's end) fades as a pad let go, not dark at once; a voice's rise is not held back
+        PadGlow glow;
+        auto glowing = [&](uint32_t now) { PadScene scene {ui, *project, *bank, host, taps, plays, now, nullptr, 0}; scene.glow = &glow; pad_looks(scene, looks); };
+        taps.voice[0].pad = 3; taps.voice[0].level = 1; glowing(1000); CHECK(is(3, Hue::Track, 4));
+        taps.count = 0;
+        glowing(1100); float soon = looks[3].level; CHECK(soon > dim && soon < full);
+        glowing(1300); CHECK(looks[3].level < soon && looks[3].level > dim);
+        glowing(3000); CHECK(is(3, Hue::Track, 2));
+        taps.count = 1; glowing(3010); CHECK(is(3, Hue::Track, 4));
+        ui.track = 0; glowing(3020); ui.track = 1; taps.count = 0; glowing(3030); CHECK(is(3, Hue::Track, 2)); // another track's glow is dropped
+    }
     taps = TrackTaps {};
     // A synth: the key's roots in its colour (Mid), its other notes white Dim; chromatic, notes out of the key white Faint.
     ui.track = 0; light({});
