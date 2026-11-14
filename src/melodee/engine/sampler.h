@@ -38,6 +38,9 @@ enum Param : int8_t {
 
 class SamplerEngine final : public Engine {
 public:
+    // The short loop for plain runs (run_plain()); off, every frame takes the full one (the tests compare the two).
+    static inline bool plain_runs = true;
+    static inline thread_local unsigned plain_taken = 0; // runs it played, on this thread (for the tests)
     static constexpr unsigned max_voices = 32;
     // Past max_voices a new voice takes the oldest's place, which fades out (a choke's quick fade) in one of
     // these spare voices instead of stopping dead (a click).
@@ -246,6 +249,10 @@ private:
     static float edge_gain(const Voice& v, double at);                // the region edges' fades, 0..1
     static void seam(const Voice& v, const float* l, const float* r, double at, float& out_l, float& out_r); // a loop's crossfade
     void voice_out(Voice& v, float l, float r, float a, float left_frames, float* to_l, float* to_r, unsigned f);
+    // A kit voice's next `frames` without anything to check frame by frame (no glide, duck, choke, seam, and clear of
+    // its edge fades and tail): run_plain() plays them in a shorter loop, sample for sample as the full one would.
+    bool plain_run(const Voice& v, unsigned frames) const;
+    void run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames, double span);
     Voice& free_voice();
 
     struct Grain {

@@ -752,6 +752,51 @@ void SamplerEngine::voice_out(Voice& v, float l, float r, float a, float left_fr
     to_r[f] += r * a * v.right;
 }
 
+bool SamplerEngine::plain_run(const Voice& v, unsigned frames) const {
+    if (v.gliding || v.grow || v.choked || v.xfade_kind) return false;
+    // Everywhere it can read this run, with a frame to spare.
+    const double travel = double(frames + 1) * v.step;
+    const double lo = v.reverse ? v.position - travel : v.position, hi = v.reverse ? v.position : v.position + travel;
+    const double edge = slice_edge * v.scale;
+    if (v.edge_in && lo - v.start < edge) return false;           // edge_gain() is exactly 1 from here
+    if (v.edge_out && (v.end - 1) - hi < edge) return false;
+    if (!v.loop && (v.tail > 0 || v.filter_tail > 0)) {            // voice_out()'s fades to the end not begun
+        const double distance = v.reverse ? lo - v.start : (v.end - 1) - hi;
+        if (distance / std::max(v.step, 1e-6) < double(std::max(v.tail, v.filter_tail)) + 2) return false;
+    }
+    return true;
+}
+
+// The full loop below with what plain_run() ruled out taken away; the same arithmetic in the same order.
+void SamplerEngine::run_plain(Voice& v, const float* l, const float* r, float* to_l, float* to_r, unsigned from, unsigned frames, double span) {
+    const bool filtered = v.filter != PadFilter::Off;
+    const bool loop = v.loop, reverse = v.reverse;
+    const double step = v.step;
+    const float gain = v.gain, fade = v.fade, pan_l = v.left, pan_r = v.right;
+    double position = v.position;
+    dsp::Envelope env = v.env;
+    for (unsigned f = from; f < frames; ++f) {
+        if (loop) {
+            if (reverse) while (position < v.loop_at) { position += span; v.wrapped = v.turned = true; }
+            else while (position >= v.end) { position -= span; v.wrapped = v.turned = true; }
+        } else if (reverse ? position < v.start : position >= v.end - 1) { v.pad = -1; break; }
+        unsigned i = unsigned(position);
+        float frac = float(position - i);
+        unsigned j = i + 1 < v.end ? i + 1 : loop ? v.loop_at : v.end - 1;
+        float a = env.next(v.shape) * gain * fade;
+        float sl = l[i] + (l[j] - l[i]) * frac, sr = r[i] + (r[j] - r[i]) * frac;
+        if (filtered) voice_out(v, sl, sr, a, 1e9f, to_l, to_r, f); // clear of its tail (plain_run())
+        else {
+            to_l[f] += sl * a * pan_l;
+            to_r[f] += sr * a * pan_r;
+        }
+        position += reverse ? -step : step;
+        if (!env.active()) { v.pad = -1; break; }
+    }
+    v.position = position;
+    v.env = env;
+}
+
 // A stretched voice: taps begin where `place` has got to and read at the
 // pad's pitch; Tones fades each over its window (sin², half overlapped, so
 // they sum to one), Beats plays each segment whole with 2 ms edges.
@@ -1043,6 +1088,11 @@ void SamplerEngine::render_stereo(float* left, float* right, unsigned frames) {
         // loop point), keeping the fraction and reading across the seam, so a seamless loop stays seamless and in
         // tune at any pitch or device rate.
         const double span = double(v.end - v.loop_at);
+        if (plain_runs && plain_run(v, frames - from)) { // nothing this run needs looking at frame by frame: the short loop
+            run_plain(v, l, r, to_l, to_r, from, frames, span);
+            ++plain_taken;
+            continue;
+        }
         for (unsigned f = from; f < frames; ++f) {
             if (v.loop) {
                 if (v.reverse) while (v.position < v.loop_at) { v.position += span; v.wrapped = v.turned = true; }
