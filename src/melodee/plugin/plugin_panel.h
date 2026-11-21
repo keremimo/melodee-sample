@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #pragma once
 #include "melodee/model/limits.h"
+#include "melodee/plugin/custom_gui.h"
+#include "melodee/plugin/custom_gui_scope.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -43,6 +45,10 @@ struct PluginPanel {
     // after), for the page's list; `window_first` the first one's place in the list of shown ones.
     std::array<PluginPanelParam, 6> window {};
     uint16_t window_first = 0;
+    bool gui_enabled = false;
+    uint32_t gui_accent = 0;
+    CustomGuiTrace gui_trace {};
+    std::array<PluginPanelParam, CustomGui::max_parameters> gui_params {};
 };
 
 // A plug-in's programs as PRESETS lists them: the named ones, each with its

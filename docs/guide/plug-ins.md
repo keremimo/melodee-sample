@@ -200,6 +200,11 @@ Plug-ins save their settings and presets in `Melodee/Plugin Data` on the
 card, laid out as a Linux home folder. Most use a hidden `.config` folder
 there. On a Mac, press Cmd-Shift-. in Finder to show it.
 
+## Custom panels
+
+Open MPC packages can provide an optional [custom panel](custom-plugin-gui.md)
+with a live output scope and parameter readouts.
+
 ## Latency and sample rate
 
 Melodee compensates for plug-in latency: tracks, buses and sequenced MIDI

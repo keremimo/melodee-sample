@@ -1,0 +1,6 @@
+MELODEE-GUI 1
+accent E9BF89
+scope stereo
+parameter 9 Input
+parameter 10 Output
+parameter 4 Mix

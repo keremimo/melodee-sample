@@ -93,6 +93,7 @@ void frame(ui::Paint& p, const Snapshot& s, const ui::SoftKeys& keys, const ui::
 // A plug-in over the cards (pages/plugin_view.cpp): its name and format, then loading, why it failed, or its row of
 // parameters out of how many; Edit for a PLUGIN track, the chain pages for a plug-in effect.
 void draw_plugin_view(ui::Paint& p, const Snapshot& s, unsigned entry, float top);
+bool draw_custom_plugin_gui(ui::Paint& p, const PluginPanel& panel, float x, float y, float w, float h, bool bypass);
 juce::String plugin_name(const Snapshot& s, unsigned entry); // its own name once open, else its file's
 void plugin_rows(Context& c, int delta); // a PLUGIN track's rows of parameters: the wheel on Edit and Stage EDIT
 

@@ -4,6 +4,7 @@
 #include "melodee/engine/dsp.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/plugin/clap_instance.h"
+#include "melodee/plugin/custom_gui_scope.h"
 #include "melodee/plugin/idle_gate.h"
 #include "melodee/plugin/plugin_runner.h"
 #include "melodee/plugin/plugin_support.h"
@@ -293,14 +294,14 @@ public:
             load.store(load.load(std::memory_order_relaxed) * 0.95f, std::memory_order_relaxed);
             return;
         }
-        if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false); });
-        else run(left, right, frames, instrument);
+        if (bridge.converting()) bridge.render(left, right, frames, [&](float* l, float* r, unsigned n) { run(l, r, n, false, t0); });
+        else run(left, right, frames, instrument, t0);
         double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         float share = float(took / (frames / sample_rate));
         load.store(load.load(std::memory_order_relaxed) * 0.95f + share * 0.05f, std::memory_order_relaxed);
     }
     // One processBlock of `frames`: an effect's input in left/right; the output added there (`add`) or in their place.
-    void run(float* left, float* right, unsigned frames, bool add) {
+    void run(float* left, float* right, unsigned frames, bool add, CustomGuiScope::Time now) {
         int ins = instance->getTotalNumInputChannels(), outs = instance->getTotalNumOutputChannels();
         std::array<float*, 64> pointers {};
         for (int c = 0; c < channels && c < 64; ++c) pointers[size_t(c)] = memory.data() + size_t(c) * EngineHost::block;
@@ -327,6 +328,7 @@ public:
         const float* l = pointers[0];
         const float* r = outs >= 2 ? pointers[1] : pointers[0];
         idle.heard(l, r, frames);
+        if (gui.enabled && !warming) gui_scope.write(l, r, frames, now);
         auto safe = [](float x) { return std::isfinite(x) ? std::clamp(x, -8.0f, 8.0f) : 0.0f; };
         if (add) for (unsigned f = 0; f < frames; ++f) { left[f] += safe(l[f]); right[f] += safe(r[f]); }
         else for (unsigned f = 0; f < frames; ++f) { left[f] = safe(l[f]); right[f] = safe(r[f]); }
@@ -337,6 +339,8 @@ public:
     const double sample_rate;
     const double plugin_rate;            // what the plug-in itself runs at (an Open MPC one: 44.1 kHz)
     std::vector<int> shown;              // parameter indices the pages show, in order
+    CustomGui gui;                      // set before publishing the handle
+    CustomGuiScope gui_scope;
     bool qlinks = false;
     bool nam = false;                    // Neural Amp Modeler: shorter card names (plugin/nam.h)
     std::atomic<bool> transport {true};  // TRANSPORT: it hears Play and Stop (off: always stopped), set by the rack
@@ -638,28 +642,37 @@ void PluginRack::panel(unsigned entry, unsigned row, PluginPanel& out) const {
     out.load = uint16_t(std::clamp(h->load.load(std::memory_order_relaxed) * 1000.0f, 0.0f, 9999.0f));
     out.programs = uint16_t(std::min<size_t>(h->programs.size(), 0xffff));
     const auto& params = h->instance->getParameters();
-    auto read = [&](size_t at, PluginPanelParam& card) {
-        auto* p = params[h->shown[at]];
+    auto read = [&](int index, PluginPanelParam& card) {
+        auto* p = params[index];
         card.used = true;
         std::string name = p->getName(int(sizeof(card.name) - 1)).trim().toStdString();
         put(card.name, sizeof(card.name), h->nam ? nam_card_name(name) : name);
         float v = p->getValue();
+        if (!std::isfinite(v)) v = 0.0f;
         put(card.text, sizeof(card.text), tidy(p->getText(v, 64).trim().toStdString()));
         card.value = int16_t(std::lround(std::clamp(v, 0.0f, 1.0f) * plugin_param_max));
         card.initial = int16_t(std::lround(std::clamp(p->getDefaultValue(), 0.0f, 1.0f) * plugin_param_max));
         int steps = p->getNumSteps();
         card.steps = uint16_t(steps > 1 && steps < plugin_param_max ? steps : 0);
     };
+    if (h->gui.enabled) {
+        out.gui_enabled = true;
+        out.gui_accent = h->gui.accent;
+        if (!h->asleep.load(std::memory_order_relaxed))
+            out.gui_trace = h->gui_scope.read(std::chrono::steady_clock::now());
+        for (unsigned n = 0; n < h->gui.count; ++n)
+            read(h->gui.parameters[n].index, out.gui_params[n]);
+    }
     for (unsigned k = 0; k < 3; ++k) {
         size_t at = size_t(out.row) * 3 + k;
         if (at >= h->shown.size()) break;
-        read(at, out.params[k]);
+        read(h->shown[at], out.params[k]);
     }
     out.window_first = uint16_t((out.row > 0 ? out.row - 1u : 0u) * 3u);
     for (unsigned k = 0; k < out.window.size(); ++k) {
         size_t at = size_t(out.window_first) + k;
         if (at >= h->shown.size()) break;
-        read(at, out.window[k]);
+        read(h->shown[at], out.window[k]);
     }
 }
 
@@ -1049,6 +1062,16 @@ void PluginRack::load(const Job& job) {
     handle->programs = named_programs(*handle->instance);
     handle->finding = file.format == PluginFormat::Clap; // looked for once it plays: find_presets()
     if (file.format == PluginFormat::Vst2 || file.format == PluginFormat::Vst2Arm32) { // an Open MPC skin's Q-Link pages first, then the rest
+        auto gui = read_custom_gui(file.path);
+        const auto& params = handle->instance->getParameters();
+        for (unsigned n = 0; gui.enabled && n < gui.count; ++n) {
+            const auto& binding = gui.parameters[n];
+            auto at = std::find(handle->shown.begin(), handle->shown.end(), binding.index);
+            if (at == handle->shown.end() || binding.index >= params.size() ||
+                params[binding.index]->getName(int(binding.name.size())).trim() != juce::String(binding.name.data()))
+                gui = {};
+        }
+        handle->gui = gui;
         auto order = qlink_order(file.path);
         if (!order.empty()) {
             std::vector<int> ordered;

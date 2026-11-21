@@ -277,16 +277,21 @@ void fx_in_hand(Paint& p, const Snapshot& s, const Chain& chain, unsigned cursor
     auto fam = caps_text(colour::mid);
     float fw = p.width(family, fam) + 8;
     auto title = plain(slot.bypass ? colour::mid : colour::text, type::title, Weight::SemiBold);
-    float room = w - fw - 28;
+    const auto& panel = s.ui.plugin_panel;
+    bool ours = plugin && panel.entry == unsigned(slot.params[0]);
+    float dy = y + 30, dh = bottom - dy;
+    bool custom = ours && draw_custom_plugin_gui(p, panel, x, dy, w, dh, slot.bypass);
+    bool custom_rows = custom && panel.rows > 1;
+    float room = w - fw - (custom_rows ? 76 : 28);
     float nw = p.text(name, x, y, room, 24, p.fit(name, title, room, type::floor));
     p.fill(x + nw + 8, y + 5, fw, 15, colour::surf, 3);
     p.text(family, x + nw + 8, y + 5, fw, 15, fam, juce::Justification::centred);
     if (slot.bypass) draw_glyph(p, Glyph::LedOff, x + nw + 8 + fw + 6, y + 12.5f, colour::mid);
-    float dy = y + 30, dh = bottom - dy;
     if (!plugin) { effect_drawing(p, slot, x, dy, w, dh, c); return; }
-    // A plug-in draws nothing of its own here: its state, and which row of its parameters the cards hold.
-    const auto& panel = s.ui.plugin_panel;
-    bool ours = panel.entry == unsigned(slot.params[0]);
+    if (custom_rows)
+        p.text(juce::String(panel.row + 1) + " / " + juce::String(panel.rows),
+               x + w - 46, y + 5, 46, 15, caps_text(colour::mid), juce::Justification::centredRight);
+    if (custom) return;
     icon(p, panel.status == PluginStatus::Failed || panel.status == PluginStatus::Crashed ? Icon::PlugBroken : Icon::Plug, x, dy + 4, 28, colour::dim, 1.4f);
     juce::String state = !ours || panel.status == PluginStatus::Loading || panel.status == PluginStatus::None ? "OPENING"
                        : panel.status == PluginStatus::Failed ? "WON'T OPEN" : panel.status == PluginStatus::Crashed ? "STOPPED" : "";

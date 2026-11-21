@@ -49,6 +49,12 @@ void draw_plugin_view(Paint& p, const Snapshot& s, unsigned entry, float top) {
         if (code.isNotEmpty()) p.text(code, x + 56, top + 62, w - 56, 14, p.fit(code, plain(colour::dim, type::small), w - 56, type::floor));
         return;
     }
+    if (draw_custom_plugin_gui(p, panel, x, top, w, zone::picture_h - 17, false)) {
+        if (panel.rows)
+            p.text(juce::String(panel.row + 1) + " / " + juce::String(panel.rows),
+                   x, top + zone::picture_h - 14, w, 14, caps_text(colour::mid), juce::Justification::centred);
+        return;
+    }
     if (!panel.rows) {
         icon(p, Icon::Sliders, x + w / 2 - 14, top + 40, 28, colour::dim, 1.4f);
         p.text("NONE", x, top + 74, w, 14, caps_text(colour::dim), juce::Justification::centred);
