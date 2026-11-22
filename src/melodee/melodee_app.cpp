@@ -10,6 +10,7 @@
 #include "drivers/power_button.h"
 #include "drivers/sd_update.h"
 #include "melodee/shell/update.h"
+#include "melodee/shell/usb_host.h"
 #include "melodee/pages/page.h"
 #include "melodee/ui/paint.h"
 #include <spawn.h>
@@ -361,6 +362,12 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
     if (action == "melodee-midi" && argument == "panic") { // MIDI Config's MIDI Panic (docs/MIDI_TRACKS.md)
         panic_asked.store(true);
         return "OK melodee-midi panic";
+    }
+    if (action == "melodee-usb-host") { // melodee-usb-host status: on|off|otg, USB role on the USB-C port
+        if (argument.empty() || argument == "status") return melodee::usb_host_status();
+        if (argument != "on" && argument != "off" && argument != "otg")
+            return "ERR melodee-usb-host status|on|off|otg";
+        return melodee::usb_host_set(argument);
     }
     if (action == "melodee-midi") { // melodee-midi [usb] 90 3c 64
         RemoteMidi m;
