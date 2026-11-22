@@ -18,7 +18,9 @@
 // thread owns it; the screen gets a copy in each Snapshot.
 namespace melodee {
 
-enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus, Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage, FilterPage, FollowPage, CloudPage, Punch, SettingsPage, About, PadFx, TimeCorrect, StepEdit,
+enum class PageId : uint8_t { Stage, Keys, Sounds, Edit, Roll, Motion, Patterns, Song, InputConfig, Rack, Sends, Bus,
+                            Master, Pads, Samples, Trim, Chop, Record, Project, Tempo, PadPage, PlayPage, EnvelopePage,
+                            FilterPage, FollowPage, CloudPage, Punch, SettingsPage, System, PadFx, TimeCorrect, StepEdit,
                             PadMix, PadFilterPage, FilterEnvPage, // parity phase 4: the MPC's Mix, Filter and Filt Env for a kit pad
                             KnobFx, Compressor, FlexBeat,      // parity phase 7 and 7b
                             FaderPage,                         // parity phase 8: Shift + Pad 9
@@ -423,7 +425,8 @@ struct UiState {
     bool settings_in = false;                 // and behind it: its rows
     bool settings_look = false;               // SCREEN's Palette or Font row: its cards over the rows, the look turned live
     uint8_t settings_look_before = 0;         // the palette or face to go back to on BACK
-    uint8_t about_view = 0;                   // About (round 2): 0 how the machine is doing, 1 the credits (B3 again)
+    uint8_t system_view = 0;                  // System (round 2): 0 how the machine is doing, 1 the credits (B3 again)
+    uint8_t system_cursor = 0;                // the SYSTEM page: the row in hand, the last of them the USB port row
     std::array<Pot, 3> pots {};
     int8_t turning = -1;      // the card turned last
     uint32_t turned_at = 0;   // when, in ms

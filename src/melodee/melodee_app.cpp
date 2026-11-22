@@ -468,7 +468,7 @@ void MelodeeApp::draw(juce::Graphics& g) {
     frame->mirror_height = session().mirror.height.load(std::memory_order_relaxed);
     frame->mirror_fallback = session().mirror.fallback.load(std::memory_order_relaxed);
     frame->mirror_held = session().mirror.held.load(std::memory_order_relaxed);
-    { // About: how the machine is doing
+    { // System: how the machine is doing
         auto& m = frame->machine;
         m.cores = machine.cores.load(std::memory_order_relaxed);
         for (unsigned c = 0; c < m.core_load.size(); ++c) m.core_load[c] = machine.core_load[c].load(std::memory_order_relaxed);
@@ -500,7 +500,7 @@ void MelodeeApp::jack(const JackEvent&, Hardware& hardware) {
     input_route.service(hardware, plugged);
 }
 
-// About (round 2): each core's load and the plug-ins' every half second, the card's space every five (statvfs()
+// System (round 2): each core's load and the plug-ins' every half second, the card's space every five (statvfs()
 // can wait on a slow card, so not more often, and only while the card is Melodee's).
 void MelodeeApp::read_machine(Hardware& hardware) {
     uint32_t now = now_ms();

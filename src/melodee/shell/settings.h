@@ -17,11 +17,11 @@
 
 // Melodee's own settings, not the project's: how the pads respond and
 // light, whether their pressure is used, how the knobs, Knob FX and the fader take over a value, the screen and where its
-// place bar sits, the audio
-// device's rate and buffer, whether USB-C's main mix follows the main volume knob, and the MPC's recording toggles
-// (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize), what Double Seq puts in the new half and Input Config (Shift + Sample), and Screen Mirror
-// (the screen as a USB webcam, drivers/screen_mirror.h, and its size). Kept as key=value lines in the
-// `settings` file next to the projects (with the project to open at start).
+// place bar sits, the audio device's rate and buffer, whether USB-C's main mix follows the main volume knob, and the
+// MPC's recording toggles (Shift + Pad 4 Count-In, Shift + Pad 10 Rec Quantize), what Double Seq puts in the new half
+// and Input Config (Shift + Sample), Screen Mirror (the screen as a USB webcam, drivers/screen_mirror.h, and its size),
+// and USB port host status. Kept as key=value lines in the `settings` file next to the projects (with the project to
+// open at start).
 namespace melodee {
 
 // How a knob or the fader takes over a value it does not sit at (the MPC's
@@ -35,9 +35,11 @@ inline const char* takeover_name(Takeover t) {
 }
 
 struct Settings {
-    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover, DoubleSeq, CaptureBars, CaptureQuantize,
-                         Screen, PlaceBarRow, SampleRate,
-                         AudioBuffer, RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror, MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize, UsbVolume, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, Rows };
+    enum Row : uint8_t { Palette, PadResponse, PadPressure, PadLights, KnobTakeover, KnobFxTakeover, FaderTakeover,
+                         DoubleSeq, CaptureBars, CaptureQuantize, Screen, PlaceBarRow, SampleRate, AudioBuffer,
+                         RecallGrabRow, RecallGap, RecallTrimEnd, TakeAutoEnd, AutoEndAfter, SilenceBelow, Mirror,
+                         MirrorSize, MirrorRate, PadFade, TapLight, RepeatVelocity, SeqFollow, Font, RecQuantize,
+                         UsbVolume, UsbDirect, DirectLevel, Autosave, NotePreview, MuteKind, PluginSkins, UsbPort, Rows };
     // FEATURES (shell/features.h; Settings' K1): Full shows every page, Basic the stock app's pages plus tracks,
     // plug-ins, the mixer and Song. Full unless the file says Basic: a first install, and a file without the row
     // (from before it, or never saved with a setting changed), start on Full (read()).
@@ -117,6 +119,9 @@ struct Settings {
     static constexpr std::array<int8_t, 9> direct_levels {{-24, -18, -12, -9, -6, -3, 0, 3, 6}}; // dB
     uint8_t direct_level = 6; // 0 dB
     float direct_gain() const { return std::pow(10.0f, float(direct_levels[direct_level % direct_levels.size()]) / 20.0f); }
+    // USB-C port role: 0 gadget (peripheral, as the stock app), 1 host, and 2 OTG. Changed in Settings' SYSTEM
+    // door: and the new role is applied at once (shell/usb_host.cpp).
+    uint8_t usb_port = 0;
     // Screen Mirror: the screen offered to a computer over USB-C as a webcam, at one of ScreenMirror's sizes, the
     // screen times a whole number (0 320 x 240, 1 640 x 480, 2 1280 x 720, 3 1280 x 960), 30 or 60 fps. Off until
     // asked for: on or off, another size or rate rebinds the USB gadget (about a second without USB audio and MIDI).
@@ -156,7 +161,7 @@ struct Settings {
                                     "Fader takeover", "Double Seq", "Capture bars", "Capture quantize", "Brightness", "Place bar", "Sample rate", "Audio buffer", "Recall grab", "Recall gap",
                                     "Recall trim end", "Take auto end", "Auto end after", "Silence below", "Screen mirror", "Resolution", "Frame rate",
                                     "Pad fade", "Tap Tempo light", "Repeat velocity", "Follow", "Font", "Rec quantize", "USB volume",
-                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens"};
+                                    "USB-C in", "Direct level", "Autosave", "Note preview", "Mute", "Plug-in screens", "USB port"};
         return names[row % Rows];
     }
     std::string value_text(unsigned row) const {
@@ -206,6 +211,7 @@ struct Settings {
         case UsbVolume: return usb_full ? "Full" : "Knob";
         case UsbDirect: return usb_direct ? "Direct" : "Tracks";
         case DirectLevel: { int db = direct_levels[direct_level % direct_levels.size()]; return (db > 0 ? "+" : "") + std::to_string(db) + " dB"; }
+        case UsbPort: return usb_port == 1 ? "Host" : usb_port == 2 ? "OTG" : "Gadget";
         default: return std::to_string(screen) + " %";
         }
     }
@@ -248,6 +254,7 @@ struct Settings {
         case UsbVolume: usb_full = !usb_full; break;
         case UsbDirect: usb_direct = !usb_direct; break;
         case DirectLevel: direct_level = uint8_t(step_in(direct_level % direct_levels.size(), unsigned(direct_levels.size()), way)); break;
+        case UsbPort: usb_port = uint8_t(step_in(usb_port % 3, 3, way)); break;
         default: break;
         }
     }
@@ -272,6 +279,7 @@ struct Settings {
         case MirrorSize: return ScreenMirror::size_count;
         case PadFade: return unsigned(fades.size());
         case DirectLevel: return unsigned(direct_levels.size());
+        case UsbPort: return 3;
         default: return row < Rows ? 2 : 1; // On / Off, and the two-way rows
         }
     }
@@ -313,6 +321,7 @@ struct Settings {
         case UsbVolume: return usb_full;
         case UsbDirect: return usb_direct;
         case DirectLevel: return direct_level % direct_levels.size();
+        case UsbPort: return usb_port % 3u;
         default: return 0;
         }
     }
@@ -355,6 +364,7 @@ struct Settings {
         case UsbVolume: usb_full = n; break;
         case UsbDirect: usb_direct = n; break;
         case DirectLevel: direct_level = uint8_t(n); break;
+        case UsbPort: usb_port = uint8_t(n); break;
         default: break;
         }
     }
@@ -406,7 +416,8 @@ struct Settings {
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\ndirect_level=" << int(direct_level)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
-            << "\nscale_keys=" << int(scale_keys) << '\n';
+            << "\nscale_keys=" << int(scale_keys)
+            << "\nusb_port=" << int(usb_port) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
@@ -485,6 +496,7 @@ struct Settings {
             else if (key == "usb_volume") usb_full = value != 0;
             else if (key == "usb_direct") usb_direct = value != 0;
             else if (key == "direct_level") direct_level = uint8_t(std::clamp(value, 0, int(direct_levels.size()) - 1));
+            else if (key == "usb_port") usb_port = uint8_t(std::clamp(value, 0, 2));
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960

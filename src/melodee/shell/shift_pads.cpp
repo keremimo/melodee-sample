@@ -61,7 +61,7 @@ void shift_pad(Context& c, unsigned pad) {
         open_tool(PageId::Compressor);
         break;
     case 7: // Settings, as doors (MIDI Config one of them; Kerem's choice over the printed MIDI Config)
-        if (c.ui.page == PageId::SettingsPage || c.ui.page == PageId::MidiConfig || c.ui.page == PageId::About) { c.back(); return; }
+        if (c.ui.page == PageId::SettingsPage || c.ui.page == PageId::MidiConfig || c.ui.page == PageId::System) { c.back(); return; }
         c.ui.settings_in = false; c.ui.settings_look = false;
         c.open(PageId::SettingsPage);
         return;

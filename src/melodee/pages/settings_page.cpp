@@ -15,19 +15,21 @@
 //   crackle, shorter is heard sooner; USB volume: what a computer records
 //   over USB-C at full main volume, or following the knob; USB-C in Direct,
 //   straight to the jacks, or through Tracks; its direct level), SAMPLING (how Audio Recall cuts the
-//   ring and when a Free take ends on its own), MIDI (MIDI Config's page)
-//   and ABOUT. The wheel picks a door, Push or B3 opens it, B1 goes back.
+//   ring and when a Free take ends on its own), MIDI (MIDI Config's page),
+//   SYSTEM. The wheel picks a door, Push or B3 opens it, B1 goes back.
 //   Behind a door its rows, scrolling past six (a bar and arrows at the right edge): the wheel moves the cursor,
 //   K1 sets the row under it (its card), Minus / Plus step it; Sample rate, Audio buffer and Screen Mirror's
 //   rows wait for K1 to rest before they reopen the device; B1 back to the doors. The header of
 //   the doors and of AUDIO says what the audio device runs at, and its
 //   dropouts (amber) if any.
-// ABOUT (the seventh door; round 2, about C "how the machine is doing"): the
+// SYSTEM (the seventh door; round 2, about C "how the machine is doing"): the
 //   page to open when something crackles. A row each: RENDER (each core's
 //   load as a meter, and the audio blocks' share of their time), AUDIO (the
 //   rate and the buffer, its dropouts in amber), CARD (room on it, and the
 //   times it could not stream a sample in time), PLUG-INS (how many, and
-//   what they cost). B3 again shows what this is and what it is made of.
+//   what they cost), USB PORT (the USB-C port's role, Gadget / Host / OTG,
+//   applied at once; the wheel picks the row, Minus / Plus step it). B3 again
+//   shows what this is and what it is made of.
 #include "drivers/audio.h"
 #include "drivers/screen_mirror.h"
 #include "melodee/engine/effect_info.h"
@@ -60,10 +62,10 @@ const std::array<Door, 8> doors {{
     {Icon::Mic, "SAMPLING", ROWS(Settings::RecallGrabRow, Settings::RecallGap, Settings::RecallTrimEnd, Settings::TakeAutoEnd, Settings::AutoEndAfter,
                                  Settings::SilenceBelow)},
     {Icon::Din, "MIDI", {none}},  // MIDI Config's own page
-    {Icon::Info, "ABOUT", {none}}, // the About page
+    {Icon::Info, "SYSTEM", {none}}, // SYSTEM page
 }};
 #undef ROWS
-constexpr unsigned screen_door = 3, audio_door = 4, midi_door = 6, about_door = 7;
+constexpr unsigned screen_door = 3, audio_door = 4, midi_door = 6, system_door = 7;
 void trouble(Paint& p, float right, float cy, unsigned count);
 
 // Screen Mirror, under SCREEN's rows while it is on: how it goes (the runtime's state). Amber when it waits on the card or failed, and
@@ -238,7 +240,7 @@ void open_door(Context& c) {
     auto& ui = c.ui;
     unsigned n = ui.settings_door % doors.size();
     if (n == midi_door) { c.open(PageId::MidiConfig); return; }
-    if (n == about_door) { ui.about_view = 0; c.open(PageId::About); return; }
+    if (n == system_door) { ui.system_view = 0; c.open(PageId::System); return; }
     ui.settings_in = true;
     ui.settings_cursor = uint8_t(doors[n].rows[0]);
 }
@@ -300,7 +302,8 @@ void trouble(Paint& p, float right, float cy, unsigned count) {
 
 void machine_draw(Paint& p, const Snapshot& s) {
     const auto& m = s.machine;
-    constexpr float lx = zone::pad + 6, vx = 124, right = zone::width - 12, row_h = 33;
+    constexpr float lx = zone::pad + 6, vx = 124, right = zone::width - 12, row_h = 26;
+    constexpr unsigned usb_row = 4; // the fifth row: the USB port, the one the wheel can turn
     auto value = [&](float y, const juce::String& text, juce::Colour c) {
         p.text(text, right - 90, y, 90, 18, plain(c, type::body, Weight::SemiBold), juce::Justification::centredRight);
     };
@@ -308,11 +311,13 @@ void machine_draw(Paint& p, const Snapshot& s) {
         p.fill(x, y, w, 4, colour::line, 2);
         p.fill(x, y, w * std::clamp(fill, 0.0f, 1.0f), 4, c, 2);
     };
-    const std::pair<Icon, const char*> rows[] {{Icon::Chip, "RENDER"}, {Icon::Speaker, "AUDIO"}, {Icon::Card, "CARD"}, {Icon::Plug, "PLUG-INS"}};
-    for (unsigned r = 0; r < 4; ++r) {
+    const std::pair<Icon, const char*> rows[] {{Icon::Chip, "RENDER"}, {Icon::Speaker, "AUDIO"}, {Icon::Card, "CARD"}, {Icon::Plug, "PLUG-INS"}, {Icon::Usb, "USB PORT"}};
+    for (unsigned r = 0; r < 5; ++r) {
         float y = zone::picture_y + 8 + r * row_h;
-        icon(p, rows[r].first, lx, y + 3, 16, colour::sec, 1.4f);
-        p.text(rows[r].second, lx + 26, y + 4, 80, 14, caps_text(colour::mid));
+        bool cursor = r == s.ui.system_cursor;
+        if (cursor) { p.fill(zone::pad, y - 1, zone::width - 2 * zone::pad, row_h - 2, colour::raised, 4); p.fill(zone::pad, y - 1, 2.5f, row_h - 2, colour::text, 1); }
+        icon(p, rows[r].first, lx, y + 3, 16, cursor ? colour::text : colour::sec, 1.4f);
+        p.text(rows[r].second, lx + 26, y + 4, 80, 14, caps_text(cursor ? colour::text : colour::mid));
     }
     // RENDER: each core's load as a meter, and the audio blocks' share of their time.
     float y = zone::picture_y + 8;
@@ -348,6 +353,13 @@ void machine_draw(Paint& p, const Snapshot& s) {
         bar(vx + 18, y + 9, 102, m.plugins_load, colour::sec);
         value(y + 2, juce::String(int(std::lround(m.plugins_load * 100))) + " %", load_colour(m.plugins_load));
     }
+    // USB PORT: the USB-C port's role, switched at once (shell/usb_host.cpp).
+    y += row_h;
+    bool cursor = s.ui.system_cursor == usb_row;
+    juce::String port = juce::String(s.ui.settings.value_text(Settings::UsbPort));
+    auto style = plain(cursor ? colour::text : colour::mid, type::body, Weight::SemiBold);
+    p.text(port, vx, y + 2, 120, 18, style);
+    p.text(cursor ? "<  >" : "", vx + 80, y + 2, 60, 18, plain(colour::dim, type::small));
 }
 
 void credits_draw(Paint& p) {
@@ -373,21 +385,29 @@ void credits_draw(Paint& p) {
     }
 }
 
-void about_draw(Paint& p, const Snapshot& s) {
+void system_draw(Paint& p, const Snapshot& s) {
     Header h = header_of(s);
     h.right.push_back(label(s.project.name));
-    SoftKeys keys {{"BACK", "", "ABOUT"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
-    keys.dots[2] = 2; keys.dot_at[2] = uint8_t(s.ui.about_view % 2); // B3 again: the machine, then the credits
+    SoftKeys keys {{"BACK", "", "SYSTEM"}, 2, colour::text, {KeyIcon::Back, KeyIcon::None, KeyIcon::None}};
+    keys.dots[2] = 2; keys.dot_at[2] = uint8_t(s.ui.system_view % 2); // B3 again: the machine, then the credits
     frame(p, s, keys, h);
-    if (s.ui.about_view % 2) credits_draw(p);
+    if (s.ui.system_view % 2) credits_draw(p);
     else machine_draw(p, s);
 }
 } // namespace
 
 const PageSpec settings_page {settings_draw, play_pad, settings_wheel, settings_push, settings_soft, settings_nudge};
-const PageSpec about_page {about_draw, play_pad, no_wheel, no_push, [](Context& c, int key) {
+void system_wheel(Context& c, int delta) { // the row in hand (the machine's rows, then the USB port)
+    if (c.ui.system_view) return;
+    c.ui.system_cursor = uint8_t(std::clamp(int(c.ui.system_cursor) + delta, 0, 4));
+}
+void system_nudge(Context& c, int way) { // Minus / Plus on the USB port row: its role, at once
+    if (c.ui.system_view || c.ui.system_cursor != 4) return;
+    c.change_setting(Settings::UsbPort, way);
+}
+const PageSpec system_page {system_draw, play_pad, system_wheel, no_push, [](Context& c, int key) {
     if (key == 0) c.back();
-    else if (key == 2) c.ui.about_view = uint8_t((c.ui.about_view + 1) % 2);
-}, [](Context&, int) {}};
+    else if (key == 2) c.ui.system_view = uint8_t((c.ui.system_view + 1) % 2);
+}, system_nudge};
 
 } // namespace melodee
