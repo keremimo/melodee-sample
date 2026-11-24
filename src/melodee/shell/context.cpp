@@ -652,6 +652,8 @@ void Context::audition(int sound) {
     ui.auditioning = int16_t(sound);
 }
 
+bool Context::draws(const Binding& b) { return motion_point_for(*this, b) != nullptr; }
+
 Binding Context::shown(Binding b) {
     if (const auto* m = motion_point_for(*this, b)) b.value = std::clamp<int>(m->value, b.min, b.max);
     return b;

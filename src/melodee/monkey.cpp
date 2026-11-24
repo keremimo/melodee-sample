@@ -297,6 +297,25 @@ unsigned motion_script() {
     } else std::puts("MELODEE_MONKEY motion script: the fader has no job on this track, its step skipped");
     with_shift([&] { control(SurfaceControl::Wheel, 0, 1); });
     expect(!point(4 * q) && point(5 * q) && ui.motion_cursor == 5 * q, "Shift + wheel moves the point a step of Q");
+    { // turns on two points are two undo steps, however quickly they follow (the wheel between them ends the first)
+        control(SurfaceControl::Wheel, 0, 2); // to 7 Q
+        tap(B::WheelPush);
+        for (uint32_t tick : {5 * q, 7 * q}) // both at the bottom of the lane, so K1 at the top changes each
+            if (auto* m = c.pattern().point_at(tick, lp, lk)) m->value = 0;
+        control(SurfaceControl::K1, 0, 0); // K1 at the bottom too: the turns below move it
+        control(SurfaceControl::Wheel, 0, -2); // the point on 5 Q
+        control(SurfaceControl::K1, 127, 0);
+        control(SurfaceControl::Wheel, 0, 2); // the point on 7 Q, at once
+        control(SurfaceControl::K1, 0, 0);
+        control(SurfaceControl::K1, 127, 0);
+        const int top = point(5 * q) ? point(5 * q)->value : -1;
+        expect(top > 0 && point(7 * q) && point(7 * q)->value == top, "K1 sets each point it is on");
+        c.undo();
+        expect(point(5 * q) && point(5 * q)->value == top && point(7 * q) && point(7 * q)->value == 0,
+               "undo takes back the second point's turn only");
+        c.pattern().erase_point(7 * q, lp, lk);
+        control(SurfaceControl::Wheel, 0, -2); // the cursor back on 5 Q, its point
+    }
     tap(B::Erase);
     expect(!point(5 * q), "Erase takes the point under the cursor out");
 

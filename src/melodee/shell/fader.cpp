@@ -83,8 +83,9 @@ void fader_move(Context& c, int value, bool syncing) {
     if (ui.erase) { erase_lane(c, job); return; }
     int to = 0;
     if (takeover_move(takeover_of(c, job), ui.fader, before, reach, job.binding, to)) {
+        bool live = !c.draws(job.binding); // drawing on Motion: a bend point set, the track's bend left alone
         c.apply(job.binding, to);
-        if (job.bend) c.fader_bent = uint16_t(c.fader_bent | 1u << (ui.track % track_count));
+        if (job.bend && live) c.fader_bent = uint16_t(c.fader_bent | 1u << (ui.track % track_count));
     }
 }
 

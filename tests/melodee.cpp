@@ -9395,11 +9395,18 @@ void pattern_motion() {
             const std::pair<unsigned, int> lanes_of[] {
                 {0, motion_lane(Cc1)}, {0, motion_lane(motion_wheel)}, {0, motion_lane(motion_fx_param(0, 1))},
                 {0, motion_lane(motion_level)}, {0, motion_lane(motion_send(1))}, {0, motion_lane(unsigned(motion_strip(StripPart::Trim)))},
-                {1, motion_lane(motion_pad_param(PadParam::Level), 3)}};
+                {1, motion_lane(motion_pad_param(PadParam::Level), 3)}, {1, motion_lane(motion_pad_mute, 3)}};
             for (auto [t, lane] : lanes_of) {
                 auto card = lane_binding(round->tracks[t], t, lane, round.get());
                 CHECK(card.bound() && turned_lane(*round, t, card) == lane);
             }
+            // Motion's cards for the mix's lanes (here the strip's level, holding motion) are cards: they need the project.
+            Pattern mixed;
+            MotionPoint level; level.param = uint8_t(motion_level); level.value = 90;
+            CHECK(mixed.write_motion(level));
+            UiState on_motion; on_motion.page = PageId::Motion; on_motion.track = 0;
+            auto shown = motion_lanes(*round, on_motion, mixed);
+            CHECK(shown[0] == motion_lane(motion_level) && page_bindings(*round, on_motion, mixed)[0].kind == Binding::Kind::Level);
         }
         mui.motion_draw = true; // Shift + B3: drawing
         CHECK(page_bindings(*project, mui, p)[0].value == 96 && erase_tap_page(mui));

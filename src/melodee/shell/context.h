@@ -114,6 +114,7 @@ public:
     void audition(int sound);                                 // -1: back to the loaded sound
     void apply(const Binding& binding, int value);            // a pot's new value
     Binding shown(Binding binding);                           // its value as the page shows it (drawing on Motion: the point's)
+    bool draws(const Binding& binding);                       // and a turn sets that point, not the value (apply())
     void set_route(unsigned route, const ModRoute& value);   // the selected track's mod matrix
     void pressure(unsigned pad, uint8_t value);             // poly aftertouch from a held pad
     // Punch: a pad of the Punch page (hold to punch), Push with it held to

@@ -75,6 +75,7 @@ void motion_cursor_wheel(Context& c, int delta) {
         int64_t point = point_between(p, lane, at, next); // a point on the way: there first
         at = point >= 0 ? uint32_t(point) : next;
     }
+    if (at != motion_cursor(c.ui, p)) c.close_gesture(); // turns on another point are another undo step
     cursor_to(c, at);
 }
 

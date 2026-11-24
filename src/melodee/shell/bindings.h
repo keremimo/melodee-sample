@@ -246,7 +246,8 @@ std::array<Binding, 3> favourite_bindings(const Track& track);
 // wheel), -1 where it lands in none.
 int binding_lane(const Track& track, const Binding& b);
 // The Motion lane a card turns on track `t`: binding_lane()'s, or the strip's level, pan and sends, a return, the
-// master's chain (MOD's learned lane, Motion's draw mode); -1 none. lane_binding()'s card for a lane turns that lane.
+// master's chain, a kit pad's MUTE (MOD's learned lane, Motion's draw mode); -1 none. lane_binding()'s card for a
+// lane turns that lane.
 int turned_lane(const Project& project, unsigned t, const Binding& b);
 // Erase + pot on a kit pad's own value (Tune, Mix, Play's offset, the envelopes, the filter, its sends, cloud and loop
 // crossfade): the card's value on a new pad, false for Trim's handles, a toggle or a choice.

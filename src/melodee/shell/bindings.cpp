@@ -307,6 +307,7 @@ int turned_lane(const Project& project, unsigned t, const Binding& b) {
     const auto& track = project.tracks[t % track_count];
     if (int lane = binding_lane(track, b); lane >= 0) return lane;
     switch (b.kind) {
+    case Kind::PadMute: return motion_lane(motion_pad_mute, unsigned(b.id) % sampler_pads); // Motion's MUTE card: its pad's lane
     case Kind::Level: return int(motion_level);
     case Kind::Pan: return int(motion_pan);
     case Kind::Send: return int(motion_send(unsigned(b.id)));
@@ -1009,7 +1010,8 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::Motion: {
         auto lanes = motion_lanes(project, ui, pattern);
         unsigned t = ui.track % track_count;
-        std::array<Binding, 3> out {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
+        std::array<Binding, 3> out {lane_binding(track, t, lanes[0], &project), lane_binding(track, t, lanes[1], &project),
+                                    lane_binding(track, t, lanes[2], &project)}; // the mix's lanes need the project
         for (size_t k = 0; k < 3; ++k) // drawing, a point under the cursor: its card shows (and turns) its value
             if (const auto* m = out[k].bound() ? motion_point_on(ui, pattern, lanes[k]) : nullptr)
                 out[k].value = std::clamp<int>(m->value, out[k].min, out[k].max);
