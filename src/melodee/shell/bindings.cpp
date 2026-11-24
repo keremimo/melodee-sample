@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/motion_points.h"
 #include "melodee/shell/free_length.h"
 #include "melodee/shell/step_sounds.h"
 #include "melodee/shell/levels_keys.h"
@@ -302,6 +303,24 @@ int binding_lane(const Track& track, const Binding& b) {
     return -1;
 }
 
+int turned_lane(const Project& project, unsigned t, const Binding& b) {
+    const auto& track = project.tracks[t % track_count];
+    if (int lane = binding_lane(track, b); lane >= 0) return lane;
+    switch (b.kind) {
+    case Kind::Level: return int(motion_level);
+    case Kind::Pan: return int(motion_pan);
+    case Kind::Send: return int(motion_send(unsigned(b.id)));
+    case Kind::BusReturn: return int(motion_return(unsigned(b.id)));
+    case Kind::FxParam: {
+        unsigned chain = unsigned(b.id) / 64, slot = (unsigned(b.id) / 8) % 8, q = unsigned(b.id) % 8;
+        if (chain == t) return int(motion_fx_param(slot, q));
+        if (chain == master_chain) return int(motion_master_fx(slot, q));
+        return -1;
+    }
+    default: return -1;
+    }
+}
+
 bool pad_reset_value(const Binding& b, int& value) {
     static const PadSound fresh {};
     if (b.kind == Kind::PadWarp) { value = warp_card(fresh.warp); return true; }
@@ -400,6 +419,13 @@ std::array<int, 3> motion_lanes(const Project& project, const UiState& ui, const
     if (kit && track.pads[pad].used()) // a kit: the last pad's tune, level and pan, as on Pads
         for (auto p : {PadParam::Pitch, PadParam::Level, PadParam::Pan}) add(motion_lane(motion_pad_param(p), pad));
     for (auto f : info.favourites) add(f);
+    // A lane begun by hand on Motion (draw mode, until it is turned off): first while it has points and would not
+    // show otherwise, which is when three lanes with motion came before it; the third of them waits.
+    int pin = ui.motion_pin;
+    if (pin >= 0 && ui.motion_draw && ui.motion_pin_track == ui.track % track_count && motion_param(track, pin, &project).info
+        && (!is_pad_lane(lane_param(pin)) || lane_pad(pin) == pad) && pattern.has_lane(lane_param(pin), lane_pad(pin) % sampler_pads)
+        && std::find(lanes.begin(), lanes.end(), pin) == lanes.end())
+        lanes = {pin, lanes[0], lanes[1]};
     return lanes;
 }
 
@@ -983,7 +1009,11 @@ std::array<Binding, 3> base_bindings(const Project& project, const UiState& ui, 
     case PageId::Motion: {
         auto lanes = motion_lanes(project, ui, pattern);
         unsigned t = ui.track % track_count;
-        return {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
+        std::array<Binding, 3> out {lane_binding(track, t, lanes[0]), lane_binding(track, t, lanes[1]), lane_binding(track, t, lanes[2])};
+        for (size_t k = 0; k < 3; ++k) // drawing, a point under the cursor: its card shows (and turns) its value
+            if (const auto* m = out[k].bound() ? motion_point_on(ui, pattern, lanes[k]) : nullptr)
+                out[k].value = std::clamp<int>(m->value, out[k].min, out[k].max);
+        return out;
     }
     case PageId::Patterns: { // the pattern's cards; SEQUENCE: the sequence in hand's tempo and colour; FOLLOW: the pattern's follow action
         if (ui.sheet_open) return {Binding {Kind::VaryAmount, 0, 0, 100, ui.vary_amount}, Binding {}, Binding {}}; // the VARY sheet

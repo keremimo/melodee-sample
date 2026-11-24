@@ -9321,6 +9321,7 @@ void trig_conditions() {
 void pattern_motion() {
     using namespace midi_track;
     const double tick = 44100 * 60.0 / 120 / ticks_per_quarter;
+    constexpr uint32_t q96 = ticks_per_quarter / 96; // a 96th of a quarter: the Motion line tests below count in these
     // A MIDI track's CC lane shows Motion as it plays: a point on tick 50, a lock on tick 480 for a sixteenth over the
     // point's value (back to it after), and a lock on another CC lane with nothing recorded (back to the track's own).
     {
@@ -9361,6 +9362,186 @@ void pattern_motion() {
         for (const auto& e : ccs) back20 += e.a == 74 && e.b == 20;
         CHECK(back20 == 2); // tick 50, then the lock's end at tick 720
         CHECK(at(71, 90) > 0 && at(71, 33) > at(71, 90) && std::llabs(at(71, 33) - at(71, 90) - std::llround(60 * tick)) <= 2);
+    }
+    // Points set by hand on Motion go in a straight line to the lane's next point: a CC from 0 on tick 0 to 96 a
+    // quarter later climbs a step a 96th, in order; a lock over it holds, and the line goes on after it; the last point holds. The
+    // Motion page's card shows (and turns) the value of the point under the cursor, else the track's own.
+    {
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        auto& t = project->tracks[0];
+        t.params[Port] = UsbC; t.params[Channel] = 1; t.params[CcNumber1] = 74; t.params[Cc1] = 7;
+        project->tempo = 1200;
+        auto& p = bank->at[0][0];
+        p.length = 2 * ticks_per_quarter;
+        MotionPoint from; from.param = uint8_t(Cc1); from.value = 0; from.ramp = true;
+        MotionPoint to = from; to.tick = 96 * q96; to.value = 96; to.ramp = false;
+        MotionPoint lock = from; lock.tick = 40 * q96; lock.value = 120; lock.hold = uint16_t(8 * q96); lock.ramp = false;
+        CHECK(p.write_motion(from) && p.write_motion(to) && p.write_motion(lock));
+        CHECK(p.lane_value(30 * q96, Cc1, 0, -1) == 30 && p.lane_value(44 * q96, Cc1, 0, -1) == 44 && p.lane_value(150 * q96, Cc1, 0, -1) == 96);
+        UiState mui; mui.page = PageId::Motion; mui.motion_cursor = 96 * q96;
+        auto lanes = motion_lanes(*project, mui, p);
+        CHECK(lanes[0] == motion_lane(Cc1) && page_bindings(*project, mui, p)[0].value == 7); // draw mode off: the track's
+        CHECK(!erase_tap_page(mui) && button_has_shift_job(*project, mui, SurfaceButton::TopRight, false));
+        { // The card Motion shows for each kind of lane turns that same lane: the rule its value and a turn both go by
+          // (shell/motion_points.h motion_point_on, turned_lane): an engine value, the mod wheel, an effect, the strip's
+          // level and send, the mixer strip, and a kit pad's own value.
+            auto round = std::make_unique<Project>();
+            load_sound(round->tracks[0], EngineKind::Midi, 0);
+            round->tracks[0].fx.slots[0] = {uint8_t(EffectKind::Echo), false, {60, 50, 30, 70, 0, 0}};
+            auto& kit = round->tracks[1];
+            kit.engine = EngineKind::Sampler; kit.pads[3].sample = 0; kit.last_pad = 3;
+            const std::pair<unsigned, int> lanes_of[] {
+                {0, motion_lane(Cc1)}, {0, motion_lane(motion_wheel)}, {0, motion_lane(motion_fx_param(0, 1))},
+                {0, motion_lane(motion_level)}, {0, motion_lane(motion_send(1))}, {0, motion_lane(unsigned(motion_strip(StripPart::Trim)))},
+                {1, motion_lane(motion_pad_param(PadParam::Level), 3)}};
+            for (auto [t, lane] : lanes_of) {
+                auto card = lane_binding(round->tracks[t], t, lane, round.get());
+                CHECK(card.bound() && turned_lane(*round, t, card) == lane);
+            }
+        }
+        mui.motion_draw = true; // Shift + B3: drawing
+        CHECK(page_bindings(*project, mui, p)[0].value == 96 && erase_tap_page(mui));
+        { // a lane Push began for a parameter Motion did not show comes first, on its track only
+            UiState pin = mui;
+            int lane = motion_lane(Cc2);
+            CHECK(std::find(lanes.begin(), lanes.end(), lane) == lanes.end());
+            pin.motion_pin = int16_t(lane); pin.motion_pin_track = 0;
+            CHECK(motion_lanes(*project, pin, p) == lanes); // no points on it (yet, or erased): not pinned
+            Pattern drawn = p; // three lanes with motion before it: Cc1 (tick 0), Cc3 (10), the mod wheel (20)
+            MotionPoint other = from; other.param = uint8_t(Cc3); other.tick = 10;
+            MotionPoint wheel = from; wheel.param = uint8_t(motion_wheel); wheel.tick = 20;
+            MotionPoint begun = from; begun.param = uint8_t(Cc2); begun.tick = 50;
+            CHECK(drawn.write_motion(other) && drawn.write_motion(wheel) && drawn.write_motion(begun));
+            UiState plain = mui;
+            auto base = motion_lanes(*project, plain, drawn);
+            CHECK(base[0] == motion_lane(Cc1) && base[1] == motion_lane(Cc3) && base[2] == motion_lane(motion_wheel));
+            CHECK(motion_lanes(*project, pin, drawn) == (std::array<int, 3> {lane, base[0], base[1]})); // first; the third waits
+            pin.motion_pin_track = 1; CHECK(motion_lanes(*project, pin, drawn) == base); // another track's pin
+            pin.motion_pin_track = 0; pin.motion_draw = false; CHECK(motion_lanes(*project, pin, drawn) == base); // draw mode off
+            pin.motion_draw = true; drawn.erase_point(50, Cc2, 0); CHECK(motion_lanes(*project, pin, drawn) == base); // its point gone
+        }
+        { // a first point set by hand later in the pattern: the lane level with it from the start (recorded: the track's)
+            Pattern later = p;
+            CHECK(later.move_point(0, 24, Cc1, 0) && later.lane_value(0, Cc1, 0, 7) == 0 && later.lane_value(10, Cc1, 0, 7) == 0);
+            later.motion[later.motion_lower(24)].ramp = false;
+            CHECK(later.lane_value(10, Cc1, 0, 7) == 7);
+        }
+        mui.motion_cursor = 20; CHECK(page_bindings(*project, mui, p)[0].value == 7); // no point there: the track's own
+        mui.motion_cursor = 0; mui.recording = true; CHECK(page_bindings(*project, mui, p)[0].value == 7); // recording: the track's
+        auto owned = std::make_unique<EngineHost>(); // on the heap: this function holds several
+        auto& host = *owned;
+        host.load(*project, *bank);
+        tones_for(host, *project);
+        host.set_audio_format(44100, 384);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        std::vector<MidiOutEvent> ccs;
+        for (unsigned b = 0; b < 200; ++b) { // past the end point (a quarter), under the pattern's two beats (44100 frames): one pass
+            host.render(out.data(), 128, 1);
+            MidiOutEvent e;
+            while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::Control && e.a == 74) ccs.push_back(e);
+        }
+        auto zero = std::find_if(ccs.begin(), ccs.end(), [](const MidiOutEvent& e) { return e.b == 0; }); // the first point
+        CHECK(zero != ccs.end());
+        ccs.erase(ccs.begin(), zero);
+        std::vector<int> values;
+        for (const auto& e : ccs) values.push_back(e.b);
+        auto seen = [&](int v) { return std::find(values.begin(), values.end(), v) != values.end(); };
+        CHECK(seen(39) && seen(40) && seen(120) && seen(48) && seen(95) && values.back() == 96);
+        CHECK(!seen(41) && !seen(47)); // the lock held the lane
+        size_t locked = size_t(std::find(values.begin(), values.end(), 120) - values.begin());
+        for (size_t n = 1; n < values.size(); ++n) if (n != locked + 1) CHECK(values[n] > values[n - 1]);
+        CHECK(std::abs(int64_t(ccs[size_t(std::find(values.begin(), values.end(), 64) - values.begin())].frame - ccs.front().frame) - std::llround((64 * q96 - q96 / 2) * tick)) <= 2); // 63.5 rounds to 64
+    }
+    // A line edited while it plays follows the new copy from the next tick: its end point given another value, the
+    // lane turns toward that (no jump at the end); the end point removed, the lane goes to what the copy has (the
+    // first point holds, there being no line any more). The same copy again sends nothing twice; a copy that was
+    // not planned (not made by played_pattern()) plays no lines: the lane stays where the line had it.
+    enum class Edit { Lower, Remove, Same, Unplanned };
+    for (Edit how : {Edit::Lower, Edit::Remove, Edit::Same, Edit::Unplanned}) {
+        const bool removed = how == Edit::Remove;
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        auto& t = project->tracks[0];
+        t.params[Port] = UsbC; t.params[Channel] = 1; t.params[CcNumber1] = 74; t.params[Cc1] = 7;
+        project->tempo = 1200;
+        auto& p = bank->at[0][0];
+        p.length = 2 * ticks_per_quarter;
+        MotionPoint from; from.param = uint8_t(Cc1); from.value = 0; from.ramp = true;
+        MotionPoint to = from; to.tick = 96 * q96; to.value = 96; to.ramp = false;
+        CHECK(p.write_motion(from) && p.write_motion(to));
+        auto owned = std::make_unique<EngineHost>(); // on the heap: this function holds several
+        auto& host = *owned;
+        host.load(*project, *bank);
+        tones_for(host, *project);
+        host.set_audio_format(44100, 384);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        std::vector<int> before, after;
+        auto run = [&](unsigned blocks, std::vector<int>& into) {
+            for (unsigned b = 0; b < blocks; ++b) {
+                host.render(out.data(), 128, 1);
+                MidiOutEvent e;
+                while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::Control && e.a == 74) into.push_back(e.b);
+            }
+        };
+        run(54, before); // to about 30 96ths (6912 frames), on the way to the end point a quarter in
+        CHECK(!before.empty() && before.back() >= 25 && before.back() <= 31);
+        Pattern edited = p;
+        if (how == Edit::Remove) CHECK(edited.erase_point(96 * q96, Cc1, 0));
+        if (how == Edit::Lower) { MotionPoint lower = to; lower.value = 20; CHECK(edited.write_motion(lower)); }
+        Command c {Command::Type::PatternData, 0, 0};
+        c.data = new Pattern(how == Edit::Unplanned ? edited : played_pattern(edited, speed_normal));
+        CHECK(host.send(c));
+        run(140, after); // past the end point, before the pattern comes round (two quarters)
+        if (how == Edit::Unplanned) { // the end point still plays (points hold); no line on the way
+            CHECK(after.size() <= 2 && !after.empty() && after.back() == 96);
+            continue;
+        }
+        CHECK(!after.empty() && (how == Edit::Same || std::find(after.begin(), after.end(), 96) == after.end()));
+        if (removed) CHECK(after.front() == 0 && after.size() == 1); // the first point's value, held
+        else if (how == Edit::Same) { // the same line: on from where it was, no value sent twice
+            CHECK(after.front() == before.back() + 1 && after.back() == 96);
+            for (size_t n = 1; n < after.size(); ++n) CHECK(after[n] == after[n - 1] + 1);
+        } else {
+            CHECK(after.front() <= 7 && after.back() == 20); // on the new line (0 to 20 over a quarter) from the next tick
+            for (size_t n = 1; n < after.size(); ++n) CHECK(after[n] >= after[n - 1] && after[n] <= 20);
+        }
+    }
+    { // a point on the pattern's end: the line climbs to it over the whole pass, and it is not played itself (its
+      // value comes once, in the line's last half step); the next pass starts again from the first point
+        auto project = std::make_unique<Project>();
+        auto bank = std::make_unique<PatternBank>();
+        load_sound(project->tracks[0], EngineKind::Midi, 0);
+        auto& t = project->tracks[0];
+        t.params[Port] = UsbC; t.params[Channel] = 1; t.params[CcNumber1] = 74; t.params[Cc1] = 7;
+        project->tempo = 1200;
+        auto& p = bank->at[0][0];
+        p.length = ticks_per_quarter;
+        MotionPoint from; from.param = uint8_t(Cc1); from.value = 0; from.ramp = true;
+        MotionPoint end = from; end.tick = p.length; end.value = 96;
+        CHECK(p.write_motion(from) && p.write_motion(end) && p.lane_value(48 * q96, Cc1, 0, -1) == 48);
+        auto owned = std::make_unique<EngineHost>(); // on the heap: this function holds several
+        auto& host = *owned;
+        host.load(*project, *bank);
+        tones_for(host, *project);
+        host.set_audio_format(44100, 384);
+        host.send({Command::Type::Play});
+        std::vector<int32_t> out(256);
+        std::vector<int> values;
+        for (unsigned b = 0; b < 200; ++b) { // past the first pass (22050 frames) into the second
+            host.render(out.data(), 128, 1);
+            MidiOutEvent e;
+            while (host.take_midi(e)) if (e.kind == MidiOutEvent::Kind::Control && e.a == 74) values.push_back(e.b);
+        }
+        auto first = std::find(values.begin(), values.end(), 0);
+        CHECK(first != values.end());
+        auto top = std::find(first, values.end(), 96); // reached in the last half step (95.5 rounds up), the point not played
+        CHECK(top != values.end() && top + 1 != values.end() && *(top + 1) == 0); // once, then round again: the first point
+        for (auto v = first + 1; v != top + 1; ++v) CHECK(*v > *(v - 1)); // a step a 96th, up to the last
     }
     // A pattern's edits carry its Motion: doubled with the notes, halved, at half and double speed.
     {

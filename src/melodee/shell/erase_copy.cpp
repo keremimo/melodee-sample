@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/erase_copy.h"
+#include "melodee/shell/motion_points.h"
 #include "melodee/shell/delete_jobs.h"
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/pages.h"
@@ -95,6 +96,7 @@ bool erase_tap(Context& c) {
     case PageId::Chop: return erase_slice(c);
     case PageId::LayersPage: c.layer_clear(); return true;
     case PageId::ModPage: mod_remove(c); return true;
+    case PageId::Motion: return ui.motion_draw && (motion_point_erase(c), true); // drawing: the point under the cursor
     case PageId::Project: return project_erase(c);
     case PageId::Samples: // the trim sheet up: both its ends back; else the file goes from the card
         if (c.ui.browse.up()) { c.browse_erase(-1); return true; }

@@ -722,7 +722,8 @@ void Shell::wheel(int delta) {
         if (!ui_.prog_storing) prog_wheel(context_, delta);
         return;
     }
-    if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns && ui_.page != PageId::Roll && ui_.page != PageId::Chop) { // Patterns: locates by Q; Roll: marks notes; Chop: hit to hit
+    if (ui_.shift && ui_.last_pot >= 0 && ui_.page != PageId::Patterns && ui_.page != PageId::Roll && ui_.page != PageId::Chop // Patterns: locates by Q; Roll: marks notes; Chop: hit to hit
+        && !(ui_.page == PageId::Motion && ui_.motion_draw)) { // Motion, drawing: the page's (moves the point under the cursor)
         // Shift + wheel: fine edit of the last pot touched, one step a detent.
         ui_.shift_used = true;
         auto bindings = page_bindings(*project_, ui_, context_.pattern(), ui_.last_pot_shift);

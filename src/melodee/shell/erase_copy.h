@@ -77,6 +77,7 @@ inline bool erase_tap_page(const UiState& ui) {
     case PageId::Samples: case PageId::Plugins:
         return true;
     case PageId::Project: return ui.project_list && !ui.move_open;
+    case PageId::Motion: return ui.motion_draw; // drawing: the point under the cursor
     default: return false;
     }
 }

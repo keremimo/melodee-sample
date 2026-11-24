@@ -466,6 +466,10 @@ struct UiState {
     uint32_t turned_at = 0;   // when, in ms
     int8_t last_pot = -1;     // for Shift + wheel fine edits
     bool last_pot_shift = false; // and whether it turned its Shift card
+    uint32_t motion_cursor = 0;  // Motion's cursor, a tick of the pattern: the lane in hand's point there is the one edited (shell/motion_points.h)
+    bool motion_draw = false;    // Motion's draw mode (Shift + B3): the cursor and the points set by hand
+    int16_t motion_pin = -1;     // a lane Push began on Motion, shown first while drawing and it has points (bindings.h motion_lanes)
+    uint8_t motion_pin_track = 0;
     uint32_t held_pads = 0;
     // Shift + Erase: copy one kit pad onto another, one pattern onto another
     // (Seq held, or Patterns), one track onto another (Pad Bank held, or

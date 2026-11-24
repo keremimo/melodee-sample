@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Kerem Kilic (Ellic Studio)
 #include "melodee/shell/note_jobs.h"
+#include "melodee/shell/motion_points.h"
 #include "melodee/shell/levels_keys.h"
 #include "melodee/shell/mod_jobs.h"
 #include "melodee/shell/midi_track_jobs.h"
@@ -651,9 +652,15 @@ void Context::audition(int sound) {
     ui.auditioning = int16_t(sound);
 }
 
+Binding Context::shown(Binding b) {
+    if (const auto* m = motion_point_for(*this, b)) b.value = std::clamp<int>(m->value, b.min, b.max);
+    return b;
+}
+
 void Context::apply(const Binding& b, int value) {
     using Kind = Binding::Kind;
     value = std::clamp(value, b.min, b.max);
+    if (motion_point_take(*this, b, value)) return; // drawing on Motion: the point under the cursor (shell/motion_points.h)
     if (frozen_edit(freeze_scope(project, ui, b))) return; // freeze plan F2c: what a frozen track's prints hold asks "Unfreeze track N?" first
     touch_gesture(b); // one undo step per control's turns (shell/undo_scope.cpp)
     learn_lane(*this, b); // roadmap P4: what ADD on the MOD page takes

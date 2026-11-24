@@ -11,6 +11,11 @@
 #include "melodee/engine/engine_host.h"
 #include "melodee/pages/page.h"
 #include "melodee/shell/shell.h"
+#include "melodee/shell/bindings.h"
+#include "melodee/shell/fader_job.h"
+#include "melodee/shell/motion_points.h"
+#include "melodee/model/limits.h"
+#include <algorithm>
 #include "melodee/shell/snapshot.h"
 #include "melodee/ui/paint.h"
 #include "runtime/app.h"
@@ -218,6 +223,145 @@ bool preview_snapshot_edits() {
     }
     return true;
 }
+// Motion's draw mode (shell/motion_points.h) by its own hand: the controls pressed in order on a MIDI track, each
+// edit checked on the pattern (what Push, a knob, the fader, Shift + wheel and Erase do to a point; a lock left
+// alone; a lane Motion does not show set as on any page; the limit on lines at once). The number of checks broken.
+unsigned motion_script() {
+    auto host = std::make_unique<EngineHost>();
+    auto shell = std::make_unique<Shell>(*host);
+    shell->load_engine();
+    auto& c = shell->context();
+    auto& ui = shell->ui();
+    uint32_t now = 1000;
+    unsigned failed = 0, checked = 0;
+    auto expect = [&](bool ok, const char* what) {
+        ++checked;
+        if (ok) return;
+        ++failed;
+        std::printf("MELODEE_MONKEY motion script: %s (notice \"%s\")\n", what, ui.notice);
+    };
+    auto button = [&](B b, bool pressed) {
+        SurfaceEvent e;
+        e.input.kind = SurfaceInput::Kind::Button;
+        e.input.index = uint8_t(b);
+        e.input.pressed = pressed;
+        now += 40;
+        shell->surface(e, now);
+    };
+    auto tap = [&](B b) { button(b, true); button(b, false); };
+    auto control = [&](SurfaceControl which, int value, int delta) {
+        SurfaceEvent e;
+        e.input.kind = SurfaceInput::Kind::Control;
+        e.input.index = uint8_t(which);
+        e.input.value = uint8_t(value);
+        e.input.delta = delta;
+        now += 40;
+        shell->surface(e, now);
+    };
+    auto with_shift = [&](auto&& act) { button(B::Shift, true); act(); button(B::Shift, false); };
+
+    ui.settings.knob_takeover = ui.settings.fader_takeover = Takeover::Instant; // a turn sets the value it points at
+    c.now = now;
+    c.load_sound(0, EngineKind::Midi, 0);
+    ui.track = 0;
+    c.open(PageId::Motion);
+    auto& track = c.track();
+    auto lanes = motion_lanes(c.project, ui, c.pattern());
+    const int lane = lanes[0];
+    expect(lane >= 0, "a MIDI track shows a lane on K1");
+    if (lane < 0) return failed;
+    const unsigned lp = lane_param(lane), lk = lane_pad(lane);
+    const uint32_t q = c.pattern().q();
+    auto point = [&](uint32_t tick) { return c.pattern().point_at(tick, lp, lk); };
+
+    with_shift([&] { tap(B::TopRight); });
+    expect(ui.motion_draw, "Shift + B3 turns draw mode on");
+    control(SurfaceControl::K1, 40, 0); // no point at the cursor: the track's own value, and K1's lane is the one drawn
+    const int own = motion_param(track, lane, &c.project).value;
+    control(SurfaceControl::Wheel, 0, 4);
+    expect(ui.motion_cursor == 4 * q, "the wheel moves the cursor a step of Q a detent");
+    tap(B::WheelPush);
+    expect(point(4 * q) && point(4 * q)->ramp, "Push adds a point that goes in a line");
+    c.undo();
+    expect(!point(4 * q), "undo takes the point out again");
+    tap(B::WheelPush);
+    control(SurfaceControl::K1, 100, 0);
+    expect(point(4 * q) && point(4 * q)->value != 40 && motion_param(track, lane, &c.project).value == own,
+           "K1 on a point sets the point, not the track's value");
+    if (fader_job(c.project, ui).binding.bound()) { // the fader follows K1 (fader C)
+        int before = point(4 * q) ? point(4 * q)->value : -1;
+        control(SurfaceControl::Fader, 10, 0);
+        control(SurfaceControl::Fader, 20, 0);
+        expect(point(4 * q) && point(4 * q)->value != before && motion_param(track, lane, &c.project).value == own,
+               "the fader on K1's lane sets the point, not the track's value");
+    } else std::puts("MELODEE_MONKEY motion script: the fader has no job on this track, its step skipped");
+    with_shift([&] { control(SurfaceControl::Wheel, 0, 1); });
+    expect(!point(4 * q) && point(5 * q) && ui.motion_cursor == 5 * q, "Shift + wheel moves the point a step of Q");
+    tap(B::Erase);
+    expect(!point(5 * q), "Erase takes the point under the cursor out");
+
+    { // a lock stays a lock: Push on its tick adds nothing
+        MotionPoint lock;
+        lock.tick = 5 * q; lock.param = uint8_t(lp); lock.pad = uint8_t(lk); lock.value = 9; lock.hold = 6;
+        c.pattern().write_motion(lock);
+        tap(B::WheelPush);
+        const auto* still = c.pattern().lock_at(5 * q, lp, lk);
+        expect(still && still->value == 9 && !point(5 * q), "Push on a lock's tick leaves the lock");
+        c.pattern().clear_lane(lp, lk);
+    }
+    { // Shift + wheel with no point under the cursor changes nothing (no fine edit of another lane's point)
+        auto motion = c.pattern().motion;
+        int was = motion_param(track, lane, &c.project).value;
+        with_shift([&] { control(SurfaceControl::Wheel, 0, 1); });
+        expect(c.pattern().motion == motion && motion_param(track, lane, &c.project).value == was,
+               "Shift + wheel off a point changes nothing");
+    }
+    { // a lane Motion does not show is set as on any page, its point left alone
+        const int hidden = motion_lane(motion_level);
+        auto shown = motion_lanes(c.project, ui, c.pattern());
+        std::vector<int> filled;
+        for (int other : shown) if (other >= 0) filled.push_back(other);
+        filled.push_back(motion_lane(motion_wheel)); filled.push_back(motion_lane(motion_pan));
+        for (int other : filled) { // three or more lanes hold motion from tick 0: a later one with a point stays hidden
+            MotionPoint held;
+            held.param = uint8_t(lane_param(other)); held.pad = uint8_t(lane_pad(other)); held.value = 1;
+            c.pattern().write_motion(held);
+        }
+        shown = motion_lanes(c.project, ui, c.pattern());
+        expect(std::find(shown.begin(), shown.end(), hidden) == shown.end(), "the strip's level is not one of Motion's lanes");
+        MotionPoint level;
+        level.tick = motion_cursor(ui, c.pattern()); level.param = uint8_t(motion_level); level.value = 33; level.ramp = true;
+        c.pattern().write_motion(level);
+        shown = motion_lanes(c.project, ui, c.pattern());
+        if (std::find(shown.begin(), shown.end(), hidden) == shown.end()) { // with a point it may show; only then it is hidden
+            c.apply(Binding {Binding::Kind::Level, 0, 0, 127, int(track.mix.level)}, 50);
+            expect(track.mix.level == 50 && c.pattern().point_at(level.tick, motion_level, 0)->value == 33,
+                   "a hidden lane's card sets the track, not its point");
+        } else std::puts("MELODEE_MONKEY motion script: the strip's level showed once it had a point, its step skipped");
+        c.pattern().clear_lane(motion_level, 0);
+        for (int other : filled) c.pattern().clear_lane(lane_param(other), lane_pad(other));
+    }
+    { // more lanes in a line at once than a track plays: Push is taken back
+        control(SurfaceControl::K1, 0, 0); // K1's lane the one drawn again (the level card turned it last): a turn that changes it
+        auto& p = c.pattern();
+        for (unsigned k = 0; k < motion_ramps_at_once; ++k) {
+            MotionPoint a, b;
+            a.param = b.param = uint8_t(100 + k); a.ramp = true; b.tick = p.length;
+            a.value = 0; b.value = 1;
+            p.write_motion(a); p.write_motion(b);
+        }
+        MotionPoint end;
+        end.tick = p.length - q; end.param = uint8_t(lp); end.pad = uint8_t(lk); end.value = 5;
+        p.write_motion(end);
+        auto motion = p.motion;
+        tap(B::WheelPush); // at the cursor, before `end`: a 65th line
+        expect(p.motion == motion, "Push past the limit on lines at once is taken back");
+    }
+    with_shift([&] { tap(B::TopRight); });
+    expect(!ui.motion_draw, "Shift + B3 turns draw mode off");
+    std::printf("MELODEE_MONKEY motion script: %u checks, %u failed\n", checked, failed);
+    return failed;
+}
 } // namespace
 
 int monkey(unsigned first, unsigned seeds, unsigned steps) {
@@ -226,6 +370,7 @@ int monkey(unsigned first, unsigned seeds, unsigned steps) {
         std::puts("MELODEE_MONKEY retained preview edit or light snapshot check failed");
         return 1;
     }
+    if (motion_script()) return 1;
     unsigned failed = 0;
     for (unsigned s = first; s < first + seeds; ++s) {
         auto m = std::make_unique<Monkey>(s); // large: off the stack
