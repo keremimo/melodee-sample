@@ -20,6 +20,7 @@
 #include "melodee/shell/undo_scope.h"
 #include "melodee/shell/ui_state.h"
 #include "melodee/shell/usage_log.h"
+#include "melodee/shell/usb_host.h"
 #include <array>
 #include <atomic>
 #include <bitset>
@@ -805,7 +806,17 @@ public:
     void midi_panic();
     unsigned midi_panics = 0;
 
+    // Returns the current USB mode: 'on' (USB host), 'otg' or 'off' (gadget/peripheral).
+    // Returns string starting with 'OK ' on success and 'ERR ' on error. Rest
+    // of the return value is the status or the error message.
+    std::string usb_host_status();
+    // Changes USB mode to 'on' (USB host), 'otg' or 'off' (gadget/peripheral).
+    // Returns string starting with 'OK ' on success and 'ERR ' on error. Rest
+    // of the return value is the new status or the error message.
+    std::string usb_host_set(const std::string& mode);
+
 private:
+    UsbHost usb_host;
     void double_notes();
     void scale_notes(bool slower);
     unsigned held_pads() const { unsigned n = 0; for (auto& pad : pad_keys) n += pad[0] >= 0; return n; }

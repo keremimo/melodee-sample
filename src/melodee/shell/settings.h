@@ -119,8 +119,8 @@ struct Settings {
     static constexpr std::array<int8_t, 9> direct_levels {{-24, -18, -12, -9, -6, -3, 0, 3, 6}}; // dB
     uint8_t direct_level = 6; // 0 dB
     float direct_gain() const { return std::pow(10.0f, float(direct_levels[direct_level % direct_levels.size()]) / 20.0f); }
-    // USB-C port role: 0 gadget (peripheral, as the stock app), 1 host, and 2 OTG. Changed in Settings' SYSTEM
-    // door: and the new role is applied at once (shell/usb_host.cpp).
+    // USB-C port role: 0 off = gadget (peripheral, as the stock app) and 1 on = host. Changed in Settings'
+    // SYSTEM door: and the new role is applied at once (shell/usb_host.cpp).
     uint8_t usb_port = 0;
     // Screen Mirror: the screen offered to a computer over USB-C as a webcam, at one of ScreenMirror's sizes, the
     // screen times a whole number (0 320 x 240, 1 640 x 480, 2 1280 x 720, 3 1280 x 960), 30 or 60 fps. Off until
@@ -211,7 +211,7 @@ struct Settings {
         case UsbVolume: return usb_full ? "Full" : "Knob";
         case UsbDirect: return usb_direct ? "Direct" : "Tracks";
         case DirectLevel: { int db = direct_levels[direct_level % direct_levels.size()]; return (db > 0 ? "+" : "") + std::to_string(db) + " dB"; }
-        case UsbPort: return usb_port == 1 ? "Host" : usb_port == 2 ? "OTG" : "Gadget";
+        case UsbPort: return usb_port == 1 ? "On" : "Off";
         default: return std::to_string(screen) + " %";
         }
     }
@@ -254,7 +254,7 @@ struct Settings {
         case UsbVolume: usb_full = !usb_full; break;
         case UsbDirect: usb_direct = !usb_direct; break;
         case DirectLevel: direct_level = uint8_t(step_in(direct_level % direct_levels.size(), unsigned(direct_levels.size()), way)); break;
-        case UsbPort: usb_port = uint8_t(step_in(usb_port % 3, 3, way)); break;
+        case UsbPort: usb_port = uint8_t(std::max(0,(int(usb_port) + (way < 0 ? -1 : 1)) % 2)); break;
         default: break;
         }
     }
@@ -279,7 +279,7 @@ struct Settings {
         case MirrorSize: return ScreenMirror::size_count;
         case PadFade: return unsigned(fades.size());
         case DirectLevel: return unsigned(direct_levels.size());
-        case UsbPort: return 3;
+        case UsbPort: return 2;
         default: return row < Rows ? 2 : 1; // On / Off, and the two-way rows
         }
     }
@@ -321,7 +321,7 @@ struct Settings {
         case UsbVolume: return usb_full;
         case UsbDirect: return usb_direct;
         case DirectLevel: return direct_level % direct_levels.size();
-        case UsbPort: return usb_port % 3u;
+        case UsbPort: return usb_port % 2u;
         default: return 0;
         }
     }
@@ -416,8 +416,7 @@ struct Settings {
             << "\nsilence_db=" << sampling.silence_db()
             << "\naudio_rate=" << audio_rate << "\naudio_periods=" << int(audio_periods) << "\nusb_volume=" << int(usb_full) << "\nusb_direct=" << int(usb_direct) << "\ndirect_level=" << int(direct_level)
             << "\nscreen_mirror=" << int(mirror) << "\nmirror_size=" << int(mirror_size) << "\nmirror_fps=" << int(mirror_fps)
-            << "\nscale_keys=" << int(scale_keys)
-            << "\nusb_port=" << int(usb_port) << '\n';
+            << "\nscale_keys=" << int(scale_keys) << '\n';
         write_midi_config(out, midi);
         for (unsigned e = 0; e < engines; ++e) {
             if (favourites[e].none()) continue;
@@ -496,7 +495,6 @@ struct Settings {
             else if (key == "usb_volume") usb_full = value != 0;
             else if (key == "usb_direct") usb_direct = value != 0;
             else if (key == "direct_level") direct_level = uint8_t(std::clamp(value, 0, int(direct_levels.size()) - 1));
-            else if (key == "usb_port") usb_port = uint8_t(std::clamp(value, 0, 2));
             else if (key == "audio_periods") { audio_periods = uint8_t(std::clamp(value, 2, 8)); audio_periods = buffers[size_t(buffer_index())]; }
             else if (key == "screen_mirror") mirror = value != 0;
             else if (key == "mirror_size") mirror_size = uint8_t(std::clamp(value, 0, int(ScreenMirror::size_count) - 1)); // 1920 x 1440 and up: 1280 x 960

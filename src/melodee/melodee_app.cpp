@@ -364,10 +364,10 @@ std::string MelodeeApp::command(const std::string& action, const std::string& ar
         return "OK melodee-midi panic";
     }
     if (action == "melodee-usb-host") { // melodee-usb-host status: on|off|otg, USB role on the USB-C port
-        if (argument.empty() || argument == "status") return melodee::usb_host_status();
+        if (argument.empty() || argument == "status") return shell.context().usb_host_status();
         if (argument != "on" && argument != "off" && argument != "otg")
             return "ERR melodee-usb-host status|on|off|otg";
-        return melodee::usb_host_set(argument);
+        return shell.context().usb_host_set(argument);
     }
     if (action == "melodee-midi") { // melodee-midi [usb] 90 3c 64
         RemoteMidi m;

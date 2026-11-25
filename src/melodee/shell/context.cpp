@@ -27,7 +27,6 @@
 #include "melodee/shell/record_place.h"
 #include "melodee/shell/roll.h"
 #include "melodee/shell/sample_library.h"
-#include "melodee/shell/usb_host.h"
 #include "melodee/shell/shell.h"
 #include "melodee/shell/sound_list.h"
 #include "melodee/shell/stage_map.h"
@@ -1071,14 +1070,18 @@ void Context::change_setting(unsigned row, int way) {
     ui.settings.step(row, way);
     if (row == Settings::RepeatVelocity || row == Settings::PadResponse || row == Settings::PadPressure) send_repeat_velocity();
     if (row == Settings::MuteKind) send_mute_kind();
-    if (row == Settings::UsbPort) apply_usb_port(); // the USB-C port's role changes at once
+    if (row == Settings::UsbPort) apply_usb_port();
     if (store) store->save_settings(ui.settings.text());
 }
 
-// Settings' AUDIO door's USB port row: switch the dwc3 port now and say how it went.
+// Settings' SYSTEM door's USB port row: switch the dwc3 port now and say how it went.
 void Context::apply_usb_port() {
-    static const char* const words[] {"off", "on", "otg"};
-    notice(usb_host_set(words[ui.settings.usb_port % 3]));
+    static const char* const words[] {"off", "on"};
+    std::string ret = usb_host_set(words[ui.settings.usb_port % 2]);
+    // Restore the previous setting on error (setting is either 0 or 1)
+    if (ret.find("ERR ") != std::string::npos)
+        ui.settings.usb_port = (ui.settings.usb_port + 1) % 2;
+    notice(ret);
 }
 
 // K1 on a Settings row. A row that reopens the audio device or the USB camera keeps the value until the knob rests,

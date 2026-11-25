@@ -311,7 +311,7 @@ void machine_draw(Paint& p, const Snapshot& s) {
         p.fill(x, y, w, 4, colour::line, 2);
         p.fill(x, y, w * std::clamp(fill, 0.0f, 1.0f), 4, c, 2);
     };
-    const std::pair<Icon, const char*> rows[] {{Icon::Chip, "RENDER"}, {Icon::Speaker, "AUDIO"}, {Icon::Card, "CARD"}, {Icon::Plug, "PLUG-INS"}, {Icon::Usb, "USB PORT"}};
+    const std::pair<Icon, const char*> rows[] {{Icon::Chip, "RENDER"}, {Icon::Speaker, "AUDIO"}, {Icon::Card, "CARD"}, {Icon::Plug, "PLUG-INS"}, {Icon::Usb, "USB Host"}};
     for (unsigned r = 0; r < 5; ++r) {
         float y = zone::picture_y + 8 + r * row_h;
         bool cursor = r == s.ui.system_cursor;
@@ -353,12 +353,12 @@ void machine_draw(Paint& p, const Snapshot& s) {
         bar(vx + 18, y + 9, 102, m.plugins_load, colour::sec);
         value(y + 2, juce::String(int(std::lround(m.plugins_load * 100))) + " %", load_colour(m.plugins_load));
     }
-    // USB PORT: the USB-C port's role, switched at once (shell/usb_host.cpp).
+    // USB Host: the USB-C port's role, switched at once (shell/usb_host.cpp).
     y += row_h;
     bool cursor = s.ui.system_cursor == usb_row;
-    juce::String port = juce::String(s.ui.settings.value_text(Settings::UsbPort));
+    juce::String usb_host = juce::String(s.ui.settings.value_text(Settings::UsbPort));
     auto style = plain(cursor ? colour::text : colour::mid, type::body, Weight::SemiBold);
-    p.text(port, vx, y + 2, 120, 18, style);
+    p.text(usb_host, vx, y + 2, 120, 18, style);
     p.text(cursor ? "<  >" : "", vx + 80, y + 2, 60, 18, plain(colour::dim, type::small));
 }
 
