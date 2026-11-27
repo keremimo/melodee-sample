@@ -169,6 +169,7 @@ void motion_point_push(Context& c) {
     });
     if (full) c.notice("Motion full");
     if (!kept) return;
+    release_pots(c.ui); // the cards show the new point's value now, the lane's there: picked up afresh, no jump
     auto lanes = motion_lanes(c.project, c.ui, c.pattern());
     auto shown = std::find(lanes.begin(), lanes.end(), lane);
     if (shown == lanes.end()) { // a lane Motion did not show (a parameter turned on another page): first now

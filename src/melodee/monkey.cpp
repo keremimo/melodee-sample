@@ -282,6 +282,7 @@ unsigned motion_script() {
     expect(ui.motion_cursor == 4 * q, "the wheel moves the cursor a step of Q a detent");
     tap(B::WheelPush);
     expect(point(4 * q) && point(4 * q)->ramp, "Push adds a point that goes in a line");
+    expect(!ui.pots[0].engaged && ui.pots[0].bound == 0, "Push lets K1 pick up the new point's value (no jump)");
     c.undo();
     expect(!point(4 * q), "undo takes the point out again");
     tap(B::WheelPush);
