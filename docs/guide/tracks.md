@@ -134,6 +134,23 @@ go of **SEQ**. The other patterns play live.
 also unloads the track's plug-ins to save memory; its pads then play
 nothing. It works on the PRINT sheet and on a frozen track's Stage.
 
+A plug-in with a sequencer or arpeggiator of its own can play with no notes
+in the pattern. When its **TRANSPORT** is on, you can light a pattern
+without notes and freeze it like any other. Its print holds one pass of the
+pattern as the plug-in plays it from the pattern's start, so a sequence
+longer than the pattern, or one that changes from pass to pass, repeats
+that pass. If the plug-in plays nothing there, the pattern is left live.
+Such patterns are never lit for you, by **B2** (**ALL**) or by default. A
+deep freeze takes the ones you lit on the sheet, or from Stage the ones
+frozen.
+
+While a print plays, and while a frozen track is stopped, its plug-in
+hears the song as stopped, even when you play its pads. So it is not heard
+under its own print, and it stops costing CPU. A plug-in that ends its
+notes on Stop ends them there. When the track plays live again (a pattern
+without a print, or Unfreeze), the plug-in hears Play at the song's place,
+as after Stop and Play.
+
 MIDI tracks cannot be frozen yet: their sheet says **MIDI TRACKS** Later.
 
 Level, pan, sends, mute and solo stay live on a frozen track. A kit's pad
@@ -142,8 +159,8 @@ header show a snowflake on a frozen track; Stage shows the print of the
 pattern playing. Cards whose values the print holds are dim with a snowflake.
 
 Changing anything a print is made of (the sound, a pad, the chain, a
-frozen pattern's notes) asks **Unfreeze track N?** first: **B3**
-(**UNFREEZE**) or **B1** (**CANCEL**).
+frozen pattern's notes, the **TRANSPORT** of a plug-in the print holds) asks
+**Unfreeze track N?** first: **B3** (**UNFREEZE**) or **B1** (**CANCEL**).
 
 To unfreeze, open the **PRINT** sheet and press **SHIFT** + **B1**
 (**UNFREEZE**), or press **B3** (**UNFREEZE**) with no pattern lit. A

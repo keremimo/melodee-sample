@@ -1042,7 +1042,16 @@ and the track plays the prints instead of running its engine and its
 chain, which saves CPU. The pads still play the sound live (the engine
 wakes while notes sound and sleeps again a second after it falls quiet).
 Level, pan, sends, mute, solo and punches stay live. Unfreezing is at
-once and keeps the prints. A kit whose pads send into buses prints those
+once and keeps the prints. While a print plays in its place, or while the
+frozen track is stopped (a STOP, off, a song row without it), the track's
+engine hears the song stopped, as with TRANSPORT off, from the frame it
+happens on: the host cuts none of its notes, and a plug-in that plays by
+itself (a sequencer or arpeggiator of its own) stops, so it is not heard
+under its own print and the engine can sleep. Notes played by hand
+meanwhile hear it stopped too, and a plug-in that ends its notes on Stop
+ends them. A pattern without a print, or Unfreeze, gives it Play again at
+the song's place. A plug-in another track plays live as well hears the
+song as that track does. A kit whose pads send into buses prints those
 sends too, a stereo pair a bus after the print's own two channels (PRNT
 names the buses): a frozen kit plays them into its buses at its level, pan
 and mute, as its pads send live.
@@ -1052,7 +1061,12 @@ kit, Sample Record opens Record as before; B3 PRINT there opens the same
 sheet. The pads are the track's patterns of the bank in view
 (Minus / Plus: the bank): lit ones are printed (a snowflake in the
 corner, the one playing ringed), a tap leaves one out or takes it back,
-B2 ALL lights every pattern with notes (again: none). K1 TAP: Post FX
+B2 ALL lights every pattern with notes (again: none). On a PLUGIN track
+whose plug-in hears the transport (TRANSPORT on) a pattern without notes
+can be lit too: its print is one pass of what the plug-in plays from the
+pattern's start (a longer or changing sequence repeats that pass), and
+one that prints silent is left live. Such a pattern is never lit by
+default or by ALL. K1 TAP: Post FX
 (engine and chain) or Pre FX (the engine alone; the chain runs live on
 the print). K2 TAIL: Loop (two passes printed, the second kept, so a tail
 wraps into the start), Ring (one pass, then its tail until it falls
@@ -1089,7 +1103,8 @@ patterns with a snowflake; with Seq held their pads light white.
 
 **Deep freeze.** Shift + B3 DEEP FREEZE on the PRINT sheet, or on a
 frozen track's Stage, freezes the whole track (every pattern with notes,
-whatever is lit, at Post FX) and then unloads the track's plug-in and the
+whatever is lit, and those without notes lit on the sheet, or frozen when
+none is named, at Post FX) and then unloads the track's plug-in and the
 plug-ins on its chain, which saves their RAM as well as the CPU. They are
 let go once the print plays and the engine has been quiet for a second
 (8 s at most). The pads play nothing and stay dark, MIDI keyboard notes

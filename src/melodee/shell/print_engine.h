@@ -74,6 +74,9 @@ struct FreezeReady {
     FreezePack* pack = nullptr; // the caller's to send or give back (discard()); nullptr: failed
     std::string error;
     std::vector<std::pair<uint8_t, PrintPeaks>> peaks; // freeze plan F2c: each pattern's print, in small
+    // Patterns without notes whose prints are silent (their plug-in plays nothing by itself there): left out of the
+    // pack, a bit each, for the shell to take out of the freeze. They play live, as silent as their print.
+    std::array<uint64_t, (pattern_count + 63) / 64> silent {};
 };
 
 struct PrintResult {

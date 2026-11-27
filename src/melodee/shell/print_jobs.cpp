@@ -44,6 +44,15 @@ void Context::print(const PrintAsk& ask) {
     if (!printer->start(std::move(job))) printer->note("busy: a print is under way");
 }
 
+std::array<uint64_t, (pattern_count + 63) / 64> Context::freezable(unsigned track) const {
+    const unsigned t = track % track_count;
+    std::array<uint64_t, (pattern_count + 63) / 64> bits {};
+    const bool any = hears_transport(project, t);
+    for (unsigned p = 0; p < pattern_count; ++p)
+        if (any || !patterns.at[t][p].empty()) bits[p / 64] |= uint64_t(1) << (p % 64);
+    return bits;
+}
+
 void Context::freeze(const PrintAsk& ask) {
     if (!printer) return;
     const unsigned t = ask.track % track_count;
@@ -59,8 +68,15 @@ void Context::freeze(const PrintAsk& ask) {
     f.tail = ask.tail;
     bool none = !ask.all;
     for (auto bits : ask.patterns) none &= bits == 0;
-    for (unsigned p = 0; p < pattern_count; ++p) // a deep freeze: the whole track, as nothing of it plays live
-        if (!patterns.at[t][p].empty() && (none || ask.all || ask.deep || ((ask.patterns[p / 64] >> (p % 64)) & 1))) f.set(p, true);
+    // A deep freeze: the whole track, as nothing of it plays live. A pattern without notes only when picked, on a
+    // track whose plug-in hears the transport (freezable()); a deep freeze naming none keeps those frozen now.
+    bool named = false;
+    for (auto bits : ask.patterns) named |= bits != 0;
+    const auto can = freezable(t);
+    for (unsigned p = 0; p < pattern_count; ++p) {
+        const bool picked = ((ask.patterns[p / 64] >> (p % 64)) & 1) || (ask.deep && !named && pattern_frozen(t, p));
+        if (patterns.at[t][p].empty() ? picked && ((can[p / 64] >> (p % 64)) & 1) : none || ask.all || ask.deep || picked) f.set(p, true);
+    }
     bool any = false;
     for (auto bits : f.patterns) any |= bits != 0;
     if (!any) { printer->note("track " + std::to_string(t + 1) + " has no pattern with notes to freeze"); return; }
@@ -137,6 +153,23 @@ void Context::print_tick() {
             if (wanted) notice("Track " + std::to_string(t + 1) + " not frozen: " + ready.error);
             continue;
         }
+        // Patterns without notes that printed silent (a plug-in that does not play by itself) are not frozen: they
+        // play live, as silent. None left: the track is not frozen at all.
+        unsigned silent = 0;
+        for (unsigned p = 0; p < pattern_count; ++p) {
+            if (!((ready.silent[p / 64] >> (p % 64)) & 1)) continue;
+            ++silent;
+            prints.freeze[t].set(p, false); freeze_last[t].set(p, false);
+            dirty = true;
+        }
+        bool left = false;
+        for (auto bits : prints.freeze[t].patterns) left |= bits != 0;
+        if (silent && !left) {
+            printer->discard(ready.pack);
+            go_live(t);
+            notice("Track " + std::to_string(t + 1) + " silent: not frozen");
+            continue;
+        }
         print_peaks[t] = std::move(ready.peaks); // freeze plan F2c: Stage's picture of each print
         Command c {Command::Type::Freeze, uint8_t(t), 0, 0, 1}; // on the next bar while playing
         c.freeze = ready.pack;
@@ -145,6 +178,7 @@ void Context::print_tick() {
         else {
             if (deep_pack) deep_sent[t] = now ? now : 1; // freeze plan F2d: its plug-ins go once the engine sleeps
             if (sheet_waits) notice("Track " + std::to_string(t + 1) + (deep_pack ? " deep frozen" : " frozen"));
+            if (silent) notice("Track " + std::to_string(t + 1) + " frozen; " + std::to_string(silent) + " silent: live");
         }
     }
     // Freeze plan F2d: a deep freeze's plug-ins let go once its print plays and the engine has gone to sleep (a
@@ -176,8 +210,9 @@ void Context::print_tick() {
         job.freeze = true;
         job.deep = f.state == FreezeState::Deep; // freeze plan F2d
         job.serial = freeze_serial[t];
+        const auto can = freezable(t);
         for (unsigned p = 0; p < pattern_count; ++p)
-            if (f.plays(p) && !patterns.at[t][p].empty()) job.patterns.push_back(uint8_t(p));
+            if (f.plays(p) && ((can[p / 64] >> (p % 64)) & 1)) job.patterns.push_back(uint8_t(p));
         job.project = std::make_unique<Project>(project);
         if (ui.chop_sample < sample_slots && ui.slices.count) job.project->chops.edit(ui.chop_sample).slices = ui.slices; // slice hits as Chop has them (issue 24)
         job.bank = std::make_unique<PatternBank>(patterns);
@@ -187,7 +222,7 @@ void Context::print_tick() {
         bool empty = job.patterns.empty();
         if (empty || printer->start(std::move(job))) freeze_waiting &= ~(1u << t);
         if (empty) {
-            unfreeze(t); // its patterns have no notes left
+            unfreeze(t); // nothing of it left to freeze: no notes left (and its plug-in does not hear the transport)
             if (ui.print_sheet.printing && ui.print_sheet.track == t) { ui.print_sheet.printing = false; if (ui.page == PageId::Print) back(); }
         }
     }

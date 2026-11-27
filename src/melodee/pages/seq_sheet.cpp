@@ -41,6 +41,7 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
     unsigned live = s.playing ? s.playing_patterns[t] % pattern_count : track.pattern % pattern_count;
     int queued = s.playing && track.pattern % pattern_count != live ? int(track.pattern % pattern_count) : -1;
     bool blink = (s.now / 150) % 2;
+    const bool heard = hears_transport(s.project, t); // a pattern without notes can be frozen too (model/print.h)
 
     p.fill(0, zone::soft_y, zone::width, zone::soft_h + zone::header_h + zone::picture_h, colour::bg);
     soft_keys(p, {{"SEQUENCES", "ROLL", motion_key(s)}, -1, c});
@@ -88,7 +89,7 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
         }
         bool copying = s.ui.copying == UiState::Copying::Patterns && s.ui.copy_track == t && s.ui.copy_from == int(n);
         juce::Colour text = colour::dim;
-        bool ice = notes && (printing ? s.ui.seq_frozen_at(n) : frozen.frozen() && frozen.plays(n)); // frozen, or to be
+        bool ice = (notes || heard) && (printing ? s.ui.seq_frozen_at(n) : frozen.frozen() && frozen.plays(n)); // frozen, or to be
         if (ice && !playing) { p.fill(x, y, cell, cell, colour::ice.withAlpha(0.2f), 5); text = colour::ice; }
         else if (playing) { p.fill(x, y, cell, cell, c, 5); text = colour::bg; }
         else if (waiting) { p.fill(x, y, cell, cell, c.withAlpha(blink ? 0.5f : 0.15f), 5); p.ring(x, y, cell, cell, c, 5, 1.5f); text = colour::text; }
@@ -111,7 +112,10 @@ void draw_seq_sheet(Paint& p, const Snapshot& s) {
     float x = gx + grid + 14, w = zone::width - zone::pad - x, y = gy + 2;
     if (printing) { // beside them: how many are frozen, what that saves, the tempo
         unsigned with = 0, ice = 0;
-        for (unsigned n = 0; n < pattern_count; ++n) { with += s.sketches[t][n].notes; ice += s.sketches[t][n].notes && s.ui.seq_frozen_at(n); }
+        for (unsigned n = 0; n < pattern_count; ++n) {
+            const bool counts = s.sketches[t][n].notes || (heard && s.ui.seq_frozen_at(n)); // without notes: once frozen
+            with += counts; ice += counts && s.ui.seq_frozen_at(n);
+        }
         block(p, x, y, w, "FROZEN", juce::String(ice), "of " + juce::String(with), colour::ice);
         float load = s.machine.track_load[t];
         float saved = frozen.frozen() ? (s.live_load[t] > 0 ? std::max(0.0f, s.live_load[t] - load) : -1) : ice ? load : -1; // live: what freezing saves

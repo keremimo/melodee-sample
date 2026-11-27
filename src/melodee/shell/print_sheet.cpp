@@ -103,8 +103,8 @@ void Context::open_print_sheet() {
         sheet.tap = f.tap;
         sheet.tail = f.tail;
         sheet.picks = frozen(t) ? f.patterns : with_notes(patterns, t); // as it is frozen, else every pattern with notes
-        auto notes = with_notes(patterns, t);
-        for (size_t n = 0; n < notes.size(); ++n) sheet.picks[n] &= notes[n];
+        auto can = freezable(t);
+        for (size_t n = 0; n < can.size(); ++n) sheet.picks[n] &= can[n];
     }
     // The bank in view: the one the track plays.
     ui.pattern_bank = uint8_t(tr.pattern % pattern_count / pattern_pads);
@@ -115,7 +115,7 @@ void Context::print_sheet_pad(unsigned pad) {
     auto& sheet = ui.print_sheet;
     if (sheet.printing) return;
     unsigned p = ui.pad_pattern(pad);
-    if (patterns.at[sheet.track % track_count][p].empty()) { notice(pattern_word(p) + " is empty"); return; }
+    if (!((freezable(sheet.track)[p / 64] >> (p % 64)) & 1)) { notice(pattern_word(p) + " is empty"); return; }
     sheet.pick(p, !sheet.picked(p));
 }
 
@@ -136,8 +136,10 @@ void Context::print_sheet_go(bool deep_freeze) {
     if (deep_freeze && deep(t)) { notice(track_word(t) + " is deep frozen"); return; }
     // Nothing lit on a frozen track: it plays live again, as Seq held + Sample Record does with no pattern left.
     if (!deep_freeze && frozen(t) && none_of(sheet.picks)) { print_sheet_unfreeze(); return; }
-    // Freeze plan F2d: a deep freeze takes every pattern with notes, lit or not, at Post FX.
-    if (none_of(deep_freeze ? with_notes(patterns, t) : sheet.picks)) { notice(deep_freeze ? "No pattern with notes" : "No pattern lit"); return; }
+    // Freeze plan F2d: a deep freeze takes every pattern with notes, lit or not, and those lit without notes, at Post FX.
+    auto deep_picks = with_notes(patterns, t);
+    for (size_t n = 0; n < deep_picks.size(); ++n) deep_picks[n] |= sheet.picks[n];
+    if (none_of(deep_freeze ? deep_picks : sheet.picks)) { notice(deep_freeze ? "No pattern with notes" : "No pattern lit"); return; }
     print_was = prints.freeze[t];
     PrintAsk ask;
     ask.track = uint8_t(t);
@@ -146,7 +148,7 @@ void Context::print_sheet_go(bool deep_freeze) {
     ask.tail = sheet.tail;
     ask.mode = PrintAsk::Freeze;
     ask.deep = deep_freeze;
-    if (deep_freeze) { sheet.picks = with_notes(patterns, t); sheet.tap = PrintTap::PostFx; }
+    if (deep_freeze) { sheet.picks = deep_picks; sheet.tap = PrintTap::PostFx; }
     if (!frozen(t)) live_load[t] = host.track_load(t); // what it takes live now: what freezing saves
     freeze(ask);
     if (!frozen(t)) return; // refused (notes went with the printer)
@@ -202,7 +204,7 @@ void Context::seq_print_start() {
 void Context::seq_print_pad(unsigned pad) {
     const unsigned t = ui.track % track_count, p = ui.pad_pattern(pad);
     ui.seq_used = true;
-    if (patterns.at[t][p].empty()) { notice(pattern_word(p) + " is empty"); return; }
+    if (!((freezable(t)[p / 64] >> (p % 64)) & 1)) { notice(pattern_word(p) + " is empty"); return; }
     uint64_t bit = uint64_t(1) << (p % 64);
     ui.seq_frozen[p / 64] ^= bit;
 }
@@ -212,8 +214,8 @@ void Context::seq_print_end() {
     ui.seq_print = false;
     const unsigned t = ui.track % track_count;
     auto want = ui.seq_frozen;
-    auto notes = with_notes(patterns, t);
-    for (size_t n = 0; n < want.size(); ++n) want[n] &= notes[n];
+    auto can = freezable(t);
+    for (size_t n = 0; n < want.size(); ++n) want[n] &= can[n];
     if (frozen(t) && want == prints.freeze[t].patterns) return; // as it was
     if (none_of(want)) {
         if (frozen(t)) { unfreeze(t); notice(track_word(t) + " live"); }
@@ -239,7 +241,11 @@ void Context::deep_freeze(unsigned track) {
     if (!tr.used() || tr.engine == EngineKind::Midi) { notice(tr.used() ? "MIDI tracks: later" : "Empty track"); return; }
     if (project_path.empty()) { notice("Save the project first"); return; }
     if (deep(t)) { notice(track_word(t) + " is deep frozen"); return; }
-    if (none_of(with_notes(patterns, t))) { notice("No pattern with notes"); return; }
+    // Every pattern with notes, and those frozen now without notes (a plug-in's own sequence: freeze() keeps them).
+    auto kept = frozen(t) ? prints.freeze[t].patterns : decltype(prints.freeze[t].patterns) {};
+    auto can = freezable(t), notes = with_notes(patterns, t);
+    for (size_t n = 0; n < kept.size(); ++n) kept[n] = (kept[n] & can[n]) | notes[n];
+    if (none_of(kept)) { notice("No pattern with notes"); return; }
     const auto& f = frozen(t) ? prints.freeze[t] : freeze_last[t];
     PrintAsk ask;
     ask.track = uint8_t(t);

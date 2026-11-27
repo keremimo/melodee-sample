@@ -482,6 +482,12 @@ FreezeReady PrintEngine::freeze_pack(const PrintJob& job, const PrintTable& know
         part.left = part.right = reinterpret_cast<const float*>(static_cast<const char*>(map) + offset);
         part.total = s * clip->frames;
         if (!part.total) { f.error = "empty print " + rec->file; return f; }
+        if (job.bank->at[job.track % track_count][p].empty()) { // without notes: kept only if its plug-in played something
+            constexpr float floor = 3.16e-5f; // -90 dB, as a frozen track's engine counts as quiet below
+            bool heard = false;
+            for (uint32_t n = 0; n < part.total && !heard; ++n) heard = std::fabs(part.left[n]) >= floor;
+            if (!heard) { f.silent[p / 64] |= uint64_t(1) << (p % 64); continue; } // the clip unmaps it
+        }
         part.pins.assign((part.total - 1) / stream_chunk + 1, 0);
         part.frames.store(part.total);
         // Held: the first second, and two chunks from each bar line in the pass on.

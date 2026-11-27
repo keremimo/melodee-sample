@@ -229,6 +229,16 @@ void set_presets_folder(UiState& ui, const std::string& folder) {
 // PRESETS opens where the preset picked last is: its folder, its row (plugin/preset_rows.h).
 void Context::toggle_plugin_transport(unsigned entry) {
     if (entry >= max_plugins || !project.plugins[entry].used()) return;
+    // A frozen track's prints hold what the plug-in played hearing Play or not (its own sequence, a tempo-synced
+    // effect): unfreeze first, as for any edit of a frozen track's sound. A chain's plug-in only in a Post FX print.
+    for (unsigned t = 0; t < track_count; ++t) {
+        if (!frozen(t)) continue;
+        const auto& tr = project.tracks[t];
+        bool held = tr.engine == EngineKind::Plugin && tr.plugin == entry;
+        if (prints.freeze[t].tap == PrintTap::PostFx)
+            for (const auto& slot : tr.fx.slots) held |= slot.kind == plugin_effect_kind && unsigned(slot.params[0]) == entry;
+        if (held && frozen_edit(t)) return;
+    }
     auto& ref = project.plugins[entry];
     ref.transport = !ref.transport;
     dirty = true;

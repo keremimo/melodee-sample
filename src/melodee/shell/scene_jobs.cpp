@@ -80,7 +80,8 @@ void Context::launch_scene(unsigned scene, bool quiet) {
         if (target == scene_plays_on) continue; // it keeps nothing for the track: it plays on
         if (target == scene_stops) { track_off(t); continue; }
         auto& pattern = patterns.at[t][unsigned(target)];
-        if (pattern.empty() && length && (pattern.length != length || pattern.free != free_now)) { // silent, as long as the sequence
+        // Silent, as long as the sequence; one frozen without notes keeps the length its print was made at.
+        if (pattern.empty() && !pattern_frozen(t, unsigned(target)) && length && (pattern.length != length || pattern.free != free_now)) {
             pattern.length = length; pattern.free = free_now;
             sync_pattern(t, unsigned(target));
         }

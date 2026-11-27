@@ -58,6 +58,27 @@ class PluginHostTests(unittest.TestCase):
                             str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
             compile_and_run(self, temp, plugin, "tests/clap_host.cpp", ["melodee/plugin/clap_instance.o"], "clap ok")
 
+    def test_transport_freeze(self):
+        """Freeze with a plug-in that plays by itself: a pattern without notes frozen, heard once, and unfrozen."""
+        subprocess.run(["make", "-s", "build/test-transport-freeze"], cwd=ROOT, check=True)
+        with tempfile.TemporaryDirectory() as temp:
+            card = Path(temp) / "card"
+            sequencer, plain = card / "Melodee/Plugins/Sequencer.clap", card / "Melodee/Plugins/Plain.clap"
+            sequencer.parent.mkdir(parents=True)
+            for plugin, defines in ((sequencer, ["-DMELODEE_TEST_SEQUENCER"]), (plain, [])):
+                subprocess.run([os.environ.get("CXX", "g++"), *FLAGS, *defines, "-shared", "-fPIC",
+                                str(ROOT / "tests/clap_fixture.cpp"), "-o", str(plugin)], check=True)
+            env = {**os.environ, "MELODEE_PLUGIN_STAGE": str(Path(temp) / "stage")}
+            modes = ("freeze", "transport-off", "plain", "deep-stage", "deep-command", "gate", "launch")
+            for rate in (44100, 48000):
+                for mode in modes:
+                    plugin = plain if mode == "plain" else sequencer
+                    with self.subTest(rate=rate, mode=mode):
+                        run = subprocess.run([str(ROOT / "build/test-transport-freeze"), str(card), str(plugin), mode, str(rate)],
+                                             capture_output=True, text=True, timeout=120, env=env)
+                        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                        self.assertIn("transport freeze " + mode + " ok", run.stdout)
+
     @unittest.skipUnless(shutil.which("zig"), "needs zig")
     def test_clap_host_exits_after_a_static_runtime_plugin(self):
         """A CLAP with zig's static libc++ crashed the host at exit once dlclose unmapped it."""

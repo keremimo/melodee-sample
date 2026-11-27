@@ -35,6 +35,14 @@
 namespace {
 std::atomic<int> wrongThread {0}, mainCallbacks {0}, inits {0}, presetReads {0};
 std::string libraryPath;
+// Built with MELODEE_TEST_SEQUENCER (tests/transport_freeze.cpp), Sine also plays by itself while it hears the song
+// play, as a plug-in with a sequencer of its own does: a smooth 11 ms bump on every sixteenth, placed by the song's
+// place alone.
+#ifdef MELODEE_TEST_SEQUENCER
+constexpr bool playsItself = true;
+#else
+constexpr bool playsItself = false;
+#endif
 
 struct Plugin {
     clap_plugin plugin {};
@@ -257,12 +265,21 @@ clap_process_status process(const clap_plugin* p, const clap_process* proc) {
         s.outLevel = -1;
     }
     float** out = proc->audio_outputs[0].data32;
+    const auto* t = proc->transport;
+    const uint32_t needs = CLAP_TRANSPORT_IS_PLAYING | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_TEMPO;
+    const bool rolling = playsItself && s.instrument && t && (t->flags & needs) == needs && t->tempo > 0;
+    const double beat = rolling ? double(t->song_pos_beats) / CLAP_BEATTIME_FACTOR : 0, perFrame = rolling ? t->tempo / 60.0 / s.rate : 0;
     for (uint32_t f = 0; f < proc->frames_count; ++f) {
         float x = 0;
         if (s.instrument) {
             for (auto& [key, phase] : s.phases) {
                 x += float(s.level * std::sin(phase));
                 phase += 2 * M_PI * 440.0 * std::pow(2.0, (key - 69) / 12.0) / s.rate;
+            }
+            if (rolling) {
+                const double sixteenths = (beat + f * perFrame) * 4;
+                const double since = (sixteenths - std::floor(sixteenths)) / (4 * perFrame); // frames into this one
+                if (since < 480) { const double bump = std::sin(M_PI * since / 480); x += float(0.25 * bump * bump); }
             }
             out[0][f] = out[1][f] = x;
         } else {

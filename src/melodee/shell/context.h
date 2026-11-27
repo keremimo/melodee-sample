@@ -429,7 +429,7 @@ public:
         AutoSampleSettings sampling; // AutoSample: `melodee-autosample`
         bool check = false;          // AutoSample: the check alone, its findings in `melodee-print status`
         bool probe_first = false;    // AutoSample: the check, then sampled as it heard (as the sheet does)
-        bool deep = false; // freeze plan F2d: a deep freeze (every pattern with notes, Post FX)
+        bool deep = false; // freeze plan F2d: a deep freeze (every pattern with notes and those picked, Post FX)
     };
     void print(const PrintAsk& ask);
     void print_tick();
@@ -464,6 +464,12 @@ public:
     void unfreeze(unsigned track);
     void refreeze(unsigned track);
     bool frozen(unsigned track) const { return prints.freeze[track % track_count].frozen(); }
+    bool pattern_frozen(unsigned track, unsigned pattern) const { return frozen(track) && prints.freeze[track % track_count].plays(pattern); }
+    // The patterns a freeze can take (a bit each): those with notes, and on a PLUGIN track whose plug-in hears the
+    // transport (TRANSPORT on, model/print.h's hears_transport()) every one, as such a plug-in may play with no note
+    // sent (a sequencer or an arpeggiator of its own). A pattern without notes is frozen only when it is picked: by
+    // default, and for ALL and `melodee-freeze` with none named, a freeze still takes the patterns with notes.
+    std::array<uint64_t, (pattern_count + 63) / 64> freezable(unsigned track) const;
     std::array<uint32_t, track_count> freeze_serial {};
     uint32_t freeze_waiting = 0;
     // Freeze plan F2d: a deep freeze also lets go of the track's plug-in and its chain's plug-ins (PluginRack::sync's

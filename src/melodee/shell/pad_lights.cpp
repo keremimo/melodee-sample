@@ -12,6 +12,7 @@
 #include "melodee/engine/voice_tap.h"
 #include "melodee/model/chords.h"
 #include "melodee/model/pad_params.h"
+#include "melodee/model/print.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/lesson.h"
 #include "melodee/shell/looper_jobs.h"
@@ -470,10 +471,14 @@ Look seq_look(const PadScene& s, unsigned pad) {
     }
     if (ui.erase) return !notes ? Look {} : on ? red(mid) : red(dim);   // clears, asked first
     if (ui.shift) return scenes_look(s, pad);                           // Shift: the pads are sequences
-    if (ui.seq_print) // freeze plan F2c, Seq held + Sample Record: frozen ones white, the rest as they are
-        return !notes ? Look {} : ui.seq_frozen_at(n) ? white(on ? full : mid) : track(at, on ? full : dim);
+    if (ui.seq_print) { // freeze plan F2c, Seq held + Sample Record: frozen ones white, the rest as they are; one
+                        // without notes once frozen, on a track whose plug-in plays by itself (model/print.h)
+        const bool shown = notes || (ui.seq_frozen_at(n) && hears_transport(s.project, at));
+        return !shown ? Look {} : ui.seq_frozen_at(n) ? white(on ? full : mid) : track(at, on ? full : dim);
+    }
     if (ui.pattern_held == int(n)) return white(full); // tap another to copy it there
-    if (s.freeze && (*s.freeze)[at].frozen() && (*s.freeze)[at].plays(n) && notes) return white(on ? full : dim); // a frozen pattern
+    if (s.freeze && (*s.freeze)[at].frozen() && (*s.freeze)[at].plays(n) && (notes || hears_transport(s.project, at)))
+        return white(on ? full : dim); // a frozen pattern
     if (on) return track(at, full);
     if (rolling && t.pattern == n) return blink(s.now, blink_ms) ? track(at, full) : track(at, faint); // waits for the bar
     return notes ? track(at, dim) : Look {};
@@ -483,8 +488,8 @@ Look seq_look(const PadScene& s, unsigned pad) {
 Look print_look(const PadScene& s, unsigned pad) {
     const auto& sheet = s.ui.print_sheet;
     unsigned t = sheet.track % track_count, n = s.ui.pad_pattern(pad);
-    if (s.patterns.at[t][n].empty()) return {};
     bool lit = sheet.picked(n);
+    if (s.patterns.at[t][n].empty() && !(lit && hears_transport(s.project, t))) return {}; // without notes: once lit
     if (!sheet.printing) return lit ? track(t, full) : track(t, faint);
     if (!lit) return {};
     if ((s.printed[n / 64] >> (n % 64)) & 1) return white(full);

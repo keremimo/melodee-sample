@@ -101,3 +101,8 @@ STEMS := build/stems/melodee-stems
 stems: $(STEMS)
 $(STEMS): tools/stems/build.py tools/stems/stems_engine.c tools/stems/convert_model.py
 	python3 tools/stems/build.py build/stems
+
+# Freeze with a plug-in that plays by itself (tests/clap_fixture.cpp built with MELODEE_TEST_SEQUENCER), through
+# PRINT, the rack and the engine (tests/test_plugin_hosts.py runs it).
+build/test-transport-freeze: tests/transport_freeze.cpp $(OBJECTS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wall -Wextra -Werror $< $(filter-out build/obj/main.o,$(OBJECTS)) $(LDLIBS) -o $@

@@ -24,7 +24,8 @@ unsigned playing_pattern(Context& c) {
 }
 
 // That pattern of the selected track, at the next bar while playing. An empty one starts as long as
-// the one playing, so a new idea fits what is there (Free while that one is: shell/free_length.h).
+// the one playing, so a new idea fits what is there (Free while that one is: shell/free_length.h). One
+// frozen without notes (a plug-in's own sequence printed) keeps its length, which its print was made at.
 void launch_one(Context& c, unsigned pattern) {
     unsigned t = c.ui.track % track_count, now = playing_pattern(c);
     pattern %= pattern_count;
@@ -32,7 +33,8 @@ void launch_one(Context& c, unsigned pattern) {
     const auto& playing = c.patterns.at[t][now];
     uint32_t length = playing.length;
     bool free_now = playing.is_free();
-    if (target.empty() && pattern != now && length && (target.length != length || target.free != free_now)) {
+    const bool fresh = target.empty() && !c.pattern_frozen(t, pattern);
+    if (fresh && pattern != now && length && (target.length != length || target.free != free_now)) {
         target.length = length;
         target.free = free_now;
         c.sync_pattern(t, pattern);
@@ -40,7 +42,7 @@ void launch_one(Context& c, unsigned pattern) {
     const bool first = c.pick(t, pattern); // kept in the sequence in hand (model/scene_links.h)
     c.ui.pattern_bank = uint8_t(pattern / pattern_pads); // its bank in view (−/+ cross from one to the next)
     bool waits = c.host.playing() && pattern != now;
-    c.notice(name_of(pattern) + (target.empty() ? " new" : "") + (waits ? ", next bar" : "") +
+    c.notice(name_of(pattern) + (fresh ? " new" : "") + (waits ? ", next bar" : "") +
              (first ? " · SEQ " + std::to_string(c.project.scene % pattern_count + 1) + " kept" : ""));
 }
 
@@ -52,7 +54,7 @@ void new_take(Context& c) {
     unsigned t = c.ui.track % track_count;
     int empty = -1;
     for (unsigned n = 0; n < pattern_count && empty < 0; ++n)
-        if (c.patterns.at[t][n].empty()) empty = int(n);
+        if (c.patterns.at[t][n].empty() && !c.pattern_frozen(t, n)) empty = int(n); // a frozen one is not free
     if (empty < 0) { c.notice("No empty pattern left"); return; }
     launch_one(c, unsigned(empty));
     if (c.ui.recording) return;
