@@ -33,7 +33,7 @@ int64_t point_between(const Pattern& p, int lane, uint32_t from, uint32_t to) {
 void cursor_to(Context& c, uint32_t tick) {
     if (c.ui.motion_cursor == tick) return;
     c.ui.motion_cursor = tick;
-    for (auto& pot : c.ui.pots) { pot.engaged = false; pot.bound = 0; } // a new value under the knobs: picked up again
+    release_pots(c.ui); // a new value under the knobs: picked up again
 }
 
 // More lanes in a line at once than a track plays (model/limits.h motion_ramps_at_once): the edit is taken back.
@@ -119,13 +119,15 @@ void motion_point_erase(Context& c) {
         erased = true;
         c.sync_pattern(c.ui.track, c.track().pattern);
     });
-    if (erased) c.notice("Point erased");
+    if (!erased) return;
+    release_pots(c.ui); // the cards show the lane's own values again: picked up afresh, no jump
+    c.notice("Point erased");
 }
 
 void motion_draw_toggle(Context& c) {
     c.ui.motion_draw = !c.ui.motion_draw;
     if (!c.ui.motion_draw) c.ui.motion_pin = -1; // the lanes in their own order again
-    for (auto& pot : c.ui.pots) { pot.engaged = false; pot.bound = 0; } // the cards may show the points' values now
+    release_pots(c.ui); // the cards may show the points' values now
     c.notice(c.ui.motion_draw ? "Draw on" : "Draw off");
 }
 

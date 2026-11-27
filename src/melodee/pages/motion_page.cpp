@@ -38,7 +38,7 @@ void draw(Paint& p, const Snapshot& s) {
     h.right.push_back(tag_of(s, s.ui.track));
     SoftKeys keys {{"SEQUENCES", "ROLL", "MOTION"}, 2, c};
     if (mod_shown(s.ui)) { keys.dots[2] = 3; keys.dot_at[2] = 0; } // B3's cycle: MOTION, MOD, MACRO (pages/mod_page.cpp)
-    if (s.ui.shift) keys = SoftKeys {{"", "", "DRAW"}, s.ui.motion_draw ? 2 : -1, c}; // Shift + B3: draw mode, lit while on
+    if (s.ui.shift) keys = SoftKeys {{"SEQUENCES", "ROLL", "DRAW"}, s.ui.motion_draw ? 2 : -1, c}; // Shift + B3: draw mode, lit while on (B1, B2 as they are)
     frame(p, s, keys, h);
 
     // One graph: the pattern across, bars and beats marked, quarters of the range up.
@@ -64,6 +64,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.fill(cx - 3, y, 6, 2, colour::text.withAlpha(0.8f), 1);
     }
     float playhead_y = -1;
+    auto ends = s.pattern.ramp_ends(); // each point's ramp_end(), in one pass
     for (unsigned order = 0; order < 3; ++order) { // the one in hand last, over the others
         unsigned lane = order == 2 ? unsigned(hand) : order < unsigned(hand) ? order : order + 1;
         if (lane > 2) continue;
@@ -85,12 +86,12 @@ void draw(Paint& p, const Snapshot& s) {
         unsigned points = 0;
         for (size_t n = 0; n < motion.size(); ++n) {
             const auto& m = motion[n];
-            if (!m.on(lp, lk) || !m.within(length)) continue;
+            if (!m.on(lp, lk) || m.lock() || !m.within(length)) continue; // locks drawn apart
             float ex = x_of(m.tick);
             if (!ramping) line.lineTo(ex, y_of(value));
             value = m.value;
             line.lineTo(ex, y_of(value));
-            ramping = s.pattern.ramp_end(n) < motion.size();
+            ramping = ends[n] < motion.size();
             ++points;
         }
         line.lineTo(x + w, y_of(value));
@@ -100,7 +101,7 @@ void draw(Paint& p, const Snapshot& s) {
         p.g.strokePath(line, juce::PathStrokeType(in_hand ? 2.2f : 1.2f, juce::PathStrokeType::mitered, juce::PathStrokeType::butt));
         if (in_hand && drawing) // its points: those set by hand (and all, when few were recorded), the one under the cursor ringed
             for (const auto& m : motion) {
-                if (!m.on(lp, lk) || !m.within(length) || (!m.ramp && points > 64 && m.tick != cursor)) continue;
+                if (!m.on(lp, lk) || m.lock() || !m.within(length) || (!m.ramp && points > 64 && m.tick != cursor)) continue;
                 float px = x_of(m.tick), py = y_of(m.value);
                 if (m.tick == cursor) p.circle(px, py, 5.5f, colour::text);
                 p.circle(px, py, 3.5f, m.ramp ? shade : colour::bg);

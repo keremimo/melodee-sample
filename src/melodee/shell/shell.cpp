@@ -648,7 +648,7 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     if (ui_.ask != UiState::Ask::None) return; // a question open: the pots wait
     if (ui_.erase && b.kind == Binding::Kind::KnobParam) { // Erase + pot on Knob FX's cards: back to the effect's initial value
         context_.apply(b, effect_info(EffectKind(project_->knob_fx.kind)).params[size_t(b.id) % effect_params].initial);
-        pot.engaged = false; pot.bound = 0;
+        release(pot);
         return;
     }
     if (ui_.erase && ui_.page == PageId::Motion) { // Erase + pot on Motion: clear the lane, once B3 says so (as on the MPC)
@@ -660,32 +660,32 @@ void Shell::pot(unsigned n, int position, bool syncing) {
     if (ui_.erase && b.kind == Binding::Kind::Lock) { // Erase + pot on a lock card: that lane's lock out, the notes kept
         const auto bit = uint8_t(1u << n);
         if (context_.clear_lock(b, !(ui_.erase_cleared & bit))) ui_.erase_cleared |= bit; // the rest of the turn: quiet
-        pot.engaged = false; pot.bound = 0;
+        release(pot);
         return;
     }
     if (ui_.erase && (b.kind == Binding::Kind::StepSound || b.kind == Binding::Kind::StepSlice || b.kind == Binding::Kind::StepPlay)) {
         context_.apply(b, 0); // Erase + pot on Step Edit's SOUND row: that card back to PAD (the pad's own)
-        pot.engaged = false; pot.bound = 0;
+        release(pot);
         return;
     }
     if (ui_.erase && b.kind == Binding::Kind::Param) { // Erase + pot: back to the initial value
         context_.apply(b, engine_info(context_.track().engine).params[b.id].initial);
-        pot.engaged = false; pot.bound = 0;
+        release(pot);
         return;
     }
     if (ui_.erase && b.kind == Binding::Kind::PluginParam) { // a plug-in's: back to its default
         if (const auto* card = plugin_card(ui_.plugin_panel, b.id)) context_.apply(b, card->initial);
-        pot.engaged = false; pot.bound = 0;
+        release(pot);
         return;
     }
     if (ui_.erase && (b.kind == Binding::Kind::BrowseStart || b.kind == Binding::Kind::BrowseEnd)) { // the trim sheet: that end back to the file's
         context_.browse_erase(b.kind == Binding::Kind::BrowseEnd);
-        pot.engaged = false; pot.bound = 0;
+        release(pot);
         return;
     }
     if (int initial = 0; ui_.erase && pad_reset_value(b, initial)) { // a kit pad's own value: back to a new pad's
         context_.apply(b, initial);
-        pot.engaged = false; pot.bound = 0;
+        release(pot);
         return;
     }
     learn_fader(context_, b, n); // fader C: the fader follows the pot turned last, unless PIN holds it
@@ -731,7 +731,7 @@ void Shell::wheel(int delta) {
         if (!b.bound()) return;
         context_.fine_edit(b, delta); // a Trim or Chop handle by the view on screen
         auto& pot = ui_.pots[size_t(ui_.last_pot)];
-        pot.engaged = false; pot.bound = 0; // the value left the pot: pick it up again
+        release(pot); // the value left the pot: pick it up again
         ui_.turning = ui_.last_pot; ui_.turned_at = context_.now;
         return;
     }

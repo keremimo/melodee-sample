@@ -71,7 +71,7 @@ void fader_move(Context& c, int value, bool syncing) {
     int before = ui.fader.position;
     ui.fader.position = int16_t(value);
     auto job = fader_job(c.project, ui);
-    job.binding = c.shown(job.binding); // its value as the page shows it, for takeover
+    bool live = !c.show_drawn(job.binding); // its value as the page shows it, for takeover; drawing on Motion: a bend point set, the track's bend left alone
     before = fader_reach(job, before); // a bend's wide middle: where the fader reaches, not where it sits
     int reach = fader_reach(job, value);
     check_takeover(c, job, before);
@@ -83,7 +83,6 @@ void fader_move(Context& c, int value, bool syncing) {
     if (ui.erase) { erase_lane(c, job); return; }
     int to = 0;
     if (takeover_move(takeover_of(c, job), ui.fader, before, reach, job.binding, to)) {
-        bool live = !c.draws(job.binding); // drawing on Motion: a bend point set, the track's bend left alone
         c.apply(job.binding, to);
         if (job.bend && live) c.fader_bent = uint16_t(c.fader_bent | 1u << (ui.track % track_count));
     }
@@ -91,7 +90,7 @@ void fader_move(Context& c, int value, bool syncing) {
 
 void fader_check(Context& c) {
     auto job = fader_job(c.project, c.ui);
-    job.binding = c.shown(job.binding);
+    c.show_drawn(job.binding);
     check_takeover(c, job, fader_reach(job, c.ui.fader.position));
 }
 

@@ -316,8 +316,15 @@ unsigned motion_script() {
         c.pattern().erase_point(7 * q, lp, lk);
         control(SurfaceControl::Wheel, 0, -2); // the cursor back on 5 Q, its point
     }
+    control(SurfaceControl::K1, 120, 0); // K1 on the point (the wheel let it go): engaged
+    expect(ui.pots[0].engaged, "K1 is engaged on the point it turned");
     tap(B::Erase);
     expect(!point(5 * q), "Erase takes the point under the cursor out");
+    expect(!ui.pots[0].engaged && ui.pots[0].bound == 0, "Erase lets K1 pick up the lane's own value again (no jump)");
+    control(SurfaceControl::K1, 110, 0); // engaged again, on the track's value (no point here now)
+    c.set_recording(true);
+    expect(!ui.pots[0].engaged && ui.pots[0].bound == 0, "Seq Record on lets K1 pick up the track's value again");
+    c.set_recording(false);
 
     { // a lock stays a lock: Push on its tick adds nothing
         MotionPoint lock;

@@ -652,11 +652,10 @@ void Context::audition(int sound) {
     ui.auditioning = int16_t(sound);
 }
 
-bool Context::draws(const Binding& b) { return motion_point_for(*this, b) != nullptr; }
-
-Binding Context::shown(Binding b) {
-    if (const auto* m = motion_point_for(*this, b)) b.value = std::clamp<int>(m->value, b.min, b.max);
-    return b;
+bool Context::show_drawn(Binding& b) {
+    const auto* m = motion_point_for(*this, b);
+    if (m) b.value = std::clamp<int>(m->value, b.min, b.max);
+    return m != nullptr;
 }
 
 void Context::apply(const Binding& b, int value) {
@@ -2501,6 +2500,7 @@ void Context::time_correct() {
 // Off: the clips being written end, and the take goes into the history.
 void Context::set_recording(bool on) {
     if (on == ui.recording) return;
+    if (ui.motion_draw) release_pots(ui); // drawing on Motion: the cards show the points' values with Seq Record off only
     if (track().is_audio() || (!on && audio_take_track >= 0)) { // freeze plan F3: an audio track's take (shell/audio_jobs.cpp)
         ui.rec_armed = false;
         if (on && !record_audio(ui.track)) return;
