@@ -365,7 +365,7 @@ unsigned motion_script() {
         auto& p = c.pattern();
         for (unsigned k = 0; k < motion_ramps_at_once; ++k) {
             MotionPoint a, b;
-            a.param = b.param = uint8_t(100 + k); a.ramp = true; b.tick = p.length;
+            a.param = b.param = uint8_t(100 + k); a.ramp = b.ramp = true; b.tick = p.length; // a line to a point on the end
             a.value = 0; b.value = 1;
             p.write_motion(a); p.write_motion(b);
         }
@@ -375,6 +375,18 @@ unsigned motion_script() {
         auto motion = p.motion;
         tap(B::WheelPush); // at the cursor, before `end`: a 65th line
         expect(p.motion == motion, "Push past the limit on lines at once is taken back");
+    }
+    { // a point on the pattern's end is a line: Push on it does not make it hold (held there, it would hide)
+        auto& p = c.pattern();
+        p.motion.clear();
+        control(SurfaceControl::K1, 0, 0); // K1's lane drawn
+        control(SurfaceControl::Wheel, 0, 100); // as far as the cursor goes: the end
+        expect(ui.motion_cursor == p.length, "the wheel goes as far as the pattern's end");
+        tap(B::WheelPush);
+        tap(B::WheelPush);
+        const auto* at_end = point(p.length);
+        expect(at_end && at_end->ramp && at_end->within(p.length), "the end's point stays a line");
+        p.motion.clear();
     }
     with_shift([&] { tap(B::TopRight); });
     expect(!ui.motion_draw, "Shift + B3 turns draw mode off");

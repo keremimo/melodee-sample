@@ -61,7 +61,7 @@ const MotionPoint* motion_point_here(Context& c) {
     const auto& p = c.pattern();
     int lane = hand_lane(c);
     if (lane < 0) return nullptr;
-    return p.point_at(motion_cursor(c.ui, p), lane_param(lane), lane_pad(lane) % sampler_pads);
+    return motion_point_at_cursor(c.ui, p, lane);
 }
 
 void motion_cursor_wheel(Context& c, int delta) {
@@ -139,6 +139,7 @@ void motion_point_push(Context& c) {
     if (const auto* here = motion_point_here(c)) { // Push on a point: a line to the next, or hold
         bool ramp = !here->ramp && lp != motion_pad_mute;
         if (ramp == here->ramp) { c.notice("MUTE points hold"); return; }
+        if (!ramp && here->tick >= c.pattern().length) { c.notice("The end's point is a line"); return; } // held there, it would hide
         bool kept = false;
         c.edit_pattern(c.ui.track, c.track().pattern, ramp ? "Motion point: line" : "Motion point: hold", [&] {
             MotionPoint was = *here, m = was;
@@ -156,6 +157,7 @@ void motion_point_push(Context& c) {
     m.tick = at; m.param = uint8_t(lp); m.pad = uint8_t(lk);
     m.value = int16_t(c.pattern().lane_value(at, lp, lk, motion_param(c.track(), lane, &c.project).value));
     m.ramp = lp != motion_pad_mute; // a mute is on or off: it holds
+    if (!m.ramp && at >= c.pattern().length) { c.notice("No MUTE point on the end"); return; } // only a line sits on the end
     bool kept = false, full = false;
     c.edit_pattern(c.ui.track, c.track().pattern, "Add motion point", [&] {
         if (!c.pattern().write_motion(m)) { full = true; return; }

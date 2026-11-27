@@ -67,6 +67,7 @@
 #include "melodee/model/lane_value.h"
 #include "melodee/model/scales.h"
 #include "melodee/shell/bindings.h"
+#include "melodee/shell/motion_points.h"
 #include "melodee/shell/step_sounds.h"
 #include "melodee/shell/new_track.h"
 #include "melodee/shell/pad_colour.h"
@@ -9410,6 +9411,15 @@ void pattern_motion() {
         }
         mui.motion_draw = true; // Shift + B3: drawing
         CHECK(page_bindings(*project, mui, p)[0].value == 96 && erase_tap_page(mui));
+        { // a recorded point on the pattern's end stays hidden: the cursor there finds no point (the card is the track's)
+            Pattern ended = p;
+            MotionPoint recorded = to; recorded.tick = ended.length; recorded.value = 55; // a knob turned across the bar line
+            CHECK(ended.write_motion(recorded));
+            UiState at_end = mui; at_end.motion_cursor = ended.length;
+            CHECK(!motion_point_on(at_end, ended, motion_lane(Cc1)) && page_bindings(*project, at_end, ended)[0].value == 7);
+            ended.point_at(ended.length, Cc1, 0)->ramp = true; // a line's end point, set by hand: the cursor finds it
+            CHECK(motion_point_on(at_end, ended, motion_lane(Cc1)) && page_bindings(*project, at_end, ended)[0].value == 55);
+        }
         { // a lane Push began for a parameter Motion did not show comes first, on its track only
             UiState pin = mui;
             int lane = motion_lane(Cc2);

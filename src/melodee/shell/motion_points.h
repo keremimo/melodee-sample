@@ -36,14 +36,21 @@ inline int motion_draw_lane(const Project& project, const UiState& ui, const Pat
 inline uint32_t motion_cursor(const UiState& ui, const Pattern& pattern) {
     return std::min<uint32_t>(ui.motion_cursor, std::max<uint32_t>(pattern.length, 1));
 }
+// The point (not a lock) on `lane` under the cursor, if the pattern has one there that it plays or draws to: a
+// recorded point on the pattern's end stays hidden (model/pattern.h MotionPoint::within), so none.
+inline const MotionPoint* motion_point_at_cursor(const UiState& ui, const Pattern& pattern, int lane) {
+    if (lane < 0) return nullptr;
+    const auto* m = pattern.point_at(motion_cursor(ui, pattern), lane_param(lane), lane_pad(lane) % sampler_pads);
+    return m && m->within(pattern.length) ? m : nullptr;
+}
 // Drawing, the point (not a lock) under the cursor on the lane drawn, if there is one: what Push, Erase and
 // Shift + wheel edit.
 const MotionPoint* motion_point_here(Context& c);
 // Drawing with Seq Record off, the point (not a lock) under the cursor on `lane`, if there is one: the one rule for
 // a card's value on Motion, the value its card shows (shell/bindings.cpp) and what turning it sets (motion_point_for).
 inline const MotionPoint* motion_point_on(const UiState& ui, const Pattern& pattern, int lane) {
-    if (!ui.motion_draw || ui.recording || lane < 0) return nullptr;
-    return pattern.point_at(motion_cursor(ui, pattern), lane_param(lane), lane_pad(lane) % sampler_pads);
+    if (!ui.motion_draw || ui.recording) return nullptr;
+    return motion_point_at_cursor(ui, pattern, lane);
 }
 // On Motion, motion_point_on() for the lane a card turns, when it is one of the three Motion shows: what any control
 // turning that card sets (Context::apply: a knob, the fader, Shift + wheel's fine edit) and the value it shows
